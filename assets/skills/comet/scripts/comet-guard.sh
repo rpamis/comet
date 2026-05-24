@@ -276,12 +276,14 @@ build_passes() {
     cargo build
     return $?
   fi
-  # Python project detection (compileall checks syntax + import resolution)
-  if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
-    local py_cmd
-    py_cmd="$(command -v python3 >/dev/null 2>&1 && echo 'python3' || echo 'python')"
-    "$py_cmd" -m compileall . -q
-    return $?
+  # Python project detection: require a project marker to avoid false positives
+  if [ -f "pyproject.toml" ] || [ -f "setup.py" ] || [ -f "setup.cfg" ] || [ -f "requirements.txt" ]; then
+    if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+      local py_cmd
+      py_cmd="$(command -v python3 >/dev/null 2>&1 && echo 'python3' || echo 'python')"
+      "$py_cmd" -m compileall . -q
+      return $?
+    fi
   fi
   return 1
 }
