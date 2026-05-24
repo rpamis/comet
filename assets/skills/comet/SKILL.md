@@ -35,9 +35,9 @@ Agents need only read this section for decision-making. Refer to the Reference A
 | Multiple | `/comet` with no description | → List changes for user selection |
 
 <IMPORTANT>
-When the user chooses "create a new change", **must invoke `/comet-open`**. Do not call `/opsx:new` directly.
-`/comet-open` performs dual initialization: OpenSpec artifacts plus `.comet.yaml` state.
-Calling `/opsx:new` directly leaves `.comet.yaml` missing and breaks later phase detection.
+When the user chooses "create a new change", **must invoke `/comet-open`**. Do not call `openspec-new-change` or `openspec-propose` skill directly.
+`/comet-open` performs dual initialization: OpenSpec artifacts (via `openspec-new-change` or `openspec-propose` skill) plus `.comet.yaml` state.
+Calling openspec skills directly leaves `.comet.yaml` missing and breaks later phase detection.
 </IMPORTANT>
 
 **Preset detection**:

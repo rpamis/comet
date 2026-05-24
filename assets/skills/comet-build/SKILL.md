@@ -142,7 +142,7 @@ When the initial spec is found incomplete during implementation, handle by scale
 |------|-------------------|----------|
 | Small | Missing acceptance scenarios, edge cases | Directly edit delta spec + design.md, append tasks.md tasks |
 | Medium | Interface changes, new components, data flow changes | Re-run `superpowers:brainstorming` to update Design Doc + delta spec |
-| Large | Brand-new capability requirements | `/opsx:new` to create independent change |
+| Large | Brand-new capability requirements | `/comet-open` to create independent change |
 
 **50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, should consider splitting into new change.
 

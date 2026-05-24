@@ -41,9 +41,9 @@ agent 做决策只需读本节，参考附录按需查阅。
 | 多个 | `/comet`（无描述） | → 列出清单让用户选择 |
 
 <IMPORTANT>
-当用户选择「创建新变更」时，**必须调用 `/comet-open`**（禁止直接调用 `/opsx:new`）。
-`/comet-open` 负责完整双初始化：OpenSpec artifacts（由内部 `/opsx:new` 创建）+ `.comet.yaml` 状态文件。
-直接调用 `/opsx:new` 会缺失 `.comet.yaml`，导致后续阶段判定失败。
+当用户选择「创建新变更」时，**必须调用 `/comet-open`**（禁止直接调用 `openspec-new-change` 或 `openspec-propose` skill）。
+`/comet-open` 负责完整双初始化：OpenSpec artifacts（由内部 `openspec-new-change` 或 `openspec-propose` skill 创建）+ `.comet.yaml` 状态文件。
+直接调用 openspec skill 会缺失 `.comet.yaml`，导致后续阶段判定失败。
 </IMPORTANT>
 
 **Step 1: 读取 `.comet.yaml` 状态元数据**

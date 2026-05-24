@@ -142,7 +142,7 @@ bash "$COMET_STATE" set <name> build_mode direct
 |------|---------|------|
 | 小 | 遗漏验收场景、边界条件 | 直接编辑 delta spec + design.md，追加 tasks.md 任务 |
 | 中 | 接口变更、新增组件、数据流变化 | 重新 `superpowers:brainstorming` 更新 Design Doc + delta spec |
-| 大 | 全新 capability 需求 | `/opsx:new` 创建独立 change |
+| 大 | 全新 capability 需求 | `/comet-open` 创建独立 change |
 
 **50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，应考虑拆分为新 change。
 
