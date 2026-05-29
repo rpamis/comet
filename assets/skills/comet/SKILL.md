@@ -115,17 +115,28 @@ Prefer reading `openspec/changes/<name>/.comet.yaml`. If not available, fall bac
 
 **Step 2: Phase Determination** (check in order, first match wins)
 
-**Decision points are blocking**: when any of the following nodes is reached, the current `/comet` invocation must stop. Only after the user makes an explicit choice should you write the corresponding state field, perform the corresponding action, then continue auto-transition.
+**Decision points are blocking points**: when any of the following nodes is reached, the current `/comet` invocation must stop, **using the AskUserQuestion tool to wait for the user's choice**. Only after the user makes an explicit choice should you write the corresponding state field, perform the corresponding action, then continue auto-transition.
 
 User decision points (pause only at these):
-1. brainstorming to confirm design
-2. build phase: choose isolation + execution mode (single interaction)
-3. verify failure: decide fix or accept deviation (including spec drift handling)
-4. finishing-branch: choose branch handling
-5. upgrade conditions (hotfix/tweak → full workflow)
-6. build phase scope expansion requiring redesign or new change split
+1. Open phase proposal/design/tasks review and confirmation
+2. Brainstorming to confirm design
+3. Build phase: choose isolation + execution mode (single interaction)
+4. Verify failure: decide fix or accept deviation (including spec drift handling)
+5. Finishing-branch: choose branch handling
+6. Upgrade conditions (hotfix/tweak → full workflow)
+7. Build phase scope expansion requiring redesign or new change split
 
-The agent must not skip these decision points; all other unambiguous phase transitions must auto-continue without stopping.
+The agent must not skip these decision points; all other unambiguous phase transitions must auto-continue without stopping. At decision points, **text output must NOT substitute for tool-based waiting — must explicitly obtain the user's choice via AskUserQuestion before continuing**.
+
+**Red Flags** — when these thoughts appear, STOP and check:
+
+| Agent Thought | Actual Risk |
+|--------------|-------------|
+| "The user would probably agree with this approach" | Cannot decide for the user — use AskUserQuestion |
+| "This is a small change, confirmation isn't needed" | Decision points have no size exception — blocking points must wait |
+| "The user chose A last time, so A again" | Historical preference cannot substitute for current confirmation |
+| "I explained the plan and the user didn't object" | No objection ≠ consent — must use tool to get explicit choice |
+| "The flow has reached this point, should be fine" | Verification not passed ≠ passed — check verify_result |
 
 1. `archived: true` or change moved to archive → Workflow complete
 2. `verify_result: pass` and `archived` is not `true` → Invoke `/comet-archive`
