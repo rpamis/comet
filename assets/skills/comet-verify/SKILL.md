@@ -87,8 +87,11 @@ When scale assessment result is "small", skip `openspec-verify-change` and direc
 3. Build passes (run project-specific build command, e.g., `npm run build`, `mvn compile`, `cargo build`, etc.)
 4. Related tests pass
 5. No obvious security issues (no hardcoded keys, no new unsafe operations)
+6. lightweight code review passes: dispatch a code-reviewer subagent that checks only correctness, security, and edge cases
 
-**Pass criteria**: All 5 items OK, no CRITICAL issues.
+The lightweight code review input should be limited to this change's diff, tasks.md, and necessary test results; the review scope covers implementation correctness, security risk, and edge cases only, and does not perform spec coverage, Design Doc consistency, or drift checks. If the review finds CRITICAL or IMPORTANT issues, treat verification as failed and enter Step 1b.
+
+**Pass criteria**: All 6 items OK, no CRITICAL issues.
 
 **When not passing**: Report failures, enter Step 1b verification failure decision blocking point. Only after user confirms fix, execute the following command to record failure and roll back to build phase, then invoke `/comet-build` to fix:
 
@@ -97,12 +100,12 @@ When scale assessment result is "small", skip `openspec-verify-change` and direc
 bash "$COMET_STATE" transition <change-name> verify-fail
 ```
 
-**Report format**: Brief table listing 5 check results + PASS/FAIL.
+**Report format**: Brief table listing 6 check results + PASS/FAIL.
 
 **Skipped items** (not checked in lightweight verification):
 - spec scenario coverage
 - design doc consistency deep comparison
-- code pattern consistency suggestions
+- code pattern consistency suggestions that do not affect correctness, security, or edge cases
 - delta spec and design doc drift detection
 
 ### 2b. Full Verification (Large Changes)

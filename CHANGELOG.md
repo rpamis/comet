@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Command execution security**: Refactored all command execution in OpenSpec and Superpowers install paths from `spawn` with shell interpretation to `execFileSync`, eliminating shell injection surface and improving cross-platform reliability (#88bf487)
+- **Lightweight verification review**: Lightweight verification now requires a scoped code review focused on correctness, security, and edge cases, adding review coverage without running full spec or design drift checks (#42)
 
 ### Fixed
 
@@ -22,6 +23,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - Added coverage for OpenCode global OpenSpec path migration, self-deletion guard, and homedir mocking
 - Added doctor tests for `.comet.yaml` top-level key validation and non-ENOENT `readDir` error propagation
 - Fixed timeout for git-based test "uses plan base-ref to scale verification"
+- Added workflow safeguard coverage for the lightweight verification code review requirement
 
 ### Docs
 
