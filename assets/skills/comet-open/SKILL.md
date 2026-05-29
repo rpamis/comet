@@ -11,17 +11,33 @@ description: "Comet Phase 1: Open. Invoke with /comet-open. Explore ideas throug
 
 ## Steps
 
+### 0. Output Language Constraint
+
+Every prompt and artifact request passed to OpenSpec must include the output-language constraint: use the language of the user request that triggered this workflow. When resuming an existing change with a clear dominant artifact language, preserve that language unless the user explicitly asks to switch.
+
 ### 1. Explore Ideas
 
 **Immediately execute:** Use the Skill tool to load the `openspec-explore` skill. Skipping this step is prohibited.
 
-After the skill loads, freely explore the problem space following its guidance.
+When loading the skill, ARGUMENTS must include:
+
+```
+Language: Use the language of the user request that triggered this workflow.
+```
+
+After the skill loads, freely explore the problem space following its guidance. All questions and summaries must use that language.
 
 ### 2. Create Change Structure + Initialize State
 
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. If the user's intent is unclear and needs proposal formation first, load `openspec-propose` instead. Skipping this step is prohibited.
 
 **Naming and scope guard**: Change name must use a user-specified or AskUserQuestion-confirmed name — must not auto-generate or infer. Change scope must match the user's description — must not expand or narrow it independently.
+
+When loading the skill, ARGUMENTS must include:
+
+```
+Language: Use the language of the user request that triggered this workflow for proposal.md, design.md, tasks.md, and any required delta specs.
+```
 
 Confirm the following artifacts have been created:
 

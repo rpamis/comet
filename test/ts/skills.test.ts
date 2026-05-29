@@ -350,6 +350,95 @@ describe('skills', () => {
     });
   });
 
+  describe('Comet output language safeguards', () => {
+    it('requires OpenSpec and Superpowers outputs to follow the user request language', async () => {
+      const zhComet = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet', 'SKILL.md'),
+        'utf-8',
+      );
+      const zhOpen = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-open', 'SKILL.md'),
+        'utf-8',
+      );
+      const zhDesign = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-design', 'SKILL.md'),
+        'utf-8',
+      );
+      const zhBuild = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'),
+        'utf-8',
+      );
+      const zhVerify = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-verify', 'SKILL.md'),
+        'utf-8',
+      );
+      const zhArchive = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-archive', 'SKILL.md'),
+        'utf-8',
+      );
+      const zhHotfix = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-hotfix', 'SKILL.md'),
+        'utf-8',
+      );
+      const zhTweak = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-tweak', 'SKILL.md'),
+        'utf-8',
+      );
+      const enComet = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet', 'SKILL.md'),
+        'utf-8',
+      );
+      const enOpen = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'),
+        'utf-8',
+      );
+      const enDesign = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-design', 'SKILL.md'),
+        'utf-8',
+      );
+      const enBuild = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-build', 'SKILL.md'),
+        'utf-8',
+      );
+      const enVerify = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-verify', 'SKILL.md'),
+        'utf-8',
+      );
+      const enArchive = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-archive', 'SKILL.md'),
+        'utf-8',
+      );
+      const enHotfix = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-hotfix', 'SKILL.md'),
+        'utf-8',
+      );
+      const enTweak = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-tweak', 'SKILL.md'),
+        'utf-8',
+      );
+
+      expect(zhComet).toContain('输出语言规则');
+      expect(zhComet).toContain('以触发本次工作流的用户请求语言作为默认输出语言');
+      expect(zhOpen).toContain('传递给 OpenSpec 的所有提问和产物要求都必须包含输出语言约束');
+      expect(zhDesign).toContain('Language: 使用触发本次工作流的用户请求语言输出');
+      expect(zhBuild).toContain('计划文件和执行反馈必须使用触发本次工作流的用户请求语言');
+      expect(zhVerify).toContain('验证报告和分支处理说明必须使用触发本次工作流的用户请求语言');
+      expect(zhArchive).toContain('归档摘要和生命周期闭环说明必须使用触发本次工作流的用户请求语言');
+      expect(zhHotfix).toContain('精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言');
+      expect(zhTweak).toContain('精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言');
+
+      expect(enComet).toContain('Output Language Rule');
+      expect(enComet).toContain('Use the language of the user request that triggered this workflow as the default output language');
+      expect(enOpen).toContain('Every prompt and artifact request passed to OpenSpec must include the output-language constraint');
+      expect(enDesign).toContain('Language: Use the language of the user request that triggered this workflow');
+      expect(enBuild).toContain('Plan files and execution feedback must use the language of the user request that triggered this workflow');
+      expect(enVerify).toContain('Verification reports and branch-handling notes must use the language of the user request that triggered this workflow');
+      expect(enArchive).toContain('Archive summaries and lifecycle closure notes must use the language of the user request that triggered this workflow');
+      expect(enHotfix).toContain('Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow');
+      expect(enTweak).toContain('Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow');
+    });
+  });
+
   describe('Comet script discovery helper', () => {
     it('ships a shared script locator helper', async () => {
       const manifest = await readManifest();

@@ -77,6 +77,7 @@ Handoff package sources come from OpenSpec open phase artifacts:
 Change: <change-name>
 OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/design-context.md
 Machine handoff: openspec/changes/<name>/.comet/handoff/design-context.json
+Language: Use the language of the user request that triggered this workflow for the Design Doc, delta spec, questions, and confirmation summary.
 
 OpenSpec artifacts are the upstream source of truth. Do not redefine requirements, do not rewrite proposal/spec.
 Your task is to perform deep technical design based on the handoff package: implementation approach, technical risks, testing strategy, boundary conditions.

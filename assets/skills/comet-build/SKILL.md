@@ -34,7 +34,13 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 
 **Immediately execute:** Use the Skill tool to load the `superpowers:writing-plans` skill. Skipping this step is prohibited.
 
-After the skill loads, follow its guidance to create a plan. Plan requirements:
+When loading the skill, ARGUMENTS must include:
+
+```
+Language: Use the language of the user request that triggered this workflow.
+```
+
+After the skill loads, follow its guidance to create a plan. Plan files and execution feedback must use the language of the user request that triggered this workflow. Plan requirements:
 - Save to `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
 - Reference design document, break down into executable tasks
 - **Plan file header must contain associated metadata**:
@@ -120,6 +126,8 @@ After creating isolation, confirm plan file is accessible (naturally accessible 
 **Load execution skill**: Use the Skill tool to load the corresponding skill. Skipping this step is prohibited.
 
 If the selected Superpowers skill is unavailable, stop the process and prompt to install or enable the corresponding skill. Do not substitute this step with normal conversation.
+
+When loading `superpowers:subagent-driven-development` or `superpowers:executing-plans`, ARGUMENTS must include the same Language constraint.
 
 After the skill loads, follow its guidance to execute:
 - Execute tasks according to plan

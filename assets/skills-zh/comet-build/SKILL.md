@@ -34,7 +34,13 @@ bash "$COMET_STATE" check <name> build
 
 **立即执行：** 使用 Skill 工具加载 `superpowers:writing-plans` 技能。禁止跳过此步骤。
 
-技能加载后，按其指引制定计划。计划要求：
+技能加载时，ARGUMENTS 必须包含：
+
+```
+Language: 使用触发本次工作流的用户请求语言输出。
+```
+
+技能加载后，按其指引制定计划。计划文件和执行反馈必须使用触发本次工作流的用户请求语言。计划要求：
 - 保存至 `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
 - 引用设计文档，拆分为可执行任务
 - **Plan 文件头必须包含关联元数据**：
@@ -120,6 +126,8 @@ bash "$COMET_STATE" set <name> build_mode direct
 **加载执行技能**：使用 Skill 工具加载对应技能。禁止跳过此步骤。
 
 如所选 Superpowers 技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。
+
+加载 `superpowers:subagent-driven-development` 或 `superpowers:executing-plans` 时，ARGUMENTS 必须包含同一 Language 约束。
 
 技能加载后，按其指引执行：
 - 按计划执行任务

@@ -20,6 +20,15 @@ Superpowers 负责 HOW — 技术设计、计划、执行、收尾
 
 agent 做决策只需读本节，参考附录按需查阅。
 
+### 输出语言规则
+
+以触发本次工作流的用户请求语言作为默认输出语言。此规则覆盖 Comet 自身回复，以及传递给 OpenSpec / Superpowers 的提问、参数和产物要求。
+
+- 新建 change 时，proposal.md、design.md、tasks.md、delta spec、Design Doc、Plan、验证报告和归档说明都使用该语言。
+- 恢复已有 change 时，若现有 OpenSpec/Superpowers 产物已有明确主语言，默认沿用该语言，除非用户明确要求切换。
+- 用户显式指定输出语言时，以用户显式要求为准。
+- 每次调用 OpenSpec 或 Superpowers skill 时，都必须在 ARGUMENTS 中传递输出语言约束，不得让外部 skill 默认回到英文。
+
 ### 阶段自动检测
 
 **Step 0: 活跃 Change 发现与意图判定**
