@@ -207,19 +207,19 @@ describe('skills', () => {
       );
 
       expect(zhComet).toContain('决策点是阻塞点');
-      expect(zhDesign).toContain('必须暂停并等待用户明确确认设计方案');
+      expect(zhDesign).toContain('必须使用 AskUserQuestion 工具暂停并等待用户明确确认设计方案');
       expect(zhBuild).toContain('不得根据推荐规则自行选择 `branch` 或 `worktree`');
       expect(zhBuild).toContain('不得根据推荐规则自行选择执行方式');
-      expect(zhVerify).toContain('验证不通过时必须暂停并等待用户决定修复或接受偏差');
-      expect(zhVerify).toContain('必须暂停并等待用户选择分支处理方式');
+      expect(zhVerify).toContain('验证不通过时**必须使用 AskUserQuestion 工具暂停并等待用户决定修复或接受偏差');
+      expect(zhVerify).toContain('必须使用 AskUserQuestion 工具暂停并等待用户选择分支处理方式');
       expect(zhVerify).toContain(
         '只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`',
       );
       expect(zhHotfix).toContain(
-        '满足升级条件时必须暂停并等待用户明确确认升级为完整 `/comet` 流程',
+        '满足升级条件时**必须使用 AskUserQuestion 工具暂停并等待用户明确确认**升级为完整 `/comet` 流程',
       );
       expect(zhHotfix).toContain('不得直接进入 `/comet-design`');
-      expect(zhTweak).toContain('满足升级条件时必须暂停并等待用户明确确认升级为完整 `/comet` 流程');
+      expect(zhTweak).toContain('满足升级条件时**必须使用 AskUserQuestion 工具暂停并等待用户明确确认**升级为完整 `/comet` 流程');
       expect(zhTweak).toContain('不得直接进入 `/comet-design`');
       expect(zhComet).toContain('`verify_result: fail` → 进入验证失败决策阻塞点');
       expect(zhComet).not.toContain(
@@ -237,7 +237,7 @@ describe('skills', () => {
       expect(zhDesign).toContain('brainstorming 阶段不写入 Design Doc 文件');
 
       // MEDIUM: comet-verify Spec drift requires user choice
-      expect(zhVerify).toContain('必须暂停并等待用户选择处理方式');
+      expect(zhVerify).toContain('必须使用 AskUserQuestion 工具以单选题形式暂停并等待用户选择处理方式');
 
       // MEDIUM: comet/SKILL.md build phase resume checks build_mode/isolation
       expect(zhComet).toContain('先检查 `build_mode` 和 `isolation` 是否已设置');
@@ -251,11 +251,11 @@ describe('skills', () => {
 
       // LOW: comet-build "中" level requires user confirmation before brainstorming
       expect(zhBuild).toContain(
-        '暂停并等待用户确认后，必须使用 Skill 工具加载 `superpowers:brainstorming`',
+        '使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 `superpowers:brainstorming`',
       );
 
       // LOW: comet-build 50% threshold is a hard decision point
-      expect(zhBuild).toContain('必须暂停并等待用户决定是否拆分为新 change');
+      expect(zhBuild).toContain('必须使用 AskUserQuestion 工具暂停并等待用户决定是否拆分为新 change');
 
       // LOW: comet-verify Step 2b disambiguates design.md vs Design Doc
       expect(zhVerify).toContain('实现符合 `openspec/changes/<name>/design.md` 高层设计决策');
@@ -309,33 +309,33 @@ describe('skills', () => {
       );
 
       expect(enComet).toContain('Decision points are blocking points');
-      expect(enDesign).toContain('must pause and wait for the user to explicitly confirm');
-      expect(enBuild).toContain('must not choose `branch` or `worktree` based on recommendation rules');
+      expect(enDesign).toContain('must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
+      expect(enBuild).toContain('Must not choose `branch` or `worktree` based on recommendation rules');
       expect(enBuild).toContain('must not choose the execution method based on recommendation rules');
-      expect(enVerify).toContain('When verification does not pass, must pause and wait for the user to decide fix or accept deviation');
-      expect(enVerify).toContain('Must pause and wait for user to choose branch handling method');
+      expect(enVerify).toContain('must use the AskUserQuestion tool to pause and wait for the user to decide fix or accept deviation');
+      expect(enVerify).toContain('Must use the AskUserQuestion tool to pause and wait for user to choose branch handling method');
       expect(enVerify).toContain('Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written');
-      expect(enHotfix).toContain('must pause and wait for the user to explicitly confirm upgrading to the full `/comet` workflow');
+      expect(enHotfix).toContain('must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
       expect(enHotfix).toContain('Do not directly enter `/comet-design`');
-      expect(enTweak).toContain('must pause and wait for the user to explicitly confirm upgrading to the full `/comet` workflow');
+      expect(enTweak).toContain('must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
       expect(enTweak).toContain('Do not directly enter `/comet-design`');
       expect(enComet).toContain('`verify_result: fail` → Enter verification failure decision blocking point');
       expect(enComet).not.toContain(
         '`verify_result: fail` → `bash "$COMET_STATE" transition <name> verify-fail` then `/comet-build`',
       );
 
-      expect(enHotfix).toContain('Handle through the upgrade-condition blocking confirmation');
-      expect(enTweak).toContain('Handle through the upgrade-condition blocking confirmation');
+      expect(enHotfix).toContain('handle per "Upgrade Conditions" section');
+      expect(enTweak).toContain('handle per upgrade conditions blocking confirmation');
       expect(enHotfix).toContain('verify phase (comet-verify) verification-failure and branch-handling decisions');
       expect(enTweak).toContain('verify phase (comet-verify) verification-failure and branch-handling decisions');
       expect(enDesign).toContain('The brainstorming phase does not write to the Design Doc file');
-      expect(enVerify).toContain('must pause and wait for user to choose handling method');
+      expect(enVerify).toContain('must use the AskUserQuestion tool as a single-select question to pause and wait for user to choose handling method');
       expect(enComet).toContain('first check whether `build_mode` and `isolation` are set');
       expect(enVerify).toContain('CRITICAL failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
       expect(enHotfix).toContain('workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`');
-      expect(enBuild).toContain('Pause and wait for user confirmation, then must use Skill tool to load `superpowers:brainstorming`');
-      expect(enBuild).toContain('must pause and wait for the user to decide whether to split into new change');
+      expect(enBuild).toContain('Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
+      expect(enBuild).toContain('must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change');
       expect(enVerify).toContain('Implementation matches `openspec/changes/<name>/design.md` high-level design decisions');
       expect(enBuild).toContain('create independent change through `/comet-open`');
       expect(enBuild).not.toContain('create independent change through `/opsx:new`');
