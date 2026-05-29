@@ -245,6 +245,9 @@ describe('skills', () => {
       // MEDIUM: comet-verify Step 1b handles mixed CRITICAL/non-CRITICAL
       expect(zhVerify).toContain('CRITICAL 失败项必须修复');
       expect(zhVerify).toContain('不允许跳过修复直接全部接受');
+      expect(zhVerify).toContain('简化代码审查');
+      expect(zhVerify).toContain('只检查 correctness、安全、边界条件');
+      expect(zhVerify).toContain('不执行 spec 覆盖率、Design Doc 一致性或漂移检查');
 
       // MEDIUM: hotfix IMPORTANT covers >3-tasks comet-build decision points
       expect(zhHotfix).toContain('任务超过 3 个转入 `/comet-build` 时的工作区隔离和执行方式选择');
@@ -333,6 +336,9 @@ describe('skills', () => {
       expect(enComet).toContain('first check whether `build_mode` and `isolation` are set');
       expect(enVerify).toContain('CRITICAL failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
+      expect(enVerify).toContain('lightweight code review');
+      expect(enVerify).toContain('checks only correctness, security, and edge cases');
+      expect(enVerify).toContain('does not perform spec coverage, Design Doc consistency, or drift checks');
       expect(enHotfix).toContain('workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`');
       expect(enBuild).toContain('Pause and wait for user confirmation, then must use Skill tool to load `superpowers:brainstorming`');
       expect(enBuild).toContain('must pause and wait for the user to decide whether to split into new change');
