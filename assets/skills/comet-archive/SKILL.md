@@ -1,73 +1,73 @@
 ---
 name: comet-archive
-description: "Comet Phase 5: Archive. Invoke with /comet-archive. Sync delta spec to main spec, archive change."
+description: "Comet Phase 5: Archive. Invoke with /comet-archive. Sync delta spec to main spec, archive the change."
 ---
 
-# Comet Phase 5: Archive (Archive)
+# Comet Phase 5: Archive
 
 ## Prerequisites
 
 - Verification passed (Phase 4 complete)
 - Branch handled
-- `verify_result: pass` in `openspec/changes/<name>/.comet.yaml`
+- `openspec/changes/<name>/.comet.yaml` has `verify_result: pass`
 
 ## Steps
 
-### 0. Entry State Verification (Entry Check)
-
-Execute entry verification:
+### 0. Entry State Verification
 
 ```bash
 COMET_ENV="${COMET_ENV:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet/scripts/comet-env.sh' -type f -print -quit 2>/dev/null)}"
-if [ -z "$COMET_ENV" ]; then
-  echo "ERROR: comet-env.sh not found. Ensure the comet skill is installed." >&2
-  return 1
-fi
+if [ -z "$COMET_ENV" ]; then echo "ERROR: comet-env.sh not found." >&2; return 1; fi
 . "$COMET_ENV"
 bash "$COMET_STATE" check <name> archive
 ```
 
-Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
-
 ### 1. Execute Archive
 
-Run the archive script to automatically complete all steps:
+**Manual mode**: requires user confirmation before running archive script.
+
+**Auto-Pilot mode**: when `auto_config.archive: true`, execute automatically. Tag `[AUTO]`, skip confirmation.
 
 ```bash
 bash "$COMET_ARCHIVE" "<change-name>"
 ```
 
-The script automatically executes:
-1. Entry state validation (phase=archive, verify_result=pass, archived=false)
-2. Delta spec sync to main spec (overwrite)
-3. Design doc frontmatter annotation (archived-with, status)
-4. Plan frontmatter annotation (archived-with)
-5. Move change to archive directory
-6. Update `archived: true` through `comet-state transition <archive-name> archived`
+Script automatically:
+1. Validates entry state
+2. Syncs delta specs to main specs
+3. Annotates design doc and plan frontmatter
+4. Moves change to archive directory
+5. Updates `archived: true` via `comet-state transition`
 
-If script returns non-zero exit code, report error and stop.
-If script returns zero exit code, archive is complete.
-The summary `X/Y steps succeeded` counts real executed steps and does not double-count delta spec sync or document annotation.
+Auto-Pilot logs audit:
+```bash
+echo '{"ts":"...","change":"<name>","phase":"archive","decision":"auto_archive"}' >> openspec/changes/archive/YYYY-MM-DD-<name>/.comet/auto/decisions.jsonl 2>/dev/null || true
+```
 
-When a delta spec differs from an existing main spec, the script prints a unified diff preview before overwrite to help confirm archive sync content.
+### 2. Auto-Pilot Cleanup
 
-Use `--dry-run` flag to preview without executing.
+After successful archive in auto-mode:
+```bash
+rm -rf openspec/changes/archive/YYYY-MM-DD-<name>/.comet/auto/
+ACTIVE_COUNT=$(openspec list --json 2>/dev/null | python3 -c "import json,sys;print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+if [ "$ACTIVE_COUNT" -eq 0 ]; then
+  rm -f openspec/changes/.comet-auto-active
+fi
+```
 
-### 2. Lifecycle Closed Loop
+### 3. Lifecycle Closure
 
-Spec lifecycle completes here:
 ```
 brainstorming → delta spec → implementation → verification → main spec overwrite → design doc annotation → archive
 ```
 
 ## Exit Conditions
 
-- Archive script executed successfully (exit code 0)
-- Archive directory `openspec/changes/archive/YYYY-MM-DD-<change-name>/` exists
-- Archived `.comet.yaml` contains `archived: true`
+- Archive script succeeds (exit 0)
+- Archive directory exists
+- `.comet.yaml` `archived: true`
+- Auto-Pilot: runtime files cleaned
 
-The archive script moves `openspec/changes/<name>/` to `openspec/changes/archive/YYYY-MM-DD-<name>/`. After successful archive, **do not run** `bash "$COMET_GUARD" <change-name> archive` against the old active change name; the active directory no longer exists. Archive completeness is determined by script exit code and archived directory state.
+## Done
 
-## Complete
-
-Comet workflow complete. To start new work, invoke `/comet` or `/comet-open`.
+Comet workflow complete. Start new work with `/comet` or `/comet-open`.
