@@ -29,8 +29,7 @@ fi
 在开始自动流程前，写入循环防护标记：
 
 ```bash
-mkdir -p openspec/changes/.comet-auto-active
-echo "<current-change-name>" > openspec/changes/.comet-auto-active/.active
+echo "<current-change-name>" > openspec/changes/.comet-auto-active
 ```
 
 SessionStart Hook 检测到此标记存在时会跳过上下文注入，防止 phase transition 触发重复注入。

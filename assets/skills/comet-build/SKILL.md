@@ -93,6 +93,7 @@ Auto-Pilot quantifies via `phase-snapshot.yaml` initial_task_count vs current ta
 failure_count=0
 max_retry=${auto_config.max_retry:-2}
 max_consecutive=${auto_config.max_consecutive_failures:-5}
+cross_phase_failures=$(grep -c '"decision":"retry_"' openspec/changes/<name>/.comet/auto/decisions.jsonl 2>/dev/null || echo "0")
 
 while ! build_command; do
   failure_count=$((failure_count + 1))

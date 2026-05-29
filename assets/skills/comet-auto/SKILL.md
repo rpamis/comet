@@ -29,8 +29,7 @@ fi
 Before starting the auto flow, write the cycle prevention marker:
 
 ```bash
-mkdir -p openspec/changes/.comet-auto-active
-echo "<current-change-name>" > openspec/changes/.comet-auto-active/.active
+echo "<current-change-name>" > openspec/changes/.comet-auto-active
 ```
 
 The SessionStart Hook skips context injection when this marker exists, preventing duplicate injection triggered by phase transitions.

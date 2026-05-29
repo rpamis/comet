@@ -6,6 +6,7 @@ setlocal enabledelayedexpansion
 
 set HOOK_NAME=%1
 set SCRIPT_DIR=%~dp0
+set SCRIPT_DIR=%SCRIPT_DIR:\=/%
 
 if "%HOOK_NAME%"=="session-start" (
     bash "%SCRIPT_DIR%session-start"

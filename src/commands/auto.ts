@@ -100,13 +100,13 @@ async function validateConfig(projectDir: string): Promise<boolean> {
   }
 
   // Validate confirm_design values
-  const confirmMatch = content.match(/confirm_design:\s*(\S+)/);
+  const confirmMatch = content.match(/^\s*confirm_design:\s*([^\s#]+)/m);
   if (confirmMatch && !['auto_with_diff', 'always_confirm', 'always_skip'].includes(confirmMatch[1])) {
     issues.push(`无效的 confirm_design 值: ${confirmMatch[1]}（应为 auto_with_diff | always_confirm | always_skip）`);
   }
 
   // Validate isolation values
-  const isolationMatch = content.match(/isolation:\s*(\S+)/);
+  const isolationMatch = content.match(/^\s*isolation:\s*([^\s#]+)/m);
   if (isolationMatch && !['branch', 'worktree'].includes(isolationMatch[1])) {
     issues.push(`无效的 isolation 值: ${isolationMatch[1]}（应为 branch | worktree）`);
   }
