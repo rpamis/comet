@@ -174,7 +174,7 @@ if [ -n "$handoff_hash" ] && [ "$handoff_hash" != "null" ]; then
 fi
 
 # --- Unknown keys check ---
-KNOWN_KEYS="workflow phase design_doc plan build_mode isolation verify_mode verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
+KNOWN_KEYS="workflow phase design_doc plan build_mode isolation verify_mode verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref auto"
 while IFS=: read -r key _; do
   key="${key// /}"
   [ -z "$key" ] && continue

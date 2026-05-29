@@ -4,6 +4,7 @@ import { initCommand } from '../commands/init.js';
 import { statusCommand } from '../commands/status.js';
 import { doctorCommand } from '../commands/doctor.js';
 import { updateCommand } from '../commands/update.js';
+import { autoCommand } from '../commands/auto.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../../package.json');
@@ -67,6 +68,28 @@ program
   .addOption(new Option('--skip-npm', 'Skip npm package self-update').hideHelp())
   .action(async (targetPath = '.', options) => {
     await updateCommand(targetPath, options);
+  });
+
+const autoProgram = program
+  .command('auto [path]')
+  .description('Configure Comet Auto-Pilot settings');
+
+autoProgram
+  .option('--init', 'Generate default comet-auto.yaml')
+  .option('--validate', 'Validate existing comet-auto.yaml')
+  .option('--dry-run', 'Preview auto-pilot execution plan')
+  .option('--rollback <change>', 'Rollback auto-confirmed design for a change')
+  .option('--clean', 'Clean up auto runtime files')
+  .action(async (targetPath = '.', options) => {
+    try {
+      await autoCommand(targetPath, options);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ExitPromptError') {
+        console.log('\n  Cancelled.\n');
+        process.exit(0);
+      }
+      throw error;
+    }
   });
 
 program.parse();

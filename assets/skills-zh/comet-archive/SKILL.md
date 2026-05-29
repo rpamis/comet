@@ -27,11 +27,13 @@ fi
 bash "$COMET_STATE" check <name> archive
 ```
 
-验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
+验证通过后继续 Step 1。
 
 ### 1. 执行归档
 
-运行归档脚本，自动完成以下全部步骤：
+**手动模式**：运行归档脚本前需用户确认。
+
+**Auto-Pilot 模式**：当 `auto_config.archive: true` 时自动执行，标注 `[AUTO]`，不询问确认。
 
 ```bash
 bash "$COMET_ARCHIVE" "<change-name>"
@@ -47,13 +49,35 @@ bash "$COMET_ARCHIVE" "<change-name>"
 
 如脚本返回非零退出码，报告错误并停止。
 如脚本返回零退出码，归档完成。
-脚本摘要中的 `X/Y steps succeeded` 以真实执行步骤计数，不会因 delta spec 同步或文档标注重复累计。
+
+Auto-Pilot 归档完成后记录审计：
+
+```bash
+echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"change\":\"<name>\",\"phase\":\"archive\",\"decision\":\"auto_archive\"}" >> openspec/changes/archive/YYYY-MM-DD-<name>/.comet/auto/decisions.jsonl 2>/dev/null || true
+```
 
 当待同步的 delta spec 与已有主 spec 不一致时，脚本会在覆盖前打印 unified diff 预览，帮助确认归档同步内容。
 
 如需预览而不实际执行，使用 `--dry-run` 参数。
 
-### 2. 生命周期闭环
+### 2. Auto-Pilot 清理
+
+归档成功后，Auto-Pilot 模式清理运行时文件：
+
+```bash
+# 清理当前 change 的 auto 运行时目录
+rm -rf openspec/changes/archive/YYYY-MM-DD-<name>/.comet/auto/
+
+# 检查是否还有其他活跃 change
+ACTIVE_COUNT=$(openspec list --json 2>/dev/null | python3 -c "import json,sys;print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+
+if [ "$ACTIVE_COUNT" -eq 0 ]; then
+  # 清理全局 auto 标记
+  rm -f openspec/changes/.comet-auto-active
+fi
+```
+
+### 3. 生命周期闭环
 
 Spec 生命周期在此完成：
 ```
@@ -65,8 +89,7 @@ brainstorming → delta spec → 实施 → 验证 → 主 spec 覆盖 → desig
 - 归档脚本执行成功（退出码 0）
 - 归档目录 `openspec/changes/archive/YYYY-MM-DD-<change-name>/` 存在
 - 归档后的 `.comet.yaml` 中 `archived: true`
-
-归档脚本会把 `openspec/changes/<name>/` 移动到 `openspec/changes/archive/YYYY-MM-DD-<name>/`。归档成功后**不要再对原 change 名运行** `bash "$COMET_GUARD" <change-name> archive`，因为原活跃目录已经不存在。归档完整性以脚本退出码和归档目录状态为准。
+- Auto-Pilot 模式：auto 运行时文件已清理
 
 ## 完成
 

@@ -1,0 +1,10 @@
+{
+  "extensions": {
+    "onSessionStart": [
+      {
+        "type": "command",
+        "command": "\"${GEMINI_EXTENSION_ROOT}/hooks/session-start\""
+      }
+    ]
+  }
+}

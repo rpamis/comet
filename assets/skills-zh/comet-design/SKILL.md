@@ -28,8 +28,6 @@ bash "$COMET_STATE" check <name> design
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
-**幂等性**：所有 design 阶段操作可以安全重试。如果 `handoff_context` 和 `handoff_hash` 已存在，先确认它们与当前产物一致再决定是否重新生成。
-
 ### 1a. 生成 OpenSpec → Superpowers 交接包
 
 **必须由脚本生成，不允许 agent 临场手写 summary 代替。**
@@ -101,11 +99,17 @@ canonical_spec: openspec
 - 测试策略
 - 如需补充验收场景，标明将回写的 delta spec 变更
 
-brainstorming 阶段不写入 Design Doc 文件，仅产出设计方案供 Step 1c 用户确认。确认后才创建 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` 并回写 delta spec。
+brainstorming 阶段不写入 Design Doc 文件，仅产出设计方案供 Step 1c 确认。确认后才创建 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` 并回写 delta spec。
 
-### 1c. 用户确认设计方案（阻塞点）
+### 1c. 设计方案确认（阻塞点 / Auto-Pilot 自动通过）
 
-brainstorming 产出设计方案后，**必须使用 AskUserQuestion 工具暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc、写入 `design_doc`、运行 design guard，或进入 `/comet-build`。也不得仅输出文字提示后继续执行。
+brainstorming 产出设计方案后，根据 `auto_config.confirm_design` 策略决定行为：
+
+---
+
+#### 手动模式（`always_confirm` 或无 auto_config）
+
+**必须暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc。
 
 暂停时只展示必要摘要：
 - 采用的技术方案
@@ -114,6 +118,54 @@ brainstorming 产出设计方案后，**必须使用 AskUserQuestion 工具暂�
 - 如有 Spec Patch，列出将回写的 delta spec 变更
 
 用户明确确认后，才继续 Step 2。若用户要求调整，继续 brainstorming 迭代，直到用户确认。
+
+---
+
+#### Auto-Pilot 模式：`auto_with_diff`（推荐默认）
+
+自动通过设计确认，但写入审计轨迹：
+
+1. 生成设计变更 diff 摘要（与 OpenSpec proposal/design.md 的差异）
+2. 写入审计文件：
+
+```bash
+mkdir -p openspec/changes/<name>/.comet/auto
+cat > openspec/changes/<name>/.comet/auto/design-diff.md << EOF
+# Design Auto-Confirm Audit
+
+- **Timestamp**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+- **Change**: <change-name>
+- **Mode**: auto_with_diff
+- **Status**: [AUTO-CONFIRMED]
+
+## 设计方案摘要
+（brainstorming 产出的技术方案、关键取舍、测试策略）
+
+## 与 OpenSpec 的差异
+（如有 Spec Patch，列出回写的 delta spec 变更）
+EOF
+```
+
+3. 记录审计日志：
+
+```bash
+DIFF_HASH=$(sha256sum openspec/changes/<name>/.comet/auto/design-diff.md | cut -d' ' -f1)
+echo "{\"ts\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",\"change\":\"<name>\",\"phase\":\"design\",\"decision\":\"auto_confirm_design\",\"mode\":\"auto_with_diff\",\"diff_hash\":\"$DIFF_HASH\"}" >> openspec/changes/<name>/.comet/auto/decisions.jsonl
+```
+
+4. 输出简洁摘要（标注 `[AUTO-CONFIRMED]`），不等待用户确认，直接进入 Step 2。
+
+**重要**：`comet doctor` 会检查超过 `design_review_days` 天未审查的 auto-confirm 记录并提醒用户。
+
+---
+
+#### Auto-Pilot 模式：`always_skip`（仅 hotfix/tweak 建议）
+
+完全跳过设计确认，不写入审计文件。仅输出简短标注 `[AUTO-SKIPPED]`，直接进入 Step 2。
+
+**约束**：`always_skip` 仅建议在 hotfix/tweak workflow 中使用；full workflow 使用此模式时仍会输出警告但不会阻止。
+
+---
 
 ### 2. 更新 Comet 状态
 
@@ -141,6 +193,7 @@ bash "$COMET_GUARD" <change-name> design --apply
 - `design-context.md` 必须是脚本生成，且包含 source path、mode、sha256 等可追溯标记（由 guard 强制校验）
 - 如有新能力或补充验收场景，OpenSpec delta spec 已创建/更新
 - `design_doc` 已写入 `.comet.yaml`
+- 若为 auto_with_diff 模式：`design-diff.md` 审计文件已生成
 - **阶段守卫**：运行 `bash "$COMET_GUARD" <change-name> design --apply`，全部 PASS 后自动流转到 `phase: build`
 
 退出前必须使用 `--apply`：
@@ -149,18 +202,8 @@ bash "$COMET_GUARD" <change-name> design --apply
 bash "$COMET_GUARD" <change-name> design --apply
 ```
 
-## 上下文压缩恢复
-
-design 阶段在 brainstorming 过程中可能触发上下文压缩。恢复时先运行：
-
-```bash
-bash "$COMET_STATE" check <change-name> design --recover
-```
-
-脚本输出结构化恢复上下文（阶段、已完成字段、待完成字段、恢复动作）。按 Recovery action 判断下一步。
-
 ## 自动流转
 
-退出条件满足后（包括用户确认设计方案），自动流转到下一阶段：
+退出条件满足后，**无需等待用户再次输入**，直接执行下一阶段：
 
 > **REQUIRED NEXT SKILL:** 调用 `comet-build` skill 进入计划与构建阶段。

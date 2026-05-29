@@ -1,5 +1,5 @@
 {
-  "version": "0.3.2",
+  "version": "0.4.0",
   "skills": [
     "comet/SKILL.md",
     "comet/reference/dirty-worktree.md",
@@ -15,7 +15,19 @@
     "comet-verify/SKILL.md",
     "comet-archive/SKILL.md",
     "comet-hotfix/SKILL.md",
-    "comet-tweak/SKILL.md"
+    "comet-tweak/SKILL.md",
+    "comet-auto/SKILL.md"
+  ],
+  "hooks": [
+    "hooks/session-start",
+    "hooks/hooks.json",
+    "hooks/hooks-claude.json",
+    "hooks/hooks-codex.json",
+    "hooks/hooks-cursor.json",
+    "hooks/hooks-gemini.json",
+    "hooks/hooks-opencode.json",
+    "hooks/hooks-copilot.json",
+    "hooks/run-hook.cmd"
   ],
   "languages": [
     { "id": "en", "name": "English", "skillsDir": "skills" },

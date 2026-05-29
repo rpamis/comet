@@ -1,0 +1,10 @@
+{
+  "plugins": {
+    "session-start": [
+      {
+        "type": "command",
+        "command": "\"${OPENCODE_PLUGIN_ROOT}/hooks/session-start\""
+      }
+    ]
+  }
+}
