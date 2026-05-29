@@ -103,19 +103,30 @@ A single `/comet` invocation starts from the detected phase and advances to the 
 
 Flow chain: open → design → build → verify → archive
 
-**Continuous execution requirement**: starting from the detected phase, the agent must automatically continue through all later phases. Auto-advancing only applies at transition points without user decisions. When encountering user decision points, must pause and wait for the user's explicit response. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation.
+**Continuous execution requirement**: starting from the detected phase, the agent automatically continues through all later phases. But **auto-advancing only applies at transition points without user decisions**. When encountering user decision points, **must use the AskUserQuestion tool to pause and wait for the user's explicit response**. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation, and must not just output a text prompt and then continue executing.
 
-**Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet` invocation must stop. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
+**Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet` invocation must stop, **using the AskUserQuestion tool to wait for the user's choice**. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
 
 Nodes requiring user participation (pause only at these nodes):
-1. Confirm design approach during brainstorming
-2. Select workflow configuration during build phase (isolation + execution method, single interaction)
-3. Decide to fix or accept deviation when verify fails (including Spec drift handling)
-4. Choose branch handling method for finishing-branch
-5. Encounter upgrade conditions (hotfix/tweak → full workflow)
-6. Build phase scope expansion requiring redesign or new change split
+1. Open phase proposal/design/tasks review and confirmation
+2. Confirm design approach during brainstorming
+3. Select workflow configuration during build phase (isolation + execution method, single interaction)
+4. Decide to fix or accept deviation when verify fails (including Spec drift handling)
+5. Choose branch handling method for finishing-branch
+6. Encounter upgrade conditions (hotfix/tweak → full workflow)
+7. Build phase scope expansion requiring redesign or new change split
 
-Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway.
+Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway. At decision points, **text output must NOT substitute for tool-based waiting — must explicitly obtain the user's choice via AskUserQuestion before continuing**.
+
+**Red Flags** — when these thoughts appear, STOP and check:
+
+| Agent Thought | Actual Risk |
+|--------------|-------------|
+| "The user would probably agree with this approach" | Cannot decide for the user — use AskUserQuestion |
+| "This is a small change, confirmation isn't needed" | Decision points have no size exception — blocking points must wait |
+| "The user chose A last time, so A again" | Historical preference cannot substitute for current confirmation |
+| "I explained the plan and the user didn't object" | No objection ≠ consent — must use tool to get explicit choice |
+| "The flow has reached this point, should be fine" | Verification not passed ≠ passed — check verify_result |
 </IMPORTANT>
 
 ---

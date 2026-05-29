@@ -8,6 +8,7 @@
 #   set <change-name> <field> <val> — Update a field value
 #   transition <change-name> <event> — Apply a validated state transition
 #   check <change-name> <phase>    — Verify entry requirements for a phase
+#   check <change-name> <phase> --recover — Output structured recovery context for compaction resume
 #   scale <change-name>             — Assess and set verification mode based on metrics
 #
 # Workflows: full, hotfix, tweak
@@ -589,6 +590,167 @@ cmd_check() {
   fi
 }
 
+# --- Recovery context for compaction resume ---
+
+field_status() {
+  # Args: field_name value [file_path]
+  # Prints: "field_name: DONE (value)" or "field_name: PENDING"
+  local field="$1"
+  local value="$2"
+  local file_path="${3:-}"
+
+  if [ -z "$value" ] || [ "$value" = "null" ]; then
+    echo "  - ${field}: PENDING"
+  elif [ -n "$file_path" ] && [ ! -f "$file_path" ]; then
+    echo "  - ${field}: BROKEN (path ${value} does not exist)"
+  else
+    echo "  - ${field}: DONE (${value})"
+  fi
+}
+
+cmd_recover() {
+  local change_name="$1"
+
+  validate_change_name "$change_name"
+
+  local change_dir="openspec/changes/$change_name"
+  local yaml_file="$change_dir/.comet.yaml"
+
+  if [ ! -f "$yaml_file" ]; then
+    red "ERROR: .comet.yaml not found at $yaml_file"
+    exit 1
+  fi
+
+  local phase workflow
+  phase=$(cmd_get "$change_name" "phase")
+  workflow=$(cmd_get "$change_name" "workflow")
+
+  echo "=== Recovery Context: ${change_name} ==="
+  echo "Phase: ${phase}"
+  echo "Workflow: ${workflow}"
+  echo ""
+
+  # Read all relevant fields
+  local design_doc plan verify_result verify_mode verification_report
+  local branch_status handoff_context handoff_hash isolation build_mode direct_override
+  design_doc=$(cmd_get "$change_name" "design_doc")
+  plan=$(cmd_get "$change_name" "plan")
+  verify_result=$(cmd_get "$change_name" "verify_result")
+  verify_mode=$(cmd_get "$change_name" "verify_mode")
+  verification_report=$(cmd_get "$change_name" "verification_report")
+  branch_status=$(cmd_get "$change_name" "branch_status")
+  handoff_context=$(cmd_get "$change_name" "handoff_context")
+  handoff_hash=$(cmd_get "$change_name" "handoff_hash")
+  isolation=$(cmd_get "$change_name" "isolation")
+  build_mode=$(cmd_get "$change_name" "build_mode")
+  direct_override=$(cmd_get "$change_name" "direct_override" 2>/dev/null || true)
+
+  echo "State fields:"
+
+  # Phase-specific field reporting
+  case "$phase" in
+    open)
+      echo "  Artifacts:"
+      for f in proposal.md design.md tasks.md; do
+        if file_nonempty "$change_dir/$f"; then
+          echo "  - ${f}: DONE"
+        else
+          echo "  - ${f}: PENDING"
+        fi
+      done
+      echo ""
+      echo "Recovery action: Create or complete missing artifacts, then use AskUserQuestion for user confirmation."
+      ;;
+    design)
+      echo "  Artifacts:"
+      for f in proposal.md design.md tasks.md; do
+        if file_nonempty "$change_dir/$f"; then
+          echo "  - ${f}: DONE"
+        else
+          echo "  - ${f}: MISSING (unexpected in design phase)"
+        fi
+      done
+      echo ""
+      echo "  Design progress:"
+      field_status "handoff_context" "$handoff_context" "$handoff_context"
+      field_status "handoff_hash" "$handoff_hash"
+      field_status "design_doc" "$design_doc" "${design_doc% }"
+      echo ""
+      if [ -n "$design_doc" ] && [ "$design_doc" != "null" ] && [ -f "$design_doc" ]; then
+        echo "Recovery action: Design Doc already created and linked. Run guard to transition to build."
+      elif [ -n "$handoff_context" ] && [ "$handoff_context" != "null" ] && [ -f "$handoff_context" ]; then
+        echo "Recovery action: Handoff generated but Design Doc not yet created. Resume from brainstorming confirmation (Step 1c)."
+      else
+        echo "Recovery action: No handoff generated yet. Start from Step 1a (generate handoff package)."
+      fi
+      ;;
+    build)
+      echo "  Build decisions:"
+      field_status "isolation" "$isolation"
+      field_status "build_mode" "$build_mode"
+      if [ "$build_mode" = "direct" ] && [ "$workflow" != "hotfix" ] && [ "$workflow" != "tweak" ]; then
+        field_status "direct_override" "$direct_override"
+      fi
+      echo ""
+      echo "  Plan:"
+      field_status "plan" "$plan" "$plan"
+      echo ""
+      # Count completed vs pending tasks
+      local tasks_file="$change_dir/tasks.md"
+      local total=0 done=0 pending=0
+      if [ -f "$tasks_file" ]; then
+        total=$(grep -c '^\- \[' "$tasks_file" 2>/dev/null || echo "0")
+        done=$(grep -c '^\- \[x\]' "$tasks_file" 2>/dev/null || echo "0")
+        pending=$((total - done))
+        echo "  Tasks: ${done}/${total} done, ${pending} pending"
+      else
+        echo "  Tasks: tasks.md MISSING"
+      fi
+      echo ""
+      if [ "$isolation" = "null" ] || [ -z "$isolation" ]; then
+        echo "Recovery action: Isolation not selected. Use AskUserQuestion to ask user for branch/worktree choice."
+      elif [ "$build_mode" = "null" ] || [ -z "$build_mode" ]; then
+        echo "Recovery action: Build mode not selected. Use AskUserQuestion to ask user for execution method."
+      elif [ ! -f "$tasks_file" ]; then
+        echo "Recovery action: tasks.md missing. Verify change directory integrity."
+      elif [ "$pending" -gt 0 ]; then
+        echo "Recovery action: Read tasks.md and continue from first unchecked task."
+      else
+        echo "Recovery action: All tasks done. Run guard to transition to verify."
+      fi
+      ;;
+    verify)
+      echo "  Verification:"
+      field_status "verify_result" "$verify_result"
+      field_status "verify_mode" "$verify_mode"
+      field_status "verification_report" "$verification_report" "$verification_report"
+      field_status "branch_status" "$branch_status"
+      echo ""
+      if [ "$verify_result" = "pass" ] && [ "$branch_status" = "handled" ]; then
+        echo "Recovery action: Verification complete. Run guard to transition to archive."
+      elif [ "$verify_result" = "fail" ]; then
+        echo "Recovery action: Verification failed and rolled back to build. Resume from /comet-build."
+      else
+        echo "Recovery action: Verification not yet started or in progress. Run scale assessment then verify."
+      fi
+      ;;
+    archive)
+      echo "  Archive:"
+      field_status "verify_result" "$verify_result"
+      field_status "archived" "$(cmd_get "$change_name" "archived")"
+      echo ""
+      echo "Recovery action: Run /comet-archive to complete archiving."
+      ;;
+    *)
+      red "ERROR: Unknown phase: $phase"
+      exit 1
+      ;;
+  esac
+
+  echo ""
+  echo "=== End Recovery Context ==="
+}
+
 cmd_scale() {
   local change_name="$1"
 
@@ -694,11 +856,16 @@ case "$SUBCOMMAND" in
     ;;
   check)
     if [ $# -lt 2 ]; then
-      red "Usage: comet-state.sh check <change-name> <phase>" >&2
+      red "Usage: comet-state.sh check <change-name> <phase> [--recover]" >&2
       red "Phases: open, design, build, verify, archive" >&2
       exit 1
     fi
-    cmd_check "$@"
+    # Detect --recover flag (3rd argument)
+    if [ "${3:-}" = "--recover" ]; then
+      cmd_recover "$1"
+    else
+      cmd_check "$@"
+    fi
     ;;
   scale)
     if [ $# -lt 1 ]; then

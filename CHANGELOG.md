@@ -2,6 +2,35 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.3.5] - 2026-05-29
+
+### Added
+
+- **Context compaction recovery (`--recover`)**: `comet-state check <name> <phase> --recover` 输出结构化恢复上下文，包含阶段状态、字段进度、任务计数和恢复动作，用于 agent 上下文压缩后快速定位断点续作
+- **Red Flags 反合理化清单**: 主调度 skill 新增 5 条红旗警示（替用户决策、跳过确认、历史偏好替代、无反对即同意、验证未通过即通过），帮助 agent 识别自身越权倾向
+- **不确定性降级原则**: verify skill 新增 SUGGESTION > WARNING > CRITICAL 降级规则，只有构建失败、测试失败和安全问题才标记 CRITICAL，模糊问题必须降级
+- **防自动选择守卫**: open skill 新增命名和范围防自动选择规则，变更名必须用户指定或 AskUserQuestion 确认，范围不得自行扩大或缩小
+- **文件存在性验证**: open skill 在进入用户确认前校验 proposal/design/tasks 三个文件非空存在，防止空文件跳过检查
+- **幂等性说明**: 所有阶段 skill（open/design/build/verify）新增幂等性说明，明确哪些操作可以安全重试、哪些字段需要确认后才跳过
+
+### Changed
+
+- **AskUserQuestion 工具明确化**: 所有 7 个决策阻塞点（open 确认、brainstorming 确认、build 工作方式、verify 失败决策、Spec 漂移处理、分支处理、升级条件）统一要求使用 AskUserQuestion 工具，禁止纯文字提示替代
+- **决策点从 6 个扩展到 7 个**: 新增 open 阶段 proposal/design/tasks 审视确认为第一个决策点
+- **Spec 漂移单选题形式**: verify 阶段 Spec 漂移处理改为 AskUserQuestion 单选题（A/B/C 三选一），不再隐式默认选项
+- **中英文 skill 完全同步**: 7 个中文 skill 和 7 个英文 skill 内容、结构、选项格式完全对齐
+
+### Fixed
+
+- **`set -u` 未绑定变量崩溃**: `comet-state check --recover` 在 build 阶段缺少 tasks.md 时，`pending` 变量未声明导致脚本直接退出；修复为将 `local` 声明提前并在恢复动作判断链中新增 `tasks.md MISSING` 显式分支
+- **路径截断风险**: `field_status` 对 `design_doc` 使用 `${var%% *}` 可能截断含空格路径，改为 `${var% }` 仅去除尾部空格
+- **可选字段读取风格不一致**: `direct_override` 使用 `|| echo ""` 而其他可选字段使用 `|| true`，统一为 `|| true` 与 `cmd_scale` 保持一致
+
+### Tests
+
+- 新增 8 个 `check --recover` 和边界测试用例，覆盖 open/build/verify/design/archive 五个阶段及 tasks.md 缺失、全部任务完成等边界场景
+- 总测试数从 34 增至 42，全部通过
+
 ## What's Changed [0.3.4] - 2026-05-29
 
 ### Changed

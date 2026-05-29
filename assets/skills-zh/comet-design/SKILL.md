@@ -28,6 +28,8 @@ bash "$COMET_STATE" check <name> design
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
+**幂等性**：所有 design 阶段操作可以安全重试。如果 `handoff_context` 和 `handoff_hash` 已存在，先确认它们与当前产物一致再决定是否重新生成。
+
 ### 1a. 生成 OpenSpec → Superpowers 交接包
 
 **必须由脚本生成，不允许 agent 临场手写 summary 代替。**
@@ -103,7 +105,7 @@ brainstorming 阶段不写入 Design Doc 文件，仅产出设计方案供 Step 
 
 ### 1c. 用户确认设计方案（阻塞点）
 
-brainstorming 产出设计方案后，**必须暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc、写入 `design_doc`、运行 design guard，或进入 `/comet-build`。
+brainstorming 产出设计方案后，**必须使用 AskUserQuestion 工具暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc、写入 `design_doc`、运行 design guard，或进入 `/comet-build`。也不得仅输出文字提示后继续执行。
 
 暂停时只展示必要摘要：
 - 采用的技术方案
@@ -147,8 +149,18 @@ bash "$COMET_GUARD" <change-name> design --apply
 bash "$COMET_GUARD" <change-name> design --apply
 ```
 
+## 上下文压缩恢复
+
+design 阶段在 brainstorming 过程中可能触发上下文压缩。恢复时先运行：
+
+```bash
+bash "$COMET_STATE" check <change-name> design --recover
+```
+
+脚本输出结构化恢复上下文（阶段、已完成字段、待完成字段、恢复动作）。按 Recovery action 判断下一步。
+
 ## 自动流转
 
-退出条件满足后，**无需等待用户再次输入**，直接执行下一阶段：
+退出条件满足后（包括用户确认设计方案），自动流转到下一阶段：
 
 > **REQUIRED NEXT SKILL:** 调用 `comet-build` skill 进入计划与构建阶段。

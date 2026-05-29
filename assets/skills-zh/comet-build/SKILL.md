@@ -28,6 +28,8 @@ bash "$COMET_STATE" check <name> build
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
+**幂等性**：build 阶段所有操作可安全重复执行。读取 `.comet.yaml` 的 `phase` 字段确认仍在 build 阶段，读取 plan 文件头的 `base-ref`，再读取 tasks.md 找到第一个未勾选任务继续执行。已提交的任务不得重复提交。
+
 ### 1. 制定计划
 
 **立即执行：** 使用 Skill 工具加载 `superpowers:writing-plans` 技能。禁止跳过此步骤。
@@ -88,7 +90,7 @@ bash "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 - 任务数 ≤ 2 且无跨模块依赖 → 推荐 B
 - 来自 hotfix 路径 → 推荐 B
 
-这是用户决策点。必须暂停并等待用户明确选择隔离方式和执行方式，**不得根据推荐规则自行选择 `branch` 或 `worktree`**，也**不得根据推荐规则自行选择执行方式**。推荐规则只能用于说明建议，不能替代用户确认。
+这是用户决策点。**必须使用 AskUserQuestion 工具暂停并等待用户明确选择隔离方式和执行方式**，不得根据推荐规则自行选择 `branch` 或 `worktree`，也不得根据推荐规则自行选择执行方式。推荐规则只能用于说明建议，不能替代用户确认。禁止仅输出文字提示后继续执行。
 
 用户选择后，更新 `isolation` 和 `build_mode` 字段：
 
@@ -131,10 +133,10 @@ bash "$COMET_STATE" set <name> build_mode direct
 | 规模 | 触发条件 | 做法 |
 |------|---------|------|
 | 小 | 遗漏验收场景、边界条件 | 直接编辑 delta spec + design.md，追加 tasks.md 任务 |
-| 中 | 接口变更、新增组件、数据流变化 | 暂停并等待用户确认后，必须使用 Skill 工具加载 `superpowers:brainstorming` 更新 Design Doc + delta spec |
-| 大 | 全新 capability 需求 | 必须暂停并等待用户确认拆分；用户确认后，通过 `/comet-open` 创建独立 change |
+| 中 | 接口变更、新增组件、数据流变化 | **使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 `superpowers:brainstorming` 更新 Design Doc + delta spec |
+| 大 | 全新 capability 需求 | **必须使用 AskUserQuestion 工具暂停并等待用户确认拆分**；用户确认后，通过 `/comet-open` 创建独立 change |
 
-**50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，必须暂停并等待用户决定是否拆分为新 change。
+**50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须使用 AskUserQuestion 工具暂停并等待用户决定是否拆分为新 change**。
 
 创建独立 change 时必须调用 `/comet-open`，不得直接调用 `/opsx:new`。`/comet-open` 会同时创建 OpenSpec 产物和 `.comet.yaml`，避免新 change 脱离 Comet 状态机。
 
@@ -149,7 +151,7 @@ bash "$COMET_STATE" set <name> build_mode direct
 Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后断点恢复：
 
 - **每完成一个 task**：立即勾选 tasks.md 并提交代码，确保 `.comet.yaml` 和文件状态持久化
-- **上下文压缩后恢复**：读取 `.comet.yaml` 的 `phase` 字段确认仍在 build 阶段，读取 plan 文件头的 `base-ref`，再读取 tasks.md 找到下一个未勾选任务继续执行
+- **上下文压缩后恢复**：先运行 `bash "$COMET_STATE" check <change-name> build --recover`，脚本输出结构化恢复上下文（isolation/build_mode 状态、plan 路径、任务完成进度、恢复动作）。根据 Recovery action 决定下一步。
 - **用户手动修改恢复**：按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。该协议定义了检查步骤、归因分类和禁令。build 阶段的特殊处理：
   1. 归因后，若 diff 暗示计划或 spec 已变化，按 Step 4「Spec 增量更新」分级处理
 - **长任务拆分**：单任务超过 200 行代码变更时，考虑拆分为多个子任务分别提交
@@ -183,6 +185,6 @@ bash "$COMET_GUARD" <change-name> build --apply
 
 ## 自动流转
 
-退出条件满足后，**无需等待用户再次输入**，直接执行下一阶段：
+退出条件满足后（包括用户选择工作方式），自动流转到下一阶段：
 
 > **REQUIRED NEXT SKILL:** 调用 `comet-verify` skill 进入验证与收尾阶段。

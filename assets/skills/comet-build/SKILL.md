@@ -28,6 +28,8 @@ bash "$COMET_STATE" check <name> build
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
+**Idempotency**: All build phase operations can be safely re-executed. Read `.comet.yaml` `phase` field to confirm still in build, read plan header `base-ref`, then read tasks.md to find the first unchecked task. Already-committed tasks must not be re-committed.
+
 ### 1. Create Plan
 
 **Immediately execute:** Use the Skill tool to load the `superpowers:writing-plans` skill. Skipping this step is prohibited.
@@ -88,7 +90,7 @@ Plan has been written to the current branch. Before starting execution, **ask th
 - Task count ≤ 2 and no cross-module dependencies → Recommend B
 - From hotfix path → Recommend B
 
-This is a user decision point. Must pause and wait for the user to explicitly choose both isolation method and execution method. You **must not choose `branch` or `worktree` based on recommendation rules**, and **must not choose the execution method based on recommendation rules**. Recommendation rules are for suggestion only, not a substitute for user confirmation.
+This is a user decision point. **Must use the AskUserQuestion tool to pause and wait for the user to explicitly choose both isolation method and execution method**. Must not choose `branch` or `worktree` based on recommendation rules, and must not choose the execution method based on recommendation rules. Recommendation rules are for suggestion only, not a substitute for user confirmation. Must not just output a text prompt and then continue executing.
 
 After user selection, update `isolation` and `build_mode` fields:
 
@@ -131,10 +133,10 @@ When the initial spec is found incomplete during implementation, handle by scale
 | Scale | Trigger Conditions | Approach |
 |------|-------------------|----------|
 | Small | Missing acceptance scenarios, edge cases | Directly edit delta spec + design.md, append tasks.md tasks |
-| Medium | Interface changes, new components, data flow changes | Pause and wait for user confirmation, then must use Skill tool to load `superpowers:brainstorming` to update Design Doc + delta spec |
-| Large | Brand-new capability requirements | Must pause and wait for user confirmation to split; after user confirms, create independent change through `/comet-open` |
+| Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load `superpowers:brainstorming` to update Design Doc + delta spec |
+| Large | Brand-new capability requirements | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm the split**; after user confirms, create independent change through `/comet-open` |
 
-**50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, must pause and wait for the user to decide whether to split into new change.
+**50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, **must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change**. Must not just output a text prompt and then continue executing.
 
 When creating an independent change, must invoke `/comet-open`, not `/opsx:new` directly. `/comet-open` creates both OpenSpec artifacts and `.comet.yaml`, preventing the new change from leaving the Comet state machine.
 
@@ -149,7 +151,7 @@ When creating an independent change, must invoke `/comet-open`, not `/opsx:new` 
 Build is the longest phase and may span many tasks. To support resume after context compaction:
 
 - **After each task**: immediately check off tasks.md and commit code so `.comet.yaml` and file state are durable
-- **After context compaction**: read `.comet.yaml` to confirm the phase is still build, read the plan header `base-ref`, then read tasks.md to find the next unchecked task
+- **After context compaction**: first run `bash "$COMET_STATE" check <change-name> build --recover` — the script outputs structured recovery context (isolation/build_mode status, plan path, task progress, recovery action). Follow the Recovery action to determine next step.
 - **User manual-change resume**: handle uncommitted changes through `comet/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions. Build-specific handling:
   1. After attribution, if the diff implies plan or spec changes, handle it through Step 4 "Spec Incremental Updates"
 - **Long task split**: if a single task exceeds 200 lines of code changes, consider splitting it into multiple subtasks and commits
@@ -183,6 +185,6 @@ State file is automatically updated to `phase: verify`, `verify_result: pending`
 
 ## Automatic Transition
 
-After exit conditions are met, **proceed immediately to the next phase without waiting for user input**:
+After exit conditions are met (including user selecting workflow configuration), auto-transition to next phase:
 
 > **REQUIRED NEXT SKILL:** Invoke `comet-verify` skill to enter the verification and completion phase.

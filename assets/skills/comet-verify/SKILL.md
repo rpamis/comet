@@ -28,6 +28,8 @@ bash "$COMET_STATE" check <change-name> verify
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
+**Idempotency**: All verify phase checks can be safely re-executed. If `verify_result` is already `pass` and `branch_status` is `handled`, verification is complete — execute guard to transition. If `verify_result` is `pending`, start verification from the beginning.
+
 ### 1. Scale Assessment
 
 Execute scale assessment:
@@ -67,12 +69,14 @@ bash "$COMET_STATE" set <change-name> verify_mode full
 
 ### 1b. Verification Failure Decision (Blocking Point)
 
-When verification does not pass, must pause and wait for the user to decide fix or accept deviation. Must not automatically run `bash "$COMET_STATE" transition <change-name> verify-fail`, nor automatically invoke `/comet-build`.
+When verification does not pass, **must use the AskUserQuestion tool to pause and wait for the user to decide fix or accept deviation**. Must not automatically run `bash "$COMET_STATE" transition <change-name> verify-fail`, nor automatically invoke `/comet-build`. Must not just output a text prompt and then continue executing.
 
 When pausing, must list:
 - Failed items
 - Whether CRITICAL (build failure, test failure, security issues, core acceptance scenario failure)
 - Recommended handling approach
+
+**Uncertainty principle**: When severity is unclear, downgrade (SUGGESTION > WARNING > CRITICAL). Only use CRITICAL for build failures, test failures, and security issues; ambiguous or uncertain issues should be WARNING or SUGGESTION.
 
 After user selection, continue as follows:
 - **Fix all**: Run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build` to fix
@@ -128,7 +132,7 @@ bash "$COMET_STATE" transition <change-name> verify-fail
 ```
 
 **Spec Drift Handling** (user decision point):
-- If check item 6 finds contradictions (delta spec has content but design doc does not reflect it), **must pause and wait for user to choose handling method**; must not select automatically. Options:
+- If check item 6 finds contradictions (delta spec has content but design doc does not reflect it), **must use the AskUserQuestion tool as a single-select question to pause and wait for user to choose handling method**; must not select automatically. Options:
   - Option A: Append "Implementation Divergence" section to design doc recording deviation reason. Option A is a verify phase allowed artifact; after writing, must not re-trigger Step 1b dirty-worktree decision due to that design doc change
   - Option B: After user selects B, run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load `superpowers:brainstorming` to update Design Doc + delta spec
   - Option C: Confirm deviation is acceptable, continue verification (design doc will be marked as `superseded-by-main-spec` during archiving)
@@ -145,7 +149,7 @@ After the skill loads, follow its guidance to finish. Branch handling options:
 3. Keep branch (handle later)
 4. Discard work
 
-This is a user decision point. **Must pause and wait for user to choose branch handling method**. Must not select based on recommendations, defaults, or current branch status. Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written.
+This is a user decision point. **Must use the AskUserQuestion tool to pause and wait for user to choose branch handling method**. Must not select based on recommendations, defaults, or current branch status. Must not just output a text prompt and then continue executing. Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written.
 
 **Confirmation items**:
 - All tests pass
@@ -182,6 +186,16 @@ State file auto-updates to `phase: archive`, `verify_result: pass`, `verified_at
 
 ## Automatic Transition
 
-After exit conditions are met, **proceed immediately to the next phase without waiting for user input**:
+After exit conditions are met (including user selecting branch handling method), auto-transition to next phase:
 
 > **REQUIRED NEXT SKILL:** Invoke `comet-archive` skill to enter the archive phase.
+
+## Context Compaction Recovery
+
+The verify phase may trigger context compaction. To recover, first run:
+
+```bash
+bash "$COMET_STATE" check <change-name> verify --recover
+```
+
+The script outputs structured recovery context (phase, verification status, branch status, recovery action). Follow the Recovery action to determine next step.

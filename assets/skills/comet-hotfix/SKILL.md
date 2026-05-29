@@ -126,7 +126,7 @@ If there is delta spec, sync to main spec according to comet-archive rules, and 
 <IMPORTANT>
 Hotfix workflow is **one-time continuous execution**. After invoking `/comet-hotfix`, agent must automatically advance through hotfix steps, without pausing to wait for user input mid-way. But the following situations must pause and wait for user confirmation:
 
-1. Encountering upgrade conditions (see "Upgrade Conditions" section). Handle through the upgrade-condition blocking confirmation
+1. Encountering upgrade conditions (see "Upgrade Conditions" section). **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm** upgrading to full workflow
 2. workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`
 3. verify phase (comet-verify) verification-failure and branch-handling decisions
 
@@ -149,7 +149,7 @@ Upgrade to full `/comet` when **any** of the following conditions are met:
 | Introduces new public API | Fix creates new external interface |
 | Fix scope exceeds single function/module | Requires coordinated changes |
 
-When upgrade conditions are met, must pause and wait for the user to explicitly confirm upgrading to the full `/comet` workflow. Do not directly enter `/comet-design`, and do not automatically supplement Design Doc.
+When upgrade conditions are met, **must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm** upgrading to the full `/comet` workflow. Do not directly enter `/comet-design`, and do not automatically supplement Design Doc. Must not just output a text prompt and then continue executing.
 
 After user confirms upgrade, **must first update the workflow field** before entering full flow:
 

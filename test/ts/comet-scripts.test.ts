@@ -1200,4 +1200,277 @@ describe('comet shell scripts', () => {
     expect(result.status).toBe(0);
     expect(archived.stdout.trim()).toBe('true');
   });
+
+  describe('check --recover', () => {
+    it('outputs recovery context for open phase', async () => {
+      await createChange(
+        tmpDir,
+        'recover-open',
+        [
+          'workflow: full',
+          'phase: open',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, ['check', 'recover-open', 'open', '--recover']);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Recovery Context: recover-open');
+      expect(result.stdout).toContain('Phase: open');
+      expect(result.stdout).toContain('Workflow: full');
+      expect(result.stdout).toContain('proposal.md: DONE');
+      expect(result.stdout).toContain('design.md: DONE');
+      expect(result.stdout).toContain('tasks.md: DONE');
+      expect(result.stdout).toContain('End Recovery Context');
+    });
+
+    it('outputs recovery context for build phase with partial progress', async () => {
+      await createChange(
+        tmpDir,
+        'recover-build',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+        ['- [x] done task', '- [ ] pending task'].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, ['check', 'recover-build', 'build', '--recover']);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Phase: build');
+      expect(result.stdout).toContain('isolation: PENDING');
+      expect(result.stdout).toContain('build_mode: PENDING');
+      expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
+      expect(result.stdout).toContain('AskUserQuestion');
+    });
+
+    it('outputs recovery context for verify phase with completed verification', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'reports', 'recover-verify.md'),
+        'PASS\n',
+      );
+      await createChange(
+        tmpDir,
+        'recover-verify',
+        [
+          'workflow: full',
+          'phase: verify',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: full',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pass',
+          'verification_report: docs/superpowers/reports/recover-verify.md',
+          'branch_status: handled',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-verify',
+        'verify',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Phase: verify');
+      expect(result.stdout).toContain('verify_result: DONE (pass)');
+      expect(result.stdout).toContain('branch_status: DONE (handled)');
+      expect(result.stdout).toContain('guard to transition to archive');
+    });
+
+    it('outputs recovery context for design phase with handoff but no design doc', async () => {
+      await createChange(
+        tmpDir,
+        'recover-design',
+        [
+          'workflow: full',
+          'phase: design',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'handoff_context: openspec/changes/recover-design/.comet/handoff/design-context.json',
+          'handoff_hash: abc123def456',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      await writeFile(
+        path.join(
+          tmpDir,
+          'openspec',
+          'changes',
+          'recover-design',
+          '.comet',
+          'handoff',
+          'design-context.json',
+        ),
+        '{}',
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-design',
+        'design',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Phase: design');
+      expect(result.stdout).toContain('handoff_context: DONE');
+      expect(result.stdout).toContain('design_doc: PENDING');
+      expect(result.stdout).toContain('brainstorming confirmation');
+    });
+
+    it('outputs recovery context for build phase when tasks.md is missing', async () => {
+      const changeDir = path.join(tmpDir, 'openspec', 'changes', 'recover-no-tasks');
+      await fs.mkdir(changeDir, { recursive: true });
+      await writeFile(
+        path.join(changeDir, '.comet.yaml'),
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-no-tasks',
+        'build',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Phase: build');
+      expect(result.stdout).toContain('Tasks: tasks.md MISSING');
+      expect(result.stdout).toContain('Recovery action');
+      expect(result.stderr).not.toContain('unbound variable');
+    });
+
+    it('outputs recovery context for build phase with all tasks done', async () => {
+      await createChange(
+        tmpDir,
+        'recover-build-done',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+        ['- [x] task 1', '- [x] task 2'].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-build-done',
+        'build',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Phase: build');
+      expect(result.stdout).toContain('Tasks: 2/2 done, 0 pending');
+      expect(result.stdout).toContain('All tasks done');
+      expect(result.stdout).toContain('guard to transition to verify');
+    });
+
+    it('outputs recovery context for archive phase', async () => {
+      await createChange(
+        tmpDir,
+        'recover-archive',
+        [
+          'workflow: full',
+          'phase: archive',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: full',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pass',
+          'branch_status: handled',
+          'verified_at: 2026-05-29',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-archive',
+        'archive',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Phase: archive');
+      expect(result.stdout).toContain('verify_result: DONE (pass)');
+      expect(result.stdout).toContain('archived: DONE (false)');
+      expect(result.stdout).toContain('/comet-archive');
+      expect(result.stdout).toContain('End Recovery Context');
+    });
+
+    it('falls back to normal check when --recover is not passed', async () => {
+      await createChange(
+        tmpDir,
+        'recover-normal',
+        [
+          'workflow: full',
+          'phase: open',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, ['check', 'recover-normal', 'open']);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Entry Check');
+      expect(result.stderr).toContain('ALL CHECKS PASSED');
+      expect(result.stdout).not.toContain('Recovery Context');
+    });
+  });
 });

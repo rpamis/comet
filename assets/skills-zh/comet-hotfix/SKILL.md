@@ -126,7 +126,7 @@ bash "$COMET_GUARD" <change-name> build --apply
 <IMPORTANT>
 Hotfix 流程为 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 在 hotfix 自有步骤间自动推进，不主动停顿。但以下情况必须暂停等待用户确认：
 
-1. 遇到升级条件（见"升级条件"章节）
+1. 遇到升级条件（见"升级条件"章节），**必须使用 AskUserQuestion 工具暂停并等待用户明确确认**升级为完整流程
 2. 任务超过 3 个转入 `/comet-build` 时的工作区隔离和执行方式选择
 3. 验证阶段（comet-verify）的验证失败决策和分支处理决策
 
@@ -149,7 +149,7 @@ Hotfix 流程为 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 
 | 引入新的 public API | 修复产生了新的对外接口 |
 | 修复范围超出单一函数/模块 | 需要多处协调修改 |
 
-满足升级条件时必须暂停并等待用户明确确认升级为完整 `/comet` 流程。不得直接进入 `/comet-design`，不得自动补充 Design Doc。
+满足升级条件时**必须使用 AskUserQuestion 工具暂停并等待用户明确确认**升级为完整 `/comet` 流程。不得直接进入 `/comet-design`，不得自动补充 Design Doc。不得仅输出文字提示后继续执行。
 
 用户确认升级后，**必须先更新 workflow 字段**再进入完整流程：
 
