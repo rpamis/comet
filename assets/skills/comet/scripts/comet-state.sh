@@ -674,7 +674,7 @@ cmd_recover() {
       echo "  Design progress:"
       field_status "handoff_context" "$handoff_context" "$handoff_context"
       field_status "handoff_hash" "$handoff_hash"
-      field_status "design_doc" "$design_doc" "${design_doc% }"
+      field_status "design_doc" "$design_doc" "$design_doc"
       echo ""
       if [ -n "$design_doc" ] && [ "$design_doc" != "null" ] && [ -f "$design_doc" ]; then
         echo "Recovery action: Design Doc already created and linked. Run guard to transition to build."
@@ -728,6 +728,8 @@ cmd_recover() {
       echo ""
       if [ "$verify_result" = "pass" ] && [ "$branch_status" = "handled" ]; then
         echo "Recovery action: Verification complete. Run guard to transition to archive."
+      elif [ "$verify_result" = "pass" ]; then
+        echo "Recovery action: Verification passed but branch not yet handled. Complete branch handling and set branch_status to handled."
       elif [ "$verify_result" = "fail" ]; then
         echo "Recovery action: Verification failed and rolled back to build. Resume from /comet-build."
       else
