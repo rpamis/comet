@@ -352,70 +352,41 @@ describe('skills', () => {
 
   describe('Comet output language safeguards', () => {
     it('requires OpenSpec and Superpowers outputs to follow the user request language', async () => {
-      const zhComet = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhOpen = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-open', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhDesign = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-design', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhBuild = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhVerify = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-verify', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhArchive = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-archive', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhHotfix = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-hotfix', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhTweak = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-tweak', 'SKILL.md'),
-        'utf-8',
-      );
-      const enComet = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet', 'SKILL.md'),
-        'utf-8',
-      );
-      const enOpen = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'),
-        'utf-8',
-      );
-      const enDesign = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-design', 'SKILL.md'),
-        'utf-8',
-      );
-      const enBuild = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-build', 'SKILL.md'),
-        'utf-8',
-      );
-      const enVerify = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-verify', 'SKILL.md'),
-        'utf-8',
-      );
-      const enArchive = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-archive', 'SKILL.md'),
-        'utf-8',
-      );
-      const enHotfix = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-hotfix', 'SKILL.md'),
-        'utf-8',
-      );
-      const enTweak = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-tweak', 'SKILL.md'),
-        'utf-8',
-      );
+      const [
+        zhComet,
+        zhOpen,
+        zhDesign,
+        zhBuild,
+        zhVerify,
+        zhArchive,
+        zhHotfix,
+        zhTweak,
+        enComet,
+        enOpen,
+        enDesign,
+        enBuild,
+        enVerify,
+        enArchive,
+        enHotfix,
+        enTweak,
+      ] = await Promise.all([
+        fs.readFile(path.resolve('assets', 'skills-zh', 'comet', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills-zh', 'comet-open', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills-zh', 'comet-design', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills-zh', 'comet-verify', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills-zh', 'comet-archive', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills-zh', 'comet-hotfix', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills-zh', 'comet-tweak', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills', 'comet', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills', 'comet-design', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills', 'comet-build', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills', 'comet-verify', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills', 'comet-archive', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills', 'comet-hotfix', 'SKILL.md'), 'utf-8'),
+        fs.readFile(path.resolve('assets', 'skills', 'comet-tweak', 'SKILL.md'), 'utf-8'),
+      ]);
 
       expect(zhComet).toContain('输出语言规则');
       expect(zhComet).toContain('以触发本次工作流的用户请求语言作为默认输出语言');
