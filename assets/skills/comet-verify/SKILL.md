@@ -40,9 +40,9 @@ bash "$COMET_STATE" scale <change-name>
 
 ### 1b. Verification Failure Decision (Blocking / Auto-Pilot Retry)
 
-**Must pause and wait for user to decide fix or accept deviation.** Do not auto-run verify-fail transition or auto-invoke `/comet-build`.
+**must use the AskUserQuestion tool to pause and wait for the user to decide fix or accept deviation.** Do not auto-run verify-fail transition or auto-invoke `/comet-build`.
 
-List: failed items, CRITICAL status, recommended action.
+List: failed items, CRITICAL status, recommended action. CRITICAL failures must be fixed; skipping fix to accept all is not allowed.
 
 Auto-Pilot: check `retry_on` for `verify_fail`:
 ```
@@ -52,6 +52,8 @@ while verify_failed && [ $retry_count -lt $max_retry ]; do
   sleep ${auto_config.retry_backoff[$((retry_count - 1))]:-1}
   bash "$COMET_STATE" transition <change-name> verify-fail
 done
+
+After user selects B, run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`.
 ```
 
 ### 2a. Light Verification (small changes)
@@ -74,7 +76,7 @@ Load `openspec-verify-change` skill. Check items:
 7. Design docs under `docs/superpowers/specs/` are locatable
 
 **Spec Drift Handling** (user decision point):
-- If check 6 finds contradictions, **must pause and wait for user to choose handling method**. Options:
+- If check 6 finds contradictions, **must pause and wait for user to choose handling method**. must use the AskUserQuestion tool as a single-select question to pause and wait for user to choose handling method. Options:
   - A: Append "Implementation Divergence" section to design doc
   - B: Run verify-fail → `/comet-build` → update Design Doc via brainstorming
   - C: Accept deviation, continue (design doc marked `superseded-by-main-spec` at archive)
@@ -87,7 +89,7 @@ Load `superpowers:finishing-a-development-branch` skill. Branch options:
 3. Keep branch (handle later)
 4. Discard work
 
-**Must pause and wait for user to choose branch handling.** Only after user completes selection and corresponding operation, write `branch_status: handled`.
+**Must use the AskUserQuestion tool to pause and wait for user to choose branch handling method.** Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written, write `branch_status: handled`.
 
 Auto-Pilot: when `auto_config.archive: true`, auto-select "keep branch" and continue. Output `[AUTO]`.
 

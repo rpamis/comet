@@ -34,6 +34,10 @@ escape_for_json() {
   s="${s//$'\n'/\\n}"
   s="${s//$'\r'/\\r}"
   s="${s//$'\t'/\\t}"
+  s="${s//$'\f'/\\f}"
+  s="${s//$'\b'/\\b}"
+  # Strip other control characters (U+0000-U+001F) not already handled
+  s=$(printf '%s' "$s" | LC_ALL=C tr -d '\000-\010\013\016-\037')
   printf '%s' "$s"
 }
 
@@ -45,7 +49,7 @@ load_auto_config() {
 
   if [ -f "$config_file" ]; then
     local val
-    val=$(grep -E '^\s*enabled:' "$config_file" 2>/dev/null | head -1 | awk '{print $2}' || echo "true")
+    val=$(grep -E '^[^#]*enabled:' "$config_file" 2>/dev/null | head -1 | awk '{print $2}' || echo "true")
     if [ "$val" = "false" ]; then
       enabled="false"
     fi

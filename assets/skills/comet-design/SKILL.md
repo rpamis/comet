@@ -30,7 +30,7 @@ bash "$COMET_STATE" check <name> design
 bash "$COMET_HANDOFF" <change-name> design --write
 ```
 
-The script generates `design-context.json` and `design-context.md` in `.comet/handoff/`.
+The brainstorming phase does not write to the Design Doc file. The script generates `design-context.json` and `design-context.md` in `.comet/handoff/`.
 
 ### 1b. Execute Brainstorming
 
@@ -49,7 +49,7 @@ After brainstorming produces a design proposal, behavior depends on `auto_config
 
 #### Manual Mode (`always_confirm` or no auto_config)
 
-**Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm.** Do not create the final Design Doc before confirmation.
+**must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm.** Do not create the final Design Doc before confirmation.
 
 Present only the essential summary:
 - Chosen technical approach

@@ -140,10 +140,10 @@ bash "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing
 | 规模 | 触发条件 | 做法 |
 |------|---------|------|
 | 小 | 遗漏验收场景、边界条件 | 直接编辑 delta spec + design.md，追加 tasks.md 任务 |
-| 中 | 接口变更、新增组件、数据流变化 | 暂停并等待用户确认后，必须使用 Skill 工具加载 `superpowers:brainstorming` 更新 Design Doc + delta spec |
+| 中 | 接口变更、新增组件、数据流变化 | 使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 `superpowers:brainstorming` 更新 Design Doc + delta spec |
 | 大 | 全新 capability 需求 | 必须暂停并等待用户确认拆分；用户确认后，通过 `/comet-open` 创建独立 change |
 
-**50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，必须暂停并等待用户决定是否拆分为新 change。
+**50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，必须使用 AskUserQuestion 工具暂停并等待用户决定是否拆分为新 change。
 
 创建独立 change 时必须调用 `/comet-open`，不得直接调用 `/opsx:new`。`/comet-open` 会同时创建 OpenSpec 产物和 `.comet.yaml`，避免新 change 脱离 Comet 状态机。
 
@@ -161,7 +161,6 @@ bash "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing
 failure_count=0
 max_retry=${auto_config.max_retry:-2}
 consecutive_failures=${auto_config.max_consecutive_failures:-5}
-cross_phase_failures=$(grep -c '"decision":"retry_"' openspec/changes/<name>/.comet/auto/decisions.jsonl 2>/dev/null || echo "0")
 
 while ! build_command; do
   failure_count=$((failure_count + 1))
@@ -171,6 +170,7 @@ while ! build_command; do
     break
   fi
   
+  cross_phase_failures=$(grep -c '"decision":"retry_"' openspec/changes/<name>/.comet/auto/decisions.jsonl 2>/dev/null || echo "0")
   if [ $cross_phase_failures -ge $consecutive_failures ]; then
     echo "[HARD STOP] 跨 phase 连续失败硬上限（${consecutive_failures}）"
     break

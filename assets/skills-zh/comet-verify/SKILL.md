@@ -82,7 +82,7 @@ bash "$COMET_STATE" set <change-name> verify_mode full
 
 ### 1b. 验证失败决策（阻塞点 / Auto-Pilot 重试）
 
-验证不通过时必须暂停并等待用户决定修复或接受偏差。不得自动运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，也不得自动调用 `/comet-build`。
+验证不通过时**必须使用 AskUserQuestion 工具暂停并等待用户决定修复或接受偏差**。不得自动运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，也不得自动调用 `/comet-build`。
 
 暂停时必须列出：
 - 失败项
@@ -146,7 +146,7 @@ fi
 
 
 **Spec 漂移处理**（用户决策点）：
-- 若检查项 6 发现矛盾（delta spec 有内容但 design doc 未体现），**必须暂停并等待用户选择处理方式**，不得自动选择。选项：
+- 若检查项 6 发现矛盾（delta spec 有内容但 design doc 未体现），**必须使用 AskUserQuestion 工具以单选题形式暂停并等待用户选择处理方式**，不得自动选择。选项：
   - 选项 A：在 design doc 追加 "Implementation Divergence" 节记录偏差原因。选项 A 属于 verify 阶段允许产物；写入后不得因该 design doc 变更再次触发 Step 1b dirty-worktree 决策
   - 选项 B：用户选择 B 后，运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`；由 `/comet-build` 的 Spec 增量更新规则加载 `superpowers:brainstorming` 更新 Design Doc + delta spec
   - 选项 C：确认偏差可接受，继续验证（归档时 design doc 将标记为 `superseded-by-main-spec`）
@@ -162,7 +162,7 @@ fi
 3. 保持分支（稍后处理）
 4. 丢弃工作
 
-这是用户决策点。**必须暂停并等待用户选择分支处理方式**，不得根据推荐、默认值或当前分支状态自行选择。只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`。
+这是用户决策点。**必须使用 AskUserQuestion 工具暂停并等待用户选择分支处理方式**，不得根据推荐、默认值或当前分支状态自行选择。只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`。
 
 **Auto-Pilot 模式**：当 `auto_config.archive: true` 时，自动选择 "保持分支（稍后处理）" 并继续，不创建 PR（创建 PR 涉及外部操作需用户决策）。输出标注 `[AUTO]`。
 

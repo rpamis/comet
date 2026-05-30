@@ -1,5 +1,4 @@
 import path from 'path';
-import os from 'os';
 import { promises as fs } from 'fs';
 import { checkbox, confirm, select } from '@inquirer/prompts';
 import { fileExists } from '../utils/file-system.js';
@@ -7,33 +6,33 @@ import { fileExists } from '../utils/file-system.js';
 const AUTO_CONFIG_FILENAME = 'comet-auto.yaml';
 
 const DEFAULT_AUTO_CONFIG = `# Comet Auto-Pilot Configuration
-# 自动模式全局配置，change 级覆盖在 .comet.yaml 的 auto: 字段中设置。
+# Global auto-mode config. Per-change overrides go in .comet.yaml under the auto: key.
 #
-# 修改后运行 comet auto validate 校验配置有效性。
+# Run `comet auto validate` to check config validity after editing.
 
 auto:
-  enabled: true                     # 总开关；false 时 hook 仅提醒，不注入自动推进指令
+  enabled: true                     # Master switch; when false the hook only reminds, does not inject auto-advance instructions
 
-  # 设计确认策略
-  # auto_with_diff: 自动通过，写入审计轨迹（推荐）
-  # always_confirm: 保持手动确认阻塞点
-  # always_skip: 完全跳过（仅建议 hotfix/tweak）
+  # Design confirmation strategy
+  # auto_with_diff: auto-confirm with audit trail (recommended)
+  # always_confirm: keep manual confirmation gate
+  # always_skip: skip entirely (only for hotfix/tweak)
   confirm_design: auto_with_diff
 
-  # 隔离与执行预设
+  # Isolation & execution presets
   isolation: branch                 # branch | worktree
   build_mode: subagent-driven-development  # subagent-driven-development | executing-plans
-  archive: true                     # 验证通过后自动归档
+  archive: true                     # Auto-archive after verification passes
 
-  # 重试策略
-  max_retry: 2                      # 单 phase 内自动重试次数
+  # Retry strategy
+  max_retry: 2                      # Max auto-retries within a single phase
   retry_on:
     - build_error
     - verify_fail
-  retry_backoff: [1, 2, 4]          # 重试等待间隔（秒），指数递增
-  max_consecutive_failures: 5       # 跨 phase 连续失败硬上限
+  retry_backoff: [1, 2, 4]          # Retry backoff intervals (seconds), exponential
+  max_consecutive_failures: 5       # Cross-phase consecutive failure hard limit
 
-  # 阻断条件
+  # Pause conditions
   pause_on:
     - verify_fail
     - build_error
@@ -44,14 +43,13 @@ auto:
     - preset_upgrade
     - design_review_overdue
 
-  # 量化阈值
+  # Quantitative thresholds
   thresholds:
-    spec_drift_task_ratio: 0.5      # 新增任务/初始任务 > 此值视为 large drift
-    max_consecutive_failures: 5
-    design_review_days: 7           # auto-confirm N 天后未审查则提醒
+    spec_drift_task_ratio: 0.5      # New-tasks / initial-tasks > this value triggers large drift
+    design_review_days: 7           # Remind if auto-confirmed design unreviewed after N days
     build_timeout_minutes: 30
 
-  # 审计
+  # Audit
   audit:
     log_decisions: true
     log_path: .comet/auto/decisions.jsonl
@@ -66,22 +64,22 @@ async function generateDefaultConfig(projectDir: string): Promise<void> {
   const configPath = path.join(projectDir, AUTO_CONFIG_FILENAME);
   if (await fileExists(configPath)) {
     const overwrite = await confirm({
-      message: `${AUTO_CONFIG_FILENAME} 已存在，是否覆盖？`,
+      message: `${AUTO_CONFIG_FILENAME} already exists. Overwrite?`,
       default: false,
     });
     if (!overwrite) {
-      console.log('  跳过生成。');
+      console.log('  Skipped.');
       return;
     }
   }
   await fs.writeFile(configPath, DEFAULT_AUTO_CONFIG, 'utf-8');
-  console.log(`  ✓ 已生成 ${AUTO_CONFIG_FILENAME}`);
+  console.log(`  ✓ Created ${AUTO_CONFIG_FILENAME}`);
 }
 
 async function validateConfig(projectDir: string): Promise<boolean> {
   const configPath = path.join(projectDir, AUTO_CONFIG_FILENAME);
   if (!(await fileExists(configPath))) {
-    console.log(`  ⚠ ${AUTO_CONFIG_FILENAME} 不存在。运行 comet auto init 生成默认配置。`);
+    console.log(`  ⚠ ${AUTO_CONFIG_FILENAME} not found. Run \`comet auto init\` to create default config.`);
     return false;
   }
 
@@ -90,46 +88,46 @@ async function validateConfig(projectDir: string): Promise<boolean> {
 
   // Basic structural checks
   if (!content.includes('auto:')) {
-    issues.push('缺少 auto: 根节点');
+    issues.push('Missing auto: root node');
   }
   if (!content.includes('enabled:')) {
-    issues.push('缺少 auto.enabled 字段');
+    issues.push('Missing auto.enabled field');
   }
   if (!content.includes('confirm_design:')) {
-    issues.push('缺少 auto.confirm_design 字段');
+    issues.push('Missing auto.confirm_design field');
   }
 
   // Validate confirm_design values
-  const confirmMatch = content.match(/^\s*confirm_design:\s*([^\s#]+)/m);
+  const confirmMatch = content.match(/^[^#]*confirm_design:\s*([^\s#]+)/m);
   if (
     confirmMatch &&
     !['auto_with_diff', 'always_confirm', 'always_skip'].includes(confirmMatch[1])
   ) {
     issues.push(
-      `无效的 confirm_design 值: ${confirmMatch[1]}（应为 auto_with_diff | always_confirm | always_skip）`,
+      `Invalid confirm_design value: ${confirmMatch[1]} (expected: auto_with_diff | always_confirm | always_skip)`,
     );
   }
 
   // Validate isolation values
-  const isolationMatch = content.match(/^\s*isolation:\s*([^\s#]+)/m);
+  const isolationMatch = content.match(/^[^#]*isolation:\s*([^\s#]+)/m);
   if (isolationMatch && !['branch', 'worktree'].includes(isolationMatch[1])) {
-    issues.push(`无效的 isolation 值: ${isolationMatch[1]}（应为 branch | worktree）`);
+    issues.push(`Invalid isolation value: ${isolationMatch[1]} (expected: branch | worktree)`);
   }
 
   if (issues.length > 0) {
-    console.log('  ✗ 配置校验失败:');
+    console.log('  ✗ Config validation failed:');
     for (const issue of issues) {
       console.log(`    - ${issue}`);
     }
     return false;
   }
 
-  console.log('  ✓ 配置校验通过');
+  console.log('  ✓ Config validation passed');
   return true;
 }
 
 async function dryRun(projectDir: string): Promise<void> {
-  console.log('[DRY RUN] Comet Auto-Pilot 预览模式\n');
+  console.log('[DRY RUN] Comet Auto-Pilot preview mode\n');
 
   // Check if auto is enabled
   const configPath = path.join(projectDir, AUTO_CONFIG_FILENAME);
@@ -143,12 +141,12 @@ async function dryRun(projectDir: string): Promise<void> {
   }
 
   if (!enabled) {
-    console.log('[DRY RUN] auto.enabled: false — 仅提醒模式，不会自动推进');
+    console.log('[DRY RUN] auto.enabled: false — reminder-only mode, will not auto-advance');
     return;
   }
 
   // Scan active changes (simulated — actual detection requires openspec CLI)
-  console.log('[DRY RUN] 扫描活跃 change ...');
+  console.log('[DRY RUN] Scanning active changes ...');
   try {
     const { execSync } = await import('child_process');
     const result = execSync('openspec list --json 2>/dev/null || echo "[]"', {
@@ -168,15 +166,15 @@ async function dryRun(projectDir: string): Promise<void> {
     }
 
     // Show what would be done
-    console.log('\n[DRY RUN] 将执行的操作:');
-    console.log('[DRY RUN]   1. 按优先级排序 change');
-    console.log('[DRY RUN]   2. 自动续接最高优先级 change');
-    console.log('[DRY RUN]   3. 按 comet-auto.yaml 配置推进流水线');
-    console.log(`[DRY RUN]   配置: confirm_design=auto_with_diff, max_retry=2, archive=true`);
-    console.log('[DRY RUN]   阻断条件: build_error(重试2次), verify_fail(重试2次)');
-    console.log('\n[DRY RUN] 不会修改任何文件或状态');
+    console.log('\n[DRY RUN] Operations to execute:');
+    console.log('[DRY RUN]   1. Sort changes by priority');
+    console.log('[DRY RUN]   2. Auto-resume highest-priority change');
+    console.log('[DRY RUN]   3. Advance pipeline per comet-auto.yaml config');
+    console.log(`[DRY RUN]   Config: confirm_design=auto_with_diff, max_retry=2, archive=true`);
+    console.log('[DRY RUN]   Pause conditions: build_error(retry×2), verify_fail(retry×2)');
+    console.log('\n[DRY RUN] Will not modify any files or state');
   } catch {
-    console.log('[DRY RUN] 无法运行 openspec list，请确认 OpenSpec 已安装');
+    console.log('[DRY RUN] Cannot run openspec list. Verify OpenSpec is installed.');
   }
 }
 
@@ -185,11 +183,11 @@ async function rollbackChange(projectDir: string, changeName: string): Promise<v
   const diffFile = path.join(autoDir, 'design-diff.md');
 
   if (!(await fileExists(diffFile))) {
-    console.log(`  ✗ Change "${changeName}" 没有 auto-confirm 记录（design-diff.md 不存在）`);
+    console.log(`  ✗ Change "${changeName}" has no auto-confirm record (design-diff.md not found)`);
     return;
   }
 
-  console.log(`  即将回滚 change "${changeName}" 的设计自动确认:\n`);
+  console.log(`  About to rollback design auto-confirm for change "${changeName}":\n`);
 
   // Show diff summary
   try {
@@ -202,19 +200,19 @@ async function rollbackChange(projectDir: string, changeName: string): Promise<v
       console.log(`  ${line}`);
     }
     if (diffContent.split('\n').length > 15) {
-      console.log('  ...（截断，完整内容见原文件）');
+      console.log('  ... (truncated; see original file for full content)');
     }
   } catch {
-    console.log('  （无法读取 design-diff.md）');
+    console.log('  (cannot read design-diff.md)');
   }
 
   const confirmed = await confirm({
-    message: `确认回滚？将删除 Design Doc 并回退 phase 到 open`,
+    message: `Confirm rollback? Will delete Design Doc and revert phase to open`,
     default: false,
   });
 
   if (!confirmed) {
-    console.log('  已取消。');
+    console.log('  Cancelled.');
     return;
   }
 
@@ -224,18 +222,18 @@ async function rollbackChange(projectDir: string, changeName: string): Promise<v
     const yamlContent = await fs.readFile(yamlPath, 'utf-8');
     const phaseMatch = yamlContent.match(/^phase:\s*(\S+)/m);
     if (phaseMatch && phaseMatch[1] !== 'design') {
-      console.log(`  ✗ 当前 phase 为 "${phaseMatch[1]}"，回滚仅允许在 design 阶段执行`);
+      console.log(`  ✗ Current phase is "${phaseMatch[1]}"; rollback is only allowed during design phase`);
       return;
     }
   }
 
   // Remove design-diff.md
   await fs.unlink(diffFile).catch(() => {});
-  console.log('  ✓ 已删除 design-diff.md');
+  console.log('  ✓ Deleted design-diff.md');
 
   // Remove design_doc reference and reset phase
   // (State changes done via comet-state.sh — here we just remove the audit file)
-  console.log('  ✓ 回滚完成。使用 /comet-design 重新执行设计。');
+  console.log('  ✓ Rollback complete. Use /comet-design to re-run design.');
 }
 
 async function cleanAuto(projectDir: string): Promise<void> {
@@ -245,7 +243,7 @@ async function cleanAuto(projectDir: string): Promise<void> {
   // Clean global marker
   if (await fileExists(globalMarker)) {
     await fs.unlink(globalMarker);
-    console.log('  ✓ 已清理全局 auto 标记');
+    console.log('  ✓ Cleared global auto marker');
   }
 
   // Clean per-change auto directories
@@ -256,7 +254,7 @@ async function cleanAuto(projectDir: string): Promise<void> {
         const autoDir = path.join(changesDir, entry.name, '.comet', 'auto');
         if (await fileExists(autoDir)) {
           await fs.rm(autoDir, { recursive: true, force: true });
-          console.log(`  ✓ 已清理 ${entry.name}/.comet/auto/`);
+          console.log(`  ✓ Cleaned ${entry.name}/.comet/auto/`);
         }
       }
     }
@@ -264,7 +262,7 @@ async function cleanAuto(projectDir: string): Promise<void> {
     // No changes directory
   }
 
-  console.log('  清理完成。');
+  console.log('  Cleanup complete.');
 }
 
 export async function autoCommand(
@@ -305,15 +303,15 @@ export async function autoCommand(
   }
 
   // Interactive mode
-  console.log('Comet Auto-Pilot 配置\n');
+  console.log('Comet Auto-Pilot Configuration\n');
 
   const action = await select({
-    message: '选择操作:',
+    message: 'Select action:',
     choices: [
-      { name: '生成默认配置', value: 'init' },
-      { name: '校验现有配置', value: 'validate' },
-      { name: '预览自动模式执行计划', value: 'dry-run' },
-      { name: '清理 auto 运行时文件', value: 'clean' },
+      { name: 'Generate default config', value: 'init' },
+      { name: 'Validate existing config', value: 'validate' },
+      { name: 'Preview auto-mode execution plan', value: 'dry-run' },
+      { name: 'Clean auto runtime files', value: 'clean' },
     ],
   });
 

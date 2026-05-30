@@ -60,7 +60,7 @@ Ask user once for isolation and execution mode:
 **Isolation**: A) Branch B) Worktree
 **Execution**: A) `subagent-driven-development` B) `executing-plans`
 
-This is a user decision point. Must pause and wait for explicit choice — do not auto-select based on recommendation rules. Recommendations are advisory only.
+This is a user decision point. Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm. Must use the Skill tool to load `superpowers:using-git-worktrees` for worktree setup. Must not choose `branch` or `worktree` based on recommendation rules. must not choose the execution method based on recommendation rules. must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change. based on recommendation rules. Recommendations are advisory only.
 
 #### Auto-Pilot Mode
 
@@ -80,8 +80,8 @@ Tag output with `[AUTO]` and log to `decisions.jsonl`.
 | Scale | Trigger | Action |
 |-------|---------|--------|
 | Small | Missing acceptance scenarios | Directly edit delta spec + design.md |
-| Medium | Interface changes, new components | Pause for user confirmation, then load brainstorming |
-| Large | New capability requirements | Pause for user confirmation to split into new change |
+| Medium | Interface changes, new components | Pause for user confirmation, then must use Skill tool to load `superpowers:brainstorming` |
+| Large | New capability requirements | Pause for user confirmation to split; create independent change through `/comet-open` |
 
 **50% threshold**: If new tasks exceed 50% of the initial task count (from `phase-snapshot.yaml`), treat as out-of-scope.
 
@@ -93,7 +93,6 @@ Auto-Pilot quantifies via `phase-snapshot.yaml` initial_task_count vs current ta
 failure_count=0
 max_retry=${auto_config.max_retry:-2}
 max_consecutive=${auto_config.max_consecutive_failures:-5}
-cross_phase_failures=$(grep -c '"decision":"retry_"' openspec/changes/<name>/.comet/auto/decisions.jsonl 2>/dev/null || echo "0")
 
 while ! build_command; do
   failure_count=$((failure_count + 1))
@@ -101,6 +100,7 @@ while ! build_command; do
     echo "[HARD STOP] per-phase retries exhausted"
     break
   fi
+  cross_phase_failures=$(grep -c '"decision":"retry_"' openspec/changes/<name>/.comet/auto/decisions.jsonl 2>/dev/null || echo "0")
   if [ $cross_phase_failures -ge $max_consecutive ]; then
     echo "[HARD STOP] cross-phase consecutive failure limit reached"
     break

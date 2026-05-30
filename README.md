@@ -78,6 +78,7 @@ Requirements:
 - npm/npx
 - Git
 - Bash-compatible shell for workflow scripts (Windows users should use Git Bash or an equivalent bash environment)
+- Python 3 (required by session-start hook for JSON parsing)
 
 ```bash
 npm install -g @rpamis/comet

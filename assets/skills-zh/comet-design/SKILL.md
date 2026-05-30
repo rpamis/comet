@@ -149,7 +149,7 @@ EOF
 3. 记录审计日志：
 
 ```bash
-DIFF_HASH=$(sha256sum openspec/changes/<name>/.comet/auto/design-diff.md | cut -d' ' -f1)
+DIFF_HASH=$(sha256sum openspec/changes/<name>/.comet/auto/design-diff.md 2>/dev/null | cut -d' ' -f1 || shasum -a 256 openspec/changes/<name>/.comet/auto/design-diff.md | cut -d' ' -f1)
 echo "{\"ts\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",\"change\":\"<name>\",\"phase\":\"design\",\"decision\":\"auto_confirm_design\",\"mode\":\"auto_with_diff\",\"diff_hash\":\"$DIFF_HASH\"}" >> openspec/changes/<name>/.comet/auto/decisions.jsonl
 ```
 
