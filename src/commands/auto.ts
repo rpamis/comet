@@ -101,8 +101,13 @@ async function validateConfig(projectDir: string): Promise<boolean> {
 
   // Validate confirm_design values
   const confirmMatch = content.match(/^\s*confirm_design:\s*([^\s#]+)/m);
-  if (confirmMatch && !['auto_with_diff', 'always_confirm', 'always_skip'].includes(confirmMatch[1])) {
-    issues.push(`无效的 confirm_design 值: ${confirmMatch[1]}（应为 auto_with_diff | always_confirm | always_skip）`);
+  if (
+    confirmMatch &&
+    !['auto_with_diff', 'always_confirm', 'always_skip'].includes(confirmMatch[1])
+  ) {
+    issues.push(
+      `无效的 confirm_design 值: ${confirmMatch[1]}（应为 auto_with_diff | always_confirm | always_skip）`,
+    );
   }
 
   // Validate isolation values
@@ -189,7 +194,10 @@ async function rollbackChange(projectDir: string, changeName: string): Promise<v
   // Show diff summary
   try {
     const diffContent = await fs.readFile(diffFile, 'utf-8');
-    const lines = diffContent.split('\n').filter(l => l.trim()).slice(0, 15);
+    const lines = diffContent
+      .split('\n')
+      .filter((l) => l.trim())
+      .slice(0, 15);
     for (const line of lines) {
       console.log(`  ${line}`);
     }
@@ -261,7 +269,13 @@ async function cleanAuto(projectDir: string): Promise<void> {
 
 export async function autoCommand(
   targetPath: string,
-  options: { init?: boolean; validate?: boolean; dryRun?: boolean; rollback?: string; clean?: boolean },
+  options: {
+    init?: boolean;
+    validate?: boolean;
+    dryRun?: boolean;
+    rollback?: string;
+    clean?: boolean;
+  },
 ): Promise<void> {
   const projectDir = getProjectDir(targetPath);
 

@@ -49,7 +49,7 @@ After brainstorming produces a design proposal, behavior depends on `auto_config
 
 #### Manual Mode (`always_confirm` or no auto_config)
 
-**Must pause and wait for explicit user confirmation.** Do not create the final Design Doc before confirmation.
+**Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm.** Do not create the final Design Doc before confirmation.
 
 Present only the essential summary:
 - Chosen technical approach

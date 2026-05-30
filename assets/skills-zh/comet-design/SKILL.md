@@ -109,7 +109,7 @@ brainstorming 产出设计方案后，根据 `auto_config.confirm_design` 策略
 
 #### 手动模式（`always_confirm` 或无 auto_config）
 
-**必须暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc。
+**必须使用 AskUserQuestion 工具暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc。
 
 暂停时只展示必要摘要：
 - 采用的技术方案
