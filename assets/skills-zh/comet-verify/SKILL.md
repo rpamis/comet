@@ -91,7 +91,7 @@ bash "$COMET_STATE" set <change-name> verify_mode full
 3. 编译通过（执行项目对应的构建命令，如 `npm run build`、`mvn compile`、`cargo build` 等）
 4. 相关测试通过
 5. 无明显安全问题（无硬编码密钥、无新增 unsafe 操作）
-6. 简化代码审查通过：派发 code-reviewer 子 agent，只检查 correctness、安全、边界条件
+6. 简化代码审查通过：派发 code-reviewer 子 agent，只检查正确性、安全、边界条件
 
 简化代码审查的输入应限定为本次改动 diff、tasks.md 和必要的测试结果；审查范围只覆盖实现正确性、安全风险和边界条件，不执行 spec 覆盖率、Design Doc 一致性或漂移检查。若审查发现 CRITICAL 或 IMPORTANT 问题，按验证失败处理并进入 Step 1b。
 
@@ -109,7 +109,7 @@ bash "$COMET_STATE" transition <change-name> verify-fail
 **跳过项**（不在轻量验证中检查）：
 - spec scenario 覆盖率
 - design doc 一致性深度比对
-- 不影响 correctness、安全、边界条件的 code pattern consistency 建议
+- 不影响正确性、安全、边界条件的 code pattern consistency 建议
 - delta spec 与 design doc 漂移检测
 
 ### 2b. 完整验证（大改动）

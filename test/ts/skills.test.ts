@@ -246,7 +246,8 @@ describe('skills', () => {
       expect(zhVerify).toContain('CRITICAL 失败项必须修复');
       expect(zhVerify).toContain('不允许跳过修复直接全部接受');
       expect(zhVerify).toContain('简化代码审查');
-      expect(zhVerify).toContain('只检查 correctness、安全、边界条件');
+      expect(zhVerify).toContain('只检查正确性、安全、边界条件');
+      expect(zhVerify).toContain('不影响正确性、安全、边界条件的 code pattern consistency 建议');
       expect(zhVerify).toContain('不执行 spec 覆盖率、Design Doc 一致性或漂移检查');
 
       // MEDIUM: hotfix IMPORTANT covers >3-tasks comet-build decision points
