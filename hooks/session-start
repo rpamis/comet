@@ -98,20 +98,20 @@ build_context() {
 
   local context=""
   if [ "$auto_enabled" = "false" ]; then
-    context="<comet-reminder>\n你有 ${change_count} 个未完成的 Comet change。输入 /comet 查看并续接。\n</comet-reminder>"
+    context="<comet-reminder>\nYou have ${change_count} unfinished Comet changes. Run /comet to view and resume.\n</comet-reminder>"
   else
-    context="<comet-auto-resume>\n检测到 ${change_count} 个活跃 Comet change。"
+    context="<comet-auto-resume>\nDetected ${change_count} active Comet changes."
 
     if [ -n "$managed" ]; then
       local first_change
       first_change=$(echo -e "$managed" | head -1 | tr -d '[:space:]')
-      context="${context}\n正在自动续接 change: ${first_change}"
-      context="${context}\n请立即使用 Skill 工具加载 comet-auto 技能，参数: change=${first_change}"
+      context="${context}\nAuto-resuming change: ${first_change}"
+      context="${context}\nLoad the comet-auto skill immediately with parameter: change=${first_change}"
     fi
 
     if [ -n "$orphans" ]; then
-      context="${context}\n\n发现孤儿 change（无 .comet.yaml，未纳入 Comet 管理）：${orphans}"
-      context="${context}\n提示用户是否用 comet 采纳。"
+      context="${context}\n\nFound orphan changes (no .comet.yaml, not managed by Comet): ${orphans}"
+      context="${context}\nPrompt user whether to adopt with comet."
     fi
 
     context="${context}\n</comet-auto-resume>"

@@ -8,8 +8,9 @@ set HOOK_NAME=%1
 set SCRIPT_DIR=%~dp0
 set SCRIPT_DIR=%SCRIPT_DIR:\=/%
 
-if "%HOOK_NAME%"=="session-start" (
-    bash "%SCRIPT_DIR%session-start"
+REM Auto-discover hook scripts; add new hooks by creating a matching .sh file
+if exist "%SCRIPT_DIR%%HOOK_NAME%" (
+    bash "%SCRIPT_DIR%%HOOK_NAME%"
 ) else (
     echo Unknown hook: %HOOK_NAME%
     exit /b 1

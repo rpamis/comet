@@ -5,6 +5,8 @@ description: "Comet Phase 4: Verify and Close. Invoke with /comet-verify. Verify
 
 # Comet Phase 4: Verify and Close
 
+> **⚠ Auto-Pilot Behavior**: When `auto_config.archive: true`, the Auto-Pilot will **automatically select "keep branch"** during the branch-handling decision step (Step 3) and continue without creating a PR. PR creation requires user decision and is never automated. Output is tagged `[AUTO]`.
+
 ## Prerequisites
 
 - Code committed (Phase 3 complete)

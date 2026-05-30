@@ -5,6 +5,8 @@ description: "Comet 阶段 4：验证与收尾。用 /comet-verify 调用。验�
 
 # Comet 阶段 4：验证与收尾（Verify）
 
+> **⚠ Auto-Pilot 行为说明**: 当 `auto_config.archive: true` 时，Auto-Pilot 将**自动选择"保持分支（稍后处理）"**并继续（步骤 3 分支处理），不会自动创建 PR（创建 PR 需用户决策）。输出标注 `[AUTO]`。
+
 ## 前置条件
 
 - 代码已提交（阶段 3 完成）
@@ -104,9 +106,9 @@ if [[ "${auto_config.retry_on}" == *"verify_fail"* ]]; then
     retry_count=$((retry_count + 1))
     backoff=${auto_config.retry_backoff[$((retry_count - 1))]:-1}
     sleep $backoff
-    
+
     echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"change\":\"<name>\",\"phase\":\"verify\",\"decision\":\"retry_verify_fail\",\"attempt\":$retry_count}" >> openspec/changes/<name>/.comet/auto/decisions.jsonl
-    
+
     bash "$COMET_STATE" transition <change-name> verify-fail
     # → 调用 /comet-build 修复 → 重新验证
   done

@@ -20,7 +20,6 @@
   ],
   "hooks": [
     "hooks/session-start",
-    "hooks/hooks.json",
     "hooks/hooks-claude.json",
     "hooks/hooks-codex.json",
     "hooks/hooks-cursor.json",
@@ -30,7 +29,15 @@
     "hooks/run-hook.cmd"
   ],
   "languages": [
-    { "id": "en", "name": "English", "skillsDir": "skills" },
-    { "id": "zh", "name": "中文", "skillsDir": "skills-zh" }
+    {
+      "id": "en",
+      "name": "English",
+      "skillsDir": "skills"
+    },
+    {
+      "id": "zh",
+      "name": "中文",
+      "skillsDir": "skills-zh"
+    }
   ]
 }

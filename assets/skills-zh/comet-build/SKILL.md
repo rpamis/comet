@@ -164,23 +164,23 @@ consecutive_failures=${auto_config.max_consecutive_failures:-5}
 
 while ! build_command; do
   failure_count=$((failure_count + 1))
-  
+
   if [ $failure_count -gt $max_retry ]; then
     echo "[HARD STOP] 单 phase 重试耗尽（${max_retry}/${max_retry}）"
     break
   fi
-  
+
   cross_phase_failures=$(grep -c '"decision":"retry_"' openspec/changes/<name>/.comet/auto/decisions.jsonl 2>/dev/null || echo "0")
   if [ $cross_phase_failures -ge $consecutive_failures ]; then
     echo "[HARD STOP] 跨 phase 连续失败硬上限（${consecutive_failures}）"
     break
   fi
-  
+
   # 指数退避
   backoff=${auto_config.retry_backoff[$((failure_count - 1))]:-1}
   echo "[AUTO] 重试 ${failure_count}/${max_retry}，等待 ${backoff}s ..."
   sleep $backoff
-  
+
   # 记录审计
   echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"change\":\"<name>\",\"phase\":\"build\",\"decision\":\"retry_build_error\",\"attempt\":$failure_count,\"backoff_s\":$backoff}" >> openspec/changes/<name>/.comet/auto/decisions.jsonl
 done
