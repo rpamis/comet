@@ -54,8 +54,8 @@ agent 做决策只需读本节，参考附录按需查阅。
 - 每次恢复上下文时，先重新执行 Step 0 和 Step 1，不依赖对话历史判断阶段
 - 只要存在 active change 且工作区有未提交改动，必须按 `comet/reference/dirty-worktree.md` 协议处理。该协议定义了检查步骤、归因分类和禁令，本文件不重复
 - 若 `phase: build`，先检查 `build_mode` 和 `isolation` 是否已设置；若有未设置的字段，回到 `/comet-build` 对应步骤补充后再执行；若均已设置，读取 tasks.md 的下一个未勾选任务继续
-- 若 `phase: verify` 且 `verify_result: fail`，进入验证失败决策阻塞点：暂停并询问用户修复或接受偏差；用户选择修复后才运行 `bash "$COMET_STATE" transition <name> verify-fail` 并调用 `/comet-build`
-- 若 `phase: open` 但 proposal/design/tasks 已完整，先运行 `bash "$COMET_GUARD" <change-name> open --apply` 修正状态，再继续判定
+- 若 `phase: verify` 且 `verify_result: fail`，进入验证失败决策阻塞点：暂停并询问用户修复或接受偏差；用户选择修复后才运行 `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` 并调用 `/comet-build`
+- 若 `phase: open` 但 proposal/design/tasks 已完整，先运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply` 修正状态，再继续判定
 - 若 `phase: archive`，只允许调用 `/comet-archive`；归档成功后 change 会移动到 archive 目录，不再对原活跃目录运行 guard
 
 **Step 2: 阶段判定**（按顺序，命中即停）
@@ -92,7 +92,7 @@ agent 做决策只需读本节，参考附录按需查阅。
 |------|---------|
 | `openspec list --json` 失败 | 检查 openspec 是否已安装，提示 `openspec init` |
 | 子 skill 不可用 | 停止流程，提示安装或启用对应 skill |
-| `.comet.yaml` 格式异常或缺失 | 以文件状态为准，用 `bash $COMET_STATE set` 修正后继续 |
+| `.comet.yaml` 格式异常或缺失 | 以文件状态为准，用 `"$COMET_BASH" "$COMET_STATE" set` 修正后继续 |
 | 构建/测试失败 | 返回 build 阶段修复，不进入 verify |
 | change 目录结构不完整 | 按 `comet-open` 产物要求补齐 |
 
@@ -235,24 +235,24 @@ fi
 **自动状态更新**：guard 支持 `--apply` 参数，验证通过后自动更新 `.comet.yaml` 状态字段：
 
 ```bash
-bash "$COMET_GUARD" <change-name> <phase> --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> <phase> --apply
 ```
 
 `--apply` 内部委托给 `comet-state transition`。需要直接表达状态事件时使用：
 
 ```bash
-bash "$COMET_STATE" transition <change-name> open-complete
-bash "$COMET_STATE" transition <change-name> design-complete
-bash "$COMET_STATE" transition <change-name> build-complete
-bash "$COMET_STATE" transition <change-name> verify-pass
-bash "$COMET_STATE" transition <change-name> verify-fail
-bash "$COMET_STATE" transition <archive-name> archived
+"$COMET_BASH" "$COMET_STATE" transition <change-name> open-complete
+"$COMET_BASH" "$COMET_STATE" transition <change-name> design-complete
+"$COMET_BASH" "$COMET_STATE" transition <change-name> build-complete
+"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-pass
+"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
+"$COMET_BASH" "$COMET_STATE" transition <archive-name> archived
 ```
 
 **归档脚本**：一键完成归档全部步骤：
 
 ```bash
-bash "$COMET_ARCHIVE" <change-name>
+"$COMET_BASH" "$COMET_ARCHIVE" <change-name>
 ```
 
 加载 comet 后，agent 应执行以上变量赋值一次，后续全程复用 `$COMET_GUARD`、`$COMET_STATE`、`$COMET_HANDOFF`、`$COMET_ARCHIVE`。

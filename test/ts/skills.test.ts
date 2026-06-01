@@ -132,7 +132,7 @@ describe('skills', () => {
       expect(command).toContain('$ARGUMENTS');
       expect(command).toContain('# Comet Phase 1: Open');
       expect(command).toContain('## Steps');
-      expect(command).toContain('bash "$COMET_STATE" init <name> full');
+      expect(command).toContain('"$COMET_BASH" "$COMET_STATE" init <name> full');
       expect(command).not.toContain('Immediately load the `comet-open` skill with the skill tool');
       expect(path.basename(commandPath)).toBe('comet-open.md');
     });
@@ -223,7 +223,7 @@ describe('skills', () => {
       expect(zhTweak).toContain('不得直接进入 `/comet-design`');
       expect(zhComet).toContain('`verify_result: fail` → 进入验证失败决策阻塞点');
       expect(zhComet).not.toContain(
-        '`verify_result: fail` → `bash "$COMET_STATE" transition <name> verify-fail` 后 `/comet-build`',
+        '`verify_result: fail` → `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` 后 `/comet-build`',
       );
       expect(zhHotfix).toContain('按升级条件阻塞确认处理');
       expect(zhHotfix).not.toContain('停止 hotfix，升级为 `/comet`');
@@ -277,7 +277,7 @@ describe('skills', () => {
       expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `brainstorming`');
       expect(zhHotfix).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhTweak).toContain('立即使用 Skill 工具加载 `comet-design` skill');
-      expect(zhVerify).toContain('用户选择 B 后，运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`');
+      expect(zhVerify).toContain('用户选择 B 后，运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`');
     });
   });
 
@@ -321,7 +321,7 @@ describe('skills', () => {
       expect(enTweak).toContain('Do not directly enter `/comet-design`');
       expect(enComet).toContain('`verify_result: fail` → Enter verification failure decision blocking point');
       expect(enComet).not.toContain(
-        '`verify_result: fail` → `bash "$COMET_STATE" transition <name> verify-fail` then `/comet-build`',
+        '`verify_result: fail` → `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` then `/comet-build`',
       );
 
       expect(enHotfix).toContain('handle per "Upgrade Conditions" section');
@@ -346,7 +346,7 @@ describe('skills', () => {
       expect(enBuild).toContain('must use Skill tool to load the Superpowers `brainstorming` skill');
       expect(enHotfix).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('Immediately use the Skill tool to load the `comet-design` skill');
-      expect(enVerify).toContain('After user selects B, run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`');
+      expect(enVerify).toContain('After user selects B, run `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`');
     });
   });
 
@@ -386,6 +386,28 @@ describe('skills', () => {
           );
           expect(content, `${languageDir}/${skillPath} should not inline roots`).not.toContain(
             'COMET_SEARCH_ROOTS=',
+          );
+        }
+      }
+    });
+
+    it('uses COMET_BASH in shipped Comet command examples', async () => {
+      const manifest = await readManifest();
+      const skillPaths = manifest.skills.filter(
+        (skillPath) =>
+          skillPath.endsWith('SKILL.md') &&
+          (skillPath === 'comet/SKILL.md' || skillPath.startsWith('comet-')),
+      );
+
+      for (const languageDir of ['skills', 'skills-zh']) {
+        for (const skillPath of skillPaths) {
+          const content = await fs.readFile(
+            path.resolve('assets', languageDir, skillPath),
+            'utf-8',
+          );
+
+          expect(content, `${languageDir}/${skillPath} should avoid raw bash for Comet scripts`).not.toMatch(
+            /(^|[` \t])bash[ \t]+"?\$COMET_/m,
           );
         }
       }

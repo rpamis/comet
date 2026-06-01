@@ -23,7 +23,7 @@ if [ -z "$COMET_ENV" ]; then
   return 1
 fi
 . "$COMET_ENV"
-bash "$COMET_STATE" check <name> build
+"$COMET_BASH" "$COMET_STATE" check <name> build
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
@@ -58,7 +58,7 @@ git rev-parse HEAD
 先记录 plan 路径：
 
 ```bash
-bash "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
+"$COMET_BASH" "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 ```
 
 无需手动更新 phase，guard 会在退出条件满足后自动流转。
@@ -95,8 +95,8 @@ bash "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 用户选择后，更新 `isolation` 和 `build_mode` 字段：
 
 ```bash
-bash "$COMET_STATE" set <name> isolation <branch|worktree>
-bash "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing-plans|direct>
+"$COMET_BASH" "$COMET_STATE" set <name> isolation <branch|worktree>
+"$COMET_BASH" "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing-plans|direct>
 ```
 
 `isolation` 是脚本级硬约束。full workflow 初始化时可以为 `null`，但只允许存在到本步骤之前。若保持 `null`，`build → verify` 的 guard 和 `comet-state transition build-complete` 都会失败。
@@ -104,8 +104,8 @@ bash "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing
 `build_mode` 默认仅 hotfix/tweak preset 使用 `direct`。full workflow 不得默认使用 `direct`。只有用户明确要求跳过计划执行技能，且你已记录显式 override 时，才允许：
 
 ```bash
-bash "$COMET_STATE" set <name> direct_override true
-bash "$COMET_STATE" set <name> build_mode direct
+"$COMET_BASH" "$COMET_STATE" set <name> direct_override true
+"$COMET_BASH" "$COMET_STATE" set <name> build_mode direct
 ```
 
 没有 `direct_override: true` 时，full workflow 的 `build_mode=direct` 会被 guard 和状态转换同时拦截。
@@ -151,7 +151,7 @@ bash "$COMET_STATE" set <name> build_mode direct
 Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后断点恢复：
 
 - **每完成一个 task**：立即勾选 tasks.md 并提交代码，确保 `.comet.yaml` 和文件状态持久化
-- **上下文压缩后恢复**：先运行 `bash "$COMET_STATE" check <change-name> build --recover`，脚本输出结构化恢复上下文（isolation/build_mode 状态、plan 路径、任务完成进度、恢复动作）。根据 Recovery action 决定下一步。
+- **上下文压缩后恢复**：先运行 `"$COMET_BASH" "$COMET_STATE" check <change-name> build --recover`，脚本输出结构化恢复上下文（isolation/build_mode 状态、plan 路径、任务完成进度、恢复动作）。根据 Recovery action 决定下一步。
 - **用户手动修改恢复**：按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。该协议定义了检查步骤、归因分类和禁令。build 阶段的特殊处理：
   1. 归因后，若 diff 暗示计划或 spec 已变化，按 Step 4「Spec 增量更新」分级处理
 - **长任务拆分**：单任务超过 200 行代码变更时，考虑拆分为多个子任务分别提交
@@ -163,7 +163,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - 已显式运行项目对应的构建/测试命令并通过（不要只依赖 guard 自动猜测）
 - `isolation` 已写为 `branch` 或 `worktree`
 - `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`
-- **阶段守卫**：运行 `bash "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后自动流转到 `phase: verify`
+- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后自动流转到 `phase: verify`
 
 Guard 会优先读取项目配置中的命令：
 
@@ -178,7 +178,7 @@ verify_command: <verify command>
 退出前运行 guard 自动流转：
 
 ```bash
-bash "$COMET_GUARD" <change-name> build --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply
 ```
 
 状态文件自动更新为 `phase: verify`、`verify_result: pending`。

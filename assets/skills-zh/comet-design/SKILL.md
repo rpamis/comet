@@ -23,7 +23,7 @@ if [ -z "$COMET_ENV" ]; then
   return 1
 fi
 . "$COMET_ENV"
-bash "$COMET_STATE" check <name> design
+"$COMET_BASH" "$COMET_STATE" check <name> design
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
@@ -35,7 +35,7 @@ bash "$COMET_STATE" check <name> design
 **必须由脚本生成，不允许 agent 临场手写 summary 代替。**
 
 ```bash
-bash "$COMET_HANDOFF" <change-name> design --write
+"$COMET_BASH" "$COMET_HANDOFF" <change-name> design --write
 ```
 
 脚本会生成并记录：
@@ -60,7 +60,7 @@ handoff_hash: <sha256>
 如确实需要全文上下文，可显式运行：
 
 ```bash
-bash "$COMET_HANDOFF" <change-name> design --write --full
+"$COMET_BASH" "$COMET_HANDOFF" <change-name> design --write --full
 ```
 
 交接包来源来自 OpenSpec open 阶段产物：
@@ -121,13 +121,13 @@ brainstorming 产出设计方案后，**必须使用 AskUserQuestion 工具暂�
 
 ```bash
 # 记录 design_doc 路径
-bash "$COMET_STATE" set <name> design_doc docs/superpowers/specs/YYYY-MM-DD-topic-design.md
+"$COMET_BASH" "$COMET_STATE" set <name> design_doc docs/superpowers/specs/YYYY-MM-DD-topic-design.md
 
 # 如有 delta spec 变更，重新生成 handoff（更新 hash）
-bash "$COMET_HANDOFF" <change-name> design --write
+"$COMET_BASH" "$COMET_HANDOFF" <change-name> design --write
 
 # 自动流转到下一阶段
-bash "$COMET_GUARD" <change-name> design --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> design --apply
 ```
 
 如果没有 delta spec 变更，跳过 handoff 重新生成步骤。状态文件自动更新，无需手动编辑其他字段。
@@ -141,12 +141,12 @@ bash "$COMET_GUARD" <change-name> design --apply
 - `design-context.md` 必须是脚本生成，且包含 source path、mode、sha256 等可追溯标记（由 guard 强制校验）
 - 如有新能力或补充验收场景，OpenSpec delta spec 已创建/更新
 - `design_doc` 已写入 `.comet.yaml`
-- **阶段守卫**：运行 `bash "$COMET_GUARD" <change-name> design --apply`，全部 PASS 后自动流转到 `phase: build`
+- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> design --apply`，全部 PASS 后自动流转到 `phase: build`
 
 退出前必须使用 `--apply`：
 
 ```bash
-bash "$COMET_GUARD" <change-name> design --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> design --apply
 ```
 
 ## 上下文压缩恢复
@@ -154,7 +154,7 @@ bash "$COMET_GUARD" <change-name> design --apply
 design 阶段在 brainstorming 过程中可能触发上下文压缩。恢复时先运行：
 
 ```bash
-bash "$COMET_STATE" check <change-name> design --recover
+"$COMET_BASH" "$COMET_STATE" check <change-name> design --recover
 ```
 
 脚本输出结构化恢复上下文（阶段、已完成字段、待完成字段、恢复动作）。按 Recovery action 判断下一步。

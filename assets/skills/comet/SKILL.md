@@ -54,8 +54,8 @@ Prefer reading `openspec/changes/<name>/.comet.yaml`. If not available, fall bac
 - On every context resume, rerun Step 0 and Step 1; do not trust conversation history for phase detection
 - If there is an active change and the worktree has uncommitted changes, handle them through `comet/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions; this file does not repeat them
 - If `phase: build`, first check whether `build_mode` and `isolation` are set; if any fields are unset, return to `/comet-build` corresponding step to supplement before executing; if both are set, read the next unchecked task from tasks.md and continue
-- If `phase: verify` and `verify_result: fail`, enter the verification failure decision blocking point: pause and ask the user to fix or accept deviation; only after the user chooses fix, run `bash "$COMET_STATE" transition <name> verify-fail` and invoke `/comet-build`
-- If `phase: open` but proposal/design/tasks are complete, first run `bash "$COMET_GUARD" <change-name> open --apply` to repair state, then continue detection
+- If `phase: verify` and `verify_result: fail`, enter the verification failure decision blocking point: pause and ask the user to fix or accept deviation; only after the user chooses fix, run `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` and invoke `/comet-build`
+- If `phase: open` but proposal/design/tasks are complete, first run `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply` to repair state, then continue detection
 - If `phase: archive`, only invoke `/comet-archive`; after archive succeeds, the change moves to the archive directory, so do not run guard against the old active directory
 
 **Step 2: Phase Determination** (check in order, first match wins)
@@ -92,7 +92,7 @@ If metadata conflicts with file state, use verifiable file state as source of tr
 |----------|----------|
 | `openspec list --json` fails | Check if openspec is installed, prompt user to run `openspec init` |
 | Sub-skill unavailable | Stop workflow, prompt to install or enable the corresponding skill |
-| `.comet.yaml` malformed or missing | Use file state as source of truth, correct with `bash $COMET_STATE set` then continue |
+| `.comet.yaml` malformed or missing | Use file state as source of truth, correct with `"$COMET_BASH" "$COMET_STATE" set` then continue |
 | Build/test fails | Return to build phase for fixes, do not enter verify |
 | Incomplete change directory structure | Fill missing files according to `comet-open` artifact requirements |
 
@@ -235,24 +235,24 @@ fi
 **Auto state update**: Guard supports `--apply` flag, automatically updating `.comet.yaml` state fields after checks pass:
 
 ```bash
-bash "$COMET_GUARD" <change-name> <phase> --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> <phase> --apply
 ```
 
 `--apply` delegates to `comet-state transition`. Use these semantic events when state changes need to be expressed directly:
 
 ```bash
-bash "$COMET_STATE" transition <change-name> open-complete
-bash "$COMET_STATE" transition <change-name> design-complete
-bash "$COMET_STATE" transition <change-name> build-complete
-bash "$COMET_STATE" transition <change-name> verify-pass
-bash "$COMET_STATE" transition <change-name> verify-fail
-bash "$COMET_STATE" transition <archive-name> archived
+"$COMET_BASH" "$COMET_STATE" transition <change-name> open-complete
+"$COMET_BASH" "$COMET_STATE" transition <change-name> design-complete
+"$COMET_BASH" "$COMET_STATE" transition <change-name> build-complete
+"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-pass
+"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
+"$COMET_BASH" "$COMET_STATE" transition <archive-name> archived
 ```
 
 **Archive script**: Complete all archive steps in one command:
 
 ```bash
-bash "$COMET_ARCHIVE" <change-name>
+"$COMET_BASH" "$COMET_ARCHIVE" <change-name>
 ```
 
 After loading comet, agents should run the variable assignments above once, then reuse `$COMET_GUARD`, `$COMET_STATE`, `$COMET_HANDOFF`, `$COMET_ARCHIVE` throughout the session.

@@ -49,7 +49,7 @@ if [ -z "$COMET_STATE" ] || [ -z "$COMET_GUARD" ]; then
   return 1
 fi
 
-bash "$COMET_STATE" init <name> full
+"$COMET_BASH" "$COMET_STATE" init <name> full
 ```
 
 ### 3. 入口状态验证
@@ -57,7 +57,7 @@ bash "$COMET_STATE" init <name> full
 验证状态机已正确初始化：
 
 ```bash
-bash "$COMET_STATE" check <name> open
+"$COMET_BASH" "$COMET_STATE" check <name> open
 ```
 
 验证通过后继续 Step 4。验证失败时脚本会输出具体失败原因。
@@ -94,12 +94,12 @@ AskUserQuestion 必须以单选题形式呈现，包含以下摘要和选项：
 
 - proposal.md、design.md、tasks.md 均已创建且内容完整
 - **用户已确认** proposal、design、tasks 内容符合预期
-- **阶段守卫**：运行 `bash "$COMET_GUARD" <change-name> open --apply`，全部 PASS 后自动流转到下一阶段
+- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply`，全部 PASS 后自动流转到下一阶段
 
 退出前必须使用 `--apply`，否则 `.comet.yaml` 仍停留在 `phase: open`，下一阶段入口检查会失败。
 
 ```bash
-bash "$COMET_GUARD" <change-name> open --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply
 ```
 
 完整流程会自动更新为 `phase: design`；hotfix/tweak preset 会自动更新为 `phase: build`。

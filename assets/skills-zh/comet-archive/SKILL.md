@@ -24,7 +24,7 @@ if [ -z "$COMET_ENV" ]; then
   return 1
 fi
 . "$COMET_ENV"
-bash "$COMET_STATE" check <name> archive
+"$COMET_BASH" "$COMET_STATE" check <name> archive
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
@@ -34,7 +34,7 @@ bash "$COMET_STATE" check <name> archive
 运行归档脚本，自动完成以下全部步骤：
 
 ```bash
-bash "$COMET_ARCHIVE" "<change-name>"
+"$COMET_BASH" "$COMET_ARCHIVE" "<change-name>"
 ```
 
 脚本自动执行：
@@ -66,7 +66,7 @@ brainstorming → delta spec → 实施 → 验证 → 主 spec 覆盖 → desig
 - 归档目录 `openspec/changes/archive/YYYY-MM-DD-<change-name>/` 存在
 - 归档后的 `.comet.yaml` 中 `archived: true`
 
-归档脚本会把 `openspec/changes/<name>/` 移动到 `openspec/changes/archive/YYYY-MM-DD-<name>/`。归档成功后**不要再对原 change 名运行** `bash "$COMET_GUARD" <change-name> archive`，因为原活跃目录已经不存在。归档完整性以脚本退出码和归档目录状态为准。
+归档脚本会把 `openspec/changes/<name>/` 移动到 `openspec/changes/archive/YYYY-MM-DD-<name>/`。归档成功后**不要再对原 change 名运行** `"$COMET_BASH" "$COMET_GUARD" <change-name> archive`，因为原活跃目录已经不存在。归档完整性以脚本退出码和归档目录状态为准。
 
 ## 完成
 

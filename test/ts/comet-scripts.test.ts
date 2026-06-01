@@ -20,10 +20,11 @@ function toBashPath(filePath: string): string {
   return `/mnt/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
 }
 
-function runBash(cwd: string, script: string, args: string[] = []) {
+function runBash(cwd: string, script: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) {
   return spawnSync('bash', [toBashPath(script), ...args], {
     cwd,
     encoding: 'utf-8',
+    env: { ...process.env, ...env },
   });
 }
 
@@ -96,7 +97,7 @@ describe('comet shell scripts', () => {
       [
         '#!/bin/bash',
         `. "${toBashPath(envScript)}"`,
-        'printf "%s\\n%s\\n%s\\n%s\\n" "$COMET_STATE" "$COMET_GUARD" "$COMET_HANDOFF" "$COMET_ARCHIVE"',
+        'printf "%s\\n%s\\n%s\\n%s\\n%s\\n" "$COMET_STATE" "$COMET_GUARD" "$COMET_HANDOFF" "$COMET_ARCHIVE" "$COMET_BASH"',
         '',
       ].join('\n'),
     );
@@ -108,6 +109,7 @@ describe('comet shell scripts', () => {
     expect(result.stdout).toContain('comet-guard.sh');
     expect(result.stdout).toContain('comet-handoff.sh');
     expect(result.stdout).toContain('comet-archive.sh');
+    expect(result.stdout).toContain('bash');
   }, 20_000);
 
   it('comet-env.sh returns failure when a bundled script is missing', async () => {
@@ -767,6 +769,70 @@ describe('comet shell scripts', () => {
       const content = await fs.readFile(file, 'utf-8');
 
       expect(content).toContain(".stdout || ''");
+    }
+  });
+
+  it('uses COMET_BASH for nested script calls when PATH bash is unusable', async () => {
+    const fakeBin = path.join(tmpDir, 'fake-bin');
+    await fs.mkdir(fakeBin, { recursive: true });
+    const fakeBash = path.join(fakeBin, 'bash');
+    await writeFile(
+      fakeBash,
+      [
+        '#!/bin/sh',
+        'echo "bad WSL bash" >&2',
+        'exit 127',
+        '',
+      ].join('\n'),
+    );
+    await fs.chmod(fakeBash, 0o755);
+    await createChange(
+      tmpDir,
+      'nested-bash',
+      [
+        'workflow: full',
+        'phase: open',
+        'build_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = spawnSync('bash', [
+      '-lc',
+      [
+        'COMET_BASH="/bin/bash"',
+        `PATH="${toBashPath(fakeBin)}:$PATH"`,
+        'export COMET_BASH PATH',
+        `/bin/bash "${toBashPath(guardScript)}" nested-bash open --apply`,
+      ].join('; '),
+    ], {
+      cwd: tmpDir,
+      encoding: 'utf-8',
+    });
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'nested-bash', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain('bad WSL bash');
+    expect(yaml).toContain('phase: design');
+  }, 20_000);
+
+  it('does not use PATH bash for nested Comet script calls', async () => {
+    for (const name of ['comet-archive.sh', 'comet-guard.sh', 'comet-handoff.sh']) {
+      const content = await fs.readFile(path.join(tmpDir, 'scripts', name), 'utf-8');
+
+      expect(content, `${name} should use COMET_BASH for nested scripts`).not.toMatch(
+        /\bbash\s+"?\$(?:STATE_SH|state_sh|validate_script)/,
+      );
     }
   });
 
