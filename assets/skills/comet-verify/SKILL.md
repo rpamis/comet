@@ -95,7 +95,7 @@ When scale assessment result is "small", skip `openspec-verify-change` and direc
 
 The lightweight code review input should be limited to this change's diff, tasks.md, and necessary test results; the review scope covers implementation correctness, security risk, and edge cases only, and does not perform spec coverage, Design Doc consistency, or drift checks. If the review finds CRITICAL or IMPORTANT issues, treat verification as failed and enter Step 1b.
 
-**Pass criteria**: All 6 items OK, no CRITICAL issues.
+**Pass criteria**: All 6 items OK, no CRITICAL or IMPORTANT issues.
 
 **When not passing**: Report failures, enter Step 1b verification failure decision blocking point. Only after user confirms fix, execute the following command to record failure and roll back to build phase, then invoke `/comet-build` to fix:
 

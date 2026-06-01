@@ -247,6 +247,7 @@ describe('skills', () => {
       expect(zhVerify).toContain('不允许跳过修复直接全部接受');
       expect(zhVerify).toContain('简化代码审查');
       expect(zhVerify).toContain('只检查正确性、安全、边界条件');
+      expect(zhVerify).toContain('无 CRITICAL 或 IMPORTANT 问题');
       expect(zhVerify).toContain('不影响正确性、安全、边界条件的 code pattern consistency 建议');
       expect(zhVerify).toContain('不执行 spec 覆盖率、Design Doc 一致性或漂移检查');
 
@@ -339,6 +340,7 @@ describe('skills', () => {
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
       expect(enVerify).toContain('Lightweight code review');
       expect(enVerify).toContain('checks only correctness, security, and edge cases');
+      expect(enVerify).toContain('no CRITICAL or IMPORTANT issues');
       expect(enVerify).toContain('does not perform spec coverage, Design Doc consistency, or drift checks');
       expect(enHotfix).toContain('workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`');
       expect(enBuild).toContain('Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
