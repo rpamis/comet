@@ -32,7 +32,7 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 
 ### 1. Create Plan
 
-**Immediately execute:** Use the Skill tool to load the `superpowers:writing-plans` skill. Skipping this step is prohibited.
+**Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited.
 
 After the skill loads, follow its guidance to create a plan. Plan requirements:
 - Save to `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
@@ -82,8 +82,8 @@ Plan has been written to the current branch. Before starting execution, **ask th
 
 | Option | Skill | Applicable Scenario |
 |------|------|-------------------|
-| A | `superpowers:subagent-driven-development` | Independent tasks, high complexity, requires two-phase review |
-| B | `superpowers:executing-plans` | Simple tasks, no subagent environment, lightweight and fast |
+| A | Superpowers `subagent-driven-development` | Independent tasks, high complexity, requires two-phase review |
+| B | Superpowers `executing-plans` | Simple tasks, no subagent environment, lightweight and fast |
 
 **Execution method recommendation rules**:
 - Task count ≥ 3 → Recommend A
@@ -113,7 +113,7 @@ Without `direct_override: true`, `build_mode=direct` in full workflow is blocked
 **Execute isolation**:
 
 - **branch**: Run `git checkout -b <change-name>`, subsequent work on the new branch
-- **worktree**: Must use the Skill tool to load `superpowers:using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
+- **worktree**: Must use the Skill tool to load the Superpowers `using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
 
 After creating isolation, confirm plan file is accessible (naturally accessible with branch method; for worktree method, confirm plan has been committed).
 
@@ -133,7 +133,7 @@ When the initial spec is found incomplete during implementation, handle by scale
 | Scale | Trigger Conditions | Approach |
 |------|-------------------|----------|
 | Small | Missing acceptance scenarios, edge cases | Directly edit delta spec + design.md, append tasks.md tasks |
-| Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load `superpowers:brainstorming` to update Design Doc + delta spec |
+| Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load the Superpowers `brainstorming` skill to update Design Doc + delta spec |
 | Large | Brand-new capability requirements | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm the split**; after user confirms, create independent change through `/comet-open` |
 
 **50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, **must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change**. Must not just output a text prompt and then continue executing.

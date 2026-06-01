@@ -134,14 +134,14 @@ bash "$COMET_STATE" transition <change-name> verify-fail
 **Spec 漂移处理**（用户决策点）：
 - 若检查项 6 发现矛盾（delta spec 有内容但 design doc 未体现），**必须使用 AskUserQuestion 工具以单选题形式暂停并等待用户选择处理方式**，不得自动选择。选项：
   - 选项 A：在 design doc 追加 "Implementation Divergence" 节记录偏差原因。选项 A 属于 verify 阶段允许产物；写入后不得因该 design doc 变更再次触发 Step 1b dirty-worktree 决策
-  - 选项 B：用户选择 B 后，运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`；由 `/comet-build` 的 Spec 增量更新规则加载 `superpowers:brainstorming` 更新 Design Doc + delta spec
+  - 选项 B：用户选择 B 后，运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`；由 `/comet-build` 的 Spec 增量更新规则加载 Superpowers `brainstorming` 更新 Design Doc + delta spec
   - 选项 C：确认偏差可接受，继续验证（归档时 design doc 将标记为 `superseded-by-main-spec`）
 
 ### 3. 收尾（Superpowers）
 
-**立即执行：** 使用 Skill 工具加载 `superpowers:finishing-a-development-branch` 技能。禁止跳过此步骤。
+**立即执行：** 使用 Skill 工具加载 Superpowers `finishing-a-development-branch` 技能。禁止跳过此步骤。
 
-如 `superpowers:finishing-a-development-branch` 不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
+如 Superpowers `finishing-a-development-branch` 技能不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
 
 技能加载后，按其指引收尾。分支处理选项：
 1. 本地合并到主分支

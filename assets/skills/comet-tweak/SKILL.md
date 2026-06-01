@@ -66,7 +66,7 @@ bash "$COMET_GUARD" <change-name> open --apply
 
 ### 2. Lightweight Build (preset build)
 
-Use tweak defaults: `build_mode: direct`. Skip `superpowers:brainstorming` and `superpowers:writing-plans`.
+Use tweak defaults: `build_mode: direct`. Skip Superpowers `brainstorming` and `writing-plans`.
 
 Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows scope exceeds tweak, handle it through this file's "Upgrade Conditions".
 

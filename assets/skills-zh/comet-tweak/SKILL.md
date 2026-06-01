@@ -66,7 +66,7 @@ bash "$COMET_GUARD" <change-name> open --apply
 
 ### 2. 轻量构建（preset build）
 
-使用 tweak 默认值：`build_mode: direct`。跳过 `superpowers:brainstorming` 和 `superpowers:writing-plans`。
+使用 tweak 默认值：`build_mode: direct`。跳过 Superpowers `brainstorming` 和 `writing-plans`。
 
 继续或开始修改前，按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。若归因后发现范围超出 tweak，按本文件“升级条件”处理。
 

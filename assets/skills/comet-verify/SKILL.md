@@ -134,14 +134,14 @@ bash "$COMET_STATE" transition <change-name> verify-fail
 **Spec Drift Handling** (user decision point):
 - If check item 6 finds contradictions (delta spec has content but design doc does not reflect it), **must use the AskUserQuestion tool as a single-select question to pause and wait for user to choose handling method**; must not select automatically. Options:
   - Option A: Append "Implementation Divergence" section to design doc recording deviation reason. Option A is a verify phase allowed artifact; after writing, must not re-trigger Step 1b dirty-worktree decision due to that design doc change
-  - Option B: After user selects B, run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load `superpowers:brainstorming` to update Design Doc + delta spec
+  - Option B: After user selects B, run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load the Superpowers `brainstorming` skill to update Design Doc + delta spec
   - Option C: Confirm deviation is acceptable, continue verification (design doc will be marked as `superseded-by-main-spec` during archiving)
 
 ### 3. Finishing (Superpowers)
 
-**Immediately execute:** Use the Skill tool to load the `superpowers:finishing-a-development-branch` skill. Skipping this step is prohibited.
+**Immediately execute:** Use the Skill tool to load the Superpowers `finishing-a-development-branch` skill. Skipping this step is prohibited.
 
-If `superpowers:finishing-a-development-branch` is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
+If the Superpowers `finishing-a-development-branch` skill is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
 
 After the skill loads, follow its guidance to finish. Branch handling options:
 1. Merge to main branch locally

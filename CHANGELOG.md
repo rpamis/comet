@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.3.6] - 2026-06-01
+
+### Fixed
+
+- **GitHub Copilot Superpowers skill names**: Comet skills now invoke the bare Superpowers skill names installed by the GitHub Copilot skills path, avoiding blocked workflows caused by unresolved `superpowers:*` aliases.
+
+### Tests
+
+- **Superpowers skill invocation regression**: Added coverage that shipped Comet skill prose does not reference plugin-prefixed Superpowers aliases.
+
 ## What's Changed [0.3.5] - 2026-05-29
 
 ### Added

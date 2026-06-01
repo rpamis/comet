@@ -32,7 +32,7 @@ bash "$COMET_STATE" check <name> build
 
 ### 1. 制定计划
 
-**立即执行：** 使用 Skill 工具加载 `superpowers:writing-plans` 技能。禁止跳过此步骤。
+**立即执行：** 使用 Skill 工具加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。
 
 技能加载后，按其指引制定计划。计划要求：
 - 保存至 `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
@@ -82,8 +82,8 @@ bash "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 | 选项 | 技能 | 适用场景 |
 |------|------|---------|
-| A | `superpowers:subagent-driven-development` | 任务独立、复杂度高、需要双阶段审查 |
-| B | `superpowers:executing-plans` | 任务简单、无子agent环境、轻量快速 |
+| A | Superpowers `subagent-driven-development` | 任务独立、复杂度高、需要双阶段审查 |
+| B | Superpowers `executing-plans` | 任务简单、无子agent环境、轻量快速 |
 
 **执行方式推荐规则**：
 - 任务数 ≥ 3 → 推荐 A
@@ -113,7 +113,7 @@ bash "$COMET_STATE" set <name> build_mode direct
 **执行隔离**：
 
 - **branch**：执行 `git checkout -b <change-name>`，后续工作在新分支上进行
-- **worktree**：必须使用 Skill 工具加载 `superpowers:using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；如该技能不可用，停止流程并提示安装或启用 Superpowers 技能。
+- **worktree**：必须使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；如该技能不可用，停止流程并提示安装或启用 Superpowers 技能。
 
 创建隔离后，确认计划文件可访问（分支方式天然可访问；worktree 方式需确认计划已提交）。
 
@@ -133,7 +133,7 @@ bash "$COMET_STATE" set <name> build_mode direct
 | 规模 | 触发条件 | 做法 |
 |------|---------|------|
 | 小 | 遗漏验收场景、边界条件 | 直接编辑 delta spec + design.md，追加 tasks.md 任务 |
-| 中 | 接口变更、新增组件、数据流变化 | **使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 `superpowers:brainstorming` 更新 Design Doc + delta spec |
+| 中 | 接口变更、新增组件、数据流变化 | **使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming` 更新 Design Doc + delta spec |
 | 大 | 全新 capability 需求 | **必须使用 AskUserQuestion 工具暂停并等待用户确认拆分**；用户确认后，通过 `/comet-open` 创建独立 change |
 
 **50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须使用 AskUserQuestion 工具暂停并等待用户决定是否拆分为新 change**。
