@@ -64,39 +64,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 * @kathy32 made their first contribution in #39
 * @gleami made their first contribution in #46
 
-## What's Changed [0.3.4] - 2026-05-29
-
-### Changed
-
-- **Command execution security**: Refactored all command execution in OpenSpec and Superpowers install paths from `spawn` with shell interpretation to `execFileSync`, eliminating shell injection surface and improving cross-platform reliability (#88bf487)
-
-### Fixed
-
-- **OpenSpec global install path for OpenCode**: `comet init --scope global` now migrates OpenSpec skills from the hardcoded `~/.opencode/` directory to `~/.config/opencode/` where OpenCode actually reads them, with a self-deletion guard when source and destination paths coincide (#46, @gleami)
-- **Windows command execution**: Added `shell` option to `execFileSync` calls on Windows so command shims (.cmd) resolve correctly
-- **Doctor `.comet.yaml` validation**: `comet doctor` now validates top-level keys instead of silently accepting unknown keys, and `readDir` errors other than ENOENT are no longer swallowed (@felamin)
-- **CI JSON parsing**: CI workflow parses command output by finding the first `{` character, preventing non-JSON prefix lines from breaking JSON extraction (@yicochen)
-- **CI warning output**: CI now only counts and prints warnings when a step actually fails, reducing noise in successful runs (@yicochen)
-- **Spawn stdio noise**: Changed `inherit` to `ignore` for non-interactive spawn stdio so OpenSpec/Superpowers installers don't print unrelated progress to the console (@yicochen)
-
-### Tests
-
-- Added coverage for OpenCode global OpenSpec path migration, self-deletion guard, and homedir mocking
-- Added doctor tests for `.comet.yaml` top-level key validation and non-ENOENT `readDir` error propagation
-- Fixed timeout for git-based test "uses plan base-ref to scale verification"
-
-### Docs
-
-- Improved README setup guidance with clearer installation instructions and collapsible reference panels (both English and Chinese) (@hepeng)
-- Added contributors wall to both README and README-zh (@Joechan11)
-
-### New Contributors
-* @felanny made their first contribution in #38
-* @Joechan11 made their first contribution in #44
-* @bevishe made their first contribution in #47
-* @kathy32 made their first contribution in #39
-* @gleami made their first contribution in #46
-
 ## What's Changed [0.3.3] - 2026-05-27
 
 ### Fixed

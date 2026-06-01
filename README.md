@@ -419,7 +419,7 @@ Track our development progress and upcoming features on the [Comet Roadmap](http
 ## Contributors
 
 <a href="https://github.com/rpamis/comet/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=rpamis/comet&max=999&columns=12&anon=1" />
+  <img src="https://contrib.rocks/image?repo=rpamis/comet&columns=12&anon=1" />
 </a>
 
 ## License
