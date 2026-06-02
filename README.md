@@ -426,6 +426,16 @@ Track our development progress and upcoming features on the [Comet Roadmap](http
 
 [MIT](LICENSE)
 
+## Community
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/wechat.jpg" alt="WeChat Group" width="200" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://github.com/rpamis/comet/blob/master/img/qq.jpg" alt="QQ Group" width="200" />
+</p>
+
+<p align="center">WeChat Group &nbsp;&nbsp;|&nbsp;&nbsp; QQ Group</p>
+
 ## Reference
 
 [LINUX DO - 新的理想型社区](https://linux.do/)

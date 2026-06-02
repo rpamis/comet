@@ -425,5 +425,15 @@ your-project/
 
 [MIT](LICENSE)
 
+## 社区交流
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/wechat.jpg" alt="微信群" width="200" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://github.com/rpamis/comet/blob/master/img/qq.jpg" alt="QQ群" width="200" />
+</p>
+
+<p align="center">微信群 &nbsp;&nbsp;|&nbsp;&nbsp; QQ群</p>
+
 ## 友情链接
 [LINUX DO - 新的理想型社区](https://linux.do/)
