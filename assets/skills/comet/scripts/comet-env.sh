@@ -32,16 +32,29 @@ _comet_bash_is_usable() {
 
 _comet_resolve_bash() {
   local _comet_bash_candidate
-  for _comet_bash_candidate in \
-    "${COMET_BASH:-}" \
-    "${BASH:-}" \
-    "$(command -v sh 2>/dev/null | awk '{ sub(/\/sh(\.exe)?$/, "/bash.exe"); print }')" \
-    "$(command -v bash 2>/dev/null || true)"; do
-    if _comet_bash_is_usable "$_comet_bash_candidate"; then
-      printf '%s\n' "$_comet_bash_candidate"
-      return 0
-    fi
-  done
+
+  if _comet_bash_is_usable "${COMET_BASH:-}"; then
+    printf '%s\n' "$COMET_BASH"
+    return 0
+  fi
+
+  if _comet_bash_is_usable "${BASH:-}"; then
+    printf '%s\n' "$BASH"
+    return 0
+  fi
+
+  _comet_bash_candidate="$(command -v sh 2>/dev/null | awk '{ sub(/\/sh(\.exe)?$/, "/bash.exe"); print }')"
+  if _comet_bash_is_usable "$_comet_bash_candidate"; then
+    printf '%s\n' "$_comet_bash_candidate"
+    return 0
+  fi
+
+  _comet_bash_candidate="$(command -v bash 2>/dev/null || true)"
+  if _comet_bash_is_usable "$_comet_bash_candidate"; then
+    printf '%s\n' "$_comet_bash_candidate"
+    return 0
+  fi
+
   return 1
 }
 

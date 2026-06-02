@@ -24,7 +24,10 @@ function findUsableBash() {
 
   for (const candidate of [...new Set(candidates)]) {
     const probe = spawnSync(candidate, ['-lc', 'uname -s'], { encoding: 'utf8' });
-    if (probe.status === 0 && probe.stdout.trim()) return candidate;
+    if (probe.status === 0 && probe.stdout.trim()) {
+      if (process.platform === 'win32' && /linux/i.test(probe.stdout)) continue;
+      return candidate;
+    }
   }
   return null;
 }
