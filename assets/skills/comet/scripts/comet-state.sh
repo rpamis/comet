@@ -205,6 +205,7 @@ cmd_init() {
 workflow: $workflow
 phase: $phase
 build_mode: $build_mode
+build_pause: null
 isolation: $isolation
 verify_mode: $verify_mode
 base_ref: $base_ref
@@ -264,13 +265,13 @@ cmd_set() {
       yellow "WARNING: Setting 'phase' directly bypasses state machine constraints." >&2
       yellow "  Consider using: comet-state.sh transition <change-name> <event>" >&2
       ;;
-    workflow|build_mode|isolation|verify_mode|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
+    workflow|build_mode|build_pause|isolation|verify_mode|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
       # Valid field
       ;;
     *)
       red "ERROR: Unknown field: '$field'" >&2
       red "Valid fields:" >&2
-      red "  workflow, phase, design_doc, plan, build_mode, isolation," >&2
+      red "  workflow, phase, design_doc, plan, build_mode, build_pause, isolation," >&2
       red "  verify_mode, verify_result, verification_report, branch_status," >&2
       red "  verified_at, created_at, archived, base_ref, direct_override," >&2
       red "  build_command, verify_command, handoff_context, handoff_hash" >&2
@@ -288,6 +289,9 @@ cmd_set() {
       ;;
     build_mode)
       validate_enum "$value" "subagent-driven-development" "executing-plans" "direct"
+      ;;
+    build_pause)
+      validate_enum "$value" "null" "plan-ready"
       ;;
     isolation)
       validate_enum "$value" "branch" "worktree"
@@ -632,7 +636,7 @@ cmd_recover() {
 
   # Read all relevant fields
   local design_doc plan verify_result verify_mode verification_report
-  local branch_status handoff_context handoff_hash isolation build_mode direct_override
+  local branch_status handoff_context handoff_hash isolation build_mode build_pause direct_override
   design_doc=$(cmd_get "$change_name" "design_doc")
   plan=$(cmd_get "$change_name" "plan")
   verify_result=$(cmd_get "$change_name" "verify_result")
@@ -643,6 +647,7 @@ cmd_recover() {
   handoff_hash=$(cmd_get "$change_name" "handoff_hash")
   isolation=$(cmd_get "$change_name" "isolation")
   build_mode=$(cmd_get "$change_name" "build_mode")
+  build_pause=$(cmd_get "$change_name" "build_pause" 2>/dev/null || true)
   direct_override=$(cmd_get "$change_name" "direct_override" 2>/dev/null || true)
 
   echo "State fields:"
@@ -688,6 +693,7 @@ cmd_recover() {
       echo "  Build decisions:"
       field_status "isolation" "$isolation"
       field_status "build_mode" "$build_mode"
+      field_status "build_pause" "$build_pause"
       if [ "$build_mode" = "direct" ] && [ "$workflow" != "hotfix" ] && [ "$workflow" != "tweak" ]; then
         field_status "direct_override" "$direct_override"
       fi
@@ -707,7 +713,13 @@ cmd_recover() {
         echo "  Tasks: tasks.md MISSING"
       fi
       echo ""
-      if [ "$isolation" = "null" ] || [ -z "$isolation" ]; then
+      if [ "$build_pause" = "plan-ready" ] && [ -n "$plan" ] && [ "$plan" != "null" ] && [ -f "$plan" ] && { [ "$isolation" = "null" ] || [ -z "$isolation" ] || [ "$build_mode" = "null" ] || [ -z "$build_mode" ]; }; then
+        echo "Recovery action: Plan-ready pause detected. Ask the user whether to continue, then choose isolation and build mode without regenerating the plan."
+      elif [ "$build_pause" = "plan-ready" ] && { [ -z "$plan" ] || [ "$plan" = "null" ] || [ ! -f "$plan" ]; }; then
+        echo "Recovery action: Plan-ready pause is recorded, but the plan file is missing. Restore the plan file or rerun writing-plans before choosing execution."
+      elif [ "$build_pause" = "plan-ready" ]; then
+        echo "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task."
+      elif [ "$isolation" = "null" ] || [ -z "$isolation" ]; then
         echo "Recovery action: Isolation not selected. Use AskUserQuestion to ask user for branch/worktree choice."
       elif [ "$build_mode" = "null" ] || [ -z "$build_mode" ]; then
         echo "Recovery action: Build mode not selected. Use AskUserQuestion to ask user for execution method."

@@ -53,7 +53,7 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-### 2. 更新计划状态
+### 2. 更新计划状态并提供 plan-ready 暂停点
 
 先记录 plan 路径：
 
@@ -63,7 +63,38 @@ git rev-parse HEAD
 
 无需手动更新 phase，guard 会在退出条件满足后自动流转。
 
+计划写入后，立即提供一个新的用户决策点：
+
+| 选项 | 行为 | 说明 |
+|------|------|------|
+| A | 继续执行 | 保持在当前模型中，进入 Step 3 选择工作区隔离和执行方式 |
+| B | 暂停切换模型 | 记录 `build_pause: plan-ready`，本次 `/comet-build` 停止，用户稍后可从 `/comet` 或 `/comet-build` 恢复 |
+
+这是用户决策点。**必须使用 AskUserQuestion 工具暂停并等待用户明确选择**，不得自动继续，也不得把暂停写入 `build_mode`。
+
+用户选择继续时：
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause null
+```
+
+用户选择暂停时：
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause plan-ready
+```
+
+设置 `build_pause: plan-ready` 后，当前调用停止。不要选择 `isolation` 或 `build_mode`，不要加载执行技能。
+
 ### 3. 选择工作方式
+
+如果恢复时检测到 `build_pause: plan-ready` 且 `plan` 文件存在，不要重新运行 `writing-plans`。先告知用户当前停在 plan-ready 暂停点；用户确认继续后，设置：
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause null
+```
+
+然后继续本步骤选择工作区隔离和执行方式。
 
 计划已写入当前分支。在开始执行前，**一次性询问用户**选择工作区隔离方式和执行方式：
 

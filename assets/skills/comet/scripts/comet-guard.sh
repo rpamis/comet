@@ -315,7 +315,7 @@ build_mode_selected() {
     subagent-driven-development|executing-plans|direct) return 0 ;;
     *)
       echo "build_mode must be selected before leaving build, got '${build_mode:-null}'" >&2
-      echo "Next: ask the user to choose an implementation mode, then run:" >&2
+      echo "Next: ask the user to choose an execution mode, then run:" >&2
       echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE build_mode <subagent-driven-development|executing-plans>" >&2
       return 1
       ;;
@@ -338,7 +338,7 @@ build_mode_allowed_for_workflow() {
         return 0
       fi
       echo "build_mode=direct is only allowed for hotfix/tweak unless direct_override: true is recorded" >&2
-      echo "Next: switch build_mode to executing-plans or subagent-driven-development, or stop and ask the user for an explicit direct override." >&2
+      echo "Next: choose executing-plans or subagent-driven-development, or stop and ask the user for an explicit direct override." >&2
       return 1
       ;;
   esac
