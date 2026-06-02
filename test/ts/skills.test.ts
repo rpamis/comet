@@ -239,8 +239,12 @@ describe('skills', () => {
       // MEDIUM: comet-verify Spec drift requires user choice
       expect(zhVerify).toContain('必须使用 AskUserQuestion 工具以单选题形式暂停并等待用户选择处理方式');
 
-      // MEDIUM: comet/SKILL.md build phase resume checks build_mode/isolation
-      expect(zhComet).toContain('先检查 `build_mode` 和 `isolation` 是否已设置');
+      // MEDIUM: comet/SKILL.md build phase resume recognizes plan-ready pause before build decisions
+      expect(zhComet).toContain('先检查 `build_pause`、`plan`、`build_mode` 和 `isolation`');
+      expect(zhComet).toContain('`build_pause: plan-ready` 且 plan 文件存在');
+      expect(zhComet).toContain('`build_pause` 不是执行方式，不得写入 `build_mode`');
+      expect(zhBuild).toContain('提供 plan-ready 暂停点');
+      expect(zhBuild).toContain('不得自动继续，也不得把暂停写入 `build_mode`');
 
       // MEDIUM: comet-verify Step 1b handles mixed CRITICAL/non-CRITICAL
       expect(zhVerify).toContain('CRITICAL 失败项必须修复');
@@ -330,7 +334,11 @@ describe('skills', () => {
       expect(enTweak).toContain('verify phase (comet-verify) verification-failure and branch-handling decisions');
       expect(enDesign).toContain('The brainstorming phase does not write to the Design Doc file');
       expect(enVerify).toContain('must use the AskUserQuestion tool as a single-select question to pause and wait for user to choose handling method');
-      expect(enComet).toContain('first check whether `build_mode` and `isolation` are set');
+      expect(enComet).toContain('first check `build_pause`, `plan`, `build_mode`, and `isolation`');
+      expect(enComet).toContain('`build_pause: plan-ready` and the plan file exists');
+      expect(enComet).toContain('`build_pause` is not an execution method and must not be written to `build_mode`');
+      expect(enBuild).toContain('Provide Plan-Ready Pause Point');
+      expect(enBuild).toContain('Must not auto-continue and must not write the pause into `build_mode`');
       expect(enVerify).toContain('CRITICAL failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
       expect(enHotfix).toContain('workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`');

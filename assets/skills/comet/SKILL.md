@@ -53,7 +53,11 @@ Prefer reading `openspec/changes/<name>/.comet.yaml`. If not available, fall bac
 **Resume rules**:
 - On every context resume, rerun Step 0 and Step 1; do not trust conversation history for phase detection
 - If there is an active change and the worktree has uncommitted changes, handle them through `comet/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions; this file does not repeat them
-- If `phase: build`, first check whether `build_mode` and `isolation` are set; if any fields are unset, return to `/comet-build` corresponding step to supplement before executing; if both are set, read the next unchecked task from tasks.md and continue
+- If `phase: build`, first check `build_pause`, `plan`, `build_mode`, and `isolation`:
+  - If `build_pause: plan-ready` and the plan file exists, return to the `/comet-build` plan-ready resume point, prompt the user to continue choosing isolation and execution method, and do not regenerate the plan
+  - If `build_pause: plan-ready` but the plan file is missing, return to `/comet-build` to handle corrupted state or regenerate the plan
+  - If `build_mode` or `isolation` is unset, return to the corresponding `/comet-build` step to supplement before executing
+  - If both are set, read the next unchecked task from tasks.md and continue
 - If `phase: verify` and `verify_result: fail`, enter the verification failure decision blocking point: pause and ask the user to fix or accept deviation; only after the user chooses fix, run `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` and invoke `/comet-build`
 - If `phase: open` but proposal/design/tasks are complete, first run `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply` to repair state, then continue detection
 - If `phase: archive`, only invoke `/comet-archive`; after archive succeeds, the change moves to the archive directory, so do not run guard against the old active directory
@@ -110,7 +114,7 @@ Flow chain: open → design → build → verify → archive
 Nodes requiring user participation (pause only at these nodes):
 1. Open phase proposal/design/tasks review and confirmation
 2. Confirm design approach during brainstorming
-3. Select workflow configuration during build phase (isolation + execution method, single interaction)
+3. Plan-ready pause choice during build phase, followed by workflow configuration selection (isolation + execution method)
 4. Decide to fix or accept deviation when verify fails (including Spec drift handling)
 5. Choose branch handling method for finishing-branch
 6. Encounter upgrade conditions (hotfix/tweak → full workflow)
@@ -171,6 +175,7 @@ design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md
 plan: docs/superpowers/plans/YYYY-MM-DD-feature.md
 base_ref: a1b2c3d4e5f6...
 build_mode: subagent-driven-development
+build_pause: null
 isolation: branch
 verify_mode: light
 verify_result: pending
@@ -189,6 +194,7 @@ archived: false
 | `plan` | Associated Superpowers Plan path, can be empty |
 | `base_ref` | Git commit SHA recorded at init, used for scale assessment. Serves as fallback when no plan exists |
 | `build_mode` | Selected execution method, can be empty |
+| `build_pause` | Internal build-phase pause point. `null` means no pause; `plan-ready` means the plan has been generated and the user chose to pause for switching models |
 | `isolation` | `branch` or `worktree`, workspace isolation method. Full workflow init may leave this as `null`, but only until `/comet-build` Step 3; hotfix/tweak default to `branch` |
 | `verify_mode` | `light` or `full`, can be empty |
 | `verify_result` | `pending`, `pass`, or `fail` |
@@ -210,6 +216,7 @@ State-machine hard constraints:
 - Before `build → verify`, `isolation` must be `branch` or `worktree`
 - Before `build → verify`, `build_mode` must be selected
 - `build_mode: direct` is allowed by default only for `hotfix` / `tweak`; full workflow requires `direct_override: true`
+- `build_pause` is not an execution method and must not be written to `build_mode`
 - These constraints are enforced by both `comet-guard.sh build --apply` and `comet-state.sh transition <name> build-complete`
 
 ### Script Location

@@ -243,7 +243,7 @@ preflight() {
   validate_script="$SCRIPT_DIR/comet-yaml-validate.sh"
   if [ -f "$validate_script" ]; then
     if ! "$COMET_BASH" "$validate_script" "$CHANGE" 2>/dev/null; then
-      "$COMET_BASH" "$validate_script" "$CHANGE"
+      "$COMET_BASH" "$validate_script" "$CHANGE" || true
       red "FATAL: .comet.yaml schema validation failed"
       exit 1
     fi

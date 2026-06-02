@@ -5,9 +5,31 @@ import os from 'os';
 import path from 'path';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
-const bashUname = (
-  spawnSync('bash', ['-lc', 'uname -s'], { encoding: 'utf-8' }).stdout || ''
-).trim();
+
+function findUsableBash(): string | null {
+  const candidates = [
+    process.env.COMET_TEST_BASH,
+    'bash',
+    ...(process.platform === 'win32'
+      ? [
+          'C:\\Program Files\\Git\\bin\\bash.exe',
+          'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+          'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+        ]
+      : []),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  for (const candidate of [...new Set(candidates)]) {
+    const probe = spawnSync(candidate, ['-lc', 'uname -s'], { encoding: 'utf-8' });
+    if (probe.status === 0 && probe.stdout.trim()) return candidate;
+  }
+  return null;
+}
+
+const bashCommand = findUsableBash();
+const bashUname = bashCommand
+  ? (spawnSync(bashCommand, ['-lc', 'uname -s'], { encoding: 'utf-8' }).stdout || '').trim()
+  : '';
 const isGitBash = /^(MINGW|MSYS|CYGWIN)/.test(bashUname);
 
 function toBashPath(filePath: string): string {
@@ -21,7 +43,10 @@ function toBashPath(filePath: string): string {
 }
 
 function runBash(cwd: string, script: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) {
-  return spawnSync('bash', [toBashPath(script), ...args], {
+  if (!bashCommand) {
+    throw new Error('comet shell script tests require Bash or Git Bash');
+  }
+  return spawnSync(bashCommand, [toBashPath(script), ...args], {
     cwd,
     encoding: 'utf-8',
     env: { ...process.env, ...env },
@@ -43,7 +68,9 @@ async function createChange(tmpDir: string, name: string, yaml: string, tasks = 
   return changeDir;
 }
 
-describe('comet shell scripts', () => {
+const describeShell = bashCommand ? describe : describe.skip;
+
+describeShell('comet shell scripts', () => {
   let tmpDir: string;
   let guardScript: string;
   let stateScript: string;
@@ -560,7 +587,7 @@ describe('comet shell scripts', () => {
     expect(guard.stderr).toContain('[FAIL] isolation selected');
     expect(guard.stderr).toContain('[FAIL] build_mode selected');
     expect(guard.stderr).toContain('Next: ask the user to choose branch or worktree');
-    expect(guard.stderr).toContain('Next: ask the user to choose an implementation mode');
+    expect(guard.stderr).toContain('Next: ask the user to choose an execution mode');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('isolation must be branch or worktree');
   }, 20_000);
@@ -657,9 +684,7 @@ describe('comet shell scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] build_mode allowed for workflow');
     expect(result.stderr).toContain('direct is only allowed for hotfix/tweak');
-    expect(result.stderr).toContain(
-      'Next: switch build_mode to executing-plans or subagent-driven-development',
-    );
+    expect(result.stderr).toContain('Next: choose executing-plans or subagent-driven-development');
   }, 20_000);
 
   it('prints actionable remediation for unfinished tasks', async () => {
@@ -1463,7 +1488,7 @@ describe('comet shell scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('build_pause: DONE (plan-ready)');
-      expect(result.stdout).toContain('plan-ready pause');
+      expect(result.stdout).toContain('Plan-ready pause');
       expect(result.stdout).toContain('choose isolation and build mode');
     });
 

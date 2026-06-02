@@ -53,7 +53,7 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-### 2. Update Plan Status
+### 2. Update Plan Status and Provide Plan-Ready Pause Point
 
 Record plan path:
 
@@ -63,7 +63,38 @@ Record plan path:
 
 No manual phase update needed — guard auto-transitions when exit conditions are met.
 
+After the plan is recorded, immediately provide a new user decision point:
+
+| Option | Behavior | Description |
+|--------|----------|-------------|
+| A | Continue execution | Stay in the current model and proceed to Step 3 to choose workspace isolation and execution method |
+| B | Pause to switch model | Record `build_pause: plan-ready`, stop this `/comet-build` invocation, and allow the user to resume later from `/comet` or `/comet-build` |
+
+This is a user decision point. **Must use the AskUserQuestion tool to pause and wait for the user to explicitly choose**. Must not auto-continue and must not write the pause into `build_mode`.
+
+When the user chooses to continue:
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause null
+```
+
+When the user chooses to pause:
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause plan-ready
+```
+
+After setting `build_pause: plan-ready`, stop the current invocation. Do not choose `isolation` or `build_mode`, and do not load an execution skill.
+
 ### 3. Select Workflow Configuration
+
+If resuming with `build_pause: plan-ready` and the `plan` file exists, do not rerun `writing-plans`. First tell the user the workflow is stopped at the plan-ready pause point; after the user confirms continuing, set:
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause null
+```
+
+Then continue this step to choose workspace isolation and execution method.
 
 Plan has been written to the current branch. Before starting execution, **ask the user to choose both workspace isolation and execution method in a single interaction**:
 

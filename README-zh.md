@@ -308,6 +308,7 @@ Comet 使用解耦状态架构，YAML 文件独立管理：
 workflow: full
 phase: build
 build_mode: subagent-driven-development
+build_pause: null
 isolation: branch
 verify_mode: null
 design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md
@@ -324,7 +325,7 @@ handoff_context: openspec/changes/<name>/.comet/handoff/design-context.json
 handoff_hash: <sha256>
 ```
 
-full workflow 初始化时 `build_mode`、`isolation` 和 `verify_mode` 可以暂时为 `null`；进入 `build → verify` 前必须完成 `build_mode` 与 `isolation` 决策并写入合法值。`verification_report` 在验证报告生成前保持 `null`，`verify-pass` 要求该报告文件存在且 `branch_status: handled`。示例中 `archived` 之后的字段是可选字段或脚本派生字段：`direct_override` 只在 full workflow 直接构建时需要，项目命令未配置时可以不存在，`handoff_context` 和 `handoff_hash` 由 `comet-handoff.sh` 在离开 design 阶段前写入。项目可在 change 或仓库根配置中设置 `build_command` / `verify_command`，guard 会优先运行并打印失败输出。
+full workflow 初始化时 `build_mode`、`build_pause`、`isolation` 和 `verify_mode` 可以暂时为 `null`；进入 `build → verify` 前必须完成 `build_mode` 与 `isolation` 决策并写入合法值。`build_pause` 记录 build 阶段内部暂停点：`null` 表示无暂停，`plan-ready` 表示 plan 已生成，用户在选择隔离方式和执行方式前暂停。它不是执行方式，不得写入 `build_mode`。`verification_report` 在验证报告生成前保持 `null`，`verify-pass` 要求该报告文件存在且 `branch_status: handled`。示例中 `archived` 之后的字段是可选字段或脚本派生字段：`direct_override` 只在 full workflow 直接构建时需要，项目命令未配置时可以不存在，`handoff_context` 和 `handoff_hash` 由 `comet-handoff.sh` 在离开 design 阶段前写入。项目可在 change 或仓库根配置中设置 `build_command` / `verify_command`，guard 会优先运行并打印失败输出。
 
 </details>
 
@@ -354,6 +355,7 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
 4. **Build 决策强制** — Guard 和状态转换同时拦截跳过关键选择
    - `isolation` 必须是 `branch` 或 `worktree`
    - `build_mode` 必须已选择
+   - `build_pause: plan-ready` 是 plan 生成后的可恢复暂停点，不是 `build_mode`
    - full workflow 的 `build_mode: direct` 必须有 `direct_override: true`
 
 5. **验证证据强制** — Guard 在阶段流转前强制要求验证凭证

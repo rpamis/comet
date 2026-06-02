@@ -309,6 +309,7 @@ All states and execution phases are updated via scripts, and each phase verifies
 workflow: full
 phase: build
 build_mode: subagent-driven-development
+build_pause: null
 isolation: branch
 verify_mode: null
 design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md
@@ -325,7 +326,7 @@ handoff_context: openspec/changes/<name>/.comet/handoff/design-context.json
 handoff_hash: <sha256>
 ```
 
-In full workflow, `build_mode`, `isolation`, and `verify_mode` may temporarily be `null`; `build_mode` and `isolation` must be resolved before `build → verify`. `verification_report` stays `null` until verification writes a report, and `verify-pass` requires that report to exist plus `branch_status: handled`. Fields after `archived` in the example are optional or script-derived: `direct_override` is only needed for full-workflow direct builds, project commands may be absent unless configured, and `handoff_context` / `handoff_hash` are recorded by `comet-handoff.sh` before leaving design. Projects can configure `build_command` / `verify_command` in the change or repo root, and guard will run those commands first and print failure output.
+In full workflow, `build_mode`, `build_pause`, `isolation`, and `verify_mode` may temporarily be `null`; `build_mode` and `isolation` must be resolved before `build → verify`. `build_pause` records an internal build-phase pause point: `null` means no pause, while `plan-ready` means the plan has been generated and the user paused before choosing isolation and execution mode. It is not an execution mode and must not be written into `build_mode`. `verification_report` stays `null` until verification writes a report, and `verify-pass` requires that report to exist plus `branch_status: handled`. Fields after `archived` in the example are optional or script-derived: `direct_override` is only needed for full-workflow direct builds, project commands may be absent unless configured, and `handoff_context` / `handoff_hash` are recorded by `comet-handoff.sh` before leaving design. Projects can configure `build_command` / `verify_command` in the change or repo root, and guard will run those commands first and print failure output.
 
 </details>
 
@@ -355,6 +356,7 @@ Comet ensures agent execution reliability through automated state transitions:
 4. **Build Decision Enforcement** — Guard and state transitions both block skipped build choices
    - `isolation` must be `branch` or `worktree`
    - `build_mode` must be selected before leaving build
+   - `build_pause: plan-ready` is a recoverable pause after plan generation, not a `build_mode`
    - Full workflow `build_mode: direct` requires `direct_override: true`
 
 5. **Verification Evidence** — Guard enforces proof before phase advance
