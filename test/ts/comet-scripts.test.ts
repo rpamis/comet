@@ -89,6 +89,17 @@ describe('comet shell scripts', () => {
     expect(yaml).toContain('branch_status: pending');
   }, 20_000);
 
+  it('initializes build_pause as null for new changes', async () => {
+    const result = runBash(tmpDir, stateScript, ['init', 'pause-defaults', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'pause-defaults', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('build_pause: null');
+  }, 20_000);
+
   it('comet-env.sh exports bundled script paths from its own directory', async () => {
     const envScript = path.join(tmpDir, 'scripts', 'comet-env.sh');
     const checkScript = path.join(tmpDir, 'check-env.sh');
@@ -173,6 +184,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -203,6 +215,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -288,6 +301,7 @@ describe('comet shell scripts', () => {
         'workflow: full # full process',
         'phase: design # ready for handoff',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -318,6 +332,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -365,6 +380,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -405,6 +421,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -433,6 +450,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -468,6 +486,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -514,6 +533,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -545,6 +565,69 @@ describe('comet shell scripts', () => {
     expect(transition.stderr).toContain('isolation must be branch or worktree');
   }, 20_000);
 
+  it('allows setting build_pause to plan-ready and back to null', async () => {
+    await createChange(
+      tmpDir,
+      'pause-set',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: null',
+        'build_pause: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const setPlanReady = runBash(tmpDir, stateScript, [
+      'set',
+      'pause-set',
+      'build_pause',
+      'plan-ready',
+    ]);
+    const planReady = runBash(tmpDir, stateScript, ['get', 'pause-set', 'build_pause']);
+    const setNull = runBash(tmpDir, stateScript, ['set', 'pause-set', 'build_pause', 'null']);
+    const pausedNull = runBash(tmpDir, stateScript, ['get', 'pause-set', 'build_pause']);
+
+    expect(setPlanReady.status).toBe(0);
+    expect(planReady.stdout.trim()).toBe('plan-ready');
+    expect(setNull.status).toBe(0);
+    expect(pausedNull.stdout.trim()).toBe('null');
+  }, 20_000);
+
+  it('rejects invalid build_pause values during schema validation', async () => {
+    await createChange(
+      tmpDir,
+      'invalid-build-pause',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: executing-plans',
+        'build_pause: paused',
+        'isolation: branch',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runBash(tmpDir, guardScript, ['invalid-build-pause', 'build']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("build_pause='paused' is not valid");
+    expect(result.stderr).toContain('FATAL: .comet.yaml schema validation failed');
+  }, 20_000);
+
   it('rejects direct build mode for full workflow without explicit override', async () => {
     await createChange(
       tmpDir,
@@ -553,6 +636,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: direct',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -586,6 +670,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -619,6 +704,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: direct',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -648,6 +734,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: direct',
+        'build_pause: null',
         'direct_override: true',
         'isolation: branch',
         'verify_mode: null',
@@ -678,6 +765,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'build_command: node build-check.js',
@@ -713,6 +801,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -793,6 +882,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: open',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -844,6 +934,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -878,6 +969,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: full',
         'verify_command: node verify-check.js',
@@ -918,6 +1010,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: archive',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: light',
         'design_doc: null',
@@ -944,6 +1037,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: archive',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: full',
         'design_doc: docs/superpowers/specs/ready-design.md',
@@ -1000,6 +1094,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -1036,6 +1131,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: open',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -1062,6 +1158,7 @@ describe('comet shell scripts', () => {
         'workflow: tweak',
         'phase: open',
         'build_mode: direct',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: light',
         'design_doc: null',
@@ -1088,6 +1185,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: full',
         'design_doc: null',
@@ -1148,6 +1246,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: light',
         'design_doc: null',
@@ -1182,6 +1281,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: light',
         'design_doc: null',
@@ -1220,6 +1320,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: open',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -1245,6 +1346,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: archive',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: full',
         'design_doc: null',
@@ -1276,6 +1378,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: open',
           'build_mode: null',
+          'build_pause: null',
           'isolation: null',
           'verify_mode: null',
           'design_doc: null',
@@ -1306,6 +1409,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: build',
           'build_mode: null',
+          'build_pause: null',
           'isolation: null',
           'verify_mode: null',
           'design_doc: null',
@@ -1327,6 +1431,42 @@ describe('comet shell scripts', () => {
       expect(result.stdout).toContain('AskUserQuestion');
     });
 
+    it('outputs plan-ready pause recovery context for build phase', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'pause-plan.md'),
+        'plan\n',
+      );
+      await createChange(
+        tmpDir,
+        'recover-plan-ready',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: null',
+          'build_pause: plan-ready',
+          'isolation: null',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: docs/superpowers/plans/pause-plan.md',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-plan-ready',
+        'build',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('build_pause: DONE (plan-ready)');
+      expect(result.stdout).toContain('plan-ready pause');
+      expect(result.stdout).toContain('choose isolation and build mode');
+    });
+
     it('outputs recovery context for verify phase with completed verification', async () => {
       await writeFile(
         path.join(tmpDir, 'docs', 'superpowers', 'reports', 'recover-verify.md'),
@@ -1339,6 +1479,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: verify',
           'build_mode: executing-plans',
+          'build_pause: null',
           'isolation: branch',
           'verify_mode: full',
           'design_doc: null',
@@ -1374,6 +1515,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: design',
           'build_mode: null',
+          'build_pause: null',
           'isolation: null',
           'verify_mode: null',
           'design_doc: null',
@@ -1421,6 +1563,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: build',
           'build_mode: executing-plans',
+          'build_pause: null',
           'isolation: branch',
           'verify_mode: null',
           'design_doc: null',
@@ -1453,6 +1596,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: build',
           'build_mode: executing-plans',
+          'build_pause: null',
           'isolation: branch',
           'verify_mode: null',
           'design_doc: null',
@@ -1486,6 +1630,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: archive',
           'build_mode: executing-plans',
+          'build_pause: null',
           'isolation: branch',
           'verify_mode: full',
           'design_doc: null',
@@ -1521,6 +1666,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: open',
           'build_mode: null',
+          'build_pause: null',
           'isolation: null',
           'verify_mode: null',
           'design_doc: null',
