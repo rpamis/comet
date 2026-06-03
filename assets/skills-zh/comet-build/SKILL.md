@@ -144,6 +144,12 @@ bash "$COMET_STATE" set <name> build_mode direct
 | 中 | 接口变更、新增组件、数据流变化 | **使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 `superpowers:brainstorming` 更新 Design Doc + delta spec |
 | 大 | 全新 capability 需求 | **必须使用 AskUserQuestion 工具暂停并等待用户确认拆分**；用户确认后，通过 `/comet-open` 创建独立 change |
 
+当因中等规模变更加载 `superpowers:brainstorming` 时，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：
+
+```text
+Language: 使用触发本次工作流的用户请求语言输出。
+```
+
 **50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须使用 AskUserQuestion 工具暂停并等待用户决定是否拆分为新 change**。
 
 创建独立 change 时必须调用 `/comet-open`，不得直接调用 `/opsx:new`。`/comet-open` 会同时创建 OpenSpec 产物和 `.comet.yaml`，避免新 change 脱离 Comet 状态机。

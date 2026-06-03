@@ -144,6 +144,12 @@ When the initial spec is found incomplete during implementation, handle by scale
 | Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load `superpowers:brainstorming` to update Design Doc + delta spec |
 | Large | Brand-new capability requirements | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm the split**; after user confirms, create independent change through `/comet-open` |
 
+When loading `superpowers:brainstorming` for a medium-scale Spec incremental update, ARGUMENTS must include the same Language constraint as Step 1:
+
+```text
+Language: Use the language of the user request that triggered this workflow.
+```
+
 **50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, **must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change**. Must not just output a text prompt and then continue executing.
 
 When creating an independent change, must invoke `/comet-open`, not `/opsx:new` directly. `/comet-open` creates both OpenSpec artifacts and `.comet.yaml`, preventing the new change from leaving the Comet state machine.

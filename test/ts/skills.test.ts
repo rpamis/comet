@@ -396,6 +396,9 @@ describe('skills', () => {
       expect(zhSkills['comet-build']).toContain(
         '计划文件和执行反馈必须使用触发本次工作流的用户请求语言',
       );
+      expect(zhSkills['comet-build']).toContain(
+        'ARGUMENTS 必须包含与 Step 1 相同的 Language 约束',
+      );
       expect(zhSkills['comet-verify']).toContain(
         '验证报告和分支处理说明必须使用触发本次工作流的用户请求语言',
       );
@@ -421,6 +424,9 @@ describe('skills', () => {
       );
       expect(enSkills['comet-build']).toContain(
         'Plan files and execution feedback must use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-build']).toContain(
+        'ARGUMENTS must include the same Language constraint as Step 1',
       );
       expect(enSkills['comet-verify']).toContain(
         'Verification reports and branch-handling notes must use the language of the user request that triggered this workflow',
