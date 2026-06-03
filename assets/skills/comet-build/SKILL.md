@@ -157,6 +157,15 @@ After the skill loads, follow its guidance to execute:
 - Complete tasks.md check (`- [ ]` → `- [x]`)
 - Commit code after each task completion
 
+**`executing-plans` review gate**:
+
+When `build_mode` is `executing-plans`, after all planned tasks are complete and before running the build → verify phase guard, must dispatch a code reviewer at least once.
+
+Requirements:
+- review must happen before `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`
+- CRITICAL review findings must be fixed first and must not be carried into verify
+- if non-CRITICAL review findings are accepted, record the acceptance reason and impact scope in tasks.md, the commit body, a verification report draft, or another durable artifact
+
 ### 4. Spec Incremental Updates
 
 When the initial spec is found incomplete during implementation, handle by scale:
@@ -194,6 +203,7 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - Project-specific build/tests explicitly run and pass; do not rely only on guard auto-detection
 - `isolation` has been written as `branch` or `worktree`
 - `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override
+- If `build_mode` is `executing-plans`, a code reviewer has been dispatched at least once, and CRITICAL review findings have been fixed or non-CRITICAL review findings have recorded acceptance rationale
 - **Phase guard**: Run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; after all PASS, state advances to `phase: verify`
 
 Guard reads project command configuration first:
