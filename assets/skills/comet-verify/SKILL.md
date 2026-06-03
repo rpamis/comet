@@ -73,14 +73,14 @@ When verification does not pass, **must use the AskUserQuestion tool to pause an
 
 When pausing, must list:
 - Failed items
-- Whether CRITICAL (build failure, test failure, security issues, core acceptance scenario failure)
+- Whether CRITICAL or IMPORTANT (build failure, test failure, security issues, core acceptance scenario failure, lightweight code review correctness/security/edge-case issue)
 - Recommended handling approach
 
 **Uncertainty principle**: When severity is unclear, downgrade (SUGGESTION > WARNING > CRITICAL). Only use CRITICAL for build failures, test failures, and security issues; ambiguous or uncertain issues should be WARNING or SUGGESTION.
 
 After user selection, continue as follows:
 - **Fix all**: Run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build` to fix
-- **Handle item by item**: CRITICAL failures must be fixed; non-CRITICAL failures may choose to accept deviation, but must record acceptance reason and impact scope in verification report. If any CRITICAL failure exists, skipping fix to accept all is not allowed
+- **Handle item by item**: CRITICAL or IMPORTANT failures must be fixed; WARNING/SUGGESTION failures may choose to accept deviation, but must record acceptance reason and impact scope in verification report. If any CRITICAL or IMPORTANT failure exists, skipping fix to accept all is not allowed
 
 ### 2a. Lightweight Verification (Small Changes)
 

@@ -22,6 +22,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Lightweight verification consistency**: Hotfix documentation now describes the 6-item lightweight verification path, and Step 1b treats CRITICAL and IMPORTANT failures as blocking so code-review pass criteria and failure handling agree.
 - **Crash due to unbound variables in `set -u`**: When `comet-state check --recover` is missing `tasks.md` during the build phase, the `pending` variable is not declared, causing the script to exit directly; this is fixed by moving the `local` declaration forward and adding an explicit branch `tasks.md MISSING` to the recovery action chain.
 - **Path truncation risk**: `field_status` using `${var%% *}` on `design_doc` may truncate paths containing spaces; changed to `${var% }` to only remove trailing spaces.
 - **Inconsistent reading style for optional fields**: `direct_override` uses `|| echo ""` while other optional fields use `|| true`; unified to `|| true` to be consistent with `cmd_scale`.

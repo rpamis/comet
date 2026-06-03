@@ -73,14 +73,14 @@ bash "$COMET_STATE" set <change-name> verify_mode full
 
 暂停时必须列出：
 - 失败项
-- 是否属于 CRITICAL（构建失败、测试失败、安全问题、核心验收场景失败）
+- 是否属于 CRITICAL 或 IMPORTANT（构建失败、测试失败、安全问题、核心验收场景失败、简化代码审查的正确性/安全/边界问题）
 - 推荐处理方式
 
 **不确定性原则**：无法确定严重程度时，降级处理（SUGGESTION > WARNING > CRITICAL）。仅对构建失败、测试失败、安全问题使用 CRITICAL；模糊或不确定的问题标为 WARNING 或 SUGGESTION。
 
 用户选择后按以下方式继续：
 - **全部修复**：运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build` 修复
-- **逐项处理**：CRITICAL 失败项必须修复；非 CRITICAL 失败项可选择接受偏差，但必须在验证报告中记录接受原因和影响范围。若存在任何 CRITICAL 失败项，不允许跳过修复直接全部接受
+- **逐项处理**：CRITICAL 或 IMPORTANT 失败项必须修复；WARNING/SUGGESTION 失败项可选择接受偏差，但必须在验证报告中记录接受原因和影响范围。若存在任何 CRITICAL 或 IMPORTANT 失败项，不允许跳过修复直接全部接受
 
 ### 2a. 轻量验证（小改动）
 
