@@ -344,6 +344,27 @@ build_mode_allowed_for_workflow() {
   esac
 }
 
+subagent_dispatch_confirmed() {
+  local build_mode subagent_dispatch
+  build_mode=$(yaml_field_value "build_mode" 2>/dev/null || true)
+  subagent_dispatch=$(yaml_field_value "subagent_dispatch" 2>/dev/null || true)
+
+  if [ "$build_mode" != "subagent-driven-development" ]; then
+    return 0
+  fi
+
+  if [ "$subagent_dispatch" = "confirmed" ]; then
+    return 0
+  fi
+
+  echo "subagent_dispatch must be confirmed before using build_mode=subagent-driven-development" >&2
+  echo "Next: confirm the current platform has a real background subagent/Task/multi-agent dispatcher, then run:" >&2
+  echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE subagent_dispatch confirmed" >&2
+  echo "Or ask the user to switch to executing-plans and run:" >&2
+  echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE build_mode executing-plans" >&2
+  return 1
+}
+
 verify_result_is_pass() {
   local result
   result=$(yaml_field_value "verify_result" 2>/dev/null || true)
@@ -519,6 +540,7 @@ guard_build() {
   check "isolation selected" isolation_selected
   check "build_mode selected" build_mode_selected
   check "build_mode allowed for workflow" build_mode_allowed_for_workflow
+  check "subagent dispatch confirmed" subagent_dispatch_confirmed
   check "tasks.md all tasks checked" tasks_all_done
   check "proposal.md exists" file_nonempty "$CHANGE_DIR/proposal.md"
   check "Build passes" build_passes

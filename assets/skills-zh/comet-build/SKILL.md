@@ -123,14 +123,19 @@ git rev-parse HEAD
 
 这是用户决策点。**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择隔离方式和执行方式**，不得根据推荐规则自行选择 `branch` 或 `worktree`，也不得根据推荐规则自行选择执行方式。推荐规则只能用于说明建议，不能替代用户确认。若当前平台没有结构化提问工具，则在对话中提出同等选项并停止流程，等待用户回复后才能继续。
 
-用户选择后，更新 `isolation` 和 `build_mode` 字段：
+用户选择后，更新 `isolation` 和执行方式相关字段：
 
 ```bash
 "$COMET_BASH" "$COMET_STATE" set <name> isolation <branch|worktree>
-"$COMET_BASH" "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing-plans|direct>
 ```
 
+- 若用户选择 `executing-plans`：运行 `"$COMET_BASH" "$COMET_STATE" set <name> subagent_dispatch null`，再运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`
+- 若用户选择 `subagent-driven-development`：先确认当前平台存在可调用的真实后台 subagent / Task / multi-agent 调度能力；确认后先运行 `"$COMET_BASH" "$COMET_STATE" set <name> subagent_dispatch confirmed`，再运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_mode subagent-driven-development`
+- 若无法确认真实后台调度能力，不得写入 `build_mode: subagent-driven-development`；必须暂停等待用户改选 `executing-plans`
+
 `isolation` 是脚本级硬约束。full workflow 初始化时可以为 `null`，但只允许存在到本步骤之前。若保持 `null`，`build → verify` 的 guard 和 `comet-state transition build-complete` 都会失败。
+
+`subagent_dispatch` 是脚本级硬约束。`build_mode: subagent-driven-development` 离开 build 阶段前必须同时满足 `subagent_dispatch: confirmed`，否则 `comet-guard.sh build --apply` 和 `comet-state transition build-complete` 都会失败。
 
 `build_mode` 默认仅 hotfix/tweak preset 使用 `direct`。full workflow 不得默认使用 `direct`。只有用户明确要求跳过计划执行技能，且你已记录显式 override 时，才允许：
 
@@ -148,11 +153,13 @@ git rev-parse HEAD
 
 创建隔离后，确认计划文件可访问（分支方式天然可访问；worktree 方式需确认计划已提交）。
 
-**加载执行技能**：使用 Skill 工具加载对应技能。禁止跳过此步骤。
+**执行计划**：必须按 `build_mode` 的真实运行位置处理。
 
-如所选 Superpowers 技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。
+- `build_mode: executing-plans`：在主窗口使用 Skill 工具加载 Superpowers `executing-plans` 技能并按计划执行。若该技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。
+- `build_mode: subagent-driven-development`：主窗口只负责协调，不得把 `subagent-driven-development` 当作当前主窗口的执行技能直接运行；必须使用已确认的当前平台真实后台 subagent / Task / multi-agent 调度能力，把下一个未完成任务派发到后台 subagent。后台 subagent 需要自行加载 Superpowers `subagent-driven-development` 相关执行流程，并按其指引完成实现、检查和提交。
+- 如果当前平台没有真实后台 subagent / Task / multi-agent 调度能力，必须暂停并等待用户选择改用主窗口执行。用户选择改用主窗口执行后，必须先运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`，再按 `build_mode: executing-plans` 分支加载 Superpowers `executing-plans` 技能。用户未明确选择前，不得继续执行任务。
 
-技能加载后，按其指引执行：
+执行开始后，按所选分支完成：
 - 按计划执行任务
 - 完成 tasks.md 勾选（`- [ ]` → `- [x]`）
 - 每个任务完成后提交代码
@@ -203,7 +210,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - 代码已提交
 - 已显式运行项目对应的构建/测试命令并通过（不要只依赖 guard 自动猜测）
 - `isolation` 已写为 `branch` 或 `worktree`
-- `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`
+- `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`；若为 `subagent-driven-development`，`subagent_dispatch` 必须为 `confirmed`
 - **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后自动流转到 `phase: verify`
 
 Guard 会优先读取项目配置中的命令：

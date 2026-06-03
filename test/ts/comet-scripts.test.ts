@@ -130,6 +130,17 @@ describeShell('comet shell scripts', () => {
     expect(yaml).toContain('build_pause: null');
   }, 20_000);
 
+  it('initializes subagent_dispatch as null for new changes', async () => {
+    const result = runBash(tmpDir, stateScript, ['init', 'subagent-dispatch-defaults', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'subagent-dispatch-defaults', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('subagent_dispatch: null');
+  }, 20_000);
+
   it('comet-env.sh exports bundled script paths from its own directory', async () => {
     const envScript = path.join(tmpDir, 'scripts', 'comet-env.sh');
     const checkScript = path.join(tmpDir, 'check-env.sh');
@@ -658,6 +669,34 @@ describeShell('comet shell scripts', () => {
     expect(result.stderr).toContain('FATAL: .comet.yaml schema validation failed');
   }, 20_000);
 
+  it('rejects invalid subagent_dispatch values during schema validation', async () => {
+    await createChange(
+      tmpDir,
+      'invalid-subagent-dispatch',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'subagent_dispatch: fake',
+        'isolation: branch',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runBash(tmpDir, guardScript, ['invalid-subagent-dispatch', 'build']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("subagent_dispatch='fake' is not valid");
+    expect(result.stderr).toContain('FATAL: .comet.yaml schema validation failed');
+  }, 20_000);
+
   it('rejects direct build mode for full workflow without explicit override', async () => {
     await createChange(
       tmpDir,
@@ -783,6 +822,78 @@ describeShell('comet shell scripts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('[PASS] build_mode allowed for workflow');
+  }, 20_000);
+
+  it('rejects subagent build mode without confirmed background dispatch', async () => {
+    await createChange(
+      tmpDir,
+      'subagent-unconfirmed',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: subagent-driven-development',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'isolation: branch',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      '- [x] done\n',
+    );
+    await writeFile(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+    );
+
+    const guard = runBash(tmpDir, guardScript, ['subagent-unconfirmed', 'build']);
+    const transition = runBash(tmpDir, stateScript, [
+      'transition',
+      'subagent-unconfirmed',
+      'build-complete',
+    ]);
+
+    expect(guard.status).not.toBe(0);
+    expect(guard.stderr).toContain('[FAIL] subagent dispatch confirmed');
+    expect(guard.stderr).toContain('subagent_dispatch must be confirmed');
+    expect(transition.status).not.toBe(0);
+    expect(transition.stderr).toContain('subagent_dispatch must be confirmed');
+  }, 20_000);
+
+  it('allows subagent build mode when background dispatch is confirmed', async () => {
+    await createChange(
+      tmpDir,
+      'subagent-confirmed',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: subagent-driven-development',
+        'build_pause: null',
+        'subagent_dispatch: confirmed',
+        'isolation: branch',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      '- [x] done\n',
+    );
+    await writeFile(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+    );
+
+    const result = runBash(tmpDir, guardScript, ['subagent-confirmed', 'build']);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('[PASS] subagent dispatch confirmed');
   }, 20_000);
 
   it('runs configured build command and prints its failure output', async () => {
@@ -1493,6 +1604,114 @@ describeShell('comet shell scripts', () => {
       expect(result.stdout).toContain('build_pause: DONE (plan-ready)');
       expect(result.stdout).toContain('Plan-ready pause');
       expect(result.stdout).toContain('choose isolation and build mode');
+    });
+
+    it('outputs subagent dispatch guidance when recovering build phase with pending tasks', async () => {
+      await createChange(
+        tmpDir,
+        'recover-subagent',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: subagent-driven-development',
+          'build_pause: null',
+          'subagent_dispatch: confirmed',
+          'isolation: branch',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: docs/superpowers/plans/subagent-plan.md',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+        ['- [x] done task', '- [ ] pending task'].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-subagent',
+        'build',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('build_mode: DONE (subagent-driven-development)');
+      expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
+      expect(result.stdout).toContain('dispatch a real background subagent');
+      expect(result.stdout).toContain('Do not execute the pending task directly in the main window');
+    });
+
+    it('requires subagent dispatch confirmation when recovering subagent build mode', async () => {
+      await createChange(
+        tmpDir,
+        'recover-subagent-unconfirmed',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: subagent-driven-development',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'isolation: branch',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: docs/superpowers/plans/subagent-plan.md',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+        ['- [x] done task', '- [ ] pending task'].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-subagent-unconfirmed',
+        'build',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('subagent_dispatch: PENDING');
+      expect(result.stdout).toContain('Subagent dispatch is not confirmed');
+      expect(result.stdout).toContain('set subagent_dispatch to confirmed');
+      expect(result.stdout).toContain('set build_mode to executing-plans');
+    });
+
+    it('keeps subagent dispatch guidance when plan-ready pause is stale', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'stale-subagent-plan.md'),
+        'plan\n',
+      );
+      await createChange(
+        tmpDir,
+        'recover-stale-subagent',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: subagent-driven-development',
+          'build_pause: plan-ready',
+          'subagent_dispatch: confirmed',
+          'isolation: branch',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: docs/superpowers/plans/stale-subagent-plan.md',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+        ['- [x] done task', '- [ ] pending task'].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-stale-subagent',
+        'build',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Plan-ready pause is stale');
+      expect(result.stdout).toContain('dispatch a real background subagent');
+      expect(result.stdout).toContain('Do not execute the pending task directly in the main window');
     });
 
     it('outputs recovery context for verify phase with completed verification', async () => {

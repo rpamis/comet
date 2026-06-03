@@ -259,6 +259,7 @@ describe('skills', () => {
       expect(zhComet).toContain('先检查 `build_pause`、`plan`、`build_mode` 和 `isolation`');
       expect(zhComet).toContain('`build_pause: plan-ready` 且 plan 文件存在');
       expect(zhComet).toContain('`build_pause` 不是执行方式，不得写入 `build_mode`');
+      expect(zhComet).toContain('若 `build_pause: plan-ready` 但 `isolation` 和 `build_mode` 已经设置，则视为 stale pause');
       expect(zhBuild).toContain('提供 plan-ready 暂停点');
       expect(zhBuild).toContain('不得自动继续，也不得把暂停写入 `build_mode`');
 
@@ -295,6 +296,13 @@ describe('skills', () => {
       expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `using-git-worktrees`');
       expect(zhBuild).not.toContain('或使用原生 `EnterWorktree` 工具');
       expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `brainstorming`');
+      expect(zhComet).toContain('若 `build_mode: subagent-driven-development`，不得在主窗口直接执行任务');
+      expect(zhBuild).toContain('主窗口只负责协调，不得把 `subagent-driven-development` 当作当前主窗口的执行技能直接运行');
+      expect(zhBuild).toContain('如果当前平台没有真实后台 subagent / Task / multi-agent 调度能力');
+      expect(zhBuild).toContain('先确认当前平台存在可调用的真实后台 subagent / Task / multi-agent 调度能力');
+      expect(zhBuild).toContain('`"$COMET_BASH" "$COMET_STATE" set <name> subagent_dispatch confirmed`');
+      expect(zhBuild).toContain('用户选择改用主窗口执行后，必须先运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`');
+      expect(zhBuild).not.toContain('使用 Skill 工具加载对应技能');
       expect(zhHotfix).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhTweak).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhVerify).toContain('用户选择 B 后，运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`');
