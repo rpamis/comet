@@ -664,7 +664,7 @@ cmd_recover() {
         fi
       done
       echo ""
-      echo "Recovery action: Create or complete missing artifacts, then use AskUserQuestion for user confirmation."
+      echo "Recovery action: Create or complete missing artifacts, then use the current platform's user confirmation mechanism."
       ;;
     design)
       echo "  Artifacts:"
@@ -720,9 +720,9 @@ cmd_recover() {
       elif [ "$build_pause" = "plan-ready" ]; then
         echo "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task."
       elif [ "$isolation" = "null" ] || [ -z "$isolation" ]; then
-        echo "Recovery action: Isolation not selected. Use AskUserQuestion to ask user for branch/worktree choice."
+        echo "Recovery action: Isolation not selected. Use the current platform's user confirmation mechanism to ask user for branch/worktree choice."
       elif [ "$build_mode" = "null" ] || [ -z "$build_mode" ]; then
-        echo "Recovery action: Build mode not selected. Use AskUserQuestion to ask user for execution method."
+        echo "Recovery action: Build mode not selected. Use the current platform's user confirmation mechanism to ask user for execution method."
       elif [ ! -f "$tasks_file" ]; then
         echo "Recovery action: tasks.md missing. Verify change directory integrity."
       elif [ "$pending" -gt 0 ]; then

@@ -207,19 +207,19 @@ describe('skills', () => {
       );
 
       expect(zhComet).toContain('决策点是阻塞点');
-      expect(zhDesign).toContain('必须使用 AskUserQuestion 工具暂停并等待用户明确确认设计方案');
+      expect(zhDesign).toContain('必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确确认设计方案');
       expect(zhBuild).toContain('不得根据推荐规则自行选择 `branch` 或 `worktree`');
       expect(zhBuild).toContain('不得根据推荐规则自行选择执行方式');
-      expect(zhVerify).toContain('验证不通过时**必须使用 AskUserQuestion 工具暂停并等待用户决定修复或接受偏差');
-      expect(zhVerify).toContain('必须使用 AskUserQuestion 工具暂停并等待用户选择分支处理方式');
+      expect(zhVerify).toContain('验证不通过时**必须使用当前平台可用的用户输入/确认机制暂停并等待用户决定修复或接受偏差');
+      expect(zhVerify).toContain('必须使用当前平台可用的用户输入/确认机制暂停并等待用户选择分支处理方式');
       expect(zhVerify).toContain(
         '只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`',
       );
       expect(zhHotfix).toContain(
-        '满足升级条件时**必须使用 AskUserQuestion 工具暂停并等待用户明确确认**升级为完整 `/comet` 流程',
+        '满足升级条件时**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确确认**升级为完整 `/comet` 流程',
       );
       expect(zhHotfix).toContain('不得直接进入 `/comet-design`');
-      expect(zhTweak).toContain('满足升级条件时**必须使用 AskUserQuestion 工具暂停并等待用户明确确认**升级为完整 `/comet` 流程');
+      expect(zhTweak).toContain('满足升级条件时**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确确认**升级为完整 `/comet` 流程');
       expect(zhTweak).toContain('不得直接进入 `/comet-design`');
       expect(zhComet).toContain('`verify_result: fail` → 进入验证失败决策阻塞点');
       expect(zhComet).not.toContain(
@@ -237,7 +237,7 @@ describe('skills', () => {
       expect(zhDesign).toContain('brainstorming 阶段不写入 Design Doc 文件');
 
       // MEDIUM: comet-verify Spec drift requires user choice
-      expect(zhVerify).toContain('必须使用 AskUserQuestion 工具以单选题形式暂停并等待用户选择处理方式');
+      expect(zhVerify).toContain('必须使用当前平台可用的用户输入/确认机制以单选题形式暂停并等待用户选择处理方式');
 
       // MEDIUM: comet/SKILL.md build phase resume recognizes plan-ready pause before build decisions
       expect(zhComet).toContain('先检查 `build_pause`、`plan`、`build_mode` 和 `isolation`');
@@ -255,11 +255,11 @@ describe('skills', () => {
 
       // LOW: comet-build "中" level requires user confirmation before brainstorming
       expect(zhBuild).toContain(
-        '使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming`',
+        '使用当前平台可用的用户输入/确认机制暂停并等待用户确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming`',
       );
 
       // LOW: comet-build 50% threshold is a hard decision point
-      expect(zhBuild).toContain('必须使用 AskUserQuestion 工具暂停并等待用户决定是否拆分为新 change');
+      expect(zhBuild).toContain('必须使用当前平台可用的用户输入/确认机制暂停并等待用户决定是否拆分为新 change');
 
       // LOW: comet-verify Step 2b disambiguates design.md vs Design Doc
       expect(zhVerify).toContain('实现符合 `openspec/changes/<name>/design.md` 高层设计决策');
@@ -282,6 +282,20 @@ describe('skills', () => {
       expect(zhHotfix).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhTweak).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhVerify).toContain('用户选择 B 后，运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`');
+
+      // CRITICAL: implementation-time crashes must enter systematic debugging and keep tests in the current change.
+      expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `systematic-debugging` 技能');
+      expect(zhBuild).toContain('运行程序、测试、构建或手动验证时出现崩溃、异常行为、测试失败或构建失败');
+      expect(zhBuild).toContain('先补充能复现该崩溃/异常的最小失败测试');
+      expect(zhBuild).toContain('不得通过另起一个“写测试用例”的 change 来替代当前 change 的验证闭环');
+      expect(zhHotfix).toContain('必须使用 Skill 工具加载 Superpowers `systematic-debugging` 技能');
+      expect(zhHotfix).toContain('先补充能复现该崩溃/异常的最小失败测试');
+
+      // CRITICAL: user-confirmation gates must not hardcode a platform-specific tool name.
+      expect(
+        [zhComet, zhDesign, zhBuild, zhVerify, zhHotfix, zhTweak].join('\n'),
+      ).not.toContain('AskUserQuestion');
+      expect(zhComet).toContain('若当前平台没有结构化提问工具，则必须在对话中提出明确选项并停止流程');
     });
   });
 

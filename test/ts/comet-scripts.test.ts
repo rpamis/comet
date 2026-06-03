@@ -1456,7 +1456,7 @@ describeShell('comet shell scripts', () => {
       expect(result.stdout).toContain('isolation: PENDING');
       expect(result.stdout).toContain('build_mode: PENDING');
       expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
-      expect(result.stdout).toContain('AskUserQuestion');
+      expect(result.stdout).toContain("current platform's user confirmation mechanism");
     });
 
     it('outputs plan-ready pause recovery context for build phase', async () => {

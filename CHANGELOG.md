@@ -2,6 +2,22 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.3.7] - 2026-06-03
+
+### Added
+
+- **Stale PR automation**: Added a scheduled and manually runnable GitHub Actions workflow that marks inactive pull requests stale after 90 days and closes them after another 30 days, helping keep long-idle review queues manageable.
+
+### Changed
+
+- **Systematic debugging gate**: Chinese build and hotfix skills now require loading Superpowers `systematic-debugging` when implementation-time crashes, unexpected behavior, test failures, or build failures appear, ensuring root-cause investigation and in-change regression tests happen before source fixes.
+- **Platform-neutral confirmation gates**: Chinese Comet skills and recovery messages now refer to the current platform's user input/confirmation mechanism instead of hard-coding `AskUserQuestion`, preventing Codex users from being directed to a tool that may not exist while preserving blocking user decisions.
+
+### Tests
+
+- **Debug gate regression**: Added Chinese skill safeguard coverage for systematic-debugging invocation, minimal failing-test requirements, and keeping crash verification inside the current change.
+- **Confirmation mechanism regression**: Added coverage that Chinese workflow decision gates no longer hard-code `AskUserQuestion` and that recovery output points agents to a platform-neutral confirmation mechanism.
+
 ## What's Changed [0.3.6] - 2026-06-02
 
 ### Added
