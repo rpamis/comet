@@ -23,7 +23,7 @@ if [ -z "$COMET_ENV" ]; then
   return 1
 fi
 . "$COMET_ENV"
-bash "$COMET_STATE" check <change-name> verify
+"$COMET_BASH" "$COMET_STATE" check <change-name> verify
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
@@ -35,7 +35,7 @@ bash "$COMET_STATE" check <change-name> verify
 执行规模评估：
 
 ```bash
-bash "$COMET_STATE" scale <change-name>
+"$COMET_BASH" "$COMET_STATE" scale <change-name>
 ```
 
 脚本自动统计任务数、增量规格数、变更文件数，判断使用 light 或 full 验证模式，并设置 verify_mode 字段。
@@ -50,13 +50,13 @@ bash "$COMET_STATE" scale <change-name>
 
 ```bash
 # 仅在用户确认修复后执行
-bash "$COMET_STATE" transition <change-name> verify-fail
+"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
 ```
 
 注意：如果 build 阶段每个任务都已提交，脚本基于工作区 diff 的文件数可能低估改动规模。此时必须读取 plan 文件头的 `base-ref` 并用提交区间复核：
 
 ```bash
-PLAN=$(bash "$COMET_STATE" get <change-name> plan)
+PLAN=$("$COMET_BASH" "$COMET_STATE" get <change-name> plan)
 BASE_REF=$(grep '^base-ref:' "$PLAN" 2>/dev/null | head -1 | sed 's/^base-ref: *//')
 git diff --stat "$BASE_REF"...HEAD
 ```
@@ -64,12 +64,12 @@ git diff --stat "$BASE_REF"...HEAD
 若提交区间显示改动超过轻量阈值（> 4 个文件、跨模块协调、或 delta spec 超过 1 个 capability），手动设置为完整验证：
 
 ```bash
-bash "$COMET_STATE" set <change-name> verify_mode full
+"$COMET_BASH" "$COMET_STATE" set <change-name> verify_mode full
 ```
 
 ### 1b. 验证失败决策（阻塞点）
 
-验证不通过时**必须使用 AskUserQuestion 工具暂停并等待用户决定修复或接受偏差**。不得自动运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，也不得自动调用 `/comet-build`。禁止仅输出文字提示后继续执行。
+验证不通过时**必须使用 AskUserQuestion 工具暂停并等待用户决定修复或接受偏差**。不得自动运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，也不得自动调用 `/comet-build`。禁止仅输出文字提示后继续执行。
 
 暂停时必须列出：
 - 失败项
@@ -79,7 +79,7 @@ bash "$COMET_STATE" set <change-name> verify_mode full
 **不确定性原则**：无法确定严重程度时，降级处理（SUGGESTION > WARNING > CRITICAL）。仅对构建失败、测试失败、安全问题使用 CRITICAL；模糊或不确定的问题标为 WARNING 或 SUGGESTION。
 
 用户选择后按以下方式继续：
-- **全部修复**：运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build` 修复
+- **全部修复**：运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build` 修复
 - **逐项处理**：CRITICAL 或 IMPORTANT 失败项必须修复；WARNING/SUGGESTION 失败项可选择接受偏差，但必须在验证报告中记录接受原因和影响范围。若存在任何 CRITICAL 或 IMPORTANT 失败项，不允许跳过修复直接全部接受
 
 ### 2a. 轻量验证（小改动）
@@ -101,7 +101,7 @@ bash "$COMET_STATE" set <change-name> verify_mode full
 
 ```bash
 # 仅在用户确认修复后执行
-bash "$COMET_STATE" transition <change-name> verify-fail
+"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
 ```
 
 **报告格式**：简表列出 6 项检查结果 + PASS/FAIL。
@@ -131,20 +131,20 @@ bash "$COMET_STATE" transition <change-name> verify-fail
 
 ```bash
 # 仅在用户确认修复后执行
-bash "$COMET_STATE" transition <change-name> verify-fail
+"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
 ```
 
 **Spec 漂移处理**（用户决策点）：
 - 若检查项 6 发现矛盾（delta spec 有内容但 design doc 未体现），**必须使用 AskUserQuestion 工具以单选题形式暂停并等待用户选择处理方式**，不得自动选择。选项：
   - 选项 A：在 design doc 追加 "Implementation Divergence" 节记录偏差原因。选项 A 属于 verify 阶段允许产物；写入后不得因该 design doc 变更再次触发 Step 1b dirty-worktree 决策
-  - 选项 B：用户选择 B 后，运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`；由 `/comet-build` 的 Spec 增量更新规则加载 `superpowers:brainstorming` 更新 Design Doc + delta spec
+  - 选项 B：用户选择 B 后，运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`；由 `/comet-build` 的 Spec 增量更新规则加载 Superpowers `brainstorming` 更新 Design Doc + delta spec
   - 选项 C：确认偏差可接受，继续验证（归档时 design doc 将标记为 `superseded-by-main-spec`）
 
 ### 3. 收尾（Superpowers）
 
-**立即执行：** 使用 Skill 工具加载 `superpowers:finishing-a-development-branch` 技能。禁止跳过此步骤。
+**立即执行：** 使用 Skill 工具加载 Superpowers `finishing-a-development-branch` 技能。禁止跳过此步骤。
 
-如 `superpowers:finishing-a-development-branch` 不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
+如 Superpowers `finishing-a-development-branch` 技能不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
 
 技能加载后，按其指引收尾。分支处理选项：
 1. 本地合并到主分支
@@ -167,8 +167,8 @@ mkdir -p docs/superpowers/reports
 # 将本次验证结论写入报告文件，例如：
 # docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
 
-bash "$COMET_STATE" set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
-bash "$COMET_STATE" set <change-name> branch_status handled
+"$COMET_BASH" "$COMET_STATE" set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
+"$COMET_BASH" "$COMET_STATE" set <change-name> branch_status handled
 ```
 
 ## 退出条件
@@ -177,12 +177,12 @@ bash "$COMET_STATE" set <change-name> branch_status handled
 - 分支已处理
 - `.comet.yaml` 中 `verification_report` 指向已存在的验证报告文件
 - `.comet.yaml` 中 `branch_status: handled`
-- **阶段守卫**：运行 `bash "$COMET_GUARD" <change-name> verify --apply`，全部 PASS 后通过 `comet-state transition verify-pass` 自动流转到 `phase: archive`
+- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`，全部 PASS 后通过 `comet-state transition verify-pass` 自动流转到 `phase: archive`
 
 验证和分支处理均完成后，运行 guard 自动流转：
 
 ```bash
-bash "$COMET_GUARD" <change-name> verify --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply
 ```
 
 状态文件自动更新为 `phase: archive`、`verify_result: pass`、`verified_at: YYYY-MM-DD`。
@@ -192,7 +192,7 @@ bash "$COMET_GUARD" <change-name> verify --apply
 Verify 阶段可能触发上下文压缩。恢复时先运行：
 
 ```bash
-bash "$COMET_STATE" check <change-name> verify --recover
+"$COMET_BASH" "$COMET_STATE" check <change-name> verify --recover
 ```
 
 脚本输出结构化恢复上下文（phase、验证状态、分支状态、恢复动作），根据输出的 Recovery action 决定下一步。

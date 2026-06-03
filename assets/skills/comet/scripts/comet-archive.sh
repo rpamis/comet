@@ -5,6 +5,8 @@
 
 set -euo pipefail
 
+COMET_BASH="${COMET_BASH:-${BASH:-bash}}"
+
 red() { echo -e "\033[31m$1\033[0m" >&2; }
 green() { echo -e "\033[32m$1\033[0m" >&2; }
 yellow() { echo -e "\033[33m$1\033[0m" >&2; }
@@ -70,7 +72,7 @@ echo "=== Comet Archive: $CHANGE ===" >&2
 yaml_field() {
   local field="$1"
   if [ -f "$STATE_SH" ]; then
-    bash "$STATE_SH" get "$CHANGE" "$field" 2>/dev/null
+    "$COMET_BASH" "$STATE_SH" get "$CHANGE" "$field" 2>/dev/null
   else
     if [ -f "$YAML" ]; then
       local value
@@ -270,7 +272,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   step_dry_run "Would set archived: true in $ARCHIVE_YAML"
 else
   if [ -f "$ARCHIVE_YAML" ]; then
-    bash "$STATE_SH" transition "$ARCHIVE_NAME" archived >/dev/null
+    "$COMET_BASH" "$STATE_SH" transition "$ARCHIVE_NAME" archived >/dev/null
     step_ok "archived: true"
   else
     step_fail "archived: true (.comet.yaml not found after move)"

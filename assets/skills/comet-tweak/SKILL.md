@@ -49,24 +49,24 @@ After the skill loads, follow its guidance to create streamlined artifacts:
 Initialize Comet state file:
 
 ```bash
-bash "$COMET_STATE" init <name> tweak
+"$COMET_BASH" "$COMET_STATE" init <name> tweak
 ```
 
 Verify initialized state:
 
 ```bash
-bash "$COMET_STATE" check <name> open
+"$COMET_BASH" "$COMET_STATE" check <name> open
 ```
 
 Run phase guard to transition open → build:
 
 ```bash
-bash "$COMET_GUARD" <change-name> open --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply
 ```
 
 ### 2. Lightweight Build (preset build)
 
-Use tweak defaults: `build_mode: direct`. Skip `superpowers:brainstorming` and `superpowers:writing-plans`.
+Use tweak defaults: `build_mode: direct`. Skip Superpowers `brainstorming` and `writing-plans`.
 
 Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows scope exceeds tweak, handle it through this file's "Upgrade Conditions".
 
@@ -83,7 +83,7 @@ Before continuing or starting changes, handle uncommitted changes through `comet
 4. Run phase guard to transition build → verify:
 
 ```bash
-bash "$COMET_GUARD" <change-name> build --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply
 ```
 
 State automatically updates to `phase: verify`, `verify_result: pending`, then enter verification.
@@ -139,7 +139,7 @@ When upgrade conditions are met, **must use the AskUserQuestion tool to pause an
 After user confirms upgrade, **must first update the workflow field** before entering full flow:
 
 ```bash
-bash "$COMET_STATE" set <name> workflow full
+"$COMET_BASH" "$COMET_STATE" set <name> workflow full
 ```
 
 Then on current change basis, supplement Design Doc: **Immediately use the Skill tool to load the `comet-design` skill**, proceed normally with full workflow. If user does not confirm upgrade, stop tweak and report that current change has exceeded tweak scope.
@@ -151,4 +151,4 @@ Then on current change basis, supplement Design Doc: **Immediately use the Skill
 - Small change completed, tests pass
 - Change archived
 - No new capability, architecture adjustments or interface changes
-- **Phase guard**: Before build → verify run `bash "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `bash "$COMET_GUARD" <change-name> verify --apply`
+- **Phase guard**: Before build → verify run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`

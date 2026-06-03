@@ -2,6 +2,32 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.3.6] - 2026-06-02
+
+### Added
+
+- **Plan-ready build pause state**: Added `build_pause` as a dedicated build-phase pause marker so Comet can stop after plan generation without confusing the pause with the actual execution method.
+- **Plan-ready pause design**: Added a design record for the model-switching pause workflow, covering recovery behavior, stale pause handling, and plan-missing remediation.
+
+### Changed
+
+- **Build recovery routing**: `/comet` and `/comet-build` now recognize `build_pause: plan-ready`, reuse the existing plan, and resume at workspace isolation and execution-method selection instead of regenerating the plan.
+- **Bilingual workflow documentation**: Chinese and English Comet skills now describe the plan-ready pause point, clarify that `build_pause` is not `build_mode`, and document the same state field in both README files.
+
+### Fixed
+
+- **GitHub Copilot Superpowers skill names**: Comet skills now invoke the bare Superpowers skill names installed by the GitHub Copilot skills path, avoiding blocked workflows caused by unresolved `superpowers:*` aliases.
+- **Windows bash resolution**: Comet now resolves a usable bash executable through `COMET_BASH`, rejects the Windows WSL launcher path, and uses the resolved executable for nested script calls so guard, handoff, and archive flows do not fall back to a broken PATH `bash`.
+- **Shell test runner bash resolution**: `run-bats.js` now resolves a usable bash through `COMET_TEST_BASH`, `COMET_BASH`, PATH, or Git Bash defaults, avoiding the broken Windows WSL launcher when running shell tests from Node.
+- **Schema validation fatal output**: Guard validation now preserves the final fatal schema-validation message after printing validator diagnostics, making invalid `.comet.yaml` failures easier to recognize.
+
+### Tests
+
+- **Superpowers skill invocation regression**: Added coverage that shipped Comet skill prose does not reference plugin-prefixed Superpowers aliases.
+- **Comet bash execution regression**: Added coverage for nested script calls, shipped command examples, and the shell test runner so Comet uses resolved bash paths instead of raw PATH `bash`.
+- **Plan-ready pause regression**: Added shell-script coverage for `build_pause` initialization, schema validation, state updates, and build recovery output.
+- **README state-field regression**: Added README coverage to ensure `build_pause` appears in examples and field descriptions for both English and Chinese documentation.
+
 ## What's Changed [0.3.5] - 2026-05-29
 
 ### Added

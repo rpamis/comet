@@ -23,7 +23,7 @@ if [ -z "$COMET_ENV" ]; then
   return 1
 fi
 . "$COMET_ENV"
-bash "$COMET_STATE" check <name> build
+"$COMET_BASH" "$COMET_STATE" check <name> build
 ```
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
@@ -32,7 +32,7 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 
 ### 1. Create Plan
 
-**Immediately execute:** Use the Skill tool to load the `superpowers:writing-plans` skill. Skipping this step is prohibited.
+**Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited.
 
 After the skill loads, follow its guidance to create a plan. Plan requirements:
 - Save to `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
@@ -53,17 +53,48 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-### 2. Update Plan Status
+### 2. Update Plan Status and Provide Plan-Ready Pause Point
 
 Record plan path:
 
 ```bash
-bash "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
+"$COMET_BASH" "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 ```
 
 No manual phase update needed — guard auto-transitions when exit conditions are met.
 
+After the plan is recorded, immediately provide a new user decision point:
+
+| Option | Behavior | Description |
+|--------|----------|-------------|
+| A | Continue execution | Stay in the current model and proceed to Step 3 to choose workspace isolation and execution method |
+| B | Pause to switch model | Record `build_pause: plan-ready`, stop this `/comet-build` invocation, and allow the user to resume later from `/comet` or `/comet-build` |
+
+This is a user decision point. **Must use the AskUserQuestion tool to pause and wait for the user to explicitly choose**. Must not auto-continue and must not write the pause into `build_mode`.
+
+When the user chooses to continue:
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause null
+```
+
+When the user chooses to pause:
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause plan-ready
+```
+
+After setting `build_pause: plan-ready`, stop the current invocation. Do not choose `isolation` or `build_mode`, and do not load an execution skill.
+
 ### 3. Select Workflow Configuration
+
+If resuming with `build_pause: plan-ready` and the `plan` file exists, do not rerun `writing-plans`. First tell the user the workflow is stopped at the plan-ready pause point; after the user confirms continuing, set:
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause null
+```
+
+Then continue this step to choose workspace isolation and execution method.
 
 Plan has been written to the current branch. Before starting execution, **ask the user to choose both workspace isolation and execution method in a single interaction**:
 
@@ -82,8 +113,8 @@ Plan has been written to the current branch. Before starting execution, **ask th
 
 | Option | Skill | Applicable Scenario |
 |------|------|-------------------|
-| A | `superpowers:subagent-driven-development` | Independent tasks, high complexity, requires two-phase review |
-| B | `superpowers:executing-plans` | Simple tasks, no subagent environment, lightweight and fast |
+| A | Superpowers `subagent-driven-development` | Independent tasks, high complexity, requires two-phase review |
+| B | Superpowers `executing-plans` | Simple tasks, no subagent environment, lightweight and fast |
 
 **Execution method recommendation rules**:
 - Task count ≥ 3 → Recommend A
@@ -95,8 +126,8 @@ This is a user decision point. **Must use the AskUserQuestion tool to pause and 
 After user selection, update `isolation` and `build_mode` fields:
 
 ```bash
-bash "$COMET_STATE" set <name> isolation <branch|worktree>
-bash "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing-plans|direct>
+"$COMET_BASH" "$COMET_STATE" set <name> isolation <branch|worktree>
+"$COMET_BASH" "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing-plans|direct>
 ```
 
 `isolation` is a script-enforced hard constraint. Full workflow init may temporarily leave it as `null`, but only before this step. If it remains `null`, both the `build → verify` guard and `comet-state transition build-complete` will fail.
@@ -104,8 +135,8 @@ bash "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing
 `build_mode` defaults to `direct` only for hotfix/tweak presets. Full workflow must not default to `direct`. Use it only when the user explicitly asks to bypass the plan execution skills and you record an explicit override:
 
 ```bash
-bash "$COMET_STATE" set <name> direct_override true
-bash "$COMET_STATE" set <name> build_mode direct
+"$COMET_BASH" "$COMET_STATE" set <name> direct_override true
+"$COMET_BASH" "$COMET_STATE" set <name> build_mode direct
 ```
 
 Without `direct_override: true`, `build_mode=direct` in full workflow is blocked by both guard and state transition.
@@ -113,7 +144,7 @@ Without `direct_override: true`, `build_mode=direct` in full workflow is blocked
 **Execute isolation**:
 
 - **branch**: Run `git checkout -b <change-name>`, subsequent work on the new branch
-- **worktree**: Must use the Skill tool to load `superpowers:using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
+- **worktree**: Must use the Skill tool to load the Superpowers `using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
 
 After creating isolation, confirm plan file is accessible (naturally accessible with branch method; for worktree method, confirm plan has been committed).
 
@@ -133,7 +164,7 @@ When the initial spec is found incomplete during implementation, handle by scale
 | Scale | Trigger Conditions | Approach |
 |------|-------------------|----------|
 | Small | Missing acceptance scenarios, edge cases | Directly edit delta spec + design.md, append tasks.md tasks |
-| Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load `superpowers:brainstorming` to update Design Doc + delta spec |
+| Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load the Superpowers `brainstorming` skill to update Design Doc + delta spec |
 | Large | Brand-new capability requirements | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm the split**; after user confirms, create independent change through `/comet-open` |
 
 **50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, **must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change**. Must not just output a text prompt and then continue executing.
@@ -151,7 +182,7 @@ When creating an independent change, must invoke `/comet-open`, not `/opsx:new` 
 Build is the longest phase and may span many tasks. To support resume after context compaction:
 
 - **After each task**: immediately check off tasks.md and commit code so `.comet.yaml` and file state are durable
-- **After context compaction**: first run `bash "$COMET_STATE" check <change-name> build --recover` — the script outputs structured recovery context (isolation/build_mode status, plan path, task progress, recovery action). Follow the Recovery action to determine next step.
+- **After context compaction**: first run `"$COMET_BASH" "$COMET_STATE" check <change-name> build --recover` — the script outputs structured recovery context (isolation/build_mode status, plan path, task progress, recovery action). Follow the Recovery action to determine next step.
 - **User manual-change resume**: handle uncommitted changes through `comet/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions. Build-specific handling:
   1. After attribution, if the diff implies plan or spec changes, handle it through Step 4 "Spec Incremental Updates"
 - **Long task split**: if a single task exceeds 200 lines of code changes, consider splitting it into multiple subtasks and commits
@@ -163,7 +194,7 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - Project-specific build/tests explicitly run and pass; do not rely only on guard auto-detection
 - `isolation` has been written as `branch` or `worktree`
 - `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override
-- **Phase guard**: Run `bash "$COMET_GUARD" <change-name> build --apply`; after all PASS, state advances to `phase: verify`
+- **Phase guard**: Run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; after all PASS, state advances to `phase: verify`
 
 Guard reads project command configuration first:
 
@@ -178,7 +209,7 @@ Only when no command is configured does guard fall back to `npm run build`, Mave
 Before exit, run guard to auto-transition:
 
 ```bash
-bash "$COMET_GUARD" <change-name> build --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply
 ```
 
 State file is automatically updated to `phase: verify`, `verify_result: pending`.

@@ -46,24 +46,24 @@ fi
 初始化 Comet 状态文件：
 
 ```bash
-bash "$COMET_STATE" init <name> hotfix
+"$COMET_BASH" "$COMET_STATE" init <name> hotfix
 ```
 
 初始化后验证状态：
 
 ```bash
-bash "$COMET_STATE" check <name> open
+"$COMET_BASH" "$COMET_STATE" check <name> open
 ```
 
 阶段守卫完成 open → build 过渡：
 
 ```bash
-bash "$COMET_GUARD" <change-name> open --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply
 ```
 
 ### 2. 直接构建（preset build）
 
-使用 hotfix 默认值：`build_mode: direct`。跳过 `superpowers:brainstorming` 和 `superpowers:writing-plans`（除非任务 > 3 个；若超过 3 个任务，转入 `/comet-build` 的计划与执行方式选择）。
+使用 hotfix 默认值：`build_mode: direct`。跳过 Superpowers `brainstorming` 和 `writing-plans`（除非任务 > 3 个；若超过 3 个任务，转入 `/comet-build` 的计划与执行方式选择）。
 
 继续或开始修改前，按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。若归因后发现修复范围超出 hotfix，按本文件“升级条件”处理。
 
@@ -97,7 +97,7 @@ bash "$COMET_GUARD" <change-name> open --apply
 根因确认消除后，运行阶段守卫完成 build → verify 过渡：
 
 ```bash
-bash "$COMET_GUARD" <change-name> build --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply
 ```
 
 状态文件自动更新为 `phase: verify`、`verify_result: pending`，然后进入验证。
@@ -154,7 +154,7 @@ Hotfix 流程为 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 
 用户确认升级后，**必须先更新 workflow 字段**再进入完整流程：
 
 ```bash
-bash "$COMET_STATE" set <name> workflow full
+"$COMET_BASH" "$COMET_STATE" set <name> workflow full
 ```
 
 然后在当前 change 基础上补充 Design Doc：**立即使用 Skill 工具加载 `comet-design` skill**，后续正常走完整流程。若用户不确认升级，停止 hotfix 并报告当前变更已超出 hotfix 适用范围。
@@ -166,4 +166,4 @@ bash "$COMET_STATE" set <name> workflow full
 - Bug 已修复，测试通过
 - change 已归档
 - 如有 spec 变更，已同步到 main spec
-- **阶段守卫**：build → verify 前运行 `bash "$COMET_GUARD" <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `bash "$COMET_GUARD" <change-name> verify --apply`
+- **阶段守卫**：build → verify 前运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`

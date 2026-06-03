@@ -132,7 +132,7 @@ describe('skills', () => {
       expect(command).toContain('$ARGUMENTS');
       expect(command).toContain('# Comet Phase 1: Open');
       expect(command).toContain('## Steps');
-      expect(command).toContain('bash "$COMET_STATE" init <name> full');
+      expect(command).toContain('"$COMET_BASH" "$COMET_STATE" init <name> full');
       expect(command).not.toContain('Immediately load the `comet-open` skill with the skill tool');
       expect(path.basename(commandPath)).toBe('comet-open.md');
     });
@@ -223,7 +223,7 @@ describe('skills', () => {
       expect(zhTweak).toContain('不得直接进入 `/comet-design`');
       expect(zhComet).toContain('`verify_result: fail` → 进入验证失败决策阻塞点');
       expect(zhComet).not.toContain(
-        '`verify_result: fail` → `bash "$COMET_STATE" transition <name> verify-fail` 后 `/comet-build`',
+        '`verify_result: fail` → `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` 后 `/comet-build`',
       );
       expect(zhHotfix).toContain('按升级条件阻塞确认处理');
       expect(zhHotfix).not.toContain('停止 hotfix，升级为 `/comet`');
@@ -239,8 +239,12 @@ describe('skills', () => {
       // MEDIUM: comet-verify Spec drift requires user choice
       expect(zhVerify).toContain('必须使用 AskUserQuestion 工具以单选题形式暂停并等待用户选择处理方式');
 
-      // MEDIUM: comet/SKILL.md build phase resume checks build_mode/isolation
-      expect(zhComet).toContain('先检查 `build_mode` 和 `isolation` 是否已设置');
+      // MEDIUM: comet/SKILL.md build phase resume recognizes plan-ready pause before build decisions
+      expect(zhComet).toContain('先检查 `build_pause`、`plan`、`build_mode` 和 `isolation`');
+      expect(zhComet).toContain('`build_pause: plan-ready` 且 plan 文件存在');
+      expect(zhComet).toContain('`build_pause` 不是执行方式，不得写入 `build_mode`');
+      expect(zhBuild).toContain('提供 plan-ready 暂停点');
+      expect(zhBuild).toContain('不得自动继续，也不得把暂停写入 `build_mode`');
 
       // MEDIUM: comet-verify Step 1b treats CRITICAL/IMPORTANT as blocking
       expect(zhVerify).toContain('CRITICAL 或 IMPORTANT 失败项必须修复');
@@ -257,7 +261,7 @@ describe('skills', () => {
 
       // LOW: comet-build "中" level requires user confirmation before brainstorming
       expect(zhBuild).toContain(
-        '使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 `superpowers:brainstorming`',
+        '使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming`',
       );
 
       // LOW: comet-build 50% threshold is a hard decision point
@@ -278,12 +282,12 @@ describe('skills', () => {
       expect(zhVerify).toContain('选项 A 属于 verify 阶段允许产物');
 
       // Dependency triggers must be explicit skill invocations, not ambiguous prose.
-      expect(zhBuild).toContain('必须使用 Skill 工具加载 `superpowers:using-git-worktrees`');
+      expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `using-git-worktrees`');
       expect(zhBuild).not.toContain('或使用原生 `EnterWorktree` 工具');
-      expect(zhBuild).toContain('必须使用 Skill 工具加载 `superpowers:brainstorming`');
+      expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `brainstorming`');
       expect(zhHotfix).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhTweak).toContain('立即使用 Skill 工具加载 `comet-design` skill');
-      expect(zhVerify).toContain('用户选择 B 后，运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`');
+      expect(zhVerify).toContain('用户选择 B 后，运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`');
     });
   });
 
@@ -327,7 +331,7 @@ describe('skills', () => {
       expect(enTweak).toContain('Do not directly enter `/comet-design`');
       expect(enComet).toContain('`verify_result: fail` → Enter verification failure decision blocking point');
       expect(enComet).not.toContain(
-        '`verify_result: fail` → `bash "$COMET_STATE" transition <name> verify-fail` then `/comet-build`',
+        '`verify_result: fail` → `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` then `/comet-build`',
       );
 
       expect(enHotfix).toContain('handle per "Upgrade Conditions" section');
@@ -336,7 +340,11 @@ describe('skills', () => {
       expect(enTweak).toContain('verify phase (comet-verify) verification-failure and branch-handling decisions');
       expect(enDesign).toContain('The brainstorming phase does not write to the Design Doc file');
       expect(enVerify).toContain('must use the AskUserQuestion tool as a single-select question to pause and wait for user to choose handling method');
-      expect(enComet).toContain('first check whether `build_mode` and `isolation` are set');
+      expect(enComet).toContain('first check `build_pause`, `plan`, `build_mode`, and `isolation`');
+      expect(enComet).toContain('`build_pause: plan-ready` and the plan file exists');
+      expect(enComet).toContain('`build_pause` is not an execution method and must not be written to `build_mode`');
+      expect(enBuild).toContain('Provide Plan-Ready Pause Point');
+      expect(enBuild).toContain('Must not auto-continue and must not write the pause into `build_mode`');
       expect(enVerify).toContain('CRITICAL or IMPORTANT failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
       expect(enVerify).toContain('Lightweight code review');
@@ -352,12 +360,12 @@ describe('skills', () => {
       expect(enBuild).not.toContain('create independent change through `/opsx:new`');
       expect(enComet).toContain('Build phase scope expansion requiring redesign or new change split');
       expect(enVerify).toContain('Option A is a verify phase allowed artifact');
-      expect(enBuild).toContain('Must use the Skill tool to load `superpowers:using-git-worktrees`');
+      expect(enBuild).toContain('Must use the Skill tool to load the Superpowers `using-git-worktrees`');
       expect(enBuild).not.toContain('native `EnterWorktree` tool');
-      expect(enBuild).toContain('must use Skill tool to load `superpowers:brainstorming`');
+      expect(enBuild).toContain('must use Skill tool to load the Superpowers `brainstorming` skill');
       expect(enHotfix).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('Immediately use the Skill tool to load the `comet-design` skill');
-      expect(enVerify).toContain('After user selects B, run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`');
+      expect(enVerify).toContain('After user selects B, run `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`');
     });
   });
 
@@ -397,6 +405,51 @@ describe('skills', () => {
           );
           expect(content, `${languageDir}/${skillPath} should not inline roots`).not.toContain(
             'COMET_SEARCH_ROOTS=',
+          );
+        }
+      }
+    });
+
+    it('uses COMET_BASH in shipped Comet command examples', async () => {
+      const manifest = await readManifest();
+      const skillPaths = manifest.skills.filter(
+        (skillPath) =>
+          skillPath.endsWith('SKILL.md') &&
+          (skillPath === 'comet/SKILL.md' || skillPath.startsWith('comet-')),
+      );
+
+      for (const languageDir of ['skills', 'skills-zh']) {
+        for (const skillPath of skillPaths) {
+          const content = await fs.readFile(
+            path.resolve('assets', languageDir, skillPath),
+            'utf-8',
+          );
+
+          expect(content, `${languageDir}/${skillPath} should avoid raw bash for Comet scripts`).not.toMatch(
+            /(^|[` \t])bash[ \t]+"?\$COMET_/m,
+          );
+        }
+      }
+    });
+  });
+
+  describe('Superpowers skill invocation names', () => {
+    it('uses installed bare Superpowers skill names instead of plugin-prefixed aliases', async () => {
+      const manifest = await readManifest();
+      const skillPaths = manifest.skills.filter(
+        (skillPath) =>
+          skillPath.endsWith('SKILL.md') &&
+          (skillPath === 'comet/SKILL.md' || skillPath.startsWith('comet-')),
+      );
+
+      for (const languageDir of ['skills', 'skills-zh']) {
+        for (const skillPath of skillPaths) {
+          const content = await fs.readFile(
+            path.resolve('assets', languageDir, skillPath),
+            'utf-8',
+          );
+          expect(content, `${languageDir}/${skillPath} should use bare skill names`).not.toContain(
+            'superpowers:',
           );
         }
       }

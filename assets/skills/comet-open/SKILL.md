@@ -49,7 +49,7 @@ if [ -z "$COMET_STATE" ] || [ -z "$COMET_GUARD" ]; then
   return 1
 fi
 
-bash "$COMET_STATE" init <name> full
+"$COMET_BASH" "$COMET_STATE" init <name> full
 ```
 
 ### 3. Entry State Verification
@@ -57,7 +57,7 @@ bash "$COMET_STATE" init <name> full
 Verify state machine has been correctly initialized:
 
 ```bash
-bash "$COMET_STATE" check <name> open
+"$COMET_BASH" "$COMET_STATE" check <name> open
 ```
 
 Proceed to Step 4 after verification passes. The script outputs specific failure reasons when verification fails.
@@ -94,12 +94,12 @@ After user selects "Confirm", proceed to exit conditions. When user selects "Nee
 
 - proposal.md, design.md, tasks.md all created with complete content
 - **User has confirmed** proposal, design, tasks content meets expectations
-- **Phase guard**: Run `bash "$COMET_GUARD" <change-name> open --apply`; after all PASS, auto-transitions to next phase
+- **Phase guard**: Run `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply`; after all PASS, auto-transitions to next phase
 
 Must use `--apply` before exit, otherwise `.comet.yaml` remains at `phase: open` and the next phase entry check will fail.
 
 ```bash
-bash "$COMET_GUARD" <change-name> open --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply
 ```
 
 Full workflow auto-transitions to `phase: design`; hotfix/tweak presets auto-transition to `phase: build`.
