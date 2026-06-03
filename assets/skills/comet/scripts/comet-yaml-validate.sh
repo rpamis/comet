@@ -128,6 +128,7 @@ phase=$(field_value "phase")
 build_mode=$(field_value "build_mode")
 build_pause=$(field_value "build_pause")
 subagent_dispatch=$(field_value "subagent_dispatch")
+tdd_mode=$(field_value "tdd_mode")
 isolation=$(field_value "isolation")
 verify_mode=$(field_value "verify_mode")
 verify_result=$(field_value "verify_result")
@@ -144,6 +145,7 @@ validate_enum "phase"         "$phase"          "open design build verify archiv
 validate_enum "build_mode"    "$build_mode"     "subagent-driven-development executing-plans direct"
 validate_enum "build_pause"   "$build_pause"     "null plan-ready"
 validate_enum "subagent_dispatch" "$subagent_dispatch" "null confirmed"
+validate_enum "tdd_mode"      "$tdd_mode"       "tdd direct null"
 validate_enum "isolation"     "$isolation"      "branch worktree"
 validate_enum "verify_mode"   "$verify_mode"    "light full"
 validate_enum "verify_result" "$verify_result"  "pending pass fail"
@@ -178,7 +180,7 @@ if [ -n "$handoff_hash" ] && [ "$handoff_hash" != "null" ]; then
 fi
 
 # --- Unknown keys check ---
-KNOWN_KEYS="workflow phase design_doc plan build_mode build_pause subagent_dispatch isolation verify_mode verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
+KNOWN_KEYS="workflow phase design_doc plan build_mode build_pause subagent_dispatch tdd_mode isolation verify_mode verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
 while IFS=: read -r key _; do
   key="${key// /}"
   [ -z "$key" ] && continue

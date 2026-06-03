@@ -303,6 +303,12 @@ describe('skills', () => {
       expect(zhBuild).toContain('`"$COMET_BASH" "$COMET_STATE" set <name> subagent_dispatch confirmed`');
       expect(zhBuild).toContain('用户选择改用主窗口执行后，必须先运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`');
       expect(zhBuild).not.toContain('使用 Skill 工具加载对应技能');
+      expect(zhBuild).toContain('tdd_mode');
+      expect(zhBuild).toContain('`"$COMET_BASH" "$COMET_STATE" set <name> tdd_mode <tdd|direct>`');
+      expect(zhBuild).toContain('若 `tdd_mode: tdd`');
+      expect(zhBuild).toContain('必须在 prompt 中注入 TDD 硬约束');
+      expect(zhComet).toContain('`tdd_mode`');
+      expect(zhComet).toContain('full workflow 离开 build 阶段前 `tdd_mode` 必须已选择');
       expect(zhHotfix).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhTweak).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhVerify).toContain('用户选择 B 后，运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`');
@@ -367,7 +373,7 @@ describe('skills', () => {
       expect(enDesign).toContain('must not weaken the Superpowers `brainstorming` clarification flow by "skipping redundant context exploration"');
       expect(enDesign).not.toContain('Skip redundant context exploration');
       expect(enBuild).toContain('Must not choose `branch` or `worktree` based on recommendation rules');
-      expect(enBuild).toContain('must not choose the execution method based on recommendation rules');
+      expect(enBuild).toContain('must not choose the execution method or TDD mode based on recommendation rules');
       expect(enVerify).toContain("must use the current platform's available user input/confirmation mechanism to pause and wait for the user to decide whether to fix or accept the deviation");
       expect(enVerify).toContain("Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to choose branch handling method");
       expect(enVerify).toContain('Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written');

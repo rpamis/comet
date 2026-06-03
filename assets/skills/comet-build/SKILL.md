@@ -121,16 +121,32 @@ Plan has been written to the current branch. Before starting execution, **ask th
 - Task count ≤ 2 and no cross-module dependencies → Recommend B
 - From hotfix path → Recommend B
 
-This is a user decision point. **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose both isolation method and execution method**. Must not choose `branch` or `worktree` based on recommendation rules, and must not choose the execution method based on recommendation rules. Recommendation rules are for suggestion only, not a substitute for user confirmation. If the current platform has no structured question tool, ask equivalent options in the conversation, stop the workflow, and wait for the user's reply before continuing.
+This is a user decision point. **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose isolation method, execution method, and TDD mode**. Must not choose `branch` or `worktree` based on recommendation rules, and must not choose the execution method or TDD mode based on recommendation rules. Recommendation rules are for suggestion only, not a substitute for user confirmation. If the current platform has no structured question tool, ask equivalent options in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
-After user selection, update `isolation` and `build_mode` fields:
+After user selection, update `isolation`, execution method, and TDD mode fields:
 
 ```bash
 "$COMET_BASH" "$COMET_STATE" set <name> isolation <branch|worktree>
-"$COMET_BASH" "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing-plans|direct>
 ```
 
+- If the user chooses `executing-plans`: run `"$COMET_BASH" "$COMET_STATE" set <name> subagent_dispatch null`, then run `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`
+- If the user chooses `subagent-driven-development`: first confirm the current platform has real background subagent / Task / multi-agent dispatch capability; after confirming, run `"$COMET_BASH" "$COMET_STATE" set <name> subagent_dispatch confirmed`, then run `"$COMET_BASH" "$COMET_STATE" set <name> build_mode subagent-driven-development`
+- If real background dispatch capability cannot be confirmed, must not write `build_mode: subagent-driven-development`; must pause and wait for the user to choose `executing-plans` instead
+
+**TDD Mode**:
+
+| Option | Meaning | Applicable Scenario |
+|--------|---------|---------------------|
+| `tdd` | Write a failing test first for each task, then implement | Recommended. Changes involving business logic, new features, APIs |
+| `direct` | Implement directly, no enforced TDD flow | Changes that don't need test coverage, or user chooses to skip tests and write code directly |
+
+Run `"$COMET_BASH" "$COMET_STATE" set <name> tdd_mode <tdd|direct>`
+
 `isolation` is a script-enforced hard constraint. Full workflow init may temporarily leave it as `null`, but only before this step. If it remains `null`, both the `build → verify` guard and `comet-state transition build-complete` will fail.
+
+`subagent_dispatch` is a script-enforced hard constraint. `build_mode: subagent-driven-development` requires `subagent_dispatch: confirmed` before leaving the build phase, otherwise both `comet-guard.sh build --apply` and `comet-state transition build-complete` will fail.
+
+`tdd_mode` is a script-enforced hard constraint. Full workflow must have `tdd_mode` selected as `tdd` or `direct` before leaving the build phase, otherwise both `comet-guard.sh build --apply` and `comet-state transition build-complete` will fail.
 
 `build_mode` defaults to `direct` only for hotfix/tweak presets. Full workflow must not default to `direct`. Use it only when the user explicitly asks to bypass the plan execution skills and you record an explicit override:
 
@@ -148,14 +164,24 @@ Without `direct_override: true`, `build_mode=direct` in full workflow is blocked
 
 After creating isolation, confirm plan file is accessible (naturally accessible with branch method; for worktree method, confirm plan has been committed).
 
-**Load execution skill**: Use the Skill tool to load the corresponding skill. Skipping this step is prohibited.
+**Execute plan**: Must handle execution according to the actual runtime of `build_mode`.
 
-If the selected Superpowers skill is unavailable, stop the process and prompt to install or enable the corresponding skill. Do not substitute this step with normal conversation.
+- `build_mode: executing-plans`: Use the Skill tool in the main window to load the Superpowers `executing-plans` skill and execute according to plan. If the skill is unavailable, stop the process and prompt to install or enable the corresponding skill; do not substitute with normal conversation.
+- `build_mode: subagent-driven-development`: The main window only coordinates; must not run `subagent-driven-development` as the main window execution skill directly. Must use the confirmed real background subagent / Task / multi-agent dispatch capability to dispatch the next unchecked task to a background subagent. The background subagent loads the Superpowers `subagent-driven-development` execution flow on its own and follows its guidance for implementation, review, and commit.
+- If the current platform has no real background subagent / Task / multi-agent dispatch capability, must pause and wait for the user to choose main window execution instead. After the user chooses, must run `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`, then follow the `build_mode: executing-plans` branch to load the Superpowers `executing-plans` skill. Must not continue executing tasks before the user explicitly chooses.
 
-After the skill loads, follow its guidance to execute:
+After execution begins, follow the chosen branch to completion:
 - Execute tasks according to plan
 - Complete tasks.md check (`- [ ]` → `- [x]`)
 - Commit code after each task completion
+
+**TDD Mode Execution Constraints**:
+
+If `tdd_mode: tdd`:
+- `build_mode: executing-plans`: Before implementing each task, must use the Skill tool to load the Superpowers `test-driven-development` skill and follow its Red-Green-Refactor cycle. Must not skip the failing test verification phase.
+- `build_mode: subagent-driven-development`: When dispatching each subagent, must inject the TDD hard constraint into the prompt: **"You MUST follow TDD: for each task, write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first."**. Must not rely on implementer-prompt.md's conditional trigger; must explicitly write it in the dispatch prompt.
+
+If `tdd_mode: direct`: Follow normal flow, no enforced TDD.
 
 ### 3b. In-Execution Debugging (Debug Gate)
 
@@ -203,7 +229,8 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - Code committed
 - Project-specific build/tests explicitly run and pass; do not rely only on guard auto-detection
 - `isolation` has been written as `branch` or `worktree`
-- `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override
+- `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override; if `subagent-driven-development`, `subagent_dispatch` must be `confirmed`
+- `tdd_mode` has been written as `tdd` or `direct`
 - **Phase guard**: Run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; after all PASS, state advances to `phase: verify`
 
 Guard reads project command configuration first:

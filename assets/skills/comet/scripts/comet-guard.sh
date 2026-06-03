@@ -365,6 +365,26 @@ subagent_dispatch_confirmed() {
   return 1
 }
 
+tdd_mode_selected() {
+  local workflow tdd_mode
+  workflow=$(yaml_field_value "workflow" 2>/dev/null || true)
+  tdd_mode=$(yaml_field_value "tdd_mode" 2>/dev/null || true)
+
+  case "$workflow" in
+    hotfix|tweak) return 0 ;;
+  esac
+
+  case "$tdd_mode" in
+    tdd|direct) return 0 ;;
+    *)
+      echo "tdd_mode must be tdd or direct for full workflow, got '${tdd_mode:-null}'" >&2
+      echo "Next: ask the user to choose TDD enforcement level, then run:" >&2
+      echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE tdd_mode <tdd|direct>" >&2
+      return 1
+      ;;
+  esac
+}
+
 verify_result_is_pass() {
   local result
   result=$(yaml_field_value "verify_result" 2>/dev/null || true)
@@ -541,6 +561,7 @@ guard_build() {
   check "build_mode selected" build_mode_selected
   check "build_mode allowed for workflow" build_mode_allowed_for_workflow
   check "subagent dispatch confirmed" subagent_dispatch_confirmed
+  check "tdd_mode selected" tdd_mode_selected
   check "tasks.md all tasks checked" tasks_all_done
   check "proposal.md exists" file_nonempty "$CHANGE_DIR/proposal.md"
   check "Build passes" build_passes

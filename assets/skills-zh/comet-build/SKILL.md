@@ -121,9 +121,9 @@ git rev-parse HEAD
 - 任务数 ≤ 2 且无跨模块依赖 → 推荐 B
 - 来自 hotfix 路径 → 推荐 B
 
-这是用户决策点。**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择隔离方式和执行方式**，不得根据推荐规则自行选择 `branch` 或 `worktree`，也不得根据推荐规则自行选择执行方式。推荐规则只能用于说明建议，不能替代用户确认。若当前平台没有结构化提问工具，则在对话中提出同等选项并停止流程，等待用户回复后才能继续。
+这是用户决策点。**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择隔离方式、执行方式和 TDD 模式**，不得根据推荐规则自行选择 `branch` 或 `worktree`，也不得根据推荐规则自行选择执行方式或 TDD 模式。推荐规则只能用于说明建议，不能替代用户确认。若当前平台没有结构化提问工具，则在对话中提出同等选项并停止流程，等待用户回复后才能继续。
 
-用户选择后，更新 `isolation` 和执行方式相关字段：
+用户选择后，更新 `isolation`、执行方式和 TDD 模式相关字段：
 
 ```bash
 "$COMET_BASH" "$COMET_STATE" set <name> isolation <branch|worktree>
@@ -133,9 +133,20 @@ git rev-parse HEAD
 - 若用户选择 `subagent-driven-development`：先确认当前平台存在可调用的真实后台 subagent / Task / multi-agent 调度能力；确认后先运行 `"$COMET_BASH" "$COMET_STATE" set <name> subagent_dispatch confirmed`，再运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_mode subagent-driven-development`
 - 若无法确认真实后台调度能力，不得写入 `build_mode: subagent-driven-development`；必须暂停等待用户改选 `executing-plans`
 
+**TDD 模式**：
+
+| 选项 | 含义 | 适用场景 |
+|------|------|---------|
+| `tdd` | 每个任务先写失败测试再写实现 | 推荐。变更涉及业务逻辑、新功能、API |
+| `direct` | 直接实现，不强制 TDD 流程 | 变更不需要测试覆盖，或用户选择跳过测试直接写代码 |
+
+运行 `"$COMET_BASH" "$COMET_STATE" set <name> tdd_mode <tdd|direct>`
+
 `isolation` 是脚本级硬约束。full workflow 初始化时可以为 `null`，但只允许存在到本步骤之前。若保持 `null`，`build → verify` 的 guard 和 `comet-state transition build-complete` 都会失败。
 
 `subagent_dispatch` 是脚本级硬约束。`build_mode: subagent-driven-development` 离开 build 阶段前必须同时满足 `subagent_dispatch: confirmed`，否则 `comet-guard.sh build --apply` 和 `comet-state transition build-complete` 都会失败。
+
+`tdd_mode` 是脚本级硬约束。full workflow 离开 build 阶段前 `tdd_mode` 必须已选择为 `tdd` 或 `direct`，否则 `comet-guard.sh build --apply` 和 `comet-state transition build-complete` 都会失败。
 
 `build_mode` 默认仅 hotfix/tweak preset 使用 `direct`。full workflow 不得默认使用 `direct`。只有用户明确要求跳过计划执行技能，且你已记录显式 override 时，才允许：
 
@@ -163,6 +174,14 @@ git rev-parse HEAD
 - 按计划执行任务
 - 完成 tasks.md 勾选（`- [ ]` → `- [x]`）
 - 每个任务完成后提交代码
+
+**TDD 模式执行约束**：
+
+若 `tdd_mode: tdd`：
+- `build_mode: executing-plans`：每个任务实现前，必须使用 Skill 工具加载 Superpowers `test-driven-development` 技能，按其 Red-Green-Refactor 循环执行。不得跳过失败测试验证阶段。
+- `build_mode: subagent-driven-development`：派发每个 subagent 时，必须在 prompt 中注入 TDD 硬约束：**"You MUST follow TDD: for each task, write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first."**。不得依赖 implementer-prompt.md 的条件触发，必须在派发 prompt 中显式写出。
+
+若 `tdd_mode: direct`：按正常流程执行，不强制 TDD。
 
 ### 3b. 执行中异常调试（Debug Gate）
 
@@ -211,6 +230,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - 已显式运行项目对应的构建/测试命令并通过（不要只依赖 guard 自动猜测）
 - `isolation` 已写为 `branch` 或 `worktree`
 - `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`；若为 `subagent-driven-development`，`subagent_dispatch` 必须为 `confirmed`
+- `tdd_mode` 已写为 `tdd` 或 `direct`
 - **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后自动流转到 `phase: verify`
 
 Guard 会优先读取项目配置中的命令：
