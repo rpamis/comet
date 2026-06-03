@@ -82,6 +82,14 @@ Before continuing or starting changes, handle uncommitted changes through `comet
 - Create delta spec in `openspec/changes/<name>/specs/<capability>/spec.md`
 - Only include `## MODIFIED Requirements` section
 
+During hotfix execution, whenever a crash, unexpected behavior, test failure, or build failure appears while running the program, tests, build, or manual verification, must use the Skill tool to load the Superpowers `systematic-debugging` skill. Before root-cause investigation is complete, must not propose or implement source-code fixes.
+
+Handle it using the four-phase `systematic-debugging` flow:
+- First reproduce and locate the root cause, read full errors, check recent changes, and trace data flow
+- If root cause points to a source bug, first add a minimal failing test that reproduces the crash or unexpected behavior, then modify source code
+- After the fix, run that failing test, related tests, and project build/verification commands to confirm all pass
+- Keep the test, source fix, and tasks.md checkoff inside the current change; must not replace the current change verification loop by starting a separate "write test cases" change
+
 ### 3. Root Cause Elimination Check
 
 **Execute before running build guard**, ensuring the fix actually eliminates the root cause:
@@ -126,7 +134,7 @@ If there is delta spec, sync to main spec according to comet-archive rules, and 
 <IMPORTANT>
 Hotfix workflow is **one-time continuous execution**. After invoking `/comet-hotfix`, agent must automatically advance through hotfix steps, without pausing to wait for user input mid-way. But the following situations must pause and wait for user confirmation:
 
-1. Encountering upgrade conditions (see "Upgrade Conditions" section). **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm** upgrading to full workflow
+1. Encountering upgrade conditions (see "Upgrade Conditions" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm** upgrading to full workflow
 2. workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`
 3. verify phase (comet-verify) verification-failure and branch-handling decisions
 
@@ -149,7 +157,7 @@ Upgrade to full `/comet` when **any** of the following conditions are met:
 | Introduces new public API | Fix creates new external interface |
 | Fix scope exceeds single function/module | Requires coordinated changes |
 
-When upgrade conditions are met, **must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm** upgrading to the full `/comet` workflow. Do not directly enter `/comet-design`, and do not automatically supplement Design Doc. Must not just output a text prompt and then continue executing.
+When upgrade conditions are met, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm** upgrading to the full `/comet` workflow. Do not directly enter `/comet-design`, and do not automatically supplement Design Doc. If the current platform has no structured question tool, ask an upgrade confirmation question in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
 After user confirms upgrade, **must first update the workflow field** before entering full flow:
 

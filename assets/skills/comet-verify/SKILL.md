@@ -69,7 +69,7 @@ If commit range shows changes exceed lightweight threshold (> 4 files, cross-mod
 
 ### 1b. Verification Failure Decision (Blocking Point)
 
-When verification does not pass, **must use the AskUserQuestion tool to pause and wait for the user to decide fix or accept deviation**. Must not automatically run `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`, nor automatically invoke `/comet-build`. Must not just output a text prompt and then continue executing.
+When verification does not pass, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to decide whether to fix or accept the deviation**. Must not automatically run `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`, nor automatically invoke `/comet-build`. If the current platform has no structured question tool, ask fix/accept-deviation options in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
 When pausing, must list:
 - Failed items
@@ -132,7 +132,7 @@ When verification does not pass: report missing items, enter Step 1b verificatio
 ```
 
 **Spec Drift Handling** (user decision point):
-- If check item 6 finds contradictions (delta spec has content but design doc does not reflect it), **must use the AskUserQuestion tool as a single-select question to pause and wait for user to choose handling method**; must not select automatically. Options:
+- If check item 6 finds contradictions (delta spec has content but design doc does not reflect it), **must use the current platform's available user input/confirmation mechanism as a single-select question to pause and wait for the user to choose the handling method**; must not select automatically. Options:
   - Option A: Append "Implementation Divergence" section to design doc recording deviation reason. Option A is a verify phase allowed artifact; after writing, must not re-trigger Step 1b dirty-worktree decision due to that design doc change
   - Option B: After user selects B, run `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load the Superpowers `brainstorming` skill to update Design Doc + delta spec
   - Option C: Confirm deviation is acceptable, continue verification (design doc will be marked as `superseded-by-main-spec` during archiving)
@@ -149,7 +149,7 @@ After the skill loads, follow its guidance to finish. Branch handling options:
 3. Keep branch (handle later)
 4. Discard work
 
-This is a user decision point. **Must use the AskUserQuestion tool to pause and wait for user to choose branch handling method**. Must not select based on recommendations, defaults, or current branch status. Must not just output a text prompt and then continue executing. Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written.
+This is a user decision point. **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to choose branch handling method**. Must not select based on recommendations, defaults, or current branch status. If the current platform has no structured question tool, ask branch-handling options in the conversation, stop the workflow, and wait for the user's reply before continuing. Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written.
 
 **Confirmation items**:
 - All tests pass

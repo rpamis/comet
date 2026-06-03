@@ -107,9 +107,9 @@ A single `/comet` invocation starts from the detected phase and advances to the 
 
 Flow chain: open → design → build → verify → archive
 
-**Continuous execution requirement**: starting from the detected phase, the agent automatically continues through all later phases. But **auto-advancing only applies at transition points without user decisions**. When encountering user decision points, **must use the AskUserQuestion tool to pause and wait for the user's explicit response**. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation, and must not just output a text prompt and then continue executing.
+**Continuous execution requirement**: starting from the detected phase, the agent automatically continues through all later phases. But **auto-advancing only applies at transition points without user decisions**. When encountering user decision points, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user's explicit response**. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation, and must not just output a text prompt and then continue executing.
 
-**Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet` invocation must stop, **using the AskUserQuestion tool to wait for the user's choice**. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
+**Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet` invocation must stop, **using the current platform's available user input/confirmation mechanism to wait for the user's choice**. If the current platform has no structured question tool, ask clear options in the conversation and stop the workflow, waiting for the user's reply before continuing. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
 
 Nodes requiring user participation (pause only at these nodes):
 1. Open phase proposal/design/tasks review and confirmation
@@ -120,13 +120,13 @@ Nodes requiring user participation (pause only at these nodes):
 6. Encounter upgrade conditions (hotfix/tweak → full workflow)
 7. Build phase scope expansion requiring redesign or new change split
 
-Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway. At decision points, **text output must NOT substitute for tool-based waiting — must explicitly obtain the user's choice via AskUserQuestion before continuing**.
+Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway. At decision points, **must not skip user confirmation or choose automatically — must explicitly obtain the user's choice through the current platform's available user input/confirmation mechanism before continuing**.
 
 **Red Flags** — when these thoughts appear, STOP and check:
 
 | Agent Thought | Actual Risk |
 |--------------|-------------|
-| "The user would probably agree with this approach" | Cannot decide for the user — use AskUserQuestion |
+| "The user would probably agree with this approach" | Cannot decide for the user — use the current platform's user input/confirmation mechanism |
 | "This is a small change, confirmation isn't needed" | Decision points have no size exception — blocking points must wait |
 | "The user chose A last time, so A again" | Historical preference cannot substitute for current confirmation |
 | "I explained the plan and the user didn't object" | No objection ≠ consent — must use tool to get explicit choice |

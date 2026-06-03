@@ -70,7 +70,7 @@ After the plan is recorded, immediately provide a new user decision point:
 | A | Continue execution | Stay in the current model and proceed to Step 3 to choose workspace isolation and execution method |
 | B | Pause to switch model | Record `build_pause: plan-ready`, stop this `/comet-build` invocation, and allow the user to resume later from `/comet` or `/comet-build` |
 
-This is a user decision point. **Must use the AskUserQuestion tool to pause and wait for the user to explicitly choose**. Must not auto-continue and must not write the pause into `build_mode`.
+This is a user decision point. **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**. Must not auto-continue and must not write the pause into `build_mode`. If the current platform has no structured question tool, ask equivalent options in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
 When the user chooses to continue:
 
@@ -121,7 +121,7 @@ Plan has been written to the current branch. Before starting execution, **ask th
 - Task count ≤ 2 and no cross-module dependencies → Recommend B
 - From hotfix path → Recommend B
 
-This is a user decision point. **Must use the AskUserQuestion tool to pause and wait for the user to explicitly choose both isolation method and execution method**. Must not choose `branch` or `worktree` based on recommendation rules, and must not choose the execution method based on recommendation rules. Recommendation rules are for suggestion only, not a substitute for user confirmation. Must not just output a text prompt and then continue executing.
+This is a user decision point. **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose both isolation method and execution method**. Must not choose `branch` or `worktree` based on recommendation rules, and must not choose the execution method based on recommendation rules. Recommendation rules are for suggestion only, not a substitute for user confirmation. If the current platform has no structured question tool, ask equivalent options in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
 After user selection, update `isolation` and `build_mode` fields:
 
@@ -157,6 +157,16 @@ After the skill loads, follow its guidance to execute:
 - Complete tasks.md check (`- [ ]` → `- [x]`)
 - Commit code after each task completion
 
+### 3b. In-Execution Debugging (Debug Gate)
+
+During task execution, whenever a crash, unexpected behavior, test failure, or build failure appears while running the program, tests, build, or manual verification, must use the Skill tool to load the Superpowers `systematic-debugging` skill. Before root-cause investigation is complete, must not propose or implement source-code fixes.
+
+Handle it using the four-phase `systematic-debugging` flow:
+- First reproduce and locate the root cause, read full errors, check recent changes, and trace data flow
+- If root cause points to a source bug, first add a minimal failing test that reproduces the crash or unexpected behavior, then modify source code
+- After the fix, run that failing test, related tests, and project build/verification commands to confirm all pass
+- Keep the test, source fix, and tasks.md checkoff inside the current change; Must not replace the current change verification loop by starting a separate "write test cases" change
+
 ### 4. Spec Incremental Updates
 
 When the initial spec is found incomplete during implementation, handle by scale:
@@ -164,10 +174,10 @@ When the initial spec is found incomplete during implementation, handle by scale
 | Scale | Trigger Conditions | Approach |
 |------|-------------------|----------|
 | Small | Missing acceptance scenarios, edge cases | Directly edit delta spec + design.md, append tasks.md tasks |
-| Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load the Superpowers `brainstorming` skill to update Design Doc + delta spec |
-| Large | Brand-new capability requirements | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm the split**; after user confirms, create independent change through `/comet-open` |
+| Medium | Interface changes, new components, data flow changes | **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm**, then must use Skill tool to load the Superpowers `brainstorming` skill to update Design Doc + delta spec |
+| Large | Brand-new capability requirements | **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm the split**; after user confirms, create independent change through `/comet-open` |
 
-**50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, **must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change**. Must not just output a text prompt and then continue executing.
+**50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to decide whether to split into a new change**. If the current platform has no structured question tool, ask split options in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
 When creating an independent change, must invoke `/comet-open`, not `/opsx:new` directly. `/comet-open` creates both OpenSpec artifacts and `.comet.yaml`, preventing the new change from leaving the Comet state machine.
 

@@ -1,6 +1,6 @@
 ---
 name: comet-open
-description: "Comet 阶段 1：开启。用 /comet-open 调用。通过 OpenSpec 探索想法、创建 change 结构（proposal + design + tasks）。"
+description: "Comet 阶段 1：开启。用 /comet-open 调用。通过 OpenSpec 探索想法、确认需求澄清，再创建 change 结构（proposal + design + tasks）。"
 ---
 
 # Comet 阶段 1：开启（Open）
@@ -11,15 +11,34 @@ description: "Comet 阶段 1：开启。用 /comet-open 调用。通过 OpenSpec
 
 ## 步骤
 
-### 1. 探索想法
+### 1. 探索想法与需求澄清
 
 **立即执行：** 使用 Skill 工具加载 `openspec-explore` 技能。禁止跳过此步骤。
 
-技能加载后，按其指引自由探索问题空间。
+技能加载后，按其指引探索问题空间，但不得把一次问答视为足够澄清。必须围绕下列内容继续提问、对齐并形成澄清摘要：
+- 目标：用户真正要解决的问题和期望结果
+- 非目标：本次明确不做的内容
+- 范围边界：涉及/不涉及的模块、用户、平台或数据
+- 关键未知项：仍不确定的假设、风险或依赖
+- 验收场景草案：至少覆盖核心成功场景和关键边界场景
+
+澄清摘要必须包含：目标、非目标、范围边界、关键未知项、验收场景草案。
+
+### 1b. 需求澄清完成确认（阻塞点）
+
+创建 OpenSpec artifacts 前，必须使用当前平台可用的用户输入/确认机制暂停并等待用户确认需求澄清完成。若当前平台没有结构化提问工具，则在对话中展示澄清摘要并提出确认问题，停止流程，等待用户回复后才能继续。
+
+暂停时必须展示澄清摘要：目标、非目标、范围边界、关键未知项、验收场景草案。
+
+不得在用户确认需求澄清完成前创建 proposal.md、design.md 或 tasks.md，也不得使用 Skill 工具加载 `openspec-propose` 技能一次性生成全部 artifacts。
 
 ### 2. 创建 Change 结构 + 初始化状态
 
-**立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。若用户意图未明确、需要先形成建议，改为加载 `openspec-propose`。禁止跳过此步骤。
+**立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
+
+完整 `/comet` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能；只有用户明确要求一次性生成提案和 artifacts 时才允许加载。
+
+技能加载后，按其指引创建 change 骨架，并逐个补齐 proposal.md、design.md、tasks.md；每个文档都必须基于已确认的澄清摘要。
 
 **命名与范围守卫**：change name 必须使用用户指定或通过当前平台可用的用户输入/确认机制确认的名称，不得自动生成或推断。变更范围必须与用户描述一致，不得自行扩大或缩小。
 

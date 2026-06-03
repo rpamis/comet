@@ -71,16 +71,19 @@ Handoff package sources come from OpenSpec open phase artifacts:
 
 ### 1b. Execute Brainstorming (with Context)
 
-**Immediately execute:** Use the Skill tool to load the Superpowers `brainstorming` skill, ARGUMENTS containing:
+**Immediately execute:** Use the Skill tool to load the Superpowers `brainstorming` skill. Skipping this step is prohibited.
+
+After the skill loads, follow its guidance and use the following context:
 
 ```
 Change: <change-name>
 OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/design-context.md
 Machine handoff: openspec/changes/<name>/.comet/handoff/design-context.json
 
-OpenSpec artifacts are the upstream source of truth. Do not redefine requirements, do not rewrite proposal/spec.
+OpenSpec artifacts are the upstream source of truth, but you must not weaken the Superpowers `brainstorming` clarification flow by "skipping redundant context exploration".
 Your task is to perform deep technical design based on the handoff package: implementation approach, technical risks, testing strategy, boundary conditions.
-If you find OpenSpec delta spec missing acceptance scenarios, you may only propose Spec Patches and write them back to OpenSpec delta spec; do not create a second requirements spec in the Design Doc.
+If goals, scope, non-goals, acceptance scenarios, or key constraints remain unclear, you must continue asking questions and form the design proposal first; must not create the Design Doc after only one Q&A turn.
+Do not rewrite proposal/spec; if you find OpenSpec delta spec missing acceptance scenarios, you may only propose Spec Patches and write them back to OpenSpec delta spec; do not create a second requirements spec in the Design Doc.
 
 Design Doc frontmatter must be minimal, containing only:
 ---
@@ -89,23 +92,24 @@ role: technical-design
 canonical_spec: openspec
 ---
 
-Skip redundant context exploration, proceed directly to design questions.
+Proceed through the original `brainstorming` skill flow: clarifying questions, 2-3 approaches, and step-by-step design confirmation. Do not write the Design Doc early.
 ```
 
-Skipping this step is prohibited. Proceeding without loading this skill is prohibited.
+Proceeding without loading this skill is prohibited.
 
 If the Superpowers `brainstorming` skill is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
 
 After the skill loads, follow its guidance to produce design proposals (presented as conversation):
 - Technical approach: architecture, data flow, key technology choices and risks
 - Testing strategy
+- Requirement/scope gaps and Spec Patches to be written back
 - If acceptance scenarios need supplementing, indicate delta spec changes to be written back
 
 The brainstorming phase does not write to the Design Doc file; it only produces design proposals for Step 1c user confirmation. Only after confirmation should `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` be created and delta spec written back.
 
 ### 1c. User Confirms Design Proposal (Blocking Point)
 
-After brainstorming produces a design proposal, **must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm the design proposal**. Must not create the final Design Doc, write `design_doc`, run design guard, or enter `/comet-build` before user confirmation. Must not just output a text prompt and then continue executing.
+After brainstorming produces a design proposal, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm the design proposal**. Must not create the final Design Doc, write `design_doc`, run design guard, or enter `/comet-build` before user confirmation. If the current platform has no structured question tool, ask a confirmation question in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
 When pausing, only present essential summary:
 - Technical approach adopted

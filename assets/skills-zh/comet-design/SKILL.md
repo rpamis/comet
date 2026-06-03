@@ -71,16 +71,19 @@ handoff_hash: <sha256>
 
 ### 1b. 执行 Brainstorming（带上下文）
 
-**立即执行：** 使用 Skill 工具加载 Superpowers `brainstorming` 技能，ARGUMENTS 包含：
+**立即执行：** 使用 Skill 工具加载 Superpowers `brainstorming` 技能。禁止跳过此步骤。
+
+技能加载后，按其指引使用以下上下文：
 
 ```
 Change: <change-name>
 OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/design-context.md
 Machine handoff: openspec/changes/<name>/.comet/handoff/design-context.json
 
-OpenSpec 产物是上游事实源，不要重新定义需求，不要重写 proposal/spec。
+OpenSpec 产物是上游事实源，但不得用“跳过重复上下文探索”削弱 Superpowers `brainstorming` 的澄清流程。
 你的任务是基于交接包做深度技术设计：实现方案、技术风险、测试策略、边界条件。
-如发现 OpenSpec delta spec 缺少验收场景，只能提出 Spec Patch，并回写 OpenSpec delta spec；不要在 Design Doc 中创建第二份需求 spec。
+如发现目标、范围、非目标、验收场景或关键约束仍不清楚，必须先继续提问并形成设计方案，不得只进行一轮问答就创建 Design Doc。
+不要重写 proposal/spec；如发现 OpenSpec delta spec 缺少验收场景，只能提出 Spec Patch，并回写 OpenSpec delta spec；不要在 Design Doc 中创建第二份需求 spec。
 
 Design Doc frontmatter 必须最小化，只包含：
 ---
@@ -89,16 +92,17 @@ role: technical-design
 canonical_spec: openspec
 ---
 
-跳过重复上下文探索，直接进入设计提问。
+按 Superpowers `brainstorming` 技能原流程推进：澄清问题、2-3 个方案、分段确认设计。不得提前写入 Design Doc。
 ```
 
-禁止跳过此步骤，禁止在未加载该技能的情况下继续。
+禁止在未加载该技能的情况下继续。
 
 如 Superpowers `brainstorming` 技能不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
 
 技能加载后，按其指引产出设计方案（以对话形式呈现）：
 - 技术方案：架构、数据流、关键技术选型与风险
 - 测试策略
+- 需求/范围缺口与需回写的 Spec Patch
 - 如需补充验收场景，标明将回写的 delta spec 变更
 
 brainstorming 阶段不写入 Design Doc 文件，仅产出设计方案供 Step 1c 用户确认。确认后才创建 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` 并回写 delta spec。

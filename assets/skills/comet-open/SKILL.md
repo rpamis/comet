@@ -1,6 +1,6 @@
 ---
 name: comet-open
-description: "Comet Phase 1: Open. Invoke with /comet-open. Explore ideas through OpenSpec, create change structure (proposal + design + tasks)."
+description: "Comet Phase 1: Open. Invoke with /comet-open. Explore ideas through OpenSpec, confirm requirements clarification, then create change structure (proposal + design + tasks)."
 ---
 
 # Comet Phase 1: Open
@@ -11,17 +11,36 @@ description: "Comet Phase 1: Open. Invoke with /comet-open. Explore ideas throug
 
 ## Steps
 
-### 1. Explore Ideas
+### 1. Explore Ideas and Clarify Requirements
 
 **Immediately execute:** Use the Skill tool to load the `openspec-explore` skill. Skipping this step is prohibited.
 
-After the skill loads, freely explore the problem space following its guidance.
+After the skill loads, explore the problem space following its guidance, but do not treat one Q&A turn as sufficient clarification. You must continue asking, align with the user, and form a clarification summary covering:
+- Goals: the problem the user truly wants to solve and the expected outcome
+- Non-goals: what is explicitly out of scope for this change
+- Scope boundaries: included/excluded modules, users, platforms, or data
+- Key unknowns: unresolved assumptions, risks, or dependencies
+- Draft acceptance scenarios: at least the core success scenario and important boundary scenarios
+
+The clarification summary must include: goals, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios.
+
+### 1b. Requirements Clarification Completion Confirmation (Blocking Point)
+
+Before creating OpenSpec artifacts, must use the current platform's available user input/confirmation mechanism to pause and wait for the user to confirm requirements clarification is complete. If the current platform has no structured question tool, present the clarification summary in the conversation, ask a confirmation question, stop the workflow, and wait for the user's reply before continuing.
+
+When pausing, present the clarification summary: goals, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios.
+
+Must not create proposal.md, design.md, or tasks.md before the user confirms requirements clarification is complete, and must not use the Skill tool to load the `openspec-propose` skill to generate all artifacts in one pass.
 
 ### 2. Create Change Structure + Initialize State
 
-**Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. If the user's intent is unclear and needs proposal formation first, load `openspec-propose` instead. Skipping this step is prohibited.
+**Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
 
-**Naming and scope guard**: Change name must use a user-specified or AskUserQuestion-confirmed name — must not auto-generate or infer. Change scope must match the user's description — must not expand or narrow it independently.
+Full `/comet` workflow must not use the Skill tool to load the `openspec-propose` skill by default; only load it when the user explicitly requests generating the proposal and artifacts in one pass.
+
+After the skill loads, follow its guidance to create the change skeleton and fill in proposal.md, design.md, and tasks.md one by one; every document must be based on the confirmed clarification summary.
+
+**Naming and scope guard**: Change name must use a user-specified name or a name confirmed through the current platform's available user input/confirmation mechanism — must not auto-generate or infer. Change scope must match the user's description — must not expand or narrow it independently.
 
 Confirm the following artifacts have been created:
 
@@ -75,9 +94,9 @@ Confirm the three documents have complete content:
 
 ### 5. User Review and Confirmation (Blocking Point)
 
-After the three documents are created and content completeness check passes, **must use the AskUserQuestion tool to pause and wait for user confirmation**. Must not execute phase guard or auto-transition before user confirmation.
+After the three documents are created and content completeness check passes, **must use the current platform's available user input/confirmation mechanism to pause and wait for user confirmation**. Must not execute phase guard or auto-transition before user confirmation. If the current platform has no structured question tool, ask an equivalent single-select question in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
-AskUserQuestion must be presented as a single-select question with the following summary and options:
+The user confirmation question must be presented as a single-select question with the following summary and options:
 
 **Summary content**:
 - **proposal.md**: problem background, goals, scope
@@ -88,7 +107,7 @@ AskUserQuestion must be presented as a single-select question with the following
 - "Confirm, proceed to next phase" — artifacts meet expectations, execute phase guard transition
 - "Needs adjustment" — include adjustment notes, modify and re-request confirmation
 
-After user selects "Confirm", proceed to exit conditions. When user selects "Needs adjustment", modify the corresponding files per their notes, then re-use AskUserQuestion to request confirmation.
+After user selects "Confirm", proceed to exit conditions. When user selects "Needs adjustment", modify the corresponding files per their notes, then request confirmation again.
 
 ## Exit Conditions
 

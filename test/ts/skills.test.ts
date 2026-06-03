@@ -185,6 +185,10 @@ describe('skills', () => {
         path.resolve('assets', 'skills-zh', 'comet', 'SKILL.md'),
         'utf-8',
       );
+      const zhOpen = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-open', 'SKILL.md'),
+        'utf-8',
+      );
       const zhDesign = await fs.readFile(
         path.resolve('assets', 'skills-zh', 'comet-design', 'SKILL.md'),
         'utf-8',
@@ -207,7 +211,19 @@ describe('skills', () => {
       );
 
       expect(zhComet).toContain('决策点是阻塞点');
+      expect(zhOpen).toContain('### 1b. 需求澄清完成确认（阻塞点）');
+      expect(zhOpen).toContain('不得在用户确认需求澄清完成前创建 proposal.md、design.md 或 tasks.md');
+      expect(zhOpen).toContain('完整 `/comet` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能');
+      expect(zhOpen).toContain('技能加载后，按其指引创建 change 骨架，并逐个补齐 proposal.md、design.md、tasks.md');
+      expect(zhOpen).not.toContain('OpenSpec artifact 指令');
+      expect(zhOpen).not.toContain('fast-forward');
+      expect(zhOpen).toContain('澄清摘要必须包含：目标、非目标、范围边界、关键未知项、验收场景草案');
+      expect(zhDesign).toContain('**立即执行：** 使用 Skill 工具加载 Superpowers `brainstorming` 技能。禁止跳过此步骤。');
+      expect(zhDesign).toContain('技能加载后，按其指引使用以下上下文');
+      expect(zhDesign).not.toContain('ARGUMENTS 包含');
       expect(zhDesign).toContain('必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确确认设计方案');
+      expect(zhDesign).toContain('不得用“跳过重复上下文探索”削弱 Superpowers `brainstorming` 的澄清流程');
+      expect(zhDesign).not.toContain('跳过重复上下文探索，直接进入设计提问');
       expect(zhBuild).toContain('不得根据推荐规则自行选择 `branch` 或 `worktree`');
       expect(zhBuild).toContain('不得根据推荐规则自行选择执行方式');
       expect(zhVerify).toContain('验证不通过时**必须使用当前平台可用的用户输入/确认机制暂停并等待用户决定修复或接受偏差');
@@ -305,6 +321,10 @@ describe('skills', () => {
         path.resolve('assets', 'skills', 'comet', 'SKILL.md'),
         'utf-8',
       );
+      const enOpen = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'),
+        'utf-8',
+      );
       const enDesign = await fs.readFile(
         path.resolve('assets', 'skills', 'comet-design', 'SKILL.md'),
         'utf-8',
@@ -327,15 +347,25 @@ describe('skills', () => {
       );
 
       expect(enComet).toContain('Decision points are blocking points');
-      expect(enDesign).toContain('must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
+      expect(enOpen).toContain('### 1b. Requirements Clarification Completion Confirmation (Blocking Point)');
+      expect(enOpen).toContain('Must not create proposal.md, design.md, or tasks.md before the user confirms requirements clarification is complete');
+      expect(enOpen).toContain('Full `/comet` workflow must not use the Skill tool to load the `openspec-propose` skill');
+      expect(enOpen).toContain('After the skill loads, follow its guidance to create the change skeleton and fill in proposal.md, design.md, and tasks.md one by one');
+      expect(enOpen).toContain('The clarification summary must include: goals, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios');
+      expect(enDesign).toContain('**Immediately execute:** Use the Skill tool to load the Superpowers `brainstorming` skill. Skipping this step is prohibited.');
+      expect(enDesign).toContain('After the skill loads, follow its guidance and use the following context');
+      expect(enDesign).not.toContain('ARGUMENTS containing');
+      expect(enDesign).toContain("must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm");
+      expect(enDesign).toContain('must not weaken the Superpowers `brainstorming` clarification flow by "skipping redundant context exploration"');
+      expect(enDesign).not.toContain('Skip redundant context exploration');
       expect(enBuild).toContain('Must not choose `branch` or `worktree` based on recommendation rules');
       expect(enBuild).toContain('must not choose the execution method based on recommendation rules');
-      expect(enVerify).toContain('must use the AskUserQuestion tool to pause and wait for the user to decide fix or accept deviation');
-      expect(enVerify).toContain('Must use the AskUserQuestion tool to pause and wait for user to choose branch handling method');
+      expect(enVerify).toContain("must use the current platform's available user input/confirmation mechanism to pause and wait for the user to decide whether to fix or accept the deviation");
+      expect(enVerify).toContain("Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to choose branch handling method");
       expect(enVerify).toContain('Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written');
-      expect(enHotfix).toContain('must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
+      expect(enHotfix).toContain("must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm");
       expect(enHotfix).toContain('Do not directly enter `/comet-design`');
-      expect(enTweak).toContain('must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
+      expect(enTweak).toContain("must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm");
       expect(enTweak).toContain('Do not directly enter `/comet-design`');
       expect(enComet).toContain('`verify_result: fail` → Enter verification failure decision blocking point');
       expect(enComet).not.toContain(
@@ -347,7 +377,7 @@ describe('skills', () => {
       expect(enHotfix).toContain('verify phase (comet-verify) verification-failure and branch-handling decisions');
       expect(enTweak).toContain('verify phase (comet-verify) verification-failure and branch-handling decisions');
       expect(enDesign).toContain('The brainstorming phase does not write to the Design Doc file');
-      expect(enVerify).toContain('must use the AskUserQuestion tool as a single-select question to pause and wait for user to choose handling method');
+      expect(enVerify).toContain("must use the current platform's available user input/confirmation mechanism as a single-select question to pause and wait for the user to choose the handling method");
       expect(enComet).toContain('first check `build_pause`, `plan`, `build_mode`, and `isolation`');
       expect(enComet).toContain('`build_pause: plan-ready` and the plan file exists');
       expect(enComet).toContain('`build_pause` is not an execution method and must not be written to `build_mode`');
@@ -356,8 +386,8 @@ describe('skills', () => {
       expect(enVerify).toContain('CRITICAL failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
       expect(enHotfix).toContain('workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`');
-      expect(enBuild).toContain('Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
-      expect(enBuild).toContain('must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change');
+      expect(enBuild).toContain("Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm");
+      expect(enBuild).toContain("must use the current platform's available user input/confirmation mechanism to pause and wait for the user to decide whether to split into a new change");
       expect(enVerify).toContain('Implementation matches `openspec/changes/<name>/design.md` high-level design decisions');
       expect(enBuild).toContain('create independent change through `/comet-open`');
       expect(enBuild).not.toContain('create independent change through `/opsx:new`');
@@ -369,6 +399,29 @@ describe('skills', () => {
       expect(enHotfix).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enVerify).toContain('After user selects B, run `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`');
+
+      expect(enBuild).toContain('must use the Skill tool to load the Superpowers `systematic-debugging` skill');
+      expect(enBuild).toContain('a crash, unexpected behavior, test failure, or build failure appears while running the program, tests, build, or manual verification');
+      expect(enBuild).toContain('first add a minimal failing test that reproduces the crash or unexpected behavior');
+      expect(enBuild).toContain('Must not replace the current change verification loop by starting a separate "write test cases" change');
+      expect(enHotfix).toContain('must use the Skill tool to load the Superpowers `systematic-debugging` skill');
+      expect(enHotfix).toContain('first add a minimal failing test that reproduces the crash or unexpected behavior');
+
+      expect(
+        [enComet, enOpen, enDesign, enBuild, enVerify, enHotfix, enTweak].join('\n'),
+      ).not.toContain('AskUserQuestion');
+      expect(enComet).toContain('If the current platform has no structured question tool, ask clear options in the conversation and stop the workflow');
+    });
+  });
+
+  describe('Repository authoring guidance', () => {
+    it('documents consistent skill invocation wording in CLAUDE.md', async () => {
+      const claude = await fs.readFile(path.resolve('CLAUDE.md'), 'utf-8');
+
+      expect(claude).toContain('## Skill 触发表述规范');
+      expect(claude).toContain('中文统一使用：`**立即执行：** 使用 Skill 工具加载 <skill-name> 技能。禁止跳过此步骤。`');
+      expect(claude).toContain('英文统一使用：`**Immediately execute:** Use the Skill tool to load the <skill-name> skill. Skipping this step is prohibited.`');
+      expect(claude).toContain('后续输入、上下文或执行要求写在“技能加载后 / After the skill loads”段落');
     });
   });
 
