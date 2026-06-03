@@ -738,8 +738,10 @@ cmd_recover() {
           else
             echo "Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing."
           fi
-        else
+        elif [ "$pending" -gt 0 ]; then
           echo "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task."
+        else
+          echo "Recovery action: Plan-ready pause is stale and all tasks are done. Clear build_pause to null, then run guard to transition to verify."
         fi
       elif [ "$isolation" = "null" ] || [ -z "$isolation" ]; then
         echo "Recovery action: Isolation not selected. Use the current platform's user confirmation mechanism to ask user for branch/worktree choice."

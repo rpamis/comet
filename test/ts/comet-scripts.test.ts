@@ -1714,6 +1714,43 @@ describeShell('comet shell scripts', () => {
       expect(result.stdout).toContain('Do not execute the pending task directly in the main window');
     });
 
+    it('suggests running guard when stale plan-ready pause has all tasks done', async () => {
+        await writeFile(
+          path.join(tmpDir, 'docs', 'superpowers', 'plans', 'stale-all-done-plan.md'),
+          'plan\n',
+        );
+        await createChange(
+          tmpDir,
+          'recover-stale-all-done',
+          [
+            'workflow: full',
+            'phase: build',
+            'build_mode: executing-plans',
+            'build_pause: plan-ready',
+            'subagent_dispatch: null',
+            'isolation: branch',
+            'verify_mode: null',
+            'design_doc: null',
+            'plan: docs/superpowers/plans/stale-all-done-plan.md',
+            'verify_result: pending',
+            'archived: false',
+            '',
+          ].join('\n'),
+          ['- [x] done task'].join('\n'),
+        );
+
+        const result = runBash(tmpDir, stateScript, [
+          'check',
+          'recover-stale-all-done',
+          'build',
+          '--recover',
+        ]);
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('all tasks are done');
+        expect(result.stdout).toContain('run guard to transition to verify');
+      });
+
     it('outputs recovery context for verify phase with completed verification', async () => {
       await writeFile(
         path.join(tmpDir, 'docs', 'superpowers', 'reports', 'recover-verify.md'),
