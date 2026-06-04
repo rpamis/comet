@@ -314,8 +314,22 @@ describe('skills', () => {
       expect(zhBuild).toContain('通过 `/comet-open` 创建独立 change');
       expect(zhBuild).not.toContain('`/opsx:new` 创建独立 change');
 
+      // CRITICAL: open phase PRD split must happen before OpenSpec artifacts are created
+      expect(zhOpen).toContain('### 1a. PRD 拆分预检（阻塞点）');
+      expect(zhOpen).toContain('创建多个 OpenSpec changes');
+      expect(zhOpen).toContain('保持为一个 change');
+      expect(zhOpen).toContain('调整拆分方案后继续');
+      expect(zhOpen).toContain('每个被接受的拆分项都必须通过 `/comet-open` 创建独立 change');
+      expect(zhOpen).not.toContain('每个被接受的拆分项都必须通过 `/opsx:new` 创建独立 change');
+      expect(zhOpen).toContain('已确认拆分项');
+      expect(zhOpen).toContain('跳过 PRD 拆分预检');
+      expect(zhOpen).toContain('批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`');
+      expect(zhOpen).toContain('拆分完毕后必须暂停询问用户开始哪一个 change');
+      expect(zhOpen).toContain('恢复时先检查已创建的 active changes');
+
       // IMPORTANT: main entry and build subskill agree scope expansion is blocking
       expect(zhComet).toContain('build 阶段范围扩张需重新设计或拆分新 change');
+      expect(zhComet).toContain('open 阶段大型 PRD 需确认拆分为多个 change');
 
       // IMPORTANT: accepted Spec drift edits must not loop back through dirty-worktree handling
       expect(zhVerify).toContain('选项 A 属于 verify 阶段允许产物');
@@ -503,9 +517,21 @@ describe('skills', () => {
       );
       expect(enBuild).toContain('create independent change through `/comet-open`');
       expect(enBuild).not.toContain('create independent change through `/opsx:new`');
+      expect(enOpen).toContain('### 1a. PRD Split Preflight (Blocking Point)');
+      expect(enOpen).toContain('Create multiple OpenSpec changes');
+      expect(enOpen).toContain('Keep everything as one change');
+      expect(enOpen).toContain('Adjust the split plan before continuing');
+      expect(enOpen).toContain('Every accepted split item must be created as an independent change through `/comet-open`');
+      expect(enOpen).not.toContain('Every accepted split item must be created as an independent change through `/opsx:new`');
+      expect(enOpen).toContain('confirmed split item');
+      expect(enOpen).toContain('skip the PRD split preflight');
+      expect(enOpen).toContain('In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase');
+      expect(enOpen).toContain('After splitting is complete, must pause and ask the user which change to start');
+      expect(enOpen).toContain('On resume, first check already-created active changes');
       expect(enComet).toContain(
         'Build phase scope expansion requiring redesign or new change split',
       );
+      expect(enComet).toContain('Open phase large PRD requiring confirmation to split into multiple changes');
       expect(enVerify).toContain('Option A is a verify phase allowed artifact');
       expect(enBuild).toContain(
         'Must use the Skill tool to load the Superpowers `using-git-worktrees`',

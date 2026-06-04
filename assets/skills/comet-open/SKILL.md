@@ -24,6 +24,41 @@ After the skill loads, explore the problem space following its guidance, but do 
 
 The clarification summary must include: goals, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios.
 
+### 1a. PRD Split Preflight (Blocking Point)
+
+When the user input is a large PRD, roadmap, complete product plan, or the clarification summary shows multiple independent capabilities, modules, user journeys, or milestones, must evaluate whether it should be split into multiple changes before creating OpenSpec artifacts.
+
+The split preflight must be based on clarified information and output a proposed split list. Each proposed split item must include:
+- Suggested change name
+- Goals and scope boundaries
+- Explicit non-goals
+- Dependencies or recommended execution order
+- Core acceptance scenarios
+
+Recommend splitting when any condition applies:
+- The PRD contains multiple capabilities that can be independently designed, built, verified, and archived
+- Multiple modules or user journeys are involved, and part of them can be delivered independently
+- Clear phased milestones exist
+- The work is expected to produce multiple delta specs or more than 3 large tasks
+- Failure or delay in one part should not block other parts from entering later phases
+
+When splitting is recommended, must use the current platform's available user input/confirmation mechanism to pause and wait for the user's choice. If the current platform has no structured question tool, ask an equivalent single-select question in the conversation, stop the workflow, and wait for the user's reply before continuing.
+
+The user choices must include:
+- "Create multiple OpenSpec changes" — create independent changes from the proposed split
+- "Keep everything as one change" — continue the single-change flow and record the reason for not splitting in proposal/design/tasks
+- "Adjust the split plan before continuing" — after the user describes the adjustment, output the revised proposed split list and ask for confirmation again
+
+Every accepted split item must be created as an independent change through `/comet-open`, not by calling `/opsx:new` directly. `/comet-open` creates both OpenSpec artifacts and `.comet.yaml`, ensuring each change enters the Comet state machine.
+
+Must not create proposal.md, design.md, or tasks.md before the user completes the PRD split choice. If the user chooses to create multiple changes, the current `/comet-open` invocation only completes split confirmation and coordination, then enters `/comet-open` for each split item in the user-confirmed order.
+
+In batch split mode, entering `/comet-open` for each split item must explicitly mark it as a "confirmed split item" and carry that split item's goals, scope, non-goals, and acceptance scenarios. Confirmed split items skip the PRD split preflight by default, unless the split item itself still clearly contains multiple independent capabilities.
+
+In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase. After splitting is complete, must pause and ask the user which change to start; after the user chooses, advance only that change into `/comet-design`, while other changes remain active and can be resumed later through `/comet`.
+
+Minimal resume rule: do not add a dedicated batch state file. On resume, first check already-created active changes; split items that already exist and contain `.comet.yaml` must not be created again, while uncreated split items continue through `/comet-open` according to the user-confirmed split list. If the confirmed split list cannot be recovered from the conversation, must ask the user to confirm the split list again before continuing.
+
 ### 1b. Requirements Clarification Completion Confirmation (Blocking Point)
 
 Before creating OpenSpec artifacts, must use the current platform's available user input/confirmation mechanism to pause and wait for the user to confirm requirements clarification is complete. If the current platform has no structured question tool, present the clarification summary in the conversation, ask a confirmation question, stop the workflow, and wait for the user's reply before continuing.

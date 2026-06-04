@@ -13,6 +13,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **OpenSpec clarification gate**: Chinese and English `/comet-open` now require a confirmed requirements clarification summary before proposal, design, or tasks artifacts are created, preventing one Q&A turn from immediately generating a full OpenSpec change.
+- **PRD split preflight**: Chinese and English `/comet-open` now triage large PRDs before creating OpenSpec artifacts, allowing users to split independent capabilities into multiple Comet changes while keeping each accepted split on the `/comet-open` state-machine path. Addresses [#62](https://github.com/rpamis/comet/issues/62).
 - **Skill invocation wording guidance**: Added repository guidance in `CLAUDE.md` requiring new skill-trigger descriptions to use the existing "use the Skill tool to load..." wording and place context details after the skill loads.
 - **Systematic debugging gate**: Chinese and English build and hotfix skills now require loading Superpowers `systematic-debugging` when implementation-time crashes, unexpected behavior, test failures, or build failures appear, ensuring root-cause investigation and in-change regression tests happen before source fixes.
 - **Platform-neutral confirmation gates**: Chinese and English Comet skills and recovery messages now refer to the current platform's user input/confirmation mechanism instead of hard-coding `AskUserQuestion`, preventing Codex users from being directed to a tool that may not exist while preserving blocking user decisions.
@@ -33,6 +34,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Skill authoring regression**: Added coverage that `CLAUDE.md` documents the required skill invocation wording pattern.
 - **Debug gate regression**: Added Chinese skill safeguard coverage for systematic-debugging invocation, minimal failing-test requirements, and keeping crash verification inside the current change.
 - **Confirmation mechanism regression**: Added coverage that Chinese workflow decision gates no longer hard-code `AskUserQuestion` and that recovery output points agents to a platform-neutral confirmation mechanism.
+- **PRD split workflow regression**: Added Chinese and English skill coverage for open-phase PRD split choices, `/comet-open` state initialization, repeated-triage prevention, split completion selection, and minimal resume guidance.
 - **tdd_mode state machine regression**: Added coverage for tdd_mode init defaults (null for full, direct for hotfix), enum validation, build-exit guard, hotfix bypass, and schema validation rejection of invalid values.
 
 ## What's Changed [0.3.6] - 2026-06-02

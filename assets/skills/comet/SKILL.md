@@ -119,6 +119,7 @@ Nodes requiring user participation (pause only at these nodes):
 5. Choose branch handling method for finishing-branch
 6. Encounter upgrade conditions (hotfix/tweak → full workflow)
 7. Build phase scope expansion requiring redesign or new change split
+8. Open phase large PRD requiring confirmation to split into multiple changes
 
 Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway. At decision points, **must not skip user confirmation or choose automatically — must explicitly obtain the user's choice through the current platform's available user input/confirmation mechanism before continuing**.
 
