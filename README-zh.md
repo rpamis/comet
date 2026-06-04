@@ -367,7 +367,7 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
    - 防止验证或分支处理被跳过时产生虚假的阶段推进
 
 6. **归档自动化** — `comet-archive.sh` 一键处理完整归档流程
-   - 验证入口状态、同步 delta specs 到 main specs
+   - 验证入口状态、通过 OpenSpec 将 delta specs 合并到 main specs
    - 标注设计文档和计划文档的 frontmatter
    - 将变更移至归档目录并更新 `archived: true`
    - 支持 `--dry-run` 预览

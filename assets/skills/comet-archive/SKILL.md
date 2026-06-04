@@ -1,6 +1,6 @@
 ---
 name: comet-archive
-description: "Comet Phase 5: Archive. Invoke with /comet-archive. Sync delta spec to main spec, archive change."
+description: "Comet Phase 5: Archive. Invoke with /comet-archive. Merge delta specs into main specs with OpenSpec semantics, archive change."
 ---
 
 # Comet Phase 5: Archive (Archive)
@@ -39,17 +39,17 @@ Run the archive script to automatically complete all steps:
 
 The script automatically executes:
 1. Entry state validation (phase=archive, verify_result=pass, archived=false)
-2. Delta spec sync to main spec (overwrite)
-3. Design doc frontmatter annotation (archived-with, status)
-4. Plan frontmatter annotation (archived-with)
-5. Move change to archive directory
+2. Design doc frontmatter annotation (archived-with, status)
+3. Plan frontmatter annotation (archived-with)
+4. OpenSpec archive for delta-merge semantics and moving the change to the archive directory
+5. Main spec guard against leaked delta-only section headings
 6. Update `archived: true` through `comet-state transition <archive-name> archived`
 
 If script returns non-zero exit code, report error and stop.
 If script returns zero exit code, archive is complete.
 The summary `X/Y steps succeeded` counts real executed steps and does not double-count delta spec sync or document annotation.
 
-When a delta spec differs from an existing main spec, the script prints a unified diff preview before overwrite to help confirm archive sync content.
+The script calls OpenSpec archive to merge `ADDED/MODIFIED/REMOVED/RENAMED` delta semantics into main specs, then verifies main specs do not contain delta-only section headings.
 
 Use `--dry-run` flag to preview without executing.
 
@@ -57,7 +57,7 @@ Use `--dry-run` flag to preview without executing.
 
 Spec lifecycle completes here:
 ```
-brainstorming → delta spec → implementation → verification → main spec overwrite → design doc annotation → archive
+brainstorming → delta spec → implementation → verification → main spec merge → design doc annotation → archive
 ```
 
 ## Exit Conditions

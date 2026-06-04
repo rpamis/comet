@@ -288,7 +288,7 @@ openspec/                              # OpenSpec — WHAT
 │   │   ├── .comet/handoff/            # 脚本生成的阶段交接包
 │   │   └── tasks.md                   # 任务清单
 │   └── archive/YYYY-MM-DD-<name>/     # 已归档
-└── specs/<capability>/spec.md         # 主 specs（归档时从 delta 覆盖）
+└── specs/<capability>/spec.md         # 主 specs（归档时按 OpenSpec delta 语义合并）
 
 docs/superpowers/                      # Superpowers — HOW
 ├── specs/YYYY-MM-DD-<topic>-design.md # 设计文档（技术 RFC，归档时标注状态）

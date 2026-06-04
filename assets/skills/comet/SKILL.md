@@ -285,7 +285,7 @@ openspec/                              # OpenSpec — WHAT
 │   │   ├── .comet/handoff/            # Script-generated phase handoff packages
 │   │   └── tasks.md                   # Task checklist
 │   └── archive/YYYY-MM-DD-<name>/     # Archived
-└── specs/<capability>/spec.md         # Main specs (overwritten from delta at archive)
+└── specs/<capability>/spec.md         # Main specs (merged from delta semantics at archive)
 
 docs/superpowers/                      # Superpowers — HOW
 ├── specs/YYYY-MM-DD-<topic>-design.md # Design doc (technical RFC, mark status at archive)

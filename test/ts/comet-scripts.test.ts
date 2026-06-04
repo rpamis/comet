@@ -71,6 +71,49 @@ async function createChange(tmpDir: string, name: string, yaml: string, tasks = 
   return changeDir;
 }
 
+async function createFakeOpenSpecArchive(tmpDir: string, archiveDateScript = 'date +%Y-%m-%d') {
+  const fakeOpenSpec = path.join(tmpDir, 'fake-bin', 'openspec');
+  const logFile = path.join(tmpDir, 'fake-bin', 'openspec-args.log');
+  await writeFile(
+    fakeOpenSpec,
+    [
+      '#!/bin/bash',
+      'set -euo pipefail',
+      `printf '%s\\n' "$*" > "${toBashPath(logFile)}"`,
+      'if [ "${1:-}" != "archive" ]; then',
+      '  echo "unsupported openspec command: ${1:-}" >&2',
+      '  exit 1',
+      'fi',
+      'change="$2"',
+      `today=$(${archiveDateScript})`,
+      'change_dir="openspec/changes/$change"',
+      'archive_dir="openspec/changes/archive/$today-$change"',
+      'if [ -d "$change_dir/specs" ]; then',
+      '  for delta in "$change_dir"/specs/*/spec.md; do',
+      '    [ -f "$delta" ] || continue',
+      '    capability=$(basename "$(dirname "$delta")")',
+      '    main="openspec/specs/$capability/spec.md"',
+      '    mkdir -p "$(dirname "$main")"',
+      '    if [ ! -f "$main" ]; then',
+      '      printf "# %s Specification\\n\\n## Purpose\\nTBD\\n\\n## Requirements\\n" "$capability" > "$main"',
+      '    fi',
+      '    awk \'',
+      '      /^## ADDED Requirements$/ { in_added = 1; next }',
+      '      /^## (MODIFIED|REMOVED|RENAMED) Requirements$/ { in_added = 0 }',
+      '      in_added { print }',
+      '    \' "$delta" >> "$main"',
+      '  done',
+      'fi',
+      'mkdir -p "openspec/changes/archive"',
+      'mv "$change_dir" "$archive_dir"',
+      'echo "Change $change archived as $today-$change."',
+      '',
+    ].join('\n'),
+  );
+  await fs.chmod(fakeOpenSpec, 0o755);
+  return { fakeOpenSpec, logFile };
+}
+
 const describeShell = bashCommand ? describe : describe.skip;
 
 describeShell('comet shell scripts', () => {
@@ -1314,6 +1357,7 @@ describeShell('comet shell scripts', () => {
 
   it('reports accurate archive step counts when syncing and annotating', async () => {
     const archiveScript = path.join(tmpDir, 'scripts', 'comet-archive.sh');
+    const { fakeOpenSpec, logFile } = await createFakeOpenSpecArchive(tmpDir);
     await createChange(
       tmpDir,
       'ready-to-archive',
@@ -1351,13 +1395,163 @@ describeShell('comet shell scripts', () => {
         'capability',
         'spec.md',
       ),
-      'delta spec\n',
+      [
+        '## ADDED Requirements',
+        '',
+        '### Requirement: Added capability',
+        'The system SHALL expose the added capability.',
+        '',
+        '#### Scenario: Added behavior',
+        '- **WHEN** the archive runs',
+        '- **THEN** the main spec is updated',
+        '',
+      ].join('\n'),
     );
 
-    const result = runBash(tmpDir, archiveScript, ['ready-to-archive']);
+    const result = runBash(tmpDir, archiveScript, ['ready-to-archive'], {
+      COMET_OPENSPEC: toBashPath(fakeOpenSpec),
+    });
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('Archive complete. 7/7 steps succeeded.');
+    await expect(fs.readFile(logFile, 'utf-8')).resolves.toBe('archive ready-to-archive --yes\n');
+  }, 20_000);
+
+  it('merges delta specs without copying delta-only requirement headings into main specs', async () => {
+    const archiveScript = path.join(tmpDir, 'scripts', 'comet-archive.sh');
+    const { fakeOpenSpec } = await createFakeOpenSpecArchive(tmpDir);
+    await createChange(
+      tmpDir,
+      'merge-delta-spec',
+      [
+        'workflow: full',
+        'phase: archive',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'tdd_mode: null',
+        'isolation: branch',
+        'verify_mode: full',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pass',
+        'verification_report: docs/superpowers/reports/merge.md',
+        'branch_status: handled',
+        'verified_at: 2026-05-21',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(path.join(tmpDir, 'docs', 'superpowers', 'reports', 'merge.md'), 'PASS\n');
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'specs', 'capability', 'spec.md'),
+      [
+        '# Capability Specification',
+        '',
+        '## Purpose',
+        'Existing stable spec.',
+        '',
+        '## Requirements',
+        '',
+        '### Requirement: Existing behavior',
+        'The system SHALL preserve existing behavior.',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(
+      path.join(
+        tmpDir,
+        'openspec',
+        'changes',
+        'merge-delta-spec',
+        'specs',
+        'capability',
+        'spec.md',
+      ),
+      [
+        '## ADDED Requirements',
+        '',
+        '### Requirement: New behavior',
+        'The system SHALL merge new behavior into the stable spec.',
+        '',
+        '#### Scenario: Delta merge',
+        '- **WHEN** the change is archived',
+        '- **THEN** the stable spec contains the new behavior',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runBash(tmpDir, archiveScript, ['merge-delta-spec'], {
+      COMET_OPENSPEC: toBashPath(fakeOpenSpec),
+    });
+    const mainSpec = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'specs', 'capability', 'spec.md'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(mainSpec).toContain('### Requirement: Existing behavior');
+    expect(mainSpec).toContain('### Requirement: New behavior');
+    expect(mainSpec).not.toContain('## ADDED Requirements');
+    expect(mainSpec).not.toContain('## MODIFIED Requirements');
+    expect(mainSpec).not.toContain('## REMOVED Requirements');
+    expect(mainSpec).not.toContain('## RENAMED Requirements');
+  }, 20_000);
+
+  it('annotates archive metadata with the actual OpenSpec archive directory name', async () => {
+    const archiveScript = path.join(tmpDir, 'scripts', 'comet-archive.sh');
+    const { fakeOpenSpec } = await createFakeOpenSpecArchive(tmpDir, "printf '2026-05-20'");
+    await createChange(
+      tmpDir,
+      'utc-archive-date',
+      [
+        'workflow: full',
+        'phase: archive',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'tdd_mode: null',
+        'isolation: branch',
+        'verify_mode: full',
+        'design_doc: docs/superpowers/specs/utc-design.md',
+        'plan: docs/superpowers/plans/utc-plan.md',
+        'verify_result: pass',
+        'verification_report: docs/superpowers/reports/utc.md',
+        'branch_status: handled',
+        'verified_at: 2026-05-21',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(path.join(tmpDir, 'docs', 'superpowers', 'specs', 'utc-design.md'), 'design\n');
+    await writeFile(path.join(tmpDir, 'docs', 'superpowers', 'plans', 'utc-plan.md'), 'plan\n');
+    await writeFile(path.join(tmpDir, 'docs', 'superpowers', 'reports', 'utc.md'), 'PASS\n');
+
+    const result = runBash(tmpDir, archiveScript, ['utc-archive-date'], {
+      COMET_OPENSPEC: toBashPath(fakeOpenSpec),
+    });
+    const design = await fs.readFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'utc-design.md'),
+      'utf-8',
+    );
+    const plan = await fs.readFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'plans', 'utc-plan.md'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(design).toContain('archived-with: 2026-05-20-utc-archive-date');
+    expect(plan).toContain('archived-with: 2026-05-20-utc-archive-date');
+    await expect(
+      fs.stat(
+        path.join(
+          tmpDir,
+          'openspec',
+          'changes',
+          'archive',
+          '2026-05-20-utc-archive-date',
+          '.comet.yaml',
+        ),
+      ),
+    ).resolves.toBeDefined();
   }, 20_000);
 
   it('uses plan base-ref to scale verification after changes have been committed', async () => {

@@ -1,6 +1,6 @@
 ---
 name: comet-archive
-description: "Comet 阶段 5：归档。用 /comet-archive 调用。同步 delta spec 到主 spec，归档 change。"
+description: "Comet 阶段 5：归档。用 /comet-archive 调用。按 OpenSpec delta 语义合并主 spec，归档 change。"
 ---
 
 # Comet 阶段 5：归档（Archive）
@@ -39,17 +39,17 @@ fi
 
 脚本自动执行：
 1. 入口状态验证（phase=archive, verify_result=pass, archived=false）
-2. Delta spec 同步到主 spec
-3. Design doc 前置元数据标注（archived-with, status）
-4. Plan 前置元数据标注（archived-with）
-5. 移动 change 到归档目录
+2. Design doc 前置元数据标注（archived-with, status）
+3. Plan 前置元数据标注（archived-with）
+4. 调用 OpenSpec archive 按 delta 语义合并主 spec 并移动 change 到归档目录
+5. 校验主 spec 未残留 delta-only section 标题
 6. 通过 `comet-state transition <archive-name> archived` 更新 `archived: true`
 
 如脚本返回非零退出码，报告错误并停止。
 如脚本返回零退出码，归档完成。
 脚本摘要中的 `X/Y steps succeeded` 以真实执行步骤计数，不会因 delta spec 同步或文档标注重复累计。
 
-当待同步的 delta spec 与已有主 spec 不一致时，脚本会在覆盖前打印 unified diff 预览，帮助确认归档同步内容。
+脚本会调用 OpenSpec 归档能力按 `ADDED/MODIFIED/REMOVED/RENAMED` 语义合并主 spec，并在归档后校验主 spec 中没有残留 delta-only section 标题。
 
 如需预览而不实际执行，使用 `--dry-run` 参数。
 
@@ -57,7 +57,7 @@ fi
 
 Spec 生命周期在此完成：
 ```
-brainstorming → delta spec → 实施 → 验证 → 主 spec 覆盖 → design doc 标注 → 归档
+brainstorming → delta spec → 实施 → 验证 → 主 spec 合并 → design doc 标注 → 归档
 ```
 
 ## 退出条件

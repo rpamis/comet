@@ -368,7 +368,7 @@ Comet ensures agent execution reliability through automated state transitions:
    - Prevents false phase advances when verification or branch handling was skipped
 
 6. **Archive Automation** — `comet-archive.sh` handles the full archive flow in one command
-   - Validates entry state, syncs delta specs to main specs
+   - Validates entry state, merges delta specs into main specs through OpenSpec
    - Annotates design doc and plan frontmatter
    - Moves change to archive directory and updates `archived: true`
    - Supports `--dry-run` for preview
