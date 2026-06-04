@@ -32,7 +32,7 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 
 ### 0a. Output Language Constraint
 
-Verification reports and branch-handling notes must use the language of the user request that triggered this workflow. When resuming an existing change with a clear dominant language in verification/design artifacts, preserve that language unless the user explicitly asks to switch. When invoking `openspec-verify-change` or `superpowers:finishing-a-development-branch`, ARGUMENTS must include the same Language constraint.
+Verification reports and branch-handling notes must use the language of the user request that triggered this workflow. When resuming an existing change with a clear dominant language in verification/design artifacts, preserve that language unless the user explicitly asks to switch. When invoking `openspec-verify-change` or `finishing-a-development-branch`, ARGUMENTS must include the same Language constraint.
 
 ### 1. Scale Assessment
 
@@ -138,14 +138,14 @@ bash "$COMET_STATE" transition <change-name> verify-fail
 **Spec Drift Handling** (user decision point):
 - If check item 6 finds contradictions (delta spec has content but design doc does not reflect it), **must use the AskUserQuestion tool as a single-select question to pause and wait for user to choose handling method**; must not select automatically. Options:
   - Option A: Append "Implementation Divergence" section to design doc recording deviation reason. Option A is a verify phase allowed artifact; after writing, must not re-trigger Step 1b dirty-worktree decision due to that design doc change
-  - Option B: After user selects B, run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load `superpowers:brainstorming` to update Design Doc + delta spec
+  - Option B: After user selects B, run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load `brainstorming` to update Design Doc + delta spec
   - Option C: Confirm deviation is acceptable, continue verification (design doc will be marked as `superseded-by-main-spec` during archiving)
 
 ### 3. Finishing (Superpowers)
 
-**Immediately execute:** Use the Skill tool to load the `superpowers:finishing-a-development-branch` skill. Skipping this step is prohibited.
+**Immediately execute:** Use the Skill tool to load the `finishing-a-development-branch` skill. Skipping this step is prohibited.
 
-If `superpowers:finishing-a-development-branch` is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
+If `finishing-a-development-branch` is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
 
 After the skill loads, follow its guidance to finish. Branch handling options:
 1. Merge to main branch locally

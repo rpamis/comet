@@ -251,7 +251,7 @@ describe('skills', () => {
 
       // LOW: comet-build "中" level requires user confirmation before brainstorming
       expect(zhBuild).toContain(
-        '使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 `superpowers:brainstorming`',
+        '使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 `brainstorming`',
       );
 
       // LOW: comet-build 50% threshold is a hard decision point
@@ -272,9 +272,9 @@ describe('skills', () => {
       expect(zhVerify).toContain('选项 A 属于 verify 阶段允许产物');
 
       // Dependency triggers must be explicit skill invocations, not ambiguous prose.
-      expect(zhBuild).toContain('必须使用 Skill 工具加载 `superpowers:using-git-worktrees`');
+      expect(zhBuild).toContain('必须使用 Skill 工具加载 `using-git-worktrees`');
       expect(zhBuild).not.toContain('或使用原生 `EnterWorktree` 工具');
-      expect(zhBuild).toContain('必须使用 Skill 工具加载 `superpowers:brainstorming`');
+      expect(zhBuild).toContain('必须使用 Skill 工具加载 `brainstorming`');
       expect(zhHotfix).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhTweak).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhVerify).toContain('用户选择 B 后，运行 `bash "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`');
@@ -341,9 +341,9 @@ describe('skills', () => {
       expect(enBuild).not.toContain('create independent change through `/opsx:new`');
       expect(enComet).toContain('Build phase scope expansion requiring redesign or new change split');
       expect(enVerify).toContain('Option A is a verify phase allowed artifact');
-      expect(enBuild).toContain('Must use the Skill tool to load `superpowers:using-git-worktrees`');
+      expect(enBuild).toContain('Must use the Skill tool to load `using-git-worktrees`');
       expect(enBuild).not.toContain('native `EnterWorktree` tool');
-      expect(enBuild).toContain('must use Skill tool to load `superpowers:brainstorming`');
+      expect(enBuild).toContain('must use Skill tool to load `brainstorming`');
       expect(enHotfix).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enVerify).toContain('After user selects B, run `bash "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`');

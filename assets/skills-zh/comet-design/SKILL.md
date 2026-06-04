@@ -71,7 +71,7 @@ bash "$COMET_HANDOFF" <change-name> design --write --full
 
 ### 1b. 执行 Brainstorming（带上下文）
 
-**立即执行：** 使用 Skill 工具加载 `superpowers:brainstorming` 技能，ARGUMENTS 包含：
+**立即执行：** 使用 Skill 工具加载 `brainstorming` 技能，ARGUMENTS 包含：
 
 ```
 Change: <change-name>
@@ -95,7 +95,7 @@ canonical_spec: openspec
 
 禁止跳过此步骤，禁止在未加载该技能的情况下继续。
 
-如 `superpowers:brainstorming` 不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
+如 `brainstorming` 不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
 
 技能加载后，按其指引产出设计方案（以对话形式呈现）：
 - 技术方案：架构、数据流、关键技术选型与风险

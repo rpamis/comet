@@ -32,7 +32,7 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 
 ### 1. Create Plan
 
-**Immediately execute:** Use the Skill tool to load the `superpowers:writing-plans` skill. Skipping this step is prohibited.
+**Immediately execute:** Use the Skill tool to load the `writing-plans` skill. Skipping this step is prohibited.
 
 When loading the skill, ARGUMENTS must include:
 
@@ -88,8 +88,8 @@ Plan has been written to the current branch. Before starting execution, **ask th
 
 | Option | Skill | Applicable Scenario |
 |------|------|-------------------|
-| A | `superpowers:subagent-driven-development` | Independent tasks, high complexity, requires two-phase review |
-| B | `superpowers:executing-plans` | Simple tasks, no subagent environment, lightweight and fast |
+| A | `subagent-driven-development` | Independent tasks, high complexity, requires two-phase review |
+| B | `executing-plans` | Simple tasks, no subagent environment, lightweight and fast |
 
 **Execution method recommendation rules**:
 - Task count ≥ 3 → Recommend A
@@ -119,7 +119,7 @@ Without `direct_override: true`, `build_mode=direct` in full workflow is blocked
 **Execute isolation**:
 
 - **branch**: Run `git checkout -b <change-name>`, subsequent work on the new branch
-- **worktree**: Must use the Skill tool to load `superpowers:using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
+- **worktree**: Must use the Skill tool to load `using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
 
 After creating isolation, confirm plan file is accessible (naturally accessible with branch method; for worktree method, confirm plan has been committed).
 
@@ -127,7 +127,7 @@ After creating isolation, confirm plan file is accessible (naturally accessible 
 
 If the selected Superpowers skill is unavailable, stop the process and prompt to install or enable the corresponding skill. Do not substitute this step with normal conversation.
 
-When loading `superpowers:subagent-driven-development` or `superpowers:executing-plans`, ARGUMENTS must include the same Language constraint.
+When loading `subagent-driven-development` or `executing-plans`, ARGUMENTS must include the same Language constraint.
 
 After the skill loads, follow its guidance to execute:
 - Execute tasks according to plan
@@ -141,10 +141,10 @@ When the initial spec is found incomplete during implementation, handle by scale
 | Scale | Trigger Conditions | Approach |
 |------|-------------------|----------|
 | Small | Missing acceptance scenarios, edge cases | Directly edit delta spec + design.md, append tasks.md tasks |
-| Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load `superpowers:brainstorming` to update Design Doc + delta spec |
+| Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load `brainstorming` to update Design Doc + delta spec |
 | Large | Brand-new capability requirements | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm the split**; after user confirms, create independent change through `/comet-open` |
 
-When loading `superpowers:brainstorming` for a medium-scale Spec incremental update, ARGUMENTS must include the same Language constraint as Step 1:
+When loading `brainstorming` for a medium-scale Spec incremental update, ARGUMENTS must include the same Language constraint as Step 1:
 
 ```text
 Language: Use the language of the user request that triggered this workflow.

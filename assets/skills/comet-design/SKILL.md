@@ -71,7 +71,7 @@ Handoff package sources come from OpenSpec open phase artifacts:
 
 ### 1b. Execute Brainstorming (with Context)
 
-**Immediately execute:** Use the Skill tool to load the `superpowers:brainstorming` skill, ARGUMENTS containing:
+**Immediately execute:** Use the Skill tool to load the `brainstorming` skill, ARGUMENTS containing:
 
 ```
 Change: <change-name>
@@ -95,7 +95,7 @@ Skip redundant context exploration, proceed directly to design questions.
 
 Skipping this step is prohibited. Proceeding without loading this skill is prohibited.
 
-If `superpowers:brainstorming` is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
+If `brainstorming` is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
 
 After the skill loads, follow its guidance to produce design proposals (presented as conversation):
 - Technical approach: architecture, data flow, key technology choices and risks
