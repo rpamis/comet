@@ -1,3 +1,7 @@
+---
+archived-with: 2026-06-04-enforce-executing-plans-review
+status: final
+---
 # Executing-Plans Review Gate Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

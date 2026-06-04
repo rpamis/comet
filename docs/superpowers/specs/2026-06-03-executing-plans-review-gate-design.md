@@ -2,6 +2,8 @@
 astrolabe_change: enforce-executing-plans-review
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-04-enforce-executing-plans-review
+status: final
 ---
 
 # Executing-Plans Review Gate Design
