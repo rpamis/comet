@@ -4,6 +4,8 @@
 
 set -euo pipefail
 
+COMET_BASH="${COMET_BASH:-${BASH:-bash}}"
+
 red() { echo -e "\033[31m$1\033[0m" >&2; }
 green() { echo -e "\033[32m$1\033[0m" >&2; }
 
@@ -249,8 +251,8 @@ write_markdown_context "$CONTEXT_MD"
 write_json_context "$CONTEXT_JSON"
 
 if [ -x "$STATE_SH" ] || [ -f "$STATE_SH" ]; then
-  bash "$STATE_SH" set "$CHANGE" handoff_context "$CONTEXT_JSON" >/dev/null
-  bash "$STATE_SH" set "$CHANGE" handoff_hash "$CONTEXT_HASH" >/dev/null
+  "$COMET_BASH" "$STATE_SH" set "$CHANGE" handoff_context "$CONTEXT_JSON" >/dev/null
+  "$COMET_BASH" "$STATE_SH" set "$CHANGE" handoff_hash "$CONTEXT_HASH" >/dev/null
 else
   red "ERROR: comet-state.sh not found; cannot record handoff fields"
   exit 1

@@ -57,24 +57,24 @@ Language: 使用触发本次工作流的用户请求语言输出。
 初始化 Comet 状态文件：
 
 ```bash
-bash "$COMET_STATE" init <name> tweak
+"$COMET_BASH" "$COMET_STATE" init <name> tweak
 ```
 
 初始化后验证状态：
 
 ```bash
-bash "$COMET_STATE" check <name> open
+"$COMET_BASH" "$COMET_STATE" check <name> open
 ```
 
 阶段守卫完成 open → build 过渡：
 
 ```bash
-bash "$COMET_GUARD" <change-name> open --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply
 ```
 
 ### 2. 轻量构建（preset build）
 
-使用 tweak 默认值：`build_mode: direct`。跳过 `brainstorming` 和 `writing-plans`。
+使用 tweak 默认值：`build_mode: direct`。跳过 Superpowers `brainstorming` 和 `writing-plans`。
 
 继续或开始修改前，按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。若归因后发现范围超出 tweak，按本文件“升级条件”处理。
 
@@ -91,7 +91,7 @@ bash "$COMET_GUARD" <change-name> open --apply
 4. 运行阶段守卫完成 build → verify 过渡：
 
 ```bash
-bash "$COMET_GUARD" <change-name> build --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply
 ```
 
 状态文件自动更新为 `phase: verify`、`verify_result: pending`，然后进入验证。
@@ -147,7 +147,7 @@ Tweak 流程为 **一次性连续执行**。调用 `/comet-tweak` 后，agent �
 用户确认升级后，**必须先更新 workflow 字段**再进入完整流程：
 
 ```bash
-bash "$COMET_STATE" set <name> workflow full
+"$COMET_BASH" "$COMET_STATE" set <name> workflow full
 ```
 
 然后在当前 change 基础上补充 Design Doc：**立即使用 Skill 工具加载 `comet-design` skill**，后续正常走完整流程。若用户不确认升级，停止 tweak 并报告当前变更已超出 tweak 适用范围。
@@ -159,4 +159,4 @@ bash "$COMET_STATE" set <name> workflow full
 - 小改动已完成，测试通过
 - change 已归档
 - 未新增 capability、架构调整或接口变化
-- **阶段守卫**：build → verify 前运行 `bash "$COMET_GUARD" <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `bash "$COMET_GUARD" <change-name> verify --apply`
+- **阶段守卫**：build → verify 前运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`

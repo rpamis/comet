@@ -5,9 +5,34 @@ import os from 'os';
 import path from 'path';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
-const bashUname = (
-  spawnSync('bash', ['-lc', 'uname -s'], { encoding: 'utf-8' }).stdout || ''
-).trim();
+
+function findUsableBash(): string | null {
+  const candidates = [
+    process.env.COMET_TEST_BASH,
+    'bash',
+    ...(process.platform === 'win32'
+      ? [
+          'C:\\Program Files\\Git\\bin\\bash.exe',
+          'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+          'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+        ]
+      : []),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  for (const candidate of [...new Set(candidates)]) {
+    const probe = spawnSync(candidate, ['-lc', 'uname -s'], { encoding: 'utf-8' });
+    if (probe.status === 0 && probe.stdout.trim()) {
+      if (process.platform === 'win32' && /linux/i.test(probe.stdout)) continue;
+      return candidate;
+    }
+  }
+  return null;
+}
+
+const bashCommand = findUsableBash();
+const bashUname = bashCommand
+  ? (spawnSync(bashCommand, ['-lc', 'uname -s'], { encoding: 'utf-8' }).stdout || '').trim()
+  : '';
 const isGitBash = /^(MINGW|MSYS|CYGWIN)/.test(bashUname);
 
 function toBashPath(filePath: string): string {
@@ -20,10 +45,14 @@ function toBashPath(filePath: string): string {
   return `/mnt/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
 }
 
-function runBash(cwd: string, script: string, args: string[] = []) {
-  return spawnSync('bash', [toBashPath(script), ...args], {
+function runBash(cwd: string, script: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) {
+  if (!bashCommand) {
+    throw new Error('comet shell script tests require Bash or Git Bash');
+  }
+  return spawnSync(bashCommand, [toBashPath(script), ...args], {
     cwd,
     encoding: 'utf-8',
+    env: { ...process.env, ...env },
   });
 }
 
@@ -42,7 +71,9 @@ async function createChange(tmpDir: string, name: string, yaml: string, tasks = 
   return changeDir;
 }
 
-describe('comet shell scripts', () => {
+const describeShell = bashCommand ? describe : describe.skip;
+
+describeShell('comet shell scripts', () => {
   let tmpDir: string;
   let guardScript: string;
   let stateScript: string;
@@ -88,6 +119,17 @@ describe('comet shell scripts', () => {
     expect(yaml).toContain('branch_status: pending');
   }, 20_000);
 
+  it('initializes build_pause as null for new changes', async () => {
+    const result = runBash(tmpDir, stateScript, ['init', 'pause-defaults', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'pause-defaults', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('build_pause: null');
+  }, 20_000);
+
   it('comet-env.sh exports bundled script paths from its own directory', async () => {
     const envScript = path.join(tmpDir, 'scripts', 'comet-env.sh');
     const checkScript = path.join(tmpDir, 'check-env.sh');
@@ -96,7 +138,7 @@ describe('comet shell scripts', () => {
       [
         '#!/bin/bash',
         `. "${toBashPath(envScript)}"`,
-        'printf "%s\\n%s\\n%s\\n%s\\n" "$COMET_STATE" "$COMET_GUARD" "$COMET_HANDOFF" "$COMET_ARCHIVE"',
+        'printf "%s\\n%s\\n%s\\n%s\\n%s\\n" "$COMET_STATE" "$COMET_GUARD" "$COMET_HANDOFF" "$COMET_ARCHIVE" "$COMET_BASH"',
         '',
       ].join('\n'),
     );
@@ -108,6 +150,7 @@ describe('comet shell scripts', () => {
     expect(result.stdout).toContain('comet-guard.sh');
     expect(result.stdout).toContain('comet-handoff.sh');
     expect(result.stdout).toContain('comet-archive.sh');
+    expect(result.stdout).toContain('bash');
   }, 20_000);
 
   it('comet-env.sh returns failure when a bundled script is missing', async () => {
@@ -171,6 +214,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -201,6 +245,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -286,6 +331,7 @@ describe('comet shell scripts', () => {
         'workflow: full # full process',
         'phase: design # ready for handoff',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -316,6 +362,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -363,6 +410,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -403,6 +451,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -431,6 +480,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -466,6 +516,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: design',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -512,6 +563,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -538,9 +590,72 @@ describe('comet shell scripts', () => {
     expect(guard.stderr).toContain('[FAIL] isolation selected');
     expect(guard.stderr).toContain('[FAIL] build_mode selected');
     expect(guard.stderr).toContain('Next: ask the user to choose branch or worktree');
-    expect(guard.stderr).toContain('Next: ask the user to choose an implementation mode');
+    expect(guard.stderr).toContain('Next: ask the user to choose an execution mode');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('isolation must be branch or worktree');
+  }, 20_000);
+
+  it('allows setting build_pause to plan-ready and back to null', async () => {
+    await createChange(
+      tmpDir,
+      'pause-set',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: null',
+        'build_pause: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const setPlanReady = runBash(tmpDir, stateScript, [
+      'set',
+      'pause-set',
+      'build_pause',
+      'plan-ready',
+    ]);
+    const planReady = runBash(tmpDir, stateScript, ['get', 'pause-set', 'build_pause']);
+    const setNull = runBash(tmpDir, stateScript, ['set', 'pause-set', 'build_pause', 'null']);
+    const pausedNull = runBash(tmpDir, stateScript, ['get', 'pause-set', 'build_pause']);
+
+    expect(setPlanReady.status).toBe(0);
+    expect(planReady.stdout.trim()).toBe('plan-ready');
+    expect(setNull.status).toBe(0);
+    expect(pausedNull.stdout.trim()).toBe('null');
+  }, 20_000);
+
+  it('rejects invalid build_pause values during schema validation', async () => {
+    await createChange(
+      tmpDir,
+      'invalid-build-pause',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: executing-plans',
+        'build_pause: paused',
+        'isolation: branch',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runBash(tmpDir, guardScript, ['invalid-build-pause', 'build']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("build_pause='paused' is not valid");
+    expect(result.stderr).toContain('FATAL: .comet.yaml schema validation failed');
   }, 20_000);
 
   it('rejects direct build mode for full workflow without explicit override', async () => {
@@ -551,6 +666,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: direct',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -571,9 +687,7 @@ describe('comet shell scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] build_mode allowed for workflow');
     expect(result.stderr).toContain('direct is only allowed for hotfix/tweak');
-    expect(result.stderr).toContain(
-      'Next: switch build_mode to executing-plans or subagent-driven-development',
-    );
+    expect(result.stderr).toContain('Next: choose executing-plans or subagent-driven-development');
   }, 20_000);
 
   it('prints actionable remediation for unfinished tasks', async () => {
@@ -584,6 +698,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -617,6 +732,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: direct',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -646,6 +762,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: direct',
+        'build_pause: null',
         'direct_override: true',
         'isolation: branch',
         'verify_mode: null',
@@ -676,6 +793,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'build_command: node build-check.js',
@@ -711,6 +829,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -770,6 +889,71 @@ describe('comet shell scripts', () => {
     }
   });
 
+  it('uses COMET_BASH for nested script calls when PATH bash is unusable', async () => {
+    const fakeBin = path.join(tmpDir, 'fake-bin');
+    await fs.mkdir(fakeBin, { recursive: true });
+    const fakeBash = path.join(fakeBin, 'bash');
+    await writeFile(
+      fakeBash,
+      [
+        '#!/bin/sh',
+        'echo "bad WSL bash" >&2',
+        'exit 127',
+        '',
+      ].join('\n'),
+    );
+    await fs.chmod(fakeBash, 0o755);
+    await createChange(
+      tmpDir,
+      'nested-bash',
+      [
+        'workflow: full',
+        'phase: open',
+        'build_mode: null',
+        'build_pause: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = spawnSync('bash', [
+      '-lc',
+      [
+        'COMET_BASH="/bin/bash"',
+        `PATH="${toBashPath(fakeBin)}:$PATH"`,
+        'export COMET_BASH PATH',
+        `/bin/bash "${toBashPath(guardScript)}" nested-bash open --apply`,
+      ].join('; '),
+    ], {
+      cwd: tmpDir,
+      encoding: 'utf-8',
+    });
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'nested-bash', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain('bad WSL bash');
+    expect(yaml).toContain('phase: design');
+  }, 20_000);
+
+  it('does not use PATH bash for nested Comet script calls', async () => {
+    for (const name of ['comet-archive.sh', 'comet-guard.sh', 'comet-handoff.sh']) {
+      const content = await fs.readFile(path.join(tmpDir, 'scripts', name), 'utf-8');
+
+      expect(content, `${name} should use COMET_BASH for nested scripts`).not.toMatch(
+        /\bbash\s+"?\$(?:STATE_SH|state_sh|validate_script)/,
+      );
+    }
+  });
+
   it('uses root-level build command config before inferred build commands', async () => {
     await createChange(
       tmpDir,
@@ -778,6 +962,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -812,6 +997,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: full',
         'verify_command: node verify-check.js',
@@ -852,6 +1038,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: archive',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: light',
         'design_doc: null',
@@ -878,6 +1065,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: archive',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: full',
         'design_doc: docs/superpowers/specs/ready-design.md',
@@ -934,6 +1122,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -970,6 +1159,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: open',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -996,6 +1186,7 @@ describe('comet shell scripts', () => {
         'workflow: tweak',
         'phase: open',
         'build_mode: direct',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: light',
         'design_doc: null',
@@ -1022,6 +1213,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: full',
         'design_doc: null',
@@ -1082,6 +1274,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: light',
         'design_doc: null',
@@ -1116,6 +1309,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: verify',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: light',
         'design_doc: null',
@@ -1154,6 +1348,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: open',
         'build_mode: null',
+        'build_pause: null',
         'isolation: null',
         'verify_mode: null',
         'design_doc: null',
@@ -1179,6 +1374,7 @@ describe('comet shell scripts', () => {
         'workflow: full',
         'phase: archive',
         'build_mode: executing-plans',
+        'build_pause: null',
         'isolation: branch',
         'verify_mode: full',
         'design_doc: null',
@@ -1210,6 +1406,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: open',
           'build_mode: null',
+          'build_pause: null',
           'isolation: null',
           'verify_mode: null',
           'design_doc: null',
@@ -1240,6 +1437,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: build',
           'build_mode: null',
+          'build_pause: null',
           'isolation: null',
           'verify_mode: null',
           'design_doc: null',
@@ -1261,6 +1459,42 @@ describe('comet shell scripts', () => {
       expect(result.stdout).toContain('AskUserQuestion');
     });
 
+    it('outputs plan-ready pause recovery context for build phase', async () => {
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'pause-plan.md'),
+        'plan\n',
+      );
+      await createChange(
+        tmpDir,
+        'recover-plan-ready',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: null',
+          'build_pause: plan-ready',
+          'isolation: null',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: docs/superpowers/plans/pause-plan.md',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-plan-ready',
+        'build',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('build_pause: DONE (plan-ready)');
+      expect(result.stdout).toContain('Plan-ready pause');
+      expect(result.stdout).toContain('choose isolation and build mode');
+    });
+
     it('outputs recovery context for verify phase with completed verification', async () => {
       await writeFile(
         path.join(tmpDir, 'docs', 'superpowers', 'reports', 'recover-verify.md'),
@@ -1273,6 +1507,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: verify',
           'build_mode: executing-plans',
+          'build_pause: null',
           'isolation: branch',
           'verify_mode: full',
           'design_doc: null',
@@ -1308,6 +1543,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: design',
           'build_mode: null',
+          'build_pause: null',
           'isolation: null',
           'verify_mode: null',
           'design_doc: null',
@@ -1355,6 +1591,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: build',
           'build_mode: executing-plans',
+          'build_pause: null',
           'isolation: branch',
           'verify_mode: null',
           'design_doc: null',
@@ -1387,6 +1624,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: build',
           'build_mode: executing-plans',
+          'build_pause: null',
           'isolation: branch',
           'verify_mode: null',
           'design_doc: null',
@@ -1420,6 +1658,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: archive',
           'build_mode: executing-plans',
+          'build_pause: null',
           'isolation: branch',
           'verify_mode: full',
           'design_doc: null',
@@ -1455,6 +1694,7 @@ describe('comet shell scripts', () => {
           'workflow: full',
           'phase: open',
           'build_mode: null',
+          'build_pause: null',
           'isolation: null',
           'verify_mode: null',
           'design_doc: null',

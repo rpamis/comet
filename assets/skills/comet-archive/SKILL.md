@@ -24,7 +24,7 @@ if [ -z "$COMET_ENV" ]; then
   return 1
 fi
 . "$COMET_ENV"
-bash "$COMET_STATE" check <name> archive
+"$COMET_BASH" "$COMET_STATE" check <name> archive
 ```
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
@@ -38,7 +38,7 @@ Archive summaries and lifecycle closure notes must use the language of the user 
 Run the archive script to automatically complete all steps:
 
 ```bash
-bash "$COMET_ARCHIVE" "<change-name>"
+"$COMET_BASH" "$COMET_ARCHIVE" "<change-name>"
 ```
 
 The script automatically executes:
@@ -70,7 +70,7 @@ brainstorming → delta spec → implementation → verification → main spec o
 - Archive directory `openspec/changes/archive/YYYY-MM-DD-<change-name>/` exists
 - Archived `.comet.yaml` contains `archived: true`
 
-The archive script moves `openspec/changes/<name>/` to `openspec/changes/archive/YYYY-MM-DD-<name>/`. After successful archive, **do not run** `bash "$COMET_GUARD" <change-name> archive` against the old active change name; the active directory no longer exists. Archive completeness is determined by script exit code and archived directory state.
+The archive script moves `openspec/changes/<name>/` to `openspec/changes/archive/YYYY-MM-DD-<name>/`. After successful archive, **do not run** `"$COMET_BASH" "$COMET_GUARD" <change-name> archive` against the old active change name; the active directory no longer exists. Archive completeness is determined by script exit code and archived directory state.
 
 ## Complete
 

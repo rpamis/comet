@@ -7,6 +7,8 @@
 
 set -euo pipefail
 
+COMET_BASH="${COMET_BASH:-${BASH:-bash}}"
+
 red() { echo -e "\033[31m$1\033[0m" >&2; }
 green() { echo -e "\033[32m$1\033[0m" >&2; }
 warn() { echo -e "\033[33m$1\033[0m" >&2; }
@@ -181,7 +183,7 @@ is_windows_bash() {
 run_command_string() {
   local command="$1"
   echo "+ $command" >&2
-  bash -lc "$command"
+  "$COMET_BASH" -lc "$command"
 }
 
 hash_stream() {
@@ -240,8 +242,8 @@ preflight() {
   local validate_script
   validate_script="$SCRIPT_DIR/comet-yaml-validate.sh"
   if [ -f "$validate_script" ]; then
-    if ! bash "$validate_script" "$CHANGE" 2>/dev/null; then
-      bash "$validate_script" "$CHANGE"
+    if ! "$COMET_BASH" "$validate_script" "$CHANGE" 2>/dev/null; then
+      "$COMET_BASH" "$validate_script" "$CHANGE" || true
       red "FATAL: .comet.yaml schema validation failed"
       exit 1
     fi
@@ -300,7 +302,7 @@ isolation_selected() {
     *)
       echo "isolation must be branch or worktree, got '${isolation:-null}'" >&2
       echo "Next: ask the user to choose branch or worktree, create the chosen isolation, then run:" >&2
-      echo "  bash \"\$COMET_STATE\" set $CHANGE isolation <branch|worktree>" >&2
+      echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE isolation <branch|worktree>" >&2
       return 1
       ;;
   esac
@@ -313,8 +315,8 @@ build_mode_selected() {
     subagent-driven-development|executing-plans|direct) return 0 ;;
     *)
       echo "build_mode must be selected before leaving build, got '${build_mode:-null}'" >&2
-      echo "Next: ask the user to choose an implementation mode, then run:" >&2
-      echo "  bash \"\$COMET_STATE\" set $CHANGE build_mode <subagent-driven-development|executing-plans>" >&2
+      echo "Next: ask the user to choose an execution mode, then run:" >&2
+      echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE build_mode <subagent-driven-development|executing-plans>" >&2
       return 1
       ;;
   esac
@@ -336,7 +338,7 @@ build_mode_allowed_for_workflow() {
         return 0
       fi
       echo "build_mode=direct is only allowed for hotfix/tweak unless direct_override: true is recorded" >&2
-      echo "Next: switch build_mode to executing-plans or subagent-driven-development, or stop and ask the user for an explicit direct override." >&2
+      echo "Next: choose executing-plans or subagent-driven-development, or stop and ask the user for an explicit direct override." >&2
       return 1
       ;;
   esac
@@ -367,7 +369,7 @@ design_handoff_context_valid() {
 
   if [ -z "$context" ] || [ "$context" = "null" ]; then
     echo "handoff_context is missing from .comet.yaml" >&2
-    echo "Next: run bash \"\$COMET_HANDOFF\" $CHANGE design --write before invoking Superpowers." >&2
+    echo "Next: run \"\$COMET_BASH\" \"\$COMET_HANDOFF\" $CHANGE design --write before invoking Superpowers." >&2
     return 1
   fi
   if [ ! -s "$context" ]; then
@@ -545,10 +547,10 @@ apply_state_update() {
 
   if [ -f "$state_sh" ]; then
     case "$p" in
-      open)   bash "$state_sh" transition "$CHANGE" open-complete ;;
-      design) bash "$state_sh" transition "$CHANGE" design-complete ;;
-      build)  bash "$state_sh" transition "$CHANGE" build-complete ;;
-      verify) bash "$state_sh" transition "$CHANGE" verify-pass ;;
+      open)   "$COMET_BASH" "$state_sh" transition "$CHANGE" open-complete ;;
+      design) "$COMET_BASH" "$state_sh" transition "$CHANGE" design-complete ;;
+      build)  "$COMET_BASH" "$state_sh" transition "$CHANGE" build-complete ;;
+      verify) "$COMET_BASH" "$state_sh" transition "$CHANGE" verify-pass ;;
     esac
   else
     red "FATAL: comet-state.sh not found; cannot apply state transition"

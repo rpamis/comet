@@ -23,7 +23,7 @@ if [ -z "$COMET_ENV" ]; then
   return 1
 fi
 . "$COMET_ENV"
-bash "$COMET_STATE" check <name> build
+"$COMET_BASH" "$COMET_STATE" check <name> build
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
@@ -32,7 +32,7 @@ bash "$COMET_STATE" check <name> build
 
 ### 1. 制定计划
 
-**立即执行：** 使用 Skill 工具加载 `writing-plans` 技能。禁止跳过此步骤。
+**立即执行：** 使用 Skill 工具加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。
 
 技能加载时，ARGUMENTS 必须包含：
 
@@ -59,17 +59,48 @@ base-ref: <git rev-parse HEAD before implementation>
 git rev-parse HEAD
 ```
 
-### 2. 更新计划状态
+### 2. 更新计划状态并提供 plan-ready 暂停点
 
 先记录 plan 路径：
 
 ```bash
-bash "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
+"$COMET_BASH" "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 ```
 
 无需手动更新 phase，guard 会在退出条件满足后自动流转。
 
+计划写入后，立即提供一个新的用户决策点：
+
+| 选项 | 行为 | 说明 |
+|------|------|------|
+| A | 继续执行 | 保持在当前模型中，进入 Step 3 选择工作区隔离和执行方式 |
+| B | 暂停切换模型 | 记录 `build_pause: plan-ready`，本次 `/comet-build` 停止，用户稍后可从 `/comet` 或 `/comet-build` 恢复 |
+
+这是用户决策点。**必须使用 AskUserQuestion 工具暂停并等待用户明确选择**，不得自动继续，也不得把暂停写入 `build_mode`。
+
+用户选择继续时：
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause null
+```
+
+用户选择暂停时：
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause plan-ready
+```
+
+设置 `build_pause: plan-ready` 后，当前调用停止。不要选择 `isolation` 或 `build_mode`，不要加载执行技能。
+
 ### 3. 选择工作方式
+
+如果恢复时检测到 `build_pause: plan-ready` 且 `plan` 文件存在，不要重新运行 `writing-plans`。先告知用户当前停在 plan-ready 暂停点；用户确认继续后，设置：
+
+```bash
+"$COMET_BASH" "$COMET_STATE" set <name> build_pause null
+```
+
+然后继续本步骤选择工作区隔离和执行方式。
 
 计划已写入当前分支。在开始执行前，**一次性询问用户**选择工作区隔离方式和执行方式：
 
@@ -88,8 +119,8 @@ bash "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 | 选项 | 技能 | 适用场景 |
 |------|------|---------|
-| A | `subagent-driven-development` | 任务独立、复杂度高、需要双阶段审查 |
-| B | `executing-plans` | 任务简单、无子agent环境、轻量快速 |
+| A | Superpowers `subagent-driven-development` | 任务独立、复杂度高、需要双阶段审查 |
+| B | Superpowers `executing-plans` | 任务简单、无子agent环境、轻量快速 |
 
 **执行方式推荐规则**：
 - 任务数 ≥ 3 → 推荐 A
@@ -101,8 +132,8 @@ bash "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 用户选择后，更新 `isolation` 和 `build_mode` 字段：
 
 ```bash
-bash "$COMET_STATE" set <name> isolation <branch|worktree>
-bash "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing-plans|direct>
+"$COMET_BASH" "$COMET_STATE" set <name> isolation <branch|worktree>
+"$COMET_BASH" "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing-plans|direct>
 ```
 
 `isolation` 是脚本级硬约束。full workflow 初始化时可以为 `null`，但只允许存在到本步骤之前。若保持 `null`，`build → verify` 的 guard 和 `comet-state transition build-complete` 都会失败。
@@ -110,8 +141,8 @@ bash "$COMET_STATE" set <name> build_mode <subagent-driven-development|executing
 `build_mode` 默认仅 hotfix/tweak preset 使用 `direct`。full workflow 不得默认使用 `direct`。只有用户明确要求跳过计划执行技能，且你已记录显式 override 时，才允许：
 
 ```bash
-bash "$COMET_STATE" set <name> direct_override true
-bash "$COMET_STATE" set <name> build_mode direct
+"$COMET_BASH" "$COMET_STATE" set <name> direct_override true
+"$COMET_BASH" "$COMET_STATE" set <name> build_mode direct
 ```
 
 没有 `direct_override: true` 时，full workflow 的 `build_mode=direct` 会被 guard 和状态转换同时拦截。
@@ -119,7 +150,7 @@ bash "$COMET_STATE" set <name> build_mode direct
 **执行隔离**：
 
 - **branch**：执行 `git checkout -b <change-name>`，后续工作在新分支上进行
-- **worktree**：必须使用 Skill 工具加载 `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；如该技能不可用，停止流程并提示安装或启用 Superpowers 技能。
+- **worktree**：必须使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；如该技能不可用，停止流程并提示安装或启用 Superpowers 技能。
 
 创建隔离后，确认计划文件可访问（分支方式天然可访问；worktree 方式需确认计划已提交）。
 
@@ -141,7 +172,7 @@ bash "$COMET_STATE" set <name> build_mode direct
 | 规模 | 触发条件 | 做法 |
 |------|---------|------|
 | 小 | 遗漏验收场景、边界条件 | 直接编辑 delta spec + design.md，追加 tasks.md 任务 |
-| 中 | 接口变更、新增组件、数据流变化 | **使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 `brainstorming` 更新 Design Doc + delta spec |
+| 中 | 接口变更、新增组件、数据流变化 | **使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming` 更新 Design Doc + delta spec |
 | 大 | 全新 capability 需求 | **必须使用 AskUserQuestion 工具暂停并等待用户确认拆分**；用户确认后，通过 `/comet-open` 创建独立 change |
 
 当因中等规模变更加载 `brainstorming` 时，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：
@@ -165,7 +196,7 @@ Language: 使用触发本次工作流的用户请求语言输出。
 Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后断点恢复：
 
 - **每完成一个 task**：立即勾选 tasks.md 并提交代码，确保 `.comet.yaml` 和文件状态持久化
-- **上下文压缩后恢复**：先运行 `bash "$COMET_STATE" check <change-name> build --recover`，脚本输出结构化恢复上下文（isolation/build_mode 状态、plan 路径、任务完成进度、恢复动作）。根据 Recovery action 决定下一步。
+- **上下文压缩后恢复**：先运行 `"$COMET_BASH" "$COMET_STATE" check <change-name> build --recover`，脚本输出结构化恢复上下文（isolation/build_mode 状态、plan 路径、任务完成进度、恢复动作）。根据 Recovery action 决定下一步。
 - **用户手动修改恢复**：按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。该协议定义了检查步骤、归因分类和禁令。build 阶段的特殊处理：
   1. 归因后，若 diff 暗示计划或 spec 已变化，按 Step 4「Spec 增量更新」分级处理
 - **长任务拆分**：单任务超过 200 行代码变更时，考虑拆分为多个子任务分别提交
@@ -177,7 +208,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - 已显式运行项目对应的构建/测试命令并通过（不要只依赖 guard 自动猜测）
 - `isolation` 已写为 `branch` 或 `worktree`
 - `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`
-- **阶段守卫**：运行 `bash "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后自动流转到 `phase: verify`
+- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后自动流转到 `phase: verify`
 
 Guard 会优先读取项目配置中的命令：
 
@@ -192,7 +223,7 @@ verify_command: <verify command>
 退出前运行 guard 自动流转：
 
 ```bash
-bash "$COMET_GUARD" <change-name> build --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply
 ```
 
 状态文件自动更新为 `phase: verify`、`verify_result: pending`。
