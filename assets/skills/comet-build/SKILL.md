@@ -34,7 +34,13 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 
 **Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited.
 
-After the skill loads, follow its guidance to create a plan. Plan requirements:
+When loading the skill, ARGUMENTS must include:
+
+```
+Language: Use the language of the user request that triggered this workflow.
+```
+
+After the skill loads, follow its guidance to create a plan. Plan files and execution feedback must use the language of the user request that triggered this workflow. Plan requirements:
 - Save to `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
 - Reference design document, break down into executable tasks
 - **Plan file header must contain associated metadata**:
@@ -152,6 +158,8 @@ After creating isolation, confirm plan file is accessible (naturally accessible 
 
 If the selected Superpowers skill is unavailable, stop the process and prompt to install or enable the corresponding skill. Do not substitute this step with normal conversation.
 
+When loading `subagent-driven-development` or `executing-plans`, ARGUMENTS must include the same Language constraint.
+
 After the skill loads, follow its guidance to execute:
 - Execute tasks according to plan
 - Complete tasks.md check (`- [ ]` → `- [x]`)
@@ -166,6 +174,12 @@ When the initial spec is found incomplete during implementation, handle by scale
 | Small | Missing acceptance scenarios, edge cases | Directly edit delta spec + design.md, append tasks.md tasks |
 | Medium | Interface changes, new components, data flow changes | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm**, then must use Skill tool to load the Superpowers `brainstorming` skill to update Design Doc + delta spec |
 | Large | Brand-new capability requirements | **Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm the split**; after user confirms, create independent change through `/comet-open` |
+
+When loading `brainstorming` for a medium-scale Spec incremental update, ARGUMENTS must include the same Language constraint as Step 1:
+
+```text
+Language: Use the language of the user request that triggered this workflow.
+```
 
 **50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, **must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change**. Must not just output a text prompt and then continue executing.
 

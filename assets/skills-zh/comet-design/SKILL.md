@@ -77,6 +77,7 @@ handoff_hash: <sha256>
 Change: <change-name>
 OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/design-context.md
 Machine handoff: openspec/changes/<name>/.comet/handoff/design-context.json
+Language: 使用触发本次工作流的用户请求语言输出；Design Doc、delta spec、提问和确认摘要均使用该语言。
 
 OpenSpec 产物是上游事实源，不要重新定义需求，不要重写 proposal/spec。
 你的任务是基于交接包做深度技术设计：实现方案、技术风险、测试策略、边界条件。

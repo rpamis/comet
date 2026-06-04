@@ -11,17 +11,33 @@ description: "Comet 阶段 1：开启。用 /comet-open 调用。通过 OpenSpec
 
 ## 步骤
 
+### 0. 输出语言约束
+
+传递给 OpenSpec 的所有提问和产物要求都必须包含输出语言约束：使用触发本次工作流的用户请求语言输出。若正在恢复已有 change 且现有产物已有明确主语言，沿用该语言，除非用户明确要求切换。
+
 ### 1. 探索想法
 
 **立即执行：** 使用 Skill 工具加载 `openspec-explore` 技能。禁止跳过此步骤。
 
-技能加载后，按其指引自由探索问题空间。
+技能加载时，ARGUMENTS 必须包含：
+
+```
+Language: 使用触发本次工作流的用户请求语言输出。
+```
+
+技能加载后，按其指引自由探索问题空间，所有问题和总结均使用该语言。
 
 ### 2. 创建 Change 结构 + 初始化状态
 
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。若用户意图未明确、需要先形成建议，改为加载 `openspec-propose`。禁止跳过此步骤。
 
 **命名与范围守卫**：change name 必须使用用户指定或通过 AskUserQuestion 确认的名称，不得自动生成或推断。变更范围必须与用户描述一致，不得自行扩大或缩小。
+
+技能加载时，ARGUMENTS 必须包含：
+
+```
+Language: 使用触发本次工作流的用户请求语言输出 proposal.md、design.md、tasks.md 和必要的 delta spec。
+```
 
 确认以下产物已创建：
 

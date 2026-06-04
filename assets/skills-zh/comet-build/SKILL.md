@@ -34,7 +34,13 @@ fi
 
 **立即执行：** 使用 Skill 工具加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。
 
-技能加载后，按其指引制定计划。计划要求：
+技能加载时，ARGUMENTS 必须包含：
+
+```
+Language: 使用触发本次工作流的用户请求语言输出。
+```
+
+技能加载后，按其指引制定计划。计划文件和执行反馈必须使用触发本次工作流的用户请求语言。计划要求：
 - 保存至 `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
 - 引用设计文档，拆分为可执行任务
 - **Plan 文件头必须包含关联元数据**：
@@ -152,6 +158,8 @@ git rev-parse HEAD
 
 如所选 Superpowers 技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。
 
+加载 `subagent-driven-development` 或 `executing-plans` 时，ARGUMENTS 必须包含同一 Language 约束。
+
 技能加载后，按其指引执行：
 - 按计划执行任务
 - 完成 tasks.md 勾选（`- [ ]` → `- [x]`）
@@ -166,6 +174,12 @@ git rev-parse HEAD
 | 小 | 遗漏验收场景、边界条件 | 直接编辑 delta spec + design.md，追加 tasks.md 任务 |
 | 中 | 接口变更、新增组件、数据流变化 | **使用 AskUserQuestion 工具暂停并等待用户确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming` 更新 Design Doc + delta spec |
 | 大 | 全新 capability 需求 | **必须使用 AskUserQuestion 工具暂停并等待用户确认拆分**；用户确认后，通过 `/comet-open` 创建独立 change |
+
+当因中等规模变更加载 `brainstorming` 时，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：
+
+```text
+Language: 使用触发本次工作流的用户请求语言输出。
+```
 
 **50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须使用 AskUserQuestion 工具暂停并等待用户决定是否拆分为新 change**。
 
