@@ -30,6 +30,10 @@ fi
 
 **幂等性**：verify 阶段所有检查可安全重复执行。如 `verify_result` 已为 `pass` 且 `branch_status` 已为 `handled`，说明验证已完成，直接执行 guard 流转。如 `verify_result` 为 `pending`，从头开始验证。
 
+### 0a. 输出语言约束
+
+验证报告和分支处理说明必须使用触发本次工作流的用户请求语言。若正在恢复已有 change 且现有验证/设计产物已有明确主语言，沿用该语言，除非用户明确要求切换。调用 `openspec-verify-change` 或 `finishing-a-development-branch` 时，ARGUMENTS 必须包含同一 Language 约束。
+
 ### 1. 改动规模评估
 
 执行规模评估：

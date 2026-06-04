@@ -62,6 +62,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Command execution security**: Refactored all command execution in OpenSpec and Superpowers install paths from `spawn` with shell interpretation to `execFileSync`, eliminating shell injection surface and improving cross-platform reliability (#88bf487)
+- **Workflow output language**: Comet workflows now pass the triggering user request language into OpenSpec and Superpowers steps, keeping generated proposals, designs, plans, verification reports, and archive notes readable in the user's language (#37)
 
 ### Fixed
 
@@ -76,6 +77,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - Added coverage for OpenCode global OpenSpec path migration, self-deletion guard, and homedir mocking
 - Added doctor tests for `.comet.yaml` top-level key validation and non-ENOENT `readDir` error propagation
+- Added workflow safeguard coverage for OpenSpec and Superpowers output-language propagation
 - Fixed timeout for git-based test "uses plan base-ref to scale verification"
 
 ### Docs

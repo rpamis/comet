@@ -30,6 +30,10 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 
 **Idempotency**: All verify phase checks can be safely re-executed. If `verify_result` is already `pass` and `branch_status` is `handled`, verification is complete — execute guard to transition. If `verify_result` is `pending`, start verification from the beginning.
 
+### 0a. Output Language Constraint
+
+Verification reports and branch-handling notes must use the language of the user request that triggered this workflow. When resuming an existing change with a clear dominant language in verification/design artifacts, preserve that language unless the user explicitly asks to switch. When invoking `openspec-verify-change` or `finishing-a-development-branch`, ARGUMENTS must include the same Language constraint.
+
 ### 1. Scale Assessment
 
 Execute scale assessment:

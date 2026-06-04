@@ -370,6 +370,99 @@ describe('skills', () => {
     });
   });
 
+  describe('Comet output language safeguards', () => {
+    it('requires OpenSpec and Superpowers outputs to follow the user request language', async () => {
+      const skillNames = [
+        'comet',
+        'comet-open',
+        'comet-design',
+        'comet-build',
+        'comet-verify',
+        'comet-archive',
+        'comet-hotfix',
+        'comet-tweak',
+      ] as const;
+      type SkillName = (typeof skillNames)[number];
+      type SkillLanguageDir = 'skills' | 'skills-zh';
+
+      const readSkillContents = async (
+        languageDir: SkillLanguageDir,
+      ): Promise<Record<SkillName, string>> =>
+        Object.fromEntries(
+          await Promise.all(
+            skillNames.map(async (skillName) => [
+              skillName,
+              await fs.readFile(
+                path.resolve('assets', languageDir, skillName, 'SKILL.md'),
+                'utf-8',
+              ),
+            ]),
+          ),
+        ) as Record<SkillName, string>;
+
+      const [zhSkills, enSkills] = await Promise.all([
+        readSkillContents('skills-zh'),
+        readSkillContents('skills'),
+      ]);
+
+      expect(zhSkills.comet).toContain('输出语言规则');
+      expect(zhSkills.comet).toContain('以触发本次工作流的用户请求语言作为默认输出语言');
+      expect(zhSkills['comet-open']).toContain(
+        '传递给 OpenSpec 的所有提问和产物要求都必须包含输出语言约束',
+      );
+      expect(zhSkills['comet-design']).toContain(
+        'Language: 使用触发本次工作流的用户请求语言输出',
+      );
+      expect(zhSkills['comet-build']).toContain(
+        '计划文件和执行反馈必须使用触发本次工作流的用户请求语言',
+      );
+      expect(zhSkills['comet-build']).toContain(
+        'ARGUMENTS 必须包含与 Step 1 相同的 Language 约束',
+      );
+      expect(zhSkills['comet-verify']).toContain(
+        '验证报告和分支处理说明必须使用触发本次工作流的用户请求语言',
+      );
+      expect(zhSkills['comet-archive']).toContain(
+        '归档摘要和生命周期闭环说明必须使用触发本次工作流的用户请求语言',
+      );
+      expect(zhSkills['comet-hotfix']).toContain(
+        '精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言',
+      );
+      expect(zhSkills['comet-tweak']).toContain(
+        '精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言',
+      );
+
+      expect(enSkills.comet).toContain('Output Language Rule');
+      expect(enSkills.comet).toContain(
+        'Use the language of the user request that triggered this workflow as the default output language',
+      );
+      expect(enSkills['comet-open']).toContain(
+        'Every prompt and artifact request passed to OpenSpec must include the output-language constraint',
+      );
+      expect(enSkills['comet-design']).toContain(
+        'Language: Use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-build']).toContain(
+        'Plan files and execution feedback must use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-build']).toContain(
+        'ARGUMENTS must include the same Language constraint as Step 1',
+      );
+      expect(enSkills['comet-verify']).toContain(
+        'Verification reports and branch-handling notes must use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-archive']).toContain(
+        'Archive summaries and lifecycle closure notes must use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-hotfix']).toContain(
+        'Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-tweak']).toContain(
+        'Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow',
+      );
+    });
+  });
+
   describe('Comet script discovery helper', () => {
     it('ships a shared script locator helper', async () => {
       const manifest = await readManifest();

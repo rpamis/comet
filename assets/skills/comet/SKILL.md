@@ -20,6 +20,15 @@ Superpowers handles HOW — technical design, planning, execution, closing
 
 Agents need only read this section for decision-making. Refer to the Reference Appendix as needed.
 
+### Output Language Rule
+
+Use the language of the user request that triggered this workflow as the default output language. This applies to Comet's own responses and to prompts, arguments, and artifact requirements passed to OpenSpec / Superpowers.
+
+- For new changes, write proposal.md, design.md, tasks.md, delta specs, Design Docs, Plans, verification reports, and archive notes in that language.
+- When resuming an existing change, preserve the clear dominant language of existing OpenSpec/Superpowers artifacts unless the user explicitly asks to switch.
+- If the user explicitly specifies an output language, follow that explicit request.
+- Every OpenSpec or Superpowers skill invocation must pass this output-language constraint in ARGUMENTS instead of allowing the external skill to fall back to English.
+
 ### Automatic Phase Detection
 
 **Step 0: Active Change Discovery and Intent Detection**

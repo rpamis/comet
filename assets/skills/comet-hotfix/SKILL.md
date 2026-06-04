@@ -37,11 +37,19 @@ Reuse Comet open capability to create change, but use hotfix defaults: do not ex
 
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
 
+When loading the skill, ARGUMENTS must include:
+
+```
+Language: Use the language of the user request that triggered this workflow.
+```
+
 After the skill loads, follow its guidance to create streamlined artifacts:
   - `proposal.md` — problem description + root cause analysis + fix goal (no solution comparison needed)
   - `design.md` — fix solution (one is enough, no multi-solution comparison needed)
   - `tasks.md` — fix task list
 - **No delta spec needed** (unless fix changes existing spec acceptance scenarios)
+
+Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow. When resuming an existing change with a clear dominant artifact language, preserve that language unless the user explicitly asks to switch.
 
 Initialize Comet state file:
 

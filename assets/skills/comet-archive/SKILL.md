@@ -29,6 +29,10 @@ fi
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
+### 0a. Output Language Constraint
+
+Archive summaries and lifecycle closure notes must use the language of the user request that triggered this workflow. Script output can remain as emitted, but the agent's explanation of archive results, diff previews, and next state must use that language; if existing artifacts have a different dominant language, preserve the artifact language unless the user explicitly asks to switch.
+
 ### 1. Execute Archive
 
 Run the archive script to automatically complete all steps:
