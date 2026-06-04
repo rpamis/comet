@@ -162,7 +162,12 @@ git rev-parse HEAD
 - **branch**：执行 `git checkout -b <change-name>`，后续工作在新分支上进行
 - **worktree**：必须使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；如该技能不可用，停止流程并提示安装或启用 Superpowers 技能。
 
-创建隔离后，确认计划文件可访问（分支方式天然可访问；worktree 方式需确认计划已提交）。
+创建隔离后，确认计划文件可访问（分支方式天然可访问；worktree 方式需确认计划已提交）。若 worktree 模式下计划文件尚未提交，先提交计划文件再创建 worktree：
+
+```bash
+git add docs/superpowers/plans/YYYY-MM-DD-feature.md
+git commit -m "chore: add implementation plan"
+```
 
 **执行计划**：必须按 `build_mode` 的真实运行位置处理。
 
@@ -206,6 +211,10 @@ git rev-parse HEAD
 **50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须使用当前平台可用的用户输入/确认机制暂停并等待用户决定是否拆分为新 change**。若当前平台没有结构化提问工具，则在对话中提出拆分选项并停止流程，等待用户回复后才能继续。
 
 创建独立 change 时必须调用 `/comet-open`，不得直接调用 `/opsx:new`。`/comet-open` 会同时创建 OpenSpec 产物和 `.comet.yaml`，避免新 change 脱离 Comet 状态机。
+
+**用户选择必须包含**：
+- 「拆分为新 change」— 通过 `/comet-open` 创建独立 change
+- 「继续在当前 change 内完成」— 记录范围扩展决策，更新 tasks.md 和 delta spec 后继续
 
 **原则**：
 - delta spec 是活文档，本阶段期间随时可修改

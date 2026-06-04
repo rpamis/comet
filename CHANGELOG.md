@@ -2,13 +2,15 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.3.7] - 2026-06-03
+## What's Changed [0.3.7] - 2026-06-05
 
 ### Added
 
 - **Stale PR automation**: Added a scheduled and manually runnable GitHub Actions workflow that marks inactive pull requests stale after 90 days and closes them after another 30 days, helping keep long-idle review queues manageable.
 - **TDD mode field**: Added `tdd_mode` (`tdd`|`direct`) to `.comet.yaml` state machine so users choose whether to enforce TDD during build. When `tdd_mode: tdd`, subagent dispatches inject an explicit TDD hard constraint, bypassing implementer-prompt.md's conditional trigger. Addresses [#67](https://github.com/rpamis/comet/issues/67).
 - **subagent_dispatch field**: Added `subagent_dispatch` (`null`|`confirmed`) to `.comet.yaml` state machine, ensuring `build_mode: subagent-driven-development` can only leave the build phase after the platform's real background dispatch capability is confirmed.
+- **Verify retry limit**: Verify skill now enforces a mandatory user decision after 3 consecutive verify-fail cycles, preventing indefinite automated retry loops.
+- **Manual verify_mode override**: Users can override automatic verification scale assessment via `comet-state set <name> verify_mode <light|full>` when the auto-detected mode doesn't fit.
 
 ### Changed
 
@@ -17,6 +19,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Skill invocation wording guidance**: Added repository guidance in `CLAUDE.md` requiring new skill-trigger descriptions to use the existing "use the Skill tool to load..." wording and place context details after the skill loads.
 - **Systematic debugging gate**: Chinese and English build and hotfix skills now require loading Superpowers `systematic-debugging` when implementation-time crashes, unexpected behavior, test failures, or build failures appear, ensuring root-cause investigation and in-change regression tests happen before source fixes.
 - **Platform-neutral confirmation gates**: Chinese and English Comet skills and recovery messages now refer to the current platform's user input/confirmation mechanism instead of hard-coding `AskUserQuestion`, preventing Codex users from being directed to a tool that may not exist while preserving blocking user decisions.
+- **Preset upgrade path**: Hotfix and tweak skills now include `set <name> phase design` step when upgrading to full workflow, preventing comet-design entry check failure after workflow switch.
+- **Build-complete conditional field reset**: `build-complete` transition preserves `verification_report` and `branch_status` when the previous verify_result was `fail`, enabling verify-fail→build→build-complete re-verify cycles without data loss.
+- **Open phase recovery granularity**: Open phase recovery now distinguishes three states (all artifacts done / none done / partial) with specific recovery actions per state.
+- **50% scope threshold option**: Build skill now offers "continue in current change" as a third option when changes exceed 50% scope, avoiding forced change splitting.
+- **Worktree plan commit**: Build skill now explicitly instructs committing plan files before creating a worktree when using worktree isolation.
 
 ### Removed
 
@@ -26,6 +33,15 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Archive delta merge**: `comet-archive.sh` now delegates archive spec updates to OpenSpec's delta merge semantics instead of copying change specs over main specs, preventing `ADDED/MODIFIED/REMOVED/RENAMED` section headings from leaking into stable specs. Addresses [#69](https://github.com/rpamis/comet/issues/69).
 - **Brainstorming depth**: Chinese and English `/comet-design` no longer tell Superpowers `brainstorming` to skip context exploration, so unclear goals, scope, non-goals, acceptance scenarios, or constraints must be clarified before a Design Doc is created.
+- **Command injection prevention**: `run_command_string()` in `comet-guard.sh` now rejects build/verify commands containing shell metacharacters (`;|&$(\``), preventing command injection through `.comet.yaml` command fields.
+- **Path traversal prevention**: `comet-state.sh cmd_set` now validates path fields (design_doc, plan, verification_report, handoff_context, handoff_hash) for `..` traversal sequences before writing.
+- **Design guard enforcement**: Design guard now requires `design_doc` for full workflow (FAIL instead of WARN), preventing phase advance without a design document.
+- **branch_status preservation on verify-fail**: `verify-fail` transition no longer resets `branch_status`, keeping branch handling state across re-verify cycles.
+- **UTC date consistency**: All scripts now use `date -u +%Y-%m-%d` for `created_at`, `verified_at`, and archive naming, eliminating local/UTC date mismatches.
+- **macOS SCRIPT_DIR resolution**: All scripts use portable `$(cd "$(dirname "$0")" && pwd -P)` instead of `readlink -f` for cross-platform compatibility.
+- **Archive directory resolution fallback**: `comet-archive.sh resolve_archive_dir()` now searches by `*-$CHANGE` pattern when the exact UTC-based path doesn't match, fixing test reliability across timezone differences.
+- **Temp file permissions**: All `mktemp` calls now set `chmod 600` on temporary files before writing sensitive data.
+- **Pipe hash error propagation**: Hash computation in `comet-handoff.sh` and `comet-guard.sh` captures pipe output in variables before piping to hash stream, preventing silent failures under `pipefail`.
 
 ### Tests
 
@@ -36,6 +52,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Confirmation mechanism regression**: Added coverage that Chinese workflow decision gates no longer hard-code `AskUserQuestion` and that recovery output points agents to a platform-neutral confirmation mechanism.
 - **PRD split workflow regression**: Added Chinese and English skill coverage for open-phase PRD split choices, `/comet-open` state initialization, repeated-triage prevention, split completion selection, and minimal resume guidance.
 - **tdd_mode state machine regression**: Added coverage for tdd_mode init defaults (null for full, direct for hotfix), enum validation, build-exit guard, hotfix bypass, and schema validation rejection of invalid values.
+- **Review fix regression**: Added coverage for conditional verification_report preservation on re-verify, branch_status preservation across verify-fail, path traversal rejection on design_doc, command injection rejection on build_command, and design guard enforcement for full workflow without design_doc.
 
 ## What's Changed [0.3.6] - 2026-06-02
 

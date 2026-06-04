@@ -40,14 +40,11 @@ validate_change_name "$CHANGE"
 
 CHANGE_DIR="openspec/changes/$CHANGE"
 YAML="$CHANGE_DIR/.comet.yaml"
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")" 2>/dev/null || dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 STATE_SH="$SCRIPT_DIR/comet-state.sh"
-TODAY=$(date +%Y-%m-%d)
-UTC_TODAY=$(date -u +%Y-%m-%d)
+TODAY=$(date -u +%Y-%m-%d)
 ARCHIVE_NAME="${TODAY}-${CHANGE}"
 ARCHIVE_DIR="openspec/changes/archive/${ARCHIVE_NAME}"
-ARCHIVE_NAME_UTC="${UTC_TODAY}-${CHANGE}"
-ARCHIVE_DIR_UTC="openspec/changes/archive/${ARCHIVE_NAME_UTC}"
 
 STEPS_OK=0
 STEPS_TOTAL=0
@@ -155,11 +152,8 @@ step_ok "Entry state verified"
 
 # --- Step 3: Check archive target ---
 
-if [ -d "$ARCHIVE_DIR" ] || [ -d "$ARCHIVE_DIR_UTC" ]; then
+if [ -d "$ARCHIVE_DIR" ]; then
   red "FATAL: archive target already exists: $ARCHIVE_DIR"
-  if [ "$ARCHIVE_DIR" != "$ARCHIVE_DIR_UTC" ]; then
-    red "FATAL: archive target already exists: $ARCHIVE_DIR_UTC"
-  fi
   exit 1
 fi
 
@@ -183,6 +177,7 @@ annotate_frontmatter() {
   if head -1 "$file" | grep -q '^---'; then
     local tmp_file
     tmp_file=$(mktemp)
+    chmod 600 "$tmp_file"
     awk -v archive="$ARCHIVE_NAME" -v extra="$extra_fields" '
       /^archived-with:/ { next }
       NR==1 && /^---/ { print; next }
@@ -197,6 +192,7 @@ annotate_frontmatter() {
   else
     local tmp_file
     tmp_file=$(mktemp)
+    chmod 600 "$tmp_file"
     {
       echo "---"
       echo "archived-with: $ARCHIVE_NAME"
@@ -242,9 +238,12 @@ resolve_archive_dir() {
   if [ -d "$ARCHIVE_DIR" ]; then
     return 0
   fi
-  if [ -d "$ARCHIVE_DIR_UTC" ]; then
-    ARCHIVE_NAME="$ARCHIVE_NAME_UTC"
-    ARCHIVE_DIR="$ARCHIVE_DIR_UTC"
+  # Fallback: search for any directory matching *-$CHANGE in archive
+  local found
+  found=$(find "openspec/changes/archive" -maxdepth 1 -mindepth 1 -type d -name "*-$CHANGE" 2>/dev/null | head -1 || true)
+  if [ -n "$found" ]; then
+    ARCHIVE_DIR="$found"
+    ARCHIVE_NAME=$(basename "$found")
     return 0
   fi
   return 1

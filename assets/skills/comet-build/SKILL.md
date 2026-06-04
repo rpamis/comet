@@ -162,7 +162,12 @@ Without `direct_override: true`, `build_mode=direct` in full workflow is blocked
 - **branch**: Run `git checkout -b <change-name>`, subsequent work on the new branch
 - **worktree**: Must use the Skill tool to load the Superpowers `using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
 
-After creating isolation, confirm plan file is accessible (naturally accessible with branch method; for worktree method, confirm plan has been committed).
+After creating isolation, confirm plan file is accessible (naturally accessible with branch method; for worktree method, confirm plan has been committed). If the plan file has not been committed under worktree mode, commit it first before creating the worktree:
+
+```bash
+git add docs/superpowers/plans/YYYY-MM-DD-feature.md
+git commit -m "chore: add implementation plan"
+```
 
 **Execute plan**: Must handle execution according to the actual runtime of `build_mode`.
 
@@ -206,6 +211,10 @@ When the initial spec is found incomplete during implementation, handle by scale
 **50% Threshold Determination**: Using initial task count in tasks.md as baseline, if new tasks exceed half of that total, it's considered outside original plan scope, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to decide whether to split into a new change**. If the current platform has no structured question tool, ask split options in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
 When creating an independent change, must invoke `/comet-open`, not `/opsx:new` directly. `/comet-open` creates both OpenSpec artifacts and `.comet.yaml`, preventing the new change from leaving the Comet state machine.
+
+**User choices must include**:
+- "Split into new change" — create independent change via `/comet-open`
+- "Continue in current change" — record scope-expansion decision, update tasks.md and delta spec, then continue
 
 **Principles**:
 - Delta spec is a living document, can be modified at any time during this phase

@@ -39,7 +39,7 @@ validate_change_name "$1"
 CHANGE="$1"
 PHASE="$2"
 APPLY=0
-SCRIPT_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")" 2>/dev/null || dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 if [[ "${3:-}" == "--apply" ]]; then
   APPLY=1
 fi
@@ -182,6 +182,16 @@ is_windows_bash() {
 
 run_command_string() {
   local command="$1"
+  if [ -z "$command" ]; then
+    red "ERROR: build/verify command is empty" >&2
+    return 1
+  fi
+  # Basic command injection guard: reject shell metacharacters
+  if [[ "$command" =~ [\'\"\;\|\&\$\`] ]]; then
+    red "ERROR: build/verify command contains shell metacharacters: $command" >&2
+    red "Allowed: alphanumeric, spaces, hyphens, underscores, dots, colons, forward slashes" >&2
+    return 1
+  fi
   echo "+ $command" >&2
   "$COMET_BASH" -lc "$command"
 }
@@ -219,12 +229,14 @@ handoff_source_files() {
 }
 
 compute_handoff_hash() {
-  handoff_source_files | while IFS= read -r file; do
+  local hash_input
+  hash_input=$(handoff_source_files | while IFS= read -r file; do
     if [ -f "$file" ]; then
       printf 'path:%s\n' "$file"
       printf 'sha256:%s\n' "$(hash_file "$file")"
     fi
-  done | hash_stream
+  done)
+  printf '%s' "$hash_input" | hash_stream
 }
 
 preflight() {
@@ -535,8 +547,9 @@ guard_open() {
 guard_design() {
   echo "=== Guard: design → build ===" >&2
 
-  local design_doc
+  local design_doc workflow
   design_doc=$(yaml_field_value "design_doc" 2>/dev/null || true)
+  workflow=$(yaml_field_value "workflow" 2>/dev/null || true)
 
   check "proposal.md exists" file_nonempty "$CHANGE_DIR/proposal.md"
   check "design.md exists" file_nonempty "$CHANGE_DIR/design.md"
@@ -544,14 +557,30 @@ guard_design() {
   check "design handoff context exists" design_handoff_context_valid
   check "design handoff markdown is traceable" design_handoff_markdown_traceable
 
+  if [ "$workflow" = "full" ]; then
+    # Full workflow: design_doc is REQUIRED
+    check "design_doc is recorded for full workflow" design_doc_recorded
+  fi
+
   if [ -n "$design_doc" ] && [ "$design_doc" != "null" ]; then
     check "Design Doc ($design_doc) exists" file_nonempty "$design_doc"
     check "Design Doc frontmatter links current change" design_doc_links_current_change
     check "Design Doc declares technical design role" design_doc_declares_technical_role
     check "Design Doc declares OpenSpec as canonical spec" design_doc_declares_canonical_spec
-  else
-    warn "  [WARN] No design_doc recorded in .comet.yaml"
+  elif [ "$workflow" != "full" ]; then
+    warn "  [WARN] No design_doc recorded in .comet.yaml (optional for hotfix/tweak)"
   fi
+}
+
+design_doc_recorded() {
+  local design_doc
+  design_doc=$(yaml_field_value "design_doc" 2>/dev/null || true)
+  if [ -n "$design_doc" ] && [ "$design_doc" != "null" ] && [ -f "$design_doc" ]; then
+    return 0
+  fi
+  echo "design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design." >&2
+  echo "Next: create the Design Doc and run: \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE design_doc <path>" >&2
+  return 1
 }
 
 guard_build() {
@@ -581,6 +610,7 @@ guard_archive() {
 
   check "archived is true" archived_is_true
   check "proposal.md exists" file_nonempty "$CHANGE_DIR/proposal.md"
+  check "design.md exists" file_nonempty "$CHANGE_DIR/design.md"
   check "tasks.md all tasks checked" tasks_all_done
 }
 

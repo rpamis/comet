@@ -53,6 +53,8 @@ fi
 "$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
 ```
 
+注意：verify-fail 回退到 build 时 `branch_status` 不会被重置。如果首次 verify 已完成分支处理，修复后再次进入 verify 时跳过已完成的分支处理步骤，直接使用 `"$COMET_BASH" "$COMET_STATE" set <change-name> branch_status handled` 保留原有分支处理结果。
+
 注意：如果 build 阶段每个任务都已提交，脚本基于工作区 diff 的文件数可能低估改动规模。此时必须读取 plan 文件头的 `base-ref` 并用提交区间复核：
 
 ```bash
@@ -66,6 +68,8 @@ git diff --stat "$BASE_REF"...HEAD
 ```bash
 "$COMET_BASH" "$COMET_STATE" set <change-name> verify_mode full
 ```
+
+**覆盖机制**：如 agent 或用户认为自动评估结果不合适，可随时通过 `"$COMET_BASH" "$COMET_STATE" set <change-name> verify_mode <light|full>` 手动覆盖。
 
 ### 1b. 验证失败决策（阻塞点）
 

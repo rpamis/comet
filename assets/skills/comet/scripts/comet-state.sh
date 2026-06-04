@@ -65,6 +65,19 @@ validate_enum() {
   exit 1
 }
 
+validate_path_field() {
+  local value="$1"
+  local field="$2"
+  # null and empty are acceptable (means "not set")
+  if [ -z "$value" ] || [ "$value" = "null" ]; then
+    return 0
+  fi
+  if [[ "$value" =~ \.\. ]]; then
+    red "ERROR: $field cannot contain '..' (path traversal not allowed): '$value'" >&2
+    exit 1
+  fi
+}
+
 # --- Helper functions ---
 
 yaml_field() {
@@ -126,6 +139,7 @@ replace_yaml_field() {
   local tmp_file
 
   tmp_file=$(mktemp)
+  chmod 600 "$tmp_file"
   awk -v field="$field" -v value="$value" '
     index($0, field ":") == 1 { print field ": " value; next }
     { print }
@@ -218,7 +232,7 @@ plan: null
 verify_result: pending
 verification_report: null
 branch_status: pending
-created_at: $(date +%Y-%m-%d)
+created_at: $(date -u +%Y-%m-%d)
 verified_at: null
 archived: false
 EOF
@@ -321,8 +335,11 @@ cmd_set() {
     direct_override)
       validate_enum "$value" "true" "false"
       ;;
-    design_doc|plan|verification_report|verified_at|created_at|build_command|verify_command|handoff_context|handoff_hash)
-      # No validation for path fields, date fields, or project command strings
+    design_doc|plan|verification_report|handoff_context|handoff_hash)
+      validate_path_field "$value" "$field"
+      ;;
+    verified_at|created_at|build_command|verify_command)
+      # No validation for date fields or project command strings
       ;;
   esac
 
@@ -432,23 +449,29 @@ cmd_transition() {
     build-complete)
       require_phase "$change_name" "build"
       require_build_decisions "$change_name"
+      local current_verify_result
+      current_verify_result=$(cmd_get "$change_name" "verify_result")
       cmd_set "$change_name" phase verify
       cmd_set "$change_name" verify_result pending
-      cmd_set "$change_name" verification_report null
-      cmd_set "$change_name" branch_status pending
+      # Preserve verification evidence on re-verify (verify-fail → build → build-complete)
+      # so the fix can reference the original failure report
+      if [ "$current_verify_result" != "fail" ]; then
+        cmd_set "$change_name" verification_report null
+        cmd_set "$change_name" branch_status pending
+      fi
       ;;
     verify-pass)
       require_phase "$change_name" "verify"
       require_verification_evidence "$change_name"
       cmd_set "$change_name" verify_result pass
       cmd_set "$change_name" phase archive
-      cmd_set "$change_name" verified_at "$(date +%Y-%m-%d)"
+      cmd_set "$change_name" verified_at "$(date -u +%Y-%m-%d)"
       ;;
     verify-fail)
       require_phase "$change_name" "verify"
       cmd_set "$change_name" verify_result fail
       cmd_set "$change_name" phase build
-      cmd_set "$change_name" branch_status pending
+      # Preserve branch_status so re-verify doesn't require re-handling branches
       ;;
     archived)
       require_phase "$change_name" "archive"
@@ -680,15 +703,23 @@ cmd_recover() {
   case "$phase" in
     open)
       echo "  Artifacts:"
+      local artifacts_done=0
       for f in proposal.md design.md tasks.md; do
         if file_nonempty "$change_dir/$f"; then
           echo "  - ${f}: DONE"
+          artifacts_done=$((artifacts_done + 1))
         else
           echo "  - ${f}: PENDING"
         fi
       done
       echo ""
-      echo "Recovery action: Create or complete missing artifacts, then use the current platform's user confirmation mechanism."
+      if [ "$artifacts_done" -eq 3 ]; then
+        echo "Recovery action: All artifacts complete. Run /comet-open user confirmation, then guard to transition."
+      elif [ "$artifacts_done" -eq 0 ]; then
+        echo "Recovery action: No artifacts created yet. Start from /comet-open Step 1 (explore and clarify)."
+      else
+        echo "Recovery action: Some artifacts incomplete. Resume /comet-open from the first missing artifact."
+      fi
       ;;
     design)
       echo "  Artifacts:"

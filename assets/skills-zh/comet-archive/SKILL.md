@@ -71,3 +71,13 @@ brainstorming → delta spec → 实施 → 验证 → 主 spec 合并 → desig
 ## 完成
 
 Comet 流程全部完成。如需开始新工作，调用 `/comet` 或 `/comet-open`。
+
+## 上下文压缩恢复
+
+归档阶段在执行过程中可能触发上下文压缩。恢复时先运行：
+
+```bash
+"$COMET_BASH" "$COMET_STATE" check <change-name> archive --recover
+```
+
+脚本输出结构化恢复上下文（归档状态、已完成步骤）。按 Recovery action 判断下一步。若 `archived: true` 且归档目录存在，归档已完成，无需再次执行归档操作。

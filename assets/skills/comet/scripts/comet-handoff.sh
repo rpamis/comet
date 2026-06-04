@@ -103,12 +103,14 @@ source_files() {
 }
 
 compute_context_hash() {
-  source_files | while IFS= read -r file; do
+  local hash_input
+  hash_input=$(source_files | while IFS= read -r file; do
     if [ -f "$file" ]; then
       printf 'path:%s\n' "$file"
       printf 'sha256:%s\n' "$(hash_file "$file")"
     fi
-  done | hash_stream
+  done)
+  printf '%s' "$hash_input" | hash_stream
 }
 
 json_escape() {

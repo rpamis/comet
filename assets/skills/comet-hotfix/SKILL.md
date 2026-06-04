@@ -159,10 +159,11 @@ Upgrade to full `/comet` when **any** of the following conditions are met:
 
 When upgrade conditions are met, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm** upgrading to the full `/comet` workflow. Do not directly enter `/comet-design`, and do not automatically supplement Design Doc. If the current platform has no structured question tool, ask an upgrade confirmation question in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
-After user confirms upgrade, **must first update the workflow field** before entering full flow:
+After user confirms upgrade, **must first update the workflow and phase fields** before entering full flow:
 
 ```bash
 "$COMET_BASH" "$COMET_STATE" set <name> workflow full
+"$COMET_BASH" "$COMET_STATE" set <name> phase design
 ```
 
 Then on current change basis, supplement Design Doc: **Immediately use the Skill tool to load the `comet-design` skill**, proceed normally with full workflow. If user does not confirm upgrade, stop hotfix and report that current change has exceeded hotfix scope.

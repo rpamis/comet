@@ -97,7 +97,7 @@ async function createFakeOpenSpecArchive(tmpDir: string, archiveDateScript = 'da
       '    if [ ! -f "$main" ]; then',
       '      printf "# %s Specification\\n\\n## Purpose\\nTBD\\n\\n## Requirements\\n" "$capability" > "$main"',
       '    fi',
-      '    awk \'',
+      "    awk '",
       '      /^## ADDED Requirements$/ { in_added = 1; next }',
       '      /^## (MODIFIED|REMOVED|RENAMED) Requirements$/ { in_added = 0 }',
       '      in_added { print }',
@@ -2329,6 +2329,208 @@ describeShell('comet shell scripts', () => {
       expect(result.stdout).toContain('Entry Check');
       expect(result.stderr).toContain('ALL CHECKS PASSED');
       expect(result.stdout).not.toContain('Recovery Context');
+    });
+  });
+
+  // --- Review fix tests ---
+
+  describe('review fix: build-complete conditional reset', () => {
+    it('preserves verification_report on re-verify cycle (H1)', async () => {
+      await createChange(
+        tmpDir,
+        'reverify-test',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: executing-plans',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: tdd',
+          'isolation: branch',
+          'verify_mode: light',
+          'design_doc: null',
+          'plan: null',
+          'base_ref: null',
+          'verify_result: fail',
+          'verification_report: docs/report.md',
+          'branch_status: handled',
+          'created_at: 2026-06-04',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      await fs.mkdir(path.join(tmpDir, 'docs'), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, 'docs', 'report.md'), 'verify report');
+
+      const result = runBash(tmpDir, stateScript, [
+        'transition',
+        'reverify-test',
+        'build-complete',
+      ]);
+
+      expect(result.status).toBe(0);
+      const yaml = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', 'reverify-test', '.comet.yaml'),
+        'utf-8',
+      );
+      expect(yaml).toContain('verify_result: pending');
+      expect(yaml).toContain('verification_report: docs/report.md');
+      expect(yaml).toContain('branch_status: handled');
+    });
+  });
+
+  describe('review fix: verify-fail preserves branch_status', () => {
+    it('does not reset branch_status on verify-fail (H6)', async () => {
+      await createChange(
+        tmpDir,
+        'branch-preserve',
+        [
+          'workflow: full',
+          'phase: verify',
+          'build_mode: executing-plans',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: tdd',
+          'isolation: branch',
+          'verify_mode: light',
+          'design_doc: null',
+          'plan: null',
+          'base_ref: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: handled',
+          'created_at: 2026-06-04',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, ['transition', 'branch-preserve', 'verify-fail']);
+
+      expect(result.status).toBe(0);
+      const yaml = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', 'branch-preserve', '.comet.yaml'),
+        'utf-8',
+      );
+      expect(yaml).toContain('verify_result: fail');
+      expect(yaml).toContain('phase: build');
+      expect(yaml).toContain('branch_status: handled');
+    });
+  });
+
+  describe('review fix: path traversal prevention', () => {
+    it('rejects design_doc with path traversal (H5)', async () => {
+      await createChange(
+        tmpDir,
+        'path-traversal',
+        [
+          'workflow: full',
+          'phase: open',
+          'build_mode: null',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: null',
+          'base_ref: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-04',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'set',
+        'path-traversal',
+        'design_doc',
+        '../../etc/passwd',
+      ]);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("cannot contain '..'");
+    });
+  });
+
+  describe('review fix: command injection prevention', () => {
+    it('rejects build_command with shell metacharacters (C3)', async () => {
+      const changeDir = path.join(tmpDir, 'openspec', 'changes', 'cmd-inject');
+      await fs.mkdir(changeDir, { recursive: true });
+      await fs.writeFile(
+        path.join(changeDir, '.comet.yaml'),
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: executing-plans',
+          'build_pause: null',
+          'subagent_dispatch: confirmed',
+          'tdd_mode: tdd',
+          'isolation: branch',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: null',
+          'base_ref: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-04',
+          'verified_at: null',
+          'archived: false',
+          'build_command: npm run build; rm -rf /',
+          '',
+        ].join('\n'),
+      );
+      await fs.writeFile(path.join(changeDir, 'proposal.md'), 'p');
+      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] done\n');
+
+      // No COMET_SKIP_BUILD — run_command_string should reject before executing
+      const result = runBash(tmpDir, guardScript, ['cmd-inject', 'build']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('shell metacharacters');
+    }, 20_000);
+  });
+
+  describe('review fix: design guard requires design_doc for full workflow', () => {
+    it('fails design guard for full workflow without design_doc (C2)', async () => {
+      await createChange(
+        tmpDir,
+        'no-designdoc',
+        [
+          'workflow: full',
+          'phase: design',
+          'build_mode: null',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: null',
+          'base_ref: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-04',
+          'verified_at: null',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runBash(tmpDir, guardScript, ['no-designdoc', 'design']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('[FAIL] design_doc is recorded for full workflow');
     });
   });
 });

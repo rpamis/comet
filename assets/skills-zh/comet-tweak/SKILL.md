@@ -136,10 +136,11 @@ Tweak 流程为 **一次性连续执行**。调用 `/comet-tweak` 后，agent �
 
 满足升级条件时**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确确认**升级为完整 `/comet` 流程。不得直接进入 `/comet-design`，不得自动补充 Design Doc。若当前平台没有结构化提问工具，则在对话中提出升级确认问题并停止流程，等待用户回复后才能继续。
 
-用户确认升级后，**必须先更新 workflow 字段**再进入完整流程：
+用户确认升级后，**必须先更新 workflow 和 phase 字段**再进入完整流程：
 
 ```bash
 "$COMET_BASH" "$COMET_STATE" set <name> workflow full
+"$COMET_BASH" "$COMET_STATE" set <name> phase design
 ```
 
 然后在当前 change 基础上补充 Design Doc：**立即使用 Skill 工具加载 `comet-design` skill**，后续正常走完整流程。若用户不确认升级，停止 tweak 并报告当前变更已超出 tweak 适用范围。

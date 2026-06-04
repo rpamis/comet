@@ -53,6 +53,8 @@ Only after user chooses fix, allow rollback to build phase:
 "$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
 ```
 
+Note: When verify-fail rolls back to build, `branch_status` is not reset. If branch handling was already completed during the first verify attempt, skip the branch handling step on re-verify and keep the existing `branch_status: handled`.
+
 Note: If every task in build phase was committed, the script's file count based on working tree diff may underestimate change scale. In this case, must read plan file header `base-ref` and verify with commit range:
 
 ```bash
@@ -66,6 +68,8 @@ If commit range shows changes exceed lightweight threshold (> 4 files, cross-mod
 ```bash
 "$COMET_BASH" "$COMET_STATE" set <change-name> verify_mode full
 ```
+
+**Override mechanism**: If the agent or user believes the automated assessment is inappropriate, override at any time with `"$COMET_BASH" "$COMET_STATE" set <change-name> verify_mode <light|full>`.
 
 ### 1b. Verification Failure Decision (Blocking Point)
 
@@ -81,6 +85,8 @@ When pausing, must list:
 After user selection, continue as follows:
 - **Fix all**: Run `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build` to fix
 - **Handle item by item**: CRITICAL failures must be fixed; non-CRITICAL failures may choose to accept deviation, but must record acceptance reason and impact scope in verification report. If any CRITICAL failure exists, skipping fix to accept all is not allowed
+
+**Retry limit**: After 3 consecutive verify-fail cycles, on the 4th failure the agent must not automatically choose to continue fixing; **must use the current platform's available user input/confirmation mechanism to pause** with only two options: "Accept all deviations and record" or "Continue fixing", for the user to explicitly decide.
 
 ### 2a. Lightweight Verification (Small Changes)
 
