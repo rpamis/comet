@@ -1,0 +1,3 @@
+[submodule "comet-panel"]
+	path = comet-panel
+	url = https://github.com/sudashannon/comet-panel.git
