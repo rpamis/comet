@@ -438,7 +438,7 @@ describeShell('comet shell scripts', () => {
     expect(result.stderr).toContain('[PASS] Design Doc declares OpenSpec as canonical spec');
   }, 20_000);
 
-  it('generates a beta spec projection handoff with requirement and scenario coverage', async () => {
+  it('generates a beta spec projection handoff with verbatim spec content', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.sh');
     await createChange(
       tmpDir,
@@ -461,19 +461,21 @@ describeShell('comet shell scripts', () => {
       ].join('\n'),
       '- [ ] build beta context\n',
     );
+    const specContent = [
+      '## 新增需求',
+      '',
+      '### 需求: 保留验收覆盖',
+      '实现必须确保每个场景在压缩上下文中可见。',
+      '',
+      '#### 场景: beta 投影包含场景',
+      '- 当 beta handoff 生成时',
+      '- 则 场景标题出现在投影中',
+      '- 并且 中文内容完整保留',
+      '',
+    ].join('\n');
     await writeFile(
       path.join(tmpDir, 'openspec', 'changes', 'beta-context', 'specs', 'capability', 'spec.md'),
-      [
-        '## ADDED Requirements',
-        '',
-        '### Requirement: Preserve acceptance coverage',
-        'The implementation MUST keep every scenario visible in compact context.',
-        '',
-        '#### Scenario: beta projection includes scenario',
-        '- **WHEN** the beta handoff is generated',
-        '- **THEN** the scenario heading appears in the projection',
-        '',
-      ].join('\n'),
+      specContent,
     );
 
     const handoff = runBash(tmpDir, handoffScript, ['beta-context', 'design', '--write']);
@@ -500,8 +502,28 @@ describeShell('comet shell scripts', () => {
     );
     expect(contextMarkdown).toContain('Mode: beta');
     expect(contextMarkdown).toContain('Generated-by: comet-handoff.sh');
-    expect(contextMarkdown).toContain('### Requirement: Preserve acceptance coverage');
-    expect(contextMarkdown).toContain('#### Scenario: beta projection includes scenario');
+    // Verbatim projection: ALL spec content must appear (Chinese, non-keyword steps, etc.)
+    expect(contextMarkdown).toContain('### 需求: 保留验收覆盖');
+    expect(contextMarkdown).toContain('#### 场景: beta 投影包含场景');
+    expect(contextMarkdown).toContain('实现必须确保每个场景在压缩上下文中可见。');
+    expect(contextMarkdown).toContain('- 当 beta handoff 生成时');
+    expect(contextMarkdown).toContain('- 并且 中文内容完整保留');
+
+    // JSON should have files array with role field
+    const contextJson = await fs.readFile(
+      path.join(
+        tmpDir,
+        'openspec',
+        'changes',
+        'beta-context',
+        '.comet',
+        'handoff',
+        'spec-context.json',
+      ),
+      'utf-8',
+    );
+    expect(contextJson).toContain('"role": "spec"');
+    expect(contextJson).toContain('"role": "supporting"');
 
     await writeFile(
       path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-design.md'),
@@ -526,14 +548,14 @@ describeShell('comet shell scripts', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('[PASS] design handoff context exists');
     expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
-    expect(result.stderr).toContain('[PASS] beta spec projection covers requirement and scenario headings');
+    expect(result.stderr).toContain('[PASS] beta spec-context.json is structurally valid');
   }, 20_000);
 
-  it('blocks beta design exit when the spec projection is missing scenario coverage', async () => {
+  it('blocks beta design exit when spec-context.json is structurally invalid', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.sh');
     await createChange(
       tmpDir,
-      'beta-missing-scenario',
+      'beta-bad-json',
       [
         'workflow: full',
         'phase: design',
@@ -553,15 +575,7 @@ describeShell('comet shell scripts', () => {
       '- [ ] build beta context\n',
     );
     await writeFile(
-      path.join(
-        tmpDir,
-        'openspec',
-        'changes',
-        'beta-missing-scenario',
-        'specs',
-        'capability',
-        'spec.md',
-      ),
+      path.join(tmpDir, 'openspec', 'changes', 'beta-bad-json', 'specs', 'capability', 'spec.md'),
       [
         '## ADDED Requirements',
         '',
@@ -574,28 +588,26 @@ describeShell('comet shell scripts', () => {
       ].join('\n'),
     );
 
-    const handoff = runBash(tmpDir, handoffScript, ['beta-missing-scenario', 'design', '--write']);
+    const handoff = runBash(tmpDir, handoffScript, ['beta-bad-json', 'design', '--write']);
     expect(handoff.status).toBe(0);
 
-    const markdownPath = path.join(
+    // Corrupt the JSON by removing required fields
+    const jsonPath = path.join(
       tmpDir,
       'openspec',
       'changes',
-      'beta-missing-scenario',
+      'beta-bad-json',
       '.comet',
       'handoff',
-      'spec-context.md',
+      'spec-context.json',
     );
-    const contextMarkdown = await fs.readFile(markdownPath, 'utf-8');
-    await fs.writeFile(
-      markdownPath,
-      contextMarkdown.replace('#### Scenario: required scenario', '#### Scenario: removed'),
-    );
+    await fs.writeFile(jsonPath, '{ "broken": true }\n');
+
     await writeFile(
-      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-missing-design.md'),
+      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-bad-json-design.md'),
       [
         '---',
-        'comet_change: beta-missing-scenario',
+        'comet_change: beta-bad-json',
         'role: technical-design',
         'canonical_spec: openspec',
         '---',
@@ -604,16 +616,15 @@ describeShell('comet shell scripts', () => {
     );
     runBash(tmpDir, stateScript, [
       'set',
-      'beta-missing-scenario',
+      'beta-bad-json',
       'design_doc',
-      'docs/superpowers/specs/beta-missing-design.md',
+      'docs/superpowers/specs/beta-bad-json-design.md',
     ]);
 
-    const result = runBash(tmpDir, guardScript, ['beta-missing-scenario', 'design']);
+    const result = runBash(tmpDir, guardScript, ['beta-bad-json', 'design']);
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('[FAIL] beta spec projection covers requirement and scenario headings');
-    expect(result.stderr).toContain('missing spec projection heading');
+    expect(result.stderr).toContain('[FAIL] beta spec-context.json is structurally valid');
   }, 20_000);
 
   it('reads comet yaml fields without including trailing comments', async () => {
@@ -737,6 +748,48 @@ describeShell('comet shell scripts', () => {
     );
     expect(contextMarkdown).toContain('Mode: full');
     expect(contextMarkdown).not.toContain('[TRUNCATED]');
+  }, 20_000);
+
+  it('warns when --full is passed in beta mode', async () => {
+    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.sh');
+    await createChange(
+      tmpDir,
+      'beta-full-warn',
+      [
+        'workflow: full',
+        'phase: design',
+        'context_compression: beta',
+        'build_mode: null',
+        'build_pause: null',
+        'tdd_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const handoff = runBash(tmpDir, handoffScript, [
+      'beta-full-warn',
+      'design',
+      '--write',
+      '--full',
+    ]);
+
+    expect(handoff.status).toBe(0);
+    expect(handoff.stderr).toContain('--full is ignored in beta mode');
+
+    // Should still generate spec-context.* (beta files), not design-context.* (full files)
+    const contextPath = runBash(tmpDir, stateScript, [
+      'get',
+      'beta-full-warn',
+      'handoff_context',
+    ]).stdout.trim();
+    expect(contextPath).toBe('openspec/changes/beta-full-warn/.comet/handoff/spec-context.json');
   }, 20_000);
 
   it('rejects handoff generation when required OpenSpec artifacts are missing', async () => {
@@ -1965,28 +2018,12 @@ describeShell('comet shell scripts', () => {
       ].join('\n'),
     );
 
-    const result = runBash(tmpDir, stateScript, [
-      'transition',
-      'archive-reopen',
-      'archive-reopen',
-    ]);
+    const result = runBash(tmpDir, stateScript, ['transition', 'archive-reopen', 'archive-reopen']);
     const phase = runBash(tmpDir, stateScript, ['get', 'archive-reopen', 'phase']);
-    const verifyResult = runBash(tmpDir, stateScript, [
-      'get',
-      'archive-reopen',
-      'verify_result',
-    ]);
+    const verifyResult = runBash(tmpDir, stateScript, ['get', 'archive-reopen', 'verify_result']);
     const verifiedAt = runBash(tmpDir, stateScript, ['get', 'archive-reopen', 'verified_at']);
-    const report = runBash(tmpDir, stateScript, [
-      'get',
-      'archive-reopen',
-      'verification_report',
-    ]);
-    const branchStatus = runBash(tmpDir, stateScript, [
-      'get',
-      'archive-reopen',
-      'branch_status',
-    ]);
+    const report = runBash(tmpDir, stateScript, ['get', 'archive-reopen', 'verification_report']);
+    const branchStatus = runBash(tmpDir, stateScript, ['get', 'archive-reopen', 'branch_status']);
 
     expect(result.status).toBe(0);
     expect(phase.stdout.trim()).toBe('verify');
@@ -2029,11 +2066,7 @@ describeShell('comet shell scripts', () => {
       'archive-reopen',
     ]);
     const phase = runBash(tmpDir, stateScript, ['get', 'already-archived', 'phase']);
-    const verifyResult = runBash(tmpDir, stateScript, [
-      'get',
-      'already-archived',
-      'verify_result',
-    ]);
+    const verifyResult = runBash(tmpDir, stateScript, ['get', 'already-archived', 'verify_result']);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('already archived');

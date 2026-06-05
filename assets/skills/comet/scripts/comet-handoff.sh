@@ -8,6 +8,7 @@ COMET_BASH="${COMET_BASH:-${BASH:-bash}}"
 
 red() { echo -e "\033[31m$1\033[0m" >&2; }
 green() { echo -e "\033[32m$1\033[0m" >&2; }
+warn() { echo -e "\033[33m$1\033[0m" >&2; }
 
 validate_change_name() {
   local name="$1"
@@ -206,12 +207,9 @@ write_spec_projection_for_file() {
   echo "- Lines: 1-$(file_line_count "$file")"
   echo "- SHA256: $(hash_file "$file")"
   echo ""
-  awk '
-    /^### Requirement:/ { print; in_acceptance = 1; next }
-    /^#### Scenario:/ { print; in_acceptance = 1; next }
-    in_acceptance && /^- \*\*(GIVEN|WHEN|THEN|AND|BUT)\*\*/ { print; next }
-    /^### / || /^## / { in_acceptance = 0 }
-  ' "$file"
+  echo '```md'
+  cat "$file"
+  echo '```'
   echo ""
 }
 
@@ -227,7 +225,7 @@ write_spec_markdown_context() {
     echo ""
     echo "Generated-by: comet-handoff.sh"
     echo ""
-    echo "OpenSpec remains the canonical capability spec. This beta context pack is a deterministic projection of requirements, scenarios, and source references, not an agent-authored summary."
+    echo "OpenSpec remains the canonical capability spec. This beta context pack verbatim-projects spec files and references supporting artifacts by hash, not an agent-authored summary."
     echo ""
     echo "## Source References"
     echo ""
@@ -247,7 +245,7 @@ write_spec_markdown_context() {
       echo "No delta spec files found."
       echo ""
     fi
-    echo "Full source files remain canonical. If a required heading or scenario is missing here, regenerate the handoff or read the source spec directly."
+    echo "Full source files remain canonical. If a required heading or scenario is missing here, regenerate the handoff or read the source spec directly. Supporting files (proposal, design, tasks) are referenced by hash only."
   } > "$output"
 }
 
@@ -265,30 +263,16 @@ write_spec_json_context() {
     local first_file=1
     while IFS= read -r file; do
       [ -f "$file" ] || continue
+      local role="supporting"
+      case "$file" in
+        */specs/*/spec.md) role="spec" ;;
+      esac
       if [ "$first_file" -eq 0 ]; then
         echo ","
       fi
       first_file=0
-      printf '    { "path": "%s", "sha256": "%s" }' "$(json_escape "$file")" "$(hash_file "$file")"
+      printf '    { "path": "%s", "sha256": "%s", "role": "%s" }' "$(json_escape "$file")" "$(hash_file "$file")" "$role"
     done < <(source_files)
-    echo ""
-    echo "  ],"
-    echo "  \"projection\": ["
-    local first_heading=1
-    if [ -d "$CHANGE_DIR/specs" ]; then
-      while IFS= read -r file; do
-        [ -f "$file" ] || continue
-        while IFS=$'\t' read -r line type heading; do
-          [ -n "$heading" ] || continue
-          if [ "$first_heading" -eq 0 ]; then
-            echo ","
-          fi
-          first_heading=0
-          printf '    { "path": "%s", "line": %s, "type": "%s", "heading": "%s" }' \
-            "$(json_escape "$file")" "$line" "$(json_escape "$type")" "$(json_escape "$heading")"
-        done < <(awk '/^### Requirement:/ { printf "%d\trequirement\t%s\n", NR, $0 } /^#### Scenario:/ { printf "%d\tscenario\t%s\n", NR, $0 }' "$file")
-      done < <(find "$CHANGE_DIR/specs" -path '*/spec.md' -type f 2>/dev/null | sort)
-    fi
     echo ""
     echo "  ]"
     echo "}"
@@ -349,6 +333,9 @@ case "$CONTEXT_COMPRESSION" in
     CONTEXT_MD="$HANDOFF_DIR/design-context.md"
     ;;
   beta)
+    if [ "$HANDOFF_MODE" = "full" ]; then
+      warn "[HANDOFF] --full is ignored in beta mode; spec files are projected verbatim"
+    fi
     HANDOFF_MODE="beta"
     CONTEXT_JSON="$HANDOFF_DIR/spec-context.json"
     CONTEXT_MD="$HANDOFF_DIR/spec-context.md"

@@ -494,8 +494,8 @@ context_compression_mode() {
   printf '%s\n' "${mode:-off}"
 }
 
-beta_spec_projection_covers_headings() {
-  local context markdown missing=0
+beta_spec_json_structurally_valid() {
+  local context missing=0
   if [ "$(context_compression_mode)" != "beta" ]; then
     return 0
   fi
@@ -505,24 +505,26 @@ beta_spec_projection_covers_headings() {
     echo "handoff_context is missing from .comet.yaml" >&2
     return 1
   fi
-  markdown="${context%.json}.md"
-  if [ ! -s "$markdown" ]; then
-    echo "beta spec projection markdown is missing or empty: $markdown" >&2
+  if [ ! -s "$context" ]; then
+    echo "spec-context.json is missing or empty: $context" >&2
     return 1
   fi
 
-  if [ -d "$CHANGE_DIR/specs" ]; then
-    find "$CHANGE_DIR/specs" -path '*/spec.md' -type f 2>/dev/null | sort | while IFS= read -r file; do
-      [ -f "$file" ] || continue
-      awk '/^### Requirement:/ || /^#### Scenario:/ { print }' "$file" | while IFS= read -r heading; do
-        [ -n "$heading" ] || continue
-        if ! grep -Fqx "$heading" "$markdown"; then
-          echo "missing spec projection heading: $heading ($file)" >&2
-          exit 2
-        fi
-      done
-    done || missing=1
-  fi
+  # Validate required JSON fields
+  grep -q '"change"' "$context" || { echo "spec-context.json missing 'change' field" >&2; return 1; }
+  grep -q '"phase"' "$context" || { echo "spec-context.json missing 'phase' field" >&2; return 1; }
+  grep -q '"mode": "beta"' "$context" || { echo "spec-context.json mode is not beta" >&2; return 1; }
+  grep -q '"files"' "$context" || { echo "spec-context.json missing 'files' field" >&2; return 1; }
+  grep -q '"context_hash"' "$context" || { echo "spec-context.json missing 'context_hash' field" >&2; return 1; }
+
+  # Verify all source files are referenced in the JSON
+  handoff_source_files | while IFS= read -r file; do
+    [ -f "$file" ] || continue
+    if ! grep -qF "$file" "$context"; then
+      echo "spec-context.json missing source file reference: $file" >&2
+      exit 2
+    fi
+  done || missing=1
 
   [ "$missing" -eq 0 ]
 }
@@ -596,7 +598,7 @@ guard_design() {
   check "design handoff context exists" design_handoff_context_valid
   check "design handoff markdown is traceable" design_handoff_markdown_traceable
   if [ "$(context_compression_mode)" = "beta" ]; then
-    check "beta spec projection covers requirement and scenario headings" beta_spec_projection_covers_headings
+    check "beta spec-context.json is structurally valid" beta_spec_json_structurally_valid
   fi
 
   if [ "$workflow" = "full" ]; then
