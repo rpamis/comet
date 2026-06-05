@@ -14,6 +14,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Archive confirmation gate**: Chinese `/comet-archive` now pauses for explicit user confirmation before running the archive script, giving users a final chance to adjust or re-run verification before main spec merge and change archival.
+- **English archive confirmation parity**: English Comet skills now match the confirmed Chinese archive-confirmation workflow, including `/comet-archive`, `/comet-verify`, `/comet`, hotfix, and tweak guidance.
+- **Archive reopen transition**: Added `comet-state transition <change-name> archive-reopen` so users who decline final archive confirmation can return from `phase: archive` to `phase: verify` for adjustment or re-verification without manually editing `.comet.yaml`.
 - **OpenSpec clarification gate**: Chinese and English `/comet-open` now require a confirmed requirements clarification summary before proposal, design, or tasks artifacts are created, preventing one Q&A turn from immediately generating a full OpenSpec change.
 - **PRD split preflight**: Chinese and English `/comet-open` now triage large PRDs before creating OpenSpec artifacts, allowing users to split independent capabilities into multiple Comet changes while keeping each accepted split on the `/comet-open` state-machine path. Addresses [#62](https://github.com/rpamis/comet/issues/62).
 - **Skill invocation wording guidance**: Added repository guidance in `CLAUDE.md` requiring new skill-trigger descriptions to use the existing "use the Skill tool to load..." wording and place context details after the skill loads.
@@ -46,6 +49,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Tests
 
+- **Archive confirmation regression**: Added Chinese skill coverage that `/comet-archive` requires a final confirmation gate before executing the archive script.
+- **English archive confirmation regression**: Added English skill coverage for final archive confirmation, archive reopen guidance, and hotfix/tweak preset blocking points.
+- **Archive reopen regression**: Added state-machine coverage for returning an unarchived change from archive confirmation back to verification and rejecting reopen attempts after `archived: true`.
 - **Archive spec merge regression**: Added shell-script coverage for archiving a delta spec without copying delta-only requirement section headings into the stable main spec.
 - **OpenSpec proposal regression**: Added Chinese and English skill coverage for the pre-artifact clarification gate, the default ban on one-shot `openspec-propose`, and preservation of the Superpowers brainstorming clarification flow.
 - **Skill authoring regression**: Added coverage that `CLAUDE.md` documents the required skill invocation wording pattern.

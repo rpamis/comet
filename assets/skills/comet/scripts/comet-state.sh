@@ -429,7 +429,7 @@ cmd_transition() {
   local event="$2"
 
   validate_change_name "$change_name"
-  validate_enum "$event" "open-complete" "design-complete" "build-complete" "verify-pass" "verify-fail" "archived"
+  validate_enum "$event" "open-complete" "design-complete" "build-complete" "verify-pass" "verify-fail" "archive-reopen" "archived"
 
   case "$event" in
     open-complete)
@@ -472,6 +472,18 @@ cmd_transition() {
       cmd_set "$change_name" verify_result fail
       cmd_set "$change_name" phase build
       # Preserve branch_status so re-verify doesn't require re-handling branches
+      ;;
+    archive-reopen)
+      require_phase "$change_name" "archive"
+      local archived
+      archived=$(cmd_get "$change_name" "archived")
+      if [ "$archived" = "true" ]; then
+        red "ERROR: Cannot transition '$change_name': already archived" >&2
+        exit 1
+      fi
+      cmd_set "$change_name" verify_result pending
+      cmd_set "$change_name" phase verify
+      cmd_set "$change_name" verified_at null
       ;;
     archived)
       require_phase "$change_name" "archive"
@@ -942,7 +954,7 @@ case "$SUBCOMMAND" in
   transition)
     if [ $# -lt 2 ]; then
       red "Usage: comet-state.sh transition <change-name> <event>" >&2
-      red "Events: open-complete, design-complete, build-complete, verify-pass, verify-fail, archived" >&2
+      red "Events: open-complete, design-complete, build-complete, verify-pass, verify-fail, archive-reopen, archived" >&2
       exit 1
     fi
     cmd_transition "$@"

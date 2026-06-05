@@ -200,6 +200,8 @@ After exit conditions are met (including user selecting branch handling method),
 
 > **REQUIRED NEXT SKILL:** Invoke `comet-archive` skill to enter the archive phase.
 
+Note: after `comet-archive` starts, it must first execute the final archive confirmation blocking point and wait for the user to explicitly choose "Confirm archive" before running the archive script. Must not automatically archive just because verification passed.
+
 ## Context Compaction Recovery
 
 The verify phase may trigger context compaction. To recover, first run:

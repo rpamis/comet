@@ -18,7 +18,7 @@ Quick bug fix workflow: open → build → verify → archive. Skip brainstormin
 
 ## Process (preset workflow, 5 steps)
 
-Execution chain: open → build → root cause check → verify → archive. Hotfix provides default decisions for each phase: streamlined open, direct build, root cause confirmation, scale-based verification, archive after verification passes.
+Execution chain: open → build → root cause check → verify → archive. Hotfix provides default decisions for each phase: streamlined open, direct build, root cause confirmation, scale-based verification, and final archive confirmation after verification passes.
 
 Locate Comet scripts before starting:
 
@@ -118,11 +118,11 @@ Reuse `/comet-verify`, with comet-verify's scale assessment deciding lightweight
 
 Small-scale hotfixes without delta spec usually meet lightweight verification conditions (≤ 3 tasks, ≤ 2 files), comet-verify's scale assessment will select lightweight verification path (5 quick checks). If hotfix created delta spec, enter full verification path according to comet-verify's scale assessment rules.
 
-After verification passes, record `.comet.yaml` `verify_result` as `pass` according to `/comet-verify` rules, must not skip this status before archiving.
+After verification passes, record `.comet.yaml` `verify_result` as `pass` according to `/comet-verify` rules, must not skip this status before archiving. After verification passes, still enter `/comet-archive`'s final archive confirmation; do not automatically run the archive script.
 
 ### 5. Archive (preset archive)
 
-Reuse `/comet-archive`. Must satisfy `verify_result: pass` in `.comet.yaml` before archiving.
+Reuse `/comet-archive`. Must satisfy `verify_result: pass` in `.comet.yaml` before archiving, and wait for `/comet-archive`'s final archive confirmation.
 
 **Immediately execute:** Use the Skill tool to load the `comet-archive` skill to archive. Skipping this step is prohibited.
 If there is delta spec, sync to main spec according to comet-archive rules, and handle associated Design Doc and Plan archiving annotations.
@@ -137,6 +137,7 @@ Hotfix workflow is **one-time continuous execution**. After invoking `/comet-hot
 1. Encountering upgrade conditions (see "Upgrade Conditions" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm** upgrading to full workflow
 2. workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`
 3. verify phase (comet-verify) verification-failure and branch-handling decisions
+4. Final archive confirmation (before comet-archive runs the archive script)
 
 Execution order: quick open → direct build → root cause check → verification → archive → complete
 

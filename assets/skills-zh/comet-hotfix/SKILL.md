@@ -18,7 +18,7 @@ description: "Comet 预设路径：Bug fix / 热修复。跳过 brainstorming，
 
 ## 流程（preset workflow，5 阶段）
 
-执行链路：open → build → verify → archive。Hotfix 为每个阶段提供默认决策：精简开启、直接构建、按规模验证、验证通过后归档。
+执行链路：open → build → verify → archive。Hotfix 为每个阶段提供默认决策：精简开启、直接构建、按规模验证、验证通过后进入归档前最终确认。
 
 开始前先定位 Comet 脚本：
 
@@ -118,11 +118,11 @@ fi
 
 无 delta spec 的小范围 hotfix 通常满足轻量验证条件（≤ 3 tasks、≤ 2 files），comet-verify 的规模评估会选择轻量验证路径（5 项快速检查）。若 hotfix 创建了 delta spec，则根据 comet-verify 的规模评估规则进入完整验证路径。
 
-验证通过后，按 `/comet-verify` 的规则将 `.comet.yaml` 的 `verify_result` 记录为 `pass`，归档前不得跳过该状态。
+验证通过后，按 `/comet-verify` 的规则将 `.comet.yaml` 的 `verify_result` 记录为 `pass`，归档前不得跳过该状态。验证通过后仍必须进入 `/comet-archive` 的归档前最终确认，不得自动运行归档脚本。
 
 ### 5. 归档（preset archive）
 
-复用 `/comet-archive`。归档前必须满足 `.comet.yaml` 中 `verify_result: pass`。
+复用 `/comet-archive`。归档前必须满足 `.comet.yaml` 中 `verify_result: pass`，并等待 `/comet-archive` 的归档前最终确认。
 
 **立即执行：** 使用 Skill 工具加载 `comet-archive` 技能进行归档。禁止跳过此步骤。
 如有 delta spec，按 comet-archive 规则同步到 main spec，并处理关联 Design Doc 与 Plan 的归档标注。
@@ -137,6 +137,7 @@ Hotfix 流程为 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 
 1. 遇到升级条件（见"升级条件"章节），**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确确认**升级为完整流程
 2. 任务超过 3 个转入 `/comet-build` 时的工作区隔离和执行方式选择
 3. 验证阶段（comet-verify）的验证失败决策和分支处理决策
+4. 归档前最终确认（comet-archive 执行归档脚本前）
 
 执行顺序：快速开启 → 直接构建 → 根因消除检查 → 验证 → 归档 → 完成
 

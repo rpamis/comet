@@ -29,7 +29,24 @@ fi
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
-### 1. Execute Archive
+### 1. Final Archive Confirmation (Blocking Point)
+
+After entry verification passes, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to confirm whether to archive immediately**. Must not run `"$COMET_BASH" "$COMET_ARCHIVE" "<change-name>"` before user confirmation. If the current platform has no structured question tool, ask an equivalent single-select question in the conversation, stop the workflow, and wait for the user's reply before continuing.
+
+Before confirmation, show the user a brief summary:
+- Change name
+- Verification report path and result
+- Branch handling status
+- Irreversible actions this archive will perform: merge main specs with OpenSpec delta semantics, annotate design doc / plan, and move the change to the archive directory
+
+The user confirmation question must be presented as a single-select question with these options:
+- "Confirm archive" — immediately run the archive script to complete spec merge and change movement
+- "Needs adjustment or re-verification" — do not archive; run `"$COMET_BASH" "$COMET_STATE" transition <change-name> archive-reopen` to return to `phase: verify`, then invoke `/comet-verify`. If verification confirms fixes are needed, follow `/comet-verify`'s verification-failure decision flow back to `/comet-build`
+- "Do not archive yet" — do not archive; keep the current `phase: archive` state and wait for the user to invoke `/comet-archive` again later
+
+Only after the user selects "Confirm archive" may Step 2 continue. After the user selects "Needs adjustment or re-verification", must first run the `archive-reopen` state transition; do not edit `.comet.yaml` manually.
+
+### 2. Execute Archive
 
 Run the archive script to automatically complete all steps:
 
@@ -53,7 +70,7 @@ The script calls OpenSpec archive to merge `ADDED/MODIFIED/REMOVED/RENAMED` delt
 
 Use `--dry-run` flag to preview without executing.
 
-### 2. Lifecycle Closed Loop
+### 3. Lifecycle Closed Loop
 
 Spec lifecycle completes here:
 ```

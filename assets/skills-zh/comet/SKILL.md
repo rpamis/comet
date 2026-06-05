@@ -63,12 +63,12 @@ agent 做决策只需读本节，参考附录按需查阅。
     - 其他执行方式按 `/comet-build` 的对应规则继续
 - 若 `phase: verify` 且 `verify_result: fail`，进入验证失败决策阻塞点：暂停并询问用户修复或接受偏差；用户选择修复后才运行 `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` 并调用 `/comet-build`
 - 若 `phase: open` 但 proposal/design/tasks 已完整，先运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply` 修正状态，再继续判定
-- 若 `phase: archive`，只允许调用 `/comet-archive`；归档成功后 change 会移动到 archive 目录，不再对原活跃目录运行 guard
+- 若 `phase: archive`，只允许调用 `/comet-archive`；`/comet-archive` 必须先等待归档前最终确认，归档成功后 change 会移动到 archive 目录，不再对原活跃目录运行 guard
 
 **Step 2: 阶段判定**（按顺序，命中即停）
 
 1. `archived: true` 或 change 已移入 archive → 流程已完成
-2. `verify_result: pass` 且 `archived` 不是 `true` → `/comet-archive`
+2. `verify_result: pass` 且 `archived` 不是 `true` → `/comet-archive`（先进行归档前最终确认）
 3. `verify_result: fail` → 进入验证失败决策阻塞点（暂停询问修复或接受偏差；用户选择修复后才 `verify-fail` 并 `/comet-build`）
 4. `phase: verify` 或 tasks.md 全部勾选 → `/comet-verify`
 5. `phase: build` 或已有 Design Doc 但计划/执行未完成 → 优先按 workflow 路由：`hotfix` → `/comet-hotfix`，`tweak` → `/comet-tweak`，`full` → `/comet-build`
@@ -120,9 +120,10 @@ agent 做决策只需读本节，参考附录按需查阅。
 3. build 阶段 plan-ready 暂停选择，以及随后选择工作方式（隔离方式 + 执行方式）
 4. verify 不通过时决定修复或接受偏差（含 Spec 漂移处理方式选择）
 5. finishing-branch 选择分支处理方式
-6. 遇到升级条件（hotfix/tweak → 完整流程）
-7. build 阶段范围扩张需重新设计或拆分新 change
-8. open 阶段大型 PRD 需确认拆分为多个 change
+6. archive 阶段执行归档脚本前的最终确认
+7. 遇到升级条件（hotfix/tweak → 完整流程）
+8. build 阶段范围扩张需重新设计或拆分新 change
+9. open 阶段大型 PRD 需确认拆分为多个 change
 
 agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须自动继续推进，不得中途退出。到达决策点时，**禁止跳过用户确认或自动选择——必须通过当前平台可用的用户输入/确认机制明确获取用户选择后才能继续**。
 
@@ -303,7 +304,7 @@ docs/superpowers/                      # Superpowers — HOW
 3. **交接包由脚本生成** — OpenSpec → Superpowers 的上下文必须通过 `comet-handoff.sh` 生成 compact 可追溯摘录（必要时 `--full`），并由 guard 校验 source/hash/mode
 4. **保持 tasks.md 同步** — 完成一个勾一个
 5. **频繁提交** — 每个任务一次提交，message 体现设计意图
-6. **先验证再归档** — `/comet-verify` 通过后才执行 `/comet-archive`
+6. **先验证再确认归档** — `/comet-verify` 通过后进入 `/comet-archive`，但运行归档脚本前必须等待用户最终确认
 7. **增量更新分级** — 小编辑、中重 brainstorming、大新 change
 8. **Plan 必须关联 change** — 文件头包含 `change:` 和 `design-doc:` 元数据
 9. **归档闭环** — design doc 和 plan 必须标注 `archived-with` 状态

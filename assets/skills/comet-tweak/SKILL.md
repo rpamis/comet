@@ -21,7 +21,7 @@ Applicable for non-bug small scope changes, such as copy adjustment, configurati
 
 ## Process (preset workflow, 4 phases)
 
-Execution chain: open → lightweight build → light verify → archive. Tweak provides default decisions for each phase: streamlined open, lightweight build, lightweight verification, archive after verification passes.
+Execution chain: open → lightweight build → light verify → archive. Tweak provides default decisions for each phase: streamlined open, lightweight build, lightweight verification, and final archive confirmation after verification passes.
 
 Locate Comet scripts before starting:
 
@@ -96,11 +96,11 @@ Reuse `/comet-verify`. Tweak must maintain lightweight verification conditions: 
 
 If scale assessment enters full verification path, stop tweak, handle per upgrade conditions blocking confirmation.
 
-After verification passes, record `.comet.yaml` `verify_result` as `pass` according to `/comet-verify` rules, must not skip this status before archiving.
+After verification passes, record `.comet.yaml` `verify_result` as `pass` according to `/comet-verify` rules, must not skip this status before archiving. After verification passes, still enter `/comet-archive`'s final archive confirmation; do not automatically run the archive script.
 
 ### 4. Archive (preset archive)
 
-Reuse `/comet-archive`. Must satisfy `verify_result: pass` in `.comet.yaml` before archiving.
+Reuse `/comet-archive`. Must satisfy `verify_result: pass` in `.comet.yaml` before archiving, and wait for `/comet-archive`'s final archive confirmation.
 
 **Immediately execute:** Use the Skill tool to load the `comet-archive` skill to archive. Skipping this step is prohibited.
 
@@ -113,6 +113,7 @@ Tweak workflow is **one-time continuous execution**. After invoking `/comet-twea
 
 1. Encountering upgrade conditions (see "Upgrade Conditions" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm** upgrading to full workflow
 2. verify phase (comet-verify) verification-failure and branch-handling decisions
+3. Final archive confirmation (before comet-archive runs the archive script)
 
 Execution order: quick open → lightweight build → lightweight verification → archive → complete
 

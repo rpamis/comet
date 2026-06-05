@@ -1721,6 +1721,109 @@ describeShell('comet shell scripts', () => {
     expect(verifiedAt.stdout.trim()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   }, 20_000);
 
+  it('reopens archive phase for adjustment or re-verification before archiving', async () => {
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'reports', 'archive-reopen.md'),
+      'PASS\n',
+    );
+    await createChange(
+      tmpDir,
+      'archive-reopen',
+      [
+        'workflow: full',
+        'phase: archive',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'tdd_mode: tdd',
+        'isolation: branch',
+        'verify_mode: full',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pass',
+        'verification_report: docs/superpowers/reports/archive-reopen.md',
+        'branch_status: handled',
+        'verified_at: 2026-06-05',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runBash(tmpDir, stateScript, [
+      'transition',
+      'archive-reopen',
+      'archive-reopen',
+    ]);
+    const phase = runBash(tmpDir, stateScript, ['get', 'archive-reopen', 'phase']);
+    const verifyResult = runBash(tmpDir, stateScript, [
+      'get',
+      'archive-reopen',
+      'verify_result',
+    ]);
+    const verifiedAt = runBash(tmpDir, stateScript, ['get', 'archive-reopen', 'verified_at']);
+    const report = runBash(tmpDir, stateScript, [
+      'get',
+      'archive-reopen',
+      'verification_report',
+    ]);
+    const branchStatus = runBash(tmpDir, stateScript, [
+      'get',
+      'archive-reopen',
+      'branch_status',
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(phase.stdout.trim()).toBe('verify');
+    expect(verifyResult.stdout.trim()).toBe('pending');
+    expect(verifiedAt.stdout.trim()).toBe('null');
+    expect(report.stdout.trim()).toBe('docs/superpowers/reports/archive-reopen.md');
+    expect(branchStatus.stdout.trim()).toBe('handled');
+  }, 20_000);
+
+  it('rejects archive-reopen after the change is already archived', async () => {
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'reports', 'already-archived.md'),
+      'PASS\n',
+    );
+    await createChange(
+      tmpDir,
+      'already-archived',
+      [
+        'workflow: full',
+        'phase: archive',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'tdd_mode: tdd',
+        'isolation: branch',
+        'verify_mode: full',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pass',
+        'verification_report: docs/superpowers/reports/already-archived.md',
+        'branch_status: handled',
+        'verified_at: 2026-06-05',
+        'archived: true',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runBash(tmpDir, stateScript, [
+      'transition',
+      'already-archived',
+      'archive-reopen',
+    ]);
+    const phase = runBash(tmpDir, stateScript, ['get', 'already-archived', 'phase']);
+    const verifyResult = runBash(tmpDir, stateScript, [
+      'get',
+      'already-archived',
+      'verify_result',
+    ]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('already archived');
+    expect(phase.stdout.trim()).toBe('archive');
+    expect(verifyResult.stdout.trim()).toBe('pass');
+  }, 20_000);
+
   it('blocks verify guard when verification evidence is missing', async () => {
     await createChange(
       tmpDir,

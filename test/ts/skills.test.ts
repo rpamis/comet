@@ -203,6 +203,10 @@ describe('skills', () => {
         path.resolve('assets', 'skills-zh', 'comet-verify', 'SKILL.md'),
         'utf-8',
       );
+      const zhArchive = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-archive', 'SKILL.md'),
+        'utf-8',
+      );
       const zhHotfix = await fs.readFile(
         path.resolve('assets', 'skills-zh', 'comet-hotfix', 'SKILL.md'),
         'utf-8',
@@ -251,6 +255,17 @@ describe('skills', () => {
       expect(zhVerify).toContain(
         '只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`',
       );
+      expect(zhArchive).toContain('### 1. 归档前最终确认（阻塞点）');
+      expect(zhArchive).toContain(
+        '不得在用户确认前运行 `"$COMET_BASH" "$COMET_ARCHIVE" "<change-name>"`',
+      );
+      expect(zhArchive).toContain('「确认归档」');
+      expect(zhArchive).toContain('「需要调整或重新验证」');
+      expect(zhArchive).toContain('「暂不归档」');
+      expect(zhArchive).toContain(
+        '`"$COMET_BASH" "$COMET_STATE" transition <change-name> archive-reopen`',
+      );
+      expect(zhVerify).toContain('不得因为验证已通过就自动归档');
       expect(zhHotfix).toContain(
         '满足升级条件时**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确确认**升级为完整 `/comet` 流程',
       );
@@ -270,6 +285,8 @@ describe('skills', () => {
       // HIGH: hotfix/tweak IMPORTANT blocks must acknowledge verify decision points
       expect(zhHotfix).toContain('验证阶段（comet-verify）的验证失败决策和分支处理决策');
       expect(zhTweak).toContain('验证阶段（comet-verify）的验证失败决策和分支处理决策');
+      expect(zhHotfix).toContain('归档前最终确认');
+      expect(zhTweak).toContain('归档前最终确认');
 
       // MEDIUM: comet-design brainstorming does not write Design Doc before confirmation
       expect(zhDesign).toContain('brainstorming 阶段不写入 Design Doc 文件');
@@ -329,6 +346,7 @@ describe('skills', () => {
 
       // IMPORTANT: main entry and build subskill agree scope expansion is blocking
       expect(zhComet).toContain('build 阶段范围扩张需重新设计或拆分新 change');
+      expect(zhComet).toContain('archive 阶段执行归档脚本前的最终确认');
       expect(zhComet).toContain('open 阶段大型 PRD 需确认拆分为多个 change');
 
       // IMPORTANT: accepted Spec drift edits must not loop back through dirty-worktree handling
@@ -380,9 +398,9 @@ describe('skills', () => {
       expect(zhHotfix).toContain('先补充能复现该崩溃/异常的最小失败测试');
 
       // CRITICAL: user-confirmation gates must not hardcode a platform-specific tool name.
-      expect([zhComet, zhDesign, zhBuild, zhVerify, zhHotfix, zhTweak].join('\n')).not.toContain(
-        'AskUserQuestion',
-      );
+      expect(
+        [zhComet, zhDesign, zhBuild, zhVerify, zhArchive, zhHotfix, zhTweak].join('\n'),
+      ).not.toContain('AskUserQuestion');
       expect(zhComet).toContain(
         '若当前平台没有结构化提问工具，则必须在对话中提出明确选项并停止流程',
       );
@@ -409,6 +427,10 @@ describe('skills', () => {
       );
       const enVerify = await fs.readFile(
         path.resolve('assets', 'skills', 'comet-verify', 'SKILL.md'),
+        'utf-8',
+      );
+      const enArchive = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-archive', 'SKILL.md'),
         'utf-8',
       );
       const enHotfix = await fs.readFile(
@@ -465,6 +487,17 @@ describe('skills', () => {
       expect(enVerify).toContain(
         'Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written',
       );
+      expect(enArchive).toContain('### 1. Final Archive Confirmation (Blocking Point)');
+      expect(enArchive).toContain(
+        'Must not run `"$COMET_BASH" "$COMET_ARCHIVE" "<change-name>"` before user confirmation',
+      );
+      expect(enArchive).toContain('Confirm archive');
+      expect(enArchive).toContain('Needs adjustment or re-verification');
+      expect(enArchive).toContain('Do not archive yet');
+      expect(enArchive).toContain(
+        '`"$COMET_BASH" "$COMET_STATE" transition <change-name> archive-reopen`',
+      );
+      expect(enVerify).toContain('Must not automatically archive just because verification passed');
       expect(enHotfix).toContain(
         "must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm",
       );
@@ -488,6 +521,8 @@ describe('skills', () => {
       expect(enTweak).toContain(
         'verify phase (comet-verify) verification-failure and branch-handling decisions',
       );
+      expect(enHotfix).toContain('Final archive confirmation');
+      expect(enTweak).toContain('Final archive confirmation');
       expect(enDesign).toContain('The brainstorming phase does not write to the Design Doc file');
       expect(enVerify).toContain(
         "must use the current platform's available user input/confirmation mechanism as a single-select question to pause and wait for the user to choose the handling method",
@@ -531,6 +566,7 @@ describe('skills', () => {
       expect(enComet).toContain(
         'Build phase scope expansion requiring redesign or new change split',
       );
+      expect(enComet).toContain('Archive phase final confirmation before running the archive script');
       expect(enComet).toContain('Open phase large PRD requiring confirmation to split into multiple changes');
       expect(enVerify).toContain('Option A is a verify phase allowed artifact');
       expect(enBuild).toContain(
@@ -566,7 +602,7 @@ describe('skills', () => {
       );
 
       expect(
-        [enComet, enOpen, enDesign, enBuild, enVerify, enHotfix, enTweak].join('\n'),
+        [enComet, enOpen, enDesign, enBuild, enVerify, enArchive, enHotfix, enTweak].join('\n'),
       ).not.toContain('AskUserQuestion');
       expect(enComet).toContain(
         'If the current platform has no structured question tool, ask clear options in the conversation and stop the workflow',
