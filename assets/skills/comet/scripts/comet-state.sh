@@ -819,7 +819,7 @@ cmd_scale() {
     local plan_file base_ref=""
     plan_file=$(cmd_get "$change_name" "plan" 2>/dev/null || true)
     if [ -n "$plan_file" ] && [ "$plan_file" != "null" ] && [ -f "$plan_file" ]; then
-      base_ref=$(grep '^base-ref:' "$plan_file" 2>/dev/null | head -1 | sed 's/^base-ref: *//')
+      base_ref=$(grep '^base-ref:' "$plan_file" 2>/dev/null | head -1 | sed 's/^base-ref: *//' || true)
     fi
     # Fallback to base_ref stored in .comet.yaml (set during init)
     if [ -z "$base_ref" ] || [ "$base_ref" = "null" ]; then

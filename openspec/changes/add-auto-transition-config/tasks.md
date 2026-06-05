@@ -15,6 +15,7 @@
 - [x] 3.1 增加 `comet-state.sh init` 默认 `true`、项目配置 `false`、缺失字段和非法值回退 `true` 的测试
 - [x] 3.2 增加 `comet-state.sh get <change> auto_transition`、`comet-state.sh set` 与 `comet-yaml-validate.sh` 对 `auto_transition` 的校验测试
 - [x] 3.3 增加中文 Skill 文案扫描测试，覆盖手动模式提示和下一 Skill 名称
+- [x] 3.4 增加 `comet-state.sh scale` 在 plan 缺少 `base-ref` 时回退 `.comet.yaml base_ref` 的回归测试
 
 ## 4. 验证与收尾
 

@@ -3,11 +3,11 @@ phase: build
 build_mode: subagent-driven-development
 build_pause: null
 isolation: branch
-verify_mode: null
+verify_mode: full
 base_ref: 14609a9a935f32561d9d76364ec870862f5fac42
 design_doc: docs/superpowers/specs/2026-06-04-auto-transition-config-design.md
 plan: docs/superpowers/plans/2026-06-04-auto-transition-config.md
-verify_result: pending
+verify_result: fail
 verification_report: null
 branch_status: pending
 created_at: 2026-06-04

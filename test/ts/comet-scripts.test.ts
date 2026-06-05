@@ -1349,6 +1349,58 @@ describeShell('comet shell scripts', () => {
     expect(mode.stdout.trim()).toBe('full');
   }, 25_000);
 
+  it('falls back to comet base_ref when scale plan omits base-ref', async () => {
+    execFileSync('git', ['init'], { cwd: tmpDir, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'tag.gpgsign', 'false'], { cwd: tmpDir });
+    await writeFile(path.join(tmpDir, 'README.md'), 'base\n');
+    execFileSync('git', ['add', '.'], { cwd: tmpDir });
+    execFileSync('git', ['commit', '-m', 'base'], { cwd: tmpDir, stdio: 'ignore' });
+    const baseRef = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: tmpDir,
+      encoding: 'utf-8',
+    }).trim();
+
+    await createChange(
+      tmpDir,
+      'fallback-base-ref',
+      [
+        'workflow: full',
+        'phase: verify',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'isolation: branch',
+        'verify_mode: null',
+        'auto_transition: true',
+        `base_ref: ${baseRef}`,
+        'design_doc: null',
+        'plan: docs/superpowers/plans/fallback-base-ref.md',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      ['- [x] task 1', '- [x] task 2', '- [x] task 3'].join('\n'),
+    );
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'plans', 'fallback-base-ref.md'),
+      'plan\n',
+    );
+    for (let i = 1; i <= 6; i += 1) {
+      await writeFile(path.join(tmpDir, 'src', `fallback-${i}.txt`), `change ${i}\n`);
+    }
+    execFileSync('git', ['add', '.'], { cwd: tmpDir });
+    execFileSync('git', ['commit', '-m', 'large fallback change'], { cwd: tmpDir, stdio: 'ignore' });
+
+    const result = runBash(tmpDir, stateScript, ['scale', 'fallback-base-ref']);
+    const mode = runBash(tmpDir, stateScript, ['get', 'fallback-base-ref', 'verify_mode']);
+
+    expect(result.status).toBe(0);
+    expect(mode.stdout.trim()).toBe('full');
+  }, 25_000);
+
   it('transitions full workflow from open to design', async () => {
     await createChange(
       tmpDir,
