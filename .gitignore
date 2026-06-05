@@ -81,3 +81,5 @@ skills-lock.json
 
 # Superpowers docs (local only)
 docs/superpowers/
+
+.codegraph/

@@ -410,7 +410,9 @@ your-project/
 
 ## 开发
 
-贡献流程、提交规范、PR 流程，以及新增平台或 Skill 的说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+贡献流程、提交规范、PR 流程、分支工作流，以及新增平台、Skill、脚本或 changelog
+的说明见 [CONTRIBUTING-zh.md](CONTRIBUTING-zh.md) 或
+[CONTRIBUTING.md](CONTRIBUTING.md)。
 
 详见 [CHANGELOG.md](CHANGELOG.md) 了解版本历史与更新。
 

@@ -411,7 +411,10 @@ your-project/
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, commit conventions, PR process, and guidance for adding platforms or skills.
+See [CONTRIBUTING.md](CONTRIBUTING.md) or
+[CONTRIBUTING-zh.md](CONTRIBUTING-zh.md) for development setup, commit
+conventions, PR process, branch workflow, and guidance for adding platforms,
+skills, scripts, or changelog entries.
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
 
