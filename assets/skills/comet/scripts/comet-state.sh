@@ -155,6 +155,21 @@ yaml_file_for() {
   echo "$change_dir/.comet.yaml"
 }
 
+project_auto_transition_default() {
+  local config_file="openspec/comet.yaml"
+  local value
+
+  value="$(yaml_field "auto_transition" "$config_file" 2>/dev/null || true)"
+  case "$value" in
+    true|false)
+      printf '%s\n' "$value"
+      ;;
+    *)
+      printf '%s\n' "true"
+      ;;
+  esac
+}
+
 # --- Subcommands ---
 
 cmd_init() {
@@ -178,8 +193,9 @@ cmd_init() {
   mkdir -p "$change_dir"
 
   # Set workflow-appropriate defaults
-  local phase build_mode isolation verify_mode
+  local phase build_mode isolation verify_mode auto_transition
   phase="open"
+  auto_transition="$(project_auto_transition_default)"
 
   case "$workflow" in
     full)
@@ -208,6 +224,7 @@ build_mode: $build_mode
 build_pause: null
 isolation: $isolation
 verify_mode: $verify_mode
+auto_transition: $auto_transition
 base_ref: $base_ref
 design_doc: null
 plan: null
@@ -265,14 +282,14 @@ cmd_set() {
       yellow "WARNING: Setting 'phase' directly bypasses state machine constraints." >&2
       yellow "  Consider using: comet-state.sh transition <change-name> <event>" >&2
       ;;
-    workflow|build_mode|build_pause|isolation|verify_mode|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
+    workflow|build_mode|build_pause|isolation|verify_mode|auto_transition|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
       # Valid field
       ;;
     *)
       red "ERROR: Unknown field: '$field'" >&2
       red "Valid fields:" >&2
       red "  workflow, phase, design_doc, plan, build_mode, build_pause, isolation," >&2
-      red "  verify_mode, verify_result, verification_report, branch_status," >&2
+      red "  verify_mode, auto_transition, verify_result, verification_report, branch_status," >&2
       red "  verified_at, created_at, archived, base_ref, direct_override," >&2
       red "  build_command, verify_command, handoff_context, handoff_hash" >&2
       exit 1
@@ -298,6 +315,9 @@ cmd_set() {
       ;;
     verify_mode)
       validate_enum "$value" "light" "full"
+      ;;
+    auto_transition)
+      validate_enum "$value" "true" "false"
       ;;
     verify_result)
       validate_enum "$value" "pending" "pass" "fail"

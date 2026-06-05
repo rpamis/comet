@@ -106,8 +106,16 @@ AskUserQuestion 必须以单选题形式呈现，包含以下摘要和选项：
 
 ## 自动流转
 
-用户确认后，退出条件满足，自动流转到下一阶段：
+用户确认后，退出条件满足，确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
 
-> **REQUIRED NEXT SKILL（完整流程）:** 调用 `comet-design` skill 进入深度设计阶段。
->
-> hotfix/tweak preset 由对应 preset skill 控制后续流转（phase 直接进入 build），不经过本节。
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-design` skill 进入深度设计阶段。
+
+若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
+
+> 状态已更新为 `phase: design`。请使用 `/comet-design` 进入深度设计阶段。
+
+hotfix/tweak preset 由对应 preset skill 控制后续流转（phase 直接进入 build），不经过本节。

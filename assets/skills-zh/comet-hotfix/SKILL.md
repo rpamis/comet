@@ -133,6 +133,20 @@ Hotfix 流程为 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 
 执行顺序：快速开启 → 直接构建 → 根因消除检查 → 验证 → 归档 → 完成
 
 每个阶段完成后立即进入下一阶段。阶段内部仍必须按上文要求调用对应 Comet/OpenSpec/Superpowers skill，被调用的 skill 如有自己的用户决策点，按该 skill 规则执行。
+
+每次阶段 guard `--apply` 成功后，必须读取：
+
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+若 `AUTO_TRANSITION=false`，状态已推进但 preset 不继续自动调用下一步骤；按当前 phase 打印明确的下一条手动命令并停止：
+
+- `phase: build` → 手动运行 `/comet-hotfix` 继续直接构建
+- `phase: verify` → 手动运行 `/comet-verify` 继续验证
+- `phase: archive` → 手动运行 `/comet-archive` 继续归档
+
+若为空或不是 `false`，保持现有连续执行。
 </IMPORTANT>
 
 ---

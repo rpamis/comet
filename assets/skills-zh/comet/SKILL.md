@@ -178,6 +178,7 @@ build_mode: subagent-driven-development
 build_pause: null
 isolation: branch
 verify_mode: light
+auto_transition: true
 verify_result: pending
 verification_report: null
 branch_status: pending
@@ -197,6 +198,7 @@ archived: false
 | `build_pause` | build 阶段内部暂停点。`null` 表示无暂停，`plan-ready` 表示 plan 已生成，用户选择切换模型后暂停 |
 | `isolation` | `branch` 或 `worktree`，工作区隔离方式。full 初始化可为 `null`，但只允许持续到 `/comet-build` Step 3 前；hotfix/tweak 默认 `branch` |
 | `verify_mode` | `light` 或 `full`，可为空 |
+| `auto_transition` | `true` 或 `false`。控制阶段状态已推进后是否自动调用下一 Skill；缺省为 `true` |
 | `verify_result` | `pending`、`pass` 或 `fail` |
 | `verification_report` | 验证报告文件路径，verify 通过前必须指向已存在文件 |
 | `branch_status` | `pending` 或 `handled`，分支处理完成后设为 `handled` |
@@ -217,6 +219,7 @@ archived: false
 - `build → verify` 前，`build_mode` 必须已选择
 - `build_mode: direct` 默认只允许 `hotfix` / `tweak`；full workflow 需要 `direct_override: true`
 - `build_pause` 不是执行方式，不得写入 `build_mode`
+- 自动流转检查必须在阶段 guard `--apply` 之后执行。`auto_transition: false` 不阻止 phase 更新，只阻止继续调用下一 Skill，并必须提示用户下一条可手动执行的命令
 - 这些约束同时存在于 `comet-guard.sh build --apply` 和 `comet-state.sh transition <name> build-complete`
 
 ### 脚本定位

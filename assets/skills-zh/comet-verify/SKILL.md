@@ -196,6 +196,14 @@ Verify 阶段可能触发上下文压缩。恢复时先运行：
 
 ## 自动流转
 
-退出条件满足后（包括用户选择分支处理方式），自动流转到下一阶段：
+退出条件满足后（包括用户选择分支处理方式），确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
 
-> **REQUIRED NEXT SKILL:** 调用 `comet-archive` skill 进入归档阶段。
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-archive` skill 进入归档阶段。
+
+若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
+
+> 状态已更新为 `phase: archive`。请使用 `/comet-archive` 进入归档阶段。

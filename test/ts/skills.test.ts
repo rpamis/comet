@@ -185,6 +185,10 @@ describe('skills', () => {
         path.resolve('assets', 'skills-zh', 'comet', 'SKILL.md'),
         'utf-8',
       );
+      const zhOpen = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-open', 'SKILL.md'),
+        'utf-8',
+      );
       const zhDesign = await fs.readFile(
         path.resolve('assets', 'skills-zh', 'comet-design', 'SKILL.md'),
         'utf-8',
@@ -282,6 +286,31 @@ describe('skills', () => {
       expect(zhHotfix).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhTweak).toContain('立即使用 Skill 工具加载 `comet-design` skill');
       expect(zhVerify).toContain('用户选择 B 后，运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`');
+
+      // auto_transition manual mode must not leave stale phase state.
+      expect(zhComet).toContain('`auto_transition`');
+      expect(zhComet).toContain('不阻止 phase 更新');
+      for (const [content, nextCommand] of [
+        [zhOpen, '/comet-design'],
+        [zhDesign, '/comet-build'],
+        [zhBuild, '/comet-verify'],
+        [zhVerify, '/comet-archive'],
+      ] as const) {
+        expect(content).toContain('get <change-name> auto_transition');
+        expect(content).toContain('AUTO_TRANSITION=false');
+        expect(content).toContain(nextCommand);
+        expect(content).toContain('状态已更新为');
+      }
+      expect(zhHotfix).toContain('AUTO_TRANSITION=');
+      expect(zhHotfix).toContain('状态已推进');
+      expect(zhHotfix).toContain('`phase: build` → 手动运行 `/comet-hotfix`');
+      expect(zhHotfix).toContain('`phase: verify` → 手动运行 `/comet-verify`');
+      expect(zhHotfix).toContain('`phase: archive` → 手动运行 `/comet-archive`');
+      expect(zhTweak).toContain('AUTO_TRANSITION=');
+      expect(zhTweak).toContain('状态已推进');
+      expect(zhTweak).toContain('`phase: build` → 手动运行 `/comet-tweak`');
+      expect(zhTweak).toContain('`phase: verify` → 手动运行 `/comet-verify`');
+      expect(zhTweak).toContain('`phase: archive` → 手动运行 `/comet-archive`');
     });
   });
 

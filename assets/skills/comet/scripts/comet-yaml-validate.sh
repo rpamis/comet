@@ -97,7 +97,7 @@ warn_msg() { warn "  WARN: $1"; WARNINGS=$((WARNINGS + 1)); }
 echo "[VALIDATE] $YAML" >&2
 
 # --- Required fields ---
-REQUIRED_FIELDS="workflow phase design_doc plan build_mode isolation verify_mode verify_result verified_at archived"
+REQUIRED_FIELDS="workflow phase design_doc plan build_mode isolation verify_mode auto_transition verify_result verified_at archived"
 for field in $REQUIRED_FIELDS; do
   if ! grep -q "^${field}:" "$YAML" 2>/dev/null; then
     fail "missing required field '$field'"
@@ -123,12 +123,26 @@ validate_enum() {
   fail "$field='$value' is not valid. Expected: $valid_values"
 }
 
+validate_required_enum() {
+  local field="$1" value="$2"
+  shift 2
+  local valid_values="$*"
+
+  if [ -z "$value" ] || [ "$value" = "null" ]; then
+    fail "$field='${value:-}' is not valid. Expected: $valid_values"
+    return 0
+  fi
+
+  validate_enum "$field" "$value" "$@"
+}
+
 workflow=$(field_value "workflow")
 phase=$(field_value "phase")
 build_mode=$(field_value "build_mode")
 build_pause=$(field_value "build_pause")
 isolation=$(field_value "isolation")
 verify_mode=$(field_value "verify_mode")
+auto_transition=$(field_value "auto_transition")
 verify_result=$(field_value "verify_result")
 branch_status=$(field_value "branch_status")
 archived=$(field_value "archived")
@@ -144,6 +158,7 @@ validate_enum "build_mode"    "$build_mode"     "subagent-driven-development exe
 validate_enum "build_pause"   "$build_pause"     "null plan-ready"
 validate_enum "isolation"     "$isolation"      "branch worktree"
 validate_enum "verify_mode"   "$verify_mode"    "light full"
+validate_required_enum "auto_transition" "$auto_transition" "true false"
 validate_enum "verify_result" "$verify_result"  "pending pass fail"
 validate_enum "branch_status" "$branch_status"  "pending handled"
 validate_enum "archived"      "$archived"       "true false"
@@ -176,7 +191,7 @@ if [ -n "$handoff_hash" ] && [ "$handoff_hash" != "null" ]; then
 fi
 
 # --- Unknown keys check ---
-KNOWN_KEYS="workflow phase design_doc plan build_mode build_pause isolation verify_mode verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
+KNOWN_KEYS="workflow phase design_doc plan build_mode build_pause isolation verify_mode auto_transition verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
 while IFS=: read -r key _; do
   key="${key// /}"
   [ -z "$key" ] && continue
