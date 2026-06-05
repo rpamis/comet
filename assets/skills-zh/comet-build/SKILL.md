@@ -165,6 +165,15 @@ git rev-parse HEAD
 - 完成 tasks.md 勾选（`- [ ]` → `- [x]`）
 - 每个任务完成后提交代码
 
+**`executing-plans` review gate**：
+
+当 `build_mode` 为 `executing-plans` 时，在所有计划任务完成后、运行 build → verify 阶段守卫前，必须至少 dispatch 一次 code reviewer。
+
+要求：
+- review 必须发生在 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply` 之前
+- CRITICAL review 发现必须先修复，不得带入 verify
+- 非 CRITICAL review 发现如选择接受，必须在 tasks.md、commit body、验证报告草稿或其他持久产物中记录接受原因和影响范围
+
 ### 4. Spec 增量更新
 
 实施过程中发现初版 spec 不完整时，按变更规模分级处理：
@@ -208,6 +217,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - 已显式运行项目对应的构建/测试命令并通过（不要只依赖 guard 自动猜测）
 - `isolation` 已写为 `branch` 或 `worktree`
 - `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`
+- 若 `build_mode` 为 `executing-plans`，已至少 dispatch 一次 code reviewer，且 CRITICAL review 发现已修复或非 CRITICAL review 发现已记录接受理由
 - **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后自动流转到 `phase: verify`
 
 Guard 会优先读取项目配置中的命令：

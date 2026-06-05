@@ -246,6 +246,13 @@ describe('skills', () => {
       expect(zhBuild).toContain('提供 plan-ready 暂停点');
       expect(zhBuild).toContain('不得自动继续，也不得把暂停写入 `build_mode`');
 
+      // HIGH: comet-build + executing-plans must dispatch a reviewer before verify
+      expect(zhBuild).toContain('`build_mode` 为 `executing-plans`');
+      expect(zhBuild).toContain('至少 dispatch 一次 code reviewer');
+      expect(zhBuild).toContain('build → verify');
+      expect(zhBuild).toContain('CRITICAL review 发现必须先修复');
+      expect(zhBuild).toContain('非 CRITICAL review 发现');
+
       // MEDIUM: comet-verify Step 1b handles mixed CRITICAL/non-CRITICAL
       expect(zhVerify).toContain('CRITICAL 失败项必须修复');
       expect(zhVerify).toContain('不允许跳过修复直接全部接受');
@@ -339,6 +346,11 @@ describe('skills', () => {
       expect(enComet).toContain('`build_pause` is not an execution method and must not be written to `build_mode`');
       expect(enBuild).toContain('Provide Plan-Ready Pause Point');
       expect(enBuild).toContain('Must not auto-continue and must not write the pause into `build_mode`');
+      expect(enBuild).toContain('`build_mode` is `executing-plans`');
+      expect(enBuild).toContain('dispatch a code reviewer at least once');
+      expect(enBuild).toContain('build → verify');
+      expect(enBuild).toContain('CRITICAL review findings must be fixed first');
+      expect(enBuild).toContain('non-CRITICAL review findings');
       expect(enVerify).toContain('CRITICAL failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
       expect(enHotfix).toContain('workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`');
