@@ -198,6 +198,103 @@ write_json_context() {
   } > "$output"
 }
 
+write_spec_projection_for_file() {
+  local file="$1"
+  echo "## $file"
+  echo ""
+  echo "- Source: $file"
+  echo "- Lines: 1-$(file_line_count "$file")"
+  echo "- SHA256: $(hash_file "$file")"
+  echo ""
+  awk '
+    /^### Requirement:/ { print; in_acceptance = 1; next }
+    /^#### Scenario:/ { print; in_acceptance = 1; next }
+    in_acceptance && /^- \*\*(GIVEN|WHEN|THEN|AND|BUT)\*\*/ { print; next }
+    /^### / || /^## / { in_acceptance = 0 }
+  ' "$file"
+  echo ""
+}
+
+write_spec_markdown_context() {
+  local output="$1"
+  {
+    echo "# Comet Spec Context"
+    echo ""
+    echo "- Change: $CHANGE"
+    echo "- Phase: design"
+    echo "- Mode: beta"
+    echo "- Context hash: $CONTEXT_HASH"
+    echo ""
+    echo "Generated-by: comet-handoff.sh"
+    echo ""
+    echo "OpenSpec remains the canonical capability spec. This beta context pack is a deterministic projection of requirements, scenarios, and source references, not an agent-authored summary."
+    echo ""
+    echo "## Source References"
+    echo ""
+    source_files | while IFS= read -r file; do
+      [ -f "$file" ] || continue
+      echo "- Source: $file"
+      echo "- SHA256: $(hash_file "$file")"
+    done
+    echo ""
+    echo "## Acceptance Projection"
+    echo ""
+    if [ -d "$CHANGE_DIR/specs" ]; then
+      find "$CHANGE_DIR/specs" -path '*/spec.md' -type f 2>/dev/null | sort | while IFS= read -r file; do
+        write_spec_projection_for_file "$file"
+      done
+    else
+      echo "No delta spec files found."
+      echo ""
+    fi
+    echo "Full source files remain canonical. If a required heading or scenario is missing here, regenerate the handoff or read the source spec directly."
+  } > "$output"
+}
+
+write_spec_json_context() {
+  local output="$1"
+  {
+    echo "{"
+    echo "  \"change\": \"$(json_escape "$CHANGE")\","
+    echo "  \"phase\": \"design\","
+    echo "  \"mode\": \"beta\","
+    echo "  \"canonical_spec\": \"openspec\","
+    echo "  \"generated_by\": \"comet-handoff.sh\","
+    echo "  \"context_hash\": \"$CONTEXT_HASH\","
+    echo "  \"files\": ["
+    local first_file=1
+    while IFS= read -r file; do
+      [ -f "$file" ] || continue
+      if [ "$first_file" -eq 0 ]; then
+        echo ","
+      fi
+      first_file=0
+      printf '    { "path": "%s", "sha256": "%s" }' "$(json_escape "$file")" "$(hash_file "$file")"
+    done < <(source_files)
+    echo ""
+    echo "  ],"
+    echo "  \"projection\": ["
+    local first_heading=1
+    if [ -d "$CHANGE_DIR/specs" ]; then
+      while IFS= read -r file; do
+        [ -f "$file" ] || continue
+        while IFS=$'\t' read -r line type heading; do
+          [ -n "$heading" ] || continue
+          if [ "$first_heading" -eq 0 ]; then
+            echo ","
+          fi
+          first_heading=0
+          printf '    { "path": "%s", "line": %s, "type": "%s", "heading": "%s" }' \
+            "$(json_escape "$file")" "$line" "$(json_escape "$type")" "$(json_escape "$heading")"
+        done < <(awk '/^### Requirement:/ { printf "%d\trequirement\t%s\n", NR, $0 } /^#### Scenario:/ { printf "%d\tscenario\t%s\n", NR, $0 }' "$file")
+      done < <(find "$CHANGE_DIR/specs" -path '*/spec.md' -type f 2>/dev/null | sort)
+    fi
+    echo ""
+    echo "  ]"
+    echo "}"
+  } > "$output"
+}
+
 CHANGE="${1:-}"
 PHASE="${2:-}"
 MODE="${3:-}"
@@ -244,13 +341,34 @@ for required in proposal.md design.md tasks.md; do
 done
 
 HANDOFF_DIR="$CHANGE_DIR/.comet/handoff"
-CONTEXT_JSON="$HANDOFF_DIR/design-context.json"
-CONTEXT_MD="$HANDOFF_DIR/design-context.md"
+CONTEXT_COMPRESSION="$(yaml_field_value context_compression 2>/dev/null || true)"
+CONTEXT_COMPRESSION="${CONTEXT_COMPRESSION:-off}"
+case "$CONTEXT_COMPRESSION" in
+  off)
+    CONTEXT_JSON="$HANDOFF_DIR/design-context.json"
+    CONTEXT_MD="$HANDOFF_DIR/design-context.md"
+    ;;
+  beta)
+    HANDOFF_MODE="beta"
+    CONTEXT_JSON="$HANDOFF_DIR/spec-context.json"
+    CONTEXT_MD="$HANDOFF_DIR/spec-context.md"
+    ;;
+  *)
+    red "ERROR: invalid context_compression: $CONTEXT_COMPRESSION"
+    red "Valid values: off, beta"
+    exit 1
+    ;;
+esac
 mkdir -p "$HANDOFF_DIR"
 
 CONTEXT_HASH="$(compute_context_hash)"
-write_markdown_context "$CONTEXT_MD"
-write_json_context "$CONTEXT_JSON"
+if [ "$CONTEXT_COMPRESSION" = "beta" ]; then
+  write_spec_markdown_context "$CONTEXT_MD"
+  write_spec_json_context "$CONTEXT_JSON"
+else
+  write_markdown_context "$CONTEXT_MD"
+  write_json_context "$CONTEXT_JSON"
+fi
 
 if [ -x "$STATE_SH" ] || [ -f "$STATE_SH" ]; then
   "$COMET_BASH" "$STATE_SH" set "$CHANGE" handoff_context "$CONTEXT_JSON" >/dev/null

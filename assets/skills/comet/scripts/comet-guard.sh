@@ -469,7 +469,7 @@ design_handoff_markdown_traceable() {
     echo "handoff markdown is missing Generated-by marker" >&2
     missing=1
   }
-  grep -Eq '^- Mode: (compact|full)$' "$markdown" || {
+  grep -Eq '^- Mode: (compact|full|beta)$' "$markdown" || {
     echo "handoff markdown is missing Mode marker" >&2
     missing=1
   }
@@ -484,6 +484,45 @@ design_handoff_markdown_traceable() {
       exit 2
     fi
   done || missing=1
+
+  [ "$missing" -eq 0 ]
+}
+
+context_compression_mode() {
+  local mode
+  mode=$(yaml_field_value "context_compression" 2>/dev/null || true)
+  printf '%s\n' "${mode:-off}"
+}
+
+beta_spec_projection_covers_headings() {
+  local context markdown missing=0
+  if [ "$(context_compression_mode)" != "beta" ]; then
+    return 0
+  fi
+
+  context=$(yaml_field_value "handoff_context" 2>/dev/null || true)
+  if [ -z "$context" ] || [ "$context" = "null" ]; then
+    echo "handoff_context is missing from .comet.yaml" >&2
+    return 1
+  fi
+  markdown="${context%.json}.md"
+  if [ ! -s "$markdown" ]; then
+    echo "beta spec projection markdown is missing or empty: $markdown" >&2
+    return 1
+  fi
+
+  if [ -d "$CHANGE_DIR/specs" ]; then
+    find "$CHANGE_DIR/specs" -path '*/spec.md' -type f 2>/dev/null | sort | while IFS= read -r file; do
+      [ -f "$file" ] || continue
+      awk '/^### Requirement:/ || /^#### Scenario:/ { print }' "$file" | while IFS= read -r heading; do
+        [ -n "$heading" ] || continue
+        if ! grep -Fqx "$heading" "$markdown"; then
+          echo "missing spec projection heading: $heading ($file)" >&2
+          exit 2
+        fi
+      done
+    done || missing=1
+  fi
 
   [ "$missing" -eq 0 ]
 }
@@ -556,6 +595,9 @@ guard_design() {
   check "tasks.md exists" file_nonempty "$CHANGE_DIR/tasks.md"
   check "design handoff context exists" design_handoff_context_valid
   check "design handoff markdown is traceable" design_handoff_markdown_traceable
+  if [ "$(context_compression_mode)" = "beta" ]; then
+    check "beta spec projection covers requirement and scenario headings" beta_spec_projection_covers_headings
+  fi
 
   if [ "$workflow" = "full" ]; then
     # Full workflow: design_doc is REQUIRED

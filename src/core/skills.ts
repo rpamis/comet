@@ -164,10 +164,16 @@ async function createWorkingDirs(projectPath: string): Promise<void> {
   const dirs = [
     path.join(projectPath, 'docs', 'superpowers', 'specs'),
     path.join(projectPath, 'docs', 'superpowers', 'plans'),
+    path.join(projectPath, '.comet'),
   ];
 
   for (const dir of dirs) {
     await ensureDir(dir);
+  }
+
+  const configPath = path.join(projectPath, '.comet', 'config.yaml');
+  if (!(await fileExists(configPath))) {
+    await writeFile(configPath, 'context_compression: off\n', 'utf-8');
   }
 }
 

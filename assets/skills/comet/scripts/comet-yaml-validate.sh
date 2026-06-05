@@ -125,6 +125,7 @@ validate_enum() {
 
 workflow=$(field_value "workflow")
 phase=$(field_value "phase")
+context_compression=$(field_value "context_compression")
 build_mode=$(field_value "build_mode")
 build_pause=$(field_value "build_pause")
 subagent_dispatch=$(field_value "subagent_dispatch")
@@ -142,6 +143,7 @@ handoff_hash=$(field_value "handoff_hash")
 
 validate_enum "workflow"      "$workflow"      "full hotfix tweak"
 validate_enum "phase"         "$phase"          "open design build verify archive"
+validate_enum "context_compression" "$context_compression" "off beta"
 validate_enum "build_mode"    "$build_mode"     "subagent-driven-development executing-plans direct"
 validate_enum "build_pause"   "$build_pause"     "null plan-ready"
 validate_enum "subagent_dispatch" "$subagent_dispatch" "null confirmed"
@@ -180,7 +182,7 @@ if [ -n "$handoff_hash" ] && [ "$handoff_hash" != "null" ]; then
 fi
 
 # --- Unknown keys check ---
-KNOWN_KEYS="workflow phase design_doc plan build_mode build_pause subagent_dispatch tdd_mode isolation verify_mode verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
+KNOWN_KEYS="workflow phase context_compression design_doc plan build_mode build_pause subagent_dispatch tdd_mode isolation verify_mode verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
 while IFS=: read -r key _; do
   key="${key// /}"
   [ -z "$key" ] && continue

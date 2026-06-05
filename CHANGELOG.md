@@ -12,6 +12,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **subagent_dispatch field**: Added `subagent_dispatch` (`null`|`confirmed`) to `.comet.yaml` state machine, ensuring `build_mode: subagent-driven-development` can only leave the build phase after the platform's real background dispatch capability is confirmed.
 - **Verify retry limit**: Verify skill now enforces a mandatory user decision after 3 consecutive verify-fail cycles, preventing indefinite automated retry loops.
 - **Manual verify_mode override**: Users can override automatic verification scale assessment via `comet-state set <name> verify_mode <light|full>` when the auto-detected mode doesn't fit.
+- **Beta context compression switch**: Project installs now create `.comet/config.yaml` with `context_compression: off`, allowing teams to opt new changes into beta spec projection by setting `context_compression: beta`.
+- **Beta spec projection handoff**: `/comet-design` can now use beta context compression to generate `spec-context.json` and `spec-context.md`, preserving OpenSpec requirement and scenario headings with source hashes so compact design handoffs reduce token load without weakening acceptance coverage.
 
 ### Changed
 
@@ -63,6 +65,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **PRD split workflow regression**: Added Chinese and English skill coverage for open-phase PRD split choices, `/comet-open` state initialization, repeated-triage prevention, split completion selection, and minimal resume guidance.
 - **tdd_mode state machine regression**: Added coverage for tdd_mode init defaults (null for full, direct for hotfix), enum validation, build-exit guard, hotfix bypass, and schema validation rejection of invalid values.
 - **Review fix regression**: Added coverage for conditional verification_report preservation on re-verify, branch_status preservation across verify-fail, path traversal rejection on design_doc, command injection rejection on build_command, and design guard enforcement for full workflow without design_doc.
+- **Context compression regression**: Added coverage for project config defaults, change-level `context_compression` snapshots, environment override during change initialization, beta spec projection generation, and guard rejection when beta projection misses requirement or scenario headings.
 
 ## What's Changed [0.3.6] - 2026-06-02
 

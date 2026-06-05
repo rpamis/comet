@@ -38,11 +38,20 @@ fi
 "$COMET_BASH" "$COMET_HANDOFF" <change-name> design --write
 ```
 
-脚本会生成并记录：
+脚本会根据 change `.comet.yaml` 的 `context_compression` 快照生成并记录交接包。
+
+默认 `context_compression: off` 时生成：
 
 ```
 openspec/changes/<name>/.comet/handoff/design-context.json
 openspec/changes/<name>/.comet/handoff/design-context.md
+```
+
+启用 beta（项目 `.comet/config.yaml` 中 `context_compression: beta`，创建 change 时快照进入 `.comet.yaml`）时生成：
+
+```
+openspec/changes/<name>/.comet/handoff/spec-context.json
+openspec/changes/<name>/.comet/handoff/spec-context.md
 ```
 
 并在 `.comet.yaml` 写入：
@@ -56,6 +65,12 @@ handoff_hash: <sha256>
 - `design-context.json`：机器索引，包含 change、phase、canonical spec、source paths、hash
 - `design-context.md`：供 Superpowers 阅读的上下文，包含脚本标记、source path、line range、sha256、确定性摘录
 - 超出摘录预算时标记 `[TRUNCATED]`，并保留 Full source 路径
+
+beta 交接包是 **结构化 spec projection**，用于减少 OpenSpec 原文 token 占用但避免实现漂移：
+- `spec-context.json`：机器索引，包含 change、phase、canonical spec、source paths、hash、requirement/scenario headings
+- `spec-context.md`：供 Superpowers 阅读的紧凑上下文，保留 source path、sha256、requirement heading、scenario heading 和 Given/When/Then 验收要点
+- requirement/scenario heading 必须从 delta spec 原样投影；guard 会校验 beta projection 覆盖所有 requirement/scenario heading
+- OpenSpec delta spec 仍是 canonical spec；projection 缺失或过期时必须重新生成或读取源 spec，不得用 agent summary 替代
 
 如确实需要全文上下文，可显式运行：
 
@@ -79,6 +94,10 @@ handoff_hash: <sha256>
 Change: <change-name>
 OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/design-context.md
 Machine handoff: openspec/changes/<name>/.comet/handoff/design-context.json
+
+如 context_compression: beta，则使用：
+OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/spec-context.md
+Machine handoff: openspec/changes/<name>/.comet/handoff/spec-context.json
 
 OpenSpec 产物是上游事实源，但不得用“跳过重复上下文探索”削弱 Superpowers `brainstorming` 的澄清流程。
 你的任务是基于交接包做深度技术设计：实现方案、技术风险、测试策略、边界条件。
@@ -142,7 +161,8 @@ brainstorming 产出设计方案后，**必须使用当前平台可用的用户�
 - Design Doc frontmatter 包含 `comet_change`、`role: technical-design`、`canonical_spec: openspec`
 - `handoff_context` 和 `handoff_hash` 已写入 `.comet.yaml`（由 guard 强制校验）
 - `handoff_hash` 与当前 OpenSpec open 阶段产物一致（由 guard 强制校验）
-- `design-context.md` 必须是脚本生成，且包含 source path、mode、sha256 等可追溯标记（由 guard 强制校验）
+- `design-context.md` 或 beta `spec-context.md` 必须是脚本生成，且包含 source path、mode、sha256 等可追溯标记（由 guard 强制校验）
+- beta 模式下，`spec-context.md` 必须覆盖所有 delta spec requirement/scenario heading（由 guard 强制校验）
 - 如有新能力或补充验收场景，OpenSpec delta spec 已创建/更新
 - `design_doc` 已写入 `.comet.yaml`
 - **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> design --apply`，全部 PASS 后自动流转到 `phase: build`

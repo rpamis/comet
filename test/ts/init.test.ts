@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { applyBulkOverwriteChoice } from '../../src/commands/init.js';
+import { createWorkingDirs } from '../../src/core/skills.js';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
 
 describe('init command helpers', () => {
   it('can apply a single overwrite choice to all existing components on a platform', () => {
@@ -19,5 +23,14 @@ describe('init command helpers', () => {
       spAction: 'skip',
       cmAction: 'skip',
     });
+  });
+
+  it('creates a project Comet config with context compression disabled by default', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-config-'));
+
+    await createWorkingDirs(tmpDir);
+
+    const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+    expect(config).toContain('context_compression: off');
   });
 });

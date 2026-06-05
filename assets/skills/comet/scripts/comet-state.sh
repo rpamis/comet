@@ -169,6 +169,30 @@ yaml_file_for() {
   echo "$change_dir/.comet.yaml"
 }
 
+project_context_compression() {
+  local value="off"
+  local source="default"
+  if [ -n "${COMET_CONTEXT_COMPRESSION:-}" ]; then
+    value="$COMET_CONTEXT_COMPRESSION"
+    source="COMET_CONTEXT_COMPRESSION"
+  elif [ -f ".comet/config.yaml" ]; then
+    value=$(yaml_field "context_compression" ".comet/config.yaml")
+    value="${value:-off}"
+    source=".comet/config.yaml"
+  fi
+
+  case "$value" in
+    off|beta)
+      printf '%s\n' "$value"
+      ;;
+    *)
+      red "ERROR: Invalid context_compression from ${source}: '$value'" >&2
+      red "Valid values: off, beta" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # --- Subcommands ---
 
 cmd_init() {
@@ -192,8 +216,9 @@ cmd_init() {
   mkdir -p "$change_dir"
 
   # Set workflow-appropriate defaults
-  local phase build_mode isolation verify_mode
+  local phase build_mode isolation verify_mode context_compression
   phase="open"
+  context_compression=$(project_context_compression)
 
   case "$workflow" in
     full)
@@ -220,6 +245,7 @@ cmd_init() {
   cat > "$yaml_file" <<EOF
 workflow: $workflow
 phase: $phase
+context_compression: $context_compression
 build_mode: $build_mode
 build_pause: null
 subagent_dispatch: null
@@ -283,13 +309,13 @@ cmd_set() {
       yellow "WARNING: Setting 'phase' directly bypasses state machine constraints." >&2
       yellow "  Consider using: comet-state.sh transition <change-name> <event>" >&2
       ;;
-    workflow|build_mode|build_pause|subagent_dispatch|tdd_mode|isolation|verify_mode|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
+    workflow|context_compression|build_mode|build_pause|subagent_dispatch|tdd_mode|isolation|verify_mode|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
       # Valid field
       ;;
     *)
       red "ERROR: Unknown field: '$field'" >&2
       red "Valid fields:" >&2
-      red "  workflow, phase, design_doc, plan, build_mode, build_pause, subagent_dispatch, tdd_mode, isolation," >&2
+      red "  workflow, phase, context_compression, design_doc, plan, build_mode, build_pause, subagent_dispatch, tdd_mode, isolation," >&2
       red "  verify_mode, verify_result, verification_report, branch_status," >&2
       red "  verified_at, created_at, archived, base_ref, direct_override," >&2
       red "  build_command, verify_command, handoff_context, handoff_hash" >&2
@@ -301,6 +327,9 @@ cmd_set() {
   case "$field" in
     workflow)
       validate_enum "$value" "full" "hotfix" "tweak"
+      ;;
+    context_compression)
+      validate_enum "$value" "off" "beta"
       ;;
     phase)
       validate_enum "$value" "open" "design" "build" "verify" "archive"

@@ -206,6 +206,45 @@ describeShell('comet shell scripts', () => {
     expect(yaml).toContain('tdd_mode: direct');
   }, 20_000);
 
+  it('initializes context_compression as off by default', async () => {
+    const result = runBash(tmpDir, stateScript, ['init', 'context-defaults', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'context-defaults', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('context_compression: off');
+  }, 20_000);
+
+  it('snapshots beta context compression from .comet/config.yaml when initializing a change', async () => {
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'context_compression: beta\n');
+
+    const result = runBash(tmpDir, stateScript, ['init', 'context-beta', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'context-beta', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('context_compression: beta');
+  }, 20_000);
+
+  it('lets COMET_CONTEXT_COMPRESSION override the project context compression default', async () => {
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'context_compression: beta\n');
+
+    const result = runBash(tmpDir, stateScript, ['init', 'context-env', 'full'], {
+      COMET_CONTEXT_COMPRESSION: 'off',
+    });
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'context-env', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('context_compression: off');
+  }, 20_000);
+
   it('comet-env.sh exports bundled script paths from its own directory', async () => {
     const envScript = path.join(tmpDir, 'scripts', 'comet-env.sh');
     const checkScript = path.join(tmpDir, 'check-env.sh');
@@ -397,6 +436,184 @@ describeShell('comet shell scripts', () => {
     expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
     expect(result.stderr).toContain('[PASS] Design Doc frontmatter links current change');
     expect(result.stderr).toContain('[PASS] Design Doc declares OpenSpec as canonical spec');
+  }, 20_000);
+
+  it('generates a beta spec projection handoff with requirement and scenario coverage', async () => {
+    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.sh');
+    await createChange(
+      tmpDir,
+      'beta-context',
+      [
+        'workflow: full',
+        'phase: design',
+        'context_compression: beta',
+        'build_mode: null',
+        'build_pause: null',
+        'tdd_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      '- [ ] build beta context\n',
+    );
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'beta-context', 'specs', 'capability', 'spec.md'),
+      [
+        '## ADDED Requirements',
+        '',
+        '### Requirement: Preserve acceptance coverage',
+        'The implementation MUST keep every scenario visible in compact context.',
+        '',
+        '#### Scenario: beta projection includes scenario',
+        '- **WHEN** the beta handoff is generated',
+        '- **THEN** the scenario heading appears in the projection',
+        '',
+      ].join('\n'),
+    );
+
+    const handoff = runBash(tmpDir, handoffScript, ['beta-context', 'design', '--write']);
+    const contextPath = runBash(tmpDir, stateScript, [
+      'get',
+      'beta-context',
+      'handoff_context',
+    ]).stdout.trim();
+
+    expect(handoff.status).toBe(0);
+    expect(contextPath).toBe('openspec/changes/beta-context/.comet/handoff/spec-context.json');
+
+    const contextMarkdown = await fs.readFile(
+      path.join(
+        tmpDir,
+        'openspec',
+        'changes',
+        'beta-context',
+        '.comet',
+        'handoff',
+        'spec-context.md',
+      ),
+      'utf-8',
+    );
+    expect(contextMarkdown).toContain('Mode: beta');
+    expect(contextMarkdown).toContain('Generated-by: comet-handoff.sh');
+    expect(contextMarkdown).toContain('### Requirement: Preserve acceptance coverage');
+    expect(contextMarkdown).toContain('#### Scenario: beta projection includes scenario');
+
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-design.md'),
+      [
+        '---',
+        'comet_change: beta-context',
+        'role: technical-design',
+        'canonical_spec: openspec',
+        '---',
+        '',
+      ].join('\n'),
+    );
+    runBash(tmpDir, stateScript, [
+      'set',
+      'beta-context',
+      'design_doc',
+      'docs/superpowers/specs/beta-design.md',
+    ]);
+
+    const result = runBash(tmpDir, guardScript, ['beta-context', 'design']);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('[PASS] design handoff context exists');
+    expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
+    expect(result.stderr).toContain('[PASS] beta spec projection covers requirement and scenario headings');
+  }, 20_000);
+
+  it('blocks beta design exit when the spec projection is missing scenario coverage', async () => {
+    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.sh');
+    await createChange(
+      tmpDir,
+      'beta-missing-scenario',
+      [
+        'workflow: full',
+        'phase: design',
+        'context_compression: beta',
+        'build_mode: null',
+        'build_pause: null',
+        'tdd_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      '- [ ] build beta context\n',
+    );
+    await writeFile(
+      path.join(
+        tmpDir,
+        'openspec',
+        'changes',
+        'beta-missing-scenario',
+        'specs',
+        'capability',
+        'spec.md',
+      ),
+      [
+        '## ADDED Requirements',
+        '',
+        '### Requirement: Keep headings complete',
+        '',
+        '#### Scenario: required scenario',
+        '- **WHEN** guard checks beta projection',
+        '- **THEN** it detects missing coverage',
+        '',
+      ].join('\n'),
+    );
+
+    const handoff = runBash(tmpDir, handoffScript, ['beta-missing-scenario', 'design', '--write']);
+    expect(handoff.status).toBe(0);
+
+    const markdownPath = path.join(
+      tmpDir,
+      'openspec',
+      'changes',
+      'beta-missing-scenario',
+      '.comet',
+      'handoff',
+      'spec-context.md',
+    );
+    const contextMarkdown = await fs.readFile(markdownPath, 'utf-8');
+    await fs.writeFile(
+      markdownPath,
+      contextMarkdown.replace('#### Scenario: required scenario', '#### Scenario: removed'),
+    );
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-missing-design.md'),
+      [
+        '---',
+        'comet_change: beta-missing-scenario',
+        'role: technical-design',
+        'canonical_spec: openspec',
+        '---',
+        '',
+      ].join('\n'),
+    );
+    runBash(tmpDir, stateScript, [
+      'set',
+      'beta-missing-scenario',
+      'design_doc',
+      'docs/superpowers/specs/beta-missing-design.md',
+    ]);
+
+    const result = runBash(tmpDir, guardScript, ['beta-missing-scenario', 'design']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('[FAIL] beta spec projection covers requirement and scenario headings');
+    expect(result.stderr).toContain('missing spec projection heading');
   }, 20_000);
 
   it('reads comet yaml fields without including trailing comments', async () => {

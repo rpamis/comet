@@ -334,7 +334,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     });
   }
 
-  let cgGlobalStatus: InstallStatus = 'skipped';
+  let cgGlobalStatus: InstallStatus;
   const { supported: cgSupported } = filterSupportedPlatforms(selectedPlatformIds);
   const shouldInstallCodegraph =
     cgSupported.length > 0 &&

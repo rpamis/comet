@@ -295,13 +295,16 @@ openspec/                              # OpenSpec — WHAT
 docs/superpowers/                      # Superpowers — HOW
 ├── specs/YYYY-MM-DD-<topic>-design.md # 设计文档（技术 RFC，归档时标注状态）
 └── plans/YYYY-MM-DD-<feature>.md      # 实施计划（文件头含 change 关联元数据）
+
+.comet/
+└── config.yaml                        # Comet 项目配置（context_compression 默认 off，可设 beta）
 ```
 
 ### 最佳实践
 
 1. **brainstorming 不可跳过** — 每次变更必须经过深度设计（hotfix 和 tweak 除外）
 2. **delta spec 是活文档** — 阶段 3 期间可自由修改，归档时同步
-3. **交接包由脚本生成** — OpenSpec → Superpowers 的上下文必须通过 `comet-handoff.sh` 生成 compact 可追溯摘录（必要时 `--full`），并由 guard 校验 source/hash/mode
+3. **交接包由脚本生成** — OpenSpec → Superpowers 的上下文必须通过 `comet-handoff.sh` 生成 compact 可追溯摘录；启用 `.comet/config.yaml` 的 `context_compression: beta` 后，生成结构化 spec projection，并由 guard 校验 source/hash/mode 与 requirement/scenario 覆盖
 4. **保持 tasks.md 同步** — 完成一个勾一个
 5. **频繁提交** — 每个任务一次提交，message 体现设计意图
 6. **先验证再确认归档** — `/comet-verify` 通过后进入 `/comet-archive`，但运行归档脚本前必须等待用户最终确认
