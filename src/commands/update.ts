@@ -4,10 +4,12 @@ import { createRequire } from 'module';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import { select } from '@inquirer/prompts';
 import { fileExists, readDir, readJson } from '../utils/file-system.js';
 import { getBaseDir } from '../core/detect.js';
 import { copyCometSkillsForPlatform, getManifestSkills } from '../core/skills.js';
 import { PLATFORMS, getPlatformSkillsDir, type Platform } from '../core/platforms.js';
+import { installCodegraph, filterSupportedPlatforms } from '../core/codegraph.js';
 import type { InstallScope } from '../core/types.js';
 
 const require = createRequire(import.meta.url);
@@ -263,6 +265,30 @@ export async function updateCommand(
     );
   }
 
+  // CodeGraph optional step
+  let codegraphStatus: 'installed' | 'failed' | 'skipped' = 'skipped';
+  const detectedPlatformIds = [...new Set(targets.map((t) => t.platform.id))];
+  const { supported: cgSupported } = filterSupportedPlatforms(detectedPlatformIds);
+  const primaryScope = targets[0]?.scope ?? 'project';
+
+  if (cgSupported.length > 0 && !options.json) {
+    const shouldInstallCodegraph = await select({
+      message: 'Install/update CodeGraph for semantic code intelligence?',
+      choices: [
+        { name: 'Yes (recommended — saves ~47% tokens)', value: true },
+        { name: 'No', value: false },
+      ],
+    });
+
+    if (shouldInstallCodegraph) {
+      log('\n  Installing CodeGraph...');
+      codegraphStatus = await installCodegraph(projectPath, detectedPlatformIds, primaryScope);
+      log(`  CodeGraph: ${codegraphStatus}`);
+    } else {
+      log('\n  CodeGraph: skipped');
+    }
+  }
+
   if (options.json) {
     console.log(
       JSON.stringify(
@@ -276,6 +302,7 @@ export async function updateCommand(
             totalCopied,
             targets: targetResults,
           },
+          codegraph: codegraphStatus,
         },
         null,
         2,
@@ -289,6 +316,7 @@ export async function updateCommand(
   log(`\n  Summary:`);
   log(`    npm: ${npmStatus}${options.skipNpm ? '' : ` (${packageScope})`}`);
   log(`    skills: ${targets.length} target(s), ${totalCopied} files updated`);
+  log(`    codegraph: ${codegraphStatus}`);
   log(`    scope: ${scopes}`);
   log(`    language: ${languages}`);
   log(`\n  Update complete.\n`);

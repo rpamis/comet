@@ -215,6 +215,31 @@ async function checkCometYamlValidity(projectPath: string): Promise<CheckResult[
   return results;
 }
 
+async function checkCodegraph(projectPath: string, scope: DoctorScope): Promise<CheckResult> {
+  if (!isCommandAvailable('codegraph')) {
+    return {
+      check: 'CodeGraph CLI',
+      status: 'warn',
+      message: 'not installed — install with: npm install -g @colbymchenry/codegraph',
+    };
+  }
+
+  if (scope === 'global') {
+    return { check: 'CodeGraph CLI', status: 'pass', message: 'installed' };
+  }
+
+  const codegraphDir = path.join(projectPath, '.codegraph');
+  if (!(await fileExists(codegraphDir))) {
+    return {
+      check: 'CodeGraph',
+      status: 'warn',
+      message: 'CLI installed but project not initialized — run: codegraph init -i',
+    };
+  }
+
+  return { check: 'CodeGraph', status: 'pass', message: 'initialized (.codegraph/ present)' };
+}
+
 async function collectResults(projectPath: string, scope: DoctorScope): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   results.push(await checkOpenSpecCli());
@@ -223,6 +248,7 @@ async function collectResults(projectPath: string, scope: DoctorScope): Promise<
   }
   results.push(...(await checkSkillCompleteness(projectPath, scope)));
   results.push(await checkScriptsPresent());
+  results.push(await checkCodegraph(projectPath, scope));
   results.push(...(await checkCometYamlValidity(projectPath)));
   return results;
 }

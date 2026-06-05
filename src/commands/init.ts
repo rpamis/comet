@@ -10,6 +10,7 @@ import {
 } from '../core/skills.js';
 import { installOpenSpec } from '../core/openspec.js';
 import { installSuperpowersForPlatforms } from '../core/superpowers.js';
+import { installCodegraph, filterSupportedPlatforms } from '../core/codegraph.js';
 
 type InitOptions = {
   yes?: boolean;
@@ -28,6 +29,7 @@ interface PlatformResult {
   openspec: InstallStatus;
   superpowers: InstallStatus;
   comet: InstallStatus;
+  codegraph: InstallStatus;
 }
 
 type ComponentPlan = {
@@ -147,13 +149,25 @@ function displaySummary(results: PlatformResult[], scope: InstallScope): void {
   console.log(`\n  Comet setup complete! (scope: ${scopeLabel})\n`);
 
   const installed = results.filter(
-    (r) => r.openspec === 'installed' || r.superpowers === 'installed' || r.comet === 'installed',
+    (r) =>
+      r.openspec === 'installed' ||
+      r.superpowers === 'installed' ||
+      r.comet === 'installed' ||
+      r.codegraph === 'installed',
   );
   const skipped = results.filter(
-    (r) => r.openspec === 'skipped' && r.superpowers === 'skipped' && r.comet === 'skipped',
+    (r) =>
+      r.openspec === 'skipped' &&
+      r.superpowers === 'skipped' &&
+      r.comet === 'skipped' &&
+      r.codegraph === 'skipped',
   );
   const failed = results.filter(
-    (r) => r.openspec === 'failed' || r.superpowers === 'failed' || r.comet === 'failed',
+    (r) =>
+      r.openspec === 'failed' ||
+      r.superpowers === 'failed' ||
+      r.comet === 'failed' ||
+      r.codegraph === 'failed',
   );
 
   if (installed.length > 0) {
@@ -316,7 +330,35 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       openspec: osToolIds.includes(platform.openspecToolId) ? osGlobalStatus : 'skipped',
       superpowers: plan.spAction !== 'skip' ? spGlobalStatus : 'skipped',
       comet: cmStatus,
+      codegraph: 'skipped',
     });
+  }
+
+  let cgGlobalStatus: InstallStatus = 'skipped';
+  const { supported: cgSupported } = filterSupportedPlatforms(selectedPlatformIds);
+  const shouldInstallCodegraph =
+    cgSupported.length > 0 &&
+    !options.json &&
+    (options.yes ||
+      (await select({
+        message: 'Install CodeGraph for semantic code intelligence?',
+        choices: [
+          { name: 'Yes (recommended — saves ~47% tokens)', value: true },
+          { name: 'No', value: false },
+        ],
+      })));
+
+  if (shouldInstallCodegraph) {
+    log('\n  Installing CodeGraph...');
+    cgGlobalStatus = await installCodegraph(projectPath, selectedPlatformIds, scope);
+    log(`  CodeGraph: ${cgGlobalStatus}`);
+    for (const r of results) {
+      if (filterSupportedPlatforms([r.platform.id]).supported.length > 0) {
+        r.codegraph = cgGlobalStatus;
+      }
+    }
+  } else {
+    log('\n  CodeGraph: skipped');
   }
 
   if (scope === 'project') {
@@ -337,6 +379,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
             openspec: result.openspec,
             superpowers: result.superpowers,
             comet: result.comet,
+            codegraph: result.codegraph,
           })),
           workingDirsCreated: scope === 'project',
         },

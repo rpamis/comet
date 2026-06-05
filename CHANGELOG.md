@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **CodeGraph integration in comet init**: `comet init` now offers an optional step to install and configure CodeGraph (`@colbymchenry/codegraph`) for semantic code intelligence. It auto-detects supported platforms (Claude Code, Cursor, Codex, OpenCode, Gemini, Kiro, Antigravity), installs the CLI if missing, runs `codegraph install` for agent wiring, and initializes the project index. Skips gracefully under `--json` mode.
 - **Stale PR automation**: Added a scheduled and manually runnable GitHub Actions workflow that marks inactive pull requests stale after 90 days and closes them after another 30 days, helping keep long-idle review queues manageable.
 - **TDD mode field**: Added `tdd_mode` (`tdd`|`direct`) to `.comet.yaml` state machine so users choose whether to enforce TDD during build. When `tdd_mode: tdd`, subagent dispatches inject an explicit TDD hard constraint, bypassing implementer-prompt.md's conditional trigger. Addresses [#67](https://github.com/rpamis/comet/issues/67).
 - **subagent_dispatch field**: Added `subagent_dispatch` (`null`|`confirmed`) to `.comet.yaml` state machine, ensuring `build_mode: subagent-driven-development` can only leave the build phase after the platform's real background dispatch capability is confirmed.
@@ -14,6 +15,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **CodeGraph step in comet update**: `comet update` now prompts to install/update CodeGraph alongside skill file updates, using the same platform detection and CLI installation flow.
 - **Archive confirmation gate**: Chinese `/comet-archive` now pauses for explicit user confirmation before running the archive script, giving users a final chance to adjust or re-run verification before main spec merge and change archival.
 - **English archive confirmation parity**: English Comet skills now match the confirmed Chinese archive-confirmation workflow, including `/comet-archive`, `/comet-verify`, `/comet`, hotfix, and tweak guidance.
 - **Archive reopen transition**: Added `comet-state transition <change-name> archive-reopen` so users who decline final archive confirmation can return from `phase: archive` to `phase: verify` for adjustment or re-verification without manually editing `.comet.yaml`.
@@ -49,6 +51,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Tests
 
+- **Doctor CodeGraph check**: `comet doctor` now reports CodeGraph CLI availability and project initialization status (`.codegraph/` presence).
 - **Archive confirmation regression**: Added Chinese skill coverage that `/comet-archive` requires a final confirmation gate before executing the archive script.
 - **English archive confirmation regression**: Added English skill coverage for final archive confirmation, archive reopen guidance, and hotfix/tweak preset blocking points.
 - **Archive reopen regression**: Added state-machine coverage for returning an unarchived change from archive confirmation back to verification and rejecting reopen attempts after `archived: true`.
