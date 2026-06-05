@@ -120,13 +120,16 @@ async function promptBulkOverwriteChoice(
 function applyBulkOverwriteChoice<T extends ComponentPlan>(
   plan: T,
   choice: Exclude<BulkOverwriteChoice, 'choose'>,
+  hasExisting?: { os?: boolean; sp?: boolean; cm?: boolean },
 ): T {
   const action = choice === 'overwrite-all' ? 'overwrite' : 'skip';
+  const shouldApply = (actionState: ComponentAction, exists?: boolean) =>
+    actionState === 'install' && (hasExisting === undefined || exists === true);
   return {
     ...plan,
-    osAction: plan.osAction === 'install' ? action : plan.osAction,
-    spAction: plan.spAction === 'install' ? action : plan.spAction,
-    cmAction: plan.cmAction === 'install' ? action : plan.cmAction,
+    osAction: shouldApply(plan.osAction, hasExisting?.os) ? action : plan.osAction,
+    spAction: shouldApply(plan.spAction, hasExisting?.sp) ? action : plan.spAction,
+    cmAction: shouldApply(plan.cmAction, hasExisting?.cm) ? action : plan.cmAction,
   };
 }
 
@@ -247,6 +250,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
           ({ osAction, spAction, cmAction } = applyBulkOverwriteChoice(
             { osAction, spAction, cmAction },
             bulkChoice,
+            { os: hasOS, sp: hasSP, cm: hasCM },
           ));
         }
       }
