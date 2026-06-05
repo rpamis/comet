@@ -114,4 +114,3 @@ When a Comet full build uses `build_mode: executing-plans`, the workflow SHALL r
 - **WHEN** the required reviewer reports only non-critical findings that are intentionally accepted
 - **THEN** the workflow MUST record the accepted findings and rationale before continuing to verify
 ```
-
