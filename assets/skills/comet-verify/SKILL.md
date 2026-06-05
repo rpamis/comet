@@ -186,9 +186,17 @@ State file auto-updates to `phase: archive`, `verify_result: pass`, `verified_at
 
 ## Automatic Transition
 
-After exit conditions are met (including user selecting branch handling method), auto-transition to next phase:
+After exit conditions are met (including user selecting branch handling method), ensure the state machine has advanced, then read `AUTO_TRANSITION`:
 
-> **REQUIRED NEXT SKILL:** Invoke `comet-archive` skill to enter the archive phase.
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+If `AUTO_TRANSITION` is empty or not `false`, invoke the `comet-archive` skill to enter the archive phase.
+
+If `AUTO_TRANSITION=false`, do not invoke the next Skill; print:
+
+> State has been updated to `phase: archive`. Run `/comet-archive` to enter the archive phase.
 
 ## Context Compaction Recovery
 

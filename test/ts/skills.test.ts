@@ -320,6 +320,10 @@ describe('skills', () => {
         path.resolve('assets', 'skills', 'comet', 'SKILL.md'),
         'utf-8',
       );
+      const enOpen = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'),
+        'utf-8',
+      );
       const enDesign = await fs.readFile(
         path.resolve('assets', 'skills', 'comet-design', 'SKILL.md'),
         'utf-8',
@@ -384,6 +388,31 @@ describe('skills', () => {
       expect(enHotfix).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enVerify).toContain('After user selects B, run `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`');
+
+      // auto_transition manual mode must be covered in English skills too.
+      expect(enComet).toContain('`auto_transition`');
+      expect(enComet).toContain('does not block phase updates');
+      for (const [content, nextCommand] of [
+        [enOpen, '/comet-design'],
+        [enDesign, '/comet-build'],
+        [enBuild, '/comet-verify'],
+        [enVerify, '/comet-archive'],
+      ] as const) {
+        expect(content).toContain('get <change-name> auto_transition');
+        expect(content).toContain('AUTO_TRANSITION=false');
+        expect(content).toContain(nextCommand);
+        expect(content).toContain('State has been updated to');
+      }
+      expect(enHotfix).toContain('AUTO_TRANSITION=');
+      expect(enHotfix).toContain('state has advanced');
+      expect(enHotfix).toContain('`phase: build` → run `/comet-hotfix` manually');
+      expect(enHotfix).toContain('`phase: verify` → run `/comet-verify` manually');
+      expect(enHotfix).toContain('`phase: archive` → run `/comet-archive` manually');
+      expect(enTweak).toContain('AUTO_TRANSITION=');
+      expect(enTweak).toContain('state has advanced');
+      expect(enTweak).toContain('`phase: build` → run `/comet-tweak` manually');
+      expect(enTweak).toContain('`phase: verify` → run `/comet-verify` manually');
+      expect(enTweak).toContain('`phase: archive` → run `/comet-archive` manually');
     });
   });
 

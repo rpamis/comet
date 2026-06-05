@@ -133,6 +133,20 @@ Hotfix workflow is **one-time continuous execution**. After invoking `/comet-hot
 Execution order: quick open → direct build → root cause check → verification → archive → complete
 
 After each step completes, immediately enter next step. Within each phase, must still call corresponding Comet/OpenSpec/Superpowers skill according to above requirements; if the called skill has its own user decision points, follow that skill's rules.
+
+After each successful phase guard `--apply`, must read:
+
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+If `AUTO_TRANSITION=false`, the state has advanced but the preset must not automatically invoke the next step. Print the clear next manual command for the current phase and stop:
+
+- `phase: build` → run `/comet-hotfix` manually to continue direct build
+- `phase: verify` → run `/comet-verify` manually to continue verification
+- `phase: archive` → run `/comet-archive` manually to continue archive
+
+If the value is empty or not `false`, keep the existing continuous execution behavior.
 </IMPORTANT>
 
 ---

@@ -161,6 +161,14 @@ The script outputs structured recovery context (phase, completed fields, pending
 
 ## Automatic Transition
 
-After exit conditions are met (including user confirming the design proposal), auto-transition to next phase:
+After exit conditions are met (including user confirming the design proposal), ensure the state machine has advanced, then read `AUTO_TRANSITION`:
 
-> **REQUIRED NEXT SKILL:** Invoke `comet-build` skill to enter the plan and build phase.
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+If `AUTO_TRANSITION` is empty or not `false`, invoke the `comet-build` skill to enter the plan and build phase.
+
+If `AUTO_TRANSITION=false`, do not invoke the next Skill; print:
+
+> State has been updated to `phase: build`. Run `/comet-build` to enter the plan and build phase.

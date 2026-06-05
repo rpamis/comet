@@ -216,6 +216,14 @@ State file is automatically updated to `phase: verify`, `verify_result: pending`
 
 ## Automatic Transition
 
-After exit conditions are met (including user selecting workflow configuration), auto-transition to next phase:
+After exit conditions are met (including user selecting workflow configuration), ensure the state machine has advanced, then read `AUTO_TRANSITION`:
 
-> **REQUIRED NEXT SKILL:** Invoke `comet-verify` skill to enter the verification and completion phase.
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+If `AUTO_TRANSITION` is empty or not `false`, invoke the `comet-verify` skill to enter the verification and completion phase.
+
+If `AUTO_TRANSITION=false`, do not invoke the next Skill; print:
+
+> State has been updated to `phase: verify`. Run `/comet-verify` to enter the verification and completion phase.

@@ -109,6 +109,8 @@ Flow chain: open → design → build → verify → archive
 
 **Continuous execution requirement**: starting from the detected phase, the agent automatically continues through all later phases. But **auto-advancing only applies at transition points without user decisions**. When encountering user decision points, **must use the AskUserQuestion tool to pause and wait for the user's explicit response**. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation, and must not just output a text prompt and then continue executing.
 
+At every non-terminal automatic transition, first complete the required phase guard or state transition so `.comet.yaml` records the next phase. Then read the current Change state with `"$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition`. If the value is `false`, do not invoke the next Skill automatically; print a clear prompt naming the next manual command. If the value is missing, empty, or anything other than `false`, keep the default automatic transition behavior.
+
 **Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet` invocation must stop, **using the AskUserQuestion tool to wait for the user's choice**. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
 
 Nodes requiring user participation (pause only at these nodes):
@@ -178,6 +180,7 @@ build_mode: subagent-driven-development
 build_pause: null
 isolation: branch
 verify_mode: light
+auto_transition: true
 verify_result: pending
 verification_report: null
 branch_status: pending
@@ -197,6 +200,7 @@ archived: false
 | `build_pause` | Internal build-phase pause point. `null` means no pause; `plan-ready` means the plan has been generated and the user chose to pause for switching models |
 | `isolation` | `branch` or `worktree`, workspace isolation method. Full workflow init may leave this as `null`, but only until `/comet-build` Step 3; hotfix/tweak default to `branch` |
 | `verify_mode` | `light` or `full`, can be empty |
+| `auto_transition` | `true` or `false`. Copied from project-level `openspec/comet.yaml` during init, defaults to `true`, and controls whether the agent invokes the next Skill after phase state has advanced |
 | `verify_result` | `pending`, `pass`, or `fail` |
 | `verification_report` | Verification report file path; must point to an existing file before verify can pass |
 | `branch_status` | `pending` or `handled`; set to `handled` after branch handling completes |
@@ -217,6 +221,7 @@ State-machine hard constraints:
 - Before `build → verify`, `build_mode` must be selected
 - `build_mode: direct` is allowed by default only for `hotfix` / `tweak`; full workflow requires `direct_override: true`
 - `build_pause` is not an execution method and must not be written to `build_mode`
+- Auto-transition checks must run after the phase guard `--apply`. `auto_transition: false` does not block phase updates; it only stops the agent from invoking the next Skill and must print the next manual command
 - These constraints are enforced by both `comet-guard.sh build --apply` and `comet-state.sh transition <name> build-complete`
 
 ### Script Location
