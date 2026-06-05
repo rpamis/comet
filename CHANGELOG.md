@@ -6,16 +6,19 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Auto-transition configuration**: Added `auto_transition` to Comet change state, initialized from project-level `openspec/comet.yaml` and defaulting to `true`, so projects can opt out of automatic next-skill invocation while still preserving phase state updates.
 - **Plan-ready build pause state**: Added `build_pause` as a dedicated build-phase pause marker so Comet can stop after plan generation without confusing the pause with the actual execution method.
 - **Plan-ready pause design**: Added a design record for the model-switching pause workflow, covering recovery behavior, stale pause handling, and plan-missing remediation.
 
 ### Changed
 
+- **Manual phase continuation**: Chinese and English Comet skills now check `auto_transition` after successful phase guards and print the next manual `/comet-*` command when automatic continuation is disabled.
 - **Build recovery routing**: `/comet` and `/comet-build` now recognize `build_pause: plan-ready`, reuse the existing plan, and resume at workspace isolation and execution-method selection instead of regenerating the plan.
 - **Bilingual workflow documentation**: Chinese and English Comet skills now describe the plan-ready pause point, clarify that `build_pause` is not `build_mode`, and document the same state field in both README files.
 
 ### Fixed
 
+- **Verification scale fallback**: `comet-state scale` now falls back to `.comet.yaml` `base_ref` when a plan exists without `base-ref`, so committed file-count based verification still selects the correct verification mode.
 - **GitHub Copilot Superpowers skill names**: Comet skills now invoke the bare Superpowers skill names installed by the GitHub Copilot skills path, avoiding blocked workflows caused by unresolved `superpowers:*` aliases.
 - **Windows bash resolution**: Comet now resolves a usable bash executable through `COMET_BASH`, rejects the Windows WSL launcher path, and uses the resolved executable for nested script calls so guard, handoff, and archive flows do not fall back to a broken PATH `bash`.
 - **Shell test runner bash resolution**: `run-bats.js` now resolves a usable bash through `COMET_TEST_BASH`, `COMET_BASH`, PATH, or Git Bash defaults, avoiding the broken Windows WSL launcher when running shell tests from Node.
@@ -23,6 +26,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Tests
 
+- **Auto-transition state regression**: Added coverage for default, configured, invalid, and manually set `auto_transition` values across state initialization, state updates, YAML schema validation, and bilingual skill instructions.
+- **Scale base-ref fallback regression**: Added coverage for selecting full verification when a plan omits `base-ref` but `.comet.yaml` retains the change `base_ref`.
 - **Superpowers skill invocation regression**: Added coverage that shipped Comet skill prose does not reference plugin-prefixed Superpowers aliases.
 - **Comet bash execution regression**: Added coverage for nested script calls, shipped command examples, and the shell test runner so Comet uses resolved bash paths instead of raw PATH `bash`.
 - **Plan-ready pause regression**: Added shell-script coverage for `build_pause` initialization, schema validation, state updates, and build recovery output.
