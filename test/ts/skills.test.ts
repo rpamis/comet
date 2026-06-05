@@ -246,9 +246,15 @@ describe('skills', () => {
       expect(zhBuild).toContain('提供 plan-ready 暂停点');
       expect(zhBuild).toContain('不得自动继续，也不得把暂停写入 `build_mode`');
 
-      // MEDIUM: comet-verify Step 1b handles mixed CRITICAL/non-CRITICAL
-      expect(zhVerify).toContain('CRITICAL 失败项必须修复');
+      // MEDIUM: comet-verify Step 1b treats CRITICAL/IMPORTANT as blocking
+      expect(zhVerify).toContain('CRITICAL 或 IMPORTANT 失败项必须修复');
       expect(zhVerify).toContain('不允许跳过修复直接全部接受');
+      expect(zhVerify).toContain('简化代码审查');
+      expect(zhVerify).toContain('只检查正确性、安全、边界条件');
+      expect(zhVerify).toContain('无 CRITICAL 或 IMPORTANT 问题');
+      expect(zhVerify).toContain('不影响正确性、安全、边界条件的 code pattern consistency 建议');
+      expect(zhVerify).toContain('不执行 spec 覆盖率、Design Doc 一致性或漂移检查');
+      expect(zhHotfix).toContain('6 项快速检查，包含简化代码审查');
 
       // MEDIUM: hotfix IMPORTANT covers >3-tasks comet-build decision points
       expect(zhHotfix).toContain('任务超过 3 个转入 `/comet-build` 时的工作区隔离和执行方式选择');
@@ -339,8 +345,13 @@ describe('skills', () => {
       expect(enComet).toContain('`build_pause` is not an execution method and must not be written to `build_mode`');
       expect(enBuild).toContain('Provide Plan-Ready Pause Point');
       expect(enBuild).toContain('Must not auto-continue and must not write the pause into `build_mode`');
-      expect(enVerify).toContain('CRITICAL failures must be fixed');
+      expect(enVerify).toContain('CRITICAL or IMPORTANT failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
+      expect(enVerify).toContain('Lightweight code review');
+      expect(enVerify).toContain('checks only correctness, security, and edge cases');
+      expect(enVerify).toContain('no CRITICAL or IMPORTANT issues');
+      expect(enVerify).toContain('does not perform spec coverage, Design Doc consistency, or drift checks');
+      expect(enHotfix).toContain('6 quick checks, including lightweight code review');
       expect(enHotfix).toContain('workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`');
       expect(enBuild).toContain('Must use the AskUserQuestion tool to pause and wait for the user to explicitly confirm');
       expect(enBuild).toContain('must use the AskUserQuestion tool to pause and wait for the user to decide whether to split into a new change');

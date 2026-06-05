@@ -77,15 +77,14 @@ When verification does not pass, **must use the AskUserQuestion tool to pause an
 
 When pausing, must list:
 - Failed items
-- Whether CRITICAL (build failure, test failure, security issues, core acceptance scenario failure)
+- Whether CRITICAL or IMPORTANT (build failure, test failure, security issues, core acceptance scenario failure, lightweight code review correctness/security/edge-case issue)
 - Recommended handling approach
 
 **Uncertainty principle**: When severity is unclear, downgrade (SUGGESTION > WARNING > CRITICAL). Only use CRITICAL for build failures, test failures, and security issues; ambiguous or uncertain issues should be WARNING or SUGGESTION.
 
 After user selection, continue as follows:
 - **Fix all**: Run `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build` to fix
-- **Handle item by item**: CRITICAL failures must be fixed; non-CRITICAL failures may choose to accept deviation, but must record acceptance reason and impact scope in verification report. If any CRITICAL failure exists, skipping fix to accept all is not allowed
-
+- **Handle item by item**: CRITICAL or IMPORTANT failures must be fixed; WARNING/SUGGESTION failures may choose to accept deviation, but must record acceptance reason and impact scope in verification report. If any CRITICAL or IMPORTANT failure exists, skipping fix to accept all is not allowed
 ### 2a. Lightweight Verification (Small Changes)
 
 When scale assessment result is "small", skip `openspec-verify-change` and directly execute these checks:
@@ -95,8 +94,11 @@ When scale assessment result is "small", skip `openspec-verify-change` and direc
 3. Build passes (run project-specific build command, e.g., `npm run build`, `mvn compile`, `cargo build`, etc.)
 4. Related tests pass
 5. No obvious security issues (no hardcoded keys, no new unsafe operations)
+6. Lightweight code review passes: dispatch a code-reviewer subagent that checks only correctness, security, and edge cases
 
-**Pass criteria**: All 5 items OK, no CRITICAL issues.
+The lightweight code review input should be limited to this change's diff, tasks.md, and necessary test results; the review scope covers implementation correctness, security risk, and edge cases only, and does not perform spec coverage, Design Doc consistency, or drift checks. If the review finds CRITICAL or IMPORTANT issues, treat verification as failed and enter Step 1b.
+
+**Pass criteria**: All 6 items OK, no CRITICAL or IMPORTANT issues.
 
 **When not passing**: Report failures, enter Step 1b verification failure decision blocking point. Only after user confirms fix, execute the following command to record failure and roll back to build phase, then invoke `/comet-build` to fix:
 
@@ -105,12 +107,12 @@ When scale assessment result is "small", skip `openspec-verify-change` and direc
 "$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
 ```
 
-**Report format**: Brief table listing 5 check results + PASS/FAIL.
+**Report format**: Brief table listing 6 check results + PASS/FAIL.
 
 **Skipped items** (not checked in lightweight verification):
 - spec scenario coverage
 - design doc consistency deep comparison
-- code pattern consistency suggestions
+- code pattern consistency suggestions that do not affect correctness, security, or edge cases
 - delta spec and design doc drift detection
 
 ### 2b. Full Verification (Large Changes)

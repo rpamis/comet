@@ -48,6 +48,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Lightweight verification consistency**: Hotfix documentation now describes the 6-item lightweight verification path, and Step 1b treats CRITICAL and IMPORTANT failures as blocking so code-review pass criteria and failure handling agree.
 - **Crash due to unbound variables in `set -u`**: When `comet-state check --recover` is missing `tasks.md` during the build phase, the `pending` variable is not declared, causing the script to exit directly; this is fixed by moving the `local` declaration forward and adding an explicit branch `tasks.md MISSING` to the recovery action chain.
 - **Path truncation risk**: `field_status` using `${var%% *}` on `design_doc` may truncate paths containing spaces; changed to `${var% }` to only remove trailing spaces.
 - **Inconsistent reading style for optional fields**: `direct_override` uses `|| echo ""` while other optional fields use `|| true`; unified to `|| true` to be consistent with `cmd_scale`.
@@ -62,6 +63,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Command execution security**: Refactored all command execution in OpenSpec and Superpowers install paths from `spawn` with shell interpretation to `execFileSync`, eliminating shell injection surface and improving cross-platform reliability (#88bf487)
+- **Lightweight verification review**: Lightweight verification now requires a scoped code review focused on correctness, security, and edge cases, adding review coverage without running full spec or design drift checks (#42)
 - **Workflow output language**: Comet workflows now pass the triggering user request language into OpenSpec and Superpowers steps, keeping generated proposals, designs, plans, verification reports, and archive notes readable in the user's language (#37)
 
 ### Fixed
@@ -79,6 +81,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - Added doctor tests for `.comet.yaml` top-level key validation and non-ENOENT `readDir` error propagation
 - Added workflow safeguard coverage for OpenSpec and Superpowers output-language propagation
 - Fixed timeout for git-based test "uses plan base-ref to scale verification"
+- Added workflow safeguard coverage for the lightweight verification code review requirement
 
 ### Docs
 
