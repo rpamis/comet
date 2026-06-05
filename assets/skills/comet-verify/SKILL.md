@@ -90,7 +90,9 @@ After user selection, continue as follows:
 
 ### 2a. Lightweight Verification (Small Changes)
 
-When scale assessment result is "small", skip `openspec-verify-change` and directly execute these checks:
+**Immediately execute:** Use the Skill tool to load the Superpowers `verification-before-completion` skill. Skipping this step is prohibited.
+
+After the skill loads, run these 5 checks:
 
 1. All tasks.md tasks completed `[x]`
 2. Changed files match tasks.md descriptions (`git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD` compared against tasks content)
@@ -119,7 +121,9 @@ When scale assessment result is "small", skip `openspec-verify-change` and direc
 
 When scale assessment result is "large":
 
-**Immediately execute:** Use the Skill tool to load the `openspec-verify-change` skill. Skipping this step is prohibited.
+**Immediately execute:** Use the Skill tool to load the Superpowers `verification-before-completion` skill. Skipping this step is prohibited.
+
+After the skill loads, use the Skill tool to load the `openspec-verify-change` skill. Skipping this step is prohibited.
 
 After the skill loads, follow its guidance to verify. Check items:
 1. All tasks.md tasks completed (`[x]`)

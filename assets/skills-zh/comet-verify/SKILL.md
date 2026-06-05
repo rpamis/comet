@@ -88,7 +88,9 @@ git diff --stat "$BASE_REF"...HEAD
 
 ### 2a. 轻量验证（小改动）
 
-当规模评估结果为"小"时，跳过 `openspec-verify-change`，直接执行以下检查：
+**立即执行：** 使用 Skill 工具加载 Superpowers `verification-before-completion` 技能。禁止跳过此步骤。
+
+技能加载后，按以下 5 项进行检查：
 
 1. tasks.md 全部任务已完成 `[x]`
 2. 改动文件与 tasks.md 描述一致（`git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD` 对照 tasks 内容）
@@ -117,7 +119,9 @@ git diff --stat "$BASE_REF"...HEAD
 
 当规模评估结果为"大"时：
 
-**立即执行：** 使用 Skill 工具加载 `openspec-verify-change` 技能。禁止跳过此步骤。
+**立即执行：** 使用 Skill 工具加载 Superpowers `verification-before-completion` 技能。禁止跳过此步骤。
+
+技能加载后，再使用 Skill 工具加载 `openspec-verify-change` 技能。禁止跳过此步骤。
 
 技能加载后，按其指引验证。检查项：
 1. tasks.md 全部任务已完成（`[x]`）
