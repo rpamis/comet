@@ -40,6 +40,9 @@ Superpowers handles **HOW** (technical design, planning, execution, wrap-up).
 
 Comet chains both into a five-phase automated pipeline.
 
+> [!IMPORTANT]
+> **News**: Comet 0.3.7 adds one-step CodeGraph semantic code indexing to save about **47% tokens**, while strengthening the TDD, subagent dispatch, verification, and archive workflow gates.
+
 ## Why Comet
 
 OpenSpec excels at managing requirements, creating proposals, managing Spec lifecycles, and archiving, but its proposals and tasks lack the detail of Superpowers brainstorming.

@@ -40,6 +40,9 @@ Superpowers 处理 **HOW**（技术设计、规划、执行、收尾）。
 
 Comet 将二者串联为五阶段自动化流水线。
 
+> [!IMPORTANT]
+> **News**: Comet 0.3.7 支持一键接入 CodeGraph 语义代码索引，约节省 **47% Token**，并补强 TDD、子代理调度、验证和归档阶段的流程闸门。
+
 ## 为什么需要 Comet
 
 OpenSpec 擅长管理需求、做提案、管理 Spec 生命周期和归档，但使用过程中 OpenSpec 的提案和 Task 没有像 Superpowers 头脑风暴那样细致。
