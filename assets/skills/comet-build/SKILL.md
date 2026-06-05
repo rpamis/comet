@@ -217,7 +217,7 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - Project-specific build/tests explicitly run and pass; do not rely only on guard auto-detection
 - `isolation` has been written as `branch` or `worktree`
 - `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override
-- If `build_mode` is `executing-plans`, a code reviewer has been dispatched at least once, and CRITICAL review findings have been fixed or non-CRITICAL review findings have recorded acceptance rationale
+- If `build_mode` is `executing-plans`, a code reviewer has been dispatched at least once, and CRITICAL review findings have been fixed or acceptance rationale for non-CRITICAL review findings has been recorded
 - **Phase guard**: Run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; after all PASS, state advances to `phase: verify`
 
 Guard reads project command configuration first:

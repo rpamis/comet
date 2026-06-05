@@ -33,7 +33,7 @@ function mockExternalSuccess() {
       cmdArgs.includes('--agent') &&
       cmdArgs.includes('claude-code')
     ) {
-      const cwd = (opts as { cwd?: string } | undefined)?.cwd ?? process.cwd();
+      const cwd = (opts as { cwd?: string } | undefined)?.cwd ?? os.tmpdir();
       const stagedSkillsDir = path.join(cwd, '.claude', 'skills', 'comet');
       mkdirSync(stagedSkillsDir, { recursive: true });
       writeFileSync(path.join(stagedSkillsDir, 'SKILL.md'), '# Lingma Comet\n');
