@@ -13,31 +13,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Token optimization: tasks.md incremental scan**: Build skill uses `grep` to find unchecked tasks instead of re-reading the entire `tasks.md` file after each task completion.
 - **Token optimization: hash on-demand read in verify**: Verify skill checks `handoff_hash` before re-reading OpenSpec artifacts. When hash matches, only `tasks.md` is skipped (proposal.md and design.md are still read for comparison checks). Uses new `comet-handoff.sh --hash-only` flag.
 - **`--hash-only` flag for comet-handoff.sh**: New backward-compatible flag outputs the context hash without generating handoff files, used by verify phase for hash comparison. Validates required files exist before computing hash.
-
-### Changed
-
-- **Verify hash-skip scoped to tasks.md only**: Full verification always reads `proposal.md` and `design.md` even when hash matches, ensuring goal-satisfaction and design-consistency checks have complete context.
-- **Design Doc creation stays in main session**: Design Doc is created inline (not offloaded to subagent) to preserve full brainstorming conversation context and prevent information loss for complex requirements.
-- **Subagent failure fallback**: Plan creation subagent offload includes explicit degraded fallback — if the subagent fails, the main session loads `writing-plans` inline.
-
-### Tests
-
-- **`--hash-only` flag coverage**: New tests verify correct hash output, change-directory validation, required-file validation, and no handoff file regeneration.
-- **Flaky test timeout fix**: Design guard test without design_doc now has explicit 20s timeout to prevent Windows bash startup flakiness.
-
-- **Beta spec verbatim projection**: Beta context compression now projects entire spec files verbatim (`cat`) instead of filtering by English keywords (GIVEN/WHEN/THEN/AND/BUT). This eliminates language-dependent matching, ensures zero acceptance-criteria drift for Chinese or non-English specs, and removes the fragile AWK filter entirely.
-- **JSON structural validation**: `comet-guard.sh` now validates `spec-context.json` structure (required fields: `change`, `phase`, `mode`, `files`, `context_hash`) and source file reference coverage, replacing the previous English-heading-based markdown check. Guard catches corrupted or incomplete JSON before phase transition.
-- **JSON file roles**: `spec-context.json` `files` array now includes a `role` field (`spec` for spec files, `supporting` for proposal/design/tasks), removing the language-dependent `projection` array entirely.
-- **--full warning in beta mode**: Running `comet-handoff.sh` with `--full` in beta mode now emits an explicit warning instead of silently ignoring the flag.
-
-### Tests
-
-- **Chinese spec coverage**: Beta handoff test uses Chinese spec content to verify verbatim projection of all content (headings, descriptions, non-keyword steps) regardless of language.
-- **JSON corruption detection**: New test verifies guard blocks design exit when `spec-context.json` is structurally invalid.
-- **--full beta warning**: New test verifies the warning message and confirms beta files are still generated when `--full` is passed.
-
-### Added
-
 - **CodeGraph integration in comet init**: `comet init` now offers an optional step to install and configure CodeGraph (`@colbymchenry/codegraph`) for semantic code intelligence. It auto-detects supported platforms (Claude Code, Cursor, Codex, OpenCode, Gemini, Kiro, Antigravity), installs the CLI if missing, runs `codegraph install` for agent wiring, and initializes the project index. Skips gracefully under `--json` mode.
 - **Stale PR automation**: Added a scheduled and manually runnable GitHub Actions workflow that marks inactive pull requests stale after 90 days and closes them after another 30 days, helping keep long-idle review queues manageable.
 - **TDD mode field**: Added `tdd_mode` (`tdd`|`direct`) to `.comet.yaml` state machine so users choose whether to enforce TDD during build. When `tdd_mode: tdd`, subagent dispatches inject an explicit TDD hard constraint, bypassing implementer-prompt.md's conditional trigger. Addresses [#67](https://github.com/rpamis/comet/issues/67).
@@ -49,6 +24,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Verify hash-skip scoped to tasks.md only**: Full verification always reads `proposal.md` and `design.md` even when hash matches, ensuring goal-satisfaction and design-consistency checks have complete context.
+- **Design Doc creation stays in main session**: Design Doc is created inline (not offloaded to subagent) to preserve full brainstorming conversation context and prevent information loss for complex requirements.
+- **Subagent failure fallback**: Plan creation subagent offload includes explicit degraded fallback — if the subagent fails, the main session loads `writing-plans` inline.
+- **Beta spec verbatim projection**: Beta context compression now projects entire spec files verbatim (`cat`) instead of filtering by English keywords (GIVEN/WHEN/THEN/AND/BUT). This eliminates language-dependent matching, ensures zero acceptance-criteria drift for Chinese or non-English specs, and removes the fragile AWK filter entirely.
+- **JSON structural validation**: `comet-guard.sh` now validates `spec-context.json` structure (required fields: `change`, `phase`, `mode`, `files`, `context_hash`) and source file reference coverage, replacing the previous English-heading-based markdown check. Guard catches corrupted or incomplete JSON before phase transition.
+- **JSON file roles**: `spec-context.json` `files` array now includes a `role` field (`spec` for spec files, `supporting` for proposal/design/tasks), removing the language-dependent `projection` array entirely.
+- **--full warning in beta mode**: Running `comet-handoff.sh` with `--full` in beta mode now emits an explicit warning instead of silently ignoring the flag.
 - **CodeGraph step in comet update**: `comet update` now prompts to install/update CodeGraph alongside skill file updates, using the same platform detection and CLI installation flow.
 - **Archive confirmation gate**: Chinese `/comet-archive` now pauses for explicit user confirmation before running the archive script, giving users a final chance to adjust or re-run verification before main spec merge and change archival.
 - **English archive confirmation parity**: English Comet skills now match the confirmed Chinese archive-confirmation workflow, including `/comet-archive`, `/comet-verify`, `/comet`, hotfix, and tweak guidance.
@@ -85,6 +67,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Tests
 
+- **`--hash-only` flag coverage**: New tests verify correct hash output, change-directory validation, required-file validation, and no handoff file regeneration.
+- **Flaky test timeout fix**: Design guard test without design_doc now has explicit 20s timeout to prevent Windows bash startup flakiness.
+- **Chinese spec coverage**: Beta handoff test uses Chinese spec content to verify verbatim projection of all content (headings, descriptions, non-keyword steps) regardless of language.
+- **JSON corruption detection**: New test verifies guard blocks design exit when `spec-context.json` is structurally invalid.
+- **--full beta warning**: New test verifies the warning message and confirms beta files are still generated when `--full` is passed.
 - **Doctor CodeGraph check**: `comet doctor` now reports CodeGraph CLI availability and project initialization status (`.codegraph/` presence).
 - **Archive confirmation regression**: Added Chinese skill coverage that `/comet-archive` requires a final confirmation gate before executing the archive script.
 - **English archive confirmation regression**: Added English skill coverage for final archive confirmation, archive reopen guidance, and hotfix/tweak preset blocking points.
