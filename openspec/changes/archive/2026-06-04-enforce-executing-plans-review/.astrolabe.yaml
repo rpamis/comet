@@ -12,5 +12,5 @@ branch_status: handled
 created_at: 2026-06-03
 verified_at: 2026-06-04
 archived: true
-handoff_context: openspec/changes/enforce-executing-plans-review/.astrolabe/handoff/design-context.json
+handoff_context: openspec/changes/archive/2026-06-04-enforce-executing-plans-review/.astrolabe/handoff/design-context.json
 handoff_hash: ba976507c61c79aae401daf776fd0b87897f434000e55a9006df02fa5abaccde

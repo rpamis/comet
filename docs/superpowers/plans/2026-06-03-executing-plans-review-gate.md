@@ -20,7 +20,7 @@ base-ref: 07a13d9d19d855933c277e5cf2a099da7083c82d
 
 ---
 
-### Task 1: Add the Skill Safeguard Regression Test
+## Task 1: Add the Skill Safeguard Regression Test
 
 **Files:**
 - Modify: `test/ts/skills.test.ts`
@@ -48,7 +48,7 @@ npx vitest run test/ts/skills.test.ts
 
 Expected: FAIL because `assets/skills-zh/comet-build/SKILL.md` does not yet contain the new mandatory executing-plans review gate text.
 
-### Task 2: Add the Chinese comet-build Review Gate
+## Task 2: Add the Chinese comet-build Review Gate
 
 **Files:**
 - Modify: `assets/skills-zh/comet-build/SKILL.md`
@@ -86,7 +86,7 @@ After the focused test passes and verification commands complete, update `opensp
 - [x] Run focused verification and record that English synchronization is pending user confirmation.
 ```
 
-### Task 3: Verify and Commit
+## Task 3: Verify and Commit
 
 **Files:**
 - Modify: `test/ts/skills.test.ts`
@@ -134,7 +134,7 @@ git add -f docs/superpowers/specs/2026-06-03-executing-plans-review-gate-design.
 git commit -m "fix(build): 强化 executing-plans 审查门禁"
 ```
 
-### Task 4: Sync English Skill After User Confirmation
+## Task 4: Sync English Skill After User Confirmation
 
 **Files:**
 - Modify: `assets/skills/comet-build/SKILL.md`
