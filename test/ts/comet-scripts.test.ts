@@ -860,6 +860,95 @@ describeShell('comet shell scripts', () => {
     expect(result.stderr).toContain('OpenSpec artifacts changed after handoff was generated');
   }, 20_000);
 
+  it('--hash-only outputs context hash without generating handoff files', async () => {
+    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.sh');
+    await createChange(
+      tmpDir,
+      'hash-only-test',
+      [
+        'workflow: full',
+        'phase: design',
+        'build_mode: null',
+        'build_pause: null',
+        'tdd_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    // Generate a normal handoff first to get the expected hash
+    const normalResult = runBash(tmpDir, handoffScript, ['hash-only-test', 'design', '--write']);
+    expect(normalResult.status).toBe(0);
+    const normalHash = runBash(tmpDir, stateScript, ['get', 'hash-only-test', 'handoff_hash']);
+    const expectedHash = normalHash.stdout.trim();
+
+    // Remove handoff files to prove --hash-only does not regenerate them
+    const handoffDir = path.join(
+      tmpDir,
+      'openspec',
+      'changes',
+      'hash-only-test',
+      '.comet',
+      'handoff',
+    );
+    await fs.rm(handoffDir, { recursive: true, force: true });
+
+    const hashOnlyResult = runBash(tmpDir, handoffScript, ['hash-only-test', '--hash-only']);
+    expect(hashOnlyResult.status).toBe(0);
+    expect(hashOnlyResult.stdout.trim()).toBe(expectedHash);
+
+    // Confirm handoff files were NOT regenerated
+    expect(
+      await fs.access(handoffDir).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+  }, 20_000);
+
+  it('--hash-only fails for non-existent change', async () => {
+    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.sh');
+    const result = runBash(tmpDir, handoffScript, ['no-such-change', '--hash-only']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('change directory not found');
+  }, 20_000);
+
+  it('--hash-only fails when required files are missing', async () => {
+    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.sh');
+    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'hash-missing-files');
+    await fs.mkdir(changeDir, { recursive: true });
+    await writeFile(
+      path.join(changeDir, '.comet.yaml'),
+      [
+        'workflow: full',
+        'phase: design',
+        'build_mode: null',
+        'build_pause: null',
+        'tdd_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
+    // design.md and tasks.md intentionally omitted
+
+    const result = runBash(tmpDir, handoffScript, ['hash-missing-files', '--hash-only']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('required file missing or empty');
+  }, 20_000);
+
   it('blocks design exit when design doc frontmatter is missing required fields', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.sh');
     await createChange(
@@ -2884,6 +2973,6 @@ describeShell('comet shell scripts', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('[FAIL] design_doc is recorded for full workflow');
-    });
+    }, 20_000);
   });
 });

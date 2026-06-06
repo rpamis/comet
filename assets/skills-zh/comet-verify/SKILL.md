@@ -86,11 +86,27 @@ git diff --stat "$BASE_REF"...HEAD
 - **全部修复**：运行 `"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build` 修复
 - **逐项处理**：CRITICAL 失败项必须修复；非 CRITICAL 失败项可选择接受偏差，但必须在验证报告中记录接受原因和影响范围。若存在任何 CRITICAL 失败项，不允许跳过修复直接全部接受
 
-### 2a. 轻量验证（小改动）
+### 2. 产物上下文加载（Hash 按需读）
+
+验证需要读取 OpenSpec 产物时，先检查产物是否自 design 阶段以来发生变化：
+
+```bash
+RECORDED_HASH=$("$COMET_BASH" "$COMET_STATE" get <change-name> handoff_hash)
+CURRENT_HASH=$("$COMET_BASH" "$COMET_HANDOFF" <change-name> --hash-only 2>/dev/null || echo "")
+```
+
+- 若 `RECORDED_HASH` = `CURRENT_HASH` 且均非空且均非 `null`：OpenSpec 产物未变化，**tasks.md 无需重新读取全文**（用 `grep -c '\- \[ \]' tasks.md` 确认完成数即可）。proposal.md、design.md、delta spec 仍需读取用于对照检查。
+- 若 `RECORDED_HASH` 为空、为 `null`、或与 `CURRENT_HASH` 不一致：产物已变化或 hash 未记录，正常读取所有所需文件全文。
+
+此优化仅跳过 tasks.md 的重复全文读取。proposal.md 和 design.md 包含验证检查项所需的完整上下文，不得因 hash 匹配而跳过。
 
 **立即执行：** 使用 Skill 工具加载 Superpowers `verification-before-completion` 技能。禁止跳过此步骤。
 
-技能加载后，按以下 5 项进行检查：
+技能加载后，按 verify_mode 分支执行：
+
+### 2a. 轻量验证（小改动）
+
+按以下 5 项进行检查：
 
 1. tasks.md 全部任务已完成 `[x]`
 2. 改动文件与 tasks.md 描述一致（`git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD` 对照 tasks 内容）
@@ -119,9 +135,7 @@ git diff --stat "$BASE_REF"...HEAD
 
 当规模评估结果为"大"时：
 
-**立即执行：** 使用 Skill 工具加载 Superpowers `verification-before-completion` 技能。禁止跳过此步骤。
-
-技能加载后，再使用 Skill 工具加载 `openspec-verify-change` 技能。禁止跳过此步骤。
+再使用 Skill 工具加载 `openspec-verify-change` 技能。禁止跳过此步骤。
 
 技能加载后，按其指引验证。检查项：
 1. tasks.md 全部任务已完成（`[x]`）

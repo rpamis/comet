@@ -88,11 +88,27 @@ After user selection, continue as follows:
 
 **Retry limit**: After 3 consecutive verify-fail cycles, on the 4th failure the agent must not automatically choose to continue fixing; **must use the current platform's available user input/confirmation mechanism to pause** with only two options: "Accept all deviations and record" or "Continue fixing", for the user to explicitly decide.
 
-### 2a. Lightweight Verification (Small Changes)
+### 2. Artifact Context Loading (Hash On-Demand Read)
+
+When verification needs to read OpenSpec artifacts, first check whether they have changed since the design phase:
+
+```bash
+RECORDED_HASH=$("$COMET_BASH" "$COMET_STATE" get <change-name> handoff_hash)
+CURRENT_HASH=$("$COMET_BASH" "$COMET_HANDOFF" <change-name> --hash-only 2>/dev/null || echo "")
+```
+
+- If `RECORDED_HASH` = `CURRENT_HASH` and both are non-empty and neither is `null`: OpenSpec artifacts are unchanged. **tasks.md does not need to be re-read in full** (use `grep -c '\- \[ \]' tasks.md` to confirm completion count). proposal.md, design.md, and delta specs must still be read for comparison checks.
+- If `RECORDED_HASH` is empty, is `null`, or differs from `CURRENT_HASH`: artifacts have changed or hash was never recorded. Read all required files in full normally.
+
+This optimization only skips re-reading tasks.md in full. proposal.md and design.md contain the full context needed for verification checks and must not be skipped due to hash match.
 
 **Immediately execute:** Use the Skill tool to load the Superpowers `verification-before-completion` skill. Skipping this step is prohibited.
 
-After the skill loads, run these 5 checks:
+After the skill loads, follow the `verify_mode` branch:
+
+### 2a. Lightweight Verification (Small Changes)
+
+Run these 5 checks:
 
 1. All tasks.md tasks completed `[x]`
 2. Changed files match tasks.md descriptions (`git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD` compared against tasks content)
@@ -121,9 +137,7 @@ After the skill loads, run these 5 checks:
 
 When scale assessment result is "large":
 
-**Immediately execute:** Use the Skill tool to load the Superpowers `verification-before-completion` skill. Skipping this step is prohibited.
-
-After the skill loads, use the Skill tool to load the `openspec-verify-change` skill. Skipping this step is prohibited.
+Use the Skill tool to load the `openspec-verify-change` skill. Skipping this step is prohibited.
 
 After the skill loads, follow its guidance to verify. Check items:
 1. All tasks.md tasks completed (`[x]`)

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Comet Handoff — creates machine-owned context packages between phases
 # Usage: comet-handoff.sh <change-name> design --write [--full]
+#        comet-handoff.sh <change-name> --hash-only
 
 set -euo pipefail
 
@@ -285,6 +286,25 @@ MODE="${3:-}"
 FULL_FLAG="${4:-}"
 
 validate_change_name "$CHANGE"
+
+# --hash-only: compute and output context hash without generating handoff files
+if [ "${PHASE:-}" = "--hash-only" ]; then
+  CHANGE_DIR="openspec/changes/$CHANGE"
+  if [ ! -d "$CHANGE_DIR" ]; then
+    red "ERROR: change directory not found: $CHANGE_DIR"
+    exit 1
+  fi
+  for required in proposal.md design.md tasks.md; do
+    if [ ! -s "$CHANGE_DIR/$required" ]; then
+      red "ERROR: required file missing or empty: $CHANGE_DIR/$required"
+      exit 1
+    fi
+  done
+  CONTEXT_HASH="$(compute_context_hash)"
+  printf '%s
+' "$CONTEXT_HASH"
+  exit 0
+fi
 
 if [ "$PHASE" != "design" ] || [ "$MODE" != "--write" ]; then
   red "Usage: comet-handoff.sh <change-name> design --write [--full]"

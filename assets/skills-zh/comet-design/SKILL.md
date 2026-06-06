@@ -138,9 +138,67 @@ brainstorming 产出设计方案后，**必须使用当前平台可用的用户�
 
 用户明确确认后，才继续 Step 2。若用户要求调整，继续 brainstorming 迭代，直到用户确认。
 
-### 2. 更新 Comet 状态
 
-先记录 design_doc 路径。如果 Step 1c 回写了 delta spec（新增或修改了 `specs/*/spec.md`），必须重新生成 handoff 以更新 hash：
+### 1d. Brainstorming 完成检查点
+
+用户确认设计方案后，在创建 Design Doc 前，将确认的设计方案摘要写入落盘文件：
+
+```bash
+mkdir -p openspec/changes/<name>/.comet/handoff
+```
+
+`openspec/changes/<name>/.comet/handoff/brainstorm-summary.md` 结构：
+
+```markdown
+# Brainstorm Summary
+
+- Change: <change-name>
+- Date: <YYYY-MM-DD>
+
+## 确认的技术方案
+
+<用户确认的方案摘要>
+
+## 关键取舍与风险
+
+<主要取舍和风险>
+
+## 测试策略
+
+<测试方法概述>
+
+## Spec Patch
+
+<将回写的 delta spec 变更，无则写"无">
+```
+
+**上下文压缩说明**：Brainstorming 完成后，如上下文窗口紧张，可在此处进行压缩。压缩后重新加载以下文件继续 Step 2：
+- `openspec/changes/<name>/.comet/handoff/brainstorm-summary.md`
+- `openspec/changes/<name>/.comet/handoff/design-context.md`（或 beta 模式的 `spec-context.md`）
+- `openspec/changes/<name>/.comet/handoff/design-context.json`（或 beta 模式的 `spec-context.json`）
+
+### 2. 创建 Design Doc
+
+基于 brainstorming 对话的完整上下文（仍在主 session 中），创建 Design Doc。
+
+Design Doc frontmatter 必须最小化：
+
+```yaml
+---
+comet_change: <change-name>
+role: technical-design
+canonical_spec: openspec
+---
+```
+
+将 Design Doc 写入 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`。
+如需回写 delta spec（Spec Patch），同时编辑对应的 `specs/*/spec.md`。
+
+**上下文压缩恢复**：若上下文已被压缩，从 `brainstorm-summary.md` + handoff 上下文恢复后继续创建。brainstorm-summary.md 是压缩恢复的落盘点，不是 Design Doc 的唯一输入——创建时应尽可能利用恢复后的完整上下文。
+
+### 3. 更新 Comet 状态
+
+先记录 design_doc 路径。如果 Spec Patch 回写了 delta spec（新增或修改了 `specs/*/spec.md`），必须重新生成 handoff 以更新 hash：
 
 ```bash
 # 记录 design_doc 路径

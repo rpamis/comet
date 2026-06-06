@@ -28,13 +28,22 @@ fi
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
-**Idempotency**: All build phase operations can be safely re-executed. Read `.comet.yaml` `phase` field to confirm still in build, read plan header `base-ref`, then read tasks.md to find the first unchecked task. Already-committed tasks must not be re-committed.
+**Idempotency**: All build phase operations can be safely re-executed. Read `.comet.yaml` `phase` field to confirm still in build, read plan header `base-ref`, then use `grep -n '\- \[ \]' tasks.md | head -1` to find the first unchecked task. Already-committed tasks must not be re-committed.
 
-### 1. Create Plan
+### 1. Create Plan (Subagent Offload)
 
-**Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited.
+Create the implementation plan through a subagent, avoiding planning skill occupying main session context:
 
-After the skill loads, follow its guidance to create a plan. Plan requirements:
+**Subagent instructions**:
+
+You are an implementation planning expert. Create an implementation plan based on the following inputs:
+
+1. Use the Skill tool to load the Superpowers `writing-plans` skill
+2. Read the Design Doc (technical design document under `docs/superpowers/specs/`)
+3. Read `openspec/changes/<name>/tasks.md` (task boundaries)
+4. Follow the skill's guidance to create the plan
+
+Plan requirements:
 - Save to `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
 - Reference design document, break down into executable tasks
 - **Plan file header must contain associated metadata**:
@@ -52,6 +61,14 @@ base-ref: <git rev-parse HEAD before implementation>
 ```bash
 git rev-parse HEAD
 ```
+
+Write the plan to file, then return the file path.
+
+**Execute subagent**: Use the current platform's subagent dispatch mechanism to send the above task.
+
+After the subagent completes:
+- If a valid file path is returned and the file exists, record it as the plan
+- If the subagent fails or returns an invalid path, fall back to loading the Superpowers `writing-plans` skill inline in the main session (degraded fallback)
 
 ### 2. Update Plan Status and Provide Plan-Ready Pause Point
 
@@ -183,7 +200,7 @@ After execution begins, follow the chosen branch to completion:
 **TDD Mode Execution Constraints**:
 
 If `tdd_mode: tdd`:
-- `build_mode: executing-plans`: Before implementing each task, must use the Skill tool to load the Superpowers `test-driven-development` skill and follow its Red-Green-Refactor cycle. Must not skip the failing test verification phase.
+- `build_mode: executing-plans`: After loading the execution skill and before executing the first task, **Immediately execute:** Use the Skill tool to load the Superpowers `test-driven-development` skill once. Skipping this step is prohibited. After the skill loads, start from the first unchecked task and follow the loaded TDD Red-Green-Refactor cycle for each task. Must not skip the failing test verification phase. Do not reload this skill for subsequent tasks; follow the already-loaded flow. If resuming after context compaction, re-run this step to load the TDD skill once, then continue from the first unchecked task.
 - `build_mode: subagent-driven-development`: When dispatching each subagent, must inject the TDD hard constraint into the prompt: **"You MUST follow TDD: for each task, write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first."**. Must not rely on implementer-prompt.md's conditional trigger; must explicitly write it in the dispatch prompt.
 
 If `tdd_mode: direct`: Follow normal flow, no enforced TDD.
@@ -226,7 +243,7 @@ When creating an independent change, must invoke `/comet-open`, not `/opsx:new` 
 
 Build is the longest phase and may span many tasks. To support resume after context compaction:
 
-- **After each task**: immediately check off tasks.md and commit code so `.comet.yaml` and file state are durable
+- **After each task**: immediately check off tasks.md and commit code so `.comet.yaml` and file state are durable. Use `grep -c '\- \[ \]' tasks.md` to check remaining unchecked count; no need to re-read the entire file
 - **After context compaction**: first run `"$COMET_BASH" "$COMET_STATE" check <change-name> build --recover` — the script outputs structured recovery context (isolation/build_mode status, plan path, task progress, recovery action). Follow the Recovery action to determine next step.
 - **User manual-change resume**: handle uncommitted changes through `comet/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions. Build-specific handling:
   1. After attribution, if the diff implies plan or spec changes, handle it through Step 4 "Spec Incremental Updates"

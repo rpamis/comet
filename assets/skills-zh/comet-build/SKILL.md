@@ -28,13 +28,22 @@ fi
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
-**幂等性**：build 阶段所有操作可安全重复执行。读取 `.comet.yaml` 的 `phase` 字段确认仍在 build 阶段，读取 plan 文件头的 `base-ref`，再读取 tasks.md 找到第一个未勾选任务继续执行。已提交的任务不得重复提交。
+**幂等性**：build 阶段所有操作可安全重复执行。读取 `.comet.yaml` 的 `phase` 字段确认仍在 build 阶段，读取 plan 文件头的 `base-ref`，再用 `grep -n '\- \[ \]' tasks.md | head -1` 找到第一个未勾选任务继续执行。已提交的任务不得重复提交。
 
-### 1. 制定计划
+### 1. 制定计划（Subagent Offload）
 
-**立即执行：** 使用 Skill 工具加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。
+通过 subagent 创建实施计划，避免 planning skill 占用主 session 上下文：
 
-技能加载后，按其指引制定计划。计划要求：
+**Subagent 指令**：
+
+你是实施计划专家。基于以下输入创建实施计划：
+
+1. 使用 Skill 工具加载 Superpowers `writing-plans` 技能
+2. 读取 Design Doc（`docs/superpowers/specs/` 下的技术设计文档）
+3. 读取 `openspec/changes/<name>/tasks.md`（任务边界）
+4. 按技能指引创建计划
+
+计划要求：
 - 保存至 `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`
 - 引用设计文档，拆分为可执行任务
 - **Plan 文件头必须包含关联元数据**：
@@ -52,6 +61,14 @@ base-ref: <git rev-parse HEAD before implementation>
 ```bash
 git rev-parse HEAD
 ```
+
+将计划写入文件后，返回文件路径。
+
+**执行 subagent**：使用当前平台的 subagent 调度机制派发上述任务。
+
+Subagent 完成后：
+- 若返回有效文件路径且文件存在，记录为 plan
+- 若 subagent 失败或返回路径无效，在主 session 内联加载 Superpowers `writing-plans` 技能创建计划（降级回退）
 
 ### 2. 更新计划状态并提供 plan-ready 暂停点
 
@@ -183,7 +200,7 @@ git commit -m "chore: add implementation plan"
 **TDD 模式执行约束**：
 
 若 `tdd_mode: tdd`：
-- `build_mode: executing-plans`：每个任务实现前，必须使用 Skill 工具加载 Superpowers `test-driven-development` 技能，按其 Red-Green-Refactor 循环执行。不得跳过失败测试验证阶段。
+- `build_mode: executing-plans`：加载执行技能后、执行第一个任务前，**立即执行：** 使用 Skill 工具加载 Superpowers `test-driven-development` 技能一次。禁止跳过此步骤。技能加载后，从第一个未勾选任务开始，对每个任务遵循已加载的 TDD Red-Green-Refactor 循环执行。不得跳过失败测试验证阶段。后续任务不再重新加载该技能，直接遵循已加载流程。若上下文压缩后恢复，重新运行本步骤加载 TDD 技能一次，然后从第一个未勾选任务继续。
 - `build_mode: subagent-driven-development`：派发每个 subagent 时，必须在 prompt 中注入 TDD 硬约束：**"You MUST follow TDD: for each task, write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first."**。不得依赖 implementer-prompt.md 的条件触发，必须在派发 prompt 中显式写出。
 
 若 `tdd_mode: direct`：按正常流程执行，不强制 TDD。
@@ -226,7 +243,7 @@ git commit -m "chore: add implementation plan"
 
 Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后断点恢复：
 
-- **每完成一个 task**：立即勾选 tasks.md 并提交代码，确保 `.comet.yaml` 和文件状态持久化
+- **每完成一个 task**：立即勾选 tasks.md 并提交代码，确保 `.comet.yaml` 和文件状态持久化。用 `grep -c '\- \[ \]' tasks.md` 检查剩余未勾选数，无需重新读取整个文件
 - **上下文压缩后恢复**：先运行 `"$COMET_BASH" "$COMET_STATE" check <change-name> build --recover`，脚本输出结构化恢复上下文（isolation/build_mode 状态、plan 路径、任务完成进度、恢复动作）。根据 Recovery action 决定下一步。
 - **用户手动修改恢复**：按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。该协议定义了检查步骤、归因分类和禁令。build 阶段的特殊处理：
   1. 归因后，若 diff 暗示计划或 spec 已变化，按 Step 4「Spec 增量更新」分级处理

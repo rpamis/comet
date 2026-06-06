@@ -119,9 +119,66 @@ When pausing, only present essential summary:
 
 Only after the user explicitly confirms, proceed to Step 2. If the user requests adjustments, continue brainstorming iteration until the user confirms.
 
-### 2. Update Comet State
+### 1d. Brainstorming Completion Checkpoint
 
-First record the design_doc path. If Step 1c wrote back delta spec (added or modified `specs/*/spec.md`), must regenerate handoff to update hash:
+After the user confirms the design proposal, before creating the Design Doc, write the confirmed design summary to a checkpoint file:
+
+```bash
+mkdir -p openspec/changes/<name>/.comet/handoff
+```
+
+`openspec/changes/<name>/.comet/handoff/brainstorm-summary.md` structure:
+
+```markdown
+# Brainstorm Summary
+
+- Change: <change-name>
+- Date: <YYYY-MM-DD>
+
+## Confirmed Technical Approach
+
+<summary of the user-confirmed approach>
+
+## Key Trade-offs and Risks
+
+<major trade-offs and risks>
+
+## Testing Strategy
+
+<testing method overview>
+
+## Spec Patches
+
+<delta spec changes to write back, or "None" if none>
+```
+
+**Context compaction note**: After brainstorming completes, if the context window is tight, compaction may occur here. After compaction, reload the following files to continue Step 2:
+- `openspec/changes/<name>/.comet/handoff/brainstorm-summary.md`
+- `openspec/changes/<name>/.comet/handoff/design-context.md` (or `spec-context.md` in beta mode)
+- `openspec/changes/<name>/.comet/handoff/design-context.json` (or `spec-context.json` in beta mode)
+
+### 2. Create Design Doc
+
+Create the Design Doc based on the full brainstorming conversation context (still in the main session).
+
+Design Doc frontmatter must be minimal:
+
+```yaml
+---
+comet_change: <change-name>
+role: technical-design
+canonical_spec: openspec
+---
+```
+
+Write the Design Doc to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`.
+If Spec Patches need to be written back, also edit the corresponding `specs/*/spec.md`.
+
+**Context compaction recovery**: If context has been compacted, resume from `brainstorm-summary.md` + handoff context and continue creating. brainstorm-summary.md is the compaction checkpoint, not the sole input for the Design Doc — when creating, leverage the full recovered context as much as possible.
+
+### 3. Update Comet State
+
+First record the design_doc path. If Spec Patches wrote back delta spec (added or modified `specs/*/spec.md`), must regenerate handoff to update hash:
 
 ```bash
 # Record design_doc path
