@@ -198,7 +198,7 @@ archived: false
 | `build_pause` | build 阶段内部暂停点。`null` 表示无暂停，`plan-ready` 表示 plan 已生成，用户选择切换模型后暂停 |
 | `isolation` | `branch` 或 `worktree`，工作区隔离方式。full 初始化可为 `null`，但只允许持续到 `/comet-build` Step 3 前；hotfix/tweak 默认 `branch` |
 | `verify_mode` | `light` 或 `full`，可为空 |
-| `auto_transition` | `true` 或 `false`。控制阶段状态已推进后是否自动调用下一 Skill；缺省为 `true` |
+| `auto_transition` | `true` 或 `false`。init 时从项目级 `openspec/comet.yaml` 复制，缺省回退为 `true`；控制阶段状态已推进后是否自动调用下一 Skill |
 | `verify_result` | `pending`、`pass` 或 `fail` |
 | `verification_report` | 验证报告文件路径，verify 通过前必须指向已存在文件 |
 | `branch_status` | `pending` 或 `handled`，分支处理完成后设为 `handled` |
