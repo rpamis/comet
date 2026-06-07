@@ -408,6 +408,24 @@ your-project/
     └── plans/                   # 实现计划
 ```
 
+## 上下文压缩（Beta）
+
+Comet 支持在 Design → Build 阶段交接时进行上下文压缩。启用后，`comet-handoff.sh` 会生成精简的上下文包，在不影响实现正确性的前提下，将 Build 阶段的输入 token 降低 **25–30%**。
+
+| 模式 | 行为 | Token 节省 |
+|------|------|-----------|
+| `off` | handoff context 包含完整 Spec 摘录 | 基线 |
+| `beta` | 仅保留 Design Doc + SHA256 hash 引用 | ~25–30% |
+
+Benchmark 核心结论：
+- **测试通过率**：所有档位均为 100%（压缩不影响实现正确性）
+- **Spec 覆盖率**：off 100% vs beta 95%（压缩可能丢失少量边缘需求细节）
+- **规模效应**：任务越大，绝对节省量越高（large 档位节省可达 15,000 tokens）
+
+启用方式：在 `.comet.yaml` 中设置 `context_compression: beta`
+
+详见 [CONTEXT-COMPRESSION.md](CONTEXT-COMPRESSION.md) 获取完整 Benchmark 报告、压缩原理和复现步骤。
+
 ## 开发
 
 贡献流程、提交规范、PR 流程、分支工作流，以及新增平台、Skill、脚本或 changelog

@@ -409,6 +409,24 @@ your-project/
     └── plans/                   # Implementation plans
 ```
 
+## Context Compression (Beta)
+
+Comet supports context compression at the Design → Build handoff. When enabled, `comet-handoff.sh` generates a compact context package that reduces Build-phase input tokens by **25–30%** without affecting implementation correctness.
+
+| Mode | Behavior | Token Savings |
+|------|----------|---------------|
+| `off` | Full Spec excerpts in handoff context | Baseline |
+| `beta` | Design Doc + SHA256 hash references only | ~25–30% |
+
+Key findings from benchmark testing:
+- **Test pass rate**: 100% across all tiers (compression does not affect correctness)
+- **Spec coverage**: 100% (off) vs 95% (beta) — minor edge-case detail loss
+- **Scaling**: Larger tasks yield higher absolute savings (up to 15,000 tokens for large-tier tasks)
+
+Enable in `.comet.yaml`: `context_compression: beta`
+
+See [CONTEXT-COMPRESSION.md](CONTEXT-COMPRESSION.md) for the full benchmark report, compression principles, and reproduction steps.
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) or

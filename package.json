@@ -37,6 +37,8 @@
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
     "test:shell": "node scripts/run-bats.js test/shell/*.bats",
+    "benchmark:context": "node scripts/context-compression-benchmark.mjs",
+    "benchmark:execution": "node scripts/context-execution-benchmark.mjs",
     "prepare": "pnpm run build",
     "prepublishOnly": "node scripts/prepublish-check.js && pnpm run build",
     "postinstall": "node scripts/postinstall.js"
