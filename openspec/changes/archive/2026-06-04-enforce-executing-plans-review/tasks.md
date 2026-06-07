@@ -1,3 +1,0 @@
-- [x] Update `assets/skills-zh/comet-build/SKILL.md` so `executing-plans` requires at least one code reviewer dispatch before build -> verify.
-- [x] Ran focused verification and recorded that English synchronization was pending user confirmation at that step.
-- [x] Sync the approved review gate to `assets/skills/comet-build/SKILL.md` and cover it with English skill assertions.
