@@ -38,11 +38,20 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 "$COMET_BASH" "$COMET_HANDOFF" <change-name> design --write
 ```
 
-The script generates and records:
+The script reads the change `.comet.yaml` `context_compression` snapshot, then generates and records the matching handoff package.
+
+Default `context_compression: off` generates:
 
 ```
 openspec/changes/<name>/.comet/handoff/design-context.json
 openspec/changes/<name>/.comet/handoff/design-context.md
+```
+
+Beta mode (`context_compression: beta` in project `.comet/config.yaml`, snapshotted into `.comet.yaml` when the change is created) generates:
+
+```
+openspec/changes/<name>/.comet/handoff/spec-context.json
+openspec/changes/<name>/.comet/handoff/spec-context.md
 ```
 
 And writes to `.comet.yaml`:
@@ -56,6 +65,11 @@ The default handoff package is a **compact traceable excerpt**, not an agent sum
 - `design-context.json`: machine index containing change, phase, canonical spec, source paths, hash
 - `design-context.md`: context for Superpowers to read, containing script markers, source path, line range, sha256, deterministic excerpts
 - When exceeding excerpt budget, marks `[TRUNCATED]` and retains Full source path
+
+The beta handoff package is a **structured spec projection** that reduces OpenSpec token load without replacing the canonical spec:
+- `spec-context.json`: machine index containing change, phase, canonical spec, source paths, hash, and file roles
+- `spec-context.md`: context for Superpowers to read, verbatim-projecting delta spec files and referencing supporting artifacts by hash
+- OpenSpec delta specs remain canonical; if the projection is missing, stale, or unclear, regenerate the handoff or read the source spec directly instead of writing an agent summary
 
 If full context is genuinely needed, explicitly run:
 
@@ -79,6 +93,10 @@ After the skill loads, follow its guidance and use the following context:
 Change: <change-name>
 OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/design-context.md
 Machine handoff: openspec/changes/<name>/.comet/handoff/design-context.json
+
+If context_compression is beta, use:
+OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/spec-context.md
+Machine handoff: openspec/changes/<name>/.comet/handoff/spec-context.json
 
 OpenSpec artifacts are the upstream source of truth, but you must not weaken the Superpowers `brainstorming` clarification flow by "skipping redundant context exploration".
 Your task is to perform deep technical design based on the handoff package: implementation approach, technical risks, testing strategy, boundary conditions.
@@ -199,7 +217,8 @@ If there are no delta spec changes, skip the handoff regeneration step. The stat
 - Design Doc frontmatter contains `comet_change`, `role: technical-design`, `canonical_spec: openspec`
 - `handoff_context` and `handoff_hash` written to `.comet.yaml` (enforced by guard)
 - `handoff_hash` matches current OpenSpec open phase artifacts (enforced by guard)
-- `design-context.md` must be script-generated and contain source path, mode, sha256 traceability markers (enforced by guard)
+- `design-context.md` or beta `spec-context.md` must be script-generated and contain source path, mode, sha256 traceability markers (enforced by guard)
+- In beta mode, `spec-context.json` must be structurally valid and reference the current source files (enforced by guard)
 - If new capabilities or supplementary acceptance scenarios exist, OpenSpec delta spec has been created/updated
 - `design_doc` written to `.comet.yaml`
 - **Phase guard**: Run `"$COMET_BASH" "$COMET_GUARD" <change-name> design --apply`; after all PASS, auto-transitions to `phase: build`

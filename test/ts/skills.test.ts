@@ -576,6 +576,15 @@ describe('skills', () => {
       expect(enBuild).toContain(
         'must use Skill tool to load the Superpowers `brainstorming` skill',
       );
+      expect(enDesign).toContain(
+        'The script reads the change `.comet.yaml` `context_compression` snapshot',
+      );
+      expect(enDesign).toContain('Default `context_compression: off` generates');
+      expect(enDesign).toContain('If context_compression is beta, use:');
+      expect(enDesign).toContain('openspec/changes/<name>/.comet/handoff/spec-context.md');
+      expect(enDesign).toContain(
+        'In beta mode, `spec-context.json` must be structurally valid',
+      );
       expect(enHotfix).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enVerify).toContain(
