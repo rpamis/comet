@@ -243,6 +243,8 @@ export async function updateCommand(
   log(`\n  Copying ${(await getManifestSkills()).length} skill files...\n`);
 
   let totalCopied = 0;
+  let totalRulesCopied = 0;
+  let totalHooksInstalled = 0;
   const targetResults = [];
   for (const target of targets) {
     const baseDir = getBaseDir(target.scope, projectPath);
@@ -270,27 +272,37 @@ export async function updateCommand(
     );
 
     // Distribute anti-drift rules to platforms that support them
-    const { copied: ruleCopied } = await copyCometRulesForPlatform(
-      baseDir,
-      target.platform,
-      true,
-      target.scope,
-    );
-    if (ruleCopied > 0) {
-      log(`  Comet rules -> ${target.platform.name}: ${ruleCopied} rule(s) updated`);
+    try {
+      const { copied: ruleCopied } = await copyCometRulesForPlatform(
+        baseDir,
+        target.platform,
+        true,
+        target.scope,
+      );
+      totalRulesCopied += ruleCopied;
+      if (ruleCopied > 0) {
+        log(`  Comet rules -> ${target.platform.name}: ${ruleCopied} rule(s) updated`);
+      }
+    } catch (err) {
+      log(`  Comet rules -> ${target.platform.name}: failed (${(err as Error).message})`);
     }
 
     // Install hooks for platforms that support them
     if (target.platform.supportsHooks) {
-      const { installed, reason } = await installCometHooksForPlatform(
-        baseDir,
-        target.platform,
-        target.scope,
-      );
-      if (installed) {
-        log(`  Comet hooks -> ${target.platform.name}: phase guard hook updated`);
-      } else if (reason) {
-        log(`  Comet hooks -> ${target.platform.name}: skipped (${reason})`);
+      try {
+        const { installed, reason } = await installCometHooksForPlatform(
+          baseDir,
+          target.platform,
+          target.scope,
+        );
+        if (installed) {
+          totalHooksInstalled++;
+          log(`  Comet hooks -> ${target.platform.name}: phase guard hook updated`);
+        } else if (reason) {
+          log(`  Comet hooks -> ${target.platform.name}: skipped (${reason})`);
+        }
+      } catch (err) {
+        log(`  Comet hooks -> ${target.platform.name}: failed (${(err as Error).message})`);
       }
     }
   }
@@ -332,6 +344,8 @@ export async function updateCommand(
             totalCopied,
             targets: targetResults,
           },
+          rules: { totalCopied: totalRulesCopied },
+          hooks: { totalInstalled: totalHooksInstalled },
           codegraph: codegraphStatus,
         },
         null,
