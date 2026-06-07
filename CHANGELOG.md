@@ -32,6 +32,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **JSON file roles**: `spec-context.json` `files` array now includes a `role` field (`spec` for spec files, `supporting` for proposal/design/tasks), removing the language-dependent `projection` array entirely.
 - **--full warning in beta mode**: Running `comet-handoff.sh` with `--full` in beta mode now emits an explicit warning instead of silently ignoring the flag.
 - **CodeGraph step in comet update**: `comet update` now prompts to install/update CodeGraph alongside skill file updates, using the same platform detection and CLI installation flow.
+- **Rules and hooks distribution in comet update**: `comet update` now distributes anti-drift phase guard rules and hooks to all installed platforms alongside skill files, keeping rules and hooks in sync after a Comet upgrade.
 - **Archive confirmation gate**: Chinese `/comet-archive` now pauses for explicit user confirmation before running the archive script, giving users a final chance to adjust or re-run verification before main spec merge and change archival.
 - **English archive confirmation parity**: English Comet skills now match the confirmed Chinese archive-confirmation workflow, including `/comet-archive`, `/comet-verify`, `/comet`, hotfix, and tweak guidance.
 - **Archive reopen transition**: Added `comet-state transition <change-name> archive-reopen` so users who decline final archive confirmation can return from `phase: archive` to `phase: verify` for adjustment or re-verification without manually editing `.comet.yaml`.

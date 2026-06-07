@@ -7,7 +7,12 @@ import { spawn } from 'child_process';
 import { select } from '@inquirer/prompts';
 import { fileExists, readDir, readJson } from '../utils/file-system.js';
 import { getBaseDir } from '../core/detect.js';
-import { copyCometSkillsForPlatform, getManifestSkills } from '../core/skills.js';
+import {
+  copyCometSkillsForPlatform,
+  copyCometRulesForPlatform,
+  installCometHooksForPlatform,
+  getManifestSkills,
+} from '../core/skills.js';
 import { PLATFORMS, getPlatformSkillsDir, type Platform } from '../core/platforms.js';
 import { installCodegraph, filterSupportedPlatforms } from '../core/codegraph.js';
 import type { InstallScope } from '../core/types.js';
@@ -263,6 +268,31 @@ export async function updateCommand(
     log(
       `  ${target.platform.name} (${target.scope}, ${languageSkillsDir}): ${copied} copied, ${skipped} skipped`,
     );
+
+    // Distribute anti-drift rules to platforms that support them
+    const { copied: ruleCopied } = await copyCometRulesForPlatform(
+      baseDir,
+      target.platform,
+      true,
+      target.scope,
+    );
+    if (ruleCopied > 0) {
+      log(`  Comet rules -> ${target.platform.name}: ${ruleCopied} rule(s) updated`);
+    }
+
+    // Install hooks for platforms that support them
+    if (target.platform.supportsHooks) {
+      const { installed, reason } = await installCometHooksForPlatform(
+        baseDir,
+        target.platform,
+        target.scope,
+      );
+      if (installed) {
+        log(`  Comet hooks -> ${target.platform.name}: phase guard hook updated`);
+      } else if (reason) {
+        log(`  Comet hooks -> ${target.platform.name}: skipped (${reason})`);
+      }
+    }
   }
 
   // CodeGraph optional step
