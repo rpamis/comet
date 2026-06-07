@@ -5,6 +5,8 @@ import { PLATFORMS, getPlatformSkillsDir, type Platform } from '../core/platform
 import { detectPlatforms, hasSkills, getBaseDir, type InstallScope } from '../core/detect.js';
 import {
   copyCometSkillsForPlatform,
+  copyCometRulesForPlatform,
+  installCometHooksForPlatform,
   createWorkingDirs,
   type LanguageConfig,
 } from '../core/skills.js';
@@ -323,6 +325,29 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       log(`  Comet -> ${platform.name}: ${cmStatus} (${copied} files) -> ${skillsPath}`);
     } else {
       log(`  Comet -> ${platform.name}: skipped (already exists)`);
+    }
+
+    // Distribute anti-drift rules to platforms that support them
+    if (cmAction !== 'skip') {
+      const { copied: ruleCopied } = await copyCometRulesForPlatform(
+        baseDir,
+        platform,
+        cmAction === 'overwrite',
+        scope,
+      );
+      if (ruleCopied > 0) {
+        log(`  Comet rules -> ${platform.name}: ${ruleCopied} rule(s) installed`);
+      }
+    }
+
+    // Install hooks for platforms that support them
+    if (cmAction !== 'skip' && platform.supportsHooks) {
+      const { installed, reason } = await installCometHooksForPlatform(baseDir, platform, scope);
+      if (installed) {
+        log(`  Comet hooks -> ${platform.name}: phase guard hook installed`);
+      } else if (reason) {
+        log(`  Comet hooks -> ${platform.name}: skipped (${reason})`);
+      }
     }
 
     results.push({

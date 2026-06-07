@@ -61,6 +61,25 @@ async function writeFile(filePath: string, content: string) {
   await fs.writeFile(filePath, content);
 }
 
+function runHookGuard(cwd: string, script: string, stdin: string, env: NodeJS.ProcessEnv = {}) {
+  if (!bashCommand) {
+    throw new Error('comet shell script tests require Bash or Git Bash');
+  }
+  return spawnSync(bashCommand, [toBashPath(script)], {
+    cwd,
+    encoding: 'utf-8',
+    input: stdin,
+    env: { ...process.env, ...env },
+  });
+}
+
+function hookStdin(filePath: string): string {
+  return JSON.stringify({
+    tool_name: 'Write',
+    tool_input: { file_path: filePath, content: '// test' },
+  });
+}
+
 async function createChange(tmpDir: string, name: string, yaml: string, tasks = '- [x] done\n') {
   const changeDir = path.join(tmpDir, 'openspec', 'changes', name);
   await fs.mkdir(changeDir, { recursive: true });
@@ -120,6 +139,7 @@ describeShell('comet shell scripts', () => {
   let tmpDir: string;
   let guardScript: string;
   let stateScript: string;
+  let hookGuardScript: string;
 
   beforeEach(async () => {
     tmpDir = path.join(
@@ -136,12 +156,14 @@ describeShell('comet shell scripts', () => {
       'comet-handoff.sh',
       'comet-state.sh',
       'comet-yaml-validate.sh',
+      'comet-hook-guard.sh',
     ]) {
       const content = await fs.readFile(path.join(scriptsDir, name), 'utf-8');
       await fs.writeFile(path.join(tmpScriptsDir, name), content.replace(/\r\n/g, '\n'));
     }
     guardScript = path.join(tmpScriptsDir, 'comet-guard.sh');
     stateScript = path.join(tmpScriptsDir, 'comet-state.sh');
+    hookGuardScript = path.join(tmpScriptsDir, 'comet-hook-guard.sh');
   });
 
   afterEach(async () => {
@@ -2973,6 +2995,322 @@ describeShell('comet shell scripts', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('[FAIL] design_doc is recorded for full workflow');
+    }, 20_000);
+  });
+
+  describe('comet-hook-guard.sh — phase write guard', () => {
+    it('allows all writes when no active comet change exists', async () => {
+      const srcDir = path.join(tmpDir, 'src');
+      await fs.mkdir(srcDir, { recursive: true });
+      const targetFile = path.join(srcDir, 'foo.ts');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
+    }, 20_000);
+
+    it('allows writes to openspec/ in design phase', async () => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        [
+          'workflow: full',
+          'phase: design',
+          'context_compression: off',
+          'build_mode: null',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'base_ref: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-06',
+          'verified_at: null',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+      );
+
+      const targetFile = path.join(tmpDir, 'openspec', 'changes', 'test-hook', 'proposal.md');
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
+    }, 20_000);
+
+    it('allows writes to docs/superpowers/ in design phase', async () => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        [
+          'workflow: full',
+          'phase: design',
+          'context_compression: off',
+          'build_mode: null',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'base_ref: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-06',
+          'verified_at: null',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+      );
+
+      const docsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
+      await fs.mkdir(docsDir, { recursive: true });
+      const targetFile = path.join(docsDir, '2026-06-06-test-design.md');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
+    }, 20_000);
+
+    it('blocks source code writes in design phase', async () => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        [
+          'workflow: full',
+          'phase: design',
+          'context_compression: off',
+          'build_mode: null',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'base_ref: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-06',
+          'verified_at: null',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+      );
+
+      const srcDir = path.join(tmpDir, 'src');
+      await fs.mkdir(srcDir, { recursive: true });
+      const targetFile = path.join(srcDir, 'index.ts');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('BLOCKED');
+      expect(result.stderr).toContain('design');
+    }, 20_000);
+
+    it('blocks source code writes in open phase', async () => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        [
+          'workflow: full',
+          'phase: open',
+          'context_compression: off',
+          'build_mode: null',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'base_ref: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-06',
+          'verified_at: null',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+      );
+
+      const srcDir = path.join(tmpDir, 'src');
+      await fs.mkdir(srcDir, { recursive: true });
+      const targetFile = path.join(srcDir, 'app.ts');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('open');
+    }, 20_000);
+
+    it('allows source code writes in build phase', async () => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        [
+          'workflow: full',
+          'phase: build',
+          'context_compression: off',
+          'build_mode: executing-plans',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: tdd',
+          'isolation: branch',
+          'verify_mode: null',
+          'base_ref: null',
+          'design_doc: docs/superpowers/specs/test.md',
+          'plan: docs/superpowers/plans/test.md',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-06',
+          'verified_at: null',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+      );
+
+      const srcDir = path.join(tmpDir, 'src');
+      await fs.mkdir(srcDir, { recursive: true });
+      const targetFile = path.join(srcDir, 'feature.ts');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
+    }, 20_000);
+
+    it('allows source code writes in verify phase', async () => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        [
+          'workflow: full',
+          'phase: verify',
+          'context_compression: off',
+          'build_mode: executing-plans',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: tdd',
+          'isolation: branch',
+          'verify_mode: light',
+          'base_ref: null',
+          'design_doc: docs/superpowers/specs/test.md',
+          'plan: docs/superpowers/plans/test.md',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-06',
+          'verified_at: null',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+      );
+
+      const srcDir = path.join(tmpDir, 'src');
+      await fs.mkdir(srcDir, { recursive: true });
+      const targetFile = path.join(srcDir, 'fix.ts');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
+    }, 20_000);
+
+    it('blocks source code writes in archive phase', async () => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        [
+          'workflow: full',
+          'phase: archive',
+          'context_compression: off',
+          'build_mode: executing-plans',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: tdd',
+          'isolation: branch',
+          'verify_mode: full',
+          'base_ref: null',
+          'design_doc: docs/superpowers/specs/test.md',
+          'plan: docs/superpowers/plans/test.md',
+          'verify_result: pass',
+          'verification_report: report.md',
+          'branch_status: handled',
+          'created_at: 2026-06-06',
+          'verified_at: 2026-06-06',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+      );
+
+      const srcDir = path.join(tmpDir, 'src');
+      await fs.mkdir(srcDir, { recursive: true });
+      const targetFile = path.join(srcDir, 'extra.ts');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('archive');
+    }, 20_000);
+
+    it('allows writes to .claude/ rules regardless of phase', async () => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        ['workflow: full', 'phase: design', 'context_compression: off', ''].join('\n'),
+      );
+
+      const claudeDir = path.join(tmpDir, '.claude', 'rules');
+      await fs.mkdir(claudeDir, { recursive: true });
+      const targetFile = path.join(claudeDir, 'custom.md');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
+    }, 20_000);
+
+    it('ignores archived changes and allows writes', async () => {
+      const archiveDir = path.join(tmpDir, 'openspec', 'changes', 'archive');
+      const changeDir = path.join(archiveDir, '2026-06-06-old-change');
+      await fs.mkdir(changeDir, { recursive: true });
+      await writeFile(
+        path.join(changeDir, '.comet.yaml'),
+        ['workflow: full', 'phase: archive', 'archived: true', ''].join('\n'),
+      );
+      await writeFile(path.join(changeDir, 'proposal.md'), 'old proposal\n');
+      await writeFile(path.join(changeDir, 'design.md'), 'old design\n');
+      await writeFile(path.join(changeDir, 'tasks.md'), '- [x] done\n');
+
+      const srcDir = path.join(tmpDir, 'src');
+      await fs.mkdir(srcDir, { recursive: true });
+      const targetFile = path.join(srcDir, 'free.ts');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
     }, 20_000);
   });
 });
