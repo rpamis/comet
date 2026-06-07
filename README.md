@@ -41,7 +41,9 @@ Superpowers handles **HOW** (technical design, planning, execution, wrap-up).
 Comet chains both into a five-phase automated pipeline.
 
 > [!IMPORTANT]
-> **News**: Comet 0.3.7 adds one-step CodeGraph semantic code indexing to save about **47% tokens**, while strengthening the TDD, subagent dispatch, verification, and archive workflow gates.
+> **0.3.7 Highlights** — One-step [CodeGraph](https://github.com/colbymchenry/codegraph) semantic code indexing (official: cost **↓16%**, tool calls **↓58%**); new Beta context compression cutting Build-phase input tokens by **25–30%**; 6 default-on workflow token optimizations; Hook+Rule anti-drift phase guard; optional TDD mode and subagent dispatch confirmation; large PRD split into multiple changes; pre-archive confirmation with reopen, verify retry limit, systematic debugging interception, and verification completion check.
+>
+> See [NEWS.md](NEWS.md) for details.
 
 ## Why Comet
 

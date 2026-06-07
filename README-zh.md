@@ -41,7 +41,9 @@ Superpowers 处理 **HOW**（技术设计、规划、执行、收尾）。
 Comet 将二者串联为五阶段自动化流水线。
 
 > [!IMPORTANT]
-> **News**: Comet 0.3.7 支持一键接入 CodeGraph 语义代码索引，约节省 **47% Token**，并补强 TDD、子代理调度、验证和归档阶段的流程闸门。
+> **0.3.7 亮点** — 一键接入 [CodeGraph](https://github.com/colbymchenry/codegraph) 语义代码索引（官方：成本 **↓16%**、工具调用 **↓58%**）；新增 Beta 上下文压缩，Build 阶段输入 token 降低 **25–30%**；6 项 Token 工作流优化默认开启；基于 Hook 和 Rule 的防漂移阶段守护；可选 TDD 模式与子代理调度确认；支持大型 PRD 拆分为多个 change；归档前确认与回退、验证重试限制、系统化调试拦截和验证完成检查等流程加固。
+>
+> 详见 [NEWS.md](NEWS.md)。
 
 ## 为什么需要 Comet
 
@@ -249,6 +251,7 @@ npx skills add rpamis/comet
 | `comet-archive.sh` | 一键归档 — 验证状态、同步 specs、移至归档、更新状态 |
 | `comet-yaml-validate.sh` | 模式校验器 — 校验 `.comet.yaml` 结构和字段值 |
 | `comet-state.sh` | 统一状态管理 — init/set/get/check/scale，agent 的专属 YAML 接口 |
+| `comet-hook-guard.sh` | 阶段写入守护 — PreToolUse hook，在 open/design/archive 阶段拦截文件写入 |
 
 </details>
 
@@ -328,9 +331,11 @@ build_command: null
 verify_command: null
 handoff_context: openspec/changes/<name>/.comet/handoff/design-context.json
 handoff_hash: <sha256>
+tdd_mode: null
+subagent_dispatch: null
 ```
 
-full workflow 初始化时 `build_mode`、`build_pause`、`isolation` 和 `verify_mode` 可以暂时为 `null`；进入 `build → verify` 前必须完成 `build_mode` 与 `isolation` 决策并写入合法值。`build_pause` 记录 build 阶段内部暂停点：`null` 表示无暂停，`plan-ready` 表示 plan 已生成，用户在选择隔离方式和执行方式前暂停。它不是执行方式，不得写入 `build_mode`。`verification_report` 在验证报告生成前保持 `null`，`verify-pass` 要求该报告文件存在且 `branch_status: handled`。示例中 `archived` 之后的字段是可选字段或脚本派生字段：`direct_override` 只在 full workflow 直接构建时需要，项目命令未配置时可以不存在，`handoff_context` 和 `handoff_hash` 由 `comet-handoff.sh` 在离开 design 阶段前写入。项目可在 change 或仓库根配置中设置 `build_command` / `verify_command`，guard 会优先运行并打印失败输出。
+full workflow 初始化时 `build_mode`、`build_pause`、`isolation`、`verify_mode`、`tdd_mode` 和 `subagent_dispatch` 可以暂时为 `null`；进入 `build → verify` 前必须完成 `build_mode` 与 `isolation` 决策并写入合法值。`build_pause` 记录 build 阶段内部暂停点：`null` 表示无暂停，`plan-ready` 表示 plan 已生成，用户在选择隔离方式和执行方式前暂停。它不是执行方式，不得写入 `build_mode`。`verification_report` 在验证报告生成前保持 `null`，`verify-pass` 要求该报告文件存在且 `branch_status: handled`。示例中 `archived` 之后的字段是可选字段或脚本派生字段：`direct_override` 只在 full workflow 直接构建时需要，项目命令未配置时可以不存在，`handoff_context` 和 `handoff_hash` 由 `comet-handoff.sh` 在离开 design 阶段前写入。项目可在 change 或仓库根配置中设置 `build_command` / `verify_command`，guard 会优先运行并打印失败输出。
 
 </details>
 
@@ -374,6 +379,11 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
    - 标注设计文档和计划文档的 frontmatter
    - 将变更移至归档目录并更新 `archived: true`
    - 支持 `--dry-run` 预览
+
+7. **防漂移阶段守护** — 长上下文会话中的阶段意识保障
+   - Rule 层：`comet-phase-guard.md` 每轮注入阶段感知、Skill 调用规范和上下文恢复指令（所有平台通用）
+   - Hook 层：`comet-hook-guard.sh` 在 open/design/archive 阶段硬拦截文件写入（Claude Code 等支持 hook 的平台）
+   - 白名单路径：`openspec/*`、`docs/superpowers/*`、`.claude/*`、`.comet/*`
 
 </details>
 
