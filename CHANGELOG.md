@@ -57,6 +57,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Duplicate YAML fields**: `replace_yaml_field` in `comet-state.sh` now deduplicates all fields after replacement, keeping only the last occurrence of each key. Previously, multiple `cmd_set` calls for the same field (e.g., during verify-fail → re-verify cycles) could leave duplicate lines in `.comet.yaml`, confusing downstream parsers. Fixes [#77](https://github.com/rpamis/comet/issues/77).
+
 - **Hook config format**: `installClaudeCodeHooks` and `.claude/settings.local.json` now use the correct `matcher` + `hooks: [{ type, command }]` array format instead of the flat `{ matcher, command, description }` format, fixing the `/doctor` schema validation error.
 
 - **Archive delta merge**: `comet-archive.sh` now delegates archive spec updates to OpenSpec's delta merge semantics instead of copying change specs over main specs, preventing `ADDED/MODIFIED/REMOVED/RENAMED` section headings from leaking into stable specs. Addresses [#69](https://github.com/rpamis/comet/issues/69).

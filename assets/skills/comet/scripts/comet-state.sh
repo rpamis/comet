@@ -140,9 +140,16 @@ replace_yaml_field() {
 
   tmp_file=$(mktemp)
   chmod 600 "$tmp_file"
+  # Replace the target field, then deduplicate all fields keeping only the
+  # last occurrence of each key. Prevents stale earlier values from
+  # persisting when a field is set multiple times.
   awk -v field="$field" -v value="$value" '
-    index($0, field ":") == 1 { print field ": " value; next }
-    { print }
+    index($0, field ":") == 1 { $0 = field ": " value }
+    { buf[NR] = $0; keys[NR] = $0; sub(/:.*$/, "", keys[NR]); n = NR }
+    END {
+      for (i = 1; i <= n; i++) last[keys[i]] = i
+      for (i = 1; i <= n; i++) if (last[keys[i]] == i) print buf[i]
+    }
   ' "$yaml_file" > "$tmp_file"
   mv "$tmp_file" "$yaml_file"
 }
