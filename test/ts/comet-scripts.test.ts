@@ -242,11 +242,11 @@ describeShell('comet shell scripts', () => {
     expect(setInvalid.status).not.toBe(0);
   }, 20_000);
 
-  it('requires auto_transition during comet yaml validation', async () => {
+  it('treats missing auto_transition as true for legacy comet yaml', async () => {
     const validateScript = path.join(tmpDir, 'scripts', 'comet-yaml-validate.sh');
     await createChange(
       tmpDir,
-      'auto-transition-required',
+      'auto-transition-legacy',
       [
         'workflow: full',
         'phase: open',
@@ -263,10 +263,18 @@ describeShell('comet shell scripts', () => {
       ].join('\n'),
     );
 
-    const result = runBash(tmpDir, validateScript, ['auto-transition-required']);
+    const validate = runBash(tmpDir, validateScript, ['auto-transition-legacy']);
+    const get = runBash(tmpDir, stateScript, [
+      'get',
+      'auto-transition-legacy',
+      'auto_transition',
+    ]);
+    const guard = runBash(tmpDir, guardScript, ['auto-transition-legacy', 'open']);
 
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('auto_transition');
+    expect(validate.status).toBe(0);
+    expect(get.status).toBe(0);
+    expect(get.stdout.trim()).toBe('true');
+    expect(guard.status).toBe(0);
   }, 20_000);
 
   it('rejects null, empty, and invalid auto_transition values during comet yaml validation', async () => {

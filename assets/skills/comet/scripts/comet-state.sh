@@ -257,6 +257,9 @@ cmd_get() {
   # Read and output the field value
   local value
   value=$(yaml_field "$field" "$yaml_file")
+  if [ "$field" = "auto_transition" ] && [ -z "$value" ]; then
+    value="true"
+  fi
   echo "${value:-}"
 }
 
