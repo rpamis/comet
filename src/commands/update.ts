@@ -317,7 +317,7 @@ export async function updateCommand(
     const shouldInstallCodegraph = await select({
       message: 'Install/update CodeGraph for semantic code intelligence?',
       choices: [
-        { name: 'Yes (recommended — saves ~47% tokens)', value: true },
+        { name: 'Yes (recommended — saves ~16% cost · cuts ~58% tool calls)', value: true },
         { name: 'No', value: false },
       ],
     });
