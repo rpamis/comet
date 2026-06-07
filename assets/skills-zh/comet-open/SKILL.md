@@ -73,7 +73,13 @@ description: "Comet 阶段 1：开启。用 /comet-open 调用。通过 OpenSpec
 
 完整 `/comet` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能；只有用户明确要求一次性生成提案和 artifacts 时才允许加载。
 
-技能加载后，按其指引创建 change 骨架，并逐个补齐 proposal.md、design.md、tasks.md；每个文档都必须基于已确认的澄清摘要。
+技能加载后，按其指引创建 change 骨架，但当 Step 1b 的已确认澄清摘要已存在于对话上下文时，覆盖其"STOP and wait for user direction"行为。具体如下：
+
+1. 按技能指引执行 `openspec new change`、`openspec status`、`openspec instructions`
+2. 如果用户已确认澄清摘要（Step 1b），直接使用该摘要起草 proposal.md —— 不得再要求用户重新描述变更内容
+3. 如果不存在澄清摘要（边缘情况），回退到技能的默认行为，询问用户
+
+然后逐个补齐 design.md、tasks.md；每个文档都必须基于已确认的澄清摘要。
 
 **命名与范围守卫**：change name 必须使用用户指定或通过当前平台可用的用户输入/确认机制确认的名称，不得自动生成或推断。变更范围必须与用户描述一致，不得自行扩大或缩小。
 
