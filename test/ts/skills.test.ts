@@ -246,9 +246,10 @@ describe('skills', () => {
       expect(zhBuild).toContain('提供 plan-ready 暂停点');
       expect(zhBuild).toContain('不得自动继续，也不得把暂停写入 `build_mode`');
 
-      // HIGH: comet-build + executing-plans must dispatch a reviewer before verify
+      // HIGH: comet-build + executing-plans must request review through the Superpowers skill before verify
       expect(zhBuild).toContain('`build_mode` 为 `executing-plans`');
-      expect(zhBuild).toContain('至少 dispatch 一次 code reviewer');
+      expect(zhBuild).toContain('Superpowers `requesting-code-review` 技能');
+      expect(zhBuild).toContain('至少请求一次代码审查');
       expect(zhBuild).toContain('build → verify');
       expect(zhBuild).toContain('CRITICAL review 发现必须先修复');
       expect(zhBuild).toContain('非 CRITICAL review 发现');
@@ -347,7 +348,8 @@ describe('skills', () => {
       expect(enBuild).toContain('Provide Plan-Ready Pause Point');
       expect(enBuild).toContain('Must not auto-continue and must not write the pause into `build_mode`');
       expect(enBuild).toContain('`build_mode` is `executing-plans`');
-      expect(enBuild).toContain('dispatch a code reviewer at least once');
+      expect(enBuild).toContain('Superpowers `requesting-code-review` skill');
+      expect(enBuild).toContain('request code review at least once');
       expect(enBuild).toContain('build → verify');
       expect(enBuild).toContain('CRITICAL review findings must be fixed first');
       expect(enBuild).toContain('non-CRITICAL review findings');

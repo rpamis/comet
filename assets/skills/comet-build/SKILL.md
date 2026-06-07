@@ -167,10 +167,10 @@ After the skill loads, follow its guidance to execute:
 
 **`executing-plans` review gate**:
 
-When `build_mode` is `executing-plans`, after all planned tasks are complete and before running the build → verify phase guard, must dispatch a code reviewer at least once.
+When `build_mode` is `executing-plans`, after all planned tasks are complete and before running the build → verify phase guard, must use the Skill tool to load the Superpowers `requesting-code-review` skill and request code review at least once.
 
 Requirements:
-- review must happen before `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`
+- the `requesting-code-review` skill must be loaded before `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`
 - CRITICAL review findings must be fixed first and must not be carried into verify
 - if non-CRITICAL review findings are accepted, record the acceptance reason and impact scope in tasks.md, the commit body, a verification report draft, or another durable artifact
 
@@ -217,7 +217,7 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - Project-specific build/tests explicitly run and pass; do not rely only on guard auto-detection
 - `isolation` has been written as `branch` or `worktree`
 - `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override
-- If `build_mode` is `executing-plans`, a code reviewer has been dispatched at least once, and CRITICAL review findings have been fixed or acceptance rationale for non-CRITICAL review findings has been recorded
+- If `build_mode` is `executing-plans`, the Skill tool has been used to load the Superpowers `requesting-code-review` skill and request code review at least once, and CRITICAL review findings have been fixed or acceptance rationale for non-CRITICAL review findings has been recorded
 - **Phase guard**: Run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; after all PASS, state advances to `phase: verify`
 
 Guard reads project command configuration first:
