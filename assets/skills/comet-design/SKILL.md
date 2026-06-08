@@ -183,6 +183,15 @@ mkdir -p openspec/changes/<name>/.comet/handoff
 - `openspec/changes/<name>/.comet/handoff/design-context.md` (or `spec-context.md` in beta mode)
 - `openspec/changes/<name>/.comet/handoff/design-context.json` (or `spec-context.json` in beta mode)
 
+### 1e. Active Context Compaction Gate
+
+After Step 1d completes and `brainstorm-summary.md` is written, enter the active compaction gate before creating the Design Doc. At this point the OpenSpec handoff, brainstorming decisions, and pending items are durable, so the agent should proactively release the earlier Spec and brainstorming context to preserve window space for Step 2 and the later Build phase.
+
+Rules:
+- If the current platform provides a native context compaction/cleanup mechanism (for example, the host agent's compact/compaction command, tool, or UI action), trigger active compaction here once; do not try to fake compaction through a shell script.
+- The compaction resume prompt must include the change name, current step (Design Step 2), and the three handoff file categories listed above.
+- If the current platform cannot be compacted programmatically by the agent, pause and tell the user to run the host platform's manual compaction action; continue to Step 2 only after the user confirms compaction is unavailable or asks to continue.
+
 ### 2. Create Design Doc
 
 Create the Design Doc based on the full brainstorming conversation context (still in the main session).

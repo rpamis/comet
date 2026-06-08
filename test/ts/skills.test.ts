@@ -295,6 +295,7 @@ describe('skills', () => {
       // MEDIUM: comet-design brainstorming does not write Design Doc before confirmation
       expect(zhDesign).toContain('brainstorming 阶段不写入 Design Doc 文件');
       expect(zhDesign).toContain('增量更新 `brainstorm-summary.md`');
+      expect(zhDesign).toContain('### 1e. 主动上下文压缩门');
 
       // MEDIUM: comet-verify Spec drift requires user choice
       expect(zhVerify).toContain(
@@ -423,6 +424,7 @@ describe('skills', () => {
       expect(zhCometRule).toContain(
         'brainstorming in progress: incrementally update brainstorm-summary.md',
       );
+      expect(zhCometRule).toContain('active compaction gate');
       for (const [content] of [
         [zhOpen, '/comet-design'],
         [zhDesign, '/comet-build'],
@@ -646,6 +648,7 @@ describe('skills', () => {
       expect(enDesign).toContain('openspec/changes/<name>/.comet/handoff/spec-context.md');
       expect(enDesign).toContain('In beta mode, `spec-context.json` must be structurally valid');
       expect(enDesign).toContain('incrementally update `brainstorm-summary.md`');
+      expect(enDesign).toContain('### 1e. Active Context Compaction Gate');
       expect(enHotfix).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enVerify).toContain(
@@ -682,6 +685,7 @@ describe('skills', () => {
       expect(enCometRule).toContain(
         'brainstorming in progress: incrementally update brainstorm-summary.md',
       );
+      expect(enCometRule).toContain('active compaction gate');
       for (const [content] of [
         [enOpen, '/comet-design'],
         [enDesign, '/comet-build'],
