@@ -131,6 +131,8 @@ After the skill loads, follow its guidance to produce design proposals (presente
 
 The brainstorming phase does not write to the Design Doc file; it only produces design proposals for Step 1c user confirmation. Only after confirmation should `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` be created and delta spec written back.
 
+For context compaction recovery, the agent must incrementally update `brainstorm-summary.md` during brainstorming. After each clarification round or proposal iteration, update the file whenever new confirmed facts, key constraints, candidate approaches, trade-offs/risks, testing strategy, or Spec Patch candidates emerge; mark unconfirmed items as "pending" or "candidate". This file is a recovery checkpoint, not the Design Doc, and must not replace the Step 1c user confirmation.
+
 ### 1c. User Confirms Design Proposal (Blocking Point)
 
 After brainstorming produces a design proposal, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm the design proposal**. Must not create the final Design Doc, write `design_doc`, run design guard, or enter `/comet-build` before user confirmation. If the current platform has no structured question tool, ask a confirmation question in the conversation, stop the workflow, and wait for the user's reply before continuing.
@@ -143,9 +145,9 @@ When pausing, only present essential summary:
 
 Only after the user explicitly confirms, proceed to Step 2. If the user requests adjustments, continue brainstorming iteration until the user confirms.
 
-### 1d. Brainstorming Completion Checkpoint
+### 1d. Brainstorming Checkpoint Finalization
 
-After the user confirms the design proposal, before creating the Design Doc, write the confirmed design summary to a checkpoint file:
+After the user confirms the design proposal, before creating the Design Doc, create or update the incrementally maintained checkpoint file and finalize it as the confirmed design summary:
 
 ```bash
 mkdir -p openspec/changes/<name>/.comet/handoff
@@ -176,7 +178,7 @@ mkdir -p openspec/changes/<name>/.comet/handoff
 <delta spec changes to write back, or "None" if none>
 ```
 
-**Context compaction note**: After brainstorming completes, if the context window is tight, compaction may occur here. After compaction, reload the following files to continue Step 2:
+**Context compaction note**: Each incremental update to `brainstorm-summary.md` is a relatively safe recovery point. After brainstorming completes, if the context window is tight, prefer compacting here. After compaction, reload the following files to continue Step 2:
 - `openspec/changes/<name>/.comet/handoff/brainstorm-summary.md`
 - `openspec/changes/<name>/.comet/handoff/design-context.md` (or `spec-context.md` in beta mode)
 - `openspec/changes/<name>/.comet/handoff/design-context.json` (or `spec-context.json` in beta mode)
@@ -198,7 +200,7 @@ canonical_spec: openspec
 Write the Design Doc to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`.
 If Spec Patches need to be written back, also edit the corresponding `specs/*/spec.md`.
 
-**Context compaction recovery**: If context has been compacted, resume from `brainstorm-summary.md` + handoff context and continue creating. brainstorm-summary.md is the compaction checkpoint, not the sole input for the Design Doc — when creating, leverage the full recovered context as much as possible.
+**Context compaction recovery**: If context has been compacted, resume from `brainstorm-summary.md` + handoff context. If the user has not confirmed the design proposal yet, return to Step 1b/1c and continue brainstorming; if the user has confirmed it, continue creating the Design Doc. brainstorm-summary.md is the compaction checkpoint, not the sole input for the Design Doc — when creating, leverage the full recovered context as much as possible.
 
 ### 3. Update Comet State
 

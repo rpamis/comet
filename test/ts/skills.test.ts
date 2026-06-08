@@ -215,6 +215,10 @@ describe('skills', () => {
         path.resolve('assets', 'skills-zh', 'comet-tweak', 'SKILL.md'),
         'utf-8',
       );
+      const zhCometRule = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet', 'rules', 'comet-phase-guard.md'),
+        'utf-8',
+      );
 
       expect(zhComet).toContain('决策点是阻塞点');
       expect(zhOpen).toContain('### 1b. 需求澄清完成确认（阻塞点）');
@@ -290,6 +294,7 @@ describe('skills', () => {
 
       // MEDIUM: comet-design brainstorming does not write Design Doc before confirmation
       expect(zhDesign).toContain('brainstorming 阶段不写入 Design Doc 文件');
+      expect(zhDesign).toContain('增量更新 `brainstorm-summary.md`');
 
       // MEDIUM: comet-verify Spec drift requires user choice
       expect(zhVerify).toContain(
@@ -415,6 +420,9 @@ describe('skills', () => {
       );
       expect(zhComet).toContain('`auto_transition`');
       expect(zhComet).toContain('不影响 phase 推进');
+      expect(zhCometRule).toContain(
+        'brainstorming in progress: incrementally update brainstorm-summary.md',
+      );
       for (const [content] of [
         [zhOpen, '/comet-design'],
         [zhDesign, '/comet-build'],
@@ -470,6 +478,10 @@ describe('skills', () => {
       );
       const enTweak = await fs.readFile(
         path.resolve('assets', 'skills', 'comet-tweak', 'SKILL.md'),
+        'utf-8',
+      );
+      const enCometRule = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet', 'rules', 'comet-phase-guard.md'),
         'utf-8',
       );
 
@@ -633,6 +645,7 @@ describe('skills', () => {
       expect(enDesign).toContain('If context_compression is beta, use:');
       expect(enDesign).toContain('openspec/changes/<name>/.comet/handoff/spec-context.md');
       expect(enDesign).toContain('In beta mode, `spec-context.json` must be structurally valid');
+      expect(enDesign).toContain('incrementally update `brainstorm-summary.md`');
       expect(enHotfix).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enVerify).toContain(
@@ -666,6 +679,9 @@ describe('skills', () => {
       );
       expect(enComet).toContain('`auto_transition`');
       expect(enComet).toContain('does not block phase updates');
+      expect(enCometRule).toContain(
+        'brainstorming in progress: incrementally update brainstorm-summary.md',
+      );
       for (const [content] of [
         [enOpen, '/comet-design'],
         [enDesign, '/comet-build'],

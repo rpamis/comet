@@ -52,8 +52,9 @@
 ## Design 阶段专项
 
 1. 第一个脚本操作 = `comet-handoff <name> design --write`（未生成 handoff 禁止加载 brainstorming）
-2. brainstorming 完成后下一步 = brainstorm-summary.md → Design Doc → guard
-3. **绝对不能直接开始写实现代码** — 必须先创建 Design Doc 并通过 guard
+2. brainstorming in progress: incrementally update brainstorm-summary.md（每轮澄清或方案迭代后增量更新恢复检查点，未确认内容标注为待确认/候选）
+3. brainstorming 完成后下一步 = brainstorm-summary.md 定稿 → Design Doc → guard
+4. **绝对不能直接开始写实现代码** — 必须先创建 Design Doc 并通过 guard
 
 ## Build 阶段专项
 
