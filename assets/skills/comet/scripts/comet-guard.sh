@@ -186,10 +186,11 @@ run_command_string() {
     red "ERROR: build/verify command is empty" >&2
     return 1
   fi
-  # Basic command injection guard: reject shell metacharacters
-  if [[ "$command" =~ [\'\"\;\|\&\$\`] ]]; then
+  # Basic command injection guard: reject dangerous shell metacharacters
+  # Quotes are allowed to support paths with spaces (e.g. Windows)
+  if [[ "$command" =~ [\;\|\&\$\`] ]]; then
     red "ERROR: build/verify command contains shell metacharacters: $command" >&2
-    red "Allowed: alphanumeric, spaces, hyphens, underscores, dots, colons, forward slashes" >&2
+    red "Allowed: alphanumeric, spaces, hyphens, underscores, dots, colons, forward slashes, quotes" >&2
     return 1
   fi
   echo "+ $command" >&2

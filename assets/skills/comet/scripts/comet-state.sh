@@ -72,6 +72,13 @@ validate_path_field() {
   if [ -z "$value" ] || [ "$value" = "null" ]; then
     return 0
   fi
+  # Reject absolute paths and home-directory references
+  case "$value" in
+    /*|~*|[A-Za-z]:*|\\*)
+      red "ERROR: $field must be a relative path within the repo: '$value'" >&2
+      exit 1
+      ;;
+  esac
   if [[ "$value" =~ \.\. ]]; then
     red "ERROR: $field cannot contain '..' (path traversal not allowed): '$value'" >&2
     exit 1

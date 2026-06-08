@@ -34,6 +34,8 @@ const CHANGE_NAME = 'execution-benchmark';
 const MODES = ['off', 'beta'];
 const TIERS = ['small', 'medium', 'large'];
 const PHASES = ['l1', 'l2', 'l3', 'both', 'all'];
+const IS_WIN = process.platform === 'win32';
+const cmd = (bin) => (IS_WIN ? bin + '.cmd' : bin);
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), '..');
 const MAX_RETRIES = 3;
@@ -434,15 +436,22 @@ function buildBuildPrompt(mode, contextFile, contextText) {
 export function parseTestOutput(stdout) {
   try {
     const data = JSON.parse(stdout);
-    const results = data.testResults ?? [];
-    if (Array.isArray(results) && results.length > 0) {
-      const passed = results.filter((t) => t.status === 'passed').length;
-      const failed = results.filter((t) => t.status === 'failed');
+    // Use top-level summary when available (Vitest JSON reporter)
+    if (typeof data.numTotalTests === 'number') {
+      const passed = data.numPassedTests ?? 0;
+      const failedNames = [];
+      for (const suite of data.testResults ?? []) {
+        for (const assertion of suite.assertionResults ?? []) {
+          if (assertion.status === 'failed') {
+            failedNames.push(assertion.fullName ?? assertion.name ?? 'unknown');
+          }
+        }
+      }
       return {
-        testsTotal: results.length,
+        testsTotal: data.numTotalTests,
         testsPassed: passed,
-        testsFailed: failed.map((t) => t.name ?? 'unknown'),
-        testPassRate: safeRatio(passed, results.length),
+        testsFailed: failedNames,
+        testPassRate: safeRatio(passed, data.numTotalTests),
       };
     }
   } catch { /* not JSON */ }
@@ -462,7 +471,7 @@ export function parseTestOutput(stdout) {
 
 async function runTests(cwd) {
   try {
-    const { stdout, stderr } = await spawnCapture('npx', ['vitest', 'run', '--reporter=json'], {
+    const { stdout, stderr } = await spawnCapture(cmd('npx'), ['vitest', 'run', '--reporter=json'], {
       cwd,
       timeoutMs: 30_000,
       allowFailure: true,
@@ -1883,9 +1892,9 @@ export async function runExecutionBenchmark(options = {}) {
 
 async function installDependencies(cwd) {
   try {
-    await spawnCapture('pnpm', ['install', '--no-frozen-lockfile'], { cwd, timeoutMs: INSTALL_TIMEOUT_MS });
+    await spawnCapture(cmd('pnpm'), ['install', '--no-frozen-lockfile'], { cwd, timeoutMs: INSTALL_TIMEOUT_MS });
   } catch {
-    await spawnCapture('npm', ['install'], { cwd, timeoutMs: INSTALL_TIMEOUT_MS });
+    await spawnCapture(cmd('npm'), ['install'], { cwd, timeoutMs: INSTALL_TIMEOUT_MS });
   }
 }
 

@@ -137,7 +137,7 @@ Run these 5 checks:
 
 When scale assessment result is "large":
 
-Use the Skill tool to load the `openspec-verify-change` skill. Skipping this step is prohibited.
+**Immediately execute:** Use the Skill tool to load the `openspec-verify-change` skill. Skipping this step is prohibited.
 
 After the skill loads, follow its guidance to verify. Check items:
 1. All tasks.md tasks completed (`[x]`)

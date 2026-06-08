@@ -68,7 +68,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Archive delta merge**: `comet-archive.sh` now delegates archive spec updates to OpenSpec's delta merge semantics instead of copying change specs over main specs, preventing `ADDED/MODIFIED/REMOVED/RENAMED` section headings from leaking into stable specs. Addresses [#69](https://github.com/rpamis/comet/issues/69).
 - **Brainstorming depth**: Chinese and English `/comet-design` no longer tell Superpowers `brainstorming` to skip context exploration, so unclear goals, scope, non-goals, acceptance scenarios, or constraints must be clarified before a Design Doc is created.
-- **Command injection prevention**: `run_command_string()` in `comet-guard.sh` now rejects build/verify commands containing shell metacharacters (`;|&$(\``), preventing command injection through `.comet.yaml` command fields.
+- **Command injection prevention**: `run_command_string()` in `comet-guard.sh` now rejects build/verify commands containing shell metacharacters (`;`, `|`, `&`, `$`, backtick), preventing command injection through `.comet.yaml` command fields.
 - **Path traversal prevention**: `comet-state.sh cmd_set` now validates path fields (design_doc, plan, verification_report, handoff_context, handoff_hash) for `..` traversal sequences before writing.
 - **Design guard enforcement**: Design guard now requires `design_doc` for full workflow (FAIL instead of WARN), preventing phase advance without a design document.
 - **branch_status preservation on verify-fail**: `verify-fail` transition no longer resets `branch_status`, keeping branch handling state across re-verify cycles.

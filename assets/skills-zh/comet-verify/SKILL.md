@@ -135,7 +135,7 @@ CURRENT_HASH=$("$COMET_BASH" "$COMET_HANDOFF" <change-name> --hash-only 2>/dev/n
 
 当规模评估结果为"大"时：
 
-再使用 Skill 工具加载 `openspec-verify-change` 技能。禁止跳过此步骤。
+**立即执行：** 使用 Skill 工具加载 `openspec-verify-change` 技能。禁止跳过此步骤。
 
 技能加载后，按其指引验证。检查项：
 1. tasks.md 全部任务已完成（`[x]`）

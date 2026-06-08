@@ -42,14 +42,14 @@ fi
 
 默认 `context_compression: off` 时生成：
 
-```
+```text
 openspec/changes/<name>/.comet/handoff/design-context.json
 openspec/changes/<name>/.comet/handoff/design-context.md
 ```
 
 启用 beta（项目 `.comet/config.yaml` 中 `context_compression: beta`，创建 change 时快照进入 `.comet.yaml`）时生成：
 
-```
+```text
 openspec/changes/<name>/.comet/handoff/spec-context.json
 openspec/changes/<name>/.comet/handoff/spec-context.md
 ```
@@ -90,7 +90,7 @@ beta 交接包是 **结构化 spec projection**，用于减少 OpenSpec 原文 t
 
 技能加载后，按其指引使用以下上下文：
 
-```
+```text
 Change: <change-name>
 OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/design-context.md
 Machine handoff: openspec/changes/<name>/.comet/handoff/design-context.json

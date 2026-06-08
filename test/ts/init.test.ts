@@ -28,9 +28,13 @@ describe('init command helpers', () => {
   it('creates a project Comet config with context compression disabled by default', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-config-'));
 
-    await createWorkingDirs(tmpDir);
+    try {
+      await createWorkingDirs(tmpDir);
 
-    const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
-    expect(config).toContain('context_compression: off');
+      const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('context_compression: off');
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });

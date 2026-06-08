@@ -233,9 +233,19 @@ comet-handoff.sh <- comet-state.sh (写入 handoff_context/handoff_hash)
 ```markdown
 ## What's Changed [x.y.z] - YYYY-MM-DD
 
-### Added / Changed / Fixed / Tests / Removed / Security
+### Added
 
 - **功能名**: 描述做了什么以及为什么。
+
+### Changed
+
+### Fixed
+
+### Tests
+
+### Removed
+
+### Security
 ```
 
 规范：

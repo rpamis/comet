@@ -29,13 +29,6 @@ Design → Build 阶段交接时的 spec 投影压缩。启用后 Build 阶段�
 | tasks.md 增量扫描 | grep 替代全文读取 |
 | Hash 按需读取 | 跳过未变更的 OpenSpec 制品 |
 
-### 上下文压缩（Beta）
-
-Design → Build 阶段交接时的 spec 投影压缩。启用后 Build 阶段输入 token 降低 **25–30%**，大型任务绝对节省可达 15,000 tokens。Beta 模式使用全文投影（`cat`），支持中英文 Spec，无需求关键词依赖。
-
-启用：`.comet.yaml` 设置 `context_compression: beta`
-
-详见 [CONTEXT-COMPRESSION.md](CONTEXT-COMPRESSION.md)。
 
 ### 防漂移阶段守护
 

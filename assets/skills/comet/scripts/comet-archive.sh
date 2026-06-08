@@ -261,6 +261,7 @@ else
   "$COMET_OPENSPEC" archive "$CHANGE" --yes >&2
   if ! resolve_archive_dir; then
     step_fail "OpenSpec archive output not found"
+    exit 1
   else
     step_ok "OpenSpec archive completed: $ARCHIVE_DIR"
   fi

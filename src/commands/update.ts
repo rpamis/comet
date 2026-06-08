@@ -219,6 +219,8 @@ export async function updateCommand(
               command: options.skipNpm ? null : formatNpmUpdateCommand(packageScope),
             },
             skills: { totalCopied: 0, targets: [] },
+            rules: { totalCopied: 0 },
+            hooks: { totalInstalled: 0 },
           },
           null,
           2,

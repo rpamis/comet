@@ -375,7 +375,7 @@ async function installClaudeCodeHooks(
   // Deduplicate by matcher — replace existing entries with the same matcher
   const matchersSeen = new Set<string>();
   const merged: ClaudeCodeHookEntry[] = [];
-  for (const entry of [...existingPreToolUse, ...newEntries]) {
+  for (const entry of [...newEntries, ...existingPreToolUse]) {
     if (!matchersSeen.has(entry.matcher)) {
       matchersSeen.add(entry.matcher);
       merged.push(entry);

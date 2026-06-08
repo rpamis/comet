@@ -272,9 +272,19 @@ Use this shape:
 ```markdown
 ## What's Changed [x.y.z] - YYYY-MM-DD
 
-### Added / Changed / Fixed / Tests / Removed / Security
+### Added
 
 - **Feature name**: Describe what changed and why.
+
+### Changed
+
+### Fixed
+
+### Tests
+
+### Removed
+
+### Security
 ```
 
 Guidelines:
