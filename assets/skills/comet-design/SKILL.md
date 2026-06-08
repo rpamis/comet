@@ -107,7 +107,7 @@ Machine handoff: openspec/changes/<name>/.comet/handoff/spec-context.json
 OpenSpec artifacts are the upstream source of truth, but you must not weaken the Superpowers `brainstorming` clarification flow by "skipping redundant context exploration".
 Your task is to perform deep technical design based on the handoff package: implementation approach, technical risks, testing strategy, boundary conditions.
 If goals, scope, non-goals, acceptance scenarios, or key constraints remain unclear, you must continue asking questions and form the design proposal first; must not create the Design Doc after only one Q&A turn.
-Do not rewrite proposal/spec; if you find OpenSpec delta spec missing acceptance scenarios, you may only propose Spec Patches and write them back to OpenSpec delta spec; do not create a second requirements spec in the Design Doc.
+Do not rewrite proposal/spec; if you find OpenSpec delta spec missing acceptance scenarios, you may only propose Spec Patches and write them back to OpenSpec delta spec; do not create a second requirements spec in the Design Doc. Spec Patches are limited to supplementing acceptance scenarios, correcting ambiguous descriptions, or adding boundary conditions — they must not substantially rewrite the delta spec's structure or scope. If major changes are needed, flag them as design findings and return to brainstorming for confirmation.
 
 Design Doc frontmatter must be minimal, containing only:
 ---

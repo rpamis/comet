@@ -156,7 +156,7 @@ Subagent 完成后：
 | 选项 | 含义 | 适用场景 |
 |------|------|---------|
 | `tdd` | 每个任务先写失败测试再写实现 | 推荐。变更涉及业务逻辑、新功能、API |
-| `direct` | 直接实现，不强制 TDD 流程 | 变更不需要测试覆盖，或用户选择跳过测试直接写代码 |
+| `direct` | 直接实现，不强制 TDD 流程 | 变更不需要测试覆盖，或用户选择跳过测试直接写代码。hotfix/tweak preset 默认使用 `direct` |
 
 运行 `"$COMET_BASH" "$COMET_STATE" set <name> tdd_mode <tdd|direct>`
 
@@ -214,7 +214,8 @@ git commit -m "chore: add implementation plan"
 
 要求：
 - `requesting-code-review` 技能必须在 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply` 之前加载
-- CRITICAL review 发现必须先修复，不得带入 verify
+- 若 `requesting-code-review` 技能不可用，跳过 review gate 但必须在 tasks.md 中记录 `<!-- review skipped: skill unavailable -->`，并继续 guard 流转
+- CRITICAL review 发现（安全漏洞、数据丢失风险、构建/测试失败）必须先修复，不得带入 verify
 - 非 CRITICAL review 发现如选择接受，必须在 tasks.md、commit body、验证报告草稿或其他持久产物中记录接受原因和影响范围
 
 ### 3b. 执行中异常调试（Debug Gate）

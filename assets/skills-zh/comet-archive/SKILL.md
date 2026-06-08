@@ -17,7 +17,7 @@ description: "Comet 阶段 5：归档。用 /comet-archive 调用。按 OpenSpec
 
 归档摘要和生命周期闭环说明必须使用触发本次工作流的用户请求语言。
 
-### 0. 入口状态验证（Entry Check）
+### 0b. 入口状态验证（Entry Check）
 
 执行入口验证：
 
@@ -87,7 +87,9 @@ brainstorming → delta spec → 实施 → 验证 → 主 spec 合并 → desig
 - 归档目录 `openspec/changes/archive/YYYY-MM-DD-<change-name>/` 存在
 - 归档后的 `.comet.yaml` 中 `archived: true`
 
-归档脚本会把 `openspec/changes/<name>/` 移动到 `openspec/changes/archive/YYYY-MM-DD-<name>/`。归档成功后**不要再对原 change 名运行** `"$COMET_BASH" "$COMET_GUARD" <change-name> archive`，因为原活跃目录已经不存在。归档完整性以脚本退出码和归档目录状态为准。
+归档脚本会把 `openspec/changes/<name>/` 移动到 `openspec/changes/archive/YYYY-MM-DD-<name>/`。
+
+> **WARNING**: 归档成功后**不要再对原 change 名运行** `"$COMET_BASH" "$COMET_GUARD" <change-name> archive`，因为原活跃目录已经不存在。误调会导致 guard 报错"change directory not found"。归档完整性以脚本退出码和归档目录状态为准。
 
 ## 完成
 

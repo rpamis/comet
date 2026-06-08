@@ -65,9 +65,18 @@ Run phase guard to transition open → build:
 "$COMET_BASH" "$COMET_GUARD" <change-name> open --apply
 ```
 
+Check `auto_transition` to decide whether to continue:
+
+```bash
+"$COMET_BASH" "$COMET_STATE" next <name>
+```
+
+- `NEXT: auto` → continue to Step 2
+- `NEXT: manual` → pause, follow `HINT` to prompt user to run `/<SKILL>` manually
+
 ### 2. Direct Build (preset build)
 
-Use hotfix defaults: `build_mode: direct`. Skip Superpowers `brainstorming` and `writing-plans` (unless tasks > 3; if exceeds 3 tasks, transfer to `/comet-build`'s plan and execution method selection).
+Use hotfix defaults: `build_mode: direct`. Skip Superpowers `brainstorming` and `writing-plans` (unless tasks > 3; if exceeds 3 tasks, transfer to `/comet-build`'s plan and execution method selection — note this does NOT trigger full workflow upgrade, only switches execution method).
 
 Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows the fix scope exceeds hotfix, handle it through this file's "Upgrade Conditions".
 

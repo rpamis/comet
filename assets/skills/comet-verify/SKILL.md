@@ -42,7 +42,7 @@ Execute scale assessment:
 "$COMET_BASH" "$COMET_STATE" scale <change-name>
 ```
 
-The script automatically counts tasks, delta spec count, changed file count, determines light or full verification mode, and sets the verify_mode field.
+The script automatically counts tasks, delta spec count, changed file count, determines light or full verification mode, and sets the verify_mode field. Decision rule (any condition triggers full): tasks > 3, delta spec capabilities > 1, changed files > 4.
 
 Before verification begins, handle uncommitted changes through `comet/reference/dirty-worktree.md` protocol. Verify phase special handling:
 

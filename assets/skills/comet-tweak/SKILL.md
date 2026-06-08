@@ -13,7 +13,7 @@ Applicable for non-bug small scope changes, such as copy adjustment, configurati
 1. No new capability
 2. No architecture changes
 3. No interface changes
-4. Typically no more than 3 tasks, 4 files
+4. Typically no more than 3 tasks (file count constraint see upgrade conditions below)
 
 **Not applicable**: If change process discovers need for capability, architecture or interface adjustments, should upgrade to full `/comet` workflow.
 

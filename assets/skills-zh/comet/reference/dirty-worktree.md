@@ -20,6 +20,7 @@ git ls-files --others --exclude-standard
 ## 2. 核心规则
 
 - 用户可能不会说明自己改了哪里。只要存在 dirty worktree（包括 Git 状态里显示为 `??` 的新建文件），就先假设改动可能来自用户或混合来源
+- **构建产物排除**：`??` 文件若匹配 `.gitignore` 中的模式（如 `node_modules/`、`dist/`、`__pycache__/`、`*.o`、`target/`、`build/` 等），自动跳过归因，不视为用户改动
 - dirty worktree 只代表代码事实，不会自动推进 `.comet.yaml` 的 `phase` 或勾选 `tasks.md`；只有完成归因、验证、同步必要文档，并通过对应阶段 guard 后，才允许推进 Comet 状态
 
 ## 3. 归因分类

@@ -43,6 +43,7 @@ fi
 
 # No target found — allow (not a file-path-bearing operation)
 if [ -z "$TARGET" ]; then
+  echo "[COMET-HOOK] allowed: no file path in tool input" >&2
   exit 0
 fi
 
@@ -68,6 +69,7 @@ fi
 
 # No active change — allow all writes
 if [ -z "$YAML_FILE" ]; then
+  echo "[COMET-HOOK] allowed: no active comet change" >&2
   exit 0
 fi
 
@@ -79,6 +81,7 @@ PHASE=$(grep "^phase:" "$YAML_FILE" 2>/dev/null \
   || true)
 
 if [ -z "$PHASE" ]; then
+  echo "[COMET-HOOK] allowed: no phase in .comet.yaml" >&2
   exit 0
 fi
 
@@ -106,34 +109,100 @@ case "$RELPATH" in
     ;;
 esac
 
-# ── Whitelist: always allowed regardless of phase ────────────────
+# ── Whitelist: phase-aware allowed paths ─────────────────────────
 
 case "$RELPATH" in
   openspec/*)
-    # OpenSpec artifacts (proposal, design, tasks, specs, handoff)
-    exit 0
+    # OpenSpec artifacts — phase-aware sub-check
+    case "$PHASE" in
+      open)
+        # open: allow proposal, design, tasks, yaml, handoff, specs
+        case "$RELPATH" in
+          */proposal.md|*/design.md|*/tasks.md|*/.openspec.yaml|*/.comet.yaml|*/.comet/*|*/specs/*)
+            echo "[COMET-HOOK] allowed: $RELPATH (phase: open, openspec artifacts)" >&2
+            exit 0
+            ;;
+        esac
+        ;;
+      design)
+        # design: allow handoff, delta spec (Spec Patch), proposal/design/tasks (minor refinements), .comet.yaml
+        case "$RELPATH" in
+          */proposal.md|*/design.md|*/tasks.md|*/.comet/*|*/specs/*|*/.comet.yaml|*/.openspec.yaml)
+            echo "[COMET-HOOK] allowed: $RELPATH (phase: design, handoff/spec)" >&2
+            exit 0
+            ;;
+        esac
+        ;;
+      build)
+        # build: allow delta spec (incremental update), tasks, .comet.yaml
+        case "$RELPATH" in
+          */specs/*|*/tasks.md|*/.comet.yaml|*/.openspec.yaml)
+            echo "[COMET-HOOK] allowed: $RELPATH (phase: build, spec/tasks)" >&2
+            exit 0
+            ;;
+        esac
+        ;;
+      verify)
+        # verify: allow tasks (post-check), .comet.yaml
+        case "$RELPATH" in
+          */tasks.md|*/.comet.yaml|*/.openspec.yaml)
+            echo "[COMET-HOOK] allowed: $RELPATH (phase: verify, tasks/state)" >&2
+            exit 0
+            ;;
+        esac
+        ;;
+      archive)
+        # archive: allow .comet.yaml state updates only
+        case "$RELPATH" in
+          */.comet.yaml|*/.openspec.yaml)
+            echo "[COMET-HOOK] allowed: $RELPATH (phase: archive, state)" >&2
+            exit 0
+            ;;
+        esac
+        ;;
+    esac
     ;;
   docs/superpowers/*)
-    # Design Docs, plans
-    exit 0
+    # Superpowers artifacts — phase-aware sub-check
+    case "$PHASE" in
+      design)
+        echo "[COMET-HOOK] allowed: $RELPATH (phase: design, superpowers)" >&2
+        exit 0
+        ;;
+      build)
+        echo "[COMET-HOOK] allowed: $RELPATH (phase: build, superpowers)" >&2
+        exit 0
+        ;;
+      verify)
+        echo "[COMET-HOOK] allowed: $RELPATH (phase: verify, superpowers)" >&2
+        exit 0
+        ;;
+    esac
+    # open/archive: block docs/superpowers writes
     ;;
   .comet/*|*/.comet/*)
     # Comet config
+    echo "[COMET-HOOK] allowed: $RELPATH (whitelist: comet config)" >&2
     exit 0
     ;;
   .claude/*)
     # Claude settings/rules
+    echo "[COMET-HOOK] allowed: $RELPATH (whitelist: claude config)" >&2
     exit 0
     ;;
   CLAUDE.md|CHANGELOG.md|README.md|*.md)
     # Root-level markdown files
     case "$RELPATH" in
       */*) ;; # subdirectory .md — NOT whitelisted, fall through
-      *) exit 0 ;;
+      *)
+        echo "[COMET-HOOK] allowed: $RELPATH (whitelist: root markdown)" >&2
+        exit 0
+        ;;
     esac
     ;;
   .comet.yaml|comet.yaml|.comet.yml|comet.yml)
     # Project-level comet config
+    echo "[COMET-HOOK] allowed: $RELPATH (whitelist: comet config)" >&2
     exit 0
     ;;
 esac
@@ -143,6 +212,7 @@ esac
 case "$PHASE" in
   build|verify)
     # Code writes allowed in build and verify
+    echo "[COMET-HOOK] allowed: $RELPATH (phase: $PHASE)" >&2
     exit 0
     ;;
   open|design|archive)
@@ -175,4 +245,5 @@ case "$PHASE" in
     ;;
 esac
 
+echo "[COMET-HOOK] allowed: $RELPATH (phase: $PHASE)" >&2
 exit 0

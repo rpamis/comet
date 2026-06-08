@@ -156,7 +156,7 @@ After user selection, update `isolation`, execution method, and TDD mode fields:
 | Option | Meaning | Applicable Scenario |
 |--------|---------|---------------------|
 | `tdd` | Write a failing test first for each task, then implement | Recommended. Changes involving business logic, new features, APIs |
-| `direct` | Implement directly, no enforced TDD flow | Changes that don't need test coverage, or user chooses to skip tests and write code directly |
+| `direct` | Implement directly, no enforced TDD flow | Changes that don't need test coverage, or user chooses to skip tests and write code directly. hotfix/tweak presets default to `direct` |
 
 Run `"$COMET_BASH" "$COMET_STATE" set <name> tdd_mode <tdd|direct>`
 
@@ -214,7 +214,8 @@ When `build_mode` is `executing-plans`, after all planned tasks are complete and
 
 Requirements:
 - the `requesting-code-review` skill must be loaded before `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`
-- CRITICAL review findings must be fixed first and must not be carried into verify
+- if `requesting-code-review` skill is unavailable, skip the review gate but must record `<!-- review skipped: skill unavailable -->` in tasks.md, then continue guard transition
+- CRITICAL review findings (security vulnerabilities, data loss risk, build/test failures) must be fixed first and must not be carried into verify
 - if non-CRITICAL review findings are accepted, record the acceptance reason and impact scope in tasks.md, the commit body, a verification report draft, or another durable artifact
 
 ### 3b. In-Execution Debugging (Debug Gate)
