@@ -67,9 +67,8 @@ handoff_hash: <sha256>
 - 超出摘录预算时标记 `[TRUNCATED]`，并保留 Full source 路径
 
 beta 交接包是 **结构化 spec projection**，用于减少 OpenSpec 原文 token 占用但避免实现漂移：
-- `spec-context.json`：机器索引，包含 change、phase、canonical spec、source paths、hash、requirement/scenario headings
-- `spec-context.md`：供 Superpowers 阅读的紧凑上下文，保留 source path、sha256、requirement heading、scenario heading 和 Given/When/Then 验收要点
-- requirement/scenario heading 必须从 delta spec 原样投影；guard 会校验 beta projection 覆盖所有 requirement/scenario heading
+- `spec-context.json`：机器索引，包含 change、phase、mode=beta、source paths、context_hash、files 角色
+- `spec-context.md`：供 Superpowers 阅读的紧凑上下文，verbatim 投影 delta spec 文件并按 hash 引用支撑产物
 - OpenSpec delta spec 仍是 canonical spec；projection 缺失或过期时必须重新生成或读取源 spec，不得用 agent summary 替代
 
 如确实需要全文上下文，可显式运行：
@@ -226,7 +225,7 @@ canonical_spec: openspec
 - `handoff_context` 和 `handoff_hash` 已写入 `.comet.yaml`（由 guard 强制校验）
 - `handoff_hash` 与当前 OpenSpec open 阶段产物一致（由 guard 强制校验）
 - `design-context.md` 或 beta `spec-context.md` 必须是脚本生成，且包含 source path、mode、sha256 等可追溯标记（由 guard 强制校验）
-- beta 模式下，`spec-context.md` 必须覆盖所有 delta spec requirement/scenario heading（由 guard 强制校验）
+- beta 模式下，`spec-context.json` 必须结构合法且引用当前源文件（由 guard 强制校验）
 - 如有新能力或补充验收场景，OpenSpec delta spec 已创建/更新
 - `design_doc` 已写入 `.comet.yaml`
 - **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> design --apply`，全部 PASS 后自动流转到 `phase: build`

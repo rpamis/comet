@@ -57,11 +57,14 @@ Prefer reading `openspec/changes/<name>/.comet.yaml`. If not available, fall bac
 **Resume rules**:
 - On every context resume, rerun Step 0 and Step 1; do not trust conversation history for phase detection
 - If there is an active change and the worktree has uncommitted changes, handle them through `comet/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions; this file does not repeat them
-- If `phase: build`, first check `build_pause`, `plan`, `build_mode`, and `isolation`:
-  - If `build_pause: plan-ready` and the plan file exists, return to the `/comet-build` plan-ready resume point, prompt the user to continue choosing isolation and execution method, and do not regenerate the plan
+- If `phase: build`, first check `build_pause`, `plan`, `build_mode`, and `isolation` (see details below):
+  - If `build_pause: plan-ready` but `isolation` and `build_mode` are already set, treat as stale pause: first run `"$COMET_BASH" "$COMET_STATE" set <name> build_pause null`, then read the next unchecked task from tasks.md and resume execution per `build_mode`
+  - If `build_pause: plan-ready` and the plan file exists, but `isolation` or `build_mode` is not yet set, return to the `/comet-build` plan-ready resume point, prompt the user to choose isolation and execution method, and do not regenerate the plan
   - If `build_pause: plan-ready` but the plan file is missing, return to `/comet-build` to handle corrupted state or regenerate the plan
   - If `build_mode`, `isolation`, or `tdd_mode` is unset, return to the corresponding `/comet-build` step to supplement before executing
-  - If both are set, read the next unchecked task from tasks.md and continue
+  - If all are set, read the next unchecked task from tasks.md and continue:
+    - If `build_mode: subagent-driven-development`, do not execute tasks directly in the main window; return to `/comet-build`'s background subagent dispatch rules, main window only coordinates
+    - Other execution modes follow `/comet-build`'s corresponding rules
 - If `phase: verify` and `verify_result: fail`, enter the verification failure decision blocking point: pause and ask the user to fix or accept deviation; only after the user chooses fix, run `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` and invoke `/comet-build`
 - If `phase: open` but proposal/design/tasks are complete, first run `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply` to repair state, then continue detection
 - If `phase: archive`, only invoke `/comet-archive`; `/comet-archive` must first wait for final archive confirmation. After archive succeeds, the change moves to the archive directory, so do not run guard against the old active directory
@@ -234,7 +237,7 @@ State-machine hard constraints:
 
 ### Script Location
 
-Comet scripts are distributed in `comet/scripts/`. **Do not hardcode paths** — locate once, cache in env vars:
+Comet scripts are distributed in `comet/scripts/`. **Do not hardcode paths** — locate once, cache in env vars. This block is a standard boilerplate repeated in every sub-skill for independent loadability; changes must be kept in sync across all files:
 
 ```bash
 COMET_ENV="${COMET_ENV:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet/scripts/comet-env.sh' -type f -print -quit 2>/dev/null)}"

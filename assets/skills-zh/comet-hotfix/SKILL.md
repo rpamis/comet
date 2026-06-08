@@ -16,7 +16,7 @@ description: "Comet 预设路径：Bug fix / 热修复。跳过 brainstorming，
 
 ---
 
-## 流程（preset workflow，5 阶段）
+## 流程（preset workflow，6 步）
 
 ### 0. 输出语言约束
 

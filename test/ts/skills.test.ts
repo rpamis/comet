@@ -306,7 +306,9 @@ describe('skills', () => {
       expect(zhBuild).toContain('提供 plan-ready 暂停点');
       expect(zhBuild).toContain('不得自动继续，也不得把暂停写入 `build_mode`');
       expect(zhBuild).toContain('`build_mode` 为 `executing-plans`');
-      expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `requesting-code-review` 技能');
+      expect(zhBuild).toContain(
+        '必须使用 Skill 工具加载 Superpowers `requesting-code-review` 技能',
+      );
       expect(zhBuild).toContain('至少请求一次代码审查');
       expect(zhBuild).toContain('build → verify');
       expect(zhBuild).toContain('CRITICAL review 发现必须先修复');
@@ -345,7 +347,9 @@ describe('skills', () => {
       expect(zhOpen).not.toContain('每个被接受的拆分项都必须通过 `/opsx:new` 创建独立 change');
       expect(zhOpen).toContain('已确认拆分项');
       expect(zhOpen).toContain('跳过 PRD 拆分预检');
-      expect(zhOpen).toContain('批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`');
+      expect(zhOpen).toContain(
+        '批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`',
+      );
       expect(zhOpen).toContain('拆分完毕后必须暂停询问用户开始哪一个 change');
       expect(zhOpen).toContain('恢复时先检查已创建的 active changes');
 
@@ -591,18 +595,30 @@ describe('skills', () => {
       expect(enOpen).toContain('Create multiple OpenSpec changes');
       expect(enOpen).toContain('Keep everything as one change');
       expect(enOpen).toContain('Adjust the split plan before continuing');
-      expect(enOpen).toContain('Every accepted split item must be created as an independent change through `/comet-open`');
-      expect(enOpen).not.toContain('Every accepted split item must be created as an independent change through `/opsx:new`');
+      expect(enOpen).toContain(
+        'Every accepted split item must be created as an independent change through `/comet-open`',
+      );
+      expect(enOpen).not.toContain(
+        'Every accepted split item must be created as an independent change through `/opsx:new`',
+      );
       expect(enOpen).toContain('confirmed split item');
       expect(enOpen).toContain('skip the PRD split preflight');
-      expect(enOpen).toContain('In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase');
-      expect(enOpen).toContain('After splitting is complete, must pause and ask the user which change to start');
+      expect(enOpen).toContain(
+        'In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase',
+      );
+      expect(enOpen).toContain(
+        'After splitting is complete, must pause and ask the user which change to start',
+      );
       expect(enOpen).toContain('On resume, first check already-created active changes');
       expect(enComet).toContain(
         'Build phase scope expansion requiring redesign or new change split',
       );
-      expect(enComet).toContain('Archive phase final confirmation before running the archive script');
-      expect(enComet).toContain('Open phase large PRD requiring confirmation to split into multiple changes');
+      expect(enComet).toContain(
+        'Archive phase final confirmation before running the archive script',
+      );
+      expect(enComet).toContain(
+        'Open phase large PRD requiring confirmation to split into multiple changes',
+      );
       expect(enVerify).toContain('Option A is a verify phase allowed artifact');
       expect(enBuild).toContain(
         'Must use the Skill tool to load the Superpowers `using-git-worktrees`',
@@ -617,9 +633,7 @@ describe('skills', () => {
       expect(enDesign).toContain('Default `context_compression: off` generates');
       expect(enDesign).toContain('If context_compression is beta, use:');
       expect(enDesign).toContain('openspec/changes/<name>/.comet/handoff/spec-context.md');
-      expect(enDesign).toContain(
-        'In beta mode, `spec-context.json` must be structurally valid',
-      );
+      expect(enDesign).toContain('In beta mode, `spec-context.json` must be structurally valid');
       expect(enHotfix).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('Immediately use the Skill tool to load the `comet-design` skill');
       expect(enVerify).toContain(
@@ -695,7 +709,10 @@ describe('skills', () => {
           await Promise.all(
             skillNames.map(async (skillName) => [
               skillName,
-              await fs.readFile(path.resolve('assets', languageDir, skillName, 'SKILL.md'), 'utf-8'),
+              await fs.readFile(
+                path.resolve('assets', languageDir, skillName, 'SKILL.md'),
+                'utf-8',
+              ),
             ]),
           ),
         ) as Record<(typeof skillNames)[number], string>;
@@ -705,25 +722,55 @@ describe('skills', () => {
 
       expect(zhSkills.comet).toContain('输出语言规则');
       expect(zhSkills.comet).toContain('以触发本次工作流的用户请求语言作为默认输出语言');
-      expect(zhSkills['comet-open']).toContain('传递给 OpenSpec 的所有提问和产物要求都必须包含输出语言约束');
+      expect(zhSkills['comet-open']).toContain(
+        '传递给 OpenSpec 的所有提问和产物要求都必须包含输出语言约束',
+      );
       expect(zhSkills['comet-design']).toContain('Language: 使用触发本次工作流的用户请求语言输出');
-      expect(zhSkills['comet-build']).toContain('计划文件和执行反馈必须使用触发本次工作流的用户请求语言');
+      expect(zhSkills['comet-build']).toContain(
+        '计划文件和执行反馈必须使用触发本次工作流的用户请求语言',
+      );
       expect(zhSkills['comet-build']).toContain('ARGUMENTS 必须包含与 Step 1 相同的 Language 约束');
-      expect(zhSkills['comet-verify']).toContain('验证报告和分支处理说明必须使用触发本次工作流的用户请求语言');
-      expect(zhSkills['comet-archive']).toContain('归档摘要和生命周期闭环说明必须使用触发本次工作流的用户请求语言');
-      expect(zhSkills['comet-hotfix']).toContain('精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言');
-      expect(zhSkills['comet-tweak']).toContain('精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言');
+      expect(zhSkills['comet-verify']).toContain(
+        '验证报告和分支处理说明必须使用触发本次工作流的用户请求语言',
+      );
+      expect(zhSkills['comet-archive']).toContain(
+        '归档摘要和生命周期闭环说明必须使用触发本次工作流的用户请求语言',
+      );
+      expect(zhSkills['comet-hotfix']).toContain(
+        '精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言',
+      );
+      expect(zhSkills['comet-tweak']).toContain(
+        '精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言',
+      );
 
       expect(enSkills.comet).toContain('Output Language Rule');
-      expect(enSkills.comet).toContain('Use the language of the user request that triggered this workflow as the default output language');
-      expect(enSkills['comet-open']).toContain('Every prompt and artifact request passed to OpenSpec must include the output-language constraint');
-      expect(enSkills['comet-design']).toContain('Language: Use the language of the user request that triggered this workflow');
-      expect(enSkills['comet-build']).toContain('Plan files and execution feedback must use the language of the user request that triggered this workflow');
-      expect(enSkills['comet-build']).toContain('ARGUMENTS must include the same Language constraint as Step 1');
-      expect(enSkills['comet-verify']).toContain('Verification reports and branch-handling notes must use the language of the user request that triggered this workflow');
-      expect(enSkills['comet-archive']).toContain('Archive summaries and lifecycle closure notes must use the language of the user request that triggered this workflow');
-      expect(enSkills['comet-hotfix']).toContain('Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow');
-      expect(enSkills['comet-tweak']).toContain('Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow');
+      expect(enSkills.comet).toContain(
+        'Use the language of the user request that triggered this workflow as the default output language',
+      );
+      expect(enSkills['comet-open']).toContain(
+        'Every prompt and artifact request passed to OpenSpec must include the output-language constraint',
+      );
+      expect(enSkills['comet-design']).toContain(
+        'Language: Use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-build']).toContain(
+        'Plan files and execution feedback must use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-build']).toContain(
+        'ARGUMENTS must include the same Language constraint as Step 1',
+      );
+      expect(enSkills['comet-verify']).toContain(
+        'Verification reports and branch-handling notes must use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-archive']).toContain(
+        'Archive summaries and lifecycle closure notes must use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-hotfix']).toContain(
+        'Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow',
+      );
+      expect(enSkills['comet-tweak']).toContain(
+        'Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow',
+      );
     });
   });
 

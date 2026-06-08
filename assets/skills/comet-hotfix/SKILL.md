@@ -16,7 +16,7 @@ Quick bug fix workflow: open → build → verify → archive. Skip brainstormin
 
 ---
 
-## Process (preset workflow, 5 steps)
+## Process (preset workflow, 6 steps)
 
 ### 0. Output Language Constraint
 

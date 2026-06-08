@@ -57,7 +57,7 @@ agent 做决策只需读本节，参考附录按需查阅。
 **断点恢复规则**：
 - 每次恢复上下文时，先重新执行 Step 0 和 Step 1，不依赖对话历史判断阶段
 - 只要存在 active change 且工作区有未提交改动，必须按 `comet/reference/dirty-worktree.md` 协议处理。该协议定义了检查步骤、归因分类和禁令，本文件不重复
-- 若 `phase: build`，先检查 `build_pause`、`plan`、`build_mode` 和 `isolation`：
+- 若 `phase: build`，先检查 `build_pause`、`plan`、`build_mode` 和 `isolation`（详见下方）：
   - 若 `build_pause: plan-ready` 但 `isolation` 和 `build_mode` 已经设置，则视为 stale pause：先运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_pause null`，再读取 tasks.md 的下一个未勾选任务并按 `build_mode` 恢复执行
   - 若 `build_pause: plan-ready` 且 plan 文件存在，但 `isolation` 或 `build_mode` 尚未设置，回到 `/comet-build` 的 plan-ready 恢复点，提示用户继续选择隔离方式和执行方式，不重新生成 plan
   - 若 `build_pause: plan-ready` 但 plan 文件缺失，回到 `/comet-build` 处理状态损坏或重新生成 plan
@@ -237,7 +237,7 @@ archived: false
 
 ### 脚本定位
 
-Comet 脚本随 skill 包分发在 `comet/scripts/` 下。**不硬编码路径** — 定位一次，缓存到环境变量：
+Comet 脚本随 skill 包分发在 `comet/scripts/` 下。**不硬编码路径** — 定位一次，缓存到环境变量。此块为标准样板，在每个子 skill 中独立重复以确保可独立加载；修改时必须保持所有文件同步：
 
 ```bash
 COMET_ENV="${COMET_ENV:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet/scripts/comet-env.sh' -type f -print -quit 2>/dev/null)}"
@@ -309,7 +309,7 @@ docs/superpowers/                      # Superpowers — HOW
 
 1. **brainstorming 不可跳过** — 每次变更必须经过深度设计（hotfix 和 tweak 除外）
 2. **delta spec 是活文档** — 阶段 3 期间可自由修改，归档时同步
-3. **交接包由脚本生成** — OpenSpec → Superpowers 的上下文必须通过 `comet-handoff.sh` 生成 compact 可追溯摘录；启用 `.comet/config.yaml` 的 `context_compression: beta` 后，生成结构化 spec projection，并由 guard 校验 source/hash/mode 与 requirement/scenario 覆盖
+3. **交接包由脚本生成** — OpenSpec → Superpowers 的上下文必须通过 `comet-handoff.sh` 生成 compact 可追溯摘录（需要全文时用 `--full`），并由 guard 校验 source/hash/mode
 4. **保持 tasks.md 同步** — 完成一个勾一个
 5. **频繁提交** — 每个任务一次提交，message 体现设计意图
 6. **先验证再确认归档** — `/comet-verify` 通过后进入 `/comet-archive`，但运行归档脚本前必须等待用户最终确认

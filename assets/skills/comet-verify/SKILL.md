@@ -12,11 +12,11 @@ description: "Comet Phase 4: Verify and Close. Invoke with /comet-verify. Verify
 
 ## Steps
 
-### 0. Output Language Constraint
+### 0a. Output Language Constraint
 
 Verification reports and branch-handling notes must use the language of the user request that triggered this workflow.
 
-### 0. Entry State Verification (Entry Check)
+### 0b. Entry State Verification (Entry Check)
 
 Execute entry verification:
 
