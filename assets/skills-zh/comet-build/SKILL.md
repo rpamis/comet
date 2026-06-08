@@ -79,7 +79,7 @@ Subagent 完成后：
 "$COMET_BASH" "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 ```
 
-无需手动更新 phase，guard 会在退出条件满足后自动流转。
+无需手动更新 phase，阶段守卫（guard `--apply`）会在退出条件满足后推进 `phase` 字段。
 
 计划写入后，立即提供一个新的用户决策点：
 
@@ -270,7 +270,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`；若为 `subagent-driven-development`，`subagent_dispatch` 必须为 `confirmed`
 - `tdd_mode` 已写为 `tdd` 或 `direct`
 - 若 `build_mode` 为 `executing-plans`，已使用 Skill 工具加载 Superpowers `requesting-code-review` 技能并至少请求一次代码审查，且 CRITICAL review 发现已修复或非 CRITICAL review 发现已记录接受理由
-- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后自动流转到 `phase: verify`
+- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后由守卫推进到 `phase: verify`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
 Guard 会优先读取项目配置中的命令：
 
@@ -282,7 +282,7 @@ verify_command: <verify command>
 配置位置可为 change 的 `.comet.yaml`，也可为仓库根目录的 `.comet.yaml` / `comet.yaml` / `.comet.yml` / `comet.yml`。
 未配置时才回退到 `npm run build`、Maven 或 Cargo 的默认探测。构建失败时 guard 会打印失败命令输出，作为排查证据。
 
-退出前运行 guard 自动流转：
+退出前运行阶段守卫推进 phase（此步骤与 `auto_transition` 无关）：
 
 ```bash
 "$COMET_BASH" "$COMET_GUARD" <change-name> build --apply
@@ -290,16 +290,17 @@ verify_command: <verify command>
 
 状态文件自动更新为 `phase: verify`、`verify_result: pending`。
 
-## 自动流转
+## 自动衔接下一阶段
 
-退出条件满足后（包括用户选择工作方式），确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
+> **术语区分**：上面的「阶段守卫推进」由 guard `--apply` 完成，更新 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。本节的「自动衔接」只决定**是否自动调用下一个 skill**，由 `auto_transition` 控制。
+
+退出条件满足且阶段守卫推进 phase 后，运行：
 
 ```bash
-AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+"$COMET_BASH" "$COMET_STATE" next <change-name>
 ```
 
-若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-verify` skill 进入验证与收尾阶段。
-
-若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
-
-> 状态已更新为 `phase: verify`。请使用 `/comet-verify` 进入验证与收尾阶段。
+脚本根据 `phase`、`workflow`、`auto_transition` 输出确定性的下一步：
+- `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段
+- `NEXT: manual` → 不要调用下一 skill，按 `HINT` 提示用户手动运行 `/<SKILL>`
+- `NEXT: done` → 流程已完成，无需继续

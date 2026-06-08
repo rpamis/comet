@@ -113,7 +113,11 @@ Reuse `/comet-archive`. Must satisfy `verify_result: pass` in `.comet.yaml` befo
 ## Continuous Execution Mode
 
 <IMPORTANT>
-Tweak workflow is **one-time continuous execution**. After invoking `/comet-tweak`, agent must automatically advance through tweak steps, without pausing to wait for user input mid-way. But the following situations must pause and wait for user confirmation:
+Tweak workflow is **one-time continuous execution**. After invoking `/comet-tweak`, agent must automatically advance through tweak steps, without pausing to wait for user input mid-way.
+
+Exception: when `.comet.yaml` has `auto_transition: false`, after each phase guard advances `phase`, do not auto-invoke the next skill. In this case, use `"$COMET_BASH" "$COMET_STATE" next <name>` output and pause for manual continuation as instructed.
+
+The following situations must pause and wait for user confirmation:
 
 1. Encountering upgrade conditions (see "Upgrade Conditions" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm** upgrading to full workflow
 2. verify phase (comet-verify) verification-failure and branch-handling decisions
@@ -159,15 +163,17 @@ Then on current change basis, supplement Design Doc: **Immediately use the Skill
 - No new capability, architecture adjustments or interface changes
 - **Phase guard**: Before build → verify run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`
 
-## Automatic Transition
+## Automatic Handoff to Next Phase
 
-After each phase guard or state transition completes, read:
+> **Terminology distinction**: phase guard `--apply` advances the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. This section's "automatic handoff" only controls whether to automatically invoke the next skill.
+
+After each phase guard or state transition advances phase, run:
 
 ```bash
-AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <name> auto_transition)
+"$COMET_BASH" "$COMET_STATE" next <name>
 ```
 
-When `AUTO_TRANSITION=false`, state has advanced but do not invoke the next Skill; tell the user to continue manually based on current phase:
-- `phase: build` → run `/comet-tweak` manually
-- `phase: verify` → run `/comet-verify` manually
-- `phase: archive` → run `/comet-archive` manually
+The script determines the next action from `phase`, `workflow`, and `auto_transition`:
+- `NEXT: auto` -> invoke the `SKILL` target to continue the tweak flow (`phase: build` returns `comet-tweak`, `verify` returns `comet-verify`, `archive` returns `comet-archive`)
+- `NEXT: manual` -> do not invoke the next skill; follow `HINT` and ask the user to run `/<SKILL>` manually
+- `NEXT: done` -> workflow is complete; no further action needed

@@ -6,6 +6,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Auto-transition config**: Added `auto_transition` (`true`|`false`) to `.comet.yaml` and the `.comet/config.yaml` project default so teams can choose whether Comet automatically advances to the next phase skill or pauses for a manual transition. When `auto_transition: false`, build/design/open/verify skills stop after meeting exit conditions and print the next manual step instead of invoking the next skill. Includes state-machine whitelist, enum validation, and schema (`comet-yaml-validate.sh`) coverage ([#74](https://github.com/rpamis/comet/pull/74)).
+- **Deterministic next-step resolver**: Added `comet-state next <change-name>` to resolve post-guard routing from `.comet.yaml` (`phase`, `workflow`, `auto_transition`) with structured output: `NEXT: auto|manual|done`, `SKILL: <skill-name>`, and `HINT` (manual mode). This centralizes next-skill routing logic in scripts instead of duplicating it across skill prose.
+- **Workflow output language**: Comet workflows now propagate the triggering user request language into OpenSpec and Superpowers steps via an explicit Output Language Rule, keeping generated proposals, designs, plans, verification reports, and archive notes readable in the user's language. Resuming an existing change preserves the dominant artifact language unless the user explicitly asks to switch ([#53](https://github.com/rpamis/comet/pull/53), [#37](https://github.com/rpamis/comet/issues/37)).
 - **Execution benchmark (Claude Code)**: Added `benchmark:execution`, a benchmark harness with three test phases: L1 (design doc generation from handoff context), L2 (build a note-board module from handoff context + run tests), and L3 (full workflow — implement a dictionary module from spec, run 10 vitest tests). Invokes Claude Code (`claude -p`) and measures actual test pass rate, token usage, retry count, duration, and cost. Compares `off` vs `beta` context compression modes across small/medium/large tiers. Supports `--phase l1|l2|l3|both|all` and `--dry-run` for deterministic verification. Extracted shared utilities (`spawnCapture`, `parseClaudeJson`, `buildClaudeArgs`, etc.) to `scripts/benchmark-utils.mjs`.
 
 - **Token optimization: TDD skill single load**: Build skill now loads `test-driven-development` skill once before the first task (instead of per-task), reducing ~44K tokens per 10-task workflow. Includes compaction recovery guidance to reload once on resume.
@@ -27,6 +30,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **executing-plans review gate**: When `build_mode` is `executing-plans`, the build phase now requires loading the Superpowers `requesting-code-review` skill and requesting code review at least once before the build→verify phase guard. CRITICAL findings must be fixed before verify; accepted non-CRITICAL findings must record acceptance rationale in a durable artifact. The build-exit checklist enforces this gate ([#76](https://github.com/rpamis/comet/pull/76), [#41](https://github.com/rpamis/comet/issues/41)).
+- **Phase advancement vs handoff wording**: Chinese and English Comet skills now consistently distinguish guard-driven phase advancement (`--apply`, always updates `phase`) from next-skill invocation control (`auto_transition`). Open/design/build/verify/hotfix/tweak guidance now routes through `comet-state next` for auto/manual handoff.
+- **Preset continuity wording**: Hotfix and tweak guidance now explicitly documents the `auto_transition: false` exception in continuous execution mode, removing contradictory wording around "always continue" behavior.
 - **Verify hash-skip scoped to tasks.md only**: Full verification always reads `proposal.md` and `design.md` even when hash matches, ensuring goal-satisfaction and design-consistency checks have complete context.
 - **Design Doc creation stays in main session**: Design Doc is created inline (not offloaded to subagent) to preserve full brainstorming conversation context and prevent information loss for complex requirements.
 - **Subagent failure fallback**: Plan creation subagent offload includes explicit degraded fallback — if the subagent fails, the main session loads `writing-plans` inline.
@@ -60,6 +66,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **skip-all skipping uninstalled components**: `comet init` no longer treats a previously skipped component as already installed. Choosing skip-all now only skips components that are actually present, so uninstalled OpenSpec, Superpowers, Comet, or CodeGraph components are still offered for installation instead of being silently bypassed ([#73](https://github.com/rpamis/comet/pull/73)).
+
 - **Update JSON output for rules/hooks**: `comet update --json` now includes rules and hooks distribution results alongside skill update results, with per-target error isolation so a single platform failure doesn't break the entire update output.
 
 - **Duplicate YAML fields**: `replace_yaml_field` in `comet-state.sh` now deduplicates all fields after replacement, keeping only the last occurrence of each key. Previously, multiple `cmd_set` calls for the same field (e.g., during verify-fail → re-verify cycles) could leave duplicate lines in `.comet.yaml`, confusing downstream parsers. Fixes [#77](https://github.com/rpamis/comet/issues/77).
@@ -80,6 +88,12 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Tests
 
+- **Auto-transition regression**: Added state-machine and skill coverage for `auto_transition` init defaults, enum validation, `.comet/config.yaml` project default propagation, schema validation, and the manual-transition vs auto-advance branching in build/design/open/verify skills ([#74](https://github.com/rpamis/comet/pull/74)).
+- **`comet-state next` regression**: Added shell-script coverage for next-step resolution across full/hotfix/tweak workflows, manual-handoff mode, archived completion (`NEXT: done`), and missing `.comet.yaml` failure behavior.
+- **Skill handoff wording regression update**: Updated skill-content assertions to validate next-driven handoff wording (`NEXT: auto|manual|done`) and synchronized Chinese/English expectation checks.
+- **Output language regression**: Added skill coverage that Comet propagates the triggering user request language into OpenSpec and Superpowers steps across the open, design, build, verify, hotfix, tweak, and archive skills ([#53](https://github.com/rpamis/comet/pull/53)).
+- **Review gate regression**: Added skill coverage that `executing-plans` build mode requires the `requesting-code-review` gate before the build→verify transition, plus updated init-e2e expectations ([#76](https://github.com/rpamis/comet/pull/76)).
+- **skip-all regression**: Added `comet init` coverage that skip-all only skips installed components and still offers uninstalled OpenSpec/Superpowers/Comet/CodeGraph components ([#73](https://github.com/rpamis/comet/pull/73)).
 - **`--hash-only` flag coverage**: New tests verify correct hash output, change-directory validation, required-file validation, and no handoff file regeneration.
 - **Context benchmark runner coverage**: New tests verify benchmark token-savings math, Codex JSONL usage/verdict parsing, and dry-run report generation without invoking Codex.
 - **Flaky test timeout fix**: Design guard test without design_doc now has explicit 20s timeout to prevent Windows bash startup flakiness.

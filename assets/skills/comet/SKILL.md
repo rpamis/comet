@@ -116,6 +116,8 @@ Flow chain: open → design → build → verify → archive
 
 **Continuous execution requirement**: starting from the detected phase, the agent automatically continues through all later phases. But **auto-advancing only applies at transition points without user decisions**. When encountering user decision points, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user's explicit response**. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation, and must not just output a text prompt and then continue executing.
 
+**Distinguish phase advancement vs automatic handoff**: each sub-skill runs phase guard `--apply` before exit to advance the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. After that, the sub-skill runs `"$COMET_BASH" "$COMET_STATE" next <name>` to resolve the next action: when `auto_transition` is not `false`, output is `NEXT: auto` (auto-invoke next skill); when `auto_transition` is `false`, output is `NEXT: manual` (do not invoke next skill, show a manual run hint). Therefore `auto_transition` **only controls next skill invocation, not phase advancement**. Regardless of `auto_transition`, user decision points below remain blocking.
+
 **Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet` invocation must stop, **using the current platform's available user input/confirmation mechanism to wait for the user's choice**. If the current platform has no structured question tool, ask clear options in the conversation and stop the workflow, waiting for the user's reply before continuing. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
 
 Nodes requiring user participation (pause only at these nodes):
@@ -271,6 +273,14 @@ fi
 "$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
 "$COMET_BASH" "$COMET_STATE" transition <archive-name> archived
 ```
+
+**Resolve next action**: after guard-based phase advancement, use the `next` subcommand to determine whether to auto-invoke the next skill:
+
+```bash
+"$COMET_BASH" "$COMET_STATE" next <change-name>
+```
+
+Output format: `NEXT: auto|manual|done` + `SKILL: <skill-name>` (omitted for `done`) + `HINT` (for `manual` only). With `auto_transition: false`, output is `manual`, which pauses only the next skill invocation and does not affect the already-applied phase advancement.
 
 **Archive script**: Complete all archive steps in one command:
 

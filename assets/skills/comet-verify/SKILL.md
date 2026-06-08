@@ -212,19 +212,20 @@ After both verification and branch handling are complete, run guard for auto-tra
 
 State file auto-updates to `phase: archive`, `verify_result: pass`, `verified_at: YYYY-MM-DD`.
 
-## Automatic Transition
+## Automatic Handoff to Next Phase
 
-After exit conditions are met (including user selecting branch handling method), ensure the state machine has advanced, then read `AUTO_TRANSITION`:
+> **Terminology distinction**: the "phase advancement" above is performed by guard `--apply`, which updates the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. This section's "automatic handoff" only controls whether to automatically invoke the next skill.
+
+After verification and branch handling are complete, and guard-based phase advancement has completed, run:
 
 ```bash
-AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+"$COMET_BASH" "$COMET_STATE" next <change-name>
 ```
 
-If `AUTO_TRANSITION` is empty or not `false`, invoke the `comet-archive` skill to enter the archive phase.
-
-If `AUTO_TRANSITION=false`, do not invoke the next Skill; print:
-
-> State has been updated to `phase: archive`. Run `/comet-archive` to enter the archive phase.
+The script determines the next action from `phase`, `workflow`, and `auto_transition`:
+- `NEXT: auto` -> invoke the `SKILL` target to continue to the next phase
+- `NEXT: manual` -> do not invoke the next skill; follow `HINT` and ask the user to run `/<SKILL>` manually
+- `NEXT: done` -> workflow is complete; no further action needed
 
 Note: after `comet-archive` starts, it must first execute the final archive confirmation blocking point and wait for the user to explicitly choose "Confirm archive" before running the archive script. Must not automatically archive just because verification passed.
 

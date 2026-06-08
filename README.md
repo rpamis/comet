@@ -46,35 +46,62 @@ Comet chains both into a five-phase automated pipeline.
 
 ## Why Comet
 
-OpenSpec excels at managing requirements, creating proposals, managing Spec lifecycles, and archiving, but its proposals and tasks lack the detail of Superpowers brainstorming.
+OpenSpec excels at managing requirements, creating proposals, managing Spec lifecycles, and archiving, but its proposals
+and tasks lack the detail of Superpowers brainstorming.
 
-Superpowers generates Spec documents after brainstorming, but these documents typically lack stateful design — after completing requirements, Specs only have tasks checked off in the document, and Agents even forget to check them off. This causes the Agent to re-examine documents and project code to verify on resumption, wasting many tokens.
+Superpowers generates Spec documents after brainstorming, but these documents typically lack stateful design — after
+completing requirements, Specs only have tasks checked off in the document, and Agents even forget to check them off.
+This causes the Agent to re-examine documents and project code to verify on resumption, wasting many tokens.
 
 **Comet combines the strengths of both**, integrating the core workflow into 5 phases
 
-The main entry `/comet` supports current Spec state detection, suitable for long tasks — after closing your AI coding session midway, just `/comet` and Comet will automatically read the active Spec (lists multiple for selection), dynamically identify which phase is currently executing, and continue.
+The main entry `/comet` supports current Spec state detection, suitable for long tasks — after closing your AI coding
+session midway, just `/comet` and Comet will automatically read the active Spec (lists multiple for selection),
+dynamically identify which phase is currently executing, and continue.
 
-At the same time, Comet provides full Spec lifecycle management. During execution, it links OpenSpec change/spec artifacts with Superpowers design and planning documents, then automates handoff, state updates, validation, and archive sync so users do not have to repeatedly remind the Agent to keep documents synchronized and connected.
+At the same time, Comet provides full Spec lifecycle management. During execution, it links OpenSpec change/spec
+artifacts with Superpowers design and planning documents, then automates handoff, state updates, validation, and archive
+sync so users do not have to repeatedly remind the Agent to keep documents synchronized and connected.
 
 ## What You'll Learn
 
-Many excellent Skill projects exist in the current Skill market, but they generally have preference issues — users may only like some features. For example, when using both OpenSpec and Superpowers, one might only use OpenSpec's Spec management capabilities, but prefer Superpowers' TDD-driven approach for coding.
+Many excellent Skill projects exist in the current Skill market, but they generally have preference issues — users may
+only like some features. For example, when using both OpenSpec and Superpowers, one might only use OpenSpec's Spec
+management capabilities, but prefer Superpowers' TDD-driven approach for coding.
 
-Long-term Skill users know these capabilities can be freely combined, but exactly how to do so still requires real practice. The Comet project can serve as a reference:
+Long-term Skill users know these capabilities can be freely combined, but exactly how to do so still requires real
+practice. The Comet project can serve as a reference:
 
-- **How to reliably trigger nested Skills** — Not letting the Agent rely on document descriptions to perform "look-alike Skill trigger" operations (like writing files based on Skill descriptions), but truly triggering Skills (key feature: Skill trigger prints on CC). Comet triggers many capabilities from OpenSpec and Superpowers. How is this Prompt written?
+- **How to reliably trigger nested Skills** — Not letting the Agent rely on document descriptions to perform "look-alike
+  Skill trigger" operations (like writing files based on Skill descriptions), but truly triggering Skills (key feature:
+  Skill trigger prints on CC). Comet triggers many capabilities from OpenSpec and Superpowers. How is this Prompt
+  written?
 
-- **How to make combined Skills flow automatically across phases** — Not relying on manual intervention. Comet's 5-phase flow can automatically trigger Skills for the core process except for necessary user choices, while the state machine also protects state transition reliability.
+- **How to make combined Skills flow automatically across phases** — Not relying on manual intervention. Comet's 5-phase
+  flow can automatically trigger Skills for the core process except for necessary user choices, while the state machine
+  also protects state transition reliability.
 
-- **How to turn the Spec lifecycle into a resumable workflow** — Comet links OpenSpec change/spec artifacts with Superpowers design and planning documents, then records phase, execution mode, verification results, and archive status in `.comet.yaml`, so the Agent can resume after interruption instead of rereading documents and guessing progress.
+- **How to turn the Spec lifecycle into a resumable workflow** — Comet links OpenSpec change/spec artifacts with
+  Superpowers design and planning documents, then records phase, execution mode, verification results, and archive
+  status in `.comet.yaml`, so the Agent can resume after interruption instead of rereading documents and guessing
+  progress.
 
-- **How to turn document synchronization from "user reminders" into automation** — Comet puts handoff, state updates, validation, and archive sync into scripted flows, reducing repeated prompts like "remember to update the design doc", "remember to sync the spec", and "remember to archive the change".
+- **How to turn document synchronization from "user reminders" into automation** — Comet puts handoff, state updates,
+  validation, and archive sync into scripted flows, reducing repeated prompts like "remember to update the design
+  doc", "remember to sync the spec", and "remember to archive the change".
 
-- **How to design guard conditions that Agents can execute** — Comet does not simply trust the Agent saying "done" at phase exits. Scripts such as `comet-guard.sh`, `comet-yaml-validate.sh`, and `comet-state.sh` check tasks, state fields, verification evidence, and archive conditions before allowing the workflow to advance.
+- **How to design guard conditions that Agents can execute** — Comet does not simply trust the Agent saying "done" at
+  phase exits. Scripts such as `comet-guard.sh`, `comet-yaml-validate.sh`, and `comet-state.sh` check tasks, state
+  fields, verification evidence, and archive conditions before allowing the workflow to advance.
 
-- **How to distribute and install Skills across platforms** — Comet supports multiple AI coding platforms, project/global installation, Chinese/English Skill choices, and platform-specific directory differences such as Antigravity using different project-level and global paths. It can be a reference for CLI installers and Skill package structure.
+- **How to distribute and install Skills across platforms** — Comet supports multiple AI coding platforms,
+  project/global installation, Chinese/English Skill choices, and platform-specific directory differences such as
+  Antigravity using different project-level and global paths. It can be a reference for CLI installers and Skill package
+  structure.
 
-- **How to turn shell scripts into Agent workflow infrastructure** — Comet's scripts need to work across macOS, Linux, and Windows Git Bash while handling hashes, YAML fields, state machines, and archive flows. It shows how to move fragile workflow control out of scattered Prompt text and into testable, reusable tools.
+- **How to turn shell scripts into Agent workflow infrastructure** — Comet's scripts need to work across macOS, Linux,
+  and Windows Git Bash while handling hashes, YAML fields, state machines, and archive flows. It shows how to move
+  fragile workflow control out of scattered Prompt text and into testable, reusable tools.
 
 ## Install
 
@@ -136,14 +163,15 @@ npx skills add rpamis/comet
 Initializes OpenSpec, Superpowers, and Comet skills for selected AI coding platforms.
 
 | Option            | Description                                                                    |
-| ----------------- | ------------------------------------------------------------------------------ |
+|-------------------|--------------------------------------------------------------------------------|
 | `--yes`           | Non-interactive mode, auto-select detected platforms (or all if none detected) |
 | `--scope <scope>` | Install scope: `project` or `global`                                           |
 | `--skip-existing` | Skip already installed components                                              |
 | `--overwrite`     | Overwrite already installed components                                         |
 | `--json`          | Output structured JSON                                                         |
 
-When multiple existing components are found on the same platform, interactive init offers one bulk choice: overwrite all, skip all, or choose per component.
+When multiple existing components are found on the same platform, interactive init offers one bulk choice: overwrite
+all, skip all, or choose per component.
 
 </details>
 
@@ -153,7 +181,7 @@ When multiple existing components are found on the same platform, interactive in
 Displays active changes, task progress, and the recommended next Comet workflow command.
 
 | Option   | Description                              |
-| -------- | ---------------------------------------- |
+|----------|------------------------------------------|
 | `--json` | Output active changes with `nextCommand` |
 
 </details>
@@ -164,7 +192,7 @@ Displays active changes, task progress, and the recommended next Comet workflow 
 Checks project/global installation health, working directories, installed skills, scripts, and Comet state files.
 
 | Option            | Description                                                     |
-| ----------------- | --------------------------------------------------------------- |
+|-------------------|-----------------------------------------------------------------|
 | `--json`          | Output structured diagnostic results                            |
 | `--scope <scope>` | Diagnose `auto`, `project`, or `global` scope (default: `auto`) |
 
@@ -176,7 +204,7 @@ Checks project/global installation health, working directories, installed skills
 Updates the npm package and refreshes installed Comet skills in detected project/global targets.
 
 | Option              | Description                                   |
-| ------------------- | --------------------------------------------- |
+|---------------------|-----------------------------------------------|
 | `--json`            | Output npm and skill update results as JSON   |
 | `--language <lang>` | Override detected skill language (`en`, `zh`) |
 | `--scope <scope>`   | Update only `global` or `project` scope       |
@@ -184,7 +212,7 @@ Updates the npm package and refreshes installed Comet skills in detected project
 </details>
 
 | Command           | Description  |
-| ----------------- | ------------ |
+|-------------------|--------------|
 | `comet --help`    | Show help    |
 | `comet --version` | Show version |
 
@@ -196,7 +224,7 @@ Updates the npm package and refreshes installed Comet skills in detected project
 <summary>View full platform list</summary>
 
 | Platform           | Skills Dir   | Platform   | Skills Dir    |
-| ------------------ | ------------ | ---------- | ------------- |
+|--------------------|--------------|------------|---------------|
 | Claude Code        | `.claude/`   | Cursor     | `.cursor/`    |
 | Codex              | `.codex/`    | OpenCode   | `.opencode/`  |
 | Windsurf           | `.windsurf/` | Cline      | `.cline/`     |
@@ -214,7 +242,8 @@ Updates the npm package and refreshes installed Comet skills in detected project
 
 </details>
 
-Some platforms use different project and global directories. For example, OpenCode global installs use `.config/opencode`, Lingma global installs use `.lingma`, and Antigravity global installs use `.gemini/antigravity`.
+Some platforms use different project and global directories. For example, OpenCode global installs use
+`.config/opencode`, Lingma global installs use `.lingma`, and Antigravity global installs use `.gemini/antigravity`.
 
 ## Skills
 
@@ -226,7 +255,7 @@ After `comet init`, three groups of skills are installed to the selected platfor
 <summary>View Comet skills</summary>
 
 | Skill            | Description                                                    |
-| ---------------- | -------------------------------------------------------------- |
+|------------------|----------------------------------------------------------------|
 | `/comet`         | Main entry — auto-detects phase and dispatches to sub-commands |
 | `/comet-open`    | Phase 1: Open a change (proposal, design, task breakdown)      |
 | `/comet-design`  | Phase 2: Deep design (brainstorming, Design Doc)               |
@@ -243,15 +272,15 @@ After `comet init`, three groups of skills are installed to the selected platfor
 <details>
 <summary>View script list</summary>
 
-| Script                   | Purpose                                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Script                   | Purpose                                                                                                                           |
+|--------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
 | `comet-env.sh`           | Script discovery helper — exports bundled script paths such as `COMET_GUARD`, `COMET_STATE`, `COMET_HANDOFF`, and `COMET_ARCHIVE` |
-| `comet-guard.sh`         | Phase transition guard — validates exit conditions, `--apply` auto-updates `.comet.yaml`              |
-| `comet-handoff.sh`       | Design handoff — generates deterministic context packages from OpenSpec artifacts with SHA256 tracing |
-| `comet-archive.sh`       | One-command archive — validates state, syncs specs, moves to archive, updates status                  |
-| `comet-yaml-validate.sh` | Schema validator — validates `.comet.yaml` structure and field values                                 |
-| `comet-hook-guard.sh`    | Phase write guard — PreToolUse hook, blocks file writes during open/design/archive phases             |
-| `comet-state.sh`         | Unified state management — init/set/get/check/scale, agents' exclusive YAML interface                 |
+| `comet-guard.sh`         | Phase transition guard — validates exit conditions, `--apply` auto-updates `.comet.yaml`                                          |
+| `comet-handoff.sh`       | Design handoff — generates deterministic context packages from OpenSpec artifacts with SHA256 tracing                             |
+| `comet-archive.sh`       | One-command archive — validates state, syncs specs, moves to archive, updates status                                              |
+| `comet-yaml-validate.sh` | Schema validator — validates `.comet.yaml` structure and field values                                                             |
+| `comet-hook-guard.sh`    | Phase write guard — PreToolUse hook, blocks file writes during open/design/archive phases                                         |
+| `comet-state.sh`         | Unified state management — init/set/get/check/scale, agents' exclusive YAML interface                                             |
 
 </details>
 
@@ -281,7 +310,7 @@ Development methodology: brainstorming, TDD, subagent-driven development, code r
 ### Five Phases
 
 | Phase              | Command          | Owner       | Artifacts                            |
-| ------------------ | ---------------- | ----------- | ------------------------------------ |
+|--------------------|------------------|-------------|--------------------------------------|
 | 1. Open            | `/comet-open`    | OpenSpec    | proposal.md, design.md, tasks.md     |
 | 2. Deep Design     | `/comet-design`  | Superpowers | Design Doc, delta spec               |
 | 3. Plan & Build    | `/comet-build`   | Superpowers | Implementation plan, code commits    |
@@ -301,11 +330,14 @@ Development methodology: brainstorming, TDD, subagent-driven development, code r
 Comet uses a decoupled state architecture with separate YAML files:
 
 | File             | Owner    | Purpose                                             |
-| ---------------- | -------- | --------------------------------------------------- |
+|------------------|----------|-----------------------------------------------------|
 | `.openspec.yaml` | OpenSpec | Spec lifecycle, change metadata                     |
 | `.comet.yaml`    | Comet    | Workflow phase, execution mode, verification status |
 
-All states and execution phases are updated via scripts, and each phase verifies that tasks are truly complete before advancing. Compared to storing complex state rules only in Skill text, this script-backed state machine gives Comet more reliable phase transitions, correct YAML, and easier breakpoint recovery; agents can read the current Spec situation through Comet's built-in commands.
+All states and execution phases are updated via scripts, and each phase verifies that tasks are truly complete before
+advancing. Compared to storing complex state rules only in Skill text, this script-backed state machine gives Comet more
+reliable phase transitions, correct YAML, and easier breakpoint recovery; agents can read the current Spec situation
+through Comet's built-in commands.
 
 <details>
 <summary>View key .comet.yaml fields</summary>
@@ -333,7 +365,16 @@ handoff_context: openspec/changes/<name>/.comet/handoff/design-context.json
 handoff_hash: <sha256>
 ```
 
-In full workflow, `build_mode`, `build_pause`, `isolation`, and `verify_mode` may temporarily be `null`; `build_mode` and `isolation` must be resolved before `build → verify`. `build_pause` records an internal build-phase pause point: `null` means no pause, while `plan-ready` means the plan has been generated and the user paused before choosing isolation and execution mode. It is not an execution mode and must not be written into `build_mode`. `verification_report` stays `null` until verification writes a report, and `verify-pass` requires that report to exist plus `branch_status: handled`. Fields after `archived` in the example are optional or script-derived: `direct_override` is only needed for full-workflow direct builds, project commands may be absent unless configured, and `handoff_context` / `handoff_hash` are recorded by `comet-handoff.sh` before leaving design. Projects can configure `build_command` / `verify_command` in the change or repo root, and guard will run those commands first and print failure output.
+In full workflow, `build_mode`, `build_pause`, `isolation`, and `verify_mode` may temporarily be `null`; `build_mode`
+and `isolation` must be resolved before `build → verify`. `build_pause` records an internal build-phase pause point:
+`null` means no pause, while `plan-ready` means the plan has been generated and the user paused before choosing
+isolation and execution mode. It is not an execution mode and must not be written into `build_mode`.
+`verification_report` stays `null` until verification writes a report, and `verify-pass` requires that report to exist
+plus `branch_status: handled`. Fields after `archived` in the example are optional or script-derived: `direct_override`
+is only needed for full-workflow direct builds, project commands may be absent unless configured, and
+`handoff_context` / `handoff_hash` are recorded by `comet-handoff.sh` before leaving design. Projects can configure
+`build_command` / `verify_command` in the change or repo root, and guard will run those commands first and print failure
+output.
 
 </details>
 
@@ -345,38 +386,38 @@ Comet ensures agent execution reliability through automated state transitions:
 <summary>View reliability features</summary>
 
 1. **Entry Verification** — Each phase validates preconditions before execution
-   - Checks file existence, state consistency, and phase transitions
-   - Outputs `[HARD STOP]` with actionable suggestions if validation fails
+    - Checks file existence, state consistency, and phase transitions
+    - Outputs `[HARD STOP]` with actionable suggestions if validation fails
 
 2. **Automated State Transitions** — `comet-guard.sh --apply` updates `.comet.yaml` automatically
-   - All phase transitions (open → design/build → verify → archive) use `guard --apply`
-   - No manual state editing required — eliminates write-verification errors
-   - `comet-state.sh` is the agents' exclusive interface for state operations
-   - Guard and archive scripts use `comet-state.sh` internally for state management
+    - All phase transitions (open → design/build → verify → archive) use `guard --apply`
+    - No manual state editing required — eliminates write-verification errors
+    - `comet-state.sh` is the agents' exclusive interface for state operations
+    - Guard and archive scripts use `comet-state.sh` internally for state management
 
 3. **Schema Validation** — `comet-yaml-validate.sh` ensures data integrity
-   - Validates required and optional fields
-   - Validates enum values, including `direct_override`
-   - Validates `design_doc`, `plan`, and `handoff_context` paths exist, plus `handoff_hash` format
-   - Detects unknown/typos fields
+    - Validates required and optional fields
+    - Validates enum values, including `direct_override`
+    - Validates `design_doc`, `plan`, and `handoff_context` paths exist, plus `handoff_hash` format
+    - Detects unknown/typos fields
 
 4. **Build Decision Enforcement** — Guard and state transitions both block skipped build choices
-   - `isolation` must be `branch` or `worktree`
-   - `build_mode` must be selected before leaving build
-   - `build_pause: plan-ready` is a recoverable pause after plan generation, not a `build_mode`
-   - Full workflow `build_mode: direct` requires `direct_override: true`
+    - `isolation` must be `branch` or `worktree`
+    - `build_mode` must be selected before leaving build
+    - `build_pause: plan-ready` is a recoverable pause after plan generation, not a `build_mode`
+    - Full workflow `build_mode: direct` requires `direct_override: true`
 
 5. **Verification Evidence** — Guard enforces proof before phase advance
-   - `verify-pass` transition requires `verification_report` pointing to an existing report file
-   - `branch_status` must be `handled` before verify can pass
-   - Guard checks `verification_report exists` and `branch_status=handled` as hard prerequisites
-   - Prevents false phase advances when verification or branch handling was skipped
+    - `verify-pass` transition requires `verification_report` pointing to an existing report file
+    - `branch_status` must be `handled` before verify can pass
+    - Guard checks `verification_report exists` and `branch_status=handled` as hard prerequisites
+    - Prevents false phase advances when verification or branch handling was skipped
 
 6. **Archive Automation** — `comet-archive.sh` handles the full archive flow in one command
-   - Validates entry state, merges delta specs into main specs through OpenSpec
-   - Annotates design doc and plan frontmatter
-   - Moves change to archive directory and updates `archived: true`
-   - Supports `--dry-run` for preview
+    - Validates entry state, merges delta specs into main specs through OpenSpec
+    - Annotates design doc and plan frontmatter
+    - Moves change to archive directory and updates `archived: true`
+    - Supports `--dry-run` for preview
 
 </details>
 
@@ -414,21 +455,24 @@ your-project/
 
 ## Context Compression (Beta)
 
-Comet supports context compression at the Design → Build handoff. When enabled, `comet-handoff.sh` generates a compact context package that reduces Build-phase input tokens by **25–30%** without affecting implementation correctness.
+Comet supports context compression at the Design → Build handoff. When enabled, `comet-handoff.sh` generates a compact
+context package that reduces Build-phase input tokens by **25–30%** without affecting implementation correctness.
 
-| Mode | Behavior | Token Savings |
-|------|----------|---------------|
-| `off` | Full Spec excerpts in handoff context | Baseline |
-| `beta` | Design Doc + SHA256 hash references only | ~25–30% |
+| Mode   | Behavior                                 | Token Savings |
+|--------|------------------------------------------|---------------|
+| `off`  | Full Spec excerpts in handoff context    | Baseline      |
+| `beta` | Design Doc + SHA256 hash references only | ~25–30%       |
 
 Key findings from benchmark testing:
+
 - **Test pass rate**: 100% across all tiers (compression does not affect correctness)
 - **Spec coverage**: 100% (off) vs 95% (beta) — minor edge-case detail loss
 - **Scaling**: Larger tasks yield higher absolute savings (up to 15,000 tokens for large-tier tasks)
 
 Enable in `.comet.yaml`: `context_compression: beta`
 
-See [CONTEXT-COMPRESSION.md](CONTEXT-COMPRESSION.md) for the full benchmark report, compression principles, and reproduction steps.
+See [CONTEXT-COMPRESSION.md](CONTEXT-COMPRESSION.md) for the full benchmark report, compression principles, and
+reproduction steps.
 
 ## Development
 
@@ -459,15 +503,9 @@ Track our development progress and upcoming features on the [Comet Roadmap](http
 
 ## Community
 
-<p align="center">
-  <img src="https://github.com/rpamis/comet/blob/master/img/douyin.png" alt="抖音" width="200" />
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://github.com/rpamis/comet/blob/master/img/wechat.jpg" alt="WeChat Group" width="200" />
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://github.com/rpamis/comet/blob/master/img/qq.jpg" alt="QQ Group" width="200" />
-</p>
-
-<p align="center">DouYin Group &nbsp;&nbsp;|&nbsp;&nbsp; WeChat Group &nbsp;&nbsp;|&nbsp;&nbsp; QQ Group</p>
+| DouYin Group(Recommendation)                                                                    | WeChat Group                                                                                    | QQ Group                                                                                    |
+|-------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
+| <img src="https://github.com/rpamis/comet/blob/master/img/douyin.png" width="100" height="100"> | <img src="https://github.com/rpamis/comet/blob/master/img/wechat.jpg" width="100" height="100"> | <img src="https://github.com/rpamis/comet/blob/master/img/qq.jpg" width="100" height="100"> |
 
 ## Reference
 

@@ -989,6 +989,76 @@ cmd_scale() {
   green "[SCALE] verify_mode=$result"
 }
 
+# Resolve the next workflow step after a guard --apply phase advance.
+# Reads the (already advanced) phase, workflow, and auto_transition, then emits
+# a deterministic next-step contract so skills don't hardcode the next skill name.
+#
+# Output contract (stdout):
+#   NEXT: auto|manual|done
+#   SKILL: <skill-name>      (omitted when NEXT=done)
+#   HINT: <message>          (only when NEXT=manual)
+cmd_next() {
+  local change_name="$1"
+  validate_change_name "$change_name"
+
+  local change_dir="openspec/changes/$change_name"
+  local yaml_file="$change_dir/.comet.yaml"
+  if [ ! -f "$yaml_file" ]; then
+    red "ERROR: .comet.yaml not found at $yaml_file" >&2
+    exit 1
+  fi
+
+  local phase workflow auto_transition archived
+  phase=$(cmd_get "$change_name" "phase" 2>/dev/null || true)
+  workflow=$(cmd_get "$change_name" "workflow" 2>/dev/null || true)
+  auto_transition=$(cmd_get "$change_name" "auto_transition" 2>/dev/null || true)
+  archived=$(cmd_get "$change_name" "archived" 2>/dev/null || true)
+
+  # Terminal state: archived change has no next step.
+  if [ "$archived" = "true" ]; then
+    echo "NEXT: done"
+    return 0
+  fi
+
+  # Map the current (post-advance) phase to the skill that owns it.
+  local skill=""
+  case "$phase" in
+    open)
+      skill="comet-open"
+      ;;
+    design)
+      skill="comet-design"
+      ;;
+    build)
+      case "$workflow" in
+        hotfix) skill="comet-hotfix" ;;
+        tweak)  skill="comet-tweak" ;;
+        *)      skill="comet-build" ;;
+      esac
+      ;;
+    verify)
+      skill="comet-verify"
+      ;;
+    archive)
+      skill="comet-archive"
+      ;;
+    *)
+      red "ERROR: Cannot resolve next step for '$change_name': unknown phase '${phase:-null}'" >&2
+      exit 1
+      ;;
+  esac
+
+  # auto_transition=false pauses the next skill invocation only; phase is already advanced.
+  if [ "$auto_transition" = "false" ]; then
+    echo "NEXT: manual"
+    echo "SKILL: $skill"
+    echo "HINT: phase is '$phase'; run /$skill manually to continue"
+  else
+    echo "NEXT: auto"
+    echo "SKILL: $skill"
+  fi
+}
+
 # --- Main ---
 
 SUBCOMMAND="${1:-}"
@@ -1045,6 +1115,13 @@ case "$SUBCOMMAND" in
     fi
     cmd_scale "$@"
     ;;
+  next)
+    if [ $# -lt 1 ]; then
+      red "Usage: comet-state.sh next <change-name>" >&2
+      exit 1
+    fi
+    cmd_next "$@"
+    ;;
   *)
     red "Unknown subcommand: $SUBCOMMAND" >&2
     echo "" >&2
@@ -1057,6 +1134,7 @@ case "$SUBCOMMAND" in
     echo "  transition <change-name> <event> — Apply a validated state transition" >&2
     echo "  check <change-name> <phase>    — Verify entry requirements for a phase" >&2
     echo "  scale <change-name>             — Assess and set verification mode based on metrics" >&2
+    echo "  next <change-name>              — Resolve the next workflow step (auto/manual/done)" >&2
     echo "" >&2
     echo "Workflows: full, hotfix, tweak" >&2
     echo "Phases for check: open, design, build, verify, archive" >&2

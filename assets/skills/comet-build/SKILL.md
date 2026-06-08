@@ -290,16 +290,17 @@ Before exit, run guard to auto-transition:
 
 State file is automatically updated to `phase: verify`, `verify_result: pending`.
 
-## Automatic Transition
+## Automatic Handoff to Next Phase
 
-After exit conditions are met (including user selecting workflow configuration), ensure the state machine has advanced, then read `AUTO_TRANSITION`:
+> **Terminology distinction**: the "phase advancement" above is performed by guard `--apply`, which updates the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. This section's "automatic handoff" only controls whether to automatically invoke the next skill.
+
+After exit conditions are met and guard-based phase advancement has completed, run:
 
 ```bash
-AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+"$COMET_BASH" "$COMET_STATE" next <change-name>
 ```
 
-If `AUTO_TRANSITION` is empty or not `false`, invoke the `comet-verify` skill to enter the verification and completion phase.
-
-If `AUTO_TRANSITION=false`, do not invoke the next Skill; print:
-
-> State has been updated to `phase: verify`. Run `/comet-verify` to enter the verification and completion phase.
+The script determines the next action from `phase`, `workflow`, and `auto_transition`:
+- `NEXT: auto` -> invoke the `SKILL` target to continue to the next phase
+- `NEXT: manual` -> do not invoke the next skill; follow `HINT` and ask the user to run `/<SKILL>` manually
+- `NEXT: done` -> workflow is complete; no further action needed

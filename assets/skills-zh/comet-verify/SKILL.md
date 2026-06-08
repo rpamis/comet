@@ -183,7 +183,7 @@ CURRENT_HASH=$("$COMET_BASH" "$COMET_HANDOFF" <change-name> --hash-only 2>/dev/n
 
 ### 4. 记录验证证据
 
-验证报告必须落盘，并在 `.comet.yaml` 中记录；分支处理完成后也必须写入状态字段。不要手动设置 `verify_result: pass`，通过 guard 自动流转。
+验证报告必须落盘，并在 `.comet.yaml` 中记录；分支处理完成后也必须写入状态字段。不要手动设置 `verify_result: pass`，由阶段守卫 `--apply` 推进。
 
 ```bash
 mkdir -p docs/superpowers/reports
@@ -200,9 +200,9 @@ mkdir -p docs/superpowers/reports
 - 分支已处理
 - `.comet.yaml` 中 `verification_report` 指向已存在的验证报告文件
 - `.comet.yaml` 中 `branch_status: handled`
-- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`，全部 PASS 后通过 `comet-state transition verify-pass` 自动流转到 `phase: archive`
+- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`，全部 PASS 后由守卫通过 `comet-state transition verify-pass` 推进到 `phase: archive`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
-验证和分支处理均完成后，运行 guard 自动流转：
+验证和分支处理均完成后，运行阶段守卫推进 phase（此步骤与 `auto_transition` 无关）：
 
 ```bash
 "$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply
@@ -220,18 +220,19 @@ Verify 阶段可能触发上下文压缩。恢复时先运行：
 
 脚本输出结构化恢复上下文（phase、验证状态、分支状态、恢复动作），根据输出的 Recovery action 决定下一步。
 
-## 自动流转
+## 自动衔接下一阶段
 
-退出条件满足后（包括用户选择分支处理方式），确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
+> **术语区分**：上面的「阶段守卫推进」由 guard `--apply` 完成，更新 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。本节的「自动衔接」只决定**是否自动调用下一个 skill**，由 `auto_transition` 控制。
+
+验证、分支处理完成且阶段守卫推进 phase 后，运行：
 
 ```bash
-AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+"$COMET_BASH" "$COMET_STATE" next <change-name>
 ```
 
-若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-archive` skill 进入归档阶段。
+脚本根据 `phase`、`workflow`、`auto_transition` 输出确定性的下一步：
+- `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段
+- `NEXT: manual` → 不要调用下一 skill，按 `HINT` 提示用户手动运行 `/<SKILL>`
+- `NEXT: done` → 流程已完成，无需继续
 
-若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
-
-> 状态已更新为 `phase: archive`。请使用 `/comet-archive` 进入归档阶段。
-
-注意：`comet-archive` 进入后必须先执行归档前最终确认阻塞点，等待用户明确选择「确认归档」后才允许运行归档脚本。不得因为验证已通过就自动归档。
+注意：无论 `NEXT` 为 `auto` 还是 `manual`，`comet-archive` 进入后必须先执行归档前最终确认阻塞点，等待用户明确选择「确认归档」后才允许运行归档脚本。不得因为验证已通过就自动归档。

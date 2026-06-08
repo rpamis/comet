@@ -349,6 +349,98 @@ describeShell('comet shell scripts', () => {
     expect(setInvalid.stderr).toContain('Invalid value');
   }, 20_000);
 
+  it('next resolves auto for full workflow when auto_transition is true', async () => {
+    await createChange(
+      tmpDir,
+      'next-auto-verify',
+      ['workflow: full', 'phase: verify', 'auto_transition: true', 'archived: false', ''].join('\n'),
+    );
+
+    const result = runBash(tmpDir, stateScript, ['next', 'next-auto-verify']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('NEXT: auto');
+    expect(result.stdout).toContain('SKILL: comet-verify');
+  }, 20_000);
+
+  it('next resolves manual with hint when auto_transition is false', async () => {
+    await createChange(
+      tmpDir,
+      'next-manual-build',
+      ['workflow: full', 'phase: build', 'auto_transition: false', 'archived: false', ''].join('\n'),
+    );
+
+    const result = runBash(tmpDir, stateScript, ['next', 'next-manual-build']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('NEXT: manual');
+    expect(result.stdout).toContain('SKILL: comet-build');
+    expect(result.stdout).toContain('HINT:');
+  }, 20_000);
+
+  it('next maps hotfix and tweak workflows to their preset skills in build phase', async () => {
+    await createChange(
+      tmpDir,
+      'next-hotfix-build',
+      ['workflow: hotfix', 'phase: build', 'auto_transition: true', 'archived: false', ''].join(
+        '\n',
+      ),
+    );
+    await createChange(
+      tmpDir,
+      'next-tweak-build',
+      ['workflow: tweak', 'phase: build', 'auto_transition: true', 'archived: false', ''].join('\n'),
+    );
+
+    const hotfix = runBash(tmpDir, stateScript, ['next', 'next-hotfix-build']);
+    const tweak = runBash(tmpDir, stateScript, ['next', 'next-tweak-build']);
+
+    expect(hotfix.stdout).toContain('SKILL: comet-hotfix');
+    expect(tweak.stdout).toContain('SKILL: comet-tweak');
+  }, 20_000);
+
+  it('next reports done for an archived change', async () => {
+    await createChange(
+      tmpDir,
+      'next-done',
+      ['workflow: full', 'phase: archive', 'auto_transition: true', 'archived: true', ''].join('\n'),
+    );
+
+    const result = runBash(tmpDir, stateScript, ['next', 'next-done']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('NEXT: done');
+    expect(result.stdout).not.toContain('SKILL:');
+  }, 20_000);
+
+  it('next maps each non-build phase to the owning skill', async () => {
+    await createChange(
+      tmpDir,
+      'next-design',
+      ['workflow: full', 'phase: design', 'auto_transition: true', 'archived: false', ''].join('\n'),
+    );
+    await createChange(
+      tmpDir,
+      'next-archive',
+      ['workflow: full', 'phase: archive', 'auto_transition: true', 'archived: false', ''].join(
+        '\n',
+      ),
+    );
+
+    const design = runBash(tmpDir, stateScript, ['next', 'next-design']);
+    const archive = runBash(tmpDir, stateScript, ['next', 'next-archive']);
+
+    expect(design.stdout).toContain('SKILL: comet-design');
+    expect(archive.stdout).toContain('SKILL: comet-archive');
+  }, 20_000);
+
+  it('next exits non-zero when .comet.yaml is missing', async () => {
+    const result = runBash(tmpDir, stateScript, ['next', 'next-missing']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('.comet.yaml not found');
+  }, 20_000);
+
   it('comet-env.sh exports bundled script paths from its own directory', async () => {
     const envScript = path.join(tmpDir, 'scripts', 'comet-env.sh');
     const checkScript = path.join(tmpDir, 'check-env.sh');

@@ -212,7 +212,7 @@ canonical_spec: openspec
 # 如有 delta spec 变更，重新生成 handoff（更新 hash）
 "$COMET_BASH" "$COMET_HANDOFF" <change-name> design --write
 
-# 自动流转到下一阶段
+# 阶段守卫推进 phase 到下一阶段
 "$COMET_BASH" "$COMET_GUARD" <change-name> design --apply
 ```
 
@@ -228,7 +228,7 @@ canonical_spec: openspec
 - beta 模式下，`spec-context.json` 必须结构合法且引用当前源文件（由 guard 强制校验）
 - 如有新能力或补充验收场景，OpenSpec delta spec 已创建/更新
 - `design_doc` 已写入 `.comet.yaml`
-- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> design --apply`，全部 PASS 后自动流转到 `phase: build`
+- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> design --apply`，全部 PASS 后由守卫推进到 `phase: build`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
 退出前必须使用 `--apply`：
 
@@ -246,16 +246,17 @@ design 阶段在 brainstorming 过程中可能触发上下文压缩。恢复时�
 
 脚本输出结构化恢复上下文（阶段、已完成字段、待完成字段、恢复动作）。按 Recovery action 判断下一步。
 
-## 自动流转
+## 自动衔接下一阶段
 
-退出条件满足后（包括用户确认设计方案），确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
+> **术语区分**：上面的「阶段守卫推进」由 guard `--apply` 完成，更新 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。本节的「自动衔接」只决定**是否自动调用下一个 skill**，由 `auto_transition` 控制。
+
+阶段守卫推进 phase 后，运行：
 
 ```bash
-AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+"$COMET_BASH" "$COMET_STATE" next <change-name>
 ```
 
-若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-build` skill 进入计划与构建阶段。
-
-若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
-
-> 状态已更新为 `phase: build`。请使用 `/comet-build` 进入计划与构建阶段。
+脚本根据 `phase`、`workflow`、`auto_transition` 输出确定性的下一步：
+- `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段
+- `NEXT: manual` → 不要调用下一 skill，按 `HINT` 提示用户手动运行 `/<SKILL>`
+- `NEXT: done` → 流程已完成，无需继续

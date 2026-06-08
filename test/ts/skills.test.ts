@@ -414,28 +414,27 @@ describe('skills', () => {
         '若当前平台没有结构化提问工具，则必须在对话中提出明确选项并停止流程',
       );
       expect(zhComet).toContain('`auto_transition`');
-      expect(zhComet).toContain('不阻止 phase 更新');
-      for (const [content, nextCommand] of [
+      expect(zhComet).toContain('不影响 phase 推进');
+      for (const [content] of [
         [zhOpen, '/comet-design'],
         [zhDesign, '/comet-build'],
         [zhBuild, '/comet-verify'],
         [zhVerify, '/comet-archive'],
       ] as const) {
-        expect(content).toContain('get <change-name> auto_transition');
-        expect(content).toContain('AUTO_TRANSITION=false');
-        expect(content).toContain(nextCommand);
-        expect(content).toContain('状态已更新为');
+        expect(content).toContain('自动衔接下一阶段');
+        expect(content).toContain('"$COMET_BASH" "$COMET_STATE" next <change-name>');
+        expect(content).toContain('`NEXT: auto`');
+        expect(content).toContain('`NEXT: manual`');
+        expect(content).toContain('按 `HINT`');
       }
-      expect(zhHotfix).toContain('AUTO_TRANSITION=');
-      expect(zhHotfix).toContain('状态已推进');
-      expect(zhHotfix).toContain('`phase: build` → 手动运行 `/comet-hotfix`');
-      expect(zhHotfix).toContain('`phase: verify` → 手动运行 `/comet-verify`');
-      expect(zhHotfix).toContain('`phase: archive` → 手动运行 `/comet-archive`');
-      expect(zhTweak).toContain('AUTO_TRANSITION=');
-      expect(zhTweak).toContain('状态已推进');
-      expect(zhTweak).toContain('`phase: build` → 手动运行 `/comet-tweak`');
-      expect(zhTweak).toContain('`phase: verify` → 手动运行 `/comet-verify`');
-      expect(zhTweak).toContain('`phase: archive` → 手动运行 `/comet-archive`');
+      expect(zhHotfix).toContain('自动衔接下一阶段');
+      expect(zhHotfix).toContain('"$COMET_BASH" "$COMET_STATE" next <name>');
+      expect(zhHotfix).toContain('`NEXT: auto`');
+      expect(zhHotfix).toContain('`phase: build` 返回 `comet-hotfix`，`verify` 返回 `comet-verify`，`archive` 返回 `comet-archive`');
+      expect(zhTweak).toContain('自动衔接下一阶段');
+      expect(zhTweak).toContain('"$COMET_BASH" "$COMET_STATE" next <name>');
+      expect(zhTweak).toContain('`NEXT: auto`');
+      expect(zhTweak).toContain('`phase: build` 返回 `comet-tweak`，`verify` 返回 `comet-verify`，`archive` 返回 `comet-archive`');
     });
   });
 
@@ -667,27 +666,26 @@ describe('skills', () => {
       );
       expect(enComet).toContain('`auto_transition`');
       expect(enComet).toContain('does not block phase updates');
-      for (const [content, nextCommand] of [
+      for (const [content] of [
         [enOpen, '/comet-design'],
         [enDesign, '/comet-build'],
         [enBuild, '/comet-verify'],
         [enVerify, '/comet-archive'],
       ] as const) {
-        expect(content).toContain('get <change-name> auto_transition');
-        expect(content).toContain('AUTO_TRANSITION=false');
-        expect(content).toContain(nextCommand);
-        expect(content).toContain('State has been updated to');
+        expect(content).toContain('Automatic Handoff to Next Phase');
+        expect(content).toContain('"$COMET_BASH" "$COMET_STATE" next <change-name>');
+        expect(content).toContain('`NEXT: auto`');
+        expect(content).toContain('`NEXT: manual`');
+        expect(content).toContain('run `/<SKILL>` manually');
       }
-      expect(enHotfix).toContain('AUTO_TRANSITION=');
-      expect(enHotfix).toContain('state has advanced');
-      expect(enHotfix).toContain('`phase: build` → run `/comet-hotfix` manually');
-      expect(enHotfix).toContain('`phase: verify` → run `/comet-verify` manually');
-      expect(enHotfix).toContain('`phase: archive` → run `/comet-archive` manually');
-      expect(enTweak).toContain('AUTO_TRANSITION=');
-      expect(enTweak).toContain('state has advanced');
-      expect(enTweak).toContain('`phase: build` → run `/comet-tweak` manually');
-      expect(enTweak).toContain('`phase: verify` → run `/comet-verify` manually');
-      expect(enTweak).toContain('`phase: archive` → run `/comet-archive` manually');
+      expect(enHotfix).toContain('Automatic Handoff to Next Phase');
+      expect(enHotfix).toContain('"$COMET_BASH" "$COMET_STATE" next <name>');
+      expect(enHotfix).toContain('`NEXT: auto`');
+      expect(enHotfix).toContain('`phase: build` returns `comet-hotfix`, `verify` returns `comet-verify`, `archive` returns `comet-archive`');
+      expect(enTweak).toContain('Automatic Handoff to Next Phase');
+      expect(enTweak).toContain('"$COMET_BASH" "$COMET_STATE" next <name>');
+      expect(enTweak).toContain('`NEXT: auto`');
+      expect(enTweak).toContain('`phase: build` returns `comet-tweak`, `verify` returns `comet-verify`, `archive` returns `comet-archive`');
     });
   });
 

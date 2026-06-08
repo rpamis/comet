@@ -136,7 +136,11 @@ If there is delta spec, sync to main spec according to comet-archive rules, and 
 ## Continuous Execution Mode
 
 <IMPORTANT>
-Hotfix workflow is **one-time continuous execution**. After invoking `/comet-hotfix`, agent must automatically advance through hotfix steps, without pausing to wait for user input mid-way. But the following situations must pause and wait for user confirmation:
+Hotfix workflow is **one-time continuous execution**. After invoking `/comet-hotfix`, agent must automatically advance through hotfix steps, without pausing to wait for user input mid-way.
+
+Exception: when `.comet.yaml` has `auto_transition: false`, after each phase guard advances `phase`, do not auto-invoke the next skill. In this case, use `"$COMET_BASH" "$COMET_STATE" next <name>` output and pause for manual continuation as instructed.
+
+The following situations must also pause and wait for user confirmation:
 
 1. Encountering upgrade conditions (see "Upgrade Conditions" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm** upgrading to full workflow
 2. workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`
@@ -182,15 +186,17 @@ Then on current change basis, supplement Design Doc: **Immediately use the Skill
 - If spec changes, synced to main spec
 - **Phase guard**: Before build → verify run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`
 
-## Automatic Transition
+## Automatic Handoff to Next Phase
 
-After each phase guard or state transition completes, read:
+> **Terminology distinction**: phase guard `--apply` advances the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. This section's "automatic handoff" only controls whether to automatically invoke the next skill.
+
+After each phase guard or state transition advances phase, run:
 
 ```bash
-AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <name> auto_transition)
+"$COMET_BASH" "$COMET_STATE" next <name>
 ```
 
-When `AUTO_TRANSITION=false`, state has advanced but do not invoke the next Skill; tell the user to continue manually based on current phase:
-- `phase: build` → run `/comet-hotfix` manually
-- `phase: verify` → run `/comet-verify` manually
-- `phase: archive` → run `/comet-archive` manually
+The script determines the next action from `phase`, `workflow`, and `auto_transition`:
+- `NEXT: auto` -> invoke the `SKILL` target to continue the hotfix flow (`phase: build` returns `comet-hotfix`, `verify` returns `comet-verify`, `archive` returns `comet-archive`)
+- `NEXT: manual` -> do not invoke the next skill; follow `HINT` and ask the user to run `/<SKILL>` manually
+- `NEXT: done` -> workflow is complete; no further action needed

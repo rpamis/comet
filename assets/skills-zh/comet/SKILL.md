@@ -116,6 +116,8 @@ agent 做决策只需读本节，参考附录按需查阅。
 
 **连续执行要求**：从检测到的阶段开始，agent 自动推进后续阶段。但**自动推进仅适用于没有用户决策的衔接点**。遇到用户决策点时，**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确回复**，不得用推荐规则、默认值或历史偏好代替用户确认，也不得仅输出文字提示后继续执行。
 
+**阶段推进与自动衔接的区分**：每个子 skill 退出前都会运行阶段守卫 `--apply` 推进 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。之后子 skill 运行 `"$COMET_BASH" "$COMET_STATE" next <name>` 解析下一步：`auto_transition` 不为 `false` 时输出 `NEXT: auto`（自动调用下一 skill），为 `false` 时输出 `NEXT: manual`（不调用下一 skill，提示用户手动运行）。因此 `auto_transition` **只控制是否自动调用下一个 skill，不影响 phase 推进**。无论 `auto_transition` 取何值，下方的用户决策点都必须阻塞等待。
+
 **决策点是阻塞点**：只要到达下列任一节点，当前 `/comet` 调用必须停住，**使用当前平台可用的用户输入/确认机制等待用户选择**。若当前平台没有结构化提问工具，则必须在对话中提出明确选项并停止流程，等待用户回复后才能继续。用户明确选择后才能写入对应状态字段、执行对应操作，随后再继续自动流转。
 
 需要用户参与的节点（仅在这些节点暂停）：
@@ -210,7 +212,7 @@ archived: false
 | `tdd_mode` | `tdd` 或 `direct`。full workflow 离开 build 阶段前必须已选择。`tdd` 强制每个任务先写失败测试再实现；`direct` 不强制 TDD。hotfix/tweak 默认 `direct` |
 | `isolation` | `branch` 或 `worktree`，工作区隔离方式。full 初始化可为 `null`，但只允许持续到 `/comet-build` Step 3 前；hotfix/tweak 默认 `branch` |
 | `verify_mode` | `light` 或 `full`，可为空 |
-| `auto_transition` | `true` 或 `false`。`false` 只暂停下一 skill 调用，不阻止 phase 更新 |
+| `auto_transition` | `true` 或 `false`。只控制阶段守卫推进 phase 后是否自动调用下一个 skill；`false` 时由 `comet-state next` 输出 `manual`，暂停下一 skill 调用，但不阻止 phase 字段更新 |
 | `verify_result` | `pending`、`pass` 或 `fail` |
 | `verification_report` | 验证报告文件路径，verify 通过前必须指向已存在文件 |
 | `branch_status` | `pending` 或 `handled`，分支处理完成后设为 `handled` |
@@ -271,6 +273,14 @@ fi
 "$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
 "$COMET_BASH" "$COMET_STATE" transition <archive-name> archived
 ```
+
+**解析下一步**：阶段守卫推进 phase 后，用 `next` 子命令解析是否自动调用下一个 skill：
+
+```bash
+"$COMET_BASH" "$COMET_STATE" next <change-name>
+```
+
+输出 `NEXT: auto|manual|done` + `SKILL: <skill-name>`（`done` 时省略）+ `HINT`（仅 `manual` 时）。`auto_transition: false` 时输出 `manual`，只暂停下一 skill 调用，不影响已发生的 phase 推进。
 
 **归档脚本**：一键完成归档全部步骤：
 

@@ -158,7 +158,7 @@ fi
 
 - proposal.md、design.md、tasks.md 均已创建且内容完整
 - **用户已确认** proposal、design、tasks 内容符合预期
-- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply`，全部 PASS 后自动流转到下一阶段
+- **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply`，全部 PASS 后由守卫推进到下一阶段（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
 退出前必须使用 `--apply`，否则 `.comet.yaml` 仍停留在 `phase: open`，下一阶段入口检查会失败。
 
@@ -168,18 +168,19 @@ fi
 
 完整流程会自动更新为 `phase: design`；hotfix/tweak preset 会自动更新为 `phase: build`。
 
-## 自动流转
+## 自动衔接下一阶段
 
-用户确认后，退出条件满足，确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
+> **术语区分**：上面的「阶段守卫推进」由 guard `--apply` 完成，更新 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。本节的「自动衔接」只决定**是否自动调用下一个 skill**，由 `auto_transition` 控制。
+
+用户确认且阶段守卫推进 phase 后，运行：
 
 ```bash
-AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+"$COMET_BASH" "$COMET_STATE" next <change-name>
 ```
 
-若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-design` skill 进入深度设计阶段。
+脚本根据 `phase`、`workflow`、`auto_transition` 输出确定性的下一步：
+- `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段
+- `NEXT: manual` → 不要调用下一 skill，按 `HINT` 提示用户手动运行 `/<SKILL>`
+- `NEXT: done` → 流程已完成，无需继续
 
-若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
-
-> 状态已更新为 `phase: design`。请使用 `/comet-design` 进入深度设计阶段。
-
-hotfix/tweak preset 由对应 preset skill 控制后续流转（phase 直接进入 build），不经过本节。
+hotfix/tweak preset 由对应 preset skill 控制后续流转（phase 直接进入 build），其 `next` 会返回对应 preset skill。
