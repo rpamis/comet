@@ -188,12 +188,19 @@ describe('context execution benchmark runner', () => {
     const { parseTestOutput } = await import(benchmarkModule);
 
     const jsonOutput = JSON.stringify({
+      numTotalTests: 5,
+      numPassedTests: 4,
+      numFailedTests: 1,
       testResults: [
-        { status: 'passed', name: 'preserves insertion order' },
-        { status: 'passed', name: 'rejects empty text' },
-        { status: 'failed', name: 'filters by tag' },
-        { status: 'passed', name: 'hides archived' },
-        { status: 'passed', name: 'shows archived when requested' },
+        {
+          assertionResults: [
+            { fullName: 'preserves insertion order', status: 'passed' },
+            { fullName: 'rejects empty text', status: 'passed' },
+            { fullName: 'filters by tag', status: 'failed' },
+            { fullName: 'hides archived', status: 'passed' },
+            { fullName: 'shows archived when requested', status: 'passed' },
+          ],
+        },
       ],
     });
 

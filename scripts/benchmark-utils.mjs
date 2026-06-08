@@ -39,13 +39,18 @@ export function findBashCommand() {
 
 export function toBashPath(filePath, pathStyle = 'git-bash') {
   if (filePath.startsWith('/')) return filePath.replace(/\\/g, '/');
-  const normalized = path.resolve(filePath).replace(/\\/g, '/');
-  const driveMatch = normalized.match(/^([A-Za-z]):\/(.*)$/);
-  if (!driveMatch) return normalized;
-  if (pathStyle === 'wsl') {
-    return `/mnt/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
+  // Detect Windows drive-letter paths (C:\, D:\, etc.) before path.resolve
+  // so they are not treated as relative paths on Linux/CI.
+  const winNormalized = filePath.replace(/\\/g, '/');
+  const driveMatch = winNormalized.match(/^([A-Za-z]):\/(.*)$/);
+  if (driveMatch) {
+    if (pathStyle === 'wsl') {
+      return `/mnt/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
+    }
+    return `/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
   }
-  return `/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
+  const normalized = path.resolve(filePath).replace(/\\/g, '/');
+  return normalized;
 }
 
 export function parseCodexJsonl(jsonl) {

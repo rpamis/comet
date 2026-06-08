@@ -317,7 +317,7 @@ describe('skills', () => {
       );
       expect(zhBuild).toContain('至少请求一次代码审查');
       expect(zhBuild).toContain('build → verify');
-      expect(zhBuild).toContain('CRITICAL review 发现必须先修复');
+      expect(zhBuild).toContain('CRITICAL review 发现（安全漏洞、数据丢失风险、构建/测试失败）必须先修复');
 
       // MEDIUM: comet-verify Step 1b handles mixed CRITICAL/non-CRITICAL
       expect(zhVerify).toContain('CRITICAL 失败项必须修复');
@@ -591,7 +591,7 @@ describe('skills', () => {
       );
       expect(enBuild).toContain('request code review at least once');
       expect(enBuild).toContain('build → verify');
-      expect(enBuild).toContain('CRITICAL review findings must be fixed');
+      expect(enBuild).toContain('CRITICAL review findings (security vulnerabilities, data loss risk, build/test failures) must be fixed');
       expect(enVerify).toContain('CRITICAL failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
       expect(enHotfix).toContain(
@@ -812,10 +812,10 @@ describe('skills', () => {
       );
 
       expect(zhBuild).toContain(
-        '派发每个 subagent 时，必须在 prompt 中明确要求：任务完成并通过验证后，立即勾选 `docs/superpowers/plans/<plan-file>.md` 中对应的计划任务；若该计划任务映射到 `openspec/changes/<name>/tasks.md` 中的任务，也同步将该 OpenSpec 任务从 `- [ ]` 改为 `- [x]`；若 plan 新增了 OpenSpec 中没有的一步，只勾选 plan 中对应任务即可。不得只更新内置 Todo 或对话内 checklist。',
+        '派发每个 subagent 时，必须在 prompt 中明确要求：技能加载后 ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：`Language: 使用触发本次工作流的用户请求语言输出`；任务完成并通过验证后，立即勾选 `docs/superpowers/plans/<plan-file>.md` 中对应的计划任务；若该计划任务映射到 `openspec/changes/<name>/tasks.md` 中的任务，也同步将该 OpenSpec 任务从 `- [ ]` 改为 `- [x]`；若 plan 新增了 OpenSpec 中没有的一步，只勾选 plan 中对应任务即可。不得只更新内置 Todo 或对话内 checklist。',
       );
       expect(enBuild).toContain(
-        'When dispatching each subagent, the prompt must explicitly require: after the task is complete and validated, immediately check off the corresponding plan task in `docs/superpowers/plans/<plan-file>.md`; if that plan task maps to an item in `openspec/changes/<name>/tasks.md`, also change that OpenSpec task from `- [ ]` to `- [x]`; if the plan added a step that does not exist in OpenSpec, only the corresponding plan task needs to be checked off. Do not only update the built-in Todo or an in-chat checklist.',
+        'When dispatching each subagent, the prompt must explicitly require: after the skill loads, ARGUMENTS must include the same Language constraint as Step 1: `Language: Use the language of the user request that triggered this workflow`; after the task is complete and validated, immediately check off the corresponding plan task in `docs/superpowers/plans/<plan-file>.md`; if that plan task maps to an item in `openspec/changes/<name>/tasks.md`, also change that OpenSpec task from `- [ ]` to `- [x]`; if the plan added a step that does not exist in OpenSpec, only the corresponding plan task needs to be checked off. Do not only update the built-in Todo or an in-chat checklist.',
       );
     });
   });
