@@ -710,8 +710,9 @@ apply_state_update() {
 
 if [ "${COMET_GUARD_SOURCE_ONLY:-0}" = "1" ]; then
   return 0 2>/dev/null
-  # shellcheck disable=SC2317
+  # shellcheck disable=SC2317  # unreachable if sourced; fallback for direct execution
   red "ERROR: COMET_GUARD_SOURCE_ONLY=1 is only for sourcing, not direct execution" >&2
+  # shellcheck disable=SC2317
   exit 1
 fi
 

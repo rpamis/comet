@@ -317,7 +317,9 @@ describe('skills', () => {
       );
       expect(zhBuild).toContain('至少请求一次代码审查');
       expect(zhBuild).toContain('build → verify');
-      expect(zhBuild).toContain('CRITICAL review 发现（安全漏洞、数据丢失风险、构建/测试失败）必须先修复');
+      expect(zhBuild).toContain(
+        'CRITICAL review 发现（安全漏洞、数据丢失风险、构建/测试失败）必须先修复',
+      );
 
       // MEDIUM: comet-verify Step 1b handles mixed CRITICAL/non-CRITICAL
       expect(zhVerify).toContain('CRITICAL 失败项必须修复');
@@ -591,7 +593,9 @@ describe('skills', () => {
       );
       expect(enBuild).toContain('request code review at least once');
       expect(enBuild).toContain('build → verify');
-      expect(enBuild).toContain('CRITICAL review findings (security vulnerabilities, data loss risk, build/test failures) must be fixed');
+      expect(enBuild).toContain(
+        'CRITICAL review findings (security vulnerabilities, data loss risk, build/test failures) must be fixed',
+      );
       expect(enVerify).toContain('CRITICAL failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
       expect(enHotfix).toContain(

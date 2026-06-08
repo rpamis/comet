@@ -11,10 +11,10 @@ export default defineConfig({
     coverage: {
       include: ['src/**/*.ts'],
       exclude: [
-      'src/cli/**',
-      // Commands are interactive orchestrators best tested via E2E
-      'src/commands/**',
-    ],
+        'src/cli/**',
+        // Commands are interactive orchestrators best tested via E2E
+        'src/commands/**',
+      ],
       thresholds: {
         branches: 74,
         functions: 80,
