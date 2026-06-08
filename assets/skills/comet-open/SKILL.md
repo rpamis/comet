@@ -11,6 +11,10 @@ description: "Comet Phase 1: Open. Invoke with /comet-open. Explore ideas throug
 
 ## Steps
 
+### 0. Output Language Constraint
+
+Every prompt and artifact request passed to OpenSpec must include the output-language constraint: use the language of the user request that triggered this workflow. When resuming an existing change with a clear dominant artifact language, preserve that language unless the user explicitly asks to switch.
+
 ### 1. Explore Ideas and Clarify Requirements
 
 **Immediately execute:** Use the Skill tool to load the `openspec-explore` skill. Skipping this step is prohibited.
@@ -166,8 +170,16 @@ Full workflow auto-transitions to `phase: design`; hotfix/tweak presets auto-tra
 
 ## Automatic Transition
 
-After user confirmation and exit conditions are met, auto-transition to next phase:
+After user confirmation and exit conditions are met, ensure the state machine has advanced, then read `AUTO_TRANSITION`:
 
-> **REQUIRED NEXT SKILL (full workflow):** Invoke `comet-design` skill to enter the deep design phase.
->
-> Hotfix/tweak presets are controlled by their corresponding preset skill for subsequent transitions (phase goes directly to build), and do not go through this section.
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+If `AUTO_TRANSITION` is empty or not `false`, invoke the `comet-design` skill to enter the deep design phase.
+
+If `AUTO_TRANSITION=false`, do not invoke the next Skill; print:
+
+> State has been updated to `phase: design`. Run `/comet-design` to enter the deep design phase.
+
+Hotfix/tweak presets are controlled by their corresponding preset skill for subsequent transitions (phase goes directly to build), and do not go through this section.

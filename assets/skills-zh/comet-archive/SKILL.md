@@ -13,6 +13,10 @@ description: "Comet 阶段 5：归档。用 /comet-archive 调用。按 OpenSpec
 
 ## 步骤
 
+### 0. 输出语言约束
+
+归档摘要和生命周期闭环说明必须使用触发本次工作流的用户请求语言。
+
 ### 0. 入口状态验证（Entry Check）
 
 执行入口验证：

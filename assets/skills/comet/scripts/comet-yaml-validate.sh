@@ -123,6 +123,19 @@ validate_enum() {
   fail "$field='$value' is not valid. Expected: $valid_values"
 }
 
+validate_required_enum() {
+  local field="$1" value="$2"
+  shift 2
+  local valid_values="$*"
+
+  if [ -z "$value" ] || [ "$value" = "null" ]; then
+    fail "$field='${value:-}' is not valid. Expected: $valid_values"
+    return 0
+  fi
+
+  validate_enum "$field" "$value" "$@"
+}
+
 workflow=$(field_value "workflow")
 phase=$(field_value "phase")
 context_compression=$(field_value "context_compression")
@@ -132,6 +145,7 @@ subagent_dispatch=$(field_value "subagent_dispatch")
 tdd_mode=$(field_value "tdd_mode")
 isolation=$(field_value "isolation")
 verify_mode=$(field_value "verify_mode")
+auto_transition=$(field_value "auto_transition")
 verify_result=$(field_value "verify_result")
 branch_status=$(field_value "branch_status")
 archived=$(field_value "archived")
@@ -150,6 +164,9 @@ validate_enum "subagent_dispatch" "$subagent_dispatch" "null confirmed"
 validate_enum "tdd_mode"      "$tdd_mode"       "tdd direct null"
 validate_enum "isolation"     "$isolation"      "branch worktree"
 validate_enum "verify_mode"   "$verify_mode"    "light full"
+if grep -q "^auto_transition:" "$YAML" 2>/dev/null; then
+  validate_required_enum "auto_transition" "$auto_transition" "true false"
+fi
 validate_enum "verify_result" "$verify_result"  "pending pass fail"
 validate_enum "branch_status" "$branch_status"  "pending handled"
 validate_enum "archived"      "$archived"       "true false"
@@ -182,7 +199,7 @@ if [ -n "$handoff_hash" ] && [ "$handoff_hash" != "null" ]; then
 fi
 
 # --- Unknown keys check ---
-KNOWN_KEYS="workflow phase context_compression design_doc plan build_mode build_pause subagent_dispatch tdd_mode isolation verify_mode verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
+KNOWN_KEYS="workflow phase context_compression design_doc plan build_mode build_pause subagent_dispatch tdd_mode isolation verify_mode auto_transition verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
 while IFS=: read -r key _; do
   key="${key// /}"
   [ -z "$key" ] && continue

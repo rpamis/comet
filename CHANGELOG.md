@@ -337,6 +337,29 @@ All notable changes to @rpamis/comet will be documented in this file.
 - Added Superpowers coverage for valid `skills` CLI agent mappings and multi-agent argument formatting
 - Smoke-tested project and global initialization outputs for all 28 supported platforms in isolated temporary directories
 
+## What's Changed [0.3.6] - 2026-06-02
+
+### Added
+
+- **Plan-ready build pause state**: Added `build_pause` as a dedicated build-phase pause marker so Comet can stop after plan generation without confusing the pause with the actual execution method.
+- **Plan-ready pause design**: Added a design record for the model-switching pause workflow, covering recovery behavior, stale pause handling, and plan-missing remediation.
+- **Auto transition config**: Added `auto_transition` so teams can keep phase state updates while disabling automatic invocation of the next Comet skill.
+
+### Changed
+
+- **Build recovery routing**: `/comet` and `/comet-build` now recognize `build_pause: plan-ready`, resume without regenerating the plan, and route stale pause states back to the correct build action.
+- **Workflow output language**: OpenSpec and Superpowers prompts now carry the triggering request language into generated artifacts and workflow feedback.
+- **Executing-plans review gate**: `comet-build` now requires loading `requesting-code-review` before build-to-verify guard execution when `build_mode: executing-plans`.
+
+### Fixed
+
+- **Init skip-all behavior**: `comet init` bulk skip/overwrite choices now affect only components that already exist, preventing skip-all from skipping uninstalled components.
+- **Bash runner recovery**: Shell runner handling is more resilient across platform-specific Bash detection and argument formatting cases.
+
+### Tests
+
+- **Plan-ready and auto-transition coverage**: Added regression coverage for `build_pause`, `auto_transition` defaults/configuration, manual transition messaging, output-language propagation, executing-plans review requirements, and init skip-all existing-component behavior.
+
 ## What's Changed [0.2.6] - 2026-05-23
 
 ### Added

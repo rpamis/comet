@@ -32,13 +32,14 @@ fi
 
 ### 1. 制定计划（Subagent Offload）
 
-通过 subagent 创建实施计划，避免 planning skill 占用主 session 上下文：
+通过 subagent 创建实施计划，避免 planning skill 占用主 session 上下文。计划文件和执行反馈必须使用触发本次工作流的用户请求语言。
 
 **Subagent 指令**：
 
 你是实施计划专家。基于以下输入创建实施计划：
 
 1. 使用 Skill 工具加载 Superpowers `writing-plans` 技能
+   - ARGUMENTS 必须包含：`Language: 使用触发本次工作流的用户请求语言输出`
 2. 读取 Design Doc（`docs/superpowers/specs/` 下的技术设计文档）
 3. 读取 `openspec/changes/<name>/tasks.md`（任务边界）
 4. 按技能指引创建计划
@@ -188,6 +189,8 @@ git commit -m "chore: add implementation plan"
 
 **执行计划**：必须按 `build_mode` 的真实运行位置处理。
 
+加载 `subagent-driven-development` 或 `executing-plans` 时，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束。
+
 - `build_mode: executing-plans`：在主窗口使用 Skill 工具加载 Superpowers `executing-plans` 技能并按计划执行。若该技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。
 - `build_mode: subagent-driven-development`：主窗口只负责协调，不得把 `subagent-driven-development` 当作当前主窗口的执行技能直接运行；必须使用已确认的当前平台真实后台 subagent / Task / multi-agent 调度能力，把下一个未完成任务派发到后台 subagent。后台 subagent 需要自行加载 Superpowers `subagent-driven-development` 相关执行流程，并按其指引完成实现、检查和提交。
 - 如果当前平台没有真实后台 subagent / Task / multi-agent 调度能力，必须暂停并等待用户选择改用主窗口执行。用户选择改用主窗口执行后，必须先运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`，再按 `build_mode: executing-plans` 分支加载 Superpowers `executing-plans` 技能。用户未明确选择前，不得继续执行任务。
@@ -204,6 +207,15 @@ git commit -m "chore: add implementation plan"
 - `build_mode: subagent-driven-development`：派发每个 subagent 时，必须在 prompt 中注入 TDD 硬约束：**"You MUST follow TDD: for each task, write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first."**。不得依赖 implementer-prompt.md 的条件触发，必须在派发 prompt 中显式写出。
 
 若 `tdd_mode: direct`：按正常流程执行，不强制 TDD。
+
+**`executing-plans` review gate**：
+
+当 `build_mode` 为 `executing-plans` 时，在所有计划任务完成后、运行 build → verify 阶段守卫前，必须使用 Skill 工具加载 Superpowers `requesting-code-review` 技能并至少请求一次代码审查。
+
+要求：
+- `requesting-code-review` 技能必须在 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply` 之前加载
+- CRITICAL review 发现必须先修复，不得带入 verify
+- 非 CRITICAL review 发现如选择接受，必须在 tasks.md、commit body、验证报告草稿或其他持久产物中记录接受原因和影响范围
 
 ### 3b. 执行中异常调试（Debug Gate）
 
@@ -257,6 +269,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - `isolation` 已写为 `branch` 或 `worktree`
 - `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`；若为 `subagent-driven-development`，`subagent_dispatch` 必须为 `confirmed`
 - `tdd_mode` 已写为 `tdd` 或 `direct`
+- 若 `build_mode` 为 `executing-plans`，已使用 Skill 工具加载 Superpowers `requesting-code-review` 技能并至少请求一次代码审查，且 CRITICAL review 发现已修复或非 CRITICAL review 发现已记录接受理由
 - **阶段守卫**：运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，全部 PASS 后自动流转到 `phase: verify`
 
 Guard 会优先读取项目配置中的命令：
@@ -279,6 +292,14 @@ verify_command: <verify command>
 
 ## 自动流转
 
-退出条件满足后（包括用户选择工作方式），自动流转到下一阶段：
+退出条件满足后（包括用户选择工作方式），确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
 
-> **REQUIRED NEXT SKILL:** 调用 `comet-verify` skill 进入验证与收尾阶段。
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-verify` skill 进入验证与收尾阶段。
+
+若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
+
+> 状态已更新为 `phase: verify`。请使用 `/comet-verify` 进入验证与收尾阶段。

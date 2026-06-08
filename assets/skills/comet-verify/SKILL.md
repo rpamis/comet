@@ -12,6 +12,10 @@ description: "Comet Phase 4: Verify and Close. Invoke with /comet-verify. Verify
 
 ## Steps
 
+### 0. Output Language Constraint
+
+Verification reports and branch-handling notes must use the language of the user request that triggered this workflow.
+
 ### 0. Entry State Verification (Entry Check)
 
 Execute entry verification:
@@ -210,9 +214,17 @@ State file auto-updates to `phase: archive`, `verify_result: pass`, `verified_at
 
 ## Automatic Transition
 
-After exit conditions are met (including user selecting branch handling method), auto-transition to next phase:
+After exit conditions are met (including user selecting branch handling method), ensure the state machine has advanced, then read `AUTO_TRANSITION`:
 
-> **REQUIRED NEXT SKILL:** Invoke `comet-archive` skill to enter the archive phase.
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+If `AUTO_TRANSITION` is empty or not `false`, invoke the `comet-archive` skill to enter the archive phase.
+
+If `AUTO_TRANSITION=false`, do not invoke the next Skill; print:
+
+> State has been updated to `phase: archive`. Run `/comet-archive` to enter the archive phase.
 
 Note: after `comet-archive` starts, it must first execute the final archive confirmation blocking point and wait for the user to explicitly choose "Confirm archive" before running the archive script. Must not automatically archive just because verification passed.
 

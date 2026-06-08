@@ -18,6 +18,10 @@ Quick bug fix workflow: open → build → verify → archive. Skip brainstormin
 
 ## Process (preset workflow, 5 steps)
 
+### 0. Output Language Constraint
+
+Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow.
+
 Execution chain: open → build → root cause check → verify → archive. Hotfix provides default decisions for each phase: streamlined open, direct build, root cause confirmation, scale-based verification, and final archive confirmation after verification passes.
 
 Locate Comet scripts before starting:
@@ -177,3 +181,16 @@ Then on current change basis, supplement Design Doc: **Immediately use the Skill
 - Change archived
 - If spec changes, synced to main spec
 - **Phase guard**: Before build → verify run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`
+
+## Automatic Transition
+
+After each phase guard or state transition completes, read:
+
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <name> auto_transition)
+```
+
+When `AUTO_TRANSITION=false`, state has advanced but do not invoke the next Skill; tell the user to continue manually based on current phase:
+- `phase: build` → run `/comet-hotfix` manually
+- `phase: verify` → run `/comet-verify` manually
+- `phase: archive` → run `/comet-archive` manually

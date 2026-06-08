@@ -12,6 +12,10 @@ description: "Comet 阶段 4：验证与收尾。用 /comet-verify 调用。验�
 
 ## 步骤
 
+### 0. 输出语言约束
+
+验证报告和分支处理说明必须使用触发本次工作流的用户请求语言。
+
 ### 0. 入口状态验证（Entry Check）
 
 执行入口验证：
@@ -218,8 +222,16 @@ Verify 阶段可能触发上下文压缩。恢复时先运行：
 
 ## 自动流转
 
-退出条件满足后（包括用户选择分支处理方式），自动流转到下一阶段：
+退出条件满足后（包括用户选择分支处理方式），确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
 
-> **REQUIRED NEXT SKILL:** 调用 `comet-archive` skill 进入归档阶段。
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-archive` skill 进入归档阶段。
+
+若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
+
+> 状态已更新为 `phase: archive`。请使用 `/comet-archive` 进入归档阶段。
 
 注意：`comet-archive` 进入后必须先执行归档前最终确认阻塞点，等待用户明确选择「确认归档」后才允许运行归档脚本。不得因为验证已通过就自动归档。

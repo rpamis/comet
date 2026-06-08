@@ -32,13 +32,14 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 
 ### 1. Create Plan (Subagent Offload)
 
-Create the implementation plan through a subagent, avoiding planning skill occupying main session context:
+Create the implementation plan through a subagent, avoiding planning skill occupying main session context. Plan files and execution feedback must use the language of the user request that triggered this workflow.
 
 **Subagent instructions**:
 
 You are an implementation planning expert. Create an implementation plan based on the following inputs:
 
 1. Use the Skill tool to load the Superpowers `writing-plans` skill
+   - ARGUMENTS must include: `Language: Use the language of the user request that triggered this workflow`
 2. Read the Design Doc (technical design document under `docs/superpowers/specs/`)
 3. Read `openspec/changes/<name>/tasks.md` (task boundaries)
 4. Follow the skill's guidance to create the plan
@@ -188,6 +189,8 @@ git commit -m "chore: add implementation plan"
 
 **Execute plan**: Must handle execution according to the actual runtime of `build_mode`.
 
+When loading `subagent-driven-development` or `executing-plans`, ARGUMENTS must include the same Language constraint as Step 1.
+
 - `build_mode: executing-plans`: Use the Skill tool in the main window to load the Superpowers `executing-plans` skill and execute according to plan. If the skill is unavailable, stop the process and prompt to install or enable the corresponding skill; do not substitute with normal conversation.
 - `build_mode: subagent-driven-development`: The main window only coordinates; must not run `subagent-driven-development` as the main window execution skill directly. Must use the confirmed real background subagent / Task / multi-agent dispatch capability to dispatch the next unchecked task to a background subagent. The background subagent loads the Superpowers `subagent-driven-development` execution flow on its own and follows its guidance for implementation, review, and commit.
 - If the current platform has no real background subagent / Task / multi-agent dispatch capability, must pause and wait for the user to choose main window execution instead. After the user chooses, must run `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`, then follow the `build_mode: executing-plans` branch to load the Superpowers `executing-plans` skill. Must not continue executing tasks before the user explicitly chooses.
@@ -204,6 +207,15 @@ If `tdd_mode: tdd`:
 - `build_mode: subagent-driven-development`: When dispatching each subagent, must inject the TDD hard constraint into the prompt: **"You MUST follow TDD: for each task, write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first."**. Must not rely on implementer-prompt.md's conditional trigger; must explicitly write it in the dispatch prompt.
 
 If `tdd_mode: direct`: Follow normal flow, no enforced TDD.
+
+**`executing-plans` review gate**:
+
+When `build_mode` is `executing-plans`, after all planned tasks are complete and before running the build → verify phase guard, must use the Skill tool to load the Superpowers `requesting-code-review` skill and request code review at least once.
+
+Requirements:
+- the `requesting-code-review` skill must be loaded before `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`
+- CRITICAL review findings must be fixed first and must not be carried into verify
+- if non-CRITICAL review findings are accepted, record the acceptance reason and impact scope in tasks.md, the commit body, a verification report draft, or another durable artifact
 
 ### 3b. In-Execution Debugging (Debug Gate)
 
@@ -257,6 +269,7 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - `isolation` has been written as `branch` or `worktree`
 - `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override; if `subagent-driven-development`, `subagent_dispatch` must be `confirmed`
 - `tdd_mode` has been written as `tdd` or `direct`
+- If `build_mode` is `executing-plans`, the Skill tool has been used to load the Superpowers `requesting-code-review` skill and request code review at least once, and CRITICAL review findings have been fixed or acceptance rationale for non-CRITICAL review findings has been recorded
 - **Phase guard**: Run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; after all PASS, state advances to `phase: verify`
 
 Guard reads project command configuration first:
@@ -279,6 +292,14 @@ State file is automatically updated to `phase: verify`, `verify_result: pending`
 
 ## Automatic Transition
 
-After exit conditions are met (including user selecting workflow configuration), auto-transition to next phase:
+After exit conditions are met (including user selecting workflow configuration), ensure the state machine has advanced, then read `AUTO_TRANSITION`:
 
-> **REQUIRED NEXT SKILL:** Invoke `comet-verify` skill to enter the verification and completion phase.
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+If `AUTO_TRANSITION` is empty or not `false`, invoke the `comet-verify` skill to enter the verification and completion phase.
+
+If `AUTO_TRANSITION=false`, do not invoke the next Skill; print:
+
+> State has been updated to `phase: verify`. Run `/comet-verify` to enter the verification and completion phase.

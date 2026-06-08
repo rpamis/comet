@@ -21,6 +21,10 @@ Applicable for non-bug small scope changes, such as copy adjustment, configurati
 
 ## Process (preset workflow, 4 phases)
 
+### 0. Output Language Constraint
+
+Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow.
+
 Execution chain: open → lightweight build → light verify → archive. Tweak provides default decisions for each phase: streamlined open, lightweight build, lightweight verification, and final archive confirmation after verification passes.
 
 Locate Comet scripts before starting:
@@ -154,3 +158,16 @@ Then on current change basis, supplement Design Doc: **Immediately use the Skill
 - Change archived
 - No new capability, architecture adjustments or interface changes
 - **Phase guard**: Before build → verify run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`
+
+## Automatic Transition
+
+After each phase guard or state transition completes, read:
+
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <name> auto_transition)
+```
+
+When `AUTO_TRANSITION=false`, state has advanced but do not invoke the next Skill; tell the user to continue manually based on current phase:
+- `phase: build` → run `/comet-tweak` manually
+- `phase: verify` → run `/comet-verify` manually
+- `phase: archive` → run `/comet-archive` manually

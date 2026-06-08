@@ -88,6 +88,12 @@ beta 交接包是 **结构化 spec projection**，用于减少 OpenSpec 原文 t
 
 **立即执行：** 使用 Skill 工具加载 Superpowers `brainstorming` 技能。禁止跳过此步骤。
 
+技能加载时，ARGUMENTS 必须包含：
+
+```text
+Language: 使用触发本次工作流的用户请求语言输出
+```
+
 技能加载后，按其指引使用以下上下文：
 
 ```text
@@ -243,6 +249,14 @@ design 阶段在 brainstorming 过程中可能触发上下文压缩。恢复时�
 
 ## 自动流转
 
-退出条件满足后（包括用户确认设计方案），自动流转到下一阶段：
+退出条件满足后（包括用户确认设计方案），确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
 
-> **REQUIRED NEXT SKILL:** 调用 `comet-build` skill 进入计划与构建阶段。
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-build` skill 进入计划与构建阶段。
+
+若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
+
+> 状态已更新为 `phase: build`。请使用 `/comet-build` 进入计划与构建阶段。

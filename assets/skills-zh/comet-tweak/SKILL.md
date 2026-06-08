@@ -21,6 +21,10 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 
 ## 流程（preset workflow，4 阶段）
 
+### 0. 输出语言约束
+
+精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言。
+
 执行链路：open → lightweight build → light verify → archive。Tweak 为每个阶段提供默认决策：精简开启、轻量构建、轻量验证、验证通过后进入归档前最终确认。
 
 开始前先定位 Comet 脚本：
@@ -154,3 +158,16 @@ Tweak 流程为 **一次性连续执行**。调用 `/comet-tweak` 后，agent �
 - change 已归档
 - 未新增 capability、架构调整或接口变化
 - **阶段守卫**：build → verify 前运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`
+
+## 自动流转
+
+每次阶段守卫或状态转换完成后读取：
+
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <name> auto_transition)
+```
+
+`AUTO_TRANSITION=false` 时，状态已推进但不要调用下一 Skill；按当前 phase 提示用户手动继续：
+- `phase: build` → 手动运行 `/comet-tweak`
+- `phase: verify` → 手动运行 `/comet-verify`
+- `phase: archive` → 手动运行 `/comet-archive`

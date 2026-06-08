@@ -267,6 +267,88 @@ describeShell('comet shell scripts', () => {
     expect(yaml).toContain('context_compression: off');
   }, 20_000);
 
+  it('initializes auto_transition as true when openspec comet config is absent', async () => {
+    const result = runBash(tmpDir, stateScript, ['init', 'auto-transition-defaults', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'auto-transition-defaults', '.comet.yaml'),
+      'utf-8',
+    );
+    const get = runBash(tmpDir, stateScript, [
+      'get',
+      'auto-transition-defaults',
+      'auto_transition',
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('auto_transition: true');
+    expect(get.status).toBe(0);
+    expect(get.stdout.trim()).toBe('true');
+  }, 20_000);
+
+  it('initializes auto_transition from openspec comet config when set to false', async () => {
+    await writeFile(path.join(tmpDir, 'openspec', 'comet.yaml'), 'auto_transition: false\n');
+
+    const result = runBash(tmpDir, stateScript, ['init', 'auto-transition-config-false', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'auto-transition-config-false', '.comet.yaml'),
+      'utf-8',
+    );
+    const get = runBash(tmpDir, stateScript, [
+      'get',
+      'auto-transition-config-false',
+      'auto_transition',
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('auto_transition: false');
+    expect(get.status).toBe(0);
+    expect(get.stdout.trim()).toBe('false');
+  }, 20_000);
+
+  it('sets auto_transition to false and rejects invalid auto_transition values', async () => {
+    await createChange(
+      tmpDir,
+      'auto-transition-set',
+      [
+        'workflow: full',
+        'phase: design',
+        'context_compression: off',
+        'build_mode: null',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'auto_transition: true',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const set = runBash(tmpDir, stateScript, [
+      'set',
+      'auto-transition-set',
+      'auto_transition',
+      'false',
+    ]);
+    const get = runBash(tmpDir, stateScript, ['get', 'auto-transition-set', 'auto_transition']);
+    const setInvalid = runBash(tmpDir, stateScript, [
+      'set',
+      'auto-transition-set',
+      'auto_transition',
+      'maybe',
+    ]);
+
+    expect(set.status).toBe(0);
+    expect(get.stdout.trim()).toBe('false');
+    expect(setInvalid.status).not.toBe(0);
+    expect(setInvalid.stderr).toContain('Invalid value');
+  }, 20_000);
+
   it('comet-env.sh exports bundled script paths from its own directory', async () => {
     const envScript = path.join(tmpDir, 'scripts', 'comet-env.sh');
     const checkScript = path.join(tmpDir, 'check-env.sh');

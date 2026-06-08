@@ -25,6 +25,36 @@ describe('init command helpers', () => {
     });
   });
 
+  it('only affects existing components when hasExisting is provided with skip-all', () => {
+    const plan = {
+      osAction: 'install' as const,
+      spAction: 'install' as const,
+      cmAction: 'install' as const,
+    };
+    const hasExisting = { os: true, sp: false, cm: true };
+
+    expect(applyBulkOverwriteChoice(plan, 'skip-all', hasExisting)).toEqual({
+      osAction: 'skip',
+      spAction: 'install',
+      cmAction: 'skip',
+    });
+  });
+
+  it('only affects existing components when hasExisting is provided with overwrite-all', () => {
+    const plan = {
+      osAction: 'install' as const,
+      spAction: 'install' as const,
+      cmAction: 'install' as const,
+    };
+    const hasExisting = { os: false, sp: true, cm: false };
+
+    expect(applyBulkOverwriteChoice(plan, 'overwrite-all', hasExisting)).toEqual({
+      osAction: 'install',
+      spAction: 'overwrite',
+      cmAction: 'install',
+    });
+  });
+
   it('creates a project Comet config with context compression disabled by default', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-config-'));
 

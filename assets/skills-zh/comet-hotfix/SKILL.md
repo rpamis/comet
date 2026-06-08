@@ -18,6 +18,10 @@ description: "Comet 预设路径：Bug fix / 热修复。跳过 brainstorming，
 
 ## 流程（preset workflow，5 阶段）
 
+### 0. 输出语言约束
+
+精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言。
+
 执行链路：open → build → verify → archive。Hotfix 为每个阶段提供默认决策：精简开启、直接构建、按规模验证、验证通过后进入归档前最终确认。
 
 开始前先定位 Comet 脚本：
@@ -177,3 +181,16 @@ Hotfix 流程为 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 
 - change 已归档
 - 如有 spec 变更，已同步到 main spec
 - **阶段守卫**：build → verify 前运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`
+
+## 自动流转
+
+每次阶段守卫或状态转换完成后读取：
+
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <name> auto_transition)
+```
+
+`AUTO_TRANSITION=false` 时，状态已推进但不要调用下一 Skill；按当前 phase 提示用户手动继续：
+- `phase: build` → 手动运行 `/comet-hotfix`
+- `phase: verify` → 手动运行 `/comet-verify`
+- `phase: archive` → 手动运行 `/comet-archive`

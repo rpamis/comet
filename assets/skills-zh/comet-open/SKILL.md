@@ -11,6 +11,10 @@ description: "Comet 阶段 1：开启。用 /comet-open 调用。通过 OpenSpec
 
 ## 步骤
 
+### 0. 输出语言约束
+
+传递给 OpenSpec 的所有提问和产物要求都必须包含输出语言约束：使用触发本次工作流的用户请求语言。恢复已有 change 且产物已有明确主语言时，除非用户明确要求切换，否则保持该语言。
+
 ### 1. 探索想法与需求澄清
 
 **立即执行：** 使用 Skill 工具加载 `openspec-explore` 技能。禁止跳过此步骤。
@@ -166,8 +170,16 @@ fi
 
 ## 自动流转
 
-用户确认后，退出条件满足，自动流转到下一阶段：
+用户确认后，退出条件满足，确保状态机状态已更新，并读取 `AUTO_TRANSITION` 值：
 
-> **REQUIRED NEXT SKILL（完整流程）:** 调用 `comet-design` skill 进入深度设计阶段。
->
-> hotfix/tweak preset 由对应 preset skill 控制后续流转（phase 直接进入 build），不经过本节。
+```bash
+AUTO_TRANSITION=$("$COMET_BASH" "$COMET_STATE" get <change-name> auto_transition)
+```
+
+若 `AUTO_TRANSITION` 为空或不是 `false`，调用 `comet-design` skill 进入深度设计阶段。
+
+若 `AUTO_TRANSITION=false`，不要调用下一 Skill；打印：
+
+> 状态已更新为 `phase: design`。请使用 `/comet-design` 进入深度设计阶段。
+
+hotfix/tweak preset 由对应 preset skill 控制后续流转（phase 直接进入 build），不经过本节。

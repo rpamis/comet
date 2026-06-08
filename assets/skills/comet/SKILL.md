@@ -20,6 +20,10 @@ Superpowers handles HOW — technical design, planning, execution, closing
 
 Agents need only read this section for decision-making. Refer to the Reference Appendix as needed.
 
+### Output Language Rule
+
+Use the language of the user request that triggered this workflow as the default output language. When resuming an existing change with a clear dominant artifact language, preserve that language unless the user explicitly asks to switch.
+
 ### Automatic Phase Detection
 
 **Step 0: Active Change Discovery and Intent Detection**
@@ -203,6 +207,7 @@ archived: false
 | `tdd_mode` | `tdd` or `direct`. Must be selected before full workflow leaves build phase. `tdd` enforces writing a failing test first for each task; `direct` does not enforce TDD. hotfix/tweak default to `direct` |
 | `isolation` | `branch` or `worktree`, workspace isolation method. Full workflow init may leave this as `null`, but only until `/comet-build` Step 3; hotfix/tweak default to `branch` |
 | `verify_mode` | `light` or `full`, can be empty |
+| `auto_transition` | `true` or `false`. `false` pauses only the next skill invocation; it does not block phase updates |
 | `verify_result` | `pending`, `pass`, or `fail` |
 | `verification_report` | Verification report file path; must point to an existing file before verify can pass |
 | `branch_status` | `pending` or `handled`; set to `handled` after branch handling completes |

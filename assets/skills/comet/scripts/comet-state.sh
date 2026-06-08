@@ -207,6 +207,21 @@ project_context_compression() {
   esac
 }
 
+project_auto_transition_default() {
+  local config_file="openspec/comet.yaml"
+  local value
+
+  value="$(yaml_field "auto_transition" "$config_file" 2>/dev/null || true)"
+  case "$value" in
+    true|false)
+      printf '%s\n' "$value"
+      ;;
+    *)
+      printf '%s\n' "true"
+      ;;
+  esac
+}
+
 # --- Subcommands ---
 
 cmd_init() {
@@ -230,9 +245,10 @@ cmd_init() {
   mkdir -p "$change_dir"
 
   # Set workflow-appropriate defaults
-  local phase build_mode isolation verify_mode context_compression
+  local phase build_mode isolation verify_mode context_compression auto_transition
   phase="open"
   context_compression=$(project_context_compression)
+  auto_transition="$(project_auto_transition_default)"
 
   case "$workflow" in
     full)
@@ -266,6 +282,7 @@ subagent_dispatch: null
 tdd_mode: $tdd_mode
 isolation: $isolation
 verify_mode: $verify_mode
+auto_transition: $auto_transition
 base_ref: $base_ref
 design_doc: null
 plan: null
@@ -298,6 +315,9 @@ cmd_get() {
   # Read and output the field value
   local value
   value=$(yaml_field "$field" "$yaml_file")
+  if [ "$field" = "auto_transition" ] && [ -z "$value" ]; then
+    value="true"
+  fi
   echo "${value:-}"
 }
 
@@ -323,14 +343,14 @@ cmd_set() {
       yellow "WARNING: Setting 'phase' directly bypasses state machine constraints." >&2
       yellow "  Consider using: comet-state.sh transition <change-name> <event>" >&2
       ;;
-    workflow|context_compression|build_mode|build_pause|subagent_dispatch|tdd_mode|isolation|verify_mode|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
+    workflow|context_compression|build_mode|build_pause|subagent_dispatch|tdd_mode|isolation|verify_mode|auto_transition|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
       # Valid field
       ;;
     *)
       red "ERROR: Unknown field: '$field'" >&2
       red "Valid fields:" >&2
       red "  workflow, phase, context_compression, design_doc, plan, build_mode, build_pause, subagent_dispatch, tdd_mode, isolation," >&2
-      red "  verify_mode, verify_result, verification_report, branch_status," >&2
+      red "  verify_mode, auto_transition, verify_result, verification_report, branch_status," >&2
       red "  verified_at, created_at, archived, base_ref, direct_override," >&2
       red "  build_command, verify_command, handoff_context, handoff_hash" >&2
       exit 1
@@ -365,6 +385,9 @@ cmd_set() {
       ;;
     verify_mode)
       validate_enum "$value" "light" "full"
+      ;;
+    auto_transition)
+      validate_enum "$value" "true" "false"
       ;;
     verify_result)
       validate_enum "$value" "pending" "pass" "fail"
@@ -933,7 +956,7 @@ cmd_scale() {
     local plan_file base_ref=""
     plan_file=$(cmd_get "$change_name" "plan" 2>/dev/null || true)
     if [ -n "$plan_file" ] && [ "$plan_file" != "null" ] && [ -f "$plan_file" ]; then
-      base_ref=$(grep '^base-ref:' "$plan_file" 2>/dev/null | head -1 | sed 's/^base-ref: *//')
+      base_ref=$(grep '^base-ref:' "$plan_file" 2>/dev/null | head -1 | sed 's/^base-ref: *//' || true)
     fi
     # Fallback to base_ref stored in .comet.yaml (set during init)
     if [ -z "$base_ref" ] || [ "$base_ref" = "null" ]; then
