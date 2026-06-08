@@ -45,7 +45,13 @@ function toBashPath(filePath: string): string {
   return `/mnt/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`;
 }
 
-function runBash(cwd: string, script: string, args: string[] = [], env: NodeJS.ProcessEnv = {}) {
+function runBash(
+  cwd: string,
+  script: string,
+  args: string[] = [],
+  env: NodeJS.ProcessEnv = {},
+  timeout?: number,
+) {
   if (!bashCommand) {
     throw new Error('comet shell script tests require Bash or Git Bash');
   }
@@ -53,6 +59,7 @@ function runBash(cwd: string, script: string, args: string[] = [], env: NodeJS.P
     cwd,
     encoding: 'utf-8',
     env: { ...process.env, ...env },
+    timeout,
   });
 }
 
@@ -1500,6 +1507,59 @@ describeShell('comet shell scripts', () => {
     expect(result.stderr).toContain('Next: complete or explicitly remove unfinished tasks');
   }, 20_000);
 
+  it('rejects unchecked Superpowers plan tasks in the build guard check', async () => {
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'plans', 'plan-with-pending-task.md'),
+      ['# Plan', '', '- [x] completed task', '- [ ] pending plan task'].join('\n'),
+    );
+    await createChange(
+      tmpDir,
+      'unfinished-plan-tasks',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: subagent-driven-development',
+        'build_pause: null',
+        'subagent_dispatch: confirmed',
+        'tdd_mode: tdd',
+        'isolation: branch',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: docs/superpowers/plans/plan-with-pending-task.md',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      ['- [x] completed task'].join('\n'),
+    );
+    await writeFile(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+    );
+
+    const probeScript = path.join(tmpDir, 'scripts', 'probe-plan-tasks.sh');
+    await writeFile(
+      probeScript,
+      [
+        '#!/bin/bash',
+        'set -euo pipefail',
+        'export COMET_GUARD_SOURCE_ONLY=1',
+        'CHANGE=unfinished-plan-tasks',
+        'CHANGE_DIR=openspec/changes/unfinished-plan-tasks',
+        '. ./scripts/comet-guard.sh',
+        'plan_tasks_all_done',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runBash(tmpDir, probeScript);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('pending plan task');
+    expect(result.stderr).toContain('Next: check off corresponding completed plan tasks');
+  }, 20_000);
+
   it('rejects direct build mode for full workflow during state transition', async () => {
     await createChange(
       tmpDir,
@@ -2624,10 +2684,53 @@ describeShell('comet shell scripts', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('build_mode: DONE (subagent-driven-development)');
       expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
+      expect(result.stdout).toContain('inspect the first unchecked task against recent git history/diff');
       expect(result.stdout).toContain('dispatch a real background subagent');
       expect(result.stdout).toContain(
         'Do not execute the pending task directly in the main window',
       );
+    });
+
+    it('routes build recovery to additional unchecked Superpowers plan tasks', async () => {
+      // Scenario: OpenSpec has 2 tasks (both done), Superpowers plan adds a 3rd task (not done)
+      // This is valid plan enhancement but blocks leaving build until all plan tasks are checked
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'plans', 'plan-with-additions.md'),
+        ['# Plan', '', '- [x] task from OpenSpec 1', '- [x] task from OpenSpec 2', '- [ ] additional task added in plan'].join('\n'),
+      );
+      await createChange(
+        tmpDir,
+        'recover-plan-additions',
+        [
+          'workflow: full',
+          'phase: build',
+          'build_mode: subagent-driven-development',
+          'build_pause: null',
+          'subagent_dispatch: confirmed',
+          'tdd_mode: tdd',
+          'isolation: branch',
+          'verify_mode: null',
+          'design_doc: null',
+          'plan: docs/superpowers/plans/plan-with-additions.md',
+          'verify_result: pending',
+          'archived: false',
+          '',
+        ].join('\n'),
+        ['- [x] task 1', '- [x] task 2'].join('\n'),
+      );
+
+      const result = runBash(tmpDir, stateScript, [
+        'check',
+        'recover-plan-additions',
+        'build',
+        '--recover',
+      ]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Tasks: 2/2 done, 0 pending');
+      expect(result.stdout).toContain('Plan tasks: 2/3 done, 1 pending');
+      expect(result.stdout).toContain('first unchecked Superpowers plan task');
+      expect(result.stdout).toContain('dispatch a real background subagent');
     });
 
     it('requires subagent dispatch confirmation when recovering subagent build mode', async () => {

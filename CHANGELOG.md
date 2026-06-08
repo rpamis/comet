@@ -66,6 +66,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Subagent task persistence**: `/comet-build` now requires every subagent dispatch prompt to persist completed task checks in the Superpowers plan and, when mapped, the corresponding OpenSpec `tasks.md` item before committing. Build guard blocks unchecked Superpowers plan tasks, and build recovery reports both OpenSpec and plan progress before inspecting recent git history/diff or dispatching more work, preventing resume after interruption or context compression from re-running already completed subagent work ([#79](https://github.com/rpamis/comet/issues/79)).
+
 - **skip-all skipping uninstalled components**: `comet init` no longer treats a previously skipped component as already installed. Choosing skip-all now only skips components that are actually present, so uninstalled OpenSpec, Superpowers, Comet, or CodeGraph components are still offered for installation instead of being silently bypassed ([#73](https://github.com/rpamis/comet/pull/73)).
 
 - **Update JSON output for rules/hooks**: `comet update --json` now includes rules and hooks distribution results alongside skill update results, with per-target error isolation so a single platform failure doesn't break the entire update output.

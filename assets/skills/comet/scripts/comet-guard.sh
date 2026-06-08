@@ -34,18 +34,26 @@ validate_change_name() {
   fi
 }
 
-validate_change_name "$1"
+if [ "${COMET_GUARD_SOURCE_ONLY:-0}" = "1" ]; then
+  CHANGE="${CHANGE:-}"
+  PHASE="${PHASE:-}"
+  APPLY="${APPLY:-0}"
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
+  CHANGE_DIR="${CHANGE_DIR:-}"
+else
+  validate_change_name "$1"
 
-CHANGE="$1"
-PHASE="$2"
-APPLY=0
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-if [[ "${3:-}" == "--apply" ]]; then
-  APPLY=1
-fi
-CHANGE_DIR="openspec/changes/$CHANGE"
-if [ "$PHASE" = "archive" ] && [ ! -d "$CHANGE_DIR" ] && [ -d "openspec/changes/archive/$CHANGE" ]; then
-  CHANGE_DIR="openspec/changes/archive/$CHANGE"
+  CHANGE="$1"
+  PHASE="$2"
+  APPLY=0
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+  if [[ "${3:-}" == "--apply" ]]; then
+    APPLY=1
+  fi
+  CHANGE_DIR="openspec/changes/$CHANGE"
+  if [ "$PHASE" = "archive" ] && [ ! -d "$CHANGE_DIR" ] && [ -d "openspec/changes/archive/$CHANGE" ]; then
+    CHANGE_DIR="openspec/changes/archive/$CHANGE"
+  fi
 fi
 
 BLOCK=0
@@ -92,6 +100,27 @@ tasks_all_done() {
 tasks_has_any() {
   local tasks="$CHANGE_DIR/tasks.md"
   [ -f "$tasks" ] && grep -q '\- \[' "$tasks"
+}
+
+plan_tasks_all_done() {
+  local plan
+  plan=$(yaml_field_value "plan" 2>/dev/null || true)
+
+  if [ -z "$plan" ] || [ "$plan" = "null" ]; then
+    return 0
+  fi
+  if [ ! -f "$plan" ]; then
+    echo "plan file is missing at $plan" >&2
+    echo "Next: restore the Superpowers plan file or update .comet.yaml plan before leaving build." >&2
+    return 1
+  fi
+  if grep -q '^[[:space:]]*- \[ \]' "$plan"; then
+    echo "Unfinished Superpowers plan tasks:" >&2
+    grep -n '^[[:space:]]*- \[ \]' "$plan" >&2 || true
+    echo "Next: check off corresponding completed plan tasks, then commit the plan update." >&2
+    return 1
+  fi
+  return 0
 }
 
 yaml_field_value() {
@@ -637,6 +666,7 @@ guard_build() {
   check "subagent dispatch confirmed" subagent_dispatch_confirmed
   check "tdd_mode selected" tdd_mode_selected
   check "tasks.md all tasks checked" tasks_all_done
+  check "Superpowers plan all tasks checked" plan_tasks_all_done
   check "proposal.md exists" file_nonempty "$CHANGE_DIR/proposal.md"
   check "Build passes" build_passes
 }
@@ -677,6 +707,10 @@ apply_state_update() {
 }
 
 # --- Main ---
+
+if [ "${COMET_GUARD_SOURCE_ONLY:-0}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 case "$PHASE" in
   open)     preflight ; guard_open ;;

@@ -192,19 +192,19 @@ git commit -m "chore: add implementation plan"
 加载 `subagent-driven-development` 或 `executing-plans` 时，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束。
 
 - `build_mode: executing-plans`：在主窗口使用 Skill 工具加载 Superpowers `executing-plans` 技能并按计划执行。若该技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。
-- `build_mode: subagent-driven-development`：主窗口只负责协调，不得把 `subagent-driven-development` 当作当前主窗口的执行技能直接运行；必须使用已确认的当前平台真实后台 subagent / Task / multi-agent 调度能力，把下一个未完成任务派发到后台 subagent。后台 subagent 需要自行加载 Superpowers `subagent-driven-development` 相关执行流程，并按其指引完成实现、检查和提交。
+- `build_mode: subagent-driven-development`：主窗口只负责协调，不得把 `subagent-driven-development` 当作当前主窗口的执行技能直接运行；必须使用已确认的当前平台真实后台 subagent / Task / multi-agent 调度能力，把下一个未完成任务派发到后台 subagent。派发每个 subagent 时，必须在 prompt 中明确要求：任务完成并通过验证后，立即勾选 `docs/superpowers/plans/<plan-file>.md` 中对应的计划任务；若该计划任务映射到 `openspec/changes/<name>/tasks.md` 中的任务，也同步将该 OpenSpec 任务从 `- [ ]` 改为 `- [x]`；若 plan 新增了 OpenSpec 中没有的一步，只勾选 plan 中对应任务即可。不得只更新内置 Todo 或对话内 checklist。后台 subagent 需要自行加载 Superpowers `subagent-driven-development` 相关执行流程，并按其指引完成实现、检查和提交。
 - 如果当前平台没有真实后台 subagent / Task / multi-agent 调度能力，必须暂停并等待用户选择改用主窗口执行。用户选择改用主窗口执行后，必须先运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`，再按 `build_mode: executing-plans` 分支加载 Superpowers `executing-plans` 技能。用户未明确选择前，不得继续执行任务。
 
 执行开始后，按所选分支完成：
 - 按计划执行任务
-- 完成 tasks.md 勾选（`- [ ]` → `- [x]`）
+- 完成 Superpowers plan 对应任务勾选；若任务映射到 OpenSpec tasks.md，也勾选对应 OpenSpec 任务（`- [ ]` → `- [x]`）
 - 每个任务完成后提交代码
 
 **TDD 模式执行约束**：
 
 若 `tdd_mode: tdd`：
 - `build_mode: executing-plans`：加载执行技能后、执行第一个任务前，**立即执行：** 使用 Skill 工具加载 Superpowers `test-driven-development` 技能一次。禁止跳过此步骤。技能加载后，从第一个未勾选任务开始，对每个任务遵循已加载的 TDD Red-Green-Refactor 循环执行。不得跳过失败测试验证阶段。后续任务不再重新加载该技能，直接遵循已加载流程。若上下文压缩后恢复，重新运行本步骤加载 TDD 技能一次，然后从第一个未勾选任务继续。
-- `build_mode: subagent-driven-development`：派发每个 subagent 时，必须在 prompt 中注入 TDD 硬约束：**"You MUST follow TDD: for each task, write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first."**。不得依赖 implementer-prompt.md 的条件触发，必须在派发 prompt 中显式写出。
+- `build_mode: subagent-driven-development`：派发每个 subagent 时，必须在 prompt 中注入 TDD 硬约束：**"You MUST follow TDD: for each task, write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first."**。同一个 prompt 还必须包含上述 OpenSpec tasks.md 与 Superpowers plan 持久化勾选要求。不得依赖 implementer-prompt.md 的条件触发，必须在派发 prompt 中显式写出。
 
 若 `tdd_mode: direct`：按正常流程执行，不强制 TDD。
 
@@ -255,7 +255,7 @@ git commit -m "chore: add implementation plan"
 
 Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后断点恢复：
 
-- **每完成一个 task**：立即勾选 tasks.md 并提交代码，确保 `.comet.yaml` 和文件状态持久化。用 `grep -c '\- \[ \]' tasks.md` 检查剩余未勾选数，无需重新读取整个文件
+- **每完成一个 task**：立即勾选 Superpowers plan 中的对应任务；若任务映射到 OpenSpec tasks.md，也勾选对应 OpenSpec 任务；然后提交代码，确保 `.comet.yaml` 和文件状态持久化。用 `grep -c '\- \[ \]' tasks.md` 检查剩余未勾选数，无需重新读取整个文件
 - **上下文压缩后恢复**：先运行 `"$COMET_BASH" "$COMET_STATE" check <change-name> build --recover`，脚本输出结构化恢复上下文（isolation/build_mode 状态、plan 路径、任务完成进度、恢复动作）。根据 Recovery action 决定下一步。
 - **用户手动修改恢复**：按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。该协议定义了检查步骤、归因分类和禁令。build 阶段的特殊处理：
   1. 归因后，若 diff 暗示计划或 spec 已变化，按 Step 4「Spec 增量更新」分级处理

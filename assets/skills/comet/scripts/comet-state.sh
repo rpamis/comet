@@ -841,13 +841,26 @@ cmd_recover() {
       # Count completed vs pending tasks
       local tasks_file="$change_dir/tasks.md"
       local total=0 done=0 pending=0
+      local plan_total=0 plan_done=0 plan_pending=0
       if [ -f "$tasks_file" ]; then
-        total=$(grep -c '^\- \[' "$tasks_file" 2>/dev/null || echo "0")
-        done=$(grep -c '^\- \[x\]' "$tasks_file" 2>/dev/null || echo "0")
+        total=$(grep -c '^[[:space:]]*- \[' "$tasks_file" 2>/dev/null || true)
+        done=$(grep -c '^[[:space:]]*- \[x\]' "$tasks_file" 2>/dev/null || true)
+        total="${total:-0}"
+        done="${done:-0}"
         pending=$((total - done))
         echo "  Tasks: ${done}/${total} done, ${pending} pending"
       else
         echo "  Tasks: tasks.md MISSING"
+      fi
+      if [ -n "$plan" ] && [ "$plan" != "null" ] && [ -f "$plan" ]; then
+        plan_total=$(grep -c '^[[:space:]]*- \[' "$plan" 2>/dev/null || true)
+        plan_done=$(grep -c '^[[:space:]]*- \[x\]' "$plan" 2>/dev/null || true)
+        plan_total="${plan_total:-0}"
+        plan_done="${plan_done:-0}"
+        plan_pending=$((plan_total - plan_done))
+        if [ "$plan_total" -gt 0 ]; then
+          echo "  Plan tasks: ${plan_done}/${plan_total} done, ${plan_pending} pending"
+        fi
       fi
       echo ""
       if [ "$build_pause" = "plan-ready" ] && [ -n "$plan" ] && [ "$plan" != "null" ] && [ -f "$plan" ] && { [ "$isolation" = "null" ] || [ -z "$isolation" ] || [ "$build_mode" = "null" ] || [ -z "$build_mode" ]; }; then
@@ -855,13 +868,13 @@ cmd_recover() {
       elif [ "$build_pause" = "plan-ready" ] && { [ -z "$plan" ] || [ "$plan" = "null" ] || [ ! -f "$plan" ]; }; then
         echo "Recovery action: Plan-ready pause is recorded, but the plan file is missing. Restore the plan file or rerun writing-plans before choosing execution."
       elif [ "$build_pause" = "plan-ready" ]; then
-        if [ "$build_mode" = "subagent-driven-development" ] && [ "$pending" -gt 0 ]; then
+        if [ "$build_mode" = "subagent-driven-development" ] && { [ "$pending" -gt 0 ] || [ "$plan_pending" -gt 0 ]; }; then
           if [ "$subagent_dispatch" = "confirmed" ]; then
-            echo "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then read tasks.md and dispatch a real background subagent for the first unchecked task. Do not execute the pending task directly in the main window."
+            echo "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window."
           else
             echo "Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing."
           fi
-        elif [ "$pending" -gt 0 ]; then
+        elif [ "$pending" -gt 0 ] || [ "$plan_pending" -gt 0 ]; then
           echo "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task."
         else
           echo "Recovery action: Plan-ready pause is stale and all tasks are done. Clear build_pause to null, then run guard to transition to verify."
@@ -877,12 +890,22 @@ cmd_recover() {
       elif [ "$pending" -gt 0 ]; then
         if [ "$build_mode" = "subagent-driven-development" ]; then
           if [ "$subagent_dispatch" = "confirmed" ]; then
-            echo "Recovery action: Read tasks.md and dispatch a real background subagent for the first unchecked task. Do not execute the pending task directly in the main window."
+            echo "Recovery action: Read tasks.md and the Superpowers plan (which may include additions beyond OpenSpec), then inspect the first unchecked task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window."
           else
             echo "Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing."
           fi
         else
           echo "Recovery action: Read tasks.md and continue from first unchecked task."
+        fi
+      elif [ "$plan_pending" -gt 0 ]; then
+        if [ "$build_mode" = "subagent-driven-development" ]; then
+          if [ "$subagent_dispatch" = "confirmed" ]; then
+            echo "Recovery action: Read the Superpowers plan, then inspect the first unchecked Superpowers plan task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window."
+          else
+            echo "Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing."
+          fi
+        else
+          echo "Recovery action: Read the Superpowers plan and continue from the first unchecked plan task."
         fi
       else
         echo "Recovery action: All tasks done. Run guard to transition to verify."

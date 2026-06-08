@@ -772,6 +772,26 @@ describe('skills', () => {
     });
   });
 
+  describe('Comet build subagent persistence safeguards', () => {
+    it('requires subagent prompts to persist task completion in durable task files', async () => {
+      const zhBuild = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'),
+        'utf-8',
+      );
+      const enBuild = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-build', 'SKILL.md'),
+        'utf-8',
+      );
+
+      expect(zhBuild).toContain(
+        '派发每个 subagent 时，必须在 prompt 中明确要求：任务完成并通过验证后，立即勾选 `docs/superpowers/plans/<plan-file>.md` 中对应的计划任务；若该计划任务映射到 `openspec/changes/<name>/tasks.md` 中的任务，也同步将该 OpenSpec 任务从 `- [ ]` 改为 `- [x]`；若 plan 新增了 OpenSpec 中没有的一步，只勾选 plan 中对应任务即可。不得只更新内置 Todo 或对话内 checklist。',
+      );
+      expect(enBuild).toContain(
+        'When dispatching each subagent, the prompt must explicitly require: after the task is complete and validated, immediately check off the corresponding plan task in `docs/superpowers/plans/<plan-file>.md`; if that plan task maps to an item in `openspec/changes/<name>/tasks.md`, also change that OpenSpec task from `- [ ]` to `- [x]`; if the plan added a step that does not exist in OpenSpec, only the corresponding plan task needs to be checked off. Do not only update the built-in Todo or an in-chat checklist.',
+      );
+    });
+  });
+
   describe('Repository authoring guidance', () => {
     it('documents consistent skill invocation wording in CLAUDE.md', async () => {
       const claude = await fs.readFile(path.resolve('CLAUDE.md'), 'utf-8');
