@@ -58,7 +58,7 @@ if [ -d "openspec/changes" ]; then
     [ -d "$dir" ] || continue
     # Skip archived changes
     case "$dir" in
-      */archive/*|*/archive/) continue ;;
+      */archive/*) continue ;;
     esac
     if [ -f "${dir}.comet.yaml" ]; then
       YAML_FILE="${dir}.comet.yaml"
@@ -97,13 +97,24 @@ case "$RELPATH" in
   /*|[A-Za-z]:/*)
     # Absolute — try stripping CWD prefixes
     CWD_UNIX=$(norm "$(pwd)")
+    CWD_PHYS=$(norm "$(pwd -P 2>/dev/null || pwd)")
+
+    # Try: TARGET as-is vs CWD logical
     if [ "${RELPATH#"$CWD_UNIX"/}" != "$RELPATH" ]; then
       RELPATH="${RELPATH#"$CWD_UNIX"/}"
+    # Try: TARGET as-is vs CWD physical (macOS /var → /private/var)
+    elif [ "${RELPATH#"$CWD_PHYS"/}" != "$RELPATH" ]; then
+      RELPATH="${RELPATH#"$CWD_PHYS"/}"
     else
-      # Git Bash on Windows: pwd -W gives Windows-style path
-      CWD_WIN=$(norm "$(pwd -W 2>/dev/null || pwd)")
-      if [ "${RELPATH#"$CWD_WIN"/}" != "$RELPATH" ]; then
-        RELPATH="${RELPATH#"$CWD_WIN"/}"
+      # Resolve TARGET's parent through filesystem (handles symlinked TARGET path)
+      _PDIR=$(cd "$(dirname "$TARGET")" 2>/dev/null && pwd -P 2>/dev/null || true)
+      if [ -n "$_PDIR" ]; then
+        _TRESOLVED=$(norm "${_PDIR}/$(basename "$TARGET")")
+        if [ "${_TRESOLVED#"$CWD_UNIX"/}" != "$_TRESOLVED" ]; then
+          RELPATH="${_TRESOLVED#"$CWD_UNIX"/}"
+        elif [ "${_TRESOLVED#"$CWD_PHYS"/}" != "$_TRESOLVED" ]; then
+          RELPATH="${_TRESOLVED#"$CWD_PHYS"/}"
+        fi
       fi
     fi
     ;;
