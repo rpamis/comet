@@ -38,8 +38,7 @@ fi
 
 你是实施计划专家。基于以下输入创建实施计划：
 
-1. 使用 Skill 工具加载 Superpowers `writing-plans` 技能
-   - ARGUMENTS 必须包含：`Language: 使用触发本次工作流的用户请求语言输出`
+1. **立即执行：** 使用 Skill 工具加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。技能加载后，ARGUMENTS 必须包含：`Language: 使用触发本次工作流的用户请求语言输出`
 2. 读取 Design Doc（`docs/superpowers/specs/` 下的技术设计文档）
 3. 读取 `openspec/changes/<name>/tasks.md`（任务边界）
 4. 按技能指引创建计划
@@ -189,10 +188,8 @@ git commit -m "chore: add implementation plan"
 
 **执行计划**：必须按 `build_mode` 的真实运行位置处理。
 
-加载 `subagent-driven-development` 或 `executing-plans` 时，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束。
-
-- `build_mode: executing-plans`：在主窗口使用 Skill 工具加载 Superpowers `executing-plans` 技能并按计划执行。若该技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。
-- `build_mode: subagent-driven-development`：主窗口只负责协调，不得把 `subagent-driven-development` 当作当前主窗口的执行技能直接运行；必须使用已确认的当前平台真实后台 subagent / Task / multi-agent 调度能力，把下一个未完成任务派发到后台 subagent。派发每个 subagent 时，必须在 prompt 中明确要求：任务完成并通过验证后，立即勾选 `docs/superpowers/plans/<plan-file>.md` 中对应的计划任务；若该计划任务映射到 `openspec/changes/<name>/tasks.md` 中的任务，也同步将该 OpenSpec 任务从 `- [ ]` 改为 `- [x]`；若 plan 新增了 OpenSpec 中没有的一步，只勾选 plan 中对应任务即可。不得只更新内置 Todo 或对话内 checklist。后台 subagent 需要自行加载 Superpowers `subagent-driven-development` 相关执行流程，并按其指引完成实现、检查和提交。
+- `build_mode: executing-plans`：**立即执行：** 使用 Skill 工具加载 Superpowers `executing-plans` 技能。禁止跳过此步骤。若该技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。技能加载后，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：`Language: 使用触发本次工作流的用户请求语言输出`。按计划执行。
+- `build_mode: subagent-driven-development`：主窗口只负责协调，不得把 `subagent-driven-development` 当作当前主窗口的执行技能直接运行；必须使用已确认的当前平台真实后台 subagent / Task / multi-agent 调度能力，把下一个未完成任务派发到后台 subagent。派发每个 subagent 时，必须在 prompt 中明确要求：技能加载后 ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：`Language: 使用触发本次工作流的用户请求语言输出`；任务完成并通过验证后，立即勾选 `docs/superpowers/plans/<plan-file>.md` 中对应的计划任务；若该计划任务映射到 `openspec/changes/<name>/tasks.md` 中的任务，也同步将该 OpenSpec 任务从 `- [ ]` 改为 `- [x]`；若 plan 新增了 OpenSpec 中没有的一步，只勾选 plan 中对应任务即可。不得只更新内置 Todo 或对话内 checklist。后台 subagent 需要自行加载 Superpowers `subagent-driven-development` 相关执行流程，并按其指引完成实现、检查和提交。
 - 如果当前平台没有真实后台 subagent / Task / multi-agent 调度能力，必须暂停并等待用户选择改用主窗口执行。用户选择改用主窗口执行后，必须先运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_mode executing-plans`，再按 `build_mode: executing-plans` 分支加载 Superpowers `executing-plans` 技能。用户未明确选择前，不得继续执行任务。
 
 执行开始后，按所选分支完成：

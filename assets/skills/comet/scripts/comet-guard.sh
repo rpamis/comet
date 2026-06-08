@@ -709,7 +709,7 @@ apply_state_update() {
 # --- Main ---
 
 if [ "${COMET_GUARD_SOURCE_ONLY:-0}" = "1" ]; then
-  return 0 2>/dev/null || exit 0
+  return 0 2>/dev/null || { red "ERROR: COMET_GUARD_SOURCE_ONLY=1 is only for sourcing, not direct execution" >&2; exit 1; }
 fi
 
 case "$PHASE" in

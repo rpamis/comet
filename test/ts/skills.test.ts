@@ -440,11 +440,15 @@ describe('skills', () => {
       expect(zhHotfix).toContain('自动衔接下一阶段');
       expect(zhHotfix).toContain('"$COMET_BASH" "$COMET_STATE" next <name>');
       expect(zhHotfix).toContain('`NEXT: auto`');
-      expect(zhHotfix).toContain('`phase: build` 返回 `comet-hotfix`，`verify` 返回 `comet-verify`，`archive` 返回 `comet-archive`');
+      expect(zhHotfix).toContain(
+        '`phase: build` 返回 `comet-hotfix`，`verify` 返回 `comet-verify`，`archive` 返回 `comet-archive`',
+      );
       expect(zhTweak).toContain('自动衔接下一阶段');
       expect(zhTweak).toContain('"$COMET_BASH" "$COMET_STATE" next <name>');
       expect(zhTweak).toContain('`NEXT: auto`');
-      expect(zhTweak).toContain('`phase: build` 返回 `comet-tweak`，`verify` 返回 `comet-verify`，`archive` 返回 `comet-archive`');
+      expect(zhTweak).toContain(
+        '`phase: build` 返回 `comet-tweak`，`verify` 返回 `comet-verify`，`archive` 返回 `comet-archive`',
+      );
     });
   });
 
@@ -701,11 +705,15 @@ describe('skills', () => {
       expect(enHotfix).toContain('Automatic Handoff to Next Phase');
       expect(enHotfix).toContain('"$COMET_BASH" "$COMET_STATE" next <name>');
       expect(enHotfix).toContain('`NEXT: auto`');
-      expect(enHotfix).toContain('`phase: build` returns `comet-hotfix`, `verify` returns `comet-verify`, `archive` returns `comet-archive`');
+      expect(enHotfix).toContain(
+        '`phase: build` returns `comet-hotfix`, `verify` returns `comet-verify`, `archive` returns `comet-archive`',
+      );
       expect(enTweak).toContain('Automatic Handoff to Next Phase');
       expect(enTweak).toContain('"$COMET_BASH" "$COMET_STATE" next <name>');
       expect(enTweak).toContain('`NEXT: auto`');
-      expect(enTweak).toContain('`phase: build` returns `comet-tweak`, `verify` returns `comet-verify`, `archive` returns `comet-archive`');
+      expect(enTweak).toContain(
+        '`phase: build` returns `comet-tweak`, `verify` returns `comet-verify`, `archive` returns `comet-archive`',
+      );
     });
   });
 
