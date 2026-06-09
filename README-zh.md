@@ -43,6 +43,8 @@ Comet 将二者串联为五阶段自动化流水线。
 > **0.3.7 亮点** — 一键接入 [CodeGraph](https://github.com/colbymchenry/codegraph) 语义代码索引（官方：成本 **↓16%**、工具调用 **↓58%**）；
 >
 > 新增 Beta 上下文压缩，Build 阶段输入 token 降低 **25–30%**；
+> 
+> 新增主动上下文压缩机制，释放读取 Spec 和 brainstorming 消耗的上下文，为后续 Build 阶段保留窗口
 >
 > 新增 6 项 Token 工作流优化默认开启；
 >

@@ -16,6 +16,10 @@ Design → Build 阶段交接时的 spec 投影压缩。启用后 Build 阶段�
 
 详见 [CONTEXT-COMPRESSION.md](docs/CONTEXT-COMPRESSION.md)。
 
+### 主动上下文压缩机制
+
+Design 阶段新增 Step 1e 主动压缩门：Brainstorming 完成后、创建 Design Doc 前，Agent 主动触发平台原生上下文压缩（如 Claude Code 的 compact），释放读取 Spec 和 brainstorming 消耗的上下文，为后续 Build 阶段保留窗口。压缩后自动重新加载 handoff 文件继续执行。不支持程序化触发的平台会暂停提示用户手动压缩。
+
 ### 自动流转（Auto Transition）
 
 `auto_transition` 控制阶段推进后是否自动调用下一个 Skill，还是暂停等待用户手动触发。默认 `true`（全自动），设为 `false` 可在阶段间暂停审查。支持三层配置优先级：环境变量 `COMET_AUTO_TRANSITION` > `.comet/config.yaml`（项目级）> `.comet.yaml`（change 级）。适用于所有工作流类型（full / hotfix / tweak）。

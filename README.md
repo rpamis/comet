@@ -45,6 +45,8 @@ Comet chains both into a five-phase automated pipeline.
 > New `auto_transition` config for automatic or manual phase handoff;
 >
 > New **Beta context compression** cutting Build-phase input tokens by **25–30%**; 
+> 
+> New active context compression mechanism to release context consumed by reading specs and brainstorming, preserving window space for the subsequent Build phase.
 >
 > 6 default-on workflow token optimizations; 
 >
