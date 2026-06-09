@@ -75,15 +75,14 @@ Spec（多个则列出选择），动态识别当前执行到哪个阶段，继�
 同时，Comet具备Spec全生命周期管理能力，运行过程中能够将 OpenSpec 的 change/spec 制品与 Superpowers
 的设计、计划文档进行关联，并自动完成交接、状态更新、校验和归档同步，把原本需要用户频繁提醒 Agent 维护文档同步和关联关系的操作自动化。
 
-<details>
-<summary><strong>你能学到什么</strong> — Agent 工作流中的 Skill 组合模式</summary>
+## 你能学到什么
 
 现有的 Skill 市场中有很多优秀的 Skill 项目，但普遍存在偏好性问题——用户可能只喜欢部分功能。比如同时使用 OpenSpec 和
 Superpowers 时，可能只用 OpenSpec 的 Spec 管理能力，而编码上更喜欢 Superpowers 的 TDD 驱动。
 
 长期使用 Skill 的人都知道，这些能力是可以自由组合的，但具体怎么做依然需要真正的实践。Comet 项目可以作为参考：
 
-- **如何稳定触发嵌套 Skill** — 不是让 Agent 依靠文档描述做了”看起来像触发了 Skill”的操作（比如根据 Skill 描述写了文件），而是真正触发
+- **如何稳定触发嵌套 Skill** — 不是让 Agent 依靠文档描述做了“看起来像触发了 Skill”的操作（比如根据 Skill 描述写了文件），而是真正触发
   Skill（核心特征：CC 上有 Skill 触发的打印）。Comet 中会触发大量来自 OpenSpec 和 Superpowers 的能力，这段 Prompt 是怎么写的？
 
 - **如何让组合 Skill 多阶段自动流转** — 不是靠人工介入。Comet 的 5 阶段流程，除必要的用户选择项外，核心流程能够自动进行
@@ -92,10 +91,10 @@ Superpowers 时，可能只用 OpenSpec 的 Spec 管理能力，而编码上更�
 - **如何把 Spec 生命周期做成可恢复流程** — Comet 会把 OpenSpec 的 change/spec 制品与 Superpowers 的设计、计划文档关联起来，并通过
   `.comet.yaml` 记录阶段、执行模式、验证结果和归档状态，让 Agent 中断后能够继续，而不是重新翻文档猜进度。
 
-- **如何把文档同步从”用户提醒”变成自动化** — Comet 将 handoff、状态更新、校验和归档同步放进脚本化流程，减少”记得更新 design
-  doc””记得同步 spec””记得归档 change”这类反复提示。
+- **如何把文档同步从“用户提醒”变成自动化** — Comet 将 handoff、状态更新、校验和归档同步放进脚本化流程，减少“记得更新 design
+  doc”“记得同步 spec”“记得归档 change”这类反复提示。
 
-- **如何设计 Agent 可执行的守护条件** — Comet 的阶段退出不是简单相信 Agent 说”完成了”，而是通过 `comet-guard.sh`、
+- **如何设计 Agent 可执行的守护条件** — Comet 的阶段退出不是简单相信 Agent 说“完成了”，而是通过 `comet-guard.sh`、
   `comet-yaml-validate.sh`、`comet-state.sh` 等脚本检查任务、状态字段、验证证据和归档条件，满足条件后才允许推进。
 
 - **如何做跨平台 Skill 分发和安装** — Comet 支持多种 AI 编码平台、项目级/全局安装、中文/英文 Skill 选择，以及平台差异化目录（例如
@@ -103,8 +102,6 @@ Superpowers 时，可能只用 OpenSpec 的 Spec 管理能力，而编码上更�
 
 - **如何把 shell 脚本写成 Agent 工作流基础设施** — Comet 的脚本需要兼容 macOS、Linux、Windows Git Bash，处理 hash、YAML
   字段、状态机和归档流程。它展示了如何把原本容易写散在 Prompt 里的流程控制，沉淀成可测试、可复用的工具。
-
-</details>
 
 ## 安装
 
@@ -246,12 +243,14 @@ npx skills add rpamis/comet
 部分平台的项目级目录和全局目录不同。例如 OpenCode 全局安装使用 `.config/opencode`，Lingma 全局安装使用 `.lingma`
 ，Antigravity 全局安装使用 `.gemini/antigravity`。
 
-<details>
-<summary><strong>技能</strong> — Comet、OpenSpec、Superpowers 技能详情</summary>
+## 技能
 
 `comet init` 完成后，三组技能将被安装到所选平台的 `skills/` 目录：
 
 ### Comet 技能
+
+<details>
+<summary>查看 Comet 技能列表</summary>
 
 | 技能               | 描述                                |
 |------------------|-----------------------------------|
@@ -264,7 +263,12 @@ npx skills add rpamis/comet
 | `/comet-hotfix`  | 快捷路径：快速 bug 修复（跳过头脑风暴，不需要能力设计）    |
 | `/comet-tweak`   | 快捷路径：小改动（文案调整、配置调整、文档或 Prompt 优化） |
 
+</details>
+
 ### 守护与自动化脚本
+
+<details>
+<summary>查看脚本列表</summary>
 
 | 脚本                       | 用途                                                                              |
 |--------------------------|---------------------------------------------------------------------------------|
@@ -276,6 +280,8 @@ npx skills add rpamis/comet
 | `comet-state.sh`         | 统一状态管理 — init/set/get/check/scale，agent 的专属 YAML 接口                             |
 | `comet-hook-guard.sh`    | 阶段写入守护 — PreToolUse hook，在 open/design/archive 阶段拦截文件写入                         |
 
+</details>
+
 ### OpenSpec 技能
 
 Spec 生命周期管理：propose、explore、sync、verify、archive 等。
@@ -283,8 +289,6 @@ Spec 生命周期管理：propose、explore、sync、verify、archive 等。
 ### Superpowers 技能
 
 开发方法论：brainstorming、TDD、subagent-driven development、code review、plan writing 等。
-
-</details>
 
 ## 工作流
 
@@ -310,9 +314,6 @@ Spec 生命周期管理：propose、explore、sync、verify、archive 等。
 | 3. Plan & Build    | `/comet-build`   | Superpowers | 实现计划、代码提交                      |
 | 4. Verify & Finish | `/comet-verify`  | Both        | 验证报告、分支处理                      |
 | 5. Archive         | `/comet-archive` | OpenSpec    | delta→main spec 同步、归档          |
-
-<details>
-<summary><strong>核心原则与状态管理</strong></summary>
 
 ### 核心原则
 
@@ -422,8 +423,7 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
 
 </details>
 
-<details>
-<summary><strong>项目结构</strong></summary>
+## 项目结构
 
 ```
 your-project/
@@ -457,10 +457,7 @@ your-project/
     └── plans/                   # 实现计划
 ```
 
-</details>
-
-<details>
-<summary><strong>上下文压缩（Beta）</strong> — Design → Build 阶段交接节省 25–30% token</summary>
+## 上下文压缩（Beta）
 
 Comet 支持在 Design → Build 阶段交接时进行上下文压缩。启用后，`comet-handoff.sh` 会生成精简的上下文包，在不影响实现正确性的前提下，将
 Build 阶段的输入 token 降低 **25–30%**。
@@ -480,10 +477,7 @@ Benchmark 核心结论：
 
 详见 [CONTEXT-COMPRESSION.md](docs/CONTEXT-COMPRESSION.md) 获取完整 Benchmark 报告、压缩原理和复现步骤。
 
-</details>
-
-<details>
-<summary><strong>自动流转（Auto Transition）</strong> — 自动或手动阶段切换</summary>
+## 自动流转（Auto Transition）
 
 `auto_transition` 控制阶段完成后是否自动调用下一个 Skill，还是暂停等待用户手动触发。阶段推进本身始终执行，该配置仅影响 Skill 调用。
 
@@ -495,8 +489,6 @@ Benchmark 核心结论：
 三层配置与优先级：`COMET_AUTO_TRANSITION` 环境变量 > `.comet/config.yaml`（项目级）> `.comet.yaml`（change 级）。
 
 详见 [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) 获取配置详情、工作流映射和常见问题。
-
-</details>
 
 ## 开发
 

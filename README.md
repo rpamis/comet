@@ -79,8 +79,7 @@ At the same time, Comet provides full Spec lifecycle management. During executio
 artifacts with Superpowers design and planning documents, then automates handoff, state updates, validation, and archive
 sync so users do not have to repeatedly remind the Agent to keep documents synchronized and connected.
 
-<details>
-<summary><strong>What You'll Learn</strong> — Skill composition patterns for Agent workflows</summary>
+## What You'll Learn
 
 Many excellent Skill projects exist in the current Skill market, but they generally have preference issues — users may
 only like some features. For example, when using both OpenSpec and Superpowers, one might only use OpenSpec's Spec
@@ -119,8 +118,6 @@ practice. The Comet project can serve as a reference:
 - **How to turn shell scripts into Agent workflow infrastructure** — Comet's scripts need to work across macOS, Linux,
   and Windows Git Bash while handling hashes, YAML fields, state machines, and archive flows. It shows how to move
   fragile workflow control out of scattered Prompt text and into testable, reusable tools.
-
-</details>
 
 ## Install
 
@@ -264,12 +261,14 @@ Updates the npm package and refreshes installed Comet skills in detected project
 Some platforms use different project and global directories. For example, OpenCode global installs use
 `.config/opencode`, Lingma global installs use `.lingma`, and Antigravity global installs use `.gemini/antigravity`.
 
-<details>
-<summary><strong>Skills</strong> — Comet, OpenSpec, Superpowers skill details</summary>
+## Skills
 
 After `comet init`, three groups of skills are installed to the selected platform's `skills/` directory:
 
 ### Comet Skills
+
+<details>
+<summary>View Comet skills</summary>
 
 | Skill            | Description                                                    |
 |------------------|----------------------------------------------------------------|
@@ -282,7 +281,12 @@ After `comet init`, three groups of skills are installed to the selected platfor
 | `/comet-hotfix`  | Preset: Quick bug fix (skips brainstorming)                    |
 | `/comet-tweak`   | Preset: Small change (skips brainstorming and full plan)       |
 
+</details>
+
 ### Guard & Automation Scripts
+
+<details>
+<summary>View script list</summary>
 
 | Script                   | Purpose                                                                                                                           |
 |--------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
@@ -294,6 +298,8 @@ After `comet init`, three groups of skills are installed to the selected platfor
 | `comet-hook-guard.sh`    | Phase write guard — PreToolUse hook, blocks file writes during open/design/archive phases                                         |
 | `comet-state.sh`         | Unified state management — init/set/get/check/scale, agents' exclusive YAML interface                                             |
 
+</details>
+
 ### OpenSpec Skills
 
 Spec lifecycle management: propose, explore, sync, verify, archive, and more.
@@ -301,8 +307,6 @@ Spec lifecycle management: propose, explore, sync, verify, archive, and more.
 ### Superpowers Skills
 
 Development methodology: brainstorming, TDD, subagent-driven development, code review, plan writing, and more.
-
-</details>
 
 ## Workflow
 
@@ -328,9 +332,6 @@ Development methodology: brainstorming, TDD, subagent-driven development, code r
 | 3. Plan & Build    | `/comet-build`   | Superpowers | Implementation plan, code commits    |
 | 4. Verify & Finish | `/comet-verify`  | Both        | Verification report, branch handling |
 | 5. Archive         | `/comet-archive` | OpenSpec    | delta→main spec sync, archive        |
-
-<details>
-<summary><strong>Core Principles & State Management</strong></summary>
 
 ### Core Principles
 
@@ -439,8 +440,7 @@ Comet ensures agent execution reliability through automated state transitions:
 
 </details>
 
-<details>
-<summary><strong>Project Structure</strong></summary>
+## Project Structure
 
 ```
 your-project/
@@ -474,10 +474,7 @@ your-project/
     └── plans/                   # Implementation plans
 ```
 
-</details>
-
-<details>
-<summary><strong>Context Compression (Beta)</strong> — 25–30% token savings at Design → Build handoff</summary>
+## Context Compression (Beta)
 
 Comet supports context compression at the Design → Build handoff. When enabled, `comet-handoff.sh` generates a compact
 context package that reduces Build-phase input tokens by **25–30%** without affecting implementation correctness.
@@ -498,10 +495,7 @@ Enable in `.comet/config.yaml`: `context_compression: beta`
 See [CONTEXT-COMPRESSION.md](docs/CONTEXT-COMPRESSION.md) for the full benchmark report, compression principles, and
 reproduction steps.
 
-</details>
-
-<details>
-<summary><strong>Auto Transition</strong> — automatic vs manual phase handoff</summary>
+## Auto Transition
 
 `auto_transition` controls whether Comet automatically invokes the next skill after a phase completes, or pauses for
 manual handoff. Phase advancement itself always happens — this setting only affects skill invocation.
@@ -514,8 +508,6 @@ manual handoff. Phase advancement itself always happens — this setting only af
 Three-layer configuration with precedence: `COMET_AUTO_TRANSITION` env var > `.comet/config.yaml` (project) > `.comet.yaml` (change).
 
 See [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) for configuration details, workflow mapping, and FAQ.
-
-</details>
 
 ## Development
 
