@@ -512,9 +512,18 @@ Benchmark 核心结论：
 
 ## 社区交流
 
-| 抖音群(推荐)                                                                                         | 微信群                                                                                             | QQ群                                                                                         |
-|-------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| <img src="https://github.com/rpamis/comet/blob/master/img/douyin.png" width="100" height="100"> | <img src="https://github.com/rpamis/comet/blob/master/img/wechat.jpg" width="100" height="100"> | <img src="https://github.com/rpamis/comet/blob/master/img/qq.jpg" width="100" height="100"> |
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/douyin.png" width="120" height="120">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://github.com/rpamis/comet/blob/master/img/wechat.jpg" width="120" height="120">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://github.com/rpamis/comet/blob/master/img/qq.jpg" width="120" height="120">
+</p>
+<p align="center">
+  <b>抖音群（推荐）</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <b>微信群</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <b>QQ群</b>
+</p>
 
 ## 友情链接
 

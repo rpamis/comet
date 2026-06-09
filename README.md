@@ -533,9 +533,18 @@ Track our development progress and upcoming features on the [Comet Roadmap](http
 
 ## Community
 
-| DouYin Group(Recommendation)                                                                    | WeChat Group                                                                                    | QQ Group                                                                                    |
-|-------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| <img src="https://github.com/rpamis/comet/blob/master/img/douyin.png" width="100" height="100"> | <img src="https://github.com/rpamis/comet/blob/master/img/wechat.jpg" width="100" height="100"> | <img src="https://github.com/rpamis/comet/blob/master/img/qq.jpg" width="100" height="100"> |
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/douyin.png" width="120" height="120">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://github.com/rpamis/comet/blob/master/img/wechat.jpg" width="120" height="120">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://github.com/rpamis/comet/blob/master/img/qq.jpg" width="120" height="120">
+</p>
+<p align="center">
+  <b>DouYin (Recommended)</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <b>WeChat</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <b>QQ</b>
+</p>
 
 ## Reference
 
