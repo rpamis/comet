@@ -42,21 +42,11 @@ Comet chains both into a five-phase automated pipeline.
 > [!IMPORTANT]
 > **0.3.7 Highlights** — One-step [CodeGraph](https://github.com/colbymchenry/codegraph) semantic code indexing (official: cost **↓16%**, tool calls **↓58%**); 
 >
-> New `auto_transition` config for automatic or manual phase handoff;
->
 > New **Beta context compression** cutting Build-phase input tokens by **25–30%**; 
-> 
 > New active context compression mechanism to release context consumed by reading specs and brainstorming, preserving window space for the subsequent Build phase.
->
-> 6 default-on workflow token optimizations; 
->
-> Hook+Rule anti-drift phase guard; 
->
-> Optional TDD mode and subagent dispatch confirmation; 
->
-> Large PRD split into multiple changes; 
->
-> Pre-archive confirmation with reopen, verify retry limit, systematic debugging interception, and verification completion check.
+> 6 default-on workflow token optimizations; New `auto_transition` config for automatic or manual phase handoff; 
+> Hook+Rule anti-drift phase guard; Optional TDD mode and subagent dispatch confirmation; 
+> Large PRD split into multiple changes; Pre-archive confirmation with reopen, verify retry limit, systematic debugging interception, and verification completion check.
 >
 > See [NEWS.md](NEWS.md) for details.
 

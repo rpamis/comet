@@ -42,21 +42,10 @@ Comet 将二者串联为五阶段自动化流水线。
 > [!IMPORTANT]
 > **0.3.7 亮点** — 一键接入 [CodeGraph](https://github.com/colbymchenry/codegraph) 语义代码索引（官方：成本 **↓16%**、工具调用 **↓58%**）；
 >
-> 新增 Beta 上下文压缩，Build 阶段输入 token 降低 **25–30%**；
-> 
-> 新增主动上下文压缩机制，释放读取 Spec 和 brainstorming 消耗的上下文，为后续 Build 阶段保留窗口
->
-> 新增 6 项 Token 工作流优化默认开启；
->
-> 新增 `auto_transition` 配置，支持自动流转或手动推进阶段切换；
->
-> 基于 Hook 和 Rule 的防漂移阶段守护；
->
-> 可选 TDD 模式与子代理调度确认；
->
-> 支持大型 PRD 拆分为多个 change；
->
-> 归档前确认与回退、验证重试限制、系统化调试拦截和验证完成检查等流程加固。
+> 新增 Beta 上下文压缩，Build 阶段输入 token 降低 **25–30%**； 新增主动上下文压缩机制，释放读取 Spec 和 brainstorming 消耗的上下文，为后续 Build 阶段保留窗口
+> 新增 6 项 Token 工作流优化默认开启； 新增 `auto_transition` 配置，支持自动流转或手动推进阶段切换；
+> 基于 Hook 和 Rule 的防漂移阶段守护； 可选 TDD 模式与子代理调度确认；
+> 支持大型 PRD 拆分为多个 change； 归档前确认与回退、验证重试限制、系统化调试拦截和验证完成检查等流程加固。
 >
 > 详见 [NEWS.md](NEWS.md)。
 
