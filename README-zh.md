@@ -40,7 +40,21 @@ Superpowers 处理 **HOW**（技术设计、规划、执行、收尾）。
 Comet 将二者串联为五阶段自动化流水线。
 
 > [!IMPORTANT]
-> **0.3.7 亮点** — 一键接入 [CodeGraph](https://github.com/colbymchenry/codegraph) 语义代码索引（官方：成本 **↓16%**、工具调用 **↓58%**）；新增 Beta 上下文压缩，Build 阶段输入 token 降低 **25–30%**；6 项 Token 工作流优化默认开启；基于 Hook 和 Rule 的防漂移阶段守护；可选 TDD 模式与子代理调度确认；支持大型 PRD 拆分为多个 change；归档前确认与回退、验证重试限制、系统化调试拦截和验证完成检查等流程加固。
+> **0.3.7 亮点** — 一键接入 [CodeGraph](https://github.com/colbymchenry/codegraph) 语义代码索引（官方：成本 **↓16%**、工具调用 **↓58%**）；
+>
+> 新增 Beta 上下文压缩，Build 阶段输入 token 降低 **25–30%**；
+>
+> 新增 6 项 Token 工作流优化默认开启；
+>
+> 新增 `auto_transition` 配置，支持自动流转或手动推进阶段切换；
+>
+> 基于 Hook 和 Rule 的防漂移阶段守护；
+>
+> 可选 TDD 模式与子代理调度确认；
+>
+> 支持大型 PRD 拆分为多个 change；
+>
+> 归档前确认与回退、验证重试限制、系统化调试拦截和验证完成检查等流程加固。
 >
 > 详见 [NEWS.md](NEWS.md)。
 
@@ -327,6 +341,7 @@ Spec 处于哪个阶段。
 
 ```yaml
 workflow: full
+auto_transition: true
 phase: build
 build_mode: subagent-driven-development
 build_pause: null
@@ -349,7 +364,7 @@ subagent_dispatch: null
 ```
 
 full workflow 初始化时 `build_mode`、`build_pause`、`isolation`、`verify_mode`、`tdd_mode` 和 `subagent_dispatch` 可以暂时为
-`null`；进入 `build → verify` 前必须完成 `build_mode` 与 `isolation` 决策并写入合法值。`build_pause` 记录 build 阶段内部暂停点：
+`null`；进入 `build → verify` 前必须完成 `build_mode` 与 `isolation` 决策并写入合法值。`auto_transition` 控制阶段完成后是否自动触发下一个 Skill — 详见 [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md)。`build_pause` 记录 build 阶段内部暂停点：
 `null` 表示无暂停，`plan-ready` 表示 plan 已生成，用户在选择隔离方式和执行方式前暂停。它不是执行方式，不得写入 `build_mode`。
 `verification_report` 在验证报告生成前保持 `null`，`verify-pass` 要求该报告文件存在且 `branch_status: handled`。示例中
 `archived` 之后的字段是可选字段或脚本派生字段：`direct_override` 只在 full workflow 直接构建时需要，项目命令未配置时可以不存在，
@@ -410,6 +425,8 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
 
 ```
 your-project/
+├── .comet/
+│   └── config.yaml              # 项目级全局配置（context_compression、auto_transition 等）
 ├── .claude/skills/              # 平台技能目录（Comet + OpenSpec + Superpowers）
 │   ├── comet/SKILL.md
 │   │   └── scripts/
@@ -418,6 +435,7 @@ your-project/
 │   │       ├── comet-handoff.sh     # 设计交接（OpenSpec → Superpowers 上下文追踪）
 │   │       ├── comet-archive.sh     # 一键归档自动化
 │   │       ├── comet-yaml-validate.sh # 模式校验器
+│   │       ├── comet-hook-guard.sh    # 阶段写入守护（PreToolUse hook）
 │   │       └── comet-state.sh       # 统一状态管理（init/set/get/check/scale）
 │   ├── comet-*/SKILL.md
 │   ├── openspec-*/SKILL.md
@@ -453,15 +471,27 @@ Benchmark 核心结论：
 - **Spec 覆盖率**：off 100% vs beta 95%（压缩可能丢失少量边缘需求细节）
 - **规模效应**：任务越大，绝对节省量越高（large 档位节省可达 15,000 tokens）
 
-启用方式：在 `.comet.yaml` 中设置 `context_compression: beta`
+启用方式：在 `.comet/config.yaml` 中设置 `context_compression: beta`
 
-详见 [CONTEXT-COMPRESSION.md](CONTEXT-COMPRESSION.md) 获取完整 Benchmark 报告、压缩原理和复现步骤。
+详见 [CONTEXT-COMPRESSION.md](docs/CONTEXT-COMPRESSION.md) 获取完整 Benchmark 报告、压缩原理和复现步骤。
+
+## 自动流转（Auto Transition）
+
+`auto_transition` 控制阶段完成后是否自动调用下一个 Skill，还是暂停等待用户手动触发。阶段推进本身始终执行，该配置仅影响 Skill 调用。
+
+| 值 | 行为 |
+|------|------|
+| `true` | 阶段完成后自动调用下一个 Skill（默认） |
+| `false` | 阶段完成后暂停，用户手动触发下一个 Skill |
+
+三层配置与优先级：`COMET_AUTO_TRANSITION` 环境变量 > `.comet/config.yaml`（项目级）> `.comet.yaml`（change 级）。
+
+详见 [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) 获取配置详情、工作流映射和常见问题。
 
 ## 开发
 
 贡献流程、提交规范、PR 流程、分支工作流，以及新增平台、Skill、脚本或 changelog
-的说明见 [CONTRIBUTING-zh.md](CONTRIBUTING-zh.md) 或
-[CONTRIBUTING.md](CONTRIBUTING.md)。
+的说明见 [CONTRIBUTING-zh.md](CONTRIBUTING-zh.md) | [English](CONTRIBUTING.md)。
 
 详见 [CHANGELOG.md](CHANGELOG.md) 了解版本历史与更新。
 

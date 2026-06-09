@@ -208,16 +208,28 @@ project_context_compression() {
 }
 
 project_auto_transition_default() {
-  local config_file="openspec/comet.yaml"
-  local value
+  local value="true"
+  local source="default"
+  if [ -n "${COMET_AUTO_TRANSITION:-}" ]; then
+    value="$COMET_AUTO_TRANSITION"
+    source="COMET_AUTO_TRANSITION"
+  elif [ -f ".comet/config.yaml" ]; then
+    local raw
+    raw=$(yaml_field "auto_transition" ".comet/config.yaml" 2>/dev/null || true)
+    if [ -n "$raw" ]; then
+      value="$raw"
+      source=".comet/config.yaml"
+    fi
+  fi
 
-  value="$(yaml_field "auto_transition" "$config_file" 2>/dev/null || true)"
   case "$value" in
     true|false)
       printf '%s\n' "$value"
       ;;
     *)
-      printf '%s\n' "true"
+      red "ERROR: Invalid auto_transition from ${source}: '$value'" >&2
+      red "Valid values: true, false" >&2
+      exit 1
       ;;
   esac
 }
@@ -315,8 +327,8 @@ cmd_get() {
   # Read and output the field value
   local value
   value=$(yaml_field "$field" "$yaml_file")
-  if [ "$field" = "auto_transition" ] && [ -z "$value" ]; then
-    value="true"
+  if [ "$field" = "auto_transition" ] && { [ -z "$value" ] || [ "$value" = "null" ]; }; then
+    value="$(project_auto_transition_default)"
   fi
   echo "${value:-}"
 }
@@ -1036,6 +1048,11 @@ cmd_next() {
   workflow=$(cmd_get "$change_name" "workflow" 2>/dev/null || true)
   auto_transition=$(cmd_get "$change_name" "auto_transition" 2>/dev/null || true)
   archived=$(cmd_get "$change_name" "archived" 2>/dev/null || true)
+
+  # Change-level auto_transition overrides project-level; fall back to project default
+  if [ -z "$auto_transition" ] || [ "$auto_transition" = "null" ]; then
+    auto_transition="$(project_auto_transition_default)"
+  fi
 
   # Terminal state: archived change has no next step.
   if [ "$archived" = "true" ]; then

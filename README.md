@@ -40,7 +40,21 @@ Superpowers handles **HOW** (technical design, planning, execution, wrap-up).
 Comet chains both into a five-phase automated pipeline.
 
 > [!IMPORTANT]
-> **0.3.7 Highlights** — One-step [CodeGraph](https://github.com/colbymchenry/codegraph) semantic code indexing (official: cost **↓16%**, tool calls **↓58%**); new Beta context compression cutting Build-phase input tokens by **25–30%**; 6 default-on workflow token optimizations; Hook+Rule anti-drift phase guard; optional TDD mode and subagent dispatch confirmation; large PRD split into multiple changes; pre-archive confirmation with reopen, verify retry limit, systematic debugging interception, and verification completion check.
+> **0.3.7 Highlights** — One-step [CodeGraph](https://github.com/colbymchenry/codegraph) semantic code indexing (official: cost **↓16%**, tool calls **↓58%**); 
+>
+> New `auto_transition` config for automatic or manual phase handoff;
+>
+> New **Beta context compression** cutting Build-phase input tokens by **25–30%**; 
+>
+> 6 default-on workflow token optimizations; 
+>
+> Hook+Rule anti-drift phase guard; 
+>
+> Optional TDD mode and subagent dispatch confirmation; 
+>
+> Large PRD split into multiple changes; 
+>
+> Pre-archive confirmation with reopen, verify retry limit, systematic debugging interception, and verification completion check.
 >
 > See [NEWS.md](NEWS.md) for details.
 
@@ -346,11 +360,14 @@ through Comet's built-in commands.
 
 ```yaml
 workflow: full
+auto_transition: true
 phase: build
 build_mode: subagent-driven-development
 build_pause: null
 isolation: branch
 verify_mode: null
+tdd_mode: null
+subagent_dispatch: null
 design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md
 plan: docs/superpowers/plans/YYYY-MM-DD-feature.md
 verify_result: pending
@@ -365,8 +382,8 @@ handoff_context: openspec/changes/<name>/.comet/handoff/design-context.json
 handoff_hash: <sha256>
 ```
 
-In full workflow, `build_mode`, `build_pause`, `isolation`, and `verify_mode` may temporarily be `null`; `build_mode`
-and `isolation` must be resolved before `build → verify`. `build_pause` records an internal build-phase pause point:
+In full workflow, `build_mode`, `build_pause`, `isolation`, `verify_mode`, `tdd_mode`, and `subagent_dispatch` may
+temporarily be `null`; `build_mode` and `isolation` must be resolved before `build → verify`. `auto_transition` controls automatic vs manual skill invocation after phase completion — see [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md). `build_pause` records an internal build-phase pause point:
 `null` means no pause, while `plan-ready` means the plan has been generated and the user paused before choosing
 isolation and execution mode. It is not an execution mode and must not be written into `build_mode`.
 `verification_report` stays `null` until verification writes a report, and `verify-pass` requires that report to exist
@@ -425,6 +442,8 @@ Comet ensures agent execution reliability through automated state transitions:
 
 ```
 your-project/
+├── .comet/
+│   └── config.yaml              # Project-level global config (context_compression, auto_transition, etc.)
 ├── .claude/skills/              # Platform skills dir (Comet + OpenSpec + Superpowers)
 │   ├── comet/SKILL.md
 │   │   └── scripts/
@@ -469,15 +488,28 @@ Key findings from benchmark testing:
 - **Spec coverage**: 100% (off) vs 95% (beta) — minor edge-case detail loss
 - **Scaling**: Larger tasks yield higher absolute savings (up to 15,000 tokens for large-tier tasks)
 
-Enable in `.comet.yaml`: `context_compression: beta`
+Enable in `.comet/config.yaml`: `context_compression: beta`
 
-See [CONTEXT-COMPRESSION.md](CONTEXT-COMPRESSION.md) for the full benchmark report, compression principles, and
+See [CONTEXT-COMPRESSION.md](docs/CONTEXT-COMPRESSION.md) for the full benchmark report, compression principles, and
 reproduction steps.
+
+## Auto Transition
+
+`auto_transition` controls whether Comet automatically invokes the next skill after a phase completes, or pauses for
+manual handoff. Phase advancement itself always happens — this setting only affects skill invocation.
+
+| Value  | Behavior |
+|--------|----------|
+| `true` | Auto-invoke the next skill after each phase (default) |
+| `false` | Pause after each phase; user manually triggers the next skill |
+
+Three-layer configuration with precedence: `COMET_AUTO_TRANSITION` env var > `.comet/config.yaml` (project) > `.comet.yaml` (change).
+
+See [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) for configuration details, workflow mapping, and FAQ.
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) or
-[CONTRIBUTING-zh.md](CONTRIBUTING-zh.md) for development setup, commit
+See [CONTRIBUTING.md](CONTRIBUTING.md) | [中文版](CONTRIBUTING-zh.md) for development setup, commit
 conventions, PR process, branch workflow, and guidance for adding platforms,
 skills, scripts, or changelog entries.
 

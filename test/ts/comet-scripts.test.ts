@@ -292,8 +292,12 @@ describeShell('comet shell scripts', () => {
     expect(get.stdout.trim()).toBe('true');
   }, 20_000);
 
-  it('initializes auto_transition from openspec comet config when set to false', async () => {
-    await writeFile(path.join(tmpDir, 'openspec', 'comet.yaml'), 'auto_transition: false\n');
+  it('initializes auto_transition from .comet/config.yaml when set to false', async () => {
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'context_compression: off\nauto_transition: false\n',
+    );
 
     const result = runBash(tmpDir, stateScript, ['init', 'auto-transition-config-false', 'full']);
     const yaml = await fs.readFile(
@@ -360,7 +364,9 @@ describeShell('comet shell scripts', () => {
     await createChange(
       tmpDir,
       'next-auto-verify',
-      ['workflow: full', 'phase: verify', 'auto_transition: true', 'archived: false', ''].join('\n'),
+      ['workflow: full', 'phase: verify', 'auto_transition: true', 'archived: false', ''].join(
+        '\n',
+      ),
     );
 
     const result = runBash(tmpDir, stateScript, ['next', 'next-auto-verify']);
@@ -374,7 +380,9 @@ describeShell('comet shell scripts', () => {
     await createChange(
       tmpDir,
       'next-manual-build',
-      ['workflow: full', 'phase: build', 'auto_transition: false', 'archived: false', ''].join('\n'),
+      ['workflow: full', 'phase: build', 'auto_transition: false', 'archived: false', ''].join(
+        '\n',
+      ),
     );
 
     const result = runBash(tmpDir, stateScript, ['next', 'next-manual-build']);
@@ -396,7 +404,9 @@ describeShell('comet shell scripts', () => {
     await createChange(
       tmpDir,
       'next-tweak-build',
-      ['workflow: tweak', 'phase: build', 'auto_transition: true', 'archived: false', ''].join('\n'),
+      ['workflow: tweak', 'phase: build', 'auto_transition: true', 'archived: false', ''].join(
+        '\n',
+      ),
     );
 
     const hotfix = runBash(tmpDir, stateScript, ['next', 'next-hotfix-build']);
@@ -410,7 +420,9 @@ describeShell('comet shell scripts', () => {
     await createChange(
       tmpDir,
       'next-done',
-      ['workflow: full', 'phase: archive', 'auto_transition: true', 'archived: true', ''].join('\n'),
+      ['workflow: full', 'phase: archive', 'auto_transition: true', 'archived: true', ''].join(
+        '\n',
+      ),
     );
 
     const result = runBash(tmpDir, stateScript, ['next', 'next-done']);
@@ -424,7 +436,9 @@ describeShell('comet shell scripts', () => {
     await createChange(
       tmpDir,
       'next-design',
-      ['workflow: full', 'phase: design', 'auto_transition: true', 'archived: false', ''].join('\n'),
+      ['workflow: full', 'phase: design', 'auto_transition: true', 'archived: false', ''].join(
+        '\n',
+      ),
     );
     await createChange(
       tmpDir,
@@ -2684,7 +2698,9 @@ describeShell('comet shell scripts', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('build_mode: DONE (subagent-driven-development)');
       expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
-      expect(result.stdout).toContain('inspect the first unchecked task against recent git history/diff');
+      expect(result.stdout).toContain(
+        'inspect the first unchecked task against recent git history/diff',
+      );
       expect(result.stdout).toContain('dispatch a real background subagent');
       expect(result.stdout).toContain(
         'Do not execute the pending task directly in the main window',
@@ -2696,7 +2712,13 @@ describeShell('comet shell scripts', () => {
       // This is valid plan enhancement but blocks leaving build until all plan tasks are checked
       await writeFile(
         path.join(tmpDir, 'docs', 'superpowers', 'plans', 'plan-with-additions.md'),
-        ['# Plan', '', '- [x] task from OpenSpec 1', '- [x] task from OpenSpec 2', '- [ ] additional task added in plan'].join('\n'),
+        [
+          '# Plan',
+          '',
+          '- [x] task from OpenSpec 1',
+          '- [x] task from OpenSpec 2',
+          '- [ ] additional task added in plan',
+        ].join('\n'),
       );
       await createChange(
         tmpDir,
