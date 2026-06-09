@@ -176,7 +176,19 @@ Subagent 完成后：
 
 **执行隔离**：
 
-- **branch**：执行 `git checkout -b <change-name>`，后续工作在新分支上进行
+- **branch**：根据 workflow 类型和当前日期推荐分支名，然后让用户确认或输入自定义名称。这是用户决策点——**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确确认或覆盖分支名**，不得跳过此步骤直接创建分支。
+
+  分支命名规范：
+  - 读取 `.comet.yaml` 的 `workflow` 字段确定前缀
+  - `workflow: full` → 推荐 `feature/YYYYMMDD/<change-name>`
+  - `workflow: hotfix` → 推荐 `hotfix/YYYYMMDD/<change-name>`
+  - `workflow: tweak` → 推荐 `tweak/YYYYMMDD/<change-name>`
+  - 日期取运行时 `date +%Y%m%d` 的结果
+
+  示例：如果 change 名称为 `fix-login-bug`，今天是 2026-06-09，则推荐 `feature/20260609/fix-login-bug`
+
+  用户确认或提供自定义分支名后，执行 `git checkout -b <branch-name>`，后续工作在新分支上进行。
+
 - **worktree**：必须使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；如该技能不可用，停止流程并提示安装或启用 Superpowers 技能。
 
 创建隔离后，确认计划文件可访问（分支方式天然可访问；worktree 方式需确认计划已提交）。若 worktree 模式下计划文件尚未提交，先提交计划文件再创建 worktree：

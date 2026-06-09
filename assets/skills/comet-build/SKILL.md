@@ -176,7 +176,19 @@ Without `direct_override: true`, `build_mode=direct` in full workflow is blocked
 
 **Execute isolation**:
 
-- **branch**: Run `git checkout -b <change-name>`, subsequent work on the new branch
+- **branch**: Recommend a branch name based on the workflow type and current date, then let the user confirm or input a custom name. This is a user decision point — **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm or override the branch name**. Must not skip this step and create the branch directly.
+
+  Branch naming convention:
+  - Read the `workflow` field from `.comet.yaml` to determine the prefix
+  - `workflow: full` → recommend `feature/YYYYMMDD/<change-name>`
+  - `workflow: hotfix` → recommend `hotfix/YYYYMMDD/<change-name>`
+  - `workflow: tweak` → recommend `tweak/YYYYMMDD/<change-name>`
+  - Date is derived from `date +%Y%m%d` at runtime
+
+  Example: if change name is `fix-login-bug` and today is 2026-06-09, recommend `feature/20260609/fix-login-bug`
+
+  After the user confirms or provides a custom branch name, run `git checkout -b <branch-name>`, subsequent work on the new branch.
+
 - **worktree**: Must use the Skill tool to load the Superpowers `using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
 
 After creating isolation, confirm plan file is accessible (naturally accessible with branch method; for worktree method, confirm plan has been committed). If the plan file has not been committed under worktree mode, commit it first before creating the worktree:
