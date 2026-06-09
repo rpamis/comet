@@ -457,7 +457,8 @@ your-project/
     └── plans/                   # 实现计划
 ```
 
-## 上下文压缩（Beta）
+<details>
+<summary>上下文压缩（Beta）</summary>
 
 Comet 支持在 Design → Build 阶段交接时进行上下文压缩。启用后，`comet-handoff.sh` 会生成精简的上下文包，在不影响实现正确性的前提下，将
 Build 阶段的输入 token 降低 **25–30%**。
@@ -477,7 +478,10 @@ Benchmark 核心结论：
 
 详见 [CONTEXT-COMPRESSION.md](docs/CONTEXT-COMPRESSION.md) 获取完整 Benchmark 报告、压缩原理和复现步骤。
 
-## 自动流转（Auto Transition）
+</details>
+
+<details>
+<summary>自动流转（Auto Transition）</summary>
 
 `auto_transition` 控制阶段完成后是否自动调用下一个 Skill，还是暂停等待用户手动触发。阶段推进本身始终执行，该配置仅影响 Skill 调用。
 
@@ -489,6 +493,8 @@ Benchmark 核心结论：
 三层配置与优先级：`COMET_AUTO_TRANSITION` 环境变量 > `.comet/config.yaml`（项目级）> `.comet.yaml`（change 级）。
 
 详见 [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) 获取配置详情、工作流映射和常见问题。
+
+</details>
 
 ## 开发
 

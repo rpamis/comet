@@ -474,7 +474,8 @@ your-project/
     └── plans/                   # Implementation plans
 ```
 
-## Context Compression (Beta)
+<details>
+<summary>Context Compression (Beta)</summary>
 
 Comet supports context compression at the Design → Build handoff. When enabled, `comet-handoff.sh` generates a compact
 context package that reduces Build-phase input tokens by **25–30%** without affecting implementation correctness.
@@ -495,7 +496,10 @@ Enable in `.comet/config.yaml`: `context_compression: beta`
 See [CONTEXT-COMPRESSION.md](docs/CONTEXT-COMPRESSION.md) for the full benchmark report, compression principles, and
 reproduction steps.
 
-## Auto Transition
+</details>
+
+<details>
+<summary>Auto Transition</summary>
 
 `auto_transition` controls whether Comet automatically invokes the next skill after a phase completes, or pauses for
 manual handoff. Phase advancement itself always happens — this setting only affects skill invocation.
@@ -508,6 +512,8 @@ manual handoff. Phase advancement itself always happens — this setting only af
 Three-layer configuration with precedence: `COMET_AUTO_TRANSITION` env var > `.comet/config.yaml` (project) > `.comet.yaml` (change).
 
 See [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) for configuration details, workflow mapping, and FAQ.
+
+</details>
 
 ## Development
 
