@@ -164,7 +164,7 @@ describe('comet init E2E', () => {
     const { initCommand } = await import('../../src/commands/init.js');
     const result = await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true }));
 
-    expect((result.results as unknown[]).length).toBeGreaterThanOrEqual(28);
+    expect((result.results as unknown[]).length).toBeGreaterThanOrEqual(29);
 
     const manifest = await readManifest();
     const platformDirs = [
@@ -182,6 +182,7 @@ describe('comet init E2E', () => {
       '.kilocode',
       '.augment',
       '.kiro',
+      '.kimi-code',
       '.lingma',
       '.junie',
       '.codebuddy',
@@ -289,6 +290,33 @@ describe('comet init E2E', () => {
 
     await expect(
       fs.access(path.join(tmpDir, '.lingma', 'skills', 'comet', 'SKILL.md')),
+    ).rejects.toThrow();
+  }, 20_000);
+
+  it('installs Kimi Code global Comet skills to the user Kimi Code skills directory', async () => {
+    mockExternalSuccess();
+
+    await fs.mkdir(path.join(tmpDir, '.kimi-code'), { recursive: true });
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(fakeHome, { recursive: true });
+
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    const { initCommand } = await import('../../src/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
+    );
+
+    expect(result.selectedPlatforms).toEqual(['kimicode']);
+
+    const manifest = await readManifest();
+    for (const skillPath of manifest.skills) {
+      const dest = path.join(fakeHome, '.kimi-code', 'skills', skillPath);
+      await expect(fs.access(dest)).resolves.toBeUndefined();
+    }
+
+    await expect(
+      fs.access(path.join(tmpDir, '.kimi-code', 'skills', 'comet', 'SKILL.md')),
     ).rejects.toThrow();
   }, 20_000);
 });

@@ -127,7 +127,7 @@ jobs:
           for sd in .claude/skills .cursor/skills .codex/skills .opencode/skills \
                     .windsurf/skills .cline/skills .roo/skills .continue/skills \
                     .gemini/skills .amazonq/skills .qwen/skills .kilocode/skills \
-                    .augment/skills .kiro/skills .lingma/skills .junie/skills \
+                    .augment/skills .kiro/skills .kimi-code/skills .lingma/skills .junie/skills \
                     .codebuddy/skills .cospec/skills .crush/skills .factory/skills \
                     .iflow/skills .pi/skills .qoder/skills .agents/skills \
                     .bob/skills .forge/skills .trae/skills .github/skills; do
@@ -138,7 +138,7 @@ jobs:
             check_file "$PROJ/$sd/comet/scripts/comet-yaml-validate.sh"
             check_file "$PROJ/$sd/comet/scripts/comet-archive.sh"
           done
-          echo "All 28 platforms project Comet skills: OK"
+          echo "All 29 platforms project Comet skills: OK"
         shell: bash
 
       - name: Verify external installer status (project)
@@ -195,7 +195,7 @@ jobs:
           for sd in .claude/skills .cursor/skills .codex/skills .config/opencode/skills \
                     .windsurf/skills .cline/skills .roo/skills .continue/skills \
                     .gemini/skills .amazonq/skills .qwen/skills .kilocode/skills \
-                    .augment/skills .kiro/skills .lingma/skills .junie/skills \
+                    .augment/skills .kiro/skills .kimi-code/skills .lingma/skills .junie/skills \
                     .codebuddy/skills .cospec/skills .crush/skills .factory/skills \
                     .iflow/skills .pi/skills .qoder/skills .gemini/antigravity/skills \
                     .bob/skills .forge/skills .trae/skills .github/skills; do
@@ -206,7 +206,7 @@ jobs:
             check_file "$HOME_DIR/$sd/comet/scripts/comet-yaml-validate.sh"
             check_file "$HOME_DIR/$sd/comet/scripts/comet-archive.sh"
           done
-          echo "All 28 platforms global Comet skills: OK"
+          echo "All 29 platforms global Comet skills: OK"
         shell: bash
 
       - name: Verify external installer status (global)

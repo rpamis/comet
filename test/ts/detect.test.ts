@@ -43,6 +43,15 @@ describe('detect', () => {
   });
 
   describe('platform global skills directories', () => {
+    it('declares Kimi Code global skills under the user .kimi-code directory', () => {
+      const kimicode = PLATFORMS.find((platform) => platform.id === 'kimicode');
+
+      expect(kimicode).toBeDefined();
+      expect(kimicode?.skillsDir).toBe('.kimi-code');
+      expect(kimicode?.globalSkillsDir).toBe('.kimi-code');
+      expect(kimicode?.openspecToolId).toBe('kimi');
+    });
+
     it('declares Lingma global skills under the user .lingma directory', () => {
       const lingma = PLATFORMS.find((platform) => platform.id === 'lingma');
 
@@ -75,10 +84,12 @@ describe('detect', () => {
     it('detects multiple platforms', async () => {
       await fs.mkdir(path.join(tmpDir, '.claude'));
       await fs.mkdir(path.join(tmpDir, '.cursor'));
+      await fs.mkdir(path.join(tmpDir, '.kimi-code'));
       const detected = await detectPlatforms(tmpDir);
       expect(detected.has('claude')).toBe(true);
       expect(detected.has('cursor')).toBe(true);
-      expect(detected.size).toBeGreaterThanOrEqual(2);
+      expect(detected.has('kimicode')).toBe(true);
+      expect(detected.size).toBeGreaterThanOrEqual(3);
     });
 
     it('returns empty set when no platforms detected', async () => {

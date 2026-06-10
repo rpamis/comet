@@ -61,6 +61,13 @@ export const PLATFORMS: Platform[] = [
   { id: 'auggie', name: 'Auggie (Augment CLI)', skillsDir: '.augment', openspecToolId: 'auggie' },
   { id: 'kiro', name: 'Kiro', skillsDir: '.kiro', openspecToolId: 'kiro' },
   {
+    id: 'kimicode',
+    name: 'Kimi Code',
+    skillsDir: '.kimi-code',
+    globalSkillsDir: '.kimi-code',
+    openspecToolId: 'kimi',
+  },
+  {
     id: 'lingma',
     name: 'Lingma',
     skillsDir: '.lingma',
