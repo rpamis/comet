@@ -321,9 +321,16 @@ describe('skills', () => {
         'CRITICAL review 发现（安全漏洞、数据丢失风险、构建/测试失败）必须先修复',
       );
 
-      // MEDIUM: comet-verify Step 1b handles mixed CRITICAL/non-CRITICAL
-      expect(zhVerify).toContain('CRITICAL 失败项必须修复');
+      // MEDIUM: comet-verify Step 1b treats CRITICAL/IMPORTANT as blocking
+      expect(zhVerify).toContain('CRITICAL 或 IMPORTANT 失败项必须修复');
       expect(zhVerify).toContain('不允许跳过修复直接全部接受');
+      expect(zhVerify).toContain('简化代码审查');
+      expect(zhVerify).toContain('必须使用 Skill 工具加载 Superpowers `requesting-code-review` 技能');
+      expect(zhVerify).toContain('只检查正确性、安全、边界条件');
+      expect(zhVerify).toContain('无 CRITICAL 或 IMPORTANT 问题');
+      expect(zhVerify).toContain('不影响正确性、安全、边界条件的 code pattern consistency 建议');
+      expect(zhVerify).toContain('不执行 spec 覆盖率、Design Doc 一致性或漂移检查');
+      expect(zhHotfix).toContain('6 项快速检查，包含简化代码审查');
 
       // MEDIUM: hotfix IMPORTANT covers >3-tasks comet-build decision points
       expect(zhHotfix).toContain('任务超过 3 个转入 `/comet-build` 时的工作区隔离和执行方式选择');
@@ -596,8 +603,18 @@ describe('skills', () => {
       expect(enBuild).toContain(
         'CRITICAL review findings (security vulnerabilities, data loss risk, build/test failures) must be fixed',
       );
-      expect(enVerify).toContain('CRITICAL failures must be fixed');
+      expect(enVerify).toContain('CRITICAL or IMPORTANT failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
+      expect(enVerify).toContain('Lightweight code review');
+      expect(enVerify).toContain(
+        'use the Skill tool to load the Superpowers `requesting-code-review` skill',
+      );
+      expect(enVerify).toContain('checks only correctness, security, and edge cases');
+      expect(enVerify).toContain('no CRITICAL or IMPORTANT issues');
+      expect(enVerify).toContain(
+        'does not perform spec coverage, Design Doc consistency, or drift checks',
+      );
+      expect(enHotfix).toContain('6 quick checks, including lightweight code review');
       expect(enHotfix).toContain(
         'workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`',
       );

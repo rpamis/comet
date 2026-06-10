@@ -33,6 +33,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **executing-plans review gate**: When `build_mode` is `executing-plans`, the build phase now requires loading the Superpowers `requesting-code-review` skill and requesting code review at least once before the build→verify phase guard. CRITICAL findings must be fixed before verify; accepted non-CRITICAL findings must record acceptance rationale in a durable artifact. The build-exit checklist enforces this gate ([#76](https://github.com/rpamis/comet/pull/76), [#41](https://github.com/rpamis/comet/issues/41)).
+- **Lightweight verification review**: Lightweight verification now requires a scoped Superpowers `requesting-code-review` review focused on correctness, security, and edge cases, adding review coverage without running full spec or design drift checks (#42).
 - **Phase advancement vs handoff wording**: Chinese and English Comet skills now consistently distinguish guard-driven phase advancement (`--apply`, always updates `phase`) from next-skill invocation control (`auto_transition`). Open/design/build/verify/hotfix/tweak guidance now routes through `comet-state next` for auto/manual handoff.
 - **Preset continuity wording**: Hotfix and tweak guidance now explicitly documents the `auto_transition: false` exception in continuous execution mode, removing contradictory wording around "always continue" behavior.
 - **Verify hash-skip scoped to tasks.md only**: Full verification always reads `proposal.md` and `design.md` even when hash matches, ensuring goal-satisfaction and design-consistency checks have complete context.
@@ -74,6 +75,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Update JSON output for rules/hooks**: `comet update --json` now includes rules and hooks distribution results alongside skill update results, with per-target error isolation so a single platform failure doesn't break the entire update output.
 
+- **Lightweight verification consistency**: Hotfix documentation now describes the 6-item lightweight verification path, and Step 1b treats CRITICAL and IMPORTANT failures as blocking so code-review pass criteria and failure handling agree.
+
 - **Duplicate YAML fields**: `replace_yaml_field` in `comet-state.sh` now deduplicates all fields after replacement, keeping only the last occurrence of each key. Previously, multiple `cmd_set` calls for the same field (e.g., during verify-fail → re-verify cycles) could leave duplicate lines in `.comet.yaml`, confusing downstream parsers. Fixes [#77](https://github.com/rpamis/comet/issues/77).
 
 - **Hook config format**: `installClaudeCodeHooks` and `.claude/settings.local.json` now use the correct `matcher` + `hooks: [{ type, command }]` array format instead of the flat `{ matcher, command, description }` format, fixing the `/doctor` schema validation error.
@@ -97,6 +100,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Skill handoff wording regression update**: Updated skill-content assertions to validate next-driven handoff wording (`NEXT: auto|manual|done`) and synchronized Chinese/English expectation checks.
 - **Output language regression**: Added skill coverage that Comet propagates the triggering user request language into OpenSpec and Superpowers steps across the open, design, build, verify, hotfix, tweak, and archive skills ([#53](https://github.com/rpamis/comet/pull/53)).
 - **Review gate regression**: Added skill coverage that `executing-plans` build mode requires the `requesting-code-review` gate before the build→verify transition, plus updated init-e2e expectations ([#76](https://github.com/rpamis/comet/pull/76)).
+- **Lightweight verification review regression**: Added workflow safeguard coverage for the lightweight verification code-review requirement and hotfix documentation consistency.
 - **skip-all regression**: Added `comet init` coverage that skip-all only skips installed components and still offers uninstalled OpenSpec/Superpowers/Comet/CodeGraph components ([#73](https://github.com/rpamis/comet/pull/73)).
 - **`--hash-only` flag coverage**: New tests verify correct hash output, change-directory validation, required-file validation, and no handoff file regeneration.
 - **Context benchmark runner coverage**: New tests verify benchmark token-savings math, Codex JSONL usage/verdict parsing, and dry-run report generation without invoking Codex.
