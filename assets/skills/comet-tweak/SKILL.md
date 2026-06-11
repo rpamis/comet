@@ -13,7 +13,7 @@ Applicable for non-bug small scope changes, such as copy adjustment, configurati
 1. No new capability
 2. No architecture changes
 3. No interface changes
-4. Typically no more than 3 tasks, 4 files
+4. Typically no more than 3 tasks (file count constraint see upgrade conditions below)
 
 **Not applicable**: If change process discovers need for capability, architecture or interface adjustments, should upgrade to full `/comet` workflow.
 
@@ -21,7 +21,11 @@ Applicable for non-bug small scope changes, such as copy adjustment, configurati
 
 ## Process (preset workflow, 4 phases)
 
-Execution chain: open → lightweight build → light verify → archive. Tweak provides default decisions for each phase: streamlined open, lightweight build, lightweight verification, archive after verification passes.
+### 0. Output Language Constraint
+
+Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow.
+
+Execution chain: open → lightweight build → light verify → archive. Tweak provides default decisions for each phase: streamlined open, lightweight build, lightweight verification, and final archive confirmation after verification passes.
 
 Locate Comet scripts before starting:
 
@@ -49,24 +53,24 @@ After the skill loads, follow its guidance to create streamlined artifacts:
 Initialize Comet state file:
 
 ```bash
-bash "$COMET_STATE" init <name> tweak
+"$COMET_BASH" "$COMET_STATE" init <name> tweak
 ```
 
 Verify initialized state:
 
 ```bash
-bash "$COMET_STATE" check <name> open
+"$COMET_BASH" "$COMET_STATE" check <name> open
 ```
 
 Run phase guard to transition open → build:
 
 ```bash
-bash "$COMET_GUARD" <change-name> open --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply
 ```
 
 ### 2. Lightweight Build (preset build)
 
-Use tweak defaults: `build_mode: direct`. Skip `superpowers:brainstorming` and `superpowers:writing-plans`.
+Use tweak defaults: `build_mode: direct`. Skip Superpowers `brainstorming` and `writing-plans`.
 
 Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows scope exceeds tweak, handle it through this file's "Upgrade Conditions".
 
@@ -83,7 +87,7 @@ Before continuing or starting changes, handle uncommitted changes through `comet
 4. Run phase guard to transition build → verify:
 
 ```bash
-bash "$COMET_GUARD" <change-name> build --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply
 ```
 
 State automatically updates to `phase: verify`, `verify_result: pending`, then enter verification.
@@ -96,11 +100,11 @@ Reuse `/comet-verify`. Tweak must maintain lightweight verification conditions: 
 
 If scale assessment enters full verification path, stop tweak, handle per upgrade conditions blocking confirmation.
 
-After verification passes, record `.comet.yaml` `verify_result` as `pass` according to `/comet-verify` rules, must not skip this status before archiving.
+After verification passes, record `.comet.yaml` `verify_result` as `pass` according to `/comet-verify` rules, must not skip this status before archiving. After verification passes, still enter `/comet-archive`'s final archive confirmation; do not automatically run the archive script.
 
 ### 4. Archive (preset archive)
 
-Reuse `/comet-archive`. Must satisfy `verify_result: pass` in `.comet.yaml` before archiving.
+Reuse `/comet-archive`. Must satisfy `verify_result: pass` in `.comet.yaml` before archiving, and wait for `/comet-archive`'s final archive confirmation.
 
 **Immediately execute:** Use the Skill tool to load the `comet-archive` skill to archive. Skipping this step is prohibited.
 
@@ -109,10 +113,15 @@ Reuse `/comet-archive`. Must satisfy `verify_result: pass` in `.comet.yaml` befo
 ## Continuous Execution Mode
 
 <IMPORTANT>
-Tweak workflow is **one-time continuous execution**. After invoking `/comet-tweak`, agent must automatically advance through tweak steps, without pausing to wait for user input mid-way. But the following situations must pause and wait for user confirmation:
+Tweak workflow is **one-time continuous execution**. After invoking `/comet-tweak`, agent must automatically advance through tweak steps, without pausing to wait for user input mid-way.
 
-1. Encountering upgrade conditions (see "Upgrade Conditions" section). Handle through the upgrade-condition blocking confirmation
+Exception: when `.comet.yaml` has `auto_transition: false`, after each phase guard advances `phase`, do not auto-invoke the next skill. In this case, use `"$COMET_BASH" "$COMET_STATE" next <name>` output and pause for manual continuation as instructed.
+
+The following situations must pause and wait for user confirmation:
+
+1. Encountering upgrade conditions (see "Upgrade Conditions" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm** upgrading to full workflow
 2. verify phase (comet-verify) verification-failure and branch-handling decisions
+3. Final archive confirmation (before comet-archive runs the archive script)
 
 Execution order: quick open → lightweight build → lightweight verification → archive → complete
 
@@ -134,12 +143,13 @@ Upgrade to full `/comet` when **any** of the following conditions are met:
 | New capability needed | Exceeds local optimization |
 | Delta spec needed | Affects existing specs |
 
-When upgrade conditions are met, must pause and wait for the user to explicitly confirm upgrading to the full `/comet` workflow. Do not directly enter `/comet-design`, and do not automatically supplement Design Doc.
+When upgrade conditions are met, **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm** upgrading to the full `/comet` workflow. Do not directly enter `/comet-design`, and do not automatically supplement Design Doc. If the current platform has no structured question tool, ask an upgrade confirmation question in the conversation, stop the workflow, and wait for the user's reply before continuing.
 
-After user confirms upgrade, **must first update the workflow field** before entering full flow:
+After user confirms upgrade, **must first update the workflow and phase fields** before entering full flow:
 
 ```bash
-bash "$COMET_STATE" set <name> workflow full
+"$COMET_BASH" "$COMET_STATE" set <name> workflow full
+"$COMET_BASH" "$COMET_STATE" set <name> phase design
 ```
 
 Then on current change basis, supplement Design Doc: **Immediately use the Skill tool to load the `comet-design` skill**, proceed normally with full workflow. If user does not confirm upgrade, stop tweak and report that current change has exceeded tweak scope.
@@ -151,4 +161,19 @@ Then on current change basis, supplement Design Doc: **Immediately use the Skill
 - Small change completed, tests pass
 - Change archived
 - No new capability, architecture adjustments or interface changes
-- **Phase guard**: Before build → verify run `bash "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `bash "$COMET_GUARD" <change-name> verify --apply`
+- **Phase guard**: Before build → verify run `"$COMET_BASH" "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `"$COMET_BASH" "$COMET_GUARD" <change-name> verify --apply`
+
+## Automatic Handoff to Next Phase
+
+> **Terminology distinction**: phase guard `--apply` advances the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. This section's "automatic handoff" only controls whether to automatically invoke the next skill.
+
+After each phase guard or state transition advances phase, run:
+
+```bash
+"$COMET_BASH" "$COMET_STATE" next <name>
+```
+
+The script determines the next action from `phase`, `workflow`, and `auto_transition`:
+- `NEXT: auto` -> invoke the `SKILL` target to continue the tweak flow (`phase: build` returns `comet-tweak`, `verify` returns `comet-verify`, `archive` returns `comet-archive`)
+- `NEXT: manual` -> do not invoke the next skill; follow `HINT` and ask the user to run `/<SKILL>` manually
+- `NEXT: done` -> workflow is complete; no further action needed

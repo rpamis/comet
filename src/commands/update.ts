@@ -4,10 +4,17 @@ import { createRequire } from 'module';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import { select } from '@inquirer/prompts';
 import { fileExists, readDir, readJson } from '../utils/file-system.js';
 import { getBaseDir } from '../core/detect.js';
-import { copyCometSkillsForPlatform, getManifestSkills } from '../core/skills.js';
+import {
+  copyCometSkillsForPlatform,
+  copyCometRulesForPlatform,
+  installCometHooksForPlatform,
+  getManifestSkills,
+} from '../core/skills.js';
 import { PLATFORMS, getPlatformSkillsDir, type Platform } from '../core/platforms.js';
+import { installCodegraph, filterSupportedPlatforms } from '../core/codegraph.js';
 import type { InstallScope } from '../core/types.js';
 
 const require = createRequire(import.meta.url);
@@ -212,6 +219,8 @@ export async function updateCommand(
               command: options.skipNpm ? null : formatNpmUpdateCommand(packageScope),
             },
             skills: { totalCopied: 0, targets: [] },
+            rules: { totalCopied: 0 },
+            hooks: { totalInstalled: 0 },
           },
           null,
           2,
@@ -236,6 +245,8 @@ export async function updateCommand(
   log(`\n  Copying ${(await getManifestSkills()).length} skill files...\n`);
 
   let totalCopied = 0;
+  let totalRulesCopied = 0;
+  let totalHooksInstalled = 0;
   const targetResults = [];
   for (const target of targets) {
     const baseDir = getBaseDir(target.scope, projectPath);
@@ -261,6 +272,65 @@ export async function updateCommand(
     log(
       `  ${target.platform.name} (${target.scope}, ${languageSkillsDir}): ${copied} copied, ${skipped} skipped`,
     );
+
+    // Distribute anti-drift rules to platforms that support them
+    try {
+      const { copied: ruleCopied } = await copyCometRulesForPlatform(
+        baseDir,
+        target.platform,
+        true,
+        target.scope,
+      );
+      totalRulesCopied += ruleCopied;
+      if (ruleCopied > 0) {
+        log(`  Comet rules -> ${target.platform.name}: ${ruleCopied} rule(s) updated`);
+      }
+    } catch (err) {
+      log(`  Comet rules -> ${target.platform.name}: failed (${(err as Error).message})`);
+    }
+
+    // Install hooks for platforms that support them
+    if (target.platform.supportsHooks) {
+      try {
+        const { installed, reason } = await installCometHooksForPlatform(
+          baseDir,
+          target.platform,
+          target.scope,
+        );
+        if (installed) {
+          totalHooksInstalled++;
+          log(`  Comet hooks -> ${target.platform.name}: phase guard hook updated`);
+        } else if (reason) {
+          log(`  Comet hooks -> ${target.platform.name}: skipped (${reason})`);
+        }
+      } catch (err) {
+        log(`  Comet hooks -> ${target.platform.name}: failed (${(err as Error).message})`);
+      }
+    }
+  }
+
+  // CodeGraph optional step
+  let codegraphStatus: 'installed' | 'failed' | 'skipped' = 'skipped';
+  const detectedPlatformIds = [...new Set(targets.map((t) => t.platform.id))];
+  const { supported: cgSupported } = filterSupportedPlatforms(detectedPlatformIds);
+  const primaryScope = targets[0]?.scope ?? 'project';
+
+  if (cgSupported.length > 0 && !options.json) {
+    const shouldInstallCodegraph = await select({
+      message: 'Install/update CodeGraph for semantic code intelligence?',
+      choices: [
+        { name: 'Yes (recommended — saves ~16% cost · cuts ~58% tool calls)', value: true },
+        { name: 'No', value: false },
+      ],
+    });
+
+    if (shouldInstallCodegraph) {
+      log('\n  Installing CodeGraph...');
+      codegraphStatus = await installCodegraph(projectPath, detectedPlatformIds, primaryScope);
+      log(`  CodeGraph: ${codegraphStatus}`);
+    } else {
+      log('\n  CodeGraph: skipped');
+    }
   }
 
   if (options.json) {
@@ -276,6 +346,9 @@ export async function updateCommand(
             totalCopied,
             targets: targetResults,
           },
+          rules: { totalCopied: totalRulesCopied },
+          hooks: { totalInstalled: totalHooksInstalled },
+          codegraph: codegraphStatus,
         },
         null,
         2,
@@ -289,6 +362,7 @@ export async function updateCommand(
   log(`\n  Summary:`);
   log(`    npm: ${npmStatus}${options.skipNpm ? '' : ` (${packageScope})`}`);
   log(`    skills: ${targets.length} target(s), ${totalCopied} files updated`);
+  log(`    codegraph: ${codegraphStatus}`);
   log(`    scope: ${scopes}`);
   log(`    language: ${languages}`);
   log(`\n  Update complete.\n`);

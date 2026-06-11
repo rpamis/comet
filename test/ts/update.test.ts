@@ -13,6 +13,11 @@ import {
   updateCommand,
 } from '../../src/commands/update.js';
 
+// Mock the interactive select prompt so tests don't hang on CI (no TTY).
+vi.mock('@inquirer/prompts', () => ({
+  select: vi.fn().mockResolvedValue(false),
+}));
+
 const claudePlatform: Platform = {
   id: 'claude',
   name: 'Claude Code',

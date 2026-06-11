@@ -1,0 +1,52 @@
+name: Stale PRs
+
+on:
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: 'Dry Run'
+        required: true
+        default: true
+        type: boolean
+      operationsPerRun:
+        description: 'Max GitHub API operations'
+        required: true
+        default: 30
+        type: number
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          debug-only: ${{ inputs.dryRun || false }}
+          operations-per-run: ${{ inputs.operationsPerRun || 500 }}
+          ascending: true
+          days-before-stale: 90
+          days-before-close: 30
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          stale-issue-label: ""
+          stale-pr-label: 'stale'
+          stale-pr-message: |
+            This PR is being marked as stale since it has not had any activity in 90 days. If you
+            would like to keep this PR alive, please leave a comment asking for a review. If the PR has
+            merge conflicts, update it with the latest from the base branch.
+            <p>
+            If you are having difficulty finding a reviewer, please reach out to the project maintainers.
+            <p>
+            If this PR is no longer valid or desired, please feel free to close it. If no activity
+            occurs in the next 30 days, it will be automatically closed.
+          close-pr-label: 'closed-stale'
+          close-pr-message: |
+            This PR has been closed since it has not had any activity in 120 days. If you feel like this
+            was a mistake, or you would like to continue working on it, please feel free to re-open the
+            PR and ask for a review.

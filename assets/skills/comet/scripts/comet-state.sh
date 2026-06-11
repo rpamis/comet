@@ -8,6 +8,7 @@
 #   set <change-name> <field> <val> — Update a field value
 #   transition <change-name> <event> — Apply a validated state transition
 #   check <change-name> <phase>    — Verify entry requirements for a phase
+#   check <change-name> <phase> --recover — Output structured recovery context for compaction resume
 #   scale <change-name>             — Assess and set verification mode based on metrics
 #
 # Workflows: full, hotfix, tweak
@@ -62,6 +63,26 @@ validate_enum() {
   red "ERROR: Invalid value: '$value'" >&2
   red "Valid values: ${valid_values[*]}" >&2
   exit 1
+}
+
+validate_path_field() {
+  local value="$1"
+  local field="$2"
+  # null and empty are acceptable (means "not set")
+  if [ -z "$value" ] || [ "$value" = "null" ]; then
+    return 0
+  fi
+  # Reject absolute paths and home-directory references
+  case "$value" in
+    /*|~*|[A-Za-z]:*|\\*)
+      red "ERROR: $field must be a relative path within the repo: '$value'" >&2
+      exit 1
+      ;;
+  esac
+  if [[ "$value" =~ \.\. ]]; then
+    red "ERROR: $field cannot contain '..' (path traversal not allowed): '$value'" >&2
+    exit 1
+  fi
 }
 
 # --- Helper functions ---
@@ -125,9 +146,17 @@ replace_yaml_field() {
   local tmp_file
 
   tmp_file=$(mktemp)
+  chmod 600 "$tmp_file"
+  # Replace the target field, then deduplicate all fields keeping only the
+  # last occurrence of each key. Prevents stale earlier values from
+  # persisting when a field is set multiple times.
   awk -v field="$field" -v value="$value" '
-    index($0, field ":") == 1 { print field ": " value; next }
-    { print }
+    index($0, field ":") == 1 { $0 = field ": " value }
+    { buf[NR] = $0; keys[NR] = $0; sub(/:.*$/, "", keys[NR]); n = NR }
+    END {
+      for (i = 1; i <= n; i++) last[keys[i]] = i
+      for (i = 1; i <= n; i++) if (last[keys[i]] == i) print buf[i]
+    }
   ' "$yaml_file" > "$tmp_file"
   mv "$tmp_file" "$yaml_file"
 }
@@ -154,6 +183,57 @@ yaml_file_for() {
   echo "$change_dir/.comet.yaml"
 }
 
+project_context_compression() {
+  local value="off"
+  local source="default"
+  if [ -n "${COMET_CONTEXT_COMPRESSION:-}" ]; then
+    value="$COMET_CONTEXT_COMPRESSION"
+    source="COMET_CONTEXT_COMPRESSION"
+  elif [ -f ".comet/config.yaml" ]; then
+    value=$(yaml_field "context_compression" ".comet/config.yaml")
+    value="${value:-off}"
+    source=".comet/config.yaml"
+  fi
+
+  case "$value" in
+    off|beta)
+      printf '%s\n' "$value"
+      ;;
+    *)
+      red "ERROR: Invalid context_compression from ${source}: '$value'" >&2
+      red "Valid values: off, beta" >&2
+      exit 1
+      ;;
+  esac
+}
+
+project_auto_transition_default() {
+  local value="true"
+  local source="default"
+  if [ -n "${COMET_AUTO_TRANSITION:-}" ]; then
+    value="$COMET_AUTO_TRANSITION"
+    source="COMET_AUTO_TRANSITION"
+  elif [ -f ".comet/config.yaml" ]; then
+    local raw
+    raw=$(yaml_field "auto_transition" ".comet/config.yaml" 2>/dev/null || true)
+    if [ -n "$raw" ]; then
+      value="$raw"
+      source=".comet/config.yaml"
+    fi
+  fi
+
+  case "$value" in
+    true|false)
+      printf '%s\n' "$value"
+      ;;
+    *)
+      red "ERROR: Invalid auto_transition from ${source}: '$value'" >&2
+      red "Valid values: true, false" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # --- Subcommands ---
 
 cmd_init() {
@@ -177,17 +257,21 @@ cmd_init() {
   mkdir -p "$change_dir"
 
   # Set workflow-appropriate defaults
-  local phase build_mode isolation verify_mode
+  local phase build_mode isolation verify_mode context_compression auto_transition
   phase="open"
+  context_compression=$(project_context_compression)
+  auto_transition="$(project_auto_transition_default)"
 
   case "$workflow" in
     full)
       build_mode="null"
+      tdd_mode="null"
       isolation="null"
       verify_mode="null"
       ;;
     hotfix|tweak)
       build_mode="direct"
+      tdd_mode="direct"
       isolation="branch"
       verify_mode="light"
       ;;
@@ -203,16 +287,21 @@ cmd_init() {
   cat > "$yaml_file" <<EOF
 workflow: $workflow
 phase: $phase
+context_compression: $context_compression
 build_mode: $build_mode
+build_pause: null
+subagent_dispatch: null
+tdd_mode: $tdd_mode
 isolation: $isolation
 verify_mode: $verify_mode
+auto_transition: $auto_transition
 base_ref: $base_ref
 design_doc: null
 plan: null
 verify_result: pending
 verification_report: null
 branch_status: pending
-created_at: $(date +%Y-%m-%d)
+created_at: $(date -u +%Y-%m-%d)
 verified_at: null
 archived: false
 EOF
@@ -238,6 +327,9 @@ cmd_get() {
   # Read and output the field value
   local value
   value=$(yaml_field "$field" "$yaml_file")
+  if [ "$field" = "auto_transition" ] && { [ -z "$value" ] || [ "$value" = "null" ]; }; then
+    value="$(project_auto_transition_default)"
+  fi
   echo "${value:-}"
 }
 
@@ -263,14 +355,14 @@ cmd_set() {
       yellow "WARNING: Setting 'phase' directly bypasses state machine constraints." >&2
       yellow "  Consider using: comet-state.sh transition <change-name> <event>" >&2
       ;;
-    workflow|build_mode|isolation|verify_mode|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
+    workflow|context_compression|build_mode|build_pause|subagent_dispatch|tdd_mode|isolation|verify_mode|auto_transition|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
       # Valid field
       ;;
     *)
       red "ERROR: Unknown field: '$field'" >&2
       red "Valid fields:" >&2
-      red "  workflow, phase, design_doc, plan, build_mode, isolation," >&2
-      red "  verify_mode, verify_result, verification_report, branch_status," >&2
+      red "  workflow, phase, context_compression, design_doc, plan, build_mode, build_pause, subagent_dispatch, tdd_mode, isolation," >&2
+      red "  verify_mode, auto_transition, verify_result, verification_report, branch_status," >&2
       red "  verified_at, created_at, archived, base_ref, direct_override," >&2
       red "  build_command, verify_command, handoff_context, handoff_hash" >&2
       exit 1
@@ -282,17 +374,32 @@ cmd_set() {
     workflow)
       validate_enum "$value" "full" "hotfix" "tweak"
       ;;
+    context_compression)
+      validate_enum "$value" "off" "beta"
+      ;;
     phase)
       validate_enum "$value" "open" "design" "build" "verify" "archive"
       ;;
     build_mode)
       validate_enum "$value" "subagent-driven-development" "executing-plans" "direct"
       ;;
+    build_pause)
+      validate_enum "$value" "null" "plan-ready"
+      ;;
+    subagent_dispatch)
+      validate_enum "$value" "null" "confirmed"
+      ;;
+    tdd_mode)
+      validate_enum "$value" "tdd" "direct"
+      ;;
     isolation)
       validate_enum "$value" "branch" "worktree"
       ;;
     verify_mode)
       validate_enum "$value" "light" "full"
+      ;;
+    auto_transition)
+      validate_enum "$value" "true" "false"
       ;;
     verify_result)
       validate_enum "$value" "pending" "pass" "fail"
@@ -306,8 +413,11 @@ cmd_set() {
     direct_override)
       validate_enum "$value" "true" "false"
       ;;
-    design_doc|plan|verification_report|verified_at|created_at|build_command|verify_command|handoff_context|handoff_hash)
-      # No validation for path fields, date fields, or project command strings
+    design_doc|plan|verification_report|handoff_context|handoff_hash)
+      validate_path_field "$value" "$field"
+      ;;
+    verified_at|created_at|build_command|verify_command)
+      # No validation for date fields or project command strings
       ;;
   esac
 
@@ -352,11 +462,13 @@ require_verification_evidence() {
 
 require_build_decisions() {
   local change_name="$1"
-  local workflow build_mode isolation direct_override
+  local workflow build_mode isolation direct_override subagent_dispatch tdd_mode
   workflow=$(cmd_get "$change_name" "workflow")
   build_mode=$(cmd_get "$change_name" "build_mode")
   isolation=$(cmd_get "$change_name" "isolation")
   direct_override=$(cmd_get "$change_name" "direct_override" 2>/dev/null || true)
+  subagent_dispatch=$(cmd_get "$change_name" "subagent_dispatch" 2>/dev/null || true)
+  tdd_mode=$(cmd_get "$change_name" "tdd_mode" 2>/dev/null || true)
 
   case "$isolation" in
     branch|worktree) ;;
@@ -378,6 +490,16 @@ require_build_decisions() {
     red "ERROR: Cannot transition '$change_name': build_mode=direct is only allowed for hotfix/tweak unless direct_override=true" >&2
     exit 1
   fi
+
+  if [ "$build_mode" = "subagent-driven-development" ] && [ "$subagent_dispatch" != "confirmed" ]; then
+    red "ERROR: Cannot transition '$change_name': subagent_dispatch must be confirmed before using build_mode=subagent-driven-development" >&2
+    exit 1
+  fi
+
+  if [ "$workflow" = "full" ] && { [ "$tdd_mode" = "null" ] || [ -z "$tdd_mode" ]; }; then
+    red "ERROR: Cannot transition '$change_name': tdd_mode must be selected before leaving build (full workflow)" >&2
+    exit 1
+  fi
 }
 
 cmd_transition() {
@@ -385,7 +507,7 @@ cmd_transition() {
   local event="$2"
 
   validate_change_name "$change_name"
-  validate_enum "$event" "open-complete" "design-complete" "build-complete" "verify-pass" "verify-fail" "archived"
+  validate_enum "$event" "open-complete" "design-complete" "build-complete" "verify-pass" "verify-fail" "archive-reopen" "archived"
 
   case "$event" in
     open-complete)
@@ -405,23 +527,41 @@ cmd_transition() {
     build-complete)
       require_phase "$change_name" "build"
       require_build_decisions "$change_name"
+      local current_verify_result
+      current_verify_result=$(cmd_get "$change_name" "verify_result")
       cmd_set "$change_name" phase verify
       cmd_set "$change_name" verify_result pending
-      cmd_set "$change_name" verification_report null
-      cmd_set "$change_name" branch_status pending
+      # Preserve verification evidence on re-verify (verify-fail → build → build-complete)
+      # so the fix can reference the original failure report
+      if [ "$current_verify_result" != "fail" ]; then
+        cmd_set "$change_name" verification_report null
+        cmd_set "$change_name" branch_status pending
+      fi
       ;;
     verify-pass)
       require_phase "$change_name" "verify"
       require_verification_evidence "$change_name"
       cmd_set "$change_name" verify_result pass
       cmd_set "$change_name" phase archive
-      cmd_set "$change_name" verified_at "$(date +%Y-%m-%d)"
+      cmd_set "$change_name" verified_at "$(date -u +%Y-%m-%d)"
       ;;
     verify-fail)
       require_phase "$change_name" "verify"
       cmd_set "$change_name" verify_result fail
       cmd_set "$change_name" phase build
-      cmd_set "$change_name" branch_status pending
+      # Preserve branch_status so re-verify doesn't require re-handling branches
+      ;;
+    archive-reopen)
+      require_phase "$change_name" "archive"
+      local archived
+      archived=$(cmd_get "$change_name" "archived")
+      if [ "$archived" = "true" ]; then
+        red "ERROR: Cannot transition '$change_name': already archived" >&2
+        exit 1
+      fi
+      cmd_set "$change_name" verify_result pending
+      cmd_set "$change_name" phase verify
+      cmd_set "$change_name" verified_at null
       ;;
     archived)
       require_phase "$change_name" "archive"
@@ -589,6 +729,234 @@ cmd_check() {
   fi
 }
 
+# --- Recovery context for compaction resume ---
+
+field_status() {
+  # Args: field_name value [file_path]
+  # Prints: "field_name: DONE (value)" or "field_name: PENDING"
+  local field="$1"
+  local value="$2"
+  local file_path="${3:-}"
+
+  if [ -z "$value" ] || [ "$value" = "null" ]; then
+    echo "  - ${field}: PENDING"
+  elif [ -n "$file_path" ] && [ ! -f "$file_path" ]; then
+    echo "  - ${field}: BROKEN (path ${value} does not exist)"
+  else
+    echo "  - ${field}: DONE (${value})"
+  fi
+}
+
+cmd_recover() {
+  local change_name="$1"
+
+  validate_change_name "$change_name"
+
+  local change_dir="openspec/changes/$change_name"
+  local yaml_file="$change_dir/.comet.yaml"
+
+  if [ ! -f "$yaml_file" ]; then
+    red "ERROR: .comet.yaml not found at $yaml_file"
+    exit 1
+  fi
+
+  local phase workflow
+  phase=$(cmd_get "$change_name" "phase")
+  workflow=$(cmd_get "$change_name" "workflow")
+
+  echo "=== Recovery Context: ${change_name} ==="
+  echo "Phase: ${phase}"
+  echo "Workflow: ${workflow}"
+  echo ""
+
+  # Read all relevant fields
+  local design_doc plan verify_result verify_mode verification_report
+  local branch_status handoff_context handoff_hash isolation build_mode build_pause subagent_dispatch tdd_mode direct_override
+  design_doc=$(cmd_get "$change_name" "design_doc")
+  plan=$(cmd_get "$change_name" "plan")
+  verify_result=$(cmd_get "$change_name" "verify_result")
+  verify_mode=$(cmd_get "$change_name" "verify_mode")
+  verification_report=$(cmd_get "$change_name" "verification_report")
+  branch_status=$(cmd_get "$change_name" "branch_status")
+  handoff_context=$(cmd_get "$change_name" "handoff_context")
+  handoff_hash=$(cmd_get "$change_name" "handoff_hash")
+  isolation=$(cmd_get "$change_name" "isolation")
+  build_mode=$(cmd_get "$change_name" "build_mode")
+  build_pause=$(cmd_get "$change_name" "build_pause" 2>/dev/null || true)
+  subagent_dispatch=$(cmd_get "$change_name" "subagent_dispatch" 2>/dev/null || true)
+  tdd_mode=$(cmd_get "$change_name" "tdd_mode" 2>/dev/null || true)
+  direct_override=$(cmd_get "$change_name" "direct_override" 2>/dev/null || true)
+
+  echo "State fields:"
+
+  # Phase-specific field reporting
+  case "$phase" in
+    open)
+      echo "  Artifacts:"
+      local artifacts_done=0
+      for f in proposal.md design.md tasks.md; do
+        if file_nonempty "$change_dir/$f"; then
+          echo "  - ${f}: DONE"
+          artifacts_done=$((artifacts_done + 1))
+        else
+          echo "  - ${f}: PENDING"
+        fi
+      done
+      echo ""
+      if [ "$artifacts_done" -eq 3 ]; then
+        echo "Recovery action: All artifacts complete. Run /comet-open user confirmation, then guard to transition."
+      elif [ "$artifacts_done" -eq 0 ]; then
+        echo "Recovery action: No artifacts created yet. Start from /comet-open Step 1 (explore and clarify)."
+      else
+        echo "Recovery action: Some artifacts incomplete. Resume /comet-open from the first missing artifact."
+      fi
+      ;;
+    design)
+      echo "  Artifacts:"
+      for f in proposal.md design.md tasks.md; do
+        if file_nonempty "$change_dir/$f"; then
+          echo "  - ${f}: DONE"
+        else
+          echo "  - ${f}: MISSING (unexpected in design phase)"
+        fi
+      done
+      echo ""
+      echo "  Design progress:"
+      field_status "handoff_context" "$handoff_context" "$handoff_context"
+      field_status "handoff_hash" "$handoff_hash"
+      field_status "design_doc" "$design_doc" "$design_doc"
+      echo ""
+      if [ -n "$design_doc" ] && [ "$design_doc" != "null" ] && [ -f "$design_doc" ]; then
+        echo "Recovery action: Design Doc already created and linked. Run guard to transition to build."
+      elif [ -n "$handoff_context" ] && [ "$handoff_context" != "null" ] && [ -f "$handoff_context" ]; then
+        echo "Recovery action: Handoff generated but Design Doc not yet created. Resume from brainstorming confirmation (Step 1c)."
+      else
+        echo "Recovery action: No handoff generated yet. Start from Step 1a (generate handoff package)."
+      fi
+      ;;
+    build)
+      echo "  Build decisions:"
+      field_status "isolation" "$isolation"
+      field_status "build_mode" "$build_mode"
+      field_status "build_pause" "$build_pause"
+      field_status "tdd_mode" "$tdd_mode"
+      if [ "$build_mode" = "subagent-driven-development" ] || { [ -n "$subagent_dispatch" ] && [ "$subagent_dispatch" != "null" ]; }; then
+        field_status "subagent_dispatch" "$subagent_dispatch"
+      fi
+      if [ "$build_mode" = "direct" ] && [ "$workflow" != "hotfix" ] && [ "$workflow" != "tweak" ]; then
+        field_status "direct_override" "$direct_override"
+      fi
+      echo ""
+      echo "  Plan:"
+      field_status "plan" "$plan" "$plan"
+      echo ""
+      # Count completed vs pending tasks
+      local tasks_file="$change_dir/tasks.md"
+      local total=0 done=0 pending=0
+      local plan_total=0 plan_done=0 plan_pending=0
+      if [ -f "$tasks_file" ]; then
+        total=$(grep -c '^[[:space:]]*- \[' "$tasks_file" 2>/dev/null || true)
+        done=$(grep -c '^[[:space:]]*- \[x\]' "$tasks_file" 2>/dev/null || true)
+        total="${total:-0}"
+        done="${done:-0}"
+        pending=$((total - done))
+        echo "  Tasks: ${done}/${total} done, ${pending} pending"
+      else
+        echo "  Tasks: tasks.md MISSING"
+      fi
+      if [ -n "$plan" ] && [ "$plan" != "null" ] && [ -f "$plan" ]; then
+        plan_total=$(grep -c '^[[:space:]]*- \[' "$plan" 2>/dev/null || true)
+        plan_done=$(grep -c '^[[:space:]]*- \[x\]' "$plan" 2>/dev/null || true)
+        plan_total="${plan_total:-0}"
+        plan_done="${plan_done:-0}"
+        plan_pending=$((plan_total - plan_done))
+        if [ "$plan_total" -gt 0 ]; then
+          echo "  Plan tasks: ${plan_done}/${plan_total} done, ${plan_pending} pending"
+        fi
+      fi
+      echo ""
+      if [ "$build_pause" = "plan-ready" ] && [ -n "$plan" ] && [ "$plan" != "null" ] && [ -f "$plan" ] && { [ "$isolation" = "null" ] || [ -z "$isolation" ] || [ "$build_mode" = "null" ] || [ -z "$build_mode" ]; }; then
+        echo "Recovery action: Plan-ready pause detected. Ask the user whether to continue, then choose isolation and build mode without regenerating the plan."
+      elif [ "$build_pause" = "plan-ready" ] && { [ -z "$plan" ] || [ "$plan" = "null" ] || [ ! -f "$plan" ]; }; then
+        echo "Recovery action: Plan-ready pause is recorded, but the plan file is missing. Restore the plan file or rerun writing-plans before choosing execution."
+      elif [ "$build_pause" = "plan-ready" ]; then
+        if [ "$build_mode" = "subagent-driven-development" ] && { [ "$pending" -gt 0 ] || [ "$plan_pending" -gt 0 ]; }; then
+          if [ "$subagent_dispatch" = "confirmed" ]; then
+            echo "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window."
+          else
+            echo "Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing."
+          fi
+        elif [ "$pending" -gt 0 ] || [ "$plan_pending" -gt 0 ]; then
+          echo "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task."
+        else
+          echo "Recovery action: Plan-ready pause is stale and all tasks are done. Clear build_pause to null, then run guard to transition to verify."
+        fi
+      elif [ "$isolation" = "null" ] || [ -z "$isolation" ]; then
+        echo "Recovery action: Isolation not selected. Use the current platform's user confirmation mechanism to ask user for branch/worktree choice."
+      elif [ "$build_mode" = "null" ] || [ -z "$build_mode" ]; then
+        echo "Recovery action: Build mode not selected. Use the current platform's user confirmation mechanism to ask user for execution method."
+      elif [ -z "$tdd_mode" ] || [ "$tdd_mode" = "null" ]; then
+        echo "Recovery action: TDD mode not selected. Use the current platform's user confirmation mechanism to ask user for tdd or direct."
+      elif [ ! -f "$tasks_file" ]; then
+        echo "Recovery action: tasks.md missing. Verify change directory integrity."
+      elif [ "$pending" -gt 0 ]; then
+        if [ "$build_mode" = "subagent-driven-development" ]; then
+          if [ "$subagent_dispatch" = "confirmed" ]; then
+            echo "Recovery action: Read tasks.md and the Superpowers plan (which may include additions beyond OpenSpec), then inspect the first unchecked task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window."
+          else
+            echo "Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing."
+          fi
+        else
+          echo "Recovery action: Read tasks.md and continue from first unchecked task."
+        fi
+      elif [ "$plan_pending" -gt 0 ]; then
+        if [ "$build_mode" = "subagent-driven-development" ]; then
+          if [ "$subagent_dispatch" = "confirmed" ]; then
+            echo "Recovery action: Read the Superpowers plan, then inspect the first unchecked Superpowers plan task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window."
+          else
+            echo "Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing."
+          fi
+        else
+          echo "Recovery action: Read the Superpowers plan and continue from the first unchecked plan task."
+        fi
+      else
+        echo "Recovery action: All tasks done. Run guard to transition to verify."
+      fi
+      ;;
+    verify)
+      echo "  Verification:"
+      field_status "verify_result" "$verify_result"
+      field_status "verify_mode" "$verify_mode"
+      field_status "verification_report" "$verification_report" "$verification_report"
+      field_status "branch_status" "$branch_status"
+      echo ""
+      if [ "$verify_result" = "pass" ] && [ "$branch_status" = "handled" ]; then
+        echo "Recovery action: Verification complete. Run guard to transition to archive."
+      elif [ "$verify_result" = "pass" ]; then
+        echo "Recovery action: Verification passed but branch not yet handled. Complete branch handling and set branch_status to handled."
+      elif [ "$verify_result" = "fail" ]; then
+        echo "Recovery action: Verification failed and rolled back to build. Resume from /comet-build."
+      else
+        echo "Recovery action: Verification not yet started or in progress. Run scale assessment then verify."
+      fi
+      ;;
+    archive)
+      echo "  Archive:"
+      field_status "verify_result" "$verify_result"
+      field_status "archived" "$(cmd_get "$change_name" "archived")"
+      echo ""
+      echo "Recovery action: Run /comet-archive to complete archiving."
+      ;;
+    *)
+      red "ERROR: Unknown phase: $phase"
+      exit 1
+      ;;
+  esac
+
+  echo ""
+  echo "=== End Recovery Context ==="
+}
+
 cmd_scale() {
   local change_name="$1"
 
@@ -623,7 +991,7 @@ cmd_scale() {
     local plan_file base_ref=""
     plan_file=$(cmd_get "$change_name" "plan" 2>/dev/null || true)
     if [ -n "$plan_file" ] && [ "$plan_file" != "null" ] && [ -f "$plan_file" ]; then
-      base_ref=$(grep '^base-ref:' "$plan_file" 2>/dev/null | head -1 | sed 's/^base-ref: *//')
+      base_ref=$(grep '^base-ref:' "$plan_file" 2>/dev/null | head -1 | sed 's/^base-ref: *//' || true)
     fi
     # Fallback to base_ref stored in .comet.yaml (set during init)
     if [ -z "$base_ref" ] || [ "$base_ref" = "null" ]; then
@@ -654,6 +1022,81 @@ cmd_scale() {
   replace_yaml_field "$yaml_file" "verify_mode" "$result"
 
   green "[SCALE] verify_mode=$result"
+}
+
+# Resolve the next workflow step after a guard --apply phase advance.
+# Reads the (already advanced) phase, workflow, and auto_transition, then emits
+# a deterministic next-step contract so skills don't hardcode the next skill name.
+#
+# Output contract (stdout):
+#   NEXT: auto|manual|done
+#   SKILL: <skill-name>      (omitted when NEXT=done)
+#   HINT: <message>          (only when NEXT=manual)
+cmd_next() {
+  local change_name="$1"
+  validate_change_name "$change_name"
+
+  local change_dir="openspec/changes/$change_name"
+  local yaml_file="$change_dir/.comet.yaml"
+  if [ ! -f "$yaml_file" ]; then
+    red "ERROR: .comet.yaml not found at $yaml_file" >&2
+    exit 1
+  fi
+
+  local phase workflow auto_transition archived
+  phase=$(cmd_get "$change_name" "phase" 2>/dev/null || true)
+  workflow=$(cmd_get "$change_name" "workflow" 2>/dev/null || true)
+  auto_transition=$(cmd_get "$change_name" "auto_transition" 2>/dev/null || true)
+  archived=$(cmd_get "$change_name" "archived" 2>/dev/null || true)
+
+  # Change-level auto_transition overrides project-level; fall back to project default
+  if [ -z "$auto_transition" ] || [ "$auto_transition" = "null" ]; then
+    auto_transition="$(project_auto_transition_default)"
+  fi
+
+  # Terminal state: archived change has no next step.
+  if [ "$archived" = "true" ]; then
+    echo "NEXT: done"
+    return 0
+  fi
+
+  # Map the current (post-advance) phase to the skill that owns it.
+  local skill=""
+  case "$phase" in
+    open)
+      skill="comet-open"
+      ;;
+    design)
+      skill="comet-design"
+      ;;
+    build)
+      case "$workflow" in
+        hotfix) skill="comet-hotfix" ;;
+        tweak)  skill="comet-tweak" ;;
+        *)      skill="comet-build" ;;
+      esac
+      ;;
+    verify)
+      skill="comet-verify"
+      ;;
+    archive)
+      skill="comet-archive"
+      ;;
+    *)
+      red "ERROR: Cannot resolve next step for '$change_name': unknown phase '${phase:-null}'" >&2
+      exit 1
+      ;;
+  esac
+
+  # auto_transition=false pauses the next skill invocation only; phase is already advanced.
+  if [ "$auto_transition" = "false" ]; then
+    echo "NEXT: manual"
+    echo "SKILL: $skill"
+    echo "HINT: phase is '$phase'; run /$skill manually to continue"
+  else
+    echo "NEXT: auto"
+    echo "SKILL: $skill"
+  fi
 }
 
 # --- Main ---
@@ -687,18 +1130,23 @@ case "$SUBCOMMAND" in
   transition)
     if [ $# -lt 2 ]; then
       red "Usage: comet-state.sh transition <change-name> <event>" >&2
-      red "Events: open-complete, design-complete, build-complete, verify-pass, verify-fail, archived" >&2
+      red "Events: open-complete, design-complete, build-complete, verify-pass, verify-fail, archive-reopen, archived" >&2
       exit 1
     fi
     cmd_transition "$@"
     ;;
   check)
     if [ $# -lt 2 ]; then
-      red "Usage: comet-state.sh check <change-name> <phase>" >&2
+      red "Usage: comet-state.sh check <change-name> <phase> [--recover]" >&2
       red "Phases: open, design, build, verify, archive" >&2
       exit 1
     fi
-    cmd_check "$@"
+    # Detect --recover flag (3rd argument)
+    if [ "${3:-}" = "--recover" ]; then
+      cmd_recover "$1"
+    else
+      cmd_check "$@"
+    fi
     ;;
   scale)
     if [ $# -lt 1 ]; then
@@ -706,6 +1154,13 @@ case "$SUBCOMMAND" in
       exit 1
     fi
     cmd_scale "$@"
+    ;;
+  next)
+    if [ $# -lt 1 ]; then
+      red "Usage: comet-state.sh next <change-name>" >&2
+      exit 1
+    fi
+    cmd_next "$@"
     ;;
   *)
     red "Unknown subcommand: $SUBCOMMAND" >&2
@@ -719,6 +1174,7 @@ case "$SUBCOMMAND" in
     echo "  transition <change-name> <event> — Apply a validated state transition" >&2
     echo "  check <change-name> <phase>    — Verify entry requirements for a phase" >&2
     echo "  scale <change-name>             — Assess and set verification mode based on metrics" >&2
+    echo "  next <change-name>              — Resolve the next workflow step (auto/manual/done)" >&2
     echo "" >&2
     echo "Workflows: full, hotfix, tweak" >&2
     echo "Phases for check: open, design, build, verify, archive" >&2

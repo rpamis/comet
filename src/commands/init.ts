@@ -5,11 +5,14 @@ import { PLATFORMS, getPlatformSkillsDir, type Platform } from '../core/platform
 import { detectPlatforms, hasSkills, getBaseDir, type InstallScope } from '../core/detect.js';
 import {
   copyCometSkillsForPlatform,
+  copyCometRulesForPlatform,
+  installCometHooksForPlatform,
   createWorkingDirs,
   type LanguageConfig,
 } from '../core/skills.js';
 import { installOpenSpec } from '../core/openspec.js';
 import { installSuperpowersForPlatforms } from '../core/superpowers.js';
+import { installCodegraph, filterSupportedPlatforms } from '../core/codegraph.js';
 
 type InitOptions = {
   yes?: boolean;
@@ -28,6 +31,7 @@ interface PlatformResult {
   openspec: InstallStatus;
   superpowers: InstallStatus;
   comet: InstallStatus;
+  codegraph: InstallStatus;
 }
 
 type ComponentPlan = {
@@ -120,13 +124,16 @@ async function promptBulkOverwriteChoice(
 function applyBulkOverwriteChoice<T extends ComponentPlan>(
   plan: T,
   choice: Exclude<BulkOverwriteChoice, 'choose'>,
+  hasExisting?: { os?: boolean; sp?: boolean; cm?: boolean },
 ): T {
   const action = choice === 'overwrite-all' ? 'overwrite' : 'skip';
+  const shouldApply = (actionState: ComponentAction, exists?: boolean) =>
+    actionState === 'install' && (hasExisting === undefined || exists === true);
   return {
     ...plan,
-    osAction: plan.osAction === 'install' ? action : plan.osAction,
-    spAction: plan.spAction === 'install' ? action : plan.spAction,
-    cmAction: plan.cmAction === 'install' ? action : plan.cmAction,
+    osAction: shouldApply(plan.osAction, hasExisting?.os) ? action : plan.osAction,
+    spAction: shouldApply(plan.spAction, hasExisting?.sp) ? action : plan.spAction,
+    cmAction: shouldApply(plan.cmAction, hasExisting?.cm) ? action : plan.cmAction,
   };
 }
 
@@ -147,13 +154,25 @@ function displaySummary(results: PlatformResult[], scope: InstallScope): void {
   console.log(`\n  Comet setup complete! (scope: ${scopeLabel})\n`);
 
   const installed = results.filter(
-    (r) => r.openspec === 'installed' || r.superpowers === 'installed' || r.comet === 'installed',
+    (r) =>
+      r.openspec === 'installed' ||
+      r.superpowers === 'installed' ||
+      r.comet === 'installed' ||
+      r.codegraph === 'installed',
   );
   const skipped = results.filter(
-    (r) => r.openspec === 'skipped' && r.superpowers === 'skipped' && r.comet === 'skipped',
+    (r) =>
+      r.openspec === 'skipped' &&
+      r.superpowers === 'skipped' &&
+      r.comet === 'skipped' &&
+      r.codegraph === 'skipped',
   );
   const failed = results.filter(
-    (r) => r.openspec === 'failed' || r.superpowers === 'failed' || r.comet === 'failed',
+    (r) =>
+      r.openspec === 'failed' ||
+      r.superpowers === 'failed' ||
+      r.comet === 'failed' ||
+      r.codegraph === 'failed',
   );
 
   if (installed.length > 0) {
@@ -247,6 +266,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
           ({ osAction, spAction, cmAction } = applyBulkOverwriteChoice(
             { osAction, spAction, cmAction },
             bulkChoice,
+            { os: hasOS, sp: hasSP, cm: hasCM },
           ));
         }
       }
@@ -311,12 +331,63 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       log(`  Comet -> ${platform.name}: skipped (already exists)`);
     }
 
+    // Distribute anti-drift rules to platforms that support them
+    if (cmAction !== 'skip') {
+      const { copied: ruleCopied } = await copyCometRulesForPlatform(
+        baseDir,
+        platform,
+        cmAction === 'overwrite',
+        scope,
+      );
+      if (ruleCopied > 0) {
+        log(`  Comet rules -> ${platform.name}: ${ruleCopied} rule(s) installed`);
+      }
+    }
+
+    // Install hooks for platforms that support them
+    if (cmAction !== 'skip' && platform.supportsHooks) {
+      const { installed, reason } = await installCometHooksForPlatform(baseDir, platform, scope);
+      if (installed) {
+        log(`  Comet hooks -> ${platform.name}: phase guard hook installed`);
+      } else if (reason) {
+        log(`  Comet hooks -> ${platform.name}: skipped (${reason})`);
+      }
+    }
+
     results.push({
       platform,
       openspec: osToolIds.includes(platform.openspecToolId) ? osGlobalStatus : 'skipped',
       superpowers: plan.spAction !== 'skip' ? spGlobalStatus : 'skipped',
       comet: cmStatus,
+      codegraph: 'skipped',
     });
+  }
+
+  let cgGlobalStatus: InstallStatus;
+  const { supported: cgSupported } = filterSupportedPlatforms(selectedPlatformIds);
+  const shouldInstallCodegraph =
+    cgSupported.length > 0 &&
+    !options.json &&
+    (options.yes ||
+      (await select({
+        message: 'Install CodeGraph for semantic code intelligence?',
+        choices: [
+          { name: 'Yes (recommended — saves ~16% cost · cuts ~58% tool calls)', value: true },
+          { name: 'No', value: false },
+        ],
+      })));
+
+  if (shouldInstallCodegraph) {
+    log('\n  Installing CodeGraph...');
+    cgGlobalStatus = await installCodegraph(projectPath, selectedPlatformIds, scope);
+    log(`  CodeGraph: ${cgGlobalStatus}`);
+    for (const r of results) {
+      if (filterSupportedPlatforms([r.platform.id]).supported.length > 0) {
+        r.codegraph = cgGlobalStatus;
+      }
+    }
+  } else {
+    log('\n  CodeGraph: skipped');
   }
 
   if (scope === 'project') {
@@ -337,6 +408,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
             openspec: result.openspec,
             superpowers: result.superpowers,
             comet: result.comet,
+            codegraph: result.codegraph,
           })),
           workingDirsCreated: scope === 'project',
         },

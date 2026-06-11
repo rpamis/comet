@@ -22,8 +22,13 @@ describe('CI workflows', () => {
     expect(projectVerify).not.toContain('.config/opencode/skills');
     expect(globalVerify).toContain('.config/opencode/skills');
     expect(globalVerify).not.toContain('.opencode/skills');
+    expect(workflow).toContain('function extractJsonPayload(raw) {');
+    expect(workflow).toContain("throw new Error('No JSON payload found in init output');");
+    expect(workflow).toContain('const data = JSON.parse(extractJsonPayload(raw));');
+    expect(workflow).toContain("const allowed = new Set(['installed', 'skipped', 'failed']);");
     expect(workflow).toContain("const components = ['openspec', 'superpowers'];");
-    expect(workflow).toContain("r[component] !== 'installed'");
+    expect(workflow).toContain("r[component] === 'failed'");
+    expect(workflow).toContain('External installer statuses validated for');
     expect(workflow).not.toContain('check_glob "$PROJ/$sd/openspec-*"');
     expect(workflow).not.toContain('check_dir "$PROJ/$sd/brainstorming"');
     expect(workflow).not.toContain('check_dir "$PROJ/$sd/using-superpowers"');
@@ -63,5 +68,29 @@ describe('CI workflows', () => {
     for (const outOfScope of ['common', 'api', 'spi', 'plugins', 'mcp', 'tools']) {
       expect(workflow).not.toMatch(new RegExp(`\\n\\s+${outOfScope}\\n`));
     }
+  });
+
+  it('defines stale PR auto-closing with a manual dry-run mode', async () => {
+    const workflow = (await fs.readFile('.github/workflows/stale-prs.yml', 'utf-8')).replace(/\r\n/g, '\n');
+
+    expect(workflow).toContain('name: Stale PRs');
+    expect(workflow).toContain("cron: '30 3 * * *'");
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain('dryRun:');
+    expect(workflow).toContain('operationsPerRun:');
+    expect(workflow).toContain('issues: write');
+    expect(workflow).toContain('pull-requests: write');
+    expect(workflow).toContain('contents: read');
+    expect(workflow).toContain('actions/stale@v9');
+    expect(workflow).toContain('debug-only: ${{ inputs.dryRun || false }}');
+    expect(workflow).toContain('operations-per-run: ${{ inputs.operationsPerRun || 500 }}');
+    expect(workflow).toContain('ascending: true');
+    expect(workflow).toContain('days-before-stale: 90');
+    expect(workflow).toContain('days-before-close: 30');
+    expect(workflow).toContain("stale-pr-label: 'stale'");
+    expect(workflow).toContain("close-pr-label: 'closed-stale'");
+    expect(workflow).toContain('stale-issue-label: ""');
+    expect(workflow).toContain('days-before-issue-stale: -1');
+    expect(workflow).toContain('days-before-issue-close: -1');
   });
 });

@@ -7,6 +7,8 @@
 
 set -euo pipefail
 
+COMET_BASH="${COMET_BASH:-${BASH:-bash}}"
+
 red() { echo -e "\033[31m$1\033[0m" >&2; }
 green() { echo -e "\033[32m$1\033[0m" >&2; }
 warn() { echo -e "\033[33m$1\033[0m" >&2; }
@@ -32,18 +34,26 @@ validate_change_name() {
   fi
 }
 
-validate_change_name "$1"
+if [ "${COMET_GUARD_SOURCE_ONLY:-0}" = "1" ]; then
+  CHANGE="${CHANGE:-}"
+  PHASE="${PHASE:-}"
+  APPLY="${APPLY:-0}"
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
+  CHANGE_DIR="${CHANGE_DIR:-}"
+else
+  validate_change_name "$1"
 
-CHANGE="$1"
-PHASE="$2"
-APPLY=0
-SCRIPT_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")" 2>/dev/null || dirname "$0")"
-if [[ "${3:-}" == "--apply" ]]; then
-  APPLY=1
-fi
-CHANGE_DIR="openspec/changes/$CHANGE"
-if [ "$PHASE" = "archive" ] && [ ! -d "$CHANGE_DIR" ] && [ -d "openspec/changes/archive/$CHANGE" ]; then
-  CHANGE_DIR="openspec/changes/archive/$CHANGE"
+  CHANGE="$1"
+  PHASE="$2"
+  APPLY=0
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+  if [[ "${3:-}" == "--apply" ]]; then
+    APPLY=1
+  fi
+  CHANGE_DIR="openspec/changes/$CHANGE"
+  if [ "$PHASE" = "archive" ] && [ ! -d "$CHANGE_DIR" ] && [ -d "openspec/changes/archive/$CHANGE" ]; then
+    CHANGE_DIR="openspec/changes/archive/$CHANGE"
+  fi
 fi
 
 BLOCK=0
@@ -90,6 +100,27 @@ tasks_all_done() {
 tasks_has_any() {
   local tasks="$CHANGE_DIR/tasks.md"
   [ -f "$tasks" ] && grep -q '\- \[' "$tasks"
+}
+
+plan_tasks_all_done() {
+  local plan
+  plan=$(yaml_field_value "plan" 2>/dev/null || true)
+
+  if [ -z "$plan" ] || [ "$plan" = "null" ]; then
+    return 0
+  fi
+  if [ ! -f "$plan" ]; then
+    echo "plan file is missing at $plan" >&2
+    echo "Next: restore the Superpowers plan file or update .comet.yaml plan before leaving build." >&2
+    return 1
+  fi
+  if grep -q '^[[:space:]]*- \[ \]' "$plan"; then
+    echo "Unfinished Superpowers plan tasks:" >&2
+    grep -n '^[[:space:]]*- \[ \]' "$plan" >&2 || true
+    echo "Next: check off corresponding completed plan tasks, then commit the plan update." >&2
+    return 1
+  fi
+  return 0
 }
 
 yaml_field_value() {
@@ -180,8 +211,19 @@ is_windows_bash() {
 
 run_command_string() {
   local command="$1"
+  if [ -z "$command" ]; then
+    red "ERROR: build/verify command is empty" >&2
+    return 1
+  fi
+  # Basic command injection guard: reject dangerous shell metacharacters
+  # Quotes are allowed to support paths with spaces (e.g. Windows)
+  if [[ "$command" =~ [\;\|\&\$\`] ]]; then
+    red "ERROR: build/verify command contains shell metacharacters: $command" >&2
+    red "Allowed: alphanumeric, spaces, hyphens, underscores, dots, colons, forward slashes, quotes" >&2
+    return 1
+  fi
   echo "+ $command" >&2
-  bash -lc "$command"
+  "$COMET_BASH" -lc "$command"
 }
 
 hash_stream() {
@@ -217,12 +259,14 @@ handoff_source_files() {
 }
 
 compute_handoff_hash() {
-  handoff_source_files | while IFS= read -r file; do
+  local hash_input
+  hash_input=$(handoff_source_files | while IFS= read -r file; do
     if [ -f "$file" ]; then
       printf 'path:%s\n' "$file"
       printf 'sha256:%s\n' "$(hash_file "$file")"
     fi
-  done | hash_stream
+  done)
+  printf '%s' "$hash_input" | hash_stream
 }
 
 preflight() {
@@ -240,8 +284,8 @@ preflight() {
   local validate_script
   validate_script="$SCRIPT_DIR/comet-yaml-validate.sh"
   if [ -f "$validate_script" ]; then
-    if ! bash "$validate_script" "$CHANGE" 2>/dev/null; then
-      bash "$validate_script" "$CHANGE"
+    if ! "$COMET_BASH" "$validate_script" "$CHANGE" 2>/dev/null; then
+      "$COMET_BASH" "$validate_script" "$CHANGE" || true
       red "FATAL: .comet.yaml schema validation failed"
       exit 1
     fi
@@ -300,7 +344,7 @@ isolation_selected() {
     *)
       echo "isolation must be branch or worktree, got '${isolation:-null}'" >&2
       echo "Next: ask the user to choose branch or worktree, create the chosen isolation, then run:" >&2
-      echo "  bash \"\$COMET_STATE\" set $CHANGE isolation <branch|worktree>" >&2
+      echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE isolation <branch|worktree>" >&2
       return 1
       ;;
   esac
@@ -313,8 +357,8 @@ build_mode_selected() {
     subagent-driven-development|executing-plans|direct) return 0 ;;
     *)
       echo "build_mode must be selected before leaving build, got '${build_mode:-null}'" >&2
-      echo "Next: ask the user to choose an implementation mode, then run:" >&2
-      echo "  bash \"\$COMET_STATE\" set $CHANGE build_mode <subagent-driven-development|executing-plans>" >&2
+      echo "Next: ask the user to choose an execution mode, then run:" >&2
+      echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE build_mode <subagent-driven-development|executing-plans>" >&2
       return 1
       ;;
   esac
@@ -336,7 +380,48 @@ build_mode_allowed_for_workflow() {
         return 0
       fi
       echo "build_mode=direct is only allowed for hotfix/tweak unless direct_override: true is recorded" >&2
-      echo "Next: switch build_mode to executing-plans or subagent-driven-development, or stop and ask the user for an explicit direct override." >&2
+      echo "Next: choose executing-plans or subagent-driven-development, or stop and ask the user for an explicit direct override." >&2
+      return 1
+      ;;
+  esac
+}
+
+subagent_dispatch_confirmed() {
+  local build_mode subagent_dispatch
+  build_mode=$(yaml_field_value "build_mode" 2>/dev/null || true)
+  subagent_dispatch=$(yaml_field_value "subagent_dispatch" 2>/dev/null || true)
+
+  if [ "$build_mode" != "subagent-driven-development" ]; then
+    return 0
+  fi
+
+  if [ "$subagent_dispatch" = "confirmed" ]; then
+    return 0
+  fi
+
+  echo "subagent_dispatch must be confirmed before using build_mode=subagent-driven-development" >&2
+  echo "Next: confirm the current platform has a real background subagent/Task/multi-agent dispatcher, then run:" >&2
+  echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE subagent_dispatch confirmed" >&2
+  echo "Or ask the user to switch to executing-plans and run:" >&2
+  echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE build_mode executing-plans" >&2
+  return 1
+}
+
+tdd_mode_selected() {
+  local workflow tdd_mode
+  workflow=$(yaml_field_value "workflow" 2>/dev/null || true)
+  tdd_mode=$(yaml_field_value "tdd_mode" 2>/dev/null || true)
+
+  case "$workflow" in
+    hotfix|tweak) return 0 ;;
+  esac
+
+  case "$tdd_mode" in
+    tdd|direct) return 0 ;;
+    *)
+      echo "tdd_mode must be tdd or direct for full workflow, got '${tdd_mode:-null}'" >&2
+      echo "Next: ask the user to choose TDD enforcement level, then run:" >&2
+      echo "  \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE tdd_mode <tdd|direct>" >&2
       return 1
       ;;
   esac
@@ -367,7 +452,7 @@ design_handoff_context_valid() {
 
   if [ -z "$context" ] || [ "$context" = "null" ]; then
     echo "handoff_context is missing from .comet.yaml" >&2
-    echo "Next: run bash \"\$COMET_HANDOFF\" $CHANGE design --write before invoking Superpowers." >&2
+    echo "Next: run \"\$COMET_BASH\" \"\$COMET_HANDOFF\" $CHANGE design --write before invoking Superpowers." >&2
     return 1
   fi
   if [ ! -s "$context" ]; then
@@ -414,7 +499,7 @@ design_handoff_markdown_traceable() {
     echo "handoff markdown is missing Generated-by marker" >&2
     missing=1
   }
-  grep -Eq '^- Mode: (compact|full)$' "$markdown" || {
+  grep -Eq '^- Mode: (compact|full|beta)$' "$markdown" || {
     echo "handoff markdown is missing Mode marker" >&2
     missing=1
   }
@@ -426,6 +511,47 @@ design_handoff_markdown_traceable() {
     fi
     if ! grep -q "^- SHA256: $(hash_file "$file")$" "$markdown"; then
       echo "handoff markdown is missing current sha256 for: $file" >&2
+      exit 2
+    fi
+  done || missing=1
+
+  [ "$missing" -eq 0 ]
+}
+
+context_compression_mode() {
+  local mode
+  mode=$(yaml_field_value "context_compression" 2>/dev/null || true)
+  printf '%s\n' "${mode:-off}"
+}
+
+beta_spec_json_structurally_valid() {
+  local context missing=0
+  if [ "$(context_compression_mode)" != "beta" ]; then
+    return 0
+  fi
+
+  context=$(yaml_field_value "handoff_context" 2>/dev/null || true)
+  if [ -z "$context" ] || [ "$context" = "null" ]; then
+    echo "handoff_context is missing from .comet.yaml" >&2
+    return 1
+  fi
+  if [ ! -s "$context" ]; then
+    echo "spec-context.json is missing or empty: $context" >&2
+    return 1
+  fi
+
+  # Validate required JSON fields
+  grep -q '"change"' "$context" || { echo "spec-context.json missing 'change' field" >&2; return 1; }
+  grep -q '"phase"' "$context" || { echo "spec-context.json missing 'phase' field" >&2; return 1; }
+  grep -q '"mode": "beta"' "$context" || { echo "spec-context.json mode is not beta" >&2; return 1; }
+  grep -q '"files"' "$context" || { echo "spec-context.json missing 'files' field" >&2; return 1; }
+  grep -q '"context_hash"' "$context" || { echo "spec-context.json missing 'context_hash' field" >&2; return 1; }
+
+  # Verify all source files are referenced in the JSON
+  handoff_source_files | while IFS= read -r file; do
+    [ -f "$file" ] || continue
+    if ! grep -qF "$file" "$context"; then
+      echo "spec-context.json missing source file reference: $file" >&2
       exit 2
     fi
   done || missing=1
@@ -492,23 +618,43 @@ guard_open() {
 guard_design() {
   echo "=== Guard: design → build ===" >&2
 
-  local design_doc
+  local design_doc workflow
   design_doc=$(yaml_field_value "design_doc" 2>/dev/null || true)
+  workflow=$(yaml_field_value "workflow" 2>/dev/null || true)
 
   check "proposal.md exists" file_nonempty "$CHANGE_DIR/proposal.md"
   check "design.md exists" file_nonempty "$CHANGE_DIR/design.md"
   check "tasks.md exists" file_nonempty "$CHANGE_DIR/tasks.md"
   check "design handoff context exists" design_handoff_context_valid
   check "design handoff markdown is traceable" design_handoff_markdown_traceable
+  if [ "$(context_compression_mode)" = "beta" ]; then
+    check "beta spec-context.json is structurally valid" beta_spec_json_structurally_valid
+  fi
+
+  if [ "$workflow" = "full" ]; then
+    # Full workflow: design_doc is REQUIRED
+    check "design_doc is recorded for full workflow" design_doc_recorded
+  fi
 
   if [ -n "$design_doc" ] && [ "$design_doc" != "null" ]; then
     check "Design Doc ($design_doc) exists" file_nonempty "$design_doc"
     check "Design Doc frontmatter links current change" design_doc_links_current_change
     check "Design Doc declares technical design role" design_doc_declares_technical_role
     check "Design Doc declares OpenSpec as canonical spec" design_doc_declares_canonical_spec
-  else
-    warn "  [WARN] No design_doc recorded in .comet.yaml"
+  elif [ "$workflow" != "full" ]; then
+    warn "  [WARN] No design_doc recorded in .comet.yaml (optional for hotfix/tweak)"
   fi
+}
+
+design_doc_recorded() {
+  local design_doc
+  design_doc=$(yaml_field_value "design_doc" 2>/dev/null || true)
+  if [ -n "$design_doc" ] && [ "$design_doc" != "null" ] && [ -f "$design_doc" ]; then
+    return 0
+  fi
+  echo "design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design." >&2
+  echo "Next: create the Design Doc and run: \"\$COMET_BASH\" \"\$COMET_STATE\" set $CHANGE design_doc <path>" >&2
+  return 1
 }
 
 guard_build() {
@@ -517,7 +663,10 @@ guard_build() {
   check "isolation selected" isolation_selected
   check "build_mode selected" build_mode_selected
   check "build_mode allowed for workflow" build_mode_allowed_for_workflow
+  check "subagent dispatch confirmed" subagent_dispatch_confirmed
+  check "tdd_mode selected" tdd_mode_selected
   check "tasks.md all tasks checked" tasks_all_done
+  check "Superpowers plan all tasks checked" plan_tasks_all_done
   check "proposal.md exists" file_nonempty "$CHANGE_DIR/proposal.md"
   check "Build passes" build_passes
 }
@@ -536,6 +685,7 @@ guard_archive() {
 
   check "archived is true" archived_is_true
   check "proposal.md exists" file_nonempty "$CHANGE_DIR/proposal.md"
+  check "design.md exists" file_nonempty "$CHANGE_DIR/design.md"
   check "tasks.md all tasks checked" tasks_all_done
 }
 
@@ -545,10 +695,10 @@ apply_state_update() {
 
   if [ -f "$state_sh" ]; then
     case "$p" in
-      open)   bash "$state_sh" transition "$CHANGE" open-complete ;;
-      design) bash "$state_sh" transition "$CHANGE" design-complete ;;
-      build)  bash "$state_sh" transition "$CHANGE" build-complete ;;
-      verify) bash "$state_sh" transition "$CHANGE" verify-pass ;;
+      open)   "$COMET_BASH" "$state_sh" transition "$CHANGE" open-complete ;;
+      design) "$COMET_BASH" "$state_sh" transition "$CHANGE" design-complete ;;
+      build)  "$COMET_BASH" "$state_sh" transition "$CHANGE" build-complete ;;
+      verify) "$COMET_BASH" "$state_sh" transition "$CHANGE" verify-pass ;;
     esac
   else
     red "FATAL: comet-state.sh not found; cannot apply state transition"
@@ -557,6 +707,14 @@ apply_state_update() {
 }
 
 # --- Main ---
+
+if [ "${COMET_GUARD_SOURCE_ONLY:-0}" = "1" ]; then
+  return 0 2>/dev/null
+  # shellcheck disable=SC2317  # unreachable if sourced; fallback for direct execution
+  red "ERROR: COMET_GUARD_SOURCE_ONLY=1 is only for sourcing, not direct execution" >&2
+  # shellcheck disable=SC2317
+  exit 1
+fi
 
 case "$PHASE" in
   open)     preflight ; guard_open ;;

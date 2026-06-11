@@ -20,6 +20,10 @@ Superpowers 负责 HOW — 技术设计、计划、执行、收尾
 
 agent 做决策只需读本节，参考附录按需查阅。
 
+### 输出语言规则
+
+以触发本次工作流的用户请求语言作为默认输出语言。恢复已有 change 时，如果现有产物有明确主语言，除非用户明确要求切换，否则保持该语言。
+
 ### 阶段自动检测
 
 **Step 0: 活跃 Change 发现与意图判定**
@@ -53,15 +57,22 @@ agent 做决策只需读本节，参考附录按需查阅。
 **断点恢复规则**：
 - 每次恢复上下文时，先重新执行 Step 0 和 Step 1，不依赖对话历史判断阶段
 - 只要存在 active change 且工作区有未提交改动，必须按 `comet/reference/dirty-worktree.md` 协议处理。该协议定义了检查步骤、归因分类和禁令，本文件不重复
-- 若 `phase: build`，先检查 `build_mode` 和 `isolation` 是否已设置；若有未设置的字段，回到 `/comet-build` 对应步骤补充后再执行；若均已设置，读取 tasks.md 的下一个未勾选任务继续
-- 若 `phase: verify` 且 `verify_result: fail`，进入验证失败决策阻塞点：暂停并询问用户修复或接受偏差；用户选择修复后才运行 `bash "$COMET_STATE" transition <name> verify-fail` 并调用 `/comet-build`
-- 若 `phase: open` 但 proposal/design/tasks 已完整，先运行 `bash "$COMET_GUARD" <change-name> open --apply` 修正状态，再继续判定
-- 若 `phase: archive`，只允许调用 `/comet-archive`；归档成功后 change 会移动到 archive 目录，不再对原活跃目录运行 guard
+- 若 `phase: build`，先检查 `build_pause`、`plan`、`build_mode` 和 `isolation`（详见下方）：
+  - 若 `build_pause: plan-ready` 但 `isolation` 和 `build_mode` 已经设置，则视为 stale pause：先输出 `[COMET] 检测到 stale pause（build_pause=plan-ready 但 isolation/build_mode 已设置），自动清除并继续`，再运行 `"$COMET_BASH" "$COMET_STATE" set <name> build_pause null`，然后读取 tasks.md 的下一个未勾选任务并按 `build_mode` 恢复执行
+  - 若 `build_pause: plan-ready` 且 plan 文件存在，但 `isolation` 或 `build_mode` 尚未设置，回到 `/comet-build` 的 plan-ready 恢复点，提示用户继续选择隔离方式和执行方式，不重新生成 plan
+  - 若 `build_pause: plan-ready` 但 plan 文件缺失，回到 `/comet-build` 处理状态损坏或重新生成 plan
+  - 若 `build_mode`、`isolation` 或 `tdd_mode` 未设置，回到 `/comet-build` 对应步骤补充后再执行
+  - 若均已设置，读取 tasks.md 的下一个未勾选任务，并按 `build_mode` 恢复执行：
+    - 若 `build_mode: subagent-driven-development`，不得在主窗口直接执行任务；必须回到 `/comet-build` 的后台 subagent 调度规则，由主窗口只做协调
+    - 其他执行方式按 `/comet-build` 的对应规则继续
+- 若 `phase: verify` 且 `verify_result: fail`，进入验证失败决策阻塞点：暂停并询问用户修复或接受偏差；用户选择修复后才运行 `"$COMET_BASH" "$COMET_STATE" transition <name> verify-fail` 并调用 `/comet-build`
+- 若 `phase: open` 但 proposal/design/tasks 已完整，先运行 `"$COMET_BASH" "$COMET_GUARD" <change-name> open --apply` 修正状态，再继续判定
+- 若 `phase: archive`，只允许调用 `/comet-archive`；`/comet-archive` 必须先等待归档前最终确认，归档成功后 change 会移动到 archive 目录，不再对原活跃目录运行 guard
 
 **Step 2: 阶段判定**（按顺序，命中即停）
 
 1. `archived: true` 或 change 已移入 archive → 流程已完成
-2. `verify_result: pass` 且 `archived` 不是 `true` → `/comet-archive`
+2. `verify_result: pass` 且 `archived` 不是 `true` → `/comet-archive`（先进行归档前最终确认）
 3. `verify_result: fail` → 进入验证失败决策阻塞点（暂停询问修复或接受偏差；用户选择修复后才 `verify-fail` 并 `/comet-build`）
 4. `phase: verify` 或 tasks.md 全部勾选 → `/comet-verify`
 5. `phase: build` 或已有 Design Doc 但计划/执行未完成 → 优先按 workflow 路由：`hotfix` → `/comet-hotfix`，`tweak` → `/comet-tweak`，`full` → `/comet-build`
@@ -85,6 +96,8 @@ agent 做决策只需读本节，参考附录按需查阅。
 - 涉及多个模块的协调修改
 - 需要新增测试用例 **5+**
 - 涉及配置项的新增或删除（非值修改）
+- 需要新增 capability
+- 需要 delta spec（影响了已有规格）
 
 ### 错误处理速查
 
@@ -92,7 +105,7 @@ agent 做决策只需读本节，参考附录按需查阅。
 |------|---------|
 | `openspec list --json` 失败 | 检查 openspec 是否已安装，提示 `openspec init` |
 | 子 skill 不可用 | 停止流程，提示安装或启用对应 skill |
-| `.comet.yaml` 格式异常或缺失 | 以文件状态为准，用 `bash $COMET_STATE set` 修正后继续 |
+| `.comet.yaml` 格式异常或缺失 | 以文件状态为准，用 `"$COMET_BASH" "$COMET_STATE" set` 修正后继续 |
 | 构建/测试失败 | 返回 build 阶段修复，不进入 verify |
 | change 目录结构不完整 | 按 `comet-open` 产物要求补齐 |
 
@@ -103,19 +116,34 @@ agent 做决策只需读本节，参考附录按需查阅。
 
 流转链：open → design → build → verify → archive
 
-**连续执行要求**：从检测到的阶段开始，agent 必须自动推进后续阶段；自动推进只适用于没有用户决策的衔接点。遇到用户决策点时必须暂停并等待用户明确回复，不得用推荐规则、默认值或历史偏好代替用户确认。
+**连续执行要求**：从检测到的阶段开始，agent 自动推进后续阶段。但**自动推进仅适用于没有用户决策的衔接点**。遇到用户决策点时，**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确回复**，不得用推荐规则、默认值或历史偏好代替用户确认，也不得仅输出文字提示后继续执行。
 
-**决策点是阻塞点**：只要到达下列任一节点，当前 `/comet` 调用必须停住。用户明确选择后才能写入对应状态字段、执行对应操作，随后再继续自动流转。
+**阶段推进与自动衔接的区分**：每个子 skill 退出前都会运行阶段守卫 `--apply` 推进 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。之后子 skill 运行 `"$COMET_BASH" "$COMET_STATE" next <name>` 解析下一步：`auto_transition` 不为 `false` 时输出 `NEXT: auto`（自动调用下一 skill），为 `false` 时输出 `NEXT: manual`（不调用下一 skill，提示用户手动运行）。因此 `auto_transition` **只控制是否自动调用下一个 skill，不影响 phase 推进**。无论 `auto_transition` 取何值，下方的用户决策点都必须阻塞等待。
+
+**决策点是阻塞点**：只要到达下列任一节点，当前 `/comet` 调用必须停住，**使用当前平台可用的用户输入/确认机制等待用户选择**。若当前平台没有结构化提问工具，则必须在对话中提出明确选项并停止流程，等待用户回复后才能继续。用户明确选择后才能写入对应状态字段、执行对应操作，随后再继续自动流转。
 
 需要用户参与的节点（仅在这些节点暂停）：
-1. brainstorming 确认设计方案
-2. build 阶段选择工作方式（隔离方式 + 执行方式，一次交互完成）
-3. verify 不通过时决定修复或接受偏差（含 Spec 漂移处理方式选择）
-4. finishing-branch 选择分支处理方式
-5. 遇到升级条件（hotfix/tweak → 完整流程）
-6. build 阶段范围扩张需重新设计或拆分新 change
+1. open 阶段 proposal/design/tasks 审视确认
+2. brainstorming 确认设计方案
+3. build 阶段 plan-ready 暂停选择，以及随后选择工作方式（隔离方式 + 执行方式）
+4. verify 不通过时决定修复或接受偏差（含 Spec 漂移处理方式选择）
+5. finishing-branch 选择分支处理方式
+6. archive 阶段执行归档脚本前的最终确认
+7. 遇到升级条件（hotfix/tweak → 完整流程）
+8. build 阶段范围扩张需重新设计或拆分新 change
+9. open 阶段大型 PRD 需确认拆分为多个 change
 
-agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须自动继续推进，不得中途退出。
+agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须自动继续推进，不得中途退出。到达决策点时，**禁止跳过用户确认或自动选择——必须通过当前平台可用的用户输入/确认机制明确获取用户选择后才能继续**。
+
+**红旗清单** — 以下想法出现时立即停止并检查：
+
+| Agent 心理 | 实际风险 |
+|-----------|---------|
+| "用户应该会同意这个方案" | 不能替用户决策，必须等待用户明确选择 |
+| "这只是个小改动，不需要确认" | 决策点无大小之分，阻塞点必须等待 |
+| "用户之前选过 A，这次也选 A" | 历史偏好不能替代当前确认 |
+| "我已经解释了方案，用户没反对" | 没反对 ≠ 同意，必须用工具获取明确选择 |
+| "流程走到这里应该没问题了" | 验证不通过 ≠ 通过，检查 verify_result |
 </IMPORTANT>
 
 ---
@@ -160,6 +188,9 @@ design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md
 plan: docs/superpowers/plans/YYYY-MM-DD-feature.md
 base_ref: a1b2c3d4e5f6...
 build_mode: subagent-driven-development
+build_pause: null
+subagent_dispatch: confirmed
+tdd_mode: tdd
 isolation: branch
 verify_mode: light
 verify_result: pending
@@ -178,8 +209,12 @@ archived: false
 | `plan` | 关联的 Superpowers Plan 路径，可为空 |
 | `base_ref` | init 时记录的 git commit SHA，用于 scale 评估。无 plan 时作为改动文件数统计基准 |
 | `build_mode` | 已选择的执行方式，可为空 |
+| `build_pause` | build 阶段内部暂停点。`null` 表示无暂停，`plan-ready` 表示 plan 已生成，用户选择切换模型后暂停 |
+| `subagent_dispatch` | `null` 或 `confirmed`。仅当已确认当前平台存在真实后台 subagent / Task / multi-agent 调度能力时，`build_mode: subagent-driven-development` 才能写入并用于离开 build 阶段 |
+| `tdd_mode` | `tdd` 或 `direct`。full workflow 离开 build 阶段前必须已选择。`tdd` 强制每个任务先写失败测试再实现；`direct` 不强制 TDD。hotfix/tweak 默认 `direct` |
 | `isolation` | `branch` 或 `worktree`，工作区隔离方式。full 初始化可为 `null`，但只允许持续到 `/comet-build` Step 3 前；hotfix/tweak 默认 `branch` |
 | `verify_mode` | `light` 或 `full`，可为空 |
+| `auto_transition` | `true` 或 `false`。只控制阶段守卫推进 phase 后是否自动调用下一个 skill；`false` 时由 `comet-state next` 输出 `manual`，暂停下一 skill 调用，但不阻止 phase 字段更新 |
 | `verify_result` | `pending`、`pass` 或 `fail` |
 | `verification_report` | 验证报告文件路径，verify 通过前必须指向已存在文件 |
 | `branch_status` | `pending` 或 `handled`，分支处理完成后设为 `handled` |
@@ -198,12 +233,15 @@ archived: false
 状态机硬约束：
 - `build → verify` 前，`isolation` 必须是 `branch` 或 `worktree`
 - `build → verify` 前，`build_mode` 必须已选择
+- `build_mode: subagent-driven-development` 必须同时有 `subagent_dispatch: confirmed`
+- full workflow 离开 build 阶段前 `tdd_mode` 必须已选择为 `tdd` 或 `direct`
 - `build_mode: direct` 默认只允许 `hotfix` / `tweak`；full workflow 需要 `direct_override: true`
+- `build_pause` 不是执行方式，不得写入 `build_mode`
 - 这些约束同时存在于 `comet-guard.sh build --apply` 和 `comet-state.sh transition <name> build-complete`
 
 ### 脚本定位
 
-Comet 脚本随 skill 包分发在 `comet/scripts/` 下。**不硬编码路径** — 定位一次，缓存到环境变量：
+Comet 脚本随 skill 包分发在 `comet/scripts/` 下。**不硬编码路径** — 定位一次，缓存到环境变量。此块为标准样板，在每个子 skill 中独立重复以确保可独立加载；修改时必须保持所有文件同步（样板版本: `v2`，变更时更新此版本号便于定位需要同步的文件）：
 
 ```bash
 COMET_ENV="${COMET_ENV:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet/scripts/comet-env.sh' -type f -print -quit 2>/dev/null)}"
@@ -224,24 +262,32 @@ fi
 **自动状态更新**：guard 支持 `--apply` 参数，验证通过后自动更新 `.comet.yaml` 状态字段：
 
 ```bash
-bash "$COMET_GUARD" <change-name> <phase> --apply
+"$COMET_BASH" "$COMET_GUARD" <change-name> <phase> --apply
 ```
 
 `--apply` 内部委托给 `comet-state transition`。需要直接表达状态事件时使用：
 
 ```bash
-bash "$COMET_STATE" transition <change-name> open-complete
-bash "$COMET_STATE" transition <change-name> design-complete
-bash "$COMET_STATE" transition <change-name> build-complete
-bash "$COMET_STATE" transition <change-name> verify-pass
-bash "$COMET_STATE" transition <change-name> verify-fail
-bash "$COMET_STATE" transition <archive-name> archived
+"$COMET_BASH" "$COMET_STATE" transition <change-name> open-complete
+"$COMET_BASH" "$COMET_STATE" transition <change-name> design-complete
+"$COMET_BASH" "$COMET_STATE" transition <change-name> build-complete
+"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-pass
+"$COMET_BASH" "$COMET_STATE" transition <change-name> verify-fail
+"$COMET_BASH" "$COMET_STATE" transition <archive-name> archived
 ```
+
+**解析下一步**：阶段守卫推进 phase 后，用 `next` 子命令解析是否自动调用下一个 skill：
+
+```bash
+"$COMET_BASH" "$COMET_STATE" next <change-name>
+```
+
+输出 `NEXT: auto|manual|done` + `SKILL: <skill-name>`（`done` 时省略）+ `HINT`（仅 `manual` 时）。`auto_transition: false` 时输出 `manual`，只暂停下一 skill 调用，不影响已发生的 phase 推进。
 
 **归档脚本**：一键完成归档全部步骤：
 
 ```bash
-bash "$COMET_ARCHIVE" <change-name>
+"$COMET_BASH" "$COMET_ARCHIVE" <change-name>
 ```
 
 加载 comet 后，agent 应执行以上变量赋值一次，后续全程复用 `$COMET_GUARD`、`$COMET_STATE`、`$COMET_HANDOFF`、`$COMET_ARCHIVE`。
@@ -261,21 +307,24 @@ openspec/                              # OpenSpec — WHAT
 │   │   ├── .comet/handoff/            # 脚本生成的阶段交接包
 │   │   └── tasks.md                   # 任务清单
 │   └── archive/YYYY-MM-DD-<name>/     # 已归档
-└── specs/<capability>/spec.md         # 主 specs（归档时从 delta 覆盖）
+└── specs/<capability>/spec.md         # 主 specs（归档时按 OpenSpec delta 语义合并）
 
 docs/superpowers/                      # Superpowers — HOW
 ├── specs/YYYY-MM-DD-<topic>-design.md # 设计文档（技术 RFC，归档时标注状态）
 └── plans/YYYY-MM-DD-<feature>.md      # 实施计划（文件头含 change 关联元数据）
+
+.comet/
+└── config.yaml                        # Comet 项目配置（context_compression 默认 off，可设 beta）
 ```
 
 ### 最佳实践
 
 1. **brainstorming 不可跳过** — 每次变更必须经过深度设计（hotfix 和 tweak 除外）
 2. **delta spec 是活文档** — 阶段 3 期间可自由修改，归档时同步
-3. **交接包由脚本生成** — OpenSpec → Superpowers 的上下文必须通过 `comet-handoff.sh` 生成 compact 可追溯摘录（必要时 `--full`），并由 guard 校验 source/hash/mode
+3. **交接包由脚本生成** — OpenSpec → Superpowers 的上下文必须通过 `comet-handoff.sh` 生成 compact 可追溯摘录（需要全文时用 `--full`），并由 guard 校验 source/hash/mode
 4. **保持 tasks.md 同步** — 完成一个勾一个
 5. **频繁提交** — 每个任务一次提交，message 体现设计意图
-6. **先验证再归档** — `/comet-verify` 通过后才执行 `/comet-archive`
+6. **先验证再确认归档** — `/comet-verify` 通过后进入 `/comet-archive`，但运行归档脚本前必须等待用户最终确认
 7. **增量更新分级** — 小编辑、中重 brainstorming、大新 change
 8. **Plan 必须关联 change** — 文件头包含 `change:` 和 `design-doc:` 元数据
 9. **归档闭环** — design doc 和 plan 必须标注 `archived-with` 状态

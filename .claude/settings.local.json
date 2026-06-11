@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash assets/skills/comet/scripts/comet-hook-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

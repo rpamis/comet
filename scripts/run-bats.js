@@ -8,7 +8,34 @@ function escapeRegExp(value) {
   return value.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const bashUname = (spawnSync('bash', ['-lc', 'uname -s'], { encoding: 'utf8' }).stdout || '').trim();
+function findUsableBash() {
+  const candidates = [
+    process.env.COMET_TEST_BASH,
+    process.env.COMET_BASH,
+    'bash',
+    ...(process.platform === 'win32'
+      ? [
+          'C:\\Program Files\\Git\\bin\\bash.exe',
+          'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+          'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+        ]
+      : []),
+  ].filter(Boolean);
+
+  for (const candidate of [...new Set(candidates)]) {
+    const probe = spawnSync(candidate, ['-lc', 'uname -s'], { encoding: 'utf8' });
+    if (probe.status === 0 && probe.stdout.trim()) {
+      if (process.platform === 'win32' && /linux/i.test(probe.stdout)) continue;
+      return candidate;
+    }
+  }
+  return null;
+}
+
+const bashCommand = findUsableBash();
+const bashUname = bashCommand
+  ? (spawnSync(bashCommand, ['-lc', 'uname -s'], { encoding: 'utf8' }).stdout || '').trim()
+  : '';
 const isGitBash = /^(MINGW|MSYS|CYGWIN)/.test(bashUname);
 
 function toBashPath(filePath) {
@@ -131,6 +158,12 @@ if (files.length === 0) {
   process.exit(1);
 }
 
+if (!bashCommand) {
+  console.error('ERROR: usable bash not found. Install Git Bash or set COMET_TEST_BASH/COMET_BASH to a working bash executable.');
+  console.error('Windows WSL launcher bash.exe is not supported for Comet shell tests.');
+  process.exit(1);
+}
+
 let failures = 0;
 for (const file of files) {
   const tests = parseBats(readFileSync(file, 'utf8')).tests;
@@ -141,7 +174,7 @@ for (const file of files) {
   const compiled = path.join(tempDir, 'compiled.bash');
   writeFileSync(compiled, compileBats(file), 'utf8');
 
-  const result = spawnSync('bash', [toBashPath(compiled)], {
+  const result = spawnSync(bashCommand, [toBashPath(compiled)], {
     cwd: process.cwd(),
     encoding: 'utf8',
   });

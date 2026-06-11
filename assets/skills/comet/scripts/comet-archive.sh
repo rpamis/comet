@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+COMET_BASH="${COMET_BASH:-${BASH:-bash}}"
+COMET_OPENSPEC="${COMET_OPENSPEC:-openspec}"
+
 red() { echo -e "\033[31m$1\033[0m" >&2; }
 green() { echo -e "\033[32m$1\033[0m" >&2; }
 yellow() { echo -e "\033[33m$1\033[0m" >&2; }
@@ -37,9 +40,9 @@ validate_change_name "$CHANGE"
 
 CHANGE_DIR="openspec/changes/$CHANGE"
 YAML="$CHANGE_DIR/.comet.yaml"
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")" 2>/dev/null || dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 STATE_SH="$SCRIPT_DIR/comet-state.sh"
-TODAY=$(date +%Y-%m-%d)
+TODAY=$(date -u +%Y-%m-%d)
 ARCHIVE_NAME="${TODAY}-${CHANGE}"
 ARCHIVE_DIR="openspec/changes/archive/${ARCHIVE_NAME}"
 
@@ -70,7 +73,7 @@ echo "=== Comet Archive: $CHANGE ===" >&2
 yaml_field() {
   local field="$1"
   if [ -f "$STATE_SH" ]; then
-    bash "$STATE_SH" get "$CHANGE" "$field" 2>/dev/null
+    "$COMET_BASH" "$STATE_SH" get "$CHANGE" "$field" 2>/dev/null
   else
     if [ -f "$YAML" ]; then
       local value
@@ -156,45 +159,7 @@ fi
 
 step_ok "Archive target available"
 
-# --- Step 4: Sync delta specs → main specs ---
-
-sync_delta_specs() {
-  local delta_root="$CHANGE_DIR/specs"
-  if [ ! -d "$delta_root" ]; then
-    return 0
-  fi
-
-  for delta_spec_dir in "$delta_root"/*/; do
-    [ -d "$delta_spec_dir" ] || continue
-    local capability
-    capability=$(basename "$delta_spec_dir")
-    local delta_spec="$delta_spec_dir/spec.md"
-    local main_spec="openspec/specs/$capability/spec.md"
-
-    if [ ! -f "$delta_spec" ]; then
-      continue
-    fi
-
-    if [ "$DRY_RUN" -eq 1 ]; then
-      step_dry_run "Would sync: $capability → $main_spec"
-      continue
-    fi
-
-    if [ ! -f "$main_spec" ]; then
-      mkdir -p "openspec/specs/$capability"
-    elif ! cmp -s "$main_spec" "$delta_spec"; then
-      yellow "  [DIFF] Delta spec differs from main spec before sync: $capability"
-      diff -u "$main_spec" "$delta_spec" >&2 || true
-    fi
-    cp "$delta_spec" "$main_spec"
-
-    step_ok "Delta spec synced: $capability → openspec/specs/$capability/spec.md"
-  done
-}
-
-sync_delta_specs
-
-# --- Step 5: Annotate design doc frontmatter ---
+# --- Step 4: Prepare document frontmatter annotation ---
 
 annotate_frontmatter() {
   local file="$1"
@@ -212,6 +177,7 @@ annotate_frontmatter() {
   if head -1 "$file" | grep -q '^---'; then
     local tmp_file
     tmp_file=$(mktemp)
+    chmod 600 "$tmp_file"
     awk -v archive="$ARCHIVE_NAME" -v extra="$extra_fields" '
       /^archived-with:/ { next }
       NR==1 && /^---/ { print; next }
@@ -226,6 +192,7 @@ annotate_frontmatter() {
   else
     local tmp_file
     tmp_file=$(mktemp)
+    chmod 600 "$tmp_file"
     {
       echo "---"
       echo "archived-with: $ARCHIVE_NAME"
@@ -242,27 +209,78 @@ annotate_frontmatter() {
   step_ok "Annotated: $file"
 }
 
+# --- Step 5: Run OpenSpec archive for delta merge and move ---
+
+verify_main_specs_clean() {
+  if [ ! -d "openspec/specs" ]; then
+    return 0
+  fi
+
+  local found=0
+  local matches
+  for spec_file in openspec/specs/*/spec.md; do
+    [ -f "$spec_file" ] || continue
+    matches=$(grep -nE '^## (ADDED|MODIFIED|REMOVED|RENAMED) Requirements$' "$spec_file" 2>/dev/null || true)
+    if [ -n "$matches" ]; then
+      red "FATAL: delta-only section heading leaked into main spec: $spec_file"
+      printf '%s\n' "$matches" >&2
+      found=1
+    fi
+  done
+
+  if [ "$found" -ne 0 ]; then
+    return 1
+  fi
+  return 0
+}
+
+resolve_archive_dir() {
+  if [ -d "$ARCHIVE_DIR" ]; then
+    return 0
+  fi
+  # Fallback: search for any directory matching *-$CHANGE in archive
+  local found
+  found=$(find "openspec/changes/archive" -maxdepth 1 -mindepth 1 -type d -name "*-$CHANGE" 2>/dev/null | head -1 || true)
+  if [ -n "$found" ]; then
+    ARCHIVE_DIR="$found"
+    ARCHIVE_NAME=$(basename "$found")
+    return 0
+  fi
+  return 1
+}
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  step_dry_run "Would run OpenSpec archive: $CHANGE"
+else
+  if ! command -v "$COMET_OPENSPEC" >/dev/null 2>&1; then
+    red "FATAL: OpenSpec CLI not found: $COMET_OPENSPEC"
+    red "Install OpenSpec or set COMET_OPENSPEC to the openspec executable."
+    exit 1
+  fi
+
+  "$COMET_OPENSPEC" archive "$CHANGE" --yes >&2
+  if ! resolve_archive_dir; then
+    step_fail "OpenSpec archive output not found"
+    exit 1
+  else
+    step_ok "OpenSpec archive completed: $ARCHIVE_DIR"
+  fi
+
+  verify_main_specs_clean
+  step_ok "Main specs verified clean"
+fi
+
+# --- Step 6: Annotate design doc and plan frontmatter ---
+
 if [ -n "$DESIGN_DOC" ] && [ "$DESIGN_DOC" != "null" ]; then
   annotate_frontmatter "$DESIGN_DOC" "status: final"
 fi
-
-# --- Step 6: Annotate plan frontmatter ---
 
 if [ -n "$PLAN_PATH" ] && [ "$PLAN_PATH" != "null" ]; then
   annotate_frontmatter "$PLAN_PATH" ""
 fi
 
-# --- Step 7: Move change to archive ---
-
-if [ "$DRY_RUN" -eq 1 ]; then
-  step_dry_run "Would move: $CHANGE_DIR → $ARCHIVE_DIR"
-else
-  mkdir -p "openspec/changes/archive"
-  mv "$CHANGE_DIR" "$ARCHIVE_DIR"
-  step_ok "Moved to: $ARCHIVE_DIR"
-fi
-
-# --- Step 8: Mark archived via comet-state transition ---
+# --- Step 7: Mark archived via comet-state transition ---
 
 ARCHIVE_YAML="$ARCHIVE_DIR/.comet.yaml"
 
@@ -270,14 +288,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
   step_dry_run "Would set archived: true in $ARCHIVE_YAML"
 else
   if [ -f "$ARCHIVE_YAML" ]; then
-    bash "$STATE_SH" transition "$ARCHIVE_NAME" archived >/dev/null
+    "$COMET_BASH" "$STATE_SH" transition "$ARCHIVE_NAME" archived >/dev/null
     step_ok "archived: true"
   else
     step_fail "archived: true (.comet.yaml not found after move)"
   fi
 fi
 
-# --- Step 9: Print summary ---
+# --- Step 8: Print summary ---
 
 echo "" >&2
 if [ "$DRY_RUN" -eq 1 ]; then

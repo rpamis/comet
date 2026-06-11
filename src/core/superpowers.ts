@@ -1,10 +1,9 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 import { cp, mkdir, mkdtemp, readdir, rm } from 'fs/promises';
 
 import { printCommandErrorDetails } from './command-error.js';
-import { quoteShellArg } from './openspec.js';
 import { getPlatformSkillsDir, PLATFORMS } from './platforms.js';
 import type { InstallScope } from './types.js';
 
@@ -49,8 +48,7 @@ function buildSuperpowersInstallCommand(
   _projectPath: string,
   scope: InstallScope,
   platformIds: string[],
-  platform: NodeJS.Platform = process.platform,
-): string {
+): { command: string; args: string[] } {
   const unknownIds = platformIds.filter((id) => !VALID_PLATFORM_IDS.has(id));
   if (unknownIds.length > 0) {
     throw new Error(`Unknown platform IDs: ${unknownIds.join(', ')}`);
@@ -66,13 +64,25 @@ function buildSuperpowersInstallCommand(
     throw new Error(`No skills CLI agent names resolved for platforms: ${platformIds.join(', ')}`);
   }
 
-  const agentFlags = agentNames.map((name) => `--agent ${quoteShellArg(name, platform)}`).join(' ');
-  const flags = ['-y', scope === 'global' ? '-g' : '', agentFlags].filter(Boolean).join(' ');
-  return `npx skills add obra/superpowers ${flags}`;
+  const args = ['skills', 'add', 'obra/superpowers', '-y'];
+  if (scope === 'global') {
+    args.push('-g');
+  }
+  for (const name of agentNames) {
+    args.push('--agent', name);
+  }
+  return { command: getNpxExecutable(), args };
 }
 
-function buildLingmaSuperpowersStageCommand(platform: NodeJS.Platform = process.platform): string {
-  return `npx skills add obra/superpowers -y --agent ${quoteShellArg(LINGMA_STAGE_AGENT, platform)}`;
+function buildLingmaSuperpowersStageCommand(): { command: string; args: string[] } {
+  return {
+    command: getNpxExecutable(),
+    args: ['skills', 'add', 'obra/superpowers', '-y', '--agent', LINGMA_STAGE_AGENT],
+  };
+}
+
+function getNpxExecutable(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? 'npx.cmd' : 'npx';
 }
 
 async function copyDirectoryContents(srcDir: string, destDir: string): Promise<void> {
@@ -99,10 +109,12 @@ async function installSuperpowersForLingma(
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'comet-lingma-superpowers-'));
   try {
-    execSync(buildLingmaSuperpowersStageCommand(), {
+    const stageCommand = buildLingmaSuperpowersStageCommand();
+    execFileSync(stageCommand.command, stageCommand.args, {
       cwd: tempDir,
-      stdio: 'pipe',
+      stdio: 'inherit',
       timeout: SUPERPOWERS_INSTALL_TIMEOUT_MS,
+      shell: process.platform === 'win32',
     });
 
     const stagedSkillsDir = path.join(tempDir, '.claude', 'skills');
@@ -141,10 +153,11 @@ async function installSuperpowersForPlatforms(
     const command = buildSuperpowersInstallCommand(projectPath, scope, skillsCliPlatformIds);
 
     try {
-      execSync(command, {
+      execFileSync(command.command, command.args, {
         cwd: projectPath,
-        stdio: 'pipe',
+        stdio: 'inherit',
         timeout: SUPERPOWERS_INSTALL_TIMEOUT_MS,
+        shell: process.platform === 'win32',
       });
     } catch (error) {
       console.error(`    Superpowers install failed: ${(error as Error).message}`);

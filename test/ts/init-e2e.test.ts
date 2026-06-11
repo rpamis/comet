@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+import { mkdirSync, writeFileSync } from 'fs';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
 vi.mock('child_process', () => ({
-  execSync: vi.fn(),
+  execFileSync: vi.fn(),
 }));
 
-const mockedExecSync = vi.mocked(execSync);
+const mockedExecFileSync = vi.mocked(execFileSync);
 
 vi.mock('@inquirer/prompts', () => ({
   select: vi.fn(),
@@ -22,11 +23,32 @@ async function readManifest() {
 }
 
 function mockExternalSuccess() {
-  mockedExecSync.mockImplementation((cmd: string | Buffer) => {
-    const s = typeof cmd === 'string' ? cmd : cmd.toString();
-    if (s.startsWith('which') || s.startsWith('where')) return Buffer.from('/usr/bin/openspec');
-    if (s.startsWith('openspec init')) return Buffer.from('ok');
-    if (s.startsWith('npx skills')) return Buffer.from('installed');
+  mockedExecFileSync.mockImplementation((command: unknown, args?: unknown, opts?: unknown) => {
+    const cmd = String(command);
+    const cmdArgs = Array.isArray(args) ? args.map((arg) => String(arg)) : [];
+
+    if (
+      (cmd === 'npx' || cmd === 'npx.cmd') &&
+      cmdArgs[0] === 'skills' &&
+      cmdArgs.includes('--agent') &&
+      cmdArgs.includes('claude-code')
+    ) {
+      const cwd = (opts as { cwd?: string } | undefined)?.cwd ?? os.tmpdir();
+      const stagedSkillsDir = path.join(cwd, '.claude', 'skills', 'comet');
+      mkdirSync(stagedSkillsDir, { recursive: true });
+      writeFileSync(path.join(stagedSkillsDir, 'SKILL.md'), '# Lingma Comet\n');
+      return Buffer.from('installed');
+    }
+
+    if ((cmd === 'which' || cmd === 'where') && cmdArgs[0] === 'openspec') {
+      return Buffer.from('/usr/bin/openspec');
+    }
+    if (cmd === 'openspec' && cmdArgs[0] === 'init') {
+      return Buffer.from('ok');
+    }
+    if ((cmd === 'npx' || cmd === 'npx.cmd') && cmdArgs[0] === 'skills') {
+      return Buffer.from('installed');
+    }
     return Buffer.from('');
   });
 }
@@ -161,53 +183,61 @@ describe('comet init E2E', () => {
   it('installs all platforms from clean directory with --yes', async () => {
     mockExternalSuccess();
 
-    const { initCommand } = await import('../../src/commands/init.js');
-    const result = await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true }));
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(fakeHome, { recursive: true });
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-    expect((result.results as unknown[]).length).toBeGreaterThanOrEqual(29);
+    try {
+      const { initCommand } = await import('../../src/commands/init.js');
+      const result = await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true }));
 
-    const manifest = await readManifest();
-    const platformDirs = [
-      '.claude',
-      '.cursor',
-      '.codex',
-      '.opencode',
-      '.windsurf',
-      '.cline',
-      '.roo',
-      '.continue',
-      '.gemini',
-      '.amazonq',
-      '.qwen',
-      '.kilocode',
-      '.augment',
-      '.kiro',
-      '.kimi-code',
-      '.lingma',
-      '.junie',
-      '.codebuddy',
-      '.cospec',
-      '.crush',
-      '.factory',
-      '.iflow',
-      '.pi',
-      '.qoder',
-      '.agents',
-      '.bob',
-      '.forge',
-      '.trae',
-      '.github',
-    ];
-    for (const platform of platformDirs) {
-      for (const skillPath of manifest.skills) {
-        const dest = path.join(tmpDir, platform, 'skills', skillPath);
-        await expect(fs.access(dest)).resolves.toBeUndefined();
+      expect((result.results as unknown[]).length).toBeGreaterThanOrEqual(29);
+
+      const manifest = await readManifest();
+      const platformDirs = [
+        '.claude',
+        '.cursor',
+        '.codex',
+        '.opencode',
+        '.windsurf',
+        '.cline',
+        '.roo',
+        '.continue',
+        '.gemini',
+        '.amazonq',
+        '.qwen',
+        '.kilocode',
+        '.augment',
+        '.kiro',
+        '.kimi-code',
+        '.lingma',
+        '.junie',
+        '.codebuddy',
+        '.cospec',
+        '.crush',
+        '.factory',
+        '.iflow',
+        '.pi',
+        '.qoder',
+        '.agents',
+        '.bob',
+        '.forge',
+        '.trae',
+        '.github',
+      ];
+      for (const platform of platformDirs) {
+        for (const skillPath of manifest.skills) {
+          const dest = path.join(tmpDir, platform, 'skills', skillPath);
+          await expect(fs.access(dest)).resolves.toBeUndefined();
+        }
       }
-    }
 
-    await expect(
-      fs.access(path.join(tmpDir, '.opencode', 'commands', 'comet-open.md')),
-    ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.opencode', 'commands', 'comet-open.md')),
+      ).resolves.toBeUndefined();
+    } finally {
+      homedirSpy.mockRestore();
+    }
   }, 20_000);
 
   it('installs Antigravity Comet skills to the Gemini global skills directory', async () => {

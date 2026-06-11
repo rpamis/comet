@@ -1,11 +1,15 @@
 #!/bin/bash
 # Comet Handoff — creates machine-owned context packages between phases
 # Usage: comet-handoff.sh <change-name> design --write [--full]
+#        comet-handoff.sh <change-name> --hash-only
 
 set -euo pipefail
 
+COMET_BASH="${COMET_BASH:-${BASH:-bash}}"
+
 red() { echo -e "\033[31m$1\033[0m" >&2; }
 green() { echo -e "\033[32m$1\033[0m" >&2; }
+warn() { echo -e "\033[33m$1\033[0m" >&2; }
 
 validate_change_name() {
   local name="$1"
@@ -101,12 +105,14 @@ source_files() {
 }
 
 compute_context_hash() {
-  source_files | while IFS= read -r file; do
+  local hash_input
+  hash_input=$(source_files | while IFS= read -r file; do
     if [ -f "$file" ]; then
       printf 'path:%s\n' "$file"
       printf 'sha256:%s\n' "$(hash_file "$file")"
     fi
-  done | hash_stream
+  done)
+  printf '%s' "$hash_input" | hash_stream
 }
 
 json_escape() {
@@ -194,12 +200,111 @@ write_json_context() {
   } > "$output"
 }
 
+write_spec_projection_for_file() {
+  local file="$1"
+  echo "## $file"
+  echo ""
+  echo "- Source: $file"
+  echo "- Lines: 1-$(file_line_count "$file")"
+  echo "- SHA256: $(hash_file "$file")"
+  echo ""
+  echo '```md'
+  cat "$file"
+  echo '```'
+  echo ""
+}
+
+write_spec_markdown_context() {
+  local output="$1"
+  {
+    echo "# Comet Spec Context"
+    echo ""
+    echo "- Change: $CHANGE"
+    echo "- Phase: design"
+    echo "- Mode: beta"
+    echo "- Context hash: $CONTEXT_HASH"
+    echo ""
+    echo "Generated-by: comet-handoff.sh"
+    echo ""
+    echo "OpenSpec remains the canonical capability spec. This beta context pack verbatim-projects spec files and references supporting artifacts by hash, not an agent-authored summary."
+    echo ""
+    echo "## Source References"
+    echo ""
+    source_files | while IFS= read -r file; do
+      [ -f "$file" ] || continue
+      echo "- Source: $file"
+      echo "- SHA256: $(hash_file "$file")"
+    done
+    echo ""
+    echo "## Acceptance Projection"
+    echo ""
+    if [ -d "$CHANGE_DIR/specs" ]; then
+      find "$CHANGE_DIR/specs" -path '*/spec.md' -type f 2>/dev/null | sort | while IFS= read -r file; do
+        write_spec_projection_for_file "$file"
+      done
+    else
+      echo "No delta spec files found."
+      echo ""
+    fi
+    echo "Full source files remain canonical. If a required heading or scenario is missing here, regenerate the handoff or read the source spec directly. Supporting files (proposal, design, tasks) are referenced by hash only."
+  } > "$output"
+}
+
+write_spec_json_context() {
+  local output="$1"
+  {
+    echo "{"
+    echo "  \"change\": \"$(json_escape "$CHANGE")\","
+    echo "  \"phase\": \"design\","
+    echo "  \"mode\": \"beta\","
+    echo "  \"canonical_spec\": \"openspec\","
+    echo "  \"generated_by\": \"comet-handoff.sh\","
+    echo "  \"context_hash\": \"$CONTEXT_HASH\","
+    echo "  \"files\": ["
+    local first_file=1
+    while IFS= read -r file; do
+      [ -f "$file" ] || continue
+      local role="supporting"
+      case "$file" in
+        */specs/*/spec.md) role="spec" ;;
+      esac
+      if [ "$first_file" -eq 0 ]; then
+        echo ","
+      fi
+      first_file=0
+      printf '    { "path": "%s", "sha256": "%s", "role": "%s" }' "$(json_escape "$file")" "$(hash_file "$file")" "$role"
+    done < <(source_files)
+    echo ""
+    echo "  ]"
+    echo "}"
+  } > "$output"
+}
+
 CHANGE="${1:-}"
 PHASE="${2:-}"
 MODE="${3:-}"
 FULL_FLAG="${4:-}"
 
 validate_change_name "$CHANGE"
+
+# --hash-only: compute and output context hash without generating handoff files
+if [ "${PHASE:-}" = "--hash-only" ]; then
+  CHANGE_DIR="openspec/changes/$CHANGE"
+  if [ ! -d "$CHANGE_DIR" ]; then
+    red "ERROR: change directory not found: $CHANGE_DIR"
+    exit 1
+  fi
+  for required in proposal.md design.md tasks.md; do
+    if [ ! -s "$CHANGE_DIR/$required" ]; then
+      red "ERROR: required file missing or empty: $CHANGE_DIR/$required"
+      exit 1
+    fi
+  done
+  CONTEXT_HASH="$(compute_context_hash)"
+  printf '%s
+' "$CONTEXT_HASH"
+  exit 0
+fi
 
 if [ "$PHASE" != "design" ] || [ "$MODE" != "--write" ]; then
   red "Usage: comet-handoff.sh <change-name> design --write [--full]"
@@ -240,17 +345,41 @@ for required in proposal.md design.md tasks.md; do
 done
 
 HANDOFF_DIR="$CHANGE_DIR/.comet/handoff"
-CONTEXT_JSON="$HANDOFF_DIR/design-context.json"
-CONTEXT_MD="$HANDOFF_DIR/design-context.md"
+CONTEXT_COMPRESSION="$(yaml_field_value context_compression 2>/dev/null || true)"
+CONTEXT_COMPRESSION="${CONTEXT_COMPRESSION:-off}"
+case "$CONTEXT_COMPRESSION" in
+  off)
+    CONTEXT_JSON="$HANDOFF_DIR/design-context.json"
+    CONTEXT_MD="$HANDOFF_DIR/design-context.md"
+    ;;
+  beta)
+    if [ "$HANDOFF_MODE" = "full" ]; then
+      warn "[HANDOFF] --full is ignored in beta mode; spec files are projected verbatim"
+    fi
+    HANDOFF_MODE="beta"
+    CONTEXT_JSON="$HANDOFF_DIR/spec-context.json"
+    CONTEXT_MD="$HANDOFF_DIR/spec-context.md"
+    ;;
+  *)
+    red "ERROR: invalid context_compression: $CONTEXT_COMPRESSION"
+    red "Valid values: off, beta"
+    exit 1
+    ;;
+esac
 mkdir -p "$HANDOFF_DIR"
 
 CONTEXT_HASH="$(compute_context_hash)"
-write_markdown_context "$CONTEXT_MD"
-write_json_context "$CONTEXT_JSON"
+if [ "$CONTEXT_COMPRESSION" = "beta" ]; then
+  write_spec_markdown_context "$CONTEXT_MD"
+  write_spec_json_context "$CONTEXT_JSON"
+else
+  write_markdown_context "$CONTEXT_MD"
+  write_json_context "$CONTEXT_JSON"
+fi
 
 if [ -x "$STATE_SH" ] || [ -f "$STATE_SH" ]; then
-  bash "$STATE_SH" set "$CHANGE" handoff_context "$CONTEXT_JSON" >/dev/null
-  bash "$STATE_SH" set "$CHANGE" handoff_hash "$CONTEXT_HASH" >/dev/null
+  "$COMET_BASH" "$STATE_SH" set "$CHANGE" handoff_context "$CONTEXT_JSON" >/dev/null
+  "$COMET_BASH" "$STATE_SH" set "$CHANGE" handoff_hash "$CONTEXT_HASH" >/dev/null
 else
   red "ERROR: comet-state.sh not found; cannot record handoff fields"
   exit 1

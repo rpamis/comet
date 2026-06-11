@@ -20,6 +20,7 @@ npx vitest run                                   # 全量测试
 comet-state.sh ← comet-guard.sh, comet-handoff.sh, comet-archive.sh
 comet-yaml-validate.sh ← comet-guard.sh (preflight 阶段)
 comet-handoff.sh ← comet-state.sh (写入 handoff_context/handoff_hash)
+comet-hook-guard.sh ← (独立脚本，由 .claude/settings.local.json 的 PreToolUse hook 调用)
 ```
 
 新增共享工具函数时（如 hash、yaml 解析），如果两个脚本都需要，允许在各自脚本中独立实现，不强制抽共享文件。
@@ -34,6 +35,14 @@ comet-handoff.sh ← comet-state.sh (写入 handoff_context/handoff_hash)
 ## 双语言 Skill
 
 skill 优化时先写中文版本（`assets/skills-zh/`），用户确认后再修改英文版本（`assets/skills/`）。
+
+## Skill 触发表述规范
+
+修改 skill 时，新增或调整依赖 skill 的触发方式必须和既有写法保持一致：
+
+- 中文统一使用：`**立即执行：** 使用 Skill 工具加载 <skill-name> 技能。禁止跳过此步骤。`
+- 英文统一使用：`**Immediately execute:** Use the Skill tool to load the <skill-name> skill. Skipping this step is prohibited.`
+- 后续输入、上下文或执行要求写在“技能加载后 / After the skill loads”段落，不要把 `ARGUMENTS`、`fast-forward` 等另一套调用术语混入触发句。
 
 ## Changelog 规范
 
