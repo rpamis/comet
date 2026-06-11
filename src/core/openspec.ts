@@ -31,12 +31,14 @@ function buildOpenSpecInitInvocation(
   toolIds: string[],
   scope: InstallScope,
   homeDir = os.homedir(),
+  includeProfileFlag = true,
 ): { command: string; args: string[] } {
   const targetPath = scope === 'global' ? homeDir : projectPath;
-  return {
-    command: 'openspec',
-    args: ['init', targetPath, '--tools', toolIds.join(','), '--profile', 'custom'],
-  };
+  const args = ['init', targetPath, '--tools', toolIds.join(',')];
+  if (includeProfileFlag) {
+    args.push('--profile', 'custom');
+  }
+  return { command: 'openspec', args };
 }
 
 const ALL_WORKFLOWS_CONFIG =
@@ -249,18 +251,35 @@ async function installOpenSpec(
   let configBackup: ConfigBackup | null = null;
   try {
     const openspecEnv = createOpenSpecAllWorkflowsEnv();
-    const invocation = buildOpenSpecInitInvocation(projectPath, toolIds, scope);
     configHome = openspecEnv.configHome;
 
     configBackup = writeAllWorkflowsToDefaultConfig();
 
-    execFileSync(invocation.command, invocation.args, {
-      cwd: projectPath,
-      env: openspecEnv.env,
-      stdio: 'inherit',
-      timeout: 120_000,
-      shell: process.platform === 'win32',
-    });
+    const invocation = buildOpenSpecInitInvocation(projectPath, toolIds, scope);
+    try {
+      execFileSync(invocation.command, invocation.args, {
+        cwd: projectPath,
+        env: openspecEnv.env,
+        stdio: ['inherit', 'inherit', 'pipe'],
+        timeout: 120_000,
+        shell: process.platform === 'win32',
+      });
+    } catch (firstError) {
+      const stderrText = (firstError as { stderr?: Buffer }).stderr?.toString() ?? '';
+      if (stderrText.includes('unknown option') && stderrText.includes('--profile')) {
+        console.log('    OpenSpec does not support --profile flag, retrying without it...');
+        const fallbackInvocation = buildOpenSpecInitInvocation(projectPath, toolIds, scope, os.homedir(), false);
+        execFileSync(fallbackInvocation.command, fallbackInvocation.args, {
+          cwd: projectPath,
+          env: openspecEnv.env,
+          stdio: 'inherit',
+          timeout: 120_000,
+          shell: process.platform === 'win32',
+        });
+      } else {
+        throw firstError;
+      }
+    }
 
     if (scope === 'global' && toolIds.includes('opencode')) {
       migrateOpenCodeOpenSpecPaths(os.homedir());

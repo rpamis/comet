@@ -258,6 +258,17 @@ describe('openspec', () => {
       });
     });
 
+    it('omits --profile flag when includeProfileFlag is false', async () => {
+      const { buildOpenSpecInitInvocation } = await import('../../src/core/openspec.js');
+
+      expect(
+        buildOpenSpecInitInvocation('/tmp/project', ['claude'], 'project', '/home/user', false),
+      ).toEqual({
+        command: 'openspec',
+        args: ['init', '/tmp/project', '--tools', 'claude'],
+      });
+    });
+
     it('installs openspec CLI when not on PATH', async () => {
       // First call: isCommandAvailable fails
       mockedExecFileSync.mockImplementationOnce(() => {
@@ -286,6 +297,70 @@ describe('openspec', () => {
       const result = await installOpenSpec('/tmp/test', ['claude'], 'project');
 
       expect(result).toBe('failed');
+    });
+
+    it('retries without --profile when openspec reports unknown option in stderr', async () => {
+      // First call: isCommandAvailable
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
+      // Second call: openspec init with --profile fails (stderr captured by pipe)
+      const profileError = new Error('Command failed: openspec init /tmp/test --tools claude --profile custom') as Error & { stderr?: Buffer };
+      profileError.stderr = Buffer.from("error: unknown option '--profile'");
+      mockedExecFileSync.mockImplementationOnce(() => {
+        throw profileError;
+      });
+      // Third call: openspec init without --profile succeeds
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('ok'));
+
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { installOpenSpec } = await import('../../src/core/openspec.js');
+      const result = await installOpenSpec('/tmp/test', ['claude'], 'project');
+
+      expect(result).toBe('installed');
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(3);
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('retrying without it'),
+      );
+
+      // Verify the retry call did not include --profile
+      const retryArgs = mockedExecFileSync.mock.calls[2][1] as string[];
+      expect(retryArgs).not.toContain('--profile');
+
+      logSpy.mockRestore();
+    });
+
+    it('returns failed when retry without --profile also fails', async () => {
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
+      const profileError = new Error('Command failed: openspec init ...') as Error & { stderr?: Buffer };
+      profileError.stderr = Buffer.from("error: unknown option '--profile'");
+      mockedExecFileSync.mockImplementationOnce(() => {
+        throw profileError;
+      });
+      // Retry also fails
+      mockedExecFileSync.mockImplementationOnce(() => {
+        throw new Error('retry also failed');
+      });
+
+      const { installOpenSpec } = await import('../../src/core/openspec.js');
+      const result = await installOpenSpec('/tmp/test', ['claude'], 'project');
+
+      expect(result).toBe('failed');
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not retry when init fails for a non-profile reason', async () => {
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
+      const error = new Error('Command failed: openspec init ...') as Error & { stderr?: Buffer };
+      error.stderr = Buffer.from('network timeout');
+      mockedExecFileSync.mockImplementationOnce(() => {
+        throw error;
+      });
+
+      const { installOpenSpec } = await import('../../src/core/openspec.js');
+      const result = await installOpenSpec('/tmp/test', ['claude'], 'project');
+
+      expect(result).toBe('failed');
+      // Only 2 calls: isCommandAvailable + failed init (no retry)
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(2);
     });
 
     it('shows openspec init stderr details when init throws', async () => {
