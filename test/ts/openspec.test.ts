@@ -39,6 +39,29 @@ describe('openspec', () => {
   });
 
   describe('installOpenSpec', () => {
+    it('accepts the Kimi OpenSpec tool id from platform definitions', async () => {
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('ok'));
+
+      const { installOpenSpec } = await import('../../src/core/openspec.js');
+      const result = await installOpenSpec('/tmp/test', ['kimi'], 'project');
+
+      expect(result).toBe('installed');
+      const initCall = mockedExecFileSync.mock.calls.find(
+        ([command, args]) =>
+          command === 'openspec' && Array.isArray(args) && args[0] === 'init',
+      );
+      expect(initCall).toBeDefined();
+      expect(initCall?.[1]).toEqual([
+        'init',
+        '/tmp/test',
+        '--tools',
+        'kimi',
+        '--profile',
+        'custom',
+      ]);
+    });
+
     it('installs openspec when CLI is available', async () => {
       // First call: isCommandAvailable succeeds
       mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));

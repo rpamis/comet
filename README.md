@@ -243,7 +243,7 @@ comet uninstall --scope project  # Only remove project-level installations
 
 ## Supported Platforms
 
-`comet init` supports 28 AI coding platforms:
+`comet init` supports 29 AI coding platforms:
 
 <details>
 <summary>View full platform list</summary>
@@ -257,13 +257,14 @@ comet uninstall --scope project  # Only remove project-level installations
 | GitHub Copilot     | `.github/`   | Gemini CLI | `.gemini/`    |
 | Amazon Q Developer | `.amazonq/`  | Qwen Code  | `.qwen/`      |
 | Kilo Code          | `.kilocode/` | Auggie     | `.augment/`   |
-| Kiro               | `.kiro/`     | Lingma     | `.lingma/`    |
-| Junie              | `.junie/`    | CodeBuddy  | `.codebuddy/` |
-| CoStrict           | `.cospec/`   | Crush      | `.crush/`     |
-| Factory Droid      | `.factory/`  | iFlow      | `.iflow/`     |
-| Pi                 | `.pi/`       | Qoder      | `.qoder/`     |
-| Antigravity        | `.agents/`   | Bob Shell  | `.bob/`       |
-| ForgeCode          | `.forge/`    | Trae       | `.trae/`      |
+| Kimi Code          | `.kimi-code/`| Kiro       | `.kiro/`      |
+| Lingma             | `.lingma/`   | Junie      | `.junie/`     |
+| CodeBuddy          | `.codebuddy/`| CoStrict   | `.cospec/`    |
+| Crush              | `.crush/`    | Factory Droid | `.factory/` |
+| iFlow              | `.iflow/`    | Pi         | `.pi/`        |
+| Qoder              | `.qoder/`    | Antigravity | `.agents/`   |
+| Bob Shell          | `.bob/`      | ForgeCode  | `.forge/`     |
+| Trae               | `.trae/`     |            |               |
 
 </details>
 

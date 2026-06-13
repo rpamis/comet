@@ -224,7 +224,7 @@ comet uninstall --scope project  # 仅移除项目级安装
 
 ## 支持平台
 
-`comet init` 支持 28 个 AI 编码平台：
+`comet init` 支持 29 个 AI 编码平台：
 
 <details>
 <summary>查看完整平台列表</summary>
@@ -238,13 +238,14 @@ comet uninstall --scope project  # 仅移除项目级安装
 | GitHub Copilot     | `.github/`   | Gemini CLI | `.gemini/`    |
 | Amazon Q Developer | `.amazonq/`  | Qwen Code  | `.qwen/`      |
 | Kilo Code          | `.kilocode/` | Auggie     | `.augment/`   |
-| Kiro               | `.kiro/`     | Lingma     | `.lingma/`    |
-| Junie              | `.junie/`    | CodeBuddy  | `.codebuddy/` |
-| CoStrict           | `.cospec/`   | Crush      | `.crush/`     |
-| Factory Droid      | `.factory/`  | iFlow      | `.iflow/`     |
-| Pi                 | `.pi/`       | Qoder      | `.qoder/`     |
-| Antigravity        | `.agents/`   | Bob Shell  | `.bob/`       |
-| ForgeCode          | `.forge/`    | Trae       | `.trae/`      |
+| Kimi Code          | `.kimi-code/`| Kiro       | `.kiro/`      |
+| Lingma             | `.lingma/`   | Junie      | `.junie/`     |
+| CodeBuddy          | `.codebuddy/`| CoStrict   | `.cospec/`    |
+| Crush              | `.crush/`    | Factory Droid | `.factory/` |
+| iFlow              | `.iflow/`    | Pi         | `.pi/`        |
+| Qoder              | `.qoder/`    | Antigravity | `.agents/`   |
+| Bob Shell          | `.bob/`      | ForgeCode  | `.forge/`     |
+| Trae               | `.trae/`     |            |               |
 
 </details>
 

@@ -199,6 +199,13 @@ export const PLATFORMS: Platform[] = [
     hookFormat: 'kiro',
   },
   {
+    id: 'kimicode',
+    name: 'Kimi Code',
+    skillsDir: '.kimi-code',
+    globalSkillsDir: '.kimi-code',
+    openspecToolId: 'kimi',
+  },
+  {
     id: 'lingma',
     name: 'Lingma',
     skillsDir: '.lingma',

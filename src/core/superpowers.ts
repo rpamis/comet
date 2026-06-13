@@ -23,6 +23,7 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   kilocode: 'kilo',
   auggie: 'augment',
   kiro: 'kiro-cli',
+  kimicode: 'kimi-code-cli',
   lingma: null,
   junie: 'junie',
   codebuddy: 'codebuddy',

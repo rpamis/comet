@@ -53,6 +53,7 @@ describe('superpowers', () => {
       expect(SKILLS_AGENT_MAP['gemini']).toBe('gemini-cli');
       expect(SKILLS_AGENT_MAP['qwen']).toBe('qwen-code');
       expect(SKILLS_AGENT_MAP['kiro']).toBe('kiro-cli');
+      expect(SKILLS_AGENT_MAP['kimicode']).toBe('kimi-code-cli');
       expect(SKILLS_AGENT_MAP['iflow']).toBe('iflow-cli');
       expect(SKILLS_AGENT_MAP['factory']).toBe('droid');
       expect(SKILLS_AGENT_MAP['amazon-q']).toBe('universal');
@@ -60,7 +61,7 @@ describe('superpowers', () => {
       expect(SKILLS_AGENT_MAP['lingma']).toBeNull();
     });
 
-    it('has entries for all 28 platforms', async () => {
+    it('has entries for all 29 platforms', async () => {
       const { SKILLS_AGENT_MAP } = await import('../../src/core/superpowers.js');
       const platformIds = [
         'claude',
@@ -78,6 +79,7 @@ describe('superpowers', () => {
         'kilocode',
         'auggie',
         'kiro',
+        'kimicode',
         'lingma',
         'junie',
         'codebuddy',
@@ -95,7 +97,7 @@ describe('superpowers', () => {
       for (const id of platformIds) {
         expect(SKILLS_AGENT_MAP).toHaveProperty(id);
       }
-      expect(Object.keys(SKILLS_AGENT_MAP)).toHaveLength(28);
+      expect(Object.keys(SKILLS_AGENT_MAP)).toHaveLength(29);
     });
   });
 
