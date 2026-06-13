@@ -39,9 +39,12 @@
     "test:shell": "node scripts/run-bats.js test/shell/*.bats",
     "benchmark:context": "node scripts/context-compression-benchmark.mjs",
     "benchmark:execution": "node scripts/context-execution-benchmark.mjs",
-    "prepare": "pnpm run build",
+    "prepare": "husky && pnpm run build",
     "prepublishOnly": "node scripts/prepublish-check.js && pnpm run build",
     "postinstall": "node scripts/postinstall.js"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}": "prettier --write"
   },
   "packageManager": "pnpm@10.18.3",
   "engines": {
@@ -52,6 +55,8 @@
     "@types/node": "^24.2.0",
     "@vitest/coverage-v8": "^4.1.6",
     "eslint": "^10.4.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
     "prettier": "^3.8.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.59.3",

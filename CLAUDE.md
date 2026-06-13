@@ -5,6 +5,21 @@ npx vitest run test/ts/comet-scripts.test.ts   # shell 脚本测试
 npx vitest run                                   # 全量测试
 ```
 
+## 提交前检查
+
+仓库已配置 Git pre-commit 钩子（husky + lint-staged），每次 `git commit` 会自动对 `src/` 下的暂存源文件运行 `prettier --write`（与 CI `format:check` 范围一致），编辑器无关，所有贡献者生效。
+
+提交前建议手动确认（CI 会强制检查）：
+
+```bash
+pnpm format:check   # Prettier 格式检查
+pnpm lint           # ESLint
+pnpm build          # TypeScript 构建
+pnpm test           # 单元测试
+```
+
+注：本地 Windows 若 `core.autocrlf=true`，未改动的旧文件可能因 CRLF 被 `prettier --check` 误报；钩子只处理暂存文件，不受影响，旧文件下次编辑时会自动转为 LF。
+
 ## Shell 脚本规范
 
 脚本位于 `assets/skills/comet/scripts/`，必须跨平台兼容（macOS / Linux / Windows Git Bash）：
