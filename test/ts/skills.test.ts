@@ -242,6 +242,35 @@ describe('skills', () => {
       expect(secondInstall).toEqual(firstInstall);
     });
 
+    it('does not throw when an existing hook group is malformed (non-array)', async () => {
+      // Hand-edited settings may store a hook group as an object/scalar rather
+      // than an array; install must coerce it instead of throwing.
+      const platform: Platform = {
+        id: 'claude',
+        name: 'Claude Code',
+        skillsDir: '.claude',
+        openspecToolId: 'claude',
+        supportsHooks: true,
+        hookFormat: 'claude-code',
+      };
+      const settingsPath = path.join(tmpDir, '.claude', 'settings.local.json');
+      const malformedSettings = {
+        hooks: {
+          PreToolUse: { matcher: 'Write|Edit', hooks: [{ type: 'command', command: 'echo x' }] },
+        },
+      };
+      await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+      await fs.writeFile(settingsPath, JSON.stringify(malformedSettings), 'utf-8');
+
+      await expect(installCometHooksForPlatform(tmpDir, platform)).resolves.toEqual({
+        installed: true,
+      });
+
+      const updated = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
+      expect(updated.hooks.PreToolUse).toHaveLength(1);
+      expect(updated.hooks.PreToolUse[0].matcher).toBe('Write|Edit');
+    });
+
     it.each([
       { id: 'qwen', skillsDir: '.qwen', hookFormat: 'qwen' as const },
       { id: 'qoder', skillsDir: '.qoder', hookFormat: 'qoder' as const },

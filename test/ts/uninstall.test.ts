@@ -66,6 +66,26 @@ describe('uninstall', () => {
         const result = await removeDir(path.join(tmpDir, 'nope'));
         expect(result).toBe(true);
       });
+
+      it('removes a symlinked directory without deleting its target', async () => {
+        if (process.platform === 'win32') return; // requires elevated permissions
+        // Data-safety: a symlinked skills/rules/hooks dir must be unlinked in
+        // place, never recursively removed through to its resolved target.
+        const realDir = path.join(tmpDir, 'real-target');
+        const realFile = path.join(realDir, 'keep-me.txt');
+        await fs.mkdir(realDir, { recursive: true });
+        await fs.writeFile(realFile, 'data', 'utf-8');
+
+        const symlinkDir = path.join(tmpDir, 'skills-symlink');
+        await fs.symlink(realDir, symlinkDir, 'dir');
+
+        const result = await removeDir(symlinkDir);
+
+        expect(result).toBe(true);
+        expect(await fileExists(symlinkDir)).toBe(false);
+        expect(await fileExists(realDir)).toBe(true);
+        expect(await fileExists(realFile)).toBe(true);
+      });
     });
 
     describe('isDirEmpty', () => {
@@ -84,6 +104,14 @@ describe('uninstall', () => {
 
       it('returns true for non-existent directory', async () => {
         expect(await isDirEmpty(path.join(tmpDir, 'nope'))).toBe(true);
+      });
+
+      it('returns false when the path is not a directory', async () => {
+        // readdir on a file throws ENOTDIR (a non-ENOENT error); isDirEmpty
+        // must report false so callers never treat an unreadable path as empty.
+        const filePath = path.join(tmpDir, 'a-file.txt');
+        await fs.writeFile(filePath, 'data', 'utf-8');
+        expect(await isDirEmpty(filePath)).toBe(false);
       });
     });
   });
