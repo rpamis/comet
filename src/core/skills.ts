@@ -33,6 +33,8 @@ description: Run the {skillName} Comet workflow
 ---
 `;
 
+const PI_COMMAND_EXTENSION_FILE = 'comet-commands.ts';
+
 function getAssetsDir(): string {
   return path.resolve(__dirname, '..', '..', 'assets');
 }
@@ -91,7 +93,96 @@ async function copyCometSkillsForPlatform(
     skippedCount += result.skipped;
   }
 
+  if (platform.id === 'pi') {
+    const result = await createPiCommandExtension(
+      baseDir,
+      platform,
+      manifest.skills,
+      overwrite,
+      scope,
+    );
+    copied += result.copied;
+    skippedCount += result.skipped;
+  }
+
   return { copied, skipped: skippedCount };
+}
+
+function getTopLevelSkillNames(skillPaths: string[]): string[] {
+  return skillPaths.flatMap((skillPath) => {
+    const parts = skillPath.split('/');
+    return parts.length === 2 && parts[1] === 'SKILL.md' ? [parts[0]] : [];
+  });
+}
+
+function renderPiCommandExtension(skillNames: string[]): string {
+  return `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+const commands = ${JSON.stringify(skillNames, null, 2)} as const;
+
+export default function registerCometCommands(pi: ExtensionAPI) {
+  for (const name of commands) {
+    pi.registerCommand(name, {
+      description: \`Comet: /\${name}\`,
+      handler: async (args) => {
+        pi.sendUserMessage(args ? \`/skill:\${name} \${args}\` : \`/skill:\${name}\`);
+      },
+    });
+  }
+}
+`;
+}
+
+async function createPiCommandExtension(
+  baseDir: string,
+  platform: Platform,
+  skillPaths: string[],
+  overwrite: boolean,
+  scope: InstallScope,
+): Promise<{ copied: number; skipped: number }> {
+  const platformBase = path.join(baseDir, getPlatformSkillsDir(platform, scope));
+  const settingsPath = path.join(platformBase, 'settings.json');
+  const extensionPath = path.join(platformBase, 'extensions', PI_COMMAND_EXTENSION_FILE);
+
+  let settings: Record<string, unknown> = {};
+  if (await fileExists(settingsPath)) {
+    try {
+      const parsed = JSON.parse(await readFile(settingsPath, 'utf-8')) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('expected a JSON object');
+      }
+      settings = parsed as Record<string, unknown>;
+    } catch (err) {
+      throw new Error(`Invalid Pi settings at ${settingsPath}: ${(err as Error).message}`, {
+        cause: err,
+      });
+    }
+  }
+
+  let copied = 0;
+  let skipped = 0;
+
+  if (settings.enableSkillCommands !== true) {
+    settings.enableSkillCommands = true;
+    await ensureDir(path.dirname(settingsPath));
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+    copied++;
+  }
+
+  if (!overwrite && (await fileExists(extensionPath))) {
+    skipped++;
+    return { copied, skipped };
+  }
+
+  await ensureDir(path.dirname(extensionPath));
+  await writeFile(
+    extensionPath,
+    renderPiCommandExtension(getTopLevelSkillNames(skillPaths)),
+    'utf-8',
+  );
+  copied++;
+
+  return { copied, skipped };
 }
 
 function stripFrontmatter(content: string): string {

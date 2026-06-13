@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import type { Platform } from '../../src/core/platforms.js';
+import { PLATFORMS, type Platform } from '../../src/core/platforms.js';
 import {
   buildNpmUpdateArgs,
   detectCometPackageScope,
@@ -122,6 +122,28 @@ describe('update command helpers', () => {
     });
 
     expect(targets.map((t) => `${t.scope}:${t.platform.id}`)).toEqual(['global:codex']);
+  });
+
+  it('detects legacy global Pi skills so update can migrate them', async () => {
+    const projectDir = path.join(tmpDir, 'project');
+    const globalDir = path.join(tmpDir, 'home');
+
+    await fs.mkdir(path.join(globalDir, '.pi', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(globalDir, '.pi', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n\nUse this skill.',
+      'utf-8',
+    );
+
+    const targets = await detectInstalledCometTargets(projectDir, {
+      globalBaseDir: globalDir,
+      scopes: ['global'],
+    });
+
+    expect(targets.map((t) => `${t.scope}:${t.platform.id}:${t.language}`)).toEqual([
+      'global:pi:en',
+    ]);
+    expect(PLATFORMS.find((platform) => platform.id === 'pi')?.globalSkillsDir).toBe('.pi/agent');
   });
 
   it('detects project package scope from local node_modules install path', async () => {

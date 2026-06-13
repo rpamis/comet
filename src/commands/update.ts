@@ -1,6 +1,5 @@
 import path from 'path';
 import os from 'os';
-import { createRequire } from 'module';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
@@ -18,8 +17,6 @@ import { installCodegraph } from '../core/codegraph.js';
 import type { InstallScope } from '../core/types.js';
 import { printVersionInfo } from '../core/version.js';
 
-const require = createRequire(import.meta.url);
-const { version } = require('../../package.json');
 const PACKAGE_NAME = '@rpamis/comet';
 const OFFICIAL_REGISTRY = 'https://registry.npmjs.org';
 
@@ -55,37 +52,50 @@ function getScopedBaseDir(
   return scope === 'global' ? globalBaseDir : projectPath;
 }
 
+function getInstalledCometSkillsDirs(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope = 'project',
+): string[] {
+  const dirs = [path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills')];
+  if (scope === 'global' && platform.id === 'pi') {
+    dirs.push(path.join(baseDir, platform.skillsDir, 'skills'));
+  }
+  return [...new Set(dirs)];
+}
+
 async function hasLocalCometSkills(
   baseDir: string,
   platform: Platform,
   scope: InstallScope,
 ): Promise<boolean> {
-  const skillsDir = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
-  if (!(await fileExists(skillsDir))) return false;
-
-  const entries = await readDir(skillsDir);
-  return entries.some((entry) => entry.startsWith('comet'));
+  for (const skillsDir of getInstalledCometSkillsDirs(baseDir, platform, scope)) {
+    if (!(await fileExists(skillsDir))) continue;
+    const entries = await readDir(skillsDir);
+    if (entries.some((entry) => entry.startsWith('comet'))) return true;
+  }
+  return false;
 }
 
 async function detectInstalledCometLanguage(
   baseDir: string,
   platform: Platform,
-  scope: InstallScope,
+  scope: InstallScope = 'project',
 ): Promise<SkillLanguage> {
-  const skillsDir = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
-  if (!(await fileExists(skillsDir))) return 'en';
+  for (const skillsDir of getInstalledCometSkillsDirs(baseDir, platform, scope)) {
+    if (!(await fileExists(skillsDir))) continue;
+    const entries = (await readDir(skillsDir)).filter((entry) => entry.startsWith('comet'));
 
-  const entries = (await readDir(skillsDir)).filter((entry) => entry.startsWith('comet'));
+    for (const entry of entries) {
+      const skillPath = path.join(skillsDir, entry, 'SKILL.md');
+      if (!(await fileExists(skillPath))) continue;
 
-  for (const entry of entries) {
-    const skillPath = path.join(skillsDir, entry, 'SKILL.md');
-    if (!(await fileExists(skillPath))) continue;
-
-    try {
-      const content = await fs.readFile(skillPath, 'utf-8');
-      if (/[\u3400-\u9fff]/u.test(content)) return 'zh';
-    } catch {
-      // Fall through to the default English asset set if the file cannot be read.
+      try {
+        const content = await fs.readFile(skillPath, 'utf-8');
+        if (/[\u3400-\u9fff]/u.test(content)) return 'zh';
+      } catch {
+        // Fall through to the default English asset set if the file cannot be read.
+      }
     }
   }
 

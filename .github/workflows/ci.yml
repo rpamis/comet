@@ -138,6 +138,8 @@ jobs:
             check_file "$PROJ/$sd/comet/scripts/comet-yaml-validate.sh"
             check_file "$PROJ/$sd/comet/scripts/comet-archive.sh"
           done
+          check_file "$PROJ/.pi/extensions/comet-commands.ts"
+          node -e "const s=require('$PROJ/.pi/settings.json'); if(s.enableSkillCommands!==true) process.exit(1)"
           echo "All 28 platforms project Comet skills: OK"
         shell: bash
 
@@ -217,7 +219,7 @@ jobs:
                     .gemini/skills .amazonq/skills .qwen/skills .kilocode/skills \
                     .augment/skills .kiro/skills .lingma/skills .junie/skills \
                     .codebuddy/skills .cospec/skills .crush/skills .factory/skills \
-                    .iflow/skills .pi/skills .qoder/skills .gemini/antigravity/skills \
+                    .iflow/skills .pi/agent/skills .qoder/skills .gemini/antigravity/skills \
                     .bob/skills .forge/skills .trae/skills .github/skills; do
             check_file "$HOME_DIR/$sd/comet/SKILL.md"
             check_file "$HOME_DIR/$sd/comet/scripts/comet-guard.sh"
@@ -226,6 +228,8 @@ jobs:
             check_file "$HOME_DIR/$sd/comet/scripts/comet-yaml-validate.sh"
             check_file "$HOME_DIR/$sd/comet/scripts/comet-archive.sh"
           done
+          check_file "$HOME_DIR/.pi/agent/extensions/comet-commands.ts"
+          node -e "const s=require('$HOME_DIR/.pi/agent/settings.json'); if(s.enableSkillCommands!==true) process.exit(1)"
           echo "All 28 platforms global Comet skills: OK"
         shell: bash
 

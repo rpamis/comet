@@ -124,6 +124,40 @@ describe('uninstall', () => {
       const result = await removeCometSkillsForPlatform(tmpDir, opencodePlatform, 'project');
       expect(result.removed).toBeGreaterThan(0);
     });
+
+    it('removes only the managed Pi extension and preserves shared settings', async () => {
+      const piPlatform: Platform = PLATFORMS.find((p) => p.id === 'pi')!;
+      const extensionsDir = path.join(tmpDir, '.pi', 'extensions');
+      const cometExtension = path.join(extensionsDir, 'comet-commands.ts');
+      const unrelatedExtension = path.join(extensionsDir, 'custom.ts');
+      const settingsPath = path.join(tmpDir, '.pi', 'settings.json');
+
+      await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+      await fs.writeFile(settingsPath, JSON.stringify({ theme: 'dark' }), 'utf-8');
+      await copyCometSkillsForPlatform(tmpDir, piPlatform, true, 'skills', 'project');
+      await fs.writeFile(unrelatedExtension, 'export default function custom() {}', 'utf-8');
+
+      const result = await removeCometSkillsForPlatform(tmpDir, piPlatform, 'project');
+      const settings = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
+
+      expect(result.removed).toBeGreaterThan(0);
+      expect(await fileExists(cometExtension)).toBe(false);
+      expect(await fileExists(unrelatedExtension)).toBe(true);
+      expect(settings).toEqual({ theme: 'dark', enableSkillCommands: true });
+    });
+
+    it('removes Comet skills from the legacy global Pi directory', async () => {
+      const piPlatform: Platform = PLATFORMS.find((p) => p.id === 'pi')!;
+      const legacySkill = path.join(tmpDir, '.pi', 'skills', 'comet', 'SKILL.md');
+
+      await fs.mkdir(path.dirname(legacySkill), { recursive: true });
+      await fs.writeFile(legacySkill, '# Comet', 'utf-8');
+
+      const result = await removeCometSkillsForPlatform(tmpDir, piPlatform, 'global');
+
+      expect(result.removed).toBe(1);
+      expect(await fileExists(legacySkill)).toBe(false);
+    });
   });
 
   describe('removeCometRulesForPlatform', () => {

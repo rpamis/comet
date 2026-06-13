@@ -34,10 +34,14 @@ Project scope writes:
 
 Global scope writes the same relative paths beneath the user's home directory:
 
-- `~/.pi/extensions/comet-commands.ts`
-- `~/.pi/settings.json`
+- `~/.pi/agent/extensions/comet-commands.ts`
+- `~/.pi/agent/settings.json`
 
-This matches the existing `getBaseDir()` and Pi `skillsDir` behavior.
+Pi's global skills also belong under `~/.pi/agent/skills/`, so the Pi platform definition will
+use `.pi/agent` as its global resource root while keeping `.pi` for project scope.
+Update and uninstall detection will also recognize the legacy `~/.pi/skills/` location used by
+earlier Comet versions, allowing update to migrate the active installation and uninstall to clean
+up Comet-owned legacy skill files.
 
 ## Ownership And Preservation
 
@@ -57,7 +61,7 @@ Uninstall will:
 
 The extension will:
 
-- Import `ExtensionAPI` as a type from `@mariozechner/pi-coding-agent`, Pi's published package.
+- Import `ExtensionAPI` as a type from `@earendil-works/pi-coding-agent`, Pi's published package.
 - Export a default registration function.
 - Register every top-level Comet skill found in the manifest.
 - Use the command name without the leading slash.

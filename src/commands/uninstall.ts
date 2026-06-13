@@ -9,7 +9,7 @@ import {
   removeCometHooksForPlatform,
   removeWorkingDirs,
 } from '../core/uninstall.js';
-import { detectInstalledCometTargets, type InstalledCometTarget } from './update.js';
+import { detectInstalledCometTargets } from './update.js';
 
 interface UninstallOptions {
   json?: boolean;

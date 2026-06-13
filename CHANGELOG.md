@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Pi slash command discovery**: `comet init` and `comet update` now generate a Pi extension that registers all shipped `/comet*` workflows as native slash commands forwarding to `/skill:*`. Pi settings are merged non-destructively with skill commands enabled, global resources now use Pi's documented `~/.pi/agent/` directory, legacy `~/.pi/skills/` installs are detected for update and cleanup, and `comet uninstall` removes only Comet-managed assets while preserving shared settings and unrelated extensions ([#89](https://github.com/rpamis/comet/issues/89)).
 - **OpenCode plugin-installed Superpowers detection**: `comet init` now correctly detects Superpowers already installed via the OpenCode plugin system (configured in `opencode.json`), preventing duplicate re-installation. Previously, only skills placed directly under `~/.config/opencode/skills/` were detected, missing the plugin source directory at `~/.config/opencode/superpowers/skills/` and the `plugin` array in `opencode.json`. Added `hasOpenCodePluginSuperpowers()` fallback detection similar to the existing Claude Code plugin cache check ([#105](https://github.com/rpamis/comet/issues/105)).
 
 ### Added
@@ -37,6 +38,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Tests
 
+- **Pi command extension lifecycle coverage**: Added project/global init, manifest-driven command generation, argument forwarding, settings preservation, invalid-settings protection, deterministic overwrite, and selective uninstall regression coverage, plus CI assertions for Pi's project and global extension locations.
 - **Hook merge regression coverage**: Added real-file tests for Claude-style, Qwen/Qoder, Gemini, and Windsurf hook formats covering same-matcher user hook preservation, stale Comet command replacement, unrelated configuration retention, and idempotent repeated installation.
 - **Subagent dispatch contract coverage**: Added Chinese and English skill-content regression coverage for Superpowers/Comet composition, coordinator-only source execution with tracking-file exceptions, one fresh background agent per task and role, prompt/status/reviewer evidence contracts, durable recovery checkpoints, TDD ownership, dual-review checkoff, bounded stop conditions, continuous task execution, Comet-specific final handoff, and the absence of a Stop hook.
 - **Reference doc assertions**: Added assertions verifying all skill files that reference `decision-point.md` and `debug-gate.md` include the correct protocol path, and that the shipped reference docs contain the expected core rules and fallback behavior.

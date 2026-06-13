@@ -234,6 +234,9 @@ describe('comet init E2E', () => {
       await expect(
         fs.access(path.join(tmpDir, '.opencode', 'commands', 'comet-open.md')),
       ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.pi', 'extensions', 'comet-commands.ts')),
+      ).resolves.toBeUndefined();
     } finally {
       homedirSpy.mockRestore();
     }
@@ -292,6 +295,36 @@ describe('comet init E2E', () => {
     ).resolves.toBeUndefined();
     await expect(
       fs.access(path.join(fakeHome, '.opencode', 'skills', 'comet', 'SKILL.md')),
+    ).rejects.toThrow();
+  }, 20_000);
+
+  it('installs Pi global skills and commands to the Pi agent directory', async () => {
+    mockExternalSuccess();
+
+    await fs.mkdir(path.join(tmpDir, '.pi'), { recursive: true });
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(fakeHome, { recursive: true });
+
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    const { initCommand } = await import('../../src/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
+    );
+
+    expect(result.selectedPlatforms).toEqual(['pi']);
+
+    await expect(
+      fs.access(path.join(fakeHome, '.pi', 'agent', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(fakeHome, '.pi', 'agent', 'extensions', 'comet-commands.ts')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.readFile(path.join(fakeHome, '.pi', 'agent', 'settings.json'), 'utf-8'),
+    ).resolves.toContain('"enableSkillCommands": true');
+    await expect(
+      fs.access(path.join(fakeHome, '.pi', 'skills', 'comet', 'SKILL.md')),
     ).rejects.toThrow();
   }, 20_000);
 

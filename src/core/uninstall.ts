@@ -1,14 +1,7 @@
 import path from 'path';
 import { readFile, writeFile } from 'fs/promises';
 
-import {
-  fileExists,
-  readDir,
-  readJson,
-  removeFile,
-  removeDir,
-  isDirEmpty,
-} from '../utils/file-system.js';
+import { fileExists, readDir, removeFile, removeDir, isDirEmpty } from '../utils/file-system.js';
 import { getPlatformSkillsDir, type Platform } from './platforms.js';
 import { readManifest, computeRuleDestPath, isManagedHookCommand } from './skills.js';
 import type { InstallScope } from './types.js';
@@ -29,14 +22,21 @@ async function removeCometSkillsForPlatform(
 ): Promise<RemovalResult> {
   const manifest = await readManifest();
   const skillsDir = getPlatformSkillsDir(platform, scope);
+  const skillsDirs = [skillsDir];
+  if (scope === 'global' && platform.id === 'pi') {
+    skillsDirs.push(platform.skillsDir);
+  }
+  const uniqueSkillsDirs = [...new Set(skillsDirs)];
   let removed = 0;
-  let failed = 0;
+  const failed = 0;
 
-  for (const skillRelPath of manifest.skills) {
-    const dest = path.join(baseDir, skillsDir, 'skills', skillRelPath);
-    const result = await removeFile(dest);
-    if (result) {
-      removed++;
+  for (const targetSkillsDir of uniqueSkillsDirs) {
+    for (const skillRelPath of manifest.skills) {
+      const dest = path.join(baseDir, targetSkillsDir, 'skills', skillRelPath);
+      const result = await removeFile(dest);
+      if (result) {
+        removed++;
+      }
     }
   }
 
@@ -56,18 +56,30 @@ async function removeCometSkillsForPlatform(
     }
   }
 
+  if (platform.id === 'pi') {
+    const extensionsDir = path.join(baseDir, skillsDir, 'extensions');
+    if (await removeFile(path.join(extensionsDir, 'comet-commands.ts'))) {
+      removed++;
+    }
+    if (await isDirEmpty(extensionsDir)) {
+      await removeDir(extensionsDir);
+    }
+  }
+
   // Clean up empty subdirectories and then empty comet skill directories
   // Collect all unique parent directories of removed files (bottom-up cleanup)
   const parentDirs = new Set<string>();
-  for (const skillRelPath of manifest.skills) {
-    const parts = skillRelPath.split('/');
-    if (parts[0].startsWith('comet')) {
-      // Add all intermediate directories for nested paths
-      let current = path.join(baseDir, skillsDir, 'skills', parts[0]);
-      parentDirs.add(current);
-      for (let i = 1; i < parts.length - 1; i++) {
-        current = path.join(current, parts[i]);
+  for (const targetSkillsDir of uniqueSkillsDirs) {
+    for (const skillRelPath of manifest.skills) {
+      const parts = skillRelPath.split('/');
+      if (parts[0].startsWith('comet')) {
+        // Add all intermediate directories for nested paths
+        let current = path.join(baseDir, targetSkillsDir, 'skills', parts[0]);
         parentDirs.add(current);
+        for (let i = 1; i < parts.length - 1; i++) {
+          current = path.join(current, parts[i]);
+          parentDirs.add(current);
+        }
       }
     }
   }
@@ -113,7 +125,7 @@ async function removeCometRulesForPlatform(
       : path.join(baseDir, skillsDir);
 
   let removed = 0;
-  let failed = 0;
+  const failed = 0;
 
   for (const ruleRelPath of rulePaths) {
     const ruleFileName = path.basename(ruleRelPath);
