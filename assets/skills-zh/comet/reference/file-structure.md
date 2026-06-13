@@ -4,7 +4,7 @@
 
 本文件是 Comet 项目文件结构参考。按需查阅，不随 skill 一次性加载。
 
-```
+```text
 openspec/                              # OpenSpec — WHAT
 ├── config.yaml
 ├── changes/

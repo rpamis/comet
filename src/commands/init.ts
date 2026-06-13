@@ -204,7 +204,9 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
   const log = options.json ? () => undefined : console.log;
 
   log(`\n${COMET_BANNER}\n`);
-  await printVersionInfo(log);
+  if (!options.json) {
+    await printVersionInfo(log);
+  }
   log(`  Setting up Comet in ${projectPath}\n`);
 
   const detected = await detectPlatforms(projectPath);

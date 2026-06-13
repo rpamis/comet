@@ -465,6 +465,15 @@ function mergeHookGroups<T extends { command: string }>(
 }
 
 /**
+ * Coerce a parsed hooks group into an array. Hand-edited settings files may
+ * store a group as an object or scalar; treat anything non-array as empty so
+ * downstream merge/filter logic cannot throw on malformed input.
+ */
+function asHookGroup(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
+}
+
+/**
  * Claude Code, Codex, Amazon Q format:
  * Writes to settings.local.json with { hooks: { PreToolUse: [...] } }
  */
@@ -505,12 +514,8 @@ async function installClaudeCodeHooks(
   }
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
-  const existingPreToolUse = (existingHooks.PreToolUse as ClaudeCodeHookEntry[]) ?? [];
-  const merged = mergeHookGroups(
-    existingPreToolUse as unknown as Array<Record<string, unknown>>,
-    newEntries,
-    Object.keys(hooksConfig),
-  );
+  const existingPreToolUse = asHookGroup(existingHooks.PreToolUse);
+  const merged = mergeHookGroups(existingPreToolUse, newEntries, Object.keys(hooksConfig));
 
   settings.hooks = { ...existingHooks, PreToolUse: merged };
   await ensureDir(path.dirname(settingsPath));
@@ -561,7 +566,7 @@ async function installQwenStyleHooks(
   }
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
-  const existingPreToolUse = (existingHooks.PreToolUse as Array<Record<string, unknown>>) ?? [];
+  const existingPreToolUse = asHookGroup(existingHooks.PreToolUse);
   const merged = mergeHookGroups(existingPreToolUse, preToolUseEntries, Object.keys(hooksConfig));
 
   settings.hooks = { ...existingHooks, PreToolUse: merged };
@@ -608,7 +613,7 @@ async function installGeminiHooks(
   }
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
-  const existingBeforeTool = (existingHooks.BeforeTool as Array<Record<string, unknown>>) ?? [];
+  const existingBeforeTool = asHookGroup(existingHooks.BeforeTool);
   const merged = mergeHookGroups(existingBeforeTool, entries, Object.keys(hooksConfig));
 
   settings.hooks = { ...existingHooks, BeforeTool: merged };
@@ -646,7 +651,7 @@ async function installWindsurfHooks(
   }
 
   const existingHooks = (hooksFile.hooks as Record<string, unknown>) ?? {};
-  const existingPreWrite = (existingHooks.pre_write_code as Array<Record<string, unknown>>) ?? [];
+  const existingPreWrite = asHookGroup(existingHooks.pre_write_code);
   const merged = existingPreWrite.filter(
     (entry) => !isManagedHookCommand(entry.command, Object.keys(hooksConfig)),
   );

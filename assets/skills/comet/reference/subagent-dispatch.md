@@ -57,7 +57,7 @@ The implementer is only responsible for implementation, testing, and committing 
 
 If `tdd_mode: tdd`, every implementer and fix agent must first use the Skill tool to load the Superpowers `test-driven-development` skill, and its prompt must also inject:
 
-```
+```text
 You MUST follow TDD: write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first.
 ```
 

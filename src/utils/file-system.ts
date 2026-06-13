@@ -99,40 +99,60 @@ export async function readDir(dirPath: string): Promise<string[]> {
 }
 
 /**
+ * Returns true when an error means the path was simply not found. ENOENT is
+ * the only non-fatal outcome for the removal helpers below; all other errors
+ * (permissions, IO) are reported as failures instead of being masked as
+ * "already gone".
+ */
+function isNotFoundError(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+}
+
+/**
  * Remove a file. Returns true if the file existed and was removed.
+ * Operates on the path directly so a symlink entry is removed rather than its
+ * resolved target (avoids deleting files the symlink merely points at).
  */
 export async function removeFile(filePath: string): Promise<boolean> {
   try {
-    const resolved = await resolveSymlinkPath(filePath);
-    await fs.unlink(resolved);
+    await fs.unlink(filePath);
     return true;
   } catch {
+    // Not found or failed (permissions/IO): nothing was removed.
     return false;
   }
 }
 
 /**
  * Remove a directory recursively. Returns true if the directory existed and was removed.
+ * Symlinked directories are unlinked directly rather than recursed into, so the
+ * directory a symlink points at is never deleted.
  */
 export async function removeDir(dirPath: string): Promise<boolean> {
   try {
-    const resolved = await resolveSymlinkPath(dirPath);
-    await fs.rm(resolved, { recursive: true, force: true });
+    // lstat does not follow symlinks; unlink a symlinked dir instead of rm-ing its target.
+    const stat = await fs.lstat(dirPath);
+    if (stat.isSymbolicLink()) {
+      await fs.unlink(dirPath);
+      return true;
+    }
+    await fs.rm(dirPath, { recursive: true, force: true });
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return isNotFoundError(error);
   }
 }
 
 /**
- * Check if a directory is empty or does not exist.
+ * Check if a directory is empty. A missing directory is treated as empty;
+ * unreadable directories (permissions/IO) return false so callers never delete
+ * a directory they could not inspect.
  */
 export async function isDirEmpty(dirPath: string): Promise<boolean> {
   try {
-    const resolved = await resolveSymlinkPath(dirPath);
-    const entries = await fs.readdir(resolved);
+    const entries = await fs.readdir(dirPath);
     return entries.length === 0;
-  } catch {
-    return true;
+  } catch (error) {
+    return isNotFoundError(error);
   }
 }

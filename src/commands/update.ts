@@ -185,12 +185,20 @@ async function updateCometNpmPackage(
   scope: InstallScope,
   projectPath: string,
   log: (message: string) => void,
+  jsonMode = false,
 ): Promise<boolean> {
   const args = buildNpmUpdateArgs(scope);
   const cwd = scope === 'global' ? process.cwd() : projectPath;
 
   return new Promise((resolve) => {
-    const child = spawn(getNpmExecutable(), args, { cwd, stdio: 'inherit', shell: true });
+    // In JSON mode, discard npm's stdout/stderr so it cannot corrupt the JSON
+    // document emitted on stdout. 'ignore' avoids the pipe backpressure a
+    // verbose npm install could otherwise cause.
+    const child = spawn(getNpmExecutable(), args, {
+      cwd,
+      stdio: jsonMode ? 'ignore' : 'inherit',
+      shell: true,
+    });
     child.on('error', (err) => {
       log(`  npm package: failed to launch npm — ${err.message}`);
       resolve(false);
@@ -215,7 +223,9 @@ export async function updateCommand(
   const log = options.json ? () => undefined : console.log;
 
   log(`\n  Comet Update`);
-  await printVersionInfo(log);
+  if (!options.json) {
+    await printVersionInfo(log);
+  }
   log('');
 
   const packageScope = options.scope ?? (await detectCometPackageScope(projectPath));
@@ -223,7 +233,12 @@ export async function updateCommand(
   if (!options.skipNpm) {
     log(`  Updating npm package (${packageScope} scope)...`);
     log(`    $ ${formatNpmUpdateCommand(packageScope)}`);
-    const npmUpdated = await updateCometNpmPackage(packageScope, projectPath, log);
+    const npmUpdated = await updateCometNpmPackage(
+      packageScope,
+      projectPath,
+      log,
+      options.json === true,
+    );
     if (npmUpdated) {
       npmStatus = 'updated';
       log(`  npm package: updated to latest ${PACKAGE_NAME}`);
@@ -250,6 +265,7 @@ export async function updateCommand(
             skills: { totalCopied: 0, targets: [] },
             rules: { totalCopied: 0 },
             hooks: { totalInstalled: 0 },
+            codegraph: 'skipped',
           },
           null,
           2,

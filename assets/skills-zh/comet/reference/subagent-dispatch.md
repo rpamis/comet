@@ -57,7 +57,7 @@ implementer 只负责实现、测试和提交代码。**implementer 不得勾选
 
 若 `tdd_mode: tdd`，每个 implementer 和修复 agent 必须先使用 Skill 工具加载 Superpowers `test-driven-development` 技能，并在 prompt 中同时注入：
 
-```
+```text
 You MUST follow TDD: write a failing test first, watch it fail, then write minimal code to pass. No production code without a failing test first.
 ```
 
