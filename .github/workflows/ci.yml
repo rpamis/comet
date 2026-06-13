@@ -139,7 +139,7 @@ jobs:
             check_file "$PROJ/$sd/comet/scripts/comet-archive.sh"
           done
           check_file "$PROJ/.pi/extensions/comet-commands.ts"
-          node -e "const s=require('$PROJ/.pi/settings.json'); if(s.enableSkillCommands!==true) process.exit(1)"
+          PROJ="$PROJ" node -e "const s=require(process.env.PROJ+'/.pi/settings.json'); if(s.enableSkillCommands!==true) process.exit(1)"
           echo "All 29 platforms project Comet skills: OK"
         shell: bash
 
@@ -229,7 +229,7 @@ jobs:
             check_file "$HOME_DIR/$sd/comet/scripts/comet-archive.sh"
           done
           check_file "$HOME_DIR/.pi/agent/extensions/comet-commands.ts"
-          node -e "const s=require('$HOME_DIR/.pi/agent/settings.json'); if(s.enableSkillCommands!==true) process.exit(1)"
+          HOME_DIR="$HOME_DIR" node -e "const s=require(process.env.HOME_DIR+'/.pi/agent/settings.json'); if(s.enableSkillCommands!==true) process.exit(1)"
           echo "All 29 platforms global Comet skills: OK"
         shell: bash
 

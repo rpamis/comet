@@ -173,7 +173,9 @@ async function ensureOpenSpecCli(scope: InstallScope, projectPath: string): Prom
     return isCommandAvailable('openspec');
   } catch (error) {
     if (alreadyInstalled) {
-      console.warn(`    OpenSpec upgrade failed, using existing version: ${(error as Error).message}`);
+      console.warn(
+        `    OpenSpec upgrade failed, using existing version: ${(error as Error).message}`,
+      );
       return true;
     }
     console.error(`    Failed to install OpenSpec CLI: ${(error as Error).message}`);
@@ -270,7 +272,13 @@ async function installOpenSpec(
       const stderrText = (firstError as { stderr?: Buffer }).stderr?.toString() ?? '';
       if (stderrText.includes('unknown option') && stderrText.includes('--profile')) {
         console.warn('    OpenSpec does not support --profile flag, retrying without it...');
-        const fallbackInvocation = buildOpenSpecInitInvocation(projectPath, toolIds, scope, os.homedir(), false);
+        const fallbackInvocation = buildOpenSpecInitInvocation(
+          projectPath,
+          toolIds,
+          scope,
+          os.homedir(),
+          false,
+        );
         execFileSync(fallbackInvocation.command, fallbackInvocation.args, {
           cwd: projectPath,
           env: openspecEnv.env,
