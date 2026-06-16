@@ -245,6 +245,42 @@ describe('detect', () => {
         delete process.env.CLAUDE_CONFIG_DIR;
       }
     });
+
+    it('detects plugin-installed superpowers for codex platform', async () => {
+      const origEnv = process.env.CODEX_HOME;
+      const pluginDir = path.join(tmpDir, '.codex');
+      process.env.CODEX_HOME = pluginDir;
+
+      try {
+        const skillsDir = path.join(
+          pluginDir,
+          'plugins',
+          'cache',
+          'openai-curated',
+          'superpowers',
+          'c6ea566d',
+          'skills',
+        );
+        await fs.mkdir(skillsDir, { recursive: true });
+        await fs.mkdir(path.join(skillsDir, 'brainstorming'));
+        await fs.mkdir(path.join(skillsDir, 'using-superpowers'));
+
+        // No skills in the normal project location.
+        await fs.mkdir(path.join(tmpDir, '.codex', 'skills'), { recursive: true });
+
+        const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex');
+        expect(codexPlatform).toBeDefined();
+        if (!codexPlatform) return;
+
+        expect(await hasSkills(tmpDir, codexPlatform, 'superpowers')).toBe(true);
+      } finally {
+        if (origEnv !== undefined) {
+          process.env.CODEX_HOME = origEnv;
+        } else {
+          delete process.env.CODEX_HOME;
+        }
+      }
+    });
   });
 
   describe('hasPluginSuperpowers', () => {

@@ -14,18 +14,7 @@ const SUPERPOWERS_SKILLS = [
   'subagent-driven-development',
 ];
 
-function getBaseDir(scope: InstallScope, projectPath: string): string {
-  return scope === 'global' ? os.homedir() : projectPath;
-}
-
-/**
- * Check if superpowers are installed via Claude Code plugin system.
- * Looks in ~/.claude/plugins/cache/{marketplace}/superpowers/{version}/skills/
- */
-async function hasPluginSuperpowers(): Promise<boolean> {
-  const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-  const pluginsCacheDir = path.join(claudeDir, 'plugins', 'cache');
-
+async function hasSuperpowersInPluginCache(pluginsCacheDir: string): Promise<boolean> {
   const marketplaceEntries = await readDir(pluginsCacheDir);
   for (const marketplace of marketplaceEntries) {
     const superpowersDir = path.join(pluginsCacheDir, marketplace, 'superpowers');
@@ -40,7 +29,35 @@ async function hasPluginSuperpowers(): Promise<boolean> {
       }
     }
   }
+
   return false;
+}
+
+function getBaseDir(scope: InstallScope, projectPath: string): string {
+  return scope === 'global' ? os.homedir() : projectPath;
+}
+
+/**
+ * Check if superpowers are installed via Claude Code plugin system.
+ * Looks in ~/.claude/plugins/cache/{marketplace}/superpowers/{version}/skills/
+ */
+async function hasPluginSuperpowers(): Promise<boolean> {
+  const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const pluginsCacheDir = path.join(claudeDir, 'plugins', 'cache');
+
+  return hasSuperpowersInPluginCache(pluginsCacheDir);
+}
+
+/**
+ * Check if superpowers are installed via Codex plugin system.
+ * Looks in ~/.codex/plugins/cache/{marketplace}/superpowers/{version}/skills/
+ */
+async function hasCodexPluginSuperpowers(): Promise<boolean> {
+  const codexDir =
+    process.env.CODEX_HOME || process.env.CODEX_CONFIG_DIR || path.join(os.homedir(), '.codex');
+  const pluginsCacheDir = path.join(codexDir, 'plugins', 'cache');
+
+  return hasSuperpowersInPluginCache(pluginsCacheDir);
 }
 
 /**
@@ -189,6 +206,11 @@ async function hasSkills(
     if (await hasPluginSuperpowers()) return true;
   }
 
+  // Check Codex plugin cache for plugin-installed superpowers
+  if (component === 'superpowers' && platform.id === 'codex') {
+    if (await hasCodexPluginSuperpowers()) return true;
+  }
+
   // Check OpenCode plugin system for plugin-installed superpowers
   if (component === 'superpowers' && platform.id === 'opencode') {
     if (await hasOpenCodePluginSuperpowers()) return true;
@@ -201,6 +223,7 @@ export {
   detectPlatforms,
   hasSkills,
   hasPluginSuperpowers,
+  hasCodexPluginSuperpowers,
   hasOpenCodePluginSuperpowers,
   getBaseDir,
 };
