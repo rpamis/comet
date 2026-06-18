@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.3.9] - 2026-06-16
+## What's Changed [0.3.9] - 2026-06-17
 
 ### Added
 
@@ -43,6 +43,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Uninstall platform selection coverage**: Added tests for single-target auto-select, multi-target checkbox selection, user cancellation, `--force` skip, `--json` output, and no-targets-found handling.
 - **CI regression coverage**: Added state-machine regression coverage for preset workflows leaving `open` without `design.md`, missing full-workflow `review_mode` being blocked consistently, and repair-only phase resets using `COMET_FORCE_PHASE`.
 - **Hook guard message coverage**: Added regression coverage ensuring `comet-hook-guard.sh` blocked-write messages remain English and do not reintroduce Chinese-only guidance.
+- **CI fixture alignment**: Updated shell-script test fixtures to preserve executable permissions after copying scripts, include required `review_mode` decisions in full-workflow build states, and use the repair-only `COMET_FORCE_PHASE` escape hatch only when constructing phase states for guard checks.
 
 ## What's Changed [0.3.8] - 2026-06-13
 

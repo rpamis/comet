@@ -195,7 +195,9 @@ describeShell('comet shell scripts', () => {
       'comet-hook-guard.sh',
     ]) {
       const content = await fs.readFile(path.join(scriptsDir, name), 'utf-8');
-      await fs.writeFile(path.join(tmpScriptsDir, name), content.replace(/\r\n/g, '\n'));
+      const destination = path.join(tmpScriptsDir, name);
+      await fs.writeFile(destination, content.replace(/\r\n/g, '\n'));
+      await fs.chmod(destination, 0o755);
     }
     guardScript = path.join(tmpScriptsDir, 'comet-guard.sh');
     stateScript = path.join(tmpScriptsDir, 'comet-state.sh');
@@ -1859,6 +1861,7 @@ describeShell('comet shell scripts', () => {
         'build_pause: null',
         'direct_override: true',
         'tdd_mode: direct',
+        'review_mode: off',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -1932,6 +1935,7 @@ describeShell('comet shell scripts', () => {
         'build_pause: null',
         'subagent_dispatch: confirmed',
         'tdd_mode: tdd',
+        'review_mode: off',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',

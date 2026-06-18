@@ -83,11 +83,11 @@ teardown() {
 
 @test "set updates a field value" {
   bash "$SCRIPT_PATH" init my-change full
-  run bash "$SCRIPT_PATH" set my-change phase build
+  run bash "$SCRIPT_PATH" set my-change verify_mode light
   [ "$status" -eq 0 ]
 
-  run bash "$SCRIPT_PATH" get my-change phase
-  [ "$output" = "build" ]
+  run bash "$SCRIPT_PATH" get my-change verify_mode
+  [ "$output" = "light" ]
 }
 
 @test "set rejects unknown field" {
@@ -142,14 +142,14 @@ teardown() {
 
 @test "check open fails if phase is not open" {
   bash "$SCRIPT_PATH" init my-change full
-  bash "$SCRIPT_PATH" set my-change phase design
+  COMET_FORCE_PHASE=1 bash "$SCRIPT_PATH" set my-change phase design
   run bash "$SCRIPT_PATH" check my-change open
   [ "$status" -ne 0 ]
 }
 
 @test "check design passes with correct state" {
   bash "$SCRIPT_PATH" init my-change full
-  bash "$SCRIPT_PATH" set my-change phase design
+  COMET_FORCE_PHASE=1 bash "$SCRIPT_PATH" set my-change phase design
   echo "content" > openspec/changes/my-change/proposal.md
   echo "content" > openspec/changes/my-change/design.md
   echo "content" > openspec/changes/my-change/tasks.md
@@ -159,7 +159,7 @@ teardown() {
 
 @test "check design fails if design_doc is set (not empty)" {
   bash "$SCRIPT_PATH" init my-change full
-  bash "$SCRIPT_PATH" set my-change phase design
+  COMET_FORCE_PHASE=1 bash "$SCRIPT_PATH" set my-change phase design
   bash "$SCRIPT_PATH" set my-change design_doc "some-doc.md"
   echo "content" > openspec/changes/my-change/proposal.md
   echo "content" > openspec/changes/my-change/design.md
