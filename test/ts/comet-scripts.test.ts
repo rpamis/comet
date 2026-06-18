@@ -154,6 +154,21 @@ describe('comet shell script contracts', () => {
     expect(stateSource).toContain('task-checkoff)');
     expect(stateSource).toContain('cmd_task_checkoff "$@"');
   });
+
+  it('keeps comet-hook-guard blocked messages in English', async () => {
+    const hookSource = await fs.readFile(path.join(scriptsDir, 'comet-hook-guard.sh'), 'utf-8');
+    const blockedMessageLines = hookSource
+      .split('\n')
+      .filter(
+        (line) =>
+          line.includes('echo "') && /BLOCKED|❌|✅|💡|Current phase|Target file/.test(line),
+      );
+
+    expect(blockedMessageLines.join('\n')).toContain('Current phase:');
+    expect(blockedMessageLines.join('\n')).toContain('Target file:');
+    expect(blockedMessageLines.join('\n')).toContain('does not allow source code writes');
+    expect(blockedMessageLines.join('\n')).not.toMatch(/[一-龥]/);
+  });
 });
 
 describeShell('comet shell scripts', () => {
@@ -3123,11 +3138,11 @@ describeShell('comet shell scripts', () => {
           'workflow: full',
           'phase: build',
           'build_mode: subagent-driven-development',
-        'build_pause: null',
-        'subagent_dispatch: null',
-        'tdd_mode: tdd',
-        'review_mode: off',
-        'isolation: branch',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: tdd',
+          'review_mode: off',
+          'isolation: branch',
           'verify_mode: null',
           'design_doc: null',
           'plan: docs/superpowers/plans/subagent-plan.md',
@@ -3659,7 +3674,10 @@ describeShell('comet shell scripts', () => {
         { cwd: tmpDir, encoding: 'utf-8', timeout: 15000 },
       );
 
-      expect(result.status, JSON.stringify({ stderr: result.stderr, stdout: result.stdout, error: result.error })).toBe(0);
+      expect(
+        result.status,
+        JSON.stringify({ stderr: result.stderr, stdout: result.stdout, error: result.error }),
+      ).toBe(0);
       expect(result.stderr).toContain('ALL CHECKS PASSED');
     }, 20_000);
 
@@ -3698,7 +3716,10 @@ describeShell('comet shell scripts', () => {
         { cwd: tmpDir, encoding: 'utf-8', timeout: 15000 },
       );
 
-      expect(result.status, JSON.stringify({ stderr: result.stderr, stdout: result.stdout, error: result.error })).not.toBe(0);
+      expect(
+        result.status,
+        JSON.stringify({ stderr: result.stderr, stdout: result.stdout, error: result.error }),
+      ).not.toBe(0);
       expect(result.stderr).toContain('[FAIL] design.md exists and non-empty');
     }, 20_000);
   });
@@ -3861,6 +3882,9 @@ describeShell('comet shell scripts', () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('BLOCKED');
       expect(result.stderr).toContain('design');
+      expect(result.stderr).toContain('Current phase: design');
+      expect(result.stderr).toContain('design phase does not allow source code writes');
+      expect(result.stderr).not.toMatch(/[一-龥]/);
     }, 20_000);
 
     it('blocks source code writes in open phase', async () => {
@@ -3899,7 +3923,10 @@ describeShell('comet shell scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Current phase: open');
+      expect(result.stderr).toContain('open phase does not allow source code writes');
       expect(result.stderr).toContain('open');
+      expect(result.stderr).not.toMatch(/[一-龥]/);
     }, 20_000);
 
     it('allows source code writes in build phase', async () => {
@@ -4014,7 +4041,10 @@ describeShell('comet shell scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Current phase: archive');
+      expect(result.stderr).toContain('archive phase does not allow source code writes');
       expect(result.stderr).toContain('archive');
+      expect(result.stderr).not.toMatch(/[一-龥]/);
     }, 20_000);
 
     it('allows writes to .claude/ rules regardless of phase', async () => {
@@ -4125,13 +4155,7 @@ describeShell('comet shell scripts', () => {
         ['workflow: full', 'phase: open', 'archived: false', ''].join('\n'),
       );
 
-      const targetFile = path.join(
-        tmpDir,
-        'openspec',
-        'changes',
-        'b-new-open',
-        'proposal.md',
-      );
+      const targetFile = path.join(tmpDir, 'openspec', 'changes', 'b-new-open', 'proposal.md');
 
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
@@ -4154,6 +4178,10 @@ describeShell('comet shell scripts', () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('BLOCKED');
       expect(result.stderr).toContain('design_doc');
+      expect(result.stderr).toContain(
+        'Current phase: build (workflow: full), but design_doc is empty',
+      );
+      expect(result.stderr).not.toMatch(/[一-龥]/);
     }, 20_000);
 
     it('allows preset-workflow build source writes when design_doc is null', async () => {

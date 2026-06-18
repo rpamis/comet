@@ -288,12 +288,12 @@ case "$PHASE" in
         echo "║     COMET PHASE GUARD — WRITE BLOCKED    ║" >&2
         echo "╚══════════════════════════════════════════╝" >&2
         echo "" >&2
-        echo "  当前阶段: $PHASE（workflow: full），但 design_doc 为空" >&2
-        echo "  目标文件: $RELPATH" >&2
+        echo "  Current phase: $PHASE (workflow: full), but design_doc is empty" >&2
+        echo "  Target file: $RELPATH" >&2
         echo "" >&2
-        echo "  ❌ 检测到非法阶段跳转：full workflow 在没有 Design Doc 的情况下进入 $PHASE" >&2
-        echo "  ✅ 正确流程：先在 design 阶段创建 Design Doc 并运行 comet-guard design --apply" >&2
-        echo "  💡 运行 /comet-design 补齐设计；如确为修复，用 comet-state set design_doc <path>" >&2
+        echo "  ❌ Illegal phase jump detected: full workflow entered $PHASE without a Design Doc" >&2
+        echo "  ✅ Correct flow: create the Design Doc in design phase, then run comet-guard design --apply" >&2
+        echo "  💡 Run /comet-design to fill the missing design; for repair, set design_doc with comet-state" >&2
         echo "" >&2
         exit 2
       fi
@@ -308,23 +308,23 @@ case "$PHASE" in
     echo "║     COMET PHASE GUARD — WRITE BLOCKED    ║" >&2
     echo "╚══════════════════════════════════════════╝" >&2
     echo "" >&2
-    echo "  当前阶段: $PHASE" >&2
-    echo "  目标文件: $RELPATH" >&2
+    echo "  Current phase: $PHASE" >&2
+    echo "  Target file: $RELPATH" >&2
     echo "" >&2
     case "$PHASE" in
       open)
-        echo "  ❌ open 阶段不允许写源代码" >&2
-        echo "  ✅ 允许: 创建 proposal/design/tasks, 运行 guard" >&2
-        echo "  💡 完成需求澄清和 artifact 创建后运行 guard --apply" >&2
+        echo "  ❌ open phase does not allow source code writes" >&2
+        echo "  ✅ Allowed: create proposal/design/tasks and run guard" >&2
+        echo "  💡 After clarification and artifact creation, run guard --apply" >&2
         ;;
       design)
-        echo "  ❌ design 阶段不允许写源代码" >&2
-        echo "  ✅ 允许: brainstorming, 创建 Design Doc, 运行 guard" >&2
-        echo "  💡 完成 Design Doc 后运行 comet-guard design --apply 进入 build" >&2
+        echo "  ❌ design phase does not allow source code writes" >&2
+        echo "  ✅ Allowed: brainstorming, create the Design Doc, and run guard" >&2
+        echo "  💡 After the Design Doc is ready, run comet-guard design --apply to enter build" >&2
         ;;
       archive)
-        echo "  ❌ archive 阶段不允许写源代码" >&2
-        echo "  ✅ 允许: 确认归档, 运行归档脚本" >&2
+        echo "  ❌ archive phase does not allow source code writes" >&2
+        echo "  ✅ Allowed: confirm archive intent and run the archive script" >&2
         ;;
     esac
     echo "" >&2
