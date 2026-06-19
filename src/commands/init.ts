@@ -1,6 +1,7 @@
 import path from 'path';
 import os from 'os';
 import { checkbox, select } from '@inquirer/prompts';
+import { platformSelectPrompt } from './platform-select-prompt.js';
 import { PLATFORMS, getPlatformSkillsDir, type Platform } from '../core/platforms.js';
 import { detectPlatforms, hasSkills, getBaseDir, type InstallScope } from '../core/detect.js';
 import {
@@ -97,6 +98,7 @@ async function selectPlatforms(
 ): Promise<string[]> {
   const choices = PLATFORMS.map((p) => ({
     name: `${p.name}${detected.has(p.id) ? ` (${t(lang, 'detected')})` : ''}`,
+    summaryName: p.name,
     value: p.id,
     checked: detected.has(p.id),
   }));
@@ -106,7 +108,13 @@ async function selectPlatforms(
     return selected.length > 0 ? selected : PLATFORMS.map((p) => p.id);
   }
 
-  return checkbox({ message: t(lang, 'selectPlatforms'), choices, required: true });
+  return platformSelectPrompt({
+    message: t(lang, 'selectPlatforms'),
+    choices,
+    selectedLabel: t(lang, 'selectedPlatforms'),
+    emptyLabel: t(lang, 'noneSelected'),
+    required: true,
+  });
 }
 
 async function promptOverwriteChoice(

@@ -16,6 +16,10 @@ vi.mock('@inquirer/prompts', () => ({
   checkbox: vi.fn(),
 }));
 
+vi.mock('../../src/commands/platform-select-prompt.js', () => ({
+  platformSelectPrompt: vi.fn(),
+}));
+
 const manifestPath = path.resolve('assets', 'manifest.json');
 
 async function readManifest() {
@@ -382,4 +386,71 @@ describe('comet init E2E', () => {
       fs.access(path.join(tmpDir, '.kimi-code', 'skills', 'comet', 'SKILL.md')),
     ).rejects.toThrow();
   }, 20_000);
+
+  it('uses platform selection prompt with selected summary labels in English', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+
+    const { checkbox } = await import('@inquirer/prompts');
+    const { platformSelectPrompt } = await import('../../src/commands/platform-select-prompt.js');
+    vi.mocked(platformSelectPrompt).mockResolvedValue(['codex']);
+    vi.mocked(checkbox).mockResolvedValue([]);
+
+    const { initCommand } = await import('../../src/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { json: true, scope: 'project', language: 'en' }),
+    );
+
+    expect(platformSelectPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Select platforms to set up:',
+        selectedLabel: 'Selected:',
+        emptyLabel: 'none',
+        required: true,
+      }),
+    );
+    expect(platformSelectPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        choices: expect.arrayContaining([
+          expect.objectContaining({
+            value: 'codex',
+            name: 'Codex (detected)',
+            summaryName: 'Codex',
+            checked: true,
+          }),
+        ]),
+      }),
+    );
+    expect(checkbox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Select npm dependencies to install/upgrade:',
+      }),
+    );
+  });
+
+  it('uses localized selected summary labels in Chinese', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+
+    const { checkbox } = await import('@inquirer/prompts');
+    const { platformSelectPrompt } = await import('../../src/commands/platform-select-prompt.js');
+    vi.mocked(platformSelectPrompt).mockResolvedValue(['codex']);
+    vi.mocked(checkbox).mockResolvedValue([]);
+
+    const { initCommand } = await import('../../src/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { json: true, scope: 'project', language: 'zh' }),
+    );
+
+    expect(platformSelectPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: '选择要配置的平台：',
+        selectedLabel: '已选择：',
+        emptyLabel: '无',
+        required: true,
+      }),
+    );
+  });
 });

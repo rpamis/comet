@@ -7,6 +7,8 @@ export type TranslationKey =
   | 'scopeGlobal'
   | 'languagePrompt'
   | 'selectPlatforms'
+  | 'selectedPlatforms'
+  | 'noneSelected'
   | 'detected'
   | 'noPlatforms'
   | 'overwriteChoice'
@@ -80,6 +82,8 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     scopeGlobal: 'Global (home directory)',
     languagePrompt: 'Language for Comet skills:',
     selectPlatforms: 'Select platforms to set up:',
+    selectedPlatforms: 'Selected:',
+    noneSelected: 'none',
     detected: 'detected',
     noPlatforms: 'No platforms selected. Exiting.',
     overwriteChoice: 'What to do?',
@@ -152,6 +156,8 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     scopeGlobal: '全局（主目录）',
     languagePrompt: 'Comet 技能语言：',
     selectPlatforms: '选择要配置的平台：',
+    selectedPlatforms: '已选择：',
+    noneSelected: '无',
     detected: '已检测到',
     noPlatforms: '未选择任何平台，退出。',
     overwriteChoice: '如何处理？',
