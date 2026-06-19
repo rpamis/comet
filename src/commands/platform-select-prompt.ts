@@ -167,7 +167,11 @@ const platformSelectPromptBase = createPrompt<string[], PlatformSelectPromptConf
 
       if (key.name === 'a') {
         const hasUnchecked = items.some((item) => item.checked !== true);
-        setItems(hasUnchecked ? selectAllChoices(items) : items.map((item) => ({ ...item, checked: false })));
+        setItems(
+          hasUnchecked
+            ? selectAllChoices(items)
+            : items.map((item) => ({ ...item, checked: false })),
+        );
         setError(undefined);
         return;
       }
@@ -227,7 +231,5 @@ const platformSelectPromptBase = createPrompt<string[], PlatformSelectPromptConf
 export async function platformSelectPrompt<Value extends string>(
   config: PlatformSelectPromptConfig<Value>,
 ): Promise<Value[]> {
-  return (await platformSelectPromptBase(
-    config as PlatformSelectPromptConfig<string>,
-  )) as Value[];
+  return (await platformSelectPromptBase(config as PlatformSelectPromptConfig<string>)) as Value[];
 }
