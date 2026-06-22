@@ -407,6 +407,7 @@ describe('comet init E2E', () => {
         message: 'Select platforms to set up:',
         selectedLabel: 'Selected:',
         emptyLabel: 'none',
+        requiredErrorLabel: 'Select at least one platform.',
         required: true,
       }),
     );
@@ -449,6 +450,7 @@ describe('comet init E2E', () => {
         message: '选择要配置的平台：',
         selectedLabel: '已选择：',
         emptyLabel: '无',
+        requiredErrorLabel: '请至少选择一个平台。',
         required: true,
       }),
     );

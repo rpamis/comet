@@ -113,6 +113,7 @@ async function selectPlatforms(
     choices,
     selectedLabel: t(lang, 'selectedPlatforms'),
     emptyLabel: t(lang, 'noneSelected'),
+    requiredErrorLabel: t(lang, 'selectPlatformsRequired'),
     required: true,
   });
 }

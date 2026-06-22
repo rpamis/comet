@@ -70,6 +70,7 @@ export type PlatformSelectPromptConfig<Value extends string> = {
   choices: readonly PlatformSelectChoice<Value>[];
   selectedLabel: string;
   emptyLabel: string;
+  requiredErrorLabel?: string;
   required?: boolean;
   pageSize?: number;
   theme?: PartialDeep<Theme<PlatformSelectTheme>>;
@@ -136,7 +137,7 @@ const platformSelectPromptBase = createPrompt<string[], PlatformSelectPromptConf
       if (isEnterKey(key)) {
         const selected = items.filter((item) => item.checked === true);
         if (required && selected.length === 0) {
-          setError('At least one choice must be selected');
+          setError(config.requiredErrorLabel ?? 'At least one choice must be selected');
           return;
         }
 
@@ -184,6 +185,18 @@ const platformSelectPromptBase = createPrompt<string[], PlatformSelectPromptConf
 
     const selectedNames = getSelectedChoiceNames(items);
     const message = theme.style.message(config.message, status);
+    const page = usePagination({
+      items,
+      active,
+      pageSize,
+      loop: true,
+      renderItem({ item, isActive }) {
+        const cursor = isActive ? theme.icon.cursor : ' ';
+        const checkbox = item.checked === true ? theme.icon.checked : theme.icon.unchecked;
+        const line = `${cursor}${checkbox} ${item.name}`;
+        return isActive ? theme.style.highlight(line) : line;
+      },
+    });
 
     if (status === 'done') {
       return [prefix, message, theme.style.answer(selectedNames.join(', '))].join(' ');
@@ -192,21 +205,6 @@ const platformSelectPromptBase = createPrompt<string[], PlatformSelectPromptConf
     const summary = theme.style.selectedSummary(
       renderSelectedSummaryLine(config.selectedLabel, selectedNames, config.emptyLabel),
     );
-    const page =
-      items.length === 0
-        ? ''
-        : usePagination({
-            items,
-            active,
-            pageSize,
-            loop: true,
-            renderItem({ item, isActive }) {
-              const cursor = isActive ? theme.icon.cursor : ' ';
-              const checkbox = item.checked === true ? theme.icon.checked : theme.icon.unchecked;
-              const line = `${cursor}${checkbox} ${item.name}`;
-              return isActive ? theme.style.highlight(line) : line;
-            },
-          });
     const helpLine = theme.style.keysHelpTip([
       ['↑↓', 'navigate'],
       ['space', 'select'],
@@ -218,7 +216,7 @@ const platformSelectPromptBase = createPrompt<string[], PlatformSelectPromptConf
     return `${[
       [prefix, message].join(' '),
       summary,
-      page,
+      items.length > 0 ? page : '',
       errorMsg ? theme.style.error(errorMsg) : '',
       helpLine,
     ]

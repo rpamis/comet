@@ -9,6 +9,7 @@ export type TranslationKey =
   | 'selectPlatforms'
   | 'selectedPlatforms'
   | 'noneSelected'
+  | 'selectPlatformsRequired'
   | 'detected'
   | 'noPlatforms'
   | 'overwriteChoice'
@@ -84,6 +85,7 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     selectPlatforms: 'Select platforms to set up:',
     selectedPlatforms: 'Selected:',
     noneSelected: 'none',
+    selectPlatformsRequired: 'Select at least one platform.',
     detected: 'detected',
     noPlatforms: 'No platforms selected. Exiting.',
     overwriteChoice: 'What to do?',
@@ -158,6 +160,7 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     selectPlatforms: '选择要配置的平台：',
     selectedPlatforms: '已选择：',
     noneSelected: '无',
+    selectPlatformsRequired: '请至少选择一个平台。',
     detected: '已检测到',
     noPlatforms: '未选择任何平台，退出。',
     overwriteChoice: '如何处理？',
