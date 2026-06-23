@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Comet Dashboard</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" data-component="CometDashboard">
+      <header class="topbar" data-component="ProjectSummary">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div class="title-group">
+            <h1 id="projectName">Comet Dashboard</h1>
+            <div class="pathline">
+              <span class="mono" id="projectPath">—</span>
+              <span class="pill" id="projectPhasePill" hidden></span>
+            </div>
+          </div>
+        </div>
+        <button
+          class="refresh-button"
+          id="refreshButton"
+          type="button"
+          data-component="RefreshButton"
+          aria-busy="false"
+        >
+          <span class="refresh-icon" aria-hidden="true"></span>
+          <span id="refreshLabel">刷新状态</span>
+        </button>
+      </header>
+
+      <section class="summary-grid" aria-label="项目总览">
+        <article class="summary-card" data-component="ProjectSummaryCard">
+          <div class="label">活跃变更</div>
+          <div class="summary-value" id="summaryActiveChanges">0</div>
+          <div class="summary-note">当前 repo 中</div>
+        </article>
+        <article class="summary-card" data-component="ProjectSummaryCard">
+          <div class="label">已归档变更</div>
+          <div class="summary-value" id="summaryArchivedChanges">0</div>
+          <div class="summary-note">历史迭代</div>
+        </article>
+        <article class="summary-card" id="cardVerifyFailed" data-component="ProjectSummaryCard">
+          <div class="label">Verify 失败</div>
+          <div class="summary-value" id="summaryVerifyFailed">0</div>
+          <div class="summary-note" id="summaryVerifyNote">全部通过</div>
+        </article>
+        <article class="summary-card" id="cardTasksIncomplete" data-component="ProjectSummaryCard">
+          <div class="label">未完成任务</div>
+          <div class="summary-value" id="summaryTasksIncomplete">0</div>
+          <div class="summary-note" id="summaryTasksNote">无阻塞任务</div>
+        </article>
+        <article class="summary-card" id="cardDirty" data-component="ProjectSummaryCard">
+          <div class="label">Git 脏文件</div>
+          <div class="summary-value" id="summaryDirty">0</div>
+          <div class="summary-note">verify 前需复核</div>
+        </article>
+        <article class="summary-card is-mono" data-component="ProjectSummaryCard">
+          <div class="label">当前分支</div>
+          <div class="summary-value mono" id="summaryBranch">—</div>
+          <div class="summary-note">本地工作区</div>
+        </article>
+        <article class="summary-card is-mono" data-component="ProjectSummaryCard">
+          <div class="label">HEAD</div>
+          <div class="summary-value mono" id="summaryHead">—</div>
+          <div class="summary-note" id="summaryGeneratedAt">—</div>
+        </article>
+      </section>
+
+      <section class="main-grid" id="dashboardGrid">
+        <section class="empty-state" id="emptyState" data-component="EmptyState" hidden>
+          <div class="empty-box">
+            <div class="empty-icon" aria-hidden="true">∅</div>
+            <h2 class="empty-title" id="emptyTitle">当前无 Comet 迭代</h2>
+            <p class="empty-copy" id="emptyCopy">No Comet changes found in this repository.</p>
+          </div>
+        </section>
+
+        <aside class="panel" data-component="ChangesExplorer" aria-label="变更浏览器">
+          <div class="panel-header">
+            <h2 class="panel-title">Changes Explorer</h2>
+            <span class="pill" id="explorerCountPill">0 个</span>
+          </div>
+          <div
+            class="changes-tabs"
+            role="tablist"
+            aria-label="变更范围"
+            data-component="ChangesTabs"
+          >
+            <button
+              class="changes-tab"
+              id="tab-active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              data-tab="active"
+            >
+              Active
+            </button>
+            <button
+              class="changes-tab"
+              id="tab-archived"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              data-tab="archived"
+            >
+              Archived
+            </button>
+            <button
+              class="changes-tab"
+              id="tab-all"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              data-tab="all"
+            >
+              All
+            </button>
+          </div>
+          <div class="panel-body">
+            <p class="sr-only" id="selectedAnnounce" aria-live="polite"></p>
+            <div
+              class="change-list"
+              id="changeList"
+              role="tabpanel"
+              aria-labelledby="tab-active"
+              data-component="ChangeList"
+            ></div>
+          </div>
+        </aside>
+
+        <section class="panel" id="detailPanel" aria-label="选中变更详情">
+          <div class="panel-header">
+            <div class="selected-title">
+              <strong id="selectedName">—</strong>
+              <span id="selectedSubline">—</span>
+              <div class="selected-meta" id="selectedMeta"></div>
+            </div>
+            <span class="pill" id="selectedBadge" data-component="ChangeStatusBadge"
+              ><span class="dot"></span>—</span
+            >
+          </div>
+          <div class="panel-body section-stack">
+            <article class="card wide-card" data-component="PhaseProgress">
+              <div class="card-title-row">
+                <h3 class="card-title">生命周期阶段</h3>
+                <span class="pill mono" id="phaseCommand">—</span>
+              </div>
+              <div class="phase-track" id="phaseTrack" role="list" aria-label="生命周期阶段"></div>
+            </article>
+
+            <div class="detail-grid">
+              <article class="card" data-component="ArtifactChecklist">
+                <div class="card-title-row">
+                  <h3 class="card-title">关键产物完整性</h3>
+                  <span class="pill" id="artifactStatus">—</span>
+                </div>
+                <div class="checklist" id="artifactList"></div>
+              </article>
+
+              <article class="card" data-component="TaskProgress">
+                <div class="card-title-row">
+                  <h3 class="card-title">任务进度</h3>
+                  <span class="pill mono" id="taskPercent">0%</span>
+                </div>
+                <div class="task-stats" id="taskStats"></div>
+                <div
+                  class="progress-track"
+                  id="taskProgressTrack"
+                  role="progressbar"
+                  aria-label="任务完成进度"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow="0"
+                >
+                  <div class="progress-bar" id="taskProgressBar"></div>
+                </div>
+              </article>
+            </div>
+
+            <article class="card wide-card" data-component="TaskSectionTable">
+              <div class="card-title-row">
+                <h3 class="card-title">任务分组</h3>
+                <span class="muted">未完成项会阻止进入 Verify</span>
+              </div>
+              <div class="table" id="taskTable"></div>
+              <ul class="todo-list" id="remainingTasks"></ul>
+            </article>
+          </div>
+        </section>
+
+        <aside class="right-stack" id="sidePanel" aria-label="行动建议与 Git 快照">
+          <article class="card command-card" id="rightPrimary" data-component="NextActionCard">
+            <div class="card-title-row">
+              <h3 class="card-title" id="rightPrimaryTitle">下一步建议</h3>
+              <span class="pill" id="actionPhase">—</span>
+            </div>
+            <div class="command-line" id="primaryCommandLine">
+              <span id="nextCommand">—</span>
+            </div>
+            <p class="body-copy" id="nextReason">—</p>
+            <p class="body-copy" id="nextInstruction">—</p>
+          </article>
+
+          <article class="card" id="rightSecondary" data-component="RiskList">
+            <div class="card-title-row">
+              <h3 class="card-title" id="rightSecondaryTitle">风险提示</h3>
+              <span class="pill" id="riskCount">0 项</span>
+            </div>
+            <div class="risk-list" id="riskList"></div>
+          </article>
+
+          <article
+            class="card"
+            id="artifactSnapshotCard"
+            data-component="ArtifactSnapshotCard"
+            hidden
+          >
+            <div class="card-title-row">
+              <h3 class="card-title">产物快照</h3>
+              <span class="pill status-ok" id="snapshotStatus">—</span>
+            </div>
+            <div class="snapshot-list" id="artifactSnapshot"></div>
+          </article>
+
+          <article class="card" data-component="GitSnapshot">
+            <div class="card-title-row">
+              <h3 class="card-title">Git 快照</h3>
+              <span class="pill" id="dirtyBadge">0 个未提交</span>
+            </div>
+            <div class="git-list" id="gitSnapshot"></div>
+            <div class="label" style="margin-top: 14px">最近提交</div>
+            <ul class="commit-list" id="commitList"></ul>
+            <div class="label" style="margin-top: 14px">未提交文件</div>
+            <ul class="dirty-list" id="dirtyList"></ul>
+          </article>
+        </aside>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
