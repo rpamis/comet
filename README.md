@@ -191,6 +191,24 @@ Displays active changes, task progress, and the recommended next Comet workflow 
 </details>
 
 <details>
+<summary><code>comet dashboard [path]</code> — Launch local read-only dashboard server</summary>
+
+Starts a local HTTP server that displays a visual dashboard with active changes, phase status, task progress, and archive history. Auto-opens in your browser by default.
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/dashboard.png" alt="Comet Dashboard" width="800">
+</p>
+<p align="center">Active change overview with phase indicators, task progress, and archive history</p>
+
+| Option     | Description                                                                 |
+|------------|-----------------------------------------------------------------------------|
+| `--port`   | Server port (default: auto-selects available port)                          |
+| `--no-open`| Don't auto-open the dashboard in browser                                    |
+| `--json`   | Collect single snapshot and print JSON to stdout (for scripting/inspection) |
+
+</details>
+
+<details>
 <summary><code>comet doctor [path]</code> — Diagnose Comet installation health</summary>
 
 Checks project/global installation health, working directories, installed skills, scripts, and Comet state files.

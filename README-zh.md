@@ -173,6 +173,24 @@ npx skills add rpamis/comet
 </details>
 
 <details>
+<summary><code>comet dashboard [path]</code> — 启动本地只读仪表盘服务</summary>
+
+启动本地 HTTP 服务器，展示包含活跃更改、阶段状态、任务进度和归档历史的可视化仪表盘。默认自动在浏览器中打开。
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/dashboard.png" alt="Comet 仪表盘" width="800">
+</p>
+<p align="center">活跃更改概览，包含阶段指示器、任务进度和归档历史</p>
+
+| 选项         | 描述                                             |
+|------------|------------------------------------------------|
+| `--port`   | 服务器端口（默认：自动选择可用端口）                       |
+| `--no-open`| 不自动在浏览器中打开仪表盘                               |
+| `--json`   | 收集单次快照并以 JSON 格式输出到标准输出（用于脚本编写/检查）       |
+
+</details>
+
+<details>
 <summary><code>comet doctor [path]</code> — 诊断 Comet 安装健康状态</summary>
 
 检查项目级/全局安装、工作目录、已安装技能、脚本和 Comet 状态文件。
