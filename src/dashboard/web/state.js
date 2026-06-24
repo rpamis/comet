@@ -1,5 +1,7 @@
 // State shape + reducers. No DOM, no fetch — easy to reason about.
 
+const VALID_TABS = new Set(['active', 'archived', 'all']);
+
 const state = {
   snapshot: null,
   selectedId: null,
@@ -16,7 +18,9 @@ export function setLoading(loading) {
 }
 
 export function setActiveTab(tab) {
-  state.activeTab = tab;
+  // Tabs are driven by DOM `data-tab` attributes, but we clamp here so a typo
+  // or stray injection cannot put the UI into an unknown branch.
+  state.activeTab = VALID_TABS.has(tab) ? tab : 'active';
 }
 
 export function selectChange(id) {

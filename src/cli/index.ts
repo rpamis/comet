@@ -49,9 +49,12 @@ program
 program
   .command('dashboard [path]')
   .description('Launch the local Comet dashboard in your browser')
-  .option('--port <port>', 'HTTP port to bind (default 4321, auto-bumps if busy)', (value) =>
-    Number.parseInt(value, 10),
-  )
+  .option('--port <port>', 'HTTP port to bind (default 4321, auto-bumps if busy)', (value) => {
+    if (!/^\d+$/u.test(value)) {
+      throw new Error(`Invalid --port value: "${value}". Use an integer between 0 and 65535.`);
+    }
+    return Number.parseInt(value, 10);
+  })
   .option('--no-open', "Don't open the dashboard URL in the browser automatically")
   .option('--json', 'Print a single dashboard snapshot to stdout and exit')
   .action(async (targetPath = '.', options) => {

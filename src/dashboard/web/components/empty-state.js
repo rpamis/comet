@@ -10,6 +10,8 @@ export function renderEmptyState({ snapshot }) {
   empty.hidden = !isEmpty;
   if (isEmpty) {
     document.getElementById('emptyTitle').textContent = '当前无 Comet 迭代';
-    document.getElementById('emptyCopy').textContent = 'No Comet changes found in this repository.';
+    const copy = document.getElementById('emptyCopy');
+    copy.textContent = 'No Comet changes found in this repository.';
+    copy.lang = 'en';
   }
 }

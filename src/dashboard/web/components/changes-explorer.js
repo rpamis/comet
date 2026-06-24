@@ -41,7 +41,7 @@ function renderEmptyList(activeTab) {
   return `
     <div class="list-empty" data-component="EmptyState">
       <strong>${escape(title)}</strong>
-      <span>${escape(copy)}</span>
+      <span lang="en">${escape(copy)}</span>
     </div>
   `;
 }

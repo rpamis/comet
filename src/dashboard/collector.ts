@@ -96,7 +96,8 @@ async function collectActiveChanges(changesRoot: string): Promise<ChangeDashboar
     const stat = await safeStat(dir);
     if (!stat?.isDirectory()) continue;
 
-    items.push(await buildChangeItem({ name: entry, dir, status: 'active' }));
+    const item = await tryBuildChangeItem({ name: entry, dir, status: 'active' });
+    if (item) items.push(item);
   }
 
   return items;
@@ -114,10 +115,27 @@ async function collectArchivedChanges(changesRoot: string): Promise<ChangeDashbo
     const stat = await safeStat(dir);
     if (!stat?.isDirectory()) continue;
 
-    items.push(await buildChangeItem({ name: entry, dir, status: 'archived' }));
+    const item = await tryBuildChangeItem({ name: entry, dir, status: 'archived' });
+    if (item) items.push(item);
   }
 
   return items;
+}
+
+/**
+ * Build one change item, swallowing per-change errors so the rest of the
+ * sweep continues. The dashboard is read-only and "best effort by design";
+ * a single malformed yaml or unreadable directory shouldn't blank the page.
+ */
+async function tryBuildChangeItem(input: BuildChangeInput): Promise<ChangeDashboardItem | null> {
+  try {
+    return await buildChangeItem(input);
+  } catch (error) {
+    console.warn(
+      `[dashboard] skipping change "${input.name}": ${(error as Error).message ?? error}`,
+    );
+    return null;
+  }
 }
 
 interface BuildChangeInput {

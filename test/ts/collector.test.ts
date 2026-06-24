@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -229,5 +229,27 @@ describe('collectDashboardSnapshot', () => {
     expect(snap.project.path).toBe(root);
     expect(snap.project.name).toBe(path.basename(root));
     expect(snap.project.generatedAt).toBe(now.toISOString());
+  });
+
+  it('skips a single broken change without aborting the whole sweep', async () => {
+    await writeChange(root, {
+      name: 'healthy',
+      yaml: { phase: 'build' },
+      tasks: '- [ ] one\n',
+    });
+
+    // Plant an unreadable .comet.yaml (a directory where a file should be)
+    // so the per-change build throws when it tries to read it.
+    const bogusDir = path.join(root, 'openspec', 'changes', 'bogus');
+    await fs.mkdir(path.join(bogusDir, '.comet.yaml'), { recursive: true });
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const snap = await collectDashboardSnapshot(root);
+      expect(snap.changes.active.map((c) => c.name)).toEqual(['healthy']);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('bogus'));
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

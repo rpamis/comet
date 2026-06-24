@@ -26,10 +26,11 @@ export interface VerifyContext {
 export async function resolveVerify(ctx: VerifyContext): Promise<VerifySummary> {
   const declared = normalizeResult(ctx.yaml.verify_result ?? ctx.yaml.verifyResult);
 
+  const defaultReportPath = path.join(ctx.changeDir, DEFAULT_REPORT_RELATIVE);
   const explicitReport = stripNullish(ctx.yaml.verification_report ?? ctx.yaml.verificationReport);
   const reportPath = explicitReport
-    ? path.resolve(ctx.changeDir, explicitReport)
-    : path.join(ctx.changeDir, DEFAULT_REPORT_RELATIVE);
+    ? (safeJoin(ctx.changeDir, explicitReport) ?? defaultReportPath)
+    : defaultReportPath;
 
   const reportExists = await fileExists(reportPath);
   const summary = reportExists ? await readSummary(reportPath) : undefined;
@@ -47,6 +48,22 @@ export async function resolveVerify(ctx: VerifyContext): Promise<VerifySummary> 
   const out: VerifySummary = { result, reportExists };
   if (summary) out.summary = summary;
   return out;
+}
+
+/**
+ * Resolve `candidate` against `root` only if the resolved path stays inside
+ * `root`. Returns `null` when the candidate is absolute or escapes via `..`,
+ * so callers can fall back to a safe default. A malicious `.comet.yaml` must
+ * not be able to point the dashboard at arbitrary files on disk.
+ */
+function safeJoin(root: string, candidate: string): string | null {
+  if (path.isAbsolute(candidate)) return null;
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(resolvedRoot, candidate);
+  if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) {
+    return null;
+  }
+  return resolved;
 }
 
 function normalizeResult(raw: string | undefined): VerifyResult | null {
