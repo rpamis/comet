@@ -241,29 +241,32 @@ async function selectNpmDeps(
 
 function displaySummary(results: PlatformResult[], scope: InstallScope, lang: string): void {
   const scopeLabel = scope === 'global' ? os.homedir() : 'project';
+  const componentStatuses: Array<[keyof Omit<PlatformResult, 'platform'>, string]> = [
+    ['openspec', 'OpenSpec'],
+    ['superpowers', 'Superpowers'],
+    ['comet', 'Comet'],
+    ['codegraph', 'CodeGraph'],
+  ];
+  const hasFailure = (result: PlatformResult) =>
+    componentStatuses.some(([key]) => result[key] === 'failed');
+  const hasInstall = (result: PlatformResult) =>
+    componentStatuses.some(([key]) => result[key] === 'installed');
+  const failedDetails = (result: PlatformResult) =>
+    componentStatuses
+      .filter(([key]) => result[key] === 'failed')
+      .map(([, label]) => `${label} ${t(lang, 'failedStatus')}`)
+      .join(', ');
 
   console.log(`\n  ${t(lang, 'setupComplete')} (scope: ${scopeLabel})\n`);
 
-  const installed = results.filter(
-    (r) =>
-      r.openspec === 'installed' ||
-      r.superpowers === 'installed' ||
-      r.comet === 'installed' ||
-      r.codegraph === 'installed',
-  );
+  const failed = results.filter(hasFailure);
+  const installed = results.filter((r) => !hasFailure(r) && hasInstall(r));
   const skipped = results.filter(
     (r) =>
       r.openspec === 'skipped' &&
       r.superpowers === 'skipped' &&
       r.comet === 'skipped' &&
       r.codegraph === 'skipped',
-  );
-  const failed = results.filter(
-    (r) =>
-      r.openspec === 'failed' ||
-      r.superpowers === 'failed' ||
-      r.comet === 'failed' ||
-      r.codegraph === 'failed',
   );
 
   if (installed.length > 0) {
@@ -276,7 +279,10 @@ function displaySummary(results: PlatformResult[], scope: InstallScope, lang: st
     console.log(`  ${t(lang, 'skippedLabel')} ${skipped.map((r) => r.platform.name).join(', ')}`);
   }
   if (failed.length > 0) {
-    console.log(`  ${t(lang, 'failedLabel')} ${failed.map((r) => r.platform.name).join(', ')}`);
+    console.log(`  ${t(lang, 'failedLabel')}`);
+    for (const r of failed) {
+      console.log(`    ${r.platform.name} (${failedDetails(r)})`);
+    }
   }
 
   if (scope === 'project') {

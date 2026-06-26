@@ -37,6 +37,7 @@ export type TranslationKey =
   | 'installed'
   | 'skippedLabel'
   | 'failedLabel'
+  | 'failedStatus'
   | 'workingDirs'
   | 'getStarted'
   | 'getStartedComet'
@@ -113,6 +114,7 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     installed: 'Installed:',
     skippedLabel: 'Skipped:',
     failedLabel: 'Failed:',
+    failedStatus: 'failed',
     workingDirs: 'Working directories: docs/superpowers/specs/, docs/superpowers/plans/',
     getStarted: 'Get started:',
     getStartedComet: '/comet "your idea"  — Start a new change with full workflow',
@@ -188,6 +190,7 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     installed: '已安装：',
     skippedLabel: '已跳过：',
     failedLabel: '失败：',
+    failedStatus: '失败',
     workingDirs: '工作目录：docs/superpowers/specs/, docs/superpowers/plans/',
     getStarted: '开始使用：',
     getStartedComet: '/comet "你的想法"  — 启动完整工作流',
