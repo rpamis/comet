@@ -261,13 +261,7 @@ function displaySummary(results: PlatformResult[], scope: InstallScope, lang: st
 
   const failed = results.filter(hasFailure);
   const installed = results.filter((r) => !hasFailure(r) && hasInstall(r));
-  const skipped = results.filter(
-    (r) =>
-      r.openspec === 'skipped' &&
-      r.superpowers === 'skipped' &&
-      r.comet === 'skipped' &&
-      r.codegraph === 'skipped',
-  );
+  const skipped = results.filter((r) => componentStatuses.every(([key]) => r[key] === 'skipped'));
 
   if (installed.length > 0) {
     console.log(`  ${t(lang, 'installed')}`);

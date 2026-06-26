@@ -364,6 +364,7 @@ describe('comet init E2E', () => {
     expect(output).not.toContain('Installed:\n    OpenCode -> .opencode/skills/');
     expect(output).toContain('Failed:');
     expect(output).toContain('OpenCode (OpenSpec failed)');
+    expect((output.match(/OpenCode \(OpenSpec failed\)/g) ?? [])).toHaveLength(1);
   }, 20_000);
 
   it('installs Pi global skills and commands to the Pi agent directory', async () => {
