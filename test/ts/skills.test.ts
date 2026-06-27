@@ -189,6 +189,8 @@ describe('skills', () => {
   describe('installCometHooksForPlatform', () => {
     const staleCometCommand = 'bash .legacy/skills/comet/scripts/comet-hook-guard.sh';
     const currentCometScript = 'comet/scripts/comet-hook-guard.sh';
+    const expectedHookCommand = (skillsDir: string) =>
+      `bash '${path.join(tmpDir, skillsDir, 'skills', currentCometScript).replace(/\\/g, '/')}'`;
 
     it('merges Claude-style hooks into an existing matcher group without replacing user hooks', async () => {
       const platform: Platform = {
@@ -235,7 +237,7 @@ describe('skills', () => {
         { type: 'command', command: 'echo user-write-check' },
         {
           type: 'command',
-          command: `bash .claude/skills/${currentCometScript}`,
+          command: expectedHookCommand('.claude'),
         },
       ]);
 
@@ -328,7 +330,7 @@ describe('skills', () => {
           },
           {
             type: 'command',
-            command: `bash ${skillsDir}/skills/${currentCometScript}`,
+            command: expectedHookCommand(skillsDir),
             description: 'Block code writes in wrong Comet phase (open/design/archive)',
           },
         ]);
@@ -389,7 +391,7 @@ describe('skills', () => {
         },
         {
           type: 'command',
-          command: `bash .gemini/skills/${currentCometScript}`,
+          command: expectedHookCommand('.gemini'),
           name: 'Block code writes in wrong Comet phase (open/design/archive)',
         },
       ]);
@@ -430,7 +432,7 @@ describe('skills', () => {
       expect(firstInstall.hooks.pre_write_code).toEqual([
         { command: 'echo user-write-check', show_output: false },
         {
-          command: `bash .windsurf/skills/${currentCometScript}`,
+          command: expectedHookCommand('.windsurf'),
           show_output: true,
         },
       ]);
@@ -438,6 +440,41 @@ describe('skills', () => {
       await installCometHooksForPlatform(tmpDir, platform);
       const secondInstall = JSON.parse(await fs.readFile(hooksPath, 'utf-8'));
       expect(secondInstall).toEqual(firstInstall);
+    });
+
+    it('writes Claude hooks with absolute script paths for nested working directories', async () => {
+      const platform: Platform = {
+        id: 'claude',
+        name: 'Claude Code',
+        skillsDir: '.claude',
+        openspecToolId: 'claude',
+        supportsHooks: true,
+        hookFormat: 'claude-code',
+      };
+      const settingsPath = path.join(tmpDir, '.claude', 'settings.local.json');
+      const scriptPath = path.join(
+        tmpDir,
+        '.claude',
+        'skills',
+        'comet',
+        'scripts',
+        'comet-hook-guard.sh',
+      );
+      const submoduleDir = path.join(tmpDir, 'front');
+      await fs.mkdir(path.dirname(scriptPath), { recursive: true });
+      await fs.writeFile(scriptPath, '#!/bin/sh\nexit 0\n', 'utf-8');
+      await fs.mkdir(submoduleDir, { recursive: true });
+
+      await installCometHooksForPlatform(tmpDir, platform);
+
+      const settings = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
+      const command = settings.hooks.PreToolUse[0].hooks[0].command;
+      expect(command).toBe(expectedHookCommand('.claude'));
+      const commandPath = command.match(/^bash '([^']+)'$/)?.[1];
+      expect(commandPath).toBeDefined();
+      expect(path.isAbsolute(commandPath!)).toBe(true);
+      expect(path.resolve(submoduleDir, commandPath!).replace(/\\/g, '/')).toBe(commandPath);
+      await expect(fs.access(commandPath!)).resolves.toBeUndefined();
     });
   });
 

@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.3.12] - 2026-06-27
+
+### Fixed
+
+- **Comet hook script paths**: Installed hook commands now use quoted absolute paths to the Comet hook script, so Claude-style hooks still find `comet-hook-guard.sh` when an agent is working from a nested Git submodule or split frontend/backend directory instead of the project root ([#136](https://github.com/rpamis/comet/issues/136)).
+
+### Tests
+
+- **Hook path regression coverage**: Added coverage for absolute hook command generation from nested working directories and for replacing/removing both legacy relative hooks and new absolute hook entries.
+
 ## What's Changed [0.3.11] - 2026-06-24
 
 ### Added

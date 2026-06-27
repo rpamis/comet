@@ -395,18 +395,18 @@ async function installCometHooksForPlatform(
   try {
     switch (hookFormat) {
       case 'claude-code':
-        return installClaudeCodeHooks(platformBase, skillsDir, hooksConfig);
+        return installClaudeCodeHooks(platformBase, hooksConfig);
       case 'qwen':
       case 'qoder':
-        return installQwenStyleHooks(platformBase, skillsDir, hooksConfig, hookFormat);
+        return installQwenStyleHooks(platformBase, hooksConfig, hookFormat);
       case 'gemini':
-        return installGeminiHooks(platformBase, skillsDir, hooksConfig);
+        return installGeminiHooks(platformBase, hooksConfig);
       case 'windsurf':
-        return installWindsurfHooks(platformBase, skillsDir, hooksConfig);
+        return installWindsurfHooks(platformBase, hooksConfig);
       case 'copilot':
-        return installCopilotHooks(platformBase, skillsDir, hooksConfig);
+        return installCopilotHooks(platformBase, hooksConfig);
       case 'kiro':
-        return installKiroHooks(platformBase, skillsDir, hooksConfig);
+        return installKiroHooks(platformBase, hooksConfig);
       default:
         return { installed: false, reason: `unsupported hook format: ${hookFormat}` };
     }
@@ -415,9 +415,14 @@ async function installCometHooksForPlatform(
   }
 }
 
-/** Build the command path for a hook script given its manifest rel path and skillsDir */
-function buildHookCommand(skillsDir: string, scriptRelPath: string): string {
-  return `bash ${skillsDir}/skills/${scriptRelPath}`;
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Build the command path for a hook script from the platform install root. */
+function buildHookCommand(platformBase: string, scriptRelPath: string): string {
+  const scriptPath = path.resolve(platformBase, 'skills', scriptRelPath).replace(/\\/g, '/');
+  return `bash ${shellQuote(scriptPath)}`;
 }
 
 function isManagedHookCommand(command: unknown, scriptRelPaths: string[]): boolean {
@@ -425,7 +430,9 @@ function isManagedHookCommand(command: unknown, scriptRelPaths: string[]): boole
 
   const commandPath = command
     .trim()
-    .match(/^bash\s+["']?([^"'\s]+)["']?(?:\s|$)/)?.[1]
+    .match(/^bash\s+(?:"([^"]+)"|'([^']+)'|(\S+))(?:\s|$)/)
+    ?.slice(1)
+    .find((match): match is string => Boolean(match))
     ?.replace(/\\/g, '/');
   if (!commandPath) return false;
 
@@ -479,7 +486,6 @@ function asHookGroup(value: unknown): Array<Record<string, unknown>> {
  */
 async function installClaudeCodeHooks(
   platformBase: string,
-  skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
 ): Promise<{ installed: boolean; reason?: string }> {
   const settingsPath = path.join(platformBase, 'settings.local.json');
@@ -493,7 +499,7 @@ async function installClaudeCodeHooks(
   // Group by matcher so hooks sharing the same matcher are merged
   const matcherGroups: Record<string, Array<{ type: string; command: string }>> = {};
   for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
-    const command = buildHookCommand(skillsDir, scriptRelPath);
+    const command = buildHookCommand(platformBase, scriptRelPath);
     if (!matcherGroups[config.matcher]) {
       matcherGroups[config.matcher] = [];
     }
@@ -529,7 +535,6 @@ async function installClaudeCodeHooks(
  */
 async function installQwenStyleHooks(
   platformBase: string,
-  skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
   _hookFormat: string,
 ): Promise<{ installed: boolean; reason?: string }> {
@@ -546,7 +551,7 @@ async function installQwenStyleHooks(
     }
     matcherGroups[config.matcher].push({
       type: 'command',
-      command: buildHookCommand(skillsDir, scriptRelPath),
+      command: buildHookCommand(platformBase, scriptRelPath),
       description: config.description,
     });
   }
@@ -581,7 +586,6 @@ async function installQwenStyleHooks(
  */
 async function installGeminiHooks(
   platformBase: string,
-  skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
 ): Promise<{ installed: boolean; reason?: string }> {
   const settingsPath = path.join(platformBase, 'settings.json');
@@ -596,7 +600,7 @@ async function installGeminiHooks(
       hooks: [
         {
           type: 'command',
-          command: buildHookCommand(skillsDir, scriptRelPath),
+          command: buildHookCommand(platformBase, scriptRelPath),
           name: config.description,
         },
       ],
@@ -628,7 +632,6 @@ async function installGeminiHooks(
  */
 async function installWindsurfHooks(
   platformBase: string,
-  skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
 ): Promise<{ installed: boolean; reason?: string }> {
   const hooksPath = path.join(platformBase, 'hooks.json');
@@ -636,7 +639,7 @@ async function installWindsurfHooks(
   const entries: Array<{ command: string; show_output: boolean }> = [];
   for (const [scriptRelPath] of Object.entries(hooksConfig)) {
     entries.push({
-      command: buildHookCommand(skillsDir, scriptRelPath),
+      command: buildHookCommand(platformBase, scriptRelPath),
       show_output: true,
     });
   }
@@ -669,7 +672,6 @@ async function installWindsurfHooks(
  */
 async function installCopilotHooks(
   platformBase: string,
-  skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
 ): Promise<{ installed: boolean; reason?: string }> {
   const hooksDir = path.join(platformBase, 'hooks');
@@ -677,9 +679,9 @@ async function installCopilotHooks(
 
   const scriptEntries: Array<{ bash: string; powershell: string }> = [];
   for (const [scriptRelPath] of Object.entries(hooksConfig)) {
-    const cmd = buildHookCommand(skillsDir, scriptRelPath);
+    const cmd = buildHookCommand(platformBase, scriptRelPath);
     // Script requires bash; PowerShell field wraps bash invocation for Windows
-    scriptEntries.push({ bash: cmd, powershell: `bash -c '${cmd}'` });
+    scriptEntries.push({ bash: cmd, powershell: `bash -c ${shellQuote(cmd)}` });
   }
 
   const hookConfig = {
@@ -700,7 +702,6 @@ async function installCopilotHooks(
  */
 async function installKiroHooks(
   platformBase: string,
-  skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
 ): Promise<{ installed: boolean; reason?: string }> {
   const hooksDir = path.join(platformBase, 'hooks');
@@ -723,7 +724,7 @@ async function installKiroHooks(
       },
       then: {
         type: 'runCommand',
-        command: buildHookCommand(skillsDir, scriptRelPath),
+        command: buildHookCommand(platformBase, scriptRelPath),
       },
     };
 
