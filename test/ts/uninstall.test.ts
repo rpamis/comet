@@ -243,6 +243,9 @@ describe('uninstall', () => {
   describe('removeCometHooksForPlatform', () => {
     it('removes Claude Code hooks while preserving non-Comet hooks', async () => {
       const claudePlatform: Platform = PLATFORMS.find((p) => p.id === 'claude')!;
+      const absoluteHookCommand = `bash '${path
+        .join(tmpDir, '.claude', 'skills', 'comet', 'scripts', 'comet-hook-guard.sh')
+        .replace(/\\/g, '/')}'`;
 
       const settingsDir = path.join(tmpDir, '.claude');
       await fs.mkdir(settingsDir, { recursive: true });
@@ -257,6 +260,10 @@ describe('uninstall', () => {
                   type: 'command',
                   command: 'bash .claude/skills/comet/scripts/comet-hook-guard.sh',
                 },
+                {
+                  type: 'command',
+                  command: absoluteHookCommand,
+                },
                 { type: 'command', command: 'bash my-custom-hook.sh' },
               ],
             },
@@ -266,9 +273,17 @@ describe('uninstall', () => {
       await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 
       await installCometHooksForPlatform(tmpDir, claudePlatform, 'project');
+      const installed = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
+      const installedCommands = installed.hooks.PreToolUse.flatMap((g: Record<string, unknown>) =>
+        (g.hooks as Array<Record<string, unknown>>).map((h: Record<string, unknown>) => h.command),
+      );
+      expect(installedCommands).toContain('bash my-custom-hook.sh');
+      expect(installedCommands.filter((c: string) => c.includes('comet-hook-guard'))).toEqual([
+        absoluteHookCommand,
+      ]);
 
       const result = await removeCometHooksForPlatform(tmpDir, claudePlatform, 'project');
-      expect(result.removed).toBeGreaterThan(0);
+      expect(result.removed).toBe(1);
 
       const updatedContent = await fs.readFile(settingsPath, 'utf-8');
       const updated = JSON.parse(updatedContent);
