@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -436,6 +436,8 @@ const mockedCheckbox = vi.mocked(checkbox);
 describe('uninstallCommand interactive selection', () => {
   let tmpDir: string;
 
+  let homedirSpy: MockInstance<typeof os.homedir>;
+
   beforeEach(async () => {
     mockedSelect.mockReset();
     mockedCheckbox.mockReset();
@@ -445,9 +447,14 @@ describe('uninstallCommand interactive selection', () => {
       `comet-uninstall-cmd-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     await fs.mkdir(tmpDir, { recursive: true });
+
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(fakeHome, { recursive: true });
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
   });
 
   afterEach(async () => {
+    homedirSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -568,5 +575,31 @@ describe('uninstallCommand interactive selection', () => {
 
     expect(output).toContain('No Comet installations found');
     expect(mockedSelect).not.toHaveBeenCalled();
+  });
+
+  it('uninstalls antigravity2 global skills correctly without deleting other config files', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    const configDir = path.join(fakeHome, '.gemini', 'config');
+
+    const antigravity2Platform = PLATFORMS.find((p) => p.id === 'antigravity2')!;
+    await copyCometSkillsForPlatform(fakeHome, antigravity2Platform, true, 'skills', 'global');
+
+    // Create a sibling configuration file that must NOT be deleted
+    const manifestPath = path.join(configDir, 'manifest.json');
+    await fs.writeFile(manifestPath, JSON.stringify({ user: 'settings' }), 'utf-8');
+
+    mockedSelect.mockResolvedValue(true as never);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir, { force: false });
+    } finally {
+      log.mockRestore();
+    }
+
+    const skillsCometDir = path.join(configDir, 'skills', 'comet');
+    expect(await fileExists(skillsCometDir)).toBe(false);
+    expect(await fileExists(manifestPath)).toBe(true);
+    expect(JSON.parse(await fs.readFile(manifestPath, 'utf-8'))).toEqual({ user: 'settings' });
   });
 });

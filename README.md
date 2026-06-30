@@ -259,7 +259,7 @@ comet uninstall --scope project  # Only remove project-level installations
 
 ## Supported Platforms
 
-`comet init` supports 29 AI coding platforms:
+`comet init` supports 30 AI coding platforms:
 
 <details>
 <summary>View full platform list</summary>
@@ -280,12 +280,14 @@ comet uninstall --scope project  # Only remove project-level installations
 | iFlow              | `.iflow/`    | Pi         | `.pi/`        |
 | Qoder              | `.qoder/`    | Antigravity | `.agents/`   |
 | Bob Shell          | `.bob/`      | ForgeCode  | `.forge/`     |
-| Trae               | `.trae/`     |            |               |
+| Trae               | `.trae/`     | Antigravity 2.0 | `.agents/` |
 
 </details>
 
-Some platforms use different project and global directories. For example, OpenCode global installs use
-`.config/opencode`, Lingma global installs use `.lingma`, and Antigravity global installs use `.gemini/antigravity`.
+Some platforms use different project and global directories. For example, OpenCode global installs use `.config/opencode`, Lingma global installs use `.lingma`, Antigravity global installs use `.gemini/antigravity`, and Antigravity 2.0 global installs use `.gemini/config`.
+
+> [!NOTE]
+> Since Antigravity and Antigravity 2.0 share the same project-level `.agents/` skills directory, `comet init` auto-detection will select both by default. If you only want to install for one of them, you can unselect the other in the interactive installation flow (by not specifying `--yes`).
 
 ## Skills
 

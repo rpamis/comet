@@ -241,7 +241,7 @@ comet uninstall --scope project  # 仅移除项目级安装
 
 ## 支持平台
 
-`comet init` 支持 29 个 AI 编码平台：
+`comet init` 支持 30 个 AI 编码平台：
 
 <details>
 <summary>查看完整平台列表</summary>
@@ -262,12 +262,14 @@ comet uninstall --scope project  # 仅移除项目级安装
 | iFlow              | `.iflow/`    | Pi         | `.pi/`        |
 | Qoder              | `.qoder/`    | Antigravity | `.agents/`   |
 | Bob Shell          | `.bob/`      | ForgeCode  | `.forge/`     |
-| Trae               | `.trae/`     |            |               |
+| Trae               | `.trae/`     | Antigravity 2.0 | `.agents/` |
 
 </details>
 
-部分平台的项目级目录和全局目录不同。例如 OpenCode 全局安装使用 `.config/opencode`，Lingma 全局安装使用 `.lingma`
-，Antigravity 全局安装使用 `.gemini/antigravity`。
+部分平台的项目级目录和全局目录不同。例如 OpenCode 全局安装使用 `.config/opencode`，Lingma 全局安装使用 `.lingma`，Antigravity 全局安装使用 `.gemini/antigravity`，以及 Antigravity 2.0 全局安装使用 `.gemini/config`。
+
+> [!NOTE]
+> 由于 Antigravity 与 Antigravity 2.0 共享项目级的 `.agents/` 技能目录，`comet init` 自动检测时会同时选中两者。如果只想为其中一个安装，可在非交互式（即不加 `--yes`）的安装流程中手动取消勾选另一个。
 
 ## 技能
 

@@ -245,6 +245,13 @@ export const PLATFORMS: Platform[] = [
     globalSkillsDir: '.gemini/antigravity',
     openspecToolId: 'antigravity',
   },
+  {
+    id: 'antigravity2',
+    name: 'Antigravity 2.0',
+    skillsDir: '.agents',
+    globalSkillsDir: '.gemini/config',
+    openspecToolId: 'antigravity',
+  },
   { id: 'bob', name: 'Bob Shell', skillsDir: '.bob', openspecToolId: 'bob' },
   { id: 'forgecode', name: 'ForgeCode', skillsDir: '.forge', openspecToolId: 'forgecode' },
   {

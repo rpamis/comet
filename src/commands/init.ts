@@ -381,9 +381,9 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     plans.push({ platform, osAction, spAction, cmAction, hasOS, hasSP, hasCM });
   }
 
-  const osToolIds = plans
-    .filter((p) => p.osAction !== 'skip')
-    .map((p) => p.platform.openspecToolId);
+  const osToolIds = Array.from(
+    new Set(plans.filter((p) => p.osAction !== 'skip').map((p) => p.platform.openspecToolId)),
+  );
 
   const spPlatformIds = plans.filter((p) => p.spAction !== 'skip').map((p) => p.platform.id);
 

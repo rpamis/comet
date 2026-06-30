@@ -275,26 +275,33 @@ describe('comet init E2E', () => {
     }
   }, 20_000);
 
-  it('installs Antigravity Comet skills to the Gemini global skills directory', async () => {
+  it('installs Antigravity and Antigravity 2.0 Comet skills to their respective global skills directories', async () => {
     mockExternalSuccess();
 
     await fs.mkdir(path.join(tmpDir, '.agents'), { recursive: true });
     const fakeHome = path.join(tmpDir, 'fake-home');
     await fs.mkdir(fakeHome, { recursive: true });
 
-    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-    const { initCommand } = await import('../../src/commands/init.js');
-    const result = await captureJsonOutput(() =>
-      initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
-    );
+    try {
+      const { initCommand } = await import('../../src/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
+      );
 
-    expect(result.selectedPlatforms).toEqual(['antigravity']);
+      expect(result.selectedPlatforms).toEqual(['antigravity', 'antigravity2']);
 
-    const manifest = await readManifest();
-    for (const skillPath of manifest.skills) {
-      const dest = path.join(fakeHome, '.gemini', 'antigravity', 'skills', skillPath);
-      await expect(fs.access(dest)).resolves.toBeUndefined();
+      const manifest = await readManifest();
+      for (const skillPath of manifest.skills) {
+        const dest = path.join(fakeHome, '.gemini', 'antigravity', 'skills', skillPath);
+        await expect(fs.access(dest)).resolves.toBeUndefined();
+
+        const dest2 = path.join(fakeHome, '.gemini', 'config', 'skills', skillPath);
+        await expect(fs.access(dest2)).resolves.toBeUndefined();
+      }
+    } finally {
+      homedirSpy.mockRestore();
     }
   }, 20_000);
 
@@ -305,30 +312,34 @@ describe('comet init E2E', () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await fs.mkdir(fakeHome, { recursive: true });
 
-    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-    const { initCommand } = await import('../../src/commands/init.js');
-    const result = await captureJsonOutput(() =>
-      initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
-    );
+    try {
+      const { initCommand } = await import('../../src/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
+      );
 
-    expect(result.selectedPlatforms).toEqual(['opencode']);
+      expect(result.selectedPlatforms).toEqual(['opencode']);
 
-    const manifest = await readManifest();
-    for (const skillPath of manifest.skills) {
-      const dest = path.join(fakeHome, '.config', 'opencode', 'skills', skillPath);
-      await expect(fs.access(dest)).resolves.toBeUndefined();
+      const manifest = await readManifest();
+      for (const skillPath of manifest.skills) {
+        const dest = path.join(fakeHome, '.config', 'opencode', 'skills', skillPath);
+        await expect(fs.access(dest)).resolves.toBeUndefined();
+      }
+
+      await expect(
+        fs.access(path.join(fakeHome, '.config', 'opencode', 'commands', 'comet.md')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(fakeHome, '.config', 'opencode', 'commands', 'comet-open.md')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(fakeHome, '.opencode', 'skills', 'comet', 'SKILL.md')),
+      ).rejects.toThrow();
+    } finally {
+      homedirSpy.mockRestore();
     }
-
-    await expect(
-      fs.access(path.join(fakeHome, '.config', 'opencode', 'commands', 'comet.md')),
-    ).resolves.toBeUndefined();
-    await expect(
-      fs.access(path.join(fakeHome, '.config', 'opencode', 'commands', 'comet-open.md')),
-    ).resolves.toBeUndefined();
-    await expect(
-      fs.access(path.join(fakeHome, '.opencode', 'skills', 'comet', 'SKILL.md')),
-    ).rejects.toThrow();
   }, 20_000);
 
   it('summarizes partial OpenCode failures by failed component only once', async () => {
@@ -374,27 +385,31 @@ describe('comet init E2E', () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await fs.mkdir(fakeHome, { recursive: true });
 
-    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-    const { initCommand } = await import('../../src/commands/init.js');
-    const result = await captureJsonOutput(() =>
-      initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
-    );
+    try {
+      const { initCommand } = await import('../../src/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
+      );
 
-    expect(result.selectedPlatforms).toEqual(['pi']);
+      expect(result.selectedPlatforms).toEqual(['pi']);
 
-    await expect(
-      fs.access(path.join(fakeHome, '.pi', 'agent', 'skills', 'comet', 'SKILL.md')),
-    ).resolves.toBeUndefined();
-    await expect(
-      fs.access(path.join(fakeHome, '.pi', 'agent', 'extensions', 'comet-commands.ts')),
-    ).resolves.toBeUndefined();
-    await expect(
-      fs.readFile(path.join(fakeHome, '.pi', 'agent', 'settings.json'), 'utf-8'),
-    ).resolves.toContain('"enableSkillCommands": true');
-    await expect(
-      fs.access(path.join(fakeHome, '.pi', 'skills', 'comet', 'SKILL.md')),
-    ).rejects.toThrow();
+      await expect(
+        fs.access(path.join(fakeHome, '.pi', 'agent', 'skills', 'comet', 'SKILL.md')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(fakeHome, '.pi', 'agent', 'extensions', 'comet-commands.ts')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.readFile(path.join(fakeHome, '.pi', 'agent', 'settings.json'), 'utf-8'),
+      ).resolves.toContain('"enableSkillCommands": true');
+      await expect(
+        fs.access(path.join(fakeHome, '.pi', 'skills', 'comet', 'SKILL.md')),
+      ).rejects.toThrow();
+    } finally {
+      homedirSpy.mockRestore();
+    }
   }, 20_000);
 
   it('installs Lingma global Comet skills to the user Lingma skills directory', async () => {
@@ -404,24 +419,28 @@ describe('comet init E2E', () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await fs.mkdir(fakeHome, { recursive: true });
 
-    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-    const { initCommand } = await import('../../src/commands/init.js');
-    const result = await captureJsonOutput(() =>
-      initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
-    );
+    try {
+       const { initCommand } = await import('../../src/commands/init.js');
+       const result = await captureJsonOutput(() =>
+         initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
+       );
 
-    expect(result.selectedPlatforms).toEqual(['lingma']);
+       expect(result.selectedPlatforms).toEqual(['lingma']);
 
-    const manifest = await readManifest();
-    for (const skillPath of manifest.skills) {
-      const dest = path.join(fakeHome, '.lingma', 'skills', skillPath);
-      await expect(fs.access(dest)).resolves.toBeUndefined();
+       const manifest = await readManifest();
+       for (const skillPath of manifest.skills) {
+         const dest = path.join(fakeHome, '.lingma', 'skills', skillPath);
+         await expect(fs.access(dest)).resolves.toBeUndefined();
+       }
+
+       await expect(
+         fs.access(path.join(tmpDir, '.lingma', 'skills', 'comet', 'SKILL.md')),
+       ).rejects.toThrow();
+    } finally {
+       homedirSpy.mockRestore();
     }
-
-    await expect(
-      fs.access(path.join(tmpDir, '.lingma', 'skills', 'comet', 'SKILL.md')),
-    ).rejects.toThrow();
   }, 20_000);
 
   it('installs Kimi Code global Comet skills to the user Kimi Code skills directory', async () => {
@@ -431,24 +450,28 @@ describe('comet init E2E', () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await fs.mkdir(fakeHome, { recursive: true });
 
-    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
-    const { initCommand } = await import('../../src/commands/init.js');
-    const result = await captureJsonOutput(() =>
-      initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
-    );
+    try {
+      const { initCommand } = await import('../../src/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, scope: 'global', json: true }),
+      );
 
-    expect(result.selectedPlatforms).toEqual(['kimicode']);
+      expect(result.selectedPlatforms).toEqual(['kimicode']);
 
-    const manifest = await readManifest();
-    for (const skillPath of manifest.skills) {
-      const dest = path.join(fakeHome, '.kimi-code', 'skills', skillPath);
-      await expect(fs.access(dest)).resolves.toBeUndefined();
+      const manifest = await readManifest();
+      for (const skillPath of manifest.skills) {
+        const dest = path.join(fakeHome, '.kimi-code', 'skills', skillPath);
+        await expect(fs.access(dest)).resolves.toBeUndefined();
+      }
+
+      await expect(
+        fs.access(path.join(tmpDir, '.kimi-code', 'skills', 'comet', 'SKILL.md')),
+      ).rejects.toThrow();
+    } finally {
+      homedirSpy.mockRestore();
     }
-
-    await expect(
-      fs.access(path.join(tmpDir, '.kimi-code', 'skills', 'comet', 'SKILL.md')),
-    ).rejects.toThrow();
   }, 20_000);
 
   it('uses platform selection prompt with selected summary labels in English', async () => {

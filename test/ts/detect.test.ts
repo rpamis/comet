@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -20,6 +20,7 @@ const mockPlatform: Platform = {
 
 describe('detect', () => {
   let tmpDir: string;
+  let homedirSpy: MockInstance<typeof os.homedir>;
 
   beforeEach(async () => {
     tmpDir = path.join(
@@ -27,9 +28,14 @@ describe('detect', () => {
       `comet-detect-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     await fs.mkdir(tmpDir, { recursive: true });
+
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(fakeHome, { recursive: true });
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
   });
 
   afterEach(async () => {
+    homedirSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -98,13 +104,16 @@ describe('detect', () => {
       expect(detected.size).toBe(0);
     });
 
-    it('detects Antigravity from the project skills directory', async () => {
+    it('detects both antigravity and antigravity2 from the shared .agents directory', async () => {
       const antigravity = PLATFORMS.find((platform) => platform.id === 'antigravity');
+      const antigravity2 = PLATFORMS.find((platform) => platform.id === 'antigravity2');
       expect(antigravity?.skillsDir).toBe('.agents');
+      expect(antigravity2?.skillsDir).toBe('.agents');
 
       await fs.mkdir(path.join(tmpDir, '.agents'));
       const detected = await detectPlatforms(tmpDir);
       expect(detected.has('antigravity')).toBe(true);
+      expect(detected.has('antigravity2')).toBe(true);
     });
   });
 
@@ -161,11 +170,25 @@ describe('detect', () => {
       expect(antigravity).toBeDefined();
       if (!antigravity) return;
 
-      await fs.mkdir(path.join(tmpDir, '.gemini', 'antigravity', 'skills', 'comet'), {
+      const fakeHome = os.homedir();
+      await fs.mkdir(path.join(fakeHome, '.gemini', 'antigravity', 'skills', 'comet'), {
         recursive: true,
       });
 
-      expect(await hasSkills(tmpDir, antigravity, 'comet', [], 'global')).toBe(true);
+      expect(await hasSkills(fakeHome, antigravity, 'comet', [], 'global')).toBe(true);
+    });
+
+    it('detects Antigravity 2.0 global skills in the Gemini config directory', async () => {
+      const antigravity2 = PLATFORMS.find((platform) => platform.id === 'antigravity2');
+      expect(antigravity2).toBeDefined();
+      if (!antigravity2) return;
+
+      const fakeHome = os.homedir();
+      await fs.mkdir(path.join(fakeHome, '.gemini', 'config', 'skills', 'comet'), {
+        recursive: true,
+      });
+
+      expect(await hasSkills(fakeHome, antigravity2, 'comet', [], 'global')).toBe(true);
     });
 
     it('returns false for missing skills', async () => {

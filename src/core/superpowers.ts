@@ -34,6 +34,8 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   pi: 'pi',
   qoder: 'qoder',
   antigravity: 'antigravity',
+  // antigravity2 reuses the antigravity skills CLI agent (OpenSpec tool id is shared)
+  antigravity2: 'antigravity',
   bob: 'bob',
   forgecode: 'forgecode',
   trae: 'trae',

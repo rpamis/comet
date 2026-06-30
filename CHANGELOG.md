@@ -9,6 +9,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **`comet dashboard` command**: New command that boots a local read-only HTTP server (default port 4321 with automatic fallback) and opens a single-page dashboard in the user's browser. The page surfaces every active and archived change in the current project's `openspec/changes/` tree, including phase progress (Open → Design → Build → Verify → Archive), artifact checklist, task breakdown, verify status, next-action recommendation, project-level Git snapshot, and rule-driven risk list — so users can `cd` into a repo and inspect Comet workflow health at a glance instead of grepping `tasks.md` or `.comet.yaml` by hand.
 - **Dashboard JSON API**: `GET /api/dashboard` returns the same `DashboardSnapshot` the frontend renders, so scripts and other tooling can consume the same shape. `comet dashboard --json` prints one snapshot to stdout and exits without starting the server, useful for CI and one-off inspection.
 - **`--port` and `--no-open` flags on `comet dashboard`**: Pin the server to a fixed port (helpful when running multiple repos side by side) or skip the auto-open call (useful for SSH / containers / CI where opening a browser would fail).
+- **Antigravity 2.0 platform support**: Added native support for the new Antigravity 2.0 / Antigravity IDE 2.0 platform. Global skills are now installed under the new configuration directory `~/.gemini/config/skills/`, while maintaining full backward compatibility with older Antigravity (`~/.gemini/antigravity/skills/`) and Gemini (`~/.gemini/skills/`) clients.
 
 ### Changed
 
@@ -27,6 +28,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Tests
 
 - **Dashboard module coverage**: Added unit tests for the tasks parser, verify parser (including absolute-path and `..`-traversal regressions), Git collector, snapshot collector (including per-change failure isolation), HTTP server (snapshot endpoint, static serving, path traversal guard, port fallback), and the `dashboard --json` command.
+- **Test suite environment isolation**: Isolated `detect.test.ts` and `uninstall.test.ts` from the host system's real user home directories by mocking `os.homedir()`. This prevents test suite fragility and false failures when global platforms or skills are installed on the local machine.
+- **Antigravity 2.0 regression coverage**: Added global-level skills detection tests in `detect.test.ts` and global installation E2E validation in `init-e2e.test.ts` for the new `antigravity2` platform.
 
 ## What's Changed [0.3.9] - 2026-06-17
 
