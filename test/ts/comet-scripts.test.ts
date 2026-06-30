@@ -3775,6 +3775,24 @@ describeShell('comet shell scripts', () => {
       expect(result.status).toBe(0);
     }, 20_000);
 
+    it('blocks source code writes when active comet state has no phase', async () => {
+      await createChange(
+        tmpDir,
+        'missing-phase',
+        ['workflow: full', 'phase:', 'design_doc: null', 'archived: false', ''].join('\n'),
+      );
+
+      const srcDir = path.join(tmpDir, 'src');
+      await fs.mkdir(srcDir, { recursive: true });
+      const targetFile = path.join(srcDir, 'feature.ts');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('active .comet.yaml has no phase');
+      expect(result.stderr).not.toMatch(/[一-龥]/);
+    }, 20_000);
+
     it('allows writes to openspec/ in design phase', async () => {
       await createChange(
         tmpDir,
@@ -3962,6 +3980,8 @@ describeShell('comet shell scripts', () => {
         ].join('\n'),
       );
 
+      await writeFile(path.join(tmpDir, 'docs/superpowers/specs/test.md'), '# Design Doc\n');
+
       const srcDir = path.join(tmpDir, 'src');
       await fs.mkdir(srcDir, { recursive: true });
       const targetFile = path.join(srcDir, 'feature.ts');
@@ -3999,6 +4019,8 @@ describeShell('comet shell scripts', () => {
           '',
         ].join('\n'),
       );
+
+      await writeFile(path.join(tmpDir, 'docs/superpowers/specs/test.md'), '# Design Doc\n');
 
       const srcDir = path.join(tmpDir, 'src');
       await fs.mkdir(srcDir, { recursive: true });
@@ -4183,7 +4205,34 @@ describeShell('comet shell scripts', () => {
       expect(result.stderr).toContain('BLOCKED');
       expect(result.stderr).toContain('design_doc');
       expect(result.stderr).toContain(
-        'Current phase: build (workflow: full), but design_doc is empty',
+        'Current phase: build (workflow: full), but design_doc is missing or empty',
+      );
+      expect(result.stderr).not.toMatch(/[一-龥]/);
+    }, 20_000);
+
+    it('blocks full-workflow build source writes when design_doc points to a missing file', async () => {
+      await createChange(
+        tmpDir,
+        'full-build-missing-doc',
+        [
+          'workflow: full',
+          'phase: build',
+          'design_doc: docs/superpowers/missing.md',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const srcDir = path.join(tmpDir, 'src');
+      await fs.mkdir(srcDir, { recursive: true });
+      const targetFile = path.join(srcDir, 'feature.ts');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('design_doc');
+      expect(result.stderr).toContain(
+        'Current phase: build (workflow: full), but design_doc is missing or empty',
       );
       expect(result.stderr).not.toMatch(/[一-龥]/);
     }, 20_000);

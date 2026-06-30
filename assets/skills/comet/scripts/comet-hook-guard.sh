@@ -170,8 +170,8 @@ if [ -z "$PHASE" ]; then
 fi
 
 if [ -z "$PHASE" ]; then
-  echo "[COMET-HOOK] allowed: no phase in .comet.yaml" >&2
-  exit 0
+  echo "[COMET-HOOK] blocked: active .comet.yaml has no phase; repair Comet state before writing files" >&2
+  exit 2
 fi
 
 # ── Whitelist: phase-aware allowed paths ─────────────────────────
@@ -282,13 +282,13 @@ case "$PHASE" in
     if [ -n "$GOV_YAML" ]; then
       _wf=$(read_field "workflow" "$GOV_YAML")
       _dd=$(read_field "design_doc" "$GOV_YAML")
-      if [ "$_wf" = "full" ] && { [ -z "$_dd" ] || [ "$_dd" = "null" ]; }; then
+      if [ "$_wf" = "full" ] && { [ -z "$_dd" ] || [ "$_dd" = "null" ] || [ ! -r "$_dd" ] || [ ! -s "$_dd" ]; }; then
         echo "" >&2
         echo "╔══════════════════════════════════════════╗" >&2
         echo "║     COMET PHASE GUARD — WRITE BLOCKED    ║" >&2
         echo "╚══════════════════════════════════════════╝" >&2
         echo "" >&2
-        echo "  Current phase: $PHASE (workflow: full), but design_doc is empty" >&2
+        echo "  Current phase: $PHASE (workflow: full), but design_doc is missing or empty" >&2
         echo "  Target file: $RELPATH" >&2
         echo "" >&2
         echo "  ❌ Illegal phase jump detected: full workflow entered $PHASE without a Design Doc" >&2
