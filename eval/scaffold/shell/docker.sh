@@ -58,15 +58,14 @@ ENV_KEYS=(
     LANGSMITH_TRACING
     LANGSMITH_ENDPOINT
     TAVILY_API_KEY
-    # Claude Code LangSmith tracing
+    # Claude Code LangSmith tracing (official langsmith-tracing plugin)
     TRACE_TO_LANGSMITH
     CC_LANGSMITH_API_KEY
     CC_LANGSMITH_PROJECT
     CC_LANGSMITH_DEBUG
-    # Experiment trace context (nest CC traces under experiment run)
-    CC_LS_TRACE_ID
-    CC_LS_PARENT_RUN_ID
-    CC_LS_DOTTED_ORDER
+    CC_LANGSMITH_METADATA
+    # Nest the plugin's Claude Code trajectory under the pytest experiment run
+    CC_LANGSMITH_PARENT_DOTTED_ORDER
     # Eval trace context (nest LLM calls in test scripts under eval span)
     BENCH_EVAL_LANGSMITH_TRACE
     BENCH_EVAL_BAGGAGE
@@ -209,6 +208,30 @@ build_env_args() {
     done
 }
 
+# Build mount + CLI args for the official LangSmith Claude Code plugin.
+# Populates PLUGIN_MOUNT_ARGS (docker -v) and PLUGIN_CLI_ARGS (claude --plugin-dir).
+# Activated only when tracing is on and a prebuilt plugin dir is provided via
+# CC_LANGSMITH_PLUGIN_DIR (host path). When unset the arrays stay empty, so
+# local runs and untraced runs are completely unaffected.
+build_plugin_args() {
+    PLUGIN_MOUNT_ARGS=()
+    PLUGIN_CLI_ARGS=()
+    if [[ "${TRACE_TO_LANGSMITH:-}" != "true" ]]; then
+        return 0
+    fi
+    if [[ -z "${CC_LANGSMITH_PLUGIN_DIR:-}" ]]; then
+        return 0
+    fi
+    if [[ ! -d "${CC_LANGSMITH_PLUGIN_DIR}" ]]; then
+        echo "WARN: CC_LANGSMITH_PLUGIN_DIR not a directory: ${CC_LANGSMITH_PLUGIN_DIR}; skipping trajectory tracing" >&2
+        return 0
+    fi
+    local plugin_host
+    plugin_host=$(_winpath "${CC_LANGSMITH_PLUGIN_DIR}")
+    PLUGIN_MOUNT_ARGS=("-v" "$plugin_host://opt/langsmith-cc-plugin:ro")
+    PLUGIN_CLI_ARGS=("--plugin-dir" "//opt/langsmith-cc-plugin")
+}
+
 # Run command in Docker container
 # Usage: docker_run <directory> <command...>
 docker_run() {
@@ -287,6 +310,7 @@ docker_run_claude() {
     image_name=$(docker_build "$dir") || return 1
 
     build_env_args
+    build_plugin_args
 
     local cmd=(
         claude -p "$prompt"
@@ -294,6 +318,10 @@ docker_run_claude() {
         --output-format stream-json
         --verbose
     )
+
+    if [[ ${#PLUGIN_CLI_ARGS[@]} -gt 0 ]]; then
+        cmd+=("${PLUGIN_CLI_ARGS[@]}")
+    fi
 
     if [[ -n "$model" ]]; then
         cmd+=(--model "$model")
@@ -305,6 +333,7 @@ docker_run_claude() {
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD "$timeout" docker run --rm \
             -v "$windir://workspace" \
+            ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             -w //workspace \
             "${ENV_ARGS[@]}" \
             "$image_name" \
@@ -312,6 +341,7 @@ docker_run_claude() {
     else
         docker run --rm \
             -v "$windir://workspace" \
+            ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             -w //workspace \
             "${ENV_ARGS[@]}" \
             "$image_name" \
@@ -331,6 +361,7 @@ docker_run_claude_loop() {
     image_name=$(docker_build "$dir") || return 1
 
     build_env_args
+    build_plugin_args
 
     local windir shell_dir
     windir=$(_winpath "$dir")
@@ -341,6 +372,7 @@ docker_run_claude_loop() {
     docker run --rm \
         -v "$windir://workspace" \
         -v "$shell_dir://opt/scaffold-shell:ro" \
+        ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
         -w //workspace \
         "${ENV_ARGS[@]}" \
         "$image_name" \

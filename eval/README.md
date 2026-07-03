@@ -129,8 +129,6 @@ uv run pytest local/tests/tasks/test_tasks.py \
 |-- .claude                                     # Claude Code 本地配置和 Skill 安装目录
 |   |-- CLAUDE.md                               # Claude 专用项目指令副本
 |   |-- settings.json                           # Claude Code settings；包含 Comet PreToolUse hook
-|   |-- hooks                                   # 额外 hook 脚本目录；通常只用于 tracing
-|   |   `-- stop_hook.sh                        # LangSmith Stop hook；仅启用 tracing 时存在
 |   `-- skills                                  # 当前 treatment 注入的完整 Skill 包
 |       |-- comet                               # 040 beta 主 /comet Skill；039 baseline 也安装到这个 canonical 名称
 |       |   |-- SKILL.md                        # 主 Skill 入口说明
@@ -225,7 +223,7 @@ uv run pytest local/tests/tasks/test_tasks.py \
 - `.claude/skills/*` 是完整 Skill 包复制，不只是 `SKILL.md`；OpenSpec 和 Superpowers 依赖的 `scripts/`、`examples/`、prompt 文件和其他随包文件都会保留。
 - `COMET_FULL_039` 的目录形状与上面一致，但 `comet` 和 `comet-*` 来自 `039-release/*` 快照，主脚本是 `.sh`：`comet-hook-guard.sh`、`comet-state.sh`、`comet-guard.sh`、`comet-handoff.sh`、`comet-archive.sh`、`comet-yaml-validate.sh`。OpenSpec / Superpowers dependency snapshot 与 040 baseline 相同。
 - `openspec/`、`.comet/`、`docs/superpowers/`、任务代码修改和其他产物由 agent 在运行过程中创建或更新。
-- `hooks/stop_hook.sh` 只在启用 LangSmith tracing hook 时存在。
+- LangSmith 轨迹追踪由官方 `langsmith-tracing` Claude Code 插件负责（不再使用手写 Stop hook）；启用后插件预构建目录会以 `/opt/langsmith-cc-plugin` 只读挂载进容器，详见 `langsmith/README.md`。
 - `/opt/scaffold-shell` 只在双 agent loop 运行时挂载，提供容器内调用 Claude 的循环驱动脚本。
 
 ## 定义自己的 Task
