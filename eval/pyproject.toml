@@ -15,11 +15,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# LangSmith tracing deps; install with: uv sync --extra langsmith
-# NOTE: pytest-langsmith is not on PyPI; the LangSmith suite reuses the local
-# conftest and only emits tracing via env vars, so it is not required at runtime.
+# LangSmith tracing + pytest integration; install with: uv sync --extra langsmith
+# The LangSmith suite marks tests with @pytest.mark.langsmith and logs rubric
+# scores + treatment comparison via langsmith.testing (requires the pytest extra).
 langsmith = [
-    "langsmith>=0.2",
+    "langsmith[pytest]>=0.3.4",
     "langchain>=0.3",
     "langchain-openai>=0.2",
 ]

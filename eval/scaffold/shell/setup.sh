@@ -190,50 +190,6 @@ copy_environment() {
 }
 
 # =============================================================================
-# LANGSMITH TRACING HOOK
-# =============================================================================
-
-setup_langsmith_hook() {
-    local test_dir="$1"
-    local project="${2:-claude-code-benchmark}"
-
-    local hooks_dir="$test_dir/.claude/hooks"
-    local settings_file="$test_dir/.claude/settings.json"
-    local hook_script="$SCRIPT_DIR/../hooks/stop_hook.sh"
-
-    mkdir -p "$hooks_dir"
-
-    # Copy stop hook script
-    if [[ -f "$hook_script" ]]; then
-        cp "$hook_script" "$hooks_dir/stop_hook.sh"
-        chmod +x "$hooks_dir/stop_hook.sh"
-    else
-        log_error "stop_hook.sh not found at $hook_script"
-        return 1
-    fi
-
-    # Write settings.json with hook config
-    cat > "$settings_file" << 'EOF'
-{
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /workspace/.claude/hooks/stop_hook.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-EOF
-
-    log_success "LangSmith tracing hook configured"
-}
-
-# =============================================================================
 # CLI MODE
 # =============================================================================
 
@@ -287,14 +243,6 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
                 die "Usage: $0 copy-env <test_dir> <env_dir>"
             fi
             copy_environment "$test_dir" "$env_dir"
-            ;;
-        setup-langsmith-hook)
-            test_dir="${1:-}"
-            project="${2:-claude-code-benchmark}"
-            if [[ -z "$test_dir" ]]; then
-                die "Usage: $0 setup-langsmith-hook <test_dir> [project_name]"
-            fi
-            setup_langsmith_hook "$test_dir" "$project"
             ;;
         help|*)
             echo "Usage: $0 <command> [args...]"
