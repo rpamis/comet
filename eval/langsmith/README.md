@@ -28,7 +28,17 @@ uv sync --extra langsmith
 
 ## 运行
 
-结果上报（rubric + treatment 对比）只需要 `LANGSMITH_API_KEY`。从 `eval/` 目录运行：
+结果上报（rubric + treatment 对比）只需要 `LANGSMITH_API_KEY`。推荐在 `eval/.env` 或 `eval/langsmith/.env` 中设置：
+
+```bash
+LANGSMITH_API_KEY=lsv2_pt_...
+LANGSMITH_PROJECT=comet-skill-eval
+LANGSMITH_TRACING=true
+```
+
+Comet 会从这组 `LANGSMITH_*` 配置自动派生 Claude Code 官方插件需要的 `TRACE_TO_LANGSMITH`、`CC_LANGSMITH_API_KEY` 和 `CC_LANGSMITH_PROJECT`。只有需要覆盖插件行为时，才需要显式设置这些 `CC_*` / `TRACE_TO_LANGSMITH` 变量。
+
+从 `eval/` 目录运行：
 
 ```bash
 # 一个 treatment = 一个 experiment；用 LANGSMITH_EXPERIMENT 命名便于对比
@@ -49,8 +59,6 @@ uv run pytest langsmith/tests/tasks/test_tasks.py \
   --eval-manifest=/path/to/my-skill/comet/eval.yaml -v
 ```
 
-在 `eval/.env` 或 `eval/langsmith/.env` 中设置 `LANGSMITH_API_KEY`。
-
 ## 轨迹追踪（可选，官方 Claude Code 插件）
 
 轨迹追踪用官方 [`langsmith-tracing`](https://github.com/langchain-ai/langsmith-claude-code-plugins) 插件，容器内以 headless（`claude -p`）方式启用，需要预构建插件目录：
@@ -66,6 +74,5 @@ cd langsmith-claude-code-plugins && pnpm install && pnpm build
 export CC_LANGSMITH_PLUGIN_DIR=/abs/path/to/langsmith-claude-code-plugins
 ```
 
-- 设置后，插件目录会以 `/opt/langsmith-cc-plugin` 只读挂载进容器，`claude` 加 `--plugin-dir` 启用；轨迹通过 `CC_LANGSMITH_PARENT_DOTTED_ORDER` 自动嵌套在对应 pytest run 下。
+- 设置后，插件目录会以 `/opt/langsmith-cc-plugin` 只读挂载进容器，`claude` 加 `--plugin-dir` 启用；轨迹通过自动派生的 Claude Code 插件配置和 `CC_LANGSMITH_PARENT_DOTTED_ORDER` 嵌套在对应 pytest run 下。
 - 未设置时，轨迹追踪自动跳过（不报错），rubric 与 treatment 对比照常上报。
-

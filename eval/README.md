@@ -65,6 +65,7 @@ cp .env.example .env
 | `BENCH_JUDGE_AUTH_TOKEN` / `BENCH_JUDGE_BASE_URL`                 | ❌   | Judge 专用 Anthropic 兼容代理认证与 URL；两者都设置时优先通过 Anthropic Messages HTTP 直接调用 judge |
 | `BENCH_JUDGE_API_KEY`                                             | ❌   | Judge 专用 Anthropic API key；如果设置 `BENCH_JUDGE_AUTH_TOKEN`，优先使用 auth token                 |
 | `LANGSMITH_API_KEY`                                               | ❌   | 仅 LangSmith 套件需要                                                                               |
+| `LANGSMITH_PROJECT` / `LANGSMITH_TRACING`                         | ❌   | LangSmith 套件项目名与追踪开关；Claude Code 插件变量会从这组配置自动派生                            |
 
 `*` 本地 Claude eval 至少需要 `ANTHROPIC_API_KEY` 或 `ANTHROPIC_AUTH_TOKEN` 之一存在于当前进程环境中。
 
@@ -223,7 +224,7 @@ uv run pytest local/tests/tasks/test_tasks.py \
 - `.claude/skills/*` 是完整 Skill 包复制，不只是 `SKILL.md`；OpenSpec 和 Superpowers 依赖的 `scripts/`、`examples/`、prompt 文件和其他随包文件都会保留。
 - `COMET_FULL_039` 的目录形状与上面一致，但 `comet` 和 `comet-*` 来自 `039-release/*` 快照，主脚本是 `.sh`：`comet-hook-guard.sh`、`comet-state.sh`、`comet-guard.sh`、`comet-handoff.sh`、`comet-archive.sh`、`comet-yaml-validate.sh`。OpenSpec / Superpowers dependency snapshot 与 040 baseline 相同。
 - `openspec/`、`.comet/`、`docs/superpowers/`、任务代码修改和其他产物由 agent 在运行过程中创建或更新。
-- LangSmith 轨迹追踪由官方 `langsmith-tracing` Claude Code 插件负责（不再使用手写 Stop hook）；启用后插件预构建目录会以 `/opt/langsmith-cc-plugin` 只读挂载进容器，详见 `langsmith/README.md`。
+- LangSmith 轨迹追踪由官方 `langsmith-tracing` Claude Code 插件负责（不再使用手写 Stop hook）；用户主要配置 `LANGSMITH_*`，`TRACE_TO_LANGSMITH` / `CC_LANGSMITH_*` 会自动派生。启用完整 Claude Code trajectory 时，插件预构建目录会以 `/opt/langsmith-cc-plugin` 只读挂载进容器，详见 `langsmith/README.md`。
 - `/opt/scaffold-shell` 只在双 agent loop 运行时挂载，提供容器内调用 Claude 的循环驱动脚本。
 
 ## 定义自己的 Task

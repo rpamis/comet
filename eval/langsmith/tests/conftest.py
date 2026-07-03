@@ -21,13 +21,29 @@ os.environ.setdefault("BENCH_TASKS_DIR", str(LOCAL_ROOT / "tasks"))
 os.environ.setdefault("BENCH_TREATMENTS_DIR", str(LOCAL_ROOT / "treatments"))
 os.environ.setdefault("BENCH_SKILLS_DIR", str(LOCAL_ROOT / "skills"))
 os.environ.setdefault("BENCH_LOGS_DIR", str(LANGSMITH_ROOT / "logs"))
-os.environ.setdefault("TRACE_TO_LANGSMITH", "true")
-os.environ.setdefault("LANGSMITH_TRACING", "true")
 # Group every run in this suite under one LangSmith dataset/test-suite by default.
 os.environ.setdefault("LANGSMITH_TEST_SUITE", "comet-skill-eval")
 
 load_dotenv(EVAL_ROOT / ".env")
 load_dotenv(LANGSMITH_ROOT / ".env", override=True)
+
+
+def configure_langsmith_environment() -> None:
+    """Derive Claude Code plugin env from the eval suite's LangSmith config."""
+    os.environ.setdefault("LANGSMITH_TRACING", "true")
+    os.environ.setdefault(
+        "TRACE_TO_LANGSMITH",
+        "true" if os.environ.get("LANGSMITH_TRACING", "").lower() == "true" else "false",
+    )
+    os.environ.setdefault("LANGSMITH_PROJECT", "comet-skill-eval")
+
+    api_key = os.environ.get("LANGSMITH_API_KEY", "")
+    if api_key:
+        os.environ.setdefault("CC_LANGSMITH_API_KEY", api_key)
+    os.environ.setdefault("CC_LANGSMITH_PROJECT", os.environ["LANGSMITH_PROJECT"])
+
+
+configure_langsmith_environment()
 
 _LOCAL_CONFTEST = LOCAL_ROOT / "tests" / "conftest.py"
 _spec = importlib.util.spec_from_file_location("_comet_local_conftest", _LOCAL_CONFTEST)
@@ -62,13 +78,7 @@ def provision_langsmith_tracing(request):
     if _local_conftest._is_unit_tests_only(request.config):
         return
 
-    api_key = os.environ.get("LANGSMITH_API_KEY", "")
-    if api_key:
-        # The plugin reads CC_LANGSMITH_API_KEY (falls back to LANGSMITH_API_KEY).
-        os.environ.setdefault("CC_LANGSMITH_API_KEY", api_key)
-    os.environ.setdefault(
-        "CC_LANGSMITH_PROJECT", os.environ.get("LANGSMITH_PROJECT", "comet-skill-eval")
-    )
+    configure_langsmith_environment()
 
     plugin_dir = os.environ.get("CC_LANGSMITH_PLUGIN_DIR", "").strip()
     if plugin_dir and Path(plugin_dir).is_dir():
