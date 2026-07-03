@@ -16,6 +16,23 @@ from scaffold.python.logging import (
 from scaffold.python.report_outputs import ReportOutputConfig
 
 
+def test_save_artifacts_excludes_nested_git_metadata(tmp_path: Path):
+    from conftest import _save_artifacts
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "result.md").write_text("ok", encoding="utf-8")
+    git_dir = workspace / ".git"
+    git_dir.mkdir()
+    (git_dir / "config").write_text("[core]\n", encoding="utf-8")
+
+    _save_artifacts(tmp_path, "COMET_FULL_040_BETA", 1, workspace)
+
+    snapshot = tmp_path / "artifacts" / "comet_full_040_beta_rep1" / "claude"
+    assert (snapshot / "result.md").read_text(encoding="utf-8") == "ok"
+    assert not (snapshot / ".git").exists()
+
+
 def test_extract_events_captures_token_usage_and_cost():
     stdout = "\n".join(
         [

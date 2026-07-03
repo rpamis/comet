@@ -1092,6 +1092,7 @@ def _save_artifacts(base_dir: Path, treatment_name: str, rep: int, test_dir: Pat
 
     exclude_dirs = {
         ".claude",
+        ".git",
         "node_modules",
         "__pycache__",
         "scaffold",
