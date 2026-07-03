@@ -32,13 +32,12 @@
 > [Bilibili video](https://www.bilibili.com/video/BV1y4Gi6CEo1/?spm_id_from=333.1387.homepage.video_card.click&vd_source=d22726fe6b108647dbebf1c5d8817377)
 > [抖音](https://www.douyin.com/search/comet?aid=cd8fcc82-498b-4d59-8860-617deb719412&modal_id=7646429015808936293&type=general)
 
-**Comet 是一个面向 AI 编码的可恢复工作流与 Skill 平台。**
+**Comet 是一个面向Coding的可恢复长程任务工作流与 Skill 平台。**
 
-它用统一的跨平台运行时把 OpenSpec 制品、Superpowers 方法论、Skill 创建、评估与发布串成一条工作闭环，
-让你可以用一个工具链开启变更、中断后恢复、诊断漂移，并把可复用 Skill 发布出去。
+它用统一的跨平台运行时把 OpenSpec 产物、Superpowers 执行方法论、Skill 创建、评估与发布串成一条工作闭环，让你可以用一个工具链处理需求到归档、中断后恢复，并把可复用 Skill 发布出去，基于科学的Rubric、Pass@k、Pass^k评分演进你的Skill。
 
 > [!IMPORTANT]
-> **0.4.0-beta.1** — Comet 升级为纯 Node runtime（不再依赖 Bash/WSL），并带来三大核心能力：用 `/comet-any` 把**任意** Skill 组合成自定义工作流、用 `comet eval` 评估**任意**本地 Skill、用 `comet dashboard` 在浏览器里可视化每一个 change。
+> **0.4.0-beta.1** — Comet 升级为纯 Node runtime（不再依赖 Bash/WSL），并带来三大核心能力：用 `/comet-any` 把**任意** Skill 组合成自定义工作流、用 `comet eval` 评估**任意**Skill、用 `comet dashboard` 在浏览器里可视化每一个 change。
 >
 > **0.3.9** — `review_mode: off|standard|thorough` 控制 Build/Verify 自动代码审查并支持项目级默认；init/update 改为可选依赖安装，补齐 CLI 国际化、阶段守护加固和 macOS 可执行权限。
 >
@@ -50,12 +49,38 @@
 
 ## 为什么需要 Comet
 
-Comet 把对外工作流保持得很简单，把真正脆弱的部分收进一条共享运行时事实链：
+Comet的对外工作流保持得很简单，把真正在长程任务上脆弱的部分收进一条共享运行时事实链：
 
-- **纯 Node runtime** — 所有内置脚本都通过 Node.js 运行，在 macOS、Linux、Windows 上保持一致，不再依赖 Bash、Git Bash 或 WSL。
-- **可恢复工作流** — `/comet` 和 Classic 状态投影会记住一个 change 停在什么阶段，长任务恢复时不需要让 Agent 重新猜上下文。
-- **Skill 平台** — Comet 会安装工作流 Skill，也能编写可复用 Skill 包，并通过 `/comet-any` 把它们整理成可分发 Bundle。
-- **诊断感知的守护** — `status`、`doctor` 与 guard/verify 共享同一条运行时证据路径，畸形状态和缺失证据会变成用户可见的 diagnostic，而不是静默漂移。
+- **长程任务稳定的核心**— Comet的经典Spec模式结合了OpenSpec和Superpowers，用状态机、Gate守卫、脚本串联整个链路，Agent只能够在特定阶段做特定事情，只有在完成阶段任务后才能够退出。支持自动推进机制，核心流程全自动推进，只在必要时刻进入HITL与你交互确认。
+- **可恢复工作流&智能路由** — Comet采用意图识别技术，能够路由你当前任务最需要走向的路径。`/comet` 会记住一个 change 停在什么阶段，长任务恢复时不需要让 Agent 重新猜上下文，支持跨设备0上下文断点恢复。你不在需要记忆冗长的Skill命令，无论何时何地，只需要/comet推进或恢复你的所有任务。
+- **Skill 平台** — Comet能够编写可复用 Skill 包，并通过 `/comet-any` 把它们整理成可分发 Bundle，你制作的Skill可以像如comet init一样一键分发到所有Coding平台。
+- **Eval 平台**— Comet基于科学的Rubric、Pass@k、Pass^k评分评估你的Skill，让Skill演进是基于科学依据，而不是依靠感觉，支持接入LangSmith评估。基于双Agent架构自动化在你的生产环境完成评估工作
+
+## 极低的记忆门槛
+
+使用Comet你只需要记忆2个Skill和1条命令，用极低的使用门槛覆盖Coding、创建与评估
+
+- **用`/comet`进行任何Coding任务**
+- **用`/comet-any`组合任意Skill**
+- **用comet eval评估任意Skill**
+
+## 从业界前沿技术出发
+
+Comet的许多能力都能够在海内外大厂实践中找到相似之处，想进一步了解Comet与业界实践的对照
+
+> 详见[Comet Docs](https://docs.comet.rpamis.com/zh/tech-blog/comet-vs-industry)
+
+## 你能学到什么
+
+- **如何稳定触发嵌套 Skill** — 不是让 Agent 依靠文档描述做了“看起来像触发了 Skill”的操作（比如根据 Skill 描述写了文件），而是真正触发 Skill（核心特征：Claude Code CLI 上有 Skill 触发的打印）。Comet 中会触发大量来自 OpenSpec 和 Superpowers 的能力，这段 Prompt 是怎么写的？
+- **如何让组合 Skill 多阶段自动流转** — 不是靠人工介入。Comet 的 5 阶段流程，除必要的用户选择项外，核心流程能够自动进行 Skill 触发，同时状态机机制也能保障状态扭转的可靠性。
+- **如何把 Spec 生命周期做成可恢复流程** — Comet 会把 OpenSpec 的 change/spec 制品与 Superpowers 的设计、计划文档关联起来，并通过 `.comet.yaml` 记录阶段、执行模式、验证结果和归档状态，让 Agent 中断后能够继续，而不是重新翻文档猜进度。
+- **如何把文档同步从“用户提醒”变成自动化** — Comet 将 handoff、状态更新、校验和归档同步放进脚本化流程，减少“记得更新 design doc”“记得同步 spec”“记得归档 change”这类反复提示。
+- **如何设计 Agent 可执行的守护条件** — Comet 的阶段退出不是简单相信 Agent 说“完成了”，而是通过 `comet-guard.sh`、 `comet-yaml-validate.sh`、`comet-state.sh` 等脚本检查任务、状态字段、验证证据和归档条件，满足条件后才允许推进。
+- **如何做跨平台 Skill 分发和安装** — Comet 支持多种 AI 编码平台、项目级/全局安装、中文/英文 Skill 选择，以及平台差异化目录（例如 Antigravity 的项目级和全局路径不同），可以作为 CLI 安装器和 Skill 打包结构的参考。
+- **如何把脚本写成 Agent 工作流基础设施** — Comet 的脚本处理 hash、YAML 字段、状态机和归档流程。它展示了如何把原本容易写散在 Prompt 里的流程控制，沉淀成可测试、可复用的工具。
+- **如何基于科学的评估驱动演进Skill**— Comet Eval支持rubric结构化评分，并支持pass@k、pass^k指标，用最科学的方式演进Skill，而不是靠人工感觉和评估，支持Local和Langsmith评估，让Eval真正走进企业生产环境
+- **如何智能的创建Comet一样的Skill**— /comet-any支持组合任意Skill，你只需要告诉Agent你的Skill偏好，其余所有稳定性相关的hook，rule，脚本，Skill引用文件全程都由Agent搞定，帮助你创建出Comet一样好用的Skill
 
 ## 安装
 
@@ -75,28 +100,6 @@ npm install -g @rpamis/comet
 cd your-project
 comet init
 ```
-
-`comet init` 会：
-
-1. 提示你选择 AI 平台（自动检测已有配置）
-2. 选择安装范围：项目级（当前目录）或全局（用户主目录）
-3. 选择 Comet 技能语言：English 或 中文
-4. 选择要安装/升级的 npm 依赖 —— [OpenSpec](https://github.com/Fission-AI/OpenSpec) CLI、[Superpowers](https://github.com/obra/superpowers)（通过 `npx skills add`）、[CodeGraph](https://github.com/colbymchenry/codegraph) CLI。未检测到的依赖默认勾选；已存在的默认不勾，可自主选择是否升级。
-5. 安装选中的依赖并部署对应技能
-6. 将 Comet 技能（你选择的语言）部署到所选平台
-7. 在项目级安装时创建 `docs/superpowers/specs/` 和 `docs/superpowers/plans/` 工作目录
-
-> [!TIP]
-> 推荐安装 Superpowers v6.0.0+ —— 相比旧版速度快约 2 倍，节省约 50% token。
-> 后续升级 Comet 本身：执行 `comet update` 或 `npm install -g @rpamis/comet@latest`。
-
-## 任务入口
-
-- **开始 Comet 工作流** — 先用 `comet init` 安装运行时和 Skills，再在你的 Agent 平台里调用 `/comet`。
-- **创建或优化可复用 Skill** — `/comet-any` 是普通用户主路径。它现在生成稳定组合 Skill Bundle，而不只是一个 `SKILL.md`；普通用户链路按 `/comet-any -> comet eval -> comet creator status/next -> comet publish review/approve/run -> comet publish distribute --preview -> comet publish distribute` 推进。发布准备优先走 `comet creator status` / `comet creator next`，真正写入平台前先运行 `comet publish distribute --preview`，只有排障时再直接查看 `comet bundle` 高级 Bundle 后端（Advanced Bundle backend）。完整用法见 [docs/operations/SKILL-CREATION-ZH.md](docs/operations/SKILL-CREATION-ZH.md)。
-- **评估本地或生成出的 Skill** — 先用 `comet eval ./comet/eval.yaml --collect` 做发现，再用 `comet eval ./comet/eval.yaml --html` 跑真实 eval 并拿到可浏览摘要。完整用法见 [docs/operations/EVAL-USAGE-ZH.md](docs/operations/EVAL-USAGE-ZH.md)。
-- **诊断为什么流程卡住** — 先看 `comet status` 的当前阶段和下一步命令，状态、运行时证据或安装健康有问题时再跑 `comet doctor`。
-- **排障高级 Engine Run** — `comet skill run` / `comet skill continue` 是高级 Engine Run 调试入口，用于需要手工恢复 pending action 或检查 runtime 状态的 deterministic Skill；普通 Skill 创建和发布优先走 `/comet-any`、`comet eval`、`comet creator` 和 `comet publish`。
 
 ## 对OpenClaw和Hermes、或其他AI平台的支持
 
@@ -212,130 +215,82 @@ comet uninstall --scope project  # 仅移除项目级安装
 </details>
 
 <details>
-<summary><code>comet skill &lt;command&gt;</code> — 安装、查看和调试本地 Skill 包（高级 Engine Run）</summary>
-
-按显式 Skill 目录、项目 `.comet/skills/` 覆盖项、内置 Skill 的顺序发现包。`run` 和 `continue` 是高级
-Engine Run 调试入口：手工 Run 会持久化不可变 Skill 快照和 pending action；当前 Agent 或平台执行该
-action，再通过 `continue` 提交 outcome。
-
-```bash
-comet skill add ./my-skill --project .
-comet skill show my-skill --json
-comet skill run my-skill --change ./changes/demo
-comet skill run my-skill --run-id demo-run --project .
-comet skill continue --change ./changes/demo
-comet skill continue --run-id demo-run --project .
-comet skill continue --change ./changes/demo --status succeeded --summary "完成" --artifact report=report.md
-comet skill check --change ./changes/demo --scope completion
-comet skill continue --change ./changes/demo --upgrade my-skill --project .
-```
-
-常用子命令都支持 `--json`。高级 Engine Run 可以绑定 `--change` 目录，也可以用 `--run-id` 存到
-`.comet/runs/<run-id>`。Plan 3 的 `run` 支持 deterministic Skill；adaptive 执行需要 Agent
-候选动作。项目 Skill 按名称覆盖内置 Skill，无效覆盖会失败关闭，不会静默回退。文本输出还会直接给出
-`Pending action` 和 `Next:` 恢复提示，避免用户在 Engine Run 或 runtime check 失败后自己猜下一步。
-
-</details>
-
-<details>
 <summary><code>comet eval [target]</code> — 通过共享 eval harness 运行 Skill Eval</summary>
 
-为本地 Skill 或 `comet/eval.yaml` 提供统一 CLI 入口，内部固定从仓库 `eval/` 根目录启动，
-避免用户手工切目录、拼 pytest 参数或自己记 `--collect-only`。
+`comet eval` 用来回答一个很朴素的问题：这个 Skill 真的能在标准任务里稳定工作吗？
+
+最常见的是评估 `/comet-any` 生成的 Skill。生成物里通常会有 `comet/eval.yaml`，优先把这个文件交给
+`comet eval`：
 
 ```bash
-comet eval ./comet/eval.yaml --collect
-comet eval ./comet/eval.yaml --html
-comet eval ./assets/skills-zh/comet-any --quick
+comet eval ./generated-skill/comet/eval.yaml --collect
+comet eval ./generated-skill/comet/eval.yaml --html
 ```
 
-`--collect` 用于只做发现与预检查；不带它时执行本地 eval。以 `comet/eval.yaml` 结尾的 target 会按 manifest 处理，
-Skill 目录或 `SKILL.md` 会按本地 Skill 处理。对本地 Skill target，`--quick` 默认选择
-`generic-skill-smoke`，先给出低成本冒烟路径。
+第一条命令只做发现和预检查，用来确认 manifest、任务和依赖路径能被识别，不会先跑高成本评估。
+第二条命令执行本地评估并生成可浏览报告，适合作为发布前证据。报告路径会在命令输出里显示，通常位于
+`eval/local/logs/experiments/<experiment-id>/summary.html`。
+
+如果你还没有 `comet/eval.yaml`，只有一个本地 Skill 目录，可以先跑低成本冒烟：
+
+```bash
+comet eval ./my-skill --quick --html
+```
+
+这个路径适合早期验证 Skill 目录能否被读取、能否注入到 eval harness，以及通用 smoke task 能否跑起来。
+准备发布时，仍推荐通过 `/comet-any` 生成 `comet/eval.yaml`，再走 manifest 评估。
+
+### Local 评估怎么看
+
+本地评估适合日常开发和发布前自检。优先看 HTML 报告里的几件事：
+
+- pass/fail 和 rubric 分数是否符合预期
+- 失败归因是 Skill、workflow、task、model，还是环境/harness
+- 是否缺少预期 artifact
+- token、成本和耗时是否异常
+- 当前结果是否足够干净，还是需要重跑某个 task/treatment
+
+如果报告提示 `Insufficient clean data` 或 `Inconclusive due to data quality`，先检查认证、限额、Docker/容器和网络等环境问题，不要直接把这次结果当成 Skill 质量结论。
+
+### LangSmith 评估怎么用
+
+当你需要把评估结果同步到 LangSmith，或想在团队里查看 run、rubric feedback、成本和 Claude Code 轨迹时，再使用 LangSmith 套件。它复用同一套任务、treatment、rubric 和 `comet/eval.yaml`，只是把结果上报到 LangSmith。
+
+先准备一次依赖和环境变量：
+
+```bash
+cd eval
+uv sync --extra langsmith
+```
+
+```bash
+LANGSMITH_API_KEY=lsv2_pt_...
+LANGSMITH_PROJECT=comet-skill-eval
+LANGSMITH_TRACING=true
+```
+
+然后运行同一个 manifest：
+
+```bash
+cd eval
+uv run pytest langsmith/tests/tasks/test_tasks.py \
+  --eval-manifest=/absolute/path/to/generated-skill/comet/eval.yaml -v
+```
+
+PowerShell 中可以用 `$env:LANGSMITH_API_KEY`、`$env:LANGSMITH_PROJECT` 和 `$env:LANGSMITH_TRACING` 设置变量；也可以把它们放进 `eval/.env`。完整插件缓存和轨迹追踪说明见 [eval/langsmith/README.md](eval/langsmith/README.md)。
+
+### 什么时候用哪个
+
+- 日常开发：`comet eval ./my-skill --quick --html`
+- `/comet-any` 生成物：`comet eval ./generated-skill/comet/eval.yaml --collect`，再跑 `--html`
+- 发布前证据：优先使用 `comet/eval.yaml` 的本地 HTML 报告
+- 团队追踪和横向对比：用同一个 `comet/eval.yaml` 跑 LangSmith 套件
+
+更完整的任务、treatment、报告口径和排障说明见 [Eval 使用文档](docs/operations/EVAL-USAGE-ZH.md)。
 
 </details>
 
-<details>
-<summary><code>comet creator &lt;command&gt;</code> — 恢复并操作 <code>/comet-any</code> Skill 创建</summary>
-
-`comet creator` 是 `/comet-any` 创建状态的普通 CLI 表面。它负责列出可恢复候选、输出唯一推荐下一步，并暴露 Skill Creator 创作操作，避免用户学习 Bundle 后端命令名。
-
-```bash
-comet creator list --project . --json
-comet creator status my-bundle --project . --json
-comet creator next my-bundle --project . --json
-comet creator guide --project . --json
-comet creator candidates --project . --json
-comet creator propose my-bundle --file ./plan.json --json
-comet creator init my-bundle --file ./plan.json --confirmed-proposal --json
-comet creator resolve my-bundle --candidate review-flow --source ./skills/review-flow --json
-comet creator authoring-plan my-bundle --depth quick --json
-comet creator authoring-record my-bundle --lane skill-core --file ./lane-output.json --json
-comet creator generate my-bundle --json
-```
-
-它和 `/comet-any` 的关系应理解为：
-
-- `/comet-any` 负责创建、恢复和优化 Skill
-- `comet eval` 负责验证生成物
-- `comet creator status` / `comet creator next` 负责展示 readiness 和唯一推荐下一步
-- `comet publish review/approve/run/distribute` 负责人工批准、发布和分发
-
-</details>
-
-<details>
-<summary><code>comet publish &lt;command&gt;</code> — 已批准 <code>/comet-any</code> 生成物的发布路径</summary>
-
-`comet publish` 只处理 Skill Creator 和 eval 证据就绪后的发布阶段，复用同一套 Bundle 状态与 readiness，不引入第二套状态模型。完整用户路径见 [docs/operations/SKILL-CREATION-ZH.md](docs/operations/SKILL-CREATION-ZH.md)。
-
-```bash
-comet publish review my-bundle --platform claude --json
-comet publish approve my-bundle --reviewer alice --json
-comet publish run my-bundle --platform claude --json
-comet publish distribute my-bundle --platform claude --scope project --preview --json
-comet publish distribute my-bundle --platform claude --scope project --confirm-executables --json
-```
-
-它和 `/comet-any` 的关系应理解为：
-
-- `/comet-any` 负责创建、恢复和优化 Skill
-- `comet eval` 负责验证生成物
-- `comet creator status` / `comet creator next` 负责展示 readiness 和唯一推荐下一步
-- `comet publish review/approve/run/distribute` 负责人工批准、发布和分发
-
-</details>
-
-<details>
-<summary><code>comet bundle &lt;command&gt;</code> — <code>/comet-any</code> 与 Bundle 发布流程的高级 Bundle 后端（Advanced Bundle backend）</summary>
-
-从新目标或现有候选 Skill 创建平台无关的 Skill Bundle。Bundle 草稿具备确定性生命周期：可以编译为原生平台
-Skill/rule/hook 安装计划，可以携带可选 Engine 元数据，必须记录结构化 eval 证据，并且发布和分发前都需要人工批准。
-
-对大多数用户来说，`/comet-any` 才是主路径。只有在审计后端状态、修复被阻塞的草稿，或你明确要手工操作发布流水线时，才需要直接调用 Bundle CLI。
-
-```bash
-comet bundle draft create my-bundle --project .
-comet bundle draft optimize ./bundle-source --project .
-comet bundle compile my-bundle --platform claude --json
-comet bundle eval-plan my-bundle --level quick --json
-comet bundle eval-record my-bundle --result ./eval.json --json
-comet bundle review-summary my-bundle --platform claude --json
-comet bundle review my-bundle --approve --reviewer alice --json
-comet bundle publish my-bundle --platform claude --json
-comet bundle distribute my-bundle --platform claude --scope project --preview --json
-comet bundle distribute my-bundle --platform claude --scope project --confirm-executables --json
-```
-
-`/comet-any` 是 Comet Skill 创建向导：用户描述想创建或优化的工作流，Comet 会读取项目级偏好
-`.comet/skill-preferences.yaml`、扫描真实本地 Skill、先展示组合方案并等待确认，再整理成可评审的
-稳定组合 Skill Bundle 草稿。Factory metadata 会记录 `preferenceHash`、resolved Skill 证据和偏离原因，
-再通过 CLI 后端完成校验、Eval、发布和可选分发；详细控制面说明见 [Skill 创建文档](docs/operations/SKILL-CREATION-ZH.md)。
-缺失或歧义候选会先暂停到 `comet creator resolve`，review 和 publish
-必须依赖结构化证据，分发同时支持 `project` 和 `global` scope。`comet creator list` 可列出可恢复的创作状态；
-`comet creator status` 的文本输出会直接显示 `Next action`、原因和建议命令；JSON 输出包含 `nextAction`，
-便于 `/comet-any` 或其他自动化恢复到正确下一步。上面的 Bundle 命令列表应视为高级 Bundle 后端参考（Advanced Bundle backend reference），而不是 `/comet-any` 普通用户的默认主流程。
-
-</details>
+Skill 创建和发布的普通路径是 `/comet-any` → `comet eval` → 审核与分发；`/comet-any` 是普通用户主路径，用来创建或优化可复用 Skill，直到形成稳定组合 Skill。需要恢复或发布时，使用 `comet creator`、`comet creator status` / `comet creator next`、`comet publish` 和`comet publish distribute --preview`。README 不展开后端命令清单；高级 Bundle 后端和高级 Engine Run（例如`comet skill run` / `comet skill continue`）见 [Skill 创建文档](docs/operations/SKILL-CREATION-ZH.md)。
 
 | 命令              | 描述     |
 | ----------------- | -------- |
@@ -371,14 +326,6 @@ comet bundle distribute my-bundle --platform claude --scope project --confirm-ex
 
 </details>
 
-部分平台的项目级目录和全局目录不同。例如 OpenCode 全局安装使用 `.config/opencode`，MimoCode 全局安装使用
-`.config/mimocode`，Lingma 全局安装使用 `.lingma`，Antigravity 全局安装使用 `.gemini/antigravity`，Antigravity
-2.0 全局安装使用 `.gemini/config`。ZCode 和 MimoCode 基于 OpenCode，从各自目录读取 skills；安装时会将
-OpenSpec 的输出从 `.opencode/` 镜像到对应目录。
-
-> [!NOTE]
-> 由于 Antigravity 与 Antigravity 2.0 共享项目级的 `.agents/` 技能目录，`comet init` 自动检测时会同时选中两者。如果只想为其中一个安装，可在非交互式（即不加 `--yes`）的安装流程中手动取消勾选另一个。
-
 ## 技能
 
 `comet init` 完成后，三组技能将被安装到所选平台的 `skills/` 目录：
@@ -398,7 +345,7 @@ OpenSpec 的输出从 `.opencode/` 镜像到对应目录。
 | `/comet-archive` | 阶段 5：归档（delta spec 同步、状态标注）                                               |
 | `/comet-hotfix`  | 快捷路径：快速 bug 修复（跳过头脑风暴，不需要能力设计）                                 |
 | `/comet-tweak`   | 轻量预设路径：串联 OpenSpec 的中等改动（delta spec 为一等公民，跳过头脑风暴和完整计划） |
-| `/comet-any`     | Comet Skill Factory：创建/优化可分发的 Comet-native Skill                               |
+| `/comet-any`     | Comet Skill Creator：创建或优化可复用 Skill                                             |
 
 </details>
 
@@ -417,21 +364,9 @@ OpenSpec 的输出从 `.opencode/` 镜像到对应目录。
 | `comet-state.mjs`         | 统一状态管理 — init/set/get/check/scale，agent 的专属 YAML 接口         |
 | `comet-hook-guard.mjs`    | 阶段写入守护 — PreToolUse hook，在 open/design/archive 阶段拦截文件写入 |
 
-Classic 自动化以 TypeScript 生成的独立 Node.js 命令脚本分发，通过 `node` 在所有平台运行，因此 Comet 只依赖
-Node.js，无需 Bash、Git Bash 或 WSL。
+Classic 自动化以 TypeScript 生成的独立 Node.js 命令脚本分发，通过 `node` 在所有平台运行，因此 Comet 只依赖Node.js，无需 Bash、Git Bash 或 WSL。
 
 </details>
-
-### OpenSpec 技能
-
-Spec 生命周期管理：propose、explore、sync、verify、archive 等。
-
-### Superpowers 技能
-
-开发方法论：brainstorming、TDD、subagent-driven development、code review、plan writing 等。
-
-0.4.0 运行时模型、状态拆分、诊断路径，以及 Bundle / Skill 架构细节见
-[docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)。
 
 ## 工作流
 
@@ -444,7 +379,7 @@ Spec 生命周期管理：propose、explore、sync、verify、archive 等。
 /comet-hotfix（快捷路径，跳过头脑风暴）
   open  -->  build  -->  verify  -->  archive
 
-/comet-tweak（轻量预设路径，串联 OpenSpec，delta spec 为一等公民）
+/comet-tweak（轻量预设路径，串联 OpenSpec）
   open  -->  build  -->  verify  -->  archive
 ```
 
@@ -458,14 +393,6 @@ Spec 生命周期管理：propose、explore、sync、verify、archive 等。
 | 4. Verify & Finish | `/comet-verify`  | Both        | 验证报告、分支处理               |
 | 5. Archive         | `/comet-archive` | OpenSpec    | delta→main spec 同步、归档       |
 
-### 核心原则
-
-- **头脑风暴不可跳过** — 每个变更必须经过深度设计（hotfix/tweak 除外）
-- **Delta spec 是活文档** — 在阶段 3 中可自由编辑，归档时同步
-- **保持 tasks.md 同步** — 每完成一个任务就勾选
-- **频繁提交** — 每个任务一个 commit，message 体现设计意图
-- **先验证再归档** — `/comet-verify` 必须通过才能执行 `/comet-archive`
-
 ### 状态管理
 
 Comet 使用解耦状态架构，文件独立管理：
@@ -477,15 +404,13 @@ Comet 使用解耦状态架构，文件独立管理：
 | `.comet/run-state.json`     | Engine   | Run 身份和执行状态（机器所有） |
 | `.comet/state-events.jsonl` | Comet    | 追加式状态转移审计日志         |
 
-`.comet.yaml` 保存所有用户可见的 Classic 工作流字段及 `run_id` 关联。Engine 将 Run 字段（`current_step`、`skill`、
-`iteration`、`run_status` 等）单独存储在 `.comet/run-state.json`（camelCase JSON）中。旧变更如果 Run 字段仍在
-`.comet.yaml` 中，首次读取时自动迁移。
+`.comet.yaml` 保存 Classic 工作流状态，只保留 `run_id` 指向 Engine Run。Engine 的机器状态放在
+`.comet/run-state.json`，使用 `currentStep`、`status`、`iteration` 等 camelCase 字段；旧 YAML 中残留的 Run字段会在兼容读取后迁移出去，`skill` 不再是当前 `.comet.yaml` 的合法字段。
 
-状态转移规则由 TypeScript transition table 统一维护；`comet-state transition`、`comet-guard --apply` 和归档路径成功推进时，会向 `.comet/state-events.jsonl` 追加事件记录，包含 event、source、from/to 状态和实际变更字段。
+阶段推进由 TypeScript transition table、`comet-state transition`、`comet-guard --apply` 和归档命令统一处理。
+每次成功推进都会向 `.comet/state-events.jsonl` 追加一条审计事件，记录来源、前后状态和实际字段变化。
 
-所有状态和运行阶段都通过脚本更新，并且会在每个阶段退出前校验任务是否真实完成。相比于将复杂状态管理写在 Skill
-文本中，脚本化状态机能更稳定地保障阶段流转、YAML 正确性、审计追踪和断点恢复；Agent 只需要通过 Comet 内置命令读取状态，就能知道当前
-Spec 处于哪个阶段。
+这样 Skill 文本只负责指导 Agent，状态读写、阶段校验、审计和断点恢复都交给脚本；Agent 通过 Comet 命令即可知道当前 Spec 处于哪个阶段。
 
 <details>
 <summary>查看 .comet.yaml 关键字段</summary>
@@ -493,41 +418,35 @@ Spec 处于哪个阶段。
 **`.comet.yaml` 关键字段：**
 
 ```yaml
-workflow: full
-auto_transition: true
-phase: build
-skill: comet-classic # 机器维护的 Classic runtime 身份
-run_id: <uuid> # 链接到 .comet/run-state.json
-review_mode: standard # off | standard | thorough
-build_mode: subagent-driven-development
-build_pause: null
-isolation: branch
-verify_mode: null
-design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md
-plan: docs/superpowers/plans/YYYY-MM-DD-feature.md
-verify_result: pending
-verification_report: null
-branch_status: pending
-verified_at: null
-archived: false
-direct_override: false
-build_command: null
-verify_command: null
-handoff_context: openspec/changes/<name>/.comet/handoff/design-context.json
-handoff_hash: <sha256>
-tdd_mode: null
-subagent_dispatch: null
+workflow: full # 工作流类型：full | tweak | hotfix
+phase: build # 当前阶段：open | design | build | verify | archive
+context_compression: off # 上下文压缩：off | beta
+auto_transition: true # 阶段完成后是否自动触发下一个 Skill
+base_ref: <git-sha-or-null> # 初始化时记录的基线提交；可为 null
+created_at: YYYY-MM-DD # comet-state.mjs init 写入的创建日期
+run_id: <uuid> # 仅链接到 .comet/run-state.json；Run 详情不写在 YAML
+review_mode: standard # 自动代码审查强度：off | standard | thorough
+build_mode: subagent-driven-development # 构建方式：subagent-driven-development | executing-plans | direct；full 初始化可为 null
+build_pause: null # `build_pause` 记录 build 阶段内部暂停点：null 无暂停，`plan-ready` 表示 plan 已生成
+subagent_dispatch: null # subagent 分派确认；subagent-driven-development 进入 verify 前需 confirmed
+tdd_mode: null # full workflow 的 build 选择：tdd | direct；进入 verify 前必选
+isolation: branch # 隔离方式：branch | worktree；进入 verify 前必选
+verify_mode: null # 验证模式：light | full；预设 workflow 可由脚本填入
+design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md # 设计文档路径
+plan: docs/superpowers/plans/YYYY-MM-DD-feature.md # 实现计划路径
+verify_result: pending # 验证结果：pending | pass | fail
+verification_report: null # 验证报告路径；verify-pass 前必须指向存在的文件
+branch_status: pending # 分支处理状态：pending | handled；verify-pass 需要 handled
+verified_at: null # 验证通过时间；验证前为 null
+archived: false # 是否已归档；归档后脚本会阻止继续修改
+direct_override: null # full workflow 选择 direct build 时必须显式 true
+build_command: null # 可选构建命令；也可写在仓库根配置
+verify_command: null # 可选验证命令；也可写在仓库根配置
+handoff_context: null # comet-handoff.mjs 写入的设计交接上下文路径
+handoff_hash: null # handoff_context 对应 SHA256；存在时必须是 64 位 hex
+classic_profile: full # 脚本维护的 Classic profile（机器字段）
+classic_migration: 1 # 脚本维护的迁移版本（机器字段）
 ```
-
-full workflow 初始化时 `build_mode`、`build_pause`、`isolation`、`verify_mode`、`tdd_mode` 和 `subagent_dispatch` 可以暂时为
-`null`；进入 `build → verify` 前必须完成 `build_mode` 与 `isolation` 决策并写入合法值。`auto_transition` 控制阶段完成后是否自动触发下一个 Skill — 详见 [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md)。`build_pause` 记录 build 阶段内部暂停点：
-`null` 表示无暂停，`plan-ready` 表示 plan 已生成，用户在选择隔离方式和执行方式前暂停。它不是执行方式，不得写入 `build_mode`。
-`verification_report` 在验证报告生成前保持 `null`，`verify-pass` 要求该报告文件存在且 `branch_status: handled`。示例中
-`archived` 之后的字段是可选字段或脚本派生字段：`direct_override` 只在 full workflow 直接构建时需要，项目命令未配置时可以不存在，
-`handoff_context` 和 `handoff_hash` 由 `comet-handoff.mjs` 在离开 design 阶段前写入。项目可在 change 或仓库根配置中设置
-`build_command` / `verify_command`，guard 会优先运行并打印失败输出。配置命令使用受限 shell 语法：允许命令词、引号、路径和用
-`&&` 串联的顺序步骤；拒绝 `;`、管道、裸 `&`、`$` 和反引号。`review_mode` 控制 Build/Verify 阶段的自动代码审查（`off`
-跳过、`standard` 审查关键变更、`thorough` 全量审查）；可在 `.comet/config.yaml` 中设置项目级默认值。
 
 </details>
 
@@ -579,7 +498,7 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
 
 </details>
 
-## 项目结构
+## 经典Spec模式项目结构
 
 ```
 your-project/

@@ -171,11 +171,11 @@ test: cover comet state transitions
 9. Delete or recreate the source branch after merge; do not keep merging
    `master` back into a squashed branch.
 
-For documentation-only changes, run at least the relevant formatter check, for
+For documentation-only changes, run at least the relevant formatter check. README files are not checked by Prettier, for
 example:
 
 ```bash
-npx prettier --check CONTRIBUTING.md CONTRIBUTING-zh.md README.md README-zh.md
+npx prettier --check CONTRIBUTING.md CONTRIBUTING-zh.md
 ```
 
 ## Project Structure

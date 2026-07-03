@@ -2,3 +2,5 @@ dist/
 node_modules/
 bin/
 assets/
+README.md
+README-zh.md

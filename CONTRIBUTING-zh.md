@@ -147,10 +147,10 @@ test: cover comet state transitions
 8. PR 通过后使用 **Squash and merge**。
 9. 合并后删除或重新创建源分支；不要继续把 `master` merge 回被 squash 的分支。
 
-纯文档改动至少运行相关格式检查，例如：
+纯文档改动至少运行相关格式检查；README 不参与 Prettier 校验，例如：
 
 ```bash
-npx prettier --check CONTRIBUTING.md CONTRIBUTING-zh.md README.md README-zh.md
+npx prettier --check CONTRIBUTING.md CONTRIBUTING-zh.md
 ```
 
 ## 项目结构
