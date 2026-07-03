@@ -17,6 +17,7 @@ adds a thin logging wrapper around the unchanged local runner.
 """
 
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -24,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from scaffold.python.tasks import load_task
+from scaffold.python.logging import TreatmentResult
 
 # ---------------------------------------------------------------------------
 # Load the local runner as a module (do NOT re-export its test_task_treatment;
@@ -52,11 +54,13 @@ _run_local_task_treatment = _local_test_tasks.test_task_treatment
 try:
     from langsmith import testing as ls_testing
     from langsmith import get_current_run_tree
+    from langsmith.testing import _internal as ls_testing_internal
 
     _LANGSMITH_AVAILABLE = True
 except Exception:  # pragma: no cover - import guard
     ls_testing = None
     get_current_run_tree = None
+    ls_testing_internal = None
     _LANGSMITH_AVAILABLE = False
 
 try:
@@ -83,12 +87,37 @@ except Exception:  # pragma: no cover - fallback if private helper moves
 # =============================================================================
 
 
-def _safe(fn):
+def _safe(fn, label=None):
     """Call a LangSmith logging fn, swallowing errors so tracing never fails a run."""
     try:
         fn()
-    except Exception:  # pragma: no cover - defensive
-        pass
+    except Exception as exc:  # pragma: no cover - defensive
+        if label:
+            print(f"[langsmith] {label} failed: {exc}", file=sys.stderr)
+
+
+def _install_failed_end_run_outputs_patch():
+    """Preserve log_outputs payloads when LangSmith ends a failed pytest run."""
+    if not _LANGSMITH_AVAILABLE or ls_testing_internal is None:
+        return
+    test_case_cls = getattr(ls_testing_internal, "_TestCase", None)
+    if test_case_cls is None:
+        return
+    original = getattr(test_case_cls, "end_run", None)
+    if original is None or getattr(original, "_comet_preserve_logged_outputs", False):
+        return
+
+    def end_run(self, run_tree, outputs):
+        if outputs is None and getattr(self, "_logged_outputs", None) is not None:
+            outputs = self._logged_outputs
+        return original(self, run_tree, outputs)
+
+    end_run._comet_preserve_logged_outputs = True
+    end_run._comet_original = original
+    test_case_cls.end_run = end_run
+
+
+_install_failed_end_run_outputs_patch()
 
 
 def _log_inputs_and_reference(task_name, treatment_name):
@@ -126,51 +155,121 @@ def _set_parent_run_env():
     try:
         run_tree = get_current_run_tree()
         dotted_order = getattr(run_tree, "dotted_order", None) if run_tree else None
+        project_name = getattr(run_tree, "session_name", None) if run_tree else None
     except Exception:  # pragma: no cover - defensive
         dotted_order = None
+        project_name = None
     if dotted_order:
         os.environ["CC_LANGSMITH_PARENT_DOTTED_ORDER"] = dotted_order
+    if project_name:
+        os.environ["CC_LANGSMITH_PROJECT"] = project_name
     return dotted_order
 
 
-def _latest_result(request, treatment_name):
-    plugin = request.config.pluginmanager.get_plugin("experiment_plugin")
-    logger = getattr(plugin, "logger", None) if plugin else None
-    if logger is None:
-        return None
+def _result_from_logger(logger, treatment_name):
     runs = logger.results.get(treatment_name) or []
-    return runs[-1] if runs else None
+    if runs:
+        return runs[-1]
+
+    parametrized_suffix = f"-{treatment_name}-"
+    for result_name, result_runs in reversed(list(logger.results.items())):
+        if result_name == treatment_name or parametrized_suffix in result_name:
+            return result_runs[-1] if result_runs else None
+    return None
+
+
+def _iter_result_loggers():
+    seen = set()
+    candidates = [
+        getattr(_local_test_tasks, "conftest", None),
+        sys.modules.get("conftest"),
+        sys.modules.get("_comet_local_conftest"),
+    ]
+    for module in candidates:
+        plugin = getattr(module, "_plugin", None) if module else None
+        logger = getattr(plugin, "logger", None) if plugin else None
+        if logger is not None and id(logger) not in seen:
+            seen.add(id(logger))
+            yield logger
+
+
+def _latest_report_result(treatment_name):
+    logs_dir = Path(os.environ.get("BENCH_LOGS_DIR", ""))
+    if not logs_dir:
+        return None
+    reports_root = logs_dir / "experiments"
+    if not reports_root.exists():
+        return None
+    parametrized_suffix = f"-{treatment_name}-"
+    report_files = sorted(
+        reports_root.glob("*/reports/*_report.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for report_file in report_files:
+        try:
+            report = json.loads(report_file.read_text())
+        except Exception:
+            continue
+        result_name = report.get("name", "")
+        if result_name != treatment_name and parametrized_suffix not in result_name:
+            continue
+        return TreatmentResult(
+            name=result_name,
+            passed=report.get("passed", False),
+            checks_passed=report.get("checks_passed", []),
+            checks_failed=report.get("checks_failed", []),
+            events_summary=report.get("events_summary", {}),
+            run_id=report.get("run_id", ""),
+        )
+    return None
+
+
+def _latest_result(treatment_name):
+    for logger in _iter_result_loggers():
+        result = _result_from_logger(logger, treatment_name)
+        if result is not None:
+            return result
+    return _latest_report_result(treatment_name)
 
 
 def _log_outputs_and_feedback(result):
-    if not _LANGSMITH_AVAILABLE or result is None:
+    if not _LANGSMITH_AVAILABLE:
+        return
+    if result is None:
+        print("[langsmith] no local eval result found; outputs/feedback not logged.", file=sys.stderr)
         return
     summary = getattr(result, "events_summary", {}) or {}
+    outputs = {
+        "run_id": getattr(result, "run_id", ""),
+        "passed": getattr(result, "passed", None),
+        "checks_passed": len(getattr(result, "checks_passed", [])),
+        "checks_failed": len(getattr(result, "checks_failed", [])),
+        "num_turns": summary.get("num_turns"),
+        "tool_calls": summary.get("tool_calls"),
+        "duration_seconds": summary.get("duration_seconds"),
+        "total_tokens": summary.get("total_tokens"),
+        "total_cost_usd": summary.get("total_cost_usd"),
+        "skills_invoked": summary.get("skills_invoked", []),
+    }
     _safe(
-        lambda: ls_testing.log_outputs(
-            {
-                "run_id": getattr(result, "run_id", ""),
-                "passed": getattr(result, "passed", None),
-                "checks_passed": len(getattr(result, "checks_passed", [])),
-                "checks_failed": len(getattr(result, "checks_failed", [])),
-                "num_turns": summary.get("num_turns"),
-                "tool_calls": summary.get("tool_calls"),
-                "duration_seconds": summary.get("duration_seconds"),
-                "total_tokens": summary.get("total_tokens"),
-                "total_cost_usd": summary.get("total_cost_usd"),
-                "skills_invoked": summary.get("skills_invoked", []),
-            }
-        )
+        lambda: ls_testing.log_outputs(outputs)
     )
 
     passed = len(getattr(result, "checks_passed", []))
     failed = len(getattr(result, "checks_failed", []))
     total = passed + failed
     if total:
-        _safe(lambda: ls_testing.log_feedback(key="checks_pass_rate", score=passed / total))
+        _safe(
+            lambda: ls_testing.log_feedback(key="checks_pass_rate", score=passed / total),
+            label="log_feedback checks_pass_rate",
+        )
 
     for dim, score in _extract_rubric_scores(result).items():
-        _safe(lambda d=dim, s=score: ls_testing.log_feedback(key=f"rubric.{d}", score=s))
+        _safe(
+            lambda d=dim, s=score: ls_testing.log_feedback(key=f"rubric.{d}", score=s),
+            label=f"log_feedback rubric.{dim}",
+        )
 
 
 # =============================================================================
@@ -180,13 +279,13 @@ def _log_outputs_and_feedback(result):
 
 @pytest.mark.timeout(PYTEST_TIMEOUT)
 @pytest.mark.langsmith
-def test_task_treatment(task_name, treatment_name, request):
+def test_task_treatment(task_name, treatment_name):
     """Run a task+treatment via the local runner and log results to LangSmith."""
     _log_inputs_and_reference(task_name, treatment_name)
     _set_parent_run_env()
     try:
         _run_local_task_treatment(task_name, treatment_name)
     finally:
-        _log_outputs_and_feedback(_latest_result(request, treatment_name))
+        _log_outputs_and_feedback(_latest_result(treatment_name))
         os.environ.pop("CC_LANGSMITH_PARENT_DOTTED_ORDER", None)
 

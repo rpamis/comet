@@ -33,10 +33,15 @@ MODEL="${ANTHROPIC_MODEL:-}"
 SIMULATOR_PROMPT=""
 CONTINUE_PROMPT="Please continue with the next phase of the comet workflow."
 DECISION_PATTERNS=()
+PLUGIN_ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --max-turns) MAX_TURNS="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
+        --plugin-dir)
+            PLUGIN_ARGS+=(--plugin-dir "$2")
+            shift 2
+            ;;
         --simulator-prompt-file)
             SIMULATOR_PROMPT="$(cat "$2")"
             shift 2
@@ -114,12 +119,12 @@ while [[ $TURN -lt $MAX_TURNS ]]; do
 
     if [[ -z "$SESSION_ID" ]]; then
         # First turn: start fresh with the task prompt.
-        RAW=$(claude -p "$PROMPT" "${MODEL_FLAG[@]}" \
+        RAW=$(claude -p "$PROMPT" "${PLUGIN_ARGS[@]}" "${MODEL_FLAG[@]}" \
             --output-format stream-json --verbose \
             --dangerously-skip-permissions 2>/dev/null) || RAW=""
     else
         # Subsequent turns: resume the session with the simulated user reply.
-        RAW=$(claude -p "$USER_REPLY" "${MODEL_FLAG[@]}" \
+        RAW=$(claude -p "$USER_REPLY" "${PLUGIN_ARGS[@]}" "${MODEL_FLAG[@]}" \
             --resume "$SESSION_ID" \
             --output-format stream-json --verbose \
             --dangerously-skip-permissions 2>/dev/null) || RAW=""

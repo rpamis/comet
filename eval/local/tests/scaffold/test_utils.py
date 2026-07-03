@@ -98,3 +98,19 @@ def test_bash_env_bridges_eval_keys_to_wsl(monkeypatch):
     assert "ANTHROPIC_AUTH_TOKEN" in names
     assert "ANTHROPIC_BASE_URL" in names
     assert "ANTHROPIC_API_KEY" not in names
+
+
+def test_docker_loop_passes_langsmith_plugin_args_to_loop_driver():
+    docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+
+    assert '${PLUGIN_CLI_ARGS[@]+"' in docker_sh
+    assert 'bash //opt/scaffold-shell/run-claude-loop.sh "$prompt"' in docker_sh
+
+
+def test_claude_loop_applies_plugin_args_to_subject_turns_only():
+    loop_sh = (utils.SHELL_DIR / "run-claude-loop.sh").read_text(encoding="utf-8")
+
+    assert "PLUGIN_ARGS=()" in loop_sh
+    assert 'claude -p "$PROMPT" "${PLUGIN_ARGS[@]}"' in loop_sh
+    assert 'claude -p "$USER_REPLY" "${PLUGIN_ARGS[@]}"' in loop_sh
+    assert 'claude -p "$sim_prompt" "${PLUGIN_ARGS[@]}"' not in loop_sh

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
+from scaffold.python.utils import _to_bash_path
 
 LANGSMITH_ROOT = Path(__file__).resolve().parents[1]
 EVAL_ROOT = LANGSMITH_ROOT.parent
@@ -98,6 +99,11 @@ def _build_default_langsmith_plugin(target_dir: Path) -> bool:
     return False
 
 
+def _plugin_dir_env_value(plugin_dir: Path) -> str:
+    """Return a plugin path value that docker.sh can test and mount from bash."""
+    return _to_bash_path(plugin_dir)
+
+
 def provision_langsmith_plugin_dir() -> Path | None:
     """Resolve or auto-build the official Claude Code LangSmith plugin directory."""
     configure_langsmith_environment()
@@ -108,6 +114,7 @@ def provision_langsmith_plugin_dir() -> Path | None:
     if explicit_dir:
         plugin_dir = Path(explicit_dir)
         if plugin_dir.is_dir():
+            os.environ["CC_LANGSMITH_PLUGIN_DIR"] = _plugin_dir_env_value(plugin_dir)
             return plugin_dir
         print(
             f"[langsmith] CC_LANGSMITH_PLUGIN_DIR not a directory ({plugin_dir}); "
@@ -117,7 +124,7 @@ def provision_langsmith_plugin_dir() -> Path | None:
 
     plugin_dir = DEFAULT_LANGSMITH_PLUGIN_DIR
     if plugin_dir.is_dir():
-        os.environ["CC_LANGSMITH_PLUGIN_DIR"] = str(plugin_dir)
+        os.environ["CC_LANGSMITH_PLUGIN_DIR"] = _plugin_dir_env_value(plugin_dir)
         return plugin_dir
 
     if os.environ.get("CC_LANGSMITH_PLUGIN_AUTO_BUILD", "true").lower() in {
@@ -136,7 +143,7 @@ def provision_langsmith_plugin_dir() -> Path | None:
         f"{plugin_dir} via node:20..."
     )
     if _build_default_langsmith_plugin(plugin_dir) and plugin_dir.is_dir():
-        os.environ["CC_LANGSMITH_PLUGIN_DIR"] = str(plugin_dir)
+        os.environ["CC_LANGSMITH_PLUGIN_DIR"] = _plugin_dir_env_value(plugin_dir)
         return plugin_dir
 
     os.environ.pop("CC_LANGSMITH_PLUGIN_DIR", None)

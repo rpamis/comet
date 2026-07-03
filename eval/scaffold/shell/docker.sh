@@ -376,7 +376,9 @@ docker_run_claude_loop() {
         -w //workspace \
         "${ENV_ARGS[@]}" \
         "$image_name" \
-        bash //opt/scaffold-shell/run-claude-loop.sh "$prompt" "$@"
+        bash //opt/scaffold-shell/run-claude-loop.sh "$prompt" \
+            ${PLUGIN_CLI_ARGS[@]+"${PLUGIN_CLI_ARGS[@]}"} \
+            "$@"
 }
 
 # =============================================================================
