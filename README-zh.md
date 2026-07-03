@@ -72,11 +72,11 @@ Comet的许多能力都能够在海内外大厂实践中找到相似之处，想
 
 ## 你能学到什么
 
-- **如何稳定触发嵌套 Skill** — 不是让 Agent 依靠文档描述做了“看起来像触发了 Skill”的操作（比如根据 Skill 描述写了文件），而是真正触发 Skill（核心特征：Claude Code CLI 上有 Skill 触发的打印）。Comet 中会触发大量来自 OpenSpec 和 Superpowers 的能力，这段 Prompt 是怎么写的？
+- **如何稳定触发嵌套 Skill** — 不是让 Agent 依靠文档描述做了“看起来像触发了 Skill”的操作（比如根据 Skill 描述写了文件），而是真正触发 Skill（核心特征：Claude Code CLI 上有 Skill 触发的打印）。Comet 中会触发大量来自 OpenSpec 和 Superpowers 的能力，稳定触发的 Prompt 经过大规模实践打磨
 - **如何让组合 Skill 多阶段自动流转** — 不是靠人工介入。Comet 的 5 阶段流程，除必要的用户选择项外，核心流程能够自动进行 Skill 触发，同时状态机机制也能保障状态扭转的可靠性。
 - **如何把 Spec 生命周期做成可恢复流程** — Comet 会把 OpenSpec 的 change/spec 制品与 Superpowers 的设计、计划文档关联起来，并通过 `.comet.yaml` 记录阶段、执行模式、验证结果和归档状态，让 Agent 中断后能够继续，而不是重新翻文档猜进度。
 - **如何把文档同步从“用户提醒”变成自动化** — Comet 将 handoff、状态更新、校验和归档同步放进脚本化流程，减少“记得更新 design doc”“记得同步 spec”“记得归档 change”这类反复提示。
-- **如何设计 Agent 可执行的守护条件** — Comet 的阶段退出不是简单相信 Agent 说“完成了”，而是通过 `comet-guard.sh`、 `comet-yaml-validate.sh`、`comet-state.sh` 等脚本检查任务、状态字段、验证证据和归档条件，满足条件后才允许推进。
+- **如何设计 Agent 可执行的守护条件** — Comet 的阶段退出不是简单相信 Agent 说“完成了”，而是通过 `comet-guard.mjs`、`comet-yaml-validate.mjs`、`comet-state.mjs` 等脚本检查任务、状态字段、验证证据和归档条件，满足条件后才允许推进。
 - **如何做跨平台 Skill 分发和安装** — Comet 支持多种 AI 编码平台、项目级/全局安装、中文/英文 Skill 选择，以及平台差异化目录（例如 Antigravity 的项目级和全局路径不同），可以作为 CLI 安装器和 Skill 打包结构的参考。
 - **如何把脚本写成 Agent 工作流基础设施** — Comet 的脚本处理 hash、YAML 字段、状态机和归档流程。它展示了如何把原本容易写散在 Prompt 里的流程控制，沉淀成可测试、可复用的工具。
 - **如何基于科学的评估驱动演进Skill**— Comet Eval支持rubric结构化评分，并支持pass@k、pass^k指标，用最科学的方式演进Skill，而不是靠人工感觉和评估，支持Local和Langsmith评估，让Eval真正走进企业生产环境
@@ -290,12 +290,25 @@ PowerShell 中可以用 `$env:LANGSMITH_API_KEY`、`$env:LANGSMITH_PROJECT` 和 
 
 </details>
 
-Skill 创建和发布的普通路径是 `/comet-any` → `comet eval` → 审核与分发；`/comet-any` 是普通用户主路径，用来创建或优化可复用 Skill，直到形成稳定组合 Skill。需要恢复或发布时，使用 `comet creator`、`comet creator status` / `comet creator next`、`comet publish` 和`comet publish distribute --preview`。README 不展开后端命令清单；高级 Bundle 后端和高级 Engine Run（例如`comet skill run` / `comet skill continue`）见 [Skill 创建文档](docs/operations/SKILL-CREATION-ZH.md)。
+<details>
+<summary><code>/comet-any</code> / <code>comet creator</code> / <code>comet publish</code> — 创建、评估和发布 Skill</summary>
+
+`/comet-any` 是普通用户主路径：创建或优化可复用 Skill → `comet eval` 验证 → 审核与分发，直到形成稳定组合 Skill。
+需要恢复或发布时，使用 `comet creator`、`comet creator status` / `comet creator next`、`comet publish` 和
+`comet publish distribute --preview`。README 不展开后端命令清单；高级 Bundle 后端和高级 Engine Run（例如
+`comet skill run` / `comet skill continue`）见 [Skill 创建文档](docs/operations/SKILL-CREATION-ZH.md)。
+
+</details>
+
+<details>
+<summary><code>comet --help</code> / <code>comet --version</code> — 基础信息</summary>
 
 | 命令              | 描述     |
 | ----------------- | -------- |
 | `comet --help`    | 显示帮助 |
 | `comet --version` | 显示版本 |
+
+</details>
 
 ## 支持平台
 
@@ -418,34 +431,34 @@ Comet 使用解耦状态架构，文件独立管理：
 **`.comet.yaml` 关键字段：**
 
 ```yaml
-workflow: full # 工作流类型：full | tweak | hotfix
-phase: build # 当前阶段：open | design | build | verify | archive
-context_compression: off # 上下文压缩：off | beta
-auto_transition: true # 阶段完成后是否自动触发下一个 Skill
-base_ref: <git-sha-or-null> # 初始化时记录的基线提交；可为 null
-created_at: YYYY-MM-DD # comet-state.mjs init 写入的创建日期
-run_id: <uuid> # 仅链接到 .comet/run-state.json；Run 详情不写在 YAML
-review_mode: standard # 自动代码审查强度：off | standard | thorough
-build_mode: subagent-driven-development # 构建方式：subagent-driven-development | executing-plans | direct；full 初始化可为 null
-build_pause: null # `build_pause` 记录 build 阶段内部暂停点：null 无暂停，`plan-ready` 表示 plan 已生成
-subagent_dispatch: null # subagent 分派确认；subagent-driven-development 进入 verify 前需 confirmed
-tdd_mode: null # full workflow 的 build 选择：tdd | direct；进入 verify 前必选
-isolation: branch # 隔离方式：branch | worktree；进入 verify 前必选
-verify_mode: null # 验证模式：light | full；预设 workflow 可由脚本填入
-design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md # 设计文档路径
-plan: docs/superpowers/plans/YYYY-MM-DD-feature.md # 实现计划路径
-verify_result: pending # 验证结果：pending | pass | fail
-verification_report: null # 验证报告路径；verify-pass 前必须指向存在的文件
-branch_status: pending # 分支处理状态：pending | handled；verify-pass 需要 handled
-verified_at: null # 验证通过时间；验证前为 null
-archived: false # 是否已归档；归档后脚本会阻止继续修改
-direct_override: null # full workflow 选择 direct build 时必须显式 true
-build_command: null # 可选构建命令；也可写在仓库根配置
-verify_command: null # 可选验证命令；也可写在仓库根配置
-handoff_context: null # comet-handoff.mjs 写入的设计交接上下文路径
-handoff_hash: null # handoff_context 对应 SHA256；存在时必须是 64 位 hex
-classic_profile: full # 脚本维护的 Classic profile（机器字段）
-classic_migration: 1 # 脚本维护的迁移版本（机器字段）
+workflow: full                                           # 工作流类型：full | tweak | hotfix
+phase: build                                             # 当前阶段：open | design | build | verify | archive
+context_compression: off                                 # 上下文压缩：off | beta
+auto_transition: true                                    # 阶段完成后是否自动触发下一个 Skill
+base_ref: <git-sha-or-null>                              # 初始化时记录的基线提交；可为 null
+created_at: YYYY-MM-DD                                   # comet-state.mjs init 写入的创建日期
+run_id: <uuid>                                           # 仅链接到 .comet/run-state.json；Run 详情不写在 YAML
+review_mode: standard                                    # 自动代码审查强度：off | standard | thorough
+build_mode: subagent-driven-development                  # 构建方式：subagent-driven-development | executing-plans | direct
+build_pause: null                                        # `build_pause` 记录 build 阶段内部暂停点：null 无暂停，`plan-ready` 表示 plan 已生成
+subagent_dispatch: null                                  # subagent 分派确认；进入 verify 前需 confirmed
+tdd_mode: null                                           # full workflow 的 build 选择：tdd | direct
+isolation: branch                                        # 隔离方式：branch | worktree
+verify_mode: null                                        # 验证模式：light | full
+design_doc: docs/superpowers/specs/<design-doc>.md       # 设计文档路径
+plan: docs/superpowers/plans/YYYY-MM-DD-feature.md       # 实现计划路径
+verify_result: pending                                   # 验证结果：pending | pass | fail
+verification_report: null                                # 验证报告路径；verify-pass 前必须存在
+branch_status: pending                                   # 分支处理状态：pending | handled
+verified_at: null                                        # 验证通过时间；验证前为 null
+archived: false                                          # 是否已归档；归档后阻止继续修改
+direct_override: null                                    # full workflow 选择 direct build 时必须显式 true
+build_command: null                                      # 可选构建命令；也可写在仓库根配置
+verify_command: null                                     # 可选验证命令；也可写在仓库根配置
+handoff_context: null                                    # comet-handoff.mjs 写入的设计交接上下文路径
+handoff_hash: null                                       # handoff_context 对应 SHA256；存在时必须是 64 位 hex
+classic_profile: full                                    # 脚本维护的 Classic profile（机器字段）
+classic_migration: 1                                     # 脚本维护的迁移版本（机器字段）
 ```
 
 </details>

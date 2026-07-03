@@ -82,7 +82,7 @@ Many Comet capabilities have parallels in current industry practice. To compare 
 
 - **How to reliably trigger nested Skills** — not by making an agent perform something that merely looks like a Skill
   trigger, such as writing files based on a Skill description, but by actually triggering the Skill. Comet invokes many
-  OpenSpec and Superpowers capabilities; this shows how that prompt contract is written.
+  OpenSpec and Superpowers capabilities, with trigger prompts refined through broad real-world practice.
 - **How to make composed Skills advance through multiple phases automatically** — not through manual intervention. Aside
   from necessary user choices, Comet's five-phase flow can trigger core Skills automatically while the state machine keeps
   transitions reliable.
@@ -93,7 +93,7 @@ Many Comet capabilities have parallels in current industry practice. To compare 
   and archive sync, reducing repeated prompts such as "remember to update the design doc" or "remember to archive the
   change."
 - **How to design guard conditions that agents can execute** — phase exits do not rely on an agent saying "done." Scripts
-  such as `comet-guard.sh`, `comet-yaml-validate.sh`, and `comet-state.sh` check tasks, state fields, verification
+  such as `comet-guard.mjs`, `comet-yaml-validate.mjs`, and `comet-state.mjs` check tasks, state fields, verification
   evidence, and archive conditions before the workflow advances.
 - **How to distribute and install Skills across platforms** — Comet supports many AI coding platforms, project/global
   install scopes, Chinese/English Skill variants, and platform-specific directories such as Antigravity's different
@@ -324,14 +324,25 @@ For full task, treatment, report, and troubleshooting details, see the [Eval usa
 
 </details>
 
-The ordinary Skill creation and release path is `/comet-any` → `comet eval` → review and distribution. `/comet-any` is the main user path to Create or optimize a reusable Skill until it becomes a stable composed Skill. For resume and release, use `comet creator`, `comet creator status` / `comet creator next`, `comet publish`, and `comet publish distribute --preview`. The README does not expand the backend command list; see the
-[Skill creation guide](docs/operations/SKILL-CREATION.md) for Advanced Bundle backend and Advanced Engine Run details,
-including `comet skill run` / `comet skill continue`.
+<details>
+<summary><code>/comet-any</code> / <code>comet creator</code> / <code>comet publish</code> — Create, evaluate, and publish Skills</summary>
+
+`/comet-any` is the main user path: Create or optimize a reusable Skill → validate it with `comet eval` → review and
+distribute it, until it becomes a stable composed Skill. For resume and release, use `comet creator`,
+`comet creator status` / `comet creator next`, `comet publish`, and `comet publish distribute --preview`. The README
+does not expand the backend command list; see the [Skill creation guide](docs/operations/SKILL-CREATION.md) for Advanced Bundle backend and Advanced Engine Run details, including `comet skill run` / `comet skill continue`.
+
+</details>
+
+<details>
+<summary><code>comet --help</code> / <code>comet --version</code> — Basic information</summary>
 
 | Command           | Description  |
 | ----------------- | ------------ |
 | `comet --help`    | Show help    |
 | `comet --version` | Show version |
+
+</details>
 
 ## Supported Platforms
 
@@ -459,34 +470,34 @@ breakpoint recovery. Agents can use Comet commands to know which phase the curre
 **Key Fields in `.comet.yaml`:**
 
 ```yaml
-workflow: full # Workflow type: full | tweak | hotfix
-phase: build # Current phase: open | design | build | verify | archive
-context_compression: off # Context compression: off | beta
-auto_transition: true # Whether to invoke the next Skill automatically after a phase completes
-base_ref: <git-sha-or-null> # Baseline commit captured at init; may be null
-created_at: YYYY-MM-DD # Creation date written by comet-state.mjs init
-run_id: <uuid> # Links to .comet/run-state.json only; Run details stay out of YAML
-review_mode: standard # Automatic review strength: off | standard | thorough
-build_mode: subagent-driven-development # Build mode: subagent-driven-development | executing-plans | direct; may be null at full init
-build_pause: null # `build_pause` records an internal build-phase pause point: null means no pause, `plan-ready` means the plan has been generated
-subagent_dispatch: null # Dispatch confirmation; subagent-driven-development needs confirmed before verify
-tdd_mode: null # Full-workflow build choice: tdd | direct; required before verify
-isolation: branch # Isolation mode: branch | worktree; required before verify
-verify_mode: null # Verification mode: light | full; preset workflows may fill it
-design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md # Design doc path
-plan: docs/superpowers/plans/YYYY-MM-DD-feature.md # Implementation plan path
-verify_result: pending # Verification result: pending | pass | fail
-verification_report: null # Verification report path; verify-pass requires an existing file
-branch_status: pending # Branch handling status: pending | handled; verify-pass requires handled
-verified_at: null # Verification timestamp; null before verification passes
-archived: false # Whether the change is archived; archived changes are blocked from further mutation
-direct_override: null # Must be explicitly true when a full workflow chooses direct build
-build_command: null # Optional build command; can also live in repo-root config
-verify_command: null # Optional verify command; can also live in repo-root config
-handoff_context: null # Design handoff context path written by comet-handoff.mjs
-handoff_hash: null # SHA256 for handoff_context; must be 64 hex chars when present
-classic_profile: full # Machine-maintained Classic profile
-classic_migration: 1 # Machine-maintained migration version
+workflow: full                                           # Workflow type: full | tweak | hotfix
+phase: build                                             # Current phase: open | design | build | verify | archive
+context_compression: off                                 # Context compression: off | beta
+auto_transition: true                                    # Auto-invoke the next Skill after phase completion
+base_ref: <git-sha-or-null>                              # Baseline commit captured at init; may be null
+created_at: YYYY-MM-DD                                   # Creation date written by comet-state.mjs init
+run_id: <uuid>                                           # Links to .comet/run-state.json only; Run details stay out of YAML
+review_mode: standard                                    # Automatic review strength: off | standard | thorough
+build_mode: subagent-driven-development                  # Build mode: subagent-driven-development | executing-plans | direct
+build_pause: null                                        # `build_pause` records an internal build-phase pause point: null none, `plan-ready` means the plan has been generated
+subagent_dispatch: null                                  # Dispatch confirmation; confirm before verify
+tdd_mode: null                                           # Full-workflow build choice: tdd | direct
+isolation: branch                                        # Isolation mode: branch | worktree
+verify_mode: null                                        # Verification mode: light | full
+design_doc: docs/superpowers/specs/<design-doc>.md       # Design doc path
+plan: docs/superpowers/plans/YYYY-MM-DD-feature.md       # Implementation plan path
+verify_result: pending                                   # Verification result: pending | pass | fail
+verification_report: null                                # Verification report path; must exist before verify-pass
+branch_status: pending                                   # Branch handling status: pending | handled
+verified_at: null                                        # Verification timestamp; null before verification passes
+archived: false                                          # Archived changes are blocked from further mutation
+direct_override: null                                    # Must be true when a full workflow chooses direct build
+build_command: null                                      # Optional build command; may also live in repo-root config
+verify_command: null                                     # Optional verify command; may also live in repo-root config
+handoff_context: null                                    # Design handoff context path written by comet-handoff.mjs
+handoff_hash: null                                       # SHA256 for handoff_context; 64 hex chars when present
+classic_profile: full                                    # Machine-maintained Classic profile
+classic_migration: 1                                     # Machine-maintained migration version
 ```
 
 Current `.comet.yaml` no longer contains `skill`; legacy Run fields in YAML are migrated to `.comet/run-state.json`.
