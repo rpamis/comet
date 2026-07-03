@@ -62,7 +62,7 @@ cp .env.example .env
 | `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` | ❌   | 用 Anthropic 兼容代理时的认证与模型配置；设置 `ANTHROPIC_AUTH_TOKEN` 后可不设置 `ANTHROPIC_API_KEY` |
 | `BENCH_LLM_JUDGE`                                                 | ❌   | 设为 `1` 启用 LLM-as-judge 评分                                                                     |
 | `BENCH_JUDGE_MODEL`                                               | ❌   | Judge 模型；启用 `BENCH_LLM_JUDGE=1` 时必须显式设置，不能复用主模型                                  |
-| `BENCH_JUDGE_AUTH_TOKEN` / `BENCH_JUDGE_BASE_URL`                 | ❌   | Judge 专用 Anthropic 兼容代理认证与 URL；运行时会映射到 judge 子进程的 `ANTHROPIC_*`                  |
+| `BENCH_JUDGE_AUTH_TOKEN` / `BENCH_JUDGE_BASE_URL`                 | ❌   | Judge 专用 Anthropic 兼容代理认证与 URL；两者都设置时优先通过 Anthropic Messages HTTP 直接调用 judge |
 | `BENCH_JUDGE_API_KEY`                                             | ❌   | Judge 专用 Anthropic API key；如果设置 `BENCH_JUDGE_AUTH_TOKEN`，优先使用 auth token                 |
 | `LANGSMITH_API_KEY`                                               | ❌   | 仅 LangSmith 套件需要                                                                               |
 
@@ -372,7 +372,7 @@ Comet 类任务（`category = "comet"` 或名称以 `comet-` 开头）自动推�
 
 设置 `BENCH_LLM_JUDGE=1` 启用 LLM 评审。Judge 读取 agent 的 workspace 产物进行定性评分，但必须使用独立裁判配置：至少设置 `BENCH_JUDGE_MODEL`，如需走不同代理或账号，再设置 `BENCH_JUDGE_BASE_URL`、`BENCH_JUDGE_AUTH_TOKEN` 或 `BENCH_JUDGE_API_KEY`。
 
-Judge 子进程会先清除继承来的主 `ANTHROPIC_*` provider 设置，再把 `BENCH_JUDGE_*` 映射为自己的 `ANTHROPIC_*` 环境变量。这样可以避免同一个模型既当选手又当裁判。若启用了 `BENCH_LLM_JUDGE=1` 但未设置 `BENCH_JUDGE_MODEL`，报告会输出 `[RUBRIC-JUDGE] status: skipped - BENCH_JUDGE_MODEL is required when BENCH_LLM_JUDGE=1`，不会调用 judge。
+当配置了 `BENCH_JUDGE_BASE_URL` 和 `BENCH_JUDGE_AUTH_TOKEN` / `BENCH_JUDGE_API_KEY` 时，judge 会优先直接调用 Anthropic Messages HTTP（`/v1/messages`）。没有专用 judge endpoint 时，才回退到宿主机 `claude` CLI，并在子进程里清除继承来的主 `ANTHROPIC_*` provider 设置，再把 `BENCH_JUDGE_*` 映射为自己的 `ANTHROPIC_*` 环境变量。这样可以避免同一个模型既当选手又当裁判，也避免严格代理不兼容 Claude CLI 的额外请求参数。若启用了 `BENCH_LLM_JUDGE=1` 但未设置 `BENCH_JUDGE_MODEL`，报告会输出 `[RUBRIC-JUDGE] status: skipped - BENCH_JUDGE_MODEL is required when BENCH_LLM_JUDGE=1`，不会调用 judge。
 
 **通用 judge 的三个标准维度**：
 

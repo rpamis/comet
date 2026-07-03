@@ -21,11 +21,10 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
-from scaffold.python.judge_config import build_judge_invocation
+from scaffold.python.judge_config import build_judge_invocation, run_judge_prompt
 
 # Ensure proxy credentials (ANTHROPIC_AUTH_TOKEN etc.) are available when this
 # module is imported outside pytest (e.g. by the rescore tool).
@@ -146,34 +145,8 @@ Cite specific content from the artifacts in your reason (<=25 words each).
 
 
 def _run_judge(prompt: str, timeout: int = 120) -> str:
-    """Call the judge LLM via the claude CLI (host-side, reuses proxy env).
-
-    The prompt is piped via stdin (``-p ''``) to avoid the Windows 8191-char
-    command-line limit when artifacts make the prompt long.
-    """
-    import shutil
-
-    try:
-        invocation = build_judge_invocation()
-    except ValueError as e:
-        return f"[RUBRIC-JUDGE] status: skipped - {e}"
-
-    claude_bin = shutil.which("claude") or "claude"
-    try:
-        result = subprocess.run(
-            [claude_bin, "-p", "", "--dangerously-skip-permissions", *invocation.model_flag],
-            input=prompt,
-            capture_output=True,
-            timeout=timeout,
-            env=invocation.env,
-            # claude.CMD on Windows may emit cp936/GBK bytes; decode permissively
-            # so a stray byte never aborts the judge.
-            encoding="utf-8",
-            errors="replace",
-        )
-        return result.stdout or ""
-    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-        return f"(judge error: {e})"
+    """Call the judge LLM through the configured judge provider."""
+    return run_judge_prompt(prompt, timeout=timeout)
 
 
 def judge_artifacts(test_dir: Path, timeout: int = 120) -> dict[str, tuple[float, str]]:

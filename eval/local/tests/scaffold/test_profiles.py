@@ -674,6 +674,46 @@ def test_judge_env_maps_independent_provider(monkeypatch):
     assert "subject-token" not in invocation.env.values()
 
 
+def test_judge_provider_uses_direct_http_when_base_url_is_configured(monkeypatch):
+    """Dedicated judge providers should not require Claude CLI compatibility."""
+    import json
+    from unittest.mock import patch
+
+    from scaffold.python.judge_config import run_judge_prompt
+
+    monkeypatch.setenv("BENCH_JUDGE_MODEL", "judge-model")
+    monkeypatch.setenv("BENCH_JUDGE_BASE_URL", "https://judge.example/api/anthropic")
+    monkeypatch.setenv("BENCH_JUDGE_AUTH_TOKEN", "judge-token")
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "[RUBRIC-JUDGE] task_completion: 1.00 - ok",
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+
+    with patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+        output = run_judge_prompt("score this")
+
+    request = urlopen.call_args.args[0]
+    assert request.full_url == "https://judge.example/api/anthropic/v1/messages"
+    assert request.headers["Authorization"] == "Bearer judge-token"
+    assert json.loads(request.data.decode("utf-8"))["model"] == "judge-model"
+    assert output == "[RUBRIC-JUDGE] task_completion: 1.00 - ok"
+
+
 def test_comet_llm_judge_reports_skipped_without_success_status(monkeypatch, tmp_path: Path):
     """Missing judge config should be visible and not reported as successful."""
     from scaffold.python.llm_judge import judge_messages
