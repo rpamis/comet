@@ -18,6 +18,7 @@ adds a thin logging wrapper around the unchanged local runner.
 
 import importlib.util
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,7 @@ _LOCAL_TEST_TASKS = (
 _spec = importlib.util.spec_from_file_location("_comet_local_test_tasks", _LOCAL_TEST_TASKS)
 _local_test_tasks = importlib.util.module_from_spec(_spec)
 assert _spec and _spec.loader
+sys.modules[_spec.name] = _local_test_tasks
 _spec.loader.exec_module(_local_test_tasks)
 
 pytest_generate_tests = _local_test_tasks.pytest_generate_tests

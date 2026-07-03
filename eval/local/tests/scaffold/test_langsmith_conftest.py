@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -10,6 +11,18 @@ def _load_langsmith_conftest():
     eval_root = Path(__file__).resolve().parents[3]
     conftest_path = eval_root / "langsmith" / "tests" / "conftest.py"
     spec = importlib.util.spec_from_file_location("_test_langsmith_conftest", conftest_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_langsmith_task_tests():
+    eval_root = Path(__file__).resolve().parents[3]
+    task_tests_path = eval_root / "langsmith" / "tests" / "tasks" / "test_tasks.py"
+    sys.modules.pop("_test_langsmith_task_tests", None)
+    sys.modules.pop("_comet_local_test_tasks", None)
+    spec = importlib.util.spec_from_file_location("_test_langsmith_task_tests", task_tests_path)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(module)
@@ -53,3 +66,33 @@ def test_langsmith_env_preserves_explicit_claude_code_overrides(monkeypatch):
     assert module.os.environ["TRACE_TO_LANGSMITH"] == "custom"
     assert module.os.environ["CC_LANGSMITH_API_KEY"] == "lsv2_pt_plugin"
     assert module.os.environ["CC_LANGSMITH_PROJECT"] == "plugin-project"
+
+
+def test_langsmith_tracing_auto_builds_default_plugin_cache(monkeypatch, tmp_path):
+    module = _load_langsmith_conftest()
+    plugin_dir = tmp_path / "langsmith-cc-plugin"
+    calls = []
+
+    monkeypatch.setattr(module, "DEFAULT_LANGSMITH_PLUGIN_DIR", plugin_dir)
+    monkeypatch.delenv("CC_LANGSMITH_PLUGIN_DIR", raising=False)
+    monkeypatch.setenv("LANGSMITH_TRACING", "true")
+    monkeypatch.setenv("TRACE_TO_LANGSMITH", "true")
+
+    def fake_build(target):
+        calls.append(target)
+        target.mkdir(parents=True)
+        return True
+
+    monkeypatch.setattr(module, "_build_default_langsmith_plugin", fake_build)
+
+    resolved = module.provision_langsmith_plugin_dir()
+
+    assert resolved == plugin_dir
+    assert calls == [plugin_dir]
+    assert module.os.environ["CC_LANGSMITH_PLUGIN_DIR"] == str(plugin_dir)
+
+
+def test_langsmith_task_wrapper_registers_reexported_local_module():
+    _load_langsmith_task_tests()
+
+    assert "_comet_local_test_tasks" in sys.modules

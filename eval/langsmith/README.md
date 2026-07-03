@@ -61,18 +61,33 @@ uv run pytest langsmith/tests/tasks/test_tasks.py \
 
 ## 轨迹追踪（可选，官方 Claude Code 插件）
 
-轨迹追踪用官方 [`langsmith-tracing`](https://github.com/langchain-ai/langsmith-claude-code-plugins) 插件，容器内以 headless（`claude -p`）方式启用，需要预构建插件目录：
+轨迹追踪用官方 [`langsmith-tracing`](https://github.com/langchain-ai/langsmith-claude-code-plugins) 插件，容器内以 headless（`claude -p`）方式启用。默认情况下，LangSmith suite 会在首次运行时用 `node:20` 一次性构建插件到 `eval/.cache/langsmith-cc-plugin`，后续运行复用这个缓存目录并挂载到任务容器的 `/opt/langsmith-cc-plugin`。
+
+因为 eval 在 Linux 容器里运行，不要在 Windows 宿主机直接 `pnpm build` 后挂载，避免跨平台 `node_modules` 失效。你通常只需要设置：
 
 ```bash
-git clone https://github.com/langchain-ai/langsmith-claude-code-plugins
-cd langsmith-claude-code-plugins && pnpm install && pnpm build
+LANGSMITH_TRACING=true
 ```
 
-然后把它指给评估（宿主机路径）：
+如果要提前手动构建缓存，可以从 `eval/` 目录运行：
 
 ```bash
-export CC_LANGSMITH_PLUGIN_DIR=/abs/path/to/langsmith-claude-code-plugins
+docker run --rm -v "$PWD/.cache:/out" node:20 sh -c \
+  "cd /tmp && git clone https://github.com/langchain-ai/langsmith-claude-code-plugins && cd langsmith-claude-code-plugins && corepack enable && pnpm install && pnpm build && cp -r . /out/langsmith-cc-plugin"
+```
+
+PowerShell 中可用 `${PWD}`：
+
+```powershell
+docker run --rm -v "${PWD}\.cache:/out" node:20 sh -c "cd /tmp && git clone https://github.com/langchain-ai/langsmith-claude-code-plugins && cd langsmith-claude-code-plugins && corepack enable && pnpm install && pnpm build && cp -r . /out/langsmith-cc-plugin"
+```
+
+如果要覆盖默认缓存目录，可以把构建好的插件目录显式指给评估（宿主机路径）：
+
+```bash
+export CC_LANGSMITH_PLUGIN_DIR=/abs/path/to/comet/eval/.cache/langsmith-cc-plugin
 ```
 
 - 设置后，插件目录会以 `/opt/langsmith-cc-plugin` 只读挂载进容器，`claude` 加 `--plugin-dir` 启用；轨迹通过自动派生的 Claude Code 插件配置和 `CC_LANGSMITH_PARENT_DOTTED_ORDER` 嵌套在对应 pytest run 下。
 - 未设置时，轨迹追踪自动跳过（不报错），rubric 与 treatment 对比照常上报。
+- 如果不希望 suite 自动构建插件，设置 `CC_LANGSMITH_PLUGIN_AUTO_BUILD=false`。

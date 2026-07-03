@@ -7,6 +7,7 @@ runs stay free of LangSmith requirements.
 
 import importlib.util
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from dotenv import load_dotenv
 LANGSMITH_ROOT = Path(__file__).resolve().parents[1]
 EVAL_ROOT = LANGSMITH_ROOT.parent
 LOCAL_ROOT = EVAL_ROOT / "local"
+DEFAULT_LANGSMITH_PLUGIN_DIR = EVAL_ROOT / ".cache" / "langsmith-cc-plugin"
 
 os.environ.setdefault("BENCH_SUITE_ROOT", str(LANGSMITH_ROOT))
 os.environ.setdefault("BENCH_TASKS_DIR", str(LOCAL_ROOT / "tasks"))
@@ -65,6 +67,82 @@ def verify_langsmith_environment(request):
         pytest.skip("LANGSMITH_API_KEY not set")
 
 
+def _build_default_langsmith_plugin(target_dir: Path) -> bool:
+    """Build the official Claude Code LangSmith plugin into eval/.cache."""
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+    mount_arg = f"{target_dir.parent}:/out"
+    command = (
+        "set -e; "
+        "cd /tmp; "
+        "git clone --depth 1 https://github.com/langchain-ai/langsmith-claude-code-plugins; "
+        "cd langsmith-claude-code-plugins; "
+        "corepack enable; "
+        "pnpm install; "
+        "pnpm build; "
+        "rm -rf /out/langsmith-cc-plugin; "
+        "cp -r . /out/langsmith-cc-plugin"
+    )
+    result = subprocess.run(
+        ["docker", "run", "--rm", "-v", mount_arg, "node:20", "sh", "-c", command],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    if result.returncode == 0:
+        return True
+    print("[langsmith] failed to auto-build Claude Code tracing plugin.")
+    if result.stdout.strip():
+        print(result.stdout.strip())
+    if result.stderr.strip():
+        print(result.stderr.strip())
+    return False
+
+
+def provision_langsmith_plugin_dir() -> Path | None:
+    """Resolve or auto-build the official Claude Code LangSmith plugin directory."""
+    configure_langsmith_environment()
+    if os.environ.get("TRACE_TO_LANGSMITH", "").lower() != "true":
+        return None
+
+    explicit_dir = os.environ.get("CC_LANGSMITH_PLUGIN_DIR", "").strip()
+    if explicit_dir:
+        plugin_dir = Path(explicit_dir)
+        if plugin_dir.is_dir():
+            return plugin_dir
+        print(
+            f"[langsmith] CC_LANGSMITH_PLUGIN_DIR not a directory ({plugin_dir}); "
+            "falling back to the eval plugin cache."
+        )
+        os.environ.pop("CC_LANGSMITH_PLUGIN_DIR", None)
+
+    plugin_dir = DEFAULT_LANGSMITH_PLUGIN_DIR
+    if plugin_dir.is_dir():
+        os.environ["CC_LANGSMITH_PLUGIN_DIR"] = str(plugin_dir)
+        return plugin_dir
+
+    if os.environ.get("CC_LANGSMITH_PLUGIN_AUTO_BUILD", "true").lower() in {
+        "0",
+        "false",
+        "no",
+    }:
+        print(
+            "[langsmith] trajectory tracing disabled: "
+            "CC_LANGSMITH_PLUGIN_AUTO_BUILD=false and no plugin directory was provided."
+        )
+        return None
+
+    print(
+        "[langsmith] building Claude Code tracing plugin into "
+        f"{plugin_dir} via node:20..."
+    )
+    if _build_default_langsmith_plugin(plugin_dir) and plugin_dir.is_dir():
+        os.environ["CC_LANGSMITH_PLUGIN_DIR"] = str(plugin_dir)
+        return plugin_dir
+
+    os.environ.pop("CC_LANGSMITH_PLUGIN_DIR", None)
+    return None
+
+
 @pytest.fixture(scope="session", autouse=True)
 def provision_langsmith_tracing(request):
     """Wire the official langsmith-tracing Claude Code plugin, best-effort.
@@ -78,26 +156,14 @@ def provision_langsmith_tracing(request):
     if _local_conftest._is_unit_tests_only(request.config):
         return
 
-    configure_langsmith_environment()
-
-    plugin_dir = os.environ.get("CC_LANGSMITH_PLUGIN_DIR", "").strip()
-    if plugin_dir and Path(plugin_dir).is_dir():
+    plugin_dir = provision_langsmith_plugin_dir()
+    if plugin_dir:
         print(f"[langsmith] trajectory tracing enabled via plugin: {plugin_dir}")
     else:
-        # Keep the container from mounting a bad path; results logging is unaffected.
-        os.environ.pop("CC_LANGSMITH_PLUGIN_DIR", None)
-        if plugin_dir:
-            print(
-                f"[langsmith] CC_LANGSMITH_PLUGIN_DIR not a directory ({plugin_dir}); "
-                "trajectory tracing disabled (rubric + comparison still logged)."
-            )
-        else:
-            print(
-                "[langsmith] CC_LANGSMITH_PLUGIN_DIR unset; trajectory tracing disabled. "
-                "Build github.com/langchain-ai/langsmith-claude-code-plugins "
-                "(pnpm install && pnpm build) and point CC_LANGSMITH_PLUGIN_DIR at it "
-                "to nest Claude Code traces under each experiment run."
-            )
+        print(
+            "[langsmith] trajectory tracing disabled "
+            "(rubric + comparison still logged)."
+        )
 
 
 @pytest.fixture(scope="session")
