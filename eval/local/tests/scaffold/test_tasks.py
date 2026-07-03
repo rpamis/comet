@@ -143,14 +143,25 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
+    assert len(names) == 20
     assert set(names) == {
         "authoring-skill-smoke",
+        "comet-agent-memory-routing",
         "comet-api-cache-ttl",
+        "comet-cross-file-refactor",
+        "comet-dependency-confusion",
         "comet-fix-median",
+        "comet-framework-selection",
         "comet-full-workflow",
+        "comet-graph-execution-review",
+        "comet-human-approval-flow",
+        "comet-layered-streaming-fix",
         "comet-perf-dedupe",
+        "comet-persistence-threading",
         "comet-refactor-counter",
         "comet-robust-config",
+        "comet-noise-distractor",
+        "comet-observability-env-template",
         "generic-skill-smoke",
         "workflow-overlay-contract",
         "workflow-route-conformance",

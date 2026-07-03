@@ -1,0 +1,24 @@
+[metadata]
+name = "comet-dependency-confusion"
+description = "Repair stale module names and compatibility imports in a small settings loader"
+difficulty = "medium"
+category = "comet"
+tags = ["comet", "workflow", "dependencies", "compatibility"]
+default_treatments = [
+    "CONTROL",
+    "COMET_FULL_040_BETA",
+    "COMET_FULL_039",
+]
+
+[template]
+required = []
+
+[environment]
+description = "Python workspace with stale imports after a module rename. Claude must use the comet workflow to restore compatibility."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_dependency_confusion.py"
+target_artifacts = []
+timeout = 120

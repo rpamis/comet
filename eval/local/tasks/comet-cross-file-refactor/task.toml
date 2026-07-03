@@ -1,0 +1,20 @@
+[metadata]
+name = "comet-cross-file-refactor"
+description = "Add a shared count(text, unit) dispatcher while keeping wrappers and CLI behavior compatible"
+difficulty = "hard"
+category = "comet"
+tags = ["comet", "workflow", "refactor", "cross-file"]
+default_treatments = ["CONTROL", "COMET_FULL_040_BETA", "COMET_FULL_039"]
+
+[template]
+required = []
+
+[environment]
+description = "Python package split across counting and CLI modules. Claude must refactor without breaking compatibility."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_cross_file_refactor.py"
+target_artifacts = []
+timeout = 120

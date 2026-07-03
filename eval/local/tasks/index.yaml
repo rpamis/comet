@@ -49,6 +49,87 @@ tasks:
       - COMET_FULL_039
     description: Robustness dimension. Add structured ConfigError handling to a brittle INI config loader so malformed input raises clear errors.
 
+  # ── Expanded workflow pressure tasks inspired by skills-benchmarks ──────
+  - name: comet-dependency-confusion
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/lc-deps-tavily. Repair stale module names and compatibility imports in a small settings loader without changing the public API.
+
+  - name: comet-layered-streaming-fix
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/oss-fix-lc-streaming. Fix streaming chunk behavior and tool-result handling in a chat application.
+
+  - name: comet-persistence-threading
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/oss-fix-lg-persistence. Make session state isolate by thread_id and survive a new store instance.
+
+  - name: comet-human-approval-flow
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/oss-fix-lc-hitl. Add a pending approval flow before dangerous document operations can execute.
+
+  - name: comet-noise-distractor
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/lc-basic-noise. Fix invoice tax calculation while leaving an unrelated distracting file untouched.
+
+  - name: comet-cross-file-refactor
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/lc-basic. Add a shared count(text, unit) dispatcher while keeping wrappers and CLI behavior compatible.
+
+  - name: comet-observability-env-template
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/ls-lang-tracing. Generate a LangSmith-ready .env.example with the simplified LANGSMITH_* configuration.
+
+  - name: comet-graph-execution-review
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/oss-fix-lg-execution. Fix parallel task fan-out, review interruption, and resume behavior in a graph-style pipeline.
+
+  - name: comet-agent-memory-routing
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/oss-fix-da-memory. Fix persistent preference routing, subagent skill access, and deployment approval checkpoints.
+
+  - name: comet-framework-selection
+    category: comet
+    default_treatments:
+      - CONTROL
+      - COMET_FULL_040_BETA
+      - COMET_FULL_039
+    description: Inspired by skills-benchmarks/lc-framework-hybrid-pipeline. Select a hybrid deep-agent plus deterministic sub-workflow architecture for long-session document editing.
+
   - name: generic-skill-smoke
     category: generic
     default_treatments:
