@@ -159,8 +159,9 @@ def test_experiment_finalize_honors_html_report_output_config(monkeypatch, tmp_p
 
     assert output_path == summary_html
     assert not summary_md.exists()
-    assert "<html" in summary_html.read_text().lower()
-    assert "Experiment Results Summary" in summary_html.read_text()
+    summary = summary_html.read_text(encoding="utf-8")
+    assert "<html" in summary.lower()
+    assert "Experiment Results Summary" in summary
     assert metadata["report_outputs"]["html"].endswith("summary.html")
     assert "markdown" not in metadata["report_outputs"]
 

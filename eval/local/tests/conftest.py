@@ -751,6 +751,11 @@ def run_claude(test_dir, experiment_logger, request):
 
     def _run(prompt: str, timeout: int = 600, model: str = None, interaction=None):
         mdl = model or default_model
+        if (
+            os.environ.get("TRACE_TO_LANGSMITH", "").lower() == "true"
+            and not os.environ.get("CC_LANGSMITH_LOG_FILE")
+        ):
+            os.environ["CC_LANGSMITH_LOG_FILE"] = "/workspace/langsmith-hook.log"
         use_loop = interaction is not None and interaction.mode == "auto_user"
         if not use_loop:
             result = run_claude_in_docker(test_dir, prompt, timeout=timeout, model=mdl)

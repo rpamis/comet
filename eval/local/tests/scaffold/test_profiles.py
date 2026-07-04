@@ -576,6 +576,67 @@ def test_generic_rubric_with_required_skills_scores_numeric(tmp_path: Path):
     assert any("[RUBRIC] artifact_presence: N/A -" in msg for msg in passed)
 
 
+def test_comet_control_marks_workflow_dimensions_not_applicable(tmp_path: Path):
+    """CONTROL should score business completion without requiring Comet Skill use."""
+    outputs = {
+        "treatment_name": "CONTROL",
+        "business_completion": {"passed": ["sentence_feature"], "failed": []},
+        "workflow_completion": {"passed": [], "failed": ["tests_exist: No test files found"]},
+        "events": {
+            "skills_invoked": [],
+            "num_turns": 2,
+            "tool_calls": [],
+            "duration_seconds": 5,
+            "commands_run": [],
+        },
+    }
+
+    passed, failed = run_profile_rubric("comet-workflow", tmp_path, outputs)
+
+    assert failed == []
+    assert any("[RUBRIC] main_flow: N/A -" in msg for msg in passed)
+    assert any("[RUBRIC] gate_guard: N/A -" in msg for msg in passed)
+    assert any("[RUBRIC] skill_invocation: N/A -" in msg for msg in passed)
+    assert any("[RUBRIC] spec_drift: N/A -" in msg for msg in passed)
+    assert any("[RUBRIC] business_completion: 1.00" in msg for msg in passed)
+    assert any("[RUBRIC] workflow_completion: N/A -" in msg for msg in passed)
+    assert any("[RUBRIC] efficiency:" in msg for msg in passed)
+    assert any("[RUBRIC] weighted_score: 1.00" in msg for msg in passed)
+
+
+def test_comet_profile_splits_business_and_workflow_completion(tmp_path: Path):
+    outputs = {
+        "business_completion": {
+            "passed": ["sentence_feature"],
+            "failed": ["business_rule: failed"],
+        },
+        "workflow_completion": {
+            "passed": ["openspec_artifacts"],
+            "failed": ["tests_exist: No test files found"],
+        },
+        "events": {
+            "skills_invoked": [
+                "comet",
+                "comet-hotfix",
+                "openspec-new-change",
+                "verification-before-completion",
+            ],
+            "commands_run": [],
+            "files_created": [],
+            "files_modified": [],
+            "num_turns": 1,
+            "tool_calls": [],
+            "duration_seconds": 5,
+        },
+    }
+
+    passed, _ = run_profile_rubric("comet-workflow", tmp_path, outputs)
+
+    assert any("[RUBRIC] business_completion: 0.50" in msg for msg in passed)
+    assert any("[RUBRIC] workflow_completion: 0.50" in msg for msg in passed)
+    assert not any("[RUBRIC] completion:" in msg for msg in passed)
+
+
 # ---------------------------------------------------------------------------
 # LLM judge prompt tests
 # ---------------------------------------------------------------------------

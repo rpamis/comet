@@ -63,6 +63,7 @@ ENV_KEYS=(
     CC_LANGSMITH_API_KEY
     CC_LANGSMITH_PROJECT
     CC_LANGSMITH_DEBUG
+    CC_LANGSMITH_LOG_FILE
     CC_LANGSMITH_METADATA
     # Nest the plugin's Claude Code trajectory under the pytest experiment run
     CC_LANGSMITH_PARENT_DOTTED_ORDER

@@ -155,14 +155,10 @@ def _set_parent_run_env():
     try:
         run_tree = get_current_run_tree()
         dotted_order = getattr(run_tree, "dotted_order", None) if run_tree else None
-        project_name = getattr(run_tree, "session_name", None) if run_tree else None
     except Exception:  # pragma: no cover - defensive
         dotted_order = None
-        project_name = None
     if dotted_order:
         os.environ["CC_LANGSMITH_PARENT_DOTTED_ORDER"] = dotted_order
-    if project_name:
-        os.environ["CC_LANGSMITH_PROJECT"] = project_name
     return dotted_order
 
 

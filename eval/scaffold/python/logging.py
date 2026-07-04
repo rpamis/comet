@@ -322,13 +322,13 @@ def rubric_column(dim: str) -> ReportColumn:
 
     def extract(r: TreatmentResult) -> str:
         scores = _rubric_scores(r)
-        return f"{scores.get(dim, 0):.2f}" if dim in scores else "N/A"
+        return f"{scores.get(dim, 0):.2f}" if dim in scores else "/"
 
     def aggregate(runs: list[TreatmentResult]) -> str:
         vals = [_rubric_scores(r).get(dim) for r in runs]
         vals = [v for v in vals if v is not None]
         if not vals:
-            return "N/A"
+            return "/"
         return f"{sum(vals) / len(vals):.2f}"
 
     return ReportColumn(name=dim, extract=extract, aggregate=aggregate)
@@ -347,13 +347,13 @@ def rubric_total_column() -> ReportColumn:
 
     def extract(r: TreatmentResult) -> str:
         t = total(_rubric_scores(r))
-        return f"{t:.2f}" if t is not None else "N/A"
+        return f"{t:.2f}" if t is not None else "/"
 
     def aggregate(runs: list[TreatmentResult]) -> str:
         per_run = [total(_rubric_scores(r)) for r in runs]
         per_run = [t for t in per_run if t is not None]
         if not per_run:
-            return "N/A"
+            return "/"
         return f"{sum(per_run) / len(per_run):.2f}"
 
     return ReportColumn(name="RubricAvg", extract=extract, aggregate=aggregate)

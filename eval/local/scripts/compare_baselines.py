@@ -43,6 +43,18 @@ from scaffold.python.validation.rubric import RUBRIC_DIMENSIONS, _DIMENSION_WEIG
 RUBRIC_RE = re.compile(r"\[RUBRIC\]\s+(\S+):\s*([0-9.]+)")
 RUBRIC_JUDGE_RE = re.compile(r"\[RUBRIC-JUDGE\]\s+(\S+):\s*([0-9.]+)")
 RUBRIC_DERIVED_METRICS = ("weighted_score",)
+RUBRIC_DIMENSION_GUIDE = {
+    "main_flow": "Completion of the expected Comet workflow phases.",
+    "gate_guard": "Use of required guard, state transition, and apply checkpoints.",
+    "skill_invocation": "Invocation of Comet, OpenSpec, and Superpowers dependency Skills.",
+    "spec_drift": "Whether build-time spec changes were reconciled before archive.",
+    "business_completion": "Business validator pass rate for the requested task behavior.",
+    "workflow_completion": "Workflow validator pass rate for Comet workflow artifacts.",
+    "efficiency": "Runtime effort score from turns, tool calls, and duration.",
+    "decision_point_compliance": "Whether blocking decision points were surfaced instead of auto-decided.",
+    "artifact_quality": "Whether generated proposal, design, task, and test artifacts are substantive.",
+    "recovery_resilience": "Whether workflow state was preserved and recovered across interruptions.",
+}
 
 # Treatments we compare. CONTROL is included for context but not used in the
 # pass/fail decision.
@@ -86,6 +98,30 @@ def _run_passed(report: dict) -> bool:
 def _pass_fail_by_treatment(by_treatment: dict[str, list[dict]]) -> dict[str, list[bool]]:
     """Per-run pass/fail booleans keyed by treatment id."""
     return {t: [_run_passed(r) for r in reps] for t, reps in by_treatment.items()}
+
+
+def _rubric_dimension_passed(report: dict, dim: str) -> bool | None:
+    """Return True/False for a rubric dimension, or None when not applicable."""
+    scores = _scores_from_report(report)
+    if dim not in scores:
+        return None
+    return scores[dim] >= 1.0
+
+
+def _pass_fail_by_rubric_dimension(
+    by_treatment: dict[str, list[dict]],
+    dim: str,
+) -> dict[str, list[bool]]:
+    """Per-run pass/fail booleans from a rubric dimension score."""
+    by_metric: dict[str, list[bool]] = {}
+    for treatment, reports in by_treatment.items():
+        values: list[bool] = []
+        for report in reports:
+            passed = _rubric_dimension_passed(report, dim)
+            if passed is not None:
+                values.append(passed)
+        by_metric[treatment] = values
+    return by_metric
 
 
 def _load_reports(experiment_dir: Path) -> dict[str, list[dict]]:
@@ -263,7 +299,7 @@ def _overall(agg: dict[str, dict[str, float]]) -> float:
 def _fmt_dim(stats: dict[str, float] | None, with_dist: bool = False) -> str:
     """Format a dimension cell. With distribution: 'mean±std (pass%)'."""
     if not stats or stats.get("n", 0) == 0:
-        return "—"
+        return "/"
     mean = stats["mean"]
     if not with_dist or stats["n"] < 2:
         return f"{mean:.2f}"
@@ -285,6 +321,14 @@ def _fmt_tokens(value: int | float | None) -> str:
 
 def _fmt_cost(value: int | float | None) -> str:
     return "N/A" if value is None else f"${value:.4f}"
+
+
+def _fmt_seconds(value: int | float | None) -> str:
+    return "N/A" if value is None else f"{value:,.0f}s"
+
+
+def _fmt_average(value: int | float | None, decimals: int = 1) -> str:
+    return "N/A" if value is None else f"{value:,.{decimals}f}"
 
 
 def _quality_run_rows(
@@ -362,11 +406,22 @@ def _task_outcomes(by_treatment: dict[str, list[dict]]) -> dict[str, dict[str, b
 
 # --- Attribution (improvement 2) -------------------------------------------
 # Classify a failed check into one of three buckets:
+#   business  - the requested business behavior did not pass validation
 #   workflow  - the skill guidance is wrong/missing (skill not invoked, guard not used)
 #   task      - the task/validator itself is ambiguous or buggy
-#   model     - the LLM failed despite correct skill invocation
+#   uncategorized - valid completed failure that does not match a specific bucket
 _ATTRIBUTION_RULES = [
     # (regex on failed-check text, bucket, reason)
+    (
+        re.compile(r"business validator failed|business[_ -]?completion", re.I),
+        "business",
+        "business implementation did not pass validation",
+    ),
+    (
+        re.compile(r"workflow validator failed|workflow[_ -]?completion", re.I),
+        "workflow",
+        "workflow validation did not pass",
+    ),
     (
         re.compile(r"skill.*(not invoke|not found)|did not invoke", re.I),
         "workflow",
@@ -379,8 +434,8 @@ _ATTRIBUTION_RULES = [
     ),
     (
         re.compile(r"--sentences|sentence_feature|wordcount", re.I),
-        "model",
-        "feature implementation incomplete despite workflow running — likely model capability",
+        "business",
+        "feature implementation incomplete",
     ),
     (
         re.compile(r"openspec_artifacts|not found in.*archive|directory not found", re.I),
@@ -394,8 +449,8 @@ _ATTRIBUTION_RULES = [
     ),
     (
         re.compile(r"tests_exist|no.*tests", re.I),
-        "model",
-        "tests not written despite workflow running — model capability",
+        "workflow",
+        "expected tests were not written",
     ),
 ]
 
@@ -405,7 +460,7 @@ def _attribute_failure(check_text: str) -> tuple[str, str]:
     for rx, bucket, reason in _ATTRIBUTION_RULES:
         if rx.search(check_text):
             return bucket, reason
-    return "model", "unclassified failure — defaulting to model capability"
+    return "uncategorized", "uncategorized valid failure"
 
 
 def _attributions(reports: list[dict]) -> dict[str, list[str]]:
@@ -415,7 +470,7 @@ def _attributions(reports: list[dict]) -> dict[str, list[str]]:
         structured = rep.get("events_summary", {}).get("failure_attribution") or []
         if structured:
             for item in structured:
-                bucket = item.get("bucket", "model")
+                bucket = item.get("bucket", "uncategorized")
                 buckets[bucket].append(
                     f"{item.get('check', '')}  ->  [{bucket}] {item.get('reason', '')}"
                 )
@@ -446,6 +501,26 @@ def build_report(experiment_dir: Path) -> str:
         lines.append("No report data found. Run the eval suite first.")
         return "\n".join(lines)
 
+    lines.append("## Metric guide")
+    lines.append("")
+    lines.append("| Metric | Meaning | Source | Report section |")
+    lines.append("|--------|---------|--------|----------------|")
+    lines.append("| `raw runs` | All discovered report JSON files before quality filtering. | report files | Data quality summary |")
+    lines.append("| `analysis set` | Runs included in comparison metrics after excluding hard infrastructure noise. | sample_quality.include_in_analysis | Data quality summary / Run counts |")
+    lines.append("| `flagged` | Completed runs kept in analysis but marked as suspicious, usually harness/task/observability risk. | sample_quality.status | Data quality summary / Flagged runs |")
+    lines.append("| `excluded` | Runs removed from headline metrics, typically API, quota, auth, network, container, or runner failures before a complete result. | sample_quality.status | Data quality summary / Excluded runs |")
+    lines.append("| `pass@k` | Probability that at least one of k attempts succeeds; capability ceiling. | pass/fail booleans | pass@k / pass^k |")
+    lines.append("| `pass^k` | Probability that all k attempts succeed; reliability floor. | pass/fail booleans | pass@k / pass^k |")
+    lines.append("| `overall` | Run passes when task-level `checks_failed == []`. | checks_failed | pass@k / Task outcomes |")
+    lines.append("| `business_completion` | Business validator pass rate; CONTROL is evaluated on this without requiring Comet workflow artifacts. | `[RUBRIC] business_completion` | Rubric dimensions / pass@k |")
+    lines.append("| `workflow_completion` | Comet workflow validator pass rate; `/` means not applicable for CONTROL. | `[RUBRIC] workflow_completion` | Rubric dimensions / pass@k |")
+    lines.append("| `weighted_score` | Weighted average across applicable rubric dimensions; N/A dimensions are skipped. | `[RUBRIC] weighted_score` | Rubric dimensions / Overall |")
+    lines.append("| `tokens` / `cost` | Total model token and USD cost telemetry for included runs. | events_summary | Spend summary |")
+    lines.append("| `turns` / `duration` / `tool calls` | Runtime effort telemetry for included runs; also feeds the `efficiency` rubric. | events_summary | Runtime summary / Rubric dimensions |")
+    lines.append("| `failure attribution` | Buckets valid failures into harness, business, workflow, task, or uncategorized causes. | checks_failed / events_summary.failure_attribution | Failure attribution |")
+    lines.append("| `source evidence` | Run id, quality status, profile, Skill source hashes, eval manifest, and raw report reference. | events_summary / sample_quality | Source evidence |")
+    lines.append("")
+
     lines.append("## Data quality summary")
     lines.append("")
     lines.append("| Treatment | Raw runs | Analysis set | Flagged | Excluded |")
@@ -470,20 +545,29 @@ def build_report(experiment_dir: Path) -> str:
 
     has_dist = any(len(by_treatment.get(t, [])) >= 2 for t in TREATMENTS)
 
-    pass_fail = _pass_fail_by_treatment(by_treatment)
-    max_n = max((len(v) for v in pass_fail.values()), default=0)
+    pass_fail_metrics = {
+        "overall": _pass_fail_by_treatment(by_treatment),
+        "business": _pass_fail_by_rubric_dimension(by_treatment, "business_completion"),
+        "workflow": _pass_fail_by_rubric_dimension(by_treatment, "workflow_completion"),
+    }
+    max_n = max(
+        (len(v) for metric_values in pass_fail_metrics.values() for v in metric_values.values()),
+        default=0,
+    )
     ks = [k for k in (1, 2, 5) if k <= max_n] or [1]
-    ptable = pass_metrics_table(pass_fail, ks=ks)
 
     lines.append("## pass@k / pass^k — capability vs reliability")
     lines.append("")
     lines.append("- **pass@k**: probability ≥1 of k attempts succeeds (capability ceiling)")
     lines.append("- **pass^k**: probability all k attempts succeed (reliability floor)")
+    lines.append("- **overall**: run passes when `checks_failed == []`.")
+    lines.append("- **business**: run passes when `business_completion == 1.00`.")
+    lines.append("- **workflow**: run passes when `workflow_completion == 1.00`; `/` means not applicable.")
     lines.append(
         "- The gap (pass@k − pass^k) measures instability: high ceiling, low floor = unreliable."
     )
     lines.append("")
-    header_cells = ["Treatment"]
+    header_cells = ["Metric", "Treatment"]
     for k in ks:
         header_cells.append(f"pass@{k}")
     for k in ks:
@@ -491,18 +575,23 @@ def build_report(experiment_dir: Path) -> str:
     header_cells.append("pass/fail")
     lines.append("| " + " | ".join(header_cells) + " |")
     lines.append("|" + "|".join(["---"] * len(header_cells)) + "|")
-    for t in TREATMENTS:
-        if t not in ptable:
-            continue
-        cells = [t]
-        for k in ks:
-            cells.append(f"{ptable[t][k]['pass_at_k']:.2f}")
-        for k in ks:
-            cells.append(f"{ptable[t][k]['pass_pow_k']:.0f}")
-        c = ptable[t][ks[0]]["c"]
-        n = ptable[t][ks[0]]["n"]
-        cells.append(f"{c}/{n}")
-        lines.append("| " + " | ".join(cells) + " |")
+    for metric_name, metric_values in pass_fail_metrics.items():
+        ptable = pass_metrics_table(metric_values, ks=ks)
+        for t in TREATMENTS:
+            values = metric_values.get(t, [])
+            if not values:
+                cells = [metric_name, t] + ["/"] * (len(ks) * 2 + 1)
+                lines.append("| " + " | ".join(cells) + " |")
+                continue
+            cells = [metric_name, t]
+            for k in ks:
+                cells.append(f"{ptable[t][k]['pass_at_k']:.2f}")
+            for k in ks:
+                cells.append(f"{ptable[t][k]['pass_pow_k']:.0f}")
+            c = ptable[t][ks[0]]["c"]
+            n = ptable[t][ks[0]]["n"]
+            cells.append(f"{c}/{n}")
+            lines.append("| " + " | ".join(cells) + " |")
     lines.append("")
     if max_n < 2:
         lines.append(
@@ -546,7 +635,41 @@ def build_report(experiment_dir: Path) -> str:
         )
     lines.append("")
 
+    lines.append("## Runtime summary")
+    lines.append("")
+    lines.append("| Treatment | Runs | Turns | Duration | Tool Calls | Avg Turns/Run | Avg Duration/Run | Avg Tool Calls/Run |")
+    lines.append("|-----------|------|-------|----------|------------|---------------|------------------|--------------------|")
+    for t in TREATMENTS:
+        reps = by_treatment.get(t, [])
+        if not reps:
+            continue
+        total_turns = _sum_metric(reps, "num_turns")
+        total_duration = _sum_metric(reps, "duration_seconds")
+        total_tool_calls = _sum_metric(reps, "tool_calls")
+        avg_turns = (total_turns / len(reps)) if total_turns is not None else None
+        avg_duration = (total_duration / len(reps)) if total_duration is not None else None
+        avg_tool_calls = (
+            (total_tool_calls / len(reps)) if total_tool_calls is not None else None
+        )
+        lines.append(
+            f"| {t} | {len(reps)} | {_fmt_tokens(total_turns)} | "
+            f"{_fmt_seconds(total_duration)} | {_fmt_tokens(total_tool_calls)} | "
+            f"{_fmt_average(avg_turns)} | {_fmt_seconds(avg_duration)} | "
+            f"{_fmt_average(avg_tool_calls)} |"
+        )
+    lines.append("")
+
     lines.append("## Source evidence")
+    lines.append("")
+    lines.append("Use this section to trace each aggregate metric back to the raw run artifacts.")
+    lines.append("")
+    lines.append("- `Run` is the run id or fallback report id.")
+    lines.append("- `Quality` is the sample-quality status used by the analysis-set filter.")
+    lines.append("- `Reason` explains why the run is included, flagged, or excluded.")
+    lines.append("- `Profile` is the eval rubric/profile that scored the run.")
+    lines.append("- `Skill sources` records installed Skill identity or hash evidence when the run provides it.")
+    lines.append("- `Eval manifest` is the task manifest that defined the evaluated scenario.")
+    lines.append("- `Report` points to the raw per-run report JSON for deeper inspection.")
     lines.append("")
     lines.append("| Run | Quality | Reason | Profile | Skill sources | Eval manifest | Report |")
     lines.append("|-----|---------|--------|---------|---------------|---------------|--------|")
@@ -564,6 +687,14 @@ def build_report(experiment_dir: Path) -> str:
         "validator-emitted weighted_score when available (see weights below)._"
     )
     lines.append("")
+    lines.append("### Dimension guide")
+    lines.append("")
+    lines.append("| Dimension | Meaning |")
+    lines.append("|-----------|---------|")
+    for dim in RUBRIC_DIMENSIONS:
+        lines.append(f"| {dim} | {RUBRIC_DIMENSION_GUIDE[dim]} |")
+    lines.append("")
+
     header = "| Dimension | " + " | ".join(TREATMENTS) + " | Δ (workflow−baseline) |"
     sep = "|-----------|" + "|".join(["------"] * len(TREATMENTS)) + "|------|"
     lines.append(header)
@@ -668,8 +799,9 @@ def build_report(experiment_dir: Path) -> str:
     lines.append("")
     lines.append(
         "Each failed baseline check is bucketed as **harness** (runner/trigger issue), "
-        "**workflow** (skill guidance issue), **task** (task/validator issue), "
-        "or **model** (LLM capability issue)."
+        "**business** (requested behavior issue), **workflow** (skill guidance or workflow "
+        "artifact issue), **task** (task/validator issue), or **uncategorized** "
+        "(valid completed failure that needs inspection)."
     )
     lines.append("")
     any_failures = False
@@ -681,7 +813,7 @@ def build_report(experiment_dir: Path) -> str:
         any_failures = True
         lines.append(f"### {t} ({total} failure(s))")
         lines.append("")
-        for bucket in ("harness", "workflow", "task", "model"):
+        for bucket in ("harness", "business", "workflow", "task", "uncategorized"):
             items = attr.get(bucket, [])
             if not items:
                 continue

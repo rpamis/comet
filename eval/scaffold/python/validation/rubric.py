@@ -23,11 +23,12 @@ Dimensions
 2. gate_guard             - whether comet-guard / comet-state transition / --apply were used (weight 1.5)
 3. skill_invocation       - whether the comet entry, nested stage skills, and dependency skills were invoked (weight 1.0)
 4. spec_drift             - whether delta specs created during build were reconciled before archive (weight 1.0)
-5. completion             - fraction of the task's baseline validators that passed (weight 2.0)
-6. efficiency             - normalised cost (turns / tool calls / duration; lower is better) (weight 0.8)
-7. decision_point_compliance - whether agent paused at blocking decision points instead of auto-deciding (weight 1.0)
-8. artifact_quality       - whether proposal/design/tasks/test artefacts have substantive content (weight 1.2)
-9. recovery_resilience    - whether the agent preserved and restored state correctly across interruptions (weight 1.0)
+5. business_completion    - fraction of business validators that passed (weight 2.0)
+6. workflow_completion    - fraction of workflow validators that passed (weight 1.0)
+7. efficiency             - normalised cost (turns / tool calls / duration; lower is better) (weight 0.8)
+8. decision_point_compliance - whether agent paused at blocking decision points instead of auto-deciding (weight 1.0)
+9. artifact_quality       - whether proposal/design/tasks/test artefacts have substantive content (weight 1.2)
+10. recovery_resilience   - whether the agent preserved and restored state correctly across interruptions (weight 1.0)
 """
 
 from __future__ import annotations
@@ -46,7 +47,8 @@ RUBRIC_DIMENSIONS = (
     "gate_guard",
     "skill_invocation",
     "spec_drift",
-    "completion",
+    "business_completion",
+    "workflow_completion",
     "efficiency",
     "decision_point_compliance",
     "artifact_quality",
@@ -56,7 +58,8 @@ RUBRIC_DIMENSIONS = (
 # Dimension weights: critical dimensions get higher relative weight.
 # Raw weights need not sum to 1.0; they are normalized during aggregation.
 _DIMENSION_WEIGHTS: dict[str, float] = {
-    "completion": 2.0,               # Must complete the task
+    "business_completion": 2.0,      # Must complete the user-visible task
+    "workflow_completion": 1.0,      # Workflow-specific validator completion
     "main_flow": 1.5,                # Core 5-phase workflow
     "gate_guard": 1.5,               # Quality gate enforcement
     "artifact_quality": 1.2,         # Substantive deliverables
@@ -156,6 +159,10 @@ _PRESET_DECISION_MUTATIONS = (
 
 def _fmt(dim: str, score: float, reason: str) -> str:
     return f"[RUBRIC] {dim}: {score:.2f} - {reason}"
+
+
+def _fmt_na(dim: str, reason: str) -> str:
+    return f"[RUBRIC] {dim}: N/A - {reason}"
 
 
 def _fmt_weighted(score: float) -> str:
@@ -360,9 +367,9 @@ def _score_spec_drift(events: dict[str, Any], test_dir: Path) -> tuple[float, st
     return score, f"spec_written={spec_touched} spec_synced={spec_synced}"
 
 
-def _score_completion(outputs: dict[str, Any]) -> tuple[float, str]:
-    """Check baseline validator pass rate. Already a ratio (0.0-1.0)."""
-    checks = outputs.get("completion") or {}
+def _score_completion(outputs: dict[str, Any], key: str = "completion") -> tuple[float, str]:
+    """Check validator pass rate. Already a ratio (0.0-1.0)."""
+    checks = outputs.get(key) or {}
     passed = checks.get("passed", [])
     failed = checks.get("failed", [])
     total = len(passed) + len(failed)
@@ -590,20 +597,34 @@ def _score_recovery_resilience(
     return score, "; ".join(notes)
 
 
-def _compute_weighted_score(dimension_scores: dict[str, float]) -> float:
-    """Compute weighted average across all dimensions."""
+def _compute_weighted_score(dimension_scores: dict[str, float | None]) -> float:
+    """Compute weighted average across applicable dimensions."""
     total_weight = 0.0
     weighted_sum = 0.0
     for dim in RUBRIC_DIMENSIONS:
+        score = dimension_scores.get(dim)
+        if score is None:
+            continue
         weight = _DIMENSION_WEIGHTS.get(dim, 1.0)
-        score = dimension_scores.get(dim, 0.0)
         weighted_sum += score * weight
         total_weight += weight
     return weighted_sum / total_weight if total_weight > 0 else 0.0
 
 
+def _is_control_business_only(outputs: dict[str, Any]) -> bool:
+    return (outputs or {}).get("treatment_name") == "CONTROL"
+
+
+def _completion_input(outputs: dict[str, Any], key: str) -> dict[str, list[str]] | None:
+    if key in outputs:
+        return outputs.get(key) or {"passed": [], "failed": []}
+    if key == "business_completion":
+        return outputs.get("completion") or {"passed": [], "failed": []}
+    return None
+
+
 def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], list[str]]:
-    """Run all nine rubric dimensions and return (passed_messages, []).
+    """Run all rubric dimensions and return (passed_messages, []).
 
     Rubric dimensions are informational scores (never hard failures); the
     comparison report aggregates them across treatments. Every dimension always
@@ -613,43 +634,89 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
     Final weighted score uses dimension weights to aggregate.
     """
     events = (outputs or {}).get("events", {}) or {}
-    completion = (outputs or {}).get("completion") or {}
+    business_completion = _completion_input(outputs or {}, "business_completion")
+    workflow_completion = _completion_input(outputs or {}, "workflow_completion")
+    is_control = _is_control_business_only(outputs or {})
     workflow = _detect_workflow_kind(events, test_dir)
 
-    scored: list[tuple[str, float, str]] = [
-        ("main_flow", *_score_main_flow(events, test_dir, workflow)),
-        ("gate_guard", *_score_gate_guard(events)),
-        ("skill_invocation", *_score_skill_invocation(events)),
-        ("spec_drift", *_score_spec_drift(events, test_dir)),
-        ("completion", *_score_completion({"completion": completion})),
-        ("efficiency", *_score_efficiency(events)),
-        ("decision_point_compliance", *_score_decision_point_compliance(events, workflow)),
-        ("artifact_quality", *_score_artifact_quality(test_dir, workflow)),
-        ("recovery_resilience", *_score_recovery_resilience(events, test_dir, workflow)),
-    ]
+    if is_control:
+        na_reason = "CONTROL business-only baseline"
+        scored: list[tuple[str, float | None, str]] = [
+            ("main_flow", None, na_reason),
+            ("gate_guard", None, na_reason),
+            ("skill_invocation", None, na_reason),
+            ("spec_drift", None, na_reason),
+            (
+                "business_completion",
+                *_score_completion(
+                    {"business_completion": business_completion},
+                    "business_completion",
+                ),
+            ),
+            ("workflow_completion", None, na_reason),
+            ("efficiency", *_score_efficiency(events)),
+            ("decision_point_compliance", None, na_reason),
+            ("artifact_quality", None, na_reason),
+            ("recovery_resilience", None, na_reason),
+        ]
+    else:
+        scored = [
+            ("main_flow", *_score_main_flow(events, test_dir, workflow)),
+            ("gate_guard", *_score_gate_guard(events)),
+            ("skill_invocation", *_score_skill_invocation(events)),
+            ("spec_drift", *_score_spec_drift(events, test_dir)),
+            (
+                "business_completion",
+                *_score_completion(
+                    {"business_completion": business_completion},
+                    "business_completion",
+                ),
+            ),
+            (
+                "workflow_completion",
+                None,
+                "workflow validators not available",
+            )
+            if workflow_completion is None
+            else (
+                "workflow_completion",
+                *_score_completion(
+                    {"workflow_completion": workflow_completion},
+                    "workflow_completion",
+                ),
+            ),
+            ("efficiency", *_score_efficiency(events)),
+            ("decision_point_compliance", *_score_decision_point_compliance(events, workflow)),
+            ("artifact_quality", *_score_artifact_quality(test_dir, workflow)),
+            ("recovery_resilience", *_score_recovery_resilience(events, test_dir, workflow)),
+        ]
 
     # Build dimension scores dict for weighted computation
-    dimension_scores: dict[str, float] = {}
+    dimension_scores: dict[str, float | None] = {}
     passed: list[str] = []
     failed: list[str] = []
     for dim, score, reason in scored:
         dimension_scores[dim] = score
-        passed.append(_fmt(dim, score, reason))
+        if score is None:
+            passed.append(_fmt_na(dim, reason))
+        else:
+            passed.append(_fmt(dim, score, reason))
 
     # Add weighted overall score
     weighted = _compute_weighted_score(dimension_scores)
     passed.append(_fmt_weighted(weighted))
 
-    invoked = events.get("skills_invoked", []) or []
-    if "comet" not in invoked:
-        failed.append("Required skill not invoked: comet")
-    else:
-        if not any(skill in invoked for skill in _COMET_STAGE_SKILLS):
-            failed.append("Required nested Comet stage skill not invoked")
-        if not any(skill.startswith("openspec-") for skill in invoked):
-            failed.append("Required OpenSpec dependency skill not invoked")
-        if not any(skill in invoked for skill in _SUPERPOWERS_DEPENDENCY_SKILLS):
-            failed.append("Required Superpowers dependency skill not invoked")
+    if not is_control:
+        invoked = events.get("skills_invoked", []) or []
+        if "comet" not in invoked:
+            failed.append("Required skill not invoked: comet")
+        else:
+            if not any(skill in invoked for skill in _COMET_STAGE_SKILLS):
+                failed.append("Required nested Comet stage skill not invoked")
+            if not any(skill.startswith("openspec-") for skill in invoked):
+                failed.append("Required OpenSpec dependency skill not invoked")
+            if not any(skill in invoked for skill in _SUPERPOWERS_DEPENDENCY_SKILLS):
+                failed.append("Required Superpowers dependency skill not invoked")
 
     # Optional LLM-as-judge overlay: when BENCH_LLM_JUDGE=1, a judge model
     # re-scores the three qualitative dimensions (artifact_quality, spec_drift,

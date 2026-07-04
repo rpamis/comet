@@ -224,7 +224,7 @@ def test_langsmith_task_wrapper_logs_outputs_and_rubric_feedback(monkeypatch):
     ]
 
 
-def test_langsmith_task_wrapper_points_plugin_at_current_experiment(monkeypatch):
+def test_langsmith_task_wrapper_keeps_plugin_on_configured_project(monkeypatch):
     module = _load_langsmith_task_tests()
     monkeypatch.delenv("CC_LANGSMITH_PARENT_DOTTED_ORDER", raising=False)
     monkeypatch.setenv("CC_LANGSMITH_PROJECT", "comet-skill-eval")
@@ -241,4 +241,4 @@ def test_langsmith_task_wrapper_points_plugin_at_current_experiment(monkeypatch)
 
     assert dotted_order == "20260703T000000Z00000000000000000000000000"
     assert module.os.environ["CC_LANGSMITH_PARENT_DOTTED_ORDER"] == dotted_order
-    assert module.os.environ["CC_LANGSMITH_PROJECT"] == "comet-skill-eval:abc12345"
+    assert module.os.environ["CC_LANGSMITH_PROJECT"] == "comet-skill-eval"
