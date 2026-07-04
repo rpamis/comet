@@ -66,6 +66,25 @@ validate_enum() {
   exit 1
 }
 
+normalize_language() {
+  local value="$1"
+  local source="${2:-language}"
+
+  case "$value" in
+    en|en-US)
+      printf '%s\n' "en"
+      ;;
+    zh|zh-CN)
+      printf '%s\n' "zh-CN"
+      ;;
+    *)
+      red "ERROR: Invalid language from ${source}: '$value'" >&2
+      red "Valid values: en, zh-CN (zh is accepted as a legacy alias)" >&2
+      exit 1
+      ;;
+  esac
+}
+
 validate_path_field() {
   local value="$1"
   local field="$2"
@@ -208,6 +227,24 @@ project_context_compression() {
   esac
 }
 
+project_language_default() {
+  local value="en"
+  local source="default"
+  if [ -n "${COMET_LANGUAGE:-}" ]; then
+    value="$COMET_LANGUAGE"
+    source="COMET_LANGUAGE"
+  elif [ -f ".comet/config.yaml" ]; then
+    local raw
+    raw=$(yaml_field "language" ".comet/config.yaml" 2>/dev/null || true)
+    if [ -n "$raw" ]; then
+      value="$raw"
+      source=".comet/config.yaml"
+    fi
+  fi
+
+  normalize_language "$value" "$source"
+}
+
 project_auto_transition_default() {
   local value="true"
   local source="default"
@@ -285,8 +322,9 @@ cmd_init() {
   mkdir -p "$change_dir"
 
   # Set workflow-appropriate defaults
-  local phase build_mode isolation verify_mode context_compression auto_transition review_mode
+  local phase language build_mode isolation verify_mode context_compression auto_transition review_mode
   phase="open"
+  language="$(project_language_default)"
   context_compression=$(project_context_compression)
   auto_transition="$(project_auto_transition_default)"
 
@@ -316,6 +354,7 @@ cmd_init() {
 
   cat > "$yaml_file" <<EOF
 workflow: $workflow
+language: $language
 phase: $phase
 context_compression: $context_compression
 build_mode: $build_mode
@@ -361,6 +400,11 @@ cmd_get() {
   if [ "$field" = "auto_transition" ] && { [ -z "$value" ] || [ "$value" = "null" ]; }; then
     value="$(project_auto_transition_default)"
   fi
+  if [ "$field" = "language" ] && { [ -z "$value" ] || [ "$value" = "null" ]; }; then
+    value="$(project_language_default)"
+  elif [ "$field" = "language" ]; then
+    value="$(normalize_language "$value" ".comet.yaml")"
+  fi
   echo "${value:-}"
 }
 
@@ -395,13 +439,13 @@ cmd_set() {
       fi
       validate_enum "$value" "open" "design" "build" "verify" "archive"
       ;;
-    workflow|context_compression|build_mode|build_pause|subagent_dispatch|tdd_mode|review_mode|isolation|verify_mode|auto_transition|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
+    workflow|language|context_compression|build_mode|build_pause|subagent_dispatch|tdd_mode|review_mode|isolation|verify_mode|auto_transition|verify_result|verification_report|branch_status|archived|design_doc|plan|verified_at|created_at|direct_override|build_command|verify_command|handoff_context|handoff_hash|base_ref)
       # Valid field
       ;;
     *)
       red "ERROR: Unknown field: '$field'" >&2
       red "Valid fields:" >&2
-      red "  workflow, phase, context_compression, design_doc, plan, build_mode, build_pause, subagent_dispatch, tdd_mode, review_mode, isolation," >&2
+      red "  workflow, language, phase, context_compression, design_doc, plan, build_mode, build_pause, subagent_dispatch, tdd_mode, review_mode, isolation," >&2
       red "  verify_mode, auto_transition, verify_result, verification_report, branch_status," >&2
       red "  verified_at, created_at, archived, base_ref, direct_override," >&2
       red "  build_command, verify_command, handoff_context, handoff_hash" >&2
@@ -413,6 +457,9 @@ cmd_set() {
   case "$field" in
     workflow)
       validate_enum "$value" "full" "hotfix" "tweak"
+      ;;
+    language)
+      value="$(normalize_language "$value" "language")"
       ;;
     context_compression)
       validate_enum "$value" "off" "beta"

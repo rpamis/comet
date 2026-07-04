@@ -15,7 +15,7 @@ description: "Comet Phase 5: Archive. Invoke with /comet-archive. Merge delta sp
 
 ### 0. Output Language Constraint
 
-Archive summaries and lifecycle closure notes must use the language of the user request that triggered this workflow.
+Archive summaries and lifecycle closure notes must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`.
 
 ### 0. Entry State Verification (Entry Check)
 

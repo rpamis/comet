@@ -23,7 +23,7 @@ Applicable for non-bug small scope changes, such as copy adjustment, configurati
 
 ### 0. Output Language Constraint
 
-Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow.
+Streamlined OpenSpec artifacts must use the configured Comet artifact language. Read `language` from `.comet/config.yaml` before `.comet.yaml` exists, then use `"$COMET_BASH" "$COMET_STATE" get <name> language` after initialization.
 
 Execution chain: open → lightweight build → light verify → archive. Tweak provides default decisions for each phase: streamlined open, lightweight build, lightweight verification, and final archive confirmation after verification passes.
 

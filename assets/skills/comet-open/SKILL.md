@@ -13,7 +13,7 @@ description: "Comet Phase 1: Open. Invoke with /comet-open. Explore ideas throug
 
 ### 0. Output Language Constraint
 
-Every prompt and artifact request passed to OpenSpec must include the output-language constraint: use the language of the user request that triggered this workflow. When resuming an existing change with a clear dominant artifact language, preserve that language unless the user explicitly asks to switch.
+Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language, using normalized ids such as `en` or `zh-CN`. Before `.comet.yaml` exists, read `language` from `.comet/config.yaml`; after the change is initialized, use `"$COMET_BASH" "$COMET_STATE" get <name> language`. If no configured language exists, fall back to the current user request language. The generated `proposal.md`, `design.md`, and `tasks.md` must use that language as their main language.
 
 ### 1. Explore Ideas and Clarify Requirements
 

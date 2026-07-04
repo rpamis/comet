@@ -40,7 +40,7 @@
 每个 implementer 或修复 agent prompt 必须包含：
 
 - 当前单个 task 的完整文本、架构背景和依赖上下文
-- `Language: 使用触发本次工作流的用户请求语言输出`
+- `Language: 使用 "$COMET_BASH" "$COMET_STATE" get <name> language 读取到的 Comet 配置产物语言输出`
 - 允许修改的文件范围和禁止修改的范围
 - 必须执行的测试命令和提交要求
 - 修复 agent 还必须收到对应 reviewer 的完整反馈

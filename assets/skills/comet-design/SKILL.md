@@ -90,7 +90,7 @@ Handoff package sources come from OpenSpec open phase artifacts:
 When loading the skill, ARGUMENTS must include:
 
 ```text
-Language: Use the language of the user request that triggered this workflow
+Language: Use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`
 ```
 
 After the skill loads, follow its guidance and use the following context:

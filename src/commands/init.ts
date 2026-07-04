@@ -9,8 +9,8 @@ import {
   copyCometRulesForPlatform,
   installCometHooksForPlatform,
   createWorkingDirs,
-  type LanguageConfig,
 } from '../core/skills.js';
+import { LANGUAGES, type LanguageConfig } from '../core/languages.js';
 import { installOpenSpec, isCommandAvailable } from '../core/openspec.js';
 import { installSuperpowersForPlatforms } from '../core/superpowers.js';
 import {
@@ -47,11 +47,6 @@ type ComponentPlan = {
   spAction: ComponentAction;
   cmAction: ComponentAction;
 };
-
-const LANGUAGES: LanguageConfig[] = [
-  { id: 'en', name: 'English', skillsDir: 'skills' },
-  { id: 'zh', name: '中文', skillsDir: 'skills-zh' },
-];
 
 const COMET_BANNER = [
   `   ██████╗ ██████╗ ███╗   ███╗███████╗████████╗`,
@@ -498,7 +493,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
   }
 
   if (scope === 'project') {
-    await createWorkingDirs(projectPath);
+    await createWorkingDirs(projectPath, language.artifactLanguage);
   }
 
   if (options.json) {

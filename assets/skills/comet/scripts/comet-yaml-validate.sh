@@ -137,6 +137,7 @@ validate_required_enum() {
 }
 
 workflow=$(field_value "workflow")
+language=$(field_value "language")
 phase=$(field_value "phase")
 context_compression=$(field_value "context_compression")
 build_mode=$(field_value "build_mode")
@@ -157,6 +158,7 @@ handoff_context=$(field_value "handoff_context")
 handoff_hash=$(field_value "handoff_hash")
 
 validate_enum "workflow"      "$workflow"      "full hotfix tweak"
+validate_enum "language"      "$language"      "en zh-CN zh"
 validate_enum "phase"         "$phase"          "open design build verify archive"
 validate_enum "context_compression" "$context_compression" "off beta"
 validate_enum "build_mode"    "$build_mode"     "subagent-driven-development executing-plans direct"
@@ -201,7 +203,7 @@ if [ -n "$handoff_hash" ] && [ "$handoff_hash" != "null" ]; then
 fi
 
 # --- Unknown keys check ---
-KNOWN_KEYS="workflow phase context_compression design_doc plan build_mode build_pause subagent_dispatch tdd_mode review_mode isolation verify_mode auto_transition verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
+KNOWN_KEYS="workflow language phase context_compression design_doc plan build_mode build_pause subagent_dispatch tdd_mode review_mode isolation verify_mode auto_transition verify_result verification_report branch_status verified_at created_at archived direct_override build_command verify_command handoff_context handoff_hash base_ref"
 while IFS=: read -r key _; do
   key="${key// /}"
   [ -z "$key" ] && continue

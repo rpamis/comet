@@ -14,7 +14,7 @@ description: "Comet Phase 4: Verify and Close. Invoke with /comet-verify. Verify
 
 ### 0a. Output Language Constraint
 
-Verification reports and branch-handling notes must use the language of the user request that triggered this workflow.
+Verification reports and branch-handling notes must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`.
 
 ### 0b. Entry State Verification (Entry Check)
 

@@ -5,15 +5,11 @@ import { fileURLToPath } from 'url';
 import { fileExists, readJson, copyFile, ensureDir } from '../utils/file-system.js';
 import { getPlatformSkillsDir, type Platform } from './platforms.js';
 import type { InstallScope } from './types.js';
+import { formatSupportedArtifactLanguages, resolveArtifactLanguage } from './languages.js';
+import type { LanguageConfig } from './languages.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-type LanguageConfig = {
-  id: string;
-  name: string;
-  skillsDir: string;
-};
 
 type HookConfig = {
   matcher: string;
@@ -734,7 +730,7 @@ async function installKiroHooks(
   return { installed: true };
 }
 
-async function createWorkingDirs(projectPath: string): Promise<void> {
+async function createWorkingDirs(projectPath: string, language: string = 'en'): Promise<void> {
   const dirs = [
     path.join(projectPath, 'docs', 'superpowers', 'specs'),
     path.join(projectPath, 'docs', 'superpowers', 'plans'),
@@ -747,9 +743,12 @@ async function createWorkingDirs(projectPath: string): Promise<void> {
 
   const configPath = path.join(projectPath, '.comet', 'config.yaml');
   if (!(await fileExists(configPath))) {
+    const artifactLanguage = resolveArtifactLanguage(language);
     await writeFile(
       configPath,
       [
+        `# language: ${formatSupportedArtifactLanguages()} (zh is accepted as a legacy alias)`,
+        `language: ${artifactLanguage.id}`,
         '# context_compression: off | beta',
         'context_compression: off',
         '# review_mode: off | standard | thorough',

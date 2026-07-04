@@ -90,7 +90,7 @@ beta 交接包是 **结构化 spec projection**，用于减少 OpenSpec 原文 t
 技能加载时，ARGUMENTS 必须包含：
 
 ```text
-Language: 使用触发本次工作流的用户请求语言输出
+Language: 使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言输出
 ```
 
 技能加载后，按其指引使用以下上下文：

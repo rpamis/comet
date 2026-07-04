@@ -217,9 +217,64 @@ describeShell('comet shell scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('workflow: full');
+    expect(yaml).toContain('language: en');
     expect(yaml).toContain('phase: open');
     expect(yaml).toContain('verification_report: null');
     expect(yaml).toContain('branch_status: pending');
+  }, 20_000);
+
+  it('snapshots language from .comet/config.yaml when initializing a change', async () => {
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: zh-CN\n');
+
+    const result = runBash(tmpDir, stateScript, ['init', 'language-zh', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'language-zh', '.comet.yaml'),
+      'utf-8',
+    );
+    const get = runBash(tmpDir, stateScript, ['get', 'language-zh', 'language']);
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('language: zh-CN');
+    expect(get.status).toBe(0);
+    expect(get.stdout.trim()).toBe('zh-CN');
+  }, 20_000);
+
+  it('normalizes legacy zh project language aliases when initializing a change', async () => {
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: zh\n');
+
+    const result = runBash(tmpDir, stateScript, ['init', 'language-legacy-zh', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'language-legacy-zh', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('language: zh-CN');
+  }, 20_000);
+
+  it('lets COMET_LANGUAGE override the project language default', async () => {
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: zh-CN\n');
+
+    const result = runBash(tmpDir, stateScript, ['init', 'language-env', 'full'], {
+      COMET_LANGUAGE: 'en',
+    });
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'language-env', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('language: en');
+  }, 20_000);
+
+  it('rejects invalid language from .comet/config.yaml when initializing a change', async () => {
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: pirate\n');
+
+    const result = runBash(tmpDir, stateScript, ['init', 'language-invalid', 'full']);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Invalid language from .comet/config.yaml: 'pirate'");
+    expect(result.stderr).toContain('Valid values: en, zh-CN');
   }, 20_000);
 
   it('initializes build_pause as null for new changes', async () => {
@@ -434,6 +489,48 @@ describeShell('comet shell scripts', () => {
     expect(get.stdout.trim()).toBe('false');
     expect(setInvalid.status).not.toBe(0);
     expect(setInvalid.stderr).toContain('Invalid value');
+  }, 20_000);
+
+  it('validates the language field in .comet.yaml', async () => {
+    await createChange(
+      tmpDir,
+      'language-validate',
+      [
+        'workflow: full',
+        'language: zh-CN',
+        'phase: design',
+        'context_compression: off',
+        'build_mode: null',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: null',
+        'review_mode: off',
+        'isolation: null',
+        'verify_mode: null',
+        'auto_transition: true',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const valid = runBash(tmpDir, path.join(tmpDir, 'scripts', 'comet-yaml-validate.sh'), [
+      'language-validate',
+    ]);
+    const setInvalid = runBash(tmpDir, stateScript, [
+      'set',
+      'language-validate',
+      'language',
+      'pirate',
+    ]);
+
+    expect(valid.status).toBe(0);
+    expect(setInvalid.status).not.toBe(0);
+    expect(setInvalid.stderr).toContain("Invalid language from language: 'pirate'");
+    expect(setInvalid.stderr).toContain('Valid values: en, zh-CN');
   }, 20_000);
 
   it('next resolves auto for full workflow when auto_transition is true', async () => {
@@ -727,6 +824,93 @@ describeShell('comet shell scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] Build passes');
+  }, 20_000);
+
+  it('blocks open guard when Chinese workflow artifacts are clearly English', async () => {
+    await createChange(
+      tmpDir,
+      'zh-english-artifacts',
+      [
+        'workflow: full',
+        'language: zh-CN',
+        'phase: open',
+        'context_compression: off',
+        'build_mode: null',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: null',
+        'review_mode: off',
+        'isolation: null',
+        'verify_mode: null',
+        'auto_transition: true',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      '- [ ] Implement the feature and validate the generated documentation language\n',
+    );
+    const englishBody =
+      'This document explains the feature goals, implementation approach, expected behavior, acceptance scenarios, boundaries, risks, and verification strategy for the workflow.\n';
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'zh-english-artifacts', 'proposal.md'),
+      englishBody,
+    );
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'zh-english-artifacts', 'design.md'),
+      englishBody,
+    );
+
+    const result = runBash(tmpDir, guardScript, ['zh-english-artifacts', 'open']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('[FAIL] proposal.md matches configured language');
+    expect(result.stderr).toContain('configured language is zh-CN');
+  }, 20_000);
+
+  it('allows Chinese workflow artifacts with English technical terms', async () => {
+    await createChange(
+      tmpDir,
+      'zh-mixed-artifacts',
+      [
+        'workflow: full',
+        'language: zh-CN',
+        'phase: open',
+        'context_compression: off',
+        'build_mode: null',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: null',
+        'review_mode: off',
+        'isolation: null',
+        'verify_mode: null',
+        'auto_transition: true',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      '- [ ] 实现 language guard 并验证 OpenSpec artifact\n',
+    );
+    const mixedBody =
+      '本文档说明 language guard 的目标、范围、验收场景和验证方式。OpenSpec、Superpowers、Markdown 等英文术语可以保留，但正文必须以中文为主。\n';
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'zh-mixed-artifacts', 'proposal.md'),
+      mixedBody,
+    );
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'zh-mixed-artifacts', 'design.md'),
+      mixedBody,
+    );
+
+    const result = runBash(tmpDir, guardScript, ['zh-mixed-artifacts', 'open']);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('[PASS] proposal.md matches configured language');
   }, 20_000);
 
   it('generates a design handoff and requires minimal design doc linkage before leaving design', async () => {

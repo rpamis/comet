@@ -64,9 +64,11 @@ describe('init command helpers', () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-config-'));
 
     try {
-      await createWorkingDirs(tmpDir);
+      await createWorkingDirs(tmpDir, 'zh');
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('# language: en | zh-CN');
+      expect(config).toContain('language: zh-CN');
       expect(config).toContain('# context_compression: off | beta');
       expect(config).toContain('context_compression: off');
       expect(config).toContain('# review_mode: off | standard | thorough');

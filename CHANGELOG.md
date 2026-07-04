@@ -2,6 +2,26 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.3.12] - 2026-07-04
+
+### Added
+
+- **Configured artifact language**: `comet init` now writes the selected artifact language to `.comet/config.yaml`, and new changes snapshot that language into `.comet.yaml` so OpenSpec and Superpowers artifacts keep a stable project-defined language across resumed or mixed-language sessions.
+- **Artifact language validation**: Comet guard checks now reject workflow artifacts that are clearly written in the wrong dominant language for the configured `language`, preventing accidental English output in Chinese workflows or Chinese output in English workflows.
+
+### Changed
+
+- **Comet language instructions**: Updated English and Chinese Comet skills to use the configured artifact language for OpenSpec prompts, Superpowers arguments, subagent dispatch, verification reports, and archive notes instead of deriving artifact language from the triggering user request.
+- **Language metadata model**: Skill language selection now maps to normalized artifact language values (`en` or `zh-CN`), with `zh` accepted as a legacy alias for existing configuration.
+
+### Fixed
+
+- **Package metadata version drift**: Aligned package and asset manifest version metadata for the `0.3.12` release so release artifacts report the same version.
+
+### Tests
+
+- **Artifact language coverage**: Added regression coverage for project language initialization, legacy alias normalization, environment overrides, invalid language rejection, `.comet.yaml` validation, guard-level language blocking, mixed Chinese/English technical terms, and bilingual skill instruction safeguards.
+
 ## What's Changed [0.3.11] - 2026-06-24
 
 ### Added
