@@ -507,7 +507,7 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
 7. **防漂移阶段守护** — 长上下文会话中的阶段意识保障
    - Rule 层：`comet-phase-guard.md` 每轮注入阶段感知、Skill 调用规范和上下文恢复指令（所有平台通用）
    - Hook 层：`comet-hook-guard.mjs` 在 open/design/archive 阶段硬拦截文件写入（Claude Code 等支持 hook 的平台）
-   - 白名单路径：`openspec/*`、`docs/superpowers/*`、`.claude/*`、`.comet/*`
+   - 白名单路径：`openspec/*`、`docs/superpowers/*`、`.superpowers/*`、`.claude/*`、`.comet/*`
 
 </details>
 

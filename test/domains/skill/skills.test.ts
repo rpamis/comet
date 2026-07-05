@@ -1676,6 +1676,20 @@ describe('skills', () => {
         'four choices: `isolation` / `build_mode` / `tdd_mode` / `review_mode`',
       );
     });
+
+    it('documents the Superpowers workspace hook allowlist in both languages', async () => {
+      const zhGuard = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet', 'rules', 'comet-phase-guard.md'),
+        'utf-8',
+      );
+      const enGuard = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet', 'rules', 'comet-phase-guard.en.md'),
+        'utf-8',
+      );
+
+      expect(zhGuard).toContain('`.superpowers/*`');
+      expect(enGuard).toContain('`.superpowers/*`');
+    });
   });
 
   describe('Repository authoring guidance', () => {

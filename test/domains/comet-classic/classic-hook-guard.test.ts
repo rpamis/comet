@@ -95,6 +95,32 @@ describe('Classic hook guard command', () => {
     expect(result.stderr).toContain('phase: design, handoff/spec');
   });
 
+  it('allows Superpowers workspace writes during guarded phases', async () => {
+    const dir = await makeProject();
+    run(dir, 'state', ['init', 'demo', 'full']);
+
+    const openResult = run(
+      dir,
+      'hook-guard',
+      [],
+      hookInput(path.join(dir, '.superpowers', 'sdd', 'progress.md')),
+    );
+
+    expect(openResult.status).toBe(0);
+    expect(openResult.stderr).toContain('.superpowers/sdd/progress.md');
+
+    await seedDesignChange(dir);
+    const designResult = run(
+      dir,
+      'hook-guard',
+      [],
+      hookInput(path.join(dir, '.superpowers', 'sdd', 'progress.md')),
+    );
+
+    expect(designResult.status).toBe(0);
+    expect(designResult.stderr).toContain('.superpowers/sdd/progress.md');
+  });
+
   // The hook guard reads governing state leniently: an unknown field makes the
   // strict projection unavailable, so it falls back to the legacy phase read
   // and still enforces the phase write rule — without rewriting the file.

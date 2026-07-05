@@ -40,6 +40,7 @@
     ".npmignore",
     ".prettierignore",
     ".prettierrc",
+    ".superpowers",
     ".tmp",
     "AGENTS.md",
     "app",

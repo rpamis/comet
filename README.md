@@ -550,7 +550,7 @@ Comet ensures agent execution reliability through automated state transitions:
      each turn across platforms
    - Hook layer: `comet-hook-guard.mjs` hard-blocks file writes during open/design/archive phases on platforms that
      support hooks, such as Claude Code
-   - Allowlisted paths: `openspec/*`, `docs/superpowers/*`, `.claude/*`, and `.comet/*`
+   - Allowlisted paths: `openspec/*`, `docs/superpowers/*`, `.superpowers/*`, `.claude/*`, and `.comet/*`
 
 </details>
 

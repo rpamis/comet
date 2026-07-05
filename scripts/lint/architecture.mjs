@@ -1,6 +1,9 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { readGitignoredTopLevelEntries } from './gitignore-top-level.mjs';
+import {
+  readGitignoredDirectoryEntries,
+  readGitignoredTopLevelEntries,
+} from './gitignore-top-level.mjs';
 
 const root = process.cwd();
 const failures = [];
@@ -41,7 +44,7 @@ function entryNames(relativePath) {
   return readdirSync(absolutePath).sort();
 }
 
-function walkFiles(relativePath, ignoredNames = new Set()) {
+function walkFiles(relativePath, ignoredNames = new Set(), ignoredRelativePaths = new Set()) {
   const absolutePath = path.join(root, relativePath);
   if (!existsSync(absolutePath)) return [];
 
@@ -62,6 +65,7 @@ function walkFiles(relativePath, ignoredNames = new Set()) {
       if (entry.startsWith('.pytest_cache')) continue;
       const entryAbsolutePath = path.join(currentAbsolutePath, entry);
       const entryRelativePath = path.join(currentRelativePath, entry).replaceAll(path.sep, '/');
+      if (ignoredRelativePaths.has(entryRelativePath)) continue;
       if (entryRelativePath === 'eval/local/logs' || entryRelativePath === 'eval/.venv') continue;
       const stats = statSync(entryAbsolutePath);
       if (stats.isDirectory()) {
@@ -92,6 +96,7 @@ assertArrayEquals('repository-layout.testRoots', layout.testRoots, ['test']);
 
 const allowedTopLevelEntries = new Set(layout.allowedTopLevelEntries ?? []);
 const gitignoredTopLevelEntries = readGitignoredTopLevelEntries(root);
+const gitignoredDirectoryEntries = readGitignoredDirectoryEntries(root);
 for (const entry of entryNames('.')) {
   if (gitignoredTopLevelEntries.has(entry)) continue;
   if (!allowedTopLevelEntries.has(entry)) {
@@ -191,7 +196,7 @@ const ignoredGeneratedTrees = new Set([
   'dist',
   'node_modules',
 ]);
-for (const file of walkFiles('.', ignoredGeneratedTrees)) {
+for (const file of walkFiles('.', ignoredGeneratedTrees, gitignoredDirectoryEntries)) {
   if (!codeFilePattern.test(file)) continue;
   const normalized = file.replaceAll('\\', '/');
   const allowed =

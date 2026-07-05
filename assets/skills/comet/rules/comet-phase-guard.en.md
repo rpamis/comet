@@ -19,6 +19,9 @@ When there is an active comet change (`openspec/changes/<name>/.comet.yaml` exis
 | `build` | Write source code, tests, execute plans | Skip user confirmation points |
 | `verify` | Verification, branch handling | Skip failure handling |
 | `archive` | Confirm archive, run archive script | Write source code |
+
+The hook hard interception allowlist includes workflow and platform workspaces such as `openspec/*`, `docs/superpowers/*`, `.superpowers/*`, `.claude/*`, and `.comet/*`; write access to these paths does not allow skipping the current phase's artifacts or confirmation requirements.
+
 ### Phase-Entry Self-Consistency Check (Before Writing Source Code)
 
 Reading the `phase` field alone is not enough — you must also confirm **how** that phase was reached. Before writing any source code, self-check whether `.comet.yaml` is in an **illegal jump** state (a prior phase was skipped) using the table below. If any row matches, immediately stop writing source code, go back to the corresponding phase to fill the missing artifact, and do not trust the `phase` field to keep going.

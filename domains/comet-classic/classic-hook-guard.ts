@@ -163,6 +163,10 @@ function isCometConfig(relativePath: string): boolean {
   );
 }
 
+function isSuperpowersWorkspace(relativePath: string): boolean {
+  return relativePath === '.superpowers' || relativePath.startsWith('.superpowers/');
+}
+
 function openSpecAllowed(relativePath: string, phase: ClassicPhase): string | null {
   if (!relativePath.startsWith('openspec/')) return null;
   const stateFile =
@@ -272,6 +276,9 @@ export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
   }
   if (relativePath.startsWith('.claude/')) {
     return allowed(`${relativePath} (whitelist: claude config)`);
+  }
+  if (isSuperpowersWorkspace(relativePath)) {
+    return allowed(`${relativePath} (whitelist: superpowers workspace)`);
   }
   if (
     relativePath === 'CLAUDE.md' ||

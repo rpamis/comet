@@ -9027,6 +9027,9 @@ function isRootMarkdown(relativePath2) {
 function isCometConfig(relativePath2) {
   return relativePath2 === ".comet.yaml" || relativePath2 === "comet.yaml" || relativePath2 === ".comet.yml" || relativePath2 === "comet.yml" || relativePath2.startsWith(".comet/") || relativePath2.includes("/.comet/");
 }
+function isSuperpowersWorkspace(relativePath2) {
+  return relativePath2 === ".superpowers" || relativePath2.startsWith(".superpowers/");
+}
 function openSpecAllowed(relativePath2, phase) {
   if (!relativePath2.startsWith("openspec/")) return null;
   const stateFile = relativePath2.endsWith("/.comet.yaml") || relativePath2.endsWith("/.openspec.yaml");
@@ -9122,6 +9125,9 @@ var classicHookGuardCommand = async (args) => {
   }
   if (relativePath2.startsWith(".claude/")) {
     return allowed(`${relativePath2} (whitelist: claude config)`);
+  }
+  if (isSuperpowersWorkspace(relativePath2)) {
+    return allowed(`${relativePath2} (whitelist: superpowers workspace)`);
   }
   if (relativePath2 === "CLAUDE.md" || relativePath2 === "CHANGELOG.md" || relativePath2 === "README.md" || isRootMarkdown(relativePath2)) {
     return allowed(`${relativePath2} (whitelist: root markdown)`);
