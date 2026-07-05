@@ -19,10 +19,12 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Package metadata version drift**: Aligned package and asset manifest version metadata for the `0.3.12` release so release artifacts report the same version.
 - **Guard fails closed on an invalid configured language**: `comet-guard.sh` previously coerced any unrecognized `language` value to `en` before running the dominant-language check, silently masking a misconfigured project. It now reports an error and blocks the phase transition instead.
 - **Guard language check ignores fenced code blocks**: The CJK/English word counts used to detect the dominant language no longer count text inside fenced code blocks, so pasted commands, paths, or hashes in a Chinese-language artifact no longer trigger a false English-dominant failure.
+- **CJK detection no longer depends on locale collation**: `count_cjk_chars` matched `[一-龥]` as a locale-collated character range, which fails to compile under `LC_ALL=C.UTF-8` (a common CI/container default) and silently counts zero CJK characters, letting Chinese-dominant artifacts pass an `en`-configured guard undetected. It now matches the raw 3-byte UTF-8 encoding under a forced `LC_ALL=C`, which is consistent across GNU grep, BSD grep, and Git Bash.
+- **`.husky/pre-commit` executable bit**: The hook file was committed as non-executable, so git silently skipped it on every clone/checkout regardless of platform, disabling the `format:check`/lint-staged automation described in this file for all contributors since it was introduced.
 
 ### Tests
 
-- **Artifact language coverage**: Added regression coverage for project language initialization, environment overrides, invalid language rejection, `.comet.yaml` validation, guard-level language blocking in both language directions, mixed Chinese/English technical terms, fenced-code-block exclusion, guard fail-closed behavior on an invalid project language, and bilingual skill instruction safeguards.
+- **Artifact language coverage**: Added regression coverage for project language initialization, environment overrides, invalid language rejection, `.comet.yaml` validation, guard-level language blocking in both language directions, mixed Chinese/English technical terms, fenced-code-block exclusion, guard fail-closed behavior on an invalid project language, and bilingual skill instruction safeguards. Verified the CJK detection fix end-to-end on Linux under `LC_ALL=C.UTF-8`.
 
 ## What's Changed [0.3.11] - 2026-06-24
 

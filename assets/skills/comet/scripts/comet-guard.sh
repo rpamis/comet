@@ -233,12 +233,18 @@ strip_fenced_code_blocks() {
   ' "$1" 2>/dev/null || true
 }
 
+# Matches CJK Unified Ideographs (U+4E00-U+9FFF) by their raw 3-byte UTF-8
+# encoding rather than a locale-collated character range: under LC_ALL=C.UTF-8
+# (a common CI/container default), a range like [一-龥] fails to compile
+# ("Invalid collation character") and silently counts as zero. Forcing
+# LC_ALL=C makes grep treat the pattern and input as raw bytes, which is
+# consistent across GNU grep (Linux), BSD grep (macOS), and Git Bash (Windows).
 count_cjk_chars() {
-  (strip_fenced_code_blocks "$1" | grep -o '[一-龥]' 2>/dev/null || true) | wc -l | awk '{print $1}'
+  (strip_fenced_code_blocks "$1" | LC_ALL=C grep -oE $'[\xe4-\xe9][\x80-\xbf][\x80-\xbf]' 2>/dev/null || true) | wc -l | awk '{print $1}'
 }
 
 count_english_words() {
-  (strip_fenced_code_blocks "$1" | grep -oE '[A-Za-z][A-Za-z0-9_-]{2,}' 2>/dev/null || true) | wc -l | awk '{print $1}'
+  (strip_fenced_code_blocks "$1" | LC_ALL=C grep -oE '[A-Za-z][A-Za-z0-9_-]{2,}' 2>/dev/null || true) | wc -l | awk '{print $1}'
 }
 
 document_language_matches_configured() {
