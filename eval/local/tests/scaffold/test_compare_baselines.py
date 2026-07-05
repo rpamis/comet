@@ -73,6 +73,55 @@ def test_compare_report_includes_spend_summary(tmp_path: Path):
     assert "| COMET_FULL_040_BETA | 1 | 200 | $0.0200 | 200 | $0.0200 |" in report
 
 
+def test_compare_report_reads_utf8_report_json(tmp_path: Path):
+    experiment = tmp_path / "experiment"
+    reports = experiment / "reports"
+    reports.mkdir(parents=True)
+    report = {
+        "name": "comet-fix-median-COMET_FULL_040_BETA",
+        "passed": True,
+        "checks_passed": ["[RUBRIC] weighted_score: 1.00 - 通过"],
+        "checks_failed": [],
+        "events_summary": {
+            "total_tokens": 200,
+            "total_cost_usd": 0.02,
+            "artifact_references": {"report": "报告路径"},
+        },
+    }
+    (reports / "utf8_report.json").write_text(
+        json.dumps(report, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    output = build_report(experiment)
+
+    assert "报告路径" in output
+
+
+def test_compare_report_handles_partial_llm_judge_overlay_scores(tmp_path: Path):
+    experiment = tmp_path / "experiment"
+    reports = experiment / "reports"
+    reports.mkdir(parents=True)
+    _write_report(reports, "CONTROL", 100, 0.01)
+    _write_report(reports, "COMET_FULL_039", 300, 0.03)
+    workflow = {
+        "name": "comet-fix-median-COMET_FULL_040_BETA",
+        "passed": True,
+        "checks_passed": ["[RUBRIC-JUDGE] artifact_quality: 0.75 - ok"],
+        "checks_failed": [],
+        "events_summary": {},
+    }
+    (reports / "workflow_judge_only.json").write_text(
+        json.dumps(workflow),
+        encoding="utf-8",
+    )
+
+    report = build_report(experiment)
+
+    assert "## LLM-judge overlay (rule vs judge)" in report
+    assert "| artifact_quality | COMET_FULL_040_BETA | — | 0.75 | — |" in report
+
+
 def test_compare_report_includes_metric_guide_and_runtime_summary(tmp_path: Path):
     experiment = tmp_path / "experiment"
     reports = experiment / "reports"
@@ -239,6 +288,29 @@ def test_compare_report_splits_pass_metrics_by_business_and_workflow(tmp_path: P
     assert "| workflow | COMET_FULL_040_BETA | 0.50 | 1.00 | 0 | 0 | 1/2 |" in report
 
 
+def test_compare_report_includes_pass_at_3_when_three_runs_exist(tmp_path: Path):
+    experiment = tmp_path / "experiment"
+    reports = experiment / "reports"
+    reports.mkdir(parents=True)
+
+    for rep, passed in enumerate((True, False, False), start=1):
+        _write_report(reports, f"CONTROL-r{rep}", 100, 0.01, passed=passed)
+    for rep, passed in enumerate((True, True, False), start=1):
+        _write_report(reports, f"COMET_FULL_040_BETA-r{rep}", 200, 0.02, passed=passed)
+    for rep, passed in enumerate((True, True, True), start=1):
+        _write_report(reports, f"COMET_FULL_039-r{rep}", 300, 0.03, passed=passed)
+
+    report = build_report(experiment)
+
+    assert (
+        "| Metric | Treatment | pass@1 | pass@2 | pass@3 | pass^1 | pass^2 | pass^3 | pass/fail |"
+        in report
+    )
+    assert "| overall | CONTROL | 0.33 | 0.67 | 1.00 | 0 | 0 | 0 | 1/3 |" in report
+    assert "| overall | COMET_FULL_040_BETA | 0.67 | 1.00 | 1.00 | 0 | 0 | 0 | 2/3 |" in report
+    assert "| overall | COMET_FULL_039 | 1.00 | 1.00 | 1.00 | 1 | 1 | 1 | 3/3 |" in report
+
+
 def test_compare_report_honors_html_report_output_config(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("BENCH_LOGS_DIR", str(tmp_path))
     experiment = tmp_path / "experiments" / "exp1"
@@ -312,6 +384,64 @@ def test_compare_report_uses_structured_failure_attribution(tmp_path: Path):
 
     assert "**harness**" in report
     assert "[harness] target Skill was never invoked" in report
+
+
+def test_compare_report_groups_repeated_failure_attribution(tmp_path: Path):
+    experiment = tmp_path / "experiment"
+    reports = experiment / "reports"
+    reports.mkdir(parents=True)
+    _write_report(reports, "CONTROL", 100, 0.01)
+    _write_report(reports, "COMET_FULL_039", 300, 0.03)
+    for index in range(2):
+        workflow = {
+            "name": f"comet-full-workflow-COMET_FULL_040_BETA-r{index}",
+            "passed": False,
+            "checks_passed": [],
+            "checks_failed": ["Required Superpowers dependency skill not invoked"],
+            "events_summary": {
+                "total_tokens": 200,
+                "total_cost_usd": 0.02,
+                "failure_attribution": [
+                    {
+                        "bucket": "workflow",
+                        "check": "Required Superpowers dependency skill not invoked",
+                        "reason": "Skill invocation contract failed",
+                    }
+                ],
+            },
+        }
+        (reports / f"COMET_FULL_040_BETA_{index}_report.json").write_text(
+            json.dumps(workflow)
+        )
+
+    report = build_report(experiment)
+
+    assert "- **workflow** (2):" in report
+    assert (
+        "x2 Required Superpowers dependency skill not invoked  ->  "
+        "[workflow] Skill invocation contract failed"
+    ) in report
+
+
+def test_compare_report_labels_failure_attribution_as_run_level_checks(tmp_path: Path):
+    experiment = tmp_path / "experiment"
+    reports = experiment / "reports"
+    reports.mkdir(parents=True)
+    _write_report(reports, "CONTROL", 100, 0.01)
+    _write_report(reports, "COMET_FULL_039", 300, 0.03)
+    _write_report(reports, "COMET_FULL_040_BETA", 200, 0.02, passed=False)
+
+    report = build_report(experiment)
+    html = render_markdown_html(report, title="Comet Baseline Comparison Report")
+
+    assert "## Run-level failed checks" in report
+    assert (
+        "These are sample-level `checks_failed` entries. They can coexist with "
+        "`workflow_completion == 1.00`, `pass@k == 1.00`, or a passing task outcome"
+        in report
+    )
+    assert "<h2>样本级失败检查</h2>" in html
+    assert "它们可以与 <code>workflow_completion == 1.00</code>、<code>pass@k == 1.00</code>" in html
 
 
 def test_compare_report_lists_source_evidence(tmp_path: Path):
@@ -534,6 +664,43 @@ def test_compare_report_lists_flagged_runs_without_excluding_them(tmp_path: Path
     assert "| COMET_FULL_040_BETA | 1 | 200 | $0.0200 | 200 | $0.0200 |" in report
 
 
+def test_compare_report_summarizes_multiline_loop_evidence(tmp_path: Path):
+    experiment = tmp_path / "experiment"
+    reports = experiment / "reports"
+    reports.mkdir(parents=True)
+    _write_report(reports, "CONTROL", 100, 0.01)
+    _write_report(reports, "COMET_FULL_039", 300, 0.03)
+    _write_quality_report(
+        reports,
+        "workflow_flagged",
+        name="comet-full-workflow-COMET_FULL_040_BETA",
+        weighted_score=0.5,
+        tokens=200,
+        cost=0.02,
+        sample_quality={
+            "status": "flagged",
+            "reason_code": "completed_run_mentions_outer_failure",
+            "reason": "completed with suspicious runner output",
+            "include_in_analysis": True,
+            "confidence": "medium",
+            "evidence": [
+                "[loop] turn 1/12\n"
+                "[loop] decision point detected; simulating user reply\n"
+                "[loop] simulated reply (42 chars)\n"
+                "[loop] turn 2/12\n"
+                "[loop] workflow appears complete; ending\n"
+                "[loop] finished after 2 turns"
+            ],
+        },
+    )
+
+    report = build_report(experiment)
+
+    assert "loop trace: 2 turns; 1 simulated decision reply; see report JSON for full evidence" in report
+    flagged_section = report.split("## Flagged runs", 1)[1].split("## Raw vs analysis", 1)[0]
+    assert "[loop] decision point detected" not in flagged_section
+
+
 def test_compare_report_reports_insufficient_clean_data(tmp_path: Path):
     experiment = tmp_path / "experiment"
     reports = experiment / "reports"
@@ -627,6 +794,38 @@ def test_html_report_includes_data_quality_summary(tmp_path: Path):
     assert "paper-figure" in html
 
 
+def test_html_report_wraps_wide_evidence_tables(tmp_path: Path):
+    experiment = tmp_path / "experiment"
+    reports = experiment / "reports"
+    reports.mkdir(parents=True)
+    _write_report(reports, "CONTROL", 100, 0.01)
+    _write_report(reports, "COMET_FULL_039", 300, 0.03)
+    _write_quality_report(
+        reports,
+        "workflow_flagged",
+        name="comet-full-workflow-COMET_FULL_040_BETA",
+        weighted_score=0.5,
+        tokens=200,
+        cost=0.02,
+        sample_quality={
+            "status": "flagged",
+            "reason_code": "completed_run_mentions_outer_failure",
+            "reason": "completed with suspicious runner output",
+            "include_in_analysis": True,
+            "confidence": "medium",
+            "evidence": ["a-very-long-evidence-token-without-natural-breaks-" * 8],
+        },
+    )
+
+    markdown = build_report(experiment)
+    html = render_markdown_html(markdown, title="Comet Baseline Comparison Report")
+
+    assert 'class="table-scroll"' in html
+    assert 'class="col-evidence"' in html
+    assert 'class="col-report"' in html
+    assert "overflow-wrap: anywhere" in html
+
+
 def test_html_report_includes_bilingual_language_toggle(tmp_path: Path):
     experiment = tmp_path / "experiment"
     reports = experiment / "reports"
@@ -705,6 +904,9 @@ def test_html_report_centers_markdown_tables(tmp_path: Path):
     assert "width: max-content;" in html
     assert "max-width: 100%;" in html
     assert "margin: 0 auto 1rem;" in html
+    assert "margin: 0 auto;" in html
+    assert "text-align: center;" in html
+    assert ".col-task," in html
 
 
 def test_html_report_renders_localized_emphasis_without_literal_underscore_markers(tmp_path: Path):

@@ -196,24 +196,32 @@ def render_markdown_html(markdown: str, *, title: str) -> str:
     p, ul {{ margin: 0 0 1rem; }}
     ul {{ padding-left: 1.4rem; }}
     li + li {{ margin-top: 0.25rem; }}
+    .table-scroll {{
+      width: 100%;
+      max-width: 100%;
+      margin: 0 auto 1rem;
+      overflow-x: auto;
+      border-top: 1.5px solid var(--ink);
+      border-bottom: 1.5px solid var(--ink);
+    }}
     table {{
       width: max-content;
       max-width: 100%;
       margin: 0 auto 1rem;
       border-collapse: collapse;
-      display: block;
-      overflow-x: auto;
       background: transparent;
       border: 0;
-      border-top: 1.5px solid var(--ink);
-      border-bottom: 1.5px solid var(--ink);
       font-size: 12.5px;
+    }}
+    .table-scroll table {{
+      max-width: none;
+      margin: 0 auto;
     }}
     th, td {{
       padding: 0.38rem 0.55rem;
       border: 0;
       border-bottom: 1px solid var(--grid);
-      text-align: left;
+      text-align: center;
       vertical-align: top;
       white-space: nowrap;
     }}
@@ -221,6 +229,40 @@ def render_markdown_html(markdown: str, *, title: str) -> str:
       background: transparent;
       border-bottom: 1.25px solid var(--ink);
       font-weight: 700;
+    }}
+    .data-table--wide th,
+    .data-table--wide td {{
+      white-space: normal;
+      text-align: left;
+    }}
+    .col-task,
+    .col-treatment,
+    .col-metric,
+    .col-dimension,
+    .col-source,
+    .col-meaning,
+    .col-report,
+    .col-run,
+    .col-reason,
+    .col-evidence {{
+      text-align: left;
+    }}
+    .col-evidence {{
+      min-width: 18rem;
+      max-width: 30rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }}
+    .col-report {{
+      min-width: 16rem;
+      max-width: 26rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }}
+    .col-run {{
+      max-width: 13rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
     code {{
       background: var(--code);
@@ -957,7 +999,7 @@ def _localize_eval_markdown(markdown: str) -> str:
         ("| `weighted_score` | Weighted average across applicable rubric dimensions; N/A dimensions are skipped. | `[RUBRIC] weighted_score` | Rubric dimensions / Overall |", "| `weighted_score` | 适用 Rubric 维度的加权平均；N/A 维度不参与计算。 | `[RUBRIC] weighted_score` | Rubric 维度 / Overall |"),
         ("| `tokens` / `cost` | Total model token and USD cost telemetry for included runs. | events_summary | Spend summary |", "| `tokens` / `cost` | 纳入分析运行的模型 token 与美元成本遥测。 | events_summary | 成本摘要 |"),
         ("| `turns` / `duration` / `tool calls` | Runtime effort telemetry for included runs; also feeds the `efficiency` rubric. | events_summary | Runtime summary / Rubric dimensions |", "| `turns` / `duration` / `tool calls` | 纳入分析运行的运行时开销遥测，也用于 `efficiency` Rubric。 | events_summary | 运行摘要 / Rubric 维度 |"),
-        ("| `failure attribution` | Buckets valid failures into harness, business, workflow, task, or uncategorized causes. | checks_failed / events_summary.failure_attribution | Failure attribution |", "| `failure attribution` | 将有效失败归入 harness、business、workflow、task 或 uncategorized。 | checks_failed / events_summary.failure_attribution | 失败归因 |"),
+        ("| `run-level failed checks` | Buckets sample-level `checks_failed` entries into harness, business, workflow, task, or uncategorized causes; this is not the same as the task outcome matrix. | checks_failed / events_summary.failure_attribution | Run-level failed checks |", "| `run-level failed checks` | 将样本级 `checks_failed` 条目归入 harness、business、workflow、task 或 uncategorized；它不等同于任务结果矩阵。 | checks_failed / events_summary.failure_attribution | 样本级失败检查 |"),
         ("| `source evidence` | Run id, quality status, profile, Skill source hashes, eval manifest, and raw report reference. | events_summary / sample_quality | Source evidence |", "| `source evidence` | run id、质量状态、profile、Skill source hash、eval manifest 和原始 report 引用。 | events_summary / sample_quality | 来源证据 |"),
         ("## Data quality summary", "## 数据质量摘要"),
         ("## Run counts", "## 运行次数"),
@@ -1077,7 +1119,11 @@ def _localize_eval_markdown(markdown: str) -> str:
         ("## Excluded runs", "## 已排除运行"),
         ("## Flagged runs", "## 已标记运行"),
         ("## Raw vs analysis sensitivity", "## Raw 与分析集敏感性"),
-        ("## Failure attribution", "## 失败归因"),
+        ("## Run-level failed checks", "## 样本级失败检查"),
+        (
+            "These are sample-level `checks_failed` entries. They can coexist with `workflow_completion == 1.00`, `pass@k == 1.00`, or a passing task outcome because they describe stricter run-contract failures rather than the workflow artifact completion score or the task outcome matrix.",
+            "这些是样本级 `checks_failed` 条目。它们可以与 `workflow_completion == 1.00`、`pass@k == 1.00` 或通过的任务结果同时存在，因为它们描述的是更严格的运行契约失败，而不是 workflow 产物完成分数或任务结果矩阵。",
+        ),
         (
             "Each failed baseline check is bucketed as **harness** (runner/trigger issue), **business** (requested behavior issue), **workflow** (skill guidance or workflow artifact issue), **task** (task/validator issue), or **uncategorized** (valid completed failure that needs inspection).",
             "每个失败的基线检查都会归因到 **harness**（运行器/触发问题）、**business**（业务实现问题）、**workflow**（Skill 指引或 workflow 产物问题）、**task**（任务/validator 问题）或 **uncategorized**（需要继续检查的有效失败）。",
@@ -1106,8 +1152,8 @@ def _localize_eval_markdown(markdown: str) -> str:
             "❌ **Workflow 相比 0.3.9 基线发生回退，共",
         ),
         (
-            "See the failure-attribution section above and the events/raw logs for root-cause analysis.",
-            "请结合上方失败归因以及 events/raw logs 做根因分析。",
+            "See the run-level failed checks section above and the events/raw logs for root-cause analysis.",
+            "请结合上方样本级失败检查以及 events/raw logs 做根因分析。",
         ),
         ("✅ **Workflow is stable**", "✅ **Workflow 稳定**"),
         ("⚠️ **Workflow overall lower**", "⚠️ **Workflow overall 较低**"),
@@ -1287,20 +1333,40 @@ def _render_table(lines: list[str]) -> list[str]:
     if not rows:
         return []
 
-    rendered = ["<table>", "  <thead>", "    <tr>"]
-    for cell in rows[0]:
-        rendered.append(f"      <th>{_inline_markdown(cell)}</th>")
+    headers = rows[0]
+    column_classes = [_column_class(header) for header in headers]
+    wide_table = any(column in {"col-evidence", "col-report", "col-run"} for column in column_classes)
+    table_class = "data-table data-table--wide" if wide_table else "data-table"
+    rendered = [
+        '<div class="table-scroll">',
+        f'<table class="{table_class}">',
+        "  <thead>",
+        "    <tr>",
+    ]
+    for cell, column_class in zip(headers, column_classes):
+        rendered.append(f"      <th{_class_attr(column_class)}>{_inline_markdown(cell)}</th>")
     rendered.extend(["    </tr>", "  </thead>"])
     if len(rows) > 1:
         rendered.append("  <tbody>")
         for row in rows[1:]:
             rendered.append("    <tr>")
-            for cell in row:
-                rendered.append(f"      <td>{_inline_markdown(cell)}</td>")
+            for index, cell in enumerate(row):
+                column_class = column_classes[index] if index < len(column_classes) else ""
+                rendered.append(f"      <td{_class_attr(column_class)}>{_inline_markdown(cell)}</td>")
             rendered.append("    </tr>")
         rendered.append("  </tbody>")
     rendered.append("</table>")
+    rendered.append("</div>")
     return rendered
+
+
+def _class_attr(class_name: str) -> str:
+    return f' class="{class_name}"' if class_name else ""
+
+
+def _column_class(header: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", header.strip().lower()).strip("-")
+    return f"col-{slug}" if slug else ""
 
 
 def _table_cells(line: str) -> list[str]:

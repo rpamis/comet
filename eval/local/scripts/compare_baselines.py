@@ -137,7 +137,7 @@ def _load_reports(experiment_dir: Path) -> dict[str, list[dict]]:
         return by_treatment
     for rf in sorted(reports_dir.glob("*.json")):
         try:
-            data = json.loads(rf.read_text())
+            data = json.loads(rf.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
         raw_name = data.get("name", "unknown")
@@ -342,7 +342,7 @@ def _quality_run_rows(
     for report in reports:
         quality = sample_quality_dict(report, experiment_dir=experiment_dir)
         task = _task_name(report, treatment)
-        evidence = "; ".join(quality.get("evidence", [])[:2]) or "none"
+        evidence = _quality_evidence_summary(quality.get("evidence", []))
         include_text = (
             f" | {'yes' if quality.get('include_in_analysis') else 'no'}" if include_column else ""
         )
@@ -351,6 +351,34 @@ def _quality_run_rows(
             f"{quality.get('reason_code')} | {evidence}{include_text} | {_report_ref(report)} |"
         )
     return rows
+
+
+def _quality_evidence_summary(evidence_items: list[Any]) -> str:
+    raw = "\n".join(str(item) for item in evidence_items if item)
+    if not raw:
+        return "none"
+
+    loop_lines = re.findall(r"^\s*\[loop\]\s+(.+)$", raw, flags=re.MULTILINE)
+    if loop_lines:
+        finished = re.search(r"\[loop\]\s+finished after\s+(\d+)\s+turns?", raw)
+        turn_numbers = [
+            int(match.group(1))
+            for match in re.finditer(r"\[loop\]\s+turn\s+(\d+)/\d+", raw)
+        ]
+        turns = int(finished.group(1)) if finished else (max(turn_numbers) if turn_numbers else 0)
+        replies = len(re.findall(r"\[loop\]\s+simulated reply", raw))
+        turn_text = f"{turns} {'turn' if turns == 1 else 'turns'}"
+        reply_text = f"{replies} simulated decision {'reply' if replies == 1 else 'replies'}"
+        return f"loop trace: {turn_text}; {reply_text}; see report JSON for full evidence"
+
+    summary = "; ".join(_collapse_table_cell_text(str(item)) for item in evidence_items[:2] if item)
+    if len(summary) > 220:
+        summary = f"{summary[:217].rstrip()}..."
+    return summary or "none"
+
+
+def _collapse_table_cell_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.replace("|", "/")).strip()
 
 
 def _overall_by_reports(reports: list[dict]) -> float | None:
@@ -484,6 +512,17 @@ def _attributions(reports: list[dict]) -> dict[str, list[str]]:
     return buckets
 
 
+def _summarize_attribution_items(items: list[str]) -> list[str]:
+    """Collapse repeated failure causes while preserving first-seen order."""
+    counts: dict[str, int] = {}
+    for item in items:
+        counts[item] = counts.get(item, 0) + 1
+    summarized = []
+    for item, count in counts.items():
+        summarized.append(f"x{count} {item}" if count > 1 else item)
+    return summarized
+
+
 def build_report(experiment_dir: Path) -> str:
     raw_by_treatment = _load_reports(experiment_dir)
     partitions = _partition_reports(raw_by_treatment, experiment_dir)
@@ -517,7 +556,7 @@ def build_report(experiment_dir: Path) -> str:
     lines.append("| `weighted_score` | Weighted average across applicable rubric dimensions; N/A dimensions are skipped. | `[RUBRIC] weighted_score` | Rubric dimensions / Overall |")
     lines.append("| `tokens` / `cost` | Total model token and USD cost telemetry for included runs. | events_summary | Spend summary |")
     lines.append("| `turns` / `duration` / `tool calls` | Runtime effort telemetry for included runs; also feeds the `efficiency` rubric. | events_summary | Runtime summary / Rubric dimensions |")
-    lines.append("| `failure attribution` | Buckets valid failures into harness, business, workflow, task, or uncategorized causes. | checks_failed / events_summary.failure_attribution | Failure attribution |")
+    lines.append("| `run-level failed checks` | Buckets sample-level `checks_failed` entries into harness, business, workflow, task, or uncategorized causes; this is not the same as the task outcome matrix. | checks_failed / events_summary.failure_attribution | Run-level failed checks |")
     lines.append("| `source evidence` | Run id, quality status, profile, Skill source hashes, eval manifest, and raw report reference. | events_summary / sample_quality | Source evidence |")
     lines.append("")
 
@@ -554,7 +593,7 @@ def build_report(experiment_dir: Path) -> str:
         (len(v) for metric_values in pass_fail_metrics.values() for v in metric_values.values()),
         default=0,
     )
-    ks = [k for k in (1, 2, 5) if k <= max_n] or [1]
+    ks = [k for k in (1, 2, 3, 5) if k <= max_n] or [1]
 
     lines.append("## pass@k / pass^k — capability vs reliability")
     lines.append("")
@@ -795,7 +834,14 @@ def build_report(experiment_dir: Path) -> str:
         )
     lines.append("")
 
-    lines.append("## Failure attribution")
+    lines.append("## Run-level failed checks")
+    lines.append("")
+    lines.append(
+        "These are sample-level `checks_failed` entries. They can coexist with "
+        "`workflow_completion == 1.00`, `pass@k == 1.00`, or a passing task outcome "
+        "because they describe stricter run-contract failures rather than the "
+        "workflow artifact completion score or the task outcome matrix."
+    )
     lines.append("")
     lines.append(
         "Each failed baseline check is bucketed as **harness** (runner/trigger issue), "
@@ -818,7 +864,7 @@ def build_report(experiment_dir: Path) -> str:
             if not items:
                 continue
             lines.append(f"- **{bucket}** ({len(items)}):")
-            for item in items:
+            for item in _summarize_attribution_items(items):
                 lines.append(f"  - {item}")
         lines.append("")
     if not any_failures:
@@ -859,7 +905,7 @@ def build_report(experiment_dir: Path) -> str:
             lines.append(f"- **{dim}**: workflow {wf:.2f} < baseline {bl:.2f} (Δ {wf - bl:+.2f})")
         lines.append("")
         lines.append(
-            "See the failure-attribution section above and the events/raw logs "
+            "See the run-level failed checks section above and the events/raw logs "
             "for root-cause analysis."
         )
     else:
@@ -920,7 +966,10 @@ def build_report(experiment_dir: Path) -> str:
                 if rule is None and judge is None:
                     continue
                 gap = f"{judge - rule:+.2f}" if (rule is not None and judge is not None) else "—"
-                lines.append(f"| {dim} | {t} | {rule:.2f} | {judge:.2f} | {gap} |")
+                lines.append(
+                    f"| {dim} | {t} | {_fmt_optional_score(rule)} | "
+                    f"{_fmt_optional_score(judge)} | {gap} |"
+                )
         lines.append("")
 
     return "\n".join(lines)
