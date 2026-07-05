@@ -33,7 +33,7 @@ archived: false
 | 字段 | 含义 |
 |------|------|
 | `workflow` | `full`、`hotfix` 或 `tweak` |
-| `language` | 产物语言，目前支持 `en` 或 `zh-CN`（兼容旧 alias `zh`）。由 `comet init` 的初始化语言写入 `.comet/config.yaml`，创建 change 时快照到 `.comet.yaml`，用于约束 OpenSpec / Superpowers 产物主语言 |
+| `language` | 产物语言，仅支持 `en` 或 `zh-CN`。由 `comet init` 的初始化语言写入 `.comet/config.yaml`，创建 change 时快照到 `.comet.yaml`，用于约束 OpenSpec / Superpowers 产物主语言 |
 | `phase` | 当前阶段：`open`、`design`、`build`、`verify`、`archive`（init 统一设为 `open`，guard 负责过渡） |
 | `design_doc` | 关联的 Superpowers Design Doc 路径，可为空 |
 | `plan` | 关联的 Superpowers Plan 路径，可为空 |

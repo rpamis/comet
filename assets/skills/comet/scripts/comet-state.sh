@@ -71,15 +71,12 @@ normalize_language() {
   local source="${2:-language}"
 
   case "$value" in
-    en|en-US)
-      printf '%s\n' "en"
-      ;;
-    zh|zh-CN)
-      printf '%s\n' "zh-CN"
+    en|zh-CN)
+      printf '%s\n' "$value"
       ;;
     *)
       red "ERROR: Invalid language from ${source}: '$value'" >&2
-      red "Valid values: en, zh-CN (zh is accepted as a legacy alias)" >&2
+      red "Valid values: en, zh-CN" >&2
       exit 1
       ;;
   esac

@@ -12,15 +12,17 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Comet language instructions**: Updated English and Chinese Comet skills to use the configured artifact language for OpenSpec prompts, Superpowers arguments, subagent dispatch, verification reports, and archive notes instead of deriving artifact language from the triggering user request.
-- **Language metadata model**: Skill language selection now maps to normalized artifact language values (`en` or `zh-CN`), with `zh` accepted as a legacy alias for existing configuration.
+- **Language metadata model**: Skill language selection now maps to normalized artifact language values, `en` or `zh-CN`, as the only supported values; `zh` and `en-US` are rejected rather than treated as aliases, since no prior release ever accepted them for this field.
 
 ### Fixed
 
 - **Package metadata version drift**: Aligned package and asset manifest version metadata for the `0.3.12` release so release artifacts report the same version.
+- **Guard fails closed on an invalid configured language**: `comet-guard.sh` previously coerced any unrecognized `language` value to `en` before running the dominant-language check, silently masking a misconfigured project. It now reports an error and blocks the phase transition instead.
+- **Guard language check ignores fenced code blocks**: The CJK/English word counts used to detect the dominant language no longer count text inside fenced code blocks, so pasted commands, paths, or hashes in a Chinese-language artifact no longer trigger a false English-dominant failure.
 
 ### Tests
 
-- **Artifact language coverage**: Added regression coverage for project language initialization, legacy alias normalization, environment overrides, invalid language rejection, `.comet.yaml` validation, guard-level language blocking, mixed Chinese/English technical terms, and bilingual skill instruction safeguards.
+- **Artifact language coverage**: Added regression coverage for project language initialization, environment overrides, invalid language rejection, `.comet.yaml` validation, guard-level language blocking in both language directions, mixed Chinese/English technical terms, fenced-code-block exclusion, guard fail-closed behavior on an invalid project language, and bilingual skill instruction safeguards.
 
 ## What's Changed [0.3.11] - 2026-06-24
 

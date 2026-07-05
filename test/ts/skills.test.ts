@@ -46,10 +46,15 @@ describe('skills', () => {
   });
 
   describe('language constraints', () => {
-    it('normalizes skill language aliases to artifact language ids', () => {
-      expect(resolveArtifactLanguage('zh').id).toBe('zh-CN');
+    it('resolves exact artifact language ids and defaults to en when unset', () => {
       expect(resolveArtifactLanguage('zh-CN').id).toBe('zh-CN');
       expect(resolveArtifactLanguage('en').id).toBe('en');
+      expect(resolveArtifactLanguage(undefined).id).toBe('en');
+    });
+
+    it('rejects zh and en-US as artifact language values', () => {
+      expect(() => resolveArtifactLanguage('zh')).toThrow('Invalid artifact language');
+      expect(() => resolveArtifactLanguage('en-US')).toThrow('Invalid artifact language');
     });
 
     it('does not route Comet artifact language through the current user request language', async () => {
@@ -109,11 +114,19 @@ describe('skills', () => {
     });
 
     it('records the selected project language in Comet config', async () => {
-      await createWorkingDirs(tmpDir, 'zh');
+      await createWorkingDirs(tmpDir, 'zh-CN');
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
       expect(config).toContain('# language: en | zh-CN');
       expect(config).toContain('language: zh-CN');
+    });
+
+    it('defaults the project language to en when none is provided', async () => {
+      await createWorkingDirs(tmpDir);
+
+      const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('# language: en | zh-CN');
+      expect(config).toContain('language: en');
     });
   });
 

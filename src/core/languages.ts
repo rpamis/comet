@@ -11,20 +11,11 @@ type LanguageConfig = {
 type ArtifactLanguageConfig = {
   id: ArtifactLanguageId;
   label: string;
-  aliases: string[];
 };
 
 const ARTIFACT_LANGUAGES: ArtifactLanguageConfig[] = [
-  {
-    id: 'en',
-    label: 'English',
-    aliases: ['en', 'en-US'],
-  },
-  {
-    id: 'zh-CN',
-    label: 'Simplified Chinese',
-    aliases: ['zh', 'zh-CN'],
-  },
+  { id: 'en', label: 'English' },
+  { id: 'zh-CN', label: 'Simplified Chinese' },
 ];
 
 const LANGUAGES: LanguageConfig[] = [
@@ -32,15 +23,19 @@ const LANGUAGES: LanguageConfig[] = [
   { id: 'zh', name: '中文', skillsDir: 'skills-zh', artifactLanguage: 'zh-CN' },
 ];
 
-function resolveArtifactLanguage(language: string | undefined): ArtifactLanguageConfig {
-  const normalized = language ?? 'en';
-  return (
-    ARTIFACT_LANGUAGES.find((entry) => entry.aliases.includes(normalized)) ?? ARTIFACT_LANGUAGES[0]
-  );
+function formatSupportedArtifactLanguages(): string {
+  return ARTIFACT_LANGUAGES.map((entry) => entry.id).join(' | ');
 }
 
-function formatSupportedArtifactLanguages(): string {
-  return 'en | zh-CN';
+function resolveArtifactLanguage(language: string | undefined): ArtifactLanguageConfig {
+  const normalized = language ?? 'en';
+  const match = ARTIFACT_LANGUAGES.find((entry) => entry.id === normalized);
+  if (!match) {
+    throw new Error(
+      `Invalid artifact language: '${normalized}'. Valid values: ${formatSupportedArtifactLanguages()}`,
+    );
+  }
+  return match;
 }
 
 export { ARTIFACT_LANGUAGES, LANGUAGES, resolveArtifactLanguage, formatSupportedArtifactLanguages };

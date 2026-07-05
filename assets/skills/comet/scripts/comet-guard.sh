@@ -205,25 +205,46 @@ configured_language() {
     language=$(project_config_value "language" 2>/dev/null || true)
   fi
 
+  # Missing config defaults to en; a present-but-unrecognized value is a
+  # config error and must fail closed rather than silently coercing to en.
+  if [ -z "$language" ] || [ "$language" = "null" ]; then
+    printf '%s\n' "en"
+    return 0
+  fi
+
   case "$language" in
-    en|en-US) printf '%s\n' "en" ;;
-    zh|zh-CN) printf '%s\n' "zh-CN" ;;
-    *) printf '%s\n' "en" ;;
+    en|zh-CN)
+      printf '%s\n' "$language"
+      ;;
+    *)
+      echo "configured language '$language' is invalid; expected en or zh-CN." >&2
+      return 1
+      ;;
   esac
 }
 
+# Strips fenced code blocks (``` ... ```) before language counting, so pasted
+# commands/paths/hashes don't skew the CJK-vs-English dominant-language check.
+strip_fenced_code_blocks() {
+  awk '
+    /^[[:space:]]*```/ { infence = !infence; next }
+    infence { next }
+    { print }
+  ' "$1" 2>/dev/null || true
+}
+
 count_cjk_chars() {
-  (grep -o '[一-龥]' "$1" 2>/dev/null || true) | wc -l | awk '{print $1}'
+  (strip_fenced_code_blocks "$1" | grep -o '[一-龥]' 2>/dev/null || true) | wc -l | awk '{print $1}'
 }
 
 count_english_words() {
-  (grep -oE '[A-Za-z][A-Za-z0-9_-]{2,}' "$1" 2>/dev/null || true) | wc -l | awk '{print $1}'
+  (strip_fenced_code_blocks "$1" | grep -oE '[A-Za-z][A-Za-z0-9_-]{2,}' 2>/dev/null || true) | wc -l | awk '{print $1}'
 }
 
 document_language_matches_configured() {
   local file="$1"
   local language cjk english_words
-  language=$(configured_language)
+  language=$(configured_language) || return 1
   cjk=$(count_cjk_chars "$file")
   english_words=$(count_english_words "$file")
 

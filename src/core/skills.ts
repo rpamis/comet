@@ -747,7 +747,7 @@ async function createWorkingDirs(projectPath: string, language: string = 'en'): 
     await writeFile(
       configPath,
       [
-        `# language: ${formatSupportedArtifactLanguages()} (zh is accepted as a legacy alias)`,
+        `# language: ${formatSupportedArtifactLanguages()}`,
         `language: ${artifactLanguage.id}`,
         '# context_compression: off | beta',
         'context_compression: off',

@@ -158,7 +158,7 @@ handoff_context=$(field_value "handoff_context")
 handoff_hash=$(field_value "handoff_hash")
 
 validate_enum "workflow"      "$workflow"      "full hotfix tweak"
-validate_enum "language"      "$language"      "en zh-CN zh"
+validate_enum "language"      "$language"      "en zh-CN"
 validate_enum "phase"         "$phase"          "open design build verify archive"
 validate_enum "context_compression" "$context_compression" "off beta"
 validate_enum "build_mode"    "$build_mode"     "subagent-driven-development executing-plans direct"
