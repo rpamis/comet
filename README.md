@@ -73,6 +73,18 @@ With Comet, you only need to remember two Skills and one command to cover coding
 - Use `/comet-any` to compose any Skills
 - Use `comet eval` to evaluate any Skill
 
+## Comet 0.4.0 Baseline Comparison
+
+The figures below come from 16 Comet workflow tasks, with five samples per treatment, comparing no Comet, Comet 0.3.9, and Comet 0.4.0. Since pass@5 is nearly saturated, the clearest difference is in the detailed rubric view: Comet 0.4.0 improves recovery resilience, gate guarding, main-flow completion, and the overall weighted score over 0.3.9. The no-Comet baseline only validates business behavior, so the workflow dimension is not applicable. The full report is under `eval/langsmith/logs/experiments/combined_comet_workflow_full_k5_20260705_v4_extra_rounds/`.
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/comet-eval-pass5.png" alt="Comet pass@5 and pass^5 baseline comparison" width="920">
+</p>
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/comet-eval-rubric-core.png" alt="Comet core rubric and LLM-as-judge baseline comparison" width="920">
+</p>
+
 ## From Industry-Frontier Practice
 
 Many Comet capabilities have parallels in current industry practice. To compare Comet with those patterns, see

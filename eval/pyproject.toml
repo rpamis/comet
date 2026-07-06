@@ -26,6 +26,7 @@ langsmith = [
 dev = [
     "ruff>=0.4",
     "pre-commit>=3.7",
+    "matplotlib>=3.8",
 ]
 
 [tool.pytest.ini_options]

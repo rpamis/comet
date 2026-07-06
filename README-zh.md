@@ -64,6 +64,18 @@ Comet的对外工作流保持得很简单，把真正在长程任务上脆弱的
 - **用`/comet-any`组合任意Skill**
 - **用comet eval评估任意Skill**
 
+## Comet 0.4.0 基线对比
+
+以下图表来自 16 个 Comet workflow 任务，每个 treatment 5 次样本，对比无 Comet、Comet 0.3.9 与 Comet 0.4.0。pass@5 已经接近饱和，因此核心差异主要看详细 rubric：Comet 0.4.0 在恢复韧性、阶段守护、主流程完成和整体加权分上相对 0.3.9 有明显提升。无 Comet 基线只验证业务行为，因此 workflow 维度不适用；完整报告见 `eval/langsmith/logs/experiments/combined_comet_workflow_full_k5_20260705_v4_extra_rounds/`。
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/comet-eval-pass5.png" alt="Comet pass@5 与 pass^5 基线对比" width="920">
+</p>
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/comet-eval-rubric-core.png" alt="Comet 核心 rubric 与 LLM-as-judge 基线对比" width="920">
+</p>
+
 ## 从业界前沿技术出发
 
 Comet的许多能力都能够在海内外大厂实践中找到相似之处，想进一步了解Comet与业界实践的对照
