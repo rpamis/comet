@@ -165,7 +165,7 @@ Comet Eval's automated dual-agent architecture can integrate online with LangSmi
 <p align="center">
   <img src="https://github.com/rpamis/comet/blob/master/img/langsmith-dataset.png" alt="runner">
 </p>
-<p align="center">Manage your Skill baseline in LangSmith and view detailed performance metrics, latency, and token consumption.</p>
+<p align="center">Manage your Skill baseline in LangSmith and view detailed performance metrics, latency, and token consumption</p>
 
 <p align="center">
   <img src="https://github.com/rpamis/comet/blob/master/img/langsmith-trace.png" alt="runner">
