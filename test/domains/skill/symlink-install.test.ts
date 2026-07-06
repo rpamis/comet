@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'path';
-import { mkdtemp, rm, lstat, readlink } from 'fs/promises';
+import { mkdtemp, rm, lstat, realpath } from 'fs/promises';
 import os from 'os';
 import {
   copyCometSkillsForPlatform,
@@ -68,8 +68,9 @@ describe('symlink install mode', () => {
       expect(stat.isSymbolicLink()).toBe(true);
 
       // Verify symlink points to central store
-      const linkTarget = await readlink(platformSkillsDir);
-      expect(linkTarget).toBe(path.join(tmpDir, '.comet', 'skills', 'skills'));
+      const linkedPath = await realpath(platformSkillsDir);
+      const expectedTarget = await realpath(path.join(tmpDir, '.comet', 'skills', 'skills'));
+      expect(linkedPath).toBe(expectedTarget);
     });
 
     it('skips existing files in central store when overwrite is false', async () => {

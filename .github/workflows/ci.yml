@@ -66,7 +66,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Run Comet script smoke tests
-        run: pnpm test -- test/domains/comet-classic/comet-scripts.test.ts
+        run: pnpm exec vitest run test/domains/comet-classic/comet-scripts.test.ts
 
   init-e2e:
     runs-on: ${{ matrix.os }}

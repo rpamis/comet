@@ -19,7 +19,10 @@ describe('CI workflows', () => {
     expect(workflow).toContain('comet-init-project.json');
     expect(workflow).toContain('comet-init-global.json');
     expect(workflow).toContain('pnpm run lint:architecture');
-    expect(workflow).toContain('pnpm test -- test/domains/comet-classic/comet-scripts.test.ts');
+    expect(workflow).toContain(
+      'pnpm exec vitest run test/domains/comet-classic/comet-scripts.test.ts',
+    );
+    expect(workflow).not.toContain('pnpm test -- test/domains/comet-classic/comet-scripts.test.ts');
     expect(workflow).not.toContain('test/ts/comet-scripts.test.ts');
     expect(workflow).toContain('export USERPROFILE="$RUNNER_TEMP/comet-e2e-global"');
     expect(workflow).toContain('check_file "$PROJ/$sd/comet/SKILL.md"');
