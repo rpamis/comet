@@ -268,7 +268,9 @@ export const PLATFORMS: Platform[] = [
     name: 'Trae CN',
     skillsDir: '.trae-cn',
     globalSkillsDir: '.trae-cn',
-    openspecToolId: 'trae-cn',
+    // OpenSpec exposes Trae as one tool id; keep Comet's CN-specific install
+    // directories but reuse the supported OpenSpec Trae integration.
+    openspecToolId: 'trae',
     rulesDir: 'rules',
     rulesFormat: 'md',
   },

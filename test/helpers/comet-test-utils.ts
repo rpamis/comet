@@ -139,6 +139,7 @@ export async function setupScripts(tmpDir: string) {
   const tmpScriptsDir = path.join(tmpDir, 'scripts');
   await fs.mkdir(tmpScriptsDir, { recursive: true });
   for (const name of [
+    'comet-runtime.mjs',
     'comet-env.mjs',
     'comet-archive.mjs',
     'comet-guard.mjs',

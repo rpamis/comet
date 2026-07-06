@@ -176,6 +176,7 @@ describe('Classic script bundles', () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-script-'));
     temporaryDirectories.push(directory);
     const isolatedStateScript = path.join(directory, 'comet-state.mjs');
+    await fs.copyFile(path.join(scriptsDir, 'comet-runtime.mjs'), path.join(directory, 'comet-runtime.mjs'));
     await fs.copyFile(stateScript, isolatedStateScript);
 
     const result = spawnSync(process.execPath, [isolatedStateScript, 'get', 'missing', 'phase', '--json'], {
@@ -190,7 +191,7 @@ describe('Classic script bundles', () => {
     });
   });
 
-  it('is fresh and lists independent scripts in the shipped manifest', async () => {
+  it('is fresh and lists the shared runtime plus launchers in the shipped manifest', async () => {
     const check = spawnSync(process.execPath, [buildScript, '--check'], {
       cwd: path.resolve('.'),
       encoding: 'utf8',
@@ -202,7 +203,7 @@ describe('Classic script bundles', () => {
     };
 
     expect(check.status, check.stderr || check.stdout).toBe(0);
-    expect(manifest.skills).not.toContain('comet/scripts/comet-runtime.mjs');
+    expect(manifest.skills).toContain('comet/scripts/comet-runtime.mjs');
     expect(manifest.skills).toContain('comet/scripts/comet-state.mjs');
     expect(manifest.skills).toContain('comet/scripts/comet-guard.mjs');
     expect(manifest.skills).toContain('comet/scripts/comet-intent.mjs');

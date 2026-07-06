@@ -135,7 +135,7 @@ async function createFakeOpenSpecArchive(
 }
 
 describe('comet script contracts', () => {
-  it('keeps all Classic command scripts independent from the removed runtime dispatcher', async () => {
+  it('keeps all Classic command scripts as thin launchers for the shared runtime', async () => {
     const sources: Record<string, string> = {
       state: await fs.readFile(path.join(scriptsDir, 'comet-state.mjs'), 'utf-8'),
       validate: await fs.readFile(path.join(scriptsDir, 'comet-yaml-validate.mjs'), 'utf-8'),
@@ -146,13 +146,12 @@ describe('comet script contracts', () => {
       intent: await fs.readFile(path.join(scriptsDir, 'comet-intent.mjs'), 'utf-8'),
     };
 
-    await expect(fs.access(path.join(scriptsDir, 'comet-runtime.mjs'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
-    for (const source of Object.values(sources)) {
+    await expect(fs.access(path.join(scriptsDir, 'comet-runtime.mjs'))).resolves.toBeUndefined();
+    for (const [command, source] of Object.entries(sources)) {
+      const cliCommand = command === 'hook-guard' ? 'hook-guard' : command;
       expect(source).toContain('#!/usr/bin/env node');
-      expect(source).not.toContain('./comet-runtime.mjs');
-      // Generated scripts must stay Node-only: no shell utility rewrites.
+      expect(source).toContain("import { main } from './comet-runtime.mjs';");
+      expect(source).toContain(`main([${JSON.stringify(cliCommand)}, ...process.argv.slice(2)])`);
       expect(source).not.toMatch(/\b(?:grep|awk|sed)\b/u);
     }
   });
@@ -187,6 +186,7 @@ describe('comet scripts', () => {
     const tmpScriptsDir = path.join(tmpDir, 'scripts');
     await fs.mkdir(tmpScriptsDir, { recursive: true });
     for (const name of [
+      'comet-runtime.mjs',
       'comet-env.mjs',
       'comet-archive.mjs',
       'comet-guard.mjs',

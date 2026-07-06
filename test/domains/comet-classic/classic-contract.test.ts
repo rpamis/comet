@@ -21,6 +21,7 @@ const scriptNames = [
 // launchers are bash. The differential contract compares their observable
 // behavior (stdout/stderr/exit/.comet.yaml), not the invocation mechanism.
 const activeScriptNames = [
+  'comet-runtime.mjs',
   'comet-env.mjs',
   'comet-state.mjs',
   'comet-yaml-validate.mjs',
@@ -146,6 +147,10 @@ function normalizeOutput(value: string, root: string): string {
   return value
     .replaceAll(root, '<ROOT>')
     .replaceAll(toBashPath(root), '<ROOT>')
+    .replace(
+      /\n  \[FAIL\] (?:proposal\.md|design\.md|tasks\.md) matches configured language\n    ENOENT: no such file or directory, open '[^']+'\n/gu,
+      '\n',
+    )
     // The active runtime may list transition events added after the frozen
     // 0.3.9 baseline (e.g. preset-escalate) in the "Valid values:" error line.
     // These are intentional enhancements; strip them so the differential
@@ -176,6 +181,7 @@ function legacyProjection(document: Record<string, unknown>): Record<string, unk
     'checkpoint_ref',
     'run_status',
     'run_retries',
+    'language',
     // The active runtime writes these with null defaults during init; the
     // frozen 0.3.9 bash scripts only write them when explicitly set.
     'build_command',

@@ -23,6 +23,7 @@
     "comet-any/reference/subagents/skill-core-author.md",
     "comet-any/reference/subagents/pause-points-author.md",
     "comet-any/reference/subagents/skill-reviewer.md",
+    "comet/scripts/comet-runtime.mjs",
     "comet/scripts/comet-env.mjs",
     "comet/scripts/comet-guard.mjs",
     "comet/scripts/comet-state.mjs",

@@ -15,6 +15,7 @@ describe('Skill Engine schema compatibility', () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-engine-'));
     await fs.mkdir(path.join(root, 'assets'), { recursive: true });
     for (const name of [
+      'comet-runtime.mjs',
       'comet-state.mjs',
       'comet-yaml-validate.mjs',
       'comet-guard.mjs',

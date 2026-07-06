@@ -1,10 +1,24 @@
+import os from 'os';
+import path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const execFileSync = vi.fn();
+const project = path.join(os.tmpdir(), 'comet-eval-project');
+const manifest = path.join(os.tmpdir(), 'demo', 'comet', 'eval.yaml');
+const skillPath = path.join(os.tmpdir(), 'demo-skill');
+const evalCwd = path.join(path.resolve(project), 'eval');
 
 vi.mock('child_process', () => ({
   execFileSync,
 }));
+
+function expectUvRun(args: string[]): void {
+  expect(execFileSync).toHaveBeenCalledWith('uv', ['--version'], { stdio: 'pipe' });
+  expect(execFileSync).toHaveBeenCalledWith('uv', args, {
+    cwd: evalCwd,
+    stdio: 'inherit',
+  });
+}
 
 describe('eval command', () => {
   beforeEach(() => {
@@ -17,28 +31,21 @@ describe('eval command', () => {
     try {
       const { evalRunCommand } = await import('../../app/commands/eval.js');
       await evalRunCommand({
-        project: 'D:/Project/Comet',
-        manifest: 'D:/tmp/demo/comet/eval.yaml',
+        project,
+        manifest,
         quick: true,
       });
     } finally {
       log.mockRestore();
     }
 
-    expect(execFileSync).toHaveBeenCalledWith(
-      'uv',
-      [
+    expectUvRun([
         'run',
         'pytest',
         'local/tests/tasks/test_tasks.py',
-        `--eval-manifest=${'D:\\tmp\\demo\\comet\\eval.yaml'}`,
+        `--eval-manifest=${path.resolve(manifest)}`,
         '-v',
-      ],
-      {
-        cwd: 'D:\\Project\\Comet\\eval',
-        stdio: 'inherit',
-      },
-    );
+      ]);
   });
 
   it('uses generic-skill-smoke for local skill quick runs', async () => {
@@ -46,8 +53,8 @@ describe('eval command', () => {
     try {
       const { evalRunCommand } = await import('../../app/commands/eval.js');
       await evalRunCommand({
-        project: 'D:/Project/Comet',
-        skillPath: 'D:/tmp/demo-skill',
+        project,
+        skillPath,
         skillName: 'demo-skill',
         profile: 'generic',
         quick: true,
@@ -56,81 +63,60 @@ describe('eval command', () => {
       log.mockRestore();
     }
 
-    expect(execFileSync).toHaveBeenCalledWith(
-      'uv',
-      [
+    expectUvRun([
         'run',
         'pytest',
         'local/tests/tasks/test_tasks.py',
         '--task=generic-skill-smoke',
-        `--skill-path=${'D:\\tmp\\demo-skill'}`,
+        `--skill-path=${path.resolve(skillPath)}`,
         '--skill-name=demo-skill',
         '--profile=generic',
         '-v',
-      ],
-      {
-        cwd: 'D:\\Project\\Comet\\eval',
-        stdio: 'inherit',
-      },
-    );
+      ]);
   });
 
   it('runs a local Skill target directly without requiring --skill-path', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       const { evalCommand } = await import('../../app/commands/eval.js');
-      await evalCommand('D:/tmp/demo-skill', {
-        project: 'D:/Project/Comet',
+      await evalCommand(skillPath, {
+        project,
         quick: true,
       });
     } finally {
       log.mockRestore();
     }
 
-    expect(execFileSync).toHaveBeenCalledWith(
-      'uv',
-      [
+    expectUvRun([
         'run',
         'pytest',
         'local/tests/tasks/test_tasks.py',
         '--task=generic-skill-smoke',
-        `--skill-path=${'D:\\tmp\\demo-skill'}`,
+        `--skill-path=${path.resolve(skillPath)}`,
         '--skill-name=demo-skill',
         '-v',
-      ],
-      {
-        cwd: 'D:\\Project\\Comet\\eval',
-        stdio: 'inherit',
-      },
-    );
+      ]);
   });
 
   it('collects a manifest target directly with --collect', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       const { evalCommand } = await import('../../app/commands/eval.js');
-      await evalCommand('D:/tmp/demo/comet/eval.yaml', {
-        project: 'D:/Project/Comet',
+      await evalCommand(manifest, {
+        project,
         collect: true,
       });
     } finally {
       log.mockRestore();
     }
 
-    expect(execFileSync).toHaveBeenCalledWith(
-      'uv',
-      [
+    expectUvRun([
         'run',
         'pytest',
         'local/tests/tasks/test_tasks.py',
-        `--eval-manifest=${'D:\\tmp\\demo\\comet\\eval.yaml'}`,
+        `--eval-manifest=${path.resolve(manifest)}`,
         '--collect-only',
-      ],
-      {
-        cwd: 'D:\\Project\\Comet\\eval',
-        stdio: 'inherit',
-      },
-    );
+      ]);
   });
 
   it('uses collect-only discovery for manifest smoke checks', async () => {
@@ -138,27 +124,20 @@ describe('eval command', () => {
     try {
       const { evalCollectCommand } = await import('../../app/commands/eval.js');
       await evalCollectCommand({
-        project: 'D:/Project/Comet',
-        manifest: 'D:/tmp/demo/comet/eval.yaml',
+        project,
+        manifest,
       });
     } finally {
       log.mockRestore();
     }
 
-    expect(execFileSync).toHaveBeenCalledWith(
-      'uv',
-      [
+    expectUvRun([
         'run',
         'pytest',
         'local/tests/tasks/test_tasks.py',
-        `--eval-manifest=${'D:\\tmp\\demo\\comet\\eval.yaml'}`,
+        `--eval-manifest=${path.resolve(manifest)}`,
         '--collect-only',
-      ],
-      {
-        cwd: 'D:\\Project\\Comet\\eval',
-        stdio: 'inherit',
-      },
-    );
+      ]);
   });
 
   it('prints eval execution details and report path for manifest runs', async () => {
@@ -167,8 +146,8 @@ describe('eval command', () => {
     try {
       const { evalRunCommand } = await import('../../app/commands/eval.js');
       await evalRunCommand({
-        project: 'D:/Project/Comet',
-        manifest: 'D:/tmp/demo/comet/eval.yaml',
+        project,
+        manifest,
         profile: 'authoring-skill',
         task: 'generic-skill-smoke',
         html: true,
@@ -178,7 +157,7 @@ describe('eval command', () => {
       log.mockRestore();
     }
 
-    expect(output).toContain('Eval root: D:\\Project\\Comet\\eval');
+    expect(output).toContain(`Eval root: ${evalCwd}`);
     expect(output).toContain('Mode: run');
     expect(output).toContain('Profile: authoring-skill');
     expect(output).toContain('Task: generic-skill-smoke');
@@ -193,7 +172,7 @@ describe('eval command', () => {
 
     await expect(
       evalRunCommand({
-        project: 'D:/Project/Comet',
+        project,
       }),
     ).rejects.toThrow('Pass one of --manifest or --skill-path');
 
@@ -204,9 +183,9 @@ describe('eval command', () => {
     const { evalCommand } = await import('../../app/commands/eval.js');
 
     await expect(
-      evalCommand('D:/tmp/demo-skill', {
-        project: 'D:/Project/Comet',
-        manifest: 'D:/tmp/demo/comet/eval.yaml',
+      evalCommand(skillPath, {
+        project,
+        manifest,
       }),
     ).rejects.toThrow('Pass either a target or explicit --manifest/--skill-path options');
 

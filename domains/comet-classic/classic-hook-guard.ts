@@ -43,6 +43,32 @@ function relativeToProjectRoot(target: string, projectRoot: string): string | nu
   return relative;
 }
 
+async function physicalPathForPossiblyMissingTarget(target: string): Promise<string | null> {
+  const resolved = path.resolve(target);
+  const root = path.parse(resolved).root;
+  const missingSegments: string[] = [];
+  let cursor = resolved;
+
+  while (cursor && cursor !== root) {
+    try {
+      const physicalBase = await fs.realpath(cursor);
+      return path.join(physicalBase, ...missingSegments.reverse());
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
+      missingSegments.push(path.basename(cursor));
+      cursor = path.dirname(cursor);
+    }
+  }
+
+  try {
+    const physicalRoot = await fs.realpath(root);
+    return path.join(physicalRoot, ...missingSegments.reverse());
+  } catch {
+    return null;
+  }
+}
+
 async function projectRelative(target: string, projectRoot: string): Promise<string> {
   const rawCandidate = path.isAbsolute(target) ? target : path.resolve(process.cwd(), target);
   let candidate = normalized(rawCandidate);
@@ -50,12 +76,13 @@ async function projectRelative(target: string, projectRoot: string): Promise<str
   if (rootRelative !== null) return rootRelative;
 
   try {
-    const parent = await fs.realpath(path.dirname(rawCandidate));
-    const physicalCandidate = path.join(parent, path.basename(rawCandidate));
+    const physicalCandidate = await physicalPathForPossiblyMissingTarget(rawCandidate);
     const physicalRoot = await fs.realpath(projectRoot);
-    const physicalRootRelative = relativeToProjectRoot(physicalCandidate, physicalRoot);
-    if (physicalRootRelative !== null) return physicalRootRelative;
-    candidate = normalized(physicalCandidate);
+    if (physicalCandidate) {
+      const physicalRootRelative = relativeToProjectRoot(physicalCandidate, physicalRoot);
+      if (physicalRootRelative !== null) return physicalRootRelative;
+      candidate = normalized(physicalCandidate);
+    }
   } catch {
     if (!path.isAbsolute(target)) return normalized(target).replace(/^\.\//u, '');
   }

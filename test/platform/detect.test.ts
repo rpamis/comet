@@ -88,6 +88,17 @@ describe('detect', () => {
       expect(mimocode?.rulesDir).toBe('rules');
       expect(mimocode?.rulesFormat).toBe('md');
     });
+
+    it('declares Trae CN directories while using OpenSpec Trae support', () => {
+      const traeCn = PLATFORMS.find((platform) => platform.id === 'trae-cn');
+
+      expect(traeCn).toBeDefined();
+      expect(traeCn?.skillsDir).toBe('.trae-cn');
+      expect(traeCn?.globalSkillsDir).toBe('.trae-cn');
+      expect(traeCn?.openspecToolId).toBe('trae');
+      expect(traeCn?.rulesDir).toBe('rules');
+      expect(traeCn?.rulesFormat).toBe('md');
+    });
   });
 
   describe('detectPlatforms', () => {

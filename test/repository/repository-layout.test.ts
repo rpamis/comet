@@ -13,12 +13,13 @@ describe('repository layout registry', () => {
     expect(layout.assetsRoot).toBe('assets');
     expect(layout.manifestPath).toBe('assets/manifest.json');
     expect(layout.classicRuntime.outputs).toMatchObject({
+      runtime: 'assets/skills/comet/scripts/comet-runtime.mjs',
       state: 'assets/skills/comet/scripts/comet-state.mjs',
       guard: 'assets/skills/comet/scripts/comet-guard.mjs',
       archive: 'assets/skills/comet/scripts/comet-archive.mjs',
       intent: 'assets/skills/comet/scripts/comet-intent.mjs',
     });
-    expect(Object.values(layout.classicRuntime.outputs)).not.toContain(
+    expect(Object.values(layout.classicRuntime.outputs)).toContain(
       'assets/skills/comet/scripts/comet-runtime.mjs',
     );
     expect(resolveRepositoryPath(layout.classicRuntime.outputs.state)).toBe(

@@ -7,23 +7,26 @@ import { readRepositoryLayout, resolveRepositoryPath } from '../lib/repository-l
 
 const layout = readRepositoryLayout();
 const repoRoot = resolveRepositoryPath('.');
-const runtimeScripts = Object.entries(layout.classicRuntime.outputs).map(([name, output]) => {
-  const entry = layout.classicRuntime.entries[name];
-  if (!entry) {
-    throw new Error(`Classic runtime script "${name}" is missing an entry`);
-  }
-  return {
+const runtimeOutput = layout.classicRuntime.outputs.runtime;
+const runtimeEntry = layout.classicRuntime.entries.runtime;
+
+if (!runtimeOutput || !runtimeEntry) {
+  throw new Error('Classic runtime requires entries.runtime and outputs.runtime');
+}
+
+const commandOutputs = Object.entries(layout.classicRuntime.outputs)
+  .filter(([name]) => name !== 'runtime')
+  .map(([name, output]) => ({
     name,
-    entry,
+    command: name === 'hookGuard' ? 'hook-guard' : name,
     output,
     outputFile: resolveRepositoryPath(output),
-  };
-});
+  }));
 
-async function bundledRuntime(script) {
+async function bundledRuntime(entry) {
   const result = await build({
     absWorkingDir: repoRoot,
-    entryPoints: [script.entry],
+    entryPoints: [entry],
     bundle: true,
     write: false,
     platform: 'node',
@@ -44,11 +47,20 @@ async function bundledRuntime(script) {
   });
 
   if (result.outputFiles.length !== 1) {
-    throw new Error(
-      `Expected one Classic runtime output for ${script.name}, got ${result.outputFiles.length}`,
-    );
+    throw new Error(`Expected one Classic runtime output, got ${result.outputFiles.length}`);
   }
   return result.outputFiles[0].contents;
+}
+
+function launcher(command) {
+  return Buffer.from(
+    [
+      '#!/usr/bin/env node',
+      "import { main } from './comet-runtime.mjs';",
+      `process.exitCode = await main([${JSON.stringify(command)}, ...process.argv.slice(2)]);`,
+      '',
+    ].join('\n'),
+  );
 }
 
 async function checkFreshness(script, expected) {
@@ -72,12 +84,20 @@ async function checkFreshness(script, expected) {
   }
 }
 
-const outputs = await Promise.all(
-  runtimeScripts.map(async (script) => ({
+const outputs = [
+  {
+    script: {
+      name: 'runtime',
+      output: runtimeOutput,
+      outputFile: resolveRepositoryPath(runtimeOutput),
+    },
+    output: Buffer.from(await bundledRuntime(runtimeEntry)),
+  },
+  ...commandOutputs.map((script) => ({
     script,
-    output: Buffer.from(await bundledRuntime(script)),
+    output: launcher(script.command),
   })),
-);
+];
 
 if (process.argv.includes('--check')) {
   for (const { script, output } of outputs) {
