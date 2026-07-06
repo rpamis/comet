@@ -148,8 +148,8 @@ function normalizeOutput(value: string, root: string): string {
     .replaceAll(root, '<ROOT>')
     .replaceAll(toBashPath(root), '<ROOT>')
     .replace(
-      /\n  \[FAIL\] (?:proposal\.md|design\.md|tasks\.md) matches configured language\n    ENOENT: no such file or directory, open '[^']+'\n/gu,
-      '\n',
+      /(^|\n)  \[FAIL\] (?:proposal\.md|design\.md|tasks\.md) matches configured language\n    ENOENT: no such file or directory, open '[^']+'\n/gu,
+      '$1',
     )
     // The active runtime may list transition events added after the frozen
     // 0.3.9 baseline (e.g. preset-escalate) in the "Valid values:" error line.

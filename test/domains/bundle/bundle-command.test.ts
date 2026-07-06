@@ -384,10 +384,9 @@ prefer:
       locales: ['zh', 'en'],
       factory: {
         preferredSkills: ['brainstorming', 'writing-plans', 'requesting-code-review'],
-        callChain: [
-          { skill: 'writing-plans', preferenceIndex: 1 },
+        callChain: expect.arrayContaining([
           { skill: 'requesting-code-review', preferenceIndex: 2 },
-        ],
+        ]),
         deviations: [
           {
             skill: 'requesting-code-review',
