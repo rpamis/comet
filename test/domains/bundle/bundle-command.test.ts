@@ -151,6 +151,20 @@ function sha256(content: string | Buffer): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
+async function canonicalTestPath(targetPath: string): Promise<string> {
+  const resolved = path.resolve(targetPath);
+  try {
+    return await fs.realpath(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+async function expectPathEquivalent(actual: unknown, expected: string): Promise<void> {
+  expect(typeof actual).toBe('string');
+  expect(await canonicalTestPath(actual as string)).toBe(await canonicalTestPath(expected));
+}
+
 async function captureJson(run: () => Promise<void>): Promise<Record<string, unknown>> {
   const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   try {
@@ -809,11 +823,12 @@ prefer:
           {
             query: 'task3-resolve-aliased-source',
             status: 'available',
-            sources: [{ root: skillRoot }],
+            sources: [expect.objectContaining({ name: 'task3-resolve-aliased-source' })],
           },
         ],
       },
     });
+    await expectPathEquivalent(resolved.factory.resolvedSkills[0].sources[0].root, skillRoot);
   });
 
   it('blocks Factory generation until the user confirms the proposal', async () => {
@@ -1233,12 +1248,16 @@ prefer:
           {
             query: 'task3-entry-brainstorming',
             status: 'available',
-            sources: [{ root: selectedBrainstormingRoot }],
+            sources: [expect.objectContaining({ name: 'task3-entry-brainstorming' })],
           },
           { query: 'task3-entry-writing-plans', status: 'available' },
         ],
       },
     });
+    await expectPathEquivalent(
+      resolved.factory.resolvedSkills[1].sources[0].root,
+      selectedBrainstormingRoot,
+    );
     expect(resolved.factory).not.toHaveProperty('composition');
 
     await bundleFactoryInitCommand('recomputed-entry-factory', {
@@ -1969,11 +1988,12 @@ prefer:
           {
             query: 'task3-review-choice-flow',
             status: 'available',
-            sources: [{ root: secondRoot }],
+            sources: [expect.objectContaining({ name: 'task3-review-choice-flow' })],
           },
         ],
       },
     });
+    await expectPathEquivalent(resolved.factory.resolvedSkills[0].sources[0].root, secondRoot);
 
     await expect(
       bundleFactoryGenerateCommand('resolved-composition-blocked', {
