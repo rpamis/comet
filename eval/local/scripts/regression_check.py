@@ -29,6 +29,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+EVAL_ROOT = Path(__file__).resolve().parents[2]
+if str(EVAL_ROOT) not in sys.path:
+    sys.path.insert(0, str(EVAL_ROOT))
+
 from scaffold.python.paths import get_logs_dir
 from scaffold.python.validation.rubric import RUBRIC_DIMENSIONS
 from local.scripts.compare_baselines import (

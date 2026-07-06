@@ -109,4 +109,25 @@ describe('CI workflows', () => {
     expect(workflow).toContain('days-before-issue-stale: -1');
     expect(workflow).toContain('days-before-issue-close: -1');
   });
+
+  it('keeps eval regression model runs manual while pull requests run smoke only', async () => {
+    const workflow = (await fs.readFile('.github/workflows/eval-regression.yml', 'utf-8')).replace(
+      /\r\n/g,
+      '\n',
+    );
+
+    expect(workflow).toContain('pull_request:');
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain("if: github.event_name == 'pull_request'");
+    expect(workflow).toContain('uv run python local/scripts/regression_check.py --help');
+    expect(workflow).toContain("if: github.event_name == 'workflow_dispatch'");
+    expect(workflow).toContain('uv run python local/scripts/regression_check.py --count 1 --tolerance 0.10');
+
+    const pullRequestSection = workflow.slice(
+      workflow.indexOf('- name: Smoke check regression gate wiring'),
+      workflow.indexOf('- name: Run regression gate'),
+    );
+    expect(pullRequestSection).not.toContain('--count');
+    expect(pullRequestSection).not.toContain('ANTHROPIC_AUTH_TOKEN');
+  });
 });
