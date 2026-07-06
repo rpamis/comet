@@ -16,6 +16,17 @@ function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(root, relativePath), 'utf8'));
 }
 
+function readGitmodulePaths() {
+  const modulesPath = path.join(root, '.gitmodules');
+  if (!existsSync(modulesPath)) return new Set();
+  const content = readFileSync(modulesPath, 'utf8');
+  const paths = new Set();
+  for (const match of content.matchAll(/^\s*path\s*=\s*(.+?)\s*$/gm)) {
+    paths.add(match[1].replaceAll('\\', '/'));
+  }
+  return paths;
+}
+
 function exists(relativePath) {
   return existsSync(path.join(root, relativePath));
 }
@@ -97,6 +108,7 @@ assertArrayEquals('repository-layout.testRoots', layout.testRoots, ['test']);
 const allowedTopLevelEntries = new Set(layout.allowedTopLevelEntries ?? []);
 const gitignoredTopLevelEntries = readGitignoredTopLevelEntries(root);
 const gitignoredDirectoryEntries = readGitignoredDirectoryEntries(root);
+const gitSubmodulePaths = readGitmodulePaths();
 for (const entry of entryNames('.')) {
   if (gitignoredTopLevelEntries.has(entry)) continue;
   if (!allowedTopLevelEntries.has(entry)) {
@@ -195,8 +207,13 @@ const ignoredGeneratedTrees = new Set([
   'coverage',
   'dist',
   'node_modules',
+  ...[...gitSubmodulePaths].filter((submodulePath) => !submodulePath.includes('/')),
 ]);
-for (const file of walkFiles('.', ignoredGeneratedTrees, gitignoredDirectoryEntries)) {
+const ignoredGeneratedRelativePaths = new Set([
+  ...gitignoredDirectoryEntries,
+  ...[...gitSubmodulePaths].filter((submodulePath) => submodulePath.includes('/')),
+]);
+for (const file of walkFiles('.', ignoredGeneratedTrees, ignoredGeneratedRelativePaths)) {
   if (!codeFilePattern.test(file)) continue;
   const normalized = file.replaceAll('\\', '/');
   const allowed =

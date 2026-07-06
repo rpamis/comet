@@ -35,6 +35,7 @@
     ".gitattributes",
     ".github",
     ".gitignore",
+    ".gitmodules",
     ".husky",
     ".idea",
     ".npmignore",
@@ -73,6 +74,7 @@
     "skills-lock.json",
     "test",
     "tsconfig.json",
+    "website",
     "vitest.config.ts"
   ],
   "sourceRoots": ["app", "domains", "platform"],
