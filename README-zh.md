@@ -34,10 +34,12 @@
 
 **Comet 是一个面向Coding的可恢复长程任务工作流与 Skill 平台。**
 
-它用统一的跨平台运行时把 OpenSpec 产物、Superpowers 执行方法论、Skill 创建、评估与发布串成一条工作闭环，让你可以用一个工具链处理需求到归档、中断后恢复，并把可复用 Skill 发布出去，基于科学的Rubric、Pass@k、Pass^k评分演进你的Skill。
+它用统一的跨平台运行时把 OpenSpec 产物、Superpowers 执行方法论、Skill 创建、评估与发布串成一条工作闭环
+
+让你可以用一个工具链处理需求到归档、中断后恢复，将任意Skill组合得像Comet一样，基于科学的**Rubric**、**Pass@k**、**Pass^k**评分演进你的Skill
 
 > [!IMPORTANT]
-> **0.4.0-beta.1** — Comet 升级为纯 Node runtime（不再依赖 Bash/WSL），并带来三大核心能力：用 `/comet-any` 把**任意** Skill 组合成自定义工作流、用 `comet eval` 评估**任意**Skill、用 `comet dashboard` 在浏览器里可视化每一个 change。
+> **0.4.0-beta.1** — Comet 升级为纯 Node runtime（不再依赖 Bash/WSL），并带来三大核心能力：用 `/comet-any` 把**任意** Skill 组合成自定义工作流、用 `comet eval` 评估**任意**Skill， 并接入到LangSmith系统中、用 `comet dashboard` 在浏览器里可视化每一个 change。
 >
 > **0.3.9** — `review_mode: off|standard|thorough` 控制 Build/Verify 自动代码审查并支持项目级默认；init/update 改为可选依赖安装，补齐 CLI 国际化、阶段守护加固和 macOS 可执行权限。
 >
@@ -47,14 +49,14 @@
 >
 > 详见 [NEWS.md](NEWS.md)。
 
-## 为什么需要 Comet
+> 组合OpenSpec+Superpowers不是Comet的最终目的，我们希望能够追踪类似这样的长程任务Skill找到能够让长链路Skill稳定执行的Harness能力，如果你也感兴趣，欢迎参与我们的项目贡献，或通过我们的源码进行学习
 
-Comet的对外工作流保持得很简单，把真正在长程任务上脆弱的部分收进一条共享运行时事实链：
+## 为什么需要 Comet
 
 - **长程任务稳定的核心**— Comet的经典Spec模式结合了OpenSpec和Superpowers，用状态机、Gate守卫、脚本串联整个链路，Agent只能够在特定阶段做特定事情，只有在完成阶段任务后才能够退出。支持自动推进机制，核心流程全自动推进，只在必要时刻进入HITL与你交互确认。
 - **可恢复工作流&智能路由** — Comet采用意图识别技术，能够路由你当前任务最需要走向的路径。`/comet` 会记住一个 change 停在什么阶段，长任务恢复时不需要让 Agent 重新猜上下文，支持跨设备0上下文断点恢复。你不在需要记忆冗长的Skill命令，无论何时何地，只需要/comet推进或恢复你的所有任务。
 - **Skill 平台** — Comet能够编写可复用 Skill 包，并通过 `/comet-any` 把它们整理成可分发 Bundle，你制作的Skill可以像如comet init一样一键分发到所有Coding平台。
-- **Eval 平台**— Comet基于科学的Rubric、Pass@k、Pass^k评分评估你的Skill，让Skill演进是基于科学依据，而不是依靠感觉，支持接入LangSmith评估。基于双Agent架构自动化在你的生产环境完成评估工作
+- **Eval 平台**— Comet基于科学的Rubric、Pass@k、Pass^k评分评估你的Skill，让Skill演进是基于科学依据，而不是依靠感觉，支持接入LangSmith评估，让评估真实走进企业级生产环境。基于双Agent架构自动化在你的生产环境完成评估工作
 
 ## 极低的记忆门槛
 
@@ -66,7 +68,9 @@ Comet的对外工作流保持得很简单，把真正在长程任务上脆弱的
 
 ## Comet 0.4.0 基线对比
 
-以下图表来自 16 个 Comet workflow 任务，每个 treatment 5 次样本，对比无 Comet、Comet 0.3.9 与 Comet 0.4.0。pass@5 已经接近饱和，因此核心差异主要看详细 rubric：Comet 0.4.0 在恢复韧性、阶段守护、主流程完成和整体加权分上相对 0.3.9 有明显提升。无 Comet 基线只验证业务行为，因此 workflow 维度不适用；完整报告见 `eval/langsmith/logs/experiments/combined_comet_workflow_full_k5_20260705_v4_extra_rounds/`。
+以下图表来自 16 个 Comet workflow 任务，每个 treatment 5 次样本，对比无 Comet、Comet 0.3.9 与 Comet 0.4.0。
+
+核心观察了Pass@5、Pass^5以及Rubric评分的差异，无 Comet Skill的基线只验证业务行为
 
 <p align="center">
   <img src="https://github.com/rpamis/comet/blob/master/img/comet-eval-pass5.png" alt="Comet pass@5 与 pass^5 基线对比" width="920">
@@ -80,7 +84,7 @@ Comet的对外工作流保持得很简单，把真正在长程任务上脆弱的
 
 Comet的许多能力都能够在海内外大厂实践中找到相似之处，想进一步了解Comet与业界实践的对照
 
-> 详见[Comet Docs](https://docs.comet.rpamis.com/zh/tech-blog/comet-vs-industry)
+> 详见 [Comet Docs](https://docs.comet.rpamis.com/zh/tech-blog/comet-vs-industry)
 
 ## 你能学到什么
 
@@ -91,7 +95,7 @@ Comet的许多能力都能够在海内外大厂实践中找到相似之处，想
 - **如何设计 Agent 可执行的守护条件** — Comet 的阶段退出不是简单相信 Agent 说“完成了”，而是通过 `comet-guard.mjs`、`comet-yaml-validate.mjs`、`comet-state.mjs` 等脚本检查任务、状态字段、验证证据和归档条件，满足条件后才允许推进。
 - **如何做跨平台 Skill 分发和安装** — Comet 支持多种 AI 编码平台、项目级/全局安装、中文/英文 Skill 选择，以及平台差异化目录（例如 Antigravity 的项目级和全局路径不同），可以作为 CLI 安装器和 Skill 打包结构的参考。
 - **如何把脚本写成 Agent 工作流基础设施** — Comet 的脚本处理 hash、YAML 字段、状态机和归档流程。它展示了如何把原本容易写散在 Prompt 里的流程控制，沉淀成可测试、可复用的工具。
-- **如何基于科学的评估驱动演进Skill**— Comet Eval支持rubric结构化评分，并支持pass@k、pass^k指标，用最科学的方式演进Skill，而不是靠人工感觉和评估，支持Local和Langsmith评估，让Eval真正走进企业生产环境
+- **如何基于科学的评估驱动演进Skill**— Comet Eval支持Rubric结构化评分，并支持Pass@k、Pass^k指标，用最科学的方式演进Skill，而不是靠人工感觉和评估，支持Local和Langsmith评估，让Eval真正走进企业生产环境
 - **如何智能的创建Comet一样的Skill**— /comet-any支持组合任意Skill，你只需要告诉Agent你的Skill偏好，其余所有稳定性相关的hook，rule，脚本，Skill引用文件全程都由Agent搞定，帮助你创建出Comet一样好用的Skill
 
 ## 安装
@@ -123,11 +127,32 @@ npx skills add rpamis/comet
 
 ## 运行截图
 
+### 经典Spec Skill
+
 <p align="center">
   <img src="https://github.com/rpamis/comet/blob/master/img/runner.png" alt="runner">
 </p>
 <p align="center">自动安装 OpenSpec、Superpowers，一键配置开发环境</p>
 <p align="center">多阶段 Skill 入口，自动识别当前 Spec 阶段，核心流程自动触发，关键节点人工审核</p>
+
+### 与LangSmith/LangFuse的集成
+
+Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境集成，让实验可追溯、Skill可演进
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/langsmith-dataset.png" alt="runner">
+</p>
+<p align="center">在LangSmith中管理你的Skill基线，查看详细的评估指标，延迟及Token消耗</p>
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/langsmith-trace.png" alt="runner">
+</p>
+<p align="center">在LangSmith中追踪你的Claude Code全链路</p>
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/langsmith-baseline-detail.png" alt="runner">
+</p>
+<p align="center">在LangSmith通过Pytest跟踪自定义Rubric指标</p>
 
 ## CLI命令
 

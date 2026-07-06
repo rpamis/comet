@@ -34,12 +34,12 @@
 
 **Comet is a resumable long-running task workflow and Skill platform for coding.**
 
-It uses one cross-platform runtime to connect OpenSpec outputs, Superpowers execution methods, Skill creation,
-evaluation, and publishing into one closed loop. You can take a request from kickoff to archive, resume after
-interruption, ship reusable Skills, and evolve those Skills with rubric, Pass@k, and Pass^k evidence instead of guesswork.
+It uses a unified cross-platform runtime to connect OpenSpec artifacts, Superpowers execution methodology, Skill creation, evaluation, and release into a closed-loop workflow. 
+
+It allows you to use a toolchain to handle everything from requirements to archiving, combine any skill to make it like Comet, evolving your skills based on scientific **Rubric**, **Pass@k**, and **Pass^k** scoring.
 
 > [!IMPORTANT]
-> **0.4.0-beta.1** — Comet becomes a Node-only runtime (no Bash/WSL dependency) and gains three headline capabilities: orchestrate **any** Skills into custom workflows with `/comet-any`, evaluate **any** Skill with `comet eval`, and visualize every change in a browser dashboard with `comet dashboard`.
+> **0.4.0-beta.1** — Comet has been upgraded to a pure Node runtime (no longer dependent on Bash/WSL) and brings three core capabilities: use `/comet-any` to combine **any** skill into a custom workflow, use `comet eval` to evaluate **any** skill and integrate it into the LangSmith system, and use `comet dashboard` to visualize each change in the browser.
 >
 > **0.3.9** — Review mode (`off|standard|thorough`) controls Build/Verify code review with project defaults; init/update now use optional dependency prompts, broader CLI i18n, stronger phase guards, and macOS executable bits.
 >
@@ -49,10 +49,9 @@ interruption, ship reusable Skills, and evolve those Skills with rubric, Pass@k,
 >
 > See [NEWS.md](NEWS.md) for details.
 
-## Why Comet
+> Combining OpenSpec and Superpowers is not Comet's ultimate goal. We hope to track long-running skills like these and find the Harness capabilities that enable stable execution of long-running skills. If you are interested in participating, you are welcome to contribute to our project or learn from our source code.
 
-Comet keeps the public workflow simple while moving the fragile parts of long-running tasks into a shared runtime
-evidence chain:
+## Why Comet
 
 - **The stable core for long-running tasks** — Comet's Classic Spec mode combines OpenSpec and Superpowers with a state
   machine, phase guards, and scripts that connect the full lifecycle. Agents can only do the work allowed in the current
@@ -63,11 +62,11 @@ evidence chain:
   to memorize long Skill command names: use `/comet` to advance or resume your work.
 - **Skill platform** — Comet can author reusable Skill packages and use `/comet-any` to organize them into distributable
   Bundles, so Skills you create can be distributed to coding platforms with one command, much like `comet init`.
-- **Eval platform** — Comet evaluates Skills with rubric, Pass@k, and Pass^k scoring so Skill evolution is evidence-led
-  instead of intuition-led. It supports LangSmith evaluation and uses a dual-agent architecture to automate evaluation
-  work in production-like environments.
+- **Eval platform** — Comet assesses your skills using scientific Rubric, Pass@k, and Pass^k scoring, ensuring skill evolution is based on scientific evidence rather than intuition. It supports integration with LangSmith assessments, bringing evaluation to real-world enterprise production environments. Its dual-agent architecture automates the assessment process in your production environment.
 
-With Comet, you only need to remember two Skills and one command to cover coding, creation, and evaluation:
+## Extremely low memory threshold
+
+With Comet, you only need to remember two skills and one command, covering coding, creation, and evaluation with an extremely low barrier to entry：
 
 - Use `/comet` for coding tasks
 - Use `/comet-any` to compose any Skills
@@ -75,7 +74,9 @@ With Comet, you only need to remember two Skills and one command to cover coding
 
 ## Comet 0.4.0 Baseline Comparison
 
-The figures below come from 16 Comet workflow tasks, with five samples per treatment, comparing no Comet, Comet 0.3.9, and Comet 0.4.0. Since pass@5 is nearly saturated, the clearest difference is in the detailed rubric view: Comet 0.4.0 improves recovery resilience, gate guarding, main-flow completion, and the overall weighted score over 0.3.9. The no-Comet baseline only validates business behavior, so the workflow dimension is not applicable. The full report is under `eval/langsmith/logs/experiments/combined_comet_workflow_full_k5_20260705_v4_extra_rounds/`.
+The following charts are from 16 Comet workflow tasks, with 5 samples per treatment, comparing no Comet, Comet 0.3.9, and Comet 0.4.0.
+
+The core observations were the differences in Pass@5, Pass^5, and Rubric scores. The baseline without Comet Skills only validated business behavior.
 
 <p align="center">
   <img src="https://github.com/rpamis/comet/blob/master/img/comet-eval-pass5.png" alt="Comet pass@5 and pass^5 baseline comparison" width="920">
@@ -87,8 +88,9 @@ The figures below come from 16 Comet workflow tasks, with five samples per treat
 
 ## From Industry-Frontier Practice
 
-Many Comet capabilities have parallels in current industry practice. To compare Comet with those patterns, see
-[Comet Docs](https://docs.comet.rpamis.com/zh/tech-blog/comet-vs-industry).
+Many Comet capabilities have parallels in current industry practice. 
+
+> To compare Comet with those patterns, see [Comet Docs](https://docs.comet.rpamis.com/zh/tech-blog/comet-vs-industry).
 
 ## What You Can Learn
 
@@ -147,12 +149,33 @@ npx skills add rpamis/comet
 
 ## Screenshots
 
+### Classic Spec Skill
+
 <p align="center">
   <img src="https://github.com/rpamis/comet/blob/master/img/runner.png" alt="runner">
 </p>
 
 <p align="center">Auto-install OpenSpec & Superpowers, one-click dev environment setup</p>
 <p align="center">Multi-phase Skill entry, auto-detects current Spec stage, auto-triggers core flow, manual review at key nodes</p>
+
+### Integration with LangSmith/LangFuse
+
+Comet Eval's automated dual-agent architecture can integrate online with LangSmith/LangFuse environments, making experiments traceable and skills evolvable.
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/langsmith-dataset.png" alt="runner">
+</p>
+<p align="center">Manage your Skill baseline in LangSmith and view detailed performance metrics, latency, and token consumption.</p>
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/langsmith-trace.png" alt="runner">
+</p>
+<p align="center">Trace your Claude Code in LangSmith</p>
+
+<p align="center">
+  <img src="https://github.com/rpamis/comet/blob/master/img/langsmith-baseline-detail.png" alt="runner">
+</p>
+<p align="center">Trace custom Rubric metrics with Pytest in LangSmith</p>
 
 ## Commands
 
