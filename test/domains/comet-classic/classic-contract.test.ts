@@ -144,18 +144,29 @@ function runScript(
 }
 
 function normalizeOutput(value: string, root: string): string {
-  return value
+  const normalizedValue = value
     .replaceAll(root, '<ROOT>')
     .replaceAll(toBashPath(root), '<ROOT>')
-    .replace(
-      /(^|\n)  \[FAIL\] (?:proposal\.md|design\.md|tasks\.md) matches configured language\n    ENOENT: no such file or directory, open '[^']+'\n/gu,
-      '$1',
-    )
     // The active runtime may list transition events added after the frozen
     // 0.3.9 baseline (e.g. preset-escalate) in the "Valid values:" error line.
     // These are intentional enhancements; strip them so the differential
     // contract compares rejection behavior, not the exact event enumeration.
     .replace(/(Valid values: .*) preset-escalate/g, '$1');
+  const lines = normalizedValue.split('\n');
+  const kept: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const nextLine = lines[index + 1] ?? '';
+    if (
+      /\[FAIL\] (?:proposal\.md|design\.md|tasks\.md) matches configured language/u.test(line) &&
+      /ENOENT: no such file or directory, open /u.test(nextLine)
+    ) {
+      index += 1;
+      continue;
+    }
+    kept.push(line);
+  }
+  return kept.join('\n');
 }
 
 function legacyProjection(document: Record<string, unknown>): Record<string, unknown> {
