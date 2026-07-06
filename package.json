@@ -33,6 +33,7 @@
     "build:classic-runtime": "node scripts/build/build-classic-runtime.mjs",
     "dev": "tsc --watch",
     "test": "vitest run",
+    "test:script-smoke": "vitest run test/domains/comet-classic/comet-scripts.test.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint app/ domains/ platform/ && pnpm run lint:architecture",

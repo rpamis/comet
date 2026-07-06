@@ -37,6 +37,7 @@ This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cro
 - **Interactive decision points**: Comet decision points prefer Claude Code's structured question UI when available, with a text fallback for other platforms.
 - **Debug workflow**: The Debug Gate can investigate independent failure groups in parallel before fixes are applied serially through the configured review flow.
 - **Repository layout**: Source code moved into `app/`, `domains/`, `platform/`, and `scripts/`, with tests moved to matching `test/app/`, `test/domains/`, `test/platform/`, `test/scripts/`, and `test/repository/` roots for clearer contributor ownership.
+- **CI smoke test entry point**: Adds a dedicated `test:script-smoke` package script and routes GitHub Actions through it, so contributors and CI exercise the same Classic launcher smoke suite.
 - **README formatting policy**: Root README files are excluded from Prettier checks so user-facing prose and exact documentation phrases are not rewritten by formatter line wrapping.
 
 ### Fixed

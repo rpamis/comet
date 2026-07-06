@@ -2,6 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 
 describe('CI workflows', () => {
+  it('routes Comet script smoke checks through the package script contract', async () => {
+    const workflow = (await fs.readFile('.github/workflows/ci.yml', 'utf-8')).replace(
+      /\r\n/g,
+      '\n',
+    );
+    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf-8')) as {
+      scripts?: Record<string, string>;
+    };
+    const scriptSmokeJob = workflow.slice(
+      workflow.indexOf('  script-smoke:'),
+      workflow.indexOf('  init-e2e:'),
+    );
+
+    expect(packageJson.scripts?.['test:script-smoke']).toBe(
+      'vitest run test/domains/comet-classic/comet-scripts.test.ts',
+    );
+    expect(scriptSmokeJob).toContain('run: pnpm run test:script-smoke');
+    expect(scriptSmokeJob).not.toContain('pnpm test --');
+    expect(scriptSmokeJob).not.toContain('pnpm exec vitest run');
+  });
+
   it('validates init e2e through owned files and installer status', async () => {
     const workflow = (await fs.readFile('.github/workflows/ci.yml', 'utf-8')).replace(
       /\r\n/g,
@@ -19,9 +40,7 @@ describe('CI workflows', () => {
     expect(workflow).toContain('comet-init-project.json');
     expect(workflow).toContain('comet-init-global.json');
     expect(workflow).toContain('pnpm run lint:architecture');
-    expect(workflow).toContain(
-      'pnpm exec vitest run test/domains/comet-classic/comet-scripts.test.ts',
-    );
+    expect(workflow).toContain('pnpm run test:script-smoke');
     expect(workflow).not.toContain('pnpm test -- test/domains/comet-classic/comet-scripts.test.ts');
     expect(workflow).not.toContain('test/ts/comet-scripts.test.ts');
     expect(workflow).toContain('export USERPROFILE="$RUNNER_TEMP/comet-e2e-global"');
@@ -124,13 +143,19 @@ describe('CI workflows', () => {
     expect(workflow).toContain("if: github.event_name == 'pull_request'");
     expect(workflow).toContain('uv run python local/scripts/regression_check.py --help');
     expect(workflow).toContain("if: github.event_name == 'workflow_dispatch'");
-    expect(workflow).toContain('uv run python local/scripts/regression_check.py --count 1 --tolerance 0.10');
+    expect(workflow).toContain(
+      'uv run python local/scripts/regression_check.py --count 1 --tolerance 0.10',
+    );
 
     const pullRequestSection = workflow.slice(
       workflow.indexOf('- name: Smoke check regression gate wiring'),
       workflow.indexOf('- name: Run regression gate'),
     );
     expect(pullRequestSection).not.toContain('--count');
+    expect(pullRequestSection).not.toContain('ANTHROPIC_API_KEY');
     expect(pullRequestSection).not.toContain('ANTHROPIC_AUTH_TOKEN');
+    expect(pullRequestSection).not.toContain('ANTHROPIC_BASE_URL');
+    expect(pullRequestSection).not.toContain('ANTHROPIC_MODEL');
+    expect(pullRequestSection).not.toContain('BENCH_LOOP_MAX_TURNS');
   });
 });
