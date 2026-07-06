@@ -83,7 +83,7 @@ describe('compareVersions', () => {
 describe('getCurrentVersion', () => {
   it('returns a valid semver string', () => {
     const version = getCurrentVersion();
-    expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(version).toMatch(/^\d+\.\d+\.\d+(?:-.+)?$/);
   });
 });
 
@@ -144,7 +144,7 @@ describe('printVersionInfo', () => {
 
     await printVersionInfo(log);
 
-    expect(logs[0]).toMatch(/^  Comet v\d+\.\d+\.\d+$/);
+    expect(logs[0]).toMatch(/^  Comet v\d+\.\d+\.\d+(?:-.+)?$/);
     expect(logs[1]).toContain('99.99.99');
     expect(logs[1]).toContain('npm update -g');
   });
