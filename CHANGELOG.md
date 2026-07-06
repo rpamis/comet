@@ -2,58 +2,19 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.3.12] - 2026-07-04
+## What's Changed [0.4.0-beta.1] - 2026-07-06
 
 ### Added
 
-- **Configured artifact language**: `comet init` now writes the selected artifact language to `.comet/config.yaml`, and new changes snapshot that language into `.comet.yaml` so OpenSpec and Superpowers artifacts keep a stable project-defined language across resumed or mixed-language sessions.
-- **Artifact language validation**: Comet guard checks now reject workflow artifacts that are clearly written in the wrong dominant language for the configured `language`, preventing accidental English output in Chinese workflows or Chinese output in English workflows.
+- **Configured artifact language**: `comet init` now records a project-wide artifact language (`en` or `zh-CN`) in `.comet/config.yaml`, and each new change snapshots that language into its `.comet.yaml`. OpenSpec and Superpowers artifacts follow this configured language instead of the language of whichever request happened to trigger the workflow, keeping output stable across resumed or mixed-language sessions. Comet guard checks reject workflow artifacts that are clearly written in the wrong dominant language for the configured value, fail closed on an invalid `language`, and ignore fenced code blocks so pasted commands, paths, or hashes don't skew the check.
 
 ### Changed
 
-- **Comet language instructions**: Updated English and Chinese Comet skills to use the configured artifact language for OpenSpec prompts, Superpowers arguments, subagent dispatch, verification reports, and archive notes instead of deriving artifact language from the triggering user request.
-- **Language metadata model**: Skill language selection now maps to normalized artifact language values, `en` or `zh-CN`, as the only supported values; `zh` and `en-US` are rejected rather than treated as aliases, since no prior release ever accepted them for this field.
+- **Comet skill language instructions**: English and Chinese Comet skills now read the configured artifact language (`en` or `zh-CN` only — no aliases) for OpenSpec prompts, Superpowers arguments, subagent dispatch, verification reports, and archive notes, instead of deriving it from the triggering user request.
 
 ### Fixed
 
-- **Package metadata version drift**: Aligned package and asset manifest version metadata for the `0.3.12` release so release artifacts report the same version.
-- **Guard fails closed on an invalid configured language**: `comet-guard.sh` previously coerced any unrecognized `language` value to `en` before running the dominant-language check, silently masking a misconfigured project. It now reports an error and blocks the phase transition instead.
-- **Guard language check ignores fenced code blocks**: The CJK/English word counts used to detect the dominant language no longer count text inside fenced code blocks, so pasted commands, paths, or hashes in a Chinese-language artifact no longer trigger a false English-dominant failure.
-- **CJK detection no longer depends on locale collation**: `count_cjk_chars` matched `[一-龥]` as a locale-collated character range, which fails to compile under `LC_ALL=C.UTF-8` (a common CI/container default) and silently counts zero CJK characters, letting Chinese-dominant artifacts pass an `en`-configured guard undetected. It now matches the raw 3-byte UTF-8 encoding under a forced `LC_ALL=C`, which is consistent across GNU grep, BSD grep, and Git Bash.
-- **`.husky/pre-commit` executable bit**: The hook file was committed as non-executable, so git silently skipped it on every clone/checkout regardless of platform, disabling the `format:check`/lint-staged automation described in this file for all contributors since it was introduced.
-
-### Tests
-
-- **Artifact language coverage**: Added regression coverage for project language initialization, environment overrides, invalid language rejection, `.comet.yaml` validation, guard-level language blocking in both language directions, mixed Chinese/English technical terms, fenced-code-block exclusion, guard fail-closed behavior on an invalid project language, and bilingual skill instruction safeguards. Verified the CJK detection fix end-to-end on Linux under `LC_ALL=C.UTF-8`.
-
-## What's Changed [0.3.11] - 2026-06-24
-
-### Added
-
-- **`comet dashboard` command**: New command that boots a local read-only HTTP server (default port 4321 with automatic fallback) and opens a single-page dashboard in the user's browser. The page surfaces every active and archived change in the current project's `openspec/changes/` tree, including phase progress (Open → Design → Build → Verify → Archive), artifact checklist, task breakdown, verify status, next-action recommendation, project-level Git snapshot, and rule-driven risk list — so users can `cd` into a repo and inspect Comet workflow health at a glance instead of grepping `tasks.md` or `.comet.yaml` by hand.
-- **Dashboard JSON API**: `GET /api/dashboard` returns the same `DashboardSnapshot` the frontend renders, so scripts and other tooling can consume the same shape. `comet dashboard --json` prints one snapshot to stdout and exits without starting the server, useful for CI and one-off inspection.
-- **`--port` and `--no-open` flags on `comet dashboard`**: Pin the server to a fixed port (helpful when running multiple repos side by side) or skip the auto-open call (useful for SSH / containers / CI where opening a browser would fail).
-- **Antigravity 2.0 platform support**: Added native support for the new Antigravity 2.0 / Antigravity IDE 2.0 platform. Global skills are now installed under the new configuration directory `~/.gemini/config/skills/`, while maintaining full backward compatibility with older Antigravity (`~/.gemini/antigravity/skills/`) and Gemini (`~/.gemini/skills/`) clients.
-
-### Changed
-
-- **Stricter `--port` validation**: `comet dashboard --port` now rejects values that are not entirely numeric (for example `4321abc`) instead of silently accepting the parsed prefix. Invalid ports fail fast with a clear error message.
-
-### Fixed
-
-- **Per-change failure isolation in the dashboard collector**: A single malformed `.comet.yaml` or unreadable change directory no longer aborts the whole dashboard snapshot. The offending change is logged and skipped, and the rest of the sweep continues so the dashboard always renders.
-- **Defensive defaults in the Git snapshot frontend card**: A partial or stale `/api/dashboard` response (missing `recentCommits` / `dirtyFileList` / `dirtyFiles`) now renders an empty card instead of throwing a TypeError.
-- **Partial init failure summary**: `comet init` now keeps platforms with any failed component out of the final `Installed` section and names the failed component in `Failed`, so partial OpenCode setups no longer appear both installed and failed.
-
-### Security
-
-- **Path traversal guard for `verification_report`**: The `verification_report` field in `.comet.yaml` is now resolved with a containment check against the change directory. Absolute paths and `..` escapes are rejected and the parser falls back to the default `.comet/verify-result.md` location, preventing a malicious repository from coaxing the dashboard into reading arbitrary local files into its API response and UI.
-
-### Tests
-
-- **Dashboard module coverage**: Added unit tests for the tasks parser, verify parser (including absolute-path and `..`-traversal regressions), Git collector, snapshot collector (including per-change failure isolation), HTTP server (snapshot endpoint, static serving, path traversal guard, port fallback), and the `dashboard --json` command.
-- **Test suite environment isolation**: Isolated `detect.test.ts` and `uninstall.test.ts` from the host system's real user home directories by mocking `os.homedir()`. This prevents test suite fragility and false failures when global platforms or skills are installed on the local machine.
-- **Antigravity 2.0 regression coverage**: Added global-level skills detection tests in `detect.test.ts` and global installation E2E validation in `init-e2e.test.ts` for the new `antigravity2` platform.
+- **`.husky/pre-commit` executable bit**: The pre-commit hook file was committed non-executable, so git silently skipped it on every clone/checkout regardless of platform, disabling the `format:check`/lint-staged automation described in this file for all contributors since it was first introduced (shipped broken since `0.3.8`). Now shipped with the executable bit set.
 
 ## What's Changed [0.3.9] - 2026-06-17
 
