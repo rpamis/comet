@@ -31,10 +31,20 @@ body:
       label: 🎯 Primary area
       description: Where would this feature live?
       options:
-        - CLI command
-        - Platform support
-        - Skill workflow
-        - Shell script
+        - CLI command / user interaction (`app/`)
+        - Bundle authoring (`domains/bundle`)
+        - Classic workflow runtime (`domains/comet-classic`, `assets/skills/comet/scripts/`)
+        - Dashboard (`domains/dashboard`)
+        - Engine (`domains/engine`)
+        - Eval (`domains/eval`)
+        - Factory (`domains/factory`)
+        - Integrations (`domains/integrations`)
+        - Skill domain (`domains/skill`)
+        - Workflow contract (`domains/workflow-contract`)
+        - Platform adapter / installer (`platform/*`)
+        - Bundled skills or assets (`assets/skills/`, `assets/skills-zh/`)
+        - Repository automation (`scripts/*`)
+        - Tests / repository architecture
         - Documentation
         - CI / release
         - Other
@@ -66,8 +76,8 @@ body:
   - type: textarea
     attributes:
       label: 🧰 Compatibility notes
-      description: Mention affected platforms, install scopes, languages, or shell environments if relevant.
-      placeholder: 'For example: project/global scope, English/Chinese skills, macOS/Linux/Windows Git Bash.'
+      description: Mention affected platforms, install scopes, languages, test ownership, or runtime/generated assets if relevant.
+      placeholder: 'For example: project/global scope, English/Chinese skills, macOS/Linux/Windows, `test/domains/<domain>/`, or regenerated Classic runtime assets.'
     validations:
       required: false
 

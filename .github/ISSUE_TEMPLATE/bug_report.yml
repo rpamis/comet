@@ -16,12 +16,21 @@ body:
       label: 🎯 Affected area
       description: Which part of Comet is affected?
       options:
-        - CLI command
-        - Skill installation
-        - Comet workflow skill
-        - Shell script
+        - CLI command / user interaction (`app/`)
+        - Bundle authoring (`domains/bundle`)
+        - Classic workflow runtime (`domains/comet-classic`, `assets/skills/comet/scripts/`)
+        - Dashboard (`domains/dashboard`)
+        - Engine (`domains/engine`)
+        - Eval (`domains/eval`)
+        - Factory (`domains/factory`)
+        - Integrations (`domains/integrations`)
+        - Skill domain (`domains/skill`)
+        - Workflow contract (`domains/workflow-contract`)
+        - Platform adapter / installer (`platform/*`)
+        - Bundled skills or assets (`assets/skills/`, `assets/skills-zh/`)
+        - Repository automation (`scripts/*`)
         - Documentation
-        - CI / release
+        - CI / release / architecture checks
         - Other
     validations:
       required: true
@@ -52,7 +61,7 @@ body:
   - type: textarea
     attributes:
       label: 🔁 Steps to reproduce
-      description: Include the exact command, project state, and options used.
+      description: Include the exact command, project state, affected layer/path if known, and options used.
       placeholder: |
         1. In a project with ...
         2. Run `comet init --scope project --json`
@@ -87,6 +96,6 @@ body:
   - type: textarea
     attributes:
       label: 🧩 Additional context
-      description: Links, screenshots, related specs, or anything else that helps explain the issue.
+      description: Links, screenshots, related specs, suspected files, or anything else that helps explain the issue.
     validations:
       required: false

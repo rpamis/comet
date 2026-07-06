@@ -11,12 +11,37 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    attributes:
+      label: 🎯 Topic
+      description: Which part of Comet is your question about?
+      options:
+        - CLI command / user interaction (`app/`)
+        - Bundle authoring (`domains/bundle`)
+        - Classic workflow runtime (`domains/comet-classic`, `assets/skills/comet/scripts/`)
+        - Dashboard (`domains/dashboard`)
+        - Engine (`domains/engine`)
+        - Eval (`domains/eval`)
+        - Factory (`domains/factory`)
+        - Integrations (`domains/integrations`)
+        - Skill domain (`domains/skill`)
+        - Workflow contract (`domains/workflow-contract`)
+        - Platform adapter / installer (`platform/*`)
+        - Bundled skills or assets (`assets/skills/`, `assets/skills-zh/`)
+        - Repository automation (`scripts/*`)
+        - Documentation
+        - CI / release / architecture checks
+        - Other
+    validations:
+      required: false
+
   - type: textarea
     attributes:
       label: 🔍 What you tried
       description: Include commands, configuration, docs you read, or workflow steps you followed.
       placeholder: |
         - Ran `comet init ...`
+        - Ran `comet doctor ...`
         - Read `README.md` section ...
     validations:
       required: false

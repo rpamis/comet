@@ -31,9 +31,12 @@ body:
       label: 📌 Scope
       description: List the files, commands, platforms, or workflows that are expected to change.
       placeholder: |
-        - `src/...`
+        - `app/...`
+        - `domains/<domain>/...`
+        - `platform/...`
+        - `scripts/...`
         - `assets/skills/...`
-        - `test/...`
+        - `test/domains/<domain>/...`
     validations:
       required: false
 
@@ -54,6 +57,8 @@ body:
       placeholder: |
         - `pnpm build`
         - `pnpm lint`
+        - `pnpm run lint:architecture`
         - `pnpm test`
+        - `npx vitest run test/domains/comet-classic/comet-scripts.test.ts`
     validations:
       required: false
