@@ -445,7 +445,10 @@ Classic 自动化以 TypeScript 生成的独立 Node.js 命令脚本分发，通
 
 ### 状态管理
 
-Comet 使用解耦状态架构，文件独立管理：
+Comet 使用解耦状态架构，文件独立管理
+
+<details>
+<summary>查看状态管理</summary>
 
 | 文件                        | 归属     | 用途                           |
 | --------------------------- | -------- | ------------------------------ |
@@ -461,6 +464,8 @@ Comet 使用解耦状态架构，文件独立管理：
 每次成功推进都会向 `.comet/state-events.jsonl` 追加一条审计事件，记录来源、前后状态和实际字段变化。
 
 这样 Skill 文本只负责指导 Agent，状态读写、阶段校验、审计和断点恢复都交给脚本；Agent 通过 Comet 命令即可知道当前 Spec 处于哪个阶段。
+
+</details>
 
 <details>
 <summary>查看 .comet.yaml 关键字段</summary>

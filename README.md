@@ -478,7 +478,10 @@ on every platform, so Comet requires only Node.js — no Bash, Git Bash, or WSL.
 
 ### State Management
 
-Comet uses a decoupled state architecture with separate files:
+Comet uses a decoupled state architecture with separate files
+
+<details>
+<summary>View State Management</summary>
 
 | File                        | Owner    | Purpose                                             |
 | --------------------------- | -------- | --------------------------------------------------- |
@@ -498,6 +501,8 @@ Phase progression is handled consistently by the TypeScript transition table, `c
 
 This keeps Skill text focused on guiding the agent while scripts own state writes, phase checks, auditability, and
 breakpoint recovery. Agents can use Comet commands to know which phase the current Spec is in.
+
+</details>
 
 <details>
 <summary>View key .comet.yaml fields</summary>
