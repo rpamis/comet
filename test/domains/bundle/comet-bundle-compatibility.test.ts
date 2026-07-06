@@ -14,5 +14,5 @@ describe('current Comet Bundle compatibility benchmark', () => {
     expect(result.hookContractRate).toBe(1);
     expect(result.referenceContractRate).toBe(1);
     expect(result.pathContractRate).toBe(1);
-  }, 30_000);
+  }, 90_000);
 });

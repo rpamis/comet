@@ -1,3 +1,4 @@
+import { promises as fs } from 'fs';
 import path from 'path';
 import type { BundleCandidateSource } from './candidates.js';
 import { reconcileBundleAuthoringState, writeBundleAuthoringState } from './state.js';
@@ -12,10 +13,28 @@ export interface ResolveBundleFactoryCandidateOptions {
   reason?: string;
 }
 
-function candidateSelector(source: BundleCandidateSource, selector: string, projectRoot: string) {
+async function canonicalPathForComparison(targetPath: string): Promise<string> {
+  const resolved = path.resolve(targetPath);
+  try {
+    return await fs.realpath(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+async function candidateSelector(
+  source: BundleCandidateSource,
+  selector: string,
+  projectRoot: string,
+) {
   if (source.hash === selector) return true;
   const selectedPath = path.resolve(projectRoot, selector);
-  return path.resolve(source.root) === selectedPath;
+  const sourceRoot = path.resolve(source.root);
+  if (sourceRoot === selectedPath) return true;
+  return (
+    (await canonicalPathForComparison(sourceRoot)) ===
+    (await canonicalPathForComparison(selectedPath))
+  );
 }
 
 function invalidateGeneratedFactoryState(state: BundleAuthoringState): BundleAuthoringState {
@@ -69,9 +88,12 @@ export async function resolveBundleFactoryCandidate(
   const factory = updated.factory!;
 
   if (options.source) {
-    const matches = target.sources.filter((source) =>
-      candidateSelector(source, options.source!, projectRoot),
-    );
+    const matches: BundleCandidateSource[] = [];
+    for (const source of target.sources) {
+      if (await candidateSelector(source, options.source, projectRoot)) {
+        matches.push(source);
+      }
+    }
     if (matches.length === 0) {
       throw new Error(`No source for ${options.candidate} matches ${options.source}`);
     }

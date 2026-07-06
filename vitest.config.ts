@@ -16,6 +16,8 @@ export default defineConfig({
         'app/cli/**',
         // Commands are interactive orchestrators best tested via E2E
         'app/commands/**',
+        // Classic runtime behavior is generated to .mjs and exercised through subprocess smoke tests.
+        'domains/comet-classic/**',
       ],
       thresholds: {
         branches: 70,

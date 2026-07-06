@@ -50,6 +50,7 @@ This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cro
 - **Init result summaries**: `comet init` now keeps partially failed platforms out of the `Installed` list and names the failed component, so platforms such as OpenCode no longer appear installed and failed at the same time ([#128](https://github.com/rpamis/comet/issues/128)).
 - **Classic runtime install payload**: The shared `comet-runtime.mjs` bundle is now included in the shipped manifest, so `comet init` installs runnable Classic launchers instead of copying launchers without their runtime dependency.
 - **Trae CN initialization**: Trae CN installs continue to use `.trae-cn/skills`, but OpenSpec initialization now reuses the supported `trae` tool id so `comet init --platform trae-cn` no longer fails on an unsupported OpenSpec tool value.
+- **Skill Creator source selection**: `comet creator resolve` now matches selected source paths by their physical path when needed, so macOS temp-directory aliases such as `/var` and `/private/var` no longer make an existing Skill source look missing.
 - **`.husky/pre-commit` executable bit**: The pre-commit hook file was committed non-executable, so git silently skipped it on every clone/checkout regardless of platform, disabling the `format:check`/lint-staged automation described in this file for all contributors since it was first introduced (shipped broken since `0.3.8`). Now shipped with the executable bit set.
 
 ### Removed

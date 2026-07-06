@@ -761,6 +761,61 @@ prefer:
     ).rejects.toThrow(/Skill Creator proposal confirmation/iu);
   });
 
+  it('resolves factory sources selected through a physical path alias', async () => {
+    const skillRoot = await writeFactorySkill(projectRoot, 'task3-resolve-aliased-source', {
+      description: 'Aliased source selection test skill.',
+    });
+    const aliasedProjectRoot = path.join(root, 'project-alias');
+    await fs.symlink(
+      projectRoot,
+      aliasedProjectRoot,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const aliasedSkillRoot = path.join(aliasedProjectRoot, path.relative(projectRoot, skillRoot));
+    const planFile = path.join(root, 'factory-resolve-aliased-source-plan.json');
+    await fs.writeFile(
+      planFile,
+      JSON.stringify(
+        {
+          goal: 'Create a Skill resolved through an aliased source path',
+          preferredSkills: ['task3-resolve-aliased-source'],
+          workflow: workflowFor('resolve-aliased-source-skill', ['task3-resolve-aliased-source']),
+          engineMode: 'deterministic',
+          runnerMode: 'standalone',
+        },
+        null,
+        2,
+      ),
+    );
+
+    await bundleFactoryInitCommand('resolve-aliased-source-skill', {
+      project: projectRoot,
+      file: planFile,
+      json: true,
+    });
+
+    const resolved = await captureJson(() =>
+      bundleFactoryResolveCommand('resolve-aliased-source-skill', {
+        project: projectRoot,
+        candidate: 'task3-resolve-aliased-source',
+        source: aliasedSkillRoot,
+        json: true,
+      }),
+    );
+
+    expect(resolved).toMatchObject({
+      factory: {
+        resolvedSkills: [
+          {
+            query: 'task3-resolve-aliased-source',
+            status: 'available',
+            sources: [{ root: skillRoot }],
+          },
+        ],
+      },
+    });
+  });
+
   it('blocks Factory generation until the user confirms the proposal', async () => {
     await writeFactorySkill(projectRoot, 'task3-unconfirmed-generate', {
       description: 'Unconfirmed generation test skill.',
