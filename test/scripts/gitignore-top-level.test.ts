@@ -21,6 +21,7 @@ describe('gitignore top-level entry parsing', () => {
     const ignored = readGitignoredDirectoryEntries(process.cwd());
 
     expect(ignored.has('node_modules')).toBe(true);
+    expect(ignored.has('eval/.uv-cache')).toBe(true);
     expect(ignored.has('eval/.cache')).toBe(true);
     expect(ignored.has('eval/local/logs')).toBe(true);
     expect(ignored.has('*.log')).toBe(false);

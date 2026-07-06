@@ -7739,6 +7739,7 @@ init_state();
 var CLASSIC_PROFILES = ["full", "hotfix", "tweak"];
 var CLASSIC_MIGRATION_VERSION = 1;
 var PHASES = ["open", "design", "build", "verify", "archive"];
+var ARTIFACT_LANGUAGES = ["en", "zh-CN"];
 var CONTEXT_COMPRESSION = ["off", "beta"];
 var BUILD_MODES = ["subagent-driven-development", "executing-plans", "direct"];
 var BUILD_PAUSES = ["plan-ready"];
@@ -7751,6 +7752,7 @@ var VERIFY_RESULTS = ["pending", "pass", "fail"];
 var BRANCH_STATUSES = ["pending", "handled"];
 var CLASSIC_WIRE_KEYS = [
   "workflow",
+  "language",
   "phase",
   "context_compression",
   "build_mode",
@@ -7860,6 +7862,7 @@ function classicStateFromDocument(doc) {
   }
   return {
     workflow: enumValue(doc, "workflow", CLASSIC_PROFILES, false),
+    language: enumValue(doc, "language", ARTIFACT_LANGUAGES),
     phase: enumValue(doc, "phase", PHASES, false),
     contextCompression: enumValue(doc, "context_compression", CONTEXT_COMPRESSION),
     buildMode: enumValue(doc, "build_mode", BUILD_MODES),
@@ -7924,6 +7927,7 @@ function readLegacyStateSummary(doc) {
 function classicStateToDocument(state) {
   return {
     workflow: state.workflow,
+    language: state.language,
     phase: state.phase,
     context_compression: state.contextCompression,
     build_mode: state.buildMode,

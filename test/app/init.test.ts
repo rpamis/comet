@@ -64,9 +64,11 @@ describe('init command helpers', () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-config-'));
 
     try {
-      await createWorkingDirs(tmpDir);
+      await createWorkingDirs(tmpDir, 'zh-CN');
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('# language: en | zh-CN');
+      expect(config).toContain('language: zh-CN');
       expect(config).toContain('# context_compression: off | beta');
       expect(config).toContain('context_compression: off');
       expect(config).toContain('# review_mode: off | standard | thorough');
@@ -92,10 +94,25 @@ describe('init command helpers', () => {
       await createWorkingDirs(tmpDir);
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('language: en');
       expect(config).toContain('context_compression: beta');
       expect(config).toContain('review_mode: standard');
       expect(config).toContain('auto_transition: true');
       expect(config).toContain('custom_key: custom_value');
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('defaults the project Comet config language to en when createWorkingDirs is called without one', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-config-default-'));
+
+    try {
+      await createWorkingDirs(tmpDir);
+
+      const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('# language: en | zh-CN');
+      expect(config).toContain('language: en');
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }

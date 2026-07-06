@@ -14,6 +14,7 @@ import {
   mergeProjectConfig,
 } from '../../../domains/skill/platform-install.js';
 import type { Platform } from '../../../platform/install/platforms.js';
+import { resolveArtifactLanguage } from '../../../domains/skill/languages.js';
 
 describe('skills', () => {
   let tmpDir: string;
@@ -47,6 +48,49 @@ describe('skills', () => {
     });
   });
 
+  describe('language constraints', () => {
+    it('resolves exact artifact language ids and defaults to en when unset', () => {
+      expect(resolveArtifactLanguage('zh-CN').id).toBe('zh-CN');
+      expect(resolveArtifactLanguage('en').id).toBe('en');
+      expect(resolveArtifactLanguage(undefined).id).toBe('en');
+    });
+
+    it('rejects zh and en-US as artifact language values', () => {
+      expect(() => resolveArtifactLanguage('zh')).toThrow('Invalid artifact language');
+      expect(() => resolveArtifactLanguage('en-US')).toThrow('Invalid artifact language');
+    });
+
+    it('does not route Comet artifact language through the current user request language', async () => {
+      const assetsDir = getAssetsDir();
+      const files = [
+        'skills/comet/SKILL.md',
+        'skills/comet-open/SKILL.md',
+        'skills/comet-design/SKILL.md',
+        'skills/comet-build/SKILL.md',
+        'skills/comet-verify/SKILL.md',
+        'skills/comet-archive/SKILL.md',
+        'skills/comet-hotfix/SKILL.md',
+        'skills/comet-tweak/SKILL.md',
+        'skills/comet/reference/subagent-dispatch.md',
+        'skills-zh/comet/SKILL.md',
+        'skills-zh/comet-open/SKILL.md',
+        'skills-zh/comet-design/SKILL.md',
+        'skills-zh/comet-build/SKILL.md',
+        'skills-zh/comet-verify/SKILL.md',
+        'skills-zh/comet-archive/SKILL.md',
+        'skills-zh/comet-hotfix/SKILL.md',
+        'skills-zh/comet-tweak/SKILL.md',
+        'skills-zh/comet/reference/subagent-dispatch.md',
+      ];
+
+      for (const file of files) {
+        const content = await fs.readFile(path.join(assetsDir, file), 'utf-8');
+        expect(content, file).not.toContain('user request that triggered this workflow');
+        expect(content, file).not.toContain('触发本次工作流的用户请求语言');
+      }
+    });
+  });
+
   describe('getManifestSkills', () => {
     it('returns the skills array from manifest', async () => {
       const skills = await getManifestSkills();
@@ -70,6 +114,22 @@ describe('skills', () => {
     it('does not throw when directories already exist', async () => {
       await createWorkingDirs(tmpDir);
       await expect(createWorkingDirs(tmpDir)).resolves.not.toThrow();
+    });
+
+    it('records the selected project language in Comet config', async () => {
+      await createWorkingDirs(tmpDir, 'zh-CN');
+
+      const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('# language: en | zh-CN');
+      expect(config).toContain('language: zh-CN');
+    });
+
+    it('defaults the project language to en when none is provided', async () => {
+      await createWorkingDirs(tmpDir);
+
+      const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('# language: en | zh-CN');
+      expect(config).toContain('language: en');
     });
   });
 
@@ -1283,7 +1343,7 @@ describe('skills', () => {
   });
 
   describe('Comet output language safeguards', () => {
-    it('requires OpenSpec and Superpowers outputs to follow the user request language', async () => {
+    it('requires OpenSpec and Superpowers outputs to follow the configured Comet artifact language', async () => {
       const skillNames = [
         'comet',
         'comet-open',
@@ -1312,55 +1372,55 @@ describe('skills', () => {
       const enSkills = await readSkills('skills');
 
       expect(zhSkills.comet).toContain('输出语言规则');
-      expect(zhSkills.comet).toContain('以触发本次工作流的用户请求语言作为默认输出语言');
-      expect(zhSkills['comet-open']).toContain(
-        '传递给 OpenSpec 的所有提问和产物要求都必须包含输出语言约束',
+      expect(zhSkills.comet).toContain(
+        '所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言',
       );
-      expect(zhSkills['comet-design']).toContain('Language: 使用触发本次工作流的用户请求语言输出');
+      expect(zhSkills['comet-open']).toContain(
+        '传递给 OpenSpec 的所有提问和产物要求都必须包含解析后的 Comet 产物语言',
+      );
+      expect(zhSkills['comet-design']).toContain(
+        'Language: 使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言输出',
+      );
       expect(zhSkills['comet-build']).toContain(
-        '计划文件和执行反馈必须使用触发本次工作流的用户请求语言',
+        '计划文件和执行反馈必须使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言',
       );
       expect(zhSkills['comet-build']).toContain('ARGUMENTS 必须包含与 Step 1 相同的 Language 约束');
       expect(zhSkills['comet-verify']).toContain(
-        '验证报告和分支处理说明必须使用触发本次工作流的用户请求语言',
+        '验证报告和分支处理说明必须使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言',
       );
       expect(zhSkills['comet-archive']).toContain(
-        '归档摘要和生命周期闭环说明必须使用触发本次工作流的用户请求语言',
+        '归档摘要和生命周期闭环说明必须使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言',
       );
-      expect(zhSkills['comet-hotfix']).toContain(
-        '精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言',
-      );
-      expect(zhSkills['comet-tweak']).toContain(
-        '精简版 OpenSpec 产物必须使用触发本次工作流的用户请求语言',
-      );
+      expect(zhSkills['comet-hotfix']).toContain('精简版 OpenSpec 产物必须使用 Comet 配置产物语言');
+      expect(zhSkills['comet-tweak']).toContain('精简版 OpenSpec 产物必须使用 Comet 配置产物语言');
 
       expect(enSkills.comet).toContain('Output Language Rule');
       expect(enSkills.comet).toContain(
-        'Use the language of the user request that triggered this workflow as the default output language',
+        'Use the configured Comet artifact language as the output language for every OpenSpec and Superpowers artifact',
       );
       expect(enSkills['comet-open']).toContain(
-        'Every prompt and artifact request passed to OpenSpec must include the output-language constraint',
+        'Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language',
       );
       expect(enSkills['comet-design']).toContain(
-        'Language: Use the language of the user request that triggered this workflow',
+        'Language: Use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`',
       );
       expect(enSkills['comet-build']).toContain(
-        'Plan files and execution feedback must use the language of the user request that triggered this workflow',
+        'Plan files and execution feedback must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`',
       );
       expect(enSkills['comet-build']).toContain(
         'ARGUMENTS must include the same Language constraint as Step 1',
       );
       expect(enSkills['comet-verify']).toContain(
-        'Verification reports and branch-handling notes must use the language of the user request that triggered this workflow',
+        'Verification reports and branch-handling notes must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`',
       );
       expect(enSkills['comet-archive']).toContain(
-        'Archive summaries and lifecycle closure notes must use the language of the user request that triggered this workflow',
+        'Archive summaries and lifecycle closure notes must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`',
       );
       expect(enSkills['comet-hotfix']).toContain(
-        'Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow',
+        'Streamlined OpenSpec artifacts must use the configured Comet artifact language',
       );
       expect(enSkills['comet-tweak']).toContain(
-        'Streamlined OpenSpec artifacts must use the language of the user request that triggered this workflow',
+        'Streamlined OpenSpec artifacts must use the configured Comet artifact language',
       );
     });
   });
@@ -1402,7 +1462,9 @@ describe('skills', () => {
       expect(zhDispatch).toContain('不得把多个 task 打包给同一个 agent');
       expect(zhDispatch).toContain('每个 task 派发一个全新的后台 implementer agent');
       expect(zhDispatch).toContain('task reviewer、修复 agent 和 final reviewer');
-      expect(zhDispatch).toContain('Language: 使用触发本次工作流的用户请求语言输出');
+      expect(zhDispatch).toContain(
+        'Language: 使用 "$COMET_BASH" "$COMET_STATE" get <name> language 读取到的 Comet 配置产物语言输出',
+      );
       expect(zhDispatch).toContain('允许修改的文件范围');
       expect(zhDispatch).toContain('必须执行的测试命令');
       expect(zhDispatch).toContain('提交哈希');
@@ -1530,7 +1592,7 @@ describe('skills', () => {
       expect(enDispatch).toContain('fresh background implementer agent for every task');
       expect(enDispatch).toContain('task reviewer, fix agents, and the final reviewer');
       expect(enDispatch).toContain(
-        'Language: Use the language of the user request that triggered this workflow',
+        'Language: Use the configured Comet artifact language from "$COMET_BASH" "$COMET_STATE" get <name> language',
       );
       expect(enDispatch).toContain('allowed file scope');
       expect(enDispatch).toContain('required test commands');
@@ -1922,6 +1984,8 @@ describe('skills', () => {
   describe('renderProjectConfig', () => {
     it('renders all managed fields with defaults when no existing values', () => {
       const output = renderProjectConfig({});
+      expect(output).toContain('# language: en | zh-CN');
+      expect(output).toContain('language: en');
       expect(output).toContain('# context_compression: off | beta');
       expect(output).toContain('context_compression: off');
       expect(output).toContain('# review_mode: off | standard | thorough');
@@ -1932,13 +1996,20 @@ describe('skills', () => {
 
     it('preserves existing managed field values', () => {
       const output = renderProjectConfig({
+        language: 'zh-CN',
         context_compression: 'beta',
         review_mode: 'thorough',
         auto_transition: 'false',
       });
+      expect(output).toContain('language: zh-CN');
       expect(output).toContain('context_compression: beta');
       expect(output).toContain('review_mode: thorough');
       expect(output).toContain('auto_transition: false');
+    });
+
+    it('uses the selected artifact language as the default language value', () => {
+      const output = renderProjectConfig({}, 'zh-CN');
+      expect(output).toContain('language: zh-CN');
     });
 
     it('preserves extra user fields after managed fields', () => {
@@ -1956,6 +2027,7 @@ describe('skills', () => {
     it('creates config with defaults when no file exists', async () => {
       await mergeProjectConfig(tmpDir);
       const content = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(content).toContain('language: en');
       expect(content).toContain('context_compression: off');
       expect(content).toContain('review_mode: standard');
       expect(content).toContain('auto_transition: true');
@@ -1972,6 +2044,7 @@ describe('skills', () => {
 
       await mergeProjectConfig(tmpDir);
       const content = await fs.readFile(path.join(configDir, 'config.yaml'), 'utf-8');
+      expect(content).toContain('language: en');
       expect(content).toContain('context_compression: beta');
       expect(content).toContain('review_mode: standard');
       expect(content).toContain('auto_transition: true');

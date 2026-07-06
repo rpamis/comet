@@ -5,6 +5,7 @@ export const CLASSIC_PROFILES = ['full', 'hotfix', 'tweak'] as const;
 export const CLASSIC_MIGRATION_VERSION = 1;
 
 const PHASES = ['open', 'design', 'build', 'verify', 'archive'] as const;
+const ARTIFACT_LANGUAGES = ['en', 'zh-CN'] as const;
 const CONTEXT_COMPRESSION = ['off', 'beta'] as const;
 const BUILD_MODES = ['subagent-driven-development', 'executing-plans', 'direct'] as const;
 const BUILD_PAUSES = ['plan-ready'] as const;
@@ -18,9 +19,11 @@ const BRANCH_STATUSES = ['pending', 'handled'] as const;
 
 export type ClassicProfile = (typeof CLASSIC_PROFILES)[number];
 export type ClassicPhase = (typeof PHASES)[number];
+export type ClassicArtifactLanguage = (typeof ARTIFACT_LANGUAGES)[number];
 
 export interface ClassicState {
   workflow: ClassicProfile;
+  language: ClassicArtifactLanguage | null;
   phase: ClassicPhase;
   contextCompression: (typeof CONTEXT_COMPRESSION)[number] | null;
   buildMode: (typeof BUILD_MODES)[number] | null;
@@ -57,6 +60,7 @@ export interface ClassicStateProjection {
 
 export const CLASSIC_WIRE_KEYS = [
   'workflow',
+  'language',
   'phase',
   'context_compression',
   'build_mode',
@@ -188,6 +192,7 @@ function classicStateFromDocument(doc: StateDocument): ClassicState | null {
 
   return {
     workflow: enumValue(doc, 'workflow', CLASSIC_PROFILES, false)!,
+    language: enumValue(doc, 'language', ARTIFACT_LANGUAGES),
     phase: enumValue(doc, 'phase', PHASES, false)!,
     contextCompression: enumValue(doc, 'context_compression', CONTEXT_COMPRESSION),
     buildMode: enumValue(doc, 'build_mode', BUILD_MODES),
@@ -276,6 +281,7 @@ export function readLegacyStateSummary(doc: StateDocument): LegacyStateSummary {
 export function classicStateToDocument(state: ClassicState): StateDocument {
   return {
     workflow: state.workflow,
+    language: state.language,
     phase: state.phase,
     context_compression: state.contextCompression,
     build_mode: state.buildMode,

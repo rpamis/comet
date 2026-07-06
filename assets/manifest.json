@@ -55,7 +55,7 @@
     }
   },
   "languages": [
-    { "id": "en", "name": "English", "skillsDir": "skills" },
-    { "id": "zh", "name": "中文", "skillsDir": "skills-zh" }
+    { "id": "en", "name": "English", "skillsDir": "skills", "artifactLanguage": "en" },
+    { "id": "zh", "name": "中文", "skillsDir": "skills-zh", "artifactLanguage": "zh-CN" }
   ]
 }

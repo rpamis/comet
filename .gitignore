@@ -101,6 +101,7 @@ skills-lock.json
 
 # Eval harness derived artifacts (logs, venv, caches, lockfile)
 eval/.venv/
+eval/.uv-cache/
 eval/.cache/
 eval/uv.lock
 eval/**/__pycache__/

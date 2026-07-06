@@ -12,6 +12,7 @@ import type { RunState } from '../../../domains/engine/types.js';
 function classicState(): ClassicState {
   return {
     workflow: 'full',
+    language: 'zh-CN',
     phase: 'build',
     contextCompression: 'beta',
     buildMode: 'executing-plans',

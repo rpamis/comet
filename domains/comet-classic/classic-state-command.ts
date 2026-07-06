@@ -30,6 +30,7 @@ const YELLOW = '\u001b[33m';
 const RESET = '\u001b[0m';
 const PROFILES = ['full', 'hotfix', 'tweak'] as const;
 const PHASES = ['open', 'design', 'build', 'verify', 'archive'] as const;
+const ARTIFACT_LANGUAGES = ['en', 'zh-CN'] as const;
 const EVENTS = CLASSIC_TRANSITION_EVENTS;
 const MACHINE_OWNED_FIELDS = new Set<string>([
   ...RUN_WIRE_KEYS,
@@ -66,6 +67,7 @@ const CLASSIC_FIELD_WIRE_NAMES: Partial<Record<keyof ClassicState, string>> = {
   branchStatus: 'branch_status',
   classicProfile: 'classic_profile',
   designDoc: 'design_doc',
+  language: 'language',
   phase: 'phase',
   verificationReport: 'verification_report',
   verifiedAt: 'verified_at',
@@ -120,6 +122,13 @@ function validateEnum(value: string, values: readonly string[]): void {
   if (!values.includes(value)) {
     fail(`ERROR: Invalid value: '${value}'\nValid values: ${values.join(' ')}`);
   }
+}
+
+function validateLanguage(value: string, source: string): string {
+  if (ARTIFACT_LANGUAGES.includes(value as (typeof ARTIFACT_LANGUAGES)[number])) {
+    return value;
+  }
+  fail(`ERROR: Invalid language from ${source}: '${value}'\nValid values: en, zh-CN`);
 }
 
 function validateRelativePath(value: string, field: string): void {
@@ -230,6 +239,7 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
   const workflow = enumRecordValue(record, 'workflow', PROFILES, 'full')!;
   return {
     workflow,
+    language: enumRecordValue(record, 'language', ARTIFACT_LANGUAGES, null),
     phase: enumRecordValue(record, 'phase', PHASES, 'open')!,
     contextCompression: enumRecordValue(
       record,
@@ -281,13 +291,21 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
 }
 
 async function projectConfigValue(
-  field: 'context_compression' | 'auto_transition' | 'review_mode',
+  field: 'context_compression' | 'auto_transition' | 'review_mode' | 'language',
 ): Promise<string | null> {
   const file = path.resolve('.comet', 'config.yaml');
   if (!(await exists(file))) return null;
   const document = await readDocument(file);
   const value = document.get(field);
   return value === null || value === undefined ? null : scalar(value);
+}
+
+async function projectLanguageDefault(): Promise<string> {
+  if (process.env.COMET_LANGUAGE)
+    return validateLanguage(process.env.COMET_LANGUAGE, 'COMET_LANGUAGE');
+  const value = await projectConfigValue('language');
+  if (value) return validateLanguage(value, '.comet/config.yaml');
+  return 'en';
 }
 
 async function contextCompression(): Promise<string> {
@@ -343,6 +361,10 @@ async function readField(name: string, field: string): Promise<string> {
   // null" and "absent" that the frozen 0.3.8 behavior preserves.
   const record = document.toJS() as Record<string, unknown>;
   const value = record[field];
+  if (field === 'language') {
+    if (value === null || value === undefined || value === '') return projectLanguageDefault();
+    return validateLanguage(scalar(value), '.comet.yaml');
+  }
   if (field === 'auto_transition' && (value === null || value === undefined || value === '')) {
     return autoTransition();
   }
@@ -356,6 +378,10 @@ function parsedValue(field: string, value: string): unknown {
 }
 
 function validateSetValue(field: string, value: string): void {
+  if (field === 'language') {
+    validateLanguage(value, 'language');
+    return;
+  }
   const enumValues = FIELD_ENUMS[field];
   if (enumValues) validateEnum(value, enumValues);
   if (PATH_FIELDS.has(field)) validateRelativePath(value, field);
@@ -447,6 +473,7 @@ async function init(output: CommandOutput, name: string, workflow: string): Prom
   const reviewMode = preset ? 'off' : await reviewModeDefault();
   const document = new Document({
     workflow,
+    language: await projectLanguageDefault(),
     phase: 'open',
     context_compression: await contextCompression(),
     build_mode: preset ? 'direct' : null,

@@ -7742,6 +7742,7 @@ init_state();
 var CLASSIC_PROFILES = ["full", "hotfix", "tweak"];
 var CLASSIC_MIGRATION_VERSION = 1;
 var PHASES = ["open", "design", "build", "verify", "archive"];
+var ARTIFACT_LANGUAGES = ["en", "zh-CN"];
 var CONTEXT_COMPRESSION = ["off", "beta"];
 var BUILD_MODES = ["subagent-driven-development", "executing-plans", "direct"];
 var BUILD_PAUSES = ["plan-ready"];
@@ -7754,6 +7755,7 @@ var VERIFY_RESULTS = ["pending", "pass", "fail"];
 var BRANCH_STATUSES = ["pending", "handled"];
 var CLASSIC_WIRE_KEYS = [
   "workflow",
+  "language",
   "phase",
   "context_compression",
   "build_mode",
@@ -7863,6 +7865,7 @@ function classicStateFromDocument(doc) {
   }
   return {
     workflow: enumValue(doc, "workflow", CLASSIC_PROFILES, false),
+    language: enumValue(doc, "language", ARTIFACT_LANGUAGES),
     phase: enumValue(doc, "phase", PHASES, false),
     contextCompression: enumValue(doc, "context_compression", CONTEXT_COMPRESSION),
     buildMode: enumValue(doc, "build_mode", BUILD_MODES),
@@ -7914,6 +7917,7 @@ function parseClassicStateDocument(doc, run) {
 function classicStateToDocument(state) {
   return {
     workflow: state.workflow,
+    language: state.language,
     phase: state.phase,
     context_compression: state.contextCompression,
     build_mode: state.buildMode,
@@ -9237,6 +9241,7 @@ var REQUIRED = [
 ];
 var ENUMS = {
   workflow: ["full", "hotfix", "tweak"],
+  language: ["en", "zh-CN"],
   phase: ["open", "design", "build", "verify", "archive"],
   context_compression: ["off", "beta"],
   build_mode: ["subagent-driven-development", "executing-plans", "direct"],
@@ -9484,7 +9489,13 @@ async function readField(changeDir, field2) {
 async function projectConfigValue(field2, changeDir) {
   const changeValue = await readField(changeDir, field2);
   if (changeValue && changeValue !== "null") return changeValue;
-  for (const config of [".comet.yaml", "comet.yaml", ".comet.yml", "comet.yml"]) {
+  for (const config of [
+    ".comet/config.yaml",
+    ".comet.yaml",
+    "comet.yaml",
+    ".comet.yml",
+    "comet.yml"
+  ]) {
     if (!await exists3(config)) continue;
     for (const line of (await fs12.readFile(config, "utf8")).split(/\r?\n/u)) {
       if (new RegExp(`^${field2}:`, "u").test(line)) {
@@ -9496,6 +9507,49 @@ async function projectConfigValue(field2, changeDir) {
     }
   }
   return "";
+}
+async function configuredLanguage(changeDir) {
+  const language = await projectConfigValue("language", changeDir);
+  if (!language) return "en";
+  if (language === "en" || language === "zh-CN") return language;
+  throw new Error(`configured language '${language}' is invalid; expected en or zh-CN.`);
+}
+function stripFencedCodeBlocks(source) {
+  const kept = [];
+  let inFence = false;
+  for (const line of source.split(/\r?\n/u)) {
+    if (/^\s*```/u.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence) kept.push(line);
+  }
+  return kept.join("\n");
+}
+function countCjkChars(source) {
+  return source.match(/[\u4e00-\u9fff]/gu)?.length ?? 0;
+}
+function countEnglishWords(source) {
+  return source.match(/[A-Za-z][A-Za-z0-9_-]{2,}/gu)?.length ?? 0;
+}
+async function documentLanguageMatchesConfigured(changeDir, file) {
+  const language = await configuredLanguage(changeDir);
+  const source = stripFencedCodeBlocks(await fs12.readFile(file, "utf8"));
+  const cjk = countCjkChars(source);
+  const englishWords = countEnglishWords(source);
+  if (language === "zh-CN" && cjk < 20 && englishWords >= 20) {
+    return fail(
+      `configured language is zh-CN, but ${file} appears to be English-dominant (cjk_chars=${cjk}, english_words=${englishWords}).
+Next: regenerate or rewrite this artifact in Chinese while preserving necessary technical terms.`
+    );
+  }
+  if (language === "en" && cjk > 20 && cjk > englishWords) {
+    return fail(
+      `configured language is en, but ${file} appears to be Chinese-dominant (cjk_chars=${cjk}, english_words=${englishWords}).
+Next: regenerate or rewrite this artifact in English while preserving necessary technical terms.`
+    );
+  }
+  return pass();
 }
 function runCommandString(command) {
   if (!command) return { status: 1, output: red("ERROR: build/verify command is empty") };
@@ -9930,8 +9984,16 @@ async function guardOpenChecks(output, changeDir) {
       async () => await nonempty(path13.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
+      "proposal.md matches configured language",
+      () => documentLanguageMatchesConfigured(changeDir, path13.join(changeDir, "proposal.md"))
+    ),
+    check(
       "tasks.md exists and non-empty",
       async () => await nonempty(path13.join(changeDir, "tasks.md")) ? pass() : fail("")
+    ),
+    check(
+      "tasks.md matches configured language",
+      () => documentLanguageMatchesConfigured(changeDir, path13.join(changeDir, "tasks.md"))
     ),
     check(
       "tasks.md has at least one task",
@@ -9945,6 +10007,10 @@ async function guardOpenChecks(output, changeDir) {
       check(
         "design.md exists and non-empty",
         async () => await nonempty(path13.join(changeDir, "design.md")) ? pass() : fail("")
+      ),
+      check(
+        "design.md matches configured language",
+        () => documentLanguageMatchesConfigured(changeDir, path13.join(changeDir, "design.md"))
       )
     );
   }
@@ -9959,12 +10025,24 @@ async function guardDesignChecks(output, changeDir, change) {
       async () => await nonempty(path13.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
+      "proposal.md matches configured language",
+      () => documentLanguageMatchesConfigured(changeDir, path13.join(changeDir, "proposal.md"))
+    ),
+    check(
       "design.md exists",
       async () => await nonempty(path13.join(changeDir, "design.md")) ? pass() : fail("")
     ),
     check(
+      "design.md matches configured language",
+      () => documentLanguageMatchesConfigured(changeDir, path13.join(changeDir, "design.md"))
+    ),
+    check(
       "tasks.md exists",
       async () => await nonempty(path13.join(changeDir, "tasks.md")) ? pass() : fail("")
+    ),
+    check(
+      "tasks.md matches configured language",
+      () => documentLanguageMatchesConfigured(changeDir, path13.join(changeDir, "tasks.md"))
     ),
     check("design handoff context exists", () => designHandoffContextValid(changeDir, change)),
     check("design handoff markdown is traceable", () => designHandoffMarkdownTraceable(changeDir))
@@ -9988,6 +10066,10 @@ async function guardDesignChecks(output, changeDir, change) {
       check(
         `Design Doc (${designDoc}) exists`,
         async () => await nonempty(designDoc) ? pass() : fail("")
+      ),
+      check(
+        "Design Doc matches configured language",
+        () => documentLanguageMatchesConfigured(changeDir, designDoc)
       ),
       check("Design Doc frontmatter links current change", async () => {
         if (!await nonempty(designDoc)) return fail("");
@@ -10023,6 +10105,15 @@ async function guardBuildChecks(output, changeDir, change) {
       "proposal.md exists",
       async () => await nonempty(path13.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
+    check(
+      "proposal.md matches configured language",
+      () => documentLanguageMatchesConfigured(changeDir, path13.join(changeDir, "proposal.md"))
+    ),
+    check("Superpowers plan matches configured language", async () => {
+      const plan = await readField(changeDir, "plan");
+      if (!plan || plan === "null" || !await exists3(plan)) return pass();
+      return documentLanguageMatchesConfigured(changeDir, plan);
+    }),
     // Build check runs last — only after all config checks pass — to avoid
     // wasting time on a build that would be rejected by a config failure.
     check("Build passes", async () => {
@@ -10044,6 +10135,11 @@ async function guardVerifyChecks(output, changeDir) {
       "verification_report exists",
       async () => await verificationReportExists(changeDir) ? pass() : fail("")
     ),
+    check("verification_report matches configured language", async () => {
+      const report = await readField(changeDir, "verification_report");
+      if (!report || report === "null" || !await exists3(report)) return pass();
+      return documentLanguageMatchesConfigured(changeDir, report);
+    }),
     check(
       "branch_status=handled",
       async () => await branchStatusHandled(changeDir) ? pass() : fail("")

@@ -8,6 +8,7 @@ This file is the field reference for the `.comet.yaml` state file. Consult on de
 
 ```yaml
 workflow: full
+language: en
 phase: build
 design_doc: docs/superpowers/specs/YYYY-MM-DD-topic-design.md
 plan: docs/superpowers/plans/YYYY-MM-DD-feature.md
@@ -33,6 +34,7 @@ archived: false
 | Field | Meaning |
 |-------|---------|
 | `workflow` | `full`, `hotfix`, or `tweak` |
+| `language` | Artifact language, `en` or `zh-CN`. Written to `.comet/config.yaml` by `comet init`, snapshotted into `.comet.yaml` when a change is created, and used as the main-language constraint for OpenSpec / Superpowers artifacts |
 | `phase` | Current phase: `open`, `design`, `build`, `verify`, `archive` (init sets `open`; guard handles transitions) |
 | `design_doc` | Associated Superpowers Design Doc path; may be empty |
 | `plan` | Associated Superpowers Plan path; may be empty |

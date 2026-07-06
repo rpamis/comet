@@ -14,7 +14,7 @@ description: "Use when a Comet change has completed build and needs implementati
 
 ### 0a. Output Language Constraint
 
-Verification reports and branch-handling notes must use the language of the user request that triggered this workflow.
+Verification reports and branch-handling notes must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`.
 
 ### 0b. Entry State Verification (Entry Check)
 

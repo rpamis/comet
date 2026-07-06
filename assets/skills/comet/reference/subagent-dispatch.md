@@ -40,8 +40,8 @@ The main session is the **coordinator only** and must NOT execute tasks directly
 
 Every implementer or fix-agent prompt must include:
 
-- The single current task requirements, architecture background, and dependency context
-- `Language: Use the language of the user request that triggered this workflow`
+- The full text of the single current task, architecture background, and dependency context
+- `Language: Use the configured Comet artifact language from "$COMET_BASH" "$COMET_STATE" get <name> language`
 - The allowed file scope and prohibited modification scope
 - The required test commands and commit requirements
 - For a fix agent, the corresponding reviewer's complete feedback

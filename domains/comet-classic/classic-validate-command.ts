@@ -23,6 +23,7 @@ const REQUIRED = [
 ] as const;
 const ENUMS: Record<string, readonly string[]> = {
   workflow: ['full', 'hotfix', 'tweak'],
+  language: ['en', 'zh-CN'],
   phase: ['open', 'design', 'build', 'verify', 'archive'],
   context_compression: ['off', 'beta'],
   build_mode: ['subagent-driven-development', 'executing-plans', 'direct'],

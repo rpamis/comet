@@ -14,7 +14,7 @@ description: "Use when Comet change 已完成 build 阶段，需要验证实现�
 
 ### 0a. 输出语言约束
 
-验证报告和分支处理说明必须使用触发本次工作流的用户请求语言。
+验证报告和分支处理说明必须使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言。
 
 ### 0b. 入口状态验证（Entry Check）
 

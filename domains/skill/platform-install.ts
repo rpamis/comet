@@ -7,15 +7,11 @@ import { parseDocument } from 'yaml';
 import { fileExists, readJson, copyFile, ensureDir } from '../../platform/fs/file-system.js';
 import { getPlatformSkillsDir, type Platform } from '../../platform/install/platforms.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
+import { formatSupportedArtifactLanguages, resolveArtifactLanguage } from './languages.js';
+import type { LanguageConfig } from './languages.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-type LanguageConfig = {
-  id: string;
-  name: string;
-  skillsDir: string;
-};
 
 type HookConfig = {
   matcher: string;
@@ -940,11 +936,27 @@ async function installKiroHooks(
   return { installed: true };
 }
 
-const MANAGED_CONFIG_FIELDS = [
-  { key: 'context_compression', def: 'off', comment: '# context_compression: off | beta' },
-  { key: 'review_mode', def: 'standard', comment: '# review_mode: off | standard | thorough' },
-  { key: 'auto_transition', def: 'true', comment: '# auto_transition: true | false' },
-] as const;
+function managedConfigFields(language: string = 'en') {
+  const artifactLanguage = resolveArtifactLanguage(language);
+  return [
+    {
+      key: 'language',
+      def: artifactLanguage.id,
+      comment: `# language: ${formatSupportedArtifactLanguages()}`,
+    },
+    { key: 'context_compression', def: 'off', comment: '# context_compression: off | beta' },
+    { key: 'review_mode', def: 'standard', comment: '# review_mode: off | standard | thorough' },
+    { key: 'auto_transition', def: 'true', comment: '# auto_transition: true | false' },
+  ] as const;
+}
+
+const MANAGED_CONFIG_FIELDS = managedConfigFields();
+
+type ManagedConfigField = ReturnType<typeof managedConfigFields>[number];
+
+function getManagedConfigFields(language: string = 'en'): readonly ManagedConfigField[] {
+  return language === 'en' ? MANAGED_CONFIG_FIELDS : managedConfigFields(language);
+}
 
 function parseProjectConfigOverrides(content: string): Record<string, string> {
   if (!content.trim()) return {};
@@ -962,10 +974,11 @@ function parseProjectConfigOverrides(content: string): Record<string, string> {
   return out;
 }
 
-function renderProjectConfig(existing: Record<string, string>): string {
+function renderProjectConfig(existing: Record<string, string>, language: string = 'en'): string {
   const lines: string[] = [];
-  const managed: Set<string> = new Set(MANAGED_CONFIG_FIELDS.map((f) => f.key));
-  for (const f of MANAGED_CONFIG_FIELDS) {
+  const fields = getManagedConfigFields(language);
+  const managed: Set<string> = new Set(fields.map((f) => f.key));
+  for (const f of fields) {
     lines.push(f.comment);
     lines.push(`${f.key}: ${existing[f.key] ?? f.def}`);
   }
@@ -976,17 +989,17 @@ function renderProjectConfig(existing: Record<string, string>): string {
   return lines.join('\n');
 }
 
-async function mergeProjectConfig(projectPath: string): Promise<void> {
+async function mergeProjectConfig(projectPath: string, language: string = 'en'): Promise<void> {
   const configPath = path.join(projectPath, '.comet', 'config.yaml');
   let existing: Record<string, string> = {};
   if (await fileExists(configPath)) {
     existing = parseProjectConfigOverrides(await readFile(configPath, 'utf-8'));
   }
   await ensureDir(path.dirname(configPath));
-  await writeFile(configPath, renderProjectConfig(existing), 'utf-8');
+  await writeFile(configPath, renderProjectConfig(existing, language), 'utf-8');
 }
 
-async function createWorkingDirs(projectPath: string): Promise<void> {
+async function createWorkingDirs(projectPath: string, language: string = 'en'): Promise<void> {
   const dirs = [
     path.join(projectPath, 'docs', 'superpowers', 'specs'),
     path.join(projectPath, 'docs', 'superpowers', 'plans'),
@@ -997,7 +1010,7 @@ async function createWorkingDirs(projectPath: string): Promise<void> {
     await ensureDir(dir);
   }
 
-  await mergeProjectConfig(projectPath);
+  await mergeProjectConfig(projectPath, language);
 }
 
 export {

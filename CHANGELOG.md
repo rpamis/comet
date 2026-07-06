@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.1] - 2026-06-27
+## What's Changed [0.4.0-beta.1] - 2026-07-06
 
 This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cross-platform Node runtime and expands from a `/comet` workflow bundle into a workflow, Skill creation, eval, and dashboard platform. The notes below describe the final user-visible release shape, not the branch work history.
 
@@ -19,10 +19,12 @@ This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cro
 - **Supported platforms**: Adds ZCode, MimoCode, Trae CN, and Antigravity 2.0 support. Antigravity 2.0 global installs use `~/.gemini/config/skills/`; ZCode and MimoCode use OpenCode-compatible layouts; Trae CN uses `.trae-cn/skills`.
 - **Symlink install mode**: `comet init` and `comet update` can now install skills by copy or by symlink/junction from a shared `.comet/skills/` store.
 - **Project Skill preferences**: Adds `.comet/skill-preferences.yaml` so projects can guide preferred Skills, ordering, and Skill Creator proposals without hand-editing bundle files.
+- **Configured artifact language**: `comet init` now records a project-wide artifact language (`en` or `zh-CN`) in `.comet/config.yaml`, and each new change snapshots that language into its `.comet.yaml`. OpenSpec and Superpowers artifacts follow this configured language instead of the language of whichever request happened to trigger the workflow, keeping output stable across resumed or mixed-language sessions. Comet guard checks reject workflow artifacts that are clearly written in the wrong dominant language for the configured value, fail closed on an invalid `language`, and ignore fenced code blocks so pasted commands, paths, or hashes don't skew the check.
 
 ### Changed
 
 - **Comet product model**: README, CLI help, and Skill guidance now present Comet as a workflow and Skill platform: run guided workflows, create Skills, evaluate them, publish them, and diagnose stuck changes.
+- **Comet skill language instructions**: English and Chinese Comet skills now read the configured artifact language (`en` or `zh-CN` only — no aliases) for OpenSpec prompts, Superpowers arguments, subagent dispatch, verification reports, and archive notes, instead of deriving it from the triggering user request.
 - **Eval judge provider**: LLM-as-judge now requires an explicit `BENCH_JUDGE_MODEL` and uses the independent `BENCH_JUDGE_*` provider settings, including direct Anthropic-compatible HTTP when a judge endpoint and credential are configured, so judge runs no longer silently share the subject model, endpoint, or credentials and report a skipped status when judge configuration is incomplete.
 - **LangSmith eval configuration**: LangSmith eval runs now derive Claude Code tracing plugin settings from the primary `LANGSMITH_*` configuration, keep Claude Code traces in the configured base project, preserve hook logs in saved artifacts, and auto-build the official Claude Code tracing plugin into the eval cache when needed, so users no longer need to configure both `LANGSMITH_TRACING` and the similar-looking `TRACE_TO_LANGSMITH`, hunt through per-experiment trace projects, or manually prepare plugin directories in normal setups.
 - **Eval comparison reporting**: Eval reports now separate raw, analysis-set, flagged, and excluded runs; treat CONTROL as a business-only baseline; split overall, business, and workflow pass@k/pass^k views; and render paper-style Markdown/HTML reports with metric explanations, rubric-dimension explanations, source evidence, failure attribution, centered tables, a Chinese/English toggle, Python-first charts, and inline SVG fallback.
@@ -46,6 +48,7 @@ This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cro
 - **Review mode consistency**: English, Chinese, shared rule, and recovery guidance now agree on `review_mode`, so installed Skills no longer describe an old dual-review flow that conflicts with the runtime guard/state checks ([#126](https://github.com/rpamis/comet/issues/126)).
 - **Project config merge on init/update**: `comet init` and `comet update` now perform field-level merge on `.comet/config.yaml` instead of skipping when the file exists. Existing user values are preserved, missing managed fields are filled with defaults, comments are refreshed, and extra user fields are kept. Damaged YAML files gracefully fall back to all defaults.
 - **Init result summaries**: `comet init` now keeps partially failed platforms out of the `Installed` list and names the failed component, so platforms such as OpenCode no longer appear installed and failed at the same time ([#128](https://github.com/rpamis/comet/issues/128)).
+- **`.husky/pre-commit` executable bit**: The pre-commit hook file was committed non-executable, so git silently skipped it on every clone/checkout regardless of platform, disabling the `format:check`/lint-staged automation described in this file for all contributors since it was first introduced (shipped broken since `0.3.8`). Now shipped with the executable bit set.
 
 ### Removed
 

@@ -7421,6 +7421,7 @@ async function resolveClassicChangeDirectory(name) {
 // domains/comet-classic/classic-state.ts
 var CLASSIC_WIRE_KEYS = [
   "workflow",
+  "language",
   "phase",
   "context_compression",
   "build_mode",
@@ -7470,6 +7471,7 @@ var REQUIRED = [
 ];
 var ENUMS = {
   workflow: ["full", "hotfix", "tweak"],
+  language: ["en", "zh-CN"],
   phase: ["open", "design", "build", "verify", "archive"],
   context_compression: ["off", "beta"],
   build_mode: ["subagent-driven-development", "executing-plans", "direct"],

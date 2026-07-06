@@ -7781,6 +7781,7 @@ init_state();
 var CLASSIC_PROFILES = ["full", "hotfix", "tweak"];
 var CLASSIC_MIGRATION_VERSION = 1;
 var PHASES = ["open", "design", "build", "verify", "archive"];
+var ARTIFACT_LANGUAGES = ["en", "zh-CN"];
 var CONTEXT_COMPRESSION = ["off", "beta"];
 var BUILD_MODES = ["subagent-driven-development", "executing-plans", "direct"];
 var BUILD_PAUSES = ["plan-ready"];
@@ -7793,6 +7794,7 @@ var VERIFY_RESULTS = ["pending", "pass", "fail"];
 var BRANCH_STATUSES = ["pending", "handled"];
 var CLASSIC_WIRE_KEYS = [
   "workflow",
+  "language",
   "phase",
   "context_compression",
   "build_mode",
@@ -7902,6 +7904,7 @@ function classicStateFromDocument(doc) {
   }
   return {
     workflow: enumValue(doc, "workflow", CLASSIC_PROFILES, false),
+    language: enumValue(doc, "language", ARTIFACT_LANGUAGES),
     phase: enumValue(doc, "phase", PHASES, false),
     contextCompression: enumValue(doc, "context_compression", CONTEXT_COMPRESSION),
     buildMode: enumValue(doc, "build_mode", BUILD_MODES),
@@ -7953,6 +7956,7 @@ function parseClassicStateDocument(doc, run) {
 function classicStateToDocument(state) {
   return {
     workflow: state.workflow,
+    language: state.language,
     phase: state.phase,
     context_compression: state.contextCompression,
     build_mode: state.buildMode,
@@ -8305,6 +8309,7 @@ var YELLOW = "\x1B[33m";
 var RESET = "\x1B[0m";
 var PROFILES = ["full", "hotfix", "tweak"];
 var PHASES2 = ["open", "design", "build", "verify", "archive"];
+var ARTIFACT_LANGUAGES2 = ["en", "zh-CN"];
 var EVENTS = CLASSIC_TRANSITION_EVENTS;
 var MACHINE_OWNED_FIELDS = /* @__PURE__ */ new Set([
   ...RUN_WIRE_KEYS,
@@ -8339,6 +8344,7 @@ var CLASSIC_FIELD_WIRE_NAMES = {
   branchStatus: "branch_status",
   classicProfile: "classic_profile",
   designDoc: "design_doc",
+  language: "language",
   phase: "phase",
   verificationReport: "verification_report",
   verifiedAt: "verified_at",
@@ -8384,6 +8390,13 @@ function validateEnum(value, values) {
     fail(`ERROR: Invalid value: '${value}'
 Valid values: ${values.join(" ")}`);
   }
+}
+function validateLanguage(value, source) {
+  if (ARTIFACT_LANGUAGES2.includes(value)) {
+    return value;
+  }
+  fail(`ERROR: Invalid language from ${source}: '${value}'
+Valid values: en, zh-CN`);
 }
 function validateRelativePath(value, field2) {
   if (!value || value === "null") return;
@@ -8474,6 +8487,7 @@ function sparseClassicState(record) {
   const workflow = enumRecordValue(record, "workflow", PROFILES, "full");
   return {
     workflow,
+    language: enumRecordValue(record, "language", ARTIFACT_LANGUAGES2, null),
     phase: enumRecordValue(record, "phase", PHASES2, "open"),
     contextCompression: enumRecordValue(
       record,
@@ -8529,6 +8543,13 @@ async function projectConfigValue(field2) {
   const value = document.get(field2);
   return value === null || value === void 0 ? null : scalar(value);
 }
+async function projectLanguageDefault() {
+  if (process.env.COMET_LANGUAGE)
+    return validateLanguage(process.env.COMET_LANGUAGE, "COMET_LANGUAGE");
+  const value = await projectConfigValue("language");
+  if (value) return validateLanguage(value, ".comet/config.yaml");
+  return "en";
+}
 async function contextCompression() {
   const value = process.env.COMET_CONTEXT_COMPRESSION ?? await projectConfigValue("context_compression") ?? "off";
   if (!["off", "beta"].includes(value)) {
@@ -8569,6 +8590,10 @@ async function readField(name, field2) {
   const document = await readDocument2(file);
   const record = document.toJS();
   const value = record[field2];
+  if (field2 === "language") {
+    if (value === null || value === void 0 || value === "") return projectLanguageDefault();
+    return validateLanguage(scalar(value), ".comet.yaml");
+  }
   if (field2 === "auto_transition" && (value === null || value === void 0 || value === "")) {
     return autoTransition();
   }
@@ -8581,6 +8606,10 @@ function parsedValue(field2, value) {
   return document.get(field2);
 }
 function validateSetValue(field2, value) {
+  if (field2 === "language") {
+    validateLanguage(value, "language");
+    return;
+  }
   const enumValues = FIELD_ENUMS[field2];
   if (enumValues) validateEnum(value, enumValues);
   if (PATH_FIELDS.has(field2)) validateRelativePath(value, field2);
@@ -8661,6 +8690,7 @@ async function init(output, name, workflow) {
   const reviewMode = preset ? "off" : await reviewModeDefault();
   const document = new import_yaml3.Document({
     workflow,
+    language: await projectLanguageDefault(),
     phase: "open",
     context_compression: await contextCompression(),
     build_mode: preset ? "direct" : null,
