@@ -11354,8 +11354,9 @@ async function governingChange(relativePath2, projectRoot) {
   }
   if (isSuperpowersArtifactPath(relativePath2)) {
     const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot);
-    if (superpowers) return superpowers;
-    return repoSourceGoverningChange(projectRoot);
+    if (superpowers) return { ...superpowers, superpowersArtifact: "matched" };
+    const fallback = await repoSourceGoverningChange(projectRoot);
+    return fallback ? { ...fallback, superpowersArtifact: "unmatched" } : null;
   }
   return repoSourceGoverningChange(projectRoot);
 }
@@ -11442,6 +11443,25 @@ function blockedMissingDesignDoc(relativePath2) {
     ].join("\n")
   );
 }
+function blockedUnmatchedSuperpowersArtifact(relativePath2, phase) {
+  return result(
+    2,
+    [
+      "",
+      "╔══════════════════════════════════════════╗",
+      "║     COMET PHASE GUARD — WRITE BLOCKED    ║",
+      "╚══════════════════════════════════════════╝",
+      "",
+      `  Current phase: ${phase}`,
+      `  Target file: ${relativePath2}`,
+      "",
+      "  BLOCKED: unmatched Superpowers artifact",
+      "  This docs/superpowers/ path does not match any active change artifact",
+      "  NEXT: record the artifact path in .comet.yaml or include the change name in the artifact filename",
+      ""
+    ].join("\n")
+  );
+}
 var classicHookGuardCommand = async (args) => {
   const projectRoot = parseProjectRoot(args);
   const target = inputTarget();
@@ -11473,8 +11493,13 @@ var classicHookGuardCommand = async (args) => {
   const phase = governing.phase;
   const openSpec = openSpecAllowed(relativePath2, phase);
   if (openSpec) return allowed(openSpec);
-  if (isSuperpowersArtifactPath(relativePath2) && allowsSuperpowersArtifacts(governing)) {
-    return allowed(`${relativePath2} (phase: ${phase}, superpowers)`);
+  if (isSuperpowersArtifactPath(relativePath2)) {
+    if (governing.superpowersArtifact === "matched" && allowsSuperpowersArtifacts(governing)) {
+      return allowed(`${relativePath2} (phase: ${phase}, superpowers)`);
+    }
+    if (governing.superpowersArtifact === "unmatched") {
+      return blockedUnmatchedSuperpowersArtifact(relativePath2, phase);
+    }
   }
   if (phase === "build" && governing.classic?.workflow === "full" && !governing.classic.designDoc) {
     return blockedMissingDesignDoc(relativePath2);
