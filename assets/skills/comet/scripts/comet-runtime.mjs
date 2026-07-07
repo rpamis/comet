@@ -7707,6 +7707,10 @@ async function collectClassicEvidence(changeDir, projection) {
     handoff.satisfied = false;
     handoff.detail = "handoff hash is missing";
   }
+  evidence.push({
+    code: "archive.confirmed",
+    satisfied: classic?.archiveConfirmation === "confirmed"
+  });
   return evidence;
 }
 
@@ -7757,7 +7761,7 @@ function resolveArchive(profile, classic, evidence) {
   if (classic.verifyResult !== "pass") {
     throw new Error("archive requires verify_result=pass");
   }
-  return evidenceSatisfied(evidence, "archive.confirmed") ? `${profile}.archive.execute` : `${profile}.archive.confirm`;
+  return classic.archiveConfirmation === "confirmed" || evidenceSatisfied(evidence, "archive.confirmed") ? `${profile}.archive.execute` : `${profile}.archive.confirm`;
 }
 function resolveClassicStepId(classic, evidence) {
   const profile = profileFor(classic);
@@ -7804,6 +7808,7 @@ var ISOLATIONS = ["branch", "worktree"];
 var VERIFY_MODES = ["light", "full"];
 var VERIFY_RESULTS = ["pending", "pass", "fail"];
 var BRANCH_STATUSES = ["pending", "handled"];
+var ARCHIVE_CONFIRMATIONS = ["pending", "confirmed"];
 var CLASSIC_WIRE_KEYS = [
   "workflow",
   "language",
@@ -7825,6 +7830,7 @@ var CLASSIC_WIRE_KEYS = [
   "branch_status",
   "created_at",
   "verified_at",
+  "archive_confirmation",
   "archived",
   "direct_override",
   "build_command",
@@ -7935,6 +7941,7 @@ function classicStateFromDocument(doc) {
     branchStatus: enumValue(doc, "branch_status", BRANCH_STATUSES),
     createdAt: nullableString(doc, "created_at"),
     verifiedAt: nullableString(doc, "verified_at"),
+    archiveConfirmation: enumValue(doc, "archive_confirmation", ARCHIVE_CONFIRMATIONS),
     archived: booleanValue(doc, "archived", false),
     directOverride: booleanValue(doc, "direct_override"),
     buildCommand: nullableString(doc, "build_command"),
@@ -8000,6 +8007,7 @@ function classicStateToDocument(state) {
     branch_status: state.branchStatus,
     created_at: state.createdAt,
     verified_at: state.verifiedAt,
+    archive_confirmation: state.archiveConfirmation,
     archived: state.archived,
     direct_override: state.directOverride,
     build_command: state.buildCommand,
@@ -9081,6 +9089,7 @@ var CLASSIC_TRANSITION_EVENTS = [
   "build-complete",
   "verify-pass",
   "verify-fail",
+  "archive-confirm",
   "archive-reopen",
   "archived",
   "preset-escalate"
@@ -9111,6 +9120,11 @@ var CLASSIC_TRANSITION_TABLE = {
     from: "verify",
     guardRefs: ["verification-failed"]
   },
+  "archive-confirm": {
+    event: "archive-confirm",
+    from: "archive",
+    guardRefs: ["archive-final-confirmation"]
+  },
   "archive-reopen": {
     event: "archive-reopen",
     from: "archive",
@@ -9119,7 +9133,7 @@ var CLASSIC_TRANSITION_TABLE = {
   archived: {
     event: "archived",
     from: "archive",
-    guardRefs: ["verify-result-pass"]
+    guardRefs: ["verify-result-pass", "archive-confirmed"]
   },
   "preset-escalate": {
     event: "preset-escalate",
@@ -9167,6 +9181,7 @@ function applyClassicTransition(current, event, options = {}) {
     setField(classic, effects, "verifyResult", "pass");
     setField(classic, effects, "phase", "archive");
     setField(classic, effects, "verifiedAt", dateOnly(now));
+    setField(classic, effects, "archiveConfirmation", "pending");
   } else if (event === "verify-fail") {
     setField(classic, effects, "verifyResult", "fail");
     setField(classic, effects, "phase", "build");
@@ -9180,14 +9195,24 @@ function applyClassicTransition(current, event, options = {}) {
     setField(classic, effects, "classicProfile", "full");
     setField(classic, effects, "phase", "design");
     setField(classic, effects, "designDoc", null);
+  } else if (event === "archive-confirm") {
+    if (classic.verifyResult !== "pass") {
+      throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
+    }
+    if (classic.archived) throw new Error(`Cannot apply ${event}: already archived`);
+    setField(classic, effects, "archiveConfirmation", "confirmed");
   } else if (event === "archive-reopen") {
     if (classic.archived) throw new Error(`Cannot apply ${event}: already archived`);
     setField(classic, effects, "verifyResult", "pending");
     setField(classic, effects, "phase", "verify");
     setField(classic, effects, "verifiedAt", null);
+    setField(classic, effects, "archiveConfirmation", null);
   } else {
     if (classic.verifyResult !== "pass") {
       throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
+    }
+    if (classic.archiveConfirmation !== "confirmed") {
+      throw new Error(`Cannot apply ${event}: archiveConfirmation must be confirmed`);
     }
     setField(classic, effects, "archived", true);
   }
@@ -9404,6 +9429,13 @@ var classicArchiveCommand = async (args) => {
       if (runtime.run.pending && runtime.run.pending !== actionId) {
         throw new ArchiveFailure(red(`FATAL: another action is pending: ${runtime.run.pending}`));
       }
+      if (!recovering && !classic.archived && classic.archiveConfirmation !== "confirmed") {
+        throw new ArchiveFailure(
+          red(
+            `FATAL: archive_confirmation is '${classic.archiveConfirmation ?? "null"}', expected 'confirmed'. Run final archive confirmation first.`
+          )
+        );
+      }
       if (!recovering) {
         const action = {
           id: actionId,
@@ -9475,7 +9507,10 @@ var classicArchiveCommand = async (args) => {
         archive_directory: archiveDir
       };
       await writeArtifacts(archiveDir, archivedProjection.run.artifactsRef, artifacts);
-      const archiveTransition = applyClassicTransition(archivedProjection.classic, "archived");
+      const archiveTransition = applyClassicTransition(
+        recovering && archivedProjection.classic.archiveConfirmation !== "confirmed" ? { ...archivedProjection.classic, archiveConfirmation: "confirmed" } : archivedProjection.classic,
+        "archived"
+      );
       const archivedClassic = archiveTransition.classic;
       let transitionedRun = archivedProjection.run;
       if (archivedProjection.run.currentStep !== "completed" || archivedProjection.run.status !== "completed") {
@@ -9704,6 +9739,7 @@ var ENUMS = {
   auto_transition: ["true", "false"],
   verify_result: ["pending", "pass", "fail"],
   branch_status: ["pending", "handled"],
+  archive_confirmation: ["pending", "confirmed"],
   archived: ["true", "false"],
   direct_override: ["true", "false"],
   classic_profile: ["full", "hotfix", "tweak"],
@@ -11831,6 +11867,7 @@ var FIELD_ENUMS = {
   auto_transition: ["true", "false"],
   verify_result: ["pending", "pass", "fail"],
   branch_status: ["pending", "handled"],
+  archive_confirmation: ["pending", "confirmed"],
   archived: ["true", "false"],
   direct_override: ["true", "false"],
   classic_profile: PROFILES,
@@ -11846,6 +11883,7 @@ var CLASSIC_FIELD_WIRE_NAMES2 = {
   phase: "phase",
   verificationReport: "verification_report",
   verifiedAt: "verified_at",
+  archiveConfirmation: "archive_confirmation",
   verifyResult: "verify_result",
   workflow: "workflow"
 };
@@ -12024,6 +12062,12 @@ function sparseClassicState(record) {
     branchStatus: enumRecordValue(record, "branch_status", ["pending", "handled"], null),
     createdAt: nullableRecordString(record, "created_at"),
     verifiedAt: nullableRecordString(record, "verified_at"),
+    archiveConfirmation: enumRecordValue(
+      record,
+      "archive_confirmation",
+      ["pending", "confirmed"],
+      null
+    ),
     archived: nullableRecordBoolean(record, "archived") ?? false,
     directOverride: nullableRecordBoolean(record, "direct_override"),
     buildCommand: nullableRecordString(record, "build_command"),
@@ -12207,6 +12251,7 @@ async function init(output, name, workflow) {
     branch_status: "pending",
     created_at: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
     verified_at: null,
+    archive_confirmation: null,
     archived: false
   });
   await atomicWrite2(file, document.toString());
@@ -12354,6 +12399,14 @@ async function transition(output, name, event) {
     }
   } else if (event === "verify-fail") {
     await requirePhase(name, "verify");
+  } else if (event === "archive-confirm") {
+    await requirePhase(name, "archive");
+    if (await readField3(name, "verify_result") !== "pass") {
+      fail2(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
+    }
+    if (await readField3(name, "archived") === "true") {
+      fail2(`ERROR: Cannot transition '${name}': already archived`);
+    }
   } else if (event === "preset-escalate") {
     await requirePhase(name, "build");
     const workflow = await readField3(name, "workflow");
@@ -12371,6 +12424,11 @@ async function transition(output, name, event) {
     await requirePhase(name, "archive");
     if (await readField3(name, "verify_result") !== "pass") {
       fail2(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
+    }
+    if (await readField3(name, "archive_confirmation") !== "confirmed") {
+      fail2(
+        `ERROR: Cannot transition '${name}': archive_confirmation must be confirmed before archiving`
+      );
     }
   }
   await applyTransitionEvent(output, name, event);
@@ -12647,12 +12705,14 @@ async function recoverVerify(output, name) {
   );
 }
 async function recoverArchive(output, name) {
+  const archiveConfirmation = await readField3(name, "archive_confirmation");
   output.stdout.push(
     "  Archive:",
     fieldStatus("verify_result", await readField3(name, "verify_result")),
+    fieldStatus("archive_confirmation", archiveConfirmation),
     fieldStatus("archived", await readField3(name, "archived")),
     "",
-    "Recovery action: Run /comet-archive to complete archiving."
+    archiveConfirmation === "confirmed" ? "Recovery action: Archive is confirmed. Run /comet-archive to complete archiving." : "Recovery action: Ask for final archive confirmation in /comet-archive before running the archive command."
   );
 }
 async function recover(output, name) {

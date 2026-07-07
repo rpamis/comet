@@ -42,7 +42,7 @@ This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cro
 
 ### Fixed
 
-- **Archive confirmation routing**: Clarifies that `phase: archive` with `archived` not `true` remains a final confirmation point, so agents no longer treat a verify-guard phase mismatch as workflow completion before the user chooses archive, re-verification, or waiting.
+- **Archive confirmation guard**: Classic archive now requires an explicit `archive_confirmation: confirmed` state before the mutating archive command can finalize a change, preventing skipped final confirmation from moving a change into archive and marking it archived.
 - **Windows path handling**: Fixes OpenSpec init/update path quoting for directories with spaces on Windows, so `comet init` no longer fails when the project path contains spaces.
 - **Git submodule script lookup**: Comet hook and runtime script resolution now uses the containing project root when an agent works inside a Git submodule, so submodule edits no longer fail because `.claude/skills/comet/scripts/*` is only present at the parent project level ([#136](https://github.com/rpamis/comet/issues/136)).
 - **Superpowers workspace writes**: Comet phase write guards now allow Superpowers to write its `.superpowers/` workspace during protected workflow phases, so Superpowers progress files are no longer mistaken for blocked source edits ([#154](https://github.com/rpamis/comet/issues/154)).

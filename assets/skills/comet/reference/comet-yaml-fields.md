@@ -26,6 +26,7 @@ verification_report: null
 branch_status: pending
 created_at: 2026-05-26
 verified_at: null
+archive_confirmation: null
 archived: false
 ```
 
@@ -52,6 +53,7 @@ archived: false
 | `branch_status` | `pending` or `handled`; set to `handled` after branch handling completes |
 | `created_at` | Change creation date (auto-written at init), format `YYYY-MM-DD` |
 | `verified_at` | Verification pass timestamp; may be empty |
+| `archive_confirmation` | `null`, `pending`, or `confirmed`. `verify-pass` writes `pending` when entering the archive phase; after the user chooses "Confirm archive" in `/comet-archive`, the `archive-confirm` transition writes `confirmed`; `archive-reopen` clears this field so stale confirmation cannot be reused |
 | `archived` | Whether the change has been archived |
 
 ## Optional Fields
@@ -72,4 +74,5 @@ archived: false
 - `build_mode: direct` defaults to `hotfix`/`tweak` only; full workflow requires `direct_override: true`
 - `build_pause` is not an execution mode; must not be written to `build_mode`
 - These constraints exist in both `comet-guard.mjs build --apply` and `comet-state.mjs transition <name> build-complete`
+- The `archived` transition and mutating archive command both require `archive_confirmation: confirmed`; unconfirmed archive state may only wait for confirmation, `archive-reopen` back to verify, or remain unarchived
 - `preset-escalate` event: only allows `hotfix`/`tweak` workflow at `phase: build`; atomically sets `workflow`/`classic_profile` to `full`, rewinds `phase` to `design`, and clears `design_doc` (satisfying the comet-design entry requirement). This is the only legal channel for a preset → full upgrade — direct `set phase design` is hard-blocked by the state machine, and `set classic_profile` is a machine-owned field that cannot be set manually

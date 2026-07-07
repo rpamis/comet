@@ -127,20 +127,24 @@ function runScript(
   const env = {
     ...process.env,
     COMET_RUNTIME_CLASSIC_ROOT: path.resolve('assets', 'skills', 'comet', 'runtime', 'classic'),
-    COMET_CLASSIC_SKILL_ROOT: path.resolve(
-      'assets',
-      'skills',
-      'comet',
-      'runtime',
-      'classic',
-    ),
+    COMET_CLASSIC_SKILL_ROOT: path.resolve('assets', 'skills', 'comet', 'runtime', 'classic'),
   };
   const scriptPath = path.join(scripts, name);
   if (executor === 'node') {
-    return spawnSync(process.execPath, [scriptPath, ...args], { cwd, encoding: 'utf8', input, env });
+    return spawnSync(process.execPath, [scriptPath, ...args], {
+      cwd,
+      encoding: 'utf8',
+      input,
+      env,
+    });
   }
   if (!bashCommand) throw new Error('Bash is required for the frozen reference execution');
-  return spawnSync(bashCommand, [toBashPath(scriptPath), ...args], { cwd, encoding: 'utf8', input, env });
+  return spawnSync(bashCommand, [toBashPath(scriptPath), ...args], {
+    cwd,
+    encoding: 'utf8',
+    input,
+    env,
+  });
 }
 
 function normalizeOutput(value: string, root: string): string {
@@ -151,6 +155,7 @@ function normalizeOutput(value: string, root: string): string {
     // 0.3.9 baseline (e.g. preset-escalate) in the "Valid values:" error line.
     // These are intentional enhancements; strip them so the differential
     // contract compares rejection behavior, not the exact event enumeration.
+    .replace(/(Valid values: .*) archive-confirm/g, '$1')
     .replace(/(Valid values: .*) preset-escalate/g, '$1');
   const lines = normalizedValue.split('\n');
   const kept: string[] = [];
@@ -193,6 +198,7 @@ function legacyProjection(document: Record<string, unknown>): Record<string, unk
     'run_status',
     'run_retries',
     'language',
+    'archive_confirmation',
     // The active runtime writes these with null defaults during init; the
     // frozen 0.3.9 bash scripts only write them when explicitly set.
     'build_command',
@@ -221,7 +227,14 @@ async function observeState(
   await copyScripts(sourceScripts, scripts, variant.names);
 
   const name = `${profile}-change`;
-  const init = runScript(root, scripts, variant.state, ['init', name, profile], undefined, variant.executor);
+  const init = runScript(
+    root,
+    scripts,
+    variant.state,
+    ['init', name, profile],
+    undefined,
+    variant.executor,
+  );
   if (init.status !== 0) {
     return {
       status: init.status,
@@ -263,7 +276,14 @@ async function observeGuard(
   await copyScripts(sourceScripts, scripts, variant.names);
 
   const name = `${profile}-guard`;
-  const init = runScript(root, scripts, variant.state, ['init', name, profile], undefined, variant.executor);
+  const init = runScript(
+    root,
+    scripts,
+    variant.state,
+    ['init', name, profile],
+    undefined,
+    variant.executor,
+  );
   if (init.status !== 0) {
     return {
       status: init.status,
@@ -272,7 +292,14 @@ async function observeGuard(
     };
   }
 
-  const result = runScript(root, scripts, variant.guard, [name, phase], undefined, variant.executor);
+  const result = runScript(
+    root,
+    scripts,
+    variant.guard,
+    [name, phase],
+    undefined,
+    variant.executor,
+  );
   return {
     status: result.status,
     stdout: normalizeOutput(result.stdout, root),

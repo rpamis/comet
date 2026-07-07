@@ -60,7 +60,9 @@ function camelToSnake(str) {
 async function readState(changeDir) {
   const yamlState = parse(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8'));
   try {
-    const runJson = JSON.parse(await fs.readFile(path.join(changeDir, '.comet', 'run-state.json'), 'utf8'));
+    const runJson = JSON.parse(
+      await fs.readFile(path.join(changeDir, '.comet', 'run-state.json'), 'utf8'),
+    );
     for (const [key, value] of Object.entries(runJson)) {
       yamlState[camelToSnake(key)] = value;
     }
@@ -263,6 +265,7 @@ async function archiveRecoveryScenario(workspace) {
   state(directory, 'init', name, 'full');
   state(directory, 'set', name, 'phase', 'archive');
   state(directory, 'set', name, 'verify_result', 'pass');
+  state(directory, 'transition', name, 'archive-confirm');
   const openspec = await fakeOpenSpec(directory);
   const interrupted = run(directory, ['archive', name], {
     env: { COMET_OPENSPEC: openspec },

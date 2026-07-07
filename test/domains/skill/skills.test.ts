@@ -89,22 +89,6 @@ describe('skills', () => {
         expect(content, file).not.toContain('触发本次工作流的用户请求语言');
       }
     });
-
-    it('documents archive confirmation as non-terminal until archived is true', async () => {
-      const assetsDir = getAssetsDir();
-      const en = await fs.readFile(path.join(assetsDir, 'skills/comet/SKILL.md'), 'utf-8');
-      const zh = await fs.readFile(path.join(assetsDir, 'skills-zh/comet/SKILL.md'), 'utf-8');
-
-      expect(en).toContain('`phase: archive` with `archived` not `true` is not terminal');
-      expect(en).toContain('Do not rerun the verify guard to test whether archive can continue');
-      expect(en).toContain(
-        'Only `archived: true` or a change already moved into archive is terminal',
-      );
-
-      expect(zh).toContain('`phase: archive` 且 `archived` 不是 `true` 不是终局');
-      expect(zh).toContain('不要通过复跑 verify guard 来判断 archive 是否还能继续');
-      expect(zh).toContain('只有 `archived: true` 或 change 已移入 archive 才是终局');
-    });
   });
 
   describe('getManifestSkills', () => {
@@ -769,6 +753,7 @@ describe('skills', () => {
       expect(zhArchive).toContain('「确认归档」');
       expect(zhArchive).toContain('「需要调整或重新验证」');
       expect(zhArchive).toContain('「暂不归档」');
+      expect(zhArchive).toContain('`node "$COMET_STATE" transition <change-name> archive-confirm`');
       expect(zhArchive).toContain('`node "$COMET_STATE" transition <change-name> archive-reopen`');
       expect(zhVerify).toContain('不得因为验证已通过就自动归档');
       expect(zhHotfix).toContain(
@@ -1150,6 +1135,7 @@ describe('skills', () => {
       expect(enArchive).toContain('Confirm archive');
       expect(enArchive).toContain('Needs adjustment or re-verification');
       expect(enArchive).toContain('Do not archive yet');
+      expect(enArchive).toContain('`node "$COMET_STATE" transition <change-name> archive-confirm`');
       expect(enArchive).toContain('`node "$COMET_STATE" transition <change-name> archive-reopen`');
       expect(enVerify).toContain('Must not automatically archive just because verification passed');
       expect(enHotfix).toContain(

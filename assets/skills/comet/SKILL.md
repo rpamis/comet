@@ -112,9 +112,6 @@ Prefer reading `openspec/changes/<name>/.comet.yaml`. If not available, fall bac
 - If `phase: verify` and `verify_result: fail`, enter the verification failure decision blocking point: pause and ask the user to fix or accept deviation; only after the user chooses fix, run `node "$COMET_STATE" transition <name> verify-fail` and invoke `/comet-build`
 - If `phase: open` but proposal/design/tasks are complete, first run `node "$COMET_GUARD" <change-name> open --apply` to repair state, then continue detection
 - If `phase: archive`, only invoke `/comet-archive`; `/comet-archive` must first wait for final archive confirmation. After archive succeeds, the change moves to the archive directory, so do not run guard against the old active directory
-  - `phase: archive` with `archived` not `true` is not terminal; enter `/comet-archive` final confirmation and let the user choose confirm archive, needs adjustment or re-verification, or do not archive yet
-  - Do not rerun the verify guard to test whether archive can continue; rerunning `verify --apply` in archive only means the phase does not match, and must not be interpreted as workflow complete
-  - Only `archived: true` or a change already moved into archive is terminal
 
 **Step 2: Phase Determination** (check in order, first match wins)
 

@@ -73,7 +73,8 @@ function resolveArchive(
   if (classic.verifyResult !== 'pass') {
     throw new Error('archive requires verify_result=pass');
   }
-  return evidenceSatisfied(evidence, 'archive.confirmed')
+  return classic.archiveConfirmation === 'confirmed' ||
+    evidenceSatisfied(evidence, 'archive.confirmed')
     ? `${profile}.archive.execute`
     : `${profile}.archive.confirm`;
 }

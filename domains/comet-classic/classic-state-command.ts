@@ -55,6 +55,7 @@ const FIELD_ENUMS: Record<string, readonly string[]> = {
   auto_transition: ['true', 'false'],
   verify_result: ['pending', 'pass', 'fail'],
   branch_status: ['pending', 'handled'],
+  archive_confirmation: ['pending', 'confirmed'],
   archived: ['true', 'false'],
   direct_override: ['true', 'false'],
   classic_profile: PROFILES,
@@ -71,6 +72,7 @@ const CLASSIC_FIELD_WIRE_NAMES: Partial<Record<keyof ClassicState, string>> = {
   phase: 'phase',
   verificationReport: 'verification_report',
   verifiedAt: 'verified_at',
+  archiveConfirmation: 'archive_confirmation',
   verifyResult: 'verify_result',
   workflow: 'workflow',
 };
@@ -278,6 +280,12 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
     branchStatus: enumRecordValue(record, 'branch_status', ['pending', 'handled'] as const, null),
     createdAt: nullableRecordString(record, 'created_at'),
     verifiedAt: nullableRecordString(record, 'verified_at'),
+    archiveConfirmation: enumRecordValue(
+      record,
+      'archive_confirmation',
+      ['pending', 'confirmed'] as const,
+      null,
+    ),
     archived: nullableRecordBoolean(record, 'archived') ?? false,
     directOverride: nullableRecordBoolean(record, 'direct_override'),
     buildCommand: nullableRecordString(record, 'build_command'),
@@ -492,6 +500,7 @@ async function init(output: CommandOutput, name: string, workflow: string): Prom
     branch_status: 'pending',
     created_at: new Date().toISOString().slice(0, 10),
     verified_at: null,
+    archive_confirmation: null,
     archived: false,
   });
   await atomicWrite(file, document.toString());
@@ -659,6 +668,14 @@ async function transition(output: CommandOutput, name: string, event: string): P
     }
   } else if (event === 'verify-fail') {
     await requirePhase(name, 'verify');
+  } else if (event === 'archive-confirm') {
+    await requirePhase(name, 'archive');
+    if ((await readField(name, 'verify_result')) !== 'pass') {
+      fail(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
+    }
+    if ((await readField(name, 'archived')) === 'true') {
+      fail(`ERROR: Cannot transition '${name}': already archived`);
+    }
   } else if (event === 'preset-escalate') {
     // preset (hotfix/tweak) → full: rewind phase to design so the agent can
     // supplement a Design Doc before continuing. Unlike verify-fail /
@@ -682,6 +699,11 @@ async function transition(output: CommandOutput, name: string, event: string): P
     await requirePhase(name, 'archive');
     if ((await readField(name, 'verify_result')) !== 'pass') {
       fail(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
+    }
+    if ((await readField(name, 'archive_confirmation')) !== 'confirmed') {
+      fail(
+        `ERROR: Cannot transition '${name}': archive_confirmation must be confirmed before archiving`,
+      );
     }
   }
   await applyTransitionEvent(output, name, event as ClassicTransitionEvent);
@@ -1035,12 +1057,16 @@ async function recoverVerify(output: CommandOutput, name: string): Promise<void>
 }
 
 async function recoverArchive(output: CommandOutput, name: string): Promise<void> {
+  const archiveConfirmation = await readField(name, 'archive_confirmation');
   output.stdout.push(
     '  Archive:',
     fieldStatus('verify_result', await readField(name, 'verify_result')),
+    fieldStatus('archive_confirmation', archiveConfirmation),
     fieldStatus('archived', await readField(name, 'archived')),
     '',
-    'Recovery action: Run /comet-archive to complete archiving.',
+    archiveConfirmation === 'confirmed'
+      ? 'Recovery action: Archive is confirmed. Run /comet-archive to complete archiving.'
+      : 'Recovery action: Ask for final archive confirmation in /comet-archive before running the archive command.',
   );
 }
 

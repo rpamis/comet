@@ -26,6 +26,7 @@ function state(overrides: Partial<ClassicState> = {}): ClassicState {
     branchStatus: 'pending',
     createdAt: '2026-06-14',
     verifiedAt: null,
+    archiveConfirmation: null,
     archived: false,
     directOverride: null,
     buildCommand: null,
@@ -152,8 +153,9 @@ const cases: ResolverCase[] = [
       verifyResult: 'pass',
       verificationReport: 'verification.md',
       branchStatus: 'handled',
+      archiveConfirmation: 'confirmed',
     }),
-    evidence: evidence('verification.report', 'archive.confirmed'),
+    evidence: evidence('verification.report'),
     expected: 'full.archive.execute',
   },
   {
