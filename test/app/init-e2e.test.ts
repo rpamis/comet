@@ -558,6 +558,38 @@ describe('comet init E2E', () => {
   );
 
   it(
+    'installs only the zh Comet rule variant when initialized with language zh',
+    async () => {
+      mockExternalSuccess();
+
+      await fs.mkdir(path.join(tmpDir, '.zcode'), { recursive: true });
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(fakeHome, { recursive: true });
+
+      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, scope: 'global', json: true, language: 'zh' }),
+      );
+
+      expect(result.selectedPlatforms).toEqual(['zcode']);
+
+      // With zh selected, only the normalized zh rule file should be installed —
+      // the .en.md variant must not appear alongside it.
+      const ruleDest = path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.md');
+      await expect(fs.access(ruleDest)).resolves.toBeUndefined();
+      const ruleContent = await fs.readFile(ruleDest, 'utf-8');
+      expect(ruleContent).toContain('Comet 阶段感知');
+
+      await expect(
+        fs.access(path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.en.md')),
+      ).rejects.toThrow();
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
     'summarizes partial OpenCode failures by failed component only once',
     async () => {
       mockedExecFileSync.mockImplementation((command: unknown, args?: unknown) => {
