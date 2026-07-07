@@ -538,14 +538,52 @@ describe('comet init E2E', () => {
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }
 
-      // Comet rules are also distributed to the platform rules directory
-      for (const rulePath of manifest.rules ?? []) {
-        const dest = path.join(fakeHome, '.zcode', 'rules', path.basename(rulePath));
-        await expect(fs.access(dest)).resolves.toBeUndefined();
-      }
+      // Comet rules are distributed to the platform rules directory, but only
+      // the selected language's variant (default init selects English here) —
+      // not every language variant listed in the manifest.
+      const ruleDest = path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.md');
+      await expect(fs.access(ruleDest)).resolves.toBeUndefined();
+      const ruleContent = await fs.readFile(ruleDest, 'utf-8');
+      expect(ruleContent).toContain('Comet Phase Awareness');
+
+      await expect(
+        fs.access(path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.en.md')),
+      ).rejects.toThrow();
 
       await expect(
         fs.access(path.join(tmpDir, '.zcode', 'skills', 'comet', 'SKILL.md')),
+      ).rejects.toThrow();
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
+    'installs only the zh Comet rule variant when initialized with language zh',
+    async () => {
+      mockExternalSuccess();
+
+      await fs.mkdir(path.join(tmpDir, '.zcode'), { recursive: true });
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(fakeHome, { recursive: true });
+
+      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, scope: 'global', json: true, language: 'zh' }),
+      );
+
+      expect(result.selectedPlatforms).toEqual(['zcode']);
+
+      // With zh selected, only the normalized zh rule file should be installed —
+      // the .en.md variant must not appear alongside it.
+      const ruleDest = path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.md');
+      await expect(fs.access(ruleDest)).resolves.toBeUndefined();
+      const ruleContent = await fs.readFile(ruleDest, 'utf-8');
+      expect(ruleContent).toContain('Comet 阶段感知');
+
+      await expect(
+        fs.access(path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.en.md')),
       ).rejects.toThrow();
     },
     INIT_E2E_TIMEOUT_MS,

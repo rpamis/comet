@@ -519,6 +519,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
         baseDir,
         platform,
         cmAction === 'overwrite',
+        language.id,
         scope,
       );
       if (ruleCopied > 0) {

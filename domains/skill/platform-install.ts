@@ -8,7 +8,7 @@ import { fileExists, readJson, copyFile, ensureDir } from '../../platform/fs/fil
 import { getPlatformSkillsDir, type Platform } from '../../platform/install/platforms.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
 import { formatSupportedArtifactLanguages, resolveArtifactLanguage } from './languages.js';
-import type { LanguageConfig } from './languages.js';
+import type { LanguageConfig, SkillLanguageId } from './languages.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -507,10 +507,44 @@ async function getManifestSkills(): Promise<string[]> {
  *   'copilot' = GitHub Copilot .instructions.md with applyTo frontmatter
  * Skips platforms without rulesDir.
  */
+// Rule variants share a base name and differ only by a `.en.md` suffix
+// (e.g. `comet-phase-guard.md` = zh default, `comet-phase-guard.en.md` = en).
+// Centralized here so the naming convention only needs to change in one place.
+const EN_RULE_SUFFIX = /\.en\.md$/;
+
+function isEnglishRuleVariant(ruleRelPath: string): boolean {
+  return EN_RULE_SUFFIX.test(ruleRelPath);
+}
+
+function toRuleBaseName(ruleRelPath: string): string {
+  return ruleRelPath.replace(EN_RULE_SUFFIX, '.md');
+}
+
+// Pick exactly one variant per base name for the requested language, falling
+// back to whichever variant exists if there's no per-language pair.
+function selectRulePathsForLanguage(rulePaths: string[], languageId: SkillLanguageId): string[] {
+  const wantEnglish = languageId === 'en';
+  const selected = new Map<string, { rulePath: string; matched: boolean }>();
+
+  for (const rulePath of rulePaths) {
+    const isEnglishVariant = isEnglishRuleVariant(rulePath);
+    const baseKey = toRuleBaseName(rulePath);
+    const matched = isEnglishVariant === wantEnglish;
+    const existing = selected.get(baseKey);
+
+    if (!existing || (matched && !existing.matched)) {
+      selected.set(baseKey, { rulePath, matched });
+    }
+  }
+
+  return [...selected.values()].map((entry) => entry.rulePath);
+}
+
 async function copyCometRulesForPlatform(
   baseDir: string,
   platform: Platform,
   overwrite: boolean,
+  languageId: SkillLanguageId,
   scope: InstallScope = 'project',
 ): Promise<{ copied: number; skipped: number }> {
   if (!platform.rulesDir || !platform.rulesFormat) {
@@ -518,7 +552,7 @@ async function copyCometRulesForPlatform(
   }
 
   const manifest = await readManifest();
-  const rulePaths = manifest.rules;
+  const rulePaths = selectRulePathsForLanguage(manifest.rules ?? [], languageId);
   if (!rulePaths || rulePaths.length === 0) {
     return { copied: 0, skipped: 0 };
   }
@@ -542,7 +576,9 @@ async function copyCometRulesForPlatform(
       continue;
     }
 
-    const ruleFileName = path.basename(ruleRelPath);
+    // Normalize the `.en` infix away so the installed file name is the same
+    // regardless of which language variant was selected.
+    const ruleFileName = toRuleBaseName(path.basename(ruleRelPath));
     const rulesDestDir = path.join(rulesBase, platform.rulesDir);
     const dest = computeRuleDestPath(rulesDestDir, ruleFileName, platform.rulesFormat);
 

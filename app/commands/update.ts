@@ -50,8 +50,15 @@ interface DetectTargetsOptions {
   globalBaseDir?: string;
 }
 
-function languageToSkillsDir(language: string | undefined, fallback: SkillLanguage): string {
-  return (language ?? fallback) === 'zh' ? 'skills-zh' : 'skills';
+function resolveTargetLanguage(
+  language: string | undefined,
+  fallback: SkillLanguage,
+): SkillLanguage {
+  return (language ?? fallback) === 'zh' ? 'zh' : 'en';
+}
+
+function languageToSkillsDir(languageId: SkillLanguage): string {
+  return languageId === 'zh' ? 'skills-zh' : 'skills';
 }
 
 function getScopedBaseDir(
@@ -322,7 +329,8 @@ export async function updateCommand(
   for (const target of targets) {
     const language = options.language ?? target.language;
     const scopeLabel = target.scope === 'global' ? 'global' : `project (${projectPath})`;
-    const languageSkillsDir = languageToSkillsDir(options.language, target.language);
+    const languageId = resolveTargetLanguage(options.language, target.language);
+    const languageSkillsDir = languageToSkillsDir(languageId);
     log(`    - ${target.platform.name} (${scopeLabel}, ${language})`);
     log(
       `      $ ${formatSkillUpdateCommand(target.scope, target.platform, languageSkillsDir, installMode)}`,
@@ -339,7 +347,8 @@ export async function updateCommand(
   const targetResults = [];
   for (const target of targets) {
     const baseDir = getBaseDir(target.scope, projectPath);
-    const languageSkillsDir = languageToSkillsDir(options.language, target.language);
+    const languageId = resolveTargetLanguage(options.language, target.language);
+    const languageSkillsDir = languageToSkillsDir(languageId);
     const { copied, skipped } = await copyCometSkillsForPlatform(
       baseDir,
       target.platform,
@@ -373,6 +382,7 @@ export async function updateCommand(
         baseDir,
         target.platform,
         true,
+        languageId,
         target.scope,
       );
       totalRulesCopied += ruleCopied;

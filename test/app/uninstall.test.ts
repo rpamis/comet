@@ -192,7 +192,7 @@ describe('uninstall', () => {
     it('removes rules for a platform that supports them', async () => {
       const claudePlatform: Platform = PLATFORMS.find((p) => p.id === 'claude')!;
 
-      await copyCometRulesForPlatform(tmpDir, claudePlatform, true, 'project');
+      await copyCometRulesForPlatform(tmpDir, claudePlatform, true, 'zh', 'project');
 
       const rulePath = path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md');
       expect(await fileExists(rulePath)).toBe(true);
@@ -205,7 +205,7 @@ describe('uninstall', () => {
     it('removes Cursor MDC format rules', async () => {
       const cursorPlatform: Platform = PLATFORMS.find((p) => p.id === 'cursor')!;
 
-      await copyCometRulesForPlatform(tmpDir, cursorPlatform, true, 'project');
+      await copyCometRulesForPlatform(tmpDir, cursorPlatform, true, 'zh', 'project');
 
       const rulePath = path.join(tmpDir, '.cursor', 'rules', 'comet-phase-guard.mdc');
       expect(await fileExists(rulePath)).toBe(true);
@@ -218,7 +218,7 @@ describe('uninstall', () => {
     it('removes GitHub Copilot instructions format', async () => {
       const copilotPlatform: Platform = PLATFORMS.find((p) => p.id === 'github-copilot')!;
 
-      await copyCometRulesForPlatform(tmpDir, copilotPlatform, true, 'project');
+      await copyCometRulesForPlatform(tmpDir, copilotPlatform, true, 'zh', 'project');
 
       const rulePath = path.join(
         tmpDir,
@@ -390,7 +390,7 @@ describe('uninstall', () => {
 
       // Install everything
       await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');
-      await copyCometRulesForPlatform(tmpDir, claudePlatform, true, 'project');
+      await copyCometRulesForPlatform(tmpDir, claudePlatform, true, 'zh', 'project');
       await installCometHooksForPlatform(tmpDir, claudePlatform, 'project');
 
       // Verify installation
