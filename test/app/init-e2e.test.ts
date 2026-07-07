@@ -538,11 +538,17 @@ describe('comet init E2E', () => {
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }
 
-      // Comet rules are also distributed to the platform rules directory
-      for (const rulePath of manifest.rules ?? []) {
-        const dest = path.join(fakeHome, '.zcode', 'rules', path.basename(rulePath));
-        await expect(fs.access(dest)).resolves.toBeUndefined();
-      }
+      // Comet rules are distributed to the platform rules directory, but only
+      // the selected language's variant (default init selects English here) —
+      // not every language variant listed in the manifest.
+      const ruleDest = path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.md');
+      await expect(fs.access(ruleDest)).resolves.toBeUndefined();
+      const ruleContent = await fs.readFile(ruleDest, 'utf-8');
+      expect(ruleContent).toContain('Comet Phase Awareness');
+
+      await expect(
+        fs.access(path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.en.md')),
+      ).rejects.toThrow();
 
       await expect(
         fs.access(path.join(tmpDir, '.zcode', 'skills', 'comet', 'SKILL.md')),

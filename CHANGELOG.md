@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.2] - 2026-07-07
+
+### Fixed
+
+- **Single-language rule install**: `comet init` and `comet update` now install only the Comet phase-guard rule file matching the selected/detected Skill language (e.g. `.claude/rules/comet-phase-guard.md`), instead of always installing both the Chinese and English rule variants side by side regardless of language choice.
+
 ## What's Changed [0.4.0-beta.1] - 2026-07-06
 
 This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cross-platform Node runtime and expands from a `/comet` workflow bundle into a workflow, Skill creation, eval, and dashboard platform. The notes below describe the final user-visible release shape, not the branch work history.

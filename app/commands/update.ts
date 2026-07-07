@@ -50,8 +50,15 @@ interface DetectTargetsOptions {
   globalBaseDir?: string;
 }
 
+function resolveTargetLanguage(
+  language: string | undefined,
+  fallback: SkillLanguage,
+): SkillLanguage {
+  return (language ?? fallback) === 'zh' ? 'zh' : 'en';
+}
+
 function languageToSkillsDir(language: string | undefined, fallback: SkillLanguage): string {
-  return (language ?? fallback) === 'zh' ? 'skills-zh' : 'skills';
+  return resolveTargetLanguage(language, fallback) === 'zh' ? 'skills-zh' : 'skills';
 }
 
 function getScopedBaseDir(
@@ -340,6 +347,7 @@ export async function updateCommand(
   for (const target of targets) {
     const baseDir = getBaseDir(target.scope, projectPath);
     const languageSkillsDir = languageToSkillsDir(options.language, target.language);
+    const languageId = resolveTargetLanguage(options.language, target.language);
     const { copied, skipped } = await copyCometSkillsForPlatform(
       baseDir,
       target.platform,
@@ -373,6 +381,7 @@ export async function updateCommand(
         baseDir,
         target.platform,
         true,
+        languageId,
         target.scope,
       );
       totalRulesCopied += ruleCopied;
