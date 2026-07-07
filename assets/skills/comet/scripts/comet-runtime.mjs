@@ -11287,6 +11287,14 @@ function allowsSuperpowersArtifacts(governing) {
 function governingChangeName(governing) {
   return governing.changeDir ? path16.basename(governing.changeDir) : null;
 }
+var SUPERPOWERS_ARTIFACT_SUFFIXES = /* @__PURE__ */ new Set([
+  "design",
+  "plan",
+  "verify",
+  "verification",
+  "verification-report",
+  "report"
+]);
 function matchesRecordedSuperpowersArtifact(relativePath2, governing) {
   const artifactPaths = [
     governing.classic?.designDoc,
@@ -11297,6 +11305,18 @@ function matchesRecordedSuperpowersArtifact(relativePath2, governing) {
     (artifactPath) => artifactPath && normalized(artifactPath) === relativePath2
   );
 }
+function matchesSuperpowersArtifactName(relativePath2, changeName) {
+  const fileName = relativePath2.split("/").at(-1) ?? relativePath2;
+  const stem = fileName.replace(/\.[^.]+$/u, "");
+  if (stem === changeName) return true;
+  for (const separator of ["-", "_", "."]) {
+    const prefix = `${changeName}${separator}`;
+    if (!stem.startsWith(prefix)) continue;
+    const suffix = stem.slice(prefix.length);
+    if (SUPERPOWERS_ARTIFACT_SUFFIXES.has(suffix)) return true;
+  }
+  return false;
+}
 async function superpowersArtifactGoverningChange(relativePath2, projectRoot) {
   const active = await activeChanges(projectRoot);
   const recorded = active.find(
@@ -11304,10 +11324,12 @@ async function superpowersArtifactGoverningChange(relativePath2, projectRoot) {
   );
   if (recorded) return recorded;
   const eligible = active.filter(allowsSuperpowersArtifacts);
-  const named = eligible.find((governing) => {
+  const named = eligible.filter((governing) => {
     const name = governingChangeName(governing);
-    return name !== null && relativePath2.includes(name);
-  });
+    return name !== null && matchesSuperpowersArtifactName(relativePath2, name);
+  }).sort(
+    (a, b) => (governingChangeName(b)?.length ?? 0) - (governingChangeName(a)?.length ?? 0)
+  )[0];
   if (named) return named;
   return eligible[0] ?? null;
 }
@@ -11332,7 +11354,9 @@ async function governingChange(relativePath2, projectRoot) {
     }
   }
   if (isSuperpowersArtifactPath(relativePath2)) {
-    return await superpowersArtifactGoverningChange(relativePath2, projectRoot) ?? repoSourceGoverningChange(projectRoot);
+    const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot);
+    if (superpowers) return superpowers;
+    return repoSourceGoverningChange(projectRoot);
   }
   return repoSourceGoverningChange(projectRoot);
 }
@@ -11450,7 +11474,7 @@ var classicHookGuardCommand = async (args) => {
   const phase = governing.phase;
   const openSpec = openSpecAllowed(relativePath2, phase);
   if (openSpec) return allowed(openSpec);
-  if (isSuperpowersArtifactPath(relativePath2) && (phase === "design" || phase === "build" || phase === "verify")) {
+  if (isSuperpowersArtifactPath(relativePath2) && allowsSuperpowersArtifacts(governing)) {
     return allowed(`${relativePath2} (phase: ${phase}, superpowers)`);
   }
   if (phase === "build" && governing.classic?.workflow === "full" && !governing.classic.designDoc) {

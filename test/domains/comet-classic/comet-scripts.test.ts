@@ -5006,6 +5006,28 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('phase: design, superpowers');
     }, 20_000);
 
+    it('matches docs/superpowers writes to the longest change name boundary', async () => {
+      await createChange(
+        tmpDir,
+        'auth',
+        ['workflow: full', 'phase: verify', 'archived: false', ''].join('\n'),
+      );
+      await createChange(
+        tmpDir,
+        'auth-v2',
+        ['workflow: full', 'phase: design', 'archived: false', ''].join('\n'),
+      );
+
+      const docsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
+      await fs.mkdir(docsDir, { recursive: true });
+      const targetFile = path.join(docsDir, 'auth-v2-design.md');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('phase: design, superpowers');
+    }, 20_000);
+
     it('blocks repo source writes when any active change is still in design', async () => {
       await createChange(
         tmpDir,
