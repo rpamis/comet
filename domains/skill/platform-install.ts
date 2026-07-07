@@ -1,6 +1,6 @@
 import path from 'path';
 import { existsSync } from 'fs';
-import { readFile, writeFile, lstat, unlink, symlink, rm } from 'fs/promises';
+import { readFile, writeFile, lstat, unlink, symlink, rm, readdir } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { parseDocument } from 'yaml';
 
@@ -59,6 +59,51 @@ function getUserFacingSkillNames(manifest: Manifest): string[] {
   return getTopLevelSkillNames(manifest.skills);
 }
 
+function getManagedSkillReplacementPaths(manifest: Manifest): Set<string> {
+  const allowed = new Set<string>();
+
+  for (const skillPath of getManagedSkillPaths(manifest)) {
+    const parts = skillPath.split('/').filter(Boolean);
+    for (let depth = 1; depth <= parts.length; depth++) {
+      allowed.add(parts.slice(0, depth).join('/'));
+    }
+  }
+
+  return allowed;
+}
+
+async function collectDirectoryEntryPaths(root: string, current = root): Promise<string[]> {
+  const entries = await readdir(current, { withFileTypes: true });
+  const paths: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(current, entry.name);
+    const relativePath = path.relative(root, fullPath).split(path.sep).join('/');
+    paths.push(relativePath);
+
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      paths.push(...(await collectDirectoryEntryPaths(root, fullPath)));
+    }
+  }
+
+  return paths;
+}
+
+async function assertDirectoryContainsOnlyManagedEntries(
+  dirPath: string,
+  managedEntries: Set<string>,
+): Promise<void> {
+  const entries = await collectDirectoryEntryPaths(dirPath);
+  const unmanagedEntries = entries.filter((entry) => !managedEntries.has(entry));
+  if (unmanagedEntries.length === 0) return;
+
+  const preview = unmanagedEntries.slice(0, 5).join(', ');
+  const suffix = unmanagedEntries.length > 5 ? `, and ${unmanagedEntries.length - 5} more` : '';
+  throw new Error(
+    `Refusing to replace ${dirPath} with a symlink because it contains unmanaged entries: ${preview}${suffix}. Move them aside or use copy install mode.`,
+  );
+}
+
 const OPENCODE_COMMAND_HEADER = `---
 description: Run the {skillName} Comet workflow
 ---
@@ -94,24 +139,33 @@ function getCentralSkillsDir(baseDir: string, _scope: InstallScope): string {
  * Create a symlink from linkPath pointing to target.
  * On Windows, uses 'junction' type for directory symlinks (no admin required).
  */
-async function createSymlink(target: string, linkPath: string): Promise<void> {
+async function createSymlink(
+  target: string,
+  linkPath: string,
+  managedEntries: Set<string>,
+): Promise<void> {
   await ensureDir(path.dirname(linkPath));
 
   // Remove existing link/directory if present
+  let stat: Awaited<ReturnType<typeof lstat>> | null = null;
   try {
-    const stat = await lstat(linkPath);
-    if (stat.isSymbolicLink()) {
-      await unlink(linkPath);
-    } else if (stat.isDirectory()) {
-      // For directories, try unlink first (handles Windows junctions)
-      try {
-        await unlink(linkPath);
-      } catch {
-        await rm(linkPath, { recursive: true, force: true });
-      }
+    stat = await lstat(linkPath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw err;
     }
-  } catch {
-    // Path doesn't exist, continue
+  }
+
+  if (stat?.isSymbolicLink()) {
+    await unlink(linkPath);
+  } else if (stat?.isDirectory()) {
+    // For directories, try unlink first (handles Windows junctions)
+    try {
+      await unlink(linkPath);
+    } catch {
+      await assertDirectoryContainsOnlyManagedEntries(linkPath, managedEntries);
+      await rm(linkPath, { recursive: true, force: true });
+    }
   }
 
   // Windows uses 'junction' for directory symlinks (no admin privileges required)
@@ -143,6 +197,7 @@ async function installSkillsAsSymlink(
   if (!manifest || !Array.isArray(manifest.skills)) {
     throw new Error(`Invalid manifest at ${manifestPath}: "skills" must be an array`);
   }
+  const managedSkillReplacementPaths = getManagedSkillReplacementPaths(manifest);
 
   // Step 1: Copy skills to central store
   let copied = 0;
@@ -176,7 +231,7 @@ async function installSkillsAsSymlink(
   const centralSkillsDir = path.join(centralDir, 'skills');
 
   try {
-    await createSymlink(centralSkillsDir, platformSkillsDir);
+    await createSymlink(centralSkillsDir, platformSkillsDir, managedSkillReplacementPaths);
   } catch (err) {
     failedCount++;
     console.error(

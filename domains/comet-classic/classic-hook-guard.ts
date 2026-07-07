@@ -148,6 +148,54 @@ function blocksSourceWrites(governing: GoverningChange): boolean {
   );
 }
 
+function isSuperpowersArtifactPath(relativePath: string): boolean {
+  return relativePath.startsWith('docs/superpowers/');
+}
+
+function allowsSuperpowersArtifacts(governing: GoverningChange): boolean {
+  return (
+    governing.phase === 'design' || governing.phase === 'build' || governing.phase === 'verify'
+  );
+}
+
+function governingChangeName(governing: GoverningChange): string | null {
+  return governing.changeDir ? path.basename(governing.changeDir) : null;
+}
+
+function matchesRecordedSuperpowersArtifact(
+  relativePath: string,
+  governing: GoverningChange,
+): boolean {
+  const artifactPaths = [
+    governing.classic?.designDoc,
+    governing.classic?.plan,
+    governing.classic?.verificationReport,
+  ];
+  return artifactPaths.some(
+    (artifactPath) => artifactPath && normalized(artifactPath) === relativePath,
+  );
+}
+
+async function superpowersArtifactGoverningChange(
+  relativePath: string,
+  projectRoot: string,
+): Promise<GoverningChange | null> {
+  const active = await activeChanges(projectRoot);
+  const recorded = active.find((governing) =>
+    matchesRecordedSuperpowersArtifact(relativePath, governing),
+  );
+  if (recorded) return recorded;
+
+  const eligible = active.filter(allowsSuperpowersArtifacts);
+  const named = eligible.find((governing) => {
+    const name = governingChangeName(governing);
+    return name !== null && relativePath.includes(name);
+  });
+  if (named) return named;
+
+  return eligible[0] ?? null;
+}
+
 async function repoSourceGoverningChange(projectRoot: string): Promise<GoverningChange | null> {
   const active = await activeChanges(projectRoot);
   return active.find(blocksSourceWrites) ?? active[0] ?? null;
@@ -171,6 +219,12 @@ async function governingChange(
       }
       return { changeDir, phase: 'open', classic: null, archived: false };
     }
+  }
+  if (isSuperpowersArtifactPath(relativePath)) {
+    return (
+      (await superpowersArtifactGoverningChange(relativePath, projectRoot)) ??
+      repoSourceGoverningChange(projectRoot)
+    );
   }
   return repoSourceGoverningChange(projectRoot);
 }
@@ -321,7 +375,7 @@ export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
   const openSpec = openSpecAllowed(relativePath, phase);
   if (openSpec) return allowed(openSpec);
   if (
-    relativePath.startsWith('docs/superpowers/') &&
+    isSuperpowersArtifactPath(relativePath) &&
     (phase === 'design' || phase === 'build' || phase === 'verify')
   ) {
     return allowed(`${relativePath} (phase: ${phase}, superpowers)`);

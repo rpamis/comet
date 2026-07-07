@@ -4984,6 +4984,28 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
     }, 20_000);
 
+    it('allows docs/superpowers writes for the matching design change when another active change is open', async () => {
+      await createChange(
+        tmpDir,
+        'cert-signature-auth',
+        ['workflow: full', 'phase: open', 'archived: false', ''].join('\n'),
+      );
+      await createChange(
+        tmpDir,
+        'env-issue-ledger',
+        ['workflow: full', 'phase: design', 'archived: false', ''].join('\n'),
+      );
+
+      const docsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
+      await fs.mkdir(docsDir, { recursive: true });
+      const targetFile = path.join(docsDir, 'env-issue-ledger-design.md');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('phase: design, superpowers');
+    }, 20_000);
+
     it('blocks repo source writes when any active change is still in design', async () => {
       await createChange(
         tmpDir,

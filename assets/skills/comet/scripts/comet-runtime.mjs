@@ -11278,6 +11278,39 @@ function blocksSourceWrites(governing) {
   }
   return governing.phase === "build" && governing.classic?.workflow === "full" && !governing.classic.designDoc;
 }
+function isSuperpowersArtifactPath(relativePath2) {
+  return relativePath2.startsWith("docs/superpowers/");
+}
+function allowsSuperpowersArtifacts(governing) {
+  return governing.phase === "design" || governing.phase === "build" || governing.phase === "verify";
+}
+function governingChangeName(governing) {
+  return governing.changeDir ? path16.basename(governing.changeDir) : null;
+}
+function matchesRecordedSuperpowersArtifact(relativePath2, governing) {
+  const artifactPaths = [
+    governing.classic?.designDoc,
+    governing.classic?.plan,
+    governing.classic?.verificationReport
+  ];
+  return artifactPaths.some(
+    (artifactPath) => artifactPath && normalized(artifactPath) === relativePath2
+  );
+}
+async function superpowersArtifactGoverningChange(relativePath2, projectRoot) {
+  const active = await activeChanges(projectRoot);
+  const recorded = active.find(
+    (governing) => matchesRecordedSuperpowersArtifact(relativePath2, governing)
+  );
+  if (recorded) return recorded;
+  const eligible = active.filter(allowsSuperpowersArtifacts);
+  const named = eligible.find((governing) => {
+    const name = governingChangeName(governing);
+    return name !== null && relativePath2.includes(name);
+  });
+  if (named) return named;
+  return eligible[0] ?? null;
+}
 async function repoSourceGoverningChange(projectRoot) {
   const active = await activeChanges(projectRoot);
   return active.find(blocksSourceWrites) ?? active[0] ?? null;
@@ -11297,6 +11330,9 @@ async function governingChange(relativePath2, projectRoot) {
       }
       return { changeDir, phase: "open", classic: null, archived: false };
     }
+  }
+  if (isSuperpowersArtifactPath(relativePath2)) {
+    return await superpowersArtifactGoverningChange(relativePath2, projectRoot) ?? repoSourceGoverningChange(projectRoot);
   }
   return repoSourceGoverningChange(projectRoot);
 }
@@ -11414,7 +11450,7 @@ var classicHookGuardCommand = async (args) => {
   const phase = governing.phase;
   const openSpec = openSpecAllowed(relativePath2, phase);
   if (openSpec) return allowed(openSpec);
-  if (relativePath2.startsWith("docs/superpowers/") && (phase === "design" || phase === "build" || phase === "verify")) {
+  if (isSuperpowersArtifactPath(relativePath2) && (phase === "design" || phase === "build" || phase === "verify")) {
     return allowed(`${relativePath2} (phase: ${phase}, superpowers)`);
   }
   if (phase === "build" && governing.classic?.workflow === "full" && !governing.classic.designDoc) {

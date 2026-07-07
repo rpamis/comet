@@ -2,6 +2,13 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.2] - 2026-07-07
+
+### Fixed
+
+- **Symlink install safety**: `comet init` and `comet update` now refuse to replace an existing platform `skills/` directory with a symlink when it contains files outside Comet's managed manifest, preserving local or third-party Skills instead of deleting them during symlink-mode installs ([#159](https://github.com/rpamis/comet/issues/159)).
+- **Parallel change artifact writes**: Classic phase guards now route `docs/superpowers/` writes to the matching design/build/verify change instead of letting an unrelated earlier active change block shared Design Doc and planning artifacts ([#160](https://github.com/rpamis/comet/issues/160)).
+
 ## What's Changed [0.4.0-beta.1] - 2026-07-06
 
 This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cross-platform Node runtime and expands from a `/comet` workflow bundle into a workflow, Skill creation, eval, and dashboard platform. The notes below describe the final user-visible release shape, not the branch work history.
