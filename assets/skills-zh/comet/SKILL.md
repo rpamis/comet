@@ -112,6 +112,9 @@ agent 做决策只需读本节，参考附录按需查阅。
 - 若 `phase: verify` 且 `verify_result: fail`，进入验证失败决策阻塞点：暂停并询问用户修复或接受偏差；用户选择修复后才运行 `node "$COMET_STATE" transition <name> verify-fail` 并调用 `/comet-build`
 - 若 `phase: open` 但 proposal/design/tasks 已完整，先运行 `node "$COMET_GUARD" <change-name> open --apply` 修正状态，再继续判定
 - 若 `phase: archive`，只允许调用 `/comet-archive`；`/comet-archive` 必须先等待归档前最终确认，归档成功后 change 会移动到 archive 目录，不再对原活跃目录运行 guard
+  - `phase: archive` 且 `archived` 不是 `true` 不是终局；必须进入 `/comet-archive` 的最终确认分支，让用户选择确认归档、需要调整或重新验证、暂不归档
+  - 不要通过复跑 verify guard 来判断 archive 是否还能继续；archive 阶段复跑 `verify --apply` 只表示 phase 不匹配，不能解释为流程已完成
+  - 只有 `archived: true` 或 change 已移入 archive 才是终局
 
 **Step 2: 阶段判定**（按顺序，命中即停）
 
