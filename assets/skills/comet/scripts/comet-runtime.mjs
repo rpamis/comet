@@ -11295,6 +11295,9 @@ var SUPERPOWERS_ARTIFACT_SUFFIXES = /* @__PURE__ */ new Set([
   "verification-report",
   "report"
 ]);
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
 function matchesRecordedSuperpowersArtifact(relativePath2, governing) {
   const artifactPaths = [
     governing.classic?.designDoc,
@@ -11309,13 +11312,9 @@ function matchesSuperpowersArtifactName(relativePath2, changeName) {
   const fileName = relativePath2.split("/").at(-1) ?? relativePath2;
   const stem = fileName.replace(/\.[^.]+$/u, "");
   if (stem === changeName) return true;
-  for (const separator of ["-", "_", "."]) {
-    const prefix = `${changeName}${separator}`;
-    if (!stem.startsWith(prefix)) continue;
-    const suffix = stem.slice(prefix.length);
-    if (SUPERPOWERS_ARTIFACT_SUFFIXES.has(suffix)) return true;
-  }
-  return false;
+  const suffixes = [...SUPERPOWERS_ARTIFACT_SUFFIXES].map(escapeRegex).join("|");
+  const pattern = new RegExp(`(^|[-_.])${escapeRegex(changeName)}[-_.](${suffixes})$`, "u");
+  return pattern.test(stem);
 }
 async function superpowersArtifactGoverningChange(relativePath2, projectRoot) {
   const active = await activeChanges(projectRoot);
@@ -11331,7 +11330,7 @@ async function superpowersArtifactGoverningChange(relativePath2, projectRoot) {
     (a, b) => (governingChangeName(b)?.length ?? 0) - (governingChangeName(a)?.length ?? 0)
   )[0];
   if (named) return named;
-  return eligible[0] ?? null;
+  return null;
 }
 async function repoSourceGoverningChange(projectRoot) {
   const active = await activeChanges(projectRoot);

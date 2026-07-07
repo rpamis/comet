@@ -171,6 +171,10 @@ const SUPERPOWERS_ARTIFACT_SUFFIXES = new Set([
   'report',
 ]);
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
 function matchesRecordedSuperpowersArtifact(
   relativePath: string,
   governing: GoverningChange,
@@ -190,15 +194,9 @@ function matchesSuperpowersArtifactName(relativePath: string, changeName: string
   const stem = fileName.replace(/\.[^.]+$/u, '');
   if (stem === changeName) return true;
 
-  for (const separator of ['-', '_', '.']) {
-    const prefix = `${changeName}${separator}`;
-    if (!stem.startsWith(prefix)) continue;
-
-    const suffix = stem.slice(prefix.length);
-    if (SUPERPOWERS_ARTIFACT_SUFFIXES.has(suffix)) return true;
-  }
-
-  return false;
+  const suffixes = [...SUPERPOWERS_ARTIFACT_SUFFIXES].map(escapeRegex).join('|');
+  const pattern = new RegExp(`(^|[-_.])${escapeRegex(changeName)}[-_.](${suffixes})$`, 'u');
+  return pattern.test(stem);
 }
 
 async function superpowersArtifactGoverningChange(
@@ -222,7 +220,7 @@ async function superpowersArtifactGoverningChange(
     )[0];
   if (named) return named;
 
-  return eligible[0] ?? null;
+  return null;
 }
 
 async function repoSourceGoverningChange(projectRoot: string): Promise<GoverningChange | null> {

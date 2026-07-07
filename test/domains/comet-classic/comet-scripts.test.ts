@@ -5020,12 +5020,34 @@ describe('comet scripts', () => {
 
       const docsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
       await fs.mkdir(docsDir, { recursive: true });
-      const targetFile = path.join(docsDir, 'auth-v2-design.md');
+      const targetFile = path.join(docsDir, '2026-06-06-auth-v2-design.md');
 
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('phase: design, superpowers');
+    }, 20_000);
+
+    it('does not route unmatched docs/superpowers writes to an unrelated eligible change', async () => {
+      await createChange(
+        tmpDir,
+        'a-open-change',
+        ['workflow: full', 'phase: open', 'archived: false', ''].join('\n'),
+      );
+      await createChange(
+        tmpDir,
+        'z-design-change',
+        ['workflow: full', 'phase: design', 'archived: false', ''].join('\n'),
+      );
+
+      const docsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
+      await fs.mkdir(docsDir, { recursive: true });
+      const targetFile = path.join(docsDir, '2026-06-06-a-open-change-design.md');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Current phase: open');
     }, 20_000);
 
     it('blocks repo source writes when any active change is still in design', async () => {
