@@ -24,6 +24,9 @@ interface CheckResult {
 }
 
 type DoctorScope = InstallScope | 'auto';
+interface DoctorContext {
+  homeDir: string;
+}
 
 const SUPERPOWERS_SENTINELS = [
   'using-superpowers/SKILL.md',
@@ -57,6 +60,30 @@ async function checkOpenSpecCli(): Promise<CheckResult> {
   }
 }
 
+function checkEnvironment(projectPath: string, context: DoctorContext): CheckResult {
+  return {
+    check: 'Environment',
+    status: 'pass',
+    message: `node ${process.version}; platform ${process.platform}/${process.arch}; project ${projectPath}; global ${context.homeDir}`,
+  };
+}
+
+function checkScopeMode(
+  projectPath: string,
+  scope: DoctorScope,
+  context: DoctorContext,
+): CheckResult | null {
+  if (scope !== 'auto') return null;
+  const includesGlobal = path.resolve(projectPath) !== path.resolve(context.homeDir);
+  return {
+    check: 'Scope',
+    status: 'pass',
+    message: includesGlobal
+      ? 'auto checks project scope first, then global scope when it is different'
+      : 'auto checks project scope only because project path is the global home directory',
+  };
+}
+
 async function checkWorkingDirs(projectPath: string): Promise<CheckResult> {
   const specsDir = path.join(projectPath, 'docs', 'superpowers', 'specs');
   const plansDir = path.join(projectPath, 'docs', 'superpowers', 'plans');
@@ -67,7 +94,12 @@ async function checkWorkingDirs(projectPath: string): Promise<CheckResult> {
     return { check: 'working directories', status: 'pass', message: 'present' };
   }
   if (!specsExist && !plansExist) {
-    return { check: 'working directories', status: 'fail', message: 'missing — run: comet init' };
+    return {
+      check: 'working directories',
+      status: 'warn',
+      message:
+        'project not initialized for Comet — run: comet init --scope project if this project should use Comet workflows',
+    };
   }
   const missing = [];
   if (!specsExist) missing.push('specs');
@@ -79,9 +111,13 @@ async function checkWorkingDirs(projectPath: string): Promise<CheckResult> {
   };
 }
 
-async function checkSuperpowers(projectPath: string, scope: DoctorScope): Promise<CheckResult> {
+async function checkSuperpowers(
+  projectPath: string,
+  scope: DoctorScope,
+  context: DoctorContext,
+): Promise<CheckResult> {
   const detected: string[] = [];
-  for (const base of getScopeBases(projectPath, scope)) {
+  for (const base of getScopeBases(projectPath, scope, context)) {
     for (const platform of PLATFORMS) {
       for (const skillsDir of getPlatformSkillsDirs(platform, base.scope)) {
         for (const sentinel of SUPERPOWERS_SENTINELS) {
@@ -113,18 +149,19 @@ async function checkSuperpowers(projectPath: string, scope: DoctorScope): Promis
 function getScopeBases(
   projectPath: string,
   scope: DoctorScope,
+  context: DoctorContext,
 ): Array<{
   scope: InstallScope;
   baseDir: string;
 }> {
   if (scope === 'project') return [{ scope, baseDir: projectPath }];
-  if (scope === 'global') return [{ scope, baseDir: os.homedir() }];
+  if (scope === 'global') return [{ scope, baseDir: context.homeDir }];
 
   const bases: Array<{ scope: InstallScope; baseDir: string }> = [
     { scope: 'project', baseDir: projectPath },
   ];
-  if (path.resolve(projectPath) !== path.resolve(os.homedir())) {
-    bases.push({ scope: 'global', baseDir: os.homedir() });
+  if (path.resolve(projectPath) !== path.resolve(context.homeDir)) {
+    bases.push({ scope: 'global', baseDir: context.homeDir });
   }
   return bases;
 }
@@ -132,6 +169,7 @@ function getScopeBases(
 async function checkSkillCompleteness(
   projectPath: string,
   scope: DoctorScope,
+  context: DoctorContext,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const manifest = await readManifest();
@@ -139,7 +177,11 @@ async function checkSkillCompleteness(
   const total = managedSkills.length;
 
   let anyCometInstall = false;
-  for (const base of getScopeBases(projectPath, scope)) {
+  const scopeState: Record<InstallScope, { hasInstall: boolean; hasComplete: boolean }> = {
+    project: { hasInstall: false, hasComplete: false },
+    global: { hasInstall: false, hasComplete: false },
+  };
+  for (const base of getScopeBases(projectPath, scope, context)) {
     for (const platform of PLATFORMS) {
       const detectedSkillsDir = (
         await Promise.all(
@@ -164,6 +206,10 @@ async function checkSkillCompleteness(
 
       if (present.length === 0) continue;
       anyCometInstall = true;
+      scopeState[base.scope].hasInstall = true;
+      if (missing.length === 0) {
+        scopeState[base.scope].hasComplete = true;
+      }
 
       results.push(
         missing.length === 0
@@ -179,6 +225,15 @@ async function checkSkillCompleteness(
             },
       );
     }
+  }
+
+  if (scope === 'auto' && !scopeState.project.hasInstall && scopeState.global.hasComplete) {
+    results.push({
+      check: 'Project scope',
+      status: 'pass',
+      message:
+        'no project-local Comet skills installed; global scope is available — run: comet init --scope project only if this project needs its own copy',
+    });
   }
 
   if (!anyCometInstall) {
@@ -305,14 +360,26 @@ async function checkCodegraph(projectPath: string, scope: DoctorScope): Promise<
 }
 
 async function collectResults(projectPath: string, scope: DoctorScope): Promise<CheckResult[]> {
+  const context = { homeDir: os.homedir() };
+  return collectResultsWithContext(projectPath, scope, context);
+}
+
+async function collectResultsWithContext(
+  projectPath: string,
+  scope: DoctorScope,
+  context: DoctorContext,
+): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
+  const scopeMode = checkScopeMode(projectPath, scope, context);
+  if (scopeMode) results.push(scopeMode);
+  results.push(checkEnvironment(projectPath, context));
   results.push(checkCometCli());
   results.push(await checkOpenSpecCli());
-  results.push(await checkSuperpowers(projectPath, scope));
+  results.push(await checkSuperpowers(projectPath, scope, context));
   if (scope !== 'global') {
     results.push(await checkWorkingDirs(projectPath));
   }
-  results.push(...(await checkSkillCompleteness(projectPath, scope)));
+  results.push(...(await checkSkillCompleteness(projectPath, scope, context)));
   results.push(await checkScriptsPresent());
   results.push(await checkCodegraph(projectPath, scope));
   results.push(...(await checkCometYamlValidity(projectPath)));
@@ -328,6 +395,7 @@ function icon(status: string): string {
 interface DoctorOptions {
   json?: boolean;
   scope?: DoctorScope;
+  homeDir?: string;
 }
 
 export async function doctorCommand(
@@ -336,7 +404,12 @@ export async function doctorCommand(
 ): Promise<void> {
   const projectPath = path.resolve(targetPath);
   const scope = options.scope ?? 'auto';
-  const results = await collectResults(projectPath, scope);
+  const results =
+    options.homeDir === undefined
+      ? await collectResults(projectPath, scope)
+      : await collectResultsWithContext(projectPath, scope, {
+          homeDir: path.resolve(options.homeDir),
+        });
 
   if (options.json) {
     console.log(JSON.stringify({ scope, results }, null, 2));

@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Doctor scope diagnostics**: `comet doctor` now reports auto-scope behavior, Node/platform environment details, and a non-alarming project-scope note when a global Comet install is available but the current project has no local Skill copy, so users can distinguish an optional project install from a broken setup.
 - **Single-language rule install**: `comet init` and `comet update` now install only the Comet phase-guard rule file matching the selected/detected Skill language (e.g. `.claude/rules/comet-phase-guard.md`), instead of always installing both the Chinese and English rule variants side by side regardless of language choice.
 - **Symlink install safety**: `comet init` and `comet update` now refuse to replace an existing platform `skills/` directory with a symlink when it contains files outside Comet's managed manifest, preserving local or third-party Skills instead of deleting them during symlink-mode installs ([#159](https://github.com/rpamis/comet/issues/159)).
 - **Parallel change artifact writes**: Classic phase guards now route `docs/superpowers/` writes to the matching design/build/verify change instead of letting an unrelated earlier active change block shared Design Doc and planning artifacts ([#160](https://github.com/rpamis/comet/issues/160)).
