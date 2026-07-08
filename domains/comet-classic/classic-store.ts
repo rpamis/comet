@@ -70,6 +70,18 @@ function stripLegacyRunFields(document: Document): void {
   for (const key of LEGACY_RUN_KEYS) document.delete(key);
 }
 
+/** Strip removed command override fields from older change state files. */
+function stripLegacyCommandFields(document: Document): boolean {
+  let changed = false;
+  for (const key of ['build_command', 'verify_command']) {
+    if (document.has(key)) {
+      document.delete(key);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 async function readDocument(file: string): Promise<Document> {
   let source: string;
   try {
@@ -88,8 +100,11 @@ async function readDocument(file: string): Promise<Document> {
 }
 
 export async function readClassicState(changeDir: string): Promise<ClassicStateProjection> {
-  const document = await readDocument(path.join(changeDir, '.comet.yaml'));
-  const doc = documentRecord(document);
+  const file = path.join(changeDir, '.comet.yaml');
+  const document = await readDocument(file);
+  let doc = documentRecord(document);
+  let migrated = stripLegacyCommandFields(document);
+  if (migrated) doc = documentRecord(document);
 
   // Try reading Run state from the new location first
   let run = await readRunState(changeDir);
@@ -101,14 +116,17 @@ export async function readClassicState(changeDir: string): Promise<ClassicStateP
     if (run) {
       await writeRunState(changeDir, run);
       stripLegacyRunFields(document);
-      const file = path.join(changeDir, '.comet.yaml');
-      const temporary = path.join(changeDir, `.comet.yaml.${randomUUID()}.tmp`);
-      await fs.writeFile(temporary, document.toString(), 'utf8');
-      await fs.rename(temporary, file);
+      migrated = true;
     }
   }
 
-  return parseClassicStateDocument(doc, run);
+  if (migrated) {
+    const temporary = path.join(changeDir, `.comet.yaml.${randomUUID()}.tmp`);
+    await fs.writeFile(temporary, document.toString(), 'utf8');
+    await fs.rename(temporary, file);
+  }
+
+  return parseClassicStateDocument(documentRecord(document), run);
 }
 
 export async function readLegacyState(changeDir: string): Promise<LegacyStateSummary> {

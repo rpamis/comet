@@ -11,6 +11,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Version flag alias**: `comet -v` now works as a short alias for `comet --version`, matching common CLI expectations on Windows and other shells ([#167](https://github.com/rpamis/comet/issues/167)).
 - **Classic runtime fallback**: Classic phase scripts now keep an embedded runtime package fallback, so `comet-guard.mjs`, handoff, and archive flows continue to run even when a platform installation is missing the internal `runtime/classic` asset files ([#168](https://github.com/rpamis/comet/issues/168)).
 - **Project config lookup**: Classic guards now resolve project defaults only from `.comet/config.yaml`, while workflow state remains in each change's `.comet.yaml` ([#158](https://github.com/rpamis/comet/issues/158)).
+- **Legacy command field cleanup**: Classic guards now remove stale `build_command` and `verify_command` fields from older change `.comet.yaml` files before unknown-field checks, while project-level command overrides in `.comet/config.yaml` fail explicitly instead of being silently skipped.
 
 ### Removed
 

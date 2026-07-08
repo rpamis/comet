@@ -8052,6 +8052,16 @@ function stripLegacyRunFields(document) {
   ];
   for (const key of LEGACY_RUN_KEYS) document.delete(key);
 }
+function stripLegacyCommandFields(document) {
+  let changed = false;
+  for (const key of ["build_command", "verify_command"]) {
+    if (document.has(key)) {
+      document.delete(key);
+      changed = true;
+    }
+  }
+  return changed;
+}
 async function readDocument(file) {
   let source;
   try {
@@ -8068,8 +8078,11 @@ async function readDocument(file) {
   return document;
 }
 async function readClassicState(changeDir) {
-  const document = await readDocument(path4.join(changeDir, ".comet.yaml"));
-  const doc = documentRecord(document);
+  const file = path4.join(changeDir, ".comet.yaml");
+  const document = await readDocument(file);
+  let doc = documentRecord(document);
+  let migrated = stripLegacyCommandFields(document);
+  if (migrated) doc = documentRecord(document);
   let run = await readRunState(changeDir);
   if (!run && doc.run_id && doc.skill) {
     const { runStateFromDocument: runStateFromDocument2 } = await Promise.resolve().then(() => (init_state(), state_exports));
@@ -8077,13 +8090,15 @@ async function readClassicState(changeDir) {
     if (run) {
       await writeRunState(changeDir, run);
       stripLegacyRunFields(document);
-      const file = path4.join(changeDir, ".comet.yaml");
-      const temporary = path4.join(changeDir, `.comet.yaml.${randomUUID2()}.tmp`);
-      await fs4.writeFile(temporary, document.toString(), "utf8");
-      await fs4.rename(temporary, file);
+      migrated = true;
     }
   }
-  return parseClassicStateDocument(doc, run);
+  if (migrated) {
+    const temporary = path4.join(changeDir, `.comet.yaml.${randomUUID2()}.tmp`);
+    await fs4.writeFile(temporary, document.toString(), "utf8");
+    await fs4.rename(temporary, file);
+  }
+  return parseClassicStateDocument(documentRecord(document), run);
 }
 async function readLegacyState(changeDir) {
   const document = await readDocument(path4.join(changeDir, ".comet.yaml"));
@@ -10300,6 +10315,20 @@ async function runChecks(output, builders) {
   }
   return blocked2;
 }
+async function removedProjectCommandField(field2) {
+  const config = path14.join(".comet", "config.yaml");
+  if (!await exists4(config)) return false;
+  const document = (0, import_yaml4.parseDocument)(await fs13.readFile(config, "utf8"));
+  if (document.errors.length > 0) return false;
+  const value = document.toJS();
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, field2);
+}
+function removedProjectCommandRun(field2) {
+  return {
+    status: 1,
+    output: `${field2} has been removed from .comet/config.yaml. Delete this field and run any required ${field2 === "build_command" ? "build" : "verification"} command manually before retrying.`
+  };
+}
 function runInferred(command) {
   const result3 = spawnSync2(command, { shell: true, encoding: "utf8", timeout: 3e5 });
   return {
@@ -10309,6 +10338,9 @@ function runInferred(command) {
 }
 async function buildPasses() {
   if (process.env.COMET_SKIP_BUILD === "1") return { status: 0, output: "" };
+  if (await removedProjectCommandField("build_command")) {
+    return removedProjectCommandRun("build_command");
+  }
   if (await exists4("package.json") && /"build"/u.test(await fs13.readFile("package.json", "utf8"))) {
     return runInferred("npm run build");
   }
@@ -10325,6 +10357,9 @@ async function buildPasses() {
 }
 async function verificationCommandPasses() {
   if (process.env.COMET_SKIP_BUILD === "1") return { status: 0, output: "" };
+  if (await removedProjectCommandField("verify_command")) {
+    return removedProjectCommandRun("verify_command");
+  }
   return buildPasses();
 }
 async function tasksAllDone(changeDir) {

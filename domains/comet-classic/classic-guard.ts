@@ -342,6 +342,27 @@ interface CommandRun {
   output: string;
 }
 
+async function removedProjectCommandField(field: 'build_command' | 'verify_command') {
+  const config = path.join('.comet', 'config.yaml');
+  if (!(await exists(config))) return false;
+  const document = parseDocument(await fs.readFile(config, 'utf8'));
+  if (document.errors.length > 0) return false;
+  const value = document.toJS() as unknown;
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.prototype.hasOwnProperty.call(value, field)
+  );
+}
+
+function removedProjectCommandRun(field: 'build_command' | 'verify_command'): CommandRun {
+  return {
+    status: 1,
+    output: `${field} has been removed from .comet/config.yaml. Delete this field and run any required ${field === 'build_command' ? 'build' : 'verification'} command manually before retrying.`,
+  };
+}
+
 function runInferred(command: string): CommandRun {
   // Inferred build/verify commands (npm run build, mvn, cargo, …) run through
   // the platform's default shell so .cmd shims resolve on Windows without
@@ -355,6 +376,9 @@ function runInferred(command: string): CommandRun {
 
 async function buildPasses(): Promise<CommandRun> {
   if (process.env.COMET_SKIP_BUILD === '1') return { status: 0, output: '' };
+  if (await removedProjectCommandField('build_command')) {
+    return removedProjectCommandRun('build_command');
+  }
   if (
     (await exists('package.json')) &&
     /"build"/u.test(await fs.readFile('package.json', 'utf8'))
@@ -375,6 +399,9 @@ async function buildPasses(): Promise<CommandRun> {
 
 async function verificationCommandPasses(): Promise<CommandRun> {
   if (process.env.COMET_SKIP_BUILD === '1') return { status: 0, output: '' };
+  if (await removedProjectCommandField('verify_command')) {
+    return removedProjectCommandRun('verify_command');
+  }
   return buildPasses();
 }
 

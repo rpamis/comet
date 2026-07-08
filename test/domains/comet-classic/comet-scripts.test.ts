@@ -2463,6 +2463,49 @@ describe('comet scripts', () => {
     expect(verify.stderr).toContain("Unknown field: 'verify_command'");
   });
 
+  it('removes legacy command fields from existing change state before guard checks', async () => {
+    const changeDir = await createChange(
+      tmpDir,
+      'legacy-command-fields',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: direct',
+        'review_mode: off',
+        'isolation: branch',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'base_ref: null',
+        'verify_result: pending',
+        'verification_report: null',
+        'branch_status: pending',
+        'created_at: 2026-07-08',
+        'verified_at: null',
+        'archived: false',
+        'build_command: null',
+        'verify_command: node legacy-verify.js',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+    );
+
+    const result = runNode(tmpDir, guardScript, ['legacy-command-fields', 'build']);
+    const migrated = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('unknown field');
+    expect(result.stderr).toContain('[PASS] Build passes');
+    expect(migrated).not.toContain('build_command');
+    expect(migrated).not.toContain('verify_command');
+  }, 20_000);
+
   it('treats repo-root comet.yaml as absent when running inferred build checks', async () => {
     await createChange(
       tmpDir,
@@ -2510,6 +2553,53 @@ describe('comet scripts', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).not.toContain('root configured failure');
     expect(result.stderr).toContain('[PASS] Build passes');
+  }, 20_000);
+
+  it('rejects removed project verify_command instead of silently skipping it', async () => {
+    await createChange(
+      tmpDir,
+      'project-verify-command',
+      [
+        'workflow: full',
+        'phase: verify',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: direct',
+        'review_mode: off',
+        'isolation: branch',
+        'verify_mode: light',
+        'design_doc: null',
+        'plan: null',
+        'base_ref: null',
+        'verify_result: pending',
+        'verification_report: reports/verification.md',
+        'branch_status: handled',
+        'created_at: 2026-07-08',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(path.join(tmpDir, 'reports', 'verification.md'), '# Verification\n\nPassed.\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'verify_command: node legacy-verify.js\n',
+    );
+    await writeFile(
+      path.join(tmpDir, 'legacy-verify.js'),
+      'console.error("legacy verify failed"); process.exit(1);\n',
+    );
+    await writeFile(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+    );
+
+    const result = runNode(tmpDir, guardScript, ['project-verify-command', 'verify']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('verify_command has been removed');
+    expect(result.stderr).not.toContain('[PASS] Verification passes');
   }, 20_000);
 
   it('validates archive completeness after the change has moved into archive', async () => {
@@ -4318,7 +4408,7 @@ describe('comet scripts', () => {
   });
 
   describe('removed command fields', () => {
-    it('rejects command fields before running guard checks', async () => {
+    it('rejects remaining unknown fields after removing legacy command fields', async () => {
       const changeDir = path.join(tmpDir, 'openspec', 'changes', 'cmd-inject');
       await fs.mkdir(changeDir, { recursive: true });
       await fs.writeFile(
@@ -4353,7 +4443,8 @@ describe('comet scripts', () => {
       const result = runNode(tmpDir, guardScript, ['cmd-inject', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('unknown field(s): a_custom, build_command, z_custom');
+      expect(result.stderr).toContain('unknown field(s): a_custom, z_custom');
+      expect(result.stderr).not.toContain('build_command');
     }, 20_000);
   });
 
