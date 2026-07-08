@@ -2602,6 +2602,51 @@ describe('comet scripts', () => {
     expect(result.stderr).not.toContain('[PASS] Verification passes');
   }, 20_000);
 
+  it('does not silently pass when a malformed project config still references a removed command field', async () => {
+    await createChange(
+      tmpDir,
+      'malformed-config-verify-command',
+      [
+        'workflow: full',
+        'phase: verify',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: direct',
+        'review_mode: off',
+        'isolation: branch',
+        'verify_mode: light',
+        'design_doc: null',
+        'plan: null',
+        'base_ref: null',
+        'verify_result: pending',
+        'verification_report: reports/verification.md',
+        'branch_status: handled',
+        'created_at: 2026-07-08',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(path.join(tmpDir, 'reports', 'verification.md'), '# Verification\n\nPassed.\n');
+    // Malformed YAML that still references the removed verify_command: the guard
+    // must not silently fall through to the inferred build check (which would pass).
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'verify_command: node legacy-verify.js\nbroken: [unclosed\n',
+    );
+    await writeFile(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+    );
+
+    const result = runNode(tmpDir, guardScript, ['malformed-config-verify-command', 'verify']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).not.toContain('[PASS] Verification passes');
+    expect(result.stderr).toContain('.comet/config.yaml is invalid YAML');
+  }, 20_000);
+
   it('validates archive completeness after the change has moved into archive', async () => {
     await createChange(
       tmpDir,

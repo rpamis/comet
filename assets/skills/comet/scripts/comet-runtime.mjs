@@ -10319,7 +10319,11 @@ async function removedProjectCommandField(field2) {
   const config = path14.join(".comet", "config.yaml");
   if (!await exists4(config)) return false;
   const document = (0, import_yaml4.parseDocument)(await fs13.readFile(config, "utf8"));
-  if (document.errors.length > 0) return false;
+  if (document.errors.length > 0) {
+    throw new Error(
+      `.comet/config.yaml is invalid YAML (${document.errors[0].message}); cannot check for removed "${field2}" field. Fix the config and retry.`
+    );
+  }
   const value = document.toJS();
   return Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, field2);
 }

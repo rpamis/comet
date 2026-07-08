@@ -346,7 +346,17 @@ async function removedProjectCommandField(field: 'build_command' | 'verify_comma
   const config = path.join('.comet', 'config.yaml');
   if (!(await exists(config))) return false;
   const document = parseDocument(await fs.readFile(config, 'utf8'));
-  if (document.errors.length > 0) return false;
+  if (document.errors.length > 0) {
+    // A malformed project config must not be treated as "no removed field
+    // present": that would let an upgraded project silently fall through to the
+    // inferred build check even though it may still declare a removed
+    // build_command/verify_command. Surface the parse error instead. Both call
+    // sites (buildPasses / verificationCommandPasses) run inside a check()
+    // wrapper, so this throw becomes a FAIL outcome that blocks the guard.
+    throw new Error(
+      `.comet/config.yaml is invalid YAML (${document.errors[0].message}); cannot check for removed "${field}" field. Fix the config and retry.`,
+    );
+  }
   const value = document.toJS() as unknown;
   return (
     Boolean(value) &&
