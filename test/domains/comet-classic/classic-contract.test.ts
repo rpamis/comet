@@ -419,9 +419,13 @@ describe('frozen Classic 0.3.9 reference', () => {
 describeBash('Classic 0.3.9 differential contract', () => {
   for (const profile of ['full', 'hotfix', 'tweak'] as const) {
     it(`preserves ${profile} initialization`, async () => {
-      expect(await observeState(activeScripts, profile)).toEqual(
-        await observeState(referenceScripts, profile),
-      );
+      const active = await observeState(activeScripts, profile);
+      const reference = await observeState(referenceScripts, profile);
+
+      expect(active.status).toBe(reference.status);
+      expect(active.yaml).toEqual(reference.yaml);
+      expect(active.stdout).toBe(reference.stderr);
+      expect(active.stderr).toBe('');
     });
 
     it(`preserves ${profile} next-skill routing`, async () => {

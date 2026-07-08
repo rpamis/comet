@@ -4341,7 +4341,9 @@ describe('comet scripts', () => {
           'created_at: 2026-06-04',
           'verified_at: null',
           'archived: false',
+          'z_custom: later',
           'build_command: npm run build; rm -rf /',
+          'a_custom: earlier',
           '',
         ].join('\n'),
       );
@@ -4351,7 +4353,7 @@ describe('comet scripts', () => {
       const result = runNode(tmpDir, guardScript, ['cmd-inject', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('unknown field(s): build_command');
+      expect(result.stderr).toContain('unknown field(s): a_custom, build_command, z_custom');
     }, 20_000);
   });
 

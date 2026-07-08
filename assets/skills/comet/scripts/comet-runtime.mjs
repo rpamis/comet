@@ -9230,10 +9230,9 @@ async function ensureClassicRuntimeRun(changeDir) {
 }
 async function ensureStrictClassicRuntimeRun(changeDir) {
   const projection = await readClassicState(changeDir);
-  if (projection.unknownKeys.length > 0) {
-    throw new Error(
-      `Invalid Classic state: unknown field(s): ${projection.unknownKeys.join(", ")}`
-    );
+  const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+  if (unknownKeys.length > 0) {
+    throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(", ")}`);
   }
   return ensureClassicRuntimeRun(changeDir);
 }
@@ -10251,9 +10250,10 @@ async function preflight(changeDir, name) {
     throw new GuardFailure(red2("FATAL: .comet.yaml schema validation failed"));
   }
   const projection = await readClassicState(changeDir);
-  if (projection.unknownKeys.length > 0) {
+  const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+  if (unknownKeys.length > 0) {
     throw new GuardFailure(
-      red2(`FATAL: .comet.yaml has unknown field(s): ${projection.unknownKeys.join(", ")}`)
+      red2(`FATAL: .comet.yaml has unknown field(s): ${unknownKeys.join(", ")}`)
     );
   }
 }

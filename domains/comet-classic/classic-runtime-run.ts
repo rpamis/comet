@@ -294,10 +294,9 @@ export async function ensureClassicRuntimeRun(changeDir: string): Promise<Classi
 
 export async function ensureStrictClassicRuntimeRun(changeDir: string): Promise<ClassicRunContext> {
   const projection = await readClassicState(changeDir);
-  if (projection.unknownKeys.length > 0) {
-    throw new Error(
-      `Invalid Classic state: unknown field(s): ${projection.unknownKeys.join(', ')}`,
-    );
+  const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+  if (unknownKeys.length > 0) {
+    throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`);
   }
   return ensureClassicRuntimeRun(changeDir);
 }
