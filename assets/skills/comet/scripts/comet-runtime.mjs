@@ -7827,8 +7827,6 @@ var CLASSIC_WIRE_KEYS = [
   "verified_at",
   "archived",
   "direct_override",
-  "build_command",
-  "verify_command",
   "handoff_context",
   "handoff_hash",
   "classic_profile",
@@ -7937,8 +7935,6 @@ function classicStateFromDocument(doc) {
     verifiedAt: nullableString(doc, "verified_at"),
     archived: booleanValue(doc, "archived", false),
     directOverride: booleanValue(doc, "direct_override"),
-    buildCommand: nullableString(doc, "build_command"),
-    verifyCommand: nullableString(doc, "verify_command"),
     handoffContext: relativePath(doc, "handoff_context"),
     handoffHash: sha256(doc, "handoff_hash"),
     classicProfile: enumValue(doc, "classic_profile", CLASSIC_PROFILES),
@@ -8002,8 +7998,6 @@ function classicStateToDocument(state) {
     verified_at: state.verifiedAt,
     archived: state.archived,
     direct_override: state.directOverride,
-    build_command: state.buildCommand,
-    verify_command: state.verifyCommand,
     handoff_context: state.handoffContext,
     handoff_hash: state.handoffHash,
     classic_profile: state.classicProfile,
@@ -8980,6 +8974,230 @@ async function fileExists2(file) {
     throw error;
   }
 }
+function embeddedClassicRuntimePackage(root) {
+  return {
+    root,
+    packageKind: "runtime",
+    definition: {
+      apiVersion: "comet/v1alpha1",
+      kind: "Skill",
+      metadata: {
+        name: "comet-classic",
+        version: "1",
+        description: "Internal compatibility orchestration for classic Comet full, hotfix, and tweak workflows"
+      },
+      goal: {
+        statement: "Advance or restore a classic Comet Run without changing the user command surface",
+        inputs: [
+          {
+            name: "classic-state",
+            description: "Validated ClassicState consistent with the Run projection",
+            required: true
+          },
+          {
+            name: "evidence",
+            description: "Structured evidence produced by the Classic Evidence collector",
+            required: true
+          }
+        ],
+        outputs: [
+          {
+            name: "run-state",
+            description: "Atomically synchronized Classic and Run state",
+            required: true
+          }
+        ],
+        success: [
+          "Legacy fields and Run fields remain consistent",
+          "Every step invokes only a declared public Comet Skill",
+          "The completed state passes its completion eval"
+        ]
+      },
+      orchestration: {
+        mode: "deterministic",
+        entry: "full.open",
+        steps: [
+          {
+            id: "full.open",
+            action: { type: "invoke_skill", ref: "comet-open" },
+            next: "full.design.handoff"
+          },
+          {
+            id: "full.design.handoff",
+            action: { type: "invoke_skill", ref: "comet-design" },
+            next: "full.design.document"
+          },
+          {
+            id: "full.design.document",
+            action: { type: "invoke_skill", ref: "comet-design" },
+            next: "full.build.plan"
+          },
+          {
+            id: "full.build.plan",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "full.build.plan-ready"
+          },
+          {
+            id: "full.build.plan-ready",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "full.build.configure"
+          },
+          {
+            id: "full.build.configure",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "full.build.execute"
+          },
+          {
+            id: "full.build.execute",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "full.build.complete"
+          },
+          {
+            id: "full.build.complete",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "full.verify.run"
+          },
+          {
+            id: "full.build.fix",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "full.build.execute"
+          },
+          {
+            id: "full.verify.run",
+            action: { type: "invoke_skill", ref: "comet-verify" },
+            next: "full.verify.branch"
+          },
+          {
+            id: "full.verify.branch",
+            action: { type: "invoke_skill", ref: "comet-verify" },
+            next: "full.archive.confirm"
+          },
+          {
+            id: "full.archive.confirm",
+            action: { type: "invoke_skill", ref: "comet-archive" },
+            next: "full.archive.execute"
+          },
+          {
+            id: "full.archive.execute",
+            action: { type: "invoke_skill", ref: "comet-archive" },
+            next: "completed"
+          },
+          {
+            id: "hotfix.open",
+            action: { type: "invoke_skill", ref: "comet-hotfix" },
+            next: "hotfix.build.execute"
+          },
+          {
+            id: "hotfix.build.execute",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "hotfix.build.complete"
+          },
+          {
+            id: "hotfix.build.complete",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "hotfix.verify.run"
+          },
+          {
+            id: "hotfix.verify.run",
+            action: { type: "invoke_skill", ref: "comet-verify" },
+            next: "hotfix.verify.branch"
+          },
+          {
+            id: "hotfix.verify.branch",
+            action: { type: "invoke_skill", ref: "comet-verify" },
+            next: "hotfix.archive.confirm"
+          },
+          {
+            id: "hotfix.archive.confirm",
+            action: { type: "invoke_skill", ref: "comet-archive" },
+            next: "hotfix.archive.execute"
+          },
+          {
+            id: "hotfix.archive.execute",
+            action: { type: "invoke_skill", ref: "comet-archive" },
+            next: "completed"
+          },
+          {
+            id: "tweak.open",
+            action: { type: "invoke_skill", ref: "comet-tweak" },
+            next: "tweak.build.execute"
+          },
+          {
+            id: "tweak.build.execute",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "tweak.build.complete"
+          },
+          {
+            id: "tweak.build.complete",
+            action: { type: "invoke_skill", ref: "comet-build" },
+            next: "tweak.verify.run"
+          },
+          {
+            id: "tweak.verify.run",
+            action: { type: "invoke_skill", ref: "comet-verify" },
+            next: "tweak.verify.branch"
+          },
+          {
+            id: "tweak.verify.branch",
+            action: { type: "invoke_skill", ref: "comet-verify" },
+            next: "tweak.archive.confirm"
+          },
+          {
+            id: "tweak.archive.confirm",
+            action: { type: "invoke_skill", ref: "comet-archive" },
+            next: "tweak.archive.execute"
+          },
+          {
+            id: "tweak.archive.execute",
+            action: { type: "invoke_skill", ref: "comet-archive" },
+            next: "completed"
+          },
+          {
+            id: "completed",
+            action: { type: "checkpoint" },
+            completionEvals: ["classic-completed"]
+          }
+        ]
+      },
+      skills: [
+        { id: "comet-open" },
+        { id: "comet-design" },
+        { id: "comet-build" },
+        { id: "comet-verify" },
+        { id: "comet-archive" },
+        { id: "comet-hotfix" },
+        { id: "comet-tweak" }
+      ],
+      agents: [],
+      tools: []
+    },
+    guardrails: {
+      allowedSkills: [
+        "comet-open",
+        "comet-design",
+        "comet-build",
+        "comet-verify",
+        "comet-archive",
+        "comet-hotfix",
+        "comet-tweak"
+      ],
+      allowedAgents: [],
+      allowedTools: [],
+      maxIterations: 500,
+      maxRetriesPerAction: 3,
+      confirmationRequiredFor: []
+    },
+    evals: [
+      {
+        id: "classic-completed",
+        scope: "completion",
+        type: "state_equals",
+        field: "status",
+        equals: "completed"
+      }
+    ]
+  };
+}
 async function classicRuntimeRoot() {
   const runtimeDirectory = path10.dirname(fileURLToPath(import.meta.url));
   const candidates = [
@@ -8996,7 +9214,7 @@ async function classicRuntimeRoot() {
   for (const candidate of candidates) {
     if (await directoryExists(candidate)) return candidate;
   }
-  throw new Error("Comet classic runtime package is not installed");
+  return null;
 }
 async function loadClassicRuntimePackage(root) {
   if (await fileExists2(path10.join(root, "skill.yaml"))) {
@@ -9007,7 +9225,7 @@ async function loadClassicRuntimePackage(root) {
 async function ensureClassicRuntimeRun(changeDir) {
   const root = await classicRuntimeRoot();
   return ensureClassicRun(changeDir, {
-    skillPackage: await loadClassicRuntimePackage(root)
+    skillPackage: root ? await loadClassicRuntimePackage(root) : embeddedClassicRuntimePackage(path10.dirname(fileURLToPath(import.meta.url)))
   });
 }
 async function ensureStrictClassicRuntimeRun(changeDir) {
@@ -9939,13 +10157,7 @@ async function readField(changeDir, field2) {
 async function projectConfigValue(field2, changeDir) {
   const changeValue = await readField(changeDir, field2);
   if (changeValue && changeValue !== "null") return changeValue;
-  for (const config of [
-    ".comet/config.yaml",
-    ".comet.yaml",
-    "comet.yaml",
-    ".comet.yml",
-    "comet.yml"
-  ]) {
+  for (const config of [".comet/config.yaml"]) {
     if (!await exists4(config)) continue;
     for (const line of (await fs13.readFile(config, "utf8")).split(/\r?\n/u)) {
       if (new RegExp(`^${field2}:`, "u").test(line)) {
@@ -10001,68 +10213,6 @@ Next: regenerate or rewrite this artifact in English while preserving necessary 
   }
   return pass();
 }
-function runCommandString(command) {
-  if (!command) return { status: 1, output: red2("ERROR: build/verify command is empty") };
-  const split = splitCommandChain(command);
-  if (typeof split === "string") {
-    return {
-      status: 1,
-      output: `${red2(`ERROR: build/verify command contains shell metacharacters: ${command}`)}
-${red2(
-        split
-      )}`
-    };
-  }
-  const output = [];
-  for (const part of split) {
-    const segment = part.trim();
-    if (!segment) {
-      return { status: 1, output: red2("ERROR: build/verify command contains an empty && step") };
-    }
-    const result3 = spawnSync2(segment, { shell: true, encoding: "utf8", timeout: 3e5 });
-    const combined = `${result3.stdout ?? ""}${result3.stderr ?? ""}`.replace(/\n+$/u, "");
-    output.push(`${red2(`+ ${segment}`)}${combined ? `
-${combined}` : ""}`);
-    if (result3.status !== 0) {
-      return { status: result3.status ?? 1, output: output.join("\n") };
-    }
-  }
-  return { status: 0, output: output.join("\n") };
-}
-function splitCommandChain(command) {
-  const parts = [];
-  let current = "";
-  let quote = "";
-  for (let i = 0; i < command.length; i += 1) {
-    const c = command[i];
-    if (c === "$" || c === "`") {
-      return "Allowed: command words, quotes, paths, and && between sequential commands";
-    }
-    if (quote) {
-      current += c;
-      if (c === quote) quote = "";
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      quote = c;
-      current += c;
-      continue;
-    }
-    if (c === "&" && command[i + 1] === "&") {
-      parts.push(current);
-      current = "";
-      i += 1;
-      continue;
-    }
-    if (c === ";" || c === "|" || c === "&") {
-      return "Allowed: command words, quotes, paths, and && between sequential commands";
-    }
-    current += c;
-  }
-  if (quote) return "Command has an unmatched quote";
-  parts.push(current);
-  return parts;
-}
 function hashFile(file) {
   return createHash4("sha256").update(readFileSync(file)).digest("hex");
 }
@@ -10099,6 +10249,12 @@ async function preflight(changeDir, name) {
       process.stderr.write(result3.stderr.endsWith("\n") ? result3.stderr : `${result3.stderr}
 `);
     throw new GuardFailure(red2("FATAL: .comet.yaml schema validation failed"));
+  }
+  const projection = await readClassicState(changeDir);
+  if (projection.unknownKeys.length > 0) {
+    throw new GuardFailure(
+      red2(`FATAL: .comet.yaml has unknown field(s): ${projection.unknownKeys.join(", ")}`)
+    );
   }
 }
 function pushCheck(output, outcome) {
@@ -10151,10 +10307,8 @@ function runInferred(command) {
     output: `${result3.stdout ?? ""}${result3.stderr ?? ""}`.replace(/\n+$/u, "")
   };
 }
-async function buildPasses(changeDir) {
+async function buildPasses() {
   if (process.env.COMET_SKIP_BUILD === "1") return { status: 0, output: "" };
-  const configured = await projectConfigValue("build_command", changeDir);
-  if (configured) return runCommandString(configured);
   if (await exists4("package.json") && /"build"/u.test(await fs13.readFile("package.json", "utf8"))) {
     return runInferred("npm run build");
   }
@@ -10169,11 +10323,9 @@ async function buildPasses(changeDir) {
   if (await exists4("Cargo.toml")) return runInferred("cargo build");
   return { status: 1, output: "" };
 }
-async function verificationCommandPasses(changeDir) {
+async function verificationCommandPasses() {
   if (process.env.COMET_SKIP_BUILD === "1") return { status: 0, output: "" };
-  const configured = await projectConfigValue("verify_command", changeDir);
-  if (configured) return runCommandString(configured);
-  return buildPasses(changeDir);
+  return buildPasses();
 }
 async function tasksAllDone(changeDir) {
   const tasks = path14.join(changeDir, "tasks.md");
@@ -10567,7 +10719,7 @@ async function guardBuildChecks(output, changeDir, change) {
     // Build check runs last — only after all config checks pass — to avoid
     // wasting time on a build that would be rejected by a config failure.
     check("Build passes", async () => {
-      const buildResult = await buildPasses(changeDir);
+      const buildResult = await buildPasses();
       return buildResult.status === 0 ? pass() : fail(buildResult.output);
     })
   ]);
@@ -10578,7 +10730,7 @@ async function guardVerifyChecks(output, changeDir) {
     // Verification command runs after tasks check — no point running tests
     // if tasks.md is incomplete.
     check("Verification passes", async () => {
-      const verifyResult = await verificationCommandPasses(changeDir);
+      const verifyResult = await verificationCommandPasses();
       return verifyResult.status === 0 ? pass() : fail(verifyResult.output);
     }),
     check(
@@ -11364,7 +11516,7 @@ function isRootMarkdown(relativePath2) {
   return !relativePath2.includes("/") && relativePath2.endsWith(".md");
 }
 function isCometConfig(relativePath2) {
-  return relativePath2 === ".comet.yaml" || relativePath2 === "comet.yaml" || relativePath2 === ".comet.yml" || relativePath2 === "comet.yml" || relativePath2.startsWith(".comet/") || relativePath2.includes("/.comet/");
+  return relativePath2.startsWith(".comet/") || relativePath2.includes("/.comet/");
 }
 function isSuperpowersWorkspace(relativePath2) {
   return relativePath2 === ".superpowers" || relativePath2.startsWith(".superpowers/");
@@ -12110,8 +12262,6 @@ function sparseClassicState(record) {
     verifiedAt: nullableRecordString(record, "verified_at"),
     archived: nullableRecordBoolean(record, "archived") ?? false,
     directOverride: nullableRecordBoolean(record, "direct_override"),
-    buildCommand: nullableRecordString(record, "build_command"),
-    verifyCommand: nullableRecordString(record, "verify_command"),
     handoffContext: nullableRecordString(record, "handoff_context"),
     handoffHash: nullableRecordString(record, "handoff_hash"),
     classicProfile: enumRecordValue(record, "classic_profile", PROFILES, workflow),
@@ -12294,7 +12444,7 @@ async function init(output, name, workflow) {
     archived: false
   });
   await atomicWrite2(file, document.toString());
-  output.stderr.push(green4(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
+  output.stdout.push(green4(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
 }
 async function requirePhase(name, expected) {
   const actual = await readField3(name, "phase");

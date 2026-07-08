@@ -3,7 +3,10 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { ensureClassicRun } from '../../../domains/comet-classic/classic-migrate.js';
-import { readClassicState, writeClassicState } from '../../../domains/comet-classic/classic-store.js';
+import {
+  readClassicState,
+  writeClassicState,
+} from '../../../domains/comet-classic/classic-store.js';
 import type { ClassicState } from '../../../domains/comet-classic/classic-state.js';
 import {
   readArtifacts,
@@ -66,8 +69,6 @@ function classic(overrides: Partial<ClassicState> = {}): ClassicState {
     verifiedAt: null,
     archived: false,
     directOverride: null,
-    buildCommand: null,
-    verifyCommand: null,
     handoffContext: null,
     handoffHash: null,
     classicProfile: null,
@@ -241,8 +242,6 @@ created_at: 2026-06-22
 verified_at: null
 archived: false
 direct_override: null
-build_command: null
-verify_command: null
 handoff_context: null
 handoff_hash: null
 `,

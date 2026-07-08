@@ -2,7 +2,7 @@
 
 规范路径：`comet/reference/comet-yaml-fields.md`
 
-本文件是 `.comet.yaml` 状态文件的字段参考。按需查阅，不随 skill 一次性加载。
+本文件是 `openspec/changes/<name>/` 下每个 change 级 `.comet.yaml` 状态文件的字段参考。按需查阅，不随 skill 一次性加载。项目级默认配置只放在 `.comet/config.yaml`。
 
 ## 示例
 
@@ -59,8 +59,6 @@ archived: false
 | 字段 | 含义 |
 |------|------|
 | `direct_override` | `true`/`false`。full workflow 如需使用 `build_mode: direct`，必须显式设为 `true` |
-| `build_command` | 项目构建命令。guard 优先运行；支持命令词、引号、路径和 `&&` 顺序步骤；拒绝 `;`、管道、裸 `&`、`$` 和反引号 |
-| `verify_command` | 项目验证命令。verify guard 优先运行；使用与 `build_command` 相同的受限命令语法，未配置时回退到构建命令 |
 
 ## 状态机硬约束
 

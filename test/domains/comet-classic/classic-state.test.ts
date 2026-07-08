@@ -33,8 +33,6 @@ function classicState(): ClassicState {
     verifiedAt: '2026-06-02',
     archived: false,
     directOverride: true,
-    buildCommand: 'pnpm build',
-    verifyCommand: 'pnpm test',
     handoffContext: '.comet/handoff/context.json',
     handoffHash: 'b'.repeat(64),
     classicProfile: 'full',

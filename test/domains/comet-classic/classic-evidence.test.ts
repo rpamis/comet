@@ -60,8 +60,6 @@ describe('Classic evidence collection', () => {
         verifiedAt: '2026-06-14',
         archived: false,
         directOverride: null,
-        buildCommand: null,
-        verifyCommand: null,
         handoffContext: 'openspec/changes/demo/.comet/handoff/context.json',
         handoffHash: 'b'.repeat(64),
         classicProfile: 'full',

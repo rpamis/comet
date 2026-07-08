@@ -226,6 +226,16 @@ describe('comet scripts', () => {
     expect(yaml).toContain('branch_status: pending');
   }, 20_000);
 
+  it('prints successful initialization to stdout so PowerShell does not surface NativeCommandError', async () => {
+    const result = runNode(tmpDir, stateScript, ['init', 'powershell-friendly', 'full']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      'Initialized: openspec/changes/powershell-friendly/.comet.yaml (workflow=full)',
+    );
+    expect(result.stderr).toBe('');
+  }, 20_000);
+
   it('loads the classic runtime package from COMET_RUNTIME_CLASSIC_ROOT', async () => {
     const init = runNode(tmpDir, stateScript, ['init', 'runtime-root', 'full'], {
       COMET_RUNTIME_CLASSIC_ROOT: classicRuntimeRoot,
@@ -261,6 +271,26 @@ describe('comet scripts', () => {
 
     expect(init.status).toBe(0);
     expect(result.status).toBe(2);
+  }, 20_000);
+
+  it('falls back to the embedded Classic runtime package when installed script assets omit internal runtime files', async () => {
+    const init = runNode(tmpDir, stateScript, ['init', 'embedded-runtime', 'full'], {
+      COMET_RUNTIME_CLASSIC_ROOT: '',
+      COMET_CLASSIC_SKILL_ROOT: '',
+    });
+    const result = runNode(tmpDir, guardScript, ['embedded-runtime', 'open'], {
+      COMET_RUNTIME_CLASSIC_ROOT: '',
+      COMET_CLASSIC_SKILL_ROOT: '',
+    });
+
+    expect(init.status).toBe(0);
+    expect(result.status).toBe(1);
+    expect(result.stderr).not.toContain('classic runtime package is not installed');
+    const runState = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'embedded-runtime', '.comet', 'run-state.json'),
+      'utf8',
+    );
+    expect(JSON.parse(runState)).toMatchObject({ skill: 'comet-classic' });
   }, 20_000);
 
   it('rejects change names that OpenSpec cannot archive later', async () => {
@@ -2391,134 +2421,17 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[PASS] subagent dispatch confirmed');
   }, 20_000);
 
-  it('runs configured build command and prints its failure output', async () => {
+  it('rejects removed build and verify command fields', async () => {
     await createChange(
       tmpDir,
-      'configured-build',
+      'removed-command-fields',
       [
         'workflow: full',
         'phase: build',
         'build_mode: executing-plans',
         'build_pause: null',
-        'tdd_mode: null',
-        'isolation: branch',
-        'verify_mode: null',
-        'build_command: node build-check.js',
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verified_at: null',
-        'archived: false',
-        '',
-      ].join('\n'),
-    );
-    await writeFile(
-      path.join(tmpDir, 'build-check.js'),
-      'console.error("configured failure"); process.exit(1);\n',
-    );
-    await writeFile(
-      path.join(tmpDir, 'package.json'),
-      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
-    );
-
-    const result = runNode(tmpDir, guardScript, ['configured-build', 'build']);
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('configured failure');
-  }, 20_000);
-
-  it('runs configured build command chains joined with &&', async () => {
-    await createChange(
-      tmpDir,
-      'configured-build-chain',
-      [
-        'workflow: full',
-        'phase: build',
-        'build_mode: executing-plans',
-        'build_pause: null',
-        'subagent_dispatch: null',
         'tdd_mode: direct',
         'review_mode: off',
-        'isolation: branch',
-        'verify_mode: null',
-        'build_command: "node first-build-check.js && node second-build-check.js"',
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verified_at: null',
-        'archived: false',
-        '',
-      ].join('\n'),
-    );
-    await writeFile(path.join(tmpDir, 'first-build-check.js'), 'console.error("first ok");\n');
-    await writeFile(
-      path.join(tmpDir, 'second-build-check.js'),
-      'console.error("second failed"); process.exit(1);\n',
-    );
-    await writeFile(
-      path.join(tmpDir, 'package.json'),
-      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
-    );
-
-    const result = runNode(tmpDir, guardScript, ['configured-build-chain', 'build']);
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('first ok');
-    expect(result.stderr).toContain('second failed');
-    expect(result.stderr).not.toContain('shell metacharacters');
-  }, 20_000);
-
-  it('does not split configured command chains on && inside quotes', async () => {
-    await createChange(
-      tmpDir,
-      'quoted-build-chain',
-      [
-        'workflow: full',
-        'phase: build',
-        'build_mode: executing-plans',
-        'build_pause: null',
-        'subagent_dispatch: null',
-        'tdd_mode: direct',
-        'review_mode: off',
-        'isolation: branch',
-        'verify_mode: null',
-        "build_command: 'node -e \"console.error(''literal && kept'')\" && node second-build-check.js'",
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verified_at: null',
-        'archived: false',
-        '',
-      ].join('\n'),
-    );
-    await writeFile(
-      path.join(tmpDir, 'second-build-check.js'),
-      'console.error("second failed"); process.exit(1);\n',
-    );
-    await writeFile(
-      path.join(tmpDir, 'package.json'),
-      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
-    );
-
-    const result = runNode(tmpDir, guardScript, ['quoted-build-chain', 'build']);
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('literal && kept');
-    expect(result.stderr).toContain('second failed');
-    expect(result.stderr).not.toContain('shell metacharacters');
-  }, 20_000);
-
-  it('preserves configured command values containing shell metacharacters', async () => {
-    const command = 'node -e "console.log(\'a&b|c\')"';
-    await createChange(
-      tmpDir,
-      'command-metacharacters',
-      [
-        'workflow: full',
-        'phase: build',
-        'build_mode: executing-plans',
-        'build_pause: null',
-        'tdd_mode: null',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -2531,19 +2444,26 @@ describe('comet scripts', () => {
       ].join('\n'),
     );
 
-    const set = runNode(tmpDir, stateScript, [
+    const build = runNode(tmpDir, stateScript, [
       'set',
-      'command-metacharacters',
+      'removed-command-fields',
       'build_command',
-      command,
+      'npm run build',
     ]);
-    const get = runNode(tmpDir, stateScript, ['get', 'command-metacharacters', 'build_command']);
+    const verify = runNode(tmpDir, stateScript, [
+      'set',
+      'removed-command-fields',
+      'verify_command',
+      'npm test',
+    ]);
 
-    expect(set.status).toBe(0);
-    expect(get.stdout.trim()).toBe(command);
+    expect(build.status).not.toBe(0);
+    expect(build.stderr).toContain("Unknown field: 'build_command'");
+    expect(verify.status).not.toBe(0);
+    expect(verify.stderr).toContain("Unknown field: 'verify_command'");
   });
 
-  it('uses root-level build command config before inferred build commands', async () => {
+  it('treats repo-root comet.yaml as absent when running inferred build checks', async () => {
     await createChange(
       tmpDir,
       'root-configured-build',
@@ -2552,7 +2472,8 @@ describe('comet scripts', () => {
         'phase: build',
         'build_mode: executing-plans',
         'build_pause: null',
-        'tdd_mode: null',
+        'tdd_mode: direct',
+        'review_mode: off',
         'isolation: branch',
         'verify_mode: null',
         'design_doc: null',
@@ -2561,6 +2482,16 @@ describe('comet scripts', () => {
         'verified_at: null',
         'archived: false',
         'auto_transition: true',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'root-configured-build', 'proposal.md'),
+      [
+        '# Proposal',
+        '',
+        'This change updates the project build verification path with a small, well-scoped behavior change.',
+        'The proposal is intentionally written in English so language validation has enough signal.',
         '',
       ].join('\n'),
     );
@@ -2576,50 +2507,9 @@ describe('comet scripts', () => {
 
     const result = runNode(tmpDir, guardScript, ['root-configured-build', 'build']);
 
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('root configured failure');
-  }, 20_000);
-
-  it('runs configured verify command before archiving', async () => {
-    await createChange(
-      tmpDir,
-      'configured-verify',
-      [
-        'workflow: full',
-        'phase: verify',
-        'build_mode: executing-plans',
-        'build_pause: null',
-        'tdd_mode: null',
-        'isolation: branch',
-        'verify_mode: full',
-        'verify_command: node verify-check.js',
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verification_report: docs/superpowers/reports/configured-verify.md',
-        'branch_status: handled',
-        'verified_at: null',
-        'archived: false',
-        '',
-      ].join('\n'),
-    );
-    await writeFile(
-      path.join(tmpDir, 'docs', 'superpowers', 'reports', 'configured-verify.md'),
-      'PASS\n',
-    );
-    await writeFile(
-      path.join(tmpDir, 'verify-check.js'),
-      'console.error("verify configured failure"); process.exit(1);\n',
-    );
-    await writeFile(
-      path.join(tmpDir, 'package.json'),
-      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
-    );
-
-    const result = runNode(tmpDir, guardScript, ['configured-verify', 'verify']);
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('verify configured failure');
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('root configured failure');
+    expect(result.stderr).toContain('[PASS] Build passes');
   }, 20_000);
 
   it('validates archive completeness after the change has moved into archive', async () => {
@@ -2675,8 +2565,6 @@ describe('comet scripts', () => {
         'verified_at: 2026-05-21',
         'archived: true',
         'direct_override: null',
-        'build_command: null',
-        'verify_command: null',
         'handoff_context: null',
         'handoff_hash: null',
         '',
@@ -4429,8 +4317,8 @@ describe('comet scripts', () => {
     });
   });
 
-  describe('review fix: command injection prevention', () => {
-    it('rejects build_command with shell metacharacters (C3)', async () => {
+  describe('removed command fields', () => {
+    it('rejects command fields before running guard checks', async () => {
       const changeDir = path.join(tmpDir, 'openspec', 'changes', 'cmd-inject');
       await fs.mkdir(changeDir, { recursive: true });
       await fs.writeFile(
@@ -4460,11 +4348,10 @@ describe('comet scripts', () => {
       await fs.writeFile(path.join(changeDir, 'proposal.md'), 'p');
       await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] done\n');
 
-      // No COMET_SKIP_BUILD — run_command_string should reject before executing
       const result = runNode(tmpDir, guardScript, ['cmd-inject', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('shell metacharacters');
+      expect(result.stderr).toContain('unknown field(s): build_command');
     }, 20_000);
   });
 
@@ -4707,6 +4594,46 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('Current phase: design');
       expect(result.stderr).toContain('This phase does not allow source writes');
       expect(result.stderr).not.toMatch(/[一-龥]/);
+    }, 20_000);
+
+    it('does not treat root .comet.yaml as a supported Comet config file', async () => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        [
+          'workflow: full',
+          'phase: design',
+          'context_compression: off',
+          'build_mode: null',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'base_ref: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-06-06',
+          'verified_at: null',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runHookGuard(
+        tmpDir,
+        hookGuardScript,
+        hookStdin(path.join(tmpDir, '.comet.yaml')),
+      );
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Current phase: design');
+      expect(result.stderr).toContain('This phase does not allow source writes');
     }, 20_000);
 
     it('blocks source code writes in open phase', async () => {

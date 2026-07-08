@@ -43,4 +43,12 @@ describe('built CLI smoke', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('No active changes.');
   });
+
+  it('accepts -v as a version alias', async () => {
+    const result = runCli('-v');
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\d+\.\d+\.\d+/u);
+    expect(result.stderr).toBe('');
+  });
 });

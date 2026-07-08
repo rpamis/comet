@@ -2,6 +2,19 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.3] - 2026-07-08
+
+### Fixed
+
+- **PowerShell Classic initialization**: `comet-state.mjs init` now writes its successful initialization message to stdout instead of stderr, so Windows PowerShell no longer reports a successful `.comet.yaml` creation as a `NativeCommandError` ([#167](https://github.com/rpamis/comet/issues/167)).
+- **Version flag alias**: `comet -v` now works as a short alias for `comet --version`, matching common CLI expectations on Windows and other shells ([#167](https://github.com/rpamis/comet/issues/167)).
+- **Classic runtime fallback**: Classic phase scripts now keep an embedded runtime package fallback, so `comet-guard.mjs`, handoff, and archive flows continue to run even when a platform installation is missing the internal `runtime/classic` asset files ([#168](https://github.com/rpamis/comet/issues/168)).
+- **Project config lookup**: Classic guards now resolve project defaults only from `.comet/config.yaml`, while workflow state remains in each change's `.comet.yaml` ([#158](https://github.com/rpamis/comet/issues/158)).
+
+### Removed
+
+- **Custom guard command fields**: Classic workflow state no longer accepts custom build or verify command fields; guards use the built-in project build detection path instead.
+
 ## What's Changed [0.4.0-beta.2] - 2026-07-07
 
 ### Fixed
@@ -286,7 +299,7 @@ This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cro
 - **Confirmation mechanism regression**: Added coverage that Chinese workflow decision gates no longer hard-code `AskUserQuestion` and that recovery output points agents to a platform-neutral confirmation mechanism.
 - **PRD split workflow regression**: Added Chinese and English skill coverage for open-phase PRD split choices, `/comet-open` state initialization, repeated-triage prevention, split completion selection, and minimal resume guidance.
 - **tdd_mode state machine regression**: Added coverage for tdd_mode init defaults (null for full, direct for hotfix), enum validation, build-exit guard, hotfix bypass, and schema validation rejection of invalid values.
-- **Review fix regression**: Added coverage for conditional verification_report preservation on re-verify, branch_status preservation across verify-fail, path traversal rejection on design_doc, command injection rejection on build_command, and design guard enforcement for full workflow without design_doc.
+- **Review fix regression**: Added coverage for conditional verification_report preservation on re-verify, branch_status preservation across verify-fail, path traversal rejection on design_doc, command injection rejection for custom guard commands, and design guard enforcement for full workflow without design_doc.
 - **Context compression regression**: Added coverage for project config defaults, change-level `context_compression` snapshots, environment override during change initialization, beta spec projection generation, and guard rejection when beta projection misses requirement or scenario headings.
 
 ## What's Changed [0.3.6] - 2026-06-02
@@ -532,7 +545,7 @@ This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cro
 
 - **Build decision enforcement**: Build guard and `comet-state.sh transition build-complete` now require `isolation` and `build_mode` before moving from build to verify
 - **Direct mode override**: Full workflows must set `direct_override: true` before using `build_mode: direct`; hotfix/tweak remain allowed by default
-- **Configurable guard commands**: Guard scripts now read `build_command` and `verify_command` from the change `.comet.yaml` or repo-root Comet config before falling back to auto-detected build commands
+- **Configurable guard commands**: Guard scripts now read optional custom guard commands before falling back to auto-detected build commands
 - **Archive diff preview**: Archive sync prints a unified diff before overwriting an existing main spec when it differs from the delta spec
 - **Cross-platform script smoke CI**: Added Ubuntu, macOS, and Windows smoke coverage for Comet shell scripts and portable shell tests
 - **Shell line-ending policy**: Added `.gitattributes` rules to keep shell and Bats scripts on LF endings
@@ -550,7 +563,7 @@ This is the first beta of the 0.4.0 line. Relative to 0.3.9, Comet becomes a cro
 - **Optional field reads under pipefail**: Guard and state scripts now tolerate missing optional YAML fields without exiting early under `set -euo pipefail`
 - **Bash detection fallback**: Shell test helpers now handle failed `bash` probes without crashing on empty `spawnSync` output
 - **Configured command persistence**: `comet-state.sh set` now escapes sed replacement metacharacters so command values containing `&`, `|`, or backslashes are preserved
-- **Optional schema fields**: YAML validation now recognizes `direct_override`, `build_command`, and `verify_command`
+- **Optional schema fields**: YAML validation now recognizes direct-mode override and optional custom guard command fields
 - **Quoted YAML values**: State, guard, and validator scripts now strip only wrapping quotes instead of deleting all quote characters from values
 
 ### Tests

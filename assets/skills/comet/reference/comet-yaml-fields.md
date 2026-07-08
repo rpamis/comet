@@ -2,7 +2,8 @@
 
 Canonical path: `comet/reference/comet-yaml-fields.md`
 
-This file is the field reference for the `.comet.yaml` state file. Consult on demand; not loaded inline with skills.
+This file is the field reference for each change-level `.comet.yaml` state file under `openspec/changes/<name>/`.
+Consult on demand; not loaded inline with skills. Project defaults live in `.comet/config.yaml`.
 
 ## Example
 
@@ -59,8 +60,6 @@ archived: false
 | Field | Meaning |
 |-------|---------|
 | `direct_override` | `true`/`false`. Full workflow must explicitly set to `true` to use `build_mode: direct` |
-| `build_command` | Project build command. Guard runs this first; supports restricted command words/quotes/paths plus `&&` sequential steps; rejects `;`, pipes, bare `&`, `$`, and backticks |
-| `verify_command` | Project verify command. Verify guard runs this first; same restricted command grammar as `build_command`; falls back to build command when unset |
 
 ## State Machine Hard Constraints
 

@@ -101,8 +101,8 @@ Many Comet capabilities have parallels in current industry practice.
   from necessary user choices, Comet's five-phase flow can trigger core Skills automatically while the state machine keeps
   transitions reliable.
 - **How to make a Spec lifecycle resumable** — Comet links OpenSpec change/spec artifacts with Superpowers design and
-  plan documents, then records phase, execution mode, verification result, and archive status in `.comet.yaml`, so an
-  agent can continue after interruption instead of rereading documents and guessing progress.
+  plan documents, then records phase, execution mode, verification result, and archive status in each change's
+  `.comet.yaml`, so an agent can continue after interruption instead of rereading documents and guessing progress.
 - **How to turn doc synchronization from reminders into automation** — Comet scripts handoff, state updates, validation,
   and archive sync, reducing repeated prompts such as "remember to update the design doc" or "remember to archive the
   change."
@@ -483,17 +483,17 @@ Comet uses a decoupled state architecture with separate files
 <details>
 <summary>View State Management</summary>
 
-| File                        | Owner    | Purpose                                             |
-| --------------------------- | -------- | --------------------------------------------------- |
-| `.openspec.yaml`            | OpenSpec | Spec lifecycle, change metadata                     |
-| `.comet.yaml`               | Comet    | Workflow phase, execution mode, verification status |
-| `.comet/run-state.json`     | Engine   | Run identity and execution state (machine-owned)    |
-| `.comet/state-events.jsonl` | Comet    | Append-only state transition audit log              |
+| File                                      | Owner    | Purpose                                             |
+| ----------------------------------------- | -------- | --------------------------------------------------- |
+| `.openspec.yaml`                          | OpenSpec | Spec lifecycle, change metadata                     |
+| `openspec/changes/<name>/.comet.yaml`     | Comet    | Workflow phase, execution mode, verification status |
+| `.comet/run-state.json`                   | Engine   | Run identity and execution state (machine-owned)    |
+| `.comet/state-events.jsonl`               | Comet    | Append-only state transition audit log              |
 
-`.comet.yaml` stores Classic workflow state and only keeps `run_id` as the link to the Engine Run. Machine-owned Engine
-state lives in `.comet/run-state.json` with camelCase fields such as `currentStep`, `status`, and `iteration`. Legacy
-Run fields left in YAML are migrated after compatibility reads, and `skill` is no longer a valid current
-`.comet.yaml` field.
+Each change-level `.comet.yaml` stores Classic workflow state and only keeps `run_id` as the link to the Engine Run.
+Machine-owned Engine state lives in the change's `.comet/run-state.json` with camelCase fields such as `currentStep`,
+`status`, and `iteration`. Legacy Run fields left in YAML are migrated after compatibility reads, and `skill` is no
+longer a valid current `.comet.yaml` field. Project defaults live in `.comet/config.yaml`.
 
 Phase progression is handled consistently by the TypeScript transition table, `comet-state transition`,
 `comet-guard --apply`, and archive commands. Each successful progression appends an audit event to
@@ -505,9 +505,9 @@ breakpoint recovery. Agents can use Comet commands to know which phase the curre
 </details>
 
 <details>
-<summary>View key .comet.yaml fields</summary>
+<summary>View key change .comet.yaml fields</summary>
 
-**Key Fields in `.comet.yaml`:**
+**Key Fields in change `.comet.yaml`:**
 
 ```yaml
 workflow: full                                           # Workflow type: full | tweak | hotfix
@@ -532,15 +532,13 @@ branch_status: pending                                   # Branch handling statu
 verified_at: null                                        # Verification timestamp; null before verification passes
 archived: false                                          # Archived changes are blocked from further mutation
 direct_override: null                                    # Must be true when a full workflow chooses direct build
-build_command: null                                      # Optional build command; may also live in repo-root config
-verify_command: null                                     # Optional verify command; may also live in repo-root config
 handoff_context: null                                    # Design handoff context path written by comet-handoff.mjs
 handoff_hash: null                                       # SHA256 for handoff_context; 64 hex chars when present
 classic_profile: full                                    # Machine-maintained Classic profile
 classic_migration: 1                                     # Machine-maintained migration version
 ```
 
-Current `.comet.yaml` no longer contains `skill`; legacy Run fields in YAML are migrated to `.comet/run-state.json`.
+Current change `.comet.yaml` no longer contains `skill`; legacy Run fields in YAML are migrated to `.comet/run-state.json`.
 
 </details>
 
@@ -666,7 +664,8 @@ manual handoff. Phase advancement itself always happens — this setting only af
 | `true`  | Auto-invoke the next skill after each phase (default)         |
 | `false` | Pause after each phase; user manually triggers the next skill |
 
-Three-layer configuration with precedence: `COMET_AUTO_TRANSITION` env var > `.comet/config.yaml` (project) > `.comet.yaml` (change).
+Three-layer configuration with precedence: `COMET_AUTO_TRANSITION` env var > `.comet/config.yaml` (project) > change
+`.comet.yaml`.
 
 See [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) for configuration details, workflow mapping, and FAQ.
 

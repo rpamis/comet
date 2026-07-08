@@ -12,6 +12,7 @@ import type { ClassicPhase, ClassicState } from './classic-state.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
 import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classic-transitions.js';
 import { classicValidateCommand } from './classic-validate-command.js';
+import { readClassicState } from './classic-store.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -159,13 +160,7 @@ async function readField(changeDir: string, field: string): Promise<string> {
 async function projectConfigValue(field: string, changeDir: string): Promise<string> {
   const changeValue = await readField(changeDir, field);
   if (changeValue && changeValue !== 'null') return changeValue;
-  for (const config of [
-    '.comet/config.yaml',
-    '.comet.yaml',
-    'comet.yaml',
-    '.comet.yml',
-    'comet.yml',
-  ]) {
+  for (const config of ['.comet/config.yaml']) {
     if (!(await exists(config))) continue;
     for (const line of (await fs.readFile(config, 'utf8')).split(/\r?\n/u)) {
       if (new RegExp(`^${field}:`, 'u').test(line)) {
@@ -229,72 +224,6 @@ async function documentLanguageMatchesConfigured(
   return pass();
 }
 
-// Build/verify commands run through the platform's default shell (cmd.exe on
-// Windows, /bin/sh elsewhere) via `shell: true`, so Comet no longer requires a
-// usable bash. Configured commands are pre-validated to reject shell
-// metacharacters before they ever reach the shell.
-function runCommandString(command: string): { status: number; output: string } {
-  if (!command) return { status: 1, output: red('ERROR: build/verify command is empty') };
-  const split = splitCommandChain(command);
-  if (typeof split === 'string') {
-    return {
-      status: 1,
-      output: `${red(`ERROR: build/verify command contains shell metacharacters: ${command}`)}\n${red(
-        split,
-      )}`,
-    };
-  }
-  const output: string[] = [];
-  for (const part of split) {
-    const segment = part.trim();
-    if (!segment) {
-      return { status: 1, output: red('ERROR: build/verify command contains an empty && step') };
-    }
-    const result = spawnSync(segment, { shell: true, encoding: 'utf8', timeout: 300_000 });
-    const combined = `${result.stdout ?? ''}${result.stderr ?? ''}`.replace(/\n+$/u, '');
-    output.push(`${red(`+ ${segment}`)}${combined ? `\n${combined}` : ''}`);
-    if (result.status !== 0) {
-      return { status: result.status ?? 1, output: output.join('\n') };
-    }
-  }
-  return { status: 0, output: output.join('\n') };
-}
-
-function splitCommandChain(command: string): string[] | string {
-  const parts: string[] = [];
-  let current = '';
-  let quote: '"' | "'" | '' = '';
-  for (let i = 0; i < command.length; i += 1) {
-    const c = command[i];
-    if (c === '$' || c === '`') {
-      return 'Allowed: command words, quotes, paths, and && between sequential commands';
-    }
-    if (quote) {
-      current += c;
-      if (c === quote) quote = '';
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      quote = c;
-      current += c;
-      continue;
-    }
-    if (c === '&' && command[i + 1] === '&') {
-      parts.push(current);
-      current = '';
-      i += 1;
-      continue;
-    }
-    if (c === ';' || c === '|' || c === '&') {
-      return 'Allowed: command words, quotes, paths, and && between sequential commands';
-    }
-    current += c;
-  }
-  if (quote) return 'Command has an unmatched quote';
-  parts.push(current);
-  return parts;
-}
-
 function hashFile(file: string): string {
   return createHash('sha256').update(readFileSync(file)).digest('hex');
 }
@@ -339,6 +268,12 @@ async function preflight(changeDir: string, name: string): Promise<void> {
     if (result.stderr)
       process.stderr.write(result.stderr.endsWith('\n') ? result.stderr : `${result.stderr}\n`);
     throw new GuardFailure(red('FATAL: .comet.yaml schema validation failed'));
+  }
+  const projection = await readClassicState(changeDir);
+  if (projection.unknownKeys.length > 0) {
+    throw new GuardFailure(
+      red(`FATAL: .comet.yaml has unknown field(s): ${projection.unknownKeys.join(', ')}`),
+    );
   }
 }
 
@@ -417,10 +352,8 @@ function runInferred(command: string): CommandRun {
   };
 }
 
-async function buildPasses(changeDir: string): Promise<CommandRun> {
+async function buildPasses(): Promise<CommandRun> {
   if (process.env.COMET_SKIP_BUILD === '1') return { status: 0, output: '' };
-  const configured = await projectConfigValue('build_command', changeDir);
-  if (configured) return runCommandString(configured);
   if (
     (await exists('package.json')) &&
     /"build"/u.test(await fs.readFile('package.json', 'utf8'))
@@ -439,11 +372,9 @@ async function buildPasses(changeDir: string): Promise<CommandRun> {
   return { status: 1, output: '' };
 }
 
-async function verificationCommandPasses(changeDir: string): Promise<CommandRun> {
+async function verificationCommandPasses(): Promise<CommandRun> {
   if (process.env.COMET_SKIP_BUILD === '1') return { status: 0, output: '' };
-  const configured = await projectConfigValue('verify_command', changeDir);
-  if (configured) return runCommandString(configured);
-  return buildPasses(changeDir);
+  return buildPasses();
 }
 
 async function tasksAllDone(changeDir: string): Promise<CheckResult> {
@@ -842,7 +773,7 @@ async function guardBuildChecks(
     // Build check runs last — only after all config checks pass — to avoid
     // wasting time on a build that would be rejected by a config failure.
     check('Build passes', async () => {
-      const buildResult = await buildPasses(changeDir);
+      const buildResult = await buildPasses();
       return buildResult.status === 0 ? pass() : fail(buildResult.output);
     }),
   ]);
@@ -854,7 +785,7 @@ async function guardVerifyChecks(output: GuardOutput, changeDir: string): Promis
     // Verification command runs after tasks check — no point running tests
     // if tasks.md is incomplete.
     check('Verification passes', async () => {
-      const verifyResult = await verificationCommandPasses(changeDir);
+      const verifyResult = await verificationCommandPasses();
       return verifyResult.status === 0 ? pass() : fail(verifyResult.output);
     }),
     check('verification_report exists', async () =>

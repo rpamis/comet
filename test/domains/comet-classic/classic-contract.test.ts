@@ -127,20 +127,24 @@ function runScript(
   const env = {
     ...process.env,
     COMET_RUNTIME_CLASSIC_ROOT: path.resolve('assets', 'skills', 'comet', 'runtime', 'classic'),
-    COMET_CLASSIC_SKILL_ROOT: path.resolve(
-      'assets',
-      'skills',
-      'comet',
-      'runtime',
-      'classic',
-    ),
+    COMET_CLASSIC_SKILL_ROOT: path.resolve('assets', 'skills', 'comet', 'runtime', 'classic'),
   };
   const scriptPath = path.join(scripts, name);
   if (executor === 'node') {
-    return spawnSync(process.execPath, [scriptPath, ...args], { cwd, encoding: 'utf8', input, env });
+    return spawnSync(process.execPath, [scriptPath, ...args], {
+      cwd,
+      encoding: 'utf8',
+      input,
+      env,
+    });
   }
   if (!bashCommand) throw new Error('Bash is required for the frozen reference execution');
-  return spawnSync(bashCommand, [toBashPath(scriptPath), ...args], { cwd, encoding: 'utf8', input, env });
+  return spawnSync(bashCommand, [toBashPath(scriptPath), ...args], {
+    cwd,
+    encoding: 'utf8',
+    input,
+    env,
+  });
 }
 
 function normalizeOutput(value: string, root: string): string {
@@ -172,8 +176,8 @@ function normalizeOutput(value: string, root: string): string {
 function legacyProjection(document: Record<string, unknown>): Record<string, unknown> {
   // Strip Run/engine projection keys that only the active TypeScript runtime
   // adds (not part of the 0.3.9 bash contract). All other fields — including
-  // review_mode, build_command, verify_command, direct_override, base_ref —
-  // are 0.3.9-era fields that both frozen and active produce.
+  // review_mode, direct_override, base_ref — are 0.3.9-era fields that both
+  // frozen and active produce.
   const runKeys = new Set([
     'skill',
     'classic_profile',
@@ -195,9 +199,7 @@ function legacyProjection(document: Record<string, unknown>): Record<string, unk
     'language',
     // The active runtime writes these with null defaults during init; the
     // frozen 0.3.9 bash scripts only write them when explicitly set.
-    'build_command',
     'direct_override',
-    'verify_command',
   ]);
   return Object.fromEntries(Object.entries(document).filter(([key]) => !runKeys.has(key)));
 }
@@ -221,7 +223,14 @@ async function observeState(
   await copyScripts(sourceScripts, scripts, variant.names);
 
   const name = `${profile}-change`;
-  const init = runScript(root, scripts, variant.state, ['init', name, profile], undefined, variant.executor);
+  const init = runScript(
+    root,
+    scripts,
+    variant.state,
+    ['init', name, profile],
+    undefined,
+    variant.executor,
+  );
   if (init.status !== 0) {
     return {
       status: init.status,
@@ -263,7 +272,14 @@ async function observeGuard(
   await copyScripts(sourceScripts, scripts, variant.names);
 
   const name = `${profile}-guard`;
-  const init = runScript(root, scripts, variant.state, ['init', name, profile], undefined, variant.executor);
+  const init = runScript(
+    root,
+    scripts,
+    variant.state,
+    ['init', name, profile],
+    undefined,
+    variant.executor,
+  );
   if (init.status !== 0) {
     return {
       status: init.status,
@@ -272,7 +288,14 @@ async function observeGuard(
     };
   }
 
-  const result = runScript(root, scripts, variant.guard, [name, phase], undefined, variant.executor);
+  const result = runScript(
+    root,
+    scripts,
+    variant.guard,
+    [name, phase],
+    undefined,
+    variant.executor,
+  );
   return {
     status: result.status,
     stdout: normalizeOutput(result.stdout, root),

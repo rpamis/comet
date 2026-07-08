@@ -284,15 +284,7 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - Code review has been completed per the `executing-plans` review gate (Section "Execute plan") for the chosen `review_mode`: under `standard` or `thorough`, code review has been requested and CRITICAL review findings fixed or non-CRITICAL acceptance rationale recorded; under `review_mode: off`, the reason for skipping automatic code review has been recorded in a persistent artifact
 - **Phase guard**: Run `node "$COMET_GUARD" <change-name> build --apply`; after all PASS, state advances to `phase: verify`
 
-Guard reads project command configuration first:
-
-```yaml
-build_command: <build command>
-verify_command: <verify command>
-```
-
-Configuration can live in the change `.comet.yaml`, or in repo-root `.comet.yaml` / `comet.yaml` / `.comet.yml` / `comet.yml`.
-Configured commands use a restricted shell grammar: command words, quotes, paths, and `&&` for sequential steps are allowed; `;`, pipes, bare `&`, `$`, and backticks are rejected. Only when no command is configured does guard fall back to `npm run build`, Maven, or Cargo auto-detection. When a command fails, guard prints the command output as evidence for debugging.
+Guard runs the inferred project build check (`npm run build`, Maven, or Cargo when detected). When the inferred command fails, guard prints the command output as evidence for debugging.
 
 Before exit, run guard to auto-transition:
 

@@ -28,8 +28,6 @@ function state(overrides: Partial<ClassicState> = {}): ClassicState {
     verifiedAt: null,
     archived: false,
     directOverride: null,
-    buildCommand: null,
-    verifyCommand: null,
     handoffContext: null,
     handoffHash: null,
     classicProfile: null,

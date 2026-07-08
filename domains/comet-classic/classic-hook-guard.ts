@@ -262,14 +262,7 @@ function isRootMarkdown(relativePath: string): boolean {
 }
 
 function isCometConfig(relativePath: string): boolean {
-  return (
-    relativePath === '.comet.yaml' ||
-    relativePath === 'comet.yaml' ||
-    relativePath === '.comet.yml' ||
-    relativePath === 'comet.yml' ||
-    relativePath.startsWith('.comet/') ||
-    relativePath.includes('/.comet/')
-  );
+  return relativePath.startsWith('.comet/') || relativePath.includes('/.comet/');
 }
 
 function isSuperpowersWorkspace(relativePath: string): boolean {

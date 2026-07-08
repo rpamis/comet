@@ -44,8 +44,6 @@ export interface ClassicState {
   verifiedAt: string | null;
   archived: boolean;
   directOverride: boolean | null;
-  buildCommand: string | null;
-  verifyCommand: string | null;
   handoffContext: string | null;
   handoffHash: string | null;
   classicProfile: ClassicProfile | null;
@@ -81,8 +79,6 @@ export const CLASSIC_WIRE_KEYS = [
   'verified_at',
   'archived',
   'direct_override',
-  'build_command',
-  'verify_command',
   'handoff_context',
   'handoff_hash',
   'classic_profile',
@@ -213,8 +209,6 @@ function classicStateFromDocument(doc: StateDocument): ClassicState | null {
     verifiedAt: nullableString(doc, 'verified_at'),
     archived: booleanValue(doc, 'archived', false)!,
     directOverride: booleanValue(doc, 'direct_override'),
-    buildCommand: nullableString(doc, 'build_command'),
-    verifyCommand: nullableString(doc, 'verify_command'),
     handoffContext: relativePath(doc, 'handoff_context'),
     handoffHash: sha256(doc, 'handoff_hash'),
     classicProfile: enumValue(doc, 'classic_profile', CLASSIC_PROFILES),
@@ -302,8 +296,6 @@ export function classicStateToDocument(state: ClassicState): StateDocument {
     verified_at: state.verifiedAt,
     archived: state.archived,
     direct_override: state.directOverride,
-    build_command: state.buildCommand,
-    verify_command: state.verifyCommand,
     handoff_context: state.handoffContext,
     handoff_hash: state.handoffHash,
     classic_profile: state.classicProfile,

@@ -9,6 +9,7 @@ import type { ClassicState } from './classic-state.js';
 import { appendTrajectory, readTrajectory } from '../../domains/engine/run-store.js';
 import type { RunState } from '../../domains/engine/types.js';
 import { loadRuntimePackage, loadSkillPackage } from '../../domains/skill/load.js';
+import type { SkillPackage } from '../../domains/skill/types.js';
 
 async function directoryExists(directory: string): Promise<boolean> {
   try {
@@ -28,7 +29,234 @@ async function fileExists(file: string): Promise<boolean> {
   }
 }
 
-async function classicRuntimeRoot(): Promise<string> {
+function embeddedClassicRuntimePackage(root: string): SkillPackage {
+  return {
+    root,
+    packageKind: 'runtime',
+    definition: {
+      apiVersion: 'comet/v1alpha1',
+      kind: 'Skill',
+      metadata: {
+        name: 'comet-classic',
+        version: '1',
+        description:
+          'Internal compatibility orchestration for classic Comet full, hotfix, and tweak workflows',
+      },
+      goal: {
+        statement:
+          'Advance or restore a classic Comet Run without changing the user command surface',
+        inputs: [
+          {
+            name: 'classic-state',
+            description: 'Validated ClassicState consistent with the Run projection',
+            required: true,
+          },
+          {
+            name: 'evidence',
+            description: 'Structured evidence produced by the Classic Evidence collector',
+            required: true,
+          },
+        ],
+        outputs: [
+          {
+            name: 'run-state',
+            description: 'Atomically synchronized Classic and Run state',
+            required: true,
+          },
+        ],
+        success: [
+          'Legacy fields and Run fields remain consistent',
+          'Every step invokes only a declared public Comet Skill',
+          'The completed state passes its completion eval',
+        ],
+      },
+      orchestration: {
+        mode: 'deterministic',
+        entry: 'full.open',
+        steps: [
+          {
+            id: 'full.open',
+            action: { type: 'invoke_skill', ref: 'comet-open' },
+            next: 'full.design.handoff',
+          },
+          {
+            id: 'full.design.handoff',
+            action: { type: 'invoke_skill', ref: 'comet-design' },
+            next: 'full.design.document',
+          },
+          {
+            id: 'full.design.document',
+            action: { type: 'invoke_skill', ref: 'comet-design' },
+            next: 'full.build.plan',
+          },
+          {
+            id: 'full.build.plan',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'full.build.plan-ready',
+          },
+          {
+            id: 'full.build.plan-ready',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'full.build.configure',
+          },
+          {
+            id: 'full.build.configure',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'full.build.execute',
+          },
+          {
+            id: 'full.build.execute',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'full.build.complete',
+          },
+          {
+            id: 'full.build.complete',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'full.verify.run',
+          },
+          {
+            id: 'full.build.fix',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'full.build.execute',
+          },
+          {
+            id: 'full.verify.run',
+            action: { type: 'invoke_skill', ref: 'comet-verify' },
+            next: 'full.verify.branch',
+          },
+          {
+            id: 'full.verify.branch',
+            action: { type: 'invoke_skill', ref: 'comet-verify' },
+            next: 'full.archive.confirm',
+          },
+          {
+            id: 'full.archive.confirm',
+            action: { type: 'invoke_skill', ref: 'comet-archive' },
+            next: 'full.archive.execute',
+          },
+          {
+            id: 'full.archive.execute',
+            action: { type: 'invoke_skill', ref: 'comet-archive' },
+            next: 'completed',
+          },
+          {
+            id: 'hotfix.open',
+            action: { type: 'invoke_skill', ref: 'comet-hotfix' },
+            next: 'hotfix.build.execute',
+          },
+          {
+            id: 'hotfix.build.execute',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'hotfix.build.complete',
+          },
+          {
+            id: 'hotfix.build.complete',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'hotfix.verify.run',
+          },
+          {
+            id: 'hotfix.verify.run',
+            action: { type: 'invoke_skill', ref: 'comet-verify' },
+            next: 'hotfix.verify.branch',
+          },
+          {
+            id: 'hotfix.verify.branch',
+            action: { type: 'invoke_skill', ref: 'comet-verify' },
+            next: 'hotfix.archive.confirm',
+          },
+          {
+            id: 'hotfix.archive.confirm',
+            action: { type: 'invoke_skill', ref: 'comet-archive' },
+            next: 'hotfix.archive.execute',
+          },
+          {
+            id: 'hotfix.archive.execute',
+            action: { type: 'invoke_skill', ref: 'comet-archive' },
+            next: 'completed',
+          },
+          {
+            id: 'tweak.open',
+            action: { type: 'invoke_skill', ref: 'comet-tweak' },
+            next: 'tweak.build.execute',
+          },
+          {
+            id: 'tweak.build.execute',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'tweak.build.complete',
+          },
+          {
+            id: 'tweak.build.complete',
+            action: { type: 'invoke_skill', ref: 'comet-build' },
+            next: 'tweak.verify.run',
+          },
+          {
+            id: 'tweak.verify.run',
+            action: { type: 'invoke_skill', ref: 'comet-verify' },
+            next: 'tweak.verify.branch',
+          },
+          {
+            id: 'tweak.verify.branch',
+            action: { type: 'invoke_skill', ref: 'comet-verify' },
+            next: 'tweak.archive.confirm',
+          },
+          {
+            id: 'tweak.archive.confirm',
+            action: { type: 'invoke_skill', ref: 'comet-archive' },
+            next: 'tweak.archive.execute',
+          },
+          {
+            id: 'tweak.archive.execute',
+            action: { type: 'invoke_skill', ref: 'comet-archive' },
+            next: 'completed',
+          },
+          {
+            id: 'completed',
+            action: { type: 'checkpoint' },
+            completionEvals: ['classic-completed'],
+          },
+        ],
+      },
+      skills: [
+        { id: 'comet-open' },
+        { id: 'comet-design' },
+        { id: 'comet-build' },
+        { id: 'comet-verify' },
+        { id: 'comet-archive' },
+        { id: 'comet-hotfix' },
+        { id: 'comet-tweak' },
+      ],
+      agents: [],
+      tools: [],
+    },
+    guardrails: {
+      allowedSkills: [
+        'comet-open',
+        'comet-design',
+        'comet-build',
+        'comet-verify',
+        'comet-archive',
+        'comet-hotfix',
+        'comet-tweak',
+      ],
+      allowedAgents: [],
+      allowedTools: [],
+      maxIterations: 500,
+      maxRetriesPerAction: 3,
+      confirmationRequiredFor: [],
+    },
+    evals: [
+      {
+        id: 'classic-completed',
+        scope: 'completion',
+        type: 'state_equals',
+        field: 'status',
+        equals: 'completed',
+      },
+    ],
+  };
+}
+
+async function classicRuntimeRoot(): Promise<string | null> {
   const runtimeDirectory = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
     process.env.COMET_RUNTIME_CLASSIC_ROOT,
@@ -45,7 +273,7 @@ async function classicRuntimeRoot(): Promise<string> {
   for (const candidate of candidates) {
     if (await directoryExists(candidate)) return candidate;
   }
-  throw new Error('Comet classic runtime package is not installed');
+  return null;
 }
 
 async function loadClassicRuntimePackage(root: string) {
@@ -58,7 +286,9 @@ async function loadClassicRuntimePackage(root: string) {
 export async function ensureClassicRuntimeRun(changeDir: string): Promise<ClassicRunContext> {
   const root = await classicRuntimeRoot();
   return ensureClassicRun(changeDir, {
-    skillPackage: await loadClassicRuntimePackage(root),
+    skillPackage: root
+      ? await loadClassicRuntimePackage(root)
+      : embeddedClassicRuntimePackage(path.dirname(fileURLToPath(import.meta.url))),
   });
 }
 

@@ -90,7 +90,7 @@ Comet的许多能力都能够在海内外大厂实践中找到相似之处，想
 
 - **如何稳定触发嵌套 Skill** — 不是让 Agent 依靠文档描述做了“看起来像触发了 Skill”的操作（比如根据 Skill 描述写了文件），而是真正触发 Skill（核心特征：Claude Code CLI 上有 Skill 触发的打印）。Comet 中会触发大量来自 OpenSpec 和 Superpowers 的能力，稳定触发的 Prompt 经过大规模实践打磨
 - **如何让组合 Skill 多阶段自动流转** — 不是靠人工介入。Comet 的 5 阶段流程，除必要的用户选择项外，核心流程能够自动进行 Skill 触发，同时状态机机制也能保障状态扭转的可靠性。
-- **如何把 Spec 生命周期做成可恢复流程** — Comet 会把 OpenSpec 的 change/spec 制品与 Superpowers 的设计、计划文档关联起来，并通过 `.comet.yaml` 记录阶段、执行模式、验证结果和归档状态，让 Agent 中断后能够继续，而不是重新翻文档猜进度。
+- **如何把 Spec 生命周期做成可恢复流程** — Comet 会把 OpenSpec 的 change/spec 制品与 Superpowers 的设计、计划文档关联起来，并通过每个 change 的 `.comet.yaml` 记录阶段、执行模式、验证结果和归档状态，让 Agent 中断后能够继续，而不是重新翻文档猜进度。
 - **如何把文档同步从“用户提醒”变成自动化** — Comet 将 handoff、状态更新、校验和归档同步放进脚本化流程，减少“记得更新 design doc”“记得同步 spec”“记得归档 change”这类反复提示。
 - **如何设计 Agent 可执行的守护条件** — Comet 的阶段退出不是简单相信 Agent 说“完成了”，而是通过 `comet-guard.mjs`、`comet-yaml-validate.mjs`、`comet-state.mjs` 等脚本检查任务、状态字段、验证证据和归档条件，满足条件后才允许推进。
 - **如何做跨平台 Skill 分发和安装** — Comet 支持多种 AI 编码平台、项目级/全局安装、中文/英文 Skill 选择，以及平台差异化目录（例如 Antigravity 的项目级和全局路径不同），可以作为 CLI 安装器和 Skill 打包结构的参考。
@@ -450,15 +450,15 @@ Comet 使用解耦状态架构，文件独立管理
 <details>
 <summary>查看状态管理</summary>
 
-| 文件                        | 归属     | 用途                           |
-| --------------------------- | -------- | ------------------------------ |
-| `.openspec.yaml`            | OpenSpec | Spec 生命周期、变更元数据      |
-| `.comet.yaml`               | Comet    | 工作流阶段、执行模式、验证状态 |
-| `.comet/run-state.json`     | Engine   | Run 身份和执行状态（机器所有） |
-| `.comet/state-events.jsonl` | Comet    | 追加式状态转移审计日志         |
+| 文件                                      | 归属     | 用途                           |
+| ----------------------------------------- | -------- | ------------------------------ |
+| `.openspec.yaml`                          | OpenSpec | Spec 生命周期、变更元数据      |
+| `openspec/changes/<name>/.comet.yaml`     | Comet    | 工作流阶段、执行模式、验证状态 |
+| `.comet/run-state.json`                   | Engine   | Run 身份和执行状态（机器所有） |
+| `.comet/state-events.jsonl`               | Comet    | 追加式状态转移审计日志         |
 
-`.comet.yaml` 保存 Classic 工作流状态，只保留 `run_id` 指向 Engine Run。Engine 的机器状态放在
-`.comet/run-state.json`，使用 `currentStep`、`status`、`iteration` 等 camelCase 字段；旧 YAML 中残留的 Run字段会在兼容读取后迁移出去，`skill` 不再是当前 `.comet.yaml` 的合法字段。
+每个 change 目录下的 `.comet.yaml` 保存 Classic 工作流状态，只保留 `run_id` 指向 Engine Run。Engine 的机器状态放在
+该 change 的 `.comet/run-state.json`，使用 `currentStep`、`status`、`iteration` 等 camelCase 字段；旧 YAML 中残留的 Run 字段会在兼容读取后迁移出去，`skill` 不再是当前 `.comet.yaml` 的合法字段。项目级默认配置只放在 `.comet/config.yaml`。
 
 阶段推进由 TypeScript transition table、`comet-state transition`、`comet-guard --apply` 和归档命令统一处理。
 每次成功推进都会向 `.comet/state-events.jsonl` 追加一条审计事件，记录来源、前后状态和实际字段变化。
@@ -468,9 +468,9 @@ Comet 使用解耦状态架构，文件独立管理
 </details>
 
 <details>
-<summary>查看 .comet.yaml 关键字段</summary>
+<summary>查看 change .comet.yaml 关键字段</summary>
 
-**`.comet.yaml` 关键字段：**
+**change `.comet.yaml` 关键字段：**
 
 ```yaml
 workflow: full                                           # 工作流类型：full | tweak | hotfix
@@ -495,8 +495,6 @@ branch_status: pending                                   # 分支处理状态：
 verified_at: null                                        # 验证通过时间；验证前为 null
 archived: false                                          # 是否已归档；归档后阻止继续修改
 direct_override: null                                    # full workflow 选择 direct build 时必须显式 true
-build_command: null                                      # 可选构建命令；也可写在仓库根配置
-verify_command: null                                     # 可选验证命令；也可写在仓库根配置
 handoff_context: null                                    # comet-handoff.mjs 写入的设计交接上下文路径
 handoff_hash: null                                       # handoff_context 对应 SHA256；存在时必须是 64 位 hex
 classic_profile: full                                    # 脚本维护的 Classic profile（机器字段）
@@ -623,7 +621,7 @@ Benchmark 核心结论：
 | `true`  | 阶段完成后自动调用下一个 Skill（默认）   |
 | `false` | 阶段完成后暂停，用户手动触发下一个 Skill |
 
-三层配置与优先级：`COMET_AUTO_TRANSITION` 环境变量 > `.comet/config.yaml`（项目级）> `.comet.yaml`（change 级）。
+三层配置与优先级：`COMET_AUTO_TRANSITION` 环境变量 > `.comet/config.yaml`（项目级）> change `.comet.yaml`。
 
 详见 [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) 获取配置详情、工作流映射和常见问题。
 

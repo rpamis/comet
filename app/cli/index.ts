@@ -51,7 +51,7 @@ const collect = (value: string, previous: string[]): string[] => [...previous, v
 program
   .name('comet')
   .description('Agent Skill Harness Phase-Guarded Automation From Idea To Archive')
-  .version(getCurrentVersion());
+  .version(getCurrentVersion(), '-v, --version', 'output the current version');
 
 program
   .command('init [path]')

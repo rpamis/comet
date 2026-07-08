@@ -280,8 +280,6 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
     verifiedAt: nullableRecordString(record, 'verified_at'),
     archived: nullableRecordBoolean(record, 'archived') ?? false,
     directOverride: nullableRecordBoolean(record, 'direct_override'),
-    buildCommand: nullableRecordString(record, 'build_command'),
-    verifyCommand: nullableRecordString(record, 'verify_command'),
     handoffContext: nullableRecordString(record, 'handoff_context'),
     handoffHash: nullableRecordString(record, 'handoff_hash'),
     classicProfile: enumRecordValue(record, 'classic_profile', PROFILES, workflow),
@@ -495,7 +493,7 @@ async function init(output: CommandOutput, name: string, workflow: string): Prom
     archived: false,
   });
   await atomicWrite(file, document.toString());
-  output.stderr.push(green(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
+  output.stdout.push(green(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
 }
 
 async function requirePhase(name: string, expected: string): Promise<void> {
