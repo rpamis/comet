@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Doctor scope diagnostics**: `comet doctor` now reports auto-scope behavior, Node/platform environment details, and a non-alarming project-scope note when a global Comet install is available but the current project has no local Skill copy, so users can distinguish an optional project install from a broken setup.
 - **PowerShell Classic initialization**: `comet-state.mjs init` now writes its successful initialization message to stdout instead of stderr, so Windows PowerShell no longer reports a successful `.comet.yaml` creation as a `NativeCommandError` ([#167](https://github.com/rpamis/comet/issues/167)).
 - **Version flag alias**: `comet -v` now works as a short alias for `comet --version`, matching common CLI expectations on Windows and other shells ([#167](https://github.com/rpamis/comet/issues/167)).
 - **Classic runtime fallback**: Classic phase scripts now keep an embedded runtime package fallback, so `comet-guard.mjs`, handoff, and archive flows continue to run even when a platform installation is missing the internal `runtime/classic` asset files ([#168](https://github.com/rpamis/comet/issues/168)).

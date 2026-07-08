@@ -7,6 +7,21 @@ import { doctorCommand } from '../../app/commands/doctor.js';
 
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
+async function installManagedCometSkills(baseDir: string): Promise<void> {
+  const manifest = JSON.parse(
+    await fs.readFile(path.resolve('assets', 'manifest.json'), 'utf8'),
+  ) as {
+    skills: string[];
+    internalSkills?: string[];
+  };
+  const managedPaths = [...new Set([...manifest.skills, ...(manifest.internalSkills ?? [])])];
+  for (const relPath of managedPaths) {
+    const target = path.join(baseDir, '.claude', 'skills', ...relPath.split('/'));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, `${relPath}\n`);
+  }
+}
+
 function state(cwd: string, ...args: string[]) {
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (args[0] === 'set' && args[2] === 'phase') {
@@ -70,6 +85,32 @@ describe('doctor command', () => {
     }
 
     expect(output).toContain('Comet CLI: installed (');
+  });
+
+  it('explains auto scope and treats global installs as available when project scope is empty', async () => {
+    const fakeHome = path.join(tmpDir, 'home');
+    await installManagedCometSkills(fakeHome);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output = '';
+    try {
+      await doctorCommand(tmpDir, { homeDir: fakeHome });
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(output).toContain(
+      'Scope: auto checks project scope first, then global scope when it is different',
+    );
+    expect(output).toContain('skills: Claude Code (global): complete');
+    expect(output).toContain(
+      'Project scope: no project-local Comet skills installed; global scope is available',
+    );
+    expect(output).toContain(
+      'run: comet init --scope project only if this project needs its own copy',
+    );
+    expect(output).not.toContain('skills: Claude Code (project): missing');
   });
 
   it('does not report non-Comet skill directories as missing Comet installs in auto scope', async () => {
@@ -159,7 +200,9 @@ describe('doctor command', () => {
       log.mockRestore();
     }
     const payload = JSON.parse(json);
-    const cometYaml = payload.results.find((item: { check: string }) => item.check === '.comet.yaml: demo');
+    const cometYaml = payload.results.find(
+      (item: { check: string }) => item.check === '.comet.yaml: demo',
+    );
 
     expect(cometYaml.message).toContain('step: full.open');
     expect(cometYaml.message).toContain('mode: engine-projection');
@@ -202,8 +245,6 @@ describe('doctor command', () => {
     expect(output).toContain(
       '.comet.yaml: top-level-invalid: Invalid Classic state: unknown field(s): unknown_root_field',
     );
-    expect(output).toContain(
-      'next: top-level-invalid: inspect .comet.yaml and rerun comet doctor',
-    );
+    expect(output).toContain('next: top-level-invalid: inspect .comet.yaml and rerun comet doctor');
   });
 });
