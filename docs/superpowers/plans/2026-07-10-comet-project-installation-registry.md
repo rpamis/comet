@@ -902,7 +902,7 @@ git commit -m "feat: record project installs during init"
   - `updateCommand(..., { allProjects: true, json: true })` emits `{ mode: 'all-projects', registry, projects }`.
   - Successful project updates upsert registry entries with source `update`.
 
-- [ ] **Step 1: Write failing all-projects update tests**
+- [x] **Step 1: Write failing all-projects update tests**
 
 In `test/app/update.test.ts`, add imports:
 
@@ -979,7 +979,7 @@ it('keeps JSON update current-project by default even when registry has projects
 });
 ```
 
-- [ ] **Step 2: Run focused update tests and confirm failure**
+- [x] **Step 2: Run focused update tests and confirm failure**
 
 Run:
 
@@ -994,7 +994,7 @@ FAIL test/app/update.test.ts
 Object literal may only specify known properties, and 'allProjects' does not exist
 ```
 
-- [ ] **Step 3: Add update CLI options**
+- [x] **Step 3: Add update CLI options**
 
 Modify `app/cli/index.ts` update command:
 
@@ -1005,7 +1005,7 @@ Modify `app/cli/index.ts` update command:
 
 Place them before `.addOption(new Option('--skip-npm', ...))`.
 
-- [ ] **Step 4: Refactor update into a single-project runner**
+- [x] **Step 4: Refactor update into a single-project runner**
 
 In `app/commands/update.ts`, extend options:
 
@@ -1236,7 +1236,7 @@ Then reduce the existing current-project body of `updateCommand()` to call this 
 
 When implementing, keep the old no-target JSON shape exactly. If the helper makes that awkward, create `emptySingleProjectUpdateResult()` and serialize it to the old shape.
 
-- [ ] **Step 5: Add all-projects orchestration in update**
+- [x] **Step 5: Add all-projects orchestration in update**
 
 Add imports:
 
@@ -1395,7 +1395,7 @@ At the top of `updateCommand()` after computing `projectPath`, call:
 
 Do not pass `--scope global` into `updateAllIndexedProjects`; Task 2 helper rejects that combination before execution.
 
-- [ ] **Step 6: Run focused update tests**
+- [x] **Step 6: Run focused update tests**
 
 Run:
 
@@ -1410,7 +1410,7 @@ PASS test/app/project-scope-selection.test.ts
 PASS test/app/update.test.ts
 ```
 
-- [ ] **Step 7: Commit update integration**
+- [x] **Step 7: Commit update integration**
 
 ```bash
 git add app/cli/index.ts app/commands/update.ts app/commands/i18n.ts test/app/update.test.ts
