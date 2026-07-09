@@ -1436,7 +1436,7 @@ git commit -m "feat: update all indexed projects"
   - `uninstallCommand(..., { allProjects: true, force: true, json: true })` emits `{ mode: 'all-projects', registry, projects }`.
   - All-projects uninstall removes registry entries when no project-scope targets remain.
 
-- [ ] **Step 1: Write failing all-projects uninstall tests**
+- [x] **Step 1: Write failing all-projects uninstall tests**
 
 In `test/app/uninstall.test.ts`, add imports:
 
@@ -1525,7 +1525,7 @@ it('keeps JSON uninstall current-project by default when registry has projects',
 });
 ```
 
-- [ ] **Step 2: Run focused uninstall tests and confirm failure**
+- [x] **Step 2: Run focused uninstall tests and confirm failure**
 
 Run:
 
@@ -1540,7 +1540,7 @@ FAIL test/app/uninstall.test.ts
 Object literal may only specify known properties, and 'allProjects' does not exist
 ```
 
-- [ ] **Step 3: Add uninstall CLI options**
+- [x] **Step 3: Add uninstall CLI options**
 
 Modify `app/cli/index.ts` uninstall command:
 
@@ -1551,7 +1551,7 @@ Modify `app/cli/index.ts` uninstall command:
 
 Place them before `.option('--force', ...)`.
 
-- [ ] **Step 4: Extract single-project uninstall helper**
+- [x] **Step 4: Extract single-project uninstall helper**
 
 In `app/commands/uninstall.ts`, extend options:
 
@@ -1702,7 +1702,7 @@ async function uninstallSingleProject(
 
 Then make current-project `uninstallCommand()` call this helper and serialize the exact old JSON shape.
 
-- [ ] **Step 5: Add all-projects uninstall orchestration**
+- [x] **Step 5: Add all-projects uninstall orchestration**
 
 Add imports:
 
@@ -1857,7 +1857,7 @@ At the top of `uninstallCommand()`:
   }
 ```
 
-- [ ] **Step 6: Run focused uninstall tests**
+- [x] **Step 6: Run focused uninstall tests**
 
 Run:
 
@@ -1872,7 +1872,7 @@ PASS test/app/project-scope-selection.test.ts
 PASS test/app/uninstall.test.ts
 ```
 
-- [ ] **Step 7: Commit uninstall integration**
+- [x] **Step 7: Commit uninstall integration**
 
 ```bash
 git add app/cli/index.ts app/commands/uninstall.ts test/app/uninstall.test.ts
