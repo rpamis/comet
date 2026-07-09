@@ -84,7 +84,7 @@
   - `readProjectRegistry({ strict: true })` throwing `ProjectRegistryError` on corrupt registry.
   - `upsertProjectInstallation()` rebuilding a corrupt single-project registry from the current project only.
 
-- [ ] **Step 1: Write failing registry tests**
+- [x] **Step 1: Write failing registry tests**
 
 Add `test/platform/project-registry.test.ts`:
 
@@ -233,7 +233,7 @@ describe('project installation registry', () => {
 });
 ```
 
-- [ ] **Step 2: Run the registry test and confirm it fails**
+- [x] **Step 2: Run the registry test and confirm it fails**
 
 Run:
 
@@ -248,7 +248,7 @@ FAIL test/platform/project-registry.test.ts
 Cannot find module '../../platform/install/project-registry.js'
 ```
 
-- [ ] **Step 3: Implement the registry module**
+- [x] **Step 3: Implement the registry module**
 
 Create `platform/install/project-registry.ts`:
 
@@ -510,7 +510,7 @@ export async function removeProjectInstallation(
 }
 ```
 
-- [ ] **Step 4: Run registry tests and fix only local issues**
+- [x] **Step 4: Run registry tests and fix only local issues**
 
 Run:
 
@@ -524,7 +524,7 @@ Expected:
 PASS test/platform/project-registry.test.ts
 ```
 
-- [ ] **Step 5: Commit registry module**
+- [x] **Step 5: Commit registry module**
 
 ```bash
 git add platform/install/project-registry.ts test/platform/project-registry.test.ts
