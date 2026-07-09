@@ -553,7 +553,7 @@ git commit -m "feat: add project installation registry"
   - `resolveProjectScopeMode()` returning `current-project` for JSON mode unless `allProjects` is true.
   - Interactive choices listing all projects first so it is the default selection.
 
-- [ ] **Step 1: Write failing helper tests**
+- [x] **Step 1: Write failing helper tests**
 
 Add `test/app/project-scope-selection.test.ts`:
 
@@ -625,7 +625,7 @@ describe('project scope selection', () => {
 });
 ```
 
-- [ ] **Step 2: Run the helper test and confirm it fails**
+- [x] **Step 2: Run the helper test and confirm it fails**
 
 Run:
 
@@ -640,7 +640,7 @@ FAIL test/app/project-scope-selection.test.ts
 Cannot find module '../../app/commands/project-scope-selection.js'
 ```
 
-- [ ] **Step 3: Implement the selection helper**
+- [x] **Step 3: Implement the selection helper**
 
 Create `app/commands/project-scope-selection.ts`:
 
@@ -694,7 +694,7 @@ export async function resolveProjectScopeMode(
 }
 ```
 
-- [ ] **Step 4: Run helper tests and fix only local issues**
+- [x] **Step 4: Run helper tests and fix only local issues**
 
 Run:
 
@@ -708,7 +708,7 @@ Expected:
 PASS test/app/project-scope-selection.test.ts
 ```
 
-- [ ] **Step 5: Commit selection helper**
+- [x] **Step 5: Commit selection helper**
 
 ```bash
 git add app/commands/project-scope-selection.ts test/app/project-scope-selection.test.ts
