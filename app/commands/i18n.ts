@@ -74,6 +74,9 @@ export type TranslationKey =
   | 'summaryScope'
   | 'summaryLanguage'
   | 'updateComplete'
+  | 'updateAllProjectsPrompt'
+  | 'updateAllProjectsYes'
+  | 'updateAllProjectsNo'
   | 'configMerged'
   | 'cancelled'
   | 'installMode'
@@ -157,6 +160,9 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     summaryScope: 'scope:',
     summaryLanguage: 'language:',
     updateComplete: 'Update complete.',
+    updateAllProjectsPrompt: 'Proceed with updating all indexed projects?',
+    updateAllProjectsYes: 'Yes, update all indexed projects',
+    updateAllProjectsNo: 'No, cancel',
     configMerged:
       'Project config merged (.comet/config.yaml): preserved your values, added any missing fields',
     cancelled: 'Cancelled.',
@@ -240,6 +246,9 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     summaryScope: '范围：',
     summaryLanguage: '语言：',
     updateComplete: '更新完成。',
+    updateAllProjectsPrompt: '继续更新所有已索引项目？',
+    updateAllProjectsYes: '是，更新所有已索引项目',
+    updateAllProjectsNo: '否，取消',
     configMerged: '项目配置已合并 (.comet/config.yaml)：已保留你的设置，补齐缺失字段',
     cancelled: '已取消。',
     installMode: '安装模式：',

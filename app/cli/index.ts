@@ -134,6 +134,8 @@ program
   .option('--json', 'Output as JSON')
   .addOption(new Option('--language <lang>', 'Language for skills').choices(['en', 'zh']))
   .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
+  .option('--all-projects', 'Update all indexed project-scope Comet installs')
+  .option('--current-project', 'Update only the current project')
   .addOption(new Option('--skip-npm', 'Skip npm package self-update').hideHelp())
   .action(async (targetPath = '.', options) => {
     await updateCommand(targetPath, options);

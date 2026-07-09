@@ -13,6 +13,10 @@ import {
   formatSkillUpdateCommand,
   updateCommand,
 } from '../../app/commands/update.js';
+import {
+  getProjectRegistryPath,
+  upsertProjectInstallation,
+} from '../../platform/install/project-registry.js';
 
 // Mock the interactive select prompt so tests don't hang on CI (no TTY).
 vi.mock('@inquirer/prompts', () => ({
@@ -221,6 +225,8 @@ describe('update command helpers', () => {
       'utf-8',
     );
 
+    const fakeHome = path.join(tmpDir, 'fake-home-print-command');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let output = '';
     try {
@@ -228,6 +234,7 @@ describe('update command helpers', () => {
       output = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
+      homedirSpy.mockRestore();
     }
 
     expect(output).toContain('$ copy assets/skills-zh -> .claude/skills/ (project)');
@@ -241,6 +248,8 @@ describe('update command helpers', () => {
       'utf-8',
     );
 
+    const fakeHome = path.join(tmpDir, 'fake-home-json');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json = '';
     try {
@@ -248,6 +257,7 @@ describe('update command helpers', () => {
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
+      homedirSpy.mockRestore();
     }
 
     const result = JSON.parse(json);
@@ -261,7 +271,171 @@ describe('update command helpers', () => {
     });
   });
 
+  it('updates all indexed project-scope installs when --all-projects is explicit in JSON mode', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    const projectA = path.join(tmpDir, 'project-a');
+    const projectB = path.join(tmpDir, 'project-b');
+    await fs.mkdir(fakeHome, { recursive: true });
+
+    for (const project of [projectA, projectB]) {
+      await fs.mkdir(path.join(project, '.claude', 'skills', 'comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(project, '.claude', 'skills', 'comet', 'SKILL.md'),
+        '# Comet',
+        'utf-8',
+      );
+      await upsertProjectInstallation(project, [{ platform: 'claude', language: 'en' }], 'init', {
+        homeDir: fakeHome,
+      });
+    }
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json = '';
+    try {
+      await updateCommand(projectA, { json: true, skipNpm: true, allProjects: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.mode).toBe('all-projects');
+    expect(result.registry.projectsFound).toBe(2);
+    expect(
+      result.projects.map((project: { projectPath: string }) => project.projectPath).sort(),
+    ).toEqual([path.resolve(projectA), path.resolve(projectB)].sort());
+    expect(
+      result.projects.every((project: { status: string }) => project.status === 'updated'),
+    ).toBe(true);
+
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8')) as {
+      projects: Array<{ lastSource: string }>;
+    };
+    expect(registry.projects.every((project) => project.lastSource === 'update')).toBe(true);
+  });
+
+  it('removes stale indexed projects that no longer have project-scope installs during all-projects update', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-stale');
+    const staleProject = path.join(tmpDir, 'stale-project');
+    await fs.mkdir(staleProject, { recursive: true });
+    await upsertProjectInstallation(
+      staleProject,
+      [{ platform: 'claude', language: 'en' }],
+      'init',
+      {
+        homeDir: fakeHome,
+      },
+    );
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json = '';
+    try {
+      await updateCommand(staleProject, { json: true, skipNpm: true, allProjects: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.mode).toBe('all-projects');
+    expect(result.registry).toMatchObject({ projectsFound: 1, staleRemoved: 1 });
+    expect(result.projects).toEqual([
+      {
+        projectPath: path.resolve(staleProject),
+        status: 'skipped',
+        reason: 'no project-scope Comet install detected',
+        targets: [],
+      },
+    ]);
+
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toHaveLength(0);
+  });
+
+  it('rejects --all-projects with --scope global during update', async () => {
+    await expect(
+      updateCommand(tmpDir, { json: true, skipNpm: true, allProjects: true, scope: 'global' }),
+    ).rejects.toThrow('--all-projects cannot be combined with --scope global');
+  });
+
+  it('rejects --all-projects with --current-project during update', async () => {
+    await expect(
+      updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        allProjects: true,
+        currentProject: true,
+      }),
+    ).rejects.toThrow('--all-projects cannot be combined with --current-project');
+  });
+
+  it('keeps JSON update current-project by default even when registry has projects', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-current');
+    const projectA = path.join(tmpDir, 'project-current');
+    await fs.mkdir(path.join(projectA, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectA, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Comet',
+      'utf-8',
+    );
+    await upsertProjectInstallation(projectA, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json = '';
+    try {
+      await updateCommand(projectA, { json: true, skipNpm: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.mode).toBeUndefined();
+    expect(result.skills.targets).toHaveLength(1);
+  });
+
+  it('refreshes the project registry after a successful current-project update', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-current-refresh');
+    const projectA = path.join(tmpDir, 'project-current-refresh');
+    await fs.mkdir(path.join(projectA, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectA, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Comet',
+      'utf-8',
+    );
+    await upsertProjectInstallation(projectA, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(projectA, { json: true, skipNpm: true });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8')) as {
+      projects: Array<{ lastSource: string }>;
+    };
+    expect(registry.projects).toHaveLength(1);
+    expect(registry.projects[0].lastSource).toBe('update');
+  });
+
   it('returns stable JSON summary when no installed targets are found', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-instructions');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json = '';
     try {
@@ -269,6 +443,7 @@ describe('update command helpers', () => {
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
+      homedirSpy.mockRestore();
     }
 
     const result = JSON.parse(json);
@@ -338,6 +513,8 @@ describe('update command helpers', () => {
     await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), '# User\n\nKeep this.\n', 'utf-8');
     await fs.writeFile(path.join(tmpDir, 'CLAUDE.md'), '# User\n\nAlso keep this.\n', 'utf-8');
 
+    const fakeHome = path.join(tmpDir, 'fake-home-instructions');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json = '';
     try {
@@ -345,6 +522,7 @@ describe('update command helpers', () => {
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
+      homedirSpy.mockRestore();
     }
 
     const result = JSON.parse(json);
@@ -368,11 +546,14 @@ describe('update command helpers', () => {
     await fs.mkdir(path.join(tmpDir, '.codegraph'), { recursive: true });
     await fs.writeFile(path.join(tmpDir, '.codegraph', 'codegraph.db'), '');
 
+    const fakeHome = path.join(tmpDir, 'fake-home-codegraph-index');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       await updateCommand(tmpDir, { skipNpm: true });
     } finally {
       log.mockRestore();
+      homedirSpy.mockRestore();
     }
 
     expect(mockedSelect).not.toHaveBeenCalledWith(
