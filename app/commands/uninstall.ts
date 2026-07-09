@@ -209,6 +209,24 @@ async function uninstallSingleProject(
   };
 }
 
+async function refreshRegistryAfterProjectUninstall(
+  result: SingleProjectUninstallResult | null,
+): Promise<void> {
+  if (!result?.targets.some((target) => target.scope === 'project')) return;
+
+  const remaining = await detectInstalledCometTargets(result.projectPath, { scopes: ['project'] });
+  if (remaining.length === 0) {
+    await removeProjectInstallation(result.projectPath);
+    return;
+  }
+
+  await upsertProjectInstallation(
+    result.projectPath,
+    remaining.map((target) => ({ platform: target.platform.id, language: target.language })),
+    'repair',
+  );
+}
+
 async function uninstallAllIndexedProjects(
   options: UninstallOptions,
   log: (message: string) => void,
@@ -273,16 +291,7 @@ async function uninstallAllIndexedProjects(
         log,
       );
 
-      const remaining = await detectInstalledCometTargets(projectPath, { scopes: ['project'] });
-      if (remaining.length === 0) {
-        await removeProjectInstallation(projectPath);
-      } else {
-        await upsertProjectInstallation(
-          projectPath,
-          remaining.map((target) => ({ platform: target.platform.id, language: target.language })),
-          'repair',
-        );
-      }
+      await refreshRegistryAfterProjectUninstall(result);
 
       results.push({
         projectPath,
@@ -370,6 +379,8 @@ export async function uninstallCommand(
     log('  No Comet installations found. Nothing to uninstall.\n');
     return;
   }
+
+  await refreshRegistryAfterProjectUninstall(result);
 
   if (options.json) {
     console.log(JSON.stringify(currentProjectJson(result), null, 2));

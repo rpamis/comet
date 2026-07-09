@@ -543,6 +543,37 @@ describe('uninstallCommand interactive selection', () => {
     expect(await fileExists(path.join(projectB, '.claude', 'skills', 'comet'))).toBe(true);
   });
 
+  it('removes the current project from the registry after project-scope JSON uninstall', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-current-uninstall-refresh');
+    const projectA = path.join(tmpDir, 'project-current-uninstall-refresh');
+    const projectB = path.join(tmpDir, 'project-other-uninstall-refresh');
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+
+    await copyCometSkillsForPlatform(projectA, claudePlatform, true, 'skills', 'project');
+    await copyCometSkillsForPlatform(projectB, claudePlatform, true, 'skills', 'project');
+    await upsertProjectInstallation(projectA, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    await upsertProjectInstallation(projectB, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(projectA, { json: true, force: true });
+    } finally {
+      log.mockRestore();
+    }
+
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8')) as {
+      projects: Array<{ path: string }>;
+    };
+    expect(registry.projects.map((project) => project.path)).toEqual([path.resolve(projectB)]);
+    expect(await fileExists(path.join(projectB, '.claude', 'skills', 'comet'))).toBe(true);
+  });
+
   it('auto-selects single target and uninstalls on confirmation', async () => {
     const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
     await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');

@@ -2,6 +2,8 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import { EventEmitter } from 'events';
+import { spawn } from 'child_process';
 import { select } from '@inquirer/prompts';
 import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
 import {
@@ -23,7 +25,16 @@ vi.mock('@inquirer/prompts', () => ({
   select: vi.fn().mockResolvedValue(false),
 }));
 
+vi.mock('child_process', () => ({
+  spawn: vi.fn(() => {
+    const child = new EventEmitter();
+    queueMicrotask(() => child.emit('exit', 0));
+    return child;
+  }),
+}));
+
 const mockedSelect = vi.mocked(select);
+const mockedSpawn = vi.mocked(spawn);
 
 const claudePlatform: Platform = {
   id: 'claude',
@@ -37,6 +48,12 @@ describe('update command helpers', () => {
 
   beforeEach(async () => {
     mockedSelect.mockClear();
+    mockedSpawn.mockClear();
+    mockedSpawn.mockImplementation(() => {
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit('exit', 0));
+      return child as ReturnType<typeof spawn>;
+    });
     tmpDir = path.join(
       os.tmpdir(),
       `comet-update-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -316,6 +333,45 @@ describe('update command helpers', () => {
     expect(registry.projects.every((project) => project.lastSource === 'update')).toBe(true);
   });
 
+  it('does not run local npm installs for all-projects entries without project package dependencies', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-global-npm-once');
+    const projectA = path.join(tmpDir, 'project-a-global-package');
+    const projectB = path.join(tmpDir, 'project-b-global-package');
+
+    for (const project of [projectA, projectB]) {
+      await fs.mkdir(path.join(project, '.claude', 'skills', 'comet'), { recursive: true });
+      await fs.writeFile(path.join(project, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+      await upsertProjectInstallation(project, [{ platform: 'claude', language: 'en' }], 'init', {
+        homeDir: fakeHome,
+      });
+    }
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(projectA, { json: true, allProjects: true });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    expect(mockedSpawn).toHaveBeenCalledTimes(1);
+    expect(mockedSpawn.mock.calls[0][1]).toEqual([
+      'install',
+      '-g',
+      '@rpamis/comet@latest',
+      '--registry',
+      'https://registry.npmjs.org',
+    ]);
+    expect(mockedSpawn.mock.calls).not.toContainEqual(
+      expect.arrayContaining([
+        expect.anything(),
+        ['install', '@rpamis/comet@latest', '--registry', 'https://registry.npmjs.org'],
+        expect.anything(),
+      ]),
+    );
+  });
+
   it('removes stale indexed projects that no longer have project-scope installs during all-projects update', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-stale');
     const staleProject = path.join(tmpDir, 'stale-project');
@@ -356,6 +412,52 @@ describe('update command helpers', () => {
       projects: unknown[];
     };
     expect(registry.projects).toHaveLength(0);
+  });
+
+  it('keeps indexed projects when all-projects update cannot inspect installed targets', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-inspection-error');
+    const project = path.join(tmpDir, 'project-inspection-error');
+    const skillsDir = path.join(project, '.claude', 'skills');
+    await fs.mkdir(path.join(skillsDir, 'comet'), { recursive: true });
+    await fs.writeFile(path.join(skillsDir, 'comet', 'SKILL.md'), '# Comet', 'utf-8');
+    await upsertProjectInstallation(project, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+
+    const originalAccess = fs.access.bind(fs);
+    const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (target) => {
+      if (path.resolve(String(target)) === path.resolve(skillsDir)) {
+        throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      }
+      return originalAccess(target);
+    });
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json = '';
+    try {
+      await updateCommand(project, { json: true, skipNpm: true, allProjects: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+      accessSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.registry).toMatchObject({ projectsFound: 1, staleRemoved: 0 });
+    expect(result.projects).toEqual([
+      {
+        projectPath: path.resolve(project),
+        status: 'skipped',
+        reason: 'unable to inspect project: permission denied',
+        targets: [],
+      },
+    ]);
+
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8')) as {
+      projects: Array<{ path: string }>;
+    };
+    expect(registry.projects.map((entry) => entry.path)).toEqual([path.resolve(project)]);
   });
 
   it('rejects --all-projects with --scope global during update', async () => {

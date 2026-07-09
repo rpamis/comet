@@ -4,7 +4,7 @@ import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { select } from '@inquirer/prompts';
-import { fileExists, readDir, readJson } from '../../platform/fs/file-system.js';
+import { fileExists, readJson } from '../../platform/fs/file-system.js';
 import { getBaseDir } from '../../platform/install/detect.js';
 import {
   copyCometSkillsForPlatform,
@@ -45,6 +45,8 @@ interface UpdateOptions {
   installMode?: InstallMode;
   allProjects?: boolean;
   currentProject?: boolean;
+  targetScopes?: InstallScope[];
+  skipGlobalNpmUpdate?: boolean;
 }
 
 type SkillLanguage = 'en' | 'zh';
@@ -138,14 +140,38 @@ function getInstalledCometSkillsDirs(
   return [...new Set(dirs)];
 }
 
+function isMissingInspectionError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
+}
+
+async function targetPathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch (error) {
+    if (isMissingInspectionError(error)) return false;
+    throw error;
+  }
+}
+
+async function readTargetDir(dirPath: string): Promise<string[]> {
+  try {
+    return await fs.readdir(dirPath);
+  } catch (error) {
+    if (isMissingInspectionError(error)) return [];
+    throw error;
+  }
+}
+
 async function hasLocalCometSkills(
   baseDir: string,
   platform: Platform,
   scope: InstallScope,
 ): Promise<boolean> {
   for (const skillsDir of getInstalledCometSkillsDirs(baseDir, platform, scope)) {
-    if (!(await fileExists(skillsDir))) continue;
-    const entries = await readDir(skillsDir);
+    if (!(await targetPathExists(skillsDir))) continue;
+    const entries = await readTargetDir(skillsDir);
     if (entries.some((entry) => entry.startsWith('comet'))) return true;
   }
   return false;
@@ -157,18 +183,18 @@ async function detectInstalledCometLanguage(
   scope: InstallScope = 'project',
 ): Promise<SkillLanguage> {
   for (const skillsDir of getInstalledCometSkillsDirs(baseDir, platform, scope)) {
-    if (!(await fileExists(skillsDir))) continue;
-    const entries = (await readDir(skillsDir)).filter((entry) => entry.startsWith('comet'));
+    if (!(await targetPathExists(skillsDir))) continue;
+    const entries = (await readTargetDir(skillsDir)).filter((entry) => entry.startsWith('comet'));
 
     for (const entry of entries) {
       const skillPath = path.join(skillsDir, entry, 'SKILL.md');
-      if (!(await fileExists(skillPath))) continue;
+      if (!(await targetPathExists(skillPath))) continue;
 
       try {
         const content = await fs.readFile(skillPath, 'utf-8');
         if (/[㐀-鿿]/u.test(content)) return 'zh';
-      } catch {
-        // Fall through to the default English asset set if the file cannot be read.
+      } catch (error) {
+        if (!isMissingInspectionError(error)) throw error;
       }
     }
   }
@@ -374,9 +400,16 @@ async function updateSingleProject(
   log: (message: string) => void,
 ): Promise<SingleProjectUpdateResult> {
   const lang = options.language ?? 'en';
-  const packageScope = options.scope ?? (await detectCometPackageScope(projectPath));
+  const packageScope =
+    options.scope && !options.targetScopes
+      ? options.scope
+      : await detectCometPackageScope(projectPath);
   let npmStatus: NpmStatus = 'skipped';
-  if (!options.skipNpm) {
+  const skipRepeatedGlobalNpm =
+    !options.skipNpm && packageScope === 'global' && options.skipGlobalNpmUpdate === true;
+  if (skipRepeatedGlobalNpm) {
+    log(`  ${t(lang, 'updatingNpmPackage')}: skipped (global scope already attempted)`);
+  } else if (!options.skipNpm) {
     log(`  ${t(lang, 'updatingNpmPackage')} (${packageScope} scope)...`);
     log(`    $ ${formatNpmUpdateCommand(packageScope)}`);
     const npmUpdated = await updateCometNpmPackage(
@@ -397,7 +430,7 @@ async function updateSingleProject(
   const installMode = await selectInstallMode(options, lang);
 
   const targets = await detectInstalledCometTargets(projectPath, {
-    scopes: options.scope ? [options.scope] : undefined,
+    scopes: options.targetScopes ?? (options.scope ? [options.scope] : undefined),
   });
 
   if (targets.length === 0) {
@@ -406,7 +439,8 @@ async function updateSingleProject(
       npm: {
         scope: options.skipNpm ? 'skipped' : packageScope,
         status: npmStatus,
-        command: options.skipNpm ? null : formatNpmUpdateCommand(packageScope),
+        command:
+          options.skipNpm || skipRepeatedGlobalNpm ? null : formatNpmUpdateCommand(packageScope),
       },
       skills: { totalCopied: 0, targets: [] },
       rules: { totalCopied: 0 },
@@ -552,7 +586,8 @@ async function updateSingleProject(
     npm: {
       scope: options.skipNpm ? 'skipped' : packageScope,
       status: npmStatus,
-      command: options.skipNpm ? null : formatNpmUpdateCommand(packageScope),
+      command:
+        options.skipNpm || skipRepeatedGlobalNpm ? null : formatNpmUpdateCommand(packageScope),
     },
     skills: {
       totalCopied,
@@ -645,7 +680,8 @@ async function updateAllIndexedProjects(
 
   const runOptions: UpdateOptions = {
     ...options,
-    scope: 'project',
+    scope: undefined,
+    targetScopes: ['project'],
     currentProject: true,
     allProjects: false,
   };
@@ -653,10 +689,18 @@ async function updateAllIndexedProjects(
     runOptions.installMode = await selectInstallMode(options, lang);
   }
 
+  let globalNpmAttempted = false;
   for (const project of runnableProjects) {
     const { projectPath, targets } = project;
     try {
-      const result = await updateSingleProject(projectPath, runOptions, log);
+      const result = await updateSingleProject(
+        projectPath,
+        { ...runOptions, skipGlobalNpmUpdate: globalNpmAttempted },
+        log,
+      );
+      if (result.npm.scope === 'global' && result.npm.status !== 'skipped') {
+        globalNpmAttempted = true;
+      }
       if (result.skills.targets.length === 0) {
         if (await removeProjectInstallation(projectPath)) staleRemoved++;
         results.push({
