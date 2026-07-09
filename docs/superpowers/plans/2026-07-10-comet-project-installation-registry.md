@@ -1894,7 +1894,7 @@ git commit -m "feat: uninstall all indexed projects"
   - Release-facing changelog entry.
   - Verified build/test state.
 
-- [ ] **Step 1: Determine version baseline**
+- [x] **Step 1: Determine version baseline**
 
 Run:
 
@@ -1919,7 +1919,7 @@ If current package.json version is already greater than origin/master, append to
 If current package.json version equals origin/master, bump package.json by exactly one patch/prerelease step following the existing branch pattern, then create a matching top CHANGELOG block.
 ```
 
-- [ ] **Step 2: Update changelog**
+- [x] **Step 2: Update changelog**
 
 Add one release-facing bullet under the active version:
 
@@ -1931,7 +1931,7 @@ Add one release-facing bullet under the active version:
 
 Do not add bullets about the spec, internal refactors, test files, or intermediate fixes.
 
-- [ ] **Step 3: Run targeted tests**
+- [x] **Step 3: Run targeted tests**
 
 Run:
 
@@ -1949,7 +1949,7 @@ PASS test/app/uninstall.test.ts
 PASS test/app/init-e2e.test.ts
 ```
 
-- [ ] **Step 4: Run full tests**
+- [x] **Step 4: Run full tests**
 
 Run:
 
@@ -1964,7 +1964,7 @@ Test Files  ... passed
 Tests       ... passed
 ```
 
-- [ ] **Step 5: Run build**
+- [x] **Step 5: Run build**
 
 Run:
 
@@ -1980,7 +1980,7 @@ Build completed
 
 If the exact build output differs, accept success only if the command exits `0`.
 
-- [ ] **Step 6: Run formatting and whitespace checks**
+- [x] **Step 6: Run formatting and whitespace checks**
 
 Run:
 
@@ -2001,7 +2001,7 @@ and:
 git diff --check exits 0
 ```
 
-- [ ] **Step 7: Commit changelog and verification cleanup**
+- [x] **Step 7: Commit changelog and verification cleanup**
 
 ```bash
 git add CHANGELOG.md package.json package-lock.json
@@ -2014,14 +2014,14 @@ Only include `package.json` and `package-lock.json` if the version changed. If n
 
 ## Self-Review Checklist
 
-- [ ] Registry module exists and is the only code that reads/writes `~/.comet/installations.json`.
-- [ ] `initCommand()` records project-scope installs and ignores global-scope installs.
-- [ ] `updateCommand()` preserves current JSON shape unless `--all-projects` is explicit.
-- [ ] `uninstallCommand()` preserves current JSON shape unless `--all-projects` is explicit.
-- [ ] Interactive current/all selection defaults to all indexed projects when registry has entries.
-- [ ] `--all-projects --current-project` fails before doing work.
-- [ ] `--all-projects --scope global` fails before doing work.
-- [ ] Cross-project execution re-detects project-scope targets before modifying files.
-- [ ] Stale registry entries with no detected project-scope install are removed.
-- [ ] Unreadable project entries are not removed unless the code can prove the install is absent.
-- [ ] `CHANGELOG.md` contains one user-facing Added bullet, not process notes.
+- [x] Registry module exists and is the only code that reads/writes `~/.comet/installations.json`.
+- [x] `initCommand()` records project-scope installs and ignores global-scope installs.
+- [x] `updateCommand()` preserves current JSON shape unless `--all-projects` is explicit.
+- [x] `uninstallCommand()` preserves current JSON shape unless `--all-projects` is explicit.
+- [x] Interactive current/all selection defaults to all indexed projects when registry has entries.
+- [x] `--all-projects --current-project` fails before doing work.
+- [x] `--all-projects --scope global` fails before doing work.
+- [x] Cross-project execution re-detects project-scope targets before modifying files.
+- [x] Stale registry entries with no detected project-scope install are removed.
+- [x] Unreadable project entries are not removed unless the code can prove the install is absent.
+- [x] `CHANGELOG.md` contains one user-facing Added bullet, not process notes.

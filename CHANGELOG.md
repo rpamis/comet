@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **Ambient resume**: Adds a low-noise Comet resume probe and managed project instruction block so agents can recover active workflows when the user resumes work without explicitly invoking `/comet`.
+- **Project installation registry**: Added a user-level registry for project-scope Comet installs so interactive update and uninstall can operate across all indexed projects from one command while JSON and scripted calls remain current-project by default.
 
 ### Fixed
 

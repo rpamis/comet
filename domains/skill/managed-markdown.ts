@@ -55,10 +55,7 @@ export function renderManagedMarkdownBlock(
   return `<${tagName}>${lineEnding}${normalizedContent}${lineEnding}</${tagName}>${lineEnding}`;
 }
 
-function assertSingleCompleteBlock(
-  lines: string[],
-  tagName: string,
-): ManagedBlockLocation | null {
+function assertSingleCompleteBlock(lines: string[], tagName: string): ManagedBlockLocation | null {
   const openTag = `<${tagName}>`;
   const closeTag = `</${tagName}>`;
   let startLine: number | null = null;
@@ -135,7 +132,8 @@ export async function mergeManagedMarkdownBlock(
   const blockLocation = assertSingleCompleteBlock(lines, options.tagName);
 
   if (blockLocation === null) {
-    const separator = normalizedExisting.length === 0 ? '' : normalizedExisting.endsWith('\n') ? '\n' : '\n\n';
+    const separator =
+      normalizedExisting.length === 0 ? '' : normalizedExisting.endsWith('\n') ? '\n' : '\n\n';
     const updated = `${normalizedExisting}${separator}${normalizedBlock}`;
     await fs.writeFile(filePath, restoreLineEndings(updated, lineEnding), 'utf8');
     return { action: 'appended', changed: true };
