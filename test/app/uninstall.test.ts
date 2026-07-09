@@ -16,6 +16,10 @@ import {
   installCometHooksForPlatform,
 } from '../../domains/skill/platform-install.js';
 import { fileExists, removeFile, removeDir, isDirEmpty } from '../../platform/fs/file-system.js';
+import {
+  getProjectRegistryPath,
+  upsertProjectInstallation,
+} from '../../platform/install/project-registry.js';
 
 describe('uninstall', () => {
   let tmpDir: string;
@@ -458,6 +462,87 @@ describe('uninstallCommand interactive selection', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it('uninstalls all indexed projects with --all-projects --force --json', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-all-uninstall');
+    const projectA = path.join(tmpDir, 'project-a');
+    const projectB = path.join(tmpDir, 'project-b');
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+
+    for (const project of [projectA, projectB]) {
+      await copyCometSkillsForPlatform(project, claudePlatform, true, 'skills', 'project');
+      await upsertProjectInstallation(project, [{ platform: 'claude', language: 'en' }], 'init', {
+        homeDir: fakeHome,
+      });
+    }
+
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let jsonOutput = '';
+    try {
+      await uninstallCommand(projectA, { allProjects: true, force: true, json: true });
+      jsonOutput = log.mock.calls.map((c) => c.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    const result = JSON.parse(jsonOutput);
+    expect(result.mode).toBe('all-projects');
+    expect(
+      result.projects.every((project: { status: string }) => project.status === 'uninstalled'),
+    ).toBe(true);
+    await expect(
+      fs.access(path.join(projectA, '.claude', 'skills', 'comet')),
+    ).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(
+      fs.access(path.join(projectB, '.claude', 'skills', 'comet')),
+    ).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8'));
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('rejects --all-projects with --scope global during uninstall', async () => {
+    await expect(
+      uninstallCommand(tmpDir, { allProjects: true, scope: 'global', json: true, force: true }),
+    ).rejects.toThrow('--all-projects cannot be combined with --scope global');
+  });
+
+  it('keeps JSON uninstall current-project by default when registry has projects', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-current-uninstall');
+    const projectA = path.join(tmpDir, 'project-current-uninstall');
+    const projectB = path.join(tmpDir, 'project-other-uninstall');
+    const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
+
+    await copyCometSkillsForPlatform(projectA, claudePlatform, true, 'skills', 'project');
+    await copyCometSkillsForPlatform(projectB, claudePlatform, true, 'skills', 'project');
+    await upsertProjectInstallation(projectA, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    await upsertProjectInstallation(projectB, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let jsonOutput = '';
+    try {
+      await uninstallCommand(projectA, { json: true, force: true });
+      jsonOutput = log.mock.calls.map((c) => c.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    const result = JSON.parse(jsonOutput);
+    expect(result.mode).toBeUndefined();
+    expect(await fileExists(path.join(projectB, '.claude', 'skills', 'comet'))).toBe(true);
+  });
+
   it('auto-selects single target and uninstalls on confirmation', async () => {
     const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
     await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');
@@ -647,7 +732,8 @@ describe('uninstallCommand interactive selection', () => {
       'utf-8',
     );
 
-    const agentsOriginal = 'before\n\n<comet-ambient-resume>\nmanaged\n</comet-ambient-resume>\nafter\n';
+    const agentsOriginal =
+      'before\n\n<comet-ambient-resume>\nmanaged\n</comet-ambient-resume>\nafter\n';
     const claudeOriginal = '# User\n\n<comet-ambient-resume>\nmanaged\n</comet-ambient-resume>\n';
     await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), agentsOriginal, 'utf-8');
     await fs.writeFile(path.join(tmpDir, 'CLAUDE.md'), claudeOriginal, 'utf-8');

@@ -146,6 +146,8 @@ program
   .description('Remove Comet skills, rules, and hooks from your project or global scope')
   .option('--json', 'Output as JSON')
   .addOption(new Option('--scope <scope>', 'Uninstall scope').choices(['global', 'project']))
+  .option('--all-projects', 'Uninstall all indexed project-scope Comet installs')
+  .option('--current-project', 'Uninstall only the current project')
   .option('--force', 'Skip confirmation prompts')
   .action(async (targetPath = '.', options) => {
     try {
