@@ -109,6 +109,45 @@ describe('project installation registry', () => {
     } satisfies Partial<ProjectRegistryError>);
   });
 
+  it.each<[string, unknown[]]>([
+    ['non-string platform', [{ platform: 123, language: 'en' }]],
+    ['unsupported language', [{ platform: 'codex', language: 'fr' }]],
+    ['missing language', [{ platform: 'codex' }]],
+  ])(
+    'throws a ProjectRegistryError for lastTargets with %s in strict mode',
+    async (_, lastTargets) => {
+      const registryPath = getProjectRegistryPath(homeDir);
+      await fs.mkdir(path.dirname(registryPath), { recursive: true });
+      await fs.writeFile(
+        registryPath,
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            updatedAt: '2026-07-10T00:00:00.000Z',
+            projects: [
+              {
+                path: path.join(tmpDir, 'Project'),
+                canonicalPath: path.join(tmpDir, 'Project'),
+                addedAt: '2026-07-10T00:00:00.000Z',
+                updatedAt: '2026-07-10T00:00:00.000Z',
+                lastSeenAt: '2026-07-10T00:00:00.000Z',
+                lastSource: 'init',
+                lastTargets,
+              },
+            ],
+          },
+          null,
+          2,
+        )}\n`,
+        'utf-8',
+      );
+
+      await expect(readProjectRegistry({ homeDir, strict: true })).rejects.toMatchObject({
+        code: 'invalid-schema',
+      } satisfies Partial<ProjectRegistryError>);
+    },
+  );
+
   it('rebuilds corrupt registry during single-project upsert', async () => {
     const registryPath = getProjectRegistryPath(homeDir);
     const projectDir = path.join(tmpDir, 'Project');

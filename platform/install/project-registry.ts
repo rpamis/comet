@@ -72,6 +72,16 @@ function isProjectRegistrySource(value: unknown): value is ProjectRegistrySource
   return value === 'init' || value === 'update' || value === 'repair';
 }
 
+function isProjectRegistryTarget(value: unknown): value is ProjectRegistryTarget {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    typeof (value as ProjectRegistryTarget).platform === 'string' &&
+    ((value as ProjectRegistryTarget).language === 'en' ||
+      (value as ProjectRegistryTarget).language === 'zh')
+  );
+}
+
 function assertProjectRegistry(value: unknown, registryPath: string): ProjectRegistry {
   if (!value || typeof value !== 'object') {
     throw new ProjectRegistryError(
@@ -128,14 +138,20 @@ function assertProjectRegistry(value: unknown, registryPath: string): ProjectReg
       updatedAt: project.updatedAt,
       lastSeenAt: project.lastSeenAt,
       lastSource: project.lastSource,
-      lastTargets: project.lastTargets.filter(
-        (target): target is ProjectRegistryTarget =>
-          Boolean(target) &&
-          typeof target === 'object' &&
-          typeof (target as ProjectRegistryTarget).platform === 'string' &&
-          ((target as ProjectRegistryTarget).language === 'en' ||
-            (target as ProjectRegistryTarget).language === 'zh'),
-      ),
+      lastTargets: project.lastTargets.map((target, targetIndex) => {
+        if (!isProjectRegistryTarget(target)) {
+          throw new ProjectRegistryError(
+            'invalid-schema',
+            `Project registry entry ${index} target ${targetIndex} has invalid fields`,
+            registryPath,
+          );
+        }
+
+        return {
+          platform: target.platform,
+          language: target.language,
+        };
+      }),
     };
   });
 
