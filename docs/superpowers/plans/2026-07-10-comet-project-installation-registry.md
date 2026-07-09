@@ -731,7 +731,7 @@ git commit -m "feat: add project scope selection helper"
   - Project-scope `initCommand()` refreshes registry after `createWorkingDirs()`.
   - Global-scope `initCommand()` leaves project registry untouched.
 
-- [ ] **Step 1: Write failing init registry tests**
+- [x] **Step 1: Write failing init registry tests**
 
 Append tests near existing `comet init E2E` cases in `test/app/init-e2e.test.ts`:
 
@@ -785,7 +785,7 @@ it('does not record global-scope installs in the user project registry', async (
 });
 ```
 
-- [ ] **Step 2: Run the focused init tests and confirm they fail**
+- [x] **Step 2: Run the focused init tests and confirm they fail**
 
 Run:
 
@@ -800,7 +800,7 @@ FAIL test/app/init-e2e.test.ts
 ENOENT: no such file or directory, open '<fake-home>/.comet/installations.json'
 ```
 
-- [ ] **Step 3: Implement registry recording in init**
+- [x] **Step 3: Implement registry recording in init**
 
 Modify imports in `app/commands/init.ts`:
 
@@ -846,7 +846,7 @@ The final section should read:
   }
 ```
 
-- [ ] **Step 4: Run focused init tests**
+- [x] **Step 4: Run focused init tests**
 
 Run:
 
@@ -860,7 +860,7 @@ Expected:
 PASS test/app/init-e2e.test.ts
 ```
 
-- [ ] **Step 5: Run full init E2E tests**
+- [x] **Step 5: Run full init E2E tests**
 
 Run:
 
@@ -874,7 +874,7 @@ Expected:
 PASS test/app/init-e2e.test.ts
 ```
 
-- [ ] **Step 6: Commit init integration**
+- [x] **Step 6: Commit init integration**
 
 ```bash
 git add app/commands/init.ts test/app/init-e2e.test.ts
