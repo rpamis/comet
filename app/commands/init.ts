@@ -13,6 +13,7 @@ import {
   getBaseDir,
   type InstallScope,
 } from '../../platform/install/detect.js';
+import { upsertProjectInstallation } from '../../platform/install/project-registry.js';
 import type { InstallMode } from '../../platform/install/types.js';
 import {
   copyCometSkillsForPlatform,
@@ -30,6 +31,7 @@ import {
 } from '../../domains/integrations/codegraph.js';
 import { printVersionInfo } from '../../platform/version/version.js';
 import { t, type TranslationKey } from './i18n.js';
+import { detectInstalledCometTargets } from './update.js';
 
 type InitOptions = {
   yes?: boolean;
@@ -568,6 +570,17 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
 
   if (scope === 'project') {
     await createWorkingDirs(projectPath, language.artifactLanguage);
+    const projectTargets = await detectInstalledCometTargets(projectPath, { scopes: ['project'] });
+    if (projectTargets.length > 0) {
+      await upsertProjectInstallation(
+        projectPath,
+        projectTargets.map((target) => ({
+          platform: target.platform.id,
+          language: target.language,
+        })),
+        'init',
+      );
+    }
   }
 
   if (options.json) {

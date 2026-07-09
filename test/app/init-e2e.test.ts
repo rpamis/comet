@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { getProjectRegistryPath } from '../../platform/install/project-registry.js';
 
 vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
@@ -183,6 +184,48 @@ describe('comet init E2E', () => {
     INIT_E2E_TIMEOUT_MS,
   );
 
+  it('records project-scope Comet installs in the user project registry', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(fakeHome, { recursive: true });
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    try {
+      const { initCommand } = await import('../../app/commands/init.js');
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, scope: 'project', json: true, language: 'en' }),
+      );
+    } finally {
+      homedirSpy.mockRestore();
+    }
+
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8'));
+    expect(registry.projects).toHaveLength(1);
+    expect(registry.projects[0]).toMatchObject({
+      path: path.resolve(tmpDir),
+      lastSource: 'init',
+    });
+    expect(registry.projects[0].lastTargets.length).toBeGreaterThan(0);
+  });
+
+  it('does not record global-scope installs in the user project registry', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-global');
+    await fs.mkdir(fakeHome, { recursive: true });
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    try {
+      const { initCommand } = await import('../../app/commands/init.js');
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, scope: 'global', json: true, language: 'en' }),
+      );
+    } finally {
+      homedirSpy.mockRestore();
+    }
+
+    await expect(fs.access(getProjectRegistryPath(fakeHome))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it(
     'skips already-installed Comet skills with --yes',
     async () => {
@@ -198,6 +241,7 @@ describe('comet init E2E', () => {
 
       vi.resetModules();
       vi.resetAllMocks();
+      vi.spyOn(os, 'homedir').mockReturnValue(path.join(tmpDir, 'fake-home'));
       mockExternalSuccess();
 
       const { initCommand: init2 } = await import('../../app/commands/init.js');
@@ -221,6 +265,7 @@ describe('comet init E2E', () => {
 
       vi.resetModules();
       vi.resetAllMocks();
+      vi.spyOn(os, 'homedir').mockReturnValue(path.join(tmpDir, 'fake-home'));
       mockExternalSuccess();
 
       const { initCommand: init2 } = await import('../../app/commands/init.js');
