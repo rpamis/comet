@@ -44,6 +44,13 @@ describe('project scope selection', () => {
     expect(mockedSelect).not.toHaveBeenCalled();
   });
 
+  it('returns current-project for force mode unless all-projects is explicit', async () => {
+    await expect(resolveProjectScopeMode('uninstall', { force: true }, 3)).resolves.toBe(
+      'current-project',
+    );
+    expect(mockedSelect).not.toHaveBeenCalled();
+  });
+
   it('prompts interactively with all indexed projects first', async () => {
     await expect(resolveProjectScopeMode('uninstall', {}, 2)).resolves.toBe('all-projects');
 

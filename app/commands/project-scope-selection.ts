@@ -8,6 +8,7 @@ export type ProjectScopeCommand = 'update' | 'uninstall';
 export interface ProjectScopeOptions {
   allProjects?: boolean;
   currentProject?: boolean;
+  force?: boolean;
   json?: boolean;
   scope?: InstallScope;
 }
@@ -34,6 +35,7 @@ export async function resolveProjectScopeMode(
 
   if (options.allProjects) return 'all-projects';
   if (options.currentProject) return 'current-project';
+  if (options.force) return 'current-project';
   if (options.json) return 'current-project';
   if (indexedProjectCount === 0) return 'current-project';
 
