@@ -2,12 +2,6 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.4] - 2026-07-09
-
-### Fixed
-
-- **OpenSpec CLI install scope**: `comet init` now installs or upgrades the OpenSpec CLI globally even when Comet is initialized with project scope, preventing OpenSpec CLI upgrades from creating a project `node_modules/` directory while preserving project-scoped OpenSpec skill initialization ([#175](https://github.com/rpamis/comet/issues/175)).
-
 ## What's Changed [0.4.0-beta.3] - 2026-07-08
 
 ### Fixed
