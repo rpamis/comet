@@ -38,18 +38,23 @@ Before confirmation, show the user a brief summary:
 - Irreversible actions this archive will perform: merge main specs with OpenSpec delta semantics, annotate design doc / plan, and move the change to the archive directory
 
 The user confirmation question must be presented as a single-select question with these options:
-- "Confirm archive" — first run `node "$COMET_STATE" transition <change-name> archive-confirm` to record the final confirmation state, then run the archive script to complete spec merge and change movement
+- "Confirm archive" — record the final confirmation state, then run the archive script to complete spec merge and change movement
 - "Needs adjustment or re-verification" — do not archive; run `node "$COMET_STATE" transition <change-name> archive-reopen` to return to `phase: verify`, then invoke `/comet-verify`. If verification confirms fixes are needed, follow `/comet-verify`'s verification-failure decision flow back to `/comet-build`
 - "Do not archive yet" — do not archive; keep the current `phase: archive` state and wait for the user to invoke `/comet-archive` again later
 
-Only after the user selects "Confirm archive" and the `archive-confirm` transition succeeds may Step 2 continue. After the user selects "Needs adjustment or re-verification", must first run the `archive-reopen` state transition; do not edit `.comet.yaml` manually.
-
-### 2. Execute Archive
-
-Record the final confirmation state, then run the archive script:
+After the user selects "Confirm archive", immediately run:
 
 ```bash
 node "$COMET_STATE" transition <change-name> archive-confirm
+```
+
+If the transition returns a non-zero exit code, report the error and stop. Only after the transition succeeds may Step 2 continue. After the user selects "Needs adjustment or re-verification", must first run the `archive-reopen` state transition; do not edit `.comet.yaml` manually.
+
+### 2. Execute Archive
+
+Run the archive script:
+
+```bash
 node "$COMET_ARCHIVE" "<change-name>"
 ```
 
