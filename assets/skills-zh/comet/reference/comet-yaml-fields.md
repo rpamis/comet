@@ -2,7 +2,7 @@
 
 规范路径：`comet/reference/comet-yaml-fields.md`
 
-本文件是 `openspec/changes/<name>/` 下每个 change 级 `.comet.yaml` 状态文件的字段参考。按需查阅，不随 skill 一次性加载。项目级默认配置只放在 `.comet/config.yaml`。
+本文件是 `openspec/changes/<name>/` 下每个 change 级 `.comet.yaml` 状态文件的字段参考。按需查阅，不随 skill 一次性加载。项目级默认配置放在 `.comet/config.yaml`，全局默认配置放在 `~/.comet/config.yaml`；项目配置优先于全局配置。
 
 ## 示例
 
@@ -34,7 +34,7 @@ archived: false
 | 字段 | 含义 |
 |------|------|
 | `workflow` | `full`、`hotfix` 或 `tweak` |
-| `language` | 产物语言，仅支持 `en` 或 `zh-CN`。由 `comet init` 的初始化语言写入 `.comet/config.yaml`，创建 change 时快照到 `.comet.yaml`，用于约束 OpenSpec / Superpowers 产物主语言 |
+| `language` | 产物语言，仅支持 `en` 或 `zh-CN`。由 `comet init` 按安装范围写入项目或全局 `.comet/config.yaml`，创建 change 时按“项目优先、全局回退”快照到 `.comet.yaml`，用于约束 OpenSpec / Superpowers 产物主语言 |
 | `phase` | 当前阶段：`open`、`design`、`build`、`verify`、`archive`（init 统一设为 `open`，guard 负责过渡） |
 | `design_doc` | 关联的 Superpowers Design Doc 路径，可为空 |
 | `plan` | 关联的 Superpowers Plan 路径，可为空 |

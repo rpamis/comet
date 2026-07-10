@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.4] - 2026-07-11
+
+### Fixed
+
+- **Global artifact language**: Global `comet init` and `comet update` now persist the selected artifact language in `~/.comet/config.yaml`, and Classic workflows resolve project configuration before falling back to that global default, so globally installed Chinese Skills create and validate OpenSpec and Superpowers artifacts in `zh-CN` while still allowing per-project overrides ([#174](https://github.com/rpamis/comet/issues/174)).
+
 ## What's Changed [0.4.0-beta.3] - 2026-07-08
 
 ### Fixed

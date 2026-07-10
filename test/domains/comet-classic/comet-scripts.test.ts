@@ -325,6 +325,79 @@ describe('comet scripts', () => {
     expect(get.stdout.trim()).toBe('zh-CN');
   }, 20_000);
 
+  it('falls back to the global Comet language when project config is absent', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: zh-CN\n');
+
+    const result = runNode(tmpDir, stateScript, ['init', 'language-global-zh', 'full'], {
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+    });
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'language-global-zh', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('language: zh-CN');
+  }, 20_000);
+
+  it('lets project language override the global Comet language', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: zh-CN\n');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: en\n');
+
+    const result = runNode(tmpDir, stateScript, ['init', 'language-project-over-global', 'full'], {
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+    });
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'language-project-over-global', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('language: en');
+  }, 20_000);
+
+  it('rejects an invalid global Comet language when project config is absent', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: pirate\n');
+
+    const result = runNode(tmpDir, stateScript, ['init', 'language-global-invalid', 'full'], {
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Invalid language from ~/.comet/config.yaml: 'pirate'");
+  }, 20_000);
+
+  it('ignores an unrelated malformed field elsewhere in .comet/config.yaml', async () => {
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'language: en\nunrelated_field: [unterminated\n',
+    );
+
+    const result = runNode(tmpDir, stateScript, ['init', 'unrelated-malformed-field', 'full'], {});
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'unrelated-malformed-field', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('language: en');
+  }, 20_000);
+
+  it('rejects an explicit empty review_mode instead of silently defaulting', async () => {
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'review_mode: ""\n');
+
+    const result = runNode(tmpDir, stateScript, ['init', 'empty-review-mode', 'full'], {});
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Invalid review_mode: ''");
+  }, 20_000);
+
   it('rejects zh as an invalid project language when initializing a change', async () => {
     await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: zh\n');
 
@@ -929,6 +1002,89 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] proposal.md matches configured language');
     expect(result.stderr).toContain('configured language is zh-CN');
+  }, 20_000);
+
+  it('uses the global Comet language in guards when change and project values are absent', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: zh-CN\n');
+    await createChange(
+      tmpDir,
+      'global-zh-english-artifacts',
+      [
+        'workflow: full',
+        'language: null',
+        'phase: open',
+        'context_compression: off',
+        'build_mode: null',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: null',
+        'review_mode: off',
+        'isolation: null',
+        'verify_mode: null',
+        'auto_transition: true',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      '- [ ] Implement the feature and validate the generated documentation language\n',
+    );
+    const englishBody =
+      'This document explains the feature goals, implementation approach, expected behavior, acceptance scenarios, boundaries, risks, and verification strategy for the workflow.\n';
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'global-zh-english-artifacts', 'proposal.md'),
+      englishBody,
+    );
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'global-zh-english-artifacts', 'design.md'),
+      englishBody,
+    );
+
+    const result = runNode(tmpDir, guardScript, ['global-zh-english-artifacts', 'open'], {
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('configured language is zh-CN');
+  }, 20_000);
+
+  it('does not block the language check when .comet/config.yaml has an unrelated malformed field', async () => {
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'language: en\nunrelated_field: [unterminated\n',
+    );
+    await createChange(
+      tmpDir,
+      'unrelated-malformed-config',
+      [
+        'workflow: full',
+        'language: null',
+        'phase: open',
+        'context_compression: off',
+        'build_mode: null',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: null',
+        'review_mode: off',
+        'isolation: null',
+        'verify_mode: null',
+        'auto_transition: true',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runNode(tmpDir, guardScript, ['unrelated-malformed-config', 'open']);
+
+    expect(result.status).toBe(0);
   }, 20_000);
 
   it('allows Chinese workflow artifacts with English technical terms', async () => {

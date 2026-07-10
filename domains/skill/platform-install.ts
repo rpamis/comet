@@ -1065,13 +1065,23 @@ function parseProjectConfigOverrides(content: string): Record<string, string> {
   return out;
 }
 
-function renderProjectConfig(existing: Record<string, string>, language: string = 'en'): string {
+// `language` is null when the caller has no definitive language selection to assert (e.g.
+// multiple platforms in the same scope disagree and no --language flag was given) — in that
+// case the existing config's language is preserved, falling back to 'en' only when absent.
+// A non-null language always overwrites the managed `language` field: init/update pass it
+// specifically to persist the language the user just selected/installed.
+function renderProjectConfig(
+  existing: Record<string, string>,
+  language: string | null = null,
+): string {
+  const resolvedLanguage = language ?? existing.language ?? 'en';
   const lines: string[] = [];
-  const fields = getManagedConfigFields(language);
+  const fields = getManagedConfigFields(resolvedLanguage);
   const managed: Set<string> = new Set(fields.map((f) => f.key));
   for (const f of fields) {
     lines.push(f.comment);
-    lines.push(`${f.key}: ${existing[f.key] ?? f.def}`);
+    const value = f.key === 'language' ? resolvedLanguage : (existing[f.key] ?? f.def);
+    lines.push(`${f.key}: ${value}`);
   }
   for (const [k, v] of Object.entries(existing)) {
     if (!managed.has(k)) lines.push(`${k}: ${v}`);
@@ -1080,7 +1090,10 @@ function renderProjectConfig(existing: Record<string, string>, language: string 
   return lines.join('\n');
 }
 
-async function mergeProjectConfig(projectPath: string, language: string = 'en'): Promise<void> {
+async function mergeProjectConfig(
+  projectPath: string,
+  language: string | null = null,
+): Promise<void> {
   const configPath = path.join(projectPath, '.comet', 'config.yaml');
   let existing: Record<string, string> = {};
   if (await fileExists(configPath)) {

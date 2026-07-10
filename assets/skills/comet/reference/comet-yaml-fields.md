@@ -3,7 +3,7 @@
 Canonical path: `comet/reference/comet-yaml-fields.md`
 
 This file is the field reference for each change-level `.comet.yaml` state file under `openspec/changes/<name>/`.
-Consult on demand; not loaded inline with skills. Project defaults live in `.comet/config.yaml`.
+Consult on demand; not loaded inline with skills. Project defaults live in `.comet/config.yaml`, global defaults live in `~/.comet/config.yaml`, and project values take precedence.
 
 ## Example
 
@@ -35,7 +35,7 @@ archived: false
 | Field | Meaning |
 |-------|---------|
 | `workflow` | `full`, `hotfix`, or `tweak` |
-| `language` | Artifact language, `en` or `zh-CN`. Written to `.comet/config.yaml` by `comet init`, snapshotted into `.comet.yaml` when a change is created, and used as the main-language constraint for OpenSpec / Superpowers artifacts |
+| `language` | Artifact language, `en` or `zh-CN`. Written to the project or global `.comet/config.yaml` according to install scope, snapshotted into `.comet.yaml` with project-over-global precedence when a change is created, and used as the main-language constraint for OpenSpec / Superpowers artifacts |
 | `phase` | Current phase: `open`, `design`, `build`, `verify`, `archive` (init sets `open`; guard handles transitions) |
 | `design_doc` | Associated Superpowers Design Doc path; may be empty |
 | `plan` | Associated Superpowers Plan path; may be empty |

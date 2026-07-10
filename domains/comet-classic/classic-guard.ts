@@ -13,6 +13,7 @@ import { appendClassicStateEvent } from './classic-state-events.js';
 import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classic-transitions.js';
 import { classicValidateCommand } from './classic-validate-command.js';
 import { readClassicState } from './classic-store.js';
+import { readClassicConfigValue } from './classic-project-config.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -119,31 +120,6 @@ async function resolveChangeDir(name: string): Promise<string> {
   return (await resolveClassicChangeDirectory(name)).label;
 }
 
-function stripInlineComment(value: string): string {
-  let out = '';
-  let quote = '';
-  for (let i = 0; i < value.length; i += 1) {
-    const c = value[i];
-    if (quote === '') {
-      if (c === '"' || c === "'") {
-        quote = c;
-      } else if (c === '#' && (i === 0 || /\s/u.test(value[i - 1]))) {
-        return out.replace(/\s+$/u, '');
-      }
-    } else if (c === quote) {
-      quote = '';
-    }
-    out += c;
-  }
-  return out;
-}
-
-function stripWrappingQuotes(value: string): string {
-  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1);
-  if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) return value.slice(1, -1);
-  return value;
-}
-
 async function readField(changeDir: string, field: string): Promise<string> {
   const file = path.join(changeDir, '.comet.yaml');
   const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: false });
@@ -160,18 +136,7 @@ async function readField(changeDir: string, field: string): Promise<string> {
 async function projectConfigValue(field: string, changeDir: string): Promise<string> {
   const changeValue = await readField(changeDir, field);
   if (changeValue && changeValue !== 'null') return changeValue;
-  for (const config of ['.comet/config.yaml']) {
-    if (!(await exists(config))) continue;
-    for (const line of (await fs.readFile(config, 'utf8')).split(/\r?\n/u)) {
-      if (new RegExp(`^${field}:`, 'u').test(line)) {
-        const value = stripWrappingQuotes(
-          stripInlineComment(line.replace(new RegExp(`^${field}:\\s*`, 'u'), '')),
-        );
-        if (value && value !== 'null') return value;
-      }
-    }
-  }
-  return '';
+  return (await readClassicConfigValue(field))?.value ?? '';
 }
 
 async function configuredLanguage(changeDir: string): Promise<'en' | 'zh-CN'> {

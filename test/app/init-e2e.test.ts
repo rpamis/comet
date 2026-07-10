@@ -172,6 +172,9 @@ describe('comet init E2E', () => {
       expect(result.scope).toBe('global');
       expect(result.workingDirsCreated).toBe(false);
 
+      const config = await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('language: en');
+
       const manifest = await readManifest();
       for (const skillPath of manifest.skills) {
         const dest = path.join(fakeHome, '.claude', 'skills', skillPath);
@@ -574,6 +577,9 @@ describe('comet init E2E', () => {
       );
 
       expect(result.selectedPlatforms).toEqual(['zcode']);
+
+      const config = await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf-8');
+      expect(config).toContain('language: zh-CN');
 
       // With zh selected, only the normalized zh rule file should be installed —
       // the .en.md variant must not appear alongside it.

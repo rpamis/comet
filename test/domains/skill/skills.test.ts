@@ -2012,6 +2012,16 @@ describe('skills', () => {
       expect(output).toContain('language: zh-CN');
     });
 
+    it('forces the language field to the passed value even when an existing value differs', () => {
+      const output = renderProjectConfig({ language: 'en' }, 'zh-CN');
+      expect(output).toContain('language: zh-CN');
+    });
+
+    it('preserves the existing language when no language override is passed', () => {
+      const output = renderProjectConfig({ language: 'zh-CN' }, null);
+      expect(output).toContain('language: zh-CN');
+    });
+
     it('preserves extra user fields after managed fields', () => {
       const output = renderProjectConfig({ custom_key: 'custom_value' });
       expect(output).toContain('custom_key: custom_value');
@@ -2072,6 +2082,26 @@ describe('skills', () => {
       await mergeProjectConfig(tmpDir);
       const content = await fs.readFile(path.join(configDir, 'config.yaml'), 'utf-8');
       expect(content).toContain('review_mode: off');
+    });
+
+    it('overwrites an existing language when a new language is explicitly passed', async () => {
+      const configDir = path.join(tmpDir, '.comet');
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(path.join(configDir, 'config.yaml'), 'language: en\n', 'utf-8');
+
+      await mergeProjectConfig(tmpDir, 'zh-CN');
+      const content = await fs.readFile(path.join(configDir, 'config.yaml'), 'utf-8');
+      expect(content).toContain('language: zh-CN');
+    });
+
+    it('preserves the existing language when no language is passed', async () => {
+      const configDir = path.join(tmpDir, '.comet');
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(path.join(configDir, 'config.yaml'), 'language: zh-CN\n', 'utf-8');
+
+      await mergeProjectConfig(tmpDir, null);
+      const content = await fs.readFile(path.join(configDir, 'config.yaml'), 'utf-8');
+      expect(content).toContain('language: zh-CN');
     });
   });
 

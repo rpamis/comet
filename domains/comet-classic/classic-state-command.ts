@@ -23,6 +23,7 @@ import {
 } from './classic-transitions.js';
 import { readRunState } from '../../domains/engine/state.js';
 import { appendTrajectory, readTrajectory } from '../../domains/engine/run-store.js';
+import { readClassicConfigValue } from './classic-project-config.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -291,18 +292,14 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
 async function projectConfigValue(
   field: 'context_compression' | 'auto_transition' | 'review_mode' | 'language',
 ): Promise<string | null> {
-  const file = path.resolve('.comet', 'config.yaml');
-  if (!(await exists(file))) return null;
-  const document = await readDocument(file);
-  const value = document.get(field);
-  return value === null || value === undefined ? null : scalar(value);
+  return (await readClassicConfigValue(field))?.value ?? null;
 }
 
 async function projectLanguageDefault(): Promise<string> {
   if (process.env.COMET_LANGUAGE)
     return validateLanguage(process.env.COMET_LANGUAGE, 'COMET_LANGUAGE');
-  const value = await projectConfigValue('language');
-  if (value) return validateLanguage(value, '.comet/config.yaml');
+  const configured = await readClassicConfigValue('language');
+  if (configured) return validateLanguage(configured.value, configured.source);
   return 'en';
 }
 

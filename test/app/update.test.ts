@@ -281,4 +281,97 @@ describe('update command helpers', () => {
       }),
     );
   });
+
+  it('persists the installed language when updating global Comet skills', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.codex', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n\n当用户提出需求时使用这个技能。',
+      'utf-8',
+    );
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'global',
+        language: 'zh',
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    const config = await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf-8');
+    expect(config).toContain('language: zh-CN');
+    await expect(fs.stat(path.join(fakeHome, 'docs', 'superpowers'))).rejects.toThrow();
+  });
+
+  it('re-persists an explicitly requested language even when the config already has a different one', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.codex', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n\nUse this skill.',
+      'utf-8',
+    );
+    await fs.mkdir(path.join(fakeHome, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: en\n', 'utf-8');
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'global',
+        language: 'zh',
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    const config = await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf-8');
+    expect(config).toContain('language: zh-CN');
+  });
+
+  it('does not guess a language when installed platforms in the same scope disagree and none is requested', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    await fs.mkdir(path.join(fakeHome, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n\nUse this skill.',
+      'utf-8',
+    );
+    await fs.mkdir(path.join(fakeHome, '.cursor', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.cursor', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n\n当用户提出需求时使用这个技能。',
+      'utf-8',
+    );
+    await fs.mkdir(path.join(fakeHome, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: en\n', 'utf-8');
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'global',
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    const config = await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf-8');
+    expect(config).toContain('language: en');
+  });
 });
