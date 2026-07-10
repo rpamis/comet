@@ -272,6 +272,13 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
       if (runtime.run.pending && runtime.run.pending !== actionId) {
         throw new ArchiveFailure(red(`FATAL: another action is pending: ${runtime.run.pending}`));
       }
+      if (!recovering && !classic.archived && classic.archiveConfirmation !== 'confirmed') {
+        throw new ArchiveFailure(
+          red(
+            `FATAL: archive_confirmation is '${classic.archiveConfirmation ?? 'null'}', expected 'confirmed'. Run final archive confirmation first.`,
+          ),
+        );
+      }
 
       if (!recovering) {
         const action: EngineAction = {
@@ -350,7 +357,12 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
       };
       await writeArtifacts(archiveDir, archivedProjection.run.artifactsRef, artifacts);
 
-      const archiveTransition = applyClassicTransition(archivedProjection.classic, 'archived');
+      const archiveTransition = applyClassicTransition(
+        recovering && archivedProjection.classic.archiveConfirmation !== 'confirmed'
+          ? { ...archivedProjection.classic, archiveConfirmation: 'confirmed' }
+          : archivedProjection.classic,
+        'archived',
+      );
       const archivedClassic = archiveTransition.classic;
       let transitionedRun = archivedProjection.run;
       if (

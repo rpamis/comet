@@ -2746,6 +2746,7 @@ describe('comet scripts', () => {
         'verification_report: docs/superpowers/reports/ready.md',
         'branch_status: handled',
         'verified_at: 2026-05-21',
+        'archive_confirmation: confirmed',
         'archived: false',
         '',
       ].join('\n'),
@@ -2808,6 +2809,7 @@ describe('comet scripts', () => {
         'verification_report: docs/superpowers/reports/merge.md',
         'branch_status: handled',
         'verified_at: 2026-05-21',
+        'archive_confirmation: confirmed',
         'archived: false',
         '',
       ].join('\n'),
@@ -2888,6 +2890,7 @@ describe('comet scripts', () => {
         'verification_report: docs/superpowers/reports/utc.md',
         'branch_status: handled',
         'verified_at: 2026-05-21',
+        'archive_confirmation: confirmed',
         'archived: false',
         '',
       ].join('\n'),
@@ -3363,11 +3366,27 @@ describe('comet scripts', () => {
       ),
     );
 
+    const unverifiedConfirmation = runNode(tmpDir, stateScript, [
+      'transition',
+      'archive-not-passed',
+      'archive-confirm',
+    ]);
     const blocked = runNode(tmpDir, stateScript, ['transition', 'archive-not-passed', 'archived']);
+    expect(unverifiedConfirmation.status).toBe(1);
+    expect(unverifiedConfirmation.stderr).toContain('verify_result must be pass before archiving');
     expect(blocked.status).toBe(1);
     expect(blocked.stderr).toContain('verify_result must be pass before archiving');
 
     runNode(tmpDir, stateScript, ['set', 'archive-not-passed', 'verify_result', 'pass']);
+    const unconfirmed = runNode(tmpDir, stateScript, [
+      'transition',
+      'archive-not-passed',
+      'archived',
+    ]);
+    expect(unconfirmed.status).toBe(1);
+    expect(unconfirmed.stderr).toContain('archive_confirmation must be confirmed before archiving');
+
+    runNode(tmpDir, stateScript, ['transition', 'archive-not-passed', 'archive-confirm']);
     const ok = runNode(tmpDir, stateScript, ['transition', 'archive-not-passed', 'archived']);
     expect(ok.status).toBe(0);
   });
@@ -3430,11 +3449,69 @@ describe('comet scripts', () => {
     const passedPhase = runNode(tmpDir, stateScript, ['get', 'verify-change', 'phase']);
     const passedResult = runNode(tmpDir, stateScript, ['get', 'verify-change', 'verify_result']);
     const verifiedAt = runNode(tmpDir, stateScript, ['get', 'verify-change', 'verified_at']);
+    const archiveConfirmation = runNode(tmpDir, stateScript, [
+      'get',
+      'verify-change',
+      'archive_confirmation',
+    ]);
 
     expect(pass.status).toBe(0);
     expect(passedPhase.stdout.trim()).toBe('archive');
     expect(passedResult.stdout.trim()).toBe('pass');
     expect(verifiedAt.stdout.trim()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(archiveConfirmation.stdout.trim()).toBe('pending');
+  }, 20_000);
+
+  it('confirms archive only after the final archive confirmation decision', async () => {
+    await createChange(
+      tmpDir,
+      'archive-confirm',
+      [
+        'workflow: full',
+        'phase: archive',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'tdd_mode: tdd',
+        'isolation: branch',
+        'verify_mode: full',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pass',
+        'branch_status: handled',
+        'verified_at: 2026-06-05',
+        'archive_confirmation: pending',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const bypass = runNode(tmpDir, stateScript, [
+      'set',
+      'archive-confirm',
+      'archive_confirmation',
+      'confirmed',
+    ]);
+    const pending = runNode(tmpDir, stateScript, [
+      'get',
+      'archive-confirm',
+      'archive_confirmation',
+    ]);
+    const result = runNode(tmpDir, stateScript, [
+      'transition',
+      'archive-confirm',
+      'archive-confirm',
+    ]);
+    const confirmation = runNode(tmpDir, stateScript, [
+      'get',
+      'archive-confirm',
+      'archive_confirmation',
+    ]);
+
+    expect(bypass.status).not.toBe(0);
+    expect(bypass.stderr).toContain('machine-owned field');
+    expect(pending.stdout.trim()).toBe('pending');
+    expect(result.status).toBe(0);
+    expect(confirmation.stdout.trim()).toBe('confirmed');
   }, 20_000);
 
   it('reopens archive phase for adjustment or re-verification before archiving', async () => {
@@ -3459,6 +3536,7 @@ describe('comet scripts', () => {
         'verification_report: docs/superpowers/reports/archive-reopen.md',
         'branch_status: handled',
         'verified_at: 2026-06-05',
+        'archive_confirmation: confirmed',
         'archived: false',
         '',
       ].join('\n'),
@@ -3470,6 +3548,11 @@ describe('comet scripts', () => {
     const verifiedAt = runNode(tmpDir, stateScript, ['get', 'archive-reopen', 'verified_at']);
     const report = runNode(tmpDir, stateScript, ['get', 'archive-reopen', 'verification_report']);
     const branchStatus = runNode(tmpDir, stateScript, ['get', 'archive-reopen', 'branch_status']);
+    const confirmation = runNode(tmpDir, stateScript, [
+      'get',
+      'archive-reopen',
+      'archive_confirmation',
+    ]);
 
     expect(result.status).toBe(0);
     expect(phase.stdout.trim()).toBe('verify');
@@ -3477,6 +3560,7 @@ describe('comet scripts', () => {
     expect(verifiedAt.stdout.trim()).toBe('null');
     expect(report.stdout.trim()).toBe('docs/superpowers/reports/archive-reopen.md');
     expect(branchStatus.stdout.trim()).toBe('handled');
+    expect(confirmation.stdout.trim()).toBe('null');
   }, 20_000);
 
   it('rejects archive-reopen after the change is already archived', async () => {
@@ -3511,11 +3595,18 @@ describe('comet scripts', () => {
       'already-archived',
       'archive-reopen',
     ]);
+    const confirm = runNode(tmpDir, stateScript, [
+      'transition',
+      'already-archived',
+      'archive-confirm',
+    ]);
     const phase = runNode(tmpDir, stateScript, ['get', 'already-archived', 'phase']);
     const verifyResult = runNode(tmpDir, stateScript, ['get', 'already-archived', 'verify_result']);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('already archived');
+    expect(confirm.status).not.toBe(0);
+    expect(confirm.stderr).toContain('already archived');
     expect(phase.stdout.trim()).toBe('archive');
     expect(verifyResult.stdout.trim()).toBe('pass');
   }, 20_000);
@@ -3618,9 +3709,16 @@ describe('comet scripts', () => {
     );
 
     const result = runNode(tmpDir, stateScript, ['transition', 'wrong-phase', 'build-complete']);
+    const archiveConfirm = runNode(tmpDir, stateScript, [
+      'transition',
+      'wrong-phase',
+      'archive-confirm',
+    ]);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('expected phase build');
+    expect(archiveConfirm.status).not.toBe(0);
+    expect(archiveConfirm.stderr).toContain('expected phase archive');
   });
 
   it('escalates preset workflows from build to design via preset-escalate', async () => {
@@ -3747,6 +3845,7 @@ describe('comet scripts', () => {
         'plan: null',
         'verify_result: pass',
         'verified_at: 2026-05-21',
+        'archive_confirmation: confirmed',
         'archived: false',
         '',
       ].join('\n'),

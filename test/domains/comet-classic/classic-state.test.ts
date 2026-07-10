@@ -31,6 +31,7 @@ function classicState(): ClassicState {
     branchStatus: 'handled',
     createdAt: '2026-06-01',
     verifiedAt: '2026-06-02',
+    archiveConfirmation: null,
     archived: false,
     directOverride: true,
     handoffContext: '.comet/handoff/context.json',
@@ -148,6 +149,7 @@ describe('Classic state projection', () => {
     ['verify_mode', 'medium'],
     ['verify_result', 'maybe'],
     ['branch_status', 'open'],
+    ['archive_confirmation', 'yes'],
     ['classic_profile', 'other'],
   ])('rejects invalid %s values', async (field, value) => {
     await writeClassicState(changeDir, { classic: classicState(), run: runState() });

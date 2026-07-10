@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.4] - 2026-07-09
+## What's Changed [0.4.0-beta.4] - 2026-07-10
 
 ### Added
 
@@ -14,6 +14,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Symlink installs with existing Skills**: `comet init` and `comet update --install-mode symlink` now preserve existing platform `skills/` directories and link Comet-managed Skills inside them, so local or third-party Skills no longer make Comet installation fail ([#171](https://github.com/rpamis/comet/issues/171)).
 - **OpenSpec CLI install scope**: `comet init` now installs or upgrades the OpenSpec CLI as a global tool even during project-scope setup, so choosing OpenSpec no longer creates a project `node_modules/` directory ([#175](https://github.com/rpamis/comet/issues/175)).
 - **Archived dashboard artifacts**: `comet dashboard` now resolves archived changes back to the project root before reading `docs/superpowers/` path pointers, so archived Superpowers plans, design docs, and verify reports remain visible ([#176](https://github.com/rpamis/comet/issues/176)).
+- **Archive confirmation enforcement**: `/comet-archive` now records the user's final approval in machine-owned Classic state and refuses mutating archive runs until that transition succeeds, preventing direct script invocation from bypassing the required confirmation.
 
 ## What's Changed [0.4.0-beta.3] - 2026-07-08
 

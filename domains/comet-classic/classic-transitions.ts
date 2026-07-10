@@ -6,6 +6,7 @@ export const CLASSIC_TRANSITION_EVENTS = [
   'build-complete',
   'verify-pass',
   'verify-fail',
+  'archive-confirm',
   'archive-reopen',
   'archived',
   'preset-escalate',
@@ -58,6 +59,11 @@ export const CLASSIC_TRANSITION_TABLE: Record<ClassicTransitionEvent, ClassicTra
       from: 'verify',
       guardRefs: ['verification-failed'],
     },
+    'archive-confirm': {
+      event: 'archive-confirm',
+      from: 'archive',
+      guardRefs: ['archive-final-confirmation'],
+    },
     'archive-reopen': {
       event: 'archive-reopen',
       from: 'archive',
@@ -66,7 +72,7 @@ export const CLASSIC_TRANSITION_TABLE: Record<ClassicTransitionEvent, ClassicTra
     archived: {
       event: 'archived',
       from: 'archive',
-      guardRefs: ['verify-result-pass'],
+      guardRefs: ['verify-result-pass', 'archive-confirmed'],
     },
     'preset-escalate': {
       event: 'preset-escalate',
@@ -130,6 +136,7 @@ export function applyClassicTransition(
     setField(classic, effects, 'verifyResult', 'pass');
     setField(classic, effects, 'phase', 'archive');
     setField(classic, effects, 'verifiedAt', dateOnly(now));
+    setField(classic, effects, 'archiveConfirmation', 'pending');
   } else if (event === 'verify-fail') {
     setField(classic, effects, 'verifyResult', 'fail');
     setField(classic, effects, 'phase', 'build');
@@ -143,14 +150,24 @@ export function applyClassicTransition(
     setField(classic, effects, 'classicProfile', 'full');
     setField(classic, effects, 'phase', 'design');
     setField(classic, effects, 'designDoc', null);
+  } else if (event === 'archive-confirm') {
+    if (classic.verifyResult !== 'pass') {
+      throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
+    }
+    if (classic.archived) throw new Error(`Cannot apply ${event}: already archived`);
+    setField(classic, effects, 'archiveConfirmation', 'confirmed');
   } else if (event === 'archive-reopen') {
     if (classic.archived) throw new Error(`Cannot apply ${event}: already archived`);
     setField(classic, effects, 'verifyResult', 'pending');
     setField(classic, effects, 'phase', 'verify');
     setField(classic, effects, 'verifiedAt', null);
+    setField(classic, effects, 'archiveConfirmation', null);
   } else {
     if (classic.verifyResult !== 'pass') {
       throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
+    }
+    if (classic.archiveConfirmation !== 'confirmed') {
+      throw new Error(`Cannot apply ${event}: archiveConfirmation must be confirmed`);
     }
     setField(classic, effects, 'archived', true);
   }
