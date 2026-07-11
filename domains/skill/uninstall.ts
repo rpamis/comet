@@ -9,6 +9,7 @@ import {
   isDirEmpty,
 } from '../../platform/fs/file-system.js';
 import {
+  getPlatformConfigDir,
   getPlatformSkillsDir,
   getPlatformSkillsDirs,
   type Platform,
@@ -33,11 +34,27 @@ async function removeManagedSkillsFromDirs(
   baseDir: string,
   skillsDirs: string[],
   managedSkills: string[],
-): Promise<number> {
+): Promise<RemovalResult> {
   let removed = 0;
+  let failed = 0;
   const parentDirs = new Set<string>();
   for (const skillsDir of skillsDirs) {
+    const platformRoot = path.join(baseDir, skillsDir);
     const skillsRoot = path.join(baseDir, skillsDir, 'skills');
+    let sharedBoundary = false;
+    for (const boundary of [platformRoot, skillsRoot]) {
+      try {
+        if ((await lstat(boundary)).isSymbolicLink()) {
+          failed++;
+          sharedBoundary = true;
+          break;
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+    if (sharedBoundary) continue;
+
     for (const skillRelPath of managedSkills) {
       const parts = skillRelPath.split('/');
       let current = baseDir;
@@ -76,7 +93,7 @@ async function removeManagedSkillsFromDirs(
   )) {
     if (await isDirEmpty(dir)) await removeDir(dir);
   }
-  return removed;
+  return { removed, failed };
 }
 
 export async function removeLegacyCometSkillsForPlatform(
@@ -89,10 +106,7 @@ export async function removeLegacyCometSkillsForPlatform(
   if (legacyDirs.length === 0) return { removed: 0, failed: 0 };
 
   const managedSkills = getManagedSkillPaths(await readManifest());
-  return {
-    removed: await removeManagedSkillsFromDirs(baseDir, legacyDirs, managedSkills),
-    failed: 0,
-  };
+  return removeManagedSkillsFromDirs(baseDir, legacyDirs, managedSkills);
 }
 
 async function removeCometSkillsForPlatform(
@@ -109,8 +123,9 @@ async function removeCometSkillsForPlatform(
       ...(scope === 'global' && platform.id === 'pi' ? [platform.skillsDir] : []),
     ]),
   ];
-  let removed = await removeManagedSkillsFromDirs(baseDir, uniqueSkillsDirs, managedSkills);
-  const failed = 0;
+  const skillsRemoval = await removeManagedSkillsFromDirs(baseDir, uniqueSkillsDirs, managedSkills);
+  let removed = skillsRemoval.removed;
+  const failed = skillsRemoval.failed;
 
   if (OPENCODE_STYLE_PLATFORM_IDS.has(platform.id)) {
     const commandsDir = path.join(baseDir, skillsDir, 'commands');
@@ -201,8 +216,7 @@ async function removeCometHooksForPlatform(
   }
 
   const hookFormat = platform.hookFormat;
-  const skillsDir = getPlatformSkillsDir(platform, scope);
-  const platformBase = path.join(baseDir, skillsDir);
+  const platformBase = path.join(baseDir, getPlatformConfigDir(platform, scope));
   const scriptRelPaths = Object.keys(hooksConfig);
 
   try {

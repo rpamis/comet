@@ -232,6 +232,15 @@ describe('update command helpers', () => {
     await expect(fs.readFile(path.join(legacyPersonal, 'SKILL.md'), 'utf8')).resolves.toBe(
       '# Personal\n',
     );
+    const settings = JSON.parse(
+      await fs.readFile(path.join(tmpDir, '.codex', 'settings.local.json'), 'utf8'),
+    );
+    expect(settings.hooks.PreToolUse[0].hooks[0].command.replaceAll('\\', '/')).toContain(
+      '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
+    );
+    await expect(
+      fs.access(path.join(tmpDir, '.agents', 'settings.local.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('preserves legacy Codex skills when the canonical installation is incomplete', async () => {

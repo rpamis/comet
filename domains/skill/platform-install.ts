@@ -5,7 +5,11 @@ import { fileURLToPath } from 'url';
 import { parseDocument } from 'yaml';
 
 import { fileExists, readJson, copyFile, ensureDir } from '../../platform/fs/file-system.js';
-import { getPlatformSkillsDir, type Platform } from '../../platform/install/platforms.js';
+import {
+  getPlatformConfigDir,
+  getPlatformSkillsDir,
+  type Platform,
+} from '../../platform/install/platforms.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
 import { formatSupportedArtifactLanguages, resolveArtifactLanguage } from './languages.js';
 import type { LanguageConfig, SkillLanguageId } from './languages.js';
@@ -741,7 +745,7 @@ async function installCometHooksForPlatform(
 
   const hookFormat = platform.hookFormat;
   const skillsDir = getPlatformSkillsDir(platform, scope);
-  const platformBase = path.join(baseDir, skillsDir);
+  const platformBase = path.join(baseDir, getPlatformConfigDir(platform, scope));
 
   try {
     switch (hookFormat) {

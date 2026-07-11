@@ -114,30 +114,57 @@ describe('uninstall', () => {
     },
   );
 
-  it.each(['canonical', 'external'] as const)(
-    'unlinks a legacy Codex skills-root junction without modifying its %s target',
-    async (targetKind) => {
+  it.each(['.agents', '.codex'] as const)(
+    'refuses to clean a shared Codex skills-root junction at %s',
+    async (root) => {
       const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
-      const target =
-        targetKind === 'canonical'
-          ? path.join(tmpDir, '.agents', 'skills')
-          : path.join(tmpDir, 'external', 'skills');
+      const target = path.join(tmpDir, 'external', root.slice(1), 'skills');
       const targetComet = path.join(target, 'comet');
-      const legacySkillsLink = path.join(tmpDir, '.codex', 'skills');
+      const personal = path.join(target, 'personal', 'SKILL.md');
+      const skillsLink = path.join(tmpDir, root, 'skills');
       await fs.mkdir(targetComet, { recursive: true });
       await fs.writeFile(path.join(targetComet, 'SKILL.md'), '# Target Comet\n');
       await fs.writeFile(path.join(targetComet, 'keep.txt'), 'keep\n');
-      await fs.mkdir(path.dirname(legacySkillsLink), { recursive: true });
-      await fs.symlink(target, legacySkillsLink, process.platform === 'win32' ? 'junction' : 'dir');
+      await fs.mkdir(path.dirname(personal), { recursive: true });
+      await fs.writeFile(personal, '# Personal\n');
+      await fs.mkdir(path.dirname(skillsLink), { recursive: true });
+      await fs.symlink(target, skillsLink, process.platform === 'win32' ? 'junction' : 'dir');
 
-      const result = await removeLegacyCometSkillsForPlatform(tmpDir, codexPlatform, 'project');
+      const result = await removeCometSkillsForPlatform(tmpDir, codexPlatform, 'project');
 
-      expect(result.removed).toBe(1);
-      await expect(fs.lstat(legacySkillsLink)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(result.failed).toBeGreaterThan(0);
+      await expect(fs.lstat(skillsLink)).resolves.toMatchObject({});
       await expect(fs.readFile(path.join(targetComet, 'SKILL.md'), 'utf8')).resolves.toBe(
         '# Target Comet\n',
       );
       await expect(fs.readFile(path.join(targetComet, 'keep.txt'), 'utf8')).resolves.toBe('keep\n');
+      await expect(fs.readFile(personal, 'utf8')).resolves.toBe('# Personal\n');
+    },
+  );
+
+  it.each(['.agents', '.codex'] as const)(
+    'refuses to clean a shared Codex platform-root junction at %s',
+    async (root) => {
+      const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
+      const target = path.join(tmpDir, 'external', `${root.slice(1)}-root`);
+      const comet = path.join(target, 'skills', 'comet', 'SKILL.md');
+      const personal = path.join(target, 'skills', 'personal', 'SKILL.md');
+      await fs.mkdir(path.dirname(comet), { recursive: true });
+      await fs.mkdir(path.dirname(personal), { recursive: true });
+      await fs.writeFile(comet, '# Comet\n');
+      await fs.writeFile(personal, '# Personal\n');
+      await fs.symlink(
+        target,
+        path.join(tmpDir, root),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      const result = await removeCometSkillsForPlatform(tmpDir, codexPlatform, 'project');
+
+      expect(result.failed).toBeGreaterThan(0);
+      await expect(fs.lstat(path.join(tmpDir, root))).resolves.toMatchObject({});
+      await expect(fs.readFile(comet, 'utf8')).resolves.toBe('# Comet\n');
+      await expect(fs.readFile(personal, 'utf8')).resolves.toBe('# Personal\n');
     },
   );
 
@@ -350,6 +377,22 @@ describe('uninstall', () => {
   });
 
   describe('removeCometHooksForPlatform', () => {
+    it('removes Codex hooks from .codex without creating .agents settings', async () => {
+      const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
+      await installCometHooksForPlatform(tmpDir, codexPlatform, 'project');
+
+      const settingsPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      await expect(fs.access(settingsPath)).resolves.toBeUndefined();
+      const result = await removeCometHooksForPlatform(tmpDir, codexPlatform, 'project');
+
+      expect(result.removed).toBeGreaterThan(0);
+      const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+      expect(settings.hooks).toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.agents', 'settings.local.json')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
     it('removes Claude Code hooks while preserving non-Comet hooks', async () => {
       const claudePlatform: Platform = PLATFORMS.find((p) => p.id === 'claude')!;
 
