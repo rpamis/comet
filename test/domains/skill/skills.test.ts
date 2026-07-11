@@ -1158,13 +1158,13 @@ describe('skills', () => {
       expect(enBuild).not.toContain('openspec-apply-change');
       expect(enArchive).toContain('### 1. Final Archive Confirmation (Blocking Point)');
       expect(enArchive).toContain(
-        'Must not run `node "$COMET_ARCHIVE" "<change-name>"` before user confirmation',
+        'Must not run `comet archive "<change-name>"` before user confirmation',
       );
       expect(enArchive).toContain('`comet/reference/decision-point.md`');
       expect(enArchive).toContain('Confirm archive');
       expect(enArchive).toContain('Needs adjustment or re-verification');
       expect(enArchive).toContain('Do not archive yet');
-      expect(enArchive).toContain('`node "$COMET_STATE" transition <change-name> archive-reopen`');
+      expect(enArchive).toContain('`comet state transition <change-name> archive-reopen`');
       expect(enVerify).toContain('Must not automatically archive just because verification passed');
       expect(enHotfix).toContain(
         "must pause under the `comet/reference/decision-point.md` protocol and wait for the user's explicit choice",
@@ -1224,6 +1224,20 @@ describe('skills', () => {
       expect(enBuild).toContain(
         'CRITICAL review findings (security vulnerabilities, data loss risk, build/test failures) must be fixed',
       );
+      expect(enBuild).toContain(
+        'comet state record-check <change-name> build --command "<actual build command>" --exit-code 0',
+      );
+      expect(enVerify).toContain(
+        'comet state record-check <change-name> verify --command "<actual verification command>" --exit-code 0',
+      );
+      expect(enBuild).toContain('`--command` records command text only; Comet **never executes it**');
+      expect(enVerify).toContain('`--command` records command text only; Comet **never executes it**');
+      expect(enBuild).toContain('Build and verify evidence are separate and cannot substitute for each other');
+      expect(enVerify).toContain('Verify and build evidence are separate and cannot substitute for each other');
+      expect(enBuild).toContain(
+        '`COMET_SKIP_BUILD=1` is only a compatibility bypass for legacy workflows, not auditable build evidence',
+      );
+      expect(enVerify).toContain('cannot be treated as auditable verification or build evidence');
       expect(enVerify).toContain('CRITICAL or IMPORTANT failures must be fixed');
       expect(enVerify).toContain('skipping fix to accept all is not allowed');
       expect(enVerify).toContain('Code review strategy');
@@ -1298,7 +1312,7 @@ describe('skills', () => {
       expect(enHotfix).toContain('immediately use the Skill tool to load the `comet-design` skill');
       expect(enTweak).toContain('immediately use the Skill tool to load the `comet-design` skill');
       expect(enVerify).toContain(
-        'After user selects B, run `node "$COMET_STATE" transition <change-name> verify-fail`, then invoke `/comet-build`',
+        'After user selects B, run `comet state transition <change-name> verify-fail`, then invoke `/comet-build`',
       );
 
       expect(enComet).toContain(
@@ -1345,14 +1359,16 @@ describe('skills', () => {
         're-read `comet/reference/subagent-dispatch.md` for Comet-specific extensions',
       );
       expect(enCometRule).toContain('Do not execute the pending task directly in the main window');
-      for (const [content] of [
-        [enOpen, '/comet-design'],
-        [enDesign, '/comet-build'],
-        [enBuild, '/comet-verify'],
-        [enVerify, '/comet-archive'],
-      ] as const) {
+      for (const content of [enOpen, enDesign]) {
         expect(content).toContain('Automatic Handoff to Next Phase');
         expect(content).toContain('node "$COMET_STATE" next <change-name>');
+        expect(content).toContain('`NEXT: auto`');
+        expect(content).toContain('`NEXT: manual`');
+        expect(content).toContain('run `/<SKILL>` manually');
+      }
+      for (const content of [enBuild, enVerify]) {
+        expect(content).toContain('Automatic Handoff to Next Phase');
+        expect(content).toContain('comet state next <change-name>');
         expect(content).toContain('`NEXT: auto`');
         expect(content).toContain('`NEXT: manual`');
         expect(content).toContain('run `/<SKILL>` manually');
@@ -1435,16 +1451,16 @@ describe('skills', () => {
         'Language: Use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`',
       );
       expect(enSkills['comet-build']).toContain(
-        'Plan files and execution feedback must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`',
+        'Plan files and execution feedback must use the configured Comet artifact language from `comet state get <name> language`',
       );
       expect(enSkills['comet-build']).toContain(
         'ARGUMENTS must include the same Language constraint as Step 1',
       );
       expect(enSkills['comet-verify']).toContain(
-        'Verification reports and branch-handling notes must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`',
+        'Verification reports and branch-handling notes must use the configured Comet artifact language from `comet state get <name> language`',
       );
       expect(enSkills['comet-archive']).toContain(
-        'Archive summaries and lifecycle closure notes must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`',
+        'Archive summaries and lifecycle closure notes must use the configured Comet artifact language from `comet state get <name> language`',
       );
       expect(enSkills['comet-hotfix']).toContain(
         'Streamlined OpenSpec artifacts must use the configured Comet artifact language',

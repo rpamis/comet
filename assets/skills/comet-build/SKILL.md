@@ -14,10 +14,10 @@ description: "Use when a full Comet change has completed design and needs an imp
 
 ### 0. Entry State Verification (Entry Check)
 
-Locate scripts via `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
+Use the stable `comet` CLI described in `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
 
 ```bash
-node "$COMET_STATE" check <name> build
+comet state check <name> build
 ```
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
@@ -26,13 +26,13 @@ Proceed to Step 1 after verification passes. The script outputs specific failure
 
 ### 1. Create Plan (Subagent Offload)
 
-Create the implementation plan through a subagent, avoiding planning skill occupying main session context. Plan files and execution feedback must use the configured Comet artifact language from `"$COMET_BASH" "$COMET_STATE" get <name> language`.
+Create the implementation plan through a subagent, avoiding planning skill occupying main session context. Plan files and execution feedback must use the configured Comet artifact language from `comet state get <name> language`.
 
 **Subagent instructions**:
 
 You are an implementation planning expert. Create an implementation plan based on the following inputs:
 
-1. **Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited. After the skill loads, ARGUMENTS must include: `Language: Use the configured Comet artifact language from "$COMET_BASH" "$COMET_STATE" get <name> language`
+1. **Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited. After the skill loads, ARGUMENTS must include: `Language: Use the configured Comet artifact language from comet state get <name> language`
 2. Read the Design Doc (technical design document under `docs/superpowers/specs/`)
 3. Read `openspec/changes/<name>/tasks.md` (task boundaries)
 4. Follow the skill's guidance to create the plan
@@ -69,7 +69,7 @@ After the subagent completes:
 Record plan path:
 
 ```bash
-node "$COMET_STATE" set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
+comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 ```
 
 No manual phase update needed — guard auto-transitions when exit conditions are met.
@@ -86,13 +86,13 @@ This is a user decision point. **Must follow the `comet/reference/decision-point
 When the user chooses to continue:
 
 ```bash
-node "$COMET_STATE" set <name> build_pause null
+comet state set <name> build_pause null
 ```
 
 When the user chooses to pause:
 
 ```bash
-node "$COMET_STATE" set <name> build_pause plan-ready
+comet state set <name> build_pause plan-ready
 ```
 
 After setting `build_pause: plan-ready`, stop the current invocation. Do not choose `isolation` or `build_mode`, and do not load an execution skill.
@@ -102,7 +102,7 @@ After setting `build_pause: plan-ready`, stop the current invocation. Do not cho
 If resuming with `build_pause: plan-ready` and the `plan` file exists, do not rerun `writing-plans`. First tell the user the workflow is stopped at the plan-ready pause point; after the user confirms continuing, set:
 
 ```bash
-node "$COMET_STATE" set <name> build_pause null
+comet state set <name> build_pause null
 ```
 
 Then continue this step to choose workspace isolation, execution method, TDD mode, and code review mode.
@@ -137,11 +137,11 @@ This is a user decision point. **Must follow the `comet/reference/decision-point
 After user selection, update `isolation`, execution method, TDD mode, and code review mode fields:
 
 ```bash
-node "$COMET_STATE" set <name> isolation <branch|worktree>
+comet state set <name> isolation <branch|worktree>
 ```
 
-- If the user chooses `executing-plans`: run `node "$COMET_STATE" set <name> subagent_dispatch null`, then run `node "$COMET_STATE" set <name> build_mode executing-plans`
-- If the user chooses `subagent-driven-development`: first confirm the current platform has real background subagent / Task / multi-agent dispatch capability; after confirming, run `node "$COMET_STATE" set <name> subagent_dispatch confirmed`, then run `node "$COMET_STATE" set <name> build_mode subagent-driven-development`
+- If the user chooses `executing-plans`: run `comet state set <name> subagent_dispatch null`, then run `comet state set <name> build_mode executing-plans`
+- If the user chooses `subagent-driven-development`: first confirm the current platform has real background subagent / Task / multi-agent dispatch capability; after confirming, run `comet state set <name> subagent_dispatch confirmed`, then run `comet state set <name> build_mode subagent-driven-development`
 - If real background dispatch capability cannot be confirmed, must not write `build_mode: subagent-driven-development`; must pause and wait for the user to choose `executing-plans` instead
 
 **TDD Mode**:
@@ -151,7 +151,7 @@ node "$COMET_STATE" set <name> isolation <branch|worktree>
 | `tdd` | Write a failing test first for each task, then implement | Recommended. Changes involving business logic, new features, APIs |
 | `direct` | Implement directly, no enforced TDD flow | Changes that don't need test coverage, or user chooses to skip tests and write code directly. hotfix/tweak presets default to `direct` |
 
-Run `node "$COMET_STATE" set <name> tdd_mode <tdd|direct>`
+Run `comet state set <name> tdd_mode <tdd|direct>`
 
 **Code Review Mode**:
 
@@ -161,21 +161,21 @@ Run `node "$COMET_STATE" set <name> tdd_mode <tdd|direct>`
 | `standard` | No per-task reviewer by default; dispatch a per-task reviewer only when a task hits a risk signal, plus one final lightweight code review | Default recommended, suits most ordinary changes |
 | `thorough` | Dispatch a per-task reviewer (spec + quality) on every task, plus one final complete review | High-risk, multi-module, architecture or security-related changes |
 
-Run `node "$COMET_STATE" set <name> review_mode <off|standard|thorough>`
+Run `comet state set <name> review_mode <off|standard|thorough>`
 
-`isolation` is a script-enforced hard constraint. Full workflow init may temporarily leave it as `null`, but only before this step. If it remains `null`, both the `build → verify` guard and `comet-state transition build-complete` will fail.
+`isolation` is a script-enforced hard constraint. Full workflow init may temporarily leave it as `null`, but only before this step. If it remains `null`, both the `build → verify` guard and `comet state transition build-complete` will fail.
 
-`subagent_dispatch` is a script-enforced hard constraint. `build_mode: subagent-driven-development` requires `subagent_dispatch: confirmed` before leaving the build phase, otherwise both `comet-guard.mjs build --apply` and `comet-state transition build-complete` will fail.
+`subagent_dispatch` is a script-enforced hard constraint. `build_mode: subagent-driven-development` requires `subagent_dispatch: confirmed` before leaving the build phase, otherwise both `comet guard build --apply` and `comet state transition build-complete` will fail.
 
-`tdd_mode` is a script-enforced hard constraint. Full workflow must have `tdd_mode` selected as `tdd` or `direct` before leaving the build phase, otherwise both `comet-guard.mjs build --apply` and `comet-state transition build-complete` will fail.
+`tdd_mode` is a script-enforced hard constraint. Full workflow must have `tdd_mode` selected as `tdd` or `direct` before leaving the build phase, otherwise both `comet guard build --apply` and `comet state transition build-complete` will fail.
 
-`review_mode` is a script-enforced hard constraint. Full workflow must have `review_mode` selected as `off`, `standard`, or `thorough` before leaving the build phase, otherwise both `comet-guard.mjs build --apply` and `comet-state transition build-complete` will fail. Legacy state files without this field follow a compat path, but should be backfilled on recovery.
+`review_mode` is a script-enforced hard constraint. Full workflow must have `review_mode` selected as `off`, `standard`, or `thorough` before leaving the build phase, otherwise both `comet guard build --apply` and `comet state transition build-complete` will fail. Legacy state files without this field follow a compat path, but should be backfilled on recovery.
 
 `build_mode` defaults to `direct` only for hotfix/tweak presets. Full workflow must not default to `direct`. Use it only when the user explicitly asks to bypass the plan execution skills and you record an explicit override:
 
 ```bash
-node "$COMET_STATE" set <name> direct_override true
-node "$COMET_STATE" set <name> build_mode direct
+comet state set <name> direct_override true
+comet state set <name> build_mode direct
 ```
 
 Without `direct_override: true`, `build_mode=direct` in full workflow is blocked by both guard and state transition.
@@ -206,9 +206,9 @@ git commit -m "chore: add implementation plan"
 
 **Execute plan**: Must handle execution according to the actual runtime of `build_mode`.
 
-- `build_mode: executing-plans`: **Immediately execute:** Use the Skill tool to load the Superpowers `executing-plans` skill. Skipping this step is prohibited. If the skill is unavailable, stop the process and prompt to install or enable the corresponding skill; do not substitute with normal conversation. After the skill loads, ARGUMENTS must include the same Language constraint as Step 1: `Language: Use the configured Comet artifact language from "$COMET_BASH" "$COMET_STATE" get <name> language`. Execute according to plan.
+- `build_mode: executing-plans`: **Immediately execute:** Use the Skill tool to load the Superpowers `executing-plans` skill. Skipping this step is prohibited. If the skill is unavailable, stop the process and prompt to install or enable the corresponding skill; do not substitute with normal conversation. After the skill loads, ARGUMENTS must include the same Language constraint as Step 1: `Language: Use the configured Comet artifact language from comet state get <name> language`. Execute according to plan.
 - `build_mode: subagent-driven-development`: The main session only coordinates and must not write implementation code directly. **Immediately execute:** Use the Skill tool to load the Superpowers `subagent-driven-development` skill. After the skill loads, read `comet/reference/subagent-dispatch.md` for Comet-specific extensions (real background dispatch, task isolation, checkoff verification, TDD constraints, continuous execution, context recovery) and apply them alongside the skill's workflow. If they conflict, the more specific Comet extensions take precedence.
-- If the current platform has no real background agent dispatch capability, must pause and wait for the user to choose main window execution instead. After the user chooses, must run `node "$COMET_STATE" set <name> build_mode executing-plans`, then follow the `build_mode: executing-plans` branch to load the Superpowers `executing-plans` skill. Must not continue executing tasks before the user explicitly chooses.
+- If the current platform has no real background agent dispatch capability, must pause and wait for the user to choose main window execution instead. After the user chooses, must run `comet state set <name> build_mode executing-plans`, then follow the `build_mode: executing-plans` branch to load the Superpowers `executing-plans` skill. Must not continue executing tasks before the user explicitly chooses.
 
 **TDD Mode Execution Constraints**:
 
@@ -227,7 +227,7 @@ Under `executing-plans`, the main session executes tasks directly (no isolated i
 - **`review_mode: thorough`**: In addition to the single final review, request one segmented code review per task segment (every 3 tasks, scoped to that segment's diff). If total tasks ≤ 3, skip the mid-execution segments and only do the final review. Each segment review uses `requesting-code-review` against the segment's commit range. This is the closest equivalent to `subagent-driven-development`'s per-task review that `executing-plans` can offer, since it has no isolated implementer to review per task.
 
 Requirements (apply to `standard` and `thorough`):
-- the `requesting-code-review` skill must be loaded before `node "$COMET_GUARD" <change-name> build --apply`
+- the `requesting-code-review` skill must be loaded before `comet guard <change-name> build --apply`
 - if `requesting-code-review` skill is unavailable, skip the review gate but must record `<!-- review skipped: skill unavailable -->` in tasks.md, then continue guard transition
 - CRITICAL review findings (security vulnerabilities, data loss risk, build/test failures) must be fixed first and must not be carried into verify
 - if non-CRITICAL review findings are accepted, record the acceptance reason and impact scope in tasks.md, the commit body, a verification report draft, or another durable artifact
@@ -282,14 +282,22 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - `tdd_mode` has been written as `tdd` or `direct`
 - `review_mode` has been written as `off`, `standard`, or `thorough`
 - Code review has been completed per the `executing-plans` review gate (Section "Execute plan") for the chosen `review_mode`: under `standard` or `thorough`, code review has been requested and CRITICAL review findings fixed or non-CRITICAL acceptance rationale recorded; under `review_mode: off`, the reason for skipping automatic code review has been recorded in a persistent artifact
-- **Phase guard**: Run `node "$COMET_GUARD" <change-name> build --apply`; after all PASS, state advances to `phase: verify`
+- **Phase guard**: Run `comet guard <change-name> build --apply`; after all PASS, state advances to `phase: verify`
 
 Guard runs the inferred project build check (`npm run build`, Maven, or Cargo when detected). When the inferred command fails, guard prints the command output as evidence for debugging.
+
+If the project has no automatically inferred build command, the user or Agent must run the real build command first, then record its evidence separately:
+
+```bash
+comet state record-check <change-name> build --command "<actual build command>" --exit-code 0
+```
+
+`--command` records command text only; Comet **never executes it**. Build and verify evidence are separate and cannot substitute for each other. `COMET_SKIP_BUILD=1` is only a compatibility bypass for legacy workflows, not auditable build evidence.
 
 Before exit, run guard to auto-transition:
 
 ```bash
-node "$COMET_GUARD" <change-name> build --apply
+comet guard <change-name> build --apply
 ```
 
 State file is automatically updated to `phase: verify`, `verify_result: pending`.
@@ -299,7 +307,7 @@ State file is automatically updated to `phase: verify`, `verify_result: pending`
 Follow `comet/reference/auto-transition.md`. Key command:
 
 ```bash
-node "$COMET_STATE" next <change-name>
+comet state next <change-name>
 ```
 
 - `NEXT: auto` → invoke the skill pointed to by `SKILL` to enter the next phase

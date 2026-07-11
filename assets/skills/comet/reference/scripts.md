@@ -1,12 +1,25 @@
-# Script Location and Commands
+# Stable CLI and Internal Script Compatibility
 
 Canonical path: `comet/reference/scripts.md`
 
-This file is the single source of truth for locating Comet scripts and the state/guard/handoff/archive command surface. Load it once per session, then reuse the cached env vars.
+This file is the single source of truth for Comet's public CLI and internal script compatibility. Public workflows must prefer the stable command surface: `comet state`, `comet guard`, `comet handoff`, and `comet archive`.
 
-## Bootstrap (run once per session)
+## Public Workflow Contract
 
-Comet scripts are distributed in `comet/scripts/`. **Do not hardcode paths** — locate once, cache in env vars. Sub-skills may reference this section directly and only inline this block when they must be fully self-contained; this file is the single source of truth for updates:
+Normal installations and everyday workflows use the `comet` CLI directly. They do not need to locate launchers and must not expose the internal `classic` name to users:
+
+```bash
+comet state check <change-name> <phase>
+comet guard <change-name> <phase> --apply
+comet handoff <change-name>
+comet archive <change-name>
+```
+
+Guard `--apply` advances state after checks pass. Use `comet state transition` when expressing a state event directly, and `comet state next` after phase advancement to determine whether to invoke the next Skill automatically.
+
+## Compatibility, Recovery, and Internal Command Bootstrap
+
+The script discovery below is only for legacy compatibility, recovery when the CLI is unavailable, and internal `/comet` entry commands. Normal public workflows must not prefer it. Comet scripts are distributed in `comet/scripts/`; recovery code must locate them once and cache environment variables instead of hardcoding paths:
 
 ```bash
 COMET_ENV="${COMET_ENV:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet/scripts/comet-env.mjs' -type f -print -quit 2>/dev/null)}"
@@ -29,7 +42,7 @@ if [ -z "$COMET_SCRIPTS_DIR" ]; then
 fi
 ```
 
-After loading comet, agents should run this bootstrap block once, then reuse `$COMET_GUARD`, `$COMET_STATE`, `$COMET_HANDOFF`, `$COMET_ARCHIVE`, `$COMET_INTENT`, and `$COMET_RESUME_PROBE` throughout the session.
+Agents run this bootstrap only when entering one of the compatibility, recovery, or internal-command paths above. `COMET_INTENT` and `COMET_RESUME_PROBE` remain necessary for internal entry routing and must not be removed globally.
 
 | Variable | Purpose |
 |----------|---------|
@@ -45,27 +58,27 @@ After loading comet, agents should run this bootstrap block once, then reuse `$C
 Guard supports `--apply` flag, automatically updating `.comet.yaml` state fields after checks pass:
 
 ```bash
-node "$COMET_GUARD" <change-name> <phase> --apply
+comet guard <change-name> <phase> --apply
 ```
 
-`--apply` delegates to `comet-state transition`. Use these semantic events when state changes need to be expressed directly:
+`--apply` delegates to the state-machine transition. Use these semantic events when state changes need to be expressed directly:
 
 ```bash
-node "$COMET_STATE" transition <change-name> open-complete
-node "$COMET_STATE" transition <change-name> design-complete
-node "$COMET_STATE" transition <change-name> build-complete
-node "$COMET_STATE" transition <change-name> verify-pass
-node "$COMET_STATE" transition <change-name> verify-fail
+comet state transition <change-name> open-complete
+comet state transition <change-name> design-complete
+comet state transition <change-name> build-complete
+comet state transition <change-name> verify-pass
+comet state transition <change-name> verify-fail
 ```
 
-Archive completion is handled by `node "$COMET_ARCHIVE" <change-name>` after OpenSpec moves the change into its date-prefixed archive directory; do not manually transition an `<archive-name>`.
+Archive completion is handled by `comet archive <change-name>` after OpenSpec moves the change into its date-prefixed archive directory; do not manually transition an `<archive-name>`.
 
 ## Resolve next action
 
 After guard-based phase advancement, use the `next` subcommand to determine whether to auto-invoke the next skill:
 
 ```bash
-node "$COMET_STATE" next <change-name>
+comet state next <change-name>
 ```
 
 Output format: `NEXT: auto|manual|done` + `SKILL: <skill-name>` (omitted for `done`) + `HINT` (for `manual` only). With `auto_transition: false`, output is `manual`, which pauses only the next skill invocation and does not block phase updates.
@@ -75,5 +88,5 @@ Output format: `NEXT: auto|manual|done` + `SKILL: <skill-name>` (omitted for `do
 Complete all archive steps in one command:
 
 ```bash
-node "$COMET_ARCHIVE" <change-name>
+comet archive <change-name>
 ```
