@@ -184,6 +184,32 @@ describe('comet init E2E', () => {
     INIT_E2E_TIMEOUT_MS,
   );
 
+  it(
+    'installs Codex skills under .agents while keeping phase rules under .codex',
+    async () => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      const result = await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true }));
+
+      expect(result.selectedPlatforms).toEqual(['codex']);
+      await expect(
+        fs.access(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.codex', 'skills', 'comet', 'SKILL.md')),
+      ).rejects.toThrow();
+
+      const ruleDest = path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md');
+      await expect(fs.access(ruleDest)).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.agents', 'rules', 'comet-phase-guard.md')),
+      ).rejects.toThrow();
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
   it('records project-scope Comet installs in the user project registry', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await fs.mkdir(fakeHome, { recursive: true });
@@ -301,7 +327,6 @@ describe('comet init E2E', () => {
         const platformDirs = [
           '.claude',
           '.cursor',
-          '.codex',
           '.opencode',
           '.windsurf',
           '.cline',
@@ -338,6 +363,10 @@ describe('comet init E2E', () => {
             await expect(fs.access(dest)).resolves.toBeUndefined();
           }
         }
+
+        await expect(
+          fs.access(path.join(tmpDir, '.codex', 'skills', 'comet', 'SKILL.md')),
+        ).rejects.toThrow();
 
         await expect(
           fs.access(path.join(tmpDir, '.opencode', 'commands', 'comet-open.md')),

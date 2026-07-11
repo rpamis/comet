@@ -7,7 +7,7 @@ import {
   getCentralSkillsDir,
 } from '../../../domains/skill/platform-install.js';
 import { fileExists } from '../../../platform/fs/file-system.js';
-import type { Platform } from '../../../platform/install/platforms.js';
+import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
 
 const mockPlatform: Platform = {
   id: 'claude',
@@ -20,6 +20,12 @@ const mockPlatform: Platform = {
   supportsHooks: true,
   hookFormat: 'claude-code',
 };
+
+const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex');
+
+if (!codexPlatform) {
+  throw new Error('Codex platform definition is missing');
+}
 
 describe('symlink install mode', () => {
   let tmpDir: string;
@@ -45,6 +51,52 @@ describe('symlink install mode', () => {
   });
 
   describe('copyCometSkillsForPlatform with symlink mode', () => {
+    it('copies Codex skills to .agents without writing to legacy .codex skills', async () => {
+      const result = await copyCometSkillsForPlatform(
+        tmpDir,
+        codexPlatform,
+        false,
+        'skills',
+        'project',
+        'copy',
+      );
+
+      expect(result.failed).toBe(0);
+      expect(await fileExists(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md'))).toBe(
+        true,
+      );
+      expect(await fileExists(path.join(tmpDir, '.codex', 'skills', 'comet', 'SKILL.md'))).toBe(
+        false,
+      );
+    });
+
+    it('links Codex managed skills under .agents and preserves unrelated skills', async () => {
+      const unrelatedSkill = path.join(tmpDir, '.agents', 'skills', 'third-party', 'SKILL.md');
+      await mkdir(path.dirname(unrelatedSkill), { recursive: true });
+      await writeFile(unrelatedSkill, '# Third-party Skill\n', 'utf-8');
+
+      const result = await copyCometSkillsForPlatform(
+        tmpDir,
+        codexPlatform,
+        true,
+        'skills',
+        'project',
+        'symlink',
+      );
+
+      expect(result.failed).toBe(0);
+      expect(await readFile(unrelatedSkill, 'utf-8')).toBe('# Third-party Skill\n');
+
+      const cometSkillLink = path.join(tmpDir, '.agents', 'skills', 'comet');
+      expect((await lstat(cometSkillLink)).isSymbolicLink()).toBe(true);
+      expect(await realpath(cometSkillLink)).toBe(
+        await realpath(path.join(tmpDir, '.comet', 'skills', 'skills', 'comet')),
+      );
+      expect(await fileExists(path.join(tmpDir, '.codex', 'skills', 'comet', 'SKILL.md'))).toBe(
+        false,
+      );
+    });
+
     it('copies skills to central store and creates symlink', async () => {
       const result = await copyCometSkillsForPlatform(
         tmpDir,
