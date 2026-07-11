@@ -791,7 +791,7 @@ Stop execution and ask the user to review the Chinese Skill changes. Do not modi
 - Consumes: user-approved Chinese wording and all prior runtime behavior.
 - Produces: bilingual public instructions, final beta4 release notes, generated runtime parity, and merge-readiness evidence.
 
-- [ ] **Step 1: Translate approved Chinese behavior into English**
+- [x] **Step 1: Translate approved Chinese behavior into English**
 
 Mirror every approved command and safety statement. Preserve technical tokens exactly:
 
@@ -808,7 +808,7 @@ COMET_SKIP_BUILD=1
 
 Do not reintroduce direct launcher paths as the primary English workflow.
 
-- [ ] **Step 2: Add user-visible beta4 Changelog entries**
+- [x] **Step 2: Add user-visible beta4 Changelog entries**
 
 Under the existing `0.4.0-beta.4` entry, merge the final behavior into concise English bullets. Use these outcomes, adjusting only to avoid duplication with existing beta4 bullets:
 
@@ -824,7 +824,7 @@ Under the existing `0.4.0-beta.4` entry, merge the final behavior into concise E
 - **Custom project build evidence**: Projects without an inferred npm, Maven, or Cargo command can now record auditable build and verification results instead of relying on an undocumented skip path ([#192](https://github.com/rpamis/comet/issues/192)).
 ```
 
-- [ ] **Step 3: Rebuild runtime and run focused verification**
+- [x] **Step 3: Rebuild runtime and run focused verification**
 
 ```bash
 pnpm build:classic-runtime
@@ -833,7 +833,7 @@ npx vitest run test/domains/comet-classic/classic-archive.test.ts test/domains/c
 
 Expected: all focused tests pass.
 
-- [ ] **Step 4: Run repository checks**
+- [x] **Step 4: Run repository checks**
 
 ```bash
 pnpm format:check
@@ -845,7 +845,7 @@ npx vitest run --no-file-parallelism
 
 Expected: Prettier, ESLint, architecture lint, TypeScript/dashboard/runtime build, diff whitespace, and the full serial Vitest suite all exit 0. Use serial file mode because parallel CLI tests share generated `dist/` state on Windows.
 
-- [ ] **Step 5: Confirm release and compatibility invariants**
+- [x] **Step 5: Confirm release and compatibility invariants**
 
 Run:
 
@@ -858,7 +858,7 @@ git status --short
 
 Expected: both versions remain beta4, frozen fixture diff is empty, and the only uncommitted files are the intended English/Changelog/runtime changes.
 
-- [ ] **Step 6: Commit Task 7**
+- [x] **Step 6: Commit Task 7**
 
 ```bash
 git add assets/skills/comet/reference/scripts.md assets/skills/comet-build/SKILL.md assets/skills/comet-verify/SKILL.md assets/skills/comet-archive/SKILL.md assets/skills/comet/scripts/comet-runtime.mjs CHANGELOG.md
