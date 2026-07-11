@@ -382,8 +382,8 @@ describe('detect', () => {
         await fs.mkdir(path.join(skillsDir, 'brainstorming'));
         await fs.mkdir(path.join(skillsDir, 'using-superpowers'));
 
-        // No skills in the normal project location.
-        await fs.mkdir(path.join(tmpDir, '.codex', 'skills'), { recursive: true });
+        // Keep the canonical project Skill location empty so detection comes from the plugin cache.
+        await fs.mkdir(path.join(tmpDir, '.agents', 'skills'), { recursive: true });
 
         const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex');
         expect(codexPlatform).toBeDefined();
