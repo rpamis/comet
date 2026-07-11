@@ -3,6 +3,7 @@ import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { prepareEvalManifest } from '../../domains/bundle/eval-manifest-runtime.js';
 
 interface EvalCommandOptions {
   project?: string;
@@ -223,22 +224,27 @@ function runEval(args: string[], root: string): void {
   });
 }
 
-export async function evalRunCommand(options: EvalCommandOptions = {}): Promise<void> {
+async function executeEval(options: EvalCommandOptions, collectOnly: boolean): Promise<void> {
   assertTarget(options);
   const root = evalRoot(options);
-  const details = await buildLaunchDetails(options, false, root);
-  const args = await buildEvalArgs(options, false, details.reportConfig);
-  printLaunchDetails(details);
-  runEval(args, root);
+  const details = await buildLaunchDetails(options, collectOnly, root);
+  const prepared = options.manifest ? await prepareEvalManifest(options.manifest) : null;
+  try {
+    const runtimeOptions = prepared ? { ...options, manifest: prepared.path } : options;
+    const args = await buildEvalArgs(runtimeOptions, collectOnly, details.reportConfig);
+    printLaunchDetails(details);
+    runEval(args, root);
+  } finally {
+    await prepared?.cleanup();
+  }
+}
+
+export async function evalRunCommand(options: EvalCommandOptions = {}): Promise<void> {
+  await executeEval(options, false);
 }
 
 export async function evalCollectCommand(options: EvalCommandOptions = {}): Promise<void> {
-  assertTarget(options);
-  const root = evalRoot(options);
-  const details = await buildLaunchDetails(options, true, root);
-  const args = await buildEvalArgs(options, true, details.reportConfig);
-  printLaunchDetails(details);
-  runEval(args, root);
+  await executeEval(options, true);
 }
 
 export async function evalCommand(

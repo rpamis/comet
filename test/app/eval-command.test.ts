@@ -5,8 +5,11 @@ import { fileURLToPath } from 'url';
 
 const execFileSync = vi.fn();
 const existsSync = vi.fn(() => true);
+const prepareEvalManifest = vi.fn();
+const cleanupPreparedManifest = vi.fn();
 const project = path.join(os.tmpdir(), 'comet-eval-project');
 const manifest = path.join(os.tmpdir(), 'demo', 'comet', 'eval.yaml');
+const preparedManifest = path.join(os.tmpdir(), 'prepared', 'eval.yaml');
 const skillPath = path.join(os.tmpdir(), 'demo-skill');
 const evalCwd = path.join(path.resolve(project), 'eval');
 const packagedEvalCwd = path.resolve(
@@ -23,6 +26,10 @@ vi.mock('fs', async (importOriginal) => ({
   existsSync,
 }));
 
+vi.mock('../../domains/bundle/eval-manifest-runtime.js', () => ({
+  prepareEvalManifest,
+}));
+
 function expectUvRun(args: string[]): void {
   expect(execFileSync).toHaveBeenCalledWith('uv', ['--version'], { stdio: 'pipe' });
   expect(execFileSync).toHaveBeenCalledWith('uv', args, {
@@ -37,6 +44,12 @@ describe('eval command', () => {
     execFileSync.mockReturnValue(Buffer.from(''));
     existsSync.mockReset();
     existsSync.mockReturnValue(true);
+    prepareEvalManifest.mockReset();
+    cleanupPreparedManifest.mockReset();
+    prepareEvalManifest.mockResolvedValue({
+      path: manifest,
+      cleanup: cleanupPreparedManifest,
+    });
   });
 
   it('uses the packaged eval harness when project is omitted', async () => {
@@ -89,6 +102,8 @@ describe('eval command', () => {
       `--eval-manifest=${path.resolve(manifest)}`,
       '-v',
     ]);
+    expect(prepareEvalManifest).toHaveBeenCalledWith(manifest);
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
   });
 
   it('uses generic-skill-smoke for local skill quick runs', async () => {
@@ -116,6 +131,8 @@ describe('eval command', () => {
       '--profile=generic',
       '-v',
     ]);
+    expect(prepareEvalManifest).not.toHaveBeenCalled();
+    expect(cleanupPreparedManifest).not.toHaveBeenCalled();
   });
 
   it('runs a local Skill target directly without requiring --skill-path', async () => {
@@ -164,12 +181,18 @@ describe('eval command', () => {
 
   it('uses collect-only discovery for manifest smoke checks', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    prepareEvalManifest.mockResolvedValue({
+      path: preparedManifest,
+      cleanup: cleanupPreparedManifest,
+    });
     try {
       const { evalCollectCommand } = await import('../../app/commands/eval.js');
       await evalCollectCommand({
         project,
         manifest,
       });
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
     }
@@ -178,14 +201,39 @@ describe('eval command', () => {
       'run',
       'pytest',
       'local/tests/tasks/test_tasks.py',
-      `--eval-manifest=${path.resolve(manifest)}`,
+      `--eval-manifest=${path.resolve(preparedManifest)}`,
       '--collect-only',
     ]);
+    expect(prepareEvalManifest).toHaveBeenCalledWith(manifest);
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+    expect(output).toContain(`Target: manifest ${path.resolve(manifest)}`);
+    expect(output).not.toContain(preparedManifest);
+  });
+
+  it('preserves pytest failures and cleans up a prepared manifest once', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    prepareEvalManifest.mockResolvedValue({
+      path: preparedManifest,
+      cleanup: cleanupPreparedManifest,
+    });
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (command === 'uv' && args[0] === 'run') throw new Error('pytest failed');
+      return Buffer.from('');
+    });
+    try {
+      const { evalCollectCommand } = await import('../../app/commands/eval.js');
+      await expect(evalCollectCommand({ project, manifest })).rejects.toThrow('pytest failed');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(prepareEvalManifest).toHaveBeenCalledWith(manifest);
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
   });
 
   it('prints eval execution details and report path for manifest runs', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let output = '';
+    let output: string;
     try {
       const { evalRunCommand } = await import('../../app/commands/eval.js');
       await evalRunCommand({

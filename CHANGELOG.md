@@ -11,6 +11,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Generated Eval manifests**: `comet eval` now resolves Factory `draftHash` placeholders into temporary version-bound manifests before collection, so `/comet-any` output can be evaluated immediately without modifying generated Bundle files ([#183](https://github.com/rpamis/comet/issues/183)).
 - **Eval Harness**: npm-installed `comet eval` now locates the version-matched bundled harness by default and reports a missing harness separately from a missing `uv` executable.
 - **Indexed project updates**: `comet update --all-projects` now reports npm package update failures as failed project results and fails explicitly on unreadable project registries instead of treating them as successful or empty updates.
 - **Dashboard responsive workflow view**: `comet dashboard` now keeps the change workspace inside the viewport with the left navigation rail, preserves scroll position when opening artifact previews, and shows archived changes as complete instead of suggesting another verify step ([#170](https://github.com/rpamis/comet/issues/170)).
