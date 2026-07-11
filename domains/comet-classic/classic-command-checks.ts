@@ -43,7 +43,9 @@ function normalizedCwd(changeDir: string, cwd = '.'): string {
 
 function validRecord(changeDir: string, event: TrajectoryEvent): RecordedCommandCheck | null {
   if (event.type !== 'command_check_recorded') return null;
-  const { scope, command, exitCode, cwd } = event.data;
+  const data: unknown = event.data;
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
+  const { scope, command, exitCode, cwd } = data as Record<string, unknown>;
   if (
     (scope !== 'build' && scope !== 'verify') ||
     typeof command !== 'string' ||

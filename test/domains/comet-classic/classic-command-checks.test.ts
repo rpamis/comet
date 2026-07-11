@@ -130,6 +130,28 @@ describe('Classic command check evidence', () => {
   });
 
   it.each([
+    ['null data', null],
+    ['missing data', undefined],
+    ['array data', []],
+  ])('ignores a newer record with %s', async (_label, malformedData) => {
+    const valid = await recordCommandCheck(changeDir, run, {
+      scope: 'verify',
+      command: 'npm test',
+      exitCode: 0,
+    });
+    const malformed = {
+      sequence: 2,
+      timestamp: new Date().toISOString(),
+      type: 'command_check_recorded',
+      runId: run.runId,
+      ...(malformedData === undefined ? {} : { data: malformedData }),
+    } as unknown as TrajectoryEvent;
+    await appendTrajectory(changeDir, run.trajectoryRef, malformed);
+
+    await expect(latestCommandCheck(changeDir, run, 'verify')).resolves.toEqual(valid);
+  });
+
+  it.each([
     [{ scope: 'deploy', command: 'npm test', exitCode: 0 }, /scope/i],
     [{ scope: 'build', command: '   ', exitCode: 0 }, /command/i],
     [{ scope: 'build', command: 'npm test', exitCode: 0.5 }, /exitCode/i],
