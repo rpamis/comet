@@ -35,7 +35,7 @@
 - Consumes: UTF-8 Markdown content, archive name, and optional frontmatter fields.
 - Produces: `annotatedMarkdown(original: string, archiveName: string, extraFields: string): string`, with internal blank lines preserved and exactly one final LF.
 
-- [ ] **Step 1: Add failing EOF and idempotency tests**
+- [x] **Step 1: Add failing EOF and idempotency tests**
 
 Add a table-driven test to `test/domains/comet-classic/classic-archive.test.ts`. Seed design/plan paths in `.comet.yaml`, let the fake OpenSpec command archive the change, and assert the resulting files. The core assertions must be:
 
@@ -62,7 +62,7 @@ const cases = [
 ];
 ```
 
-- [ ] **Step 2: Run the archive test and confirm RED**
+- [x] **Step 2: Run the archive test and confirm RED**
 
 Run:
 
@@ -72,7 +72,7 @@ npx vitest run test/domains/comet-classic/classic-archive.test.ts
 
 Expected: at least the existing-frontmatter case fails because `annotateFrontmatter()` preserves the split-produced empty string and then appends another LF.
 
-- [ ] **Step 3: Extract a deterministic Markdown transformation**
+- [x] **Step 3: Extract a deterministic Markdown transformation**
 
 In `domains/comet-classic/classic-archive.ts`, introduce:
 
@@ -118,7 +118,7 @@ const original = await fs.readFile(file, 'utf8');
 await fs.writeFile(file, annotatedMarkdown(original, archiveName, extraFields));
 ```
 
-- [ ] **Step 4: Verify archive formatting GREEN**
+- [x] **Step 4: Verify archive formatting GREEN**
 
 Run:
 
@@ -130,7 +130,7 @@ git diff --check
 
 Expected: all commands exit 0.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```bash
 git add domains/comet-classic/classic-archive.ts test/domains/comet-classic/classic-archive.test.ts
