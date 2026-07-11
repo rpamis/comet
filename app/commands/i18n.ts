@@ -59,6 +59,7 @@ export type TranslationKey =
   | 'npmNetworkHint'
   | 'npmPackageUpdated'
   | 'npmPackageFailed'
+  | 'npmPackageFailedBlocking'
   | 'noInstallsFound'
   | 'updatingSkillsOnTargets'
   | 'copyingSkillsFiles'
@@ -145,6 +146,7 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     npmNetworkHint: 'Check your network connection or firewall settings and try again.',
     npmPackageUpdated: 'npm package: updated to latest',
     npmPackageFailed: 'npm package: update failed, continuing with bundled skills',
+    npmPackageFailedBlocking: 'npm package: update failed',
     noInstallsFound: 'No platforms with comet skills installed. Run `comet init` first.',
     updatingSkillsOnTargets: 'Updating comet skills on',
     copyingSkillsFiles: 'Copying',
@@ -231,6 +233,7 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     npmNetworkHint: '请检查网络连接或防火墙设置后重试。',
     npmPackageUpdated: 'npm 包：已更新到最新版本',
     npmPackageFailed: 'npm 包：更新失败，继续使用已打包的 skills',
+    npmPackageFailedBlocking: 'npm 包：更新失败',
     noInstallsFound: '未检测到已安装 comet skills 的平台。请先运行 `comet init`。',
     updatingSkillsOnTargets: '正在更新 comet skills，覆盖',
     copyingSkillsFiles: '正在复制',

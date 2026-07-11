@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { ensureDir, fileExists } from '../fs/file-system.js';
+import { ensureDir } from '../fs/file-system.js';
 
 export const PROJECT_REGISTRY_SCHEMA_VERSION = 1;
 
@@ -62,6 +62,21 @@ function emptyRegistry(updatedAt: string): ProjectRegistry {
     updatedAt,
     projects: [],
   };
+}
+
+function isMissingRegistryFile(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
+}
+
+async function registryFileExists(registryPath: string): Promise<boolean> {
+  try {
+    await fs.access(registryPath);
+    return true;
+  } catch (error) {
+    if (isMissingRegistryFile(error)) return false;
+    throw error;
+  }
 }
 
 function canonicalKey(canonicalPath: string): string {
@@ -195,11 +210,19 @@ export async function readProjectRegistry(
 ): Promise<ProjectRegistry> {
   const registryPath = getProjectRegistryPath(options.homeDir);
   const updatedAt = nowIso(options);
-  if (!(await fileExists(registryPath))) return emptyRegistry(updatedAt);
+  if (!(await registryFileExists(registryPath))) return emptyRegistry(updatedAt);
+
+  let content: string;
+  try {
+    content = await fs.readFile(registryPath, 'utf-8');
+  } catch (error) {
+    if (isMissingRegistryFile(error)) return emptyRegistry(updatedAt);
+    throw error;
+  }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await fs.readFile(registryPath, 'utf-8'));
+    parsed = JSON.parse(content);
   } catch (error) {
     if (options.strict) {
       throw new ProjectRegistryError(

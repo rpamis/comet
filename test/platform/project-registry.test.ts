@@ -109,6 +109,28 @@ describe('project installation registry', () => {
     } satisfies Partial<ProjectRegistryError>);
   });
 
+  it('does not treat unreadable registry files as an empty strict registry', async () => {
+    const registryPath = getProjectRegistryPath(homeDir);
+    await fs.mkdir(path.dirname(registryPath), { recursive: true });
+    await fs.writeFile(registryPath, '{"schemaVersion":1,"updatedAt":"now","projects":[]}\n');
+
+    const originalAccess = fs.access.bind(fs);
+    const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (target) => {
+      if (path.resolve(String(target)) === path.resolve(registryPath)) {
+        throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      }
+      return originalAccess(target);
+    });
+
+    try {
+      await expect(readProjectRegistry({ homeDir, strict: true })).rejects.toMatchObject({
+        code: 'EACCES',
+      });
+    } finally {
+      accessSpy.mockRestore();
+    }
+  });
+
   it.each<[string, unknown[]]>([
     ['non-string platform', [{ platform: 123, language: 'en' }]],
     ['unsupported language', [{ platform: 'codex', language: 'fr' }]],

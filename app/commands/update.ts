@@ -47,11 +47,26 @@ interface UpdateOptions {
   currentProject?: boolean;
   targetScopes?: InstallScope[];
   skipGlobalNpmUpdate?: boolean;
+  failOnNpmFailure?: boolean;
 }
 
 type SkillLanguage = 'en' | 'zh';
 type NpmStatus = 'updated' | 'failed' | 'skipped';
 type CodegraphStatus = 'installed' | 'failed' | 'skipped';
+
+interface NpmUpdateFailure extends Error {
+  npmScope: InstallScope;
+}
+
+function createNpmUpdateFailure(scope: InstallScope): NpmUpdateFailure {
+  const error = new Error(`npm package update failed (${scope} scope)`) as NpmUpdateFailure;
+  error.npmScope = scope;
+  return error;
+}
+
+function isGlobalNpmUpdateFailure(error: unknown): boolean {
+  return (error as Partial<NpmUpdateFailure> | undefined)?.npmScope === 'global';
+}
 
 interface InstalledCometTarget {
   scope: InstallScope;
@@ -423,7 +438,12 @@ async function updateSingleProject(
       log(`  ${t(lang, 'npmPackageUpdated')} ${PACKAGE_NAME}`);
     } else {
       npmStatus = 'failed';
-      log(`  ${t(lang, 'npmPackageFailed')}`);
+      log(
+        `  ${t(lang, options.failOnNpmFailure ? 'npmPackageFailedBlocking' : 'npmPackageFailed')}`,
+      );
+      if (options.failOnNpmFailure) {
+        throw createNpmUpdateFailure(packageScope);
+      }
     }
   }
 
@@ -684,6 +704,7 @@ async function updateAllIndexedProjects(
     targetScopes: ['project'],
     currentProject: true,
     allProjects: false,
+    failOnNpmFailure: true,
   };
   if (!options.json && !runOptions.installMode) {
     runOptions.installMode = await selectInstallMode(options, lang);
@@ -731,6 +752,7 @@ async function updateAllIndexedProjects(
         reason: (error as Error).message,
         targets: summarizeTargets(targets),
       });
+      if (isGlobalNpmUpdateFailure(error)) break;
     }
   }
 

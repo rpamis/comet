@@ -372,6 +372,47 @@ describe('update command helpers', () => {
     );
   });
 
+  it('reports global npm update failure before updating all indexed projects', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-global-npm-failure');
+    const projectA = path.join(tmpDir, 'project-a-global-failure');
+    const projectB = path.join(tmpDir, 'project-b-global-failure');
+
+    for (const project of [projectA, projectB]) {
+      await fs.mkdir(path.join(project, '.claude', 'skills', 'comet'), { recursive: true });
+      await fs.writeFile(path.join(project, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+      await upsertProjectInstallation(project, [{ platform: 'claude', language: 'en' }], 'init', {
+        homeDir: fakeHome,
+      });
+    }
+
+    mockedSpawn.mockImplementationOnce(() => {
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit('exit', 1));
+      return child as ReturnType<typeof spawn>;
+    });
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json = '';
+    try {
+      await updateCommand(projectA, { json: true, allProjects: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.projects).toEqual([
+      expect.objectContaining({
+        projectPath: path.resolve(projectA),
+        status: 'failed',
+        reason: expect.stringContaining('npm package update failed'),
+      }),
+    ]);
+    expect(mockedSpawn).toHaveBeenCalledTimes(1);
+  });
+
   it('removes stale indexed projects that no longer have project-scope installs during all-projects update', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-stale');
     const staleProject = path.join(tmpDir, 'stale-project');

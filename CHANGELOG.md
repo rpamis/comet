@@ -11,6 +11,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Indexed project updates**: `comet update --all-projects` now reports npm package update failures as failed project results and fails explicitly on unreadable project registries instead of treating them as successful or empty updates.
 - **Dashboard responsive workflow view**: `comet dashboard` now keeps the change workspace inside the viewport with the left navigation rail, preserves scroll position when opening artifact previews, and shows archived changes as complete instead of suggesting another verify step ([#170](https://github.com/rpamis/comet/issues/170)).
 - **Symlink installs with existing Skills**: `comet init` and `comet update --install-mode symlink` now preserve existing platform `skills/` directories and link Comet-managed Skills inside them, so local or third-party Skills no longer make Comet installation fail ([#171](https://github.com/rpamis/comet/issues/171)).
 - **OpenSpec CLI install scope**: `comet init` now installs or upgrades the OpenSpec CLI as a global tool even during project-scope setup, so choosing OpenSpec no longer creates a project `node_modules/` directory ([#175](https://github.com/rpamis/comet/issues/175)).
