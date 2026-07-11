@@ -281,6 +281,23 @@ describe('eval command', () => {
     expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
   });
 
+  it('preserves an undefined primary failure when prepared manifest cleanup also fails', async () => {
+    cleanupPreparedManifest.mockRejectedValue(new Error('cleanup failed'));
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (command === 'uv' && args[0] === 'run') throw undefined;
+      return Buffer.from('');
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(evalRunCommand({ project, manifest })).rejects.toBeUndefined();
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces cleanup failures when the eval body succeeds', async () => {
     const cleanupFailure = new Error('cleanup failed');
     cleanupPreparedManifest.mockRejectedValue(cleanupFailure);
