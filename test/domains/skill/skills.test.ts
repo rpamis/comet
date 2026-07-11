@@ -1230,10 +1230,18 @@ describe('skills', () => {
       expect(enVerify).toContain(
         'comet state record-check <change-name> verify --command "<actual verification command>" --exit-code 0',
       );
-      expect(enBuild).toContain('`--command` records command text only; Comet **never executes it**');
-      expect(enVerify).toContain('`--command` records command text only; Comet **never executes it**');
-      expect(enBuild).toContain('Build and verify evidence are separate and cannot substitute for each other');
-      expect(enVerify).toContain('Verify and build evidence are separate and cannot substitute for each other');
+      expect(enBuild).toContain(
+        '`--command` records command text only; Comet **never executes it**',
+      );
+      expect(enVerify).toContain(
+        '`--command` records command text only; Comet **never executes it**',
+      );
+      expect(enBuild).toContain(
+        'Build and verify evidence are separate and cannot substitute for each other',
+      );
+      expect(enVerify).toContain(
+        'Verify and build evidence are separate and cannot substitute for each other',
+      );
       expect(enBuild).toContain(
         '`COMET_SKIP_BUILD=1` is only a compatibility bypass for legacy workflows, not auditable build evidence',
       );
