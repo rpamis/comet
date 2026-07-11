@@ -183,46 +183,52 @@ async function checkSkillCompleteness(
   };
   for (const base of getScopeBases(projectPath, scope, context)) {
     for (const platform of PLATFORMS) {
-      const detectedSkillsDir = (
-        await Promise.all(
-          getPlatformSkillsDirs(platform, base.scope).map(async (skillsDir) => ({
-            skillsDir,
-            exists: await fileExists(path.join(base.baseDir, skillsDir, 'skills')),
-          })),
-        )
-      ).find((candidate) => candidate.exists)?.skillsDir;
-      if (!detectedSkillsDir) continue;
-
-      const present: string[] = [];
-      const missing: string[] = [];
-      for (const relPath of managedSkills) {
-        const fullPath = path.join(base.baseDir, detectedSkillsDir, 'skills', relPath);
-        if (await fileExists(fullPath)) {
-          present.push(relPath);
-        } else {
-          missing.push(relPath);
+      const skillsDirs = getPlatformSkillsDirs(platform, base.scope);
+      const canonicalSkillsDir = skillsDirs[0];
+      let detectedSkillsDir: string | undefined;
+      let present: string[] = [];
+      let missing: string[] = [];
+      for (const skillsDir of skillsDirs) {
+        const candidatePresent: string[] = [];
+        const candidateMissing: string[] = [];
+        for (const relPath of managedSkills) {
+          const fullPath = path.join(base.baseDir, skillsDir, 'skills', relPath);
+          if (await fileExists(fullPath)) candidatePresent.push(relPath);
+          else candidateMissing.push(relPath);
         }
+        if (candidatePresent.length === 0) continue;
+        detectedSkillsDir = skillsDir;
+        present = candidatePresent;
+        missing = candidateMissing;
+        break;
       }
 
-      if (present.length === 0) continue;
+      if (!detectedSkillsDir) continue;
       anyCometInstall = true;
       scopeState[base.scope].hasInstall = true;
-      if (missing.length === 0) {
+      const isLegacy = detectedSkillsDir !== canonicalSkillsDir;
+      if (missing.length === 0 && !isLegacy) {
         scopeState[base.scope].hasComplete = true;
       }
 
       results.push(
-        missing.length === 0
+        isLegacy
           ? {
               check: `skills: ${platform.name} (${base.scope})`,
-              status: 'pass' as const,
-              message: `complete (${total} files)`,
-            }
-          : {
-              check: `skills: ${platform.name} (${base.scope})`,
               status: 'warn' as const,
-              message: `partial (${present.length}/${total} files; missing ${missing.length}) — run: comet update --scope ${base.scope}`,
-            },
+              message: `legacy installation (${present.length}/${total} files) — run: comet update --scope ${base.scope}`,
+            }
+          : missing.length === 0
+            ? {
+                check: `skills: ${platform.name} (${base.scope})`,
+                status: 'pass' as const,
+                message: `complete (${total} files)`,
+              }
+            : {
+                check: `skills: ${platform.name} (${base.scope})`,
+                status: 'warn' as const,
+                message: `partial (${present.length}/${total} files; missing ${missing.length}) — run: comet update --scope ${base.scope}`,
+              },
       );
     }
   }

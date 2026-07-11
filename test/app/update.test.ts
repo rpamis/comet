@@ -171,6 +171,60 @@ describe('update command helpers', () => {
     expect(PLATFORMS.find((platform) => platform.id === 'pi')?.globalSkillsDir).toBe('.pi/agent');
   });
 
+  it('migrates legacy Codex skills after canonical installation and preserves unrelated skills', async () => {
+    const fakeHome = path.join(tmpDir, 'home');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const legacyComet = path.join(tmpDir, '.codex', 'skills', 'comet');
+    const legacyPersonal = path.join(tmpDir, '.codex', 'skills', 'personal');
+    await fs.mkdir(legacyComet, { recursive: true });
+    await fs.mkdir(legacyPersonal, { recursive: true });
+    await fs.writeFile(path.join(legacyComet, 'SKILL.md'), '# Comet\n\nUse this skill.');
+    await fs.writeFile(path.join(legacyPersonal, 'SKILL.md'), '# Personal\n');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { skipNpm: true, scope: 'project' });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    await expect(
+      fs.access(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    await expect(fs.access(legacyComet)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(path.join(legacyPersonal, 'SKILL.md'), 'utf8')).resolves.toBe(
+      '# Personal\n',
+    );
+  });
+
+  it('preserves legacy Codex skills when the canonical installation is incomplete', async () => {
+    const fakeHome = path.join(tmpDir, 'home-incomplete');
+    const legacySkill = path.join(tmpDir, '.codex', 'skills', 'comet', 'SKILL.md');
+    const canonicalConflict = path.join(tmpDir, '.agents', 'skills', 'comet', 'user-file.md');
+    await fs.mkdir(path.dirname(legacySkill), { recursive: true });
+    await fs.writeFile(legacySkill, '# Legacy Comet\n');
+    await fs.mkdir(path.dirname(canonicalConflict), { recursive: true });
+    await fs.writeFile(canonicalConflict, '# Keep\n');
+
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, {
+        skipNpm: true,
+        scope: 'project',
+        installMode: 'symlink',
+      });
+    } finally {
+      error.mockRestore();
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(legacySkill, 'utf8')).resolves.toBe('# Legacy Comet\n');
+  });
+
   it('detects project package scope from local node_modules install path', async () => {
     const projectDir = path.join(tmpDir, 'project');
     const packageRoot = path.join(projectDir, 'node_modules', '@rpamis', 'comet');

@@ -158,6 +158,38 @@ describe('doctor command', () => {
     expect(output).not.toContain('missing 31:');
   });
 
+  it('reports legacy-only Codex skills as requiring update and canonical Codex skills as healthy', async () => {
+    const manifest = JSON.parse(
+      await fs.readFile(path.resolve('assets', 'manifest.json'), 'utf8'),
+    ) as { skills: string[]; internalSkills?: string[] };
+    const managedPaths = [...new Set([...manifest.skills, ...(manifest.internalSkills ?? [])])];
+    for (const relPath of managedPaths) {
+      const target = path.join(tmpDir, '.codex', 'skills', ...relPath.split('/'));
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, `${relPath}\n`);
+    }
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, { scope: 'project' });
+      const legacyOutput = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(legacyOutput).toContain('skills: Codex (project): legacy');
+      expect(legacyOutput).toContain('run: comet update --scope project');
+
+      await fs.mkdir(path.join(tmpDir, '.agents'), { recursive: true });
+      await fs.rename(
+        path.join(tmpDir, '.codex', 'skills'),
+        path.join(tmpDir, '.agents', 'skills'),
+      );
+      log.mockClear();
+      await doctorCommand(tmpDir, { scope: 'project' });
+      const canonicalOutput = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(canonicalOutput).toContain('skills: Codex (project): complete');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('uses the shared schema and leaves invalid state untouched', async () => {
     const invalidChangeDir = path.join(tmpDir, 'openspec', 'changes', 'top-level-invalid');
     state(tmpDir, 'init', 'top-level-invalid', 'full');

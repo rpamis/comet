@@ -4,11 +4,7 @@ import os from 'os';
 import path from 'path';
 import { findPreferredSkills, type SkillSearchRoot } from '../../../domains/skill/find.js';
 
-async function writeMarkdownSkill(
-  root: string,
-  name: string,
-  description: string,
-): Promise<void> {
+async function writeMarkdownSkill(root: string, name: string, description: string): Promise<void> {
   await fs.mkdir(root, { recursive: true });
   await fs.writeFile(
     path.join(root, 'SKILL.md'),
@@ -63,12 +59,9 @@ describe('findPreferredSkills', () => {
   });
 
   it('scans all Skill roots when preferences are omitted instead of reading the legacy text preference file', async () => {
-    await fs.writeFile(
-      path.join(projectRoot, '.comet', `skills${'.txt'}`),
-      'ignored-skill\n',
-    );
+    await fs.writeFile(path.join(projectRoot, '.comet', `skills${'.txt'}`), 'ignored-skill\n');
     await writeMarkdownSkill(
-      path.join(projectRoot, '.codex', 'skills', 'actual-skill'),
+      path.join(projectRoot, '.agents', 'skills', 'actual-skill'),
       'actual-skill',
       'Actual project Skill.',
     );
@@ -88,7 +81,7 @@ describe('findPreferredSkills', () => {
 
   it('finds real local Skills and preserves preferenceIndex', async () => {
     await writeMarkdownSkill(
-      path.join(projectRoot, '.codex', 'skills', 'brainstorming'),
+      path.join(projectRoot, '.agents', 'skills', 'brainstorming'),
       'brainstorming',
       'Explore intent before implementation.',
     );
@@ -130,19 +123,33 @@ describe('findPreferredSkills', () => {
         query: 'writing-plans',
         preferenceIndex: 1,
         status: 'available',
-        sources: [expect.objectContaining({ origin: 'global', platform: 'agents' })],
+        sources: [expect.objectContaining({ origin: 'global', platform: 'codex' })],
       }),
     ]);
   });
 
+  it('prefers a canonical Codex Skill over a same-named legacy Skill', async () => {
+    await writeMinimalSkill(path.join(projectRoot, '.agents', 'skills', 'reviewing'), 'reviewing');
+    await writeMinimalSkill(path.join(projectRoot, '.codex', 'skills', 'reviewing'), 'reviewing');
+
+    const result = await findPreferredSkills({ projectRoot, homeDir, builtinRoot });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ query: 'reviewing', status: 'available' });
+    expect(result[0].sources).toHaveLength(1);
+    expect(result[0].sources[0].root).toBe(
+      await fs.realpath(path.join(projectRoot, '.agents', 'skills', 'reviewing')),
+    );
+  });
+
   it('reports ambiguous and missing preferences without choosing for the user', async () => {
     await writeMarkdownSkill(
-      path.join(projectRoot, '.codex', 'skills', 'reviewing'),
+      path.join(projectRoot, '.agents', 'skills', 'reviewing'),
       'reviewing',
       'Project reviewer.',
     );
     await writeMarkdownSkill(
-      path.join(homeDir, '.codex', 'skills', 'reviewing'),
+      path.join(homeDir, '.agents', 'skills', 'reviewing'),
       'reviewing',
       'Global reviewer.',
     );

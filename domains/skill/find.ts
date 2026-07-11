@@ -87,7 +87,7 @@ function platformRoots(projectRoot: string, homeDir: string): SkillSearchRoot[] 
   const roots: SkillSearchRoot[] = [];
   for (const platform of PLATFORMS) {
     roots.push({
-      root: path.resolve(projectRoot, platform.skillsDir, 'skills'),
+      root: path.resolve(projectRoot, getPlatformSkillsDir(platform, 'project'), 'skills'),
       origin: 'project',
       platform: normalizedPlatformId(platform.id),
     });
@@ -97,11 +97,6 @@ function platformRoots(projectRoot: string, homeDir: string): SkillSearchRoot[] 
       platform: normalizedPlatformId(platform.id),
     });
   }
-  roots.push({
-    root: path.resolve(homeDir, '.agents', 'skills'),
-    origin: 'global',
-    platform: 'agents',
-  });
   return roots;
 }
 

@@ -13,10 +13,12 @@ import {
   getManifestSkills,
   mergeProjectConfig,
 } from '../../domains/skill/platform-install.js';
+import { removeLegacyCometSkillsForPlatform } from '../../domains/skill/uninstall.js';
 import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import {
   PLATFORMS,
   getPlatformSkillsDir,
+  getPlatformSkillsDirs,
   type Platform,
 } from '../../platform/install/platforms.js';
 import {
@@ -148,11 +150,11 @@ function getInstalledCometSkillsDirs(
   platform: Platform,
   scope: InstallScope = 'project',
 ): string[] {
-  const dirs = [path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills')];
-  if (scope === 'global' && platform.id === 'pi') {
-    dirs.push(path.join(baseDir, platform.skillsDir, 'skills'));
-  }
-  return [...new Set(dirs)];
+  const skillsDirs = [
+    ...getPlatformSkillsDirs(platform, scope),
+    ...(scope === 'global' && platform.id === 'pi' ? [platform.skillsDir] : []),
+  ];
+  return [...new Set(skillsDirs)].map((skillsDir) => path.join(baseDir, skillsDir, 'skills'));
 }
 
 function isMissingInspectionError(error: unknown): boolean {
@@ -495,7 +497,7 @@ async function updateSingleProject(
     const baseDir = getBaseDir(target.scope, projectPath);
     const languageId = resolveTargetLanguage(options.language, target.language);
     const languageSkillsDir = languageToSkillsDir(languageId);
-    const { copied, skipped } = await copyCometSkillsForPlatform(
+    const { copied, skipped, failed } = await copyCometSkillsForPlatform(
       baseDir,
       target.platform,
       true,
@@ -503,6 +505,9 @@ async function updateSingleProject(
       target.scope,
       installMode,
     );
+    if (failed === 0) {
+      await removeLegacyCometSkillsForPlatform(baseDir, target.platform, target.scope);
+    }
     totalCopied += copied;
     targetResults.push({
       scope: target.scope,

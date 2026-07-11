@@ -36,6 +36,31 @@ describe('uninstall', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it('removes only managed Codex skills from canonical and legacy roots', async () => {
+    const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
+    await copyCometSkillsForPlatform(tmpDir, codexPlatform, true, 'skills', 'project');
+    const legacyComet = path.join(tmpDir, '.codex', 'skills', 'comet');
+    await fs.mkdir(legacyComet, { recursive: true });
+    await fs.writeFile(path.join(legacyComet, 'SKILL.md'), '# Comet\n');
+    for (const root of ['.agents', '.codex']) {
+      const personal = path.join(tmpDir, root, 'skills', 'personal', 'SKILL.md');
+      await fs.mkdir(path.dirname(personal), { recursive: true });
+      await fs.writeFile(personal, '# Personal\n');
+    }
+
+    await removeCometSkillsForPlatform(tmpDir, codexPlatform, 'project');
+
+    await expect(fs.access(path.join(tmpDir, '.agents', 'skills', 'comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.access(legacyComet)).rejects.toMatchObject({ code: 'ENOENT' });
+    for (const root of ['.agents', '.codex']) {
+      await expect(
+        fs.readFile(path.join(tmpDir, root, 'skills', 'personal', 'SKILL.md'), 'utf8'),
+      ).resolves.toBe('# Personal\n');
+    }
+  });
+
   describe('file-system utilities', () => {
     describe('removeFile', () => {
       it('removes an existing file and returns true', async () => {

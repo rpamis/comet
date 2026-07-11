@@ -8,7 +8,11 @@ import {
   removeDir,
   isDirEmpty,
 } from '../../platform/fs/file-system.js';
-import { getPlatformSkillsDir, type Platform } from '../../platform/install/platforms.js';
+import {
+  getPlatformSkillsDir,
+  getPlatformSkillsDirs,
+  type Platform,
+} from '../../platform/install/platforms.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import {
   readManifest,
@@ -25,6 +29,39 @@ interface RemovalResult {
 
 const OPENCODE_STYLE_PLATFORM_IDS = new Set(['opencode', 'mimocode']);
 
+export async function removeLegacyCometSkillsForPlatform(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope = 'project',
+): Promise<RemovalResult> {
+  const canonicalDir = getPlatformSkillsDir(platform, scope);
+  const legacyDirs = getPlatformSkillsDirs(platform, scope).filter((dir) => dir !== canonicalDir);
+  if (legacyDirs.length === 0) return { removed: 0, failed: 0 };
+
+  const managedSkills = getManagedSkillPaths(await readManifest());
+  let removed = 0;
+  const parentDirs = new Set<string>();
+  for (const legacyDir of legacyDirs) {
+    for (const skillRelPath of managedSkills) {
+      if (await removeFile(path.join(baseDir, legacyDir, 'skills', skillRelPath))) removed++;
+      const parts = skillRelPath.split('/');
+      if (!parts[0].startsWith('comet')) continue;
+      let current = path.join(baseDir, legacyDir, 'skills', parts[0]);
+      parentDirs.add(current);
+      for (let index = 1; index < parts.length - 1; index++) {
+        current = path.join(current, parts[index]);
+        parentDirs.add(current);
+      }
+    }
+  }
+  for (const dir of [...parentDirs].sort(
+    (left, right) => right.split(path.sep).length - left.split(path.sep).length,
+  )) {
+    if (await isDirEmpty(dir)) await removeDir(dir);
+  }
+  return { removed, failed: 0 };
+}
+
 async function removeCometSkillsForPlatform(
   baseDir: string,
   platform: Platform,
@@ -33,11 +70,12 @@ async function removeCometSkillsForPlatform(
   const manifest = await readManifest();
   const managedSkills = getManagedSkillPaths(manifest);
   const skillsDir = getPlatformSkillsDir(platform, scope);
-  const skillsDirs = [skillsDir];
-  if (scope === 'global' && platform.id === 'pi') {
-    skillsDirs.push(platform.skillsDir);
-  }
-  const uniqueSkillsDirs = [...new Set(skillsDirs)];
+  const uniqueSkillsDirs = [
+    ...new Set([
+      ...getPlatformSkillsDirs(platform, scope),
+      ...(scope === 'global' && platform.id === 'pi' ? [platform.skillsDir] : []),
+    ]),
+  ];
   let removed = 0;
   const failed = 0;
 
