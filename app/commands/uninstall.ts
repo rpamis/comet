@@ -33,6 +33,9 @@ interface TargetUninstallResult {
   skillsRemoved: number;
   rulesRemoved: number;
   hooksRemoved: number;
+  skillsFailed: number;
+  rulesFailed: number;
+  hooksFailed: number;
   workingDirsRemoved: number;
 }
 
@@ -46,6 +49,7 @@ interface SingleProjectUninstallResult {
     totalSkillsRemoved: number;
     totalRulesRemoved: number;
     totalHooksRemoved: number;
+    totalFailures: number;
   };
 }
 
@@ -57,6 +61,9 @@ function currentProjectJson(result: SingleProjectUninstallResult | null): {
     skillsRemoved: number;
     rulesRemoved: number;
     hooksRemoved: number;
+    skillsFailed: number;
+    rulesFailed: number;
+    hooksFailed: number;
   }>;
   workingDirsRemoved: number;
   summary: SingleProjectUninstallResult['summary'];
@@ -71,6 +78,9 @@ function currentProjectJson(result: SingleProjectUninstallResult | null): {
         skillsRemoved: r.skillsRemoved,
         rulesRemoved: r.rulesRemoved,
         hooksRemoved: r.hooksRemoved,
+        skillsFailed: r.skillsFailed,
+        rulesFailed: r.rulesFailed,
+        hooksFailed: r.hooksFailed,
       })) ?? [],
     workingDirsRemoved: result?.workingDirsRemoved ?? 0,
     summary: result?.summary ?? {
@@ -78,6 +88,7 @@ function currentProjectJson(result: SingleProjectUninstallResult | null): {
       totalSkillsRemoved: 0,
       totalRulesRemoved: 0,
       totalHooksRemoved: 0,
+      totalFailures: 0,
     },
     projectInstructionsRemoved: result?.projectInstructionsRemoved ?? 0,
   };
@@ -145,6 +156,7 @@ async function uninstallSingleProject(
   let totalSkills = 0;
   let totalRules = 0;
   let totalHooks = 0;
+  let totalFailures = 0;
   let projectInstructionsRemoved = 0;
 
   for (const target of selectedTargets) {
@@ -152,20 +164,33 @@ async function uninstallSingleProject(
 
     const skillsResult = await removeCometSkillsForPlatform(baseDir, target.platform, target.scope);
     totalSkills += skillsResult.removed;
+    totalFailures += skillsResult.failed;
 
-    const rulesResult = await removeCometRulesForPlatform(baseDir, target.platform, target.scope);
+    const rulesResult =
+      skillsResult.failed === 0
+        ? await removeCometRulesForPlatform(baseDir, target.platform, target.scope)
+        : { removed: 0, failed: 0 };
     totalRules += rulesResult.removed;
+    totalFailures += rulesResult.failed;
 
     let hooksRemoved = 0;
-    if (target.platform.supportsHooks) {
+    let hooksFailed = 0;
+    if (skillsResult.failed === 0 && target.platform.supportsHooks) {
       const hooksResult = await removeCometHooksForPlatform(baseDir, target.platform, target.scope);
       hooksRemoved = hooksResult.removed;
+      hooksFailed = hooksResult.failed;
       totalHooks += hooksResult.removed;
+      totalFailures += hooksResult.failed;
     }
 
     log(
       `  ${target.platform.name} (${target.scope}): ${skillsResult.removed} skills, ${rulesResult.removed} rules, ${hooksRemoved} hooks removed`,
     );
+    if (skillsResult.failed + rulesResult.failed + hooksFailed > 0) {
+      log(
+        `  ${target.platform.name} (${target.scope}): cleanup failed; uninstall incomplete and follow-on cleanup skipped`,
+      );
+    }
 
     results.push({
       scope: target.scope,
@@ -174,13 +199,16 @@ async function uninstallSingleProject(
       skillsRemoved: skillsResult.removed,
       rulesRemoved: rulesResult.removed,
       hooksRemoved,
+      skillsFailed: skillsResult.failed,
+      rulesFailed: rulesResult.failed,
+      hooksFailed,
       workingDirsRemoved: 0,
     });
   }
 
   let workingDirsRemoved = 0;
   const hasProjectScope = selectedTargets.some((t) => t.scope === 'project');
-  if (hasProjectScope) {
+  if (hasProjectScope && totalFailures === 0) {
     const removeResult = await removeCometProjectInstructions(projectPath);
     projectInstructionsRemoved = removeResult.removed;
     if (projectInstructionsRemoved > 0) {
@@ -188,7 +216,7 @@ async function uninstallSingleProject(
     }
   }
 
-  if (hasProjectScope) {
+  if (hasProjectScope && totalFailures === 0) {
     const dirsResult = await removeWorkingDirs(projectPath);
     workingDirsRemoved = dirsResult.removed;
     if (workingDirsRemoved > 0) {
@@ -206,6 +234,7 @@ async function uninstallSingleProject(
       totalSkillsRemoved: totalSkills,
       totalRulesRemoved: totalRules,
       totalHooksRemoved: totalHooks,
+      totalFailures,
     },
   };
 }
@@ -214,6 +243,7 @@ async function refreshRegistryAfterProjectUninstall(
   result: SingleProjectUninstallResult | null,
 ): Promise<void> {
   if (!result?.targets.some((target) => target.scope === 'project')) return;
+  if (result.summary.totalFailures > 0) return;
 
   const remaining = await detectInstalledCometTargets(result.projectPath, { scopes: ['project'] });
   if (remaining.length === 0) {
@@ -296,7 +326,7 @@ async function uninstallAllIndexedProjects(
 
       results.push({
         projectPath,
-        status: result ? 'uninstalled' : 'skipped',
+        status: result ? (result.summary.totalFailures > 0 ? 'failed' : 'uninstalled') : 'skipped',
         targets: targets.map((target) => ({
           scope: target.scope,
           platform: target.platform.id,
@@ -308,6 +338,7 @@ async function uninstallAllIndexedProjects(
           totalSkillsRemoved: 0,
           totalRulesRemoved: 0,
           totalHooksRemoved: 0,
+          totalFailures: 0,
         },
         projectInstructionsRemoved: result?.projectInstructionsRemoved ?? 0,
         workingDirsRemoved: result?.workingDirsRemoved ?? 0,
@@ -393,6 +424,11 @@ export async function uninstallCommand(
   log(`    Skills removed: ${result.summary.totalSkillsRemoved}`);
   log(`    Rules removed: ${result.summary.totalRulesRemoved}`);
   log(`    Hooks removed: ${result.summary.totalHooksRemoved}`);
+  if (result.summary.totalFailures > 0) {
+    log(`    Cleanup failures: ${result.summary.totalFailures}`);
+    log(`\n  Uninstall incomplete. Preserved remaining project state.\n`);
+    return;
+  }
   if (result.projectInstructionsRemoved > 0) {
     log(`    Project instructions removed: ${result.projectInstructionsRemoved}`);
   }

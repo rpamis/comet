@@ -691,6 +691,122 @@ describe('uninstallCommand interactive selection', () => {
     expect(registry.projects).toEqual([]);
   });
 
+  it.each([true, false])(
+    'reports canonical Codex cleanup refusal and preserves project state in %s output',
+    async (json) => {
+      const fakeHome = path.join(tmpDir, `failure-home-${json}`);
+      const sharedSkills = path.join(tmpDir, `failure-shared-skills-${json}`);
+      await fs.mkdir(path.join(sharedSkills, 'comet'), { recursive: true });
+      await fs.writeFile(path.join(sharedSkills, 'comet', 'SKILL.md'), '# Comet\n');
+      await fs.mkdir(path.join(tmpDir, '.agents'), { recursive: true });
+      await fs.symlink(
+        sharedSkills,
+        path.join(tmpDir, '.agents', 'skills'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      await fs.mkdir(path.join(tmpDir, '.codex', 'rules'), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md'), '# Rule\n');
+      await fs.writeFile(
+        path.join(tmpDir, 'AGENTS.md'),
+        '<comet-ambient-resume>keep</comet-ambient-resume>\n',
+      );
+      await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, '.comet', 'state'), 'keep\n');
+      await upsertProjectInstallation(tmpDir, [{ platform: 'codex', language: 'en' }], 'init', {
+        homeDir: fakeHome,
+      });
+      homedirSpy.mockRestore();
+      homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await uninstallCommand(tmpDir, { force: true, json });
+        const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+        if (json) {
+          const result = JSON.parse(output);
+          expect(result.targets[0].skillsFailed).toBeGreaterThan(0);
+          expect(result.summary.totalFailures).toBeGreaterThan(0);
+        } else {
+          expect(output).toMatch(/incomplete|failed/iu);
+        }
+      } finally {
+        log.mockRestore();
+      }
+
+      await expect(
+        fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md')),
+      ).resolves.toBeUndefined();
+      await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain(
+        'comet-ambient-resume',
+      );
+      await expect(fs.readFile(path.join(tmpDir, '.comet', 'state'), 'utf8')).resolves.toBe(
+        'keep\n',
+      );
+      const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8'));
+      expect(registry.projects).toHaveLength(1);
+    },
+  );
+
+  it('stops follow-on cleanup when a legacy-only Codex root refuses removal', async () => {
+    const sharedSkills = path.join(tmpDir, 'legacy-only-shared-skills');
+    await fs.mkdir(path.join(sharedSkills, 'comet'), { recursive: true });
+    await fs.writeFile(path.join(sharedSkills, 'comet', 'SKILL.md'), '# Legacy Comet\n');
+    await fs.mkdir(path.join(tmpDir, '.codex', 'rules'), { recursive: true });
+    await fs.symlink(
+      sharedSkills,
+      path.join(tmpDir, '.codex', 'skills'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    await fs.writeFile(
+      path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md'),
+      '# Keep Rule\n',
+    );
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir, { force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.targets[0]).toMatchObject({ platform: 'codex', skillsFailed: 1 });
+      expect(result.summary.totalFailures).toBeGreaterThan(0);
+    } finally {
+      log.mockRestore();
+    }
+    await expect(
+      fs.readFile(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md'), 'utf8'),
+    ).resolves.toBe('# Keep Rule\n');
+    await expect(fs.lstat(path.join(tmpDir, '.codex', 'skills'))).resolves.toMatchObject({});
+  });
+
+  it('does not mark all-projects uninstall complete when canonical cleanup is refused', async () => {
+    const fakeHome = path.join(tmpDir, 'all-projects-failure-home');
+    const project = path.join(tmpDir, 'all-projects-failure-project');
+    const sharedSkills = path.join(tmpDir, 'all-projects-failure-skills');
+    await fs.mkdir(path.join(sharedSkills, 'comet'), { recursive: true });
+    await fs.writeFile(path.join(sharedSkills, 'comet', 'SKILL.md'), '# Comet\n');
+    await fs.mkdir(path.join(project, '.agents'), { recursive: true });
+    await fs.symlink(
+      sharedSkills,
+      path.join(project, '.agents', 'skills'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    await fs.mkdir(path.join(project, '.codex'), { recursive: true });
+    await upsertProjectInstallation(project, [{ platform: 'codex', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(project, { allProjects: true, force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.projects[0].status).toBe('failed');
+      expect(result.projects[0].summary.totalFailures).toBeGreaterThan(0);
+    } finally {
+      log.mockRestore();
+    }
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8'));
+    expect(registry.projects).toHaveLength(1);
+  });
+
   it('rejects --all-projects with --scope global during uninstall', async () => {
     await expect(
       uninstallCommand(tmpDir, { allProjects: true, scope: 'global', json: true, force: true }),

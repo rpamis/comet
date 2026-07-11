@@ -86,6 +86,7 @@ interface SingleProjectUpdateResult {
   };
   skills: {
     totalCopied: number;
+    cleanupFailed: number;
     installMode?: InstallMode;
     targets: Array<{
       scope: InstallScope;
@@ -95,6 +96,7 @@ interface SingleProjectUpdateResult {
       source: string;
       copied: number;
       skipped: number;
+      cleanupFailed: number;
       command: string;
     }>;
   };
@@ -372,6 +374,7 @@ function currentProjectJson(result: SingleProjectUpdateResult): Record<string, u
     npm: result.npm,
     skills: {
       totalCopied: result.skills.totalCopied,
+      cleanupFailed: result.skills.cleanupFailed,
       installMode: result.skills.installMode,
       targets: result.skills.targets,
     },
@@ -473,7 +476,7 @@ async function updateSingleProject(
         command:
           options.skipNpm || skipRepeatedGlobalNpm ? null : formatNpmUpdateCommand(packageScope),
       },
-      skills: { totalCopied: 0, targets: [] },
+      skills: { totalCopied: 0, cleanupFailed: 0, targets: [] },
       rules: { totalCopied: 0 },
       hooks: { totalInstalled: 0 },
       projectInstructions: { updated: 0 },
@@ -498,6 +501,7 @@ async function updateSingleProject(
   );
 
   let totalCopied = 0;
+  let totalCleanupFailed = 0;
   let totalRulesCopied = 0;
   let totalHooksInstalled = 0;
   let projectInstructionsUpdated = 0;
@@ -514,9 +518,11 @@ async function updateSingleProject(
       target.scope,
       installMode,
     );
-    if (failed === 0) {
-      await removeLegacyCometSkillsForPlatform(baseDir, target.platform, target.scope);
-    }
+    const cleanupResult =
+      failed === 0
+        ? await removeLegacyCometSkillsForPlatform(baseDir, target.platform, target.scope)
+        : { removed: 0, failed: 0 };
+    totalCleanupFailed += cleanupResult.failed;
     totalCopied += copied;
     targetResults.push({
       scope: target.scope,
@@ -526,6 +532,7 @@ async function updateSingleProject(
       source: languageSkillsDir,
       copied,
       skipped,
+      cleanupFailed: cleanupResult.failed,
       command: formatSkillUpdateCommand(
         target.scope,
         target.platform,
@@ -536,6 +543,11 @@ async function updateSingleProject(
     log(
       `  ${target.platform.name} (${target.scope}, ${languageSkillsDir}): ${copied} ${t(lang, 'skillsCopiedSkipped')} ${skipped} skipped`,
     );
+    if (cleanupResult.failed > 0) {
+      log(
+        `  ${target.platform.name} (${target.scope}): legacy Skill cleanup failed; update incomplete`,
+      );
+    }
 
     try {
       const { copied: ruleCopied } = await copyCometRulesForPlatform(
@@ -625,6 +637,7 @@ async function updateSingleProject(
     },
     skills: {
       totalCopied,
+      cleanupFailed: totalCleanupFailed,
       installMode,
       targets: targetResults,
     },
@@ -652,10 +665,17 @@ function logSingleProjectSummary(
   log(
     `    ${t(lang, 'summarySkills')} ${result.skills.targets.length} target(s), ${result.skills.totalCopied} files updated`,
   );
+  if (result.skills.cleanupFailed > 0) {
+    log(`    Skill cleanup failures: ${result.skills.cleanupFailed} (update incomplete)`);
+  }
   log(`    ${t(lang, 'summaryCodegraph')} ${result.codegraph}`);
   log(`    ${t(lang, 'summaryScope')} ${scopes}`);
   log(`    ${t(lang, 'summaryLanguage')} ${languages}`);
-  log(`\n  ${t(lang, 'updateComplete')}\n`);
+  if (result.skills.cleanupFailed > 0) {
+    log(`\n  Update incomplete. Canonical Skills were installed, but legacy cleanup failed.\n`);
+  } else {
+    log(`\n  ${t(lang, 'updateComplete')}\n`);
+  }
 }
 
 async function updateAllIndexedProjects(
@@ -747,6 +767,16 @@ async function updateAllIndexedProjects(
         continue;
       }
 
+      if (result.skills.cleanupFailed > 0) {
+        results.push({
+          projectPath,
+          status: 'failed',
+          reason: `legacy Skill cleanup failed (${result.skills.cleanupFailed})`,
+          targets: summarizeUpdatedTargets(result.skills.targets),
+        });
+        continue;
+      }
+
       await upsertUpdatedProjectTargets(projectPath, result);
       results.push({
         projectPath,
@@ -828,7 +858,9 @@ export async function updateCommand(
     return;
   }
 
-  await upsertUpdatedProjectTargets(projectPath, result);
+  if (result.skills.cleanupFailed === 0) {
+    await upsertUpdatedProjectTargets(projectPath, result);
+  }
 
   if (options.json) {
     console.log(JSON.stringify(currentProjectJson(result), null, 2));

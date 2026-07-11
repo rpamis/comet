@@ -243,6 +243,73 @@ describe('update command helpers', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it.each([true, false])(
+    'reports legacy Codex cleanup refusal as incomplete in %s output',
+    async (json) => {
+      const fakeHome = path.join(tmpDir, `cleanup-failure-home-${json}`);
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+      const legacyTarget = path.join(tmpDir, 'legacy-shared-skills');
+      const legacySkills = path.join(tmpDir, '.codex', 'skills');
+      await fs.mkdir(path.join(legacyTarget, 'comet'), { recursive: true });
+      await fs.writeFile(path.join(legacyTarget, 'comet', 'SKILL.md'), '# Legacy Comet\n');
+      await fs.mkdir(path.dirname(legacySkills), { recursive: true });
+      await fs.symlink(
+        legacyTarget,
+        legacySkills,
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await updateCommand(tmpDir, { skipNpm: true, scope: 'project', json });
+        const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+        if (json) {
+          const result = JSON.parse(output);
+          expect(result.skills.cleanupFailed).toBeGreaterThan(0);
+          expect(result.skills.targets[0].cleanupFailed).toBeGreaterThan(0);
+        } else {
+          expect(output).toMatch(/incomplete|failed/iu);
+        }
+      } finally {
+        log.mockRestore();
+        homedirSpy.mockRestore();
+      }
+
+      await expect(
+        fs.access(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md')),
+      ).resolves.toBeUndefined();
+      await expect(fs.lstat(legacySkills)).resolves.toMatchObject({});
+    },
+  );
+
+  it('marks all-projects update failed when legacy Codex cleanup is refused', async () => {
+    const fakeHome = path.join(tmpDir, 'all-projects-home-cleanup-failure');
+    const project = path.join(tmpDir, 'all-projects-cleanup-failure');
+    const legacyTarget = path.join(tmpDir, 'all-projects-legacy-target');
+    await fs.mkdir(path.join(project, '.codex'), { recursive: true });
+    await fs.mkdir(path.join(legacyTarget, 'comet'), { recursive: true });
+    await fs.writeFile(path.join(legacyTarget, 'comet', 'SKILL.md'), '# Legacy Comet\n');
+    await fs.symlink(
+      legacyTarget,
+      path.join(project, '.codex', 'skills'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    await upsertProjectInstallation(project, [{ platform: 'codex', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(project, { allProjects: true, json: true, skipNpm: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.projects[0].status).toBe('failed');
+      expect(result.projects[0].reason).toMatch(/cleanup/iu);
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+  });
+
   it('preserves legacy Codex skills when the canonical installation is incomplete', async () => {
     const fakeHome = path.join(tmpDir, 'home-incomplete');
     const legacySkill = path.join(tmpDir, '.codex', 'skills', 'comet', 'SKILL.md');
