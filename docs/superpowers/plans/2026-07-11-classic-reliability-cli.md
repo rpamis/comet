@@ -865,6 +865,6 @@ git add assets/skills/comet/reference/scripts.md assets/skills/comet-build/SKILL
 git commit -m "docs: document stable Classic command workflows"
 ```
 
-- [ ] **Step 7: Request final review**
+- [x] **Step 7: Request final review**
 
 Use the `requesting-code-review` skill with the design commit as base and current HEAD as head. Fix all Critical and Important findings, rerun the affected focused tests, then rerun the full serial suite before claiming completion.
