@@ -9,7 +9,12 @@ import {
   hasPluginSuperpowers,
   hasOpenCodePluginSuperpowers,
 } from '../../platform/install/detect.js';
-import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
+import {
+  PLATFORMS,
+  getPlatformSkillsDir,
+  getPlatformSkillsDirs,
+  type Platform,
+} from '../../platform/install/platforms.js';
 
 const mockPlatform: Platform = {
   id: 'claude',
@@ -50,6 +55,21 @@ describe('detect', () => {
   });
 
   describe('platform global skills directories', () => {
+    it('declares Codex canonical, compatibility, detection, and rules roots separately', () => {
+      const codex = PLATFORMS.find((platform) => platform.id === 'codex');
+
+      expect(codex).toBeDefined();
+      expect(codex?.skillsDir).toBe('.agents');
+      expect(codex?.globalSkillsDir).toBe('.agents');
+      expect(codex?.legacySkillsDirs).toEqual(['.codex']);
+      expect(codex?.detectionPaths).toEqual(['.codex']);
+      expect(codex?.rulesBaseDir).toBe('.codex');
+      expect(getPlatformSkillsDir(codex!, 'project')).toBe('.agents');
+      expect(getPlatformSkillsDir(codex!, 'global')).toBe('.agents');
+      expect(getPlatformSkillsDirs(codex!, 'project')).toEqual(['.agents', '.codex']);
+      expect(getPlatformSkillsDirs(codex!, 'global')).toEqual(['.agents', '.codex']);
+    });
+
     it('declares Kimi Code global skills under the user .kimi-code directory', () => {
       const kimicode = PLATFORMS.find((platform) => platform.id === 'kimicode');
 
@@ -102,6 +122,16 @@ describe('detect', () => {
   });
 
   describe('detectPlatforms', () => {
+    it('does not detect Codex from a shared .agents skills directory alone', async () => {
+      await fs.mkdir(path.join(tmpDir, '.agents', 'skills', 'personal-skill'), {
+        recursive: true,
+      });
+
+      const detected = await detectPlatforms(tmpDir);
+
+      expect(detected.has('codex')).toBe(false);
+    });
+
     it('detects claude platform when .claude directory exists', async () => {
       await fs.mkdir(path.join(tmpDir, '.claude'));
       const detected = await detectPlatforms(tmpDir);

@@ -12,6 +12,7 @@ export interface Platform {
   name: string;
   skillsDir: string;
   globalSkillsDir?: string;
+  legacySkillsDirs?: string[];
   detectionPaths?: string[];
   openspecToolId: string;
   /** Platform's rules/instructions subdirectory relative to rulesBaseDir (defaults to baseDir). Omit if unsupported. */
@@ -34,7 +35,9 @@ export function getPlatformSkillsDir(platform: Platform, scope: InstallScope): s
 }
 
 export function getPlatformSkillsDirs(platform: Platform, scope: InstallScope): string[] {
-  return [getPlatformSkillsDir(platform, scope)];
+  return [
+    ...new Set([getPlatformSkillsDir(platform, scope), ...(platform.legacySkillsDirs ?? [])]),
+  ];
 }
 
 export const PLATFORMS: Platform[] = [
@@ -61,9 +64,12 @@ export const PLATFORMS: Platform[] = [
   {
     id: 'codex',
     name: 'Codex',
-    skillsDir: '.codex',
-    globalSkillsDir: '.codex',
+    skillsDir: '.agents',
+    globalSkillsDir: '.agents',
+    legacySkillsDirs: ['.codex'],
+    detectionPaths: ['.codex'],
     openspecToolId: 'codex',
+    rulesBaseDir: '.codex',
     rulesDir: 'rules',
     rulesFormat: 'md',
     supportsHooks: true,
