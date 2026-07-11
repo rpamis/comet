@@ -153,7 +153,7 @@ git commit -m "fix(classic): preserve archive markdown formatting"
 - Consumes: `runClassicCli(argv: readonly string[]): Promise<ClassicCommandResult>`.
 - Produces: `runClassicFacade(command: PublicClassicCommand, args: readonly string[]): Promise<number>` and Commander commands `comet state|guard|handoff|archive`.
 
-- [ ] **Step 1: Write failing facade forwarding tests**
+- [x] **Step 1: Write failing facade forwarding tests**
 
 Create `test/app/classic-command.test.ts`, mock the domain dispatcher, and assert exact argument/output/exit behavior:
 
@@ -184,7 +184,7 @@ Add one parameterized assertion that the accepted command type/runtime allowlist
 ['state', 'guard', 'handoff', 'archive'];
 ```
 
-- [ ] **Step 2: Run the new test and confirm RED**
+- [x] **Step 2: Run the new test and confirm RED**
 
 Run:
 
@@ -194,7 +194,7 @@ npx vitest run test/app/classic-command.test.ts
 
 Expected: FAIL because `app/commands/classic.ts` does not exist.
 
-- [ ] **Step 3: Implement the thin facade**
+- [x] **Step 3: Implement the thin facade**
 
 Create `app/commands/classic.ts`:
 
@@ -215,7 +215,7 @@ export async function runClassicFacade(
 }
 ```
 
-- [ ] **Step 4: Register real Commander passthrough commands**
+- [x] **Step 4: Register real Commander passthrough commands**
 
 In `app/cli/index.ts`, add a helper that registers each command with a variadic positional argument and unknown-option passthrough:
 
@@ -239,7 +239,7 @@ registerClassicFacade('archive', 'Archive a completed Comet-managed change');
 
 If the installed Commander version requires `.enablePositionalOptions()` on `program` for passthrough, add it once before command registration and prove existing CLI option tests still pass.
 
-- [ ] **Step 5: Add real CLI parsing and help tests**
+- [x] **Step 5: Add real CLI parsing and help tests**
 
 In `test/app/cli-help.test.ts`, assert root help includes the four names and excludes internal names:
 
@@ -254,7 +254,7 @@ for (const name of ['validate', 'intent', 'hook-guard']) {
 
 Add a real CLI parsing test using `bin/comet.js` or a fresh Commander import. Invoke a harmless invalid/usage path and assert that `--json`, `--apply`, and `--dry-run` reach the dispatcher unchanged. Do not satisfy this requirement only with the mocked facade unit test.
 
-- [ ] **Step 6: Verify public CLI GREEN**
+- [x] **Step 6: Verify public CLI GREEN**
 
 Run:
 
@@ -266,7 +266,7 @@ npx prettier --check app/commands/classic.ts app/cli/index.ts test/app/classic-c
 
 Expected: all commands exit 0.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```bash
 git add app/commands/classic.ts app/cli/index.ts test/app/classic-command.test.ts test/app/cli-help.test.ts
