@@ -42,6 +42,39 @@ async function makePackageFixture(): Promise<string> {
 }
 
 describe('prepublish security check', () => {
+  it('packs the eval harness without derived artifacts', async () => {
+    const npmCache = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-npm-cache-'));
+    temporary.push(npmCache);
+    const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
+    const args =
+      process.platform === 'win32'
+        ? ['/d', '/s', '/c', `npm pack --dry-run --json --cache ${npmCache}`]
+        : ['pack', '--dry-run', '--json', '--cache', npmCache];
+    const result = spawnSync(command, args, {
+      cwd: path.resolve(),
+      encoding: 'utf-8',
+      env: {
+        ...process.env,
+        NPM_CONFIG_CACHE: npmCache,
+        npm_config_cache: npmCache,
+      },
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+
+    const jsonStart = result.stdout.lastIndexOf('\n[');
+    const [packed] = JSON.parse(result.stdout.slice(jsonStart + 1)) as Array<{
+      files: Array<{ path: string }>;
+    }>;
+    const published = packed.files.map((file) => `package/${file.path}`);
+
+    expect(published).toContain('package/eval/pyproject.toml');
+    expect(published).toContain('package/eval/local/tests/tasks/test_tasks.py');
+    expect(published.some((file) => file.startsWith('package/eval/.venv/'))).toBe(false);
+    expect(published.some((file) => file.startsWith('package/eval/.uv-cache/'))).toBe(false);
+    expect(published.some((file) => file.startsWith('package/eval/local/logs/'))).toBe(false);
+  });
+
   it('scans only files that npm would publish', async () => {
     const root = await makePackageFixture();
     await writeFile(

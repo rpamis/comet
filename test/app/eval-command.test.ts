@@ -1,15 +1,26 @@
 import os from 'os';
 import path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fileURLToPath } from 'url';
 
 const execFileSync = vi.fn();
+const existsSync = vi.fn(() => true);
 const project = path.join(os.tmpdir(), 'comet-eval-project');
 const manifest = path.join(os.tmpdir(), 'demo', 'comet', 'eval.yaml');
 const skillPath = path.join(os.tmpdir(), 'demo-skill');
 const evalCwd = path.join(path.resolve(project), 'eval');
+const packagedEvalCwd = path.resolve(
+  path.dirname(fileURLToPath(new URL('../../app/commands/eval.js', import.meta.url))),
+  '../../eval',
+);
 
 vi.mock('child_process', () => ({
   execFileSync,
+}));
+
+vi.mock('fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('fs')>()),
+  existsSync,
 }));
 
 function expectUvRun(args: string[]): void {
@@ -24,6 +35,38 @@ describe('eval command', () => {
   beforeEach(() => {
     execFileSync.mockReset();
     execFileSync.mockReturnValue(Buffer.from(''));
+    existsSync.mockReset();
+    existsSync.mockReturnValue(true);
+  });
+
+  it('uses the packaged eval harness when project is omitted', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(project);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        manifest,
+      });
+    } finally {
+      cwd.mockRestore();
+      log.mockRestore();
+    }
+
+    expect(execFileSync).toHaveBeenCalledWith('uv', ['--version'], { stdio: 'pipe' });
+    expect(execFileSync).toHaveBeenCalledWith(
+      'uv',
+      [
+        'run',
+        'pytest',
+        'local/tests/tasks/test_tasks.py',
+        `--eval-manifest=${path.resolve(manifest)}`,
+        '-v',
+      ],
+      {
+        cwd: packagedEvalCwd,
+        stdio: 'inherit',
+      },
+    );
   });
 
   it('runs a manifest-backed quick eval from the repo root', async () => {
@@ -40,12 +83,12 @@ describe('eval command', () => {
     }
 
     expectUvRun([
-        'run',
-        'pytest',
-        'local/tests/tasks/test_tasks.py',
-        `--eval-manifest=${path.resolve(manifest)}`,
-        '-v',
-      ]);
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(manifest)}`,
+      '-v',
+    ]);
   });
 
   it('uses generic-skill-smoke for local skill quick runs', async () => {
@@ -64,15 +107,15 @@ describe('eval command', () => {
     }
 
     expectUvRun([
-        'run',
-        'pytest',
-        'local/tests/tasks/test_tasks.py',
-        '--task=generic-skill-smoke',
-        `--skill-path=${path.resolve(skillPath)}`,
-        '--skill-name=demo-skill',
-        '--profile=generic',
-        '-v',
-      ]);
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      '--task=generic-skill-smoke',
+      `--skill-path=${path.resolve(skillPath)}`,
+      '--skill-name=demo-skill',
+      '--profile=generic',
+      '-v',
+    ]);
   });
 
   it('runs a local Skill target directly without requiring --skill-path', async () => {
@@ -88,14 +131,14 @@ describe('eval command', () => {
     }
 
     expectUvRun([
-        'run',
-        'pytest',
-        'local/tests/tasks/test_tasks.py',
-        '--task=generic-skill-smoke',
-        `--skill-path=${path.resolve(skillPath)}`,
-        '--skill-name=demo-skill',
-        '-v',
-      ]);
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      '--task=generic-skill-smoke',
+      `--skill-path=${path.resolve(skillPath)}`,
+      '--skill-name=demo-skill',
+      '-v',
+    ]);
   });
 
   it('collects a manifest target directly with --collect', async () => {
@@ -111,12 +154,12 @@ describe('eval command', () => {
     }
 
     expectUvRun([
-        'run',
-        'pytest',
-        'local/tests/tasks/test_tasks.py',
-        `--eval-manifest=${path.resolve(manifest)}`,
-        '--collect-only',
-      ]);
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(manifest)}`,
+      '--collect-only',
+    ]);
   });
 
   it('uses collect-only discovery for manifest smoke checks', async () => {
@@ -132,12 +175,12 @@ describe('eval command', () => {
     }
 
     expectUvRun([
-        'run',
-        'pytest',
-        'local/tests/tasks/test_tasks.py',
-        `--eval-manifest=${path.resolve(manifest)}`,
-        '--collect-only',
-      ]);
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(manifest)}`,
+      '--collect-only',
+    ]);
   });
 
   it('prints eval execution details and report path for manifest runs', async () => {
@@ -165,6 +208,23 @@ describe('eval command', () => {
     expect(output).toContain('Report path:');
     expect(output).toContain('Report config:');
     expect(output).toContain('Failure attribution:');
+  });
+
+  it('reports a missing eval harness before invoking uv', async () => {
+    existsSync.mockReturnValue(false);
+    const { evalRunCommand } = await import('../../app/commands/eval.js');
+
+    await expect(
+      evalRunCommand({
+        project,
+        manifest,
+      }),
+    ).rejects.toThrow(
+      `Eval harness is missing at ${evalCwd}.\n` +
+        'Reinstall @rpamis/comet or pass --project <repository-root>.',
+    );
+
+    expect(execFileSync).not.toHaveBeenCalled();
   });
 
   it('surfaces a focused target error before invoking uv', async () => {

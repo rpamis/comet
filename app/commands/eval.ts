@@ -1,7 +1,8 @@
 import { execFileSync } from 'child_process';
-import { promises as fs } from 'fs';
+import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 interface EvalCommandOptions {
   project?: string;
@@ -27,12 +28,24 @@ interface EvalLaunchDetails {
   target: string;
 }
 
-function projectRoot(options: EvalCommandOptions): string {
-  return path.resolve(options.project ?? '.');
-}
+const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+const moduleRoot = path.resolve(moduleDirectory, '../..');
+const packageRoot = path.basename(moduleRoot) === 'dist' ? path.dirname(moduleRoot) : moduleRoot;
 
 function evalRoot(options: EvalCommandOptions): string {
-  return path.join(projectRoot(options), 'eval');
+  return options.project
+    ? path.join(path.resolve(options.project), 'eval')
+    : path.join(packageRoot, 'eval');
+}
+
+function assertEvalHarness(root: string): void {
+  const requiredFiles = ['pyproject.toml', 'local/tests/tasks/test_tasks.py'];
+  if (requiredFiles.every((file) => existsSync(path.join(root, file)))) return;
+
+  throw new Error(
+    `Eval harness is missing at ${root}.\n` +
+      'Reinstall @rpamis/comet or pass --project <repository-root>.',
+  );
 }
 
 function assertTarget(options: EvalCommandOptions): void {
@@ -148,17 +161,18 @@ async function buildEvalArgs(
 async function buildLaunchDetails(
   options: EvalCommandOptions,
   collectOnly: boolean,
+  root: string,
 ): Promise<EvalLaunchDetails> {
   const reportConfig = await resolveReportConfig(options);
   return {
     mode: collectOnly ? 'collect' : 'run',
-    evalRoot: evalRoot(options),
+    evalRoot: root,
     experimentId: `comet-eval-${Date.now()}`,
     profile: resolveProfile(options),
     task: resolveTask(options),
     reportConfig,
     reportPath: path.join(
-      evalRoot(options),
+      root,
       'local',
       'logs',
       'experiments',
@@ -200,28 +214,31 @@ function assertUvAvailable(): void {
   }
 }
 
-function runEval(args: string[], options: EvalCommandOptions): void {
+function runEval(args: string[], root: string): void {
+  assertEvalHarness(root);
   assertUvAvailable();
   execFileSync('uv', args, {
-    cwd: evalRoot(options),
+    cwd: root,
     stdio: 'inherit',
   });
 }
 
 export async function evalRunCommand(options: EvalCommandOptions = {}): Promise<void> {
   assertTarget(options);
-  const details = await buildLaunchDetails(options, false);
+  const root = evalRoot(options);
+  const details = await buildLaunchDetails(options, false, root);
   const args = await buildEvalArgs(options, false, details.reportConfig);
   printLaunchDetails(details);
-  runEval(args, options);
+  runEval(args, root);
 }
 
 export async function evalCollectCommand(options: EvalCommandOptions = {}): Promise<void> {
   assertTarget(options);
-  const details = await buildLaunchDetails(options, true);
+  const root = evalRoot(options);
+  const details = await buildLaunchDetails(options, true, root);
   const args = await buildEvalArgs(options, true, details.reportConfig);
   printLaunchDetails(details);
-  runEval(args, options);
+  runEval(args, root);
 }
 
 export async function evalCommand(
