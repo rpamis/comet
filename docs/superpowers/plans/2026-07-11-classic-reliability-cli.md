@@ -456,7 +456,7 @@ git commit -m "feat(classic): record command check evidence"
 - Consumes: Task 3 `latestCommandCheck(changeDir, run, scope)` and the current Classic Run context already loaded by `classicGuardCommand`.
 - Produces: explicit inferred-command outcomes and commandless-project recovery outcomes for build and verify Guard checks.
 
-- [ ] **Step 1: Write failing commandless-project diagnostics tests**
+- [x] **Step 1: Write failing commandless-project diagnostics tests**
 
 Create a valid build-phase change with no `package.json`, `pom.xml`, or `Cargo.toml`. Run build Guard and assert stderr contains all of:
 
@@ -476,7 +476,7 @@ Run the focused test and confirm it fails because current output is blank:
 npx vitest run test/domains/comet-classic/comet-scripts-guard.test.ts
 ```
 
-- [ ] **Step 2: Separate inference from execution**
+- [x] **Step 2: Separate inference from execution**
 
 Replace the implicit fallback in `classic-guard.ts` with an explicit result:
 
@@ -495,7 +495,7 @@ async function inferBuildCommand(): Promise<InferredCommand> {
 
 Preserve the exact existing npm/Maven/Cargo commands. Do not add Python/Make/Julia inference in this issue.
 
-- [ ] **Step 3: Implement explicit manual-evidence fallback**
+- [x] **Step 3: Implement explicit manual-evidence fallback**
 
 Change `buildPasses` and `verificationCommandPasses` to accept `change`, `changeDir`, and current `RunState`. Centralize fallback in:
 
@@ -532,7 +532,7 @@ For an inferred command that exists and fails, return its failure directly; do n
 
 When `COMET_SKIP_BUILD=1`, return a successful outcome whose output explicitly contains `SKIPPED via COMET_SKIP_BUILD=1`. Update `pushCheck`/success rendering only as needed so successful evidence text remains visible without changing unrelated PASS output.
 
-- [ ] **Step 4: Add evidence isolation and precedence tests**
+- [x] **Step 4: Add evidence isolation and precedence tests**
 
 Add tests proving:
 
@@ -543,7 +543,7 @@ Add tests proving:
 - a failing inferred npm build remains failed even when a successful manual event exists;
 - `COMET_SKIP_BUILD=1` output includes `SKIPPED`.
 
-- [ ] **Step 5: Regenerate and verify the Classic runtime**
+- [x] **Step 5: Regenerate and verify the Classic runtime**
 
 Run:
 
@@ -554,7 +554,7 @@ npx vitest run test/domains/comet-classic/comet-scripts-guard.test.ts test/domai
 
 Expected: all tests pass; `assets/skills/comet/scripts/comet-runtime.mjs` contains `command_check_recorded` and the actionable no-inference message. Launcher files remain thin imports and do not contain copied logic.
 
-- [ ] **Step 6: Run static checks and commit Task 4**
+- [x] **Step 6: Run static checks and commit Task 4**
 
 ```bash
 npx eslint domains/comet-classic/classic-guard.ts domains/comet-classic/classic-command-checks.ts
