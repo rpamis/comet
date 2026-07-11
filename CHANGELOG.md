@@ -9,6 +9,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Ambient resume**: Adds a low-noise Comet resume probe and managed project instruction block so agents can recover active workflows when the user resumes work without explicitly invoking `/comet`.
 - **Project installation registry**: Added a user-level registry for project-scope Comet installs so interactive update and uninstall can operate across all indexed projects from one command while JSON and scripted calls remain current-project by default.
 - **Stable Classic commands**: Added top-level `comet state`, `comet guard`, `comet handoff`, and `comet archive` commands so agents no longer depend on internal installed script paths ([#186](https://github.com/rpamis/comet/issues/186)).
+- **Custom project build evidence**: Projects without an inferred npm, Maven, or Cargo command can now record auditable build and verification results instead of relying on an undocumented skip path ([#192](https://github.com/rpamis/comet/issues/192)).
+
+### Changed
+
 - **Mixed change status**: `comet status` now distinguishes Comet-managed and plain OpenSpec changes and recommends the correct archive command for ready changes ([#187](https://github.com/rpamis/comet/issues/187)).
 
 ### Fixed
@@ -22,7 +26,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Archived dashboard artifacts**: `comet dashboard` now resolves archived changes back to the project root before reading `docs/superpowers/` path pointers, so archived Superpowers plans, design docs, and verify reports remain visible ([#176](https://github.com/rpamis/comet/issues/176)).
 - **Archive confirmation enforcement**: `/comet-archive` now records the user's final approval in machine-owned Classic state and refuses mutating archive runs until that transition succeeds, preventing direct script invocation from bypassing the required confirmation.
 - **Archive annotations**: Classic archive annotations now preserve clean Markdown EOF formatting and remain idempotent, preventing `git diff --check` failures ([#185](https://github.com/rpamis/comet/issues/185)).
-- **Custom project build evidence**: Projects without an inferred npm, Maven, or Cargo command can now record auditable build and verification results instead of relying on an undocumented skip path ([#192](https://github.com/rpamis/comet/issues/192)).
 
 ## What's Changed [0.4.0-beta.3] - 2026-07-08
 
