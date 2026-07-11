@@ -30,6 +30,201 @@ describe('status command', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it('classifies mixed Comet and OpenSpec changes in sorted JSON output', async () => {
+    const changesDir = path.join(tmpDir, 'openspec', 'changes');
+    state(tmpDir, 'init', 'z-comet-ready', 'full');
+    state(tmpDir, 'set', 'z-comet-ready', 'phase', 'archive');
+    state(tmpDir, 'set', 'z-comet-ready', 'verify_result', 'pass');
+    await fs.writeFile(path.join(changesDir, 'z-comet-ready', 'tasks.md'), '- [ ] ignored\n');
+
+    state(tmpDir, 'init', 'b-invalid-comet', 'full');
+    await fs.appendFile(
+      path.join(changesDir, 'b-invalid-comet', '.comet.yaml'),
+      'unknown_root_field: true\n',
+    );
+
+    await fs.mkdir(path.join(changesDir, 'a-open-complete'), { recursive: true });
+    await fs.writeFile(
+      path.join(changesDir, 'a-open-complete', 'tasks.md'),
+      '- [x] first\n- [X] second\n',
+    );
+    await fs.mkdir(path.join(changesDir, 'c-open-incomplete'), { recursive: true });
+    await fs.writeFile(
+      path.join(changesDir, 'c-open-incomplete', 'tasks.md'),
+      '- [x] first\n- [ ] second\n',
+    );
+    await fs.mkdir(path.join(changesDir, 'archive', 'old-change'), { recursive: true });
+    await fs.writeFile(path.join(changesDir, 'archive', 'old-change', 'tasks.md'), '- [x] done\n');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await statusCommand(tmpDir, { json: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    const changes = JSON.parse(json).changes;
+    expect(changes.map((change: { name: string }) => change.name)).toEqual([
+      'a-open-complete',
+      'b-invalid-comet',
+      'c-open-incomplete',
+      'z-comet-ready',
+    ]);
+    expect(changes[0]).toEqual({
+      name: 'a-open-complete',
+      cometManaged: false,
+      archiveReady: true,
+      recommendedArchiveCommand: 'openspec archive a-open-complete -y',
+      workflow: null,
+      phase: null,
+      buildMode: null,
+      isolation: null,
+      verifyMode: null,
+      verifyResult: null,
+      designDoc: null,
+      plan: null,
+      tasksCompleted: 2,
+      tasksTotal: 2,
+      nextCommand: null,
+      currentStep: null,
+      runtimeMode: null,
+      runtimeEval: null,
+      commandChecks: null,
+    });
+    expect(changes[1]).toMatchObject({
+      name: 'b-invalid-comet',
+      cometManaged: true,
+      archiveReady: false,
+      recommendedArchiveCommand: 'comet archive b-invalid-comet',
+      phase: 'invalid',
+      commandChecks: null,
+      error: expect.stringContaining('unknown_root_field'),
+    });
+    expect(changes[2]).toMatchObject({
+      name: 'c-open-incomplete',
+      cometManaged: false,
+      archiveReady: false,
+      recommendedArchiveCommand: 'openspec archive c-open-incomplete -y',
+      tasksCompleted: 1,
+      tasksTotal: 2,
+      commandChecks: null,
+    });
+    expect(changes[3]).toMatchObject({
+      name: 'z-comet-ready',
+      cometManaged: true,
+      archiveReady: true,
+      recommendedArchiveCommand: 'comet archive z-comet-ready',
+      phase: 'archive',
+      verifyResult: 'pass',
+      tasksCompleted: 0,
+      tasksTotal: 1,
+      commandChecks: { build: null, verify: null },
+    });
+  });
+
+  it('includes latest build and verify command checks for a synchronized Comet Run', async () => {
+    state(tmpDir, 'init', 'audited', 'full');
+    expect(
+      state(
+        tmpDir,
+        'record-check',
+        'audited',
+        'build',
+        '--command',
+        'pnpm build',
+        '--exit-code',
+        '0',
+        '--cwd',
+        '.',
+      ).status,
+    ).toBe(0);
+    expect(
+      state(
+        tmpDir,
+        'record-check',
+        'audited',
+        'verify',
+        '--command',
+        'pnpm test',
+        '--exit-code',
+        '2',
+        '--cwd',
+        'packages/app',
+      ).status,
+    ).toBe(0);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await statusCommand(tmpDir, { json: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(JSON.parse(json).changes[0].commandChecks).toEqual({
+      build: expect.objectContaining({
+        runId: expect.any(String),
+        scope: 'build',
+        command: 'pnpm build',
+        exitCode: 0,
+        cwd: '.',
+      }),
+      verify: expect.objectContaining({
+        runId: expect.any(String),
+        scope: 'verify',
+        command: 'pnpm test',
+        exitCode: 2,
+        cwd: 'packages/app',
+      }),
+    });
+
+    const textLog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await statusCommand(tmpDir);
+      const output = textLog.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(output).toContain('build_check: pass (pnpm build; cwd: .; recorded:');
+      expect(output).toContain(
+        'verify_check: fail exit=2 (pnpm test; cwd: packages/app; recorded:',
+      );
+    } finally {
+      textLog.mockRestore();
+    }
+  });
+
+  it('labels mixed text output and recommends archive commands only for ready changes', async () => {
+    const changesDir = path.join(tmpDir, 'openspec', 'changes');
+    state(tmpDir, 'init', 'comet-ready', 'full');
+    state(tmpDir, 'set', 'comet-ready', 'phase', 'archive');
+    state(tmpDir, 'set', 'comet-ready', 'verify_result', 'pass');
+    state(tmpDir, 'init', 'comet-not-ready', 'full');
+    await fs.mkdir(path.join(changesDir, 'open-ready'), { recursive: true });
+    await fs.writeFile(path.join(changesDir, 'open-ready', 'tasks.md'), '- [x] done\n');
+    await fs.mkdir(path.join(changesDir, 'open-not-ready'), { recursive: true });
+    await fs.writeFile(path.join(changesDir, 'open-not-ready', 'tasks.md'), '- [ ] todo\n');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      await statusCommand(tmpDir);
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(output).toContain('comet-ready [Comet] [phase: archive]');
+    expect(output).toContain('comet-not-ready [Comet] [phase: open]');
+    expect(output).toContain('open-ready [OpenSpec] [plain change [1/1 tasks]]');
+    expect(output).toContain('open-not-ready [OpenSpec] [plain change [0/1 tasks]]');
+    expect(output).toContain('recommended archive: comet archive comet-ready');
+    expect(output).toContain('recommended archive: openspec archive open-ready -y');
+    expect(output).not.toContain('recommended archive: comet archive comet-not-ready');
+    expect(output).not.toContain('recommended archive: openspec archive open-not-ready -y');
+    expect(output.match(/recommended archive:/g)).toHaveLength(2);
+  });
+
   it('prints the next command for active changes', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'next-build');
     state(tmpDir, 'init', 'next-build', 'full');
@@ -43,7 +238,7 @@ describe('status command', () => {
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] done\n- [ ] todo\n');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let output = '';
+    let output: string;
     try {
       await statusCommand(tmpDir);
       output = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -63,7 +258,7 @@ describe('status command', () => {
     const before = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await statusCommand(tmpDir, { json: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -80,11 +275,14 @@ describe('status command', () => {
   it('reports invalid state without modifying it', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'invalid');
     state(tmpDir, 'init', 'invalid', 'full');
-    await fs.appendFile(path.join(changeDir, '.comet.yaml'), 'unknown_root_field: true\n');
+    await fs.appendFile(
+      path.join(changeDir, '.comet.yaml'),
+      'build_command: npm run build\nunknown_root_field: true\n',
+    );
     const before = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await statusCommand(tmpDir, { json: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -105,11 +303,10 @@ describe('status command', () => {
     state(tmpDir, 'init', 'invalid', 'full');
     await fs.appendFile(path.join(changeDir, '.comet.yaml'), 'unknown_root_field: true\n');
 
-    const runtimeEvalFailDir = path.join(tmpDir, 'openspec', 'changes', 'runtime-eval-fail');
     state(tmpDir, 'init', 'runtime-eval-fail', 'full');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let output = '';
+    let output: string;
     try {
       await statusCommand(tmpDir);
       output = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -119,16 +316,15 @@ describe('status command', () => {
 
     expect(output).toContain('error: Invalid Classic state: unknown field(s): unknown_root_field');
     expect(output).toContain('next: inspect .comet.yaml and rerun comet doctor');
-    expect(output).toContain('runtime-eval-fail [phase: open]');
+    expect(output).toContain('runtime-eval-fail [Comet] [phase: open]');
     expect(output.match(/next: inspect \.comet\.yaml and rerun comet doctor/g)).toHaveLength(1);
   });
 
   it('prints actionable runtime-eval recovery guidance for valid changes', async () => {
-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'runtime-eval-fail');
     state(tmpDir, 'init', 'runtime-eval-fail', 'full');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let output = '';
+    let output: string;
     try {
       await statusCommand(tmpDir);
       output = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -152,7 +348,7 @@ describe('status command', () => {
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] build\n');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await statusCommand(tmpDir, { json: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
