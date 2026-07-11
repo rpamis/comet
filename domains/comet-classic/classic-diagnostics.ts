@@ -1,6 +1,6 @@
 import type { ClassicEvidence } from './classic-evidence.js';
 import { collectClassicEvidence } from './classic-evidence.js';
-import { ensureStrictClassicRuntimeRun } from './classic-runtime-run.js';
+import { ensureStrictClassicRuntimeRun, validateClassicRuntimeRun } from './classic-runtime-run.js';
 import { readClassicState } from './classic-store.js';
 import { resolveClassicStepId } from './classic-resolver.js';
 import {
@@ -47,8 +47,9 @@ export async function inspectClassicChangeReadOnly(
       };
     }
 
-    const evidence = await collectClassicEvidence(changeDir, projection);
-    const currentStep = resolveClassicStepId(projection.classic, evidence);
+    const runtime = await validateClassicRuntimeRun(changeDir, projection);
+    const evidence = runtime.evidence;
+    const currentStep = resolveClassicStepId(runtime.classic, evidence);
     return {
       name,
       valid: true,

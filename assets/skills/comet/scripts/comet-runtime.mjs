@@ -9260,6 +9260,54 @@ async function ensureStrictClassicRuntimeRun(changeDir) {
   }
   return ensureClassicRuntimeRun(changeDir);
 }
+async function validateClassicRuntimeRun(changeDir, existingProjection) {
+  const projection = existingProjection ?? await readClassicState(changeDir, { migrate: false });
+  const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+  if (unknownKeys.length > 0) {
+    throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(", ")}`);
+  }
+  if (!projection.classic || !projection.run) {
+    throw new Error("Classic runtime validation requires synchronized Classic and Run projections");
+  }
+  if (projection.classic.classicMigration !== CLASSIC_MIGRATION_VERSION) {
+    throw new Error("Classic Run exists without a supported classic_migration marker");
+  }
+  const root = await classicRuntimeRoot();
+  const skillPackage = root ? await loadClassicRuntimePackage(root) : embeddedClassicRuntimePackage(path10.dirname(fileURLToPath(import.meta.url)));
+  if (projection.run.skill !== skillPackage.definition.metadata.name) {
+    throw new Error(
+      `Classic Run skill mismatch: expected ${skillPackage.definition.metadata.name}, got ${projection.run.skill}`
+    );
+  }
+  const installedHash = await hashSkillPackage(skillPackage);
+  const snapshot = await readSkillSnapshot(changeDir, projection.run.skillHash);
+  if (snapshot.definition.metadata.name !== projection.run.skill) {
+    throw new Error(
+      `Classic Run snapshot skill mismatch: expected ${projection.run.skill}, got ${snapshot.definition.metadata.name}`
+    );
+  }
+  const snapshotHash = await hashSkillPackage(snapshot);
+  const expectedSnapshotHash = installedHash === projection.run.skillHash ? installedHash : projection.run.skillHash;
+  if (snapshotHash !== expectedSnapshotHash) {
+    throw new Error(
+      `Classic Run snapshot hash mismatch: expected ${expectedSnapshotHash}, got ${snapshotHash}`
+    );
+  }
+  const evidence = await collectClassicEvidence(changeDir, projection);
+  const currentStep = resolveClassicStepId(projection.classic, evidence);
+  if (projection.run.currentStep !== currentStep) {
+    throw new Error(
+      `Classic Run step mismatch: expected ${currentStep}, got ${projection.run.currentStep}`
+    );
+  }
+  return {
+    classic: projection.classic,
+    run: projection.run,
+    evidence,
+    migrated: false,
+    snapshotDir: path10.join(changeDir, ".comet", "skill-snapshots", projection.run.skillHash)
+  };
+}
 async function transitionClassicRuntimeRun(changeDir, classic, run, data) {
   const projection = await readClassicState(changeDir);
   if (!projection.classic || !projection.run) {
@@ -13660,19 +13708,10 @@ async function recordCheck(output, name, scopeText, args) {
   }
   try {
     const projection = await readClassicState(directory, { migrate: false });
-    const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
-    if (unknownKeys.length > 0) {
-      throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(", ")}`);
-    }
-    if (!projection.classic || !projection.run || projection.classic.classicMigration !== CLASSIC_MIGRATION_VERSION) {
+    if (!projection.classic || !projection.run) {
       throw new Error("command checks require an existing synchronized Classic Run");
     }
-    const evidence = await collectClassicEvidence(directory, projection);
-    const currentStep = resolveClassicStepId(projection.classic, evidence);
-    if (projection.run.currentStep !== currentStep) {
-      throw new Error("command checks require an existing synchronized Classic Run");
-    }
-    const run = projection.run;
+    const { run } = await validateClassicRuntimeRun(directory, projection);
     const recorded = await recordCommandCheck(directory, run, {
       scope: scopeText,
       ...options

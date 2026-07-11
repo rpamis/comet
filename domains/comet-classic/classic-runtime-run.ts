@@ -5,10 +5,15 @@ import { collectClassicEvidence } from './classic-evidence.js';
 import { ensureClassicRun, type ClassicRunContext } from './classic-migrate.js';
 import { resolveClassicStepId } from './classic-resolver.js';
 import { readClassicState, writeClassicState } from './classic-store.js';
-import type { ClassicState } from './classic-state.js';
+import {
+  CLASSIC_MIGRATION_VERSION,
+  type ClassicState,
+  type ClassicStateProjection,
+} from './classic-state.js';
 import { appendTrajectory, readTrajectory } from '../../domains/engine/run-store.js';
 import type { RunState } from '../../domains/engine/types.js';
 import { loadRuntimePackage, loadSkillPackage } from '../../domains/skill/load.js';
+import { hashSkillPackage, readSkillSnapshot } from '../../domains/skill/snapshot.js';
 import type { SkillPackage } from '../../domains/skill/types.js';
 
 async function directoryExists(directory: string): Promise<boolean> {
@@ -299,6 +304,64 @@ export async function ensureStrictClassicRuntimeRun(changeDir: string): Promise<
     throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`);
   }
   return ensureClassicRuntimeRun(changeDir);
+}
+
+export async function validateClassicRuntimeRun(
+  changeDir: string,
+  existingProjection?: ClassicStateProjection,
+): Promise<ClassicRunContext> {
+  const projection = existingProjection ?? (await readClassicState(changeDir, { migrate: false }));
+  const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+  if (unknownKeys.length > 0) {
+    throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`);
+  }
+  if (!projection.classic || !projection.run) {
+    throw new Error('Classic runtime validation requires synchronized Classic and Run projections');
+  }
+  if (projection.classic.classicMigration !== CLASSIC_MIGRATION_VERSION) {
+    throw new Error('Classic Run exists without a supported classic_migration marker');
+  }
+
+  const root = await classicRuntimeRoot();
+  const skillPackage = root
+    ? await loadClassicRuntimePackage(root)
+    : embeddedClassicRuntimePackage(path.dirname(fileURLToPath(import.meta.url)));
+  if (projection.run.skill !== skillPackage.definition.metadata.name) {
+    throw new Error(
+      `Classic Run skill mismatch: expected ${skillPackage.definition.metadata.name}, got ${projection.run.skill}`,
+    );
+  }
+
+  const installedHash = await hashSkillPackage(skillPackage);
+  const snapshot = await readSkillSnapshot(changeDir, projection.run.skillHash);
+  if (snapshot.definition.metadata.name !== projection.run.skill) {
+    throw new Error(
+      `Classic Run snapshot skill mismatch: expected ${projection.run.skill}, got ${snapshot.definition.metadata.name}`,
+    );
+  }
+  const snapshotHash = await hashSkillPackage(snapshot);
+  const expectedSnapshotHash =
+    installedHash === projection.run.skillHash ? installedHash : projection.run.skillHash;
+  if (snapshotHash !== expectedSnapshotHash) {
+    throw new Error(
+      `Classic Run snapshot hash mismatch: expected ${expectedSnapshotHash}, got ${snapshotHash}`,
+    );
+  }
+
+  const evidence = await collectClassicEvidence(changeDir, projection);
+  const currentStep = resolveClassicStepId(projection.classic, evidence);
+  if (projection.run.currentStep !== currentStep) {
+    throw new Error(
+      `Classic Run step mismatch: expected ${currentStep}, got ${projection.run.currentStep}`,
+    );
+  }
+  return {
+    classic: projection.classic,
+    run: projection.run,
+    evidence,
+    migrated: false,
+    snapshotDir: path.join(changeDir, '.comet', 'skill-snapshots', projection.run.skillHash),
+  };
 }
 
 export async function transitionClassicRuntimeRun(

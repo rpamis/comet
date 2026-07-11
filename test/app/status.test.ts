@@ -307,6 +307,50 @@ describe('status command', () => {
     expect(await snapshotChange(changeDir)).toEqual(before);
   });
 
+  it.each([
+    ['an invalid migration marker', 'marker', 'classic_migration must be 1'],
+    ['a mismatched Run skill identity', 'skill', 'Classic Run skill mismatch'],
+  ])(
+    'reports %s as invalid without changing the synchronized change',
+    async (_label, fault, error) => {
+      const changeDir = path.join(tmpDir, 'openspec', 'changes', `invalid-${fault}`);
+      state(tmpDir, 'init', `invalid-${fault}`, 'full');
+      await ensureClassicRuntimeRun(changeDir);
+      if (fault === 'marker') {
+        const yamlPath = path.join(changeDir, '.comet.yaml');
+        const yaml = (await fs.readFile(yamlPath, 'utf8')).replace(
+          /^classic_migration:.*$/mu,
+          'classic_migration: 999',
+        );
+        await fs.writeFile(yamlPath, yaml);
+      } else {
+        const runPath = path.join(changeDir, '.comet', 'run-state.json');
+        const run = JSON.parse(await fs.readFile(runPath, 'utf8'));
+        run.skill = 'not-comet-classic';
+        await fs.writeFile(runPath, `${JSON.stringify(run, null, 2)}\n`);
+      }
+      const before = await snapshotChange(changeDir);
+
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      let json: string;
+      try {
+        await statusCommand(tmpDir, { json: true });
+        json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      } finally {
+        log.mockRestore();
+      }
+
+      expect(JSON.parse(json).changes[0]).toMatchObject({
+        cometManaged: true,
+        phase: 'invalid',
+        runtimeMode: 'invalid',
+        commandChecks: null,
+        error: expect.stringContaining(error),
+      });
+      expect(await snapshotChange(changeDir)).toEqual(before);
+    },
+  );
+
   it('reports invalid state without modifying it', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'invalid');
     state(tmpDir, 'init', 'invalid', 'full');

@@ -102,6 +102,53 @@ describe('Classic runtime CLI adapter', () => {
   });
 
   it.each([
+    ['an invalid migration marker', 'marker', 'classic_migration must be 1'],
+    ['a mismatched Run skill identity', 'skill', 'Classic Run skill mismatch'],
+  ])('rejects record-check with %s without changing any files', async (_label, fault, error) => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), `comet-record-check-${fault}-`));
+    temporaryDirectories.push(directory);
+    const previous = process.cwd();
+    process.chdir(directory);
+    try {
+      const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
+      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      const changeDir = path.join(directory, 'openspec', 'changes', 'demo');
+      await ensureClassicRuntimeRun(changeDir);
+      if (fault === 'marker') {
+        const yamlPath = path.join(changeDir, '.comet.yaml');
+        const yaml = (await fs.readFile(yamlPath, 'utf8')).replace(
+          /^classic_migration:.*$/mu,
+          'classic_migration: 999',
+        );
+        await fs.writeFile(yamlPath, yaml);
+      } else {
+        const runPath = path.join(changeDir, '.comet', 'run-state.json');
+        const run = JSON.parse(await fs.readFile(runPath, 'utf8'));
+        run.skill = 'not-comet-classic';
+        await fs.writeFile(runPath, `${JSON.stringify(run, null, 2)}\n`);
+      }
+      const before = await snapshotChange(changeDir);
+
+      const result = await runClassicCli([
+        'state',
+        'record-check',
+        'demo',
+        'build',
+        '--command',
+        'pnpm build',
+        '--exit-code',
+        '0',
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(error);
+      expect(await snapshotChange(changeDir)).toEqual(before);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it.each([
     [['deploy', '--command', 'npm test', '--exit-code', '0'], 'Invalid command check scope'],
     [['build', '--exit-code', '0'], 'Missing option: --command'],
     [['build', '--command', 'npm test', '--exit-code', '1.5'], 'integer'],

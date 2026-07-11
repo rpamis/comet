@@ -7,10 +7,9 @@ import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.
 import { collectClassicEvidence } from './classic-evidence.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
 import { resolveClassicStepId } from './classic-resolver.js';
-import { transitionClassicRuntimeRun } from './classic-runtime-run.js';
+import { transitionClassicRuntimeRun, validateClassicRuntimeRun } from './classic-runtime-run.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
 import {
-  CLASSIC_MIGRATION_VERSION,
   CLASSIC_WIRE_KEYS,
   RUN_WIRE_KEYS,
   parseClassicStateDocument,
@@ -1183,23 +1182,10 @@ async function recordCheck(
   }
   try {
     const projection = await readClassicState(directory, { migrate: false });
-    const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
-    if (unknownKeys.length > 0) {
-      throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`);
-    }
-    if (
-      !projection.classic ||
-      !projection.run ||
-      projection.classic.classicMigration !== CLASSIC_MIGRATION_VERSION
-    ) {
+    if (!projection.classic || !projection.run) {
       throw new Error('command checks require an existing synchronized Classic Run');
     }
-    const evidence = await collectClassicEvidence(directory, projection);
-    const currentStep = resolveClassicStepId(projection.classic, evidence);
-    if (projection.run.currentStep !== currentStep) {
-      throw new Error('command checks require an existing synchronized Classic Run');
-    }
-    const run = projection.run;
+    const { run } = await validateClassicRuntimeRun(directory, projection);
     const recorded = await recordCommandCheck(directory, run, {
       scope: scopeText as CommandCheckScope,
       ...options,
