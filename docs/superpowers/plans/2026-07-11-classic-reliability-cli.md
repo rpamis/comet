@@ -322,7 +322,7 @@ export async function latestCommandCheck(
 ): Promise<RecordedCommandCheck | null>;
 ```
 
-- [ ] **Step 1: Add `command_check_recorded` to the trajectory contract**
+- [x] **Step 1: Add `command_check_recorded` to the trajectory contract**
 
 Write a failing test in `classic-command-checks.test.ts` that creates a Run, calls the not-yet-existing `recordCommandCheck()`, reads its trajectory, and expects:
 
@@ -353,7 +353,7 @@ Then extend `TrajectoryEvent['type']` in `domains/engine/types.ts` with:
 | 'command_check_recorded'
 ```
 
-- [ ] **Step 2: Implement validation and append-only recording**
+- [x] **Step 2: Implement validation and append-only recording**
 
 Create `classic-command-checks.ts`. Use `path.resolve(changeDir, '..', '..', '..')` only after verifying the change is under `openspec/changes`; normalize cwd with `path.relative(projectRoot, resolvedCwd)` and reject if it is absolute-outside (`relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)`).
 
@@ -373,7 +373,7 @@ await appendTrajectory(changeDir, run.trajectoryRef, {
 
 `latestCommandCheck()` must filter both `event.runId === run.runId` and `event.data.scope === scope`, scan newest-to-oldest, validate the stored field types, and return null if no matching event exists.
 
-- [ ] **Step 3: Add validation/latest-event tests**
+- [x] **Step 3: Add validation/latest-event tests**
 
 Add explicit tests for:
 
@@ -386,7 +386,7 @@ await expect(record({ cwd: '../outside' })).rejects.toThrow('cwd must stay insid
 
 Record success followed by failure and assert the latest failure wins. Seed an event with another runId and assert it is ignored. Spy on `child_process.spawnSync` and assert recording never invokes it.
 
-- [ ] **Step 4: Add `state record-check` parsing**
+- [x] **Step 4: Add `state record-check` parsing**
 
 In `classic-state-command.ts`, add a small exact-option parser for:
 
@@ -402,7 +402,7 @@ Do not use shell parsing. Consume each array element exactly once, reject unknow
 
 Update state usage text from launcher-specific `comet-state.mjs` wording to stable `comet state` wording for this new subcommand; existing legacy usage strings may remain compatible in this task.
 
-- [ ] **Step 5: Add state dispatcher tests**
+- [x] **Step 5: Add state dispatcher tests**
 
 In `classic-runtime.test.ts`, call:
 
@@ -421,7 +421,7 @@ await runClassicCli([
 
 Assert exit code 0 and the latest trajectory event. Add invalid scope, missing command, non-integer exit code, and unknown option cases with exit code 1 and actionable stderr.
 
-- [ ] **Step 6: Verify Task 3 GREEN**
+- [x] **Step 6: Verify Task 3 GREEN**
 
 Run:
 
@@ -433,7 +433,7 @@ npx tsc --noEmit
 
 Expected: all commands exit 0.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 ```bash
 git add domains/comet-classic/classic-command-checks.ts domains/comet-classic/classic-state-command.ts domains/engine/types.ts test/domains/comet-classic/classic-command-checks.test.ts test/domains/comet-classic/classic-runtime.test.ts
