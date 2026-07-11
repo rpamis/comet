@@ -44,6 +44,7 @@ export interface TrajectoryEvent {
     | 'checkpoint'
     | 'state_migrated'
     | 'state_transitioned'
+    | 'command_check_recorded'
     | 'recovery_reconciled';
   runId: string;
   data: Record<string, unknown>;

@@ -7,7 +7,7 @@ import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.
 import { collectClassicEvidence } from './classic-evidence.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
 import { resolveClassicStepId } from './classic-resolver.js';
-import { transitionClassicRuntimeRun } from './classic-runtime-run.js';
+import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
 import {
   CLASSIC_WIRE_KEYS,
@@ -23,6 +23,7 @@ import {
 } from './classic-transitions.js';
 import { readRunState } from '../../domains/engine/state.js';
 import { appendTrajectory, readTrajectory } from '../../domains/engine/run-store.js';
+import { recordCommandCheck, type CommandCheckScope } from './classic-command-checks.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -1139,6 +1140,62 @@ async function scale(output: CommandOutput, name: string): Promise<void> {
   );
 }
 
+function parseRecordCheckOptions(args: string[]): {
+  command: string;
+  exitCode: number;
+  cwd?: string;
+} {
+  let command: string | undefined;
+  let exitCodeText: string | undefined;
+  let cwd: string | undefined;
+  for (let index = 0; index < args.length; index += 2) {
+    const option = args[index];
+    if (!['--command', '--exit-code', '--cwd'].includes(option)) {
+      fail(`ERROR: Unknown option: ${option}`);
+    }
+    const value = args[index + 1];
+    if (value === undefined) fail(`ERROR: Missing value for option: ${option}`);
+    if (option === '--command') command = value;
+    else if (option === '--exit-code') exitCodeText = value;
+    else cwd = value;
+  }
+  if (command === undefined) fail('ERROR: Missing option: --command');
+  if (exitCodeText === undefined) fail('ERROR: Missing option: --exit-code');
+  if (!/^-?\d+$/u.test(exitCodeText)) fail('ERROR: --exit-code must be an integer');
+  return { command, exitCode: Number(exitCodeText), ...(cwd === undefined ? {} : { cwd }) };
+}
+
+async function recordCheck(
+  output: CommandOutput,
+  name: string,
+  scopeText: string,
+  args: string[],
+): Promise<void> {
+  validateChangeName(name);
+  if (scopeText !== 'build' && scopeText !== 'verify') {
+    fail(`ERROR: Invalid command check scope: '${scopeText}'`);
+  }
+  const options = parseRecordCheckOptions(args);
+  const { label, directory, file } = await stateFile(name);
+  if (label !== `openspec/changes/${name}` || !(await exists(file))) {
+    fail(`ERROR: command checks require an active change: ${name}`);
+  }
+  try {
+    const { run } = await ensureClassicRuntimeRun(directory);
+    const recorded = await recordCommandCheck(directory, run, {
+      scope: scopeText as CommandCheckScope,
+      ...options,
+    });
+    output.stderr.push(
+      green(
+        `[RECORDED] ${recorded.scope} exit=${recorded.exitCode} cwd=${recorded.cwd} command=${recorded.command}`,
+      ),
+    );
+  } catch (error) {
+    fail(`ERROR: ${(error as Error).message}`);
+  }
+}
+
 function required(args: string[], count: number, usage: string): void {
   if (args.length < count) fail(usage);
 }
@@ -1168,6 +1225,13 @@ export const classicStateCommand: ClassicCommandHandler = async (args) => {
     } else if (subcommand === 'scale') {
       required(rest, 1, 'Usage: comet-state.mjs scale <change-name>');
       await scale(output, rest[0]);
+    } else if (subcommand === 'record-check') {
+      required(
+        rest,
+        2,
+        'Usage: comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]',
+      );
+      await recordCheck(output, rest[0], rest[1], rest.slice(2));
     } else if (subcommand === 'task-checkoff') {
       required(rest, 2, 'Usage: comet-state.mjs task-checkoff <file> <task-text>');
       await taskCheckoff(output, rest[0], rest[1]);

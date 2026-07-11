@@ -24,6 +24,55 @@ afterEach(async () => {
 });
 
 describe('Classic runtime CLI adapter', () => {
+  it('records current-Run command checks through the state dispatcher', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-record-check-'));
+    temporaryDirectories.push(directory);
+    const previous = process.cwd();
+    process.chdir(directory);
+    try {
+      const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
+      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      const result = await runClassicCli([
+        'state',
+        'record-check',
+        'demo',
+        'build',
+        '--command',
+        'npx tsc --noEmit',
+        '--exit-code',
+        '0',
+        '--cwd',
+        '.',
+      ]);
+
+      expect(result).toMatchObject({ exitCode: 0 });
+      expect(result.stderr).toContain('[RECORDED] build exit=0 cwd=. command=npx tsc --noEmit');
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it.each([
+    [['deploy', '--command', 'npm test', '--exit-code', '0'], 'Invalid command check scope'],
+    [['build', '--exit-code', '0'], 'Missing option: --command'],
+    [['build', '--command', 'npm test', '--exit-code', '1.5'], 'integer'],
+    [['build', '--command', 'npm test', '--exit-code', '0', '--wat'], 'Unknown option'],
+  ])('rejects invalid record-check arguments %#', async (tail, message) => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-record-check-invalid-'));
+    temporaryDirectories.push(directory);
+    const previous = process.cwd();
+    process.chdir(directory);
+    try {
+      const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
+      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      const result = await runClassicCli(['state', 'record-check', 'demo', ...tail]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain(message);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
   it('routes a command and preserves stdout, stderr, and exit code', async () => {
     const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
     const result = await runClassicCli(['state', 'get', 'phase'], {
@@ -176,13 +225,20 @@ describe('Classic script bundles', () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-script-'));
     temporaryDirectories.push(directory);
     const isolatedStateScript = path.join(directory, 'comet-state.mjs');
-    await fs.copyFile(path.join(scriptsDir, 'comet-runtime.mjs'), path.join(directory, 'comet-runtime.mjs'));
+    await fs.copyFile(
+      path.join(scriptsDir, 'comet-runtime.mjs'),
+      path.join(directory, 'comet-runtime.mjs'),
+    );
     await fs.copyFile(stateScript, isolatedStateScript);
 
-    const result = spawnSync(process.execPath, [isolatedStateScript, 'get', 'missing', 'phase', '--json'], {
-      cwd: directory,
-      encoding: 'utf8',
-    });
+    const result = spawnSync(
+      process.execPath,
+      [isolatedStateScript, 'get', 'missing', 'phase', '--json'],
+      {
+        cwd: directory,
+        encoding: 'utf8',
+      },
+    );
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toBe('');
@@ -339,11 +395,10 @@ describe('Classic script bundles', () => {
     await fs.mkdir(path.join(directory, 'docs'), { recursive: true });
     await fs.writeFile(path.join(directory, 'docs', 'plan.md'), '- [ ] implement\n');
 
-    const set = spawnSync(
-      process.execPath,
-      [stateScript, 'set', 'demo', 'plan', 'docs/plan.md'],
-      { cwd: directory, encoding: 'utf8' },
-    );
+    const set = spawnSync(process.execPath, [stateScript, 'set', 'demo', 'plan', 'docs/plan.md'], {
+      cwd: directory,
+      encoding: 'utf8',
+    });
     const changeDir = path.join(directory, 'openspec', 'changes', 'demo');
     const runState = await readRunState(changeDir);
 
