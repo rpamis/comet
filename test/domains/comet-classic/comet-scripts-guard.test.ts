@@ -281,4 +281,194 @@ describe('comet guard', () => {
       expect(result.status).toBe(0);
     });
   });
+
+  describe('recorded command-check evidence', () => {
+    const buildYaml = [
+      'workflow: hotfix',
+      'phase: build',
+      'build_mode: direct',
+      'build_pause: null',
+      'subagent_dispatch: null',
+      'tdd_mode: direct',
+      'review_mode: off',
+      'isolation: branch',
+      'verify_mode: light',
+      'design_doc: null',
+      'plan: null',
+      'base_ref: null',
+      'verify_result: pending',
+      'verification_report: null',
+      'branch_status: pending',
+      'created_at: 2026-07-11',
+      'verified_at: null',
+      'archived: false',
+      'auto_transition: true',
+      '',
+    ].join('\n');
+
+    const verifyYaml = [
+      'workflow: hotfix',
+      'phase: verify',
+      'build_mode: direct',
+      'build_pause: null',
+      'subagent_dispatch: null',
+      'tdd_mode: direct',
+      'review_mode: off',
+      'isolation: branch',
+      'verify_mode: light',
+      'design_doc: null',
+      'plan: null',
+      'base_ref: null',
+      'verify_result: pending',
+      'verification_report: reports/verification.md',
+      'branch_status: handled',
+      'created_at: 2026-07-11',
+      'verified_at: null',
+      'archived: false',
+      'auto_transition: true',
+      '',
+    ].join('\n');
+
+    async function recordCheck(
+      name: string,
+      scope: 'build' | 'verify',
+      command: string,
+      exitCode: number,
+    ) {
+      return runNode(tmpDir, stateScript, [
+        'record-check',
+        name,
+        scope,
+        '--command',
+        command,
+        '--exit-code',
+        String(exitCode),
+      ]);
+    }
+
+    it('explains how to recover when a commandless build has no recorded evidence', async () => {
+      await createChange(tmpDir, 'commandless-build', buildYaml);
+
+      const result = runNode(tmpDir, guardScript, ['commandless-build', 'build']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('[FAIL] Build passes');
+      expect(result.stderr).toContain('No inferred build command or recorded build check');
+      expect(result.stderr).toContain(
+        'comet state record-check commandless-build build --command "<command>" --exit-code 0',
+      );
+    });
+
+    it('accepts successful build evidence and prints its source, time, and command', async () => {
+      await createChange(tmpDir, 'recorded-build', buildYaml);
+      expect((await recordCheck('recorded-build', 'build', 'pnpm lint', 0)).status).toBe(0);
+
+      const result = runNode(tmpDir, guardScript, ['recorded-build', 'build']);
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('[PASS] Build passes');
+      expect(result.stderr).toContain('recorded command-check');
+      expect(result.stderr).toContain('pnpm lint');
+      expect(result.stderr).toMatch(/2026|2027/u);
+    });
+
+    it('accepts successful verify evidence only for the verify scope', async () => {
+      await createChange(tmpDir, 'recorded-verify', verifyYaml);
+      await writeFile(
+        path.join(tmpDir, 'reports', 'verification.md'),
+        '# Verification\n\nPassed.\n',
+      );
+      expect((await recordCheck('recorded-verify', 'verify', 'pnpm test', 0)).status).toBe(0);
+
+      const result = runNode(tmpDir, guardScript, ['recorded-verify', 'verify']);
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('[PASS] Verification passes');
+      expect(result.stderr).toContain('pnpm test');
+    });
+
+    it('does not use verify evidence for a commandless build', async () => {
+      await createChange(tmpDir, 'cross-scope', buildYaml);
+      expect((await recordCheck('cross-scope', 'verify', 'pnpm test', 0)).status).toBe(0);
+
+      const result = runNode(tmpDir, guardScript, ['cross-scope', 'build']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('No inferred build command or recorded build check');
+    });
+
+    it('uses the latest same-run evidence even when an older check succeeded', async () => {
+      await createChange(tmpDir, 'latest-build', buildYaml);
+      expect((await recordCheck('latest-build', 'build', 'pnpm lint', 0)).status).toBe(0);
+      expect((await recordCheck('latest-build', 'build', 'pnpm lint', 2)).status).toBe(0);
+
+      const result = runNode(tmpDir, guardScript, ['latest-build', 'build']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('Latest recorded build check failed with exit code 2');
+      expect(result.stderr).toContain(
+        'comet state record-check latest-build build --command "pnpm lint" --exit-code 0',
+      );
+    });
+
+    it('ignores evidence recorded for another change', async () => {
+      await createChange(tmpDir, 'target-build', buildYaml);
+      await createChange(tmpDir, 'other-build', buildYaml);
+      expect((await recordCheck('other-build', 'build', 'pnpm lint', 0)).status).toBe(0);
+
+      const result = runNode(tmpDir, guardScript, ['target-build', 'build']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('No inferred build command or recorded build check');
+    });
+
+    it('ignores evidence recorded for another run', async () => {
+      const changeDir = path.join(tmpDir, 'openspec', 'changes', 'other-run');
+      await createChange(tmpDir, 'other-run', buildYaml);
+      expect(runNode(tmpDir, guardScript, ['other-run', 'build']).status).not.toBe(0);
+      const run = JSON.parse(
+        await fs.readFile(path.join(changeDir, '.comet', 'run-state.json'), 'utf8'),
+      ) as { trajectoryRef: string };
+      await fs.appendFile(
+        path.join(changeDir, run.trajectoryRef),
+        `${JSON.stringify({
+          sequence: 999,
+          timestamp: '2026-07-11T00:00:00.000Z',
+          type: 'command_check_recorded',
+          runId: 'another-run',
+          data: { scope: 'build', command: 'pnpm lint', exitCode: 0, cwd: '.' },
+        })}\n`,
+      );
+
+      const result = runNode(tmpDir, guardScript, ['other-run', 'build']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('No inferred build command or recorded build check');
+    });
+
+    it('does not let successful stored evidence override an inferred npm failure', async () => {
+      await createChange(tmpDir, 'inferred-failure', buildYaml);
+      expect((await recordCheck('inferred-failure', 'build', 'pnpm lint', 0)).status).toBe(0);
+      await writeFile(
+        path.join(tmpDir, 'package.json'),
+        JSON.stringify({ scripts: { build: 'node -e "process.exit(7)"' } }),
+      );
+
+      const result = runNode(tmpDir, guardScript, ['inferred-failure', 'build']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).not.toContain('recorded command-check');
+    });
+
+    it('makes COMET_SKIP_BUILD visible instead of reporting an ordinary silent pass', async () => {
+      await createChange(tmpDir, 'visible-skip', buildYaml);
+
+      const result = runNode(tmpDir, guardScript, ['visible-skip', 'build'], {
+        COMET_SKIP_BUILD: '1',
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('SKIPPED via COMET_SKIP_BUILD=1');
+    });
+  });
 });

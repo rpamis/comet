@@ -126,17 +126,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path19) {
-      const ctrl = callVisitor(key, node, visitor, path19);
+    function visit_(key, node, visitor, path20) {
+      const ctrl = callVisitor(key, node, visitor, path20);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path19, ctrl);
-        return visit_(key, ctrl, visitor, path19);
+        replaceNode(key, path20, ctrl);
+        return visit_(key, ctrl, visitor, path20);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path19 = Object.freeze(path19.concat(node));
+          path20 = Object.freeze(path20.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path19);
+            const ci = visit_(i, node.items[i], visitor, path20);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -147,13 +147,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path19 = Object.freeze(path19.concat(node));
-          const ck = visit_("key", node.key, visitor, path19);
+          path20 = Object.freeze(path20.concat(node));
+          const ck = visit_("key", node.key, visitor, path20);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path19);
+          const cv = visit_("value", node.value, visitor, path20);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -174,17 +174,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path19) {
-      const ctrl = await callVisitor(key, node, visitor, path19);
+    async function visitAsync_(key, node, visitor, path20) {
+      const ctrl = await callVisitor(key, node, visitor, path20);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path19, ctrl);
-        return visitAsync_(key, ctrl, visitor, path19);
+        replaceNode(key, path20, ctrl);
+        return visitAsync_(key, ctrl, visitor, path20);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path19 = Object.freeze(path19.concat(node));
+          path20 = Object.freeze(path20.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path19);
+            const ci = await visitAsync_(i, node.items[i], visitor, path20);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -195,13 +195,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path19 = Object.freeze(path19.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path19);
+          path20 = Object.freeze(path20.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path20);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path19);
+          const cv = await visitAsync_("value", node.value, visitor, path20);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -228,23 +228,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path19) {
+    function callVisitor(key, node, visitor, path20) {
       if (typeof visitor === "function")
-        return visitor(key, node, path19);
+        return visitor(key, node, path20);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path19);
+        return visitor.Map?.(key, node, path20);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path19);
+        return visitor.Seq?.(key, node, path20);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path19);
+        return visitor.Pair?.(key, node, path20);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path19);
+        return visitor.Scalar?.(key, node, path20);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path19);
+        return visitor.Alias?.(key, node, path20);
       return void 0;
     }
-    function replaceNode(key, path19, node) {
-      const parent = path19[path19.length - 1];
+    function replaceNode(key, path20, node) {
+      const parent = path20[path20.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -854,10 +854,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path19, value) {
+    function collectionFromPath(schema, path20, value) {
       let v = value;
-      for (let i = path19.length - 1; i >= 0; --i) {
-        const k = path19[i];
+      for (let i = path20.length - 1; i >= 0; --i) {
+        const k = path20[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -876,7 +876,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path19) => path19 == null || typeof path19 === "object" && !!path19[Symbol.iterator]().next().done;
+    var isEmptyPath = (path20) => path20 == null || typeof path20 === "object" && !!path20[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -906,11 +906,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path19, value) {
-        if (isEmptyPath(path19))
+      addIn(path20, value) {
+        if (isEmptyPath(path20))
           this.add(value);
         else {
-          const [key, ...rest] = path19;
+          const [key, ...rest] = path20;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -924,8 +924,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path19) {
-        const [key, ...rest] = path19;
+      deleteIn(path20) {
+        const [key, ...rest] = path20;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -939,8 +939,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path19, keepScalar) {
-        const [key, ...rest] = path19;
+      getIn(path20, keepScalar) {
+        const [key, ...rest] = path20;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -958,8 +958,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path19) {
-        const [key, ...rest] = path19;
+      hasIn(path20) {
+        const [key, ...rest] = path20;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -969,8 +969,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path19, value) {
-        const [key, ...rest] = path19;
+      setIn(path20, value) {
+        const [key, ...rest] = path20;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3485,9 +3485,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path19, value) {
+      addIn(path20, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path19, value);
+          this.contents.addIn(path20, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3562,14 +3562,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path19) {
-        if (Collection.isEmptyPath(path19)) {
+      deleteIn(path20) {
+        if (Collection.isEmptyPath(path20)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path19) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path20) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3584,10 +3584,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path19, keepScalar) {
-        if (Collection.isEmptyPath(path19))
+      getIn(path20, keepScalar) {
+        if (Collection.isEmptyPath(path20))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path19, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path20, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3598,10 +3598,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path19) {
-        if (Collection.isEmptyPath(path19))
+      hasIn(path20) {
+        if (Collection.isEmptyPath(path20))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path19) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path20) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3618,13 +3618,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path19, value) {
-        if (Collection.isEmptyPath(path19)) {
+      setIn(path20, value) {
+        if (Collection.isEmptyPath(path20)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path19), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path20), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path19, value);
+          this.contents.setIn(path20, value);
         }
       }
       /**
@@ -5584,9 +5584,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path19) => {
+    visit.itemAtPath = (cst, path20) => {
       let item = cst;
-      for (const [field2, index] of path19) {
+      for (const [field2, index] of path20) {
         const tok = item?.[field2];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5595,23 +5595,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path19) => {
-      const parent = visit.itemAtPath(cst, path19.slice(0, -1));
-      const field2 = path19[path19.length - 1][0];
+    visit.parentCollection = (cst, path20) => {
+      const parent = visit.itemAtPath(cst, path20.slice(0, -1));
+      const field2 = path20[path20.length - 1][0];
       const coll = parent?.[field2];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path19, item, visitor) {
-      let ctrl = visitor(item, path19);
+    function _visit(path20, item, visitor) {
+      let ctrl = visitor(item, path20);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field2 of ["key", "value"]) {
         const token = item[field2];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path19.concat([[field2, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path20.concat([[field2, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5622,10 +5622,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field2 === "key")
-            ctrl = ctrl(item, path19);
+            ctrl = ctrl(item, path20);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path19) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path20) : ctrl;
     }
     exports.visit = visit;
   }
@@ -7622,26 +7622,26 @@ function projectRootFor(changeDir) {
   }
   throw new Error(`Classic change is not inside an openspec directory: ${changeDir}`);
 }
-function relativeSource(projectRoot, file) {
-  return path2.relative(projectRoot, file).split(path2.sep).join("/");
+function relativeSource(projectRoot2, file) {
+  return path2.relative(projectRoot2, file).split(path2.sep).join("/");
 }
-async function linkedFileEvidence(projectRoot, code, relativePath2) {
+async function linkedFileEvidence(projectRoot2, code, relativePath2) {
   if (!relativePath2) return { code, satisfied: false };
-  const file = path2.resolve(projectRoot, relativePath2);
+  const file = path2.resolve(projectRoot2, relativePath2);
   return {
     code,
     satisfied: await fileExists(file),
-    source: relativeSource(projectRoot, file)
+    source: relativeSource(projectRoot2, file)
   };
 }
-async function directFileEvidence(projectRoot, code, file) {
+async function directFileEvidence(projectRoot2, code, file) {
   return {
     code,
     satisfied: await fileExists(file),
-    source: relativeSource(projectRoot, file)
+    source: relativeSource(projectRoot2, file)
   };
 }
-async function deltaSpecEvidence(projectRoot, changeDir) {
+async function deltaSpecEvidence(projectRoot2, changeDir) {
   const specsDir = path2.join(changeDir, "specs");
   let entries;
   try {
@@ -7657,11 +7657,11 @@ async function deltaSpecEvidence(projectRoot, changeDir) {
   return {
     code: "openspec.delta-spec",
     satisfied: existing.length > 0,
-    source: existing[0] ? relativeSource(projectRoot, existing[0]) : void 0,
+    source: existing[0] ? relativeSource(projectRoot2, existing[0]) : void 0,
     detail: `${existing.length} delta spec${existing.length === 1 ? "" : "s"}`
   };
 }
-async function taskEvidence(projectRoot, tasksFile) {
+async function taskEvidence(projectRoot2, tasksFile) {
   let source;
   try {
     source = await fs2.readFile(tasksFile, "utf8");
@@ -7676,7 +7676,7 @@ async function taskEvidence(projectRoot, tasksFile) {
   return {
     code: "build.tasks-complete",
     satisfied: tasks.length > 0 && complete === tasks.length,
-    source: relativeSource(projectRoot, tasksFile),
+    source: relativeSource(projectRoot2, tasksFile),
     detail: `${complete} of ${tasks.length} tasks complete`
   };
 }
@@ -7684,23 +7684,23 @@ function evidenceSatisfied(evidence, code) {
   return evidence.some((item) => item.code === code && item.satisfied);
 }
 async function collectClassicEvidence(changeDir, projection) {
-  const projectRoot = projectRootFor(changeDir);
+  const projectRoot2 = projectRootFor(changeDir);
   const classic = projection.classic;
   const proposal = path2.join(changeDir, "proposal.md");
   const design = path2.join(changeDir, "design.md");
   const tasks = path2.join(changeDir, "tasks.md");
   const checkpoint = projection.run ? path2.resolve(changeDir, projection.run.checkpointRef) : path2.join(changeDir, ".comet", "checkpoint.json");
   const evidence = await Promise.all([
-    directFileEvidence(projectRoot, "openspec.proposal", proposal),
-    directFileEvidence(projectRoot, "openspec.design", design),
-    directFileEvidence(projectRoot, "openspec.tasks", tasks),
-    deltaSpecEvidence(projectRoot, changeDir),
-    linkedFileEvidence(projectRoot, "design.document", classic?.designDoc ?? null),
-    linkedFileEvidence(projectRoot, "build.plan", classic?.plan ?? null),
-    taskEvidence(projectRoot, tasks),
-    linkedFileEvidence(projectRoot, "verification.report", classic?.verificationReport ?? null),
-    linkedFileEvidence(projectRoot, "design.handoff", classic?.handoffContext ?? null),
-    directFileEvidence(projectRoot, "run.checkpoint", checkpoint)
+    directFileEvidence(projectRoot2, "openspec.proposal", proposal),
+    directFileEvidence(projectRoot2, "openspec.design", design),
+    directFileEvidence(projectRoot2, "openspec.tasks", tasks),
+    deltaSpecEvidence(projectRoot2, changeDir),
+    linkedFileEvidence(projectRoot2, "design.document", classic?.designDoc ?? null),
+    linkedFileEvidence(projectRoot2, "build.plan", classic?.plan ?? null),
+    taskEvidence(projectRoot2, tasks),
+    linkedFileEvidence(projectRoot2, "verification.report", classic?.verificationReport ?? null),
+    linkedFileEvidence(projectRoot2, "design.handoff", classic?.handoffContext ?? null),
+    directFileEvidence(projectRoot2, "run.checkpoint", checkpoint)
   ]);
   const handoff = evidence.find((item) => item.code === "design.handoff");
   if (handoff && !classic?.handoffHash) {
@@ -8839,13 +8839,13 @@ function artifactKey(code) {
   return code.replaceAll(".", "_").replaceAll("-", "_");
 }
 async function migrationArtifacts(changeDir, evidence) {
-  const projectRoot = projectRootFor2(changeDir);
+  const projectRoot2 = projectRootFor2(changeDir);
   const artifacts = Object.fromEntries(
     evidence.filter((item) => item.satisfied && item.source).map((item) => [artifactKey(item.code), item.source])
   );
   const progress = path9.join(changeDir, "subagent-progress.md");
   if (await pathExists2(progress)) {
-    artifacts.subagent_progress = path9.relative(projectRoot, progress).split(path9.sep).join("/");
+    artifacts.subagent_progress = path9.relative(projectRoot2, progress).split(path9.sep).join("/");
   }
   const handoff = evidence.find((item) => item.code === "design.handoff" && item.satisfied);
   if (handoff?.source) artifacts.handoff_context = handoff.source;
@@ -8937,11 +8937,11 @@ async function ensureClassicRun(changeDir, options) {
       classicMigration: CLASSIC_MIGRATION_VERSION
     };
     const artifacts = await migrationArtifacts(changeDir, evidence);
-    const projectRoot = projectRootFor2(changeDir);
+    const projectRoot2 = projectRootFor2(changeDir);
     const handoff = evidence.find((item) => item.code === "design.handoff" && item.satisfied);
     let context = null;
     if (handoff?.source) {
-      context = await fs8.readFile(path9.resolve(projectRoot, handoff.source), "utf8");
+      context = await fs8.readFile(path9.resolve(projectRoot2, handoff.source), "utf8");
       await writeContext(changeDir, run.contextRef, context);
       createdFiles.push(path9.resolve(changeDir, run.contextRef));
     }
@@ -9509,6 +9509,32 @@ function artifactsHash(artifacts) {
     )
   );
 }
+function exactlyOneFinalNewline(markdown) {
+  return `${markdown.replace(/\n+$/u, "")}
+`;
+}
+function annotatedMarkdown(original, archiveName, extraFields) {
+  const normalized2 = original.replace(/\r\n/gu, "\n");
+  const lines = normalized2.split("\n");
+  const closingDelimiter = lines[0] === "---" ? lines.indexOf("---", 1) : -1;
+  const extraFieldName = extraFields.match(/^([^:\n]+):/u)?.[1]?.trim();
+  if (closingDelimiter !== -1) {
+    const frontmatter = lines.slice(1, closingDelimiter).filter((line) => {
+      const fieldName = line.match(/^([^:\n]+):/u)?.[1]?.trim();
+      return fieldName !== "archived-with" && fieldName !== extraFieldName;
+    });
+    frontmatter.push(`archived-with: ${archiveName}`);
+    if (extraFields) frontmatter.push(extraFields);
+    return exactlyOneFinalNewline(
+      ["---", ...frontmatter, "---", ...lines.slice(closingDelimiter + 1)].join("\n")
+    );
+  }
+  const header = ["---", `archived-with: ${archiveName}`];
+  if (extraFields) header.push(extraFields);
+  if (extraFieldName !== "status") header.push("status: final");
+  header.push("---");
+  return exactlyOneFinalNewline([...header, normalized2].join("\n"));
+}
 async function findArchiveDir(change, preferred) {
   if (await exists2(preferred)) return preferred;
   const archiveRoot = "openspec/changes/archive";
@@ -9547,37 +9573,7 @@ async function annotateFrontmatter(output, file, archiveName, extraFields, dryRu
     return;
   }
   const original = await fs11.readFile(file, "utf8");
-  const firstLine = original.split(/\r?\n/u)[0] ?? "";
-  let updated;
-  if (firstLine === "---") {
-    const lines = original.split(/\r?\n/u);
-    const out = [];
-    let sawFirst = false;
-    for (const line of lines) {
-      if (/^archived-with:/u.test(line)) continue;
-      if (line === "---") {
-        if (!sawFirst) {
-          out.push(line);
-          sawFirst = true;
-          continue;
-        }
-        out.push(`archived-with: ${archiveName}`);
-        if (extraFields) out.push(extraFields);
-        out.push(line);
-      } else {
-        out.push(line);
-      }
-    }
-    updated = `${out.join("\n")}
-`;
-  } else {
-    const header = ["---", `archived-with: ${archiveName}`];
-    if (extraFields) header.push(extraFields);
-    header.push("status: final", "---");
-    updated = `${header.join("\n")}
-${original}`;
-    if (!updated.endsWith("\n")) updated += "\n";
-  }
+  const updated = annotatedMarkdown(original, archiveName, extraFields);
   await fs11.writeFile(file, updated);
   output.stderr.push(green(`  [OK] Annotated: ${file}`));
   output.stepsOk += 1;
@@ -9845,7 +9841,94 @@ var import_yaml4 = __toESM(require_dist(), 1);
 import { spawnSync as spawnSync2 } from "child_process";
 import { createHash as createHash4 } from "crypto";
 import { existsSync, promises as fs13, readFileSync } from "fs";
-import path14 from "path";
+import path15 from "path";
+
+// domains/comet-classic/classic-command-checks.ts
+import path13 from "path";
+function validateScope(scope) {
+  if (scope !== "build" && scope !== "verify") {
+    throw new Error(`Invalid command check scope: '${String(scope)}'`);
+  }
+}
+function projectRoot(changeDir) {
+  return path13.resolve(changeDir, "..", "..", "..");
+}
+function normalizedCwd(changeDir, cwd = ".") {
+  if (cwd.trim().length === 0) throw new Error("Command check cwd cannot be blank");
+  const root = projectRoot(changeDir);
+  const target = path13.resolve(root, cwd);
+  if (target !== root && !target.startsWith(root + path13.sep)) {
+    throw new Error(`Command check cwd must resolve within the project root: '${cwd}'`);
+  }
+  return path13.relative(root, target).replaceAll("\\", "/") || ".";
+}
+function validRecord(changeDir, event) {
+  if (event.type !== "command_check_recorded") return null;
+  const data = event.data;
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+  const { scope, command, exitCode, cwd } = data;
+  if (scope !== "build" && scope !== "verify" || typeof command !== "string" || command.trim().length === 0 || !Number.isInteger(exitCode) || typeof cwd !== "string") {
+    return null;
+  }
+  let normalized2;
+  try {
+    normalized2 = normalizedCwd(changeDir, cwd);
+  } catch {
+    return null;
+  }
+  return {
+    sequence: event.sequence,
+    timestamp: event.timestamp,
+    runId: event.runId,
+    scope,
+    command,
+    exitCode,
+    cwd: normalized2
+  };
+}
+async function recordCommandCheck(changeDir, run, input) {
+  validateScope(input.scope);
+  if (typeof input.command !== "string" || input.command.trim().length === 0) {
+    throw new Error("Command check command cannot be blank");
+  }
+  if (!Number.isInteger(input.exitCode)) {
+    throw new Error("Command check exitCode must be an integer");
+  }
+  const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
+  const recorded = {
+    sequence: trajectory.reduce((maximum, event) => Math.max(maximum, event.sequence), 0) + 1,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    runId: run.runId,
+    scope: input.scope,
+    command: input.command,
+    exitCode: input.exitCode,
+    cwd: normalizedCwd(changeDir, input.cwd)
+  };
+  await appendTrajectory(changeDir, run.trajectoryRef, {
+    sequence: recorded.sequence,
+    timestamp: recorded.timestamp,
+    type: "command_check_recorded",
+    runId: recorded.runId,
+    data: {
+      scope: recorded.scope,
+      command: recorded.command,
+      exitCode: recorded.exitCode,
+      cwd: recorded.cwd
+    }
+  });
+  return recorded;
+}
+async function latestCommandCheck(changeDir, run, scope) {
+  validateScope(scope);
+  const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
+  for (let index = trajectory.length - 1; index >= 0; index -= 1) {
+    const event = trajectory[index];
+    if (event.runId !== run.runId) continue;
+    const record = validRecord(changeDir, event);
+    if (record?.scope === scope) return record;
+  }
+  return null;
+}
 
 // domains/comet-classic/classic-runtime-evals.ts
 var STEP_EVIDENCE = {
@@ -9940,7 +10023,7 @@ async function inspectClassicChange(changeDir, name) {
 // domains/comet-classic/classic-validate-command.ts
 var import_yaml3 = __toESM(require_dist(), 1);
 import { promises as fs12 } from "fs";
-import path13 from "path";
+import path14 from "path";
 var GREEN2 = "\x1B[32m";
 var RED2 = "\x1B[31m";
 var YELLOW2 = "\x1B[33m";
@@ -10011,7 +10094,7 @@ var classicValidateCommand = async (args) => {
     };
   }
   const { directory, label } = await resolveClassicChangeDirectory(name);
-  const yamlFile = path13.join(directory, ".comet.yaml");
+  const yamlFile = path14.join(directory, ".comet.yaml");
   const lines = [`[VALIDATE] ${label}/.comet.yaml`];
   let errors = 0;
   let warnings = 0;
@@ -10062,7 +10145,7 @@ var classicValidateCommand = async (args) => {
   }
   for (const field2 of ["design_doc", "plan", "handoff_context"]) {
     const value = text(record[field2]);
-    if (value && !await exists3(path13.resolve(value))) {
+    if (value && !await exists3(path14.resolve(value))) {
       fail3(`${field2}='${value}' does not exist on disk`);
     }
   }
@@ -10194,7 +10277,7 @@ function stripWrappingQuotes(value) {
   return value;
 }
 async function readField(changeDir, field2) {
-  const file = path14.join(changeDir, ".comet.yaml");
+  const file = path15.join(changeDir, ".comet.yaml");
   const document = (0, import_yaml4.parseDocument)(await fs13.readFile(file, "utf8"), { uniqueKeys: false });
   if (document.errors.length > 0) {
     throw new GuardFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
@@ -10291,7 +10374,7 @@ async function preflight(changeDir, name) {
   if (!await exists4(changeDir)) {
     throw new GuardFailure(red2(`FATAL: change directory not found: ${changeDir}`));
   }
-  if (!await exists4(path14.join(changeDir, ".comet.yaml"))) {
+  if (!await exists4(path15.join(changeDir, ".comet.yaml"))) {
     throw new GuardFailure(red2(`FATAL: .comet.yaml not found in ${changeDir}`));
   }
   const result5 = await classicValidateCommand([name], { json: false });
@@ -10312,6 +10395,9 @@ async function preflight(changeDir, name) {
 function pushCheck(output, outcome) {
   if (outcome.passed) {
     output.stderr.push(green2(`  [PASS] ${outcome.description}`));
+    if (outcome.detail) {
+      for (const line of outcome.detail.split("\n")) output.stderr.push(green2(`    ${line}`));
+    }
   } else {
     output.stderr.push(red2(`  [FAIL] ${outcome.description}`));
     if (outcome.detail) {
@@ -10337,8 +10423,8 @@ function check(description, run) {
     }
   };
 }
-function pass() {
-  return { passed: true };
+function pass(detail) {
+  return { passed: true, ...detail ? { detail } : {} };
 }
 function fail(detail) {
   return { passed: false, detail };
@@ -10352,8 +10438,13 @@ async function runChecks(output, builders) {
   }
   return blocked2;
 }
+var INFERRED_COMMAND_SOURCES = [
+  "package.json with a build script",
+  "pom.xml",
+  "Cargo.toml"
+];
 async function removedProjectCommandField(field2) {
-  const config = path14.join(".comet", "config.yaml");
+  const config = path15.join(".comet", "config.yaml");
   if (!await exists4(config)) return false;
   const document = (0, import_yaml4.parseDocument)(await fs13.readFile(config, "utf8"));
   if (document.errors.length > 0) {
@@ -10377,34 +10468,62 @@ function runInferred(command) {
     output: `${result5.stdout ?? ""}${result5.stderr ?? ""}`.replace(/\n+$/u, "")
   };
 }
-async function buildPasses() {
-  if (process.env.COMET_SKIP_BUILD === "1") return { status: 0, output: "" };
-  if (await removedProjectCommandField("build_command")) {
-    return removedProjectCommandRun("build_command");
-  }
-  if (await exists4("package.json") && /"build"/u.test(await fs13.readFile("package.json", "utf8"))) {
-    return runInferred("npm run build");
+async function inferredBuildCommand() {
+  if (await exists4("package.json") && (() => {
+    const parsed = JSON.parse(readFileSync("package.json", "utf8"));
+    return typeof parsed.scripts?.build === "string";
+  })()) {
+    return "npm run build";
   }
   if (await exists4("pom.xml")) {
     if (process.platform === "win32") {
-      if (existsSync("mvnw.cmd")) return runInferred("mvnw.cmd compile -q");
-      return runInferred("mvn.cmd compile -q");
+      if (existsSync("mvnw.cmd")) return "mvnw.cmd compile -q";
+      return "mvn.cmd compile -q";
     }
-    if (existsSync("mvnw")) return runInferred("./mvnw compile -q");
-    return runInferred("mvn compile -q");
+    if (existsSync("mvnw")) return "./mvnw compile -q";
+    return "mvn compile -q";
   }
-  if (await exists4("Cargo.toml")) return runInferred("cargo build");
-  return { status: 1, output: "" };
+  if (await exists4("Cargo.toml")) return "cargo build";
+  return null;
 }
-async function verificationCommandPasses() {
-  if (process.env.COMET_SKIP_BUILD === "1") return { status: 0, output: "" };
-  if (await removedProjectCommandField("verify_command")) {
-    return removedProjectCommandRun("verify_command");
+function evidenceDetail(record) {
+  return `Evidence: recorded command-check at ${record.timestamp}; command: ${record.command}; cwd: ${record.cwd}`;
+}
+function recoveryCommand(change, scope, command) {
+  return `comet state record-check ${change} ${scope} --command "${command}" --exit-code 0`;
+}
+async function commandCheckPasses(changeDir, change, run, scope) {
+  if (process.env.COMET_SKIP_BUILD === "1") {
+    return { status: 0, output: "SKIPPED via COMET_SKIP_BUILD=1" };
   }
-  return buildPasses();
+  const removedField = scope === "build" ? "build_command" : "verify_command";
+  if (await removedProjectCommandField(removedField)) {
+    return removedProjectCommandRun(removedField);
+  }
+  const inferred = await inferredBuildCommand();
+  if (inferred) return runInferred(inferred);
+  const recorded = await latestCommandCheck(changeDir, run, scope);
+  if (!recorded) {
+    return {
+      status: 1,
+      output: `No inferred ${scope} command or recorded ${scope} check. Detection searched: ${INFERRED_COMMAND_SOURCES.join(", ")}.
+Next: run the required command, then record it with:
+${recoveryCommand(change, scope, "<command>")}`
+    };
+  }
+  if (recorded.exitCode !== 0) {
+    return {
+      status: recorded.exitCode,
+      output: `Latest recorded ${scope} check failed with exit code ${recorded.exitCode}.
+${evidenceDetail(recorded)}
+Next: rerun the command successfully, then record it with:
+${recoveryCommand(change, scope, recorded.command)}`
+    };
+  }
+  return { status: 0, output: evidenceDetail(recorded) };
 }
 async function tasksAllDone(changeDir) {
-  const tasks = path14.join(changeDir, "tasks.md");
+  const tasks = path15.join(changeDir, "tasks.md");
   if (!await exists4(tasks)) {
     return fail(
       `tasks.md is missing at ${tasks}
@@ -10428,7 +10547,7 @@ Next: complete or explicitly remove unfinished tasks, then mark tasks.md with '-
   return pass();
 }
 async function tasksHasAny(changeDir) {
-  const tasks = path14.join(changeDir, "tasks.md");
+  const tasks = path15.join(changeDir, "tasks.md");
   if (!await exists4(tasks)) return false;
   return /- \[/u.test(await fs13.readFile(tasks, "utf8"));
 }
@@ -10659,19 +10778,19 @@ async function guardOpenChecks(output, changeDir) {
   const checks = [
     check(
       "proposal.md exists and non-empty",
-      async () => await nonempty(path14.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path15.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path14.join(changeDir, "proposal.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path15.join(changeDir, "proposal.md"))
     ),
     check(
       "tasks.md exists and non-empty",
-      async () => await nonempty(path14.join(changeDir, "tasks.md")) ? pass() : fail("")
+      async () => await nonempty(path15.join(changeDir, "tasks.md")) ? pass() : fail("")
     ),
     check(
       "tasks.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path14.join(changeDir, "tasks.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path15.join(changeDir, "tasks.md"))
     ),
     check(
       "tasks.md has at least one task",
@@ -10684,11 +10803,11 @@ async function guardOpenChecks(output, changeDir) {
       0,
       check(
         "design.md exists and non-empty",
-        async () => await nonempty(path14.join(changeDir, "design.md")) ? pass() : fail("")
+        async () => await nonempty(path15.join(changeDir, "design.md")) ? pass() : fail("")
       ),
       check(
         "design.md matches configured language",
-        () => documentLanguageMatchesConfigured(changeDir, path14.join(changeDir, "design.md"))
+        () => documentLanguageMatchesConfigured(changeDir, path15.join(changeDir, "design.md"))
       )
     );
   }
@@ -10700,27 +10819,27 @@ async function guardDesignChecks(output, changeDir, change) {
   const builders = [
     check(
       "proposal.md exists",
-      async () => await nonempty(path14.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path15.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path14.join(changeDir, "proposal.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path15.join(changeDir, "proposal.md"))
     ),
     check(
       "design.md exists",
-      async () => await nonempty(path14.join(changeDir, "design.md")) ? pass() : fail("")
+      async () => await nonempty(path15.join(changeDir, "design.md")) ? pass() : fail("")
     ),
     check(
       "design.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path14.join(changeDir, "design.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path15.join(changeDir, "design.md"))
     ),
     check(
       "tasks.md exists",
-      async () => await nonempty(path14.join(changeDir, "tasks.md")) ? pass() : fail("")
+      async () => await nonempty(path15.join(changeDir, "tasks.md")) ? pass() : fail("")
     ),
     check(
       "tasks.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path14.join(changeDir, "tasks.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path15.join(changeDir, "tasks.md"))
     ),
     check("design handoff context exists", () => designHandoffContextValid(changeDir, change)),
     check("design handoff markdown is traceable", () => designHandoffMarkdownTraceable(changeDir))
@@ -10769,7 +10888,7 @@ async function guardDesignChecks(output, changeDir, change) {
   }
   return blocked2;
 }
-async function guardBuildChecks(output, changeDir, change) {
+async function guardBuildChecks(output, changeDir, change, run) {
   return runChecks(output, [
     check("isolation selected", () => isolationSelected(changeDir, change)),
     check("build_mode selected", () => buildModeSelected(changeDir, change)),
@@ -10781,11 +10900,11 @@ async function guardBuildChecks(output, changeDir, change) {
     check("Superpowers plan all tasks checked", () => planTasksAllDone(changeDir)),
     check(
       "proposal.md exists",
-      async () => await nonempty(path14.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path15.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path14.join(changeDir, "proposal.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path15.join(changeDir, "proposal.md"))
     ),
     check("Superpowers plan matches configured language", async () => {
       const plan = await readField(changeDir, "plan");
@@ -10795,19 +10914,19 @@ async function guardBuildChecks(output, changeDir, change) {
     // Build check runs last — only after all config checks pass — to avoid
     // wasting time on a build that would be rejected by a config failure.
     check("Build passes", async () => {
-      const buildResult = await buildPasses();
-      return buildResult.status === 0 ? pass() : fail(buildResult.output);
+      const buildResult = await commandCheckPasses(changeDir, change, run, "build");
+      return buildResult.status === 0 ? pass(buildResult.output) : fail(buildResult.output);
     })
   ]);
 }
-async function guardVerifyChecks(output, changeDir) {
+async function guardVerifyChecks(output, changeDir, change, run) {
   return runChecks(output, [
     check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
     // Verification command runs after tasks check — no point running tests
     // if tasks.md is incomplete.
     check("Verification passes", async () => {
-      const verifyResult = await verificationCommandPasses();
-      return verifyResult.status === 0 ? pass() : fail(verifyResult.output);
+      const verifyResult = await commandCheckPasses(changeDir, change, run, "verify");
+      return verifyResult.status === 0 ? pass(verifyResult.output) : fail(verifyResult.output);
     }),
     check(
       "verification_report exists",
@@ -10829,11 +10948,11 @@ async function guardArchiveChecks(output, changeDir) {
     check("archived is true", async () => await archivedIsTrue(changeDir) ? pass() : fail("")),
     check(
       "proposal.md exists",
-      async () => await nonempty(path14.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path15.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "design.md exists",
-      async () => await nonempty(path14.join(changeDir, "design.md")) ? pass() : fail("")
+      async () => await nonempty(path15.join(changeDir, "design.md")) ? pass() : fail("")
     ),
     check("tasks.md all tasks checked", () => tasksAllDone(changeDir))
   ]);
@@ -10890,8 +11009,10 @@ Valid phases: open, design, build, verify, archive`
     let blocked2;
     if (phase === "open") blocked2 = await guardOpenChecks(output, changeDir);
     else if (phase === "design") blocked2 = await guardDesignChecks(output, changeDir, change);
-    else if (phase === "build") blocked2 = await guardBuildChecks(output, changeDir, change);
-    else if (phase === "verify") blocked2 = await guardVerifyChecks(output, changeDir);
+    else if (phase === "build")
+      blocked2 = await guardBuildChecks(output, changeDir, change, runContext.run);
+    else if (phase === "verify")
+      blocked2 = await guardVerifyChecks(output, changeDir, change, runContext.run);
     else blocked2 = await guardArchiveChecks(output, changeDir);
     if (blocked2) {
       output.stderr.push("");
@@ -10917,7 +11038,7 @@ Valid phases: open, design, build, verify, archive`
 var import_yaml5 = __toESM(require_dist(), 1);
 import { createHash as createHash5 } from "crypto";
 import { promises as fs14, readFileSync as readFileSync2 } from "fs";
-import path15 from "path";
+import path16 from "path";
 var GREEN4 = "\x1B[32m";
 var RED4 = "\x1B[31m";
 var YELLOW4 = "\x1B[33m";
@@ -11166,7 +11287,7 @@ async function writeSpecJsonContext(changeDir, change, contextHash, output) {
   );
 }
 async function readField2(changeDir, field2) {
-  const file = path15.join(changeDir, ".comet.yaml");
+  const file = path16.join(changeDir, ".comet.yaml");
   const document = (0, import_yaml5.parseDocument)(await fs14.readFile(file, "utf8"), { uniqueKeys: false });
   if (document.errors.length > 0) {
     throw new HandoffFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
@@ -11390,7 +11511,7 @@ var classicHandoffCommand = async (args) => {
 
 // domains/comet-classic/classic-hook-guard.ts
 import { existsSync as existsSync2, promises as fs15, readFileSync as readFileSync3 } from "fs";
-import path16 from "path";
+import path17 from "path";
 function result(exitCode, message) {
   return { exitCode, stderr: message + "\n" };
 }
@@ -11415,52 +11536,52 @@ function normalized(value) {
 function parseProjectRoot(args) {
   const index = args.indexOf("--project-root");
   const value = index >= 0 ? args[index + 1] : void 0;
-  return path16.resolve(value && !value.startsWith("--") ? value : process.cwd());
+  return path17.resolve(value && !value.startsWith("--") ? value : process.cwd());
 }
-function relativeToProjectRoot(target, projectRoot) {
-  const relative = normalized(path16.relative(projectRoot, target));
+function relativeToProjectRoot(target, projectRoot2) {
+  const relative = normalized(path17.relative(projectRoot2, target));
   if (relative === "") return "";
-  if (relative.startsWith("../") || relative === ".." || path16.isAbsolute(relative)) return null;
+  if (relative.startsWith("../") || relative === ".." || path17.isAbsolute(relative)) return null;
   return relative;
 }
 async function physicalPathForPossiblyMissingTarget(target) {
-  const resolved = path16.resolve(target);
-  const root = path16.parse(resolved).root;
+  const resolved = path17.resolve(target);
+  const root = path17.parse(resolved).root;
   const missingSegments = [];
   let cursor = resolved;
   while (cursor && cursor !== root) {
     try {
       const physicalBase = await fs15.realpath(cursor);
-      return path16.join(physicalBase, ...missingSegments.reverse());
+      return path17.join(physicalBase, ...missingSegments.reverse());
     } catch (error) {
       const code = error.code;
       if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
-      missingSegments.push(path16.basename(cursor));
-      cursor = path16.dirname(cursor);
+      missingSegments.push(path17.basename(cursor));
+      cursor = path17.dirname(cursor);
     }
   }
   try {
     const physicalRoot = await fs15.realpath(root);
-    return path16.join(physicalRoot, ...missingSegments.reverse());
+    return path17.join(physicalRoot, ...missingSegments.reverse());
   } catch {
     return null;
   }
 }
-async function projectRelative(target, projectRoot) {
-  const rawCandidate = path16.isAbsolute(target) ? target : path16.resolve(process.cwd(), target);
+async function projectRelative(target, projectRoot2) {
+  const rawCandidate = path17.isAbsolute(target) ? target : path17.resolve(process.cwd(), target);
   let candidate = normalized(rawCandidate);
-  const rootRelative = relativeToProjectRoot(rawCandidate, projectRoot);
+  const rootRelative = relativeToProjectRoot(rawCandidate, projectRoot2);
   if (rootRelative !== null) return rootRelative;
   try {
     const physicalCandidate = await physicalPathForPossiblyMissingTarget(rawCandidate);
-    const physicalRoot = await fs15.realpath(projectRoot);
+    const physicalRoot = await fs15.realpath(projectRoot2);
     if (physicalCandidate) {
       const physicalRootRelative = relativeToProjectRoot(physicalCandidate, physicalRoot);
       if (physicalRootRelative !== null) return physicalRootRelative;
       candidate = normalized(physicalCandidate);
     }
   } catch {
-    if (!path16.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
+    if (!path17.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
   }
   return candidate.replace(/^\.\//u, "");
 }
@@ -11484,16 +11605,16 @@ async function loadGoverningChange(changeDir) {
     };
   }
 }
-async function activeChanges(projectRoot) {
-  const changesDir = path16.join(projectRoot, "openspec", "changes");
+async function activeChanges(projectRoot2) {
+  const changesDir = path17.join(projectRoot2, "openspec", "changes");
   const governingChanges = [];
   if (!existsSync2(changesDir)) return governingChanges;
   for (const entry2 of (await fs15.readdir(changesDir, { withFileTypes: true })).sort(
     (left, right) => left.name.localeCompare(right.name)
   )) {
     if (!entry2.isDirectory() || entry2.name === "archive") continue;
-    const changeDir = path16.join(changesDir, entry2.name);
-    if (!existsSync2(path16.join(changeDir, ".comet.yaml"))) continue;
+    const changeDir = path17.join(changesDir, entry2.name);
+    if (!existsSync2(path17.join(changeDir, ".comet.yaml"))) continue;
     const governing = await loadGoverningChange(changeDir);
     if (!governing || governing.archived) continue;
     governingChanges.push(governing);
@@ -11513,7 +11634,7 @@ function allowsSuperpowersArtifacts(governing) {
   return governing.phase === "design" || governing.phase === "build" || governing.phase === "verify";
 }
 function governingChangeName(governing) {
-  return governing.changeDir ? path16.basename(governing.changeDir) : null;
+  return governing.changeDir ? path17.basename(governing.changeDir) : null;
 }
 var SUPERPOWERS_ARTIFACT_SUFFIXES = /* @__PURE__ */ new Set([
   "design",
@@ -11544,8 +11665,8 @@ function matchesSuperpowersArtifactName(relativePath2, changeName) {
   const pattern = new RegExp(`(^|[-_.])${escapeRegex(changeName)}[-_.](${suffixes})$`, "u");
   return pattern.test(stem);
 }
-async function superpowersArtifactGoverningChange(relativePath2, projectRoot) {
-  const active = await activeChanges(projectRoot);
+async function superpowersArtifactGoverningChange(relativePath2, projectRoot2) {
+  const active = await activeChanges(projectRoot2);
   const recorded = active.find(
     (governing) => matchesRecordedSuperpowersArtifact(relativePath2, governing)
   );
@@ -11560,18 +11681,18 @@ async function superpowersArtifactGoverningChange(relativePath2, projectRoot) {
   if (named) return named;
   return null;
 }
-async function repoSourceGoverningChange(projectRoot) {
-  const active = await activeChanges(projectRoot);
+async function repoSourceGoverningChange(projectRoot2) {
+  const active = await activeChanges(projectRoot2);
   return active.find(blocksSourceWrites) ?? active[0] ?? null;
 }
-async function governingChange(relativePath2, projectRoot) {
+async function governingChange(relativePath2, projectRoot2) {
   const prefix = "openspec/changes/";
   if (relativePath2.startsWith(prefix)) {
     const rest = relativePath2.slice(prefix.length);
     const [name] = rest.split("/");
     if (name && name !== "archive") {
-      const changeDir = path16.join(projectRoot, "openspec", "changes", name);
-      const stateFile2 = path16.join(changeDir, ".comet.yaml");
+      const changeDir = path17.join(projectRoot2, "openspec", "changes", name);
+      const stateFile2 = path17.join(changeDir, ".comet.yaml");
       if (existsSync2(stateFile2)) {
         const governing = await loadGoverningChange(changeDir);
         if (governing) return governing;
@@ -11581,12 +11702,12 @@ async function governingChange(relativePath2, projectRoot) {
     }
   }
   if (isSuperpowersArtifactPath(relativePath2)) {
-    const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot);
+    const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot2);
     if (superpowers) return { ...superpowers, superpowersArtifact: "matched" };
-    const fallback = await repoSourceGoverningChange(projectRoot);
+    const fallback = await repoSourceGoverningChange(projectRoot2);
     return fallback ? { ...fallback, superpowersArtifact: "unmatched" } : null;
   }
-  return repoSourceGoverningChange(projectRoot);
+  return repoSourceGoverningChange(projectRoot2);
 }
 function isRootMarkdown(relativePath2) {
   return !relativePath2.includes("/") && relativePath2.endsWith(".md");
@@ -11691,13 +11812,13 @@ function blockedUnmatchedSuperpowersArtifact(relativePath2, phase) {
   );
 }
 var classicHookGuardCommand = async (args) => {
-  const projectRoot = parseProjectRoot(args);
+  const projectRoot2 = parseProjectRoot(args);
   const target = inputTarget();
   if (!target) return allowed("no file path in tool input");
-  const relativePath2 = await projectRelative(target, projectRoot);
+  const relativePath2 = await projectRelative(target, projectRoot2);
   let governing;
   try {
-    governing = await governingChange(relativePath2, projectRoot);
+    governing = await governingChange(relativePath2, projectRoot2);
   } catch (error) {
     return result(
       2,
@@ -12107,7 +12228,7 @@ var classicIntentCommand = async (args, _options) => {
 };
 
 // domains/comet-classic/classic-resume-probe.ts
-import path17 from "path";
+import path18 from "path";
 import { promises as fs17 } from "fs";
 import { spawn } from "child_process";
 
@@ -12181,7 +12302,7 @@ async function changeSearchText(changeDir, classic) {
   const files = ["proposal.md", "design.md", "tasks.md"];
   const parts = [classic.name, classic.workflow, classic.phase];
   for (const file of files) {
-    parts.push(await readIfExists(path17.join(changeDir, file)));
+    parts.push(await readIfExists(path18.join(changeDir, file)));
   }
   return parts.join("\n").toLowerCase();
 }
@@ -12245,19 +12366,19 @@ function diagnosticFromProjection(changeDir, name, projection) {
   };
 }
 async function hasOpenSpecChangeFiles(changeDir) {
-  return await fileExists3(path17.join(changeDir, "proposal.md")) || await fileExists3(path17.join(changeDir, "design.md")) || await fileExists3(path17.join(changeDir, "tasks.md"));
+  return await fileExists3(path18.join(changeDir, "proposal.md")) || await fileExists3(path18.join(changeDir, "design.md")) || await fileExists3(path18.join(changeDir, "tasks.md"));
 }
-async function discoverActiveChanges(projectRoot) {
-  const changesDir = path17.join(projectRoot, "openspec", "changes");
+async function discoverActiveChanges(projectRoot2) {
+  const changesDir = path18.join(projectRoot2, "openspec", "changes");
   if (!await fileExists3(changesDir)) return [];
   const entries = await readDir(changesDir);
   const changes = [];
   for (const entry2 of entries) {
     if (entry2 === "archive") continue;
-    const changeDir = path17.join(changesDir, entry2);
+    const changeDir = path18.join(changesDir, entry2);
     const stat = await fs17.stat(changeDir).catch(() => null);
     if (!stat?.isDirectory()) continue;
-    const hasCometState = await fileExists3(path17.join(changeDir, ".comet.yaml"));
+    const hasCometState = await fileExists3(path18.join(changeDir, ".comet.yaml"));
     if (!hasCometState) {
       if (!await hasOpenSpecChangeFiles(changeDir)) continue;
       const missingStateChange = {
@@ -12407,10 +12528,10 @@ function relatedEvidence(utterance, change) {
   }
   return evidence;
 }
-async function gitDirtyFiles(projectRoot) {
+async function gitDirtyFiles(projectRoot2) {
   return new Promise((resolve) => {
     const child = spawn("git", ["status", "--short", "--untracked-files=all"], {
-      cwd: projectRoot,
+      cwd: projectRoot2,
       stdio: ["ignore", "pipe", "ignore"],
       shell: false
     });
@@ -12429,7 +12550,7 @@ async function gitDirtyFiles(projectRoot) {
     });
   });
 }
-async function resolveCometResumeProbe(projectRoot, rawInput) {
+async function resolveCometResumeProbe(projectRoot2, rawInput) {
   const input = normalizeInput(rawInput);
   const utterance = input.utterance.trim();
   const lower = utterance.toLowerCase();
@@ -12441,11 +12562,11 @@ async function resolveCometResumeProbe(projectRoot, rawInput) {
       { source: "user", quote: utterance }
     ]);
   }
-  const changes = await discoverActiveChanges(projectRoot);
+  const changes = await discoverActiveChanges(projectRoot2);
   if (changes.length === 0) {
     return result3("none", null, "none", "no active Comet changes");
   }
-  const dirtyFiles = await gitDirtyFiles(projectRoot);
+  const dirtyFiles = await gitDirtyFiles(projectRoot2);
   if (changes.length > 1) {
     const named = changes.find((change2) => lower.includes(change2.name.toLowerCase()));
     if (!named) {
@@ -12561,7 +12682,7 @@ var import_yaml6 = __toESM(require_dist(), 1);
 import { spawnSync as spawnSync3 } from "child_process";
 import { randomUUID as randomUUID6 } from "crypto";
 import { existsSync as existsSync3, promises as fs18 } from "fs";
-import path18 from "path";
+import path19 from "path";
 init_state();
 var GREEN5 = "\x1B[32m";
 var RED5 = "\x1B[31m";
@@ -12697,7 +12818,7 @@ async function readDocument2(file) {
   } catch (error) {
     if (error.code === "ENOENT") {
       fail2(
-        `ERROR: .comet.yaml not found at ${path18.relative(process.cwd(), file).replaceAll("\\", "/")}`
+        `ERROR: .comet.yaml not found at ${path19.relative(process.cwd(), file).replaceAll("\\", "/")}`
       );
     }
     throw error;
@@ -12707,7 +12828,7 @@ async function readDocument2(file) {
   return document;
 }
 async function atomicWrite2(file, content) {
-  await fs18.mkdir(path18.dirname(file), { recursive: true });
+  await fs18.mkdir(path19.dirname(file), { recursive: true });
   const temporary = `${file}.${randomUUID6()}.tmp`;
   try {
     await fs18.writeFile(temporary, content, "utf8");
@@ -12804,7 +12925,7 @@ function sparseClassicState(record) {
   };
 }
 async function projectConfigValue2(field2) {
-  const file = path18.resolve(".comet", "config.yaml");
+  const file = path19.resolve(".comet", "config.yaml");
   if (!await exists6(file)) return null;
   const document = await readDocument2(file);
   const value = document.get(field2);
@@ -12849,7 +12970,7 @@ async function stateFile(name) {
   const change = await changeDirectory(name);
   return {
     ...change,
-    file: path18.join(change.directory, ".comet.yaml")
+    file: path19.join(change.directory, ".comet.yaml")
   };
 }
 async function readField3(name, field2) {
@@ -13031,13 +13152,13 @@ async function requireOpenArtifacts(name) {
   const { directory } = await stateFile(name);
   const workflow = await readField3(name, "workflow");
   for (const artifact of ["proposal.md", "tasks.md"]) {
-    if (!await nonempty3(path18.join(directory, artifact))) {
+    if (!await nonempty3(path19.join(directory, artifact))) {
       fail2(
         `ERROR: Cannot transition '${name}': ${artifact} must exist and be non-empty before leaving open`
       );
     }
   }
-  if (workflow === "full" && !await nonempty3(path18.join(directory, "design.md"))) {
+  if (workflow === "full" && !await nonempty3(path19.join(directory, "design.md"))) {
     fail2(
       `ERROR: Cannot transition '${name}': design.md must exist and be non-empty before leaving open`
     );
@@ -13045,14 +13166,14 @@ async function requireOpenArtifacts(name) {
 }
 async function requireDesignEvidence(name) {
   const designDoc = await readField3(name, "design_doc");
-  if (!designDoc || designDoc === "null" || !await nonempty3(path18.resolve(designDoc))) {
+  if (!designDoc || designDoc === "null" || !await nonempty3(path19.resolve(designDoc))) {
     fail2(
       `ERROR: Cannot transition '${name}': design_doc must point to an existing Design Doc before leaving design`
     );
   }
 }
 async function writeSparseTransitionEffects(directory, effects) {
-  const file = path18.join(directory, ".comet.yaml");
+  const file = path19.join(directory, ".comet.yaml");
   const document = await readDocument2(file);
   for (const effect of effects) {
     const field2 = wireField2(effect.field);
@@ -13067,7 +13188,7 @@ async function applyTransitionEvent(output, name, event) {
   let sparse = false;
   if (!classic) {
     if (projection.run) fail2("ERROR: Classic state projection is missing");
-    const document = await readDocument2(path18.join(directory, ".comet.yaml"));
+    const document = await readDocument2(path19.join(directory, ".comet.yaml"));
     classic = sparseClassicState(document.toJS());
     sparse = true;
   }
@@ -13114,7 +13235,7 @@ async function transition(output, name, event) {
   } else if (event === "verify-pass") {
     await requirePhase(name, "verify");
     const report = await readField3(name, "verification_report");
-    if (!report || !await exists6(path18.resolve(report))) {
+    if (!report || !await exists6(path19.resolve(report))) {
       fail2(
         `ERROR: Cannot transition '${name}': verification_report must point to an existing report file`
       );
@@ -13181,7 +13302,7 @@ async function next(output, name) {
 async function taskCheckoff(output, taskFile, taskText) {
   validateRelativePath(taskFile, "task file");
   if (!taskText) fail2("ERROR: Task text cannot be empty");
-  const file = path18.resolve(taskFile);
+  const file = path19.resolve(taskFile);
   if (!await exists6(file)) fail2(`ERROR: Task file not found: ${taskFile}`);
   const lines = (await fs18.readFile(file, "utf8")).split(/\r?\n/u);
   const matches = lines.filter(
@@ -13221,21 +13342,21 @@ async function check2(output, name, phase) {
       designDoc ? `design_doc=${designDoc} (expected: empty/null)` : "design_doc is empty/null"
     );
     for (const artifact of ["proposal.md", "design.md", "tasks.md"]) {
-      (await nonempty3(path18.join(directory, artifact)) ? pass2 : reject)(
-        `${artifact} ${await nonempty3(path18.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
+      (await nonempty3(path19.join(directory, artifact)) ? pass2 : reject)(
+        `${artifact} ${await nonempty3(path19.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
       );
     }
   } else if (phase === "build") {
     const workflow = await readField3(name, "workflow");
     const designDoc = await readField3(name, "design_doc");
     if (workflow === "full") {
-      (designDoc && designDoc !== "null" && await exists6(path18.resolve(designDoc)) ? pass2 : reject)(`design_doc=${designDoc} (expected: non-null and file exists)`);
+      (designDoc && designDoc !== "null" && await exists6(path19.resolve(designDoc)) ? pass2 : reject)(`design_doc=${designDoc} (expected: non-null and file exists)`);
     } else {
       pass2(`workflow=${workflow} (design_doc not required)`);
     }
     for (const artifact of ["proposal.md", "tasks.md"]) {
-      (await nonempty3(path18.join(directory, artifact)) ? pass2 : reject)(
-        `${artifact} ${await nonempty3(path18.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
+      (await nonempty3(path19.join(directory, artifact)) ? pass2 : reject)(
+        `${artifact} ${await nonempty3(path19.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
       );
     }
   } else if (phase === "verify") {
@@ -13257,7 +13378,7 @@ async function check2(output, name, phase) {
 }
 function fieldStatus(field2, value, file) {
   if (!value || value === "null") return `  - ${field2}: PENDING`;
-  if (file && !existsSync3(path18.resolve(file))) {
+  if (file && !existsSync3(path19.resolve(file))) {
     return `  - ${field2}: BROKEN (path ${value} does not exist)`;
   }
   return `  - ${field2}: DONE (${value})`;
@@ -13266,7 +13387,7 @@ async function recoverOpen(output, directory) {
   output.stdout.push("  Artifacts:");
   let complete = 0;
   for (const artifact of ["proposal.md", "design.md", "tasks.md"]) {
-    const done = await nonempty3(path18.join(directory, artifact));
+    const done = await nonempty3(path19.join(directory, artifact));
     if (done) complete += 1;
     output.stdout.push(`  - ${artifact}: ${done ? "DONE" : "PENDING"}`);
   }
@@ -13279,7 +13400,7 @@ async function recoverDesign(output, name, directory) {
   output.stdout.push("  Artifacts:");
   for (const artifact of ["proposal.md", "design.md", "tasks.md"]) {
     output.stdout.push(
-      `  - ${artifact}: ${await nonempty3(path18.join(directory, artifact)) ? "DONE" : "MISSING (unexpected in design phase)"}`
+      `  - ${artifact}: ${await nonempty3(path19.join(directory, artifact)) ? "DONE" : "MISSING (unexpected in design phase)"}`
     );
   }
   const handoff = await readField3(name, "handoff_context");
@@ -13293,11 +13414,11 @@ async function recoverDesign(output, name, directory) {
     fieldStatus("design_doc", design, design),
     ""
   );
-  if (design && design !== "null" && await exists6(path18.resolve(design))) {
+  if (design && design !== "null" && await exists6(path19.resolve(design))) {
     output.stdout.push(
       "Recovery action: Design Doc already created and linked. Run guard to transition to build."
     );
-  } else if (handoff && handoff !== "null" && await exists6(path18.resolve(handoff))) {
+  } else if (handoff && handoff !== "null" && await exists6(path19.resolve(handoff))) {
     output.stdout.push(
       "Recovery action: Handoff generated but Design Doc not yet created. Resume from brainstorming confirmation (Step 1c)."
     );
@@ -13327,7 +13448,7 @@ async function recoverBuild(output, name, directory, workflow) {
     decisions.push(fieldStatus("subagent_dispatch", subagentDispatch));
   }
   output.stdout.push(...decisions, "", "  Plan:", fieldStatus("plan", plan, plan), "");
-  const tasks = path18.join(directory, "tasks.md");
+  const tasks = path19.join(directory, "tasks.md");
   if (!await exists6(tasks)) {
     output.stdout.push(
       "  Tasks: tasks.md MISSING",
@@ -13342,8 +13463,8 @@ async function recoverBuild(output, name, directory, workflow) {
   const pending = total - done;
   let planTotal = 0;
   let planDone = 0;
-  if (plan && plan !== "null" && await exists6(path18.resolve(plan))) {
-    const planLines = (await fs18.readFile(path18.resolve(plan), "utf8")).split(/\r?\n/u);
+  if (plan && plan !== "null" && await exists6(path19.resolve(plan))) {
+    const planLines = (await fs18.readFile(path19.resolve(plan), "utf8")).split(/\r?\n/u);
     planTotal = planLines.filter((line) => /^\s*- \[[ xX]\] /u.test(line)).length;
     planDone = planLines.filter((line) => /^\s*- \[[xX]\] /u.test(line)).length;
   }
@@ -13472,19 +13593,19 @@ async function scale(output, name) {
   validateChangeName4(name);
   const { file, directory, label } = await stateFile(name);
   if (!await exists6(file)) fail2(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
-  const tasksFile = path18.join(directory, "tasks.md");
+  const tasksFile = path19.join(directory, "tasks.md");
   const taskCount = await exists6(tasksFile) ? (await fs18.readFile(tasksFile, "utf8")).split(/\r?\n/u).filter((line) => /^- \[/u.test(line)).length : 0;
-  const specs = path18.join(directory, "specs");
+  const specs = path19.join(directory, "specs");
   let deltaSpecs = 0;
   if (await exists6(specs)) {
     for (const entry2 of await fs18.readdir(specs)) {
-      if (await exists6(path18.join(specs, entry2, "spec.md"))) deltaSpecs += 1;
+      if (await exists6(path19.join(specs, entry2, "spec.md"))) deltaSpecs += 1;
     }
   }
   const plan = await readField3(name, "plan");
   let baseRef = "";
-  if (plan && plan !== "null" && await exists6(path18.resolve(plan))) {
-    const match = (await fs18.readFile(path18.resolve(plan), "utf8")).match(/^base-ref:\s*(.+)$/mu);
+  if (plan && plan !== "null" && await exists6(path19.resolve(plan))) {
+    const match = (await fs18.readFile(path19.resolve(plan), "utf8")).match(/^base-ref:\s*(.+)$/mu);
     baseRef = match?.[1].trim() ?? "";
   }
   if (!baseRef) baseRef = await readField3(name, "base_ref");
@@ -13504,6 +13625,51 @@ async function scale(output, name) {
     `  → Result: ${result5}`,
     green4(`[SCALE] verify_mode=${result5}`)
   );
+}
+function parseRecordCheckOptions(args) {
+  let command;
+  let exitCodeText;
+  let cwd;
+  for (let index = 0; index < args.length; index += 2) {
+    const option = args[index];
+    if (!["--command", "--exit-code", "--cwd"].includes(option)) {
+      fail2(`ERROR: Unknown option: ${option}`);
+    }
+    const value = args[index + 1];
+    if (value === void 0) fail2(`ERROR: Missing value for option: ${option}`);
+    if (option === "--command") command = value;
+    else if (option === "--exit-code") exitCodeText = value;
+    else cwd = value;
+  }
+  if (command === void 0) fail2("ERROR: Missing option: --command");
+  if (exitCodeText === void 0) fail2("ERROR: Missing option: --exit-code");
+  if (!/^-?\d+$/u.test(exitCodeText)) fail2("ERROR: --exit-code must be an integer");
+  return { command, exitCode: Number(exitCodeText), ...cwd === void 0 ? {} : { cwd } };
+}
+async function recordCheck(output, name, scopeText, args) {
+  validateChangeName4(name);
+  if (scopeText !== "build" && scopeText !== "verify") {
+    fail2(`ERROR: Invalid command check scope: '${scopeText}'`);
+  }
+  const options = parseRecordCheckOptions(args);
+  const { label, directory, file } = await stateFile(name);
+  if (label !== `openspec/changes/${name}` || !await exists6(file)) {
+    fail2(`ERROR: command checks require an active change: ${name}`);
+  }
+  try {
+    const { run } = await ensureClassicRuntimeRun(directory);
+    const recorded = await recordCommandCheck(directory, run, {
+      scope: scopeText,
+      ...options
+    });
+    output.stderr.push(
+      green4(
+        `[RECORDED] ${recorded.scope} exit=${recorded.exitCode} cwd=${recorded.cwd} command=${recorded.command}`
+      )
+    );
+  } catch (error) {
+    fail2(`ERROR: ${error.message}`);
+  }
 }
 function required(args, count, usage3) {
   if (args.length < count) fail2(usage3);
@@ -13533,6 +13699,13 @@ var classicStateCommand = async (args) => {
     } else if (subcommand === "scale") {
       required(rest, 1, "Usage: comet-state.mjs scale <change-name>");
       await scale(output, rest[0]);
+    } else if (subcommand === "record-check") {
+      required(
+        rest,
+        2,
+        "Usage: comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]"
+      );
+      await recordCheck(output, rest[0], rest[1], rest.slice(2));
     } else if (subcommand === "task-checkoff") {
       required(rest, 2, "Usage: comet-state.mjs task-checkoff <file> <task-text>");
       await taskCheckoff(output, rest[0], rest[1]);
