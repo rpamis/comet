@@ -58,6 +58,7 @@ describe('Classic evidence collection', () => {
         branchStatus: 'handled',
         createdAt: '2026-06-14',
         verifiedAt: '2026-06-14',
+        archiveConfirmation: null,
         archived: false,
         directOverride: null,
         handoffContext: 'openspec/changes/demo/.comet/handoff/context.json',
@@ -133,6 +134,14 @@ describe('Classic evidence collection', () => {
     expect(evidenceSatisfied(evidence, 'verification.report')).toBe(false);
     expect(evidenceSatisfied(evidence, 'design.handoff')).toBe(false);
     expect(evidenceSatisfied(evidence, 'run.checkpoint')).toBe(false);
+  });
+
+  it('derives archive confirmation evidence from Classic state', async () => {
+    projection.classic!.archiveConfirmation = 'confirmed';
+
+    const evidence = await collectClassicEvidence(changeDir, projection);
+
+    expect(evidenceSatisfied(evidence, 'archive.confirmed')).toBe(true);
   });
 
   async function writeProjectFile(relativePath: string, content: string): Promise<void> {

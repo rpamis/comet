@@ -228,6 +228,9 @@ describe('check --recover', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('Phase: archive');
-    expect(result.stdout).toContain('Recovery action: Run /comet-archive to complete archiving.');
+    expect(result.stdout).toContain('archive_confirmation: PENDING');
+    expect(result.stdout).toContain(
+      'Recovery action: Ask for final archive confirmation in /comet-archive before running the archive command.',
+    );
   });
 });

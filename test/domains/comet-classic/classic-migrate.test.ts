@@ -67,6 +67,7 @@ function classic(overrides: Partial<ClassicState> = {}): ClassicState {
     branchStatus: 'pending',
     createdAt: '2026-06-14',
     verifiedAt: null,
+    archiveConfirmation: null,
     archived: false,
     directOverride: null,
     handoffContext: null,

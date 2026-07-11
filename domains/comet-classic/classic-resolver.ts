@@ -65,15 +65,11 @@ function resolveVerify(
   return `${profile}.verify.branch`;
 }
 
-function resolveArchive(
-  profile: ClassicProfile,
-  classic: ClassicState,
-  evidence: readonly ClassicEvidence[],
-): string {
+function resolveArchive(profile: ClassicProfile, classic: ClassicState): string {
   if (classic.verifyResult !== 'pass') {
     throw new Error('archive requires verify_result=pass');
   }
-  return evidenceSatisfied(evidence, 'archive.confirmed')
+  return classic.archiveConfirmation === 'confirmed'
     ? `${profile}.archive.execute`
     : `${profile}.archive.confirm`;
 }
@@ -104,7 +100,7 @@ export function resolveClassicStepId(
     case 'verify':
       return resolveVerify(profile, classic, evidence);
     case 'archive':
-      return resolveArchive(profile, classic, evidence);
+      return resolveArchive(profile, classic);
   }
 }
 

@@ -155,6 +155,7 @@ function normalizeOutput(value: string, root: string): string {
     // 0.3.9 baseline (e.g. preset-escalate) in the "Valid values:" error line.
     // These are intentional enhancements; strip them so the differential
     // contract compares rejection behavior, not the exact event enumeration.
+    .replace(/(Valid values: .*) archive-confirm/g, '$1')
     .replace(/(Valid values: .*) preset-escalate/g, '$1');
   const lines = normalizedValue.split('\n');
   const kept: string[] = [];
@@ -197,6 +198,7 @@ function legacyProjection(document: Record<string, unknown>): Record<string, unk
     'run_status',
     'run_retries',
     'language',
+    'archive_confirmation',
     // The active runtime writes these with null defaults during init; the
     // frozen 0.3.9 bash scripts only write them when explicitly set.
     'direct_override',

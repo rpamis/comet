@@ -136,5 +136,10 @@ export async function collectClassicEvidence(
     handoff.detail = 'handoff hash is missing';
   }
 
+  evidence.push({
+    code: 'archive.confirmed',
+    satisfied: classic?.archiveConfirmation === 'confirmed',
+  });
+
   return evidence;
 }

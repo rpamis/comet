@@ -16,6 +16,7 @@ const ISOLATIONS = ['branch', 'worktree'] as const;
 const VERIFY_MODES = ['light', 'full'] as const;
 const VERIFY_RESULTS = ['pending', 'pass', 'fail'] as const;
 const BRANCH_STATUSES = ['pending', 'handled'] as const;
+const ARCHIVE_CONFIRMATIONS = ['pending', 'confirmed'] as const;
 
 export type ClassicProfile = (typeof CLASSIC_PROFILES)[number];
 export type ClassicPhase = (typeof PHASES)[number];
@@ -42,6 +43,7 @@ export interface ClassicState {
   branchStatus: (typeof BRANCH_STATUSES)[number] | null;
   createdAt: string | null;
   verifiedAt: string | null;
+  archiveConfirmation: (typeof ARCHIVE_CONFIRMATIONS)[number] | null;
   archived: boolean;
   directOverride: boolean | null;
   handoffContext: string | null;
@@ -77,6 +79,7 @@ export const CLASSIC_WIRE_KEYS = [
   'branch_status',
   'created_at',
   'verified_at',
+  'archive_confirmation',
   'archived',
   'direct_override',
   'handoff_context',
@@ -207,6 +210,7 @@ function classicStateFromDocument(doc: StateDocument): ClassicState | null {
     branchStatus: enumValue(doc, 'branch_status', BRANCH_STATUSES),
     createdAt: nullableString(doc, 'created_at'),
     verifiedAt: nullableString(doc, 'verified_at'),
+    archiveConfirmation: enumValue(doc, 'archive_confirmation', ARCHIVE_CONFIRMATIONS),
     archived: booleanValue(doc, 'archived', false)!,
     directOverride: booleanValue(doc, 'direct_override'),
     handoffContext: relativePath(doc, 'handoff_context'),
@@ -294,6 +298,7 @@ export function classicStateToDocument(state: ClassicState): StateDocument {
     branch_status: state.branchStatus,
     created_at: state.createdAt,
     verified_at: state.verifiedAt,
+    archive_confirmation: state.archiveConfirmation,
     archived: state.archived,
     direct_override: state.directOverride,
     handoff_context: state.handoffContext,
