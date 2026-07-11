@@ -122,6 +122,14 @@ describe('detect', () => {
   });
 
   describe('detectPlatforms', () => {
+    it('detects Codex from its configuration directory', async () => {
+      await fs.mkdir(path.join(tmpDir, '.codex'));
+
+      const detected = await detectPlatforms(tmpDir);
+
+      expect(detected.has('codex')).toBe(true);
+    });
+
     it('does not detect Codex from a shared .agents skills directory alone', async () => {
       await fs.mkdir(path.join(tmpDir, '.agents', 'skills', 'personal-skill'), {
         recursive: true,

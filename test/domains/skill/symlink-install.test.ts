@@ -50,7 +50,7 @@ describe('symlink install mode', () => {
     });
   });
 
-  describe('copyCometSkillsForPlatform with symlink mode', () => {
+  describe('copyCometSkillsForPlatform install modes', () => {
     it('copies Codex skills to .agents without writing to legacy .codex skills', async () => {
       const result = await copyCometSkillsForPlatform(
         tmpDir,
