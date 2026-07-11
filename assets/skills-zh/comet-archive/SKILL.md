@@ -15,21 +15,21 @@ description: "Use when Comet change 验证已通过，需要用户确认归档�
 
 ### 0. 输出语言约束
 
-归档摘要和生命周期闭环说明必须使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言。
+归档摘要和生命周期闭环说明必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言。
 
 ### 0b. 入口状态验证（Entry Check）
 
-按 `comet/reference/scripts.md` 定位脚本（定位 `comet-env.mjs`），然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
+按 `comet/reference/scripts.md` 使用稳定 `comet` CLI，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
-node "$COMET_STATE" check <name> archive
+comet state check <name> archive
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
 ### 1. 归档前最终确认（阻塞点）
 
-入口验证通过后，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认是否立即归档**。不得在用户确认前运行 `node "$COMET_ARCHIVE" "<change-name>"`。
+入口验证通过后，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认是否立即归档**。不得在用户确认前运行 `comet archive "<change-name>"`。
 
 确认前必须向用户展示简短摘要：
 - change 名称
@@ -39,13 +39,13 @@ node "$COMET_STATE" check <name> archive
 
 用户确认问题必须以单选题形式呈现，包含以下选项：
 - 「确认归档」— 写入最终确认状态后执行归档脚本，完成 spec 合并和 change 移动
-- 「需要调整或重新验证」— 不执行归档；运行 `node "$COMET_STATE" transition <change-name> archive-reopen` 回到 `phase: verify`，再调用 `/comet-verify`。若验证阶段确认需要修复，再按 `/comet-verify` 的验证失败决策回到 `/comet-build`
+- 「需要调整或重新验证」— 不执行归档；运行 `comet state transition <change-name> archive-reopen` 回到 `phase: verify`，再调用 `/comet-verify`。若验证阶段确认需要修复，再按 `/comet-verify` 的验证失败决策回到 `/comet-build`
 - 「暂不归档」— 不执行归档，保留当前 `phase: archive` 状态，等待用户稍后再次调用 `/comet-archive`
 
 用户选择「确认归档」后，立即执行：
 
 ```bash
-node "$COMET_STATE" transition <change-name> archive-confirm
+comet state transition <change-name> archive-confirm
 ```
 
 如 transition 返回非零退出码，报告错误并停止。只有 transition 成功后，才允许继续 Step 2。用户选择「需要调整或重新验证」后，必须先执行 `archive-reopen` 状态回退，不得手动编辑 `.comet.yaml`。
@@ -55,7 +55,7 @@ node "$COMET_STATE" transition <change-name> archive-confirm
 运行归档脚本：
 
 ```bash
-node "$COMET_ARCHIVE" "<change-name>"
+comet archive "<change-name>"
 ```
 
 脚本自动执行：
@@ -105,7 +105,7 @@ git commit -m "chore: archive <change-name>"
 
 归档脚本会把 `openspec/changes/<name>/` 移动到 `openspec/changes/archive/YYYY-MM-DD-<name>/`。
 
-> **WARNING**: 归档成功后**不要再对原 change 名运行** `node "$COMET_GUARD" <change-name> archive`，因为原活跃目录已经不存在。误调会导致 guard 报错"change directory not found"。归档完整性以脚本退出码和归档目录状态为准。
+> **WARNING**: 归档成功后**不要再对原 change 名运行** `comet guard <change-name> archive`，因为原活跃目录已经不存在。误调会导致 guard 报错"change directory not found"。归档完整性以脚本退出码和归档目录状态为准。
 
 ## 完成
 

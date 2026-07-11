@@ -14,14 +14,14 @@ description: "Use when Comet change 已完成 build 阶段，需要验证实现�
 
 ### 0a. 输出语言约束
 
-验证报告和分支处理说明必须使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言。
+验证报告和分支处理说明必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言。
 
 ### 0b. 入口状态验证（Entry Check）
 
-按 `comet/reference/scripts.md` 定位脚本（定位 `comet-env.mjs`），然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
+按 `comet/reference/scripts.md` 使用稳定 `comet` CLI，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
-node "$COMET_STATE" check <change-name> verify
+comet state check <change-name> verify
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
@@ -33,7 +33,7 @@ node "$COMET_STATE" check <change-name> verify
 执行规模评估：
 
 ```bash
-node "$COMET_STATE" scale <change-name>
+comet state scale <change-name>
 ```
 
 脚本自动统计任务数、增量规格数、变更文件数，判断使用 light 或 full 验证模式，并设置 verify_mode 字段。判定规则（满足任一即 full）：任务数 > 3、delta spec 能力数 > 1、变更文件数 > 8。
@@ -48,15 +48,15 @@ node "$COMET_STATE" scale <change-name>
 
 ```bash
 # 仅在用户确认修复后执行
-node "$COMET_STATE" transition <change-name> verify-fail
+comet state transition <change-name> verify-fail
 ```
 
-注意：verify-fail 回退到 build 时 `branch_status` 不会被重置。如果首次 verify 已完成分支处理，修复后再次进入 verify 时跳过已完成的分支处理步骤，直接使用 `node "$COMET_STATE" set <change-name> branch_status handled` 保留原有分支处理结果。
+注意：verify-fail 回退到 build 时 `branch_status` 不会被重置。如果首次 verify 已完成分支处理，修复后再次进入 verify 时跳过已完成的分支处理步骤，直接使用 `comet state set <change-name> branch_status handled` 保留原有分支处理结果。
 
 注意：如果 build 阶段每个任务都已提交，脚本基于工作区 diff 的文件数可能低估改动规模。此时必须读取 plan 文件头的 `base-ref` 并用提交区间复核：
 
 ```bash
-PLAN=$(node "$COMET_STATE" get <change-name> plan)
+PLAN=$(comet state get <change-name> plan)
 BASE_REF=$(grep '^base-ref:' "$PLAN" 2>/dev/null | head -1 | sed 's/^base-ref: *//')
 git diff --stat "$BASE_REF"...HEAD
 ```
@@ -64,14 +64,14 @@ git diff --stat "$BASE_REF"...HEAD
 若提交区间显示改动超过轻量阈值（> 8 个文件、跨模块协调、或 delta spec 超过 1 个 capability），手动设置为完整验证：
 
 ```bash
-node "$COMET_STATE" set <change-name> verify_mode full
+comet state set <change-name> verify_mode full
 ```
 
-**覆盖机制**：如 agent 或用户认为自动评估结果不合适，可随时通过 `node "$COMET_STATE" set <change-name> verify_mode <light|full>` 手动覆盖。
+**覆盖机制**：如 agent 或用户认为自动评估结果不合适，可随时通过 `comet state set <change-name> verify_mode <light|full>` 手动覆盖。
 
 ### 1b. 验证失败决策（阻塞点）
 
-验证不通过时**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户决定修复或接受偏差**。不得自动运行 `node "$COMET_STATE" transition <change-name> verify-fail`，也不得自动调用 `/comet-build`。
+验证不通过时**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户决定修复或接受偏差**。不得自动运行 `comet state transition <change-name> verify-fail`，也不得自动调用 `/comet-build`。
 
 暂停时必须列出：
 - 失败项
@@ -81,7 +81,7 @@ node "$COMET_STATE" set <change-name> verify_mode full
 **不确定性原则**：无法确定严重程度时，降级处理（SUGGESTION > WARNING > CRITICAL）。仅对构建失败、测试失败、安全问题使用 CRITICAL；模糊或不确定的问题标为 WARNING 或 SUGGESTION。
 
 用户选择后按以下方式继续：
-- **全部修复**：运行 `node "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build` 修复
+- **全部修复**：运行 `comet state transition <change-name> verify-fail`，然后调用 `/comet-build` 修复
 - **逐项处理**：CRITICAL 或 IMPORTANT 失败项必须修复；WARNING/SUGGESTION 失败项可选择接受偏差，但必须在验证报告中记录接受原因和影响范围。若存在任何 CRITICAL 或 IMPORTANT 失败项，不允许跳过修复直接全部接受
 
 **重试上限**：连续 3 次 verify-fail 循环后，第 4 次失败时代理不得自动选择继续修复；**必须使用当前平台可用的用户输入/确认机制暂停**，仅给出两个选项：「接受所有偏差并记录」或「继续修复」，由用户明确决定。
@@ -91,8 +91,8 @@ node "$COMET_STATE" set <change-name> verify_mode full
 验证需要读取 OpenSpec 产物时，先检查产物是否自 design 阶段以来发生变化：
 
 ```bash
-RECORDED_HASH=$(node "$COMET_STATE" get <change-name> handoff_hash)
-CURRENT_HASH=$(node "$COMET_HANDOFF" <change-name> --hash-only 2>/dev/null || echo "")
+RECORDED_HASH=$(comet state get <change-name> handoff_hash)
+CURRENT_HASH=$(comet handoff <change-name> --hash-only 2>/dev/null || echo "")
 ```
 
 - 若 `RECORDED_HASH` = `CURRENT_HASH` 且均非空且均非 `null`：OpenSpec 产物未变化，**tasks.md 无需重新读取全文**（用 `grep -c '\- \[ \]' tasks.md` 确认完成数即可）。proposal.md、design.md、delta spec 仍需读取用于对照检查。
@@ -115,6 +115,14 @@ CURRENT_HASH=$(node "$COMET_HANDOFF" <change-name> --hash-only 2>/dev/null || ec
 5. 无明显安全问题（无硬编码密钥、无新增 unsafe 操作）
 6. 代码审查策略：当 `review_mode: standard` 或 `thorough` 时，必须使用 Skill 工具加载 Superpowers `requesting-code-review` 技能，请求只检查正确性、安全、边界条件的轻量代码审查；当 `review_mode: off` 时跳过自动代码审查，并在验证报告中记录跳过原因
 
+若项目没有可自动探测的验证命令，用户或 Agent 必须先自行运行真实验证命令，再单独记录验证证据：
+
+```bash
+comet state record-check <change-name> verify --command "<实际运行的验证命令>" --exit-code 0
+```
+
+`--command` 只记录命令文本，Comet **绝不会执行该文本**。verify 与 build 证据彼此独立，不能互相替代；即使兼容流程使用 `COMET_SKIP_BUILD=1`，也不能把该绕过标记视为可审计的验证或构建证据。
+
 简化代码审查的输入应限定为本次改动 diff、tasks.md 和必要的测试结果；审查范围只覆盖实现正确性、安全风险和边界条件，不执行 spec 覆盖率、Design Doc 一致性或漂移检查。若审查发现 CRITICAL 或 IMPORTANT 问题，按验证失败处理并进入 Step 1b。`review_mode: off` 只跳过自动 code review，不跳过构建、测试、安全检查或异常调试协议。
 
 **与 build 阶段审查的去重**：若 build 阶段（`executing-plans` 或 `subagent-driven-development`）已按 `review_mode` 对同一 diff 完成最终代码审查，verify 的这次轻量审查聚焦「实现是否符合 spec/tasks 的正确性」与「build 之后新增的改动」，不重复评审 build 已审过且未变化的 diff。
@@ -125,7 +133,7 @@ CURRENT_HASH=$(node "$COMET_HANDOFF" <change-name> --hash-only 2>/dev/null || ec
 
 ```bash
 # 仅在用户确认修复后执行
-node "$COMET_STATE" transition <change-name> verify-fail
+comet state transition <change-name> verify-fail
 ```
 
 **报告格式**：简表列出 6 项检查结果 + PASS/FAIL。
@@ -155,13 +163,13 @@ node "$COMET_STATE" transition <change-name> verify-fail
 
 ```bash
 # 仅在用户确认修复后执行
-node "$COMET_STATE" transition <change-name> verify-fail
+comet state transition <change-name> verify-fail
 ```
 
 **Spec 漂移处理**（用户决策点）：
 - 若检查项 6 发现矛盾（delta spec 有内容但 design doc 未体现），**必须使用当前平台可用的用户输入/确认机制以单选题形式暂停并等待用户选择处理方式**，不得自动选择。选项：
   - 选项 A：在 design doc 追加 "Implementation Divergence" 节记录偏差原因。选项 A 属于 verify 阶段允许产物；写入后不得因该 design doc 变更再次触发 Step 1b dirty-worktree 决策
-  - 选项 B：用户选择 B 后，运行 `node "$COMET_STATE" transition <change-name> verify-fail`，然后调用 `/comet-build`；由 `/comet-build` 的 Spec 增量更新规则加载 Superpowers `brainstorming` 更新 Design Doc + delta spec
+  - 选项 B：用户选择 B 后，运行 `comet state transition <change-name> verify-fail`，然后调用 `/comet-build`；由 `/comet-build` 的 Spec 增量更新规则加载 Superpowers `brainstorming` 更新 Design Doc + delta spec
   - 选项 C：确认偏差可接受，继续验证（归档时 design doc 将标记为 `superseded-by-main-spec`）
 
 ### 3. 收尾（Superpowers）
@@ -191,8 +199,8 @@ mkdir -p docs/superpowers/reports
 # 将本次验证结论写入报告文件，例如：
 # docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
 
-node "$COMET_STATE" set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
-node "$COMET_STATE" set <change-name> branch_status handled
+comet state set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
+comet state set <change-name> branch_status handled
 ```
 
 ## 退出条件
@@ -201,12 +209,12 @@ node "$COMET_STATE" set <change-name> branch_status handled
 - 分支已处理
 - `.comet.yaml` 中 `verification_report` 指向已存在的验证报告文件
 - `.comet.yaml` 中 `branch_status: handled`
-- **阶段守卫**：运行 `node "$COMET_GUARD" <change-name> verify --apply`，全部 PASS 后由守卫通过 `comet-state transition verify-pass` 推进到 `phase: archive`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
+- **阶段守卫**：运行 `comet guard <change-name> verify --apply`，全部 PASS 后由守卫通过 `comet state transition verify-pass` 推进到 `phase: archive`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
 验证和分支处理均完成后，运行阶段守卫推进 phase（此步骤与 `auto_transition` 无关）：
 
 ```bash
-node "$COMET_GUARD" <change-name> verify --apply
+comet guard <change-name> verify --apply
 ```
 
 状态文件自动更新为 `phase: archive`、`verify_result: pass`、`verified_at: YYYY-MM-DD`。
@@ -220,7 +228,7 @@ node "$COMET_GUARD" <change-name> verify --apply
 按 `comet/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
-node "$COMET_STATE" next <change-name>
+comet state next <change-name>
 ```
 
 - `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段
