@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { annotatedMarkdown } from '../../../domains/comet-classic/classic-archive.js';
 import { readRunState } from '../../../domains/engine/state.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
@@ -49,6 +50,62 @@ function confirmArchiveChange(dir: string): void {
   const result = run(dir, ['state', 'transition', 'demo', 'archive-confirm']);
   expect(result.status).toBe(0);
 }
+
+describe('annotatedMarkdown', () => {
+  it('preserves an existing frontmatter document with one final newline', () => {
+    const original = '---\ntitle: Demo\n---\nBody\n';
+
+    expect(annotatedMarkdown(original, '2026-07-11-demo', '')).toBe(
+      '---\ntitle: Demo\narchived-with: 2026-07-11-demo\n---\nBody\n',
+    );
+  });
+
+  it('collapses multiple EOF blank lines to exactly one final newline', () => {
+    const original = '---\ntitle: Demo\n---\nBody\n\n\n';
+
+    expect(annotatedMarkdown(original, '2026-07-11-demo', '')).toBe(
+      '---\ntitle: Demo\narchived-with: 2026-07-11-demo\n---\nBody\n',
+    );
+  });
+
+  it('adds frontmatter to a document without frontmatter or a final newline', () => {
+    expect(annotatedMarkdown('Body', '2026-07-11-demo', '')).toBe(
+      '---\narchived-with: 2026-07-11-demo\nstatus: final\n---\nBody\n',
+    );
+  });
+
+  it('preserves internal blank lines and normalizes CRLF to LF', () => {
+    const original = '---\r\ntitle: Demo\r\n---\r\nFirst\r\n\r\nSecond\r\n';
+
+    expect(annotatedMarkdown(original, '2026-07-11-demo', '')).toBe(
+      '---\ntitle: Demo\narchived-with: 2026-07-11-demo\n---\nFirst\n\nSecond\n',
+    );
+  });
+
+  it('does not annotate a later thematic delimiter in the body', () => {
+    const original = '---\ntitle: Demo\n---\nBefore\n---\nAfter\n';
+
+    expect(annotatedMarkdown(original, '2026-07-11-demo', '')).toBe(
+      '---\ntitle: Demo\narchived-with: 2026-07-11-demo\n---\nBefore\n---\nAfter\n',
+    );
+  });
+
+  it('replaces existing archive and extra fields without duplication', () => {
+    const original =
+      '---\narchived-with: old-archive\ntitle: Demo\nstatus: draft\narchived-with: older-archive\nstatus: review\n---\nBody\n';
+
+    expect(annotatedMarkdown(original, '2026-07-11-demo', 'status: final')).toBe(
+      '---\ntitle: Demo\narchived-with: 2026-07-11-demo\nstatus: final\n---\nBody\n',
+    );
+  });
+
+  it('is byte-identical when repeated with the same inputs', () => {
+    const original = '---\r\ntitle: Demo\r\nstatus: draft\r\n---\r\nBody\r\n\r\n';
+    const once = annotatedMarkdown(original, '2026-07-11-demo', 'status: final');
+
+    expect(annotatedMarkdown(once, '2026-07-11-demo', 'status: final')).toBe(once);
+  });
+});
 
 async function fakeOpenSpec(
   dir: string,

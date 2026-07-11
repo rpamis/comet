@@ -89,6 +89,39 @@ function artifactsHash(artifacts: Record<string, string>): string {
   );
 }
 
+function exactlyOneFinalNewline(markdown: string): string {
+  return `${markdown.replace(/\n+$/u, '')}\n`;
+}
+
+export function annotatedMarkdown(
+  original: string,
+  archiveName: string,
+  extraFields: string,
+): string {
+  const normalized = original.replace(/\r\n/gu, '\n');
+  const lines = normalized.split('\n');
+  const closingDelimiter = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
+  const extraFieldName = extraFields.match(/^([^:\n]+):/u)?.[1]?.trim();
+
+  if (closingDelimiter !== -1) {
+    const frontmatter = lines.slice(1, closingDelimiter).filter((line) => {
+      const fieldName = line.match(/^([^:\n]+):/u)?.[1]?.trim();
+      return fieldName !== 'archived-with' && fieldName !== extraFieldName;
+    });
+    frontmatter.push(`archived-with: ${archiveName}`);
+    if (extraFields) frontmatter.push(extraFields);
+    return exactlyOneFinalNewline(
+      ['---', ...frontmatter, '---', ...lines.slice(closingDelimiter + 1)].join('\n'),
+    );
+  }
+
+  const header = ['---', `archived-with: ${archiveName}`];
+  if (extraFields) header.push(extraFields);
+  if (extraFieldName !== 'status') header.push('status: final');
+  header.push('---');
+  return exactlyOneFinalNewline([...header, normalized].join('\n'));
+}
+
 async function findArchiveDir(change: string, preferred: string): Promise<string | null> {
   if (await exists(preferred)) return preferred;
   const archiveRoot = 'openspec/changes/archive';
@@ -144,37 +177,7 @@ async function annotateFrontmatter(
     return;
   }
   const original = await fs.readFile(file, 'utf8');
-  const firstLine = original.split(/\r?\n/u)[0] ?? '';
-  let updated: string;
-  if (firstLine === '---') {
-    // Insert archived-with (+ extra) before the closing frontmatter delimiter;
-    // drop any pre-existing archived-with lines (mirrors the frozen awk).
-    const lines = original.split(/\r?\n/u);
-    const out: string[] = [];
-    let sawFirst = false;
-    for (const line of lines) {
-      if (/^archived-with:/u.test(line)) continue;
-      if (line === '---') {
-        if (!sawFirst) {
-          out.push(line);
-          sawFirst = true;
-          continue;
-        }
-        out.push(`archived-with: ${archiveName}`);
-        if (extraFields) out.push(extraFields);
-        out.push(line);
-      } else {
-        out.push(line);
-      }
-    }
-    updated = `${out.join('\n')}\n`;
-  } else {
-    const header = ['---', `archived-with: ${archiveName}`];
-    if (extraFields) header.push(extraFields);
-    header.push('status: final', '---');
-    updated = `${header.join('\n')}\n${original}`;
-    if (!updated.endsWith('\n')) updated += '\n';
-  }
+  const updated = annotatedMarkdown(original, archiveName, extraFields);
   await fs.writeFile(file, updated);
   output.stderr.push(green(`  [OK] Annotated: ${file}`));
   output.stepsOk += 1;
