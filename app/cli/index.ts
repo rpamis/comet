@@ -7,6 +7,7 @@ import { doctorCommand } from '../commands/doctor.js';
 import { evalCommand as evalFacadeCommand } from '../commands/eval.js';
 import { updateCommand } from '../commands/update.js';
 import { uninstallCommand } from '../commands/uninstall.js';
+import { runClassicFacade, type PublicClassicCommand } from '../commands/classic.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import {
   skillCheckCommand,
@@ -178,6 +179,24 @@ program
   .action(async (target, options) => {
     await evalFacadeCommand(target, options);
   });
+
+const classicDescriptions: Record<PublicClassicCommand, string> = {
+  state: 'Read and update Classic workflow state',
+  guard: 'Check Classic workflow phase guards',
+  handoff: 'Create and inspect Classic workflow handoffs',
+  archive: 'Archive completed Classic workflow changes',
+};
+
+for (const command of ['state', 'guard', 'handoff', 'archive'] as const) {
+  program
+    .command(`${command} [args...]`)
+    .description(classicDescriptions[command])
+    .allowUnknownOption()
+    .allowExcessArguments()
+    .action(async (args: string[]) => {
+      process.exitCode = await runClassicFacade(command, args);
+    });
+}
 
 const skill = program
   .command('skill')

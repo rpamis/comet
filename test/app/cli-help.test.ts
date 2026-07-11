@@ -51,6 +51,17 @@ describe('CLI help text', () => {
     expect(skillHelp.stdout).not.toContain('resume [options]');
   });
 
+  it('exposes only the four stable Classic facade commands at the root', () => {
+    const help = runCli('--help');
+
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toContain('Read and update Classic workflow state');
+    expect(help.stdout).toContain('Check Classic workflow phase guards');
+    expect(help.stdout).toContain('Create and inspect Classic workflow handoffs');
+    expect(help.stdout).toContain('Archive completed Classic workflow changes');
+    expect(help.stdout).not.toMatch(/^\s+(validate|intent|hook-guard)\b/mu);
+  });
+
   it('separates repository evals from Engine Run runtime checks', () => {
     const evalHelp = runCli('eval', '--help');
     const skillCheckHelp = runCli('skill', 'check', '--help');
