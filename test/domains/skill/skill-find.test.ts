@@ -202,7 +202,7 @@ describe('findPreferredSkills', () => {
 
   it('reports traversal queries as missing without reading outside roots', async () => {
     await writeMarkdownSkill(
-      path.join(projectRoot, '.codex', 'outside'),
+      path.join(projectRoot, '.agents', 'outside'),
       'outside',
       'Must not be discovered through traversal.',
     );
@@ -221,7 +221,7 @@ describe('findPreferredSkills', () => {
 
   it('does not follow search-root symlinks or junctions to skills outside the root', async (context) => {
     const outside = path.join(root, 'outside-skills', 'linked');
-    const link = path.join(projectRoot, '.codex', 'skills', 'linked');
+    const link = path.join(projectRoot, '.agents', 'skills', 'linked');
     await writeMarkdownSkill(outside, 'linked', 'Outside linked skill.');
     await fs.mkdir(path.dirname(link), { recursive: true });
     try {

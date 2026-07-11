@@ -106,9 +106,10 @@ describe('update command helpers', () => {
 
     await fs.mkdir(path.join(projectDir, '.cursor'), { recursive: true });
 
-    await fs.mkdir(path.join(globalDir, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.mkdir(path.join(globalDir, '.agents', 'skills', 'comet'), { recursive: true });
+    await fs.mkdir(path.join(globalDir, '.codex'), { recursive: true });
     await fs.writeFile(
-      path.join(globalDir, '.codex', 'skills', 'comet', 'SKILL.md'),
+      path.join(globalDir, '.agents', 'skills', 'comet', 'SKILL.md'),
       '# Comet\n\n当用户提出需求时使用这个技能。',
       'utf-8',
     );
@@ -138,8 +139,9 @@ describe('update command helpers', () => {
 
     await fs.mkdir(path.join(projectDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(path.join(projectDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
-    await fs.mkdir(path.join(globalDir, '.codex', 'skills', 'comet'), { recursive: true });
-    await fs.writeFile(path.join(globalDir, '.codex', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    await fs.mkdir(path.join(globalDir, '.agents', 'skills', 'comet'), { recursive: true });
+    await fs.mkdir(path.join(globalDir, '.codex'), { recursive: true });
+    await fs.writeFile(path.join(globalDir, '.agents', 'skills', 'comet', 'SKILL.md'), '# Comet');
 
     const targets = await detectInstalledCometTargets(projectDir, {
       globalBaseDir: globalDir,
@@ -169,7 +171,7 @@ describe('update command helpers', () => {
     await fs.writeFile(path.join(fakeHome, '.agents', 'skills', 'comet', 'SKILL.md'), '# Comet\n');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(projectDir, { json: true, skipNpm: true, scope: 'global' });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -333,7 +335,7 @@ describe('update command helpers', () => {
     const fakeHome = path.join(tmpDir, 'fake-home-print-command');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let output = '';
+    let output: string;
     try {
       await updateCommand(tmpDir, { skipNpm: true });
       output = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -356,7 +358,7 @@ describe('update command helpers', () => {
     const fakeHome = path.join(tmpDir, 'fake-home-json');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(tmpDir, { json: true, skipNpm: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -396,7 +398,7 @@ describe('update command helpers', () => {
 
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(projectA, { json: true, skipNpm: true, allProjects: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -481,7 +483,7 @@ describe('update command helpers', () => {
 
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(projectA, { json: true, allProjects: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -516,7 +518,7 @@ describe('update command helpers', () => {
 
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(staleProject, { json: true, skipNpm: true, allProjects: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -562,7 +564,7 @@ describe('update command helpers', () => {
     });
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(project, { json: true, skipNpm: true, allProjects: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -621,7 +623,7 @@ describe('update command helpers', () => {
 
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(projectA, { json: true, skipNpm: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -668,7 +670,7 @@ describe('update command helpers', () => {
     const fakeHome = path.join(tmpDir, 'fake-home-instructions');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(tmpDir, { json: true, skipNpm: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -702,9 +704,9 @@ describe('update command helpers', () => {
 
   it('does not create or update root project instructions when only global targets are updated', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
-    await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.mkdir(path.join(fakeHome, '.agents', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(
-      path.join(fakeHome, '.codex', 'skills', 'comet', 'SKILL.md'),
+      path.join(fakeHome, '.agents', 'skills', 'comet', 'SKILL.md'),
       '# Comet\n\nUse this skill.',
       'utf-8',
     );
@@ -714,7 +716,7 @@ describe('update command helpers', () => {
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(tmpDir, { json: true, skipNpm: true, scope: 'global' });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -747,7 +749,7 @@ describe('update command helpers', () => {
     const fakeHome = path.join(tmpDir, 'fake-home-instructions');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let json = '';
+    let json: string;
     try {
       await updateCommand(tmpDir, { json: true, skipNpm: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');

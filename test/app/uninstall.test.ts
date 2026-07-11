@@ -572,7 +572,7 @@ describe('uninstallCommand interactive selection', () => {
     const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
     await copyCometSkillsForPlatform(fakeHome, codexPlatform, true, 'skills', 'global');
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let jsonOutput = '';
+    let jsonOutput: string;
     try {
       await uninstallCommand(tmpDir, { scope: 'global', force: true, json: true });
       jsonOutput = log.mock.calls.map((call) => call.join(' ')).join('\n');
@@ -620,7 +620,7 @@ describe('uninstallCommand interactive selection', () => {
     homedirSpy.mockRestore();
     homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let jsonOutput = '';
+    let jsonOutput: string;
     try {
       await uninstallCommand(projectA, { allProjects: true, force: true, json: true });
       jsonOutput = log.mock.calls.map((c) => c.join(' ')).join('\n');
@@ -672,7 +672,7 @@ describe('uninstallCommand interactive selection', () => {
     homedirSpy.mockRestore();
     homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let jsonOutput = '';
+    let jsonOutput: string;
     try {
       await uninstallCommand(projectA, { json: true, force: true });
       jsonOutput = log.mock.calls.map((c) => c.join(' ')).join('\n');
@@ -756,9 +756,10 @@ describe('uninstallCommand interactive selection', () => {
   it('shows checkbox when multiple targets detected', async () => {
     const claudePlatform = PLATFORMS.find((p) => p.id === 'claude')!;
     await copyCometSkillsForPlatform(tmpDir, claudePlatform, true, 'skills', 'project');
-    // Create a second platform (codex) fixture
-    const codexDir = path.join(tmpDir, '.codex', 'skills', 'comet');
+    // Create a second current platform (Codex) fixture and its detection directory.
+    const codexDir = path.join(tmpDir, '.agents', 'skills', 'comet');
     await fs.mkdir(codexDir, { recursive: true });
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
     await fs.writeFile(path.join(codexDir, 'SKILL.md'), '# Comet', 'utf-8');
 
     mockedCheckbox.mockResolvedValue(['claude:project'] as never);
@@ -848,7 +849,7 @@ describe('uninstallCommand interactive selection', () => {
 
   it('returns stable JSON summary when no targets are found', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let jsonOutput = '';
+    let jsonOutput: string;
     try {
       await uninstallCommand(tmpDir, { json: true });
       jsonOutput = log.mock.calls.map((c) => c.join(' ')).join('\n');
@@ -898,9 +899,9 @@ describe('uninstallCommand interactive selection', () => {
 
   it('does not remove root managed project instructions with only global scope', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
-    await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.mkdir(path.join(fakeHome, '.agents', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(
-      path.join(fakeHome, '.codex', 'skills', 'comet', 'SKILL.md'),
+      path.join(fakeHome, '.agents', 'skills', 'comet', 'SKILL.md'),
       '# Comet\n\nUse this skill.',
       'utf-8',
     );
@@ -914,7 +915,7 @@ describe('uninstallCommand interactive selection', () => {
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    let jsonOutput = '';
+    let jsonOutput: string;
     try {
       await uninstallCommand(tmpDir, { json: true, force: true, scope: 'global' });
       jsonOutput = log.mock.calls.map((c) => c.join(' ')).join('\n');

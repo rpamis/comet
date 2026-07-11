@@ -450,7 +450,7 @@ describe('Bundle distribution', () => {
       fs.access(path.join(projectRoot, '.claude', 'skills', 'entry', 'SKILL.md')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(
-      fs.access(path.join(projectRoot, '.codex', 'skills', 'entry', 'SKILL.md')),
+      fs.access(path.join(projectRoot, '.agents', 'skills', 'entry', 'SKILL.md')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 

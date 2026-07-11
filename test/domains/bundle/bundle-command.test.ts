@@ -1335,7 +1335,7 @@ prefer:
           scope: 'project',
           origin: 'project',
           factory: { query: 'brainstorming' },
-          root: path.join(projectRoot, '.codex', 'skills', 'brainstorming'),
+          root: path.join(projectRoot, '.agents', 'skills', 'brainstorming'),
           description: 'Explore intent.',
           skillMd: '# Brainstorming\n',
           hash: 'a'.repeat(64),
@@ -1372,7 +1372,7 @@ prefer:
                 scope: 'project',
                 origin: 'project',
                 factory: { query: 'brainstorming' },
-                root: path.join(projectRoot, '.codex', 'skills', 'brainstorming'),
+                root: path.join(projectRoot, '.agents', 'skills', 'brainstorming'),
                 description: 'Explore intent.',
                 skillMd: '# Brainstorming\n',
                 hash: 'a'.repeat(64),
@@ -1697,7 +1697,7 @@ prefer:
                 scope: 'project',
                 origin: 'project',
                 factory: { query: 'ambiguous-skill' },
-                root: path.join(projectRoot, '.codex', 'skills', 'ambiguous-skill'),
+                root: path.join(projectRoot, '.agents', 'skills', 'ambiguous-skill'),
                 description: 'First candidate.',
                 skillMd: '# Ambiguous\n',
                 hash: 'a'.repeat(64),
@@ -2017,7 +2017,7 @@ prefer:
   });
 
   it('resolves ambiguous and ignored missing factory candidates through command state updates', async () => {
-    const firstRoot = path.join(projectRoot, '.codex', 'skills', 'review-flow');
+    const firstRoot = path.join(projectRoot, '.agents', 'skills', 'review-flow');
     const secondRoot = path.join(projectRoot, '.claude', 'skills', 'review-flow');
     await createBundleDraft({
       projectRoot,

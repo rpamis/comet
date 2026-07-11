@@ -842,7 +842,7 @@ prefer:
     await fs.mkdir(path.join(projectRoot, '.claude', 'skills', 'factory-alpha'), {
       recursive: true,
     });
-    await fs.mkdir(path.join(projectRoot, '.codex', 'skills', 'factory-alpha'), {
+    await fs.mkdir(path.join(projectRoot, '.agents', 'skills', 'factory-alpha'), {
       recursive: true,
     });
     await fs.writeFile(
@@ -857,7 +857,7 @@ prefer:
       '---\nname: factory-alpha\ndescription: Alpha factory step.\n---\n# Alpha\n',
     );
     await fs.writeFile(
-      path.join(projectRoot, '.codex', 'skills', 'factory-alpha', 'SKILL.md'),
+      path.join(projectRoot, '.agents', 'skills', 'factory-alpha', 'SKILL.md'),
       '---\nname: factory-alpha\ndescription: Project Codex alpha.\n---\n# Project Alpha\n',
     );
     const planFile = path.join(root, 'factory-warning-text-mode-plan.json');
