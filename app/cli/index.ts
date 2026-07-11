@@ -165,7 +165,7 @@ program
   .command('eval')
   .description('Evaluate a Skill or eval manifest with one command')
   .argument('[target]', 'Local Skill directory, SKILL.md, or comet/eval.yaml')
-  .option('--project <dir>', 'Repository root that contains eval/', '.')
+  .option('--project <dir>', 'Repository root that contains eval/')
   .option('--manifest <path>', 'Path to comet/eval.yaml')
   .option('--skill-path <path>', 'Local Skill directory or SKILL.md')
   .option('--skill-name <name>', 'Skill name used with --skill-path')
