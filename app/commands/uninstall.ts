@@ -90,6 +90,7 @@ async function uninstallSingleProject(
 ): Promise<SingleProjectUninstallResult | null> {
   const targets = await detectInstalledCometTargets(projectPath, {
     scopes: options.scope ? [options.scope] : undefined,
+    respectDetectionPaths: options.scope === undefined,
   });
 
   if (targets.length === 0) {

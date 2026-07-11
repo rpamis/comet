@@ -35,36 +35,38 @@ async function removeManagedSkillsFromDirs(
   managedSkills: string[],
 ): Promise<number> {
   let removed = 0;
-  const managedByTopLevel = new Map<string, string[]>();
-  for (const skillRelPath of managedSkills) {
-    const topLevel = skillRelPath.split('/')[0];
-    const paths = managedByTopLevel.get(topLevel) ?? [];
-    paths.push(skillRelPath);
-    managedByTopLevel.set(topLevel, paths);
-  }
-
   const parentDirs = new Set<string>();
   for (const skillsDir of skillsDirs) {
-    for (const [topLevel, skillPaths] of managedByTopLevel) {
-      const topLevelPath = path.join(baseDir, skillsDir, 'skills', topLevel);
-      try {
-        if ((await lstat(topLevelPath)).isSymbolicLink()) {
-          if (await removeFile(topLevelPath)) removed++;
-          continue;
+    const skillsRoot = path.join(baseDir, skillsDir, 'skills');
+    for (const skillRelPath of managedSkills) {
+      const parts = skillRelPath.split('/');
+      let current = baseDir;
+      let linkedAncestor = false;
+      const ancestorParts = [
+        ...skillsDir.split(/[\\/]/u).filter(Boolean),
+        'skills',
+        ...parts.slice(0, -1),
+      ];
+      for (const part of ancestorParts) {
+        current = path.join(current, part);
+        try {
+          if ((await lstat(current)).isSymbolicLink()) {
+            if (await removeFile(current)) removed++;
+            linkedAncestor = true;
+            break;
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
+          throw error;
         }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
+      if (linkedAncestor) continue;
 
-      for (const skillRelPath of skillPaths) {
-        if (await removeFile(path.join(baseDir, skillsDir, 'skills', skillRelPath))) removed++;
-        const parts = skillRelPath.split('/');
-        let current = topLevelPath;
+      if (await removeFile(path.join(skillsRoot, ...parts))) removed++;
+      current = skillsRoot;
+      for (const part of parts.slice(0, -1)) {
+        current = path.join(current, part);
         parentDirs.add(current);
-        for (let index = 1; index < parts.length - 1; index++) {
-          current = path.join(current, parts[index]);
-          parentDirs.add(current);
-        }
       }
     }
   }
