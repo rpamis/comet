@@ -578,7 +578,7 @@ git commit -m "fix(classic): support recorded build checks"
 - Consumes: Task 3 `latestCommandCheck()`, existing `readClassicState()` and `inspectClassicChange()`.
 - Produces: one exported `ChangeStatus` model for text and JSON output with `cometManaged`, `archiveReady`, `recommendedArchiveCommand`, and `commandChecks`.
 
-- [ ] **Step 1: Add a failing mixed-repository JSON test**
+- [x] **Step 1: Add a failing mixed-repository JSON test**
 
 In one temporary project create:
 
@@ -629,7 +629,7 @@ npx vitest run test/app/status.test.ts
 
 Expected: FAIL because current code skips directories without `.comet.yaml` and does not expose classification fields.
 
-- [ ] **Step 2: Normalize the status type and plain-change builder**
+- [x] **Step 2: Normalize the status type and plain-change builder**
 
 Export `RecordedCommandCheck` from Task 3 and define/export `ChangeStatus` in `app/commands/status.ts` with nullable Comet fields exactly as specified by the design doc.
 
@@ -664,7 +664,7 @@ async function plainOpenSpecStatus(name: string, changeDir: string): Promise<Cha
 
 When `.comet.yaml` exists, set `cometManaged: true` before parsing so exceptions remain classified as managed. Define Comet archiveReady as valid `phase === 'archive'`, `verifyResult === 'pass'`, and `archived === false`; do not derive it from tasks alone.
 
-- [ ] **Step 3: Include current command checks for valid Comet changes**
+- [x] **Step 3: Include current command checks for valid Comet changes**
 
 For a valid synchronized Run, query:
 
@@ -677,7 +677,7 @@ commandChecks: {
 
 If no synchronized Run exists in an invalid state, return `commandChecks: null` with the existing error rather than creating/migrating state solely for display.
 
-- [ ] **Step 4: Update text output tests**
+- [x] **Step 4: Update text output tests**
 
 Assert text output labels managed/plain changes and only emphasizes archive commands when ready:
 
@@ -690,7 +690,7 @@ expect(output).not.toContain('recommended archive: openspec archive d-incomplete
 
 For a recorded successful check, assert the command, exit code, and recorded time appear in JSON and a concise audit line appears in text.
 
-- [ ] **Step 5: Verify status GREEN and commit Task 5**
+- [x] **Step 5: Verify status GREEN and commit Task 5**
 
 ```bash
 npx vitest run test/app/status.test.ts test/app/cli-smoke.test.ts
