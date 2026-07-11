@@ -335,6 +335,7 @@ describe('comet guard', () => {
       command: string,
       exitCode: number,
     ) {
+      runNode(tmpDir, guardScript, [name, scope]);
       return runNode(tmpDir, stateScript, [
         'record-check',
         name,
@@ -361,7 +362,8 @@ describe('comet guard', () => {
 
     it('accepts successful build evidence and prints its source, time, and command', async () => {
       await createChange(tmpDir, 'recorded-build', buildYaml);
-      expect((await recordCheck('recorded-build', 'build', 'pnpm lint', 0)).status).toBe(0);
+      const recorded = await recordCheck('recorded-build', 'build', 'pnpm lint', 0);
+      expect(recorded.status, recorded.stderr).toBe(0);
 
       const result = runNode(tmpDir, guardScript, ['recorded-build', 'build']);
 

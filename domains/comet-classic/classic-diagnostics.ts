@@ -1,6 +1,7 @@
 import type { ClassicEvidence } from './classic-evidence.js';
 import { collectClassicEvidence } from './classic-evidence.js';
 import { ensureStrictClassicRuntimeRun } from './classic-runtime-run.js';
+import { readClassicState } from './classic-store.js';
 import { resolveClassicStepId } from './classic-resolver.js';
 import {
   evaluateClassicRuntimeStep,
@@ -14,10 +15,65 @@ export interface ClassicDiagnostic {
   phase: string;
   currentStep: string | null;
   nextCommand: string | null;
-  runtimeMode: 'engine-projection' | 'invalid';
+  runtimeMode: 'engine-projection' | 'legacy-state' | 'invalid';
   runtimeEval: ClassicRuntimeEvalStatus | null;
   evidence: ClassicEvidence[];
   error?: string;
+}
+
+export async function inspectClassicChangeReadOnly(
+  changeDir: string,
+  name: string,
+): Promise<ClassicDiagnostic> {
+  try {
+    const projection = await readClassicState(changeDir, { migrate: false });
+    const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+    if (unknownKeys.length > 0) {
+      throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`);
+    }
+    if (!projection.classic) throw new Error('Invalid Classic state: missing Classic projection');
+
+    if (!projection.run) {
+      return {
+        name,
+        valid: true,
+        workflow: projection.classic.workflow,
+        phase: projection.classic.phase,
+        currentStep: null,
+        nextCommand: nextCommandForPhase(projection.classic.phase),
+        runtimeMode: 'legacy-state',
+        runtimeEval: null,
+        evidence: [],
+      };
+    }
+
+    const evidence = await collectClassicEvidence(changeDir, projection);
+    const currentStep = resolveClassicStepId(projection.classic, evidence);
+    return {
+      name,
+      valid: true,
+      workflow: projection.classic.workflow,
+      phase: projection.classic.phase,
+      currentStep,
+      nextCommand: nextCommandForPhase(projection.classic.phase),
+      runtimeMode: 'engine-projection',
+      runtimeEval: evaluateClassicRuntimeStep(currentStep, evidence),
+      evidence,
+    };
+  } catch (error) {
+    return {
+      name,
+      valid: false,
+      workflow: 'unknown',
+      phase: 'invalid',
+      currentStep: null,
+      nextCommand: null,
+      runtimeMode: 'invalid',
+      runtimeEval: null,
+      evidence: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function nextCommandForPhase(phase: string): string | null {

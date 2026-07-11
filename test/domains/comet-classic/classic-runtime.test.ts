@@ -5,6 +5,7 @@ import path from 'path';
 import { PassThrough } from 'stream';
 import { spawnSync } from 'child_process';
 import { readRunState } from '../../../domains/engine/state.js';
+import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const stateScript = path.join(scriptsDir, 'comet-state.mjs');
@@ -12,6 +13,19 @@ const validateScript = path.join(scriptsDir, 'comet-yaml-validate.mjs');
 const hookGuardScript = path.join(scriptsDir, 'comet-hook-guard.mjs');
 const buildScript = path.resolve('scripts', 'build', 'build-classic-runtime.mjs');
 const temporaryDirectories: string[] = [];
+
+async function snapshotChange(changeDir: string): Promise<{ files: string[]; yaml: Buffer }> {
+  const files: string[] = [];
+  async function visit(directory: string): Promise<void> {
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name);
+      files.push(path.relative(changeDir, absolute).replaceAll('\\', '/'));
+      if (entry.isDirectory()) await visit(absolute);
+    }
+  }
+  await visit(changeDir);
+  return { files: files.sort(), yaml: await fs.readFile(path.join(changeDir, '.comet.yaml')) };
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -32,6 +46,7 @@ describe('Classic runtime CLI adapter', () => {
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
       expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      await ensureClassicRuntimeRun(path.join(directory, 'openspec', 'changes', 'demo'));
       const result = await runClassicCli([
         'state',
         'record-check',
@@ -47,6 +62,40 @@ describe('Classic runtime CLI adapter', () => {
 
       expect(result).toMatchObject({ exitCode: 0 });
       expect(result.stderr).toContain('[RECORDED] build exit=0 cwd=. command=npx tsc --noEmit');
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it('rejects record-check without a current Run without changing any files', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-record-check-legacy-'));
+    temporaryDirectories.push(directory);
+    const previous = process.cwd();
+    process.chdir(directory);
+    try {
+      const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
+      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      const changeDir = path.join(directory, 'openspec', 'changes', 'demo');
+      const yamlPath = path.join(changeDir, '.comet.yaml');
+      const yaml = (await fs.readFile(yamlPath, 'utf8')).replace(/^run_id:.*\r?\n/mu, '');
+      await fs.writeFile(yamlPath, yaml);
+      await fs.rm(path.join(changeDir, '.comet'), { recursive: true, force: true });
+      const before = await snapshotChange(changeDir);
+
+      const result = await runClassicCli([
+        'state',
+        'record-check',
+        'demo',
+        'build',
+        '--command',
+        'pnpm build',
+        '--exit-code',
+        '0',
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('existing synchronized Classic Run');
+      expect(await snapshotChange(changeDir)).toEqual(before);
     } finally {
       process.chdir(previous);
     }

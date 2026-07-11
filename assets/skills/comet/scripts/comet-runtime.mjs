@@ -13659,7 +13659,20 @@ async function recordCheck(output, name, scopeText, args) {
     fail2(`ERROR: command checks require an active change: ${name}`);
   }
   try {
-    const { run } = await ensureClassicRuntimeRun(directory);
+    const projection = await readClassicState(directory, { migrate: false });
+    const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+    if (unknownKeys.length > 0) {
+      throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(", ")}`);
+    }
+    if (!projection.classic || !projection.run || projection.classic.classicMigration !== CLASSIC_MIGRATION_VERSION) {
+      throw new Error("command checks require an existing synchronized Classic Run");
+    }
+    const evidence = await collectClassicEvidence(directory, projection);
+    const currentStep = resolveClassicStepId(projection.classic, evidence);
+    if (projection.run.currentStep !== currentStep) {
+      throw new Error("command checks require an existing synchronized Classic Run");
+    }
+    const run = projection.run;
     const recorded = await recordCommandCheck(directory, run, {
       scope: scopeText,
       ...options

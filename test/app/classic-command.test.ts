@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 const runClassicCli = vi.fn();
 
@@ -16,6 +18,18 @@ describe('Classic command facade', () => {
     const { PUBLIC_CLASSIC_COMMANDS } = await import('../../app/commands/classic.js');
 
     expect(PUBLIC_CLASSIC_COMMANDS).toEqual(['state', 'guard', 'handoff', 'archive']);
+  });
+
+  it('registers the Classic facade from its single public command source', async () => {
+    const source = await fs.readFile(path.resolve('app', 'cli', 'index.ts'), 'utf8');
+
+    expect(source).toMatch(
+      /import \{[\s\S]*PUBLIC_CLASSIC_COMMANDS[\s\S]*\} from '\.\.\/commands\/classic\.js';/u,
+    );
+    expect(source).toContain('for (const command of PUBLIC_CLASSIC_COMMANDS)');
+    expect(source).not.toContain(
+      "for (const command of ['state', 'guard', 'handoff', 'archive'] as const)",
+    );
   });
 
   it('dispatches exact argv and forwards stdout, stderr, and a nonzero exit code', async () => {

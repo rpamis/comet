@@ -60,6 +60,16 @@ describe('CLI help text', () => {
     expect(help.stdout).toContain('Create and inspect Classic workflow handoffs');
     expect(help.stdout).toContain('Archive completed Classic workflow changes');
     expect(help.stdout).not.toMatch(/^\s+(validate|intent|hook-guard)\b/mu);
+    const facadeDescriptions = [
+      'Read and update Classic workflow state',
+      'Check Classic workflow phase guards',
+      'Create and inspect Classic workflow handoffs',
+      'Archive completed Classic workflow changes',
+    ];
+    expect(
+      facadeDescriptions.filter((description) => help.stdout.includes(description)),
+    ).toHaveLength(4);
+    expect(help.stdout).toMatch(/^\s+resume-probe \[options\] \[path\]\s+Probe whether/mu);
   });
 
   it('separates repository evals from Engine Run runtime checks', () => {

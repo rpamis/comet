@@ -1,7 +1,7 @@
 import path from 'path';
 import { promises as fs } from 'fs';
 import { fileExists, readDir } from '../../platform/fs/file-system.js';
-import { inspectClassicChange } from '../../domains/comet-classic/classic-diagnostics.js';
+import { inspectClassicChangeReadOnly } from '../../domains/comet-classic/classic-diagnostics.js';
 import { readClassicState } from '../../domains/comet-classic/classic-store.js';
 import {
   latestCommandCheck,
@@ -116,12 +116,11 @@ async function getActiveChanges(projectPath: string): Promise<ChangeStatus[]> {
         continue;
       }
 
-      const diagnostic = await inspectClassicChange(changeDir, entry);
+      const diagnostic = await inspectClassicChangeReadOnly(changeDir, entry);
 
       if (diagnostic.valid && projection.classic) {
         if (projection.classic.archived) continue;
-        const synchronized = await readClassicState(changeDir, { migrate: false });
-        const run = synchronized.run;
+        const run = projection.run;
         changes.push({
           name: entry,
           cometManaged: true,

@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { statusCommand } from '../../app/commands/status.js';
+import { ensureClassicRuntimeRun } from '../../domains/comet-classic/classic-runtime-run.js';
 
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
@@ -13,6 +14,23 @@ function state(cwd: string, ...args: string[]) {
     encoding: 'utf8',
     env: { ...process.env, COMET_FORCE_PHASE: '1' },
   });
+}
+
+async function snapshotChange(changeDir: string): Promise<{ files: string[]; yaml: Buffer }> {
+  const files: string[] = [];
+  async function visit(directory: string): Promise<void> {
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name);
+      const relative = path.relative(changeDir, absolute).replaceAll('\\', '/');
+      files.push(relative);
+      if (entry.isDirectory()) await visit(absolute);
+    }
+  }
+  await visit(changeDir);
+  return {
+    files: files.sort(),
+    yaml: await fs.readFile(path.join(changeDir, '.comet.yaml')),
+  };
 }
 
 describe('status command', () => {
@@ -120,12 +138,13 @@ describe('status command', () => {
       verifyResult: 'pass',
       tasksCompleted: 0,
       tasksTotal: 1,
-      commandChecks: { build: null, verify: null },
+      commandChecks: null,
     });
   });
 
   it('includes latest build and verify command checks for a synchronized Comet Run', async () => {
     state(tmpDir, 'init', 'audited', 'full');
+    await ensureClassicRuntimeRun(path.join(tmpDir, 'openspec', 'changes', 'audited'));
     expect(
       state(
         tmpDir,
@@ -236,6 +255,7 @@ describe('status command', () => {
     state(tmpDir, 'set', 'next-build', 'design_doc', 'docs/superpowers/specs/next-build.md');
     state(tmpDir, 'set', 'next-build', 'plan', 'docs/superpowers/plans/next-build.md');
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] done\n- [ ] todo\n');
+    await ensureClassicRuntimeRun(changeDir);
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let output: string;
@@ -251,11 +271,15 @@ describe('status command', () => {
     expect(output).toContain('run_step: full.build.plan');
   });
 
-  it('silently migrates legacy state and includes the Run step in JSON output', async () => {
+  it('keeps legacy state without a Run byte-for-byte read-only in text and JSON status', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'next-verify');
     state(tmpDir, 'init', 'next-verify', 'full');
     state(tmpDir, 'set', 'next-verify', 'phase', 'verify');
-    const before = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+    const yamlPath = path.join(changeDir, '.comet.yaml');
+    const yaml = (await fs.readFile(yamlPath, 'utf8')).replace(/^run_id:.*\r?\n/mu, '');
+    await fs.writeFile(yamlPath, yaml);
+    await fs.rm(path.join(changeDir, '.comet'), { recursive: true, force: true });
+    const before = await snapshotChange(changeDir);
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json: string;
@@ -268,8 +292,19 @@ describe('status command', () => {
 
     const change = JSON.parse(json).changes[0];
     expect(change.nextCommand).toBe('/comet-verify');
-    expect(change.currentStep).toBe('full.verify.run');
-    expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).not.toBe(before);
+    expect(change.currentStep).toBeNull();
+    expect(change.runtimeMode).toBe('legacy-state');
+    expect(change.runtimeEval).toBeNull();
+    expect(change.commandChecks).toBeNull();
+    expect(await snapshotChange(changeDir)).toEqual(before);
+
+    const textLog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await statusCommand(tmpDir);
+    } finally {
+      textLog.mockRestore();
+    }
+    expect(await snapshotChange(changeDir)).toEqual(before);
   });
 
   it('reports invalid state without modifying it', async () => {
@@ -322,6 +357,7 @@ describe('status command', () => {
 
   it('prints actionable runtime-eval recovery guidance for valid changes', async () => {
     state(tmpDir, 'init', 'runtime-eval-fail', 'full');
+    await ensureClassicRuntimeRun(path.join(tmpDir, 'openspec', 'changes', 'runtime-eval-fail'));
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let output: string;
@@ -346,6 +382,7 @@ describe('status command', () => {
     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
     await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] build\n');
+    await ensureClassicRuntimeRun(changeDir);
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json: string;

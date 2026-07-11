@@ -7,7 +7,11 @@ import { doctorCommand } from '../commands/doctor.js';
 import { evalCommand as evalFacadeCommand } from '../commands/eval.js';
 import { updateCommand } from '../commands/update.js';
 import { uninstallCommand } from '../commands/uninstall.js';
-import { runClassicFacade, type PublicClassicCommand } from '../commands/classic.js';
+import {
+  PUBLIC_CLASSIC_COMMANDS,
+  runClassicFacade,
+  type PublicClassicCommand,
+} from '../commands/classic.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import {
   skillCheckCommand,
@@ -187,7 +191,7 @@ const classicDescriptions: Record<PublicClassicCommand, string> = {
   archive: 'Archive completed Classic workflow changes',
 };
 
-for (const command of ['state', 'guard', 'handoff', 'archive'] as const) {
+for (const command of PUBLIC_CLASSIC_COMMANDS) {
   program
     .command(`${command} [args...]`)
     .description(classicDescriptions[command])
