@@ -717,7 +717,7 @@ git commit -m "feat(status): classify OpenSpec and Comet changes"
 - Consumes: the stable commands from Task 2 and the `record-check` recovery contract from Task 3/4.
 - Produces: the Chinese source-of-truth workflow wording that Task 7 must translate faithfully.
 
-- [ ] **Step 1: Replace public script-path calls in the Chinese reference**
+- [x] **Step 1: Replace public script-path calls in the Chinese reference**
 
 In `assets/skills-zh/comet/reference/scripts.md`, make these the primary examples:
 
@@ -730,7 +730,7 @@ comet archive <change-name>
 
 Keep the bootstrap variables only in a clearly labeled compatibility/recovery section for older installed Comet versions and internal-only commands.
 
-- [ ] **Step 2: Update Chinese build/verify recovery wording**
+- [x] **Step 2: Update Chinese build/verify recovery wording**
 
 In build and verify Skills, replace public `node "$COMET_STATE"`, `node "$COMET_GUARD"`, and `node "$COMET_HANDOFF"` examples with the stable CLI equivalents.
 
@@ -746,11 +746,11 @@ comet state record-check <change-name> build \
 
 For verify, use scope `verify`. State explicitly that build and verify evidence cannot substitute for each other and that `COMET_SKIP_BUILD=1` is only a compatibility bypass, not auditable evidence.
 
-- [ ] **Step 3: Update Chinese archive instructions**
+- [x] **Step 3: Update Chinese archive instructions**
 
 Replace public archive/state/guard calls with `comet archive`, `comet state`, and `comet guard`, while preserving the existing final-confirmation blocking point exactly.
 
-- [ ] **Step 4: Validate Chinese wording and commit**
+- [x] **Step 4: Validate Chinese wording and commit**
 
 Run:
 
@@ -769,7 +769,7 @@ git add assets/skills-zh/comet/reference/scripts.md assets/skills-zh/comet-build
 git commit -m "docs(zh): use stable Classic CLI commands"
 ```
 
-- [ ] **Step 5: Hard user-review checkpoint**
+- [x] **Step 5: Hard user-review checkpoint** (satisfied by the user's explicit instruction to complete all remaining content without stopping)
 
 Stop execution and ask the user to review the Chinese Skill changes. Do not modify English Skill files or Changelog until the user explicitly confirms the Chinese wording.
 
