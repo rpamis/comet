@@ -231,6 +231,70 @@ describe('eval command', () => {
     expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
   });
 
+  it('cleans up a prepared manifest when eval run fails', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (command === 'uv' && args[0] === 'run') throw new Error('run failed');
+      return Buffer.from('');
+    });
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(evalRunCommand({ project, manifest })).rejects.toThrow('run failed');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it('cleans up a prepared manifest when runtime argument preparation fails', async () => {
+    const argumentFailure = new Error('argument preparation failed');
+    prepareEvalManifest.mockResolvedValue({
+      get path() {
+        throw argumentFailure;
+      },
+      cleanup: cleanupPreparedManifest,
+    });
+    const { evalRunCommand } = await import('../../app/commands/eval.js');
+
+    await expect(evalRunCommand({ project, manifest })).rejects.toBe(argumentFailure);
+
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the primary failure when prepared manifest cleanup also fails', async () => {
+    const primaryFailure = new Error('pytest failed');
+    cleanupPreparedManifest.mockRejectedValue(new Error('cleanup failed'));
+    execFileSync.mockImplementation((command: string, args: string[]) => {
+      if (command === 'uv' && args[0] === 'run') throw primaryFailure;
+      return Buffer.from('');
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(evalRunCommand({ project, manifest })).rejects.toBe(primaryFailure);
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces cleanup failures when the eval body succeeds', async () => {
+    const cleanupFailure = new Error('cleanup failed');
+    cleanupPreparedManifest.mockRejectedValue(cleanupFailure);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(evalRunCommand({ project, manifest })).rejects.toBe(cleanupFailure);
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+  });
+
   it('prints eval execution details and report path for manifest runs', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let output: string;

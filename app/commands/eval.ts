@@ -229,14 +229,28 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
   const root = evalRoot(options);
   const details = await buildLaunchDetails(options, collectOnly, root);
   const prepared = options.manifest ? await prepareEvalManifest(options.manifest) : null;
+  let bodyFailed = false;
+  let bodyError: unknown;
+  let cleanupFailed = false;
+  let cleanupError: unknown;
   try {
     const runtimeOptions = prepared ? { ...options, manifest: prepared.path } : options;
     const args = await buildEvalArgs(runtimeOptions, collectOnly, details.reportConfig);
     printLaunchDetails(details);
     runEval(args, root);
+  } catch (error) {
+    bodyFailed = true;
+    bodyError = error;
   } finally {
-    await prepared?.cleanup();
+    try {
+      await prepared?.cleanup();
+    } catch (error) {
+      cleanupFailed = true;
+      cleanupError = error;
+    }
   }
+  if (bodyFailed) throw bodyError;
+  if (cleanupFailed) throw cleanupError;
 }
 
 export async function evalRunCommand(options: EvalCommandOptions = {}): Promise<void> {
