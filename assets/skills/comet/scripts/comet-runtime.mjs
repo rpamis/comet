@@ -10496,9 +10496,11 @@ async function commandCheckPasses(changeDir, change, run, scope) {
   if (process.env.COMET_SKIP_BUILD === "1") {
     return { status: 0, output: "SKIPPED via COMET_SKIP_BUILD=1" };
   }
-  const removedField = scope === "build" ? "build_command" : "verify_command";
-  if (await removedProjectCommandField(removedField)) {
-    return removedProjectCommandRun(removedField);
+  const removedFields = scope === "build" ? ["build_command"] : ["verify_command", "build_command"];
+  for (const removedField of removedFields) {
+    if (await removedProjectCommandField(removedField)) {
+      return removedProjectCommandRun(removedField);
+    }
   }
   const inferred = await inferredBuildCommand();
   if (inferred) return runInferred(inferred);

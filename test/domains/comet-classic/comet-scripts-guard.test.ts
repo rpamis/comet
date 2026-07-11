@@ -387,6 +387,25 @@ describe('comet guard', () => {
       expect(result.stderr).toContain('pnpm test');
     });
 
+    it('rejects removed build_command before verify inference or evidence consumption', async () => {
+      await createChange(tmpDir, 'verify-removed-build-command', verifyYaml);
+      await writeFile(
+        path.join(tmpDir, 'reports', 'verification.md'),
+        '# Verification\n\nPassed.\n',
+      );
+      await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'build_command: npm test\n');
+      await writeFile(
+        path.join(tmpDir, 'package.json'),
+        JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+      );
+
+      const result = runNode(tmpDir, guardScript, ['verify-removed-build-command', 'verify']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('build_command has been removed');
+      expect(result.stderr).not.toContain('[PASS] Verification passes');
+    });
+
     it('does not use verify evidence for a commandless build', async () => {
       await createChange(tmpDir, 'cross-scope', buildYaml);
       expect((await recordCheck('cross-scope', 'verify', 'pnpm test', 0)).status).toBe(0);
