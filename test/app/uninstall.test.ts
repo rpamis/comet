@@ -5,6 +5,7 @@ import os from 'os';
 
 import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
 import {
+  removeLegacyCometSkillsForPlatform,
   removeCometSkillsForPlatform,
   removeCometRulesForPlatform,
   removeCometHooksForPlatform,
@@ -60,6 +61,31 @@ describe('uninstall', () => {
       ).resolves.toBe('# Personal\n');
     }
   });
+
+  it.each(['canonical', 'external'] as const)(
+    'unlinks a legacy Codex managed Skill junction without modifying its %s target',
+    async (targetKind) => {
+      const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
+      const target =
+        targetKind === 'canonical'
+          ? path.join(tmpDir, '.agents', 'skills', 'comet')
+          : path.join(tmpDir, 'external', 'comet');
+      const legacyLink = path.join(tmpDir, '.codex', 'skills', 'comet');
+      await fs.mkdir(target, { recursive: true });
+      await fs.writeFile(path.join(target, 'SKILL.md'), '# Target Comet\n');
+      await fs.writeFile(path.join(target, 'keep.txt'), 'keep\n');
+      await fs.mkdir(path.dirname(legacyLink), { recursive: true });
+      await fs.symlink(target, legacyLink, process.platform === 'win32' ? 'junction' : 'dir');
+
+      await removeLegacyCometSkillsForPlatform(tmpDir, codexPlatform, 'project');
+
+      await expect(fs.lstat(legacyLink)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(fs.readFile(path.join(target, 'SKILL.md'), 'utf8')).resolves.toBe(
+        '# Target Comet\n',
+      );
+      await expect(fs.readFile(path.join(target, 'keep.txt'), 'utf8')).resolves.toBe('keep\n');
+    },
+  );
 
   describe('file-system utilities', () => {
     describe('removeFile', () => {

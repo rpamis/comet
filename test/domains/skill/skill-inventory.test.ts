@@ -44,12 +44,12 @@ describe('skill inventory', () => {
 
   it('groups scanned Skills into user-facing inventory items', async () => {
     await writeSkill(
-      path.join(projectRoot, '.codex', 'skills', 'brainstorming'),
+      path.join(projectRoot, '.agents', 'skills', 'brainstorming'),
       'brainstorming',
       'Explore intent before implementation.',
     );
     await writeSkill(
-      path.join(homeDir, '.codex', 'skills', 'verification-before-completion'),
+      path.join(homeDir, '.agents', 'skills', 'verification-before-completion'),
       'verification-before-completion',
       'Verify evidence before completion.',
     );
@@ -81,10 +81,13 @@ description: Review code.
 
 # reviewing
 `;
-    await fs.mkdir(path.join(projectRoot, '.codex', 'skills', 'reviewing'), { recursive: true });
-    await fs.writeFile(path.join(projectRoot, '.codex', 'skills', 'reviewing', 'SKILL.md'), source);
-    await fs.mkdir(path.join(homeDir, '.codex', 'skills', 'reviewing'), { recursive: true });
-    await fs.writeFile(path.join(homeDir, '.codex', 'skills', 'reviewing', 'SKILL.md'), source);
+    await fs.mkdir(path.join(projectRoot, '.agents', 'skills', 'reviewing'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.agents', 'skills', 'reviewing', 'SKILL.md'),
+      source,
+    );
+    await fs.mkdir(path.join(homeDir, '.agents', 'skills', 'reviewing'), { recursive: true });
+    await fs.writeFile(path.join(homeDir, '.agents', 'skills', 'reviewing', 'SKILL.md'), source);
 
     const inventory = await buildSkillInventory({ projectRoot, homeDir, builtinRoot });
 
@@ -100,13 +103,13 @@ description: Review code.
 
   it('marks same-name different-hash installs as ambiguous', async () => {
     await writeSkill(
-      path.join(projectRoot, '.codex', 'skills', 'reviewing'),
+      path.join(projectRoot, '.agents', 'skills', 'reviewing'),
       'reviewing',
       'Project reviewer.',
       'project',
     );
     await writeSkill(
-      path.join(homeDir, '.codex', 'skills', 'reviewing'),
+      path.join(homeDir, '.agents', 'skills', 'reviewing'),
       'reviewing',
       'Global reviewer.',
       'global',

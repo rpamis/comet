@@ -21,6 +21,7 @@ import {
   getPlatformSkillsDirs,
   type Platform,
 } from '../../platform/install/platforms.js';
+import { hasPlatformDetectionPath } from '../../platform/install/detect.js';
 import {
   listProjectRegistryEntries,
   removeProjectInstallation,
@@ -124,6 +125,7 @@ interface AllProjectsUpdateResult {
 interface DetectTargetsOptions {
   scopes?: InstallScope[];
   globalBaseDir?: string;
+  respectDetectionPaths?: boolean;
 }
 
 function resolveTargetLanguage(
@@ -230,6 +232,12 @@ async function detectInstalledCometTargets(
     const baseDir = getScopedBaseDir(scope, projectPath, options.globalBaseDir);
 
     for (const platform of PLATFORMS) {
+      if (
+        options.respectDetectionPaths !== false &&
+        !(await hasPlatformDetectionPath(baseDir, platform))
+      ) {
+        continue;
+      }
       if (!(await hasLocalCometSkills(baseDir, platform, scope))) continue;
 
       targets.push({
@@ -453,6 +461,7 @@ async function updateSingleProject(
 
   const targets = await detectInstalledCometTargets(projectPath, {
     scopes: options.targetScopes ?? (options.scope ? [options.scope] : undefined),
+    respectDetectionPaths: options.scope === undefined,
   });
 
   if (targets.length === 0) {

@@ -108,6 +108,14 @@ async function hasOpenCodeCometCommands(baseDir: string, skillsDir: string, entr
   return cometEntries.every((entry) => commandEntries.includes(`${entry}.md`));
 }
 
+async function hasPlatformDetectionPath(baseDir: string, platform: Platform): Promise<boolean> {
+  if (!platform.detectionPaths || platform.detectionPaths.length === 0) return true;
+  for (const detectionPath of platform.detectionPaths) {
+    if (await fileExists(path.join(baseDir, detectionPath))) return true;
+  }
+  return false;
+}
+
 async function detectPlatforms(projectPath: string): Promise<Set<string>> {
   const detected = new Set<string>();
 
@@ -222,6 +230,7 @@ async function hasSkills(
 
 export {
   detectPlatforms,
+  hasPlatformDetectionPath,
   hasSkills,
   hasPluginSuperpowers,
   hasCodexPluginSuperpowers,

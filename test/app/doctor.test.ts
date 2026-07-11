@@ -147,7 +147,7 @@ describe('doctor command', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let output = '';
     try {
-      await doctorCommand(tmpDir, { scope: 'project' });
+      await doctorCommand(tmpDir);
       output = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
@@ -156,6 +156,27 @@ describe('doctor command', () => {
     expect(output).toContain('skills: Claude Code (project): partial');
     expect(output).toContain('run: comet update --scope project');
     expect(output).not.toContain('missing 31:');
+  });
+
+  it('reports an explicitly scoped canonical global Codex install without a detection path', async () => {
+    const fakeHome = path.join(tmpDir, 'canonical-global-home');
+    const manifest = JSON.parse(
+      await fs.readFile(path.resolve('assets', 'manifest.json'), 'utf8'),
+    ) as { skills: string[]; internalSkills?: string[] };
+    for (const relPath of [...new Set([...manifest.skills, ...(manifest.internalSkills ?? [])])]) {
+      const target = path.join(fakeHome, '.agents', 'skills', ...relPath.split('/'));
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, `${relPath}\n`);
+    }
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, { scope: 'global', homeDir: fakeHome });
+      const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(output).toContain('skills: Codex (global): complete');
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('reports legacy-only Codex skills as requiring update and canonical Codex skills as healthy', async () => {
@@ -171,7 +192,7 @@ describe('doctor command', () => {
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
-      await doctorCommand(tmpDir, { scope: 'project' });
+      await doctorCommand(tmpDir);
       const legacyOutput = log.mock.calls.map((call) => call.join(' ')).join('\n');
       expect(legacyOutput).toContain('skills: Codex (project): legacy');
       expect(legacyOutput).toContain('run: comet update --scope project');
@@ -185,6 +206,26 @@ describe('doctor command', () => {
       await doctorCommand(tmpDir, { scope: 'project' });
       const canonicalOutput = log.mock.calls.map((call) => call.join(' ')).join('\n');
       expect(canonicalOutput).toContain('skills: Codex (project): complete');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('does not report Codex healthy from shared canonical Skills without Codex detection paths', async () => {
+    const manifest = JSON.parse(
+      await fs.readFile(path.resolve('assets', 'manifest.json'), 'utf8'),
+    ) as { skills: string[]; internalSkills?: string[] };
+    for (const relPath of [...new Set([...manifest.skills, ...(manifest.internalSkills ?? [])])]) {
+      const target = path.join(tmpDir, '.agents', 'skills', ...relPath.split('/'));
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, `${relPath}\n`);
+    }
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir);
+      const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(output).not.toContain('skills: Codex (project)');
     } finally {
       log.mockRestore();
     }

@@ -149,6 +149,40 @@ describe('update command helpers', () => {
     expect(targets.map((t) => `${t.scope}:${t.platform.id}`)).toEqual(['global:codex']);
   });
 
+  it('does not infer Codex from a shared canonical Skill directory without Codex detection paths', async () => {
+    const projectDir = path.join(tmpDir, 'shared-agents-only');
+    await fs.mkdir(path.join(projectDir, '.agents', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDir, '.agents', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n',
+    );
+
+    const targets = await detectInstalledCometTargets(projectDir, { scopes: ['project'] });
+
+    expect(targets.map((target) => target.platform.id)).not.toContain('codex');
+  });
+
+  it('updates an explicitly scoped canonical global Codex install without a detection path', async () => {
+    const projectDir = path.join(tmpDir, 'explicit-global-project');
+    const fakeHome = path.join(tmpDir, 'explicit-global-home');
+    await fs.mkdir(path.join(fakeHome, '.agents', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(fakeHome, '.agents', 'skills', 'comet', 'SKILL.md'), '# Comet\n');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json = '';
+    try {
+      await updateCommand(projectDir, { json: true, skipNpm: true, scope: 'global' });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    expect(JSON.parse(json).skills.targets).toEqual([
+      expect.objectContaining({ scope: 'global', platform: 'codex' }),
+    ]);
+  });
+
   it('detects legacy global Pi skills so update can migrate them', async () => {
     const projectDir = path.join(tmpDir, 'project');
     const globalDir = path.join(tmpDir, 'home');

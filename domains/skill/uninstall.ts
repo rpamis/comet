@@ -1,5 +1,5 @@
 import path from 'path';
-import { readFile, writeFile } from 'fs/promises';
+import { lstat, readFile, writeFile } from 'fs/promises';
 
 import {
   fileExists,
@@ -29,6 +29,54 @@ interface RemovalResult {
 
 const OPENCODE_STYLE_PLATFORM_IDS = new Set(['opencode', 'mimocode']);
 
+async function removeManagedSkillsFromDirs(
+  baseDir: string,
+  skillsDirs: string[],
+  managedSkills: string[],
+): Promise<number> {
+  let removed = 0;
+  const managedByTopLevel = new Map<string, string[]>();
+  for (const skillRelPath of managedSkills) {
+    const topLevel = skillRelPath.split('/')[0];
+    const paths = managedByTopLevel.get(topLevel) ?? [];
+    paths.push(skillRelPath);
+    managedByTopLevel.set(topLevel, paths);
+  }
+
+  const parentDirs = new Set<string>();
+  for (const skillsDir of skillsDirs) {
+    for (const [topLevel, skillPaths] of managedByTopLevel) {
+      const topLevelPath = path.join(baseDir, skillsDir, 'skills', topLevel);
+      try {
+        if ((await lstat(topLevelPath)).isSymbolicLink()) {
+          if (await removeFile(topLevelPath)) removed++;
+          continue;
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+
+      for (const skillRelPath of skillPaths) {
+        if (await removeFile(path.join(baseDir, skillsDir, 'skills', skillRelPath))) removed++;
+        const parts = skillRelPath.split('/');
+        let current = topLevelPath;
+        parentDirs.add(current);
+        for (let index = 1; index < parts.length - 1; index++) {
+          current = path.join(current, parts[index]);
+          parentDirs.add(current);
+        }
+      }
+    }
+  }
+
+  for (const dir of [...parentDirs].sort(
+    (left, right) => right.split(path.sep).length - left.split(path.sep).length,
+  )) {
+    if (await isDirEmpty(dir)) await removeDir(dir);
+  }
+  return removed;
+}
+
 export async function removeLegacyCometSkillsForPlatform(
   baseDir: string,
   platform: Platform,
@@ -39,27 +87,10 @@ export async function removeLegacyCometSkillsForPlatform(
   if (legacyDirs.length === 0) return { removed: 0, failed: 0 };
 
   const managedSkills = getManagedSkillPaths(await readManifest());
-  let removed = 0;
-  const parentDirs = new Set<string>();
-  for (const legacyDir of legacyDirs) {
-    for (const skillRelPath of managedSkills) {
-      if (await removeFile(path.join(baseDir, legacyDir, 'skills', skillRelPath))) removed++;
-      const parts = skillRelPath.split('/');
-      if (!parts[0].startsWith('comet')) continue;
-      let current = path.join(baseDir, legacyDir, 'skills', parts[0]);
-      parentDirs.add(current);
-      for (let index = 1; index < parts.length - 1; index++) {
-        current = path.join(current, parts[index]);
-        parentDirs.add(current);
-      }
-    }
-  }
-  for (const dir of [...parentDirs].sort(
-    (left, right) => right.split(path.sep).length - left.split(path.sep).length,
-  )) {
-    if (await isDirEmpty(dir)) await removeDir(dir);
-  }
-  return { removed, failed: 0 };
+  return {
+    removed: await removeManagedSkillsFromDirs(baseDir, legacyDirs, managedSkills),
+    failed: 0,
+  };
 }
 
 async function removeCometSkillsForPlatform(
@@ -76,18 +107,8 @@ async function removeCometSkillsForPlatform(
       ...(scope === 'global' && platform.id === 'pi' ? [platform.skillsDir] : []),
     ]),
   ];
-  let removed = 0;
+  let removed = await removeManagedSkillsFromDirs(baseDir, uniqueSkillsDirs, managedSkills);
   const failed = 0;
-
-  for (const targetSkillsDir of uniqueSkillsDirs) {
-    for (const skillRelPath of managedSkills) {
-      const dest = path.join(baseDir, targetSkillsDir, 'skills', skillRelPath);
-      const result = await removeFile(dest);
-      if (result) {
-        removed++;
-      }
-    }
-  }
 
   if (OPENCODE_STYLE_PLATFORM_IDS.has(platform.id)) {
     const commandsDir = path.join(baseDir, skillsDir, 'commands');
@@ -111,30 +132,6 @@ async function removeCometSkillsForPlatform(
     }
     if (await isDirEmpty(extensionsDir)) {
       await removeDir(extensionsDir);
-    }
-  }
-
-  const parentDirs = new Set<string>();
-  for (const targetSkillsDir of uniqueSkillsDirs) {
-    for (const skillRelPath of managedSkills) {
-      const parts = skillRelPath.split('/');
-      if (parts[0].startsWith('comet')) {
-        let current = path.join(baseDir, targetSkillsDir, 'skills', parts[0]);
-        parentDirs.add(current);
-        for (let i = 1; i < parts.length - 1; i++) {
-          current = path.join(current, parts[i]);
-          parentDirs.add(current);
-        }
-      }
-    }
-  }
-
-  const sortedDirs = [...parentDirs].sort(
-    (a, b) => b.split(path.sep).length - a.split(path.sep).length,
-  );
-  for (const dir of sortedDirs) {
-    if (await isDirEmpty(dir)) {
-      await removeDir(dir);
     }
   }
 

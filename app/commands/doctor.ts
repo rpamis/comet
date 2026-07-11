@@ -13,6 +13,7 @@ import {
   getManagedSkillPaths,
 } from '../../domains/skill/platform-install.js';
 import { PLATFORMS, getPlatformSkillsDirs } from '../../platform/install/platforms.js';
+import { hasPlatformDetectionPath } from '../../platform/install/detect.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import { inspectClassicChange } from '../../domains/comet-classic/classic-diagnostics.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
@@ -183,6 +184,7 @@ async function checkSkillCompleteness(
   };
   for (const base of getScopeBases(projectPath, scope, context)) {
     for (const platform of PLATFORMS) {
+      if (scope === 'auto' && !(await hasPlatformDetectionPath(base.baseDir, platform))) continue;
       const skillsDirs = getPlatformSkillsDirs(platform, base.scope);
       const canonicalSkillsDir = skillsDirs[0];
       let detectedSkillsDir: string | undefined;

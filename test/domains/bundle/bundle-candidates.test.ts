@@ -91,7 +91,7 @@ policies:
   });
 
   it('preserves preference order on candidates and sources', async () => {
-    const brainstormingSkill = path.join(projectRoot, '.codex', 'skills', 'brainstorming');
+    const brainstormingSkill = path.join(projectRoot, '.agents', 'skills', 'brainstorming');
     const writingPlansSkill = path.join(homeDir, '.agents', 'skills', 'writing-plans');
     await writeSkill(brainstormingSkill, 'brainstorming', 'Explore intent before implementation.');
     await writeSkill(writingPlansSkill, 'writing-plans', 'Write implementation plans.');
@@ -151,7 +151,7 @@ policies:
 
   it('reads actual SKILL.md descriptions and reports ambiguous providers', async () => {
     const claudeSkill = path.join(projectRoot, '.claude', 'skills', 'brainstorming');
-    const codexSkill = path.join(homeDir, '.codex', 'skills', 'brainstorming');
+    const codexSkill = path.join(homeDir, '.agents', 'skills', 'brainstorming');
     await writeSkill(claudeSkill, 'brainstorming', 'Explore intent before implementation.');
     await writeSkill(codexSkill, 'brainstorming', 'Generate and compare design options.');
     const realClaudeSkill = await fs.realpath(claudeSkill);

@@ -75,12 +75,12 @@ describe('Skill Creator first-use guide', () => {
 
   it('guides first-use projects without saved preferences', async () => {
     await writeSkill(
-      path.join(projectRoot, '.codex', 'skills', 'brainstorming'),
+      path.join(projectRoot, '.agents', 'skills', 'brainstorming'),
       'brainstorming',
       'Explore intent before implementation.',
     );
     await writeSkill(
-      path.join(homeDir, '.codex', 'skills', 'writing-plans'),
+      path.join(homeDir, '.agents', 'skills', 'writing-plans'),
       'writing-plans',
       'Write implementation plans.',
     );
