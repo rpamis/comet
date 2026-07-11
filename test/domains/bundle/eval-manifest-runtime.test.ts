@@ -99,7 +99,30 @@ skill: {}
     );
 
     await expect(prepareEvalManifest(manifestPath)).rejects.toThrow(
-      'Cannot resolve <current-bundle-hash>',
+      expect.objectContaining({
+        message: expect.stringContaining(
+          `Cannot resolve <current-bundle-hash> for ${manifestPath}`,
+        ),
+      }),
+    );
+    await expect(prepareEvalManifest(manifestPath)).rejects.toThrow(
+      'The placeholder only applies to a generated manifest still inside its Bundle draft',
+    );
+  });
+
+  it('wraps Bundle loading failures with manifest context and the original cause', async () => {
+    const { root, manifestPath } = await createBundleFixture();
+    await fs.writeFile(path.join(root, 'bundle.yaml'), 'kind: NotABundle\n');
+
+    const failure = await prepareEvalManifest(manifestPath).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({
+      message: expect.stringContaining(`Cannot resolve <current-bundle-hash> for ${manifestPath}`),
+      cause: expect.any(Error),
+    });
+    expect((failure as Error).message).toContain(
+      'Fix the enclosing Bundle draft or replace the placeholder with a concrete draft hash',
     );
   });
 
