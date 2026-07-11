@@ -41,7 +41,7 @@ function normalizedCwd(changeDir: string, cwd = '.'): string {
   return path.relative(root, target).replaceAll('\\', '/') || '.';
 }
 
-function validRecord(event: TrajectoryEvent): RecordedCommandCheck | null {
+function validRecord(changeDir: string, event: TrajectoryEvent): RecordedCommandCheck | null {
   if (event.type !== 'command_check_recorded') return null;
   const { scope, command, exitCode, cwd } = event.data;
   if (
@@ -53,6 +53,12 @@ function validRecord(event: TrajectoryEvent): RecordedCommandCheck | null {
   ) {
     return null;
   }
+  let normalized: string;
+  try {
+    normalized = normalizedCwd(changeDir, cwd);
+  } catch {
+    return null;
+  }
   return {
     sequence: event.sequence,
     timestamp: event.timestamp,
@@ -60,7 +66,7 @@ function validRecord(event: TrajectoryEvent): RecordedCommandCheck | null {
     scope,
     command,
     exitCode: exitCode as number,
-    cwd,
+    cwd: normalized,
   };
 }
 
@@ -111,7 +117,7 @@ export async function latestCommandCheck(
   for (let index = trajectory.length - 1; index >= 0; index -= 1) {
     const event = trajectory[index];
     if (event.runId !== run.runId) continue;
-    const record = validRecord(event);
+    const record = validRecord(changeDir, event);
     if (record?.scope === scope) return record;
   }
   return null;

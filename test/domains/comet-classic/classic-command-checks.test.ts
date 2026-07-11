@@ -100,6 +100,35 @@ describe('Classic command check evidence', () => {
     expect(await latestCommandCheck(changeDir, run, 'build')).toBeNull();
   });
 
+  it('ignores newer records with invalid cwd and normalizes the older valid cwd', async () => {
+    const timestamp = new Date().toISOString();
+    const events = [
+      { sequence: 1, cwd: 'packages/../src', command: 'npm run build' },
+      { sequence: 2, cwd: '', command: 'blank cwd' },
+      { sequence: 3, cwd: '../outside', command: 'traversal cwd' },
+      { sequence: 4, cwd: path.resolve(projectRoot, '..', 'outside'), command: 'absolute cwd' },
+    ];
+    for (const event of events) {
+      await appendTrajectory(changeDir, run.trajectoryRef, {
+        sequence: event.sequence,
+        timestamp,
+        type: 'command_check_recorded',
+        runId: run.runId,
+        data: { scope: 'build', command: event.command, exitCode: 0, cwd: event.cwd },
+      });
+    }
+
+    expect(await latestCommandCheck(changeDir, run, 'build')).toEqual({
+      sequence: 1,
+      timestamp,
+      runId: run.runId,
+      scope: 'build',
+      command: 'npm run build',
+      exitCode: 0,
+      cwd: 'src',
+    });
+  });
+
   it.each([
     [{ scope: 'deploy', command: 'npm test', exitCode: 0 }, /scope/i],
     [{ scope: 'build', command: '   ', exitCode: 0 }, /command/i],
