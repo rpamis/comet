@@ -135,6 +135,30 @@ describe('comet init E2E', () => {
     expect(printCometBanner).toHaveBeenLastCalledWith({ enabled: false });
   });
 
+  it('waits for the banner before printing version info', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    let resolveBanner!: () => void;
+    const bannerDone = new Promise<void>((resolve) => {
+      resolveBanner = resolve;
+    });
+    const { printCometBanner } = await import('../../app/cli/comet-banner.js');
+    const { printVersionInfo } = await import('../../platform/version/version.js');
+    vi.mocked(printCometBanner).mockImplementationOnce(() => bannerDone);
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    const initPromise = captureTextOutput(() => initCommand(tmpDir, { yes: true, language: 'en' }));
+    await vi.waitFor(() => expect(printCometBanner).toHaveBeenCalledWith({ enabled: true }));
+    expect(printVersionInfo).not.toHaveBeenCalled();
+
+    resolveBanner();
+    await initPromise;
+
+    expect(vi.mocked(printCometBanner).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(printVersionInfo).mock.invocationCallOrder[0],
+    );
+  });
+
   it(
     'installs Comet skills at project scope with --yes --json',
     async () => {
