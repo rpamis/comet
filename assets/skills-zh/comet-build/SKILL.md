@@ -205,6 +205,14 @@ git add docs/superpowers/plans/YYYY-MM-DD-feature.md
 git commit -m "chore: add implementation plan"
 ```
 
+进入最终执行分支或 worktree 后，必须在该实际工作区重新绑定当前 change。branch 切换会使入口绑定失效，新 worktree 也不会继承原工作区的本地选择文件：
+
+```bash
+comet state select <change-name>
+```
+
+重新绑定成功后才能开始源码写入。
+
 **执行计划**：必须按 `build_mode` 的真实运行位置处理。
 
 - `build_mode: executing-plans`：**立即执行：** 使用 Skill 工具加载 Superpowers `executing-plans` 技能。禁止跳过此步骤。若该技能不可用，停止流程并提示安装或启用对应技能，不要用普通对话替代该步骤。技能加载后，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`。按计划执行。

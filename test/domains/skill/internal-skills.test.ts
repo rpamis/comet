@@ -48,6 +48,13 @@ describe('internal Skill assets', () => {
     ]);
     expect(chineseRule).toContain('多个 active change');
     expect(englishRule).toContain('multiple active changes');
+
+    const [chineseBuild, englishBuild] = await Promise.all([
+      fs.readFile(path.resolve('assets/skills-zh/comet-build/SKILL.md'), 'utf8'),
+      fs.readFile(path.resolve('assets/skills/comet-build/SKILL.md'), 'utf8'),
+    ]);
+    expect(chineseBuild.match(/comet state select <change-name>/gu)).toHaveLength(2);
+    expect(englishBuild.match(/comet state select <change-name>/gu)).toHaveLength(2);
   });
 
   it('includes internal Skills in managed lifecycle paths', () => {

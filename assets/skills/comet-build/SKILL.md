@@ -205,6 +205,14 @@ git add docs/superpowers/plans/YYYY-MM-DD-feature.md
 git commit -m "chore: add implementation plan"
 ```
 
+After entering the final execution branch or worktree, bind the current change again inside that actual workspace. A branch switch invalidates the entry binding, and a new worktree does not inherit the original workspace-local selection file:
+
+```bash
+comet state select <change-name>
+```
+
+Do not begin source writes until this binding succeeds.
+
 **Execute plan**: Must handle execution according to the actual runtime of `build_mode`.
 
 - `build_mode: executing-plans`: **Immediately execute:** Use the Skill tool to load the Superpowers `executing-plans` skill. Skipping this step is prohibited. If the skill is unavailable, stop the process and prompt to install or enable the corresponding skill; do not substitute with normal conversation. After the skill loads, ARGUMENTS must include the same Language constraint as Step 1: `Language: Use the configured Comet artifact language from comet state get <name> language`. Execute according to plan.
