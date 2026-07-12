@@ -13,7 +13,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **CLI brand experience**: `comet init` now keeps a fixed-grid Comet logo centered over a gold tagline while the banner remains aligned with the rest of the CLI, and introduces it with a vivid 1.8-second blue comet approach, sweep, particle release, and tagline reveal in compatible interactive terminals. Automated, colorless, or narrow output receives a stable static banner. CLI and package metadata use the clearer "Agent Skill Harness For Turning Ideas Into Evaluated Workflows" tagline.
+- **CLI brand experience**: `comet init` now keeps a fixed-grid cyan-blue Comet logo centered over a gold tagline while the banner remains aligned with the rest of the CLI, and introduces it with a vivid 1.8-second comet approach, sweep, particle release, and tagline reveal in compatible interactive terminals. Automated, colorless, or narrow output receives a stable static banner. CLI and package metadata use the clearer "Agent Skill Harness For Turning Ideas Into Evaluated Workflows" tagline.
 - **Mixed change status**: `comet status` now distinguishes Comet-managed and plain OpenSpec changes and recommends the correct archive command for ready changes ([#187](https://github.com/rpamis/comet/issues/187)).
 
 ### Fixed
