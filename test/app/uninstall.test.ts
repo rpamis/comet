@@ -434,6 +434,33 @@ describe('uninstall', () => {
       expect(allCommands.some((c: string) => c.includes('comet-hook-guard'))).toBe(false);
     });
 
+    it('removes CodeBuddy hooks while preserving user settings and hooks', async () => {
+      const codebuddyPlatform: Platform = PLATFORMS.find((p) => p.id === 'codebuddy')!;
+      const settingsDir = path.join(tmpDir, '.codebuddy');
+      const settingsPath = path.join(settingsDir, 'settings.json');
+      const settings = {
+        enabledPlugins: { 'user-plugin@example': true },
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Write|Edit',
+              hooks: [{ type: 'command', command: 'node user-hook.mjs' }],
+            },
+          ],
+        },
+      };
+      await fs.mkdir(settingsDir, { recursive: true });
+      await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+
+      await installCometHooksForPlatform(tmpDir, codebuddyPlatform, 'project');
+      const result = await removeCometHooksForPlatform(tmpDir, codebuddyPlatform, 'project');
+
+      expect(result.removed).toBeGreaterThan(0);
+      const updated = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
+      expect(updated.enabledPlugins).toEqual(settings.enabledPlugins);
+      expect(updated.hooks.PreToolUse).toEqual(settings.hooks.PreToolUse);
+    });
+
     it('removes Copilot hook file', async () => {
       const copilotPlatform: Platform = PLATFORMS.find((p) => p.id === 'github-copilot')!;
 

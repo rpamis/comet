@@ -13,7 +13,7 @@ import {
   renderProjectConfig,
   mergeProjectConfig,
 } from '../../../domains/skill/platform-install.js';
-import type { Platform } from '../../../platform/install/platforms.js';
+import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
 import { resolveArtifactLanguage } from '../../../domains/skill/languages.js';
 
 describe('skills', () => {
@@ -292,8 +292,8 @@ describe('skills', () => {
     const staleCometCommand = 'bash .legacy/skills/comet/scripts/comet-hook-guard.sh';
     const currentCometScript = 'comet/scripts/comet-hook-guard.mjs';
     const normalized = (value: string) => value.replace(/\\/g, '/');
-    const expectedHookCommand = (skillsDir: string) =>
-      `node "${normalized(path.join(tmpDir, skillsDir, 'skills', ...currentCometScript.split('/')))}" --project-root "${normalized(tmpDir)}"`;
+    const expectedHookCommand = (skillsDir: string, baseDir = tmpDir) =>
+      `node "${normalized(path.join(baseDir, skillsDir, 'skills', ...currentCometScript.split('/')))}" --project-root "${normalized(baseDir)}"`;
 
     it('merges Claude-style hooks into an existing matcher group without replacing user hooks', async () => {
       const platform: Platform = {
@@ -385,6 +385,7 @@ describe('skills', () => {
     it.each([
       { id: 'qwen', skillsDir: '.qwen', hookFormat: 'qwen' as const },
       { id: 'qoder', skillsDir: '.qoder', hookFormat: 'qoder' as const },
+      { id: 'codebuddy', skillsDir: '.codebuddy', hookFormat: 'codebuddy' as const },
     ])(
       'merges $id hooks into the existing matcher group idempotently',
       async ({ id, skillsDir, hookFormat }) => {
@@ -447,6 +448,42 @@ describe('skills', () => {
         expect(secondInstall).toEqual(firstInstall);
       },
     );
+
+    it('writes global CodeBuddy hooks to ~/.codebuddy/settings.json without replacing user config', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'codebuddy')!;
+      const homeDir = path.join(tmpDir, 'home');
+      const settingsPath = path.join(homeDir, '.codebuddy', 'settings.json');
+      const initialSettings = {
+        enabledPlugins: { 'cloudbase@codebuddy-plugins-official': true },
+      };
+      await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+      await fs.writeFile(settingsPath, JSON.stringify(initialSettings), 'utf-8');
+
+      await expect(installCometHooksForPlatform(homeDir, platform, 'global')).resolves.toEqual({
+        installed: true,
+      });
+
+      const updated = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
+      expect(updated.enabledPlugins).toEqual(initialSettings.enabledPlugins);
+      expect(updated.hooks.PreToolUse).toHaveLength(1);
+      expect(updated.hooks.PreToolUse[0].hooks[0].command).toBe(
+        expectedHookCommand('.codebuddy', homeDir),
+      );
+    });
+
+    it('leaves invalid CodeBuddy settings byte-for-byte unchanged', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'codebuddy')!;
+      const settingsPath = path.join(tmpDir, '.codebuddy', 'settings.json');
+      const invalidSettings = '{\r\n  "enabledPlugins": {\r\n';
+      await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+      await fs.writeFile(settingsPath, invalidSettings, 'utf-8');
+
+      const result = await installCometHooksForPlatform(tmpDir, platform, 'project');
+
+      expect(result.installed).toBe(false);
+      expect(result.reason).toContain('Invalid codebuddy settings');
+      await expect(fs.readFile(settingsPath, 'utf-8')).resolves.toBe(invalidSettings);
+    });
 
     it('merges Gemini hooks into the existing matcher group idempotently', async () => {
       const platform: Platform = {

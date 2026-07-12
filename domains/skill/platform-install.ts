@@ -723,6 +723,7 @@ ${content}`;
  *   'claude-code' — settings.local.json with PreToolUse array (Claude Code, Codex, Amazon Q)
  *   'qwen' — settings.json with PreToolUse/hooks array (Qwen Code)
  *   'qoder' — settings.json with PreToolUse/hooks array (Qoder)
+ *   'codebuddy' — settings.json with PreToolUse/hooks array (CodeBuddy Code)
  *   'gemini' — settings.json with hooks.BeforeTool array (Gemini CLI)
  *   'windsurf' — hooks.json with pre_write_code array
  *   'copilot' — hooks/*.json with preToolUse
@@ -750,18 +751,25 @@ async function installCometHooksForPlatform(
   try {
     switch (hookFormat) {
       case 'claude-code':
-        return installClaudeCodeHooks(baseDir, platformBase, skillsDir, hooksConfig);
+        return await installClaudeCodeHooks(baseDir, platformBase, skillsDir, hooksConfig);
       case 'qwen':
       case 'qoder':
-        return installQwenStyleHooks(baseDir, platformBase, skillsDir, hooksConfig, hookFormat);
+      case 'codebuddy':
+        return await installQwenStyleHooks(
+          baseDir,
+          platformBase,
+          skillsDir,
+          hooksConfig,
+          hookFormat,
+        );
       case 'gemini':
-        return installGeminiHooks(baseDir, platformBase, skillsDir, hooksConfig);
+        return await installGeminiHooks(baseDir, platformBase, skillsDir, hooksConfig);
       case 'windsurf':
-        return installWindsurfHooks(baseDir, platformBase, skillsDir, hooksConfig);
+        return await installWindsurfHooks(baseDir, platformBase, skillsDir, hooksConfig);
       case 'copilot':
-        return installCopilotHooks(baseDir, platformBase, skillsDir, hooksConfig);
+        return await installCopilotHooks(baseDir, platformBase, skillsDir, hooksConfig);
       case 'kiro':
-        return installKiroHooks(baseDir, platformBase, skillsDir, hooksConfig);
+        return await installKiroHooks(baseDir, platformBase, skillsDir, hooksConfig);
       default:
         return { installed: false, reason: `unsupported hook format: ${hookFormat}` };
     }
@@ -838,6 +846,28 @@ function asHookGroup(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
 }
 
+async function readSettingsJsonObject(
+  settingsPath: string,
+  hookFormat: string,
+): Promise<Record<string, unknown>> {
+  if (!(await fileExists(settingsPath))) return {};
+
+  try {
+    const parsed = JSON.parse(await readFile(settingsPath, 'utf-8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('expected a JSON object');
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(
+      `Invalid ${hookFormat} settings at ${settingsPath}: ${(error as Error).message}`,
+      {
+        cause: error,
+      },
+    );
+  }
+}
+
 /**
  * Claude Code, Codex, Amazon Q format:
  * Writes to settings.local.json with { hooks: { PreToolUse: [...] } }
@@ -890,7 +920,7 @@ async function installClaudeCodeHooks(
 }
 
 /**
- * Qwen Code / Qoder format:
+ * Qwen Code / Qoder / CodeBuddy format:
  * Writes to settings.json with { hooks: { PreToolUse: [{ matcher, hooks: [{ type, command }] }] } }
  */
 async function installQwenStyleHooks(
@@ -898,7 +928,7 @@ async function installQwenStyleHooks(
   platformBase: string,
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
-  _hookFormat: string,
+  hookFormat: string,
 ): Promise<{ installed: boolean; reason?: string }> {
   const settingsPath = path.join(platformBase, 'settings.json');
 
@@ -923,14 +953,7 @@ async function installQwenStyleHooks(
     hooks,
   }));
 
-  let settings: Record<string, unknown> = {};
-  if (await fileExists(settingsPath)) {
-    try {
-      settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
-    } catch {
-      settings = {};
-    }
-  }
+  const settings = await readSettingsJsonObject(settingsPath, hookFormat);
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
   const existingPreToolUse = asHookGroup(existingHooks.PreToolUse);

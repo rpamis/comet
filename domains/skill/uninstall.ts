@@ -225,6 +225,7 @@ async function removeCometHooksForPlatform(
         return removeClaudeCodeHooks(platformBase, scriptRelPaths);
       case 'qwen':
       case 'qoder':
+      case 'codebuddy':
         return removeQwenStyleHooks(platformBase, scriptRelPaths);
       case 'gemini':
         return removeGeminiHooks(platformBase, scriptRelPaths);

@@ -26,7 +26,15 @@ export interface Platform {
   /** Whether this platform supports PreToolUse hooks. */
   supportsHooks?: boolean;
   /** Hook configuration format. Determines how installCometHooksForPlatform writes the hook config. */
-  hookFormat?: 'claude-code' | 'gemini' | 'windsurf' | 'copilot' | 'qwen' | 'kiro' | 'qoder';
+  hookFormat?:
+    | 'claude-code'
+    | 'gemini'
+    | 'windsurf'
+    | 'copilot'
+    | 'qwen'
+    | 'kiro'
+    | 'qoder'
+    | 'codebuddy';
 }
 
 export function getPlatformSkillsDir(platform: Platform, scope: InstallScope): string {
@@ -228,7 +236,15 @@ export const PLATFORMS: Platform[] = [
     rulesFormat: 'md',
   },
   { id: 'junie', name: 'Junie', skillsDir: '.junie', openspecToolId: 'junie' },
-  { id: 'codebuddy', name: 'CodeBuddy Code', skillsDir: '.codebuddy', openspecToolId: 'codebuddy' },
+  {
+    id: 'codebuddy',
+    name: 'CodeBuddy Code',
+    skillsDir: '.codebuddy',
+    globalSkillsDir: '.codebuddy',
+    openspecToolId: 'codebuddy',
+    supportsHooks: true,
+    hookFormat: 'codebuddy',
+  },
   { id: 'costrict', name: 'CoStrict', skillsDir: '.cospec', openspecToolId: 'costrict' },
   { id: 'crush', name: 'Crush', skillsDir: '.crush', openspecToolId: 'crush' },
   { id: 'factory', name: 'Factory Droid', skillsDir: '.factory', openspecToolId: 'factory' },

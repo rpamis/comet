@@ -108,6 +108,7 @@ function hookDestination(target: BundlePlatformTarget, hookId: string): string |
       return path.join(platformRoot, 'settings.local.json');
     case 'qwen':
     case 'qoder':
+    case 'codebuddy':
     case 'gemini':
       return path.join(platformRoot, 'settings.json');
     case 'windsurf':
@@ -276,7 +277,8 @@ async function applyHookInstallFile(file: PlatformInstallFile): Promise<void> {
   switch (operation.format) {
     case 'claude-code':
     case 'qwen':
-    case 'qoder': {
+    case 'qoder':
+    case 'codebuddy': {
       hooks.PreToolUse = mergeCommandHookGroup(
         asHookGroups(hooks.PreToolUse),
         matcher,
