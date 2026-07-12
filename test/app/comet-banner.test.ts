@@ -65,8 +65,13 @@ describe('Comet CLI banner rendering', () => {
     expect(output).toContain('·');
     expect(output).toContain('•');
     expect(output).toContain(COMET_TAGLINE);
-    expect(sleeps.reduce((sum, value) => sum + value, 0)).toBeGreaterThanOrEqual(600);
-    expect(sleeps.reduce((sum, value) => sum + value, 0)).toBeLessThanOrEqual(800);
+    expect(sleeps).toEqual([...Array<number>(13).fill(45), 55, 55]);
+
+    const lastParticleFrame = chunks.findLastIndex((chunk) => chunk.includes('    ·'));
+    const stableFrame = chunks.findIndex((chunk) => chunk.includes(COMET_LOGO[0]));
+    expect(lastParticleFrame).toBeGreaterThan(-1);
+    expect(stableFrame).toBeGreaterThan(lastParticleFrame);
+    expect(output.endsWith('\u001b[0m\u001b[?25h\n')).toBe(true);
   });
 
   it('prints plain static output when animation is unavailable or fails', async () => {
@@ -90,8 +95,34 @@ describe('Comet CLI banner rendering', () => {
         },
       }),
     ).resolves.toBeUndefined();
-    expect(fallbackChunks.join('')).toContain('\u001b[?25h');
-    expect(fallbackChunks.join('')).toContain(COMET_TAGLINE);
+    const fallback = fallbackChunks.at(-1) ?? '';
+    const cleanupStart = fallback.indexOf(`\u001b[${COMET_BANNER_LINE_COUNT}A`);
+    const staticBannerStart = fallback.indexOf(`\n${renderCometBanner()}\n\n`);
+    expect(fallback).toContain('\u001b[?25h');
+    expect(cleanupStart).toBeGreaterThan(-1);
+    expect(fallback.split('\u001b[2K')).toHaveLength(COMET_BANNER_LINE_COUNT + 1);
+    expect(cleanupStart).toBeLessThan(staticBannerStart);
+  });
+
+  it('does not reject when animation and fallback writes both fail', async () => {
+    let writeAttempts = 0;
+
+    await expect(
+      printCometBanner({
+        runtime: {
+          isTTY: true,
+          env: {},
+          write: () => {
+            writeAttempts += 1;
+            if (writeAttempts >= 3) throw new Error('output failed');
+          },
+          sleep: async () => {
+            throw new Error('timer failed');
+          },
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(writeAttempts).toBe(3);
   });
 
   it('writes nothing when disabled for JSON mode', async () => {

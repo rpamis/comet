@@ -86,13 +86,21 @@ function clearRenderedFrame(): string {
   return `\u001b[${COMET_BANNER_LINE_COUNT}A${lines}\n`;
 }
 
+function writeSafely(runtime: Pick<BannerRuntime, 'write'>, chunk: string): void {
+  try {
+    runtime.write(chunk);
+  } catch {
+    // Output failures cannot be recovered when the stream itself is unavailable.
+  }
+}
+
 export async function printCometBanner(
   options: { enabled?: boolean; runtime?: Partial<BannerRuntime> } = {},
 ): Promise<void> {
   if (options.enabled === false) return;
   const runtime = { ...defaultRuntime, ...options.runtime };
   if (!canAnimateCometBanner(runtime)) {
-    runtime.write(`\n${renderCometBanner()}\n\n`);
+    writeSafely(runtime, `\n${renderCometBanner()}\n\n`);
     return;
   }
 
@@ -112,6 +120,6 @@ export async function printCometBanner(
     runtime.write(`${RESET}${SHOW_CURSOR}\n`);
   } catch {
     const cleanup = started ? clearRenderedFrame() : '';
-    runtime.write(`${RESET}${SHOW_CURSOR}${cleanup}\n${renderCometBanner()}\n\n`);
+    writeSafely(runtime, `${RESET}${SHOW_CURSOR}${cleanup}\n${renderCometBanner()}\n\n`);
   }
 }
