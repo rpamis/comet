@@ -61,12 +61,12 @@ describe('Comet CLI banner rendering', () => {
     expect(banner).toContain(`\u001b[38;2;208;151;53m  ${COMET_TAGLINE}`);
   });
 
-  it('uses deep blue, bright cyan-blue, and rgb(77, 197, 242) across a sweep frame', () => {
+  it('uses deep blue, bright cyan-blue, and rgb(47, 140, 255) across a sweep frame', () => {
     const frame = renderCometBannerFrame(24, 1);
 
     expect(frame).toContain('\u001b[38;2;22;78;154m');
     expect(frame).toContain('\u001b[38;2;88;184;255m');
-    expect(frame).toContain('\u001b[38;2;77;197;242m');
+    expect(frame).toContain('\u001b[38;2;47;140;255m');
     expect(frame).toContain('·');
     expect(frame).toContain('\u001b[0m');
 
