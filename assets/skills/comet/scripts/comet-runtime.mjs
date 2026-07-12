@@ -11581,8 +11581,140 @@ var classicHandoffCommand = async (args) => {
 };
 
 // domains/comet-classic/classic-hook-guard.ts
-import { existsSync as existsSync2, promises as fs17, readFileSync as readFileSync3 } from "fs";
+import { existsSync as existsSync2, promises as fs18, readFileSync as readFileSync3 } from "fs";
+import path19 from "path";
+
+// domains/comet-classic/classic-current-change.ts
+import { execFileSync } from "child_process";
+import { randomUUID as randomUUID6 } from "crypto";
+import { promises as fs17 } from "fs";
 import path18 from "path";
+function currentChangeFile(projectRoot2) {
+  return path18.join(projectRoot2, ".comet", "current-change.json");
+}
+function currentBranch(projectRoot2) {
+  try {
+    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: projectRoot2,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    return branch && branch !== "HEAD" ? branch : null;
+  } catch {
+    return null;
+  }
+}
+function changeDirectory(projectRoot2, changeName) {
+  return path18.join(projectRoot2, "openspec", "changes", changeName);
+}
+async function validateActiveChange(projectRoot2, changeName) {
+  assertOpenSpecChangeName(changeName);
+  const changeDir = changeDirectory(projectRoot2, changeName);
+  try {
+    await fs17.access(path18.join(changeDir, ".comet.yaml"));
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new Error(
+        `Cannot select current change '${changeName}': active change state not found`,
+        {
+          cause: error
+        }
+      );
+    }
+    throw error;
+  }
+  const projection = await readClassicState(changeDir, { migrate: false });
+  if (!projection.classic) {
+    throw new Error(`Cannot select current change '${changeName}': Classic state is incomplete`);
+  }
+  if (projection.classic.archived) {
+    throw new Error(`Cannot select current change '${changeName}': change is archived`);
+  }
+}
+function parseSelection(source) {
+  let value;
+  try {
+    value = JSON.parse(source);
+  } catch (error) {
+    throw new Error(
+      `current change selection contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("current change selection must be a JSON object");
+  }
+  const record = value;
+  if (record.version !== 1) {
+    throw new Error("current change selection version must be 1");
+  }
+  if (typeof record.change !== "string") {
+    throw new Error("current change selection change must be a string");
+  }
+  assertOpenSpecChangeName(record.change);
+  if (record.branch !== null && typeof record.branch !== "string") {
+    throw new Error("current change selection branch must be a string or null");
+  }
+  return {
+    version: 1,
+    change: record.change,
+    branch: record.branch
+  };
+}
+async function selectCurrentChange(projectRoot2, changeName) {
+  await validateActiveChange(projectRoot2, changeName);
+  const selection = {
+    version: 1,
+    change: changeName,
+    branch: currentBranch(projectRoot2)
+  };
+  const file = currentChangeFile(projectRoot2);
+  const temporary = `${file}.${randomUUID6()}.tmp`;
+  await fs17.mkdir(path18.dirname(file), { recursive: true });
+  try {
+    await fs17.writeFile(temporary, JSON.stringify(selection, null, 2) + "\n", "utf8");
+    await fs17.rename(temporary, file);
+  } catch (error) {
+    await fs17.rm(temporary, { force: true });
+    throw error;
+  }
+  return selection;
+}
+async function resolveCurrentChange(projectRoot2) {
+  let source;
+  try {
+    source = await fs17.readFile(currentChangeFile(projectRoot2), "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return { status: "missing" };
+    return {
+      status: "stale",
+      reason: `cannot read current change selection: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+  let selection;
+  try {
+    selection = parseSelection(source);
+    await validateActiveChange(projectRoot2, selection.change);
+  } catch (error) {
+    return {
+      status: "stale",
+      reason: error instanceof Error ? error.message : String(error)
+    };
+  }
+  const branch = currentBranch(projectRoot2);
+  if (selection.branch !== null && branch !== selection.branch) {
+    return {
+      status: "stale",
+      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${branch ?? "detached HEAD"}'`
+    };
+  }
+  return { status: "selected", selection };
+}
+async function clearCurrentChange(projectRoot2) {
+  await fs17.rm(currentChangeFile(projectRoot2), { force: true });
+}
+
+// domains/comet-classic/classic-hook-guard.ts
 function result(exitCode, message) {
   return { exitCode, stderr: message + "\n" };
 }
@@ -11607,52 +11739,52 @@ function normalized(value) {
 function parseProjectRoot(args) {
   const index = args.indexOf("--project-root");
   const value = index >= 0 ? args[index + 1] : void 0;
-  return path18.resolve(value && !value.startsWith("--") ? value : process.cwd());
+  return path19.resolve(value && !value.startsWith("--") ? value : process.cwd());
 }
 function relativeToProjectRoot(target, projectRoot2) {
-  const relative = normalized(path18.relative(projectRoot2, target));
+  const relative = normalized(path19.relative(projectRoot2, target));
   if (relative === "") return "";
-  if (relative.startsWith("../") || relative === ".." || path18.isAbsolute(relative)) return null;
+  if (relative.startsWith("../") || relative === ".." || path19.isAbsolute(relative)) return null;
   return relative;
 }
 async function physicalPathForPossiblyMissingTarget(target) {
-  const resolved = path18.resolve(target);
-  const root = path18.parse(resolved).root;
+  const resolved = path19.resolve(target);
+  const root = path19.parse(resolved).root;
   const missingSegments = [];
   let cursor = resolved;
   while (cursor && cursor !== root) {
     try {
-      const physicalBase = await fs17.realpath(cursor);
-      return path18.join(physicalBase, ...missingSegments.reverse());
+      const physicalBase = await fs18.realpath(cursor);
+      return path19.join(physicalBase, ...missingSegments.reverse());
     } catch (error) {
       const code = error.code;
       if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
-      missingSegments.push(path18.basename(cursor));
-      cursor = path18.dirname(cursor);
+      missingSegments.push(path19.basename(cursor));
+      cursor = path19.dirname(cursor);
     }
   }
   try {
-    const physicalRoot = await fs17.realpath(root);
-    return path18.join(physicalRoot, ...missingSegments.reverse());
+    const physicalRoot = await fs18.realpath(root);
+    return path19.join(physicalRoot, ...missingSegments.reverse());
   } catch {
     return null;
   }
 }
 async function projectRelative(target, projectRoot2) {
-  const rawCandidate = path18.isAbsolute(target) ? target : path18.resolve(process.cwd(), target);
+  const rawCandidate = path19.isAbsolute(target) ? target : path19.resolve(process.cwd(), target);
   let candidate = normalized(rawCandidate);
   const rootRelative = relativeToProjectRoot(rawCandidate, projectRoot2);
   if (rootRelative !== null) return rootRelative;
   try {
     const physicalCandidate = await physicalPathForPossiblyMissingTarget(rawCandidate);
-    const physicalRoot = await fs17.realpath(projectRoot2);
+    const physicalRoot = await fs18.realpath(projectRoot2);
     if (physicalCandidate) {
       const physicalRootRelative = relativeToProjectRoot(physicalCandidate, physicalRoot);
       if (physicalRootRelative !== null) return physicalRootRelative;
       candidate = normalized(physicalCandidate);
     }
   } catch {
-    if (!path18.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
+    if (!path19.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
   }
   return candidate.replace(/^\.\//u, "");
 }
@@ -11677,26 +11809,20 @@ async function loadGoverningChange(changeDir) {
   }
 }
 async function activeChanges(projectRoot2) {
-  const changesDir = path18.join(projectRoot2, "openspec", "changes");
+  const changesDir = path19.join(projectRoot2, "openspec", "changes");
   const governingChanges = [];
   if (!existsSync2(changesDir)) return governingChanges;
-  for (const entry2 of (await fs17.readdir(changesDir, { withFileTypes: true })).sort(
+  for (const entry2 of (await fs18.readdir(changesDir, { withFileTypes: true })).sort(
     (left, right) => left.name.localeCompare(right.name)
   )) {
     if (!entry2.isDirectory() || entry2.name === "archive") continue;
-    const changeDir = path18.join(changesDir, entry2.name);
-    if (!existsSync2(path18.join(changeDir, ".comet.yaml"))) continue;
+    const changeDir = path19.join(changesDir, entry2.name);
+    if (!existsSync2(path19.join(changeDir, ".comet.yaml"))) continue;
     const governing = await loadGoverningChange(changeDir);
     if (!governing || governing.archived) continue;
     governingChanges.push(governing);
   }
   return governingChanges;
-}
-function blocksSourceWrites(governing) {
-  if (governing.phase === "open" || governing.phase === "design" || governing.phase === "archive") {
-    return true;
-  }
-  return governing.phase === "build" && governing.classic?.workflow === "full" && !governing.classic.designDoc;
 }
 function isSuperpowersArtifactPath(relativePath2) {
   return relativePath2.startsWith("docs/superpowers/");
@@ -11705,7 +11831,7 @@ function allowsSuperpowersArtifacts(governing) {
   return governing.phase === "design" || governing.phase === "build" || governing.phase === "verify";
 }
 function governingChangeName(governing) {
-  return governing.changeDir ? path18.basename(governing.changeDir) : null;
+  return governing.changeDir ? path19.basename(governing.changeDir) : null;
 }
 var SUPERPOWERS_ARTIFACT_SUFFIXES = /* @__PURE__ */ new Set([
   "design",
@@ -11752,9 +11878,32 @@ async function superpowersArtifactGoverningChange(relativePath2, projectRoot2) {
   if (named) return named;
   return null;
 }
-async function repoSourceGoverningChange(projectRoot2) {
+async function repoSourceGoverningChange(projectRoot2, relativePath2) {
   const active = await activeChanges(projectRoot2);
-  return active.find(blocksSourceWrites) ?? active[0] ?? null;
+  if (active.length === 0) return null;
+  const current = await resolveCurrentChange(projectRoot2);
+  if (current.status === "stale") {
+    return { blockedResult: blockedStaleSelection(relativePath2, current.reason) };
+  }
+  if (current.status === "selected") {
+    const selected = active.find(
+      (governing) => governingChangeName(governing) === current.selection.change
+    );
+    if (selected) return selected;
+    return {
+      blockedResult: blockedStaleSelection(
+        relativePath2,
+        `selected change '${current.selection.change}' is no longer active`
+      )
+    };
+  }
+  if (active.length === 1) return active[0];
+  return {
+    blockedResult: blockedMultipleChanges(
+      relativePath2,
+      active.map((governing) => governingChangeName(governing)).filter(Boolean)
+    )
+  };
 }
 async function governingChange(relativePath2, projectRoot2) {
   const prefix = "openspec/changes/";
@@ -11762,8 +11911,8 @@ async function governingChange(relativePath2, projectRoot2) {
     const rest = relativePath2.slice(prefix.length);
     const [name] = rest.split("/");
     if (name && name !== "archive") {
-      const changeDir = path18.join(projectRoot2, "openspec", "changes", name);
-      const stateFile2 = path18.join(changeDir, ".comet.yaml");
+      const changeDir = path19.join(projectRoot2, "openspec", "changes", name);
+      const stateFile2 = path19.join(changeDir, ".comet.yaml");
       if (existsSync2(stateFile2)) {
         const governing = await loadGoverningChange(changeDir);
         if (governing) return governing;
@@ -11775,10 +11924,10 @@ async function governingChange(relativePath2, projectRoot2) {
   if (isSuperpowersArtifactPath(relativePath2)) {
     const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot2);
     if (superpowers) return { ...superpowers, superpowersArtifact: "matched" };
-    const fallback = await repoSourceGoverningChange(projectRoot2);
+    const fallback = (await activeChanges(projectRoot2))[0] ?? null;
     return fallback ? { ...fallback, superpowersArtifact: "unmatched" } : null;
   }
-  return repoSourceGoverningChange(projectRoot2);
+  return repoSourceGoverningChange(projectRoot2, relativePath2);
 }
 function isRootMarkdown(relativePath2) {
   return !relativePath2.includes("/") && relativePath2.endsWith(".md");
@@ -11882,6 +12031,42 @@ function blockedUnmatchedSuperpowersArtifact(relativePath2, phase) {
     ].join("\n")
   );
 }
+function blockedMultipleChanges(relativePath2, changeNames) {
+  return result(
+    2,
+    [
+      "",
+      "╔══════════════════════════════════════════╗",
+      "║     COMET PHASE GUARD — WRITE BLOCKED    ║",
+      "╚══════════════════════════════════════════╝",
+      "",
+      "  BLOCKED: multiple active changes require a current change",
+      `  Target file: ${relativePath2}`,
+      `  Active changes: ${changeNames.join(", ")}`,
+      "",
+      "  NEXT: run comet state select <change-name>, then retry the source write",
+      ""
+    ].join("\n")
+  );
+}
+function blockedStaleSelection(relativePath2, reason) {
+  return result(
+    2,
+    [
+      "",
+      "╔══════════════════════════════════════════╗",
+      "║     COMET PHASE GUARD — WRITE BLOCKED    ║",
+      "╚══════════════════════════════════════════╝",
+      "",
+      "  BLOCKED: current change selection is stale or invalid",
+      `  Target file: ${relativePath2}`,
+      `  Reason: ${reason}`,
+      "",
+      "  NEXT: run comet state select <change-name>, then retry the source write",
+      ""
+    ].join("\n")
+  );
+}
 var classicHookGuardCommand = async (args) => {
   const projectRoot2 = parseProjectRoot(args);
   const target = inputTarget();
@@ -11897,6 +12082,7 @@ var classicHookGuardCommand = async (args) => {
     );
   }
   if (!governing) return allowed("no active comet change");
+  if ("blockedResult" in governing) return governing.blockedResult;
   if (governing.archived) return allowed(`${relativePath2} (own change archived)`);
   if (isCometConfig(relativePath2)) {
     return allowed(`${relativePath2} (whitelist: comet config)`);
@@ -12299,8 +12485,8 @@ var classicIntentCommand = async (args, _options) => {
 };
 
 // domains/comet-classic/classic-resume-probe.ts
-import path19 from "path";
-import { promises as fs18 } from "fs";
+import path20 from "path";
+import { promises as fs19 } from "fs";
 import { spawn } from "child_process";
 var COMET_RESUME_PROBE_SCHEMA_VERSION = "comet.resume_probe.v1";
 function isRecord2(value) {
@@ -12343,13 +12529,13 @@ function result3(action, change, confidence, reason, evidence = []) {
 }
 async function readIfExists(filePath) {
   if (!await fileExists3(filePath)) return "";
-  return fs18.readFile(filePath, "utf8");
+  return fs19.readFile(filePath, "utf8");
 }
 async function changeSearchText(changeDir, classic) {
   const files = ["proposal.md", "design.md", "tasks.md"];
   const parts = [classic.name, classic.workflow, classic.phase];
   for (const file of files) {
-    parts.push(await readIfExists(path19.join(changeDir, file)));
+    parts.push(await readIfExists(path20.join(changeDir, file)));
   }
   return parts.join("\n").toLowerCase();
 }
@@ -12413,19 +12599,19 @@ function diagnosticFromProjection(changeDir, name, projection) {
   };
 }
 async function hasOpenSpecChangeFiles(changeDir) {
-  return await fileExists3(path19.join(changeDir, "proposal.md")) || await fileExists3(path19.join(changeDir, "design.md")) || await fileExists3(path19.join(changeDir, "tasks.md"));
+  return await fileExists3(path20.join(changeDir, "proposal.md")) || await fileExists3(path20.join(changeDir, "design.md")) || await fileExists3(path20.join(changeDir, "tasks.md"));
 }
 async function discoverActiveChanges(projectRoot2) {
-  const changesDir = path19.join(projectRoot2, "openspec", "changes");
+  const changesDir = path20.join(projectRoot2, "openspec", "changes");
   if (!await fileExists3(changesDir)) return [];
   const entries = await readDir(changesDir);
   const changes = [];
   for (const entry2 of entries) {
     if (entry2 === "archive") continue;
-    const changeDir = path19.join(changesDir, entry2);
-    const stat = await fs18.stat(changeDir).catch(() => null);
+    const changeDir = path20.join(changesDir, entry2);
+    const stat = await fs19.stat(changeDir).catch(() => null);
     if (!stat?.isDirectory()) continue;
-    const hasCometState = await fileExists3(path19.join(changeDir, ".comet.yaml"));
+    const hasCometState = await fileExists3(path20.join(changeDir, ".comet.yaml"));
     if (!hasCometState) {
       if (!await hasOpenSpecChangeFiles(changeDir)) continue;
       const missingStateChange = {
@@ -12730,138 +12916,6 @@ import { spawnSync as spawnSync3 } from "child_process";
 import { randomUUID as randomUUID7 } from "crypto";
 import { existsSync as existsSync3, promises as fs20 } from "fs";
 import path21 from "path";
-
-// domains/comet-classic/classic-current-change.ts
-import { execFileSync } from "child_process";
-import { randomUUID as randomUUID6 } from "crypto";
-import { promises as fs19 } from "fs";
-import path20 from "path";
-function currentChangeFile(projectRoot2) {
-  return path20.join(projectRoot2, ".comet", "current-change.json");
-}
-function currentBranch(projectRoot2) {
-  try {
-    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      cwd: projectRoot2,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    return branch && branch !== "HEAD" ? branch : null;
-  } catch {
-    return null;
-  }
-}
-function changeDirectory(projectRoot2, changeName) {
-  return path20.join(projectRoot2, "openspec", "changes", changeName);
-}
-async function validateActiveChange(projectRoot2, changeName) {
-  assertOpenSpecChangeName(changeName);
-  const changeDir = changeDirectory(projectRoot2, changeName);
-  try {
-    await fs19.access(path20.join(changeDir, ".comet.yaml"));
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      throw new Error(
-        `Cannot select current change '${changeName}': active change state not found`,
-        {
-          cause: error
-        }
-      );
-    }
-    throw error;
-  }
-  const projection = await readClassicState(changeDir, { migrate: false });
-  if (!projection.classic) {
-    throw new Error(`Cannot select current change '${changeName}': Classic state is incomplete`);
-  }
-  if (projection.classic.archived) {
-    throw new Error(`Cannot select current change '${changeName}': change is archived`);
-  }
-}
-function parseSelection(source) {
-  let value;
-  try {
-    value = JSON.parse(source);
-  } catch (error) {
-    throw new Error(
-      `current change selection contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error }
-    );
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("current change selection must be a JSON object");
-  }
-  const record = value;
-  if (record.version !== 1) {
-    throw new Error("current change selection version must be 1");
-  }
-  if (typeof record.change !== "string") {
-    throw new Error("current change selection change must be a string");
-  }
-  assertOpenSpecChangeName(record.change);
-  if (record.branch !== null && typeof record.branch !== "string") {
-    throw new Error("current change selection branch must be a string or null");
-  }
-  return {
-    version: 1,
-    change: record.change,
-    branch: record.branch
-  };
-}
-async function selectCurrentChange(projectRoot2, changeName) {
-  await validateActiveChange(projectRoot2, changeName);
-  const selection = {
-    version: 1,
-    change: changeName,
-    branch: currentBranch(projectRoot2)
-  };
-  const file = currentChangeFile(projectRoot2);
-  const temporary = `${file}.${randomUUID6()}.tmp`;
-  await fs19.mkdir(path20.dirname(file), { recursive: true });
-  try {
-    await fs19.writeFile(temporary, JSON.stringify(selection, null, 2) + "\n", "utf8");
-    await fs19.rename(temporary, file);
-  } catch (error) {
-    await fs19.rm(temporary, { force: true });
-    throw error;
-  }
-  return selection;
-}
-async function resolveCurrentChange(projectRoot2) {
-  let source;
-  try {
-    source = await fs19.readFile(currentChangeFile(projectRoot2), "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return { status: "missing" };
-    return {
-      status: "stale",
-      reason: `cannot read current change selection: ${error instanceof Error ? error.message : String(error)}`
-    };
-  }
-  let selection;
-  try {
-    selection = parseSelection(source);
-    await validateActiveChange(projectRoot2, selection.change);
-  } catch (error) {
-    return {
-      status: "stale",
-      reason: error instanceof Error ? error.message : String(error)
-    };
-  }
-  const branch = currentBranch(projectRoot2);
-  if (selection.branch !== null && branch !== selection.branch) {
-    return {
-      status: "stale",
-      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${branch ?? "detached HEAD"}'`
-    };
-  }
-  return { status: "selected", selection };
-}
-async function clearCurrentChange(projectRoot2) {
-  await fs19.rm(currentChangeFile(projectRoot2), { force: true });
-}
-
-// domains/comet-classic/classic-state-command.ts
 init_state();
 var GREEN5 = "\x1B[32m";
 var RED5 = "\x1B[31m";

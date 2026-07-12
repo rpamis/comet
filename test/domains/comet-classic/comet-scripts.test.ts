@@ -5412,7 +5412,7 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('unmatched Superpowers artifact');
     }, 20_000);
 
-    it('blocks repo source writes when any active change is still in design', async () => {
+    it('requires a current change for repo source writes with multiple active changes', async () => {
       await createChange(
         tmpDir,
         'a-build-ready',
@@ -5420,6 +5420,12 @@ describe('comet scripts', () => {
           'workflow: full',
           'phase: build',
           'design_doc: docs/superpowers/specs/a-build-ready.md',
+          'plan: null',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
           'archived: false',
           '',
         ].join('\n'),
@@ -5441,8 +5447,42 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain('Current phase: design');
-      expect(result.stderr).toContain('This phase does not allow source writes');
+      expect(result.stderr).toContain('multiple active changes require a current change');
+      expect(result.stderr).toContain('a-build-ready');
+      expect(result.stderr).toContain('z-design-active');
+      expect(result.stderr).not.toContain('Current phase: design');
+    }, 20_000);
+
+    it('allows selected build source writes while another active change is in design', async () => {
+      await createChange(
+        tmpDir,
+        'a-build-ready',
+        [
+          'workflow: full',
+          'phase: build',
+          'design_doc: docs/superpowers/specs/a-build-ready.md',
+          'plan: null',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      await createChange(
+        tmpDir,
+        'z-design-active',
+        ['workflow: full', 'phase: design', 'archived: false', ''].join('\n'),
+      );
+      expect(runNode(tmpDir, stateScript, ['select', 'a-build-ready']).status).toBe(0);
+
+      const targetFile = path.join(tmpDir, 'src', 'feature.ts');
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('phase: build');
     }, 20_000);
 
     it('blocks full-workflow build source writes when design_doc is null (illegal jump)', async () => {

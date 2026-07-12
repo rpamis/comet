@@ -27,6 +27,20 @@ async function makeProject(): Promise<string> {
   return dir;
 }
 
+function git(cwd: string, args: string[]): void {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+}
+
+async function initializeGitProject(dir: string): Promise<void> {
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.com']);
+  git(dir, ['config', 'user.name', 'Test User']);
+  await fs.writeFile(path.join(dir, 'README.md'), '# Test\n');
+  git(dir, ['add', 'README.md']);
+  git(dir, ['commit', '-m', 'init']);
+}
+
 function run(cwd: string, command: string, args: string[] = [], input?: string) {
   return spawnSync(process.execPath, [scriptByCommand[command], ...args], {
     cwd,
@@ -53,7 +67,142 @@ async function seedDesignChange(dir: string): Promise<string> {
   return changeDir;
 }
 
+async function seedChange(
+  dir: string,
+  name: string,
+  phase: 'open' | 'design' | 'build' | 'verify' | 'archive',
+  options: { archived?: boolean; workflow?: 'full' | 'hotfix'; designDoc?: string | null } = {},
+): Promise<string> {
+  const changeDir = path.join(dir, 'openspec', 'changes', name);
+  await fs.mkdir(changeDir, { recursive: true });
+  const workflow = options.workflow ?? 'full';
+  const designDoc =
+    options.designDoc === undefined
+      ? phase === 'build' || phase === 'verify' || phase === 'archive'
+        ? `docs/superpowers/specs/${name}-design.md`
+        : null
+      : options.designDoc;
+  await fs.writeFile(
+    path.join(changeDir, '.comet.yaml'),
+    [
+      `workflow: ${workflow}`,
+      `phase: ${phase}`,
+      `design_doc: ${designDoc ?? 'null'}`,
+      'plan: null',
+      `build_mode: ${phase === 'open' || phase === 'design' ? 'null' : 'executing-plans'}`,
+      `isolation: ${phase === 'open' || phase === 'design' ? 'null' : 'branch'}`,
+      `verify_mode: ${phase === 'verify' || phase === 'archive' ? 'light' : 'null'}`,
+      `verify_result: ${phase === 'archive' ? 'pass' : 'pending'}`,
+      `verified_at: ${phase === 'archive' ? '2026-07-12' : 'null'}`,
+      `archived: ${options.archived ?? false}`,
+      '',
+    ].join('\n'),
+  );
+  return changeDir;
+}
+
 describe('Classic hook guard command', () => {
+  it('requires a current change before source writes with multiple active changes', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'build-ready', 'build');
+    await seedChange(dir, 'open-change', 'open');
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('multiple active changes require a current change');
+    expect(result.stderr).toContain('comet state select <change-name>');
+    expect(result.stderr).toContain('build-ready');
+    expect(result.stderr).toContain('open-change');
+    expect(result.stderr).not.toContain('Current phase: open');
+  });
+
+  it.each(['design', 'archive'] as const)(
+    'allows selected build source writes while another change is in %s',
+    async (phase) => {
+      const dir = await makeProject();
+      await seedChange(dir, 'build-ready', 'build');
+      await seedChange(dir, 'unrelated-change', phase);
+      expect(run(dir, 'state', ['select', 'build-ready']).status).toBe(0);
+
+      const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('phase: build');
+    },
+  );
+
+  it('blocks source writes for the selected open change even when another change can build', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'build-ready', 'build');
+    await seedChange(dir, 'open-change', 'open');
+    expect(run(dir, 'state', ['select', 'open-change']).status).toBe(0);
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Current phase: open');
+  });
+
+  it('keeps single-change source guard behavior without a selection', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'design-change', 'design');
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Current phase: design');
+  });
+
+  it('ignores archived changes when deciding whether selection is required', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'build-ready', 'build');
+    await seedChange(dir, 'archived-change', 'archive', { archived: true });
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('phase: build');
+  });
+
+  it('fails closed when the current change selection is malformed', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'build-ready', 'build');
+    await fs.mkdir(path.join(dir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(dir, '.comet', 'current-change.json'), '{broken\n');
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('current change selection is stale or invalid');
+    expect(result.stderr).toContain('invalid JSON');
+  });
+
+  it('fails closed when the selected branch changes', async () => {
+    const dir = await makeProject();
+    await initializeGitProject(dir);
+    await seedChange(dir, 'build-ready', 'build');
+    expect(run(dir, 'state', ['select', 'build-ready']).status).toBe(0);
+    git(dir, ['switch', '-c', 'other']);
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("selected on branch 'main'");
+    expect(result.stderr).toContain("current branch is 'other'");
+  });
+
+  it('still blocks selected full-workflow build source writes without a design document', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'illegal-build', 'build', { designDoc: null });
+    expect(run(dir, 'state', ['select', 'illegal-build']).status).toBe(0);
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('design_doc is empty');
+  });
+
   it('selects, reads, and clears the current change through the state launcher', async () => {
     const dir = await makeProject();
     expect(run(dir, 'state', ['init', 'demo', 'hotfix']).status).toBe(0);
