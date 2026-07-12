@@ -15,6 +15,7 @@ import {
 } from '../../domains/skill/platform-install.js';
 import { removeLegacyCometSkillsForPlatform } from '../../domains/skill/uninstall.js';
 import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
+import { LANGUAGES } from '../../domains/skill/languages.js';
 import {
   PLATFORMS,
   getPlatformSkillsDir,
@@ -139,6 +140,10 @@ function resolveTargetLanguage(
 
 function languageToSkillsDir(languageId: SkillLanguage): string {
   return languageId === 'zh' ? 'skills-zh' : 'skills';
+}
+
+function languageToArtifactLanguage(languageId: SkillLanguage): 'en' | 'zh-CN' {
+  return LANGUAGES.find((entry) => entry.id === languageId)!.artifactLanguage;
 }
 
 function getScopedBaseDir(
@@ -588,14 +593,32 @@ async function updateSingleProject(
     }
   }
 
-  const hasProjectTargets = targets.some((target) => target.scope === 'project');
-  if (hasProjectTargets) {
-    await mergeProjectConfig(projectPath);
-    const projectTarget = targets.find((target) => target.scope === 'project');
-    const projectLanguageId = resolveTargetLanguage(
-      options.language,
-      projectTarget?.language ?? 'en',
+  for (const scope of ['project', 'global'] as const) {
+    const scopeTargets = targets.filter((candidate) => candidate.scope === scope);
+    if (scopeTargets.length === 0) continue;
+    // An explicit --language always wins. Otherwise only force the persisted language when
+    // every platform installed at this scope agrees — if two platforms disagree (e.g. one
+    // installed with English skills, another with Chinese) and the user didn't say which one
+    // they mean, guessing from array order would silently override whatever language they
+    // (or a prior install) already configured. Pass null in that case so mergeProjectConfig
+    // preserves the existing config's language instead of guessing.
+    const agreedLanguage = scopeTargets.every((t) => t.language === scopeTargets[0].language)
+      ? scopeTargets[0].language
+      : undefined;
+    const languageId = options.language
+      ? resolveTargetLanguage(options.language, scopeTargets[0].language)
+      : agreedLanguage;
+    const configRoot = getBaseDir(scope, projectPath);
+    await mergeProjectConfig(
+      configRoot,
+      languageId ? languageToArtifactLanguage(languageId) : null,
     );
+    log(`  ${t(lang, 'configMerged')}`);
+  }
+
+  const projectTarget = targets.find((target) => target.scope === 'project');
+  if (projectTarget) {
+    const projectLanguageId = resolveTargetLanguage(options.language, projectTarget.language);
     const projectInstructionResult = await installCometProjectInstructions(
       projectPath,
       projectLanguageId,
@@ -604,7 +627,6 @@ async function updateSingleProject(
     if (projectInstructionsUpdated > 0) {
       log(`  Comet project instructions -> ${projectInstructionsUpdated} file(s) updated`);
     }
-    log(`  ${t(lang, 'configMerged')}`);
   }
 
   let codegraphStatus: CodegraphStatus = 'skipped';

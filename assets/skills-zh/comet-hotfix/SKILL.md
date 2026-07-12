@@ -20,7 +20,7 @@ description: "Use when 用户要修复已有行为 bug，且不新增 capability
 
 ### 0. 输出语言约束
 
-精简版 OpenSpec 产物必须使用 Comet 配置产物语言。`.comet.yaml` 尚不存在时读取 `.comet/config.yaml` 的 `language`，初始化后使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取。
+精简版 OpenSpec 产物必须使用 Comet 配置产物语言。`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `language`，初始化后使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取。
 
 执行链路：open → build → verify → archive。Hotfix 为每个阶段提供默认决策：精简开启、直接构建、按规模验证、验证通过后进入归档前最终确认。
 

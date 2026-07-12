@@ -20,6 +20,7 @@ import {
   copyCometRulesForPlatform,
   installCometHooksForPlatform,
   createWorkingDirs,
+  mergeProjectConfig,
 } from '../../domains/skill/platform-install.js';
 import { LANGUAGES, type LanguageConfig } from '../../domains/skill/languages.js';
 import { installOpenSpec, isCommandAvailable } from '../../domains/integrations/openspec.js';
@@ -581,6 +582,8 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
         'init',
       );
     }
+  } else {
+    await mergeProjectConfig(baseDir, language.artifactLanguage);
   }
 
   if (options.json) {

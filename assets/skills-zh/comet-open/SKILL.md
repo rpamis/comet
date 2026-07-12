@@ -13,7 +13,7 @@ description: "Use when Comet 需要创建新的 OpenSpec change，或 active cha
 
 ### 0. 输出语言约束
 
-传递给 OpenSpec 的所有提问和产物要求都必须包含解析后的 Comet 产物语言，并使用 `en`、`zh-CN` 这类规范化 ID。`.comet.yaml` 尚不存在时读取 `.comet/config.yaml` 的 `language`；change 初始化后使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取。没有配置语言时才回退到当前用户请求语言。生成的 `proposal.md`、`design.md`、`tasks.md` 必须以该语言为主语言。
+传递给 OpenSpec 的所有提问和产物要求都必须包含解析后的 Comet 产物语言，并使用 `en`、`zh-CN` 这类规范化 ID。`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `language`；change 初始化后使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取。没有配置语言时才回退到当前用户请求语言。生成的 `proposal.md`、`design.md`、`tasks.md` 必须以该语言为主语言。
 
 ### 1. 探索想法与需求澄清
 

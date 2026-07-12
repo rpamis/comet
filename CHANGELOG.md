@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.4] - 2026-07-10
+## What's Changed [0.4.0-beta.4] - 2026-07-11
 
 ### Added
 
@@ -27,6 +27,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Archived dashboard artifacts**: `comet dashboard` now resolves archived changes back to the project root before reading `docs/superpowers/` path pointers, so archived Superpowers plans, design docs, and verify reports remain visible ([#176](https://github.com/rpamis/comet/issues/176)).
 - **Archive confirmation enforcement**: `/comet-archive` now records the user's final approval in machine-owned Classic state and refuses mutating archive runs until that transition succeeds, preventing direct script invocation from bypassing the required confirmation.
 - **Archive annotations**: Classic archive annotations now preserve clean Markdown EOF formatting and remain idempotent, preventing `git diff --check` failures ([#185](https://github.com/rpamis/comet/issues/185)).
+- **Global artifact language**: Global `comet init` and `comet update` now persist the selected artifact language in `~/.comet/config.yaml`, and Classic workflows resolve project configuration before falling back to that global default, so globally installed Chinese Skills create and validate OpenSpec and Superpowers artifacts in `zh-CN` while still allowing per-project overrides ([#174](https://github.com/rpamis/comet/issues/174)).
 
 ## What's Changed [0.4.0-beta.3] - 2026-07-08
 
