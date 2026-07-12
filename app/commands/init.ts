@@ -31,6 +31,7 @@ import {
   resolveCodegraphCommand,
 } from '../../domains/integrations/codegraph.js';
 import { printVersionInfo } from '../../platform/version/version.js';
+import { printCometBanner } from '../cli/comet-banner.js';
 import { t, type TranslationKey } from './i18n.js';
 import { detectInstalledCometTargets } from './update.js';
 
@@ -61,17 +62,6 @@ type ComponentPlan = {
   spAction: ComponentAction;
   cmAction: ComponentAction;
 };
-
-const COMET_BANNER = [
-  `   ██████╗ ██████╗ ███╗   ███╗███████╗████████╗`,
-  `  ██╔════╝██╔═══██╗████╗ ████║██╔════╝╚══██╔══╝`,
-  `  ██║     ██║   ██║██╔████╔██║█████╗     ██║   `,
-  `  ██║     ██║   ██║██║╚██╔╝██║██╔══╝     ██║   `,
-  `  ╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗   ██║   `,
-  `   ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝   ╚═╝   `,
-  `       Agent Skill Harness Phase-Guarded Automation`,
-  `               From Idea To Archive                `,
-].join('\n');
 
 async function selectScope(options: InitOptions, lang: string): Promise<InstallScope> {
   if (options.scope) return options.scope;
@@ -340,7 +330,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
   const projectPath = path.resolve(targetPath);
   const log = options.json ? () => undefined : console.log;
 
-  log(`\n${COMET_BANNER}\n`);
+  await printCometBanner({ enabled: !options.json });
   if (!options.json) {
     await printVersionInfo(log);
   }

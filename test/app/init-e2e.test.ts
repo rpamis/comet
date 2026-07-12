@@ -33,6 +33,10 @@ vi.mock('../../platform/version/version.js', () => ({
   }),
 }));
 
+vi.mock('../../app/cli/comet-banner.js', () => ({
+  printCometBanner: vi.fn(async () => undefined),
+}));
+
 const manifestPath = path.resolve('assets', 'manifest.json');
 const INIT_E2E_TIMEOUT_MS = 60_000;
 
@@ -116,6 +120,19 @@ describe('comet init E2E', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await fs.rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+
+  it('enables the banner for text output and disables it for JSON output', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { printCometBanner } = await import('../../app/cli/comet-banner.js');
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureTextOutput(() => initCommand(tmpDir, { yes: true, language: 'en' }));
+    expect(printCometBanner).toHaveBeenLastCalledWith({ enabled: true });
+
+    await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true }));
+    expect(printCometBanner).toHaveBeenLastCalledWith({ enabled: false });
   });
 
   it(
