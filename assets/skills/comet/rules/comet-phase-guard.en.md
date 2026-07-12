@@ -10,6 +10,14 @@
 
 When there is an active comet change (`openspec/changes/<name>/.comet.yaml` exists), **before starting any operation** you must read the `phase` field to confirm the current phase.
 
+When multiple active changes exist, resolve the current change first, then run:
+
+```bash
+comet state select <change-name>
+```
+
+Ordinary source writes are governed only by the selected change phase. With multiple active changes and no valid selection, the Hook must block and ask for a choice; it must not guess alphabetically or let an unrelated open, design, or archive change globally block a legal build. A single active change may retain automatic routing.
+
 **Phases and allowed operations:**
 
 | Phase | Allowed | Prohibited |

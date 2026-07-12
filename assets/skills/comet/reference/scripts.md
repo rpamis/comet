@@ -9,11 +9,16 @@ This file is the single source of truth for Comet's public CLI and internal scri
 Normal installations and everyday workflows use the `comet` CLI directly. They do not need to locate launchers and must not expose the internal `classic` name to users:
 
 ```bash
+comet state select <change-name>
+comet state current
+comet state clear-selection
 comet state check <change-name> <phase>
 comet guard <change-name> <phase> --apply
 comet handoff <change-name>
 comet archive <change-name>
 ```
+
+When multiple active changes coexist, run `comet state select <change-name>` after resolving the intended change. Ordinary source writes are governed only by that selection; without one, the hook blocks and asks for a choice. A single active change retains automatic routing. Select again after switching branch/worktree or when the recorded selection becomes stale.
 
 Guard `--apply` advances state after checks pass. Use `comet state transition` when expressing a state event directly, and `comet state next` after phase advancement to determine whether to invoke the next Skill automatically.
 

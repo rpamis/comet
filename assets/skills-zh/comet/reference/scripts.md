@@ -9,11 +9,16 @@
 正常安装和日常工作流直接使用 `comet` CLI，不需要定位 launcher，也不要向用户暴露内部 `classic` 命名：
 
 ```bash
+comet state select <change-name>
+comet state current
+comet state clear-selection
 comet state check <change-name> <phase>
 comet guard <change-name> <phase> --apply
 comet handoff <change-name>
 comet archive <change-name>
 ```
+
+当多个 active change 共存时，进入明确的 change 后先运行 `comet state select <change-name>`。普通源码写入只受该选择管辖；尚未选择时 hook 会阻塞并要求选择。单 active change 可继续自动归属。切换 branch/worktree 或选择失效后必须重新运行 `select`。
 
 guard 的 `--apply` 在检查通过后推进状态。需要直接表达状态事件时使用 `comet state transition`；阶段推进后使用 `comet state next` 解析是否自动调用下一 Skill。
 

@@ -40,6 +40,14 @@ agent 做决策只需读本节，参考附录按需查阅。
    - `ask_user` → 按 `comet/reference/decision-point.md` 暂停并等待用户选择
    - `out_of_scope` → 说明本次输入不是 Comet workflow 启动/恢复请求，不初始化 change
 
+当 runtime route、Ambient Resume 或用户选择已经解析出明确 change 后，进入对应阶段 Skill 前必须先绑定当前执行上下文：
+
+```bash
+comet state select <change-name>
+```
+
+多个 active change 且用户尚未明确选择时，不得提前绑定；继续按 `ask_user` 决策点等待选择。
+
 ### Comet Ambient Resume
 
 当用户未显式输入 `/comet`，但当前仓库可能已有 active Comet change 时，开始处理需要改动或调查的任务前先运行只读探针：

@@ -10,6 +10,14 @@
 
 有活跃 comet change 时（`openspec/changes/<name>/.comet.yaml` 存在），**每次开始执行操作前**必须读取 `phase` 字段确认当前阶段。
 
+当存在多个 active change 时，必须先明确当前 change，再运行：
+
+```bash
+comet state select <change-name>
+```
+
+普通源码写入只受已选择 change 的阶段约束。多个 active change 且没有有效选择时，Hook 必须阻塞并提示选择；不得按字母序猜测，也不得让无关 change 的 `open`、`design` 或 `archive` 阶段全局封锁合法 build。单 active change 无选择时可保持自动归属。
+
 **阶段与允许操作：**
 
 | 阶段 | 允许 | 禁止 |
@@ -32,7 +40,7 @@ Hook 硬拦截白名单包括 `openspec/*`、`docs/superpowers/*`、`.superpower
 | `phase: build` + proposal/design/tasks 任一缺失或为空 | 绕过 open 空跳 | 回 `/comet-open` 补齐三件套 |
 | `phase: archive` + `verify_result` ≠ `pass` | 绕过 verify 空跳 | 回 `/comet-verify` 完成验证 |
 
-> 说明：上表只覆盖 hook 硬门实际检测的范围（`design_doc` 空跳在 build 阶段；proposal/design/tasks 三件套完整性在 open→build 的 guard 退出时校验）。`verify` 阶段不在此写源码自洽门内——若 verify 发现产物缺失，按下方「Verify 阶段专项」的 verify-fail 回退处理。
+> 说明：上表只覆盖 hook 硬拦截实际检测的范围（`design_doc` 空跳在 build 阶段；proposal/design/tasks 三件套完整性在 open→build 的 guard 退出时校验）。`verify` 阶段不在此写源码自洽检查内——若 verify 发现产物缺失，按下方「Verify 阶段专项」的 verify-fail 回退处理。
 
 预设例外：`workflow: hotfix/tweak` 本就跳过 design，`design_doc` 为空属正常，不算非法。
 

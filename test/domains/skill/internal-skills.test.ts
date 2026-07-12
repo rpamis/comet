@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { promises as fs } from 'fs';
+import path from 'path';
 import {
   getManagedSkillPaths,
   getManifestSkills,
@@ -14,6 +16,40 @@ const manifest: Manifest = {
 };
 
 describe('internal Skill assets', () => {
+  it('binds every Classic entry Skill to an explicit current change', async () => {
+    const skillNames = [
+      'comet',
+      'comet-open',
+      'comet-design',
+      'comet-build',
+      'comet-verify',
+      'comet-archive',
+      'comet-hotfix',
+      'comet-tweak',
+    ];
+
+    for (const name of skillNames) {
+      const [chinese, english] = await Promise.all(
+        ['assets/skills-zh', 'assets/skills'].map((root) =>
+          fs.readFile(path.resolve(root, name, 'SKILL.md'), 'utf8'),
+        ),
+      );
+      expect(chinese, `${name} Chinese selection protocol`).toContain(
+        'comet state select <change-name>',
+      );
+      expect(english, `${name} English selection protocol`).toContain(
+        'comet state select <change-name>',
+      );
+    }
+
+    const [chineseRule, englishRule] = await Promise.all([
+      fs.readFile(path.resolve('assets/skills/comet/rules/comet-phase-guard.md'), 'utf8'),
+      fs.readFile(path.resolve('assets/skills/comet/rules/comet-phase-guard.en.md'), 'utf8'),
+    ]);
+    expect(chineseRule).toContain('多个 active change');
+    expect(englishRule).toContain('multiple active changes');
+  });
+
   it('includes internal Skills in managed lifecycle paths', () => {
     expect(getManagedSkillPaths(manifest)).toEqual([
       'comet/SKILL.md',

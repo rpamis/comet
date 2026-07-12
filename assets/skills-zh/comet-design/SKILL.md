@@ -19,6 +19,7 @@ description: "Use when full Comet change 已完成 open 阶段但缺少 Superpow
 按 `comet/reference/scripts.md` 定位脚本（定位 `comet-env.mjs`），然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
+comet state select <change-name>
 node "$COMET_STATE" check <name> design
 ```
 

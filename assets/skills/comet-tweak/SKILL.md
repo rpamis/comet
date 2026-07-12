@@ -29,6 +29,8 @@ Execution chain: open → OpenSpec apply → verify → archive. Tweak provides 
 
 Before starting, locate Comet scripts via `comet/reference/scripts.md`. When resuming from any entry point, first use `comet/reference/context-recovery.md` to confirm phase/workflow.
 
+When resuming an existing tweak change, the first state operation must be `comet state select <change-name>`. For a new change, run the command immediately after `.comet.yaml` initialization and before source writes.
+
 ### 1. Quick Open (preset open)
 
 Reuse Comet open capability to create change, but use tweak defaults: do not execute `openspec-explore` long exploration, directly enter streamlined change creation.

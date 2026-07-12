@@ -15,6 +15,16 @@ description: "Use when Comet needs to create a new OpenSpec change, or an active
 
 Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language, using normalized ids such as `en` or `zh-CN`. Before `.comet.yaml` exists, read `language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after the change is initialized, use `"$COMET_BASH" "$COMET_STATE" get <name> language`. If no configured language exists, fall back to the current user request language. The generated `proposal.md`, `design.md`, and `tasks.md` must use that language as their main language.
 
+### 0a. Current Change Binding
+
+When resuming an existing change, the first state operation must be:
+
+```bash
+comet state select <change-name>
+```
+
+When creating a new change, initialize `.comet.yaml` first, then immediately run the same command; never fabricate a selection before state exists.
+
 ### 1. Explore Ideas and Clarify Requirements
 
 **Immediately execute:** Use the Skill tool to load the `openspec-explore` skill. Skipping this step is prohibited.

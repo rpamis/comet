@@ -22,6 +22,7 @@ description: "Use when Comet change 验证已通过，需要用户确认归档�
 按 `comet/reference/scripts.md` 使用稳定 `comet` CLI，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
+comet state select <change-name>
 comet state check <name> archive
 ```
 
@@ -68,6 +69,12 @@ comet archive "<change-name>"
 
 如脚本返回非零退出码，报告错误并停止。
 如脚本返回零退出码，归档完成。
+
+归档成功后清理当前执行上下文；该命令幂等：
+
+```bash
+comet state clear-selection
+```
 脚本摘要中的 `X/Y steps succeeded` 以真实执行步骤计数，不会因 delta spec 同步或文档标注重复累计。
 
 脚本会调用 OpenSpec 归档能力按 `ADDED/MODIFIED/REMOVED/RENAMED` 语义合并主 spec，并在归档后校验主 spec 中没有残留 delta-only section 标题。

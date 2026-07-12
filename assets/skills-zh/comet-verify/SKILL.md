@@ -21,6 +21,7 @@ description: "Use when Comet change 已完成 build 阶段，需要验证实现�
 按 `comet/reference/scripts.md` 使用稳定 `comet` CLI，然后执行入口验证；从任意入口恢复时先按 `comet/reference/context-recovery.md` 运行恢复检查：
 
 ```bash
+comet state select <change-name>
 comet state check <change-name> verify
 ```
 

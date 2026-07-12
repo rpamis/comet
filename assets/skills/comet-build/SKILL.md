@@ -17,6 +17,7 @@ description: "Use when a full Comet change has completed design and needs an imp
 Use the stable `comet` CLI described in `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
 
 ```bash
+comet state select <change-name>
 comet state check <name> build
 ```
 

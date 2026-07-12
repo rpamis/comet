@@ -21,6 +21,7 @@ Verification reports and branch-handling notes must use the configured Comet art
 Use the stable `comet` CLI described in `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
 
 ```bash
+comet state select <change-name>
 comet state check <change-name> verify
 ```
 

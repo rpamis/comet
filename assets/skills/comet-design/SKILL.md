@@ -19,6 +19,7 @@ description: "Use when a full Comet change has completed open but lacks a Superp
 Locate scripts via `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
 
 ```bash
+comet state select <change-name>
 node "$COMET_STATE" check <name> design
 ```
 

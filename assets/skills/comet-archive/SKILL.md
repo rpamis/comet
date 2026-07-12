@@ -22,6 +22,7 @@ Archive summaries and lifecycle closure notes must use the configured Comet arti
 Use the stable `comet` CLI described in `comet/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet/reference/context-recovery.md`:
 
 ```bash
+comet state select <change-name>
 comet state check <name> archive
 ```
 
@@ -68,6 +69,12 @@ The script automatically executes:
 
 If script returns non-zero exit code, report error and stop.
 If script returns zero exit code, archive is complete.
+
+After a successful archive, clear the current execution context; this command is idempotent:
+
+```bash
+comet state clear-selection
+```
 The summary `X/Y steps succeeded` counts real executed steps and does not double-count delta spec sync or document annotation.
 
 The script calls OpenSpec archive to merge `ADDED/MODIFIED/REMOVED/RENAMED` delta semantics into main specs, then verifies main specs do not contain delta-only section headings.
