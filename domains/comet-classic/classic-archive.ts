@@ -106,6 +106,7 @@ export function annotatedMarkdown(
   if (closingDelimiter !== -1) {
     const frontmatter = lines.slice(1, closingDelimiter).filter((line) => {
       const fieldName = line.match(/^([^:\n]+):/u)?.[1]?.trim();
+      if (fieldName === undefined) return true;
       return fieldName !== 'archived-with' && fieldName !== extraFieldName;
     });
     frontmatter.push(`archived-with: ${archiveName}`);

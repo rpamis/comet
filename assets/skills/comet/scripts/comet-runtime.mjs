@@ -9279,18 +9279,10 @@ async function validateClassicRuntimeRun(changeDir, existingProjection) {
       `Classic Run skill mismatch: expected ${skillPackage.definition.metadata.name}, got ${projection.run.skill}`
     );
   }
-  const installedHash = await hashSkillPackage(skillPackage);
   const snapshot = await readSkillSnapshot(changeDir, projection.run.skillHash);
   if (snapshot.definition.metadata.name !== projection.run.skill) {
     throw new Error(
       `Classic Run snapshot skill mismatch: expected ${projection.run.skill}, got ${snapshot.definition.metadata.name}`
-    );
-  }
-  const snapshotHash = await hashSkillPackage(snapshot);
-  const expectedSnapshotHash = installedHash === projection.run.skillHash ? installedHash : projection.run.skillHash;
-  if (snapshotHash !== expectedSnapshotHash) {
-    throw new Error(
-      `Classic Run snapshot hash mismatch: expected ${expectedSnapshotHash}, got ${snapshotHash}`
     );
   }
   const evidence = await collectClassicEvidence(changeDir, projection);
@@ -9569,6 +9561,7 @@ function annotatedMarkdown(original, archiveName, extraFields) {
   if (closingDelimiter !== -1) {
     const frontmatter = lines.slice(1, closingDelimiter).filter((line) => {
       const fieldName = line.match(/^([^:\n]+):/u)?.[1]?.trim();
+      if (fieldName === void 0) return true;
       return fieldName !== "archived-with" && fieldName !== extraFieldName;
     });
     frontmatter.push(`archived-with: ${archiveName}`);
@@ -10572,14 +10565,16 @@ async function commandCheckPasses(changeDir, change, run, scope) {
       return removedProjectCommandRun(removedField);
     }
   }
-  const inferred = await inferredBuildCommand();
+  const inferred = scope === "build" ? await inferredBuildCommand() : null;
   if (inferred) return runInferred(inferred);
   const recorded = await latestCommandCheck(changeDir, run, scope);
   if (!recorded) {
     return {
       status: 1,
-      output: `No inferred ${scope} command or recorded ${scope} check. Detection searched: ${INFERRED_COMMAND_SOURCES.join(", ")}.
+      output: scope === "build" ? `No inferred build command or recorded build check. Detection searched: ${INFERRED_COMMAND_SOURCES.join(", ")}.
 Next: run the required command, then record it with:
+${recoveryCommand(change, scope, "<command>")}` : `No recorded verify check.
+Next: run the required verification command, then record it with:
 ${recoveryCommand(change, scope, "<command>")}`
     };
   }

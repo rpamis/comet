@@ -389,6 +389,25 @@ describe('comet guard', () => {
       expect(result.stderr).toContain('pnpm test');
     });
 
+    it('requires recorded verify evidence even when an inferred build succeeds', async () => {
+      await createChange(tmpDir, 'verify-not-build', verifyYaml);
+      await writeFile(
+        path.join(tmpDir, 'reports', 'verification.md'),
+        '# Verification\n\nFailed.\n',
+      );
+      await writeFile(
+        path.join(tmpDir, 'package.json'),
+        JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+      );
+      expect((await recordCheck('verify-not-build', 'verify', 'pnpm test', 7)).status).toBe(0);
+
+      const result = runNode(tmpDir, guardScript, ['verify-not-build', 'verify']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('Latest recorded verify check failed with exit code 7');
+      expect(result.stderr).not.toContain('[PASS] Verification passes');
+    });
+
     it('rejects removed build_command before verify inference or evidence consumption', async () => {
       await createChange(tmpDir, 'verify-removed-build-command', verifyYaml);
       await writeFile(

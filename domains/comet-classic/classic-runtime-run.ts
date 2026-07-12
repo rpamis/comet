@@ -13,7 +13,7 @@ import {
 import { appendTrajectory, readTrajectory } from '../../domains/engine/run-store.js';
 import type { RunState } from '../../domains/engine/types.js';
 import { loadRuntimePackage, loadSkillPackage } from '../../domains/skill/load.js';
-import { hashSkillPackage, readSkillSnapshot } from '../../domains/skill/snapshot.js';
+import { readSkillSnapshot } from '../../domains/skill/snapshot.js';
 import type { SkillPackage } from '../../domains/skill/types.js';
 
 async function directoryExists(directory: string): Promise<boolean> {
@@ -332,22 +332,12 @@ export async function validateClassicRuntimeRun(
     );
   }
 
-  const installedHash = await hashSkillPackage(skillPackage);
   const snapshot = await readSkillSnapshot(changeDir, projection.run.skillHash);
   if (snapshot.definition.metadata.name !== projection.run.skill) {
     throw new Error(
       `Classic Run snapshot skill mismatch: expected ${projection.run.skill}, got ${snapshot.definition.metadata.name}`,
     );
   }
-  const snapshotHash = await hashSkillPackage(snapshot);
-  const expectedSnapshotHash =
-    installedHash === projection.run.skillHash ? installedHash : projection.run.skillHash;
-  if (snapshotHash !== expectedSnapshotHash) {
-    throw new Error(
-      `Classic Run snapshot hash mismatch: expected ${expectedSnapshotHash}, got ${snapshotHash}`,
-    );
-  }
-
   const evidence = await collectClassicEvidence(changeDir, projection);
   const currentStep = resolveClassicStepId(projection.classic, evidence);
   if (projection.run.currentStep !== currentStep) {

@@ -25,6 +25,16 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('window.scrollTo(0, scrollY)');
   });
 
+  it('restores pre-existing inline body styles when the artifact drawer closes', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('const previousBodyStyle = {');
+    for (const property of ['position', 'top', 'left', 'right', 'width']) {
+      expect(source).toContain(`${property}: document.body.style.${property}`);
+      expect(source).toContain(`document.body.style.${property} = previousBodyStyle.${property}`);
+    }
+  });
+
   it('does not suggest verify for archived changes in the task progress hint', async () => {
     const source = await readDashboardSource();
 

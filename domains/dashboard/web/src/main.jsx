@@ -976,17 +976,24 @@ function ArtifactDrawer({ artifact, onClose }) {
   useEffect(() => {
     if (!artifact) return;
     const scrollY = window.scrollY;
+    const previousBodyStyle = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      width: document.body.style.width,
+    };
     document.body.style.position = 'fixed';
     document.body.style.top = `-${scrollY}px`;
     document.body.style.left = '0';
     document.body.style.right = '0';
     document.body.style.width = '100%';
     return () => {
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.left = '';
-      document.body.style.right = '';
-      document.body.style.width = '';
+      document.body.style.position = previousBodyStyle.position;
+      document.body.style.top = previousBodyStyle.top;
+      document.body.style.left = previousBodyStyle.left;
+      document.body.style.right = previousBodyStyle.right;
+      document.body.style.width = previousBodyStyle.width;
       window.scrollTo(0, scrollY);
     };
   }, [artifact]);

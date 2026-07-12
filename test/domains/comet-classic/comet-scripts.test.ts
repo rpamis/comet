@@ -3822,6 +3822,7 @@ describe('comet scripts', () => {
         'branch_status: handled',
         'verified_at: null',
         'archived: false',
+        'auto_transition: true',
         '',
       ].join('\n'),
     );
@@ -3833,12 +3834,23 @@ describe('comet scripts', () => {
       path.join(tmpDir, 'package.json'),
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
+    expect(runNode(tmpDir, guardScript, ['guard-verify', 'verify']).status).not.toBe(0);
+    const recorded = runNode(tmpDir, stateScript, [
+      'record-check',
+      'guard-verify',
+      'verify',
+      '--command',
+      'pnpm test',
+      '--exit-code',
+      '0',
+    ]);
+    expect(recorded.status, recorded.stderr).toBe(0);
 
     const result = runNode(tmpDir, guardScript, ['guard-verify', 'verify', '--apply']);
     const phase = runNode(tmpDir, stateScript, ['get', 'guard-verify', 'phase']);
     const verifyResult = runNode(tmpDir, stateScript, ['get', 'guard-verify', 'verify_result']);
 
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     expect(phase.stdout.trim()).toBe('archive');
     expect(verifyResult.stdout.trim()).toBe('pass');
   }, 20_000);

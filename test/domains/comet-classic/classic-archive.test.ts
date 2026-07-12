@@ -60,6 +60,14 @@ describe('annotatedMarkdown', () => {
     );
   });
 
+  it('preserves blank and comment lines when no extra frontmatter field is replaced', () => {
+    const original = '---\ntitle: Demo\n\n# keep this context\n---\nBody\n';
+
+    expect(annotatedMarkdown(original, '2026-07-11-demo', '')).toBe(
+      '---\ntitle: Demo\n\n# keep this context\narchived-with: 2026-07-11-demo\n---\nBody\n',
+    );
+  });
+
   it('collapses multiple EOF blank lines to exactly one final newline', () => {
     const original = '---\ntitle: Demo\n---\nBody\n\n\n';
 

@@ -411,14 +411,17 @@ async function commandCheckPasses(
       return removedProjectCommandRun(removedField);
     }
   }
-  const inferred = await inferredBuildCommand();
+  const inferred = scope === 'build' ? await inferredBuildCommand() : null;
   if (inferred) return runInferred(inferred);
 
   const recorded = await latestCommandCheck(changeDir, run, scope);
   if (!recorded) {
     return {
       status: 1,
-      output: `No inferred ${scope} command or recorded ${scope} check. Detection searched: ${INFERRED_COMMAND_SOURCES.join(', ')}.\nNext: run the required command, then record it with:\n${recoveryCommand(change, scope, '<command>')}`,
+      output:
+        scope === 'build'
+          ? `No inferred build command or recorded build check. Detection searched: ${INFERRED_COMMAND_SOURCES.join(', ')}.\nNext: run the required command, then record it with:\n${recoveryCommand(change, scope, '<command>')}`
+          : `No recorded verify check.\nNext: run the required verification command, then record it with:\n${recoveryCommand(change, scope, '<command>')}`,
     };
   }
   if (recorded.exitCode !== 0) {
