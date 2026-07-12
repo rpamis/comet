@@ -17,7 +17,8 @@
 - 动画异常不得改变 `comet init` 的退出码或安装流程。
 - 不引入新的运行时依赖，不修改 favicon、README、website 或安装语义。
 - 现有 `website` 子模块工作区变化不纳入任何提交。
-- Changelog 追加到现有 `0.4.0-beta.4` 条目，不升级 `package.json` 版本。
+- 当前 `master` 为 `0.4.0-beta.4`；本分支将 `package.json`、锁文件与 Changelog 升级为只高一个预发布版本的 `0.4.0-beta.5`。
+- 动画不发送光标 hide/show 控制序列，避免终止信号绕过 JavaScript 清理时遗留隐藏光标。
 
 ---
 
@@ -29,16 +30,18 @@
 - Modify: `test/app/init-e2e.test.ts` — mock Banner 边界并验证普通模式与 JSON 模式接入。
 - Modify: `app/cli/index.ts` — 更新 Commander 根命令描述。
 - Modify: `test/app/cli-help.test.ts` — 验证根帮助中的新标语。
-- Modify: `package.json` — 更新包描述，不改变版本。
-- Modify: `CHANGELOG.md` — 在 `0.4.0-beta.4` 的 `Changed` 下记录最终用户可见的 Banner 与标语升级。
+- Modify: `package.json` / `package-lock.json` — 更新包描述，并将版本同步升级为 `0.4.0-beta.5`。
+- Modify: `CHANGELOG.md` — 在顶部新增 `0.4.0-beta.5` 的 `Changed`，记录最终用户可见的 Banner 与标语升级。
 
 ### Task 1: 纯 Banner 渲染与品牌色
 
 **Files:**
+
 - Create: `app/cli/comet-banner.ts`
 - Create: `test/app/comet-banner.test.ts`
 
 **Interfaces:**
+
 - Produces: `COMET_TAGLINE: string`
 - Produces: `COMET_LOGO: readonly string[]`
 - Produces: `renderCometBanner(options?: { color?: boolean }): string`
@@ -58,15 +61,22 @@ import {
 } from '../../app/cli/comet-banner.js';
 
 describe('Comet CLI banner rendering', () => {
-  it('renders the exact tagline centered beneath the logo without ANSI by default', () => {
+  it('centers the logo and tagline on one shared canvas without ANSI by default', () => {
     const banner = renderCometBanner();
     const lines = banner.split('\n');
+    const canvasWidth = COMET_TAGLINE.length;
 
     expect(COMET_TAGLINE).toBe('Agent Skill Harness For Turning Ideas Into Evaluated Workflows');
     expect(lines).toHaveLength(COMET_BANNER_LINE_COUNT);
-    expect(lines.slice(0, COMET_LOGO.length)).toEqual(COMET_LOGO);
+    for (const [index, logoLine] of COMET_LOGO.entries()) {
+      const visibleLogo = logoLine.trimEnd();
+      expect(lines[index]).toHaveLength(canvasWidth);
+      expect(lines[index]?.indexOf(visibleLogo)).toBe(
+        Math.floor((canvasWidth - visibleLogo.length) / 2),
+      );
+    }
     expect(lines.at(-1)?.trim()).toBe(COMET_TAGLINE);
-    expect(lines.at(-1)?.length).toBe(Math.max(...COMET_LOGO.map((line) => line.length)));
+    expect(lines.at(-1)?.length).toBe(canvasWidth);
     expect(banner).not.toContain('\u001b[');
   });
 
@@ -78,6 +88,8 @@ describe('Comet CLI banner rendering', () => {
     expect(frame).toContain('\u001b[38;2;11;111;251m');
     expect(frame).toContain('·');
     expect(frame).toContain('\u001b[0m');
+    const visibleLines = frame.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '').split('\n');
+    expect(visibleLines.every((line) => line.length === COMET_TAGLINE.length)).toBe(true);
   });
 });
 ```
@@ -108,37 +120,52 @@ const RESET = '\u001b[0m';
 const DEEP_BLUE = '\u001b[38;2;22;78;154m';
 const BRAND_BLUE = '\u001b[38;2;11;111;251m';
 const BRIGHT_BLUE = '\u001b[38;2;88;184;255m';
-const LOGO_WIDTH = Math.max(...COMET_LOGO.map((line) => line.length), COMET_TAGLINE.length);
-const PARTICLES = ['', '  ·   •', '    ·'];
+const BANNER_WIDTH = Math.max(...COMET_LOGO.map((line) => line.length), COMET_TAGLINE.length);
+const PARTICLES = [
+  [],
+  [
+    [1, '·'],
+    [5, '•'],
+  ],
+  [[4, '·']],
+] as const;
 
 export const COMET_BANNER_LINE_COUNT = COMET_LOGO.length + 1;
 
 function center(text: string): string {
-  const left = Math.max(0, Math.floor((LOGO_WIDTH - text.length) / 2));
-  return `${' '.repeat(left)}${text}`.padEnd(LOGO_WIDTH);
+  const visibleText = text.trimEnd();
+  const left = Math.max(0, Math.floor((BANNER_WIDTH - visibleText.length) / 2));
+  return `${' '.repeat(left)}${visibleText}`.padEnd(BANNER_WIDTH);
 }
 
 export function renderCometBanner(options: { color?: boolean } = {}): string {
   const logo = options.color
-    ? COMET_LOGO.map((line) => `${BRAND_BLUE}${line}${RESET}`)
-    : [...COMET_LOGO];
-  const tagline = options.color ? `${BRIGHT_BLUE}${center(COMET_TAGLINE)}${RESET}` : center(COMET_TAGLINE);
+    ? COMET_LOGO.map((line) => `${BRAND_BLUE}${center(line)}${RESET}`)
+    : COMET_LOGO.map(center);
+  const tagline = options.color
+    ? `${BRIGHT_BLUE}${center(COMET_TAGLINE)}${RESET}`
+    : center(COMET_TAGLINE);
   return [...logo, tagline].join('\n');
 }
 
 export function renderCometBannerFrame(litColumns: number, particleFrame = 0): string {
   const logo = COMET_LOGO.map((line, row) => {
-    let result = '';
-    for (let column = 0; column < line.length; column += 1) {
-      const color = column < litColumns - 2
-        ? BRAND_BLUE
-        : column <= litColumns
-          ? BRIGHT_BLUE
-          : DEEP_BLUE;
-      result += `${color}${line[column]}`;
+    const canvas = [...center(line)];
+    const logoEnd = Math.floor((BANNER_WIDTH - line.trimEnd().length) / 2) + line.trimEnd().length;
+    const particles = row === 2 ? (PARTICLES[particleFrame] ?? []) : [];
+    for (const [offset, particle] of particles) {
+      const column = logoEnd + offset;
+      if (column < BANNER_WIDTH) canvas[column] = particle;
     }
-    const particles = row === 2 ? (PARTICLES[particleFrame] ?? '') : '';
-    return `${result}${BRIGHT_BLUE}${particles}${RESET}`;
+
+    let result = '';
+    for (let column = 0; column < canvas.length; column += 1) {
+      const color =
+        column < litColumns - 2 ? BRAND_BLUE : column <= litColumns ? BRIGHT_BLUE : DEEP_BLUE;
+      const isParticle = canvas[column] === '·' || canvas[column] === '•';
+      result += `${isParticle ? BRIGHT_BLUE : color}${canvas[column]}`;
+    }
+    return `${result}${RESET}`;
   });
   return [...logo, `${BRIGHT_BLUE}${center(COMET_TAGLINE)}${RESET}`].join('\n');
 }
@@ -160,13 +187,15 @@ git commit -m "feat: add branded CLI banner renderer"
 ### Task 2: TTY 动画播放器与安全降级
 
 **Files:**
+
 - Modify: `app/cli/comet-banner.ts`
 - Modify: `test/app/comet-banner.test.ts`
 
 **Interfaces:**
+
 - Consumes: `renderCometBanner()`、`renderCometBannerFrame()`、`COMET_BANNER_LINE_COUNT`
 - Produces: `BannerRuntime` 类型
-- Produces: `canAnimateCometBanner(runtime: Pick<BannerRuntime, 'isTTY' | 'env'>): boolean`
+- Produces: `canAnimateCometBanner(runtime: Pick<BannerRuntime, 'isTTY' | 'env' | 'columns'>): boolean`
 - Produces: `printCometBanner(options?: { enabled?: boolean; runtime?: Partial<BannerRuntime> }): Promise<void>`
 
 - [ ] **Step 1: 写环境判定、完整播放和异常回退的失败测试**
@@ -177,16 +206,18 @@ git commit -m "feat: add branded CLI banner renderer"
 import { canAnimateCometBanner, printCometBanner } from '../../app/cli/comet-banner.js';
 
 it.each([
-  [{ isTTY: false, env: {} }, false],
-  [{ isTTY: true, env: { CI: '1' } }, false],
-  [{ isTTY: true, env: { NO_COLOR: '' } }, false],
-  [{ isTTY: true, env: { TERM: 'dumb' } }, false],
-  [{ isTTY: true, env: {} }, true],
+  [{ isTTY: false, env: {}, columns: 80 }, false],
+  [{ isTTY: true, env: { CI: '1' }, columns: 80 }, false],
+  [{ isTTY: true, env: { NO_COLOR: '' }, columns: 80 }, false],
+  [{ isTTY: true, env: { TERM: 'dumb' }, columns: 80 }, false],
+  [{ isTTY: true, env: {}, columns: 61 }, false],
+  [{ isTTY: true, env: {}, columns: undefined }, false],
+  [{ isTTY: true, env: {}, columns: 80 }, true],
 ] as const)('decides whether animation is safe for %o', (runtime, expected) => {
   expect(canAnimateCometBanner(runtime)).toBe(expected);
 });
 
-it('plays one sweep, restores the cursor, and leaves a stable final frame', async () => {
+it('plays one sweep without changing cursor visibility and leaves a stable final frame', async () => {
   const chunks: string[] = [];
   const sleeps: number[] = [];
 
@@ -194,14 +225,17 @@ it('plays one sweep, restores the cursor, and leaves a stable final frame', asyn
     runtime: {
       isTTY: true,
       env: {},
+      columns: 80,
       write: (chunk) => chunks.push(chunk),
-      sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+      sleep: async (milliseconds) => {
+        sleeps.push(milliseconds);
+      },
     },
   });
 
   const output = chunks.join('');
-  expect(output).toContain('\u001b[?25l');
-  expect(output).toContain('\u001b[?25h');
+  expect(output).not.toContain('\u001b[?25l');
+  expect(output).not.toContain('\u001b[?25h');
   expect(output).toContain('·');
   expect(output).toContain('•');
   expect(output).toContain(COMET_TAGLINE);
@@ -212,21 +246,26 @@ it('plays one sweep, restores the cursor, and leaves a stable final frame', asyn
 it('prints plain static output when animation is unavailable or fails', async () => {
   const plainChunks: string[] = [];
   await printCometBanner({
-    runtime: { isTTY: false, env: {}, write: (chunk) => plainChunks.push(chunk) },
+    runtime: { isTTY: false, env: {}, columns: 80, write: (chunk) => plainChunks.push(chunk) },
   });
   expect(plainChunks.join('')).toContain(COMET_TAGLINE);
   expect(plainChunks.join('')).not.toContain('\u001b[');
 
   const fallbackChunks: string[] = [];
-  await expect(printCometBanner({
-    runtime: {
-      isTTY: true,
-      env: {},
-      write: (chunk) => fallbackChunks.push(chunk),
-      sleep: async () => { throw new Error('timer failed'); },
-    },
-  })).resolves.toBeUndefined();
-  expect(fallbackChunks.join('')).toContain('\u001b[?25h');
+  await expect(
+    printCometBanner({
+      runtime: {
+        isTTY: true,
+        env: {},
+        columns: 80,
+        write: (chunk) => fallbackChunks.push(chunk),
+        sleep: async () => {
+          throw new Error('timer failed');
+        },
+      },
+    }),
+  ).resolves.toBeUndefined();
+  expect(fallbackChunks.join('')).not.toContain('\u001b[?25h');
   expect(fallbackChunks.join('')).toContain(COMET_TAGLINE);
 });
 
@@ -243,47 +282,55 @@ Run: `npx vitest run test/app/comet-banner.test.ts`
 
 Expected: FAIL，错误指向缺少 `canAnimateCometBanner` 或 `printCometBanner`。
 
-- [ ] **Step 3: 实现可注入播放器、光标恢复和静态回退**
+- [ ] **Step 3: 实现可注入播放器、异步写入保护和静态回退**
 
 在 `app/cli/comet-banner.ts` 追加以下结构；帧序列使用 13 个 45ms 扫光等待和 2 个 55ms 粒子等待，总等待 695ms：
+`createBannerStreamWriter()` 同时监听真实 Writable 的 write callback 与异步 `error` 事件，把失败转换为 Promise rejection，并在完成后移除监听器。
 
 ```ts
 export type BannerRuntime = {
   isTTY: boolean;
   env: NodeJS.ProcessEnv;
-  write: (chunk: string) => void;
+  columns: number | undefined;
+  write: (chunk: string) => void | Promise<void>;
   sleep: (milliseconds: number) => Promise<void>;
 };
 
-const HIDE_CURSOR = '\u001b[?25l';
-const SHOW_CURSOR = '\u001b[?25h';
 const ERASE_LINE = '\u001b[2K';
 
 const defaultRuntime: BannerRuntime = {
   isTTY: Boolean(process.stdout.isTTY),
   env: process.env,
-  write: (chunk) => { process.stdout.write(chunk); },
+  columns: process.stdout.columns,
+  write: createBannerStreamWriter(process.stdout),
   sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 };
 
 export function canAnimateCometBanner(
-  runtime: Pick<BannerRuntime, 'isTTY' | 'env'>,
+  runtime: Pick<BannerRuntime, 'isTTY' | 'env' | 'columns'>,
 ): boolean {
   const ciEnabled = Boolean(runtime.env.CI && runtime.env.CI !== 'false');
   const noColor = Object.prototype.hasOwnProperty.call(runtime.env, 'NO_COLOR');
-  return runtime.isTTY && !ciEnabled && !noColor && runtime.env.TERM !== 'dumb';
+  return (
+    runtime.isTTY &&
+    !ciEnabled &&
+    !noColor &&
+    runtime.env.TERM !== 'dumb' &&
+    runtime.columns !== undefined &&
+    runtime.columns >= BANNER_WIDTH
+  );
 }
 
 function replaceFrame(frame: string, first: boolean): string {
   const moveUp = first ? '' : `\u001b[${COMET_BANNER_LINE_COUNT}A`;
-  return `${moveUp}${frame.split('\n').map((line) => `\r${ERASE_LINE}${line}`).join('\n')}\n`;
+  return `${moveUp}${frame
+    .split('\n')
+    .map((line) => `\r${ERASE_LINE}${line}`)
+    .join('\n')}\n`;
 }
 
 function clearRenderedFrame(): string {
-  const lines = Array.from(
-    { length: COMET_BANNER_LINE_COUNT },
-    () => `\r${ERASE_LINE}`,
-  ).join('\n');
+  const lines = Array.from({ length: COMET_BANNER_LINE_COUNT }, () => `\r${ERASE_LINE}`).join('\n');
   return `\u001b[${COMET_BANNER_LINE_COUNT}A${lines}\n`;
 }
 
@@ -293,27 +340,28 @@ export async function printCometBanner(
   if (options.enabled === false) return;
   const runtime = { ...defaultRuntime, ...options.runtime };
   if (!canAnimateCometBanner(runtime)) {
-    runtime.write(`\n${renderCometBanner()}\n\n`);
+    await writeSafely(runtime, `\n${renderCometBanner()}\n\n`);
     return;
   }
 
   let started = false;
   try {
-    runtime.write(`\n${HIDE_CURSOR}`);
-    for (let column = 0; column <= 48; column += 4) {
-      runtime.write(replaceFrame(renderCometBannerFrame(column), !started));
+    await runtime.write('\n');
+    for (let step = 0; step <= 12; step += 1) {
+      const column = Math.round((BANNER_WIDTH * step) / 12);
+      await runtime.write(replaceFrame(renderCometBannerFrame(column), !started));
       started = true;
       await runtime.sleep(45);
     }
     for (const particleFrame of [1, 2]) {
-      runtime.write(replaceFrame(renderCometBannerFrame(50, particleFrame), false));
+      await runtime.write(replaceFrame(renderCometBannerFrame(BANNER_WIDTH, particleFrame), false));
       await runtime.sleep(55);
     }
-    runtime.write(replaceFrame(renderCometBanner({ color: true }), false));
-    runtime.write(`${RESET}${SHOW_CURSOR}\n`);
+    await runtime.write(replaceFrame(renderCometBanner({ color: true }), false));
+    await runtime.write(`${RESET}\n`);
   } catch {
     const cleanup = started ? clearRenderedFrame() : '';
-    runtime.write(`${RESET}${SHOW_CURSOR}${cleanup}\n${renderCometBanner()}\n\n`);
+    await writeSafely(runtime, `${RESET}${cleanup}\n${renderCometBanner()}\n\n`);
   }
 }
 ```
@@ -334,10 +382,12 @@ git commit -m "feat: animate the Comet CLI banner"
 ### Task 3: 接入 `comet init` 并保持 JSON 协议
 
 **Files:**
+
 - Modify: `app/commands/init.ts`
 - Modify: `test/app/init-e2e.test.ts`
 
 **Interfaces:**
+
 - Consumes: `printCometBanner({ enabled: boolean }): Promise<void>`
 - Produces: `initCommand()` 在版本检查前等待 Banner 输出，JSON 模式传入 `enabled: false`
 
@@ -411,12 +461,14 @@ git commit -m "feat: show animated banner during comet init"
 ### Task 4: 同步品牌文案与发布说明
 
 **Files:**
+
 - Modify: `app/cli/index.ts`
 - Modify: `test/app/cli-help.test.ts`
 - Modify: `package.json`
 - Modify: `CHANGELOG.md`
 
 **Interfaces:**
+
 - Consumes: `COMET_TAGLINE`
 - Produces: CLI 根帮助和 npm 包元数据中的一致标语
 
@@ -453,11 +505,10 @@ Expected: FAIL，输出或 `package.json.description` 仍包含旧标语。
 ```ts
 import { COMET_TAGLINE } from './comet-banner.js';
 
-program.name('comet').description(COMET_TAGLINE).version(
-  getCurrentVersion(),
-  '-v, --version',
-  'output the current version',
-);
+program
+  .name('comet')
+  .description(COMET_TAGLINE)
+  .version(getCurrentVersion(), '-v, --version', 'output the current version');
 ```
 
 在 `package.json` 中更新：
@@ -468,10 +519,10 @@ program.name('comet').description(COMET_TAGLINE).version(
 
 - [ ] **Step 4: 在当前版本 Changelog 中记录最终用户可见变化**
 
-在 `CHANGELOG.md` 的 `0.4.0-beta.4` → `### Changed` 下追加：
+在 `CHANGELOG.md` 顶部新增 `0.4.0-beta.5` → `### Changed`：
 
 ```markdown
-- **CLI brand experience**: `comet init` now introduces Comet with a brief blue comet sweep and particle trail in interactive terminals, falls back to a stable static banner in automated output, and uses the clearer "Agent Skill Harness For Turning Ideas Into Evaluated Workflows" tagline across CLI and package metadata.
+- **CLI brand experience**: `comet init` now introduces Comet with a brief blue comet sweep and particle trail in compatible interactive terminals, falls back to a stable centered static banner in automated or narrow output, and uses the clearer "Agent Skill Harness For Turning Ideas Into Evaluated Workflows" tagline across CLI and package metadata.
 ```
 
 - [ ] **Step 5: 运行帮助测试并提交文案与 Changelog**
@@ -488,9 +539,11 @@ git commit -m "feat: refresh Comet CLI branding"
 ### Task 5: 完整验证与真实 CLI 冒烟
 
 **Files:**
+
 - Verify only; no planned source changes
 
 **Interfaces:**
+
 - Consumes: Tasks 1–4 的最终实现
 - Produces: 可审计的格式、lint、构建、测试和真实终端输出证据
 

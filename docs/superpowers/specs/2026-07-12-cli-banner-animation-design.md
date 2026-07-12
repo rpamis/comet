@@ -23,6 +23,7 @@ Agent Skill Harness For Turning Ideas Into Evaluated Workflows
 ```
 
 动画只播放一次，不循环，不加入声音，也不延长后续安装步骤的输出节奏。
+动画不发送隐藏或显示光标的控制序列，避免 Ctrl+C 或终止信号在 JavaScript 清理路径之外中断时遗留隐藏光标。
 
 ## 架构
 
@@ -58,7 +59,7 @@ Agent Skill Harness For Turning Ideas Into Evaluated Workflows
 
 ## 发布说明与版本
 
-这是从当前 `master` 可见静态 Banner 到品牌化动效 Banner 的用户可见变化，应追加到现有 `0.4.0-beta.4` Changelog 条目下，描述最终用户看到的视觉与文案升级。当前分支版本已经比最近发布的 `0.4.0-beta.3` 高一个预发布版本，因此不新增版本号。
+这是从当前 `master` 的 `0.4.0-beta.4` 可见静态 Banner 到品牌化动效 Banner 的用户可见变化。本分支将 `package.json` 与锁文件升级为只高一个预发布版本的 `0.4.0-beta.5`，并在 Changelog 顶部新增 beta.5 条目描述最终用户看到的视觉与文案升级。
 
 普通回归测试和内部模块拆分不单独写入 Changelog。现有未提交的 `website` 子模块指针变化不属于本次工作，保持不动。
 
