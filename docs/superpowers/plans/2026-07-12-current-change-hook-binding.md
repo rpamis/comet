@@ -19,7 +19,7 @@
 - OpenSpec paths, recorded/name-matched Superpowers artifacts, and existing allowlists retain their current routing.
 - Skill edits must be written in `assets/skills-zh/` first and then synchronized to `assets/skills/`.
 - Runtime source changes must be regenerated with `pnpm build:classic-runtime`.
-- `origin/master` and the current package are both `0.4.0-beta.4`; this user-visible code fix must advance the branch to exactly `0.4.0-beta.5`, with package, lockfile, manifest, and Changelog kept aligned.
+- Keep the release version at `0.4.0-beta.4` as explicitly requested; do not modify package, lockfile, or manifest versions, and append the user-visible fix to the existing beta.4 Changelog entry.
 
 ---
 
@@ -36,8 +36,7 @@
 - Modify the Chinese and English phase Skills under `assets/skills-zh/comet-{open,design,build,verify,archive,hotfix,tweak}/SKILL.md` and `assets/skills/comet-{open,design,build,verify,archive,hotfix,tweak}/SKILL.md`: make selection the first state operation once a change name is known.
 - Modify `assets/skills-zh/comet/reference/scripts.md`, `assets/skills/comet/reference/scripts.md`, `assets/skills/comet/rules/comet-phase-guard.md`, and `assets/skills/comet/rules/comet-phase-guard.en.md`: document the command and multi-change hard-guard behavior.
 - Regenerate `assets/skills/comet/scripts/comet-runtime.mjs` and any build-owned Classic runtime artifacts.
-- Modify `package.json`, `package-lock.json`, and `assets/manifest.json`: advance the release line from `0.4.0-beta.4` to `0.4.0-beta.5`.
-- Modify `CHANGELOG.md`: add a new English `0.4.0-beta.5` entry with one `Fixed` bullet linked to #196.
+- Modify `CHANGELOG.md`: append one English `Fixed` bullet linked to #196 under the existing `0.4.0-beta.4` entry.
 
 ---
 
@@ -419,9 +418,6 @@ git commit -m "docs(classic): bind phase skills to current change"
 **Files:**
 
 - Modify: `CHANGELOG.md`
-- Modify: `package.json`
-- Modify: `package-lock.json`
-- Modify: `assets/manifest.json`
 - Verify: all files changed since `ad404c9c`
 
 **Interfaces:**
@@ -436,39 +432,19 @@ git show origin/master:package.json
 git log 0.4.0-beta.3..HEAD --oneline
 ```
 
-Expected: current package and `origin/master` both report `0.4.0-beta.4`, so the new release version must be exactly `0.4.0-beta.5`.
+Expected: current package and `origin/master` both report `0.4.0-beta.4`; keep that version unchanged per the explicit release-line decision.
 
-- [ ] **Step 2: Advance all package-owned version surfaces**
+- [ ] **Step 2: Add one user-visible English Fixed entry**
 
-Update exactly these version fields to `0.4.0-beta.5`:
-
-- `package.json` top-level `version`;
-- `package-lock.json` root `version` and `packages[""].version`;
-- `assets/manifest.json` top-level `version`.
-
-Run:
-
-```bash
-node -e "const fs=require('fs'); for (const file of ['package.json','package-lock.json','assets/manifest.json']) { const data=JSON.parse(fs.readFileSync(file,'utf8')); if (data.version !== '0.4.0-beta.5') throw new Error(file + ' version mismatch'); }"
-```
-
-Expected: exit 0. Also inspect `package-lock.json` and confirm `packages[""].version` is `0.4.0-beta.5`.
-
-- [ ] **Step 3: Add one user-visible English Fixed entry**
-
-Insert a new release entry above beta.4:
+Under the existing `0.4.0-beta.4` → `### Fixed`, add:
 
 ```markdown
-## What's Changed [0.4.0-beta.5] - 2026-07-12
-
-### Fixed
-
 - **Parallel active change guards**: Classic source-write hooks now bind branch and worktree execution to the explicitly selected change, allow legal build work despite unrelated open/design/archive changes, and fail with an actionable selection prompt when multiple active changes are ambiguous ([#196](https://github.com/rpamis/comet/issues/196)).
 ```
 
 Do not list design iterations, test refactors, generated runtime details, or internal selection-file mechanics in Changelog.
 
-- [ ] **Step 4: Run focused Classic verification**
+- [ ] **Step 3: Run focused Classic verification**
 
 ```bash
 npx vitest run test/domains/comet-classic/classic-current-change.test.ts test/domains/comet-classic/classic-hook-guard.test.ts test/domains/comet-classic/comet-scripts-hook-guard.test.ts
@@ -477,7 +453,7 @@ npx vitest run test/domains/comet-classic/comet-scripts.test.ts
 
 Expected: all tests PASS.
 
-- [ ] **Step 5: Verify generated runtime is current**
+- [ ] **Step 4: Verify generated runtime is current**
 
 ```bash
 pnpm build:classic-runtime
@@ -486,7 +462,7 @@ git diff --exit-code -- assets/skills/comet/scripts/comet-runtime.mjs
 
 Expected: the build succeeds and the second command reports no post-build drift.
 
-- [ ] **Step 6: Run repository quality gates**
+- [ ] **Step 5: Run repository quality gates**
 
 ```bash
 npx prettier --check app/ domains/ platform/
@@ -499,7 +475,7 @@ git diff --check
 
 Expected: every command exits 0. If a command fails, use systematic debugging and distinguish changed-file regressions from unrelated pre-existing failures before continuing.
 
-- [ ] **Step 7: Review the final release diff**
+- [ ] **Step 6: Review the final release diff**
 
 ```bash
 git status --short
@@ -509,14 +485,14 @@ git diff ad404c9c..HEAD -- CHANGELOG.md domains/comet-classic assets/skills-zh/c
 
 Expected: only the approved current-change binding implementation, generated assets, tests, bilingual workflow docs, and the single Changelog bullet are present.
 
-- [ ] **Step 8: Commit release metadata**
+- [ ] **Step 7: Commit release metadata**
 
 ```bash
-git add CHANGELOG.md package.json package-lock.json assets/manifest.json
-git commit -m "chore: prepare 0.4.0-beta.5"
+git add CHANGELOG.md
+git commit -m "docs: note current change guard fix"
 ```
 
-- [ ] **Step 9: Run post-commit smoke evidence**
+- [ ] **Step 8: Run post-commit smoke evidence**
 
 ```bash
 npx vitest run test/domains/comet-classic/classic-current-change.test.ts test/domains/comet-classic/classic-hook-guard.test.ts
