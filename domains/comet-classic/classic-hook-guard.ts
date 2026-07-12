@@ -445,7 +445,7 @@ export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
   const target = inputTarget();
   if (!target) return allowed('no file path in tool input');
   const relativePath = await projectRelative(target, projectRoot);
-  let governing: GoverningChange | null;
+  let governing: GoverningResolution;
   try {
     governing = await governingChange(relativePath, projectRoot);
   } catch (error) {
