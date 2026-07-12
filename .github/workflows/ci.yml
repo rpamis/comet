@@ -112,12 +112,12 @@ jobs:
               exit 1
             fi
           }
-          for sd in .claude/skills .cursor/skills .codex/skills .opencode/skills \
+          for sd in .claude/skills .cursor/skills .agents/skills .opencode/skills \
                     .windsurf/skills .cline/skills .roo/skills .continue/skills \
                     .gemini/skills .amazonq/skills .qwen/skills .kilocode/skills \
                     .augment/skills .kiro/skills .kimi-code/skills .lingma/skills .junie/skills \
                     .codebuddy/skills .cospec/skills .crush/skills .factory/skills \
-                    .iflow/skills .pi/skills .qoder/skills .agents/skills \
+                    .iflow/skills .pi/skills .qoder/skills \
                     .bob/skills .forge/skills .trae/skills .github/skills .zcode/skills \
                     .mimocode/skills; do
             check_file "$PROJ/$sd/comet/SKILL.md"
@@ -206,7 +206,7 @@ jobs:
               exit 1
             fi
           }
-          for sd in .claude/skills .cursor/skills .codex/skills .config/opencode/skills \
+          for sd in .claude/skills .cursor/skills .agents/skills .config/opencode/skills \
                     .windsurf/skills .cline/skills .roo/skills .continue/skills \
                     .gemini/skills .amazonq/skills .qwen/skills .kilocode/skills \
                     .augment/skills .kiro/skills .kimi-code/skills .lingma/skills .junie/skills \

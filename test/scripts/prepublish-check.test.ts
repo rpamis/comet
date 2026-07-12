@@ -41,17 +41,36 @@ async function makePackageFixture(): Promise<string> {
   return root;
 }
 
+async function makePublishFixture(): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-publish-fixture-'));
+  temporary.push(root);
+  const packageJson = JSON.parse(await fs.readFile('package.json', 'utf-8')) as Record<
+    string,
+    unknown
+  >;
+  delete packageJson.scripts;
+  await writeFile(root, 'package.json', JSON.stringify(packageJson, null, 2));
+  await writeFile(root, 'README.md', '# Comet publish fixture\n');
+  await writeFile(root, 'eval/pyproject.toml', '[project]\nname = "comet-eval-fixture"\n');
+  await writeFile(root, 'eval/local/tests/tasks/test_tasks.py', 'def test_fixture(): pass\n');
+  await writeFile(root, 'eval/.venv/ignored.txt', 'ignored\n');
+  await writeFile(root, 'eval/.uv-cache/ignored.txt', 'ignored\n');
+  await writeFile(root, 'eval/local/logs/ignored.txt', 'ignored\n');
+  return root;
+}
+
 describe('prepublish security check', () => {
   it('packs the eval harness without derived artifacts', async () => {
+    const root = await makePublishFixture();
     const npmCache = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-npm-cache-'));
     temporary.push(npmCache);
     const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
     const args =
       process.platform === 'win32'
-        ? ['/d', '/s', '/c', `npm pack --dry-run --json --cache ${npmCache}`]
-        : ['pack', '--dry-run', '--json', '--cache', npmCache];
+        ? ['/d', '/s', '/c', `npm pack --dry-run --json --ignore-scripts --cache ${npmCache}`]
+        : ['pack', '--dry-run', '--json', '--ignore-scripts', '--cache', npmCache];
     const result = spawnSync(command, args, {
-      cwd: path.resolve(),
+      cwd: root,
       encoding: 'utf-8',
       env: {
         ...process.env,

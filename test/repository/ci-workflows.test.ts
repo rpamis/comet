@@ -48,10 +48,14 @@ describe('CI workflows', () => {
     expect(workflow).toContain('check_file "$HOME_DIR/$sd/comet/SKILL.md"');
     expect(projectVerify).toContain('.opencode/skills');
     expect(projectVerify).not.toContain('.config/opencode/skills');
+    expect(projectVerify).toContain('.agents/skills');
+    expect(projectVerify).not.toContain('.codex/skills');
     expect(projectVerify).toContain('.mimocode/skills');
     expect(projectVerify).not.toContain('.config/mimocode/skills');
     expect(globalVerify).toContain('.config/opencode/skills');
     expect(globalVerify).not.toContain('.opencode/skills');
+    expect(globalVerify).toContain('.agents/skills');
+    expect(globalVerify).not.toContain('.codex/skills');
     expect(globalVerify).toContain('.config/mimocode/skills');
     expect(globalVerify).not.toContain('.mimocode/skills');
     expect(workflow).toContain('function extractJsonPayload(raw) {');
