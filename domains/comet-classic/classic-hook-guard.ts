@@ -445,18 +445,6 @@ export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
   const target = inputTarget();
   if (!target) return allowed('no file path in tool input');
   const relativePath = await projectRelative(target, projectRoot);
-  let governing: GoverningResolution;
-  try {
-    governing = await governingChange(relativePath, projectRoot);
-  } catch (error) {
-    return result(
-      2,
-      `[COMET-HOOK] blocked: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  if (!governing) return allowed('no active comet change');
-  if ('blockedResult' in governing) return governing.blockedResult;
-  if (governing.archived) return allowed(`${relativePath} (own change archived)`);
 
   if (isCometConfig(relativePath)) {
     return allowed(`${relativePath} (whitelist: comet config)`);
@@ -475,6 +463,19 @@ export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
   ) {
     return allowed(`${relativePath} (whitelist: root markdown)`);
   }
+
+  let governing: GoverningResolution;
+  try {
+    governing = await governingChange(relativePath, projectRoot);
+  } catch (error) {
+    return result(
+      2,
+      `[COMET-HOOK] blocked: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!governing) return allowed('no active comet change');
+  if ('blockedResult' in governing) return governing.blockedResult;
+  if (governing.archived) return allowed(`${relativePath} (own change archived)`);
 
   const phase = governing.phase;
 

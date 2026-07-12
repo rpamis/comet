@@ -117,6 +117,39 @@ describe('Classic hook guard command', () => {
     expect(result.stderr).not.toContain('Current phase: open');
   });
 
+  it.each([
+    ['.comet config', path.join('.comet', 'config.yaml')],
+    ['Superpowers workspace', path.join('.superpowers', 'sdd', 'progress.md')],
+    ['Claude config', path.join('.claude', 'rules', 'custom.md')],
+    ['root Markdown', 'README.md'],
+  ])('keeps the %s allowlist with multiple unselected changes', async (_label, target) => {
+    const dir = await makeProject();
+    await seedChange(dir, 'build-ready', 'build');
+    await seedChange(dir, 'open-change', 'open');
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, target)));
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('whitelist');
+  });
+
+  it('keeps global allowlists when the current selection is malformed', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'build-ready', 'build');
+    await fs.mkdir(path.join(dir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(dir, '.comet', 'current-change.json'), '{broken\n');
+
+    const result = run(
+      dir,
+      'hook-guard',
+      [],
+      hookInput(path.join(dir, '.superpowers', 'sdd', 'progress.md')),
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('whitelist: superpowers workspace');
+  });
+
   it.each(['design', 'archive'] as const)(
     'allows selected build source writes while another change is in %s',
     async (phase) => {

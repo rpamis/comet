@@ -101,6 +101,45 @@ describe('Classic current change selection', () => {
     expect(resolution).toMatchObject({ reason: expect.stringContaining('invalid JSON') });
   });
 
+  it('reports unreadable selection paths as stale instead of missing', async () => {
+    await fs.mkdir(currentChangeFile(root), { recursive: true });
+
+    const resolution = await resolveCurrentChange(root);
+
+    expect(resolution.status).toBe('stale');
+    expect(resolution).toMatchObject({
+      reason: expect.stringContaining('cannot read current change selection'),
+    });
+  });
+
+  it('marks selections stale when the selected change disappears or becomes archived', async () => {
+    await seedActiveChange(root, 'change-a', false);
+    await selectCurrentChange(root, 'change-a');
+
+    await fs.rm(path.join(root, 'openspec', 'changes', 'change-a'), { recursive: true });
+    expect(await resolveCurrentChange(root)).toMatchObject({
+      status: 'stale',
+      reason: expect.stringContaining('active change state not found'),
+    });
+
+    await seedActiveChange(root, 'change-a', false);
+    await selectCurrentChange(root, 'change-a');
+    await seedActiveChange(root, 'change-a', true);
+    expect(await resolveCurrentChange(root)).toEqual({
+      status: 'stale',
+      reason: "Cannot select current change 'change-a': change is archived",
+    });
+  });
+
+  it('cleans temporary files when atomic replacement fails', async () => {
+    await seedActiveChange(root, 'change-a', false);
+    await fs.mkdir(currentChangeFile(root), { recursive: true });
+
+    await expect(selectCurrentChange(root, 'change-a')).rejects.toThrow();
+
+    expect((await fs.readdir(path.join(root, '.comet'))).sort()).toEqual(['current-change.json']);
+  });
+
   it('clears the selection idempotently', async () => {
     await clearCurrentChange(root);
     await clearCurrentChange(root);

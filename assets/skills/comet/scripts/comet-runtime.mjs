@@ -12072,18 +12072,6 @@ var classicHookGuardCommand = async (args) => {
   const target = inputTarget();
   if (!target) return allowed("no file path in tool input");
   const relativePath2 = await projectRelative(target, projectRoot2);
-  let governing;
-  try {
-    governing = await governingChange(relativePath2, projectRoot2);
-  } catch (error) {
-    return result(
-      2,
-      `[COMET-HOOK] blocked: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-  if (!governing) return allowed("no active comet change");
-  if ("blockedResult" in governing) return governing.blockedResult;
-  if (governing.archived) return allowed(`${relativePath2} (own change archived)`);
   if (isCometConfig(relativePath2)) {
     return allowed(`${relativePath2} (whitelist: comet config)`);
   }
@@ -12096,6 +12084,18 @@ var classicHookGuardCommand = async (args) => {
   if (relativePath2 === "CLAUDE.md" || relativePath2 === "CHANGELOG.md" || relativePath2 === "README.md" || isRootMarkdown(relativePath2)) {
     return allowed(`${relativePath2} (whitelist: root markdown)`);
   }
+  let governing;
+  try {
+    governing = await governingChange(relativePath2, projectRoot2);
+  } catch (error) {
+    return result(
+      2,
+      `[COMET-HOOK] blocked: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  if (!governing) return allowed("no active comet change");
+  if ("blockedResult" in governing) return governing.blockedResult;
+  if (governing.archived) return allowed(`${relativePath2} (own change archived)`);
   const phase = governing.phase;
   const openSpec = openSpecAllowed(relativePath2, phase);
   if (openSpec) return allowed(openSpec);
