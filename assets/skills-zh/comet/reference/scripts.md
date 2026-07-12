@@ -69,9 +69,13 @@ comet state transition <change-name> design-complete
 comet state transition <change-name> build-complete
 comet state transition <change-name> verify-pass
 comet state transition <change-name> verify-fail
+comet state transition <change-name> archive-confirm
+comet state transition <change-name> archive-reopen
+comet state transition <change-name> archived
+comet state transition <change-name> preset-escalate
 ```
 
-归档完成由 `comet archive <change-name>` 负责；OpenSpec 会把 change 移到带日期前缀的归档目录，不要手动 transition 一个 `<archive-name>`。
+归档完成由 `comet archive <change-name>` 负责；OpenSpec 会先把 change 移到带日期前缀的归档目录，再由 Comet 完成状态记录。预归档确认使用 `archive-confirm` 或 `archive-reopen`；不要在归档流程之外手动执行 `archived` transition。
 
 ## 解析下一步
 

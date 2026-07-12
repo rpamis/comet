@@ -1864,6 +1864,34 @@ describe('skills', () => {
       expect(en).toContain('| `COMET_RESUME_PROBE` |');
     });
 
+    it('documents every Classic transition event and the archive boundary bilingually', async () => {
+      const zh = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet', 'reference', 'scripts.md'),
+        'utf-8',
+      );
+      const en = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet', 'reference', 'scripts.md'),
+        'utf-8',
+      );
+
+      for (const event of [
+        'open-complete',
+        'design-complete',
+        'build-complete',
+        'verify-pass',
+        'verify-fail',
+        'archive-confirm',
+        'archive-reopen',
+        'archived',
+        'preset-escalate',
+      ]) {
+        expect(zh).toContain(`comet state transition <change-name> ${event}`);
+        expect(en).toContain(`comet state transition <change-name> ${event}`);
+      }
+      expect(zh).toContain('不要在归档流程之外手动执行 `archived` transition');
+      expect(en).toContain('do not manually run the `archived` transition outside that flow');
+    });
+
     it('documents the Ambient Resume probe command in context recovery references', async () => {
       const zh = await fs.readFile(
         path.resolve('assets', 'skills-zh', 'comet', 'reference', 'context-recovery.md'),

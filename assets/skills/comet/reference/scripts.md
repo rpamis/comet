@@ -69,9 +69,13 @@ comet state transition <change-name> design-complete
 comet state transition <change-name> build-complete
 comet state transition <change-name> verify-pass
 comet state transition <change-name> verify-fail
+comet state transition <change-name> archive-confirm
+comet state transition <change-name> archive-reopen
+comet state transition <change-name> archived
+comet state transition <change-name> preset-escalate
 ```
 
-Archive completion is handled by `comet archive <change-name>` after OpenSpec moves the change into its date-prefixed archive directory; do not manually transition an `<archive-name>`.
+Archive completion is handled by `comet archive <change-name>` after OpenSpec moves the change into its date-prefixed archive directory. Use `archive-confirm` or `archive-reopen` for the pre-archive decision, and do not manually run the `archived` transition outside that flow.
 
 ## Resolve next action
 
