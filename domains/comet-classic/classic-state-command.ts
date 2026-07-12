@@ -4,6 +4,11 @@ import { existsSync, promises as fs } from 'fs';
 import path from 'path';
 import { Document, parseDocument } from 'yaml';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
+import {
+  clearCurrentChange,
+  resolveCurrentChange,
+  selectCurrentChange,
+} from './classic-current-change.js';
 import { collectClassicEvidence } from './classic-evidence.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
 import { resolveClassicStepId } from './classic-resolver.js';
@@ -1201,6 +1206,43 @@ function required(args: string[], count: number, usage: string): void {
   if (args.length < count) fail(usage);
 }
 
+function requiredExact(args: string[], count: number, usage: string): void {
+  if (args.length !== count) fail(usage);
+}
+
+async function selectChange(output: CommandOutput, name: string): Promise<void> {
+  validateChangeName(name);
+  try {
+    const selection = await selectCurrentChange(process.cwd(), name);
+    output.stderr.push(
+      green(
+        `[SELECTED] current change: ${selection.change}${selection.branch ? ` (branch: ${selection.branch})` : ''}`,
+      ),
+    );
+  } catch (error) {
+    fail(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function currentChange(output: CommandOutput): Promise<void> {
+  const resolution = await resolveCurrentChange(process.cwd());
+  if (resolution.status === 'selected') {
+    output.stdout.push(resolution.selection.change);
+    return;
+  }
+  if (resolution.status === 'missing') {
+    fail('ERROR: no current change selected\nUse: comet-state.mjs select <change-name>');
+  }
+  fail(
+    `ERROR: current change selection is stale: ${resolution.reason}\nUse: comet-state.mjs select <change-name>`,
+  );
+}
+
+async function clearSelection(output: CommandOutput): Promise<void> {
+  await clearCurrentChange(process.cwd());
+  output.stderr.push(green('[CLEARED] current change selection'));
+}
+
 export const classicStateCommand: ClassicCommandHandler = async (args) => {
   const output = new CommandOutput();
   try {
@@ -1236,6 +1278,15 @@ export const classicStateCommand: ClassicCommandHandler = async (args) => {
     } else if (subcommand === 'task-checkoff') {
       required(rest, 2, 'Usage: comet-state.mjs task-checkoff <file> <task-text>');
       await taskCheckoff(output, rest[0], rest[1]);
+    } else if (subcommand === 'select') {
+      requiredExact(rest, 1, 'Usage: comet-state.mjs select <change-name>');
+      await selectChange(output, rest[0]);
+    } else if (subcommand === 'current') {
+      requiredExact(rest, 0, 'Usage: comet-state.mjs current');
+      await currentChange(output);
+    } else if (subcommand === 'clear-selection') {
+      requiredExact(rest, 0, 'Usage: comet-state.mjs clear-selection');
+      await clearSelection(output);
     } else if (subcommand === 'next') {
       required(rest, 1, 'Usage: comet-state.mjs next <change-name>');
       await next(output, rest[0]);

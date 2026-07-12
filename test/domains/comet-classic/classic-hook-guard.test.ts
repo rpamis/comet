@@ -54,6 +54,29 @@ async function seedDesignChange(dir: string): Promise<string> {
 }
 
 describe('Classic hook guard command', () => {
+  it('selects, reads, and clears the current change through the state launcher', async () => {
+    const dir = await makeProject();
+    expect(run(dir, 'state', ['init', 'demo', 'hotfix']).status).toBe(0);
+
+    const selected = run(dir, 'state', ['select', 'demo']);
+
+    expect(selected.status).toBe(0);
+    expect(selected.stderr).toContain('[SELECTED] current change: demo');
+    expect(run(dir, 'state', ['current']).stdout.trim()).toBe('demo');
+    expect(run(dir, 'state', ['clear-selection']).status).toBe(0);
+    expect(run(dir, 'state', ['clear-selection']).status).toBe(0);
+    expect(run(dir, 'state', ['current']).status).not.toBe(0);
+  });
+
+  it('rejects selecting a missing current change through the state launcher', async () => {
+    const dir = await makeProject();
+
+    const result = run(dir, 'state', ['select', 'missing']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('active change state not found');
+  });
+
   it('allows writes when no active change exists', async () => {
     const dir = await makeProject();
 
