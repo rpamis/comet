@@ -13,6 +13,7 @@ import {
   type PublicClassicCommand,
 } from '../commands/classic.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
+import { COMET_TAGLINE } from './comet-banner.js';
 import {
   skillCheckCommand,
   skillInstallCommand,
@@ -56,7 +57,7 @@ const collect = (value: string, previous: string[]): string[] => [...previous, v
 
 program
   .name('comet')
-  .description('Agent Skill Harness Phase-Guarded Automation From Idea To Archive')
+  .description(COMET_TAGLINE)
   .version(getCurrentVersion(), '-v, --version', 'output the current version');
 
 program

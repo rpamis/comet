@@ -1,4 +1,5 @@
 import { spawnSync } from 'child_process';
+import { readFileSync } from 'fs';
 import path from 'path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
@@ -17,6 +18,18 @@ describe('CLI help text', () => {
   beforeAll(async () => {
     await ensureCliBuilt(repositoryRoot);
   }, 120_000);
+
+  it('uses the evaluated-workflows tagline in CLI and package metadata', () => {
+    const help = runCli('--help');
+    const packageJson = JSON.parse(
+      readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
+    ) as { description: string };
+    const tagline = 'Agent Skill Harness For Turning Ideas Into Evaluated Workflows';
+
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toContain(tagline);
+    expect(packageJson.description).toBe(tagline);
+  });
 
   it('marks bundle as the advanced backend and skill Engine runs as advanced', () => {
     const creatorHelp = runCli('creator', '--help');

@@ -13,6 +13,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **CLI brand experience**: `comet init` now introduces Comet with a brief blue comet sweep and particle trail in interactive terminals, falls back to a stable static banner in automated output, and uses the clearer "Agent Skill Harness For Turning Ideas Into Evaluated Workflows" tagline across CLI and package metadata.
 - **Mixed change status**: `comet status` now distinguishes Comet-managed and plain OpenSpec changes and recommends the correct archive command for ready changes ([#187](https://github.com/rpamis/comet/issues/187)).
 
 ### Fixed
