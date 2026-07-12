@@ -157,7 +157,6 @@ function isCommandAvailable(command: string): boolean {
 }
 
 async function ensureOpenSpecCli(
-  _scope: InstallScope,
   projectPath: string,
   shouldInstall = true,
 ): Promise<'ready' | 'missing' | 'failed'> {
@@ -168,6 +167,8 @@ async function ensureOpenSpecCli(
   const label = alreadyInstalled ? 'Upgrading' : 'Installing';
   console.warn(`    ${label} OpenSpec CLI...`);
   try {
+    // OpenSpec is invoked as a PATH command below; keep the CLI install global
+    // regardless of Comet's project/global skill installation scope.
     const npmArgs = ['install', '-g', '@fission-ai/openspec@latest'];
     execFileSync(getNpmExecutable(), npmArgs, {
       cwd: os.homedir() || projectPath,
@@ -312,7 +313,7 @@ async function installOpenSpec(
   shouldInstallCli = true,
   mirrorOpenCodePlatformIds: string[] = [],
 ): Promise<'installed' | 'failed' | 'skipped'> {
-  const cliStatus = await ensureOpenSpecCli(scope, projectPath, shouldInstallCli);
+  const cliStatus = await ensureOpenSpecCli(projectPath, shouldInstallCli);
   if (cliStatus === 'failed') {
     console.error(
       `    OpenSpec CLI not available. Install manually: npm install -g @fission-ai/openspec@latest`,
