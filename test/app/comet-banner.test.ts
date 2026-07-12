@@ -27,22 +27,38 @@ function stripAnsiSequences(text: string): string {
 }
 
 describe('Comet CLI banner rendering', () => {
-  it('keeps every ASCII logo row on the same fixed grid while left-aligning the block', () => {
+  it('centers one fixed-grid ASCII logo block over the left-aligned tagline', () => {
     const banner = renderCometBanner();
     const lines = banner.split('\n');
     const cliIndent = '  ';
     const canvasWidth = cliIndent.length + COMET_TAGLINE.length;
     const logoWidth = Math.max(...COMET_LOGO.map((line) => line.length));
+    const logoOffset = lines[0]?.indexOf(COMET_LOGO[0]) ?? -1;
 
     expect(COMET_TAGLINE).toBe('Agent Skill Harness For Turning Ideas Into Evaluated Workflows');
     expect(lines).toHaveLength(COMET_BANNER_LINE_COUNT);
     for (const [index, logoLine] of COMET_LOGO.entries()) {
       expect(lines[index]).toHaveLength(canvasWidth);
-      expect(lines[index]?.slice(0, logoWidth)).toBe(logoLine.padEnd(logoWidth));
+      expect(lines[index]?.slice(logoOffset, logoOffset + logoWidth)).toBe(
+        logoLine.padEnd(logoWidth),
+      );
     }
     expect(lines.at(-1)?.startsWith(`${cliIndent}${COMET_TAGLINE}`)).toBe(true);
     expect(lines.at(-1)?.length).toBe(canvasWidth);
+
+    const logoLines = lines.slice(0, COMET_LOGO.length);
+    const logoLeft = Math.min(...logoLines.map((line) => line.search(/\S/)));
+    const logoRight = Math.max(...logoLines.map((line) => line.trimEnd().length));
+    const taglineLeft = lines.at(-1)?.indexOf(COMET_TAGLINE) ?? -1;
+    const taglineRight = taglineLeft + COMET_TAGLINE.length;
+    expect(Math.abs(logoLeft + logoRight - (taglineLeft + taglineRight))).toBeLessThanOrEqual(1);
     expect(banner).not.toContain('\u001b[');
+  });
+
+  it('renders the tagline in rgb(208, 151, 53) when color is enabled', () => {
+    const banner = renderCometBanner({ color: true });
+
+    expect(banner).toContain(`\u001b[38;2;208;151;53m  ${COMET_TAGLINE}`);
   });
 
   it('uses deep blue, bright cyan-blue, and brand blue across a sweep frame', () => {

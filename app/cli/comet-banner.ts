@@ -19,6 +19,7 @@ const DIM_BLUE: Rgb = [7, 31, 63];
 const DEEP_BLUE: Rgb = [22, 78, 154];
 const BRAND_BLUE: Rgb = [11, 111, 251];
 const BRIGHT_BLUE: Rgb = [88, 184, 255];
+const TAGLINE_GOLD: Rgb = [208, 151, 53];
 const CLI_INDENT = '  ';
 const LOGO_WIDTH = Math.max(...COMET_LOGO.map((line) => line.length));
 const BANNER_WIDTH = Math.max(LOGO_WIDTH, CLI_INDENT.length + COMET_TAGLINE.length);
@@ -29,6 +30,10 @@ const LOGO_CONTENT_LEFT = Math.min(
   }),
 );
 const LOGO_CONTENT_RIGHT = Math.max(...COMET_LOGO.map((line) => line.trimEnd().length));
+const LOGO_OFFSET =
+  CLI_INDENT.length +
+  Math.floor((COMET_TAGLINE.length - (LOGO_CONTENT_RIGHT - LOGO_CONTENT_LEFT)) / 2) -
+  LOGO_CONTENT_LEFT;
 const FRAME_DELAY_MS = 50;
 const PREHEAT_FRAMES = 6;
 const SWEEP_FRAMES = 16;
@@ -53,7 +58,7 @@ function taglineOnCanvas(text: string): string {
 }
 
 function logoLineOnCanvas(line: string): string {
-  return line.padEnd(BANNER_WIDTH);
+  return `${' '.repeat(LOGO_OFFSET)}${line}`.padEnd(BANNER_WIDTH);
 }
 
 function revealTaglineFromCenter(text: string, progress: number): string {
@@ -69,7 +74,10 @@ function setParticle(canvas: string[], column: number, particle: string): void {
 }
 
 function logoBounds(): { start: number; end: number } {
-  return { start: LOGO_CONTENT_LEFT, end: LOGO_CONTENT_RIGHT };
+  return {
+    start: LOGO_OFFSET + LOGO_CONTENT_LEFT,
+    end: LOGO_OFFSET + LOGO_CONTENT_RIGHT,
+  };
 }
 
 function particlesForPhase(
@@ -131,7 +139,7 @@ export function renderCometAnimationFrame(phase: AnimationPhase, progress: numbe
 
   const taglineProgress = phase === 'settle' ? Math.max(0, (amount - 0.57) / 0.43) : 0;
   const tagline = revealTaglineFromCenter(COMET_TAGLINE, taglineProgress);
-  return [...logo, `${ansi(BRIGHT_BLUE)}${tagline}${RESET}`].join('\n');
+  return [...logo, `${ansi(TAGLINE_GOLD)}${tagline}${RESET}`].join('\n');
 }
 
 export function renderCometBanner(options: { color?: boolean } = {}): string {
@@ -139,7 +147,7 @@ export function renderCometBanner(options: { color?: boolean } = {}): string {
     ? COMET_LOGO.map((line) => `${ansi(BRAND_BLUE)}${logoLineOnCanvas(line)}${RESET}`)
     : COMET_LOGO.map(logoLineOnCanvas);
   const tagline = options.color
-    ? `${ansi(BRIGHT_BLUE)}${taglineOnCanvas(COMET_TAGLINE)}${RESET}`
+    ? `${ansi(TAGLINE_GOLD)}${taglineOnCanvas(COMET_TAGLINE)}${RESET}`
     : taglineOnCanvas(COMET_TAGLINE);
   return [...logo, tagline].join('\n');
 }
