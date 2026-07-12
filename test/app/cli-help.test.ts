@@ -23,12 +23,18 @@ describe('CLI help text', () => {
     const help = runCli('--help');
     const packageJson = JSON.parse(
       readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
-    ) as { description: string };
+    ) as { description: string; version: string };
+    const packageLock = JSON.parse(
+      readFileSync(path.join(repositoryRoot, 'package-lock.json'), 'utf8'),
+    ) as { version: string; packages: { '': { version: string } } };
     const tagline = 'Agent Skill Harness For Turning Ideas Into Evaluated Workflows';
 
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain(tagline);
     expect(packageJson.description).toBe(tagline);
+    expect(packageJson.version).toBe('0.4.0-beta.4');
+    expect(packageLock.version).toBe('0.4.0-beta.4');
+    expect(packageLock.packages[''].version).toBe('0.4.0-beta.4');
   });
 
   it('marks bundle as the advanced backend and skill Engine runs as advanced', () => {

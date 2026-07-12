@@ -41,23 +41,19 @@ describe('Comet CLI banner rendering', () => {
     expect(frame).toContain('\u001b[0m');
 
     const visibleLines = frame.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '').split('\n');
-    const particleLine = visibleLines[2] ?? '';
-    const visibleLogo = COMET_LOGO[2].trimEnd();
-    const logoEnd =
-      Math.floor((COMET_TAGLINE.length - visibleLogo.length) / 2) + visibleLogo.length;
     expect(visibleLines.every((line) => line.length === COMET_TAGLINE.length)).toBe(true);
-    expect(particleLine.indexOf('·')).toBeGreaterThanOrEqual(logoEnd);
-    expect(particleLine.indexOf('•')).toBeGreaterThanOrEqual(logoEnd);
+    expect(visibleLines.some((line) => line.includes('*'))).toBe(true);
+    expect(visibleLines.some((line) => line.includes('•'))).toBe(true);
   });
 
   it.each([
-    [{ isTTY: false, env: {}, columns: 80 }, false],
-    [{ isTTY: true, env: { CI: '1' }, columns: 80 }, false],
-    [{ isTTY: true, env: { NO_COLOR: '' }, columns: 80 }, false],
-    [{ isTTY: true, env: { TERM: 'dumb' }, columns: 80 }, false],
-    [{ isTTY: true, env: {}, columns: COMET_TAGLINE.length - 1 }, false],
-    [{ isTTY: true, env: {}, columns: undefined }, false],
-    [{ isTTY: true, env: {}, columns: 80 }, true],
+    [{ isTTY: false, env: {}, getColumns: () => 80 }, false],
+    [{ isTTY: true, env: { CI: '1' }, getColumns: () => 80 }, false],
+    [{ isTTY: true, env: { NO_COLOR: '' }, getColumns: () => 80 }, false],
+    [{ isTTY: true, env: { TERM: 'dumb' }, getColumns: () => 80 }, false],
+    [{ isTTY: true, env: {}, getColumns: () => COMET_TAGLINE.length - 1 }, false],
+    [{ isTTY: true, env: {}, getColumns: () => undefined }, false],
+    [{ isTTY: true, env: {}, getColumns: () => 80 }, true],
   ] as const)('decides whether animation is safe for %o', (runtime, expected) => {
     expect(canAnimateCometBanner(runtime)).toBe(expected);
   });
@@ -69,7 +65,7 @@ describe('Comet CLI banner rendering', () => {
         runtime: {
           isTTY: true,
           env: {},
-          columns,
+          getColumns: () => columns,
           write: (chunk) => chunks.push(chunk),
         },
       });
@@ -78,7 +74,49 @@ describe('Comet CLI banner rendering', () => {
     }
   });
 
-  it('plays one sweep without changing cursor visibility and leaves a stable final frame', async () => {
+  it('centers the entire static banner within the terminal width', async () => {
+    const chunks: string[] = [];
+    const terminalColumns = 100;
+    const expectedIndent = ' '.repeat(Math.floor((terminalColumns - COMET_TAGLINE.length) / 2));
+
+    await printCometBanner({
+      runtime: {
+        isTTY: true,
+        env: { NO_COLOR: '' },
+        getColumns: () => terminalColumns,
+        write: (chunk) => chunks.push(chunk),
+      },
+    });
+
+    const renderedLines = chunks.join('').split('\n').filter(Boolean);
+    const baseLines = renderCometBanner().split('\n');
+    expect(renderedLines).toEqual(baseLines.map((line) => `${expectedIndent}${line}`));
+  });
+
+  it('re-reads terminal width and re-centers every animation frame', async () => {
+    const chunks: string[] = [];
+    let reads = 0;
+
+    await printCometBanner({
+      runtime: {
+        isTTY: true,
+        env: {},
+        getColumns: () => {
+          reads += 1;
+          return reads < 10 ? 100 : 120;
+        },
+        write: (chunk) => chunks.push(chunk),
+        sleep: async () => undefined,
+      },
+    });
+
+    const output = chunks.join('');
+    expect(reads).toBeGreaterThan(30);
+    expect(output).toContain(`\r\u001b[2K${' '.repeat(19)}\u001b[`);
+    expect(output).toContain(`\r\u001b[2K${' '.repeat(29)}\u001b[`);
+  });
+
+  it('plays a vivid 1.8 second three-act sequence and leaves a stable final frame', async () => {
     const chunks: string[] = [];
     const sleeps: number[] = [];
 
@@ -86,7 +124,7 @@ describe('Comet CLI banner rendering', () => {
       runtime: {
         isTTY: true,
         env: {},
-        columns: 80,
+        getColumns: () => 100,
         write: (chunk) => chunks.push(chunk),
         sleep: async (milliseconds) => {
           sleeps.push(milliseconds);
@@ -100,7 +138,17 @@ describe('Comet CLI banner rendering', () => {
     expect(output).toContain('·');
     expect(output).toContain('•');
     expect(output).toContain(COMET_TAGLINE);
-    expect(sleeps).toEqual([...Array<number>(13).fill(45), 55, 55]);
+    expect(sleeps).toEqual(Array<number>(36).fill(50));
+    expect(sleeps.reduce((sum, value) => sum + value, 0)).toBe(1800);
+    expect(output).toContain('*');
+
+    const animationFrames = chunks.filter((chunk) => chunk.includes('\u001b[2K'));
+    expect(animationFrames.some((frame) => !frame.includes(COMET_TAGLINE))).toBe(true);
+    expect(
+      animationFrames.some(
+        (frame) => frame.includes('Turning Ideas') && !frame.includes(COMET_TAGLINE),
+      ),
+    ).toBe(true);
 
     const lastParticleFrame = chunks.findLastIndex((chunk) => chunk.includes('·'));
     const stableFrame = chunks.findIndex((chunk) => chunk.includes(COMET_LOGO[0]));
@@ -123,7 +171,7 @@ describe('Comet CLI banner rendering', () => {
         runtime: {
           isTTY: true,
           env: {},
-          columns: 80,
+          getColumns: () => 100,
           write: (chunk) => fallbackChunks.push(chunk),
           sleep: async () => {
             throw new Error('timer failed');
@@ -133,7 +181,8 @@ describe('Comet CLI banner rendering', () => {
     ).resolves.toBeUndefined();
     const fallback = fallbackChunks.at(-1) ?? '';
     const cleanupStart = fallback.indexOf(`\u001b[${COMET_BANNER_LINE_COUNT}A`);
-    const staticBannerStart = fallback.indexOf(`\n${renderCometBanner()}\n\n`);
+    const centeredFirstLine = `${' '.repeat(19)}${renderCometBanner().split('\n')[0]}`;
+    const staticBannerStart = fallback.indexOf(centeredFirstLine);
     expect(fallback).not.toContain('\u001b[?25h');
     expect(cleanupStart).toBeGreaterThan(-1);
     expect(fallback.split('\u001b[2K')).toHaveLength(COMET_BANNER_LINE_COUNT + 1);
@@ -148,7 +197,7 @@ describe('Comet CLI banner rendering', () => {
         runtime: {
           isTTY: true,
           env: {},
-          columns: 80,
+          getColumns: () => 100,
           write: () => {
             writeAttempts += 1;
             if (writeAttempts >= 3) throw new Error('output failed');
@@ -176,7 +225,7 @@ describe('Comet CLI banner rendering', () => {
           runtime: {
             isTTY,
             env: {},
-            columns: 80,
+            getColumns: () => 100,
             write: createBannerStreamWriter(stdout),
           },
         }),

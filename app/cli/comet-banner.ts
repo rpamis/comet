@@ -11,21 +11,32 @@ export const COMET_LOGO = [
   '   ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝   ╚═╝   ',
 ] as const;
 
+type Rgb = readonly [red: number, green: number, blue: number];
+type AnimationPhase = 'preheat' | 'sweep' | 'settle';
+
 const RESET = '\u001b[0m';
-const DEEP_BLUE = '\u001b[38;2;22;78;154m';
-const BRAND_BLUE = '\u001b[38;2;11;111;251m';
-const BRIGHT_BLUE = '\u001b[38;2;88;184;255m';
+const DIM_BLUE: Rgb = [7, 31, 63];
+const DEEP_BLUE: Rgb = [22, 78, 154];
+const BRAND_BLUE: Rgb = [11, 111, 251];
+const BRIGHT_BLUE: Rgb = [88, 184, 255];
 const BANNER_WIDTH = Math.max(...COMET_LOGO.map((line) => line.length), COMET_TAGLINE.length);
-const PARTICLES = [
-  [],
-  [
-    [1, '·'],
-    [5, '•'],
-  ],
-  [[4, '·']],
-] as const;
+const FRAME_DELAY_MS = 50;
+const PREHEAT_FRAMES = 6;
+const SWEEP_FRAMES = 16;
+const SETTLE_FRAMES = 14;
 
 export const COMET_BANNER_LINE_COUNT = COMET_LOGO.length + 1;
+
+function ansi([red, green, blue]: Rgb): string {
+  return `\u001b[38;2;${red};${green};${blue}m`;
+}
+
+function mix(from: Rgb, to: Rgb, progress: number): Rgb {
+  const amount = Math.max(0, Math.min(1, progress));
+  return from.map((value, index) =>
+    Math.round(value + (to[index] - value) * amount),
+  ) as unknown as Rgb;
+}
 
 function center(text: string): string {
   const visibleText = text.trimEnd();
@@ -33,42 +44,104 @@ function center(text: string): string {
   return `${' '.repeat(left)}${visibleText}`.padEnd(BANNER_WIDTH);
 }
 
+function revealFromCenter(text: string, progress: number): string {
+  const count = Math.min(text.length, Math.max(0, Math.ceil(text.length * progress)));
+  const start = Math.floor((text.length - count) / 2);
+  return `${' '.repeat(start)}${text.slice(start, start + count)}`.padEnd(BANNER_WIDTH);
+}
+
+function setParticle(canvas: string[], column: number, particle: string): void {
+  if (column >= 0 && column < canvas.length) canvas[column] = particle;
+}
+
+function logoBounds(line: string): { start: number; end: number } {
+  const visible = line.trimEnd();
+  const start = Math.floor((BANNER_WIDTH - visible.length) / 2);
+  return { start, end: start + visible.length };
+}
+
+function particlesForPhase(
+  canvas: string[],
+  line: string,
+  row: number,
+  phase: AnimationPhase,
+  progress: number,
+): void {
+  const { start, end } = logoBounds(line);
+
+  if (phase === 'preheat') {
+    const lead = Math.round((start - 1) * progress);
+    if (row === 1) setParticle(canvas, lead, '*');
+    if (row === 3) setParticle(canvas, lead - 3, '·');
+    if (row === 4) setParticle(canvas, lead - 5, '•');
+    return;
+  }
+
+  if (phase === 'sweep') {
+    const head = Math.round((BANNER_WIDTH + 8) * progress) - 4;
+    if (row === 1) setParticle(canvas, head - 5, '·');
+    if (row === 2) setParticle(canvas, head - 3, '*');
+    if (row === 4) setParticle(canvas, head - 7, '•');
+    return;
+  }
+
+  if (progress >= 1) return;
+  const energy = progress < 0.55 ? progress / 0.55 : (1 - progress) / 0.45;
+  const spread = Math.max(1, Math.round(energy * Math.max(1, BANNER_WIDTH - end - 1)));
+  if (row === 1) setParticle(canvas, end + spread, '·');
+  if (row === 2) setParticle(canvas, end + Math.max(1, spread - 2), '*');
+  if (row === 4) setParticle(canvas, end + Math.max(1, Math.floor(spread / 2)), '•');
+}
+
+function colorForColumn(phase: AnimationPhase, progress: number, column: number): Rgb {
+  if (phase === 'preheat') return mix(DIM_BLUE, DEEP_BLUE, progress);
+  if (phase === 'settle') return BRAND_BLUE;
+
+  const head = Math.round((BANNER_WIDTH + 8) * progress) - 4;
+  const distance = head - column;
+  if (distance < -2) return DEEP_BLUE;
+  if (distance <= 2) return BRIGHT_BLUE;
+  if (distance <= 8) return mix(BRIGHT_BLUE, BRAND_BLUE, distance / 8);
+  return BRAND_BLUE;
+}
+
+export function renderCometAnimationFrame(phase: AnimationPhase, progress: number): string {
+  const amount = Math.max(0, Math.min(1, progress));
+  const logo = COMET_LOGO.map((line, row) => {
+    const canvas = [...center(line)];
+    particlesForPhase(canvas, line, row, phase, amount);
+    return `${canvas
+      .map((character, column) => {
+        const particle = character === '·' || character === '•' || character === '*';
+        return `${ansi(particle ? BRIGHT_BLUE : colorForColumn(phase, amount, column))}${character}`;
+      })
+      .join('')}${RESET}`;
+  });
+
+  const taglineProgress = phase === 'settle' ? Math.max(0, (amount - 0.57) / 0.43) : 0;
+  const tagline = revealFromCenter(COMET_TAGLINE, taglineProgress);
+  return [...logo, `${ansi(BRIGHT_BLUE)}${tagline}${RESET}`].join('\n');
+}
+
 export function renderCometBanner(options: { color?: boolean } = {}): string {
   const logo = options.color
-    ? COMET_LOGO.map((line) => `${BRAND_BLUE}${center(line)}${RESET}`)
+    ? COMET_LOGO.map((line) => `${ansi(BRAND_BLUE)}${center(line)}${RESET}`)
     : COMET_LOGO.map(center);
   const tagline = options.color
-    ? `${BRIGHT_BLUE}${center(COMET_TAGLINE)}${RESET}`
+    ? `${ansi(BRIGHT_BLUE)}${center(COMET_TAGLINE)}${RESET}`
     : center(COMET_TAGLINE);
   return [...logo, tagline].join('\n');
 }
 
 export function renderCometBannerFrame(litColumns: number, particleFrame = 0): string {
-  const logo = COMET_LOGO.map((line, row) => {
-    const canvas = [...center(line)];
-    const logoEnd = Math.floor((BANNER_WIDTH - line.trimEnd().length) / 2) + line.trimEnd().length;
-    const particles = row === 2 ? (PARTICLES[particleFrame] ?? []) : [];
-    for (const [offset, particle] of particles) {
-      const column = logoEnd + offset;
-      if (column < BANNER_WIDTH) canvas[column] = particle;
-    }
-
-    let result = '';
-    for (let column = 0; column < canvas.length; column += 1) {
-      const color =
-        column < litColumns - 2 ? BRAND_BLUE : column <= litColumns ? BRIGHT_BLUE : DEEP_BLUE;
-      const isParticle = canvas[column] === '·' || canvas[column] === '•';
-      result += `${isParticle ? BRIGHT_BLUE : color}${canvas[column]}`;
-    }
-    return `${result}${RESET}`;
-  });
-  return [...logo, `${BRIGHT_BLUE}${center(COMET_TAGLINE)}${RESET}`].join('\n');
+  const progress = Math.max(0, Math.min(1, litColumns / BANNER_WIDTH));
+  return renderCometAnimationFrame('sweep', Math.min(1, progress + particleFrame * 0.01));
 }
 
 export type BannerRuntime = {
   isTTY: boolean;
   env: NodeJS.ProcessEnv;
-  columns: number | undefined;
+  getColumns: () => number | undefined;
   write: (chunk: string) => void | Promise<void>;
   sleep: (milliseconds: number) => Promise<void>;
 };
@@ -114,24 +187,60 @@ export function createBannerStreamWriter(stream: Writable): BannerRuntime['write
 const defaultRuntime: BannerRuntime = {
   isTTY: Boolean(process.stdout.isTTY),
   env: process.env,
-  columns: process.stdout.columns,
+  getColumns: () => process.stdout.columns,
   write: createBannerStreamWriter(process.stdout),
   sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 };
 
+function readColumns(runtime: Pick<BannerRuntime, 'getColumns'>): number | undefined {
+  return runtime.getColumns();
+}
+
+function isAutomated(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(env.CI && env.CI !== 'false');
+}
+
 export function canAnimateCometBanner(
-  runtime: Pick<BannerRuntime, 'isTTY' | 'env' | 'columns'>,
+  runtime: Pick<BannerRuntime, 'isTTY' | 'env' | 'getColumns'>,
 ): boolean {
-  const ciEnabled = Boolean(runtime.env.CI && runtime.env.CI !== 'false');
   const noColor = Object.prototype.hasOwnProperty.call(runtime.env, 'NO_COLOR');
+  const columns = readColumns(runtime);
   return (
     runtime.isTTY &&
-    !ciEnabled &&
+    !isAutomated(runtime.env) &&
     !noColor &&
     runtime.env.TERM !== 'dumb' &&
-    runtime.columns !== undefined &&
-    runtime.columns >= BANNER_WIDTH
+    columns !== undefined &&
+    columns >= BANNER_WIDTH
   );
+}
+
+function centerFrameInTerminal(frame: string, columns: number): string {
+  const indent = ' '.repeat(Math.max(0, Math.floor((columns - BANNER_WIDTH) / 2)));
+  return frame
+    .split('\n')
+    .map((line) => `${indent}${line}`)
+    .join('\n');
+}
+
+function staticFrameForRuntime(runtime: BannerRuntime): string {
+  const frame = renderCometBanner();
+  const columns = readColumns(runtime);
+  if (
+    runtime.isTTY &&
+    !isAutomated(runtime.env) &&
+    columns !== undefined &&
+    columns >= BANNER_WIDTH
+  ) {
+    return centerFrameInTerminal(frame, columns);
+  }
+  return frame;
+}
+
+function animationFrameForRuntime(runtime: BannerRuntime, frame: string): string {
+  const columns = readColumns(runtime);
+  if (columns === undefined || columns < BANNER_WIDTH) throw new Error('terminal width changed');
+  return centerFrameInTerminal(frame, columns);
 }
 
 function replaceFrame(frame: string, first: boolean): string {
@@ -155,33 +264,47 @@ async function writeSafely(runtime: Pick<BannerRuntime, 'write'>, chunk: string)
   }
 }
 
+function timeline(): Array<{ phase: AnimationPhase; progress: number }> {
+  const frames: Array<{ phase: AnimationPhase; progress: number }> = [];
+  for (let index = 0; index < PREHEAT_FRAMES; index += 1) {
+    frames.push({ phase: 'preheat', progress: index / (PREHEAT_FRAMES - 1) });
+  }
+  for (let index = 0; index < SWEEP_FRAMES; index += 1) {
+    frames.push({ phase: 'sweep', progress: index / (SWEEP_FRAMES - 1) });
+  }
+  for (let index = 0; index < SETTLE_FRAMES; index += 1) {
+    frames.push({ phase: 'settle', progress: index / (SETTLE_FRAMES - 1) });
+  }
+  return frames;
+}
+
 export async function printCometBanner(
   options: { enabled?: boolean; runtime?: Partial<BannerRuntime> } = {},
 ): Promise<void> {
   if (options.enabled === false) return;
   const runtime = { ...defaultRuntime, ...options.runtime };
   if (!canAnimateCometBanner(runtime)) {
-    await writeSafely(runtime, `\n${renderCometBanner()}\n\n`);
+    await writeSafely(runtime, `\n${staticFrameForRuntime(runtime)}\n\n`);
     return;
   }
 
   let started = false;
   try {
     await runtime.write('\n');
-    for (let step = 0; step <= 12; step += 1) {
-      const column = Math.round((BANNER_WIDTH * step) / 12);
-      await runtime.write(replaceFrame(renderCometBannerFrame(column), !started));
+    for (const frame of timeline()) {
+      const rendered = animationFrameForRuntime(
+        runtime,
+        renderCometAnimationFrame(frame.phase, frame.progress),
+      );
+      await runtime.write(replaceFrame(rendered, !started));
       started = true;
-      await runtime.sleep(45);
+      await runtime.sleep(FRAME_DELAY_MS);
     }
-    for (const particleFrame of [1, 2]) {
-      await runtime.write(replaceFrame(renderCometBannerFrame(BANNER_WIDTH, particleFrame), false));
-      await runtime.sleep(55);
-    }
-    await runtime.write(replaceFrame(renderCometBanner({ color: true }), false));
+    const stable = animationFrameForRuntime(runtime, renderCometBanner({ color: true }));
+    await runtime.write(replaceFrame(stable, false));
     await runtime.write(`${RESET}\n`);
   } catch {
     const cleanup = started ? clearRenderedFrame() : '';
-    await writeSafely(runtime, `${RESET}${cleanup}\n${renderCometBanner()}\n\n`);
+    await writeSafely(runtime, `${RESET}${cleanup}\n${staticFrameForRuntime(runtime)}\n\n`);
   }
 }
