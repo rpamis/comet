@@ -11,22 +11,36 @@ import {
   renderCometBannerFrame,
 } from '../../app/cli/comet-banner.js';
 
+function stripAnsiSequences(text: string): string {
+  let visible = '';
+  let insideSequence = false;
+  for (const character of text) {
+    if (character === '\u001b') {
+      insideSequence = true;
+    } else if (insideSequence) {
+      if (/^[A-Za-z]$/.test(character)) insideSequence = false;
+    } else {
+      visible += character;
+    }
+  }
+  return visible;
+}
+
 describe('Comet CLI banner rendering', () => {
-  it('centers the logo and tagline on one shared canvas without ANSI by default', () => {
+  it('keeps every ASCII logo row on the same fixed grid while left-aligning the block', () => {
     const banner = renderCometBanner();
     const lines = banner.split('\n');
-    const canvasWidth = COMET_TAGLINE.length;
+    const cliIndent = '  ';
+    const canvasWidth = cliIndent.length + COMET_TAGLINE.length;
+    const logoWidth = Math.max(...COMET_LOGO.map((line) => line.length));
 
     expect(COMET_TAGLINE).toBe('Agent Skill Harness For Turning Ideas Into Evaluated Workflows');
     expect(lines).toHaveLength(COMET_BANNER_LINE_COUNT);
     for (const [index, logoLine] of COMET_LOGO.entries()) {
-      const visibleLogo = logoLine.trimEnd();
       expect(lines[index]).toHaveLength(canvasWidth);
-      expect(lines[index]?.indexOf(visibleLogo)).toBe(
-        Math.floor((canvasWidth - visibleLogo.length) / 2),
-      );
+      expect(lines[index]?.slice(0, logoWidth)).toBe(logoLine.padEnd(logoWidth));
     }
-    expect(lines.at(-1)?.trim()).toBe(COMET_TAGLINE);
+    expect(lines.at(-1)?.startsWith(`${cliIndent}${COMET_TAGLINE}`)).toBe(true);
     expect(lines.at(-1)?.length).toBe(canvasWidth);
     expect(banner).not.toContain('\u001b[');
   });
@@ -40,8 +54,8 @@ describe('Comet CLI banner rendering', () => {
     expect(frame).toContain('·');
     expect(frame).toContain('\u001b[0m');
 
-    const visibleLines = frame.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '').split('\n');
-    expect(visibleLines.every((line) => line.length === COMET_TAGLINE.length)).toBe(true);
+    const visibleLines = stripAnsiSequences(frame).split('\n');
+    expect(visibleLines.every((line) => line.length === COMET_TAGLINE.length + 2)).toBe(true);
     expect(visibleLines.some((line) => line.includes('*'))).toBe(true);
     expect(visibleLines.some((line) => line.includes('•'))).toBe(true);
   });
@@ -51,7 +65,7 @@ describe('Comet CLI banner rendering', () => {
     [{ isTTY: true, env: { CI: '1' }, getColumns: () => 80 }, false],
     [{ isTTY: true, env: { NO_COLOR: '' }, getColumns: () => 80 }, false],
     [{ isTTY: true, env: { TERM: 'dumb' }, getColumns: () => 80 }, false],
-    [{ isTTY: true, env: {}, getColumns: () => COMET_TAGLINE.length - 1 }, false],
+    [{ isTTY: true, env: {}, getColumns: () => COMET_TAGLINE.length + 1 }, false],
     [{ isTTY: true, env: {}, getColumns: () => undefined }, false],
     [{ isTTY: true, env: {}, getColumns: () => 80 }, true],
   ] as const)('decides whether animation is safe for %o', (runtime, expected) => {
@@ -59,7 +73,7 @@ describe('Comet CLI banner rendering', () => {
   });
 
   it('prints plain static output for narrow or unknown terminal widths', async () => {
-    for (const columns of [COMET_TAGLINE.length - 1, undefined]) {
+    for (const columns of [COMET_TAGLINE.length + 1, undefined]) {
       const chunks: string[] = [];
       await printCometBanner({
         runtime: {
@@ -74,10 +88,9 @@ describe('Comet CLI banner rendering', () => {
     }
   });
 
-  it('centers the entire static banner within the terminal width', async () => {
+  it('keeps the entire static banner left-aligned in a wide terminal', async () => {
     const chunks: string[] = [];
     const terminalColumns = 100;
-    const expectedIndent = ' '.repeat(Math.floor((terminalColumns - COMET_TAGLINE.length) / 2));
 
     await printCometBanner({
       runtime: {
@@ -90,10 +103,10 @@ describe('Comet CLI banner rendering', () => {
 
     const renderedLines = chunks.join('').split('\n').filter(Boolean);
     const baseLines = renderCometBanner().split('\n');
-    expect(renderedLines).toEqual(baseLines.map((line) => `${expectedIndent}${line}`));
+    expect(renderedLines).toEqual(baseLines);
   });
 
-  it('re-reads terminal width and re-centers every animation frame', async () => {
+  it('re-reads terminal width without shifting the animation away from the left edge', async () => {
     const chunks: string[] = [];
     let reads = 0;
 
@@ -112,8 +125,8 @@ describe('Comet CLI banner rendering', () => {
 
     const output = chunks.join('');
     expect(reads).toBeGreaterThan(30);
-    expect(output).toContain(`\r\u001b[2K${' '.repeat(19)}\u001b[`);
-    expect(output).toContain(`\r\u001b[2K${' '.repeat(29)}\u001b[`);
+    expect(output).not.toContain(`\r\u001b[2K${' '.repeat(19)}\u001b[`);
+    expect(output).not.toContain(`\r\u001b[2K${' '.repeat(29)}\u001b[`);
   });
 
   it('plays a vivid 1.8 second three-act sequence and leaves a stable final frame', async () => {
@@ -181,8 +194,8 @@ describe('Comet CLI banner rendering', () => {
     ).resolves.toBeUndefined();
     const fallback = fallbackChunks.at(-1) ?? '';
     const cleanupStart = fallback.indexOf(`\u001b[${COMET_BANNER_LINE_COUNT}A`);
-    const centeredFirstLine = `${' '.repeat(19)}${renderCometBanner().split('\n')[0]}`;
-    const staticBannerStart = fallback.indexOf(centeredFirstLine);
+    const firstStaticLine = renderCometBanner().split('\n')[0] ?? '';
+    const staticBannerStart = fallback.indexOf(firstStaticLine);
     expect(fallback).not.toContain('\u001b[?25h');
     expect(cleanupStart).toBeGreaterThan(-1);
     expect(fallback.split('\u001b[2K')).toHaveLength(COMET_BANNER_LINE_COUNT + 1);

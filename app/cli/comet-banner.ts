@@ -19,7 +19,16 @@ const DIM_BLUE: Rgb = [7, 31, 63];
 const DEEP_BLUE: Rgb = [22, 78, 154];
 const BRAND_BLUE: Rgb = [11, 111, 251];
 const BRIGHT_BLUE: Rgb = [88, 184, 255];
-const BANNER_WIDTH = Math.max(...COMET_LOGO.map((line) => line.length), COMET_TAGLINE.length);
+const CLI_INDENT = '  ';
+const LOGO_WIDTH = Math.max(...COMET_LOGO.map((line) => line.length));
+const BANNER_WIDTH = Math.max(LOGO_WIDTH, CLI_INDENT.length + COMET_TAGLINE.length);
+const LOGO_CONTENT_LEFT = Math.min(
+  ...COMET_LOGO.map((line) => {
+    const firstCharacter = line.search(/\S/);
+    return firstCharacter < 0 ? LOGO_WIDTH : firstCharacter;
+  }),
+);
+const LOGO_CONTENT_RIGHT = Math.max(...COMET_LOGO.map((line) => line.trimEnd().length));
 const FRAME_DELAY_MS = 50;
 const PREHEAT_FRAMES = 6;
 const SWEEP_FRAMES = 16;
@@ -38,36 +47,38 @@ function mix(from: Rgb, to: Rgb, progress: number): Rgb {
   ) as unknown as Rgb;
 }
 
-function center(text: string): string {
+function taglineOnCanvas(text: string): string {
   const visibleText = text.trimEnd();
-  const left = Math.max(0, Math.floor((BANNER_WIDTH - visibleText.length) / 2));
-  return `${' '.repeat(left)}${visibleText}`.padEnd(BANNER_WIDTH);
+  return `${CLI_INDENT}${visibleText}`.padEnd(BANNER_WIDTH);
 }
 
-function revealFromCenter(text: string, progress: number): string {
+function logoLineOnCanvas(line: string): string {
+  return line.padEnd(BANNER_WIDTH);
+}
+
+function revealTaglineFromCenter(text: string, progress: number): string {
   const count = Math.min(text.length, Math.max(0, Math.ceil(text.length * progress)));
   const start = Math.floor((text.length - count) / 2);
-  return `${' '.repeat(start)}${text.slice(start, start + count)}`.padEnd(BANNER_WIDTH);
+  return `${CLI_INDENT}${' '.repeat(start)}${text.slice(start, start + count)}`.padEnd(
+    BANNER_WIDTH,
+  );
 }
 
 function setParticle(canvas: string[], column: number, particle: string): void {
   if (column >= 0 && column < canvas.length) canvas[column] = particle;
 }
 
-function logoBounds(line: string): { start: number; end: number } {
-  const visible = line.trimEnd();
-  const start = Math.floor((BANNER_WIDTH - visible.length) / 2);
-  return { start, end: start + visible.length };
+function logoBounds(): { start: number; end: number } {
+  return { start: LOGO_CONTENT_LEFT, end: LOGO_CONTENT_RIGHT };
 }
 
 function particlesForPhase(
   canvas: string[],
-  line: string,
   row: number,
   phase: AnimationPhase,
   progress: number,
 ): void {
-  const { start, end } = logoBounds(line);
+  const { start, end } = logoBounds();
 
   if (phase === 'preheat') {
     const lead = Math.round((start - 1) * progress);
@@ -108,8 +119,8 @@ function colorForColumn(phase: AnimationPhase, progress: number, column: number)
 export function renderCometAnimationFrame(phase: AnimationPhase, progress: number): string {
   const amount = Math.max(0, Math.min(1, progress));
   const logo = COMET_LOGO.map((line, row) => {
-    const canvas = [...center(line)];
-    particlesForPhase(canvas, line, row, phase, amount);
+    const canvas = [...logoLineOnCanvas(line)];
+    particlesForPhase(canvas, row, phase, amount);
     return `${canvas
       .map((character, column) => {
         const particle = character === '·' || character === '•' || character === '*';
@@ -119,17 +130,17 @@ export function renderCometAnimationFrame(phase: AnimationPhase, progress: numbe
   });
 
   const taglineProgress = phase === 'settle' ? Math.max(0, (amount - 0.57) / 0.43) : 0;
-  const tagline = revealFromCenter(COMET_TAGLINE, taglineProgress);
+  const tagline = revealTaglineFromCenter(COMET_TAGLINE, taglineProgress);
   return [...logo, `${ansi(BRIGHT_BLUE)}${tagline}${RESET}`].join('\n');
 }
 
 export function renderCometBanner(options: { color?: boolean } = {}): string {
   const logo = options.color
-    ? COMET_LOGO.map((line) => `${ansi(BRAND_BLUE)}${center(line)}${RESET}`)
-    : COMET_LOGO.map(center);
+    ? COMET_LOGO.map((line) => `${ansi(BRAND_BLUE)}${logoLineOnCanvas(line)}${RESET}`)
+    : COMET_LOGO.map(logoLineOnCanvas);
   const tagline = options.color
-    ? `${ansi(BRIGHT_BLUE)}${center(COMET_TAGLINE)}${RESET}`
-    : center(COMET_TAGLINE);
+    ? `${ansi(BRIGHT_BLUE)}${taglineOnCanvas(COMET_TAGLINE)}${RESET}`
+    : taglineOnCanvas(COMET_TAGLINE);
   return [...logo, tagline].join('\n');
 }
 
@@ -215,32 +226,14 @@ export function canAnimateCometBanner(
   );
 }
 
-function centerFrameInTerminal(frame: string, columns: number): string {
-  const indent = ' '.repeat(Math.max(0, Math.floor((columns - BANNER_WIDTH) / 2)));
-  return frame
-    .split('\n')
-    .map((line) => `${indent}${line}`)
-    .join('\n');
-}
-
-function staticFrameForRuntime(runtime: BannerRuntime): string {
-  const frame = renderCometBanner();
-  const columns = readColumns(runtime);
-  if (
-    runtime.isTTY &&
-    !isAutomated(runtime.env) &&
-    columns !== undefined &&
-    columns >= BANNER_WIDTH
-  ) {
-    return centerFrameInTerminal(frame, columns);
-  }
-  return frame;
+function staticFrameForRuntime(): string {
+  return renderCometBanner();
 }
 
 function animationFrameForRuntime(runtime: BannerRuntime, frame: string): string {
   const columns = readColumns(runtime);
   if (columns === undefined || columns < BANNER_WIDTH) throw new Error('terminal width changed');
-  return centerFrameInTerminal(frame, columns);
+  return frame;
 }
 
 function replaceFrame(frame: string, first: boolean): string {
@@ -284,7 +277,7 @@ export async function printCometBanner(
   if (options.enabled === false) return;
   const runtime = { ...defaultRuntime, ...options.runtime };
   if (!canAnimateCometBanner(runtime)) {
-    await writeSafely(runtime, `\n${staticFrameForRuntime(runtime)}\n\n`);
+    await writeSafely(runtime, `\n${staticFrameForRuntime()}\n\n`);
     return;
   }
 
@@ -305,6 +298,6 @@ export async function printCometBanner(
     await runtime.write(`${RESET}\n`);
   } catch {
     const cleanup = started ? clearRenderedFrame() : '';
-    await writeSafely(runtime, `${RESET}${cleanup}\n${staticFrameForRuntime(runtime)}\n\n`);
+    await writeSafely(runtime, `${RESET}${cleanup}\n${staticFrameForRuntime()}\n\n`);
   }
 }
