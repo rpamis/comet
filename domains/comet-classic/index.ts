@@ -2,6 +2,7 @@ export * from './classic-archive.js';
 export * from './classic-evidence.js';
 export * from './classic-diagnostics.js';
 export * from './classic-cli.js';
+export * from './classic-current-change.js';
 export * from './classic-guard.js';
 export * from './classic-handoff.js';
 export * from './classic-hook-guard.js';
