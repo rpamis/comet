@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.5] - 2026-07-12
+
+### Added
+
+- **CodeBuddy hook support**: `comet init` and `comet update` now install Comet phase-guard hooks into project or user-level `.codebuddy/settings.json` files while preserving existing CodeBuddy plugins, settings, and user-defined hooks; invalid settings files are left unchanged and reported instead of being overwritten ([#193](https://github.com/rpamis/comet/issues/193)).
+
 ## What's Changed [0.4.0-beta.4] - 2026-07-11
 
 ### Fixed

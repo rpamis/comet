@@ -326,7 +326,15 @@ export interface PlatformInstallFile {
       }
     | {
         type: 'hook';
-        format: 'claude-code' | 'gemini' | 'windsurf' | 'copilot' | 'qwen' | 'kiro' | 'qoder';
+        format:
+          | 'claude-code'
+          | 'gemini'
+          | 'windsurf'
+          | 'copilot'
+          | 'qwen'
+          | 'kiro'
+          | 'qoder'
+          | 'codebuddy';
         event: NormalizedHook['event'];
         matcher?: string;
         command: string;
