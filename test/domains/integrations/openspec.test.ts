@@ -108,13 +108,16 @@ describe('openspec', () => {
       mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
       mockedExecFileSync.mockReturnValueOnce(Buffer.from('ok'));
 
-      const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+      const { getNpmExecutable, installOpenSpec } =
+        await import('../../../domains/integrations/openspec.js');
       const result = await installOpenSpec('/tmp/test', ['claude'], 'project');
 
       expect(result).toBe('installed');
       const npmCall = mockedExecFileSync.mock.calls.find(
         ([command, args]) =>
-          command === 'npm' && Array.isArray(args) && args.includes('@fission-ai/openspec@latest'),
+          command === getNpmExecutable() &&
+          Array.isArray(args) &&
+          args.includes('@fission-ai/openspec@latest'),
       );
       expect(npmCall?.[1]).toEqual(['install', '-g', '@fission-ai/openspec@latest']);
     });
