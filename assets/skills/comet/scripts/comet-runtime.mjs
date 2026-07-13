@@ -11827,6 +11827,41 @@ async function activeChanges(projectRoot2) {
 function isSuperpowersArtifactPath(relativePath2) {
   return relativePath2.startsWith("docs/superpowers/");
 }
+var SUPERPOWERS_ARTIFACT_SLOTS = [
+  {
+    prefix: "docs/superpowers/specs/",
+    field: "designDoc",
+    wireField: "design_doc",
+    phase: "design"
+  },
+  {
+    prefix: "docs/superpowers/plans/",
+    field: "plan",
+    wireField: "plan",
+    phase: "build"
+  },
+  {
+    prefix: "docs/superpowers/reports/",
+    field: "verificationReport",
+    wireField: "verification_report",
+    phase: "verify"
+  }
+];
+function standardSuperpowersArtifactSlot(relativePath2) {
+  const slot = SUPERPOWERS_ARTIFACT_SLOTS.find(
+    (candidate) => relativePath2.startsWith(candidate.prefix)
+  );
+  if (!slot) return null;
+  const fileName = relativePath2.slice(slot.prefix.length);
+  if (!fileName || fileName.includes("/") || !fileName.endsWith(".md")) return null;
+  return slot;
+}
+function superpowersArtifactValue(governing, slot) {
+  return governing.classic?.[slot.field] ?? null;
+}
+function allowsFirstSuperpowersArtifactWrite(governing, slot) {
+  return governing.classic !== null && governing.phase === slot.phase && !superpowersArtifactValue(governing, slot);
+}
 function allowsSuperpowersArtifacts(governing) {
   return governing.phase === "design" || governing.phase === "build" || governing.phase === "verify";
 }
@@ -11924,6 +11959,16 @@ async function governingChange(relativePath2, projectRoot2) {
   if (isSuperpowersArtifactPath(relativePath2)) {
     const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot2);
     if (superpowers) return { ...superpowers, superpowersArtifact: "matched" };
+    const slot = standardSuperpowersArtifactSlot(relativePath2);
+    if (slot) {
+      const candidate = await repoSourceGoverningChange(projectRoot2, relativePath2);
+      if (!candidate || "blockedResult" in candidate) return candidate;
+      return {
+        ...candidate,
+        superpowersArtifact: allowsFirstSuperpowersArtifactWrite(candidate, slot) ? "matched" : "unmatched",
+        superpowersSlot: slot
+      };
+    }
     const fallback = (await activeChanges(projectRoot2))[0] ?? null;
     return fallback ? { ...fallback, superpowersArtifact: "unmatched" } : null;
   }

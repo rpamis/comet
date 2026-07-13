@@ -4960,6 +4960,39 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
     }, 20_000);
 
+    it('allows the first standard Superpowers plan write without a private suffix', async () => {
+      await createChange(
+        tmpDir,
+        'standard-plan-write',
+        [
+          'workflow: full',
+          'phase: build',
+          'design_doc: docs/superpowers/specs/standard-design.md',
+          'plan: null',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      const target = path.join(
+        tmpDir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-durable-retries.md',
+      );
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(target));
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('phase: build, superpowers');
+    }, 20_000);
+
     it('blocks source code writes in design phase', async () => {
       await createChange(
         tmpDir,
@@ -5362,7 +5395,7 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('phase: design, superpowers');
     }, 20_000);
 
-    it('does not route unmatched docs/superpowers writes to an unrelated eligible change', async () => {
+    it('requires selection before a standard specs write with multiple active changes', async () => {
       await createChange(
         tmpDir,
         'a-open-change',
@@ -5381,10 +5414,11 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain('Current phase: open');
+      expect(result.stderr).toContain('multiple active changes require a current change');
+      expect(result.stderr).toContain('comet state select <change-name>');
     }, 20_000);
 
-    it('blocks unmatched docs/superpowers writes when all active changes are eligible phases', async () => {
+    it('requires selection before an unmatched standard specs write with multiple eligible changes', async () => {
       await createChange(
         tmpDir,
         'auth',
@@ -5409,7 +5443,8 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain('unmatched Superpowers artifact');
+      expect(result.stderr).toContain('multiple active changes require a current change');
+      expect(result.stderr).toContain('comet state select <change-name>');
     }, 20_000);
 
     it('requires a current change for repo source writes with multiple active changes', async () => {

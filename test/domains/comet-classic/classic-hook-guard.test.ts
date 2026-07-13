@@ -71,7 +71,13 @@ async function seedChange(
   dir: string,
   name: string,
   phase: 'open' | 'design' | 'build' | 'verify' | 'archive',
-  options: { archived?: boolean; workflow?: 'full' | 'hotfix'; designDoc?: string | null } = {},
+  options: {
+    archived?: boolean;
+    workflow?: 'full' | 'hotfix';
+    designDoc?: string | null;
+    plan?: string | null;
+    verificationReport?: string | null;
+  } = {},
 ): Promise<string> {
   const changeDir = path.join(dir, 'openspec', 'changes', name);
   await fs.mkdir(changeDir, { recursive: true });
@@ -88,7 +94,8 @@ async function seedChange(
       `workflow: ${workflow}`,
       `phase: ${phase}`,
       `design_doc: ${designDoc ?? 'null'}`,
-      'plan: null',
+      `plan: ${options.plan ?? 'null'}`,
+      `verification_report: ${options.verificationReport ?? 'null'}`,
       `build_mode: ${phase === 'open' || phase === 'design' ? 'null' : 'executing-plans'}`,
       `isolation: ${phase === 'open' || phase === 'design' ? 'null' : 'branch'}`,
       `verify_mode: ${phase === 'verify' || phase === 'archive' ? 'light' : 'null'}`,
@@ -102,6 +109,76 @@ async function seedChange(
 }
 
 describe('Classic hook guard command', () => {
+  describe('standard Superpowers artifact first writes', () => {
+    it.each([
+      {
+        label: 'design document',
+        changeName: 'design-change',
+        phase: 'design' as const,
+        target: ['specs', '2026-07-13-durable-retries-design.md'],
+      },
+      {
+        label: 'implementation plan',
+        changeName: 'build-change',
+        phase: 'build' as const,
+        target: ['plans', '2026-07-13-durable-retries.md'],
+      },
+      {
+        label: 'verification report',
+        changeName: 'verify-change',
+        phase: 'verify' as const,
+        target: ['reports', '2026-07-13-durable-retries-verify.md'],
+      },
+    ])('allows a standard first $label write for a single active change', async (example) => {
+      const dir = await makeProject();
+      await seedChange(dir, example.changeName, example.phase);
+      const target = path.join(dir, 'docs', 'superpowers', ...example.target);
+
+      const result = run(dir, 'hook-guard', [], hookInput(target));
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain(`phase: ${example.phase}, superpowers`);
+    });
+
+    it('allows the selected build change to create a standard plan with multiple active changes', async () => {
+      const dir = await makeProject();
+      await seedChange(dir, 'build-change', 'build');
+      await seedChange(dir, 'unrelated-design', 'design');
+      expect(run(dir, 'state', ['select', 'build-change']).status).toBe(0);
+      const target = path.join(
+        dir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-durable-retries.md',
+      );
+
+      const result = run(dir, 'hook-guard', [], hookInput(target));
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('phase: build, superpowers');
+    });
+
+    it('requires selection before a standard plan write with multiple active changes', async () => {
+      const dir = await makeProject();
+      await seedChange(dir, 'build-change', 'build');
+      await seedChange(dir, 'unrelated-design', 'design');
+      const target = path.join(
+        dir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-durable-retries.md',
+      );
+
+      const result = run(dir, 'hook-guard', [], hookInput(target));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('multiple active changes require a current change');
+      expect(result.stderr).toContain('comet state select <change-name>');
+    });
+  });
+
   it('requires a current change before source writes with multiple active changes', async () => {
     const dir = await makeProject();
     await seedChange(dir, 'build-ready', 'build');

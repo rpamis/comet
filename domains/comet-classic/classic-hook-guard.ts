@@ -96,6 +96,7 @@ interface GoverningChange {
   classic: ClassicState | null;
   archived: boolean;
   superpowersArtifact?: 'matched' | 'unmatched';
+  superpowersSlot?: SuperpowersArtifactSlot;
 }
 
 interface GoverningBlock {
@@ -147,6 +148,64 @@ async function activeChanges(projectRoot: string): Promise<GoverningChange[]> {
 
 function isSuperpowersArtifactPath(relativePath: string): boolean {
   return relativePath.startsWith('docs/superpowers/');
+}
+
+type SuperpowersArtifactField = 'designDoc' | 'plan' | 'verificationReport';
+
+interface SuperpowersArtifactSlot {
+  prefix: string;
+  field: SuperpowersArtifactField;
+  wireField: 'design_doc' | 'plan' | 'verification_report';
+  phase: 'design' | 'build' | 'verify';
+}
+
+const SUPERPOWERS_ARTIFACT_SLOTS: readonly SuperpowersArtifactSlot[] = [
+  {
+    prefix: 'docs/superpowers/specs/',
+    field: 'designDoc',
+    wireField: 'design_doc',
+    phase: 'design',
+  },
+  {
+    prefix: 'docs/superpowers/plans/',
+    field: 'plan',
+    wireField: 'plan',
+    phase: 'build',
+  },
+  {
+    prefix: 'docs/superpowers/reports/',
+    field: 'verificationReport',
+    wireField: 'verification_report',
+    phase: 'verify',
+  },
+];
+
+function standardSuperpowersArtifactSlot(relativePath: string): SuperpowersArtifactSlot | null {
+  const slot = SUPERPOWERS_ARTIFACT_SLOTS.find((candidate) =>
+    relativePath.startsWith(candidate.prefix),
+  );
+  if (!slot) return null;
+  const fileName = relativePath.slice(slot.prefix.length);
+  if (!fileName || fileName.includes('/') || !fileName.endsWith('.md')) return null;
+  return slot;
+}
+
+function superpowersArtifactValue(
+  governing: GoverningChange,
+  slot: SuperpowersArtifactSlot,
+): string | null {
+  return governing.classic?.[slot.field] ?? null;
+}
+
+function allowsFirstSuperpowersArtifactWrite(
+  governing: GoverningChange,
+  slot: SuperpowersArtifactSlot,
+): boolean {
+  return (
+    governing.classic !== null &&
+    governing.phase === slot.phase &&
+    !superpowersArtifactValue(governing, slot)
+  );
 }
 
 function allowsSuperpowersArtifacts(governing: GoverningChange): boolean {
@@ -274,6 +333,20 @@ async function governingChange(
   if (isSuperpowersArtifactPath(relativePath)) {
     const superpowers = await superpowersArtifactGoverningChange(relativePath, projectRoot);
     if (superpowers) return { ...superpowers, superpowersArtifact: 'matched' };
+
+    const slot = standardSuperpowersArtifactSlot(relativePath);
+    if (slot) {
+      const candidate = await repoSourceGoverningChange(projectRoot, relativePath);
+      if (!candidate || 'blockedResult' in candidate) return candidate;
+      return {
+        ...candidate,
+        superpowersArtifact: allowsFirstSuperpowersArtifactWrite(candidate, slot)
+          ? 'matched'
+          : 'unmatched',
+        superpowersSlot: slot,
+      };
+    }
+
     const fallback = (await activeChanges(projectRoot))[0] ?? null;
     return fallback ? { ...fallback, superpowersArtifact: 'unmatched' } : null;
   }
