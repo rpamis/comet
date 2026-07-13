@@ -12,7 +12,16 @@ const BUILD_PAUSES = ['plan-ready'] as const;
 const SUBAGENT_DISPATCH = ['confirmed'] as const;
 const TDD_MODES = ['tdd', 'direct'] as const;
 const REVIEW_MODES = ['off', 'standard', 'thorough'] as const;
-const ISOLATIONS = ['branch', 'worktree'] as const;
+export const ISOLATION_MODES = [
+  { value: 'branch', allowedInPreset: true },
+  { value: 'worktree', allowedInPreset: false },
+  { value: 'current', allowedInPreset: true },
+] as const;
+type IsolationMode = (typeof ISOLATION_MODES)[number]['value'];
+export const ISOLATIONS = ISOLATION_MODES.map((mode) => mode.value) as IsolationMode[];
+export const PRESET_ALLOWED_ISOLATIONS = ISOLATION_MODES.filter((mode) => mode.allowedInPreset).map(
+  (mode) => mode.value,
+) as IsolationMode[];
 const VERIFY_MODES = ['light', 'full'] as const;
 const VERIFY_RESULTS = ['pending', 'pass', 'fail'] as const;
 const BRANCH_STATUSES = ['pending', 'handled'] as const;

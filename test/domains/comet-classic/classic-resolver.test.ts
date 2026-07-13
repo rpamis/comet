@@ -197,6 +197,18 @@ const cases: ResolverCase[] = [
     expected: 'hotfix.build.complete',
   },
   {
+    name: 'hotfix build execution on current branch isolation',
+    classic: state({
+      workflow: 'hotfix',
+      phase: 'build',
+      buildMode: 'direct',
+      tddMode: 'direct',
+      isolation: 'current',
+      verifyMode: 'light',
+    }),
+    expected: 'hotfix.build.execute',
+  },
+  {
     name: 'tweak verification',
     classic: state({ workflow: 'tweak', phase: 'verify' }),
     expected: 'tweak.verify.run',

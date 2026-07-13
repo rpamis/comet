@@ -16,6 +16,7 @@ import { transitionClassicRuntimeRun, validateClassicRuntimeRun } from './classi
 import { appendClassicStateEvent } from './classic-state-events.js';
 import {
   CLASSIC_WIRE_KEYS,
+  ISOLATIONS,
   RUN_WIRE_KEYS,
   parseClassicStateDocument,
   type ClassicState,
@@ -58,7 +59,7 @@ const FIELD_ENUMS: Record<string, readonly string[]> = {
   subagent_dispatch: ['null', 'confirmed'],
   tdd_mode: ['tdd', 'direct'],
   review_mode: ['off', 'standard', 'thorough'],
-  isolation: ['branch', 'worktree'],
+  isolation: ISOLATIONS,
   verify_mode: ['light', 'full'],
   auto_transition: ['true', 'false'],
   verify_result: ['pending', 'pass', 'fail'],
@@ -272,7 +273,7 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
       ['off', 'standard', 'thorough'] as const,
       null,
     ),
-    isolation: enumRecordValue(record, 'isolation', ['branch', 'worktree'] as const, null),
+    isolation: enumRecordValue(record, 'isolation', ISOLATIONS, null),
     verifyMode: enumRecordValue(record, 'verify_mode', ['light', 'full'] as const, null),
     autoTransition: nullableRecordBoolean(record, 'auto_transition'),
     baseRef: nullableRecordString(record, 'base_ref'),
@@ -491,7 +492,7 @@ async function init(output: CommandOutput, name: string, workflow: string): Prom
     subagent_dispatch: null,
     tdd_mode: preset ? 'direct' : null,
     review_mode: reviewMode,
-    isolation: preset ? 'branch' : null,
+    isolation: null,
     verify_mode: preset ? 'light' : null,
     auto_transition: (await autoTransition()) === 'true',
     base_ref: gitOutput(['rev-parse', '--verify', 'HEAD']),
@@ -524,9 +525,9 @@ async function requireBuildDecisions(name: string): Promise<void> {
   const subagentDispatch = await readField(name, 'subagent_dispatch');
   const tddMode = await readField(name, 'tdd_mode');
   const reviewMode = await readField(name, 'review_mode');
-  if (!['branch', 'worktree'].includes(isolation)) {
+  if (!(ISOLATIONS as readonly string[]).includes(isolation)) {
     fail(
-      `ERROR: Cannot transition '${name}': isolation must be branch or worktree, got '${isolation || 'null'}'`,
+      `ERROR: Cannot transition '${name}': isolation must be one of ${ISOLATIONS.join(', ')}, got '${isolation || 'null'}'`,
     );
   }
   if (!['subagent-driven-development', 'executing-plans', 'direct'].includes(buildMode)) {
@@ -1228,6 +1229,13 @@ async function currentChange(output: CommandOutput): Promise<void> {
   const resolution = await resolveCurrentChange(process.cwd());
   if (resolution.status === 'selected') {
     output.stdout.push(resolution.selection.change);
+    const { directory } = await resolveClassicChangeDirectory(resolution.selection.change);
+    const projection = await readClassicState(directory, { migrate: false });
+    const isolation = projection.classic?.isolation ?? null;
+    const branch = resolution.selection.branch ?? gitOutput(['rev-parse', '--abbrev-ref', 'HEAD']);
+    output.stderr.push(
+      `[CURRENT] isolation: ${isolation ?? 'null'}${branch ? `, branch: ${branch}` : ''}`,
+    );
     return;
   }
   if (resolution.status === 'missing') {

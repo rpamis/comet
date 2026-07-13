@@ -1,7 +1,11 @@
 import type { DeterministicResolver } from '../../domains/engine/resolver.js';
 import type { ClassicEvidence } from './classic-evidence.js';
 import { evidenceSatisfied } from './classic-evidence.js';
-import type { ClassicProfile, ClassicState } from './classic-state.js';
+import {
+  PRESET_ALLOWED_ISOLATIONS,
+  type ClassicProfile,
+  type ClassicState,
+} from './classic-state.js';
 
 export interface ClassicResolverContext {
   classic: ClassicState;
@@ -27,7 +31,8 @@ function presetBuildConfigured(classic: ClassicState): boolean {
   return Boolean(
     classic.buildMode === 'direct' &&
     classic.tddMode === 'direct' &&
-    classic.isolation === 'branch' &&
+    classic.isolation !== null &&
+    PRESET_ALLOWED_ISOLATIONS.includes(classic.isolation) &&
     classic.verifyMode === 'light',
   );
 }

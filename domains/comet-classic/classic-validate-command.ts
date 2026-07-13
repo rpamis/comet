@@ -3,7 +3,7 @@ import path from 'path';
 import { isMap, parseDocument } from 'yaml';
 import type { ClassicCommandHandler } from './classic-cli.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
-import { CLASSIC_WIRE_KEYS, RUN_WIRE_KEYS } from './classic-state.js';
+import { CLASSIC_WIRE_KEYS, ISOLATIONS, RUN_WIRE_KEYS } from './classic-state.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -31,7 +31,7 @@ const ENUMS: Record<string, readonly string[]> = {
   subagent_dispatch: ['confirmed'],
   tdd_mode: ['tdd', 'direct'],
   review_mode: ['off', 'standard', 'thorough'],
-  isolation: ['branch', 'worktree'],
+  isolation: ISOLATIONS,
   verify_mode: ['light', 'full'],
   auto_transition: ['true', 'false'],
   verify_result: ['pending', 'pass', 'fail'],

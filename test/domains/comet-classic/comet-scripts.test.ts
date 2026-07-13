@@ -2041,10 +2041,49 @@ describe('comet scripts', () => {
     expect(guard.status).not.toBe(0);
     expect(guard.stderr).toContain('[FAIL] isolation selected');
     expect(guard.stderr).toContain('[FAIL] build_mode selected');
-    expect(guard.stderr).toContain('Next: ask the user to choose branch or worktree');
+    expect(guard.stderr).toContain('Next: ask the user to choose branch, worktree, or current');
     expect(guard.stderr).toContain('Next: ask the user to choose an execution mode');
     expect(transition.status).not.toBe(0);
-    expect(transition.stderr).toContain('isolation must be branch or worktree');
+    expect(transition.stderr).toContain('isolation must be one of branch, worktree, current');
+  }, 20_000);
+
+  it('allows full workflow build completion with isolation=current', async () => {
+    await createChange(
+      tmpDir,
+      'current-isolation-build',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: tdd',
+        'review_mode: standard',
+        'isolation: current',
+        'verify_mode: full',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      '- [x] done\n',
+    );
+    await writeFile(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { build: 'node -e \"process.exit(0)\"' } }),
+    );
+
+    const guard = runNode(tmpDir, guardScript, ['current-isolation-build', 'build']);
+    const transition = runNode(tmpDir, stateScript, [
+      'transition',
+      'current-isolation-build',
+      'build-complete',
+    ]);
+
+    expect(guard.status).toBe(0);
+    expect(transition.status).toBe(0);
   }, 20_000);
 
   it('blocks build completion until tdd_mode is selected for full workflow', async () => {

@@ -162,6 +162,16 @@ describe('Classic state projection', () => {
     await expect(readClassicState(changeDir)).rejects.toThrow(`Invalid Classic state: ${field}`);
   });
 
+  it('accepts isolation=current in persisted state', async () => {
+    const state = classicState();
+    state.isolation = 'current';
+    await writeClassicState(changeDir, { classic: state, run: runState() });
+
+    const projection = await readClassicState(changeDir);
+
+    expect(projection.classic?.isolation).toBe('current');
+  });
+
   it('rejects malformed YAML without replacing the original file', async () => {
     const malformed = 'workflow: [full\nphase: build\n';
     await fs.writeFile(stateFile, malformed);

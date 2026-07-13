@@ -13,7 +13,7 @@ import { inspectClassicChange } from './classic-diagnostics.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import type { ClassicRunContext } from './classic-migrate.js';
-import type { ClassicPhase, ClassicState } from './classic-state.js';
+import { ISOLATIONS, type ClassicPhase, type ClassicState } from './classic-state.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
 import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classic-transitions.js';
 import { classicValidateCommand } from './classic-validate-command.js';
@@ -487,9 +487,9 @@ async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
 
 async function isolationSelected(changeDir: string, change: string): Promise<CheckResult> {
   const isolation = await readField(changeDir, 'isolation');
-  if (isolation === 'branch' || isolation === 'worktree') return pass();
+  if ((ISOLATIONS as readonly string[]).includes(isolation)) return pass();
   return fail(
-    `isolation must be branch or worktree, got '${isolation || 'null'}'\nNext: ask the user to choose branch or worktree, create the chosen isolation, then run:\n  node "$COMET_STATE" set ${change} isolation <branch|worktree>`,
+    `isolation must be one of ${ISOLATIONS.join(', ')}, got '${isolation || 'null'}'\nNext: ask the user to choose branch, worktree, or current, create the chosen isolation when needed, then run:\n  node "$COMET_STATE" set ${change} isolation <${ISOLATIONS.join('|')}>`,
   );
 }
 

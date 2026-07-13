@@ -49,9 +49,173 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/identity.js
+// domains/engine/state.ts
+var state_exports = {};
+__export(state_exports, {
+  RUN_STATE_FILE: () => RUN_STATE_FILE,
+  applyRunStateToDocument: () => applyRunStateToDocument,
+  readRunState: () => readRunState,
+  removeRunState: () => removeRunState,
+  runStateFromDocument: () => runStateFromDocument,
+  writeRunState: () => writeRunState
+});
+import { randomUUID } from "crypto";
+import { promises as fs3 } from "fs";
+import path3 from "path";
+function requiredString(doc, key) {
+  const value = doc[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Invalid Run state: ${key} must be a non-empty string`);
+  }
+  return value;
+}
+function requiredRunReference(doc, key) {
+  const value = requiredString(doc, key);
+  if (path3.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+    throw new Error(`Invalid Run state: ${key} must stay inside the change directory`);
+  }
+  return value;
+}
+function retries(doc) {
+  const raw = doc.run_retries ?? "{}";
+  let value;
+  try {
+    value = typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch (error) {
+    throw new Error("Invalid Run state: run_retries must be a JSON object", { cause: error });
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid Run state: run_retries must be a JSON object");
+  }
+  for (const count of Object.values(value)) {
+    if (!Number.isInteger(count) || Number(count) < 0) {
+      throw new Error("Invalid Run state: retry counts must be non-negative integers");
+    }
+  }
+  return value;
+}
+function runStateFromDocument(doc) {
+  if (!doc.run_id) return null;
+  const runId = requiredString(doc, "run_id");
+  const skill = requiredString(doc, "skill");
+  const skillVersion = requiredString(doc, "skill_version");
+  const skillHash = requiredString(doc, "skill_hash");
+  const pendingRef = requiredRunReference(doc, "pending_ref");
+  const trajectoryRef = requiredRunReference(doc, "trajectory_ref");
+  const contextRef = requiredRunReference(doc, "context_ref");
+  const artifactsRef = requiredRunReference(doc, "artifacts_ref");
+  const checkpointRef = requiredRunReference(doc, "checkpoint_ref");
+  const iteration = Number(doc.iteration);
+  if (!Number.isInteger(iteration) || iteration < 0) {
+    throw new Error("Invalid Run state: iteration must be a non-negative integer");
+  }
+  if (doc.orchestration !== "deterministic" && doc.orchestration !== "adaptive") {
+    throw new Error("Invalid Run state: orchestration must be deterministic or adaptive");
+  }
+  if (doc.run_status !== "running" && doc.run_status !== "waiting" && doc.run_status !== "completed" && doc.run_status !== "failed") {
+    throw new Error("Invalid Run state: run_status is invalid");
+  }
+  return {
+    runId,
+    skill,
+    skillVersion,
+    skillHash,
+    orchestration: doc.orchestration,
+    currentStep: field(doc, "current_step"),
+    iteration,
+    pending: field(doc, "pending"),
+    pendingRef,
+    trajectoryRef,
+    contextRef,
+    artifactsRef,
+    checkpointRef,
+    status: doc.run_status,
+    retries: retries(doc)
+  };
+}
+function applyRunStateToDocument(doc, state) {
+  if (state) {
+    doc.run_id = state.runId;
+  } else {
+    delete doc.run_id;
+  }
+}
+function runStateToJson(state) {
+  return {
+    runId: state.runId,
+    skill: state.skill,
+    skillVersion: state.skillVersion,
+    skillHash: state.skillHash,
+    orchestration: state.orchestration,
+    currentStep: state.currentStep,
+    iteration: state.iteration,
+    pending: state.pending,
+    pendingRef: state.pendingRef,
+    trajectoryRef: state.trajectoryRef,
+    contextRef: state.contextRef,
+    artifactsRef: state.artifactsRef,
+    checkpointRef: state.checkpointRef,
+    status: state.status,
+    retries: state.retries
+  };
+}
+function runStateFromJson(json) {
+  const doc = {
+    run_id: json.runId,
+    skill: json.skill,
+    skill_version: json.skillVersion,
+    skill_hash: json.skillHash,
+    orchestration: json.orchestration,
+    current_step: json.currentStep,
+    iteration: json.iteration,
+    pending: json.pending,
+    pending_ref: json.pendingRef,
+    trajectory_ref: json.trajectoryRef,
+    context_ref: json.contextRef,
+    artifacts_ref: json.artifactsRef,
+    checkpoint_ref: json.checkpointRef,
+    run_status: json.status,
+    run_retries: JSON.stringify(json.retries)
+  };
+  return runStateFromDocument(doc);
+}
+async function readRunState(changeDir) {
+  const file = path3.join(changeDir, RUN_STATE_FILE);
+  let raw;
+  try {
+    raw = await fs3.readFile(file, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  const json = JSON.parse(raw);
+  return runStateFromJson(json);
+}
+async function writeRunState(changeDir, state) {
+  await fs3.mkdir(path3.join(changeDir, ".comet"), { recursive: true });
+  const file = path3.join(changeDir, RUN_STATE_FILE);
+  const temporary = path3.join(changeDir, ".comet", `run-state.${randomUUID()}.tmp`);
+  await fs3.writeFile(temporary, JSON.stringify(runStateToJson(state), null, 2), "utf8");
+  await fs3.rename(temporary, file);
+}
+async function removeRunState(changeDir) {
+  await fs3.rm(path3.join(changeDir, RUN_STATE_FILE), { force: true });
+}
+var field, RUN_STATE_FILE;
+var init_state = __esm({
+  "domains/engine/state.ts"() {
+    "use strict";
+    field = (doc, key) => {
+      const value = doc[key];
+      return value === null || value === void 0 ? null : String(value);
+    };
+    RUN_STATE_FILE = ".comet/run-state.json";
+  }
+});
+
+// node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/identity.js"(exports) {
+  "node_modules/yaml/dist/nodes/identity.js"(exports) {
     "use strict";
     var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
     var DOC = /* @__PURE__ */ Symbol.for("yaml.document");
@@ -106,9 +270,9 @@ var require_identity = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/visit.js
+// node_modules/yaml/dist/visit.js
 var require_visit = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/visit.js"(exports) {
+  "node_modules/yaml/dist/visit.js"(exports) {
     "use strict";
     var identity = require_identity();
     var BREAK = /* @__PURE__ */ Symbol("break visit");
@@ -264,9 +428,9 @@ var require_visit = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/directives.js
+// node_modules/yaml/dist/doc/directives.js
 var require_directives = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/directives.js"(exports) {
+  "node_modules/yaml/dist/doc/directives.js"(exports) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -435,9 +599,9 @@ var require_directives = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/anchors.js
+// node_modules/yaml/dist/doc/anchors.js
 var require_anchors = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/anchors.js"(exports) {
+  "node_modules/yaml/dist/doc/anchors.js"(exports) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -505,9 +669,9 @@ var require_anchors = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/applyReviver.js
+// node_modules/yaml/dist/doc/applyReviver.js
 var require_applyReviver = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/applyReviver.js"(exports) {
+  "node_modules/yaml/dist/doc/applyReviver.js"(exports) {
     "use strict";
     function applyReviver(reviver, obj, key, val) {
       if (val && typeof val === "object") {
@@ -555,9 +719,9 @@ var require_applyReviver = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/toJS.js
+// node_modules/yaml/dist/nodes/toJS.js
 var require_toJS = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/toJS.js"(exports) {
+  "node_modules/yaml/dist/nodes/toJS.js"(exports) {
     "use strict";
     var identity = require_identity();
     function toJS(value, arg, ctx) {
@@ -585,9 +749,9 @@ var require_toJS = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Node.js
+// node_modules/yaml/dist/nodes/Node.js
 var require_Node = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Node.js"(exports) {
+  "node_modules/yaml/dist/nodes/Node.js"(exports) {
     "use strict";
     var applyReviver = require_applyReviver();
     var identity = require_identity();
@@ -626,9 +790,9 @@ var require_Node = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Alias.js
+// node_modules/yaml/dist/nodes/Alias.js
 var require_Alias = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Alias.js"(exports) {
+  "node_modules/yaml/dist/nodes/Alias.js"(exports) {
     "use strict";
     var anchors = require_anchors();
     var visit = require_visit();
@@ -742,9 +906,9 @@ var require_Alias = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Scalar.js
+// node_modules/yaml/dist/nodes/Scalar.js
 var require_Scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Scalar.js"(exports) {
+  "node_modules/yaml/dist/nodes/Scalar.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Node = require_Node();
@@ -772,9 +936,9 @@ var require_Scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/createNode.js
+// node_modules/yaml/dist/doc/createNode.js
 var require_createNode = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/createNode.js"(exports) {
+  "node_modules/yaml/dist/doc/createNode.js"(exports) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -847,9 +1011,9 @@ var require_createNode = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Collection.js
+// node_modules/yaml/dist/nodes/Collection.js
 var require_Collection = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Collection.js"(exports) {
+  "node_modules/yaml/dist/nodes/Collection.js"(exports) {
     "use strict";
     var createNode = require_createNode();
     var identity = require_identity();
@@ -990,9 +1154,9 @@ var require_Collection = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyComment.js
+// node_modules/yaml/dist/stringify/stringifyComment.js
 var require_stringifyComment = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyComment.js"(exports) {
+  "node_modules/yaml/dist/stringify/stringifyComment.js"(exports) {
     "use strict";
     var stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
@@ -1007,9 +1171,9 @@ var require_stringifyComment = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/foldFlowLines.js
+// node_modules/yaml/dist/stringify/foldFlowLines.js
 var require_foldFlowLines = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/foldFlowLines.js"(exports) {
+  "node_modules/yaml/dist/stringify/foldFlowLines.js"(exports) {
     "use strict";
     var FOLD_FLOW = "flow";
     var FOLD_BLOCK = "block";
@@ -1143,9 +1307,9 @@ ${indent}${text2.slice(fold + 1, end2)}`;
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyString.js
+// node_modules/yaml/dist/stringify/stringifyString.js
 var require_stringifyString = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyString.js"(exports) {
+  "node_modules/yaml/dist/stringify/stringifyString.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var foldFlowLines = require_foldFlowLines();
@@ -1426,9 +1590,9 @@ ${indent}`);
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringify.js
+// node_modules/yaml/dist/stringify/stringify.js
 var require_stringify = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringify.js"(exports) {
+  "node_modules/yaml/dist/stringify/stringify.js"(exports) {
     "use strict";
     var anchors = require_anchors();
     var identity = require_identity();
@@ -1550,9 +1714,9 @@ ${ctx.indent}${str}`;
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyPair.js
+// node_modules/yaml/dist/stringify/stringifyPair.js
 var require_stringifyPair = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyPair.js"(exports) {
+  "node_modules/yaml/dist/stringify/stringifyPair.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -1683,9 +1847,9 @@ ${ctx.indent}`;
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/log.js
+// node_modules/yaml/dist/log.js
 var require_log = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/log.js"(exports) {
+  "node_modules/yaml/dist/log.js"(exports) {
     "use strict";
     var node_process = __require("process");
     function debug(logLevel, ...messages) {
@@ -1705,9 +1869,9 @@ var require_log = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/merge.js
+// node_modules/yaml/dist/schema/yaml-1.1/merge.js
 var require_merge = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -1765,9 +1929,9 @@ var require_merge = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/addPairToJSMap.js
+// node_modules/yaml/dist/nodes/addPairToJSMap.js
 var require_addPairToJSMap = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports) {
+  "node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports) {
     "use strict";
     var log = require_log();
     var merge = require_merge();
@@ -1829,9 +1993,9 @@ var require_addPairToJSMap = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Pair.js
+// node_modules/yaml/dist/nodes/Pair.js
 var require_Pair = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Pair.js"(exports) {
+  "node_modules/yaml/dist/nodes/Pair.js"(exports) {
     "use strict";
     var createNode = require_createNode();
     var stringifyPair = require_stringifyPair();
@@ -1869,9 +2033,9 @@ var require_Pair = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyCollection.js
+// node_modules/yaml/dist/stringify/stringifyCollection.js
 var require_stringifyCollection = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
+  "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -2020,9 +2184,9 @@ ${indent}${end}`;
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLMap.js
+// node_modules/yaml/dist/nodes/YAMLMap.js
 var require_YAMLMap = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLMap.js"(exports) {
+  "node_modules/yaml/dist/nodes/YAMLMap.js"(exports) {
     "use strict";
     var stringifyCollection = require_stringifyCollection();
     var addPairToJSMap = require_addPairToJSMap();
@@ -2164,9 +2328,9 @@ var require_YAMLMap = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/map.js
+// node_modules/yaml/dist/schema/common/map.js
 var require_map = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/map.js"(exports) {
+  "node_modules/yaml/dist/schema/common/map.js"(exports) {
     "use strict";
     var identity = require_identity();
     var YAMLMap = require_YAMLMap();
@@ -2186,9 +2350,9 @@ var require_map = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLSeq.js
+// node_modules/yaml/dist/nodes/YAMLSeq.js
 var require_YAMLSeq = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLSeq.js"(exports) {
+  "node_modules/yaml/dist/nodes/YAMLSeq.js"(exports) {
     "use strict";
     var createNode = require_createNode();
     var stringifyCollection = require_stringifyCollection();
@@ -2302,9 +2466,9 @@ var require_YAMLSeq = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/seq.js
+// node_modules/yaml/dist/schema/common/seq.js
 var require_seq = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/seq.js"(exports) {
+  "node_modules/yaml/dist/schema/common/seq.js"(exports) {
     "use strict";
     var identity = require_identity();
     var YAMLSeq = require_YAMLSeq();
@@ -2324,9 +2488,9 @@ var require_seq = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/string.js
+// node_modules/yaml/dist/schema/common/string.js
 var require_string = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/string.js"(exports) {
+  "node_modules/yaml/dist/schema/common/string.js"(exports) {
     "use strict";
     var stringifyString = require_stringifyString();
     var string = {
@@ -2343,9 +2507,9 @@ var require_string = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/null.js
+// node_modules/yaml/dist/schema/common/null.js
 var require_null = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/null.js"(exports) {
+  "node_modules/yaml/dist/schema/common/null.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var nullTag = {
@@ -2361,9 +2525,9 @@ var require_null = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/bool.js
+// node_modules/yaml/dist/schema/core/bool.js
 var require_bool = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/bool.js"(exports) {
+  "node_modules/yaml/dist/schema/core/bool.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var boolTag = {
@@ -2385,9 +2549,9 @@ var require_bool = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyNumber.js
+// node_modules/yaml/dist/stringify/stringifyNumber.js
 var require_stringifyNumber = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyNumber.js"(exports) {
+  "node_modules/yaml/dist/stringify/stringifyNumber.js"(exports) {
     "use strict";
     function stringifyNumber({ format, minFractionDigits, tag, value }) {
       if (typeof value === "bigint")
@@ -2412,9 +2576,9 @@ var require_stringifyNumber = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/float.js
+// node_modules/yaml/dist/schema/core/float.js
 var require_float = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/float.js"(exports) {
+  "node_modules/yaml/dist/schema/core/float.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -2458,9 +2622,9 @@ var require_float = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/int.js
+// node_modules/yaml/dist/schema/core/int.js
 var require_int = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/int.js"(exports) {
+  "node_modules/yaml/dist/schema/core/int.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2503,9 +2667,9 @@ var require_int = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/schema.js
+// node_modules/yaml/dist/schema/core/schema.js
 var require_schema = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/schema.js"(exports) {
+  "node_modules/yaml/dist/schema/core/schema.js"(exports) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -2531,9 +2695,9 @@ var require_schema = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/json/schema.js
+// node_modules/yaml/dist/schema/json/schema.js
 var require_schema2 = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/json/schema.js"(exports) {
+  "node_modules/yaml/dist/schema/json/schema.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var map = require_map();
@@ -2598,9 +2762,9 @@ var require_schema2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/binary.js
+// node_modules/yaml/dist/schema/yaml-1.1/binary.js
 var require_binary = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports) {
     "use strict";
     var node_buffer = __require("buffer");
     var Scalar = require_Scalar();
@@ -2664,9 +2828,9 @@ var require_binary = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/pairs.js
+// node_modules/yaml/dist/schema/yaml-1.1/pairs.js
 var require_pairs = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -2742,9 +2906,9 @@ ${cn.comment}` : item.comment;
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/omap.js
+// node_modules/yaml/dist/schema/yaml-1.1/omap.js
 var require_omap = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports) {
     "use strict";
     var identity = require_identity();
     var toJS = require_toJS();
@@ -2820,9 +2984,9 @@ var require_omap = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/bool.js
+// node_modules/yaml/dist/schema/yaml-1.1/bool.js
 var require_bool2 = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     function boolStringify({ value, source }, ctx) {
@@ -2852,9 +3016,9 @@ var require_bool2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/float.js
+// node_modules/yaml/dist/schema/yaml-1.1/float.js
 var require_float2 = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -2901,9 +3065,9 @@ var require_float2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/int.js
+// node_modules/yaml/dist/schema/yaml-1.1/int.js
 var require_int2 = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2980,9 +3144,9 @@ var require_int2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/set.js
+// node_modules/yaml/dist/schema/yaml-1.1/set.js
 var require_set = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -3069,9 +3233,9 @@ var require_set = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
+// node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
 var require_timestamp = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     function parseSexagesimal(str, asBigInt) {
@@ -3157,9 +3321,9 @@ var require_timestamp = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/schema.js
+// node_modules/yaml/dist/schema/yaml-1.1/schema.js
 var require_schema3 = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports) {
+  "node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -3201,9 +3365,9 @@ var require_schema3 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/tags.js
+// node_modules/yaml/dist/schema/tags.js
 var require_tags = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/tags.js"(exports) {
+  "node_modules/yaml/dist/schema/tags.js"(exports) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -3295,9 +3459,9 @@ var require_tags = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/Schema.js
+// node_modules/yaml/dist/schema/Schema.js
 var require_Schema = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/Schema.js"(exports) {
+  "node_modules/yaml/dist/schema/Schema.js"(exports) {
     "use strict";
     var identity = require_identity();
     var map = require_map();
@@ -3327,9 +3491,9 @@ var require_Schema = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyDocument.js
+// node_modules/yaml/dist/stringify/stringifyDocument.js
 var require_stringifyDocument = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
+  "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -3407,9 +3571,9 @@ var require_stringifyDocument = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/Document.js
+// node_modules/yaml/dist/doc/Document.js
 var require_Document = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/Document.js"(exports) {
+  "node_modules/yaml/dist/doc/Document.js"(exports) {
     "use strict";
     var Alias = require_Alias();
     var Collection = require_Collection();
@@ -3716,9 +3880,9 @@ var require_Document = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/errors.js
+// node_modules/yaml/dist/errors.js
 var require_errors = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/errors.js"(exports) {
+  "node_modules/yaml/dist/errors.js"(exports) {
     "use strict";
     var YAMLError = class extends Error {
       constructor(name, pos, code, message) {
@@ -3781,9 +3945,9 @@ ${pointer}
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-props.js
+// node_modules/yaml/dist/compose/resolve-props.js
 var require_resolve_props = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-props.js"(exports) {
+  "node_modules/yaml/dist/compose/resolve-props.js"(exports) {
     "use strict";
     function resolveProps(tokens, { flow, indicator, next: next2, offset, onError, parentIndent, startOnNewline }) {
       let spaceBefore = false;
@@ -3915,9 +4079,9 @@ var require_resolve_props = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-contains-newline.js
+// node_modules/yaml/dist/compose/util-contains-newline.js
 var require_util_contains_newline = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-contains-newline.js"(exports) {
+  "node_modules/yaml/dist/compose/util-contains-newline.js"(exports) {
     "use strict";
     function containsNewline(key) {
       if (!key)
@@ -3957,9 +4121,9 @@ var require_util_contains_newline = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-flow-indent-check.js
+// node_modules/yaml/dist/compose/util-flow-indent-check.js
 var require_util_flow_indent_check = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports) {
+  "node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports) {
     "use strict";
     var utilContainsNewline = require_util_contains_newline();
     function flowIndentCheck(indent, fc, onError) {
@@ -3975,9 +4139,9 @@ var require_util_flow_indent_check = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-map-includes.js
+// node_modules/yaml/dist/compose/util-map-includes.js
 var require_util_map_includes = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-map-includes.js"(exports) {
+  "node_modules/yaml/dist/compose/util-map-includes.js"(exports) {
     "use strict";
     var identity = require_identity();
     function mapIncludes(ctx, items, search) {
@@ -3991,9 +4155,9 @@ var require_util_map_includes = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-map.js
+// node_modules/yaml/dist/compose/resolve-block-map.js
 var require_resolve_block_map = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-map.js"(exports) {
+  "node_modules/yaml/dist/compose/resolve-block-map.js"(exports) {
     "use strict";
     var Pair = require_Pair();
     var YAMLMap = require_YAMLMap();
@@ -4099,9 +4263,9 @@ var require_resolve_block_map = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-seq.js
+// node_modules/yaml/dist/compose/resolve-block-seq.js
 var require_resolve_block_seq = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-seq.js"(exports) {
+  "node_modules/yaml/dist/compose/resolve-block-seq.js"(exports) {
     "use strict";
     var YAMLSeq = require_YAMLSeq();
     var resolveProps = require_resolve_props();
@@ -4150,9 +4314,9 @@ var require_resolve_block_seq = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-end.js
+// node_modules/yaml/dist/compose/resolve-end.js
 var require_resolve_end = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-end.js"(exports) {
+  "node_modules/yaml/dist/compose/resolve-end.js"(exports) {
     "use strict";
     function resolveEnd(end, offset, reqSpace, onError) {
       let comment = "";
@@ -4193,9 +4357,9 @@ var require_resolve_end = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-collection.js
+// node_modules/yaml/dist/compose/resolve-flow-collection.js
 var require_resolve_flow_collection = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports) {
+  "node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -4387,9 +4551,9 @@ var require_resolve_flow_collection = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-collection.js
+// node_modules/yaml/dist/compose/compose-collection.js
 var require_compose_collection = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-collection.js"(exports) {
+  "node_modules/yaml/dist/compose/compose-collection.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -4452,9 +4616,9 @@ var require_compose_collection = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-scalar.js
+// node_modules/yaml/dist/compose/resolve-block-scalar.js
 var require_resolve_block_scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports) {
+  "node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar2, onError) {
@@ -4635,9 +4799,9 @@ var require_resolve_block_scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-scalar.js
+// node_modules/yaml/dist/compose/resolve-flow-scalar.js
 var require_resolve_flow_scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports) {
+  "node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var resolveEnd = require_resolve_end();
@@ -4855,9 +5019,9 @@ var require_resolve_flow_scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-scalar.js
+// node_modules/yaml/dist/compose/compose-scalar.js
 var require_compose_scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-scalar.js"(exports) {
+  "node_modules/yaml/dist/compose/compose-scalar.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -4936,9 +5100,9 @@ var require_compose_scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-empty-scalar-position.js
+// node_modules/yaml/dist/compose/util-empty-scalar-position.js
 var require_util_empty_scalar_position = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports) {
+  "node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports) {
     "use strict";
     function emptyScalarPosition(offset, before, pos) {
       if (before) {
@@ -4966,9 +5130,9 @@ var require_util_empty_scalar_position = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-node.js
+// node_modules/yaml/dist/compose/compose-node.js
 var require_compose_node = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-node.js"(exports) {
+  "node_modules/yaml/dist/compose/compose-node.js"(exports) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -5072,9 +5236,9 @@ var require_compose_node = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-doc.js
+// node_modules/yaml/dist/compose/compose-doc.js
 var require_compose_doc = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-doc.js"(exports) {
+  "node_modules/yaml/dist/compose/compose-doc.js"(exports) {
     "use strict";
     var Document3 = require_Document();
     var composeNode = require_compose_node();
@@ -5115,9 +5279,9 @@ var require_compose_doc = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/composer.js
+// node_modules/yaml/dist/compose/composer.js
 var require_composer = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/composer.js"(exports) {
+  "node_modules/yaml/dist/compose/composer.js"(exports) {
     "use strict";
     var node_process = __require("process");
     var directives = require_directives();
@@ -5323,9 +5487,9 @@ ${end.comment}` : end.comment;
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-scalar.js
+// node_modules/yaml/dist/parse/cst-scalar.js
 var require_cst_scalar = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-scalar.js"(exports) {
+  "node_modules/yaml/dist/parse/cst-scalar.js"(exports) {
     "use strict";
     var resolveBlockScalar = require_resolve_block_scalar();
     var resolveFlowScalar = require_resolve_flow_scalar();
@@ -5508,9 +5672,9 @@ var require_cst_scalar = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-stringify.js
+// node_modules/yaml/dist/parse/cst-stringify.js
 var require_cst_stringify = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
+  "node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
     var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
@@ -5569,9 +5733,9 @@ var require_cst_stringify = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-visit.js
+// node_modules/yaml/dist/parse/cst-visit.js
 var require_cst_visit = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-visit.js"(exports) {
+  "node_modules/yaml/dist/parse/cst-visit.js"(exports) {
     "use strict";
     var BREAK = /* @__PURE__ */ Symbol("break visit");
     var SKIP = /* @__PURE__ */ Symbol("skip children");
@@ -5631,9 +5795,9 @@ var require_cst_visit = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst.js
+// node_modules/yaml/dist/parse/cst.js
 var require_cst = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst.js"(exports) {
+  "node_modules/yaml/dist/parse/cst.js"(exports) {
     "use strict";
     var cstScalar = require_cst_scalar();
     var cstStringify = require_cst_stringify();
@@ -5733,9 +5897,9 @@ var require_cst = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/lexer.js
+// node_modules/yaml/dist/parse/lexer.js
 var require_lexer = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/lexer.js"(exports) {
+  "node_modules/yaml/dist/parse/lexer.js"(exports) {
     "use strict";
     var cst = require_cst();
     function isEmpty(ch) {
@@ -6322,9 +6486,9 @@ var require_lexer = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/line-counter.js
+// node_modules/yaml/dist/parse/line-counter.js
 var require_line_counter = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/line-counter.js"(exports) {
+  "node_modules/yaml/dist/parse/line-counter.js"(exports) {
     "use strict";
     var LineCounter = class {
       constructor() {
@@ -6353,9 +6517,9 @@ var require_line_counter = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/parser.js
+// node_modules/yaml/dist/parse/parser.js
 var require_parser = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/parser.js"(exports) {
+  "node_modules/yaml/dist/parse/parser.js"(exports) {
     "use strict";
     var node_process = __require("process");
     var cst = require_cst();
@@ -7227,9 +7391,9 @@ var require_parser = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/public-api.js
+// node_modules/yaml/dist/public-api.js
 var require_public_api = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/public-api.js"(exports) {
+  "node_modules/yaml/dist/public-api.js"(exports) {
     "use strict";
     var composer = require_composer();
     var Document3 = require_Document();
@@ -7324,9 +7488,9 @@ var require_public_api = __commonJS({
   }
 });
 
-// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/index.js
+// node_modules/yaml/dist/index.js
 var require_dist = __commonJS({
-  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/index.js"(exports) {
+  "node_modules/yaml/dist/index.js"(exports) {
     "use strict";
     var composer = require_composer();
     var Document3 = require_Document();
@@ -7373,170 +7537,6 @@ var require_dist = __commonJS({
     exports.stringify = publicApi.stringify;
     exports.visit = visit.visit;
     exports.visitAsync = visit.visitAsync;
-  }
-});
-
-// domains/engine/state.ts
-var state_exports = {};
-__export(state_exports, {
-  RUN_STATE_FILE: () => RUN_STATE_FILE,
-  applyRunStateToDocument: () => applyRunStateToDocument,
-  readRunState: () => readRunState,
-  removeRunState: () => removeRunState,
-  runStateFromDocument: () => runStateFromDocument,
-  writeRunState: () => writeRunState
-});
-import { randomUUID } from "crypto";
-import { promises as fs3 } from "fs";
-import path3 from "path";
-function requiredString(doc, key) {
-  const value = doc[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Invalid Run state: ${key} must be a non-empty string`);
-  }
-  return value;
-}
-function requiredRunReference(doc, key) {
-  const value = requiredString(doc, key);
-  if (path3.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
-    throw new Error(`Invalid Run state: ${key} must stay inside the change directory`);
-  }
-  return value;
-}
-function retries(doc) {
-  const raw = doc.run_retries ?? "{}";
-  let value;
-  try {
-    value = typeof raw === "string" ? JSON.parse(raw) : raw;
-  } catch (error) {
-    throw new Error("Invalid Run state: run_retries must be a JSON object", { cause: error });
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Invalid Run state: run_retries must be a JSON object");
-  }
-  for (const count of Object.values(value)) {
-    if (!Number.isInteger(count) || Number(count) < 0) {
-      throw new Error("Invalid Run state: retry counts must be non-negative integers");
-    }
-  }
-  return value;
-}
-function runStateFromDocument(doc) {
-  if (!doc.run_id) return null;
-  const runId = requiredString(doc, "run_id");
-  const skill = requiredString(doc, "skill");
-  const skillVersion = requiredString(doc, "skill_version");
-  const skillHash = requiredString(doc, "skill_hash");
-  const pendingRef = requiredRunReference(doc, "pending_ref");
-  const trajectoryRef = requiredRunReference(doc, "trajectory_ref");
-  const contextRef = requiredRunReference(doc, "context_ref");
-  const artifactsRef = requiredRunReference(doc, "artifacts_ref");
-  const checkpointRef = requiredRunReference(doc, "checkpoint_ref");
-  const iteration = Number(doc.iteration);
-  if (!Number.isInteger(iteration) || iteration < 0) {
-    throw new Error("Invalid Run state: iteration must be a non-negative integer");
-  }
-  if (doc.orchestration !== "deterministic" && doc.orchestration !== "adaptive") {
-    throw new Error("Invalid Run state: orchestration must be deterministic or adaptive");
-  }
-  if (doc.run_status !== "running" && doc.run_status !== "waiting" && doc.run_status !== "completed" && doc.run_status !== "failed") {
-    throw new Error("Invalid Run state: run_status is invalid");
-  }
-  return {
-    runId,
-    skill,
-    skillVersion,
-    skillHash,
-    orchestration: doc.orchestration,
-    currentStep: field(doc, "current_step"),
-    iteration,
-    pending: field(doc, "pending"),
-    pendingRef,
-    trajectoryRef,
-    contextRef,
-    artifactsRef,
-    checkpointRef,
-    status: doc.run_status,
-    retries: retries(doc)
-  };
-}
-function applyRunStateToDocument(doc, state) {
-  if (state) {
-    doc.run_id = state.runId;
-  } else {
-    delete doc.run_id;
-  }
-}
-function runStateToJson(state) {
-  return {
-    runId: state.runId,
-    skill: state.skill,
-    skillVersion: state.skillVersion,
-    skillHash: state.skillHash,
-    orchestration: state.orchestration,
-    currentStep: state.currentStep,
-    iteration: state.iteration,
-    pending: state.pending,
-    pendingRef: state.pendingRef,
-    trajectoryRef: state.trajectoryRef,
-    contextRef: state.contextRef,
-    artifactsRef: state.artifactsRef,
-    checkpointRef: state.checkpointRef,
-    status: state.status,
-    retries: state.retries
-  };
-}
-function runStateFromJson(json) {
-  const doc = {
-    run_id: json.runId,
-    skill: json.skill,
-    skill_version: json.skillVersion,
-    skill_hash: json.skillHash,
-    orchestration: json.orchestration,
-    current_step: json.currentStep,
-    iteration: json.iteration,
-    pending: json.pending,
-    pending_ref: json.pendingRef,
-    trajectory_ref: json.trajectoryRef,
-    context_ref: json.contextRef,
-    artifacts_ref: json.artifactsRef,
-    checkpoint_ref: json.checkpointRef,
-    run_status: json.status,
-    run_retries: JSON.stringify(json.retries)
-  };
-  return runStateFromDocument(doc);
-}
-async function readRunState(changeDir) {
-  const file = path3.join(changeDir, RUN_STATE_FILE);
-  let raw;
-  try {
-    raw = await fs3.readFile(file, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-  const json = JSON.parse(raw);
-  return runStateFromJson(json);
-}
-async function writeRunState(changeDir, state) {
-  await fs3.mkdir(path3.join(changeDir, ".comet"), { recursive: true });
-  const file = path3.join(changeDir, RUN_STATE_FILE);
-  const temporary = path3.join(changeDir, ".comet", `run-state.${randomUUID()}.tmp`);
-  await fs3.writeFile(temporary, JSON.stringify(runStateToJson(state), null, 2), "utf8");
-  await fs3.rename(temporary, file);
-}
-async function removeRunState(changeDir) {
-  await fs3.rm(path3.join(changeDir, RUN_STATE_FILE), { force: true });
-}
-var field, RUN_STATE_FILE;
-var init_state = __esm({
-  "domains/engine/state.ts"() {
-    "use strict";
-    field = (doc, key) => {
-      const value = doc[key];
-      return value === null || value === void 0 ? null : String(value);
-    };
-    RUN_STATE_FILE = ".comet/run-state.json";
   }
 });
 
@@ -7723,79 +7723,6 @@ import { createHash as createHash2, randomUUID as randomUUID5 } from "crypto";
 import { promises as fs8 } from "fs";
 import path9 from "path";
 
-// domains/comet-classic/classic-resolver.ts
-function profileFor(classic) {
-  return classic.classicProfile ?? classic.workflow;
-}
-function fullBuildConfigured(classic) {
-  if (!classic.buildMode || !classic.tddMode || !classic.isolation || !classic.verifyMode) {
-    return false;
-  }
-  if (classic.buildMode === "subagent-driven-development") {
-    return classic.subagentDispatch === "confirmed";
-  }
-  if (classic.buildMode === "direct") return classic.directOverride === true;
-  return true;
-}
-function presetBuildConfigured(classic) {
-  return Boolean(
-    classic.buildMode === "direct" && classic.tddMode === "direct" && classic.isolation === "branch" && classic.verifyMode === "light"
-  );
-}
-function resolveBuild(profile, classic, evidence) {
-  if (classic.verifyResult === "fail") {
-    return profile === "full" ? "full.build.fix" : `${profile}.build.execute`;
-  }
-  if (profile === "full") {
-    if (!evidenceSatisfied(evidence, "build.plan")) return "full.build.plan";
-    if (classic.buildPause === "plan-ready") return "full.build.plan-ready";
-    if (!fullBuildConfigured(classic)) return "full.build.configure";
-  } else if (!presetBuildConfigured(classic)) {
-    throw new Error(`${profile} build configuration is incomplete`);
-  }
-  return evidenceSatisfied(evidence, "build.tasks-complete") ? `${profile}.build.complete` : `${profile}.build.execute`;
-}
-function resolveVerify(profile, classic, evidence) {
-  if (classic.verifyResult !== "pass" || !evidenceSatisfied(evidence, "verification.report")) {
-    return `${profile}.verify.run`;
-  }
-  return `${profile}.verify.branch`;
-}
-function resolveArchive(profile, classic) {
-  if (classic.verifyResult !== "pass") {
-    throw new Error("archive requires verify_result=pass");
-  }
-  return classic.archiveConfirmation === "confirmed" ? `${profile}.archive.execute` : `${profile}.archive.confirm`;
-}
-function resolveClassicStepId(classic, evidence) {
-  const profile = profileFor(classic);
-  if (classic.archived && classic.phase !== "archive") {
-    throw new Error("archived=true requires phase=archive");
-  }
-  if (classic.archived) return "completed";
-  if (profile !== "full" && classic.phase === "design") {
-    throw new Error(`${profile} workflow cannot enter design`);
-  }
-  switch (classic.phase) {
-    case "open":
-      return `${profile}.open`;
-    case "design":
-      return evidenceSatisfied(evidence, "design.handoff") ? "full.design.document" : "full.design.handoff";
-    case "build":
-      return resolveBuild(profile, classic, evidence);
-    case "verify":
-      return resolveVerify(profile, classic, evidence);
-    case "archive":
-      return resolveArchive(profile, classic);
-  }
-}
-
-// domains/comet-classic/classic-store.ts
-var import_yaml = __toESM(require_dist(), 1);
-import { randomUUID as randomUUID2 } from "crypto";
-import { promises as fs4 } from "fs";
-import path4 from "path";
-
 // domains/comet-classic/classic-state.ts
 init_state();
 var CLASSIC_PROFILES = ["full", "hotfix", "tweak"];
@@ -7808,7 +7735,15 @@ var BUILD_PAUSES = ["plan-ready"];
 var SUBAGENT_DISPATCH = ["confirmed"];
 var TDD_MODES = ["tdd", "direct"];
 var REVIEW_MODES = ["off", "standard", "thorough"];
-var ISOLATIONS = ["branch", "worktree"];
+var ISOLATION_MODES = [
+  { value: "branch", allowedInPreset: true },
+  { value: "worktree", allowedInPreset: false },
+  { value: "current", allowedInPreset: true }
+];
+var ISOLATIONS = ISOLATION_MODES.map((mode) => mode.value);
+var PRESET_ALLOWED_ISOLATIONS = ISOLATION_MODES.filter(
+  (mode) => mode.allowedInPreset
+).map((mode) => mode.value);
 var VERIFY_MODES = ["light", "full"];
 var VERIFY_RESULTS = ["pending", "pass", "fail"];
 var BRANCH_STATUSES = ["pending", "handled"];
@@ -8017,7 +7952,78 @@ function classicStateToDocument(state) {
   };
 }
 
+// domains/comet-classic/classic-resolver.ts
+function profileFor(classic) {
+  return classic.classicProfile ?? classic.workflow;
+}
+function fullBuildConfigured(classic) {
+  if (!classic.buildMode || !classic.tddMode || !classic.isolation || !classic.verifyMode) {
+    return false;
+  }
+  if (classic.buildMode === "subagent-driven-development") {
+    return classic.subagentDispatch === "confirmed";
+  }
+  if (classic.buildMode === "direct") return classic.directOverride === true;
+  return true;
+}
+function presetBuildConfigured(classic) {
+  return Boolean(
+    classic.buildMode === "direct" && classic.tddMode === "direct" && classic.isolation !== null && PRESET_ALLOWED_ISOLATIONS.includes(classic.isolation) && classic.verifyMode === "light"
+  );
+}
+function resolveBuild(profile, classic, evidence) {
+  if (classic.verifyResult === "fail") {
+    return profile === "full" ? "full.build.fix" : `${profile}.build.execute`;
+  }
+  if (profile === "full") {
+    if (!evidenceSatisfied(evidence, "build.plan")) return "full.build.plan";
+    if (classic.buildPause === "plan-ready") return "full.build.plan-ready";
+    if (!fullBuildConfigured(classic)) return "full.build.configure";
+  } else if (!presetBuildConfigured(classic)) {
+    throw new Error(`${profile} build configuration is incomplete`);
+  }
+  return evidenceSatisfied(evidence, "build.tasks-complete") ? `${profile}.build.complete` : `${profile}.build.execute`;
+}
+function resolveVerify(profile, classic, evidence) {
+  if (classic.verifyResult !== "pass" || !evidenceSatisfied(evidence, "verification.report")) {
+    return `${profile}.verify.run`;
+  }
+  return `${profile}.verify.branch`;
+}
+function resolveArchive(profile, classic) {
+  if (classic.verifyResult !== "pass") {
+    throw new Error("archive requires verify_result=pass");
+  }
+  return classic.archiveConfirmation === "confirmed" ? `${profile}.archive.execute` : `${profile}.archive.confirm`;
+}
+function resolveClassicStepId(classic, evidence) {
+  const profile = profileFor(classic);
+  if (classic.archived && classic.phase !== "archive") {
+    throw new Error("archived=true requires phase=archive");
+  }
+  if (classic.archived) return "completed";
+  if (profile !== "full" && classic.phase === "design") {
+    throw new Error(`${profile} workflow cannot enter design`);
+  }
+  switch (classic.phase) {
+    case "open":
+      return `${profile}.open`;
+    case "design":
+      return evidenceSatisfied(evidence, "design.handoff") ? "full.design.document" : "full.design.handoff";
+    case "build":
+      return resolveBuild(profile, classic, evidence);
+    case "verify":
+      return resolveVerify(profile, classic, evidence);
+    case "archive":
+      return resolveArchive(profile, classic);
+  }
+}
+
 // domains/comet-classic/classic-store.ts
+var import_yaml = __toESM(require_dist(), 1);
+import { randomUUID as randomUUID2 } from "crypto";
+import { promises as fs4 } from "fs";
+import path4 from "path";
 init_state();
 function documentRecord(document) {
   const value = document.toJS();
@@ -10095,7 +10101,7 @@ var ENUMS = {
   subagent_dispatch: ["confirmed"],
   tdd_mode: ["tdd", "direct"],
   review_mode: ["off", "standard", "thorough"],
-  isolation: ["branch", "worktree"],
+  isolation: ISOLATIONS,
   verify_mode: ["light", "full"],
   auto_transition: ["true", "false"],
   verify_result: ["pending", "pass", "fail"],
@@ -10644,11 +10650,11 @@ Next: check off corresponding completed plan tasks, then commit the plan update.
 }
 async function isolationSelected(changeDir, change) {
   const isolation = await readField(changeDir, "isolation");
-  if (isolation === "branch" || isolation === "worktree") return pass();
+  if (ISOLATIONS.includes(isolation)) return pass();
   return fail(
-    `isolation must be branch or worktree, got '${isolation || "null"}'
-Next: ask the user to choose branch or worktree, create the chosen isolation, then run:
-  node "$COMET_STATE" set ${change} isolation <branch|worktree>`
+    `isolation must be one of ${ISOLATIONS.join(", ")}, got '${isolation || "null"}'
+Next: ask the user to choose branch, worktree, or current, create the chosen isolation when needed, then run:
+  node "$COMET_STATE" set ${change} isolation <${ISOLATIONS.join("|")}>`
   );
 }
 async function buildModeSelected(changeDir, change) {
@@ -12943,7 +12949,7 @@ var FIELD_ENUMS = {
   subagent_dispatch: ["null", "confirmed"],
   tdd_mode: ["tdd", "direct"],
   review_mode: ["off", "standard", "thorough"],
-  isolation: ["branch", "worktree"],
+  isolation: ISOLATIONS,
   verify_mode: ["light", "full"],
   auto_transition: ["true", "false"],
   verify_result: ["pending", "pass", "fail"],
@@ -13127,7 +13133,7 @@ function sparseClassicState(record) {
       ["off", "standard", "thorough"],
       null
     ),
-    isolation: enumRecordValue(record, "isolation", ["branch", "worktree"], null),
+    isolation: enumRecordValue(record, "isolation", ISOLATIONS, null),
     verifyMode: enumRecordValue(record, "verify_mode", ["light", "full"], null),
     autoTransition: nullableRecordBoolean(record, "auto_transition"),
     baseRef: nullableRecordString(record, "base_ref"),
@@ -13315,7 +13321,7 @@ async function init(output, name, workflow) {
     subagent_dispatch: null,
     tdd_mode: preset ? "direct" : null,
     review_mode: reviewMode,
-    isolation: preset ? "branch" : null,
+    isolation: null,
     verify_mode: preset ? "light" : null,
     auto_transition: await autoTransition() === "true",
     base_ref: gitOutput(["rev-parse", "--verify", "HEAD"]),
@@ -13346,9 +13352,9 @@ async function requireBuildDecisions(name) {
   const subagentDispatch = await readField3(name, "subagent_dispatch");
   const tddMode = await readField3(name, "tdd_mode");
   const reviewMode = await readField3(name, "review_mode");
-  if (!["branch", "worktree"].includes(isolation)) {
+  if (!ISOLATIONS.includes(isolation)) {
     fail2(
-      `ERROR: Cannot transition '${name}': isolation must be branch or worktree, got '${isolation || "null"}'`
+      `ERROR: Cannot transition '${name}': isolation must be one of ${ISOLATIONS.join(", ")}, got '${isolation || "null"}'`
     );
   }
   if (!["subagent-driven-development", "executing-plans", "direct"].includes(buildMode)) {
@@ -13927,6 +13933,13 @@ async function currentChange(output) {
   const resolution = await resolveCurrentChange(process.cwd());
   if (resolution.status === "selected") {
     output.stdout.push(resolution.selection.change);
+    const { directory } = await resolveClassicChangeDirectory(resolution.selection.change);
+    const projection = await readClassicState(directory, { migrate: false });
+    const isolation = projection.classic?.isolation ?? null;
+    const branch = resolution.selection.branch ?? gitOutput(["rev-parse", "--abbrev-ref", "HEAD"]);
+    output.stderr.push(
+      `[CURRENT] isolation: ${isolation ?? "null"}${branch ? `, branch: ${branch}` : ""}`
+    );
     return;
   }
   if (resolution.status === "missing") {

@@ -238,13 +238,18 @@ describe('Classic hook guard command', () => {
 
   it('selects, reads, and clears the current change through the state launcher', async () => {
     const dir = await makeProject();
+    await initializeGitProject(dir);
     expect(run(dir, 'state', ['init', 'demo', 'hotfix']).status).toBe(0);
+    expect(run(dir, 'state', ['set', 'demo', 'isolation', 'current']).status).toBe(0);
 
     const selected = run(dir, 'state', ['select', 'demo']);
 
     expect(selected.status).toBe(0);
     expect(selected.stderr).toContain('[SELECTED] current change: demo');
-    expect(run(dir, 'state', ['current']).stdout.trim()).toBe('demo');
+    const current = run(dir, 'state', ['current']);
+    expect(current.stdout.trim()).toBe('demo');
+    expect(current.stderr).toContain('[CURRENT] isolation: current');
+    expect(current.stderr).toContain('branch: main');
     expect(run(dir, 'state', ['clear-selection']).status).toBe(0);
     expect(run(dir, 'state', ['clear-selection']).status).toBe(0);
     expect(run(dir, 'state', ['current']).status).not.toBe(0);
