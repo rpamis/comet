@@ -335,28 +335,32 @@ async function removeManagedHooksFromJsonFile(
   }
 
   let removed = 0;
-  const filtered = existingPreToolUse.flatMap((group) => {
-    if (!group || typeof group !== 'object') return [group];
+  const filtered = existingPreToolUse.map((group) => {
+    if (!group || typeof group !== 'object') return group;
     const record = group as Record<string, unknown>;
-    if (!Array.isArray(record.hooks)) return [record];
+    if (!Array.isArray(record.hooks)) return record;
     const handlers = record.hooks.filter((handler) => {
-      const command = (handler as Record<string, unknown>).command;
+      const command =
+        handler && typeof handler === 'object'
+          ? (handler as Record<string, unknown>).command
+          : undefined;
       const managed = isManagedHookCommand(command, scriptRelPaths);
       if (managed) removed++;
       return !managed;
     });
-    return handlers.length > 0 ? [{ ...record, hooks: handlers }] : [];
+    return { ...record, hooks: handlers };
   });
 
   if (removed === 0) return { removed: 0, failed: 0 };
-  if (filtered.length > 0) existingHooks.PreToolUse = filtered;
-  else delete existingHooks.PreToolUse;
-  if (Object.keys(existingHooks).length > 0) settings.hooks = existingHooks;
-  else delete settings.hooks;
+  existingHooks.PreToolUse = filtered;
+  settings.hooks = existingHooks;
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
   return { removed, failed: 0 };
 }
 ```
+
+The helper must preserve every matcher group and all group-level fields. When the last managed
+handler is removed, it writes `hooks: []`; non-object handlers such as `null` are preserved as-is.
 
 Add `removeManagedHooksFromJsonFile` to the existing export block.
 

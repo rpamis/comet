@@ -347,6 +347,47 @@ describe('skills', () => {
       await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
     });
 
+    it('preserves legacy hook groups, group fields, and non-object handlers during migration', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const legacy = {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Write|Edit',
+              description: 'Comet-only group metadata',
+              hooks: [{ type: 'command', command: staleCometCommand }],
+            },
+            {
+              matcher: 'Bash',
+              customField: { preserved: true },
+              hooks: [null, 'manual-marker', { type: 'command', command: staleCometCommand }],
+            },
+          ],
+        },
+      };
+      await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+      await fs.writeFile(legacyPath, JSON.stringify(legacy, null, 2), 'utf-8');
+
+      await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        installed: true,
+      });
+
+      const migrated = JSON.parse(await fs.readFile(legacyPath, 'utf-8'));
+      expect(migrated.hooks.PreToolUse).toEqual([
+        {
+          matcher: 'Write|Edit',
+          description: 'Comet-only group metadata',
+          hooks: [],
+        },
+        {
+          matcher: 'Bash',
+          customField: { preserved: true },
+          hooks: [null, 'manual-marker'],
+        },
+      ]);
+    });
+
     it('installs canonical Codex hooks without changing invalid historical JSON', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
@@ -360,6 +401,37 @@ describe('skills', () => {
 
       await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(invalid);
       await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
+    });
+
+    it('does not overwrite invalid canonical Codex hooks or migrate the historical file', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const invalidCanonical = '{\r\n  "hooks": {\r\n';
+      const legacy = `${JSON.stringify(
+        {
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Write|Edit',
+                hooks: [{ type: 'command', command: staleCometCommand }],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\r\n`;
+      await fs.mkdir(path.dirname(canonicalPath), { recursive: true });
+      await fs.writeFile(canonicalPath, invalidCanonical, 'utf-8');
+      await fs.writeFile(legacyPath, legacy, 'utf-8');
+
+      const result = await installCometHooksForPlatform(tmpDir, codex, 'project');
+
+      expect(result.installed).toBe(false);
+      expect(result.reason).toContain('Invalid codex settings');
+      await expect(fs.readFile(canonicalPath, 'utf-8')).resolves.toBe(invalidCanonical);
+      await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(legacy);
     });
 
     it('merges Claude-style hooks into an existing matcher group without replacing user hooks', async () => {

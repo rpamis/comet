@@ -64,7 +64,7 @@ Codex 实际从配置层旁的 `hooks.json` 或 `config.toml` 内联 Hook 表加
 3. 保留其他事件、matcher、handler 和顶层字段。
 4. 成功写入 `.codex/hooks.json` 后，再处理历史 `.codex/settings.local.json`。
 5. 从历史文件中只删除可通过 manifest 脚本路径识别出的 Comet handler。
-6. 如果某个 matcher 组被清空，则删除该组；如果 `PreToolUse` 被清空，则删除该事件；如果 `hooks` 被清空，则删除 `hooks` 字段。保留文件内其余内容。
+6. 即使某个 matcher 组删除 Comet handler 后不再包含 handler，也保留该组、matcher 和所有未知组级字段，只把该组的 `hooks` 更新为空数组；同时保留 `PreToolUse` 与顶层 `hooks` 字段。
 
 先写正确文件再清理历史文件，确保更新不会在新配置写入失败时先移除已有 Comet 配置。
 
