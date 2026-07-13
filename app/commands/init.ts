@@ -521,9 +521,11 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     }
 
     if (cmAction !== 'skip' && platform.supportsHooks) {
-      const { installed, reason } = await installCometHooksForPlatform(baseDir, platform, scope);
-      if (installed) {
+      const { status, reason } = await installCometHooksForPlatform(baseDir, platform, scope);
+      if (status === 'installed') {
         log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksInstalled')}`);
+      } else if (status === 'failed') {
+        log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksFailed')} (${reason})`);
       } else if (reason) {
         log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksSkipped')} (${reason})`);
       }

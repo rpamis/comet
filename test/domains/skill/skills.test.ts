@@ -314,7 +314,7 @@ describe('skills', () => {
       const root = baseDir();
 
       await expect(installCometHooksForPlatform(root, codex, scope)).resolves.toEqual({
-        installed: true,
+        status: 'installed',
       });
 
       const hooks = JSON.parse(await fs.readFile(path.join(root, '.codex', 'hooks.json'), 'utf-8'));
@@ -371,11 +371,11 @@ describe('skills', () => {
       await fs.writeFile(canonicalPath, JSON.stringify(canonical, null, 2), 'utf-8');
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-        installed: true,
+        status: 'installed',
       });
       const firstInstall = JSON.parse(await fs.readFile(canonicalPath, 'utf-8'));
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-        installed: true,
+        status: 'installed',
       });
       const secondInstall = JSON.parse(await fs.readFile(canonicalPath, 'utf-8'));
 
@@ -461,7 +461,7 @@ describe('skills', () => {
       await fs.writeFile(legacyPath, JSON.stringify(legacy, null, 2), 'utf-8');
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-        installed: true,
+        status: 'installed',
       });
 
       const migrated = JSON.parse(await fs.readFile(legacyPath, 'utf-8'));
@@ -491,7 +491,7 @@ describe('skills', () => {
         .mockRejectedValueOnce(new Error('simulated legacy write failure'));
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-        installed: true,
+        status: 'installed',
       });
       await expect(fs.access(canonicalPath)).resolves.toBeUndefined();
       await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(JSON.stringify(legacy, null, 2));
@@ -520,7 +520,7 @@ describe('skills', () => {
       await fs.writeFile(legacyPath, JSON.stringify(legacy, null, 2), 'utf-8');
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-        installed: true,
+        status: 'installed',
       });
 
       const migrated = JSON.parse(await fs.readFile(legacyPath, 'utf-8'));
@@ -546,7 +546,7 @@ describe('skills', () => {
       await fs.writeFile(legacyPath, invalid, 'utf-8');
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
-        installed: true,
+        status: 'installed',
       });
 
       await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(invalid);
@@ -578,8 +578,8 @@ describe('skills', () => {
 
       const result = await installCometHooksForPlatform(tmpDir, codex, 'project');
 
-      expect(result.installed).toBe(false);
-      expect(result.reason).toContain('Invalid codex settings');
+      expect(result.status).toBe('failed');
+      expect(result.reason).toContain('Invalid Codex settings');
       await expect(fs.readFile(canonicalPath, 'utf-8')).resolves.toBe(invalidCanonical);
       await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(legacy);
     });
@@ -663,7 +663,7 @@ describe('skills', () => {
       await fs.writeFile(settingsPath, JSON.stringify(malformedSettings), 'utf-8');
 
       await expect(installCometHooksForPlatform(tmpDir, platform)).resolves.toEqual({
-        installed: true,
+        status: 'installed',
       });
 
       const updated = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
@@ -749,7 +749,7 @@ describe('skills', () => {
       await fs.writeFile(settingsPath, JSON.stringify(initialSettings), 'utf-8');
 
       await expect(installCometHooksForPlatform(homeDir, platform, 'global')).resolves.toEqual({
-        installed: true,
+        status: 'installed',
       });
 
       const updated = JSON.parse(await fs.readFile(settingsPath, 'utf-8'));
@@ -769,9 +769,40 @@ describe('skills', () => {
 
       const result = await installCometHooksForPlatform(tmpDir, platform, 'project');
 
-      expect(result.installed).toBe(false);
-      expect(result.reason).toContain('Invalid codebuddy settings');
+      expect(result.status).toBe('failed');
+      expect(result.reason).toContain('Invalid CodeBuddy Code settings');
       await expect(fs.readFile(settingsPath, 'utf-8')).resolves.toBe(invalidSettings);
+    });
+
+    it.each([
+      {
+        id: 'claude',
+        configPath: ['.claude', 'settings.local.json'],
+      },
+      {
+        id: 'amazon-q',
+        configPath: ['.amazonq', 'settings.local.json'],
+      },
+      {
+        id: 'gemini',
+        configPath: ['.gemini', 'settings.json'],
+      },
+      {
+        id: 'windsurf',
+        configPath: ['.windsurf', 'hooks.json'],
+      },
+    ])('leaves malformed $id Hook JSON byte-for-byte unchanged', async ({ id, configPath }) => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === id)!;
+      const settingsPath = path.join(tmpDir, ...configPath);
+      const malformedSettings = '{\r\n  "hooks": {\r\n';
+      await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+      await fs.writeFile(settingsPath, malformedSettings, 'utf-8');
+
+      const result = await installCometHooksForPlatform(tmpDir, platform, 'project');
+
+      expect(result.status).toBe('failed');
+      expect(result.reason).toContain(`Invalid ${platform.name} settings`);
+      await expect(fs.readFile(settingsPath, 'utf-8')).resolves.toBe(malformedSettings);
     });
 
     it('merges Gemini hooks into the existing matcher group idempotently', async () => {

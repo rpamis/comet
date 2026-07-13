@@ -32,6 +32,13 @@ type Manifest = {
   languages?: LanguageConfig[];
 };
 
+type HookInstallStatus = 'installed' | 'skipped' | 'failed';
+
+export interface HookInstallResult {
+  status: HookInstallStatus;
+  reason?: string;
+}
+
 interface PlannedSkillSourceFile {
   relativePath: string;
   source: string;
@@ -734,15 +741,15 @@ async function installCometHooksForPlatform(
   baseDir: string,
   platform: Platform,
   scope: InstallScope = 'project',
-): Promise<{ installed: boolean; reason?: string }> {
+): Promise<HookInstallResult> {
   if (!platform.supportsHooks || !platform.hookFormat) {
-    return { installed: false, reason: 'platform does not support hooks' };
+    return { status: 'skipped', reason: 'platform does not support hooks' };
   }
 
   const manifest = await readManifest();
   const hooksConfig = manifest.hooks;
   if (!hooksConfig || Object.keys(hooksConfig).length === 0) {
-    return { installed: false, reason: 'no hooks defined in manifest' };
+    return { status: 'skipped', reason: 'no hooks defined in manifest' };
   }
 
   const hookFormat = platform.hookFormat;
@@ -758,9 +765,9 @@ async function installCometHooksForPlatform(
           skillsDir,
           hooksConfig,
           platform.hookConfigFile ?? 'settings.local.json',
-          Boolean(platform.hookConfigFile),
+          platform.name,
         );
-        if (result.installed) {
+        if (result.status === 'installed') {
           for (const legacyFile of platform.legacyHookConfigFiles ?? []) {
             await removeManagedHooksFromJsonFile(
               path.join(platformBase, legacyFile),
@@ -778,21 +785,33 @@ async function installCometHooksForPlatform(
           platformBase,
           skillsDir,
           hooksConfig,
-          hookFormat,
+          platform.name,
         );
       case 'gemini':
-        return await installGeminiHooks(baseDir, platformBase, skillsDir, hooksConfig);
+        return await installGeminiHooks(
+          baseDir,
+          platformBase,
+          skillsDir,
+          hooksConfig,
+          platform.name,
+        );
       case 'windsurf':
-        return await installWindsurfHooks(baseDir, platformBase, skillsDir, hooksConfig);
+        return await installWindsurfHooks(
+          baseDir,
+          platformBase,
+          skillsDir,
+          hooksConfig,
+          platform.name,
+        );
       case 'copilot':
         return await installCopilotHooks(baseDir, platformBase, skillsDir, hooksConfig);
       case 'kiro':
         return await installKiroHooks(baseDir, platformBase, skillsDir, hooksConfig);
       default:
-        return { installed: false, reason: `unsupported hook format: ${hookFormat}` };
+        return { status: 'failed', reason: `unsupported hook format: ${hookFormat}` };
     }
   } catch (err) {
-    return { installed: false, reason: (err as Error).message };
+    return { status: 'failed', reason: (err as Error).message };
   }
 }
 
@@ -1013,8 +1032,8 @@ async function installClaudeCodeHooks(
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
   configFile: string,
-  strictJson: boolean,
-): Promise<{ installed: boolean; reason?: string }> {
+  platformName: string,
+): Promise<HookInstallResult> {
   const settingsPath = path.join(platformBase, configFile);
 
   // Claude Code format: { matcher, hooks: [{ type: "command", command }] }
@@ -1037,18 +1056,7 @@ async function installClaudeCodeHooks(
     ([matcher, hooks]) => ({ matcher, hooks }),
   );
 
-  let settings: Record<string, unknown> = {};
-  if (await fileExists(settingsPath)) {
-    if (strictJson) {
-      settings = await readSettingsJsonObject(settingsPath, 'codex');
-    } else {
-      try {
-        settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
-      } catch {
-        settings = {};
-      }
-    }
-  }
+  const settings = await readSettingsJsonObject(settingsPath, platformName);
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
   const existingPreToolUse = asHookGroup(existingHooks.PreToolUse);
@@ -1057,7 +1065,7 @@ async function installClaudeCodeHooks(
   settings.hooks = { ...existingHooks, PreToolUse: merged };
   await ensureDir(path.dirname(settingsPath));
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
-  return { installed: true };
+  return { status: 'installed' };
 }
 
 /**
@@ -1070,7 +1078,7 @@ async function installQwenStyleHooks(
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
   hookFormat: string,
-): Promise<{ installed: boolean; reason?: string }> {
+): Promise<HookInstallResult> {
   const settingsPath = path.join(platformBase, 'settings.json');
 
   // Group by matcher
@@ -1103,7 +1111,7 @@ async function installQwenStyleHooks(
   settings.hooks = { ...existingHooks, PreToolUse: merged };
   await ensureDir(path.dirname(settingsPath));
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
-  return { installed: true };
+  return { status: 'installed' };
 }
 
 /**
@@ -1115,7 +1123,8 @@ async function installGeminiHooks(
   platformBase: string,
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
-): Promise<{ installed: boolean; reason?: string }> {
+  platformName: string,
+): Promise<HookInstallResult> {
   const settingsPath = path.join(platformBase, 'settings.json');
 
   const entries: Array<{
@@ -1135,14 +1144,7 @@ async function installGeminiHooks(
     });
   }
 
-  let settings: Record<string, unknown> = {};
-  if (await fileExists(settingsPath)) {
-    try {
-      settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
-    } catch {
-      settings = {};
-    }
-  }
+  const settings = await readSettingsJsonObject(settingsPath, platformName);
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
   const existingBeforeTool = asHookGroup(existingHooks.BeforeTool);
@@ -1151,7 +1153,7 @@ async function installGeminiHooks(
   settings.hooks = { ...existingHooks, BeforeTool: merged };
   await ensureDir(path.dirname(settingsPath));
   await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
-  return { installed: true };
+  return { status: 'installed' };
 }
 
 /**
@@ -1163,7 +1165,8 @@ async function installWindsurfHooks(
   platformBase: string,
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
-): Promise<{ installed: boolean; reason?: string }> {
+  platformName: string,
+): Promise<HookInstallResult> {
   const hooksPath = path.join(platformBase, 'hooks.json');
 
   const entries: Array<{ command: string; show_output: boolean }> = [];
@@ -1174,14 +1177,7 @@ async function installWindsurfHooks(
     });
   }
 
-  let hooksFile: Record<string, unknown> = {};
-  if (await fileExists(hooksPath)) {
-    try {
-      hooksFile = JSON.parse(await readFile(hooksPath, 'utf-8')) as Record<string, unknown>;
-    } catch {
-      hooksFile = {};
-    }
-  }
+  const hooksFile = await readSettingsJsonObject(hooksPath, platformName);
 
   const existingHooks = (hooksFile.hooks as Record<string, unknown>) ?? {};
   const existingPreWrite = asHookGroup(existingHooks.pre_write_code);
@@ -1195,7 +1191,7 @@ async function installWindsurfHooks(
   hooksFile.hooks = { ...existingHooks, pre_write_code: merged };
   await ensureDir(path.dirname(hooksPath));
   await writeFile(hooksPath, JSON.stringify(hooksFile, null, 2) + '\n', 'utf-8');
-  return { installed: true };
+  return { status: 'installed' };
 }
 
 /**
@@ -1207,7 +1203,7 @@ async function installCopilotHooks(
   platformBase: string,
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
-): Promise<{ installed: boolean; reason?: string }> {
+): Promise<HookInstallResult> {
   const hooksDir = path.join(platformBase, 'hooks');
   const hookFilePath = path.join(hooksDir, 'comet-guard.json');
 
@@ -1227,7 +1223,7 @@ async function installCopilotHooks(
 
   await ensureDir(hooksDir);
   await writeFile(hookFilePath, JSON.stringify(hookConfig, null, 2) + '\n', 'utf-8');
-  return { installed: true };
+  return { status: 'installed' };
 }
 
 /**
@@ -1239,7 +1235,7 @@ async function installKiroHooks(
   platformBase: string,
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
-): Promise<{ installed: boolean; reason?: string }> {
+): Promise<HookInstallResult> {
   const hooksDir = path.join(platformBase, 'hooks');
 
   for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
@@ -1268,7 +1264,7 @@ async function installKiroHooks(
     await writeFile(hookFilePath, JSON.stringify(hookConfig, null, 2) + '\n', 'utf-8');
   }
 
-  return { installed: true };
+  return { status: 'installed' };
 }
 
 function managedConfigFields(language: string = 'en') {

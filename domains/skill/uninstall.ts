@@ -271,7 +271,7 @@ async function removeQwenStyleHooks(
   try {
     settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
   } catch {
-    return { removed: 0, failed: 0 };
+    return { removed: 0, failed: 1 };
   }
 
   const existingHooks = settings.hooks as Record<string, unknown> | undefined;
@@ -325,7 +325,7 @@ async function removeGeminiHooks(
   try {
     settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
   } catch {
-    return { removed: 0, failed: 0 };
+    return { removed: 0, failed: 1 };
   }
 
   const existingHooks = settings.hooks as Record<string, unknown> | undefined;
@@ -379,7 +379,7 @@ async function removeWindsurfHooks(
   try {
     hooksFile = JSON.parse(await readFile(hooksPath, 'utf-8')) as Record<string, unknown>;
   } catch {
-    return { removed: 0, failed: 0 };
+    return { removed: 0, failed: 1 };
   }
 
   const existingHooks = hooksFile.hooks as Record<string, unknown> | undefined;

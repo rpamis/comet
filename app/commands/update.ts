@@ -574,14 +574,16 @@ async function updateSingleProject(
 
     if (target.platform.supportsHooks) {
       try {
-        const { installed, reason } = await installCometHooksForPlatform(
+        const { status, reason } = await installCometHooksForPlatform(
           baseDir,
           target.platform,
           target.scope,
         );
-        if (installed) {
+        if (status === 'installed') {
           totalHooksInstalled++;
           log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksUpdated')}`);
+        } else if (status === 'failed') {
+          log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksFailed')} (${reason})`);
         } else if (reason) {
           log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksSkipped')} (${reason})`);
         }

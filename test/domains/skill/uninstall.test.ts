@@ -49,4 +49,22 @@ describe('removeCometHooksForPlatform', () => {
       failed: 0,
     });
   });
+
+  it.each([
+    { id: 'qwen', configPath: ['.qwen', 'settings.json'] },
+    { id: 'gemini', configPath: ['.gemini', 'settings.json'] },
+    { id: 'windsurf', configPath: ['.windsurf', 'hooks.json'] },
+  ])('fails closed when canonical $id Hook JSON is malformed', async ({ id, configPath }) => {
+    const platform = PLATFORMS.find((candidate) => candidate.id === id)!;
+    const settingsPath = path.join(tmpDir, ...configPath);
+    const malformedSettings = '{\r\n  "hooks": {\r\n';
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.writeFile(settingsPath, malformedSettings, 'utf8');
+
+    await expect(removeCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+      removed: 0,
+      failed: 1,
+    });
+    await expect(fs.readFile(settingsPath, 'utf8')).resolves.toBe(malformedSettings);
+  });
 });
