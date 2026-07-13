@@ -109,11 +109,13 @@ async function profileScenario(workspace, profile) {
   state(directory, 'init', name, profile);
   const changeDir = path.join(directory, 'openspec', 'changes', name);
 
-  const first = run(directory, ['hook-guard'], { input: hookInput('src/index.ts') });
+  run(directory, ['guard', name, 'open']);
   const migrated = await readState(changeDir);
-  const firstBytes = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const beforeHooks = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const first = run(directory, ['hook-guard'], { input: hookInput('src/index.ts') });
+  const afterFirst = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
   const second = run(directory, ['hook-guard'], { input: hookInput('src/index.ts') });
-  const secondBytes = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const afterSecond = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
 
   return result(
     name,
@@ -125,7 +127,7 @@ async function profileScenario(workspace, profile) {
         migrated.classic_migration === 1 &&
         migrated.classic_profile === profile &&
         migrated.skill === 'comet-classic',
-      idempotent: firstBytes === secondBytes,
+      idempotent: beforeHooks === afterFirst && afterFirst === afterSecond,
       contractMatch:
         migrated.workflow === profile && migrated.phase === 'open' && migrated.archived === false,
     },
@@ -149,11 +151,13 @@ async function retryFixScenario(workspace) {
     state(directory, 'set', name, field, value);
   }
   const changeDir = path.join(directory, 'openspec', 'changes', name);
-  const first = run(directory, ['hook-guard'], { input: hookInput('src/fix.ts') });
+  run(directory, ['guard', name, 'build']);
   const migrated = await readState(changeDir);
-  const firstBytes = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const beforeHooks = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const first = run(directory, ['hook-guard'], { input: hookInput('src/fix.ts') });
+  const afterFirst = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
   const second = run(directory, ['hook-guard'], { input: hookInput('src/fix.ts') });
-  const secondBytes = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const afterSecond = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
 
   return result(
     name,
@@ -161,7 +165,7 @@ async function retryFixScenario(workspace) {
     {
       transitionAccuracy: first.status === 0 && migrated.current_step === 'hotfix.build.execute',
       migrationSuccess: migrated.classic_migration === 1 && migrated.skill === 'comet-classic',
-      idempotent: second.status === 0 && firstBytes === secondBytes,
+      idempotent: second.status === 0 && beforeHooks === afterFirst && afterFirst === afterSecond,
       contractMatch:
         migrated.workflow === 'hotfix' &&
         migrated.phase === 'build' &&

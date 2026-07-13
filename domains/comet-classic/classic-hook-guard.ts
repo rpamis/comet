@@ -2,8 +2,7 @@ import { existsSync, promises as fs, readFileSync } from 'fs';
 import path from 'path';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import { resolveCurrentChange } from './classic-current-change.js';
-import { ensureStrictClassicRuntimeRun } from './classic-runtime-run.js';
-import { readLegacyState } from './classic-store.js';
+import { readClassicState, readLegacyState } from './classic-store.js';
 import type { ClassicPhase, ClassicState } from './classic-state.js';
 
 function result(exitCode: number, message: string): ClassicCommandResult {
@@ -29,6 +28,11 @@ function inputTarget(): string {
 
 function normalized(value: string): string {
   return value.replaceAll('\\', '/').replace(/\/+/gu, '/');
+}
+
+function comparisonKey(value: string): string {
+  const normalizedValue = normalized(value);
+  return process.platform === 'win32' ? normalizedValue.toLowerCase() : normalizedValue;
 }
 
 function parseProjectRoot(args: string[]): string {
@@ -107,12 +111,17 @@ type GoverningResolution = GoverningChange | GoverningBlock | null;
 
 async function loadGoverningChange(changeDir: string): Promise<GoverningChange | null> {
   try {
-    const runtime = await ensureStrictClassicRuntimeRun(changeDir);
+    const projection = await readClassicState(changeDir, { migrate: false });
+    const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+    if (unknownKeys.length > 0) {
+      throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`);
+    }
+    if (!projection.classic) throw new Error('Classic state projection is unavailable');
     return {
       changeDir,
-      phase: runtime.classic.phase,
-      classic: runtime.classic,
-      archived: runtime.classic.archived,
+      phase: projection.classic.phase,
+      classic: projection.classic,
+      archived: projection.classic.archived,
     };
   } catch {
     // Legacy/partial state without the required Classic fields: fall back to a
@@ -147,7 +156,7 @@ async function activeChanges(projectRoot: string): Promise<GoverningChange[]> {
 }
 
 function isSuperpowersArtifactPath(relativePath: string): boolean {
-  return relativePath.startsWith('docs/superpowers/');
+  return comparisonKey(relativePath).startsWith('docs/superpowers/');
 }
 
 type SuperpowersArtifactField = 'designDoc' | 'plan' | 'verificationReport';
@@ -181,11 +190,10 @@ const SUPERPOWERS_ARTIFACT_SLOTS: readonly SuperpowersArtifactSlot[] = [
 ];
 
 function standardSuperpowersArtifactSlot(relativePath: string): SuperpowersArtifactSlot | null {
-  const slot = SUPERPOWERS_ARTIFACT_SLOTS.find((candidate) =>
-    relativePath.startsWith(candidate.prefix),
-  );
+  const key = comparisonKey(relativePath);
+  const slot = SUPERPOWERS_ARTIFACT_SLOTS.find((candidate) => key.startsWith(candidate.prefix));
   if (!slot) return null;
-  const fileName = relativePath.slice(slot.prefix.length);
+  const fileName = key.slice(slot.prefix.length);
   if (!fileName || fileName.includes('/') || !fileName.endsWith('.md')) return null;
   return slot;
 }
@@ -241,7 +249,7 @@ function matchesRecordedSuperpowersArtifact(
     governing.classic?.verificationReport,
   ];
   return artifactPaths.some(
-    (artifactPath) => artifactPath && normalized(artifactPath) === relativePath,
+    (artifactPath) => artifactPath && comparisonKey(artifactPath) === comparisonKey(relativePath),
   );
 }
 
@@ -258,12 +266,12 @@ function matchesSuperpowersArtifactName(relativePath: string, changeName: string
 async function superpowersArtifactGoverningChange(
   relativePath: string,
   projectRoot: string,
-): Promise<GoverningChange | null> {
+): Promise<{ governing: GoverningChange; match: 'recorded' | 'named' } | null> {
   const active = await activeChanges(projectRoot);
   const recorded = active.find((governing) =>
     matchesRecordedSuperpowersArtifact(relativePath, governing),
   );
-  if (recorded) return recorded;
+  if (recorded) return { governing: recorded, match: 'recorded' };
 
   const eligible = active.filter(allowsSuperpowersArtifacts);
   const named = eligible
@@ -274,7 +282,7 @@ async function superpowersArtifactGoverningChange(
     .sort(
       (a, b) => (governingChangeName(b)?.length ?? 0) - (governingChangeName(a)?.length ?? 0),
     )[0];
-  if (named) return named;
+  if (named) return { governing: named, match: 'named' };
 
   return null;
 }
@@ -332,9 +340,22 @@ async function governingChange(
   }
   if (isSuperpowersArtifactPath(relativePath)) {
     const superpowers = await superpowersArtifactGoverningChange(relativePath, projectRoot);
-    if (superpowers) return { ...superpowers, superpowersArtifact: 'matched' };
+    if (superpowers?.match === 'recorded') {
+      return { ...superpowers.governing, superpowersArtifact: 'matched' };
+    }
 
     const slot = standardSuperpowersArtifactSlot(relativePath);
+    if (superpowers) {
+      return slot
+        ? {
+            ...superpowers.governing,
+            superpowersArtifact: allowsFirstSuperpowersArtifactWrite(superpowers.governing, slot)
+              ? 'matched'
+              : 'unmatched',
+            superpowersSlot: slot,
+          }
+        : { ...superpowers.governing, superpowersArtifact: 'matched' };
+    }
     if (slot) {
       const candidate = await repoSourceGoverningChange(projectRoot, relativePath);
       if (!candidate || 'blockedResult' in candidate) return candidate;

@@ -238,11 +238,14 @@ describe('comet scripts', () => {
     expect(result.stderr).toBe('');
   }, 20_000);
 
-  it('loads the classic runtime package from COMET_RUNTIME_CLASSIC_ROOT', async () => {
+  it('keeps hook guard read-only when COMET_RUNTIME_CLASSIC_ROOT is configured', async () => {
     const init = runNode(tmpDir, stateScript, ['init', 'runtime-root', 'full'], {
       COMET_RUNTIME_CLASSIC_ROOT: classicRuntimeRoot,
       COMET_CLASSIC_SKILL_ROOT: '',
     });
+    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'runtime-root');
+    const stateFile = path.join(changeDir, '.comet.yaml');
+    const before = await fs.readFile(stateFile, 'utf8');
     const targetFile = path.join(tmpDir, 'src', 'index.ts');
     await fs.mkdir(path.dirname(targetFile), { recursive: true });
     const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile), {
@@ -252,11 +255,10 @@ describe('comet scripts', () => {
 
     expect(init.status).toBe(0);
     expect(result.status).toBe(2);
-    const runState = await fs.readFile(
-      path.join(tmpDir, 'openspec', 'changes', 'runtime-root', '.comet', 'run-state.json'),
-      'utf8',
-    );
-    expect(JSON.parse(runState)).toMatchObject({ skill: 'comet-classic' });
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+    await expect(fs.access(path.join(changeDir, '.comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   }, 20_000);
 
   it('keeps COMET_CLASSIC_SKILL_ROOT as a compatibility fallback', async () => {
@@ -4887,6 +4889,48 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
     }, 20_000);
 
+    it.each([
+      ['valid pre-Run state', ''],
+      [
+        'legacy command fields',
+        'build_command: node legacy-build.js\nverify_command: node legacy-verify.js\n',
+      ],
+    ])('does not mutate %s or create distributed Run files', async (_label, legacyFields) => {
+      const changeDir = await createChange(
+        tmpDir,
+        'read-only-hook',
+        [
+          'workflow: full',
+          'phase: design',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'verified_at: null',
+          'archived: false',
+          legacyFields,
+        ].join('\n'),
+      );
+      const stateFile = path.join(changeDir, '.comet.yaml');
+      const before = await fs.readFile(stateFile, 'utf8');
+
+      const result = runHookGuard(
+        tmpDir,
+        hookGuardScript,
+        hookStdin(path.join(tmpDir, 'src', 'feature.ts')),
+      );
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Current phase: design');
+      expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+      await expect(fs.access(path.join(changeDir, '.comet'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    });
+
     it('allows writes to openspec/ in design phase', async () => {
       await createChange(
         tmpDir,
@@ -5027,6 +5071,80 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('plan is already recorded');
       expect(result.stderr).toContain(recorded);
     }, 20_000);
+
+    it('blocks a named standard plan after the distributed plan slot is occupied', async () => {
+      const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
+      await createChange(
+        tmpDir,
+        'occupied-standard-plan',
+        [
+          'workflow: full',
+          'phase: build',
+          'design_doc: docs/superpowers/specs/occupied-standard-plan-design.md',
+          `plan: ${recorded}`,
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      const target = path.join(
+        tmpDir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-occupied-standard-plan-plan.md',
+      );
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(target));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('plan is already recorded');
+      expect(result.stderr).toContain(recorded);
+    }, 20_000);
+
+    it.skipIf(process.platform !== 'win32')(
+      'blocks a Windows case-variant named plan after the distributed slot is occupied',
+      async () => {
+        const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
+        await createChange(
+          tmpDir,
+          'windows-occupied-plan',
+          [
+            'workflow: full',
+            'phase: build',
+            'design_doc: docs/superpowers/specs/windows-occupied-plan-design.md',
+            `plan: ${recorded}`,
+            'build_mode: executing-plans',
+            'isolation: branch',
+            'verify_mode: null',
+            'verify_result: pending',
+            'verification_report: null',
+            'verified_at: null',
+            'archived: false',
+            '',
+          ].join('\n'),
+        );
+        const target = path.join(
+          tmpDir,
+          'Docs',
+          'superpowers',
+          'plans',
+          '2026-07-13-windows-occupied-plan-plan.md',
+        );
+
+        const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(target));
+
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain('plan is already recorded');
+        expect(result.stderr).toContain(recorded);
+      },
+      20_000,
+    );
 
     it('blocks source code writes in design phase', async () => {
       await createChange(
@@ -5395,7 +5513,19 @@ describe('comet scripts', () => {
       await createChange(
         tmpDir,
         'env-issue-ledger',
-        ['workflow: full', 'phase: design', 'archived: false', ''].join('\n'),
+        [
+          'workflow: full',
+          'phase: design',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
       );
 
       const docsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
@@ -5417,7 +5547,19 @@ describe('comet scripts', () => {
       await createChange(
         tmpDir,
         'auth-v2',
-        ['workflow: full', 'phase: design', 'archived: false', ''].join('\n'),
+        [
+          'workflow: full',
+          'phase: design',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
       );
 
       const docsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');

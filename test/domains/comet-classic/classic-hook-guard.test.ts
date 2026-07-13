@@ -3,7 +3,6 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parse } from 'yaml';
 import { readRunState } from '../../../domains/engine/state.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
@@ -223,6 +222,67 @@ describe('Classic hook guard command', () => {
       expect(secondResult.stderr).toContain(recorded);
     });
 
+    it('blocks a named standard plan when the governing change plan slot is occupied', async () => {
+      const dir = await makeProject();
+      const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
+      await seedChange(dir, 'occupied-plan', 'build', { plan: recorded });
+      const target = path.join(
+        dir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-occupied-plan-plan.md',
+      );
+
+      const result = run(dir, 'hook-guard', [], hookInput(target));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('plan is already recorded');
+      expect(result.stderr).toContain(recorded);
+    });
+
+    it.skipIf(process.platform !== 'win32')(
+      'treats a Windows case-variant standard plan as wrong-phase while preserving diagnostics',
+      async () => {
+        const dir = await makeProject();
+        await seedChange(dir, 'windows-wrong-phase', 'design');
+        const relativeTarget = 'Docs/superpowers/plans/2026-07-13-windows-wrong-phase-plan.md';
+
+        const result = run(
+          dir,
+          'hook-guard',
+          [],
+          hookInput(path.join(dir, ...relativeTarget.split('/'))),
+        );
+
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain('Expected phase: build');
+        expect(result.stderr).toContain(`Target file: ${relativeTarget}`);
+      },
+    );
+
+    it.skipIf(process.platform !== 'win32')(
+      'blocks a Windows case-variant named plan when the slot is occupied',
+      async () => {
+        const dir = await makeProject();
+        const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
+        await seedChange(dir, 'windows-occupied-plan', 'build', { plan: recorded });
+        const target = path.join(
+          dir,
+          'Docs',
+          'superpowers',
+          'plans',
+          '2026-07-13-windows-occupied-plan-plan.md',
+        );
+
+        const result = run(dir, 'hook-guard', [], hookInput(target));
+
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain('plan is already recorded');
+        expect(result.stderr).toContain(recorded);
+      },
+    );
+
     it('fails closed for a stale selection before a standard plan first write', async () => {
       const dir = await makeProject();
       await initializeGitProject(dir);
@@ -425,26 +485,43 @@ describe('Classic hook guard command', () => {
     expect(result.stderr).toContain('allowed: no active comet change');
   });
 
-  it('blocks source writes in design and silently migrates the active change', async () => {
+  it('blocks source writes in design without migrating the active change or creating Run files', async () => {
     const dir = await makeProject();
-    const changeDir = await seedDesignChange(dir);
+    const changeDir = await seedChange(dir, 'read-only-design', 'design');
+    const stateFile = path.join(changeDir, '.comet.yaml');
+    const before = await fs.readFile(stateFile, 'utf8');
 
     const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'index.ts')));
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('COMET PHASE GUARD');
     expect(result.stderr).toContain('Current phase: design');
-    const state = parse(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    expect(state).toMatchObject({
-      classic_migration: 1,
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+    expect(await readRunState(changeDir)).toBeNull();
+    await expect(fs.access(path.join(changeDir, '.comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
     });
-    const runState = await readRunState(changeDir);
-    expect(runState).not.toBeNull();
-    expect(runState!.skill).toBe('comet-classic');
-    expect(runState!.currentStep).toBe('full.design.handoff');
+  });
+
+  it('leaves legacy command fields byte-for-byte unchanged while guarding', async () => {
+    const dir = await makeProject();
+    const changeDir = await seedChange(dir, 'legacy-read-only', 'design');
+    const stateFile = path.join(changeDir, '.comet.yaml');
+    await fs.appendFile(
+      stateFile,
+      'build_command: node legacy-build.js\nverify_command: node legacy-verify.js\n',
+    );
+    const before = await fs.readFile(stateFile, 'utf8');
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'index.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Current phase: design');
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+    expect(await readRunState(changeDir)).toBeNull();
+    await expect(fs.access(path.join(changeDir, '.comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
 
   it('allows OpenSpec artifact writes in design', async () => {
