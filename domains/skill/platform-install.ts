@@ -742,21 +742,27 @@ async function installCometHooksForPlatform(
   platform: Platform,
   scope: InstallScope = 'project',
 ): Promise<HookInstallResult> {
-  if (!platform.supportsHooks || !platform.hookFormat) {
+  if (!platform.supportsHooks) {
     return { status: 'skipped', reason: 'platform does not support hooks' };
   }
-
-  const manifest = await readManifest();
-  const hooksConfig = manifest.hooks;
-  if (!hooksConfig || Object.keys(hooksConfig).length === 0) {
-    return { status: 'skipped', reason: 'no hooks defined in manifest' };
+  if (!platform.hookFormat) {
+    return {
+      status: 'failed',
+      reason: 'hook-capable platform does not declare a hook format',
+    };
   }
 
-  const hookFormat = platform.hookFormat;
-  const skillsDir = getPlatformSkillsDir(platform, scope);
-  const platformBase = path.join(baseDir, getPlatformConfigDir(platform, scope));
-
   try {
+    const manifest = await readManifest();
+    const hooksConfig = manifest.hooks;
+    if (!hooksConfig || Object.keys(hooksConfig).length === 0) {
+      return { status: 'skipped', reason: 'no hooks defined in manifest' };
+    }
+
+    const hookFormat = platform.hookFormat;
+    const skillsDir = getPlatformSkillsDir(platform, scope);
+    const platformBase = path.join(baseDir, getPlatformConfigDir(platform, scope));
+
     switch (hookFormat) {
       case 'claude-code': {
         const result = await installClaudeCodeHooks(
@@ -1002,7 +1008,7 @@ async function removeManagedHooksFromJsonFile(
 
 async function readSettingsJsonObject(
   settingsPath: string,
-  hookFormat: string,
+  platformName: string,
 ): Promise<Record<string, unknown>> {
   if (!(await fileExists(settingsPath))) return {};
 
@@ -1014,7 +1020,7 @@ async function readSettingsJsonObject(
     return parsed as Record<string, unknown>;
   } catch (error) {
     throw new Error(
-      `Invalid ${hookFormat} settings at ${settingsPath}: ${(error as Error).message}`,
+      `Invalid ${platformName} settings at ${settingsPath}: ${(error as Error).message}`,
       {
         cause: error,
       },
@@ -1077,7 +1083,7 @@ async function installQwenStyleHooks(
   platformBase: string,
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
-  hookFormat: string,
+  platformName: string,
 ): Promise<HookInstallResult> {
   const settingsPath = path.join(platformBase, 'settings.json');
 
@@ -1102,7 +1108,7 @@ async function installQwenStyleHooks(
     hooks,
   }));
 
-  const settings = await readSettingsJsonObject(settingsPath, hookFormat);
+  const settings = await readSettingsJsonObject(settingsPath, platformName);
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
   const existingPreToolUse = asHookGroup(existingHooks.PreToolUse);

@@ -3,12 +3,21 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
-const { writeFileMock } = vi.hoisted(() => ({ writeFileMock: vi.fn() }));
+const { readJsonMock, writeFileMock } = vi.hoisted(() => ({
+  readJsonMock: vi.fn(),
+  writeFileMock: vi.fn(),
+}));
 
 vi.mock('fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs/promises')>();
   writeFileMock.mockImplementation(actual.writeFile);
   return { ...actual, writeFile: writeFileMock };
+});
+
+vi.mock('../../../platform/fs/file-system.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../platform/fs/file-system.js')>();
+  readJsonMock.mockImplementation(actual.readJson);
+  return { ...actual, readJson: readJsonMock };
 });
 
 import {
@@ -29,6 +38,11 @@ describe('skills', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
+    readJsonMock.mockReset();
+    readJsonMock.mockImplementation(
+      async (filePath: string) =>
+        JSON.parse(await fs.readFile(filePath, 'utf-8')) as Record<string, unknown>,
+    );
     writeFileMock.mockReset();
     writeFileMock.mockImplementation(fs.writeFile);
     tmpDir = path.join(
@@ -305,6 +319,31 @@ describe('skills', () => {
     const normalized = (value: string) => value.replace(/\\/g, '/');
     const expectedHookCommand = (skillsDir: string, baseDir = tmpDir) =>
       `node "${normalized(path.join(baseDir, skillsDir, 'skills', ...currentCometScript.split('/')))}" --project-root "${normalized(baseDir)}"`;
+
+    it('returns failed when the Hook manifest cannot be read', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      readJsonMock.mockRejectedValueOnce(new Error('manifest unavailable'));
+
+      await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        status: 'failed',
+        reason: 'manifest unavailable',
+      });
+    });
+
+    it('returns failed when a Hook-capable platform does not declare a format', async () => {
+      const platform: Platform = {
+        id: 'missing-hook-format',
+        name: 'Missing Hook Format',
+        skillsDir: '.missing-hook-format',
+        openspecToolId: 'missing-hook-format',
+        supportsHooks: true,
+      };
+
+      await expect(installCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        status: 'failed',
+        reason: 'hook-capable platform does not declare a hook format',
+      });
+    });
 
     it.each([
       { scope: 'project' as const, baseDir: () => tmpDir },

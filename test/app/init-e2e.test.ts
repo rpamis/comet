@@ -265,6 +265,31 @@ describe('comet init E2E', () => {
     INIT_E2E_TIMEOUT_MS,
   );
 
+  it(
+    'does not install Codex hooks when the managed Hook script cannot be copied',
+    async () => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const centralCometDir = path.join(tmpDir, '.comet', 'skills', 'skills', 'comet');
+      await fs.mkdir(centralCometDir, { recursive: true });
+      await fs.writeFile(path.join(centralCometDir, 'scripts'), 'blocking file');
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, installMode: 'symlink' }),
+      );
+
+      const codexResult = (result.results as { platform: string; comet: string }[]).find(
+        (candidate) => candidate.platform === 'codex',
+      );
+      expect(codexResult?.comet).toBe('failed');
+      await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
   it('records project-scope Comet installs in the user project registry', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await fs.mkdir(fakeHome, { recursive: true });

@@ -273,6 +273,28 @@ describe('update command helpers', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('does not update Codex hooks when the managed Hook script cannot be copied', async () => {
+    const fakeHome = path.join(tmpDir, 'hook-copy-failure-home');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const skillDir = path.join(tmpDir, '.agents', 'skills', 'comet');
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(path.join(skillDir, 'SKILL.md'), '# Comet\n\nUse this skill.');
+    await fs.writeFile(path.join(skillDir, 'scripts'), 'blocking file');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { skipNpm: true, scope: 'project' });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it.each([true, false])(
     'reports legacy Codex cleanup refusal as incomplete in %s output',
     async (json) => {

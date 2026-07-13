@@ -572,7 +572,7 @@ async function updateSingleProject(
       );
     }
 
-    if (target.platform.supportsHooks) {
+    if (failed === 0 && target.platform.supportsHooks) {
       try {
         const { status, reason } = await installCometHooksForPlatform(
           baseDir,

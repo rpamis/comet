@@ -520,7 +520,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       }
     }
 
-    if (cmAction !== 'skip' && platform.supportsHooks) {
+    if (cmAction !== 'skip' && cmStatus !== 'failed' && platform.supportsHooks) {
       const { status, reason } = await installCometHooksForPlatform(baseDir, platform, scope);
       if (status === 'installed') {
         log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksInstalled')}`);
