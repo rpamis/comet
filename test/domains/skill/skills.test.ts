@@ -1,7 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+
+const { writeFileMock } = vi.hoisted(() => ({ writeFileMock: vi.fn() }));
+
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  writeFileMock.mockImplementation(actual.writeFile);
+  return { ...actual, writeFile: writeFileMock };
+});
+
 import {
   getAssetsDir,
   readManifest,
@@ -20,6 +29,8 @@ describe('skills', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
+    writeFileMock.mockReset();
+    writeFileMock.mockImplementation(fs.writeFile);
     tmpDir = path.join(
       os.tmpdir(),
       `comet-skills-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -345,6 +356,33 @@ describe('skills', () => {
         { type: 'command', command: 'node my-user-hook.mjs' },
       ]);
       await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
+    });
+
+    it('keeps canonical Codex hook installation successful when legacy cleanup cannot be written', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const legacy = {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Write|Edit',
+              hooks: [{ type: 'command', command: staleCometCommand }],
+            },
+          ],
+        },
+      };
+      await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+      await fs.writeFile(legacyPath, JSON.stringify(legacy, null, 2), 'utf-8');
+      writeFileMock
+        .mockImplementationOnce(fs.writeFile)
+        .mockRejectedValueOnce(new Error('simulated legacy write failure'));
+
+      await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        installed: true,
+      });
+      await expect(fs.access(canonicalPath)).resolves.toBeUndefined();
+      await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(JSON.stringify(legacy, null, 2));
     });
 
     it('preserves legacy hook groups, group fields, and non-object handlers during migration', async () => {

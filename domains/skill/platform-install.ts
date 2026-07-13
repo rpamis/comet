@@ -906,7 +906,11 @@ async function removeManagedHooksFromJsonFile(
   if (removed === 0) return { removed: 0, failed: 0 };
   existingHooks.PreToolUse = filtered;
   settings.hooks = existingHooks;
-  await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  try {
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  } catch {
+    return { removed: 0, failed: 1 };
+  }
   return { removed, failed: 0 };
 }
 

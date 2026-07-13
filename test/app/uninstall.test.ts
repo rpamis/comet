@@ -3,6 +3,14 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
+const { writeFileMock } = vi.hoisted(() => ({ writeFileMock: vi.fn() }));
+
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  writeFileMock.mockImplementation(actual.writeFile);
+  return { ...actual, writeFile: writeFileMock };
+});
+
 import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
 import {
   removeLegacyCometSkillsForPlatform,
@@ -26,6 +34,8 @@ describe('uninstall', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
+    writeFileMock.mockReset();
+    writeFileMock.mockImplementation(fs.writeFile);
     tmpDir = path.join(
       os.tmpdir(),
       `comet-uninstall-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -411,6 +421,51 @@ describe('uninstall', () => {
       const cleanedLegacy = JSON.parse(await fs.readFile(legacyPath, 'utf8'));
       expect(cleanedLegacy.model).toBe('gpt-5');
       expect(cleanedLegacy.hooks.PreToolUse[0].hooks).toEqual([userHandler]);
+    });
+
+    it('continues Codex cleanup across files and counts each write failure', async () => {
+      const codex = {
+        ...PLATFORMS.find((platform) => platform.id === 'codex')!,
+        legacyHookConfigFiles: ['settings.local.json', 'settings.backup.json'],
+      };
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const backupPath = path.join(tmpDir, '.codex', 'settings.backup.json');
+      const userHandler = { type: 'command', command: 'node my-user-hook.mjs' };
+
+      await installCometHooksForPlatform(tmpDir, codex, 'project');
+      const canonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      const cometHandler = canonical.hooks.PreToolUse[0].hooks[0];
+      canonical.hooks.PreToolUse[0].hooks.push(userHandler);
+      await fs.writeFile(canonicalPath, JSON.stringify(canonical, null, 2), 'utf8');
+      await fs.writeFile(
+        legacyPath,
+        JSON.stringify(
+          {
+            hooks: {
+              PreToolUse: [{ matcher: 'Write|Edit', hooks: [cometHandler, userHandler] }],
+            },
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+      await fs.copyFile(legacyPath, backupPath);
+      writeFileMock
+        .mockRejectedValueOnce(new Error('simulated canonical write failure'))
+        .mockImplementationOnce(fs.writeFile)
+        .mockRejectedValueOnce(new Error('simulated backup write failure'));
+
+      const result = await removeCometHooksForPlatform(tmpDir, codex, 'project');
+
+      expect(result).toEqual({ removed: 1, failed: 2 });
+      const unchangedCanonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      expect(unchangedCanonical.hooks.PreToolUse[0].hooks).toEqual([cometHandler, userHandler]);
+      const cleanedLegacy = JSON.parse(await fs.readFile(legacyPath, 'utf8'));
+      expect(cleanedLegacy.hooks.PreToolUse[0].hooks).toEqual([userHandler]);
+      const unchangedBackup = JSON.parse(await fs.readFile(backupPath, 'utf8'));
+      expect(unchangedBackup.hooks.PreToolUse[0].hooks).toEqual([cometHandler, userHandler]);
     });
 
     it('removes Claude Code hooks while preserving non-Comet hooks', async () => {
