@@ -283,6 +283,42 @@ describe('Classic hook guard command', () => {
       },
     );
 
+    it.skipIf(process.platform !== 'win32')(
+      'allows a Windows case-variant of an exact recorded artifact path',
+      async () => {
+        const dir = await makeProject();
+        const recorded = 'docs/superpowers/plans/2026-07-13-recorded.md';
+        await seedChange(dir, 'recorded-case-plan', 'design', { plan: recorded });
+        const target = path.join(dir, 'Docs', 'superpowers', 'plans', '2026-07-13-recorded.md');
+
+        const result = run(dir, 'hook-guard', [], hookInput(target));
+
+        expect(result.status).toBe(0);
+        expect(result.stderr).toContain('phase: design, superpowers');
+      },
+    );
+
+    it.skipIf(process.platform === 'win32')(
+      'does not treat a non-Windows case variant as an exact recorded artifact path',
+      async () => {
+        const dir = await makeProject();
+        const recorded = 'docs/superpowers/plans/2026-07-13-recorded.md';
+        await seedChange(dir, 'recorded-case-plan', 'design', { plan: recorded });
+        const relativeTarget = 'Docs/superpowers/plans/2026-07-13-recorded.md';
+
+        const result = run(
+          dir,
+          'hook-guard',
+          [],
+          hookInput(path.join(dir, ...relativeTarget.split('/'))),
+        );
+
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain('source writes are not allowed during design');
+        expect(result.stderr).toContain(`Target file: ${relativeTarget}`);
+      },
+    );
+
     it('fails closed for a stale selection before a standard plan first write', async () => {
       const dir = await makeProject();
       await initializeGitProject(dir);

@@ -39,5 +39,18 @@ describe('Classic baseline benchmark', () => {
       'archive-recovery',
       'malformed-rejection',
     ]);
+    expect(report.results.slice(0, 4)).toMatchObject(
+      ['open', 'open', 'open', 'build'].map((phase) => ({
+        detail: {
+          migrationGuard: {
+            phase,
+            status: 1,
+            signal: null,
+            controlledOutcome: true,
+            diagnostic: 'BLOCKED — fix failing checks before proceeding to next phase',
+          },
+        },
+      })),
+    );
   }, 120_000);
 });
