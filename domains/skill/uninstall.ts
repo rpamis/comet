@@ -476,8 +476,15 @@ async function removeKiroHooks(
   scriptRelPaths: string[],
 ): Promise<RemovalResult> {
   const hooksDir = path.join(platformBase, 'hooks');
-  if (!(await fileExists(hooksDir))) {
-    return { removed: 0, failed: 0 };
+  try {
+    if (!(await lstat(hooksDir)).isDirectory()) {
+      return { removed: 0, failed: 1 };
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { removed: 0, failed: 0 };
+    }
+    return { removed: 0, failed: 1 };
   }
 
   let removed = 0;

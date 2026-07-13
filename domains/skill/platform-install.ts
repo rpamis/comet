@@ -778,10 +778,14 @@ async function installCometHooksForPlatform(
         );
         if (result.status === 'installed') {
           for (const legacyFile of platform.legacyHookConfigFiles ?? []) {
-            await removeManagedHooksFromJsonFile(
-              path.join(platformBase, legacyFile),
-              Object.keys(hooksConfig),
-            );
+            try {
+              await removeManagedHooksFromJsonFile(
+                path.join(platformBase, legacyFile),
+                Object.keys(hooksConfig),
+              );
+            } catch {
+              // Historical Hook cleanup is best-effort after canonical install succeeds.
+            }
           }
         }
         return result;

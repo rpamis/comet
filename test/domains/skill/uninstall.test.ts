@@ -103,9 +103,16 @@ describe('removeCometHooksForPlatform', () => {
       await installCometHooksForPlatform(tmpDir, platform, 'project');
       const before = await fs.readFile(preservedPath, 'utf8');
       const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
-      const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (filePath) => {
-        if (path.resolve(String(filePath)) === path.resolve(blockedPath)) throw permissionError;
-      });
+      const accessSpy =
+        id === 'kiro'
+          ? undefined
+          : vi.spyOn(fs, 'access').mockImplementation(async (filePath) => {
+              if (path.resolve(String(filePath)) === path.resolve(blockedPath)) {
+                throw permissionError;
+              }
+            });
+      const readdirSpy =
+        id === 'kiro' ? vi.spyOn(fs, 'readdir').mockRejectedValue(permissionError) : undefined;
 
       try {
         await expect(removeCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
@@ -113,7 +120,8 @@ describe('removeCometHooksForPlatform', () => {
           failed: 1,
         });
       } finally {
-        accessSpy.mockRestore();
+        accessSpy?.mockRestore();
+        readdirSpy?.mockRestore();
       }
 
       await expect(fs.readFile(preservedPath, 'utf8')).resolves.toBe(before);
@@ -146,5 +154,19 @@ describe('removeCometHooksForPlatform', () => {
     const cleanedCanonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
     expect(cleanedCanonical.hooks.PreToolUse[0].hooks).toEqual([]);
     await expect(fs.readFile(legacyPath, 'utf8')).resolves.toBe(canonicalSource);
+  });
+
+  it('reports a regular-file Kiro canonical hooks path without changing its content', async () => {
+    const kiro = PLATFORMS.find((platform) => platform.id === 'kiro')!;
+    const hooksPath = path.join(tmpDir, '.kiro', 'hooks');
+    const content = 'user-owned regular file\n';
+    await fs.mkdir(path.dirname(hooksPath), { recursive: true });
+    await fs.writeFile(hooksPath, content, 'utf8');
+
+    await expect(removeCometHooksForPlatform(tmpDir, kiro, 'project')).resolves.toEqual({
+      removed: 0,
+      failed: 1,
+    });
+    await expect(fs.readFile(hooksPath, 'utf8')).resolves.toBe(content);
   });
 });

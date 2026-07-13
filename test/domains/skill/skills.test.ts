@@ -613,6 +613,32 @@ describe('skills', () => {
       await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(JSON.stringify(legacy, null, 2));
     });
 
+    it('keeps canonical Codex hook installation successful when legacy access fails', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const legacy = '{\n  "hooks": {}\n}\n';
+      await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+      await fs.writeFile(legacyPath, legacy, 'utf-8');
+      const access = fs.access.bind(fs);
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (filePath, mode) => {
+        if (path.resolve(String(filePath)) === path.resolve(legacyPath)) throw permissionError;
+        await access(filePath, mode);
+      });
+
+      try {
+        await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+          status: 'installed',
+        });
+      } finally {
+        accessSpy.mockRestore();
+      }
+
+      await expect(fs.access(canonicalPath)).resolves.toBeUndefined();
+      await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(legacy);
+    });
+
     it('preserves legacy hook groups, group fields, and non-object handlers during migration', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
