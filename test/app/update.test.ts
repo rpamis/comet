@@ -216,6 +216,32 @@ describe('update command helpers', () => {
     await fs.mkdir(legacyPersonal, { recursive: true });
     await fs.writeFile(path.join(legacyComet, 'SKILL.md'), '# Comet\n\nUse this skill.');
     await fs.writeFile(path.join(legacyPersonal, 'SKILL.md'), '# Personal\n');
+    const legacyHookPath = path.join(tmpDir, '.codex', 'settings.local.json');
+    await fs.mkdir(path.dirname(legacyHookPath), { recursive: true });
+    await fs.writeFile(
+      legacyHookPath,
+      JSON.stringify(
+        {
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Write|Edit',
+                hooks: [
+                  {
+                    type: 'command',
+                    command: 'node .codex/skills/comet/scripts/comet-hook-guard.mjs',
+                  },
+                  { type: 'command', command: 'node my-user-hook.mjs' },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
@@ -232,12 +258,16 @@ describe('update command helpers', () => {
     await expect(fs.readFile(path.join(legacyPersonal, 'SKILL.md'), 'utf8')).resolves.toBe(
       '# Personal\n',
     );
-    const settings = JSON.parse(
-      await fs.readFile(path.join(tmpDir, '.codex', 'settings.local.json'), 'utf8'),
-    );
-    expect(settings.hooks.PreToolUse[0].hooks[0].command.replaceAll('\\', '/')).toContain(
+    const hooks = JSON.parse(await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8'));
+    expect(hooks.hooks.PreToolUse[0].hooks[0].command.replaceAll('\\', '/')).toContain(
       '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
     );
+    const legacy = JSON.parse(
+      await fs.readFile(path.join(tmpDir, '.codex', 'settings.local.json'), 'utf8'),
+    );
+    expect(legacy.hooks.PreToolUse[0].hooks).toEqual([
+      { type: 'command', command: 'node my-user-hook.mjs' },
+    ]);
     await expect(
       fs.access(path.join(tmpDir, '.agents', 'settings.local.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });

@@ -251,16 +251,16 @@ describe('comet init E2E', () => {
         fs.access(path.join(tmpDir, '.agents', 'rules', 'comet-phase-guard.md')),
       ).rejects.toThrow();
 
-      const settings = JSON.parse(
-        await fs.readFile(path.join(tmpDir, '.codex', 'settings.local.json'), 'utf8'),
+      const hooks = JSON.parse(
+        await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8'),
       );
-      const hookCommand = settings.hooks.PreToolUse[0].hooks[0].command as string;
+      const hookCommand = hooks.hooks.PreToolUse[0].hooks[0].command as string;
       expect(hookCommand.replaceAll('\\', '/')).toContain(
         '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
       );
       await expect(
-        fs.access(path.join(tmpDir, '.agents', 'settings.local.json')),
-      ).rejects.toThrow();
+        fs.access(path.join(tmpDir, '.codex', 'settings.local.json')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
     },
     INIT_E2E_TIMEOUT_MS,
   );

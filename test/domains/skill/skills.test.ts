@@ -295,6 +295,73 @@ describe('skills', () => {
     const expectedHookCommand = (skillsDir: string, baseDir = tmpDir) =>
       `node "${normalized(path.join(baseDir, skillsDir, 'skills', ...currentCometScript.split('/')))}" --project-root "${normalized(baseDir)}"`;
 
+    it.each([
+      { scope: 'project' as const, baseDir: () => tmpDir },
+      { scope: 'global' as const, baseDir: () => path.join(tmpDir, 'home') },
+    ])('writes $scope Codex hooks to .codex/hooks.json', async ({ scope, baseDir }) => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const root = baseDir();
+
+      await expect(installCometHooksForPlatform(root, codex, scope)).resolves.toEqual({
+        installed: true,
+      });
+
+      const hooks = JSON.parse(await fs.readFile(path.join(root, '.codex', 'hooks.json'), 'utf-8'));
+      expect(hooks.hooks.PreToolUse[0].hooks[0].command.replaceAll('\\', '/')).toContain(
+        '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
+      );
+      await expect(
+        fs.access(path.join(root, '.codex', 'settings.local.json')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+    it('migrates only Comet hooks from the historical Codex settings file', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const legacy = {
+        model: 'gpt-5',
+        hooks: {
+          PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo post' }] }],
+          PreToolUse: [
+            {
+              matcher: 'Write|Edit',
+              hooks: [
+                { type: 'command', command: staleCometCommand },
+                { type: 'command', command: 'node my-user-hook.mjs' },
+              ],
+            },
+          ],
+        },
+      };
+      await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+      await fs.writeFile(legacyPath, JSON.stringify(legacy, null, 2), 'utf-8');
+
+      await installCometHooksForPlatform(tmpDir, codex, 'project');
+
+      const migrated = JSON.parse(await fs.readFile(legacyPath, 'utf-8'));
+      expect(migrated.model).toBe('gpt-5');
+      expect(migrated.hooks.PostToolUse).toEqual(legacy.hooks.PostToolUse);
+      expect(migrated.hooks.PreToolUse[0].hooks).toEqual([
+        { type: 'command', command: 'node my-user-hook.mjs' },
+      ]);
+      await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
+    });
+
+    it('installs canonical Codex hooks without changing invalid historical JSON', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const invalid = '{\r\n  "hooks": {\r\n';
+      await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+      await fs.writeFile(legacyPath, invalid, 'utf-8');
+
+      await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        installed: true,
+      });
+
+      await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(invalid);
+      await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
+    });
+
     it('merges Claude-style hooks into an existing matcher group without replacing user hooks', async () => {
       const platform: Platform = {
         id: 'claude',

@@ -750,8 +750,25 @@ async function installCometHooksForPlatform(
 
   try {
     switch (hookFormat) {
-      case 'claude-code':
-        return await installClaudeCodeHooks(baseDir, platformBase, skillsDir, hooksConfig);
+      case 'claude-code': {
+        const result = await installClaudeCodeHooks(
+          baseDir,
+          platformBase,
+          skillsDir,
+          hooksConfig,
+          platform.hookConfigFile ?? 'settings.local.json',
+          Boolean(platform.hookConfigFile),
+        );
+        if (result.installed) {
+          for (const legacyFile of platform.legacyHookConfigFiles ?? []) {
+            await removeManagedHooksFromJsonFile(
+              path.join(platformBase, legacyFile),
+              Object.keys(hooksConfig),
+            );
+          }
+        }
+        return result;
+      }
       case 'qwen':
       case 'qoder':
       case 'codebuddy':
@@ -846,6 +863,52 @@ function asHookGroup(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
 }
 
+async function removeManagedHooksFromJsonFile(
+  settingsPath: string,
+  scriptRelPaths: string[],
+): Promise<{ removed: number; failed: number }> {
+  if (!(await fileExists(settingsPath))) return { removed: 0, failed: 0 };
+
+  let settings: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(await readFile(settingsPath, 'utf-8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { removed: 0, failed: 1 };
+    }
+    settings = parsed as Record<string, unknown>;
+  } catch {
+    return { removed: 0, failed: 1 };
+  }
+
+  const existingHooks = settings.hooks as Record<string, unknown> | undefined;
+  const existingPreToolUse = existingHooks?.PreToolUse;
+  if (!existingHooks || !Array.isArray(existingPreToolUse)) {
+    return { removed: 0, failed: 0 };
+  }
+
+  let removed = 0;
+  const filtered = existingPreToolUse.flatMap((group) => {
+    if (!group || typeof group !== 'object') return [group];
+    const record = group as Record<string, unknown>;
+    if (!Array.isArray(record.hooks)) return [record];
+    const handlers = record.hooks.filter((handler) => {
+      const command = (handler as Record<string, unknown>).command;
+      const managed = isManagedHookCommand(command, scriptRelPaths);
+      if (managed) removed++;
+      return !managed;
+    });
+    return handlers.length > 0 ? [{ ...record, hooks: handlers }] : [];
+  });
+
+  if (removed === 0) return { removed: 0, failed: 0 };
+  if (filtered.length > 0) existingHooks.PreToolUse = filtered;
+  else delete existingHooks.PreToolUse;
+  if (Object.keys(existingHooks).length > 0) settings.hooks = existingHooks;
+  else delete settings.hooks;
+  await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  return { removed, failed: 0 };
+}
+
 async function readSettingsJsonObject(
   settingsPath: string,
   hookFormat: string,
@@ -877,8 +940,10 @@ async function installClaudeCodeHooks(
   platformBase: string,
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
+  configFile: string,
+  strictJson: boolean,
 ): Promise<{ installed: boolean; reason?: string }> {
-  const settingsPath = path.join(platformBase, 'settings.local.json');
+  const settingsPath = path.join(platformBase, configFile);
 
   // Claude Code format: { matcher, hooks: [{ type: "command", command }] }
   interface ClaudeCodeHookEntry {
@@ -902,10 +967,14 @@ async function installClaudeCodeHooks(
 
   let settings: Record<string, unknown> = {};
   if (await fileExists(settingsPath)) {
-    try {
-      settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
-    } catch {
-      settings = {};
+    if (strictJson) {
+      settings = await readSettingsJsonObject(settingsPath, 'codex');
+    } else {
+      try {
+        settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
+      } catch {
+        settings = {};
+      }
     }
   }
 
@@ -1232,6 +1301,7 @@ export {
   computeRuleDestPath,
   formatRuleContent,
   isManagedHookCommand,
+  removeManagedHooksFromJsonFile,
   planSkillDirectoryCopy,
   mergeProjectConfig,
   parseProjectConfigOverrides,
