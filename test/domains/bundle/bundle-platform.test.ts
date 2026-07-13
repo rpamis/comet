@@ -140,6 +140,24 @@ describe('Bundle platform compiler', () => {
     ]);
   });
 
+  it('plans Codex hooks in .codex/hooks.json while scripts remain under .agents', async () => {
+    const codex = targets.find((target) => target.id === 'codex')!;
+
+    const report = await compileBundleForPlatform(ir(), codex, {
+      projectRoot,
+      scope: 'project',
+      locale: 'zh',
+    });
+
+    expect(report.executableDisclosures).toEqual([
+      expect.objectContaining({
+        id: 'protect-write',
+        destination: path.join(projectRoot, '.codex', 'hooks.json'),
+        command: expect.stringContaining('.agents/skills'),
+      }),
+    ]);
+  });
+
   it('reports every required and optional capability gap without dropping it silently', async () => {
     const kimi = targets.find((target) => target.id === 'kimicode')!;
 
