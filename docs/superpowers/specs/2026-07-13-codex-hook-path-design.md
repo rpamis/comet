@@ -65,6 +65,7 @@ Codex 实际从配置层旁的 `hooks.json` 或 `config.toml` 内联 Hook 表加
 4. 成功写入 `.codex/hooks.json` 后，再处理历史 `.codex/settings.local.json`。
 5. 从历史文件中只删除可通过 manifest 脚本路径识别出的 Comet handler。
 6. 即使某个 matcher 组删除 Comet handler 后不再包含 handler，也保留该组、matcher 和所有未知组级字段，只把该组的 `hooks` 更新为空数组；同时保留 `PreToolUse` 与顶层 `hooks` 字段。
+7. canonical 文件中存在多个同 matcher 组时保留所有组及其顺序，只把当前 Comet handler 合并到第一个结构有效的同 matcher 组；非对象 group/handler 原样保留。
 
 先写正确文件再清理历史文件，确保更新不会在新配置写入失败时先移除已有 Comet 配置。
 
@@ -126,4 +127,4 @@ Codex 实际从配置层旁的 `hooks.json` 或 `config.toml` 内联 Hook 表加
 
 ## Changelog 与版本
 
-当前 `package.json` 与 `origin/master` 均为 `0.4.0-beta.4`，且现有 Changelog 已有高于上一个正式版本的 `0.4.0-beta.4` 条目。本修复不会升级版本号，而是在该版本 `Fixed` 下追加一条英文、用户可感知的 Codex Hook 路径修复，说明项目级和用户级安装现在写入 Codex 实际加载的 `hooks.json`，并安全迁移历史错误配置。
+比较基线 `origin/master` 与最新发布 tag 均为 `0.4.0-beta.4`。本修复属于该 tag 之后的用户可见行为变化，因此发布边界为 `0.4.0-beta.5`：同步 `package.json`、lockfile 与 manifest 的版本，并在新的 beta.5 `Fixed` 小节记录 Codex Hook 路径修复，而不是回写或追加到已发布的 beta.4 条目。

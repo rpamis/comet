@@ -720,7 +720,8 @@ ${content}`;
 /**
  * Install Comet hooks for platforms that support them.
  * Supports multiple hook formats:
- *   'claude-code' — settings.local.json with PreToolUse array (Claude Code, Codex, Amazon Q)
+ *   'claude-code' — Claude-shaped JSON with PreToolUse array; defaults to settings.local.json,
+ *                   with platform metadata able to override the filename
  *   'qwen' — settings.json with PreToolUse/hooks array (Qwen Code)
  *   'qoder' — settings.json with PreToolUse/hooks array (Qoder)
  *   'codebuddy' — settings.json with PreToolUse/hooks array (CodeBuddy Code)
@@ -806,17 +807,65 @@ function buildHookCommand(baseDir: string, skillsDir: string, scriptRelPath: str
   return `node ${quoteCommandArg(scriptPath)} --project-root ${quoteCommandArg(projectRoot)}`;
 }
 
+function parseCommandTokens(command: string): string[] | undefined {
+  const tokens: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | undefined;
+  let tokenStarted = false;
+  let quoteClosed = false;
+
+  for (let index = 0; index < command.length; index++) {
+    const character = command[index];
+    if (quote) {
+      if (character === quote) {
+        quote = undefined;
+        quoteClosed = true;
+      } else if (character === '\\' && command[index + 1] === quote) {
+        current += quote;
+        index++;
+      } else {
+        current += character;
+      }
+      continue;
+    }
+
+    if (character === '\r' || character === '\n' || ';|&<>`'.includes(character)) {
+      return undefined;
+    }
+    if (/\s/u.test(character)) {
+      if (tokenStarted) {
+        tokens.push(current);
+        current = '';
+        tokenStarted = false;
+        quoteClosed = false;
+      }
+      continue;
+    }
+    if (quoteClosed) return undefined;
+    if (character === '"' || character === "'") {
+      if (tokenStarted) return undefined;
+      quote = character;
+      tokenStarted = true;
+      continue;
+    }
+    current += character;
+    tokenStarted = true;
+  }
+
+  if (quote) return undefined;
+  if (tokenStarted) tokens.push(current);
+  return tokens;
+}
+
 function isManagedHookCommand(command: unknown, scriptRelPaths: string[]): boolean {
   if (typeof command !== 'string') return false;
 
   // Match both the current `node .../comet-hook-guard.mjs` form and the legacy
   // `bash .../comet-hook-guard.sh` form so uninstall also cleans up hooks
   // written by older Comet releases. Compare basenames without extension.
-  const commandPath = command
-    .trim()
-    .match(/^(?:node|bash|sh)\s+["']?([^"'\s]+)["']?(?:\s|$)/)?.[1]
-    ?.replace(/\\/g, '/');
-  if (!commandPath) return false;
+  const tokens = parseCommandTokens(command.trim());
+  if (!tokens || tokens.length < 2 || !['node', 'bash', 'sh'].includes(tokens[0])) return false;
+  const commandPath = tokens[1].replace(/\\/g, '/');
   const normalize = (value: string): string => value.replace(/\.(?:sh|mjs)$/u, '');
 
   return scriptRelPaths.some((scriptRelPath) =>
@@ -825,27 +874,39 @@ function isManagedHookCommand(command: unknown, scriptRelPaths: string[]): boole
 }
 
 function mergeHookGroups<T extends { command: string }>(
-  existingGroups: Array<Record<string, unknown>>,
+  existingGroups: unknown[],
   newGroups: Array<{ matcher: string; hooks: T[] }>,
   scriptRelPaths: string[],
-): Array<Record<string, unknown>> {
-  const mergedGroups = existingGroups.flatMap((group) => {
-    if (!Array.isArray(group.hooks)) return [group];
+): unknown[] {
+  const mergedGroups = existingGroups.map((group) => {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return group;
+    const record = group as Record<string, unknown>;
+    if (!Array.isArray(record.hooks)) return record;
 
-    const hooks = group.hooks.filter(
-      (hook) => !isManagedHookCommand((hook as Record<string, unknown>).command, scriptRelPaths),
-    );
-    if (hooks.length === 0 && group.hooks.length > 0) return [];
+    const hooks = record.hooks.filter((hook) => {
+      const command =
+        hook && typeof hook === 'object' ? (hook as Record<string, unknown>).command : undefined;
+      return !isManagedHookCommand(command, scriptRelPaths);
+    });
 
-    return [{ ...group, hooks }];
+    return { ...record, hooks };
   });
 
   for (const newGroup of newGroups) {
-    const existingGroup = mergedGroups.find(
-      (group) => group.matcher === newGroup.matcher && Array.isArray(group.hooks),
+    const existingGroupIndex = mergedGroups.findIndex(
+      (group) =>
+        Boolean(group) &&
+        typeof group === 'object' &&
+        !Array.isArray(group) &&
+        (group as Record<string, unknown>).matcher === newGroup.matcher &&
+        Array.isArray((group as Record<string, unknown>).hooks),
     );
-    if (existingGroup) {
-      existingGroup.hooks = [...(existingGroup.hooks as unknown[]), ...newGroup.hooks];
+    if (existingGroupIndex >= 0) {
+      const existingGroup = mergedGroups[existingGroupIndex] as Record<string, unknown>;
+      mergedGroups[existingGroupIndex] = {
+        ...existingGroup,
+        hooks: [...(existingGroup.hooks as unknown[]), ...newGroup.hooks],
+      };
     } else {
       mergedGroups.push(newGroup);
     }
@@ -859,8 +920,8 @@ function mergeHookGroups<T extends { command: string }>(
  * store a group as an object or scalar; treat anything non-array as empty so
  * downstream merge/filter logic cannot throw on malformed input.
  */
-function asHookGroup(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
+function asHookGroup(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 async function removeManagedHooksFromJsonFile(
@@ -937,8 +998,8 @@ async function readSettingsJsonObject(
 }
 
 /**
- * Claude Code, Codex, Amazon Q format:
- * Writes to settings.local.json with { hooks: { PreToolUse: [...] } }
+ * Claude-shaped JSON format used by Claude Code, Codex, and Amazon Q.
+ * Defaults to settings.local.json; platform metadata may override the filename.
  */
 async function installClaudeCodeHooks(
   baseDir: string,
@@ -1118,9 +1179,11 @@ async function installWindsurfHooks(
 
   const existingHooks = (hooksFile.hooks as Record<string, unknown>) ?? {};
   const existingPreWrite = asHookGroup(existingHooks.pre_write_code);
-  const merged = existingPreWrite.filter(
-    (entry) => !isManagedHookCommand(entry.command, Object.keys(hooksConfig)),
-  );
+  const merged = existingPreWrite.filter((entry) => {
+    const command =
+      entry && typeof entry === 'object' ? (entry as Record<string, unknown>).command : undefined;
+    return !isManagedHookCommand(command, Object.keys(hooksConfig));
+  });
   merged.push(...entries);
 
   hooksFile.hooks = { ...existingHooks, pre_write_code: merged };

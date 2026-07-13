@@ -326,6 +326,79 @@ describe('skills', () => {
       ).rejects.toMatchObject({ code: 'ENOENT' });
     });
 
+    it('keeps Codex hook installation idempotent when the project path contains spaces', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const root = path.join(tmpDir, 'Jane Doe project');
+      const canonicalPath = path.join(root, '.codex', 'hooks.json');
+
+      await installCometHooksForPlatform(root, codex, 'project');
+      const firstInstall = JSON.parse(await fs.readFile(canonicalPath, 'utf-8'));
+      await installCometHooksForPlatform(root, codex, 'project');
+      const secondInstall = JSON.parse(await fs.readFile(canonicalPath, 'utf-8'));
+
+      expect(secondInstall).toEqual(firstInstall);
+      expect(secondInstall.hooks.PreToolUse[0].hooks).toHaveLength(1);
+    });
+
+    it('preserves canonical group metadata and malformed entries while replacing managed hooks', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const userHandler = { type: 'command', command: 'node my-user-hook.mjs' };
+      const canonical = {
+        hooks: {
+          PreToolUse: [
+            null,
+            'manual-group',
+            {
+              matcher: 'Write|Edit',
+              description: 'primary group metadata',
+              hooks: [null, 'manual-handler', { type: 'command', command: staleCometCommand }],
+            },
+            {
+              matcher: 'Write|Edit',
+              customField: { duplicate: true },
+              hooks: [{ type: 'command', command: staleCometCommand }, userHandler],
+            },
+            {
+              matcher: 'Write|Edit',
+              keepEmpty: true,
+              hooks: [{ type: 'command', command: staleCometCommand }],
+            },
+          ],
+        },
+      };
+      await fs.mkdir(path.dirname(canonicalPath), { recursive: true });
+      await fs.writeFile(canonicalPath, JSON.stringify(canonical, null, 2), 'utf-8');
+
+      await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        installed: true,
+      });
+      const firstInstall = JSON.parse(await fs.readFile(canonicalPath, 'utf-8'));
+      await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        installed: true,
+      });
+      const secondInstall = JSON.parse(await fs.readFile(canonicalPath, 'utf-8'));
+
+      expect(secondInstall).toEqual(firstInstall);
+      expect(secondInstall.hooks.PreToolUse[0]).toBeNull();
+      expect(secondInstall.hooks.PreToolUse[1]).toBe('manual-group');
+      expect(secondInstall.hooks.PreToolUse[2].description).toBe('primary group metadata');
+      expect(secondInstall.hooks.PreToolUse[2].hooks.slice(0, 2)).toEqual([null, 'manual-handler']);
+      expect(secondInstall.hooks.PreToolUse[2].hooks[2].command.replaceAll('\\', '/')).toContain(
+        '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
+      );
+      expect(secondInstall.hooks.PreToolUse[3]).toEqual({
+        matcher: 'Write|Edit',
+        customField: { duplicate: true },
+        hooks: [userHandler],
+      });
+      expect(secondInstall.hooks.PreToolUse[4]).toEqual({
+        matcher: 'Write|Edit',
+        keepEmpty: true,
+        hooks: [],
+      });
+    });
+
     it('migrates only Comet hooks from the historical Codex settings file', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
@@ -356,6 +429,45 @@ describe('skills', () => {
         { type: 'command', command: 'node my-user-hook.mjs' },
       ]);
       await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
+    });
+
+    it('migrates quoted managed hook paths with spaces without matching malformed commands', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const managedPath = 'C:/Users/Jane Doe/.agents/skills/comet/scripts/comet-hook-guard.mjs';
+      const preservedCommands = [`node "${managedPath}`, `node "${managedPath}"; echo not-managed`];
+      const legacy = {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Write|Edit',
+              hooks: [
+                {
+                  type: 'command',
+                  command: `node "${managedPath}" --project-root "C:/Users/Jane Doe"`,
+                },
+                { type: 'command', command: `node '${managedPath}'` },
+                {
+                  type: 'command',
+                  command: 'node C:/Users/Jane/.agents/skills/comet/scripts/comet-hook-guard.mjs',
+                },
+                ...preservedCommands.map((command) => ({ type: 'command', command })),
+              ],
+            },
+          ],
+        },
+      };
+      await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+      await fs.writeFile(legacyPath, JSON.stringify(legacy, null, 2), 'utf-8');
+
+      await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        installed: true,
+      });
+
+      const migrated = JSON.parse(await fs.readFile(legacyPath, 'utf-8'));
+      expect(
+        migrated.hooks.PreToolUse[0].hooks.map((handler: { command: string }) => handler.command),
+      ).toEqual(preservedCommands);
     });
 
     it('keeps canonical Codex hook installation successful when legacy cleanup cannot be written', async () => {

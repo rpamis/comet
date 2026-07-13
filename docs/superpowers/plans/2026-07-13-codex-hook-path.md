@@ -356,13 +356,24 @@ async function removeManagedHooksFromJsonFile(
   if (removed === 0) return { removed: 0, failed: 0 };
   existingHooks.PreToolUse = filtered;
   settings.hooks = existingHooks;
-  await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  try {
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  } catch {
+    return { removed: 0, failed: 1 };
+  }
   return { removed, failed: 0 };
 }
 ```
 
 The helper must preserve every matcher group and all group-level fields. When the last managed
 handler is removed, it writes `hooks: []`; non-object handlers such as `null` are preserved as-is.
+If one file cannot be written, the helper reports `{ removed: 0, failed: 1 }` because no removal was
+persisted. Installation keeps the successfully written canonical file and does not fail solely
+because historical cleanup could not be written.
+
+Add the existing regression `keeps canonical Codex hook installation successful when legacy
+cleanup cannot be written`: mock the historical write failure, assert installation still returns
+`{ installed: true }`, and verify the historical bytes are unchanged.
 
 Add `removeManagedHooksFromJsonFile` to the existing export block.
 
@@ -514,6 +525,13 @@ Import `removeManagedHooksFromJsonFile` from `./platform-install.js`, then repla
       }
 ```
 
+Each helper call handles its own parse/write failure and returns a count, so the loop must continue
+through every canonical and historical file and accumulate both successful removals and failures.
+
+Add the existing regression `continues Codex cleanup across files and counts each write failure`:
+seed canonical plus two historical files, fail two writes, and assert the third file is still
+cleaned with the combined result `{ removed: 1, failed: 2 }`.
+
 Delete `removeClaudeCodeHooks()` after confirming no remaining callers. Keep the other platform removal functions unchanged.
 
 - [ ] **Step 4: Run uninstall and hook installation tests and verify GREEN**
@@ -524,7 +542,7 @@ Run:
 npx vitest run test/app/uninstall.test.ts test/domains/skill/skills.test.ts
 ```
 
-Expected: both files pass; Codex reports two removals while Claude Code still removes only `.claude/settings.local.json`.
+Expected: both files pass; Codex reports two removals while Claude Code still removes only `.claude/settings.local.json`. Per-file write failures are counted without stopping cleanup of later files.
 
 - [ ] **Step 5: Commit the uninstall compatibility slice**
 

@@ -423,6 +423,43 @@ describe('uninstall', () => {
       expect(cleanedLegacy.hooks.PreToolUse[0].hooks).toEqual([userHandler]);
     });
 
+    it('removes quoted Codex hook commands whose script path contains spaces', async () => {
+      const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const managedPath = 'C:/Users/Jane Doe/.agents/skills/comet/scripts/comet-hook-guard.mjs';
+      await fs.mkdir(path.dirname(canonicalPath), { recursive: true });
+      await fs.writeFile(
+        canonicalPath,
+        JSON.stringify(
+          {
+            hooks: {
+              PreToolUse: [
+                {
+                  matcher: 'Write|Edit',
+                  hooks: [
+                    {
+                      type: 'command',
+                      command: `node "${managedPath}" --project-root "C:/Users/Jane Doe"`,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+
+      await expect(removeCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+      const cleaned = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      expect(cleaned.hooks.PreToolUse[0].hooks).toEqual([]);
+    });
+
     it('continues Codex cleanup across files and counts each write failure', async () => {
       const codex = {
         ...PLATFORMS.find((platform) => platform.id === 'codex')!,
