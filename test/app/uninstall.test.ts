@@ -442,7 +442,7 @@ describe('uninstall', () => {
       await expect(fs.readFile(legacyPath, 'utf8')).resolves.toBe(malformedLegacy);
     });
 
-    it('reports unreadable historical Codex hook paths as cleanup failures', async () => {
+    it('ignores unreadable historical Codex hook paths after canonical cleanup succeeds', async () => {
       const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
       const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
 
@@ -451,7 +451,7 @@ describe('uninstall', () => {
 
       await expect(removeCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
         removed: 1,
-        failed: 1,
+        failed: 0,
       });
     });
 
@@ -492,7 +492,7 @@ describe('uninstall', () => {
       expect(cleaned.hooks.PreToolUse[0].hooks).toEqual([]);
     });
 
-    it('continues Codex cleanup across files and counts each write failure', async () => {
+    it('continues Codex cleanup across files and counts only canonical write failures', async () => {
       const codex = {
         ...PLATFORMS.find((platform) => platform.id === 'codex')!,
         legacyHookConfigFiles: ['settings.local.json', 'settings.backup.json'],
@@ -528,7 +528,7 @@ describe('uninstall', () => {
 
       const result = await removeCometHooksForPlatform(tmpDir, codex, 'project');
 
-      expect(result).toEqual({ removed: 1, failed: 2 });
+      expect(result).toEqual({ removed: 1, failed: 1 });
       const unchangedCanonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
       expect(unchangedCanonical.hooks.PreToolUse[0].hooks).toEqual([cometHandler, userHandler]);
       const cleanedLegacy = JSON.parse(await fs.readFile(legacyPath, 'utf8'));

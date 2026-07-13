@@ -231,10 +231,9 @@ async function removeCometHooksForPlatform(
           const result = await removeManagedHooksFromJsonFile(
             path.join(platformBase, file),
             scriptRelPaths,
-            { ignoreInvalidJson: file !== canonicalFile },
           );
           removed += result.removed;
-          failed += result.failed;
+          if (file === canonicalFile) failed += result.failed;
         }
         return { removed, failed };
       }
