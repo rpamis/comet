@@ -69,7 +69,20 @@ node "$COMET_STATE" next <name>
 
 ### 2. Direct Build (preset build)
 
-Use hotfix defaults: `build_mode: direct`, `review_mode: off` (hotfix/tweak skip review_mode selection — the guard does not require it for preset workflows). Skip Superpowers `brainstorming` and `writing-plans` (unless tasks > 3; if exceeds 3 tasks, transfer to `/comet-build`'s plan and execution method selection — note this does NOT trigger full workflow upgrade, only switches execution method).
+Before execution starts, the user must explicitly choose isolation. This is a user decision point and must pause per `comet/reference/decision-point.md` until the user explicitly chooses:
+
+- A. create a branch (recommended default)
+- B. use the current branch
+
+After the choice, immediately write:
+
+```bash
+comet state set <name> isolation <branch|current>
+```
+
+If `branch` is chosen, follow `/comet-build`'s branch rules to confirm the branch name and create it, then re-run `comet state select <change-name>` to bind the current change; if `current` is chosen, create no new branch and do not force an extra re-selection when no workspace switch happened.
+
+Use hotfix defaults: `build_mode: direct`, `review_mode: off` (hotfix/tweak skip review_mode selection — the guard does not require it for preset workflows). Skip Superpowers `brainstorming` and `writing-plans` (unless tasks > 3; if exceeds 3 tasks, transfer to `/comet-build`'s plan and execution-method selection — note this does NOT trigger full workflow upgrade, only switches execution method; preset flows still allow only `branch` or `current` isolation there).
 
 Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows a qualitative-change signal or file-count tripwire is hit, handle it through this file's "Upgrade Assessment".
 
@@ -141,7 +154,7 @@ Exception: when `.comet.yaml` has `auto_transition: false`, after each phase gua
 The following situations must also pause and wait for user confirmation:
 
 1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the hotfix flow, or upgrade to the full `/comet` workflow
-2. workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`
+2. initial isolation choice (`branch` / `current`), and execution-method selection if tasks exceed 3 and transfer to `/comet-build`
 3. verify phase (comet-verify) verification-failure and branch-handling decisions
 4. Final archive confirmation (before comet-archive runs the archive script)
 

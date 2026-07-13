@@ -46,7 +46,7 @@ archived: false
 | `subagent_dispatch` | `null` or `confirmed`. Only when the platform's real background subagent/Task/multi-agent dispatch capability is confirmed may `build_mode: subagent-driven-development` be written and used to leave the build phase |
 | `tdd_mode` | `tdd` or `direct`. Full workflow must select before leaving build. `tdd` forces write-failing-test-first per task; `direct` skips TDD enforcement. hotfix/tweak default to `direct` |
 | `review_mode` | `off`, `standard`, or `thorough`. Full workflow must select before leaving build; hotfix/tweak default to `off` |
-| `isolation` | `branch` or `worktree`, workspace isolation mode. Full init may be `null` but only until `/comet-build` Step 3; hotfix/tweak default to `branch` |
+| `isolation` | `branch`, `worktree`, or `current`, workspace isolation mode. Full init may be `null` but only until `/comet-build` Step 3; hotfix/tweak must explicitly choose `branch` or `current` and no longer default it |
 | `verify_mode` | `light` or `full`; may be empty |
 | `auto_transition` | `true` or `false`. Only controls whether to automatically invoke the next skill after phase guard advances phase; `false` outputs `manual` from `comet-state next`, pausing next-skill invocation but not blocking phase field updates |
 | `verify_result` | `pending`, `pass`, or `fail` |
@@ -65,7 +65,7 @@ archived: false
 
 ## State Machine Hard Constraints
 
-- Before `build → verify`, `isolation` must be `branch` or `worktree`
+- Before `build → verify`, `isolation` must be `branch`, `worktree`, or `current`
 - Before `build → verify`, `build_mode` must be selected
 - `build_mode: subagent-driven-development` requires `subagent_dispatch: confirmed`
 - Full workflow must select `tdd_mode` as `tdd` or `direct` before leaving build

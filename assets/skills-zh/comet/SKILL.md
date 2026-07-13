@@ -254,7 +254,7 @@ agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须�
 
 ### 状态机硬约束
 
-- `build → verify` 前，`isolation` 必须是 `branch` 或 `worktree`
+- `build → verify` 前，`isolation` 必须是 `branch`、`worktree` 或 `current`
 - `build → verify` 前，`build_mode` 必须已选择
 - `build_mode: subagent-driven-development` 必须同时有 `subagent_dispatch: confirmed`
 - full workflow 离开 build 阶段前 `tdd_mode` 必须已选择为 `tdd` 或 `direct`

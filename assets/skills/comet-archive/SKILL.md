@@ -104,6 +104,8 @@ git commit -m "chore: archive <change-name>"
 
 If branch handling (phase 4) chose not to merge into the main branch yet, finish up via the selected option (merge / PR / keep branch) together with this commit.
 
+If this change used `isolation: current`, these archive edits are committed directly on the current branch. If verification already pushed that branch by user choice, explicitly tell the user the archive commit still needs its own commit and will usually require another push. Do not assume there is always a separate development branch, merge action, or PR cleanup step.
+
 ## Exit Conditions
 
 - Archive script executed successfully (exit code 0)

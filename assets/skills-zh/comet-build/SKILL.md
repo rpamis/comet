@@ -116,10 +116,12 @@ comet state set <name> build_pause null
 |------|------|------|
 | A | 创建分支 | 在当前仓库创建新分支，简单快速 |
 | B | 创建 Worktree | 隔离工作区，完全独立，适合并行开发 |
+| C | 使用当前分支 | 不创建新分支或 worktree，直接在当前分支继续 |
 
 **推荐规则**：
 - 变更涉及 ≤ 3 个文件 → 推荐 A
 - 需要并行开发、当前分支有未提交工作 → 推荐 B
+- 当前分支本身就是长期集成分支、子模块工作分支，或用户明确要求不新建分支/worktree → 推荐 C
 
 **执行方式**：
 
@@ -133,12 +135,12 @@ comet state set <name> build_pause null
 - 任务数 ≤ 2 且无跨模块依赖 → 推荐 B
 - 来自 hotfix 路径 → 推荐 B
 
-这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择隔离方式、执行方式、TDD 模式和代码审查模式**，不得根据推荐规则自行选择 `branch` 或 `worktree`，也不得根据推荐规则自行选择执行方式、TDD 模式或代码审查模式。推荐规则只能用于说明建议，不能替代用户确认。
+这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择隔离方式、执行方式、TDD 模式和代码审查模式**，不得根据推荐规则自行选择 `branch`、`worktree` 或 `current`，也不得根据推荐规则自行选择执行方式、TDD 模式或代码审查模式。推荐规则只能用于说明建议，不能替代用户确认。
 
 用户选择后，更新 `isolation`、执行方式、TDD 模式和代码审查模式相关字段：
 
 ```bash
-comet state set <name> isolation <branch|worktree>
+comet state set <name> isolation <branch|worktree|current>
 ```
 
 - 若用户选择 `executing-plans`：运行 `comet state set <name> subagent_dispatch null`，再运行 `comet state set <name> build_mode executing-plans`
@@ -198,6 +200,14 @@ comet state set <name> build_mode direct
 
 - **worktree**：必须使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；如该技能不可用，停止流程并提示安装或启用 Superpowers 技能。
 
+- **current**：不创建新分支，也不创建 worktree。立即运行：
+
+```bash
+comet state set <name> isolation current
+```
+
+随后继续在当前分支执行，不要因为没有 branch/worktree 切换而额外重新选择 current change。只有当后续实际发生 branch 切换时，才按 stale selection 处理并重新绑定。
+
 创建隔离后，确认计划文件可访问（分支方式天然可访问；worktree 方式需确认计划已提交）。若 worktree 模式下计划文件尚未提交，先提交计划文件再创建 worktree：
 
 ```bash
@@ -211,7 +221,7 @@ git commit -m "chore: add implementation plan"
 comet state select <change-name>
 ```
 
-重新绑定成功后才能开始源码写入。
+`current` 模式不发生工作区切换时，不需要为了这一步重复绑定；保留当前工作区的既有选择即可。重新绑定成功后才能开始源码写入。
 
 **执行计划**：必须按 `build_mode` 的真实运行位置处理。
 
@@ -286,7 +296,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - tasks.md 全部勾选
 - 代码已提交
 - 已显式运行项目对应的构建/测试命令并通过（不要只依赖 guard 自动猜测）
-- `isolation` 已写为 `branch` 或 `worktree`
+- `isolation` 已写为 `branch`、`worktree` 或 `current`
 - `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`；若为 `subagent-driven-development`，`subagent_dispatch` 必须为 `confirmed`
 - `tdd_mode` 已写为 `tdd` 或 `direct`
 - `review_mode` 已写为 `off`、`standard` 或 `thorough`

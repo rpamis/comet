@@ -69,7 +69,20 @@ node "$COMET_STATE" next <name>
 
 ### 2. 直接构建（预设 build）
 
-使用 hotfix 默认值：`build_mode: direct`，`review_mode: off`（hotfix/tweak 跳过 review_mode 选择——guard 不要求预设工作流选择此项）。跳过 Superpowers `brainstorming` 和 `writing-plans`（除非任务 > 3 个；若超过 3 个任务，转入 `/comet-build` 的计划与执行方式选择——注意这不触发 full workflow 升级，仅切换执行方式）。
+开始执行前，必须先让用户显式选择隔离方式。这是用户决策点，必须按 `comet/reference/decision-point.md` 暂停并等待用户明确选择：
+
+- A. 创建分支（推荐默认）
+- B. 使用当前分支
+
+用户选择后立即写入：
+
+```bash
+comet state set <name> isolation <branch|current>
+```
+
+若选择 `branch`，按 `/comet-build` 中的 branch 规则确认分支名并创建分支，然后重新执行 `comet state select <change-name>` 绑定当前 change；若选择 `current`，不创建新分支，也不要因为没有切换工作区而额外重新选择。
+
+使用 hotfix 默认值：`build_mode: direct`，`review_mode: off`（hotfix/tweak 跳过 review_mode 选择——guard 不要求预设工作流选择此项）。跳过 Superpowers `brainstorming` 和 `writing-plans`（除非任务 > 3 个；若超过 3 个任务，转入 `/comet-build` 的计划与执行方式选择——注意这不触发 full workflow 升级，仅切换执行方式；预设路径下可选隔离仍只允许 `branch` 或 `current`）。
 
 继续或开始修改前，按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。若归因后发现修复命中质变信号或文件数 tripwire，按本文件「升级判定」处理。
 
@@ -137,7 +150,7 @@ node "$COMET_GUARD" <change-name> build --apply
 Hotfix 流程默认 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 在 hotfix 自有步骤间自动推进，不主动停顿。**例外**：若 `auto_transition: false`，则在每个 phase 边界（build/verify/archive 之间）停下，由用户手动运行下一阶段命令——此时连续执行降级为逐阶段手动推进，详见下方「自动衔接下一阶段」。但无论 `auto_transition` 取何值，以下情况都必须暂停等待用户确认：
 
 1. 遇到升级判定信号（见「升级判定」章节），**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择**：继续 hotfix 流程，还是升级为完整 `/comet` 流程
-2. 任务超过 3 个转入 `/comet-build` 时的工作区隔离和执行方式选择
+2. 初始隔离选择（`branch` / `current`），以及任务超过 3 个转入 `/comet-build` 时的执行方式选择
 3. 验证阶段（comet-verify）的验证失败决策和分支处理决策
 4. 归档前最终确认（comet-archive 执行归档脚本前）
 

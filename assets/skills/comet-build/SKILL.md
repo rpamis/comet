@@ -116,10 +116,12 @@ Plan has been written to the current branch. Before starting execution, **ask th
 |--------|--------|-------------|
 | A | Create branch | Create a new branch in the current repo, simple and fast |
 | B | Create Worktree | Isolated workspace, fully independent, suitable for parallel development |
+| C | Use current branch | Create neither a new branch nor a worktree; continue on the current branch |
 
 **Recommendation rules**:
 - Change involves ≤ 3 files → Recommend A
 - Need parallel development, current branch has uncommitted work → Recommend B
+- The current branch is already the long-lived integration branch, a submodule work branch, or the user explicitly does not want a new branch/worktree → Recommend C
 
 **Execution Method**:
 
@@ -133,12 +135,12 @@ Plan has been written to the current branch. Before starting execution, **ask th
 - Task count ≤ 2 and no cross-module dependencies → Recommend B
 - From hotfix path → Recommend B
 
-This is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to explicitly choose isolation method, execution method, TDD mode, and code review mode**. Must not choose `branch` or `worktree` based on recommendation rules, and must not choose the execution method, TDD mode, or code review mode based on recommendation rules. Recommendation rules are for suggestion only, not a substitute for user confirmation.
+This is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to explicitly choose isolation method, execution method, TDD mode, and code review mode**. Must not choose `branch`, `worktree`, or `current` based on recommendation rules, and must not choose the execution method, TDD mode, or code review mode based on recommendation rules. Recommendation rules are for suggestion only, not a substitute for user confirmation.
 
 After user selection, update `isolation`, execution method, TDD mode, and code review mode fields:
 
 ```bash
-comet state set <name> isolation <branch|worktree>
+comet state set <name> isolation <branch|worktree|current>
 ```
 
 - If the user chooses `executing-plans`: run `comet state set <name> subagent_dispatch null`, then run `comet state set <name> build_mode executing-plans`
@@ -198,6 +200,14 @@ Without `direct_override: true`, `build_mode=direct` in full workflow is blocked
 
 - **worktree**: Must use the Skill tool to load the Superpowers `using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
 
+- **current**: Create neither a new branch nor a worktree. Immediately run:
+
+```bash
+comet state set <name> isolation current
+```
+
+Then continue execution on the current branch. Do not force a re-selection simply because no branch/worktree switch occurred. Only if a later real branch switch happens should the selection be treated as stale and rebound.
+
 After creating isolation, confirm plan file is accessible (naturally accessible with branch method; for worktree method, confirm plan has been committed). If the plan file has not been committed under worktree mode, commit it first before creating the worktree:
 
 ```bash
@@ -211,7 +221,7 @@ After entering the final execution branch or worktree, bind the current change a
 comet state select <change-name>
 ```
 
-Do not begin source writes until this binding succeeds.
+In `current` mode with no workspace switch, do not repeat this step just for formality; keep the current workspace selection. Do not begin source writes until the required binding is valid.
 
 **Execute plan**: Must handle execution according to the actual runtime of `build_mode`.
 
@@ -286,7 +296,7 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - All tasks.md checked
 - Code committed
 - Project-specific build/tests explicitly run and pass; do not rely only on guard auto-detection
-- `isolation` has been written as `branch` or `worktree`
+- `isolation` has been written as `branch`, `worktree`, or `current`
 - `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override; if `subagent-driven-development`, `subagent_dispatch` must be `confirmed`
 - `tdd_mode` has been written as `tdd` or `direct`
 - `review_mode` has been written as `off`, `standard`, or `thorough`

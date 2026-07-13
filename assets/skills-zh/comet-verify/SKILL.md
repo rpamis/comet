@@ -175,17 +175,24 @@ comet state transition <change-name> verify-fail
 
 ### 3. 收尾（Superpowers）
 
-**立即执行：** 使用 Skill 工具加载 Superpowers `finishing-a-development-branch` 技能。禁止跳过此步骤。
+先读取 `isolation` 字段：
 
-如 Superpowers `finishing-a-development-branch` 技能不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
+- 若 `isolation: branch` 或 `worktree`：**立即执行：** 使用 Skill 工具加载 Superpowers `finishing-a-development-branch` 技能。禁止跳过此步骤。
+- 若 `isolation: current`：**不得**加载 `finishing-a-development-branch`。当前模式下没有独立开发分支要收尾，直接进入当前分支决策。
 
-技能加载后，按其指引收尾。分支处理选项：
+如 `isolation: branch` 或 `worktree` 且 Superpowers `finishing-a-development-branch` 技能不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
+
+`branch/worktree` 模式下，技能加载后按其指引收尾。分支处理选项：
 1. 本地合并到主分支
 2. 推送并创建 PR
 3. 保持分支（稍后处理）
 4. 丢弃工作
 
-这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户选择分支处理方式**，不得根据推荐、默认值或当前分支状态自行选择。只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`。
+`current` 模式下，这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择当前分支处理方式**：
+1. 立即 push 当前分支
+2. 暂不 push，保留本地分支状态
+
+无论哪种隔离模式，只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`。
 
 **确认项**：
 - 全部测试通过

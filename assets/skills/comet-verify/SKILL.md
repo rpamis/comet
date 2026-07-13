@@ -175,17 +175,24 @@ comet state transition <change-name> verify-fail
 
 ### 3. Finishing (Superpowers)
 
-**Immediately execute:** Use the Skill tool to load the Superpowers `finishing-a-development-branch` skill. Skipping this step is prohibited.
+Read the `isolation` field first:
 
-If the Superpowers `finishing-a-development-branch` skill is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
+- If `isolation: branch` or `worktree`: **Immediately execute:** Use the Skill tool to load the Superpowers `finishing-a-development-branch` skill. Skipping this step is prohibited.
+- If `isolation: current`: **Do not** load `finishing-a-development-branch`. There is no separate development branch to finish, so go directly to the current-branch decision.
 
-After the skill loads, follow its guidance to finish. Branch handling options:
+If `isolation: branch` or `worktree` and the Superpowers `finishing-a-development-branch` skill is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
+
+In `branch/worktree` mode, after the skill loads, follow its guidance to finish. Branch handling options:
 1. Merge to main branch locally
 2. Push and create PR
 3. Keep branch (handle later)
 4. Discard work
 
-This is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to choose branch handling method**. Must not select based on recommendations, defaults, or current branch status. Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written.
+In `current` mode, this is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to choose current-branch handling**:
+1. Push the current branch now
+2. Leave the current branch local for now
+
+Under either isolation path, `branch_status: handled` may be written only after the user completes the choice and the corresponding action finishes.
 
 **Confirmation items**:
 - All tests pass

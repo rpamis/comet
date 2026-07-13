@@ -25,7 +25,7 @@ comet state select <change-name>
 | `open` | 创建 proposal/design/tasks, 运行 guard | 写源代码 |
 | `design` | brainstorming, 创建 Design Doc, 运行 guard | 写源代码 |
 | `build` | 写源代码、测试、执行计划 | 跳过用户确认点 |
-| `verify` | 验证、branch handling | 跳过失败处理 |
+| `verify` | 验证、branch handling / current-branch handling | 跳过失败处理 |
 | `archive` | 确认归档、运行归档脚本 | 写源代码 |
 
 Hook 硬拦截白名单包括 `openspec/*`、`docs/superpowers/*`、`.superpowers/*`、`.claude/*` 和 `.comet/*` 等流程/平台工作区；这些路径可写不代表可以跳过当前阶段的产物和确认要求。
@@ -73,7 +73,7 @@ Hook 硬拦截白名单包括 `openspec/*`、`docs/superpowers/*`、`.superpower
 - **open**: 需求澄清完成确认、artifact 评审确认
 - **design**: brainstorming 方案确认（确认前不得创建 Design Doc）
 - **build**: plan-ready 暂停、`isolation` / `build_mode` / `tdd_mode` / `review_mode` 四项选择（工作区隔离、执行方式、TDD 模式、代码审查模式）、spec 大规模变更确认、预设（hotfix/tweak）升级判定二选一（命中质变信号或文件数 tripwire 时，交用户决定继续预设流程还是升级 full）
-- **verify**: 验证失败处理策略、branch handling 选择
+- **verify**: 验证失败处理策略、branch handling / current-branch handling 选择
 - **archive**: 归档前最终确认
 
 ## Design 阶段专项

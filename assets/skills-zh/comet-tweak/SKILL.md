@@ -63,6 +63,19 @@ node "$COMET_GUARD" <change-name> open --apply
 
 ### 2. OpenSpec apply 构建（tweak 专用预设 build）
 
+开始执行前，必须先让用户显式选择隔离方式。这是用户决策点，必须按 `comet/reference/decision-point.md` 暂停并等待用户明确选择：
+
+- A. 创建分支（推荐默认）
+- B. 使用当前分支
+
+用户选择后立即写入：
+
+```bash
+comet state set <name> isolation <branch|current>
+```
+
+若选择 `branch`，按 `/comet-build` 中的 branch 规则确认分支名并创建分支，然后重新执行 `comet state select <change-name>` 绑定当前 change；若选择 `current`，不创建新分支，也不要因为没有切换工作区而额外重新选择。
+
 使用 tweak 默认值：`build_mode: direct`。跳过 Superpowers `brainstorming` 和 `writing-plans`，改由 OpenSpec 的 apply action 执行当前 change 的 tasks。
 
 <IMPORTANT>
@@ -131,8 +144,9 @@ node "$COMET_STATE" set <change-name> verify_mode full
 Tweak 流程默认 **一次性连续执行**。调用 `/comet-tweak` 后，agent 在 tweak 自有步骤间自动推进，不主动停顿。**例外**：若 `auto_transition: false`，则在每个 phase 边界（build/verify/archive 之间）停下，由用户手动运行下一阶段命令——此时连续执行降级为逐阶段手动推进，详见下方「自动衔接下一阶段」。但无论 `auto_transition` 取何值，以下情况都必须暂停等待用户确认：
 
 1. 遇到升级判定信号（见「升级判定」章节），**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择**：继续 tweak 轻量流程，还是升级为完整 `/comet` 流程
-2. 验证阶段（comet-verify）的验证失败决策和分支处理决策
-3. 归档前最终确认（comet-archive 执行归档脚本前）
+2. 初始隔离选择（`branch` / `current`）
+3. 验证阶段（comet-verify）的验证失败决策和分支处理决策
+4. 归档前最终确认（comet-archive 执行归档脚本前）
 
 执行顺序：快速开启 → 构建（含升级判定检查）→ 验证 → 归档 → 完成
 

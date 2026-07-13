@@ -18,7 +18,7 @@ comet handoff <change-name>
 comet archive <change-name>
 ```
 
-When multiple active changes coexist, run `comet state select <change-name>` after resolving the intended change. Ordinary source writes are governed only by that selection; without one, the hook blocks and asks for a choice. A single active change retains automatic routing. Select again after switching branch/worktree or when the recorded selection becomes stale.
+When multiple active changes coexist, run `comet state select <change-name>` after resolving the intended change. Ordinary source writes are governed only by that selection; without one, the hook blocks and asks for a choice. A single active change retains automatic routing. Select again after switching branch/worktree or when the recorded selection becomes stale. In `isolation: current` mode, if a real branch switch later happens, treat that as abnormal drift: confirm the intended change again and re-select before continuing.
 
 Guard `--apply` advances state after checks pass. Use `comet state transition` when expressing a state event directly, and `comet state next` after phase advancement to determine whether to invoke the next Skill automatically.
 

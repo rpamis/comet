@@ -63,6 +63,19 @@ node "$COMET_GUARD" <change-name> open --apply
 
 ### 2. OpenSpec Apply Build (tweak-only preset build)
 
+Before execution starts, the user must explicitly choose isolation. This is a user decision point and must pause per `comet/reference/decision-point.md` until the user explicitly chooses:
+
+- A. create a branch (recommended default)
+- B. use the current branch
+
+After the choice, immediately write:
+
+```bash
+comet state set <name> isolation <branch|current>
+```
+
+If `branch` is chosen, follow `/comet-build`'s branch rules to confirm the branch name and create it, then re-run `comet state select <change-name>` to bind the current change; if `current` is chosen, create no new branch and do not force an extra re-selection when no workspace switch happened.
+
 Use tweak defaults: `build_mode: direct`. Skip Superpowers `brainstorming` and `writing-plans`, and let OpenSpec's apply action execute the current change's tasks.
 
 <IMPORTANT>
@@ -134,8 +147,9 @@ Exception: when `.comet.yaml` has `auto_transition: false`, after each phase gua
 The following situations must pause and wait for user confirmation:
 
 1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the tweak lightweight flow, or upgrade to the full `/comet` workflow
-2. verify phase (comet-verify) verification-failure and branch-handling decisions
-3. Final archive confirmation (before comet-archive runs the archive script)
+2. initial isolation choice (`branch` / `current`)
+3. verify phase (comet-verify) verification-failure and branch-handling decisions
+4. Final archive confirmation (before comet-archive runs the archive script)
 
 Execution order: quick open → build (with upgrade assessment) → verification → archive → complete
 

@@ -104,6 +104,8 @@ git commit -m "chore: archive <change-name>"
 
 如分支处理（阶段 4）选择尚未合并到主分支，提交后按所选方式（合并 / PR / 保持分支）一并收尾。
 
+如果本次 change 使用 `isolation: current`，这些 archive 改动会直接追加在当前分支上；若验证阶段已经按用户选择 push 过当前分支，需要明确告知用户 archive commit 仍需单独提交，并且通常还要再 push 一次。不要假设一定存在独立开发分支、合并动作或 PR 收尾。
+
 ## 退出条件
 
 - 归档脚本执行成功（退出码 0）
