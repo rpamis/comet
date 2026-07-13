@@ -213,15 +213,15 @@ git commit -m "fix(skill): surface incomplete Comet lifecycle updates"
 
 **Files:**
 
-- Modify: `domains/skill/platform-install.ts`
+- Create: `domains/skill/platform-inspect.ts`
 - Modify: `app/commands/doctor.ts`
 - Modify: `test/app/doctor.test.ts`
-- Modify: `test/domains/skill/skills.test.ts`
+- Create: `test/domains/skill/platform-inspect.test.ts`
 
 **Interfaces:**
 
-- Export `getPlatformRuleDestinations(baseDir, platform, languageId, scope)` for normalized Rule destinations.
-- Export `inspectCometHooksForPlatform(baseDir, platform, scope): Promise<{ present: boolean; error?: string }>`.
+- Export `getPlatformRuleDestinations(baseDir, platform, scope)` for normalized, language-independent Rule destinations.
+- Export `inspectCometHooksForPlatform(baseDir, platform, scope): Promise<{ present: boolean; error?: string }>` from the focused inspection module.
 - Doctor emits `rules: <platform> (<scope>)` and `hooks: <platform> (<scope>)` checks only when a Comet Skill installation is detected and the platform supports that component.
 
 - [ ] **Step 1: Add failing Doctor component tests**
@@ -240,20 +240,20 @@ Expected: Doctor currently reports Skill completeness only.
 
 - [ ] **Step 3: Implement read-only component inspection**
 
-Reuse manifest Rule selection/destination logic instead of duplicating filenames. Inspect Hook formats with the existing managed-command parser: Claude/Qwen/Gemini groups, Windsurf command arrays, Copilot’s dedicated file, and Kiro’s dedicated Hook file. Inspection must never create or rewrite configuration.
+Reuse manifest Rule destination logic instead of duplicating filenames. Because every language variant normalizes to the same installed filename, do not add a language parameter. Inspect Hook formats with the existing managed-command parser: Claude/Qwen/Gemini groups, Windsurf command arrays, Copilot’s dedicated file, and Kiro’s dedicated Hook file. Inspection must never create or rewrite configuration.
 
 - [ ] **Step 4: Verify GREEN**
 
 Run:
 
 ```bash
-npx vitest run test/app/doctor.test.ts test/domains/skill/skills.test.ts test/platform/detect.test.ts
+npx vitest run test/app/doctor.test.ts test/domains/skill/platform-inspect.test.ts test/platform/detect.test.ts
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add domains/skill/platform-install.ts app/commands/doctor.ts test/app/doctor.test.ts test/domains/skill/skills.test.ts
+git add domains/skill/platform-inspect.ts app/commands/doctor.ts test/app/doctor.test.ts test/domains/skill/platform-inspect.test.ts
 git commit -m "feat(doctor): detect incomplete Rule and Hook installs"
 ```
 
@@ -290,8 +290,8 @@ Under beta.5 `### Fixed`, add:
 - [ ] **Step 3: Run targeted formatting and lifecycle suites**
 
 ```bash
-npx prettier --check platform/fs/file-system.ts domains/skill/platform-install.ts domains/skill/uninstall.ts app/commands/init.ts app/commands/update.ts app/commands/doctor.ts test/platform/file-system.test.ts test/domains/skill/skills.test.ts test/domains/skill/uninstall.test.ts test/app/init-e2e.test.ts test/app/update.test.ts test/app/uninstall.test.ts test/app/doctor.test.ts CHANGELOG.md
-npx vitest run test/platform/file-system.test.ts test/domains/skill/skills.test.ts test/domains/skill/uninstall.test.ts test/app/init-e2e.test.ts test/app/update.test.ts test/app/uninstall.test.ts test/app/doctor.test.ts test/platform/detect.test.ts
+npx prettier --check platform/fs/file-system.ts domains/skill/platform-install.ts domains/skill/platform-inspect.ts domains/skill/uninstall.ts app/commands/init.ts app/commands/update.ts app/commands/doctor.ts test/platform/file-system.test.ts test/domains/skill/skills.test.ts test/domains/skill/platform-inspect.test.ts test/domains/skill/uninstall.test.ts test/app/init-e2e.test.ts test/app/update.test.ts test/app/uninstall.test.ts test/app/doctor.test.ts CHANGELOG.md
+npx vitest run test/platform/file-system.test.ts test/domains/skill/skills.test.ts test/domains/skill/platform-inspect.test.ts test/domains/skill/uninstall.test.ts test/app/init-e2e.test.ts test/app/update.test.ts test/app/uninstall.test.ts test/app/doctor.test.ts test/platform/detect.test.ts
 ```
 
 - [ ] **Step 4: Run repository-required verification**

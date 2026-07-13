@@ -24,7 +24,7 @@ Use contract consolidation without replacing the existing per-format Hook implem
 - Canonical Hook uninstall parse/read failures count as failures on every platform. Codex historical compatibility files remain best-effort after canonical cleanup, as already designed.
 - Filesystem removal returns `false` only for `ENOENT` and throws other errors. Domain removal functions catch per managed artifact, count failures, and continue safe cleanup.
 - `init` and `update` aggregate Skill, Rule, and Hook outcomes. If Skill copying fails, Rule and Hook installation for that target is skipped and the target is failed. A failed target is not registered as successfully updated.
-- Doctor adds Rule and Hook component checks for each detected Comet Skill installation. Hook inspection validates the managed command, not merely the configuration file’s existence.
+- A focused `platform-inspect.ts` module gives Doctor read-only Rule and Hook component checks for each detected Comet Skill installation. Hook inspection validates the managed command, not merely the configuration file’s existence.
 
 ## Data Flow
 
