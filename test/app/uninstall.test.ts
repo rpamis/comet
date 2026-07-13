@@ -1227,6 +1227,118 @@ describe('uninstallCommand interactive selection', () => {
     expect(registry.projects).toEqual([]);
   });
 
+  it('merges detected targets with registry recovery targets before retrying cleanup', async () => {
+    const fakeHome = path.join(tmpDir, 'detected-recovery-union-home');
+    const opencode = PLATFORMS.find((platform) => platform.id === 'opencode')!;
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    const commandPath = path.join(tmpDir, '.opencode', 'commands', 'comet.md');
+    const claudeSkillPath = path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md');
+    await copyCometSkillsForPlatform(tmpDir, opencode, true, 'skills', 'project');
+    await copyCometSkillsForPlatform(tmpDir, claude, true, 'skills', 'project');
+    await upsertProjectInstallation(
+      tmpDir,
+      [
+        { platform: 'opencode', language: 'en' },
+        { platform: 'claude', language: 'en' },
+      ],
+      'init',
+      { homeDir: fakeHome },
+    );
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    mockedCheckbox.mockResolvedValue(['opencode:project'] as never);
+    const unlink = fs.unlink.bind(fs);
+    let commandAttempts = 0;
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (targetPath) => {
+      if (path.resolve(String(targetPath)) === path.resolve(commandPath)) {
+        commandAttempts++;
+        if (commandAttempts === 1) throw permissionError;
+      }
+      await unlink(targetPath);
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(tmpDir);
+      expect(commandAttempts).toBe(1);
+      await expect(fs.access(commandPath)).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.opencode', 'skills', 'comet')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(fs.access(claudeSkillPath)).resolves.toBeUndefined();
+      const retainedRegistry = JSON.parse(
+        await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8'),
+      ) as { projects: unknown[] };
+      expect(retainedRegistry.projects).toHaveLength(1);
+      log.mockClear();
+
+      await uninstallCommand(tmpDir, { currentProject: true, force: true, json: true });
+      const retry = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(retry.summary).toMatchObject({ targetsProcessed: 2, totalFailures: 0 });
+      expect(
+        retry.targets.map((target: { scope: string; platform: string }) => ({
+          scope: target.scope,
+          platform: target.platform,
+        })),
+      ).toEqual([
+        { scope: 'project', platform: 'claude' },
+        { scope: 'project', platform: 'opencode' },
+      ]);
+    } finally {
+      log.mockRestore();
+      unlinkSpy.mockRestore();
+    }
+
+    expect(commandAttempts).toBe(2);
+    await expect(fs.access(commandPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('keeps detected global and recovered project targets separate for the same platform', async () => {
+    const fakeHome = path.join(tmpDir, 'detected-global-recovery-project-home');
+    const opencode = PLATFORMS.find((platform) => platform.id === 'opencode')!;
+    const projectCommandPath = path.join(tmpDir, '.opencode', 'commands', 'comet.md');
+    await copyCometSkillsForPlatform(tmpDir, opencode, true, 'skills', 'project');
+    await fs.rm(path.join(tmpDir, '.opencode', 'skills'), { recursive: true, force: true });
+    await copyCometSkillsForPlatform(fakeHome, opencode, true, 'skills', 'global');
+    await upsertProjectInstallation(tmpDir, [{ platform: 'opencode', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(tmpDir, { currentProject: true, force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.summary).toMatchObject({ targetsProcessed: 2, totalFailures: 0 });
+      expect(
+        result.targets.map((target: { scope: string; platform: string }) => ({
+          scope: target.scope,
+          platform: target.platform,
+        })),
+      ).toEqual([
+        { scope: 'global', platform: 'opencode' },
+        { scope: 'project', platform: 'opencode' },
+      ]);
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.access(projectCommandPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(
+      fs.access(path.join(fakeHome, '.opencode', 'skills', 'comet')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
   it('runs follow-on cleanup for an all-projects registry entry with no remaining Skill target', async () => {
     const fakeHome = path.join(tmpDir, 'all-projects-stale-home');
     const project = path.join(tmpDir, 'all-projects-stale-project');

@@ -10,7 +10,7 @@ import {
   removeWorkingDirs,
   removeCometProjectInstructions,
 } from '../../domains/skill/uninstall.js';
-import { detectInstalledCometTargets } from './update.js';
+import { detectInstalledCometTargets, type InstalledCometTarget } from './update.js';
 import {
   listProjectRegistryEntries,
   findProjectRegistryEntry,
@@ -56,6 +56,28 @@ interface SingleProjectUninstallResult {
     totalHooksRemoved: number;
     totalFailures: number;
   };
+}
+
+function mergeCleanupTargets(
+  detectedTargets: InstalledCometTarget[],
+  recoveryTargets: ProjectRegistryTarget[],
+  recoverProjectCleanup: boolean,
+): InstalledCometTarget[] {
+  const targets = [...detectedTargets];
+  if (!recoverProjectCleanup) return targets;
+
+  const seen = new Set(targets.map((target) => `${target.scope}:${target.platform.id}`));
+  for (const recoveryTarget of recoveryTargets) {
+    const platform = PLATFORMS.find((candidate) => candidate.id === recoveryTarget.platform);
+    if (!platform) continue;
+
+    const key = `project:${platform.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push({ scope: 'project', platform, language: recoveryTarget.language });
+  }
+
+  return targets;
 }
 
 function currentProjectJson(result: SingleProjectUninstallResult | null): {
@@ -108,15 +130,11 @@ async function uninstallSingleProject(
     scopes: options.scope ? [options.scope] : undefined,
     respectDetectionPaths: options.scope === undefined,
   });
-  const targets =
-    detectedTargets.length > 0
-      ? detectedTargets
-      : (options.recoverProjectCleanup ? (options.recoveryTargets ?? []) : []).flatMap((target) => {
-          const platform = PLATFORMS.find((candidate) => candidate.id === target.platform);
-          return platform
-            ? [{ scope: 'project' as const, platform, language: target.language }]
-            : [];
-        });
+  const targets = mergeCleanupTargets(
+    detectedTargets,
+    options.recoveryTargets ?? [],
+    options.recoverProjectCleanup === true,
+  );
 
   if (targets.length === 0 && !options.recoverProjectCleanup) {
     return null;
