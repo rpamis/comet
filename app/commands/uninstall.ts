@@ -162,26 +162,26 @@ async function uninstallSingleProject(
   for (const target of selectedTargets) {
     const baseDir = getBaseDir(target.scope, projectPath);
 
-    const skillsResult = await removeCometSkillsForPlatform(baseDir, target.platform, target.scope);
-    totalSkills += skillsResult.removed;
-    totalFailures += skillsResult.failed;
-
-    const rulesResult =
-      skillsResult.failed === 0
-        ? await removeCometRulesForPlatform(baseDir, target.platform, target.scope)
-        : { removed: 0, failed: 0 };
-    totalRules += rulesResult.removed;
-    totalFailures += rulesResult.failed;
-
     let hooksRemoved = 0;
     let hooksFailed = 0;
-    if (skillsResult.failed === 0 && target.platform.supportsHooks) {
+    if (target.platform.supportsHooks) {
       const hooksResult = await removeCometHooksForPlatform(baseDir, target.platform, target.scope);
       hooksRemoved = hooksResult.removed;
       hooksFailed = hooksResult.failed;
       totalHooks += hooksResult.removed;
       totalFailures += hooksResult.failed;
     }
+
+    const rulesResult = await removeCometRulesForPlatform(baseDir, target.platform, target.scope);
+    totalRules += rulesResult.removed;
+    totalFailures += rulesResult.failed;
+
+    const skillsResult =
+      hooksFailed === 0 && rulesResult.failed === 0
+        ? await removeCometSkillsForPlatform(baseDir, target.platform, target.scope)
+        : { removed: 0, failed: 0 };
+    totalSkills += skillsResult.removed;
+    totalFailures += skillsResult.failed;
 
     log(
       `  ${target.platform.name} (${target.scope}): ${skillsResult.removed} skills, ${rulesResult.removed} rules, ${hooksRemoved} hooks removed`,
@@ -219,8 +219,12 @@ async function uninstallSingleProject(
   if (hasProjectScope && totalFailures === 0) {
     const dirsResult = await removeWorkingDirs(projectPath);
     workingDirsRemoved = dirsResult.removed;
+    totalFailures += dirsResult.failed;
     if (workingDirsRemoved > 0) {
       log(`  Working directories: ${workingDirsRemoved} removed`);
+    }
+    if (dirsResult.failed > 0) {
+      log(`  Working directories: cleanup failed (${dirsResult.failed})`);
     }
   }
 

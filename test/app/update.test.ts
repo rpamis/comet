@@ -198,7 +198,21 @@ describe('update command helpers', () => {
 
     const targets = await detectInstalledCometTargets(projectDir, { scopes: ['project'] });
 
-    expect(targets.map((target) => target.platform.id)).not.toContain('codex');
+    expect(targets.map((target) => target.platform.id)).toEqual(['antigravity']);
+  });
+
+  it('assigns a shared project .agents Skill root only to Codex when .codex evidence exists', async () => {
+    const projectDir = path.join(tmpDir, 'shared-agents-with-codex');
+    await fs.mkdir(path.join(projectDir, '.agents', 'skills', 'comet'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, '.codex'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDir, '.agents', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n',
+    );
+
+    const targets = await detectInstalledCometTargets(projectDir, { scopes: ['project'] });
+
+    expect(targets.map((target) => target.platform.id)).toEqual(['codex']);
   });
 
   it('updates an explicitly scoped canonical global Codex install without a detection path', async () => {
@@ -395,11 +409,10 @@ describe('update command helpers', () => {
         const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
         expect(output).toMatch(/incomplete/iu);
         if (failure === 'Skill') {
-          for (const platformName of ['Codex', 'Antigravity', 'Antigravity 2.0']) {
-            expect(output).toContain(
-              `${platformName} (project) Skill: failed (1) - 1 Skill file(s) failed to install`,
-            );
-          }
+          expect(output).toContain(
+            'Codex (project) Skill: failed (1) - 1 Skill file(s) failed to install',
+          );
+          expect(output).not.toMatch(/Antigravity.*Skill: failed/u);
         } else if (failure === 'Rule') {
           expect(output).toContain(
             'Codex (project) Rule: failed (1) - 1 Rule file(s) failed to install',
@@ -440,20 +453,16 @@ describe('update command helpers', () => {
         expect(result.projects[0].reason).toMatch(new RegExp(failure, 'iu'));
         const failures = result.projects[0].failures as Array<Record<string, unknown>>;
         if (failure === 'Skill') {
-          expect(failures).toEqual(
-            expect.arrayContaining(
-              ['Codex', 'Antigravity', 'Antigravity 2.0'].map((platformName) =>
-                expect.objectContaining({
-                  platformName,
-                  scope: 'project',
-                  component: 'Skill',
-                  status: 'failed',
-                  failed: 1,
-                  reason: '1 Skill file(s) failed to install',
-                }),
-              ),
-            ),
-          );
+          expect(failures).toEqual([
+            expect.objectContaining({
+              platformName: 'Codex',
+              scope: 'project',
+              component: 'Skill',
+              status: 'failed',
+              failed: 1,
+              reason: '1 Skill file(s) failed to install',
+            }),
+          ]);
         } else if (failure === 'Rule') {
           expect(failures).toContainEqual(
             expect.objectContaining({

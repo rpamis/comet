@@ -14,6 +14,7 @@ import type { InstallScope, InstallMode } from '../../platform/install/types.js'
 import { formatSupportedArtifactLanguages, resolveArtifactLanguage } from './languages.js';
 import type { LanguageConfig, SkillLanguageId } from './languages.js';
 import { installCometProjectInstructions } from './project-instructions.js';
+import { readJsonObjectFile } from './json-object.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -290,12 +291,11 @@ async function installSkillsAsSymlink(
     const src = path.join(assetsDir, sourceDir, skillRelPath);
     const centralDest = path.join(centralDir, 'skills', skillRelPath);
 
-    if (!overwrite && (await fileExists(centralDest))) {
-      skippedCount++;
-      continue;
-    }
-
     try {
+      if (!overwrite && (await fileExists(centralDest))) {
+        skippedCount++;
+        continue;
+      }
       await copyFile(src, centralDest);
       copied++;
     } catch (err) {
@@ -388,12 +388,11 @@ async function copyCometSkillsForPlatform(
     const src = path.join(assetsDir, sourceDir, skillRelPath);
     const dest = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills', skillRelPath);
 
-    if (!overwrite && (await fileExists(dest))) {
-      skippedCount++;
-      continue;
-    }
-
     try {
+      if (!overwrite && (await fileExists(dest))) {
+        skippedCount++;
+        continue;
+      }
       await copyFile(src, dest);
       copied++;
     } catch (err) {
@@ -1017,22 +1016,12 @@ async function readSettingsJsonObject(
   settingsPath: string,
   platformName: string,
 ): Promise<Record<string, unknown>> {
-  if (!(await fileExists(settingsPath))) return {};
-
-  try {
-    const parsed = JSON.parse(await readFile(settingsPath, 'utf-8')) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('expected a JSON object');
-    }
-    return parsed as Record<string, unknown>;
-  } catch (error) {
-    throw new Error(
-      `Invalid ${platformName} settings at ${settingsPath}: ${(error as Error).message}`,
-      {
-        cause: error,
-      },
-    );
-  }
+  const result = await readJsonObjectFile(settingsPath);
+  if (result.status === 'missing') return {};
+  if (result.status === 'present') return result.value;
+  throw new Error(`Invalid ${platformName} settings at ${settingsPath}: ${result.error.message}`, {
+    cause: result.error,
+  });
 }
 
 /**
@@ -1384,6 +1373,7 @@ export {
   computeRuleDestPath,
   formatRuleContent,
   isManagedHookCommand,
+  buildHookCommand,
   removeManagedHooksFromJsonFile,
   planSkillDirectoryCopy,
   mergeProjectConfig,

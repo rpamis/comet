@@ -234,6 +234,29 @@ describe('doctor command', () => {
     expect(await fs.readFile(hookPath, 'utf8')).toBe(malformed);
   });
 
+  it('reports a Rule destination access failure as a component warning', async () => {
+    await installManagedCometSkills(tmpDir);
+    const rulePath = path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md');
+    const access = fs.access.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (filePath, mode) => {
+      if (path.resolve(String(filePath)) === path.resolve(rulePath)) throw permissionError;
+      await access(filePath, mode);
+    });
+
+    try {
+      const results = await collectDoctorResults(tmpDir);
+      expect(
+        results.find((result) => result.check === 'rules: Claude Code (project)'),
+      ).toMatchObject({
+        status: 'warn',
+        message: expect.stringContaining('permission denied'),
+      });
+    } finally {
+      accessSpy.mockRestore();
+    }
+  });
+
   it('does not emit false Rule or Hook warnings for unsupported components', async () => {
     const cursor = PLATFORMS.find((platform) => platform.id === 'cursor');
     const gemini = PLATFORMS.find((platform) => platform.id === 'gemini');

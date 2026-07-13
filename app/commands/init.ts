@@ -46,7 +46,7 @@ type InitOptions = {
 };
 
 type InstallStatus = 'installed' | 'skipped' | 'failed';
-type ComponentAction = 'overwrite' | 'skip' | 'install';
+type ComponentAction = 'overwrite' | 'skip' | 'install' | 'reuse';
 type BulkOverwriteChoice = 'overwrite-all' | 'skip-all' | 'choose';
 
 interface PlatformResult {
@@ -184,6 +184,11 @@ function resolveAction(
   if (options.skipExisting) return 'skip';
   if (options.yes) return 'skip';
   return 'install';
+}
+
+function resolveCometAction(hasExisting: boolean, options: InitOptions): ComponentAction {
+  if (hasExisting && options.yes && !options.overwrite && !options.skipExisting) return 'reuse';
+  return resolveAction(hasExisting, options);
 }
 
 type NpmDepId = 'openspec' | 'superpowers' | 'codegraph';
@@ -385,7 +390,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
 
     let osAction = resolveAction(hasOS, options);
     let spAction = resolveAction(hasSP, options);
-    let cmAction = resolveAction(hasCM, options);
+    let cmAction = resolveCometAction(hasCM, options);
 
     if (!options.yes) {
       const existingComponents = [
@@ -490,7 +495,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     let cmStatus: InstallStatus = 'skipped';
     let cometComponentInstalled = false;
     let skillFailed = false;
-    if (cmAction !== 'skip') {
+    if (cmAction !== 'skip' && cmAction !== 'reuse') {
       const { copied, failed } = await copyCometSkillsForPlatform(
         baseDir,
         platform,
@@ -507,6 +512,8 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
           failed > 0 ? `, ${failed} failed` : ''
         }) -> ${skillsPath}`,
       );
+    } else if (cmAction === 'reuse') {
+      log(`  Comet -> ${platform.name}: reused (${t(lang, 'alreadyExists')})`);
     } else {
       log(`  Comet -> ${platform.name}: skipped (${t(lang, 'alreadyExists')})`);
     }
@@ -594,7 +601,15 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     await createWorkingDirs(projectPath, language.artifactLanguage);
     const projectTargets = await detectInstalledCometTargets(projectPath, { scopes: ['project'] });
     const successfulCometPlatforms = new Set(
-      results.filter((result) => result.comet !== 'failed').map((result) => result.platform.id),
+      results
+        .filter(
+          (result) =>
+            result.comet !== 'failed' &&
+            plans.some(
+              (plan) => plan.platform.id === result.platform.id && plan.cmAction !== 'skip',
+            ),
+        )
+        .map((result) => result.platform.id),
     );
     const completeProjectTargets = projectTargets.filter((target) =>
       successfulCometPlatforms.has(target.platform.id),

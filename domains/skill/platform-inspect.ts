@@ -1,5 +1,4 @@
 import path from 'path';
-import { readFile } from 'fs/promises';
 
 import {
   getPlatformConfigDir,
@@ -7,7 +6,9 @@ import {
   type Platform,
 } from '../../platform/install/platforms.js';
 import type { InstallScope } from '../../platform/install/types.js';
-import { computeRuleDestPath, isManagedHookCommand, readManifest } from './platform-install.js';
+import { fileExists } from '../../platform/fs/file-system.js';
+import { buildHookCommand, computeRuleDestPath, readManifest } from './platform-install.js';
+import { readJsonObjectFile } from './json-object.js';
 
 export interface HookInspectionResult {
   present: boolean;
@@ -47,29 +48,12 @@ export async function getPlatformRuleDestinations(
 }
 
 async function readHookJson(filePath: string): Promise<JsonReadResult> {
-  let source: string;
-  try {
-    source = await readFile(filePath, 'utf8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { status: 'missing' };
-    return {
-      status: 'error',
-      error: `Unable to read Hook JSON at ${filePath}: ${(error as Error).message}`,
-    };
-  }
-
-  try {
-    const parsed = JSON.parse(source) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('expected a JSON object');
-    }
-    return { status: 'present', value: parsed as Record<string, unknown> };
-  } catch (error) {
-    return {
-      status: 'error',
-      error: `Invalid Hook JSON at ${filePath}: ${(error as Error).message}`,
-    };
-  }
+  const result = await readJsonObjectFile(filePath);
+  if (result.status !== 'error') return result;
+  return {
+    status: 'error',
+    error: `${result.kind === 'invalid' ? 'Invalid' : 'Unable to read'} Hook JSON at ${filePath}: ${result.error.message}`,
+  };
 }
 
 function collectGroupedCommands(config: Record<string, unknown>, groupName: string): unknown[] {
@@ -103,30 +87,29 @@ function collectCommandArray(config: Record<string, unknown>, groupName: string)
   });
 }
 
-function containsAllManagedCommands(commands: unknown[], scriptRelPaths: string[]): boolean {
-  return scriptRelPaths.every((scriptRelPath) =>
-    commands.some((command) => isManagedHookCommand(command, [scriptRelPath])),
-  );
+function containsAllManagedCommands(commands: unknown[], expectedCommands: string[]): boolean {
+  return expectedCommands.every((expected) => commands.some((command) => command === expected));
 }
 
 async function inspectSingleHookJson(
   configPath: string,
-  scriptRelPaths: string[],
+  expectedCommands: string[],
   collectCommands: (config: Record<string, unknown>) => unknown[],
 ): Promise<HookInspectionResult> {
   const result = await readHookJson(configPath);
   if (result.status === 'missing') return { present: false };
   if (result.status === 'error') return { present: false, error: result.error };
   return {
-    present: containsAllManagedCommands(collectCommands(result.value), scriptRelPaths),
+    present: containsAllManagedCommands(collectCommands(result.value), expectedCommands),
   };
 }
 
 async function inspectKiroHooks(
   platformBase: string,
   scriptRelPaths: string[],
+  expectedCommands: string[],
 ): Promise<HookInspectionResult> {
-  for (const scriptRelPath of scriptRelPaths) {
+  for (const [index, scriptRelPath] of scriptRelPaths.entries()) {
     const fileName = path.basename(scriptRelPath).replace(/\.mjs$/u, '.kiro.hook');
     const configPath = path.join(platformBase, 'hooks', fileName);
     const result = await readHookJson(configPath);
@@ -138,7 +121,7 @@ async function inspectKiroHooks(
       then && typeof then === 'object' && !Array.isArray(then)
         ? (then as Record<string, unknown>).command
         : undefined;
-    if (!isManagedHookCommand(command, [scriptRelPath])) return { present: false };
+    if (command !== expectedCommands[index]) return { present: false };
   }
 
   return { present: scriptRelPaths.length > 0 };
@@ -155,41 +138,69 @@ export async function inspectCometHooksForPlatform(
   const scriptRelPaths = Object.keys(manifest.hooks ?? {});
   if (scriptRelPaths.length === 0) return { present: false };
 
+  const skillsDir = getPlatformSkillsDir(platform, scope);
+  const expectedCommands = scriptRelPaths.map((scriptRelPath) =>
+    buildHookCommand(baseDir, skillsDir, scriptRelPath),
+  );
+
   const platformBase = path.join(baseDir, getPlatformConfigDir(platform, scope));
+  let inspection: HookInspectionResult;
   switch (platform.hookFormat) {
     case 'claude-code':
-      return inspectSingleHookJson(
+      inspection = await inspectSingleHookJson(
         path.join(platformBase, platform.hookConfigFile ?? 'settings.local.json'),
-        scriptRelPaths,
+        expectedCommands,
         (config) => collectGroupedCommands(config, 'PreToolUse'),
       );
+      break;
     case 'qwen':
     case 'qoder':
     case 'codebuddy':
-      return inspectSingleHookJson(
+      inspection = await inspectSingleHookJson(
         path.join(platformBase, 'settings.json'),
-        scriptRelPaths,
+        expectedCommands,
         (config) => collectGroupedCommands(config, 'PreToolUse'),
       );
+      break;
     case 'gemini':
-      return inspectSingleHookJson(
+      inspection = await inspectSingleHookJson(
         path.join(platformBase, 'settings.json'),
-        scriptRelPaths,
+        expectedCommands,
         (config) => collectGroupedCommands(config, 'BeforeTool'),
       );
+      break;
     case 'windsurf':
-      return inspectSingleHookJson(
+      inspection = await inspectSingleHookJson(
         path.join(platformBase, 'hooks.json'),
-        scriptRelPaths,
+        expectedCommands,
         (config) => collectCommandArray(config, 'pre_write_code'),
       );
+      break;
     case 'copilot':
-      return inspectSingleHookJson(
+      inspection = await inspectSingleHookJson(
         path.join(platformBase, 'hooks', 'comet-guard.json'),
-        scriptRelPaths,
+        expectedCommands,
         (config) => collectCommandArray(config, 'preToolUse'),
       );
+      break;
     case 'kiro':
-      return inspectKiroHooks(platformBase, scriptRelPaths);
+      inspection = await inspectKiroHooks(platformBase, scriptRelPaths, expectedCommands);
+      break;
   }
+
+  if (!inspection.present) return inspection;
+  for (const scriptRelPath of scriptRelPaths) {
+    const scriptPath = path.join(baseDir, skillsDir, 'skills', ...scriptRelPath.split('/'));
+    try {
+      if (!(await fileExists(scriptPath))) {
+        return { present: false, error: `managed Hook script missing at ${scriptPath}` };
+      }
+    } catch (error) {
+      return {
+        present: false,
+        error: `Unable to inspect managed Hook script at ${scriptPath}: ${(error as Error).message}`,
+      };
+    }
+  }
+  return inspection;
 }

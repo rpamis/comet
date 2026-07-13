@@ -37,6 +37,17 @@ function hookConfigPath(baseDir: string, platformId: string): string {
   }
 }
 
+async function installManagedHookScripts(baseDir: string, target: Platform): Promise<void> {
+  const manifest = JSON.parse(
+    await fs.readFile(path.resolve('assets', 'manifest.json'), 'utf8'),
+  ) as { hooks?: Record<string, unknown> };
+  for (const scriptRelPath of Object.keys(manifest.hooks ?? {})) {
+    const scriptPath = path.join(baseDir, target.skillsDir, 'skills', ...scriptRelPath.split('/'));
+    await fs.mkdir(path.dirname(scriptPath), { recursive: true });
+    await fs.writeFile(scriptPath, '// managed Hook script\n', 'utf8');
+  }
+}
+
 describe('platform component inspection', () => {
   let tmpDir: string;
 
@@ -74,6 +85,7 @@ describe('platform component inspection', () => {
     'recognizes the managed Hook command in the %s format',
     async (id) => {
       const target = platform(id);
+      await installManagedHookScripts(tmpDir, target);
       await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
         status: 'installed',
       });
@@ -91,6 +103,7 @@ describe('platform component inspection', () => {
     'does not accept an unmanaged command in an existing %s Hook config',
     async (id) => {
       const target = platform(id);
+      await installManagedHookScripts(tmpDir, target);
       await installCometHooksForPlatform(tmpDir, target, 'project');
       const configPath = hookConfigPath(tmpDir, id);
       const unmanaged = (await fs.readFile(configPath, 'utf8')).replaceAll(
@@ -117,6 +130,32 @@ describe('platform component inspection', () => {
     expect(result.present).toBe(false);
     expect(result.error).toContain('Invalid Hook JSON');
     expect(await fs.readFile(configPath, 'utf8')).toBe(malformed);
+  });
+
+  it('does not report a current Hook healthy when its manifest-owned script is missing', async () => {
+    const target = platform('claude');
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      present: false,
+      error: expect.stringContaining('script'),
+    });
+  });
+
+  it('does not accept a legacy .sh command as the current manifest Hook', async () => {
+    const target = platform('claude');
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    const configPath = hookConfigPath(tmpDir, 'claude');
+    const legacy = (await fs.readFile(configPath, 'utf8')).replaceAll(
+      'comet-hook-guard.mjs',
+      'comet-hook-guard.sh',
+    );
+    await fs.writeFile(configPath, legacy, 'utf8');
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: false,
+    });
   });
 
   it('returns an error for an unreadable canonical Hook path without changing it', async () => {

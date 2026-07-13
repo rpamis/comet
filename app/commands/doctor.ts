@@ -18,11 +18,10 @@ import {
 } from '../../domains/skill/platform-inspect.js';
 import {
   PLATFORMS,
-  getPlatformConfigDir,
   getPlatformSkillsDirs,
   type Platform,
 } from '../../platform/install/platforms.js';
-import { hasPlatformDetectionPath } from '../../platform/install/detect.js';
+import { resolveCanonicalSkillRootOwners } from '../../platform/install/skill-root-owner.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import { inspectClassicChange } from '../../domains/comet-classic/classic-diagnostics.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
@@ -184,16 +183,25 @@ async function checkPlatformComponents(
   const results: CheckResult[] = [];
   const ruleDestinations = await getPlatformRuleDestinations(baseDir, platform, scope);
   if (ruleDestinations.length > 0) {
-    const present = (
-      await Promise.all(ruleDestinations.map((destination) => fileExists(destination)))
-    ).filter(Boolean).length;
+    let present = 0;
+    const inspectionErrors: string[] = [];
+    for (const destination of ruleDestinations) {
+      try {
+        if (await fileExists(destination)) present++;
+      } catch (error) {
+        inspectionErrors.push(`${destination}: ${(error as Error).message}`);
+      }
+    }
     results.push({
       check: `rules: ${platform.name} (${scope})`,
-      status: present === ruleDestinations.length ? 'pass' : 'warn',
+      status:
+        inspectionErrors.length === 0 && present === ruleDestinations.length ? 'pass' : 'warn',
       message:
-        present === ruleDestinations.length
-          ? `complete (${present} files)`
-          : `partial (${present}/${ruleDestinations.length} files) — run: comet update --scope ${scope}`,
+        inspectionErrors.length > 0
+          ? `unable to inspect managed Rule (${inspectionErrors.join('; ')}) — run: comet update --scope ${scope}`
+          : present === ruleDestinations.length
+            ? `complete (${present} files)`
+            : `partial (${present}/${ruleDestinations.length} files) — run: comet update --scope ${scope}`,
     });
   }
 
@@ -211,58 +219,19 @@ async function checkPlatformComponents(
   return results;
 }
 
-async function hasPlatformOwnershipEvidence(
-  baseDir: string,
-  platform: Platform,
-  scope: InstallScope,
-  canonicalSkillsDir: string,
-): Promise<boolean> {
-  if (platform.detectionPaths?.length && (await hasPlatformDetectionPath(baseDir, platform))) {
-    return true;
-  }
-
-  const configDir = getPlatformConfigDir(platform, scope);
-  return configDir !== canonicalSkillsDir && (await fileExists(path.join(baseDir, configDir)));
-}
-
 async function getPlatformsForSkillInspection(
   baseDir: string,
   scope: InstallScope,
   doctorScope: DoctorScope,
 ): Promise<Array<{ platform: Platform; inspectComponents: boolean }>> {
-  const groups = new Map<string, Platform[]>();
-  for (const platform of PLATFORMS) {
-    const canonicalSkillsDir = getPlatformSkillsDirs(platform, scope)[0];
-    const group = groups.get(canonicalSkillsDir) ?? [];
-    group.push(platform);
-    groups.set(canonicalSkillsDir, group);
-  }
-
-  const selected: Array<{ platform: Platform; inspectComponents: boolean }> = [];
-  for (const [canonicalSkillsDir, platforms] of groups) {
-    if (platforms.length === 1) {
-      const [platform] = platforms;
-      if (doctorScope !== 'auto' || (await hasPlatformDetectionPath(baseDir, platform))) {
-        selected.push({ platform, inspectComponents: true });
-      }
-      continue;
-    }
-
-    let owner: Platform | undefined;
-    let hasOwnershipEvidence = false;
-    for (const platform of platforms) {
-      if (await hasPlatformOwnershipEvidence(baseDir, platform, scope, canonicalSkillsDir)) {
-        owner = platform;
-        hasOwnershipEvidence = true;
-        break;
-      }
-    }
-    owner ??= platforms.find((platform) => !platform.detectionPaths?.length);
-    if (!owner && doctorScope !== 'auto') owner = platforms[0];
-    if (owner) selected.push({ platform: owner, inspectComponents: hasOwnershipEvidence });
-  }
-
-  return selected;
+  return (
+    await resolveCanonicalSkillRootOwners(baseDir, scope, {
+      respectDetectionPaths: doctorScope === 'auto',
+    })
+  ).map(({ platform, hasOwnershipEvidence }) => ({
+    platform,
+    inspectComponents: hasOwnershipEvidence || getPlatformSkillsDirs(platform, scope).length === 1,
+  }));
 }
 
 async function checkSkillCompleteness(

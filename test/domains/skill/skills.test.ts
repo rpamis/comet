@@ -202,6 +202,42 @@ describe('skills', () => {
     });
   });
 
+  it.each([
+    { installMode: 'copy' as const, destinationRoot: ['.claude', 'skills'] },
+    { installMode: 'symlink' as const, destinationRoot: ['.comet', 'skills', 'skills'] },
+  ])(
+    'counts a $installMode Skill destination preflight access error instead of rejecting',
+    async ({ installMode, destinationRoot }) => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
+      const blockedDestination = path.join(tmpDir, ...destinationRoot, 'comet', 'SKILL.md');
+      const access = fs.access.bind(fs);
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (filePath, mode) => {
+        if (path.resolve(String(filePath)) === path.resolve(blockedDestination)) {
+          throw permissionError;
+        }
+        await access(filePath, mode);
+      });
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        const result = await copyCometSkillsForPlatform(
+          tmpDir,
+          platform,
+          false,
+          'skills',
+          'project',
+          installMode,
+        );
+        expect(result.failed).toBeGreaterThan(0);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('permission denied'));
+      } finally {
+        error.mockRestore();
+        accessSpy.mockRestore();
+      }
+    },
+  );
+
   describe('createWorkingDirs', () => {
     it('creates superpowers spec and plan directories', async () => {
       await createWorkingDirs(tmpDir);

@@ -1,5 +1,5 @@
 import path from 'path';
-import { lstat, readFile, writeFile } from 'fs/promises';
+import { lstat, writeFile } from 'fs/promises';
 
 import {
   fileExists,
@@ -23,6 +23,7 @@ import {
   removeManagedHooksFromJsonFile,
 } from './platform-install.js';
 import { removeCometProjectInstructions } from './project-instructions.js';
+import { readJsonObjectFile } from './json-object.js';
 
 interface RemovalResult {
   removed: number;
@@ -295,17 +296,12 @@ async function removeQwenStyleHooks(
   scriptRelPaths: string[],
 ): Promise<RemovalResult> {
   const settingsPath = path.join(platformBase, 'settings.json');
-  if (!(await fileExists(settingsPath))) {
-    return { removed: 0, failed: 0 };
-  }
-
+  if (!(await fileExists(settingsPath))) return { removed: 0, failed: 0 };
   let removed = 0;
-  let settings: Record<string, unknown>;
-  try {
-    settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
-  } catch {
-    return { removed: 0, failed: 1 };
-  }
+  const readResult = await readJsonObjectFile(settingsPath);
+  if (readResult.status === 'missing') return { removed: 0, failed: 0 };
+  if (readResult.status === 'error') return { removed: 0, failed: 1 };
+  const settings = readResult.value;
 
   const existingHooks = settings.hooks as Record<string, unknown> | undefined;
   if (!existingHooks) {
@@ -326,7 +322,10 @@ async function removeQwenStyleHooks(
     );
     removed += hooksBefore - hooks.length;
 
-    if (hooks.length === 0) return [];
+    const hasUnknownMetadata = Object.keys(group).some(
+      (key) => key !== 'matcher' && key !== 'hooks',
+    );
+    if (hooks.length === 0) return hasUnknownMetadata ? [{ ...group, hooks: [] }] : [];
     return [{ ...group, hooks }];
   });
 
@@ -349,17 +348,12 @@ async function removeGeminiHooks(
   scriptRelPaths: string[],
 ): Promise<RemovalResult> {
   const settingsPath = path.join(platformBase, 'settings.json');
-  if (!(await fileExists(settingsPath))) {
-    return { removed: 0, failed: 0 };
-  }
-
+  if (!(await fileExists(settingsPath))) return { removed: 0, failed: 0 };
   let removed = 0;
-  let settings: Record<string, unknown>;
-  try {
-    settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
-  } catch {
-    return { removed: 0, failed: 1 };
-  }
+  const readResult = await readJsonObjectFile(settingsPath);
+  if (readResult.status === 'missing') return { removed: 0, failed: 0 };
+  if (readResult.status === 'error') return { removed: 0, failed: 1 };
+  const settings = readResult.value;
 
   const existingHooks = settings.hooks as Record<string, unknown> | undefined;
   if (!existingHooks) {
@@ -380,7 +374,10 @@ async function removeGeminiHooks(
     );
     removed += hooksBefore - hooks.length;
 
-    if (hooks.length === 0) return [];
+    const hasUnknownMetadata = Object.keys(group).some(
+      (key) => key !== 'matcher' && key !== 'hooks',
+    );
+    if (hooks.length === 0) return hasUnknownMetadata ? [{ ...group, hooks: [] }] : [];
     return [{ ...group, hooks }];
   });
 
@@ -403,17 +400,12 @@ async function removeWindsurfHooks(
   scriptRelPaths: string[],
 ): Promise<RemovalResult> {
   const hooksPath = path.join(platformBase, 'hooks.json');
-  if (!(await fileExists(hooksPath))) {
-    return { removed: 0, failed: 0 };
-  }
-
+  if (!(await fileExists(hooksPath))) return { removed: 0, failed: 0 };
   let removed = 0;
-  let hooksFile: Record<string, unknown>;
-  try {
-    hooksFile = JSON.parse(await readFile(hooksPath, 'utf-8')) as Record<string, unknown>;
-  } catch {
-    return { removed: 0, failed: 1 };
-  }
+  const readResult = await readJsonObjectFile(hooksPath);
+  if (readResult.status === 'missing') return { removed: 0, failed: 0 };
+  if (readResult.status === 'error') return { removed: 0, failed: 1 };
+  const hooksFile = readResult.value;
 
   const existingHooks = hooksFile.hooks as Record<string, unknown> | undefined;
   if (!existingHooks) {

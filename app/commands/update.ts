@@ -17,12 +17,11 @@ import { removeLegacyCometSkillsForPlatform } from '../../domains/skill/uninstal
 import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import { LANGUAGES } from '../../domains/skill/languages.js';
 import {
-  PLATFORMS,
   getPlatformSkillsDir,
   getPlatformSkillsDirs,
   type Platform,
 } from '../../platform/install/platforms.js';
-import { hasPlatformDetectionPath } from '../../platform/install/detect.js';
+import { resolveCanonicalSkillRootOwners } from '../../platform/install/skill-root-owner.js';
 import {
   listProjectRegistryEntries,
   removeProjectInstallation,
@@ -276,13 +275,10 @@ async function detectInstalledCometTargets(
   for (const scope of scopes) {
     const baseDir = getScopedBaseDir(scope, projectPath, options.globalBaseDir);
 
-    for (const platform of PLATFORMS) {
-      if (
-        options.respectDetectionPaths !== false &&
-        !(await hasPlatformDetectionPath(baseDir, platform))
-      ) {
-        continue;
-      }
+    const owners = await resolveCanonicalSkillRootOwners(baseDir, scope, {
+      respectDetectionPaths: options.respectDetectionPaths,
+    });
+    for (const { platform } of owners) {
       if (!(await hasLocalCometSkills(baseDir, platform, scope))) continue;
 
       targets.push({

@@ -69,6 +69,53 @@ describe('removeCometHooksForPlatform', () => {
   });
 
   it.each([
+    { id: 'qwen', configPath: ['.qwen', 'settings.json'] },
+    { id: 'gemini', configPath: ['.gemini', 'settings.json'] },
+    { id: 'windsurf', configPath: ['.windsurf', 'hooks.json'] },
+  ])('fails closed when canonical $id Hook JSON is an array', async ({ id, configPath }) => {
+    const platform = PLATFORMS.find((candidate) => candidate.id === id)!;
+    const settingsPath = path.join(tmpDir, ...configPath);
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.writeFile(settingsPath, '[]\n', 'utf8');
+
+    await expect(removeCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+      removed: 0,
+      failed: 1,
+    });
+    await expect(fs.readFile(settingsPath, 'utf8')).resolves.toBe('[]\n');
+  });
+
+  it.each([
+    { id: 'qwen', groupName: 'PreToolUse' },
+    { id: 'gemini', groupName: 'BeforeTool' },
+  ])(
+    'preserves unknown $id group metadata after removing its last managed handler',
+    async ({ id, groupName }) => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === id)!;
+      const settingsPath = path.join(tmpDir, `.${id}`, 'settings.json');
+      await installCometHooksForPlatform(tmpDir, platform, 'project');
+      const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+      settings.hooks[groupName][0].description = 'user-owned group metadata';
+      settings.hooks[groupName][0].custom = { keep: true };
+      await fs.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+
+      await expect(removeCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+
+      const updated = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+      expect(updated.hooks[groupName]).toEqual([
+        expect.objectContaining({
+          description: 'user-owned group metadata',
+          custom: { keep: true },
+          hooks: [],
+        }),
+      ]);
+    },
+  );
+
+  it.each([
     {
       id: 'claude',
       accessPath: ['.claude', 'settings.local.json'],

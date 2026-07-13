@@ -293,6 +293,113 @@ describe('comet init E2E', () => {
     INIT_E2E_TIMEOUT_MS,
   );
 
+  it(
+    'init --yes reuses an existing managed Skill and restores missing Codex Rule and Hook components',
+    async () => {
+      mockExternalSuccess();
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const { initCommand } = await import('../../app/commands/init.js');
+
+      await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true, language: 'en' }));
+      await fs.rm(path.join(tmpDir, '.codex', 'rules'), { recursive: true, force: true });
+      await fs.rm(path.join(tmpDir, '.codex', 'hooks.json'), { force: true });
+      await fs.rm(getProjectRegistryPath(fakeHome), { force: true });
+
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, language: 'en' }),
+      );
+      const codex = (result.results as Array<{ platform: string; comet: string }>).find(
+        (candidate) => candidate.platform === 'codex',
+      );
+
+      expect(codex?.comet).toBe('installed');
+      await expect(
+        fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md')),
+      ).resolves.toBeUndefined();
+      await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
+      const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+        projects: Array<{ lastTargets: Array<{ platform: string }> }>;
+      };
+      expect(registry.projects[0].lastTargets).toContainEqual(
+        expect.objectContaining({ platform: 'codex' }),
+      );
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
+    'init --yes does not register reused Skills when canonical Hook validation fails',
+    async () => {
+      mockExternalSuccess();
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const { initCommand } = await import('../../app/commands/init.js');
+
+      await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true, language: 'en' }));
+      await fs.writeFile(path.join(tmpDir, '.codex', 'hooks.json'), '[]\n', 'utf8');
+      await fs.rm(getProjectRegistryPath(fakeHome), { force: true });
+
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, language: 'en' }),
+      );
+      const codex = (result.results as Array<{ platform: string; comet: string }>).find(
+        (candidate) => candidate.platform === 'codex',
+      );
+
+      expect(codex?.comet).toBe('failed');
+      let projects: unknown[] = [];
+      try {
+        projects = (
+          JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+            projects: unknown[];
+          }
+        ).projects;
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'ENOENT' });
+      }
+      expect(projects).toEqual([]);
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
+    'an explicit skip of existing Comet Skills does not register an incomplete target',
+    async () => {
+      mockExternalSuccess();
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const { initCommand } = await import('../../app/commands/init.js');
+
+      await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true, language: 'en' }));
+      await fs.rm(path.join(tmpDir, '.codex', 'rules'), { recursive: true, force: true });
+      await fs.rm(path.join(tmpDir, '.codex', 'hooks.json'), { force: true });
+      await fs.rm(getProjectRegistryPath(fakeHome), { force: true });
+
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          language: 'en',
+          skipExisting: true,
+        }),
+      );
+
+      let projects: unknown[] = [];
+      try {
+        projects = (
+          JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+            projects: unknown[];
+          }
+        ).projects;
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'ENOENT' });
+      }
+      expect(projects).toEqual([]);
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
   it.each([
     { component: 'Rule', outcome: 'returned' },
     { component: 'Rule', outcome: 'thrown' },
@@ -383,7 +490,7 @@ describe('comet init E2E', () => {
   });
 
   it(
-    'skips already-installed Comet skills with --yes',
+    'reuses already-installed Comet skills with --yes and validates lifecycle components',
     async () => {
       mockExternalSuccess();
       await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
@@ -405,7 +512,7 @@ describe('comet init E2E', () => {
       const claude2 = (result2.results as { platform: string; comet: string }[]).find(
         (r) => r.platform === 'claude',
       );
-      expect(claude2?.comet).toBe('skipped');
+      expect(claude2?.comet).toBe('installed');
     },
     INIT_E2E_TIMEOUT_MS,
   );
