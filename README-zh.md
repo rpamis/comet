@@ -494,7 +494,7 @@ build_mode: subagent-driven-development                  # 构建方式：subage
 build_pause: null                                        # `build_pause` 记录 build 阶段内部暂停点：null 无暂停，`plan-ready` 表示 plan 已生成
 subagent_dispatch: null                                  # subagent 分派确认；进入 verify 前需 confirmed
 tdd_mode: null                                           # full workflow 的 build 选择：tdd | direct
-isolation: branch                                        # 隔离方式：branch | worktree
+isolation: branch                                        # 隔离方式：branch | worktree | current
 verify_mode: null                                        # 验证模式：light | full
 design_doc: docs/superpowers/specs/<design-doc>.md       # 设计文档路径
 plan: docs/superpowers/plans/YYYY-MM-DD-feature.md       # 实现计划路径
@@ -536,7 +536,7 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
    - 检测未知/拼写错误字段
 
 4. **Build 决策强制** — Guard 和状态转换同时拦截跳过关键选择
-   - `isolation` 必须是 `branch` 或 `worktree`
+   - `isolation` 必须是 `branch`、`worktree` 或 `current`
    - `build_mode` 必须已选择
    - `build_pause: plan-ready` 是 plan 生成后的可恢复暂停点，不是 `build_mode`
    - full workflow 的 `build_mode: direct` 必须有 `direct_override: true`
