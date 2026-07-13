@@ -7741,9 +7741,9 @@ var ISOLATION_MODES = [
   { value: "current", allowedInPreset: true }
 ];
 var ISOLATIONS = ISOLATION_MODES.map((mode) => mode.value);
-var PRESET_ALLOWED_ISOLATIONS = ISOLATION_MODES.filter(
-  (mode) => mode.allowedInPreset
-).map((mode) => mode.value);
+var PRESET_ALLOWED_ISOLATIONS = ISOLATION_MODES.filter((mode) => mode.allowedInPreset).map(
+  (mode) => mode.value
+);
 var VERIFY_MODES = ["light", "full"];
 var VERIFY_RESULTS = ["pending", "pass", "fail"];
 var BRANCH_STATUSES = ["pending", "handled"];
