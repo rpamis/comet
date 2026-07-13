@@ -9,6 +9,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Comet multi-change initialization**: `/comet-open` now follows the OpenSpec CLI artifact graph and verifies every split change is complete before offering the next workflow choice, preventing partially initialized changes from being left as empty directory skeletons.
 - **Codex hook configuration**: Project and global Codex installs now write phase guard hooks to the supported `.codex/hooks.json` location and safely migrate Comet-managed entries from the previously generated `settings.local.json` without changing user-defined hooks or settings ([#199](https://github.com/rpamis/comet/issues/199)).
 - **Standard Superpowers artifacts**: Classic write hooks now accept first-time design, plan, and verification artifacts in their standard workflow directories without requiring Comet-specific filename suffixes, while selected-change, phase, and occupied-slot checks still prevent ambiguous or duplicate writes.
+- **Skill lifecycle integrity**: Comet now preserves malformed user Hook configuration, reports Skill, Rule, and Hook failures consistently across init, update, Doctor, and uninstall, and avoids registering partial installations as complete.
 
 ## What's Changed [0.4.0-beta.4] - 2026-07-11
 
