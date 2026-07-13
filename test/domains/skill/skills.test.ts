@@ -786,7 +786,7 @@ describe('skills', () => {
         '不得用“跳过重复上下文探索”削弱 Superpowers `brainstorming` 的澄清流程',
       );
       expect(zhDesign).not.toContain('跳过重复上下文探索，直接进入设计提问');
-      expect(zhBuild).toContain('不得根据推荐规则自行选择 `branch` 或 `worktree`');
+      expect(zhBuild).toContain('不得根据推荐规则自行选择 `branch`、`worktree` 或 `current`');
       expect(zhBuild).toContain('不得根据推荐规则自行选择执行方式');
       expect(zhBuild).toContain('`comet/reference/decision-point.md`');
       expect(zhVerify).toContain(
@@ -892,7 +892,9 @@ describe('skills', () => {
       expect(zhHotfix).toContain('默认 `review_mode: off`');
 
       // MEDIUM: hotfix IMPORTANT covers >3-tasks comet-build decision points
-      expect(zhHotfix).toContain('任务超过 3 个转入 `/comet-build` 时的工作区隔离和执行方式选择');
+      expect(zhHotfix).toContain(
+        '初始隔离选择（`branch` / `current`），以及任务超过 3 个转入 `/comet-build` 时的执行方式选择',
+      );
 
       // LOW: comet-build "中" level requires user confirmation before brainstorming
       expect(zhBuild).toContain(
@@ -1170,7 +1172,7 @@ describe('skills', () => {
         'Then continue this step to choose workspace isolation, execution method, TDD mode, and code review mode',
       );
       expect(enBuild).toContain(
-        'Must not choose `branch` or `worktree` based on recommendation rules',
+        'Must not choose `branch`, `worktree`, or `current` based on recommendation rules',
       );
       expect(enBuild).toContain(
         'must not choose the execution method, TDD mode, or code review mode based on recommendation rules',
@@ -1296,7 +1298,7 @@ describe('skills', () => {
       );
       expect(enHotfix).toContain('6 quick checks');
       expect(enHotfix).toContain(
-        'workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`',
+        'initial isolation choice (`branch` / `current`), and execution-method selection if tasks exceed 3 and transfer to `/comet-build`',
       );
       expect(enBuild).toContain(
         'Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to explicitly choose',

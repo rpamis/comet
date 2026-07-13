@@ -188,11 +188,13 @@ In `branch/worktree` mode, after the skill loads, follow its guidance to finish.
 3. Keep branch (handle later)
 4. Discard work
 
+This is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to choose branch handling method**. Must not select based on recommendations, defaults, or current branch status. Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written.
+
 In `current` mode, this is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to choose current-branch handling**:
 1. Push the current branch now
 2. Leave the current branch local for now
 
-Under either isolation path, `branch_status: handled` may be written only after the user completes the choice and the corresponding action finishes.
+The same requirement applies here: only after the user completes the choice and the corresponding action finishes may `branch_status: handled` be written.
 
 **Confirmation items**:
 - All tests pass

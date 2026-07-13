@@ -202,6 +202,10 @@ function legacyProjection(document: Record<string, unknown>): Record<string, unk
     // The active runtime writes these with null defaults during init; the
     // frozen 0.3.9 bash scripts only write them when explicitly set.
     'direct_override',
+    // 0.3.9 defaults hotfix/tweak isolation to 'branch' at init. The active
+    // runtime intentionally stopped doing that (isolation: current support)
+    // so preset workflows must explicitly choose isolation before build.
+    'isolation',
   ]);
   return Object.fromEntries(Object.entries(document).filter(([key]) => !runKeys.has(key)));
 }

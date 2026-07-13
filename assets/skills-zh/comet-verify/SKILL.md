@@ -188,11 +188,13 @@ comet state transition <change-name> verify-fail
 3. 保持分支（稍后处理）
 4. 丢弃工作
 
+这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户选择分支处理方式**，不得根据推荐、默认值或当前分支状态自行选择。只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`。
+
 `current` 模式下，这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择当前分支处理方式**：
 1. 立即 push 当前分支
 2. 暂不 push，保留本地分支状态
 
-无论哪种隔离模式，只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`。
+同样地，只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`。
 
 **确认项**：
 - 全部测试通过

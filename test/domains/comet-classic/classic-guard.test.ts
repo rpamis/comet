@@ -81,7 +81,9 @@ describe('Classic guard command', () => {
     const runState = await readRunState(changeDir);
     expect(runState).not.toBeNull();
     expect(runState!.skill).toBe('comet-classic');
-    expect(runState!.currentStep).toBe('hotfix.build.complete');
+    // isolation is no longer defaulted for hotfix/tweak at init, so build
+    // configuration is still incomplete here even though tasks.md is checked off.
+    expect(runState!.currentStep).toBe('hotfix.build.execute');
     expect(runState!.iteration).toBe(1);
     const eventLog = await fs.readFile(
       path.join(changeDir, '.comet', 'state-events.jsonl'),

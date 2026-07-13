@@ -51,7 +51,12 @@ function resolveBuild(
     if (classic.buildPause === 'plan-ready') return 'full.build.plan-ready';
     if (!fullBuildConfigured(classic)) return 'full.build.configure';
   } else if (!presetBuildConfigured(classic)) {
-    throw new Error(`${profile} build configuration is incomplete`);
+    // Presets no longer default isolation at init (the user must choose branch/current
+    // explicitly), so build configuration can be incomplete the instant phase becomes
+    // 'build' — same situation `full` handles via `full.build.configure`. Presets have
+    // no dedicated configure step, so route to `.build.execute` (guard's build-phase
+    // checks already block leaving build until configuration is complete).
+    return `${profile}.build.execute`;
   }
 
   return evidenceSatisfied(evidence, 'build.tasks-complete')

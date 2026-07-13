@@ -17,6 +17,7 @@ import { appendClassicStateEvent } from './classic-state-events.js';
 import {
   CLASSIC_WIRE_KEYS,
   ISOLATIONS,
+  PRESET_ALLOWED_ISOLATIONS,
   RUN_WIRE_KEYS,
   parseClassicStateDocument,
   type ClassicState,
@@ -530,6 +531,14 @@ async function requireBuildDecisions(name: string): Promise<void> {
       `ERROR: Cannot transition '${name}': isolation must be one of ${ISOLATIONS.join(', ')}, got '${isolation || 'null'}'`,
     );
   }
+  if (
+    ['hotfix', 'tweak'].includes(workflow) &&
+    !(PRESET_ALLOWED_ISOLATIONS as readonly string[]).includes(isolation)
+  ) {
+    fail(
+      `ERROR: Cannot transition '${name}': isolation=${isolation} is not allowed for ${workflow} (preset workflows only allow ${PRESET_ALLOWED_ISOLATIONS.join(' or ')})`,
+    );
+  }
   if (!['subagent-driven-development', 'executing-plans', 'direct'].includes(buildMode)) {
     fail(
       `ERROR: Cannot transition '${name}': build_mode must be selected before leaving build, got '${buildMode || 'null'}'`,
@@ -1009,7 +1018,7 @@ function resolveBuildRecoveryAction(
     return 'Recovery action: Plan-ready pause is stale and all tasks are done. Clear build_pause to null, then run guard to transition to verify.';
   }
   if (isMissingStateValue(isolation)) {
-    return "Recovery action: Isolation not selected. Use the current platform's user confirmation mechanism to ask user for branch/worktree choice.";
+    return "Recovery action: Isolation not selected. Use the current platform's user confirmation mechanism to ask user for branch/worktree/current choice.";
   }
   if (isMissingStateValue(buildMode)) {
     return "Recovery action: Build mode not selected. Use the current platform's user confirmation mechanism to ask user for execution method.";
@@ -1229,10 +1238,8 @@ async function currentChange(output: CommandOutput): Promise<void> {
   const resolution = await resolveCurrentChange(process.cwd());
   if (resolution.status === 'selected') {
     output.stdout.push(resolution.selection.change);
-    const { directory } = await resolveClassicChangeDirectory(resolution.selection.change);
-    const projection = await readClassicState(directory, { migrate: false });
-    const isolation = projection.classic?.isolation ?? null;
-    const branch = resolution.selection.branch ?? gitOutput(['rev-parse', '--abbrev-ref', 'HEAD']);
+    const isolation = resolution.classic.isolation ?? null;
+    const branch = resolution.selection.branch ?? resolution.branch;
     output.stderr.push(
       `[CURRENT] isolation: ${isolation ?? 'null'}${branch ? `, branch: ${branch}` : ''}`,
     );

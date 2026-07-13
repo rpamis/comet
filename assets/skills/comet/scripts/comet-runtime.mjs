@@ -7980,7 +7980,7 @@ function resolveBuild(profile, classic, evidence) {
     if (classic.buildPause === "plan-ready") return "full.build.plan-ready";
     if (!fullBuildConfigured(classic)) return "full.build.configure";
   } else if (!presetBuildConfigured(classic)) {
-    throw new Error(`${profile} build configuration is incomplete`);
+    return `${profile}.build.execute`;
   }
   return evidenceSatisfied(evidence, "build.tasks-complete") ? `${profile}.build.complete` : `${profile}.build.execute`;
 }
@@ -10657,6 +10657,17 @@ Next: ask the user to choose branch, worktree, or current, create the chosen iso
   node "$COMET_STATE" set ${change} isolation <${ISOLATIONS.join("|")}>`
   );
 }
+async function isolationAllowedForWorkflow(changeDir, change) {
+  const workflow = await readField(changeDir, "workflow");
+  const isolation = await readField(changeDir, "isolation");
+  if (workflow !== "hotfix" && workflow !== "tweak") return pass();
+  if (PRESET_ALLOWED_ISOLATIONS.includes(isolation)) return pass();
+  return fail(
+    `isolation=${isolation || "null"} is not allowed for ${workflow} (preset workflows only allow ${PRESET_ALLOWED_ISOLATIONS.join(" or ")})
+Next: ask the user to choose ${PRESET_ALLOWED_ISOLATIONS.join(" or ")}, then run:
+  node "$COMET_STATE" set ${change} isolation <${PRESET_ALLOWED_ISOLATIONS.join("|")}>`
+  );
+}
 async function buildModeSelected(changeDir, change) {
   const buildMode = await readField(changeDir, "build_mode");
   if (["subagent-driven-development", "executing-plans", "direct"].includes(buildMode))
@@ -10968,6 +10979,7 @@ async function guardDesignChecks(output, changeDir, change) {
 async function guardBuildChecks(output, changeDir, change, run) {
   return runChecks(output, [
     check("isolation selected", () => isolationSelected(changeDir, change)),
+    check("isolation allowed for workflow", () => isolationAllowedForWorkflow(changeDir, change)),
     check("build_mode selected", () => buildModeSelected(changeDir, change)),
     check("build_mode allowed for workflow", () => buildModeAllowedForWorkflow(changeDir)),
     check("subagent dispatch confirmed", () => subagentDispatchConfirmed(changeDir, change)),
@@ -11636,6 +11648,7 @@ async function validateActiveChange(projectRoot2, changeName) {
   if (projection.classic.archived) {
     throw new Error(`Cannot select current change '${changeName}': change is archived`);
   }
+  return projection.classic;
 }
 function parseSelection(source) {
   let value;
@@ -11698,9 +11711,10 @@ async function resolveCurrentChange(projectRoot2) {
     };
   }
   let selection;
+  let classic;
   try {
     selection = parseSelection(source);
-    await validateActiveChange(projectRoot2, selection.change);
+    classic = await validateActiveChange(projectRoot2, selection.change);
   } catch (error) {
     return {
       status: "stale",
@@ -11714,7 +11728,7 @@ async function resolveCurrentChange(projectRoot2) {
       reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${branch ?? "detached HEAD"}'`
     };
   }
-  return { status: "selected", selection };
+  return { status: "selected", selection, classic, branch };
 }
 async function clearCurrentChange(projectRoot2) {
   await fs17.rm(currentChangeFile(projectRoot2), { force: true });
@@ -13357,6 +13371,11 @@ async function requireBuildDecisions(name) {
       `ERROR: Cannot transition '${name}': isolation must be one of ${ISOLATIONS.join(", ")}, got '${isolation || "null"}'`
     );
   }
+  if (["hotfix", "tweak"].includes(workflow) && !PRESET_ALLOWED_ISOLATIONS.includes(isolation)) {
+    fail2(
+      `ERROR: Cannot transition '${name}': isolation=${isolation} is not allowed for ${workflow} (preset workflows only allow ${PRESET_ALLOWED_ISOLATIONS.join(" or ")})`
+    );
+  }
   if (!["subagent-driven-development", "executing-plans", "direct"].includes(buildMode)) {
     fail2(
       `ERROR: Cannot transition '${name}': build_mode must be selected before leaving build, got '${buildMode || "null"}'`
@@ -13745,7 +13764,7 @@ function resolveBuildRecoveryAction(workflow, isolation, buildMode, pause, subag
     return "Recovery action: Plan-ready pause is stale and all tasks are done. Clear build_pause to null, then run guard to transition to verify.";
   }
   if (isMissingStateValue(isolation)) {
-    return "Recovery action: Isolation not selected. Use the current platform's user confirmation mechanism to ask user for branch/worktree choice.";
+    return "Recovery action: Isolation not selected. Use the current platform's user confirmation mechanism to ask user for branch/worktree/current choice.";
   }
   if (isMissingStateValue(buildMode)) {
     return "Recovery action: Build mode not selected. Use the current platform's user confirmation mechanism to ask user for execution method.";
@@ -13933,10 +13952,8 @@ async function currentChange(output) {
   const resolution = await resolveCurrentChange(process.cwd());
   if (resolution.status === "selected") {
     output.stdout.push(resolution.selection.change);
-    const { directory } = await resolveClassicChangeDirectory(resolution.selection.change);
-    const projection = await readClassicState(directory, { migrate: false });
-    const isolation = projection.classic?.isolation ?? null;
-    const branch = resolution.selection.branch ?? gitOutput(["rev-parse", "--abbrev-ref", "HEAD"]);
+    const isolation = resolution.classic.isolation ?? null;
+    const branch = resolution.selection.branch ?? resolution.branch;
     output.stderr.push(
       `[CURRENT] isolation: ${isolation ?? "null"}${branch ? `, branch: ${branch}` : ""}`
     );

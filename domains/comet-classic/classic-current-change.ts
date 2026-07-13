@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { assertOpenSpecChangeName } from './classic-paths.js';
 import { readClassicState } from './classic-store.js';
+import type { ClassicState } from './classic-state.js';
 
 export interface CurrentChangeSelection {
   version: 1;
@@ -12,7 +13,12 @@ export interface CurrentChangeSelection {
 }
 
 export type CurrentChangeResolution =
-  | { status: 'selected'; selection: CurrentChangeSelection }
+  | {
+      status: 'selected';
+      selection: CurrentChangeSelection;
+      classic: ClassicState;
+      branch: string | null;
+    }
   | { status: 'missing' }
   | { status: 'stale'; reason: string };
 
@@ -37,7 +43,10 @@ function changeDirectory(projectRoot: string, changeName: string): string {
   return path.join(projectRoot, 'openspec', 'changes', changeName);
 }
 
-async function validateActiveChange(projectRoot: string, changeName: string): Promise<void> {
+async function validateActiveChange(
+  projectRoot: string,
+  changeName: string,
+): Promise<ClassicState> {
   assertOpenSpecChangeName(changeName);
   const changeDir = changeDirectory(projectRoot, changeName);
   try {
@@ -61,6 +70,7 @@ async function validateActiveChange(projectRoot: string, changeName: string): Pr
   if (projection.classic.archived) {
     throw new Error(`Cannot select current change '${changeName}': change is archived`);
   }
+  return projection.classic;
 }
 
 function parseSelection(source: string): CurrentChangeSelection {
@@ -130,9 +140,10 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
   }
 
   let selection: CurrentChangeSelection;
+  let classic: ClassicState;
   try {
     selection = parseSelection(source);
-    await validateActiveChange(projectRoot, selection.change);
+    classic = await validateActiveChange(projectRoot, selection.change);
   } catch (error) {
     return {
       status: 'stale',
@@ -147,7 +158,7 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
       reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${branch ?? 'detached HEAD'}'`,
     };
   }
-  return { status: 'selected', selection };
+  return { status: 'selected', selection, classic, branch };
 }
 
 export async function clearCurrentChange(projectRoot: string): Promise<void> {

@@ -13,7 +13,12 @@ import { inspectClassicChange } from './classic-diagnostics.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import type { ClassicRunContext } from './classic-migrate.js';
-import { ISOLATIONS, type ClassicPhase, type ClassicState } from './classic-state.js';
+import {
+  ISOLATIONS,
+  PRESET_ALLOWED_ISOLATIONS,
+  type ClassicPhase,
+  type ClassicState,
+} from './classic-state.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
 import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classic-transitions.js';
 import { classicValidateCommand } from './classic-validate-command.js';
@@ -493,6 +498,19 @@ async function isolationSelected(changeDir: string, change: string): Promise<Che
   );
 }
 
+async function isolationAllowedForWorkflow(
+  changeDir: string,
+  change: string,
+): Promise<CheckResult> {
+  const workflow = await readField(changeDir, 'workflow');
+  const isolation = await readField(changeDir, 'isolation');
+  if (workflow !== 'hotfix' && workflow !== 'tweak') return pass();
+  if ((PRESET_ALLOWED_ISOLATIONS as readonly string[]).includes(isolation)) return pass();
+  return fail(
+    `isolation=${isolation || 'null'} is not allowed for ${workflow} (preset workflows only allow ${PRESET_ALLOWED_ISOLATIONS.join(' or ')})\nNext: ask the user to choose ${PRESET_ALLOWED_ISOLATIONS.join(' or ')}, then run:\n  node "$COMET_STATE" set ${change} isolation <${PRESET_ALLOWED_ISOLATIONS.join('|')}>`,
+  );
+}
+
 async function buildModeSelected(changeDir: string, change: string): Promise<CheckResult> {
   const buildMode = await readField(changeDir, 'build_mode');
   if (['subagent-driven-development', 'executing-plans', 'direct'].includes(buildMode))
@@ -809,6 +827,7 @@ async function guardBuildChecks(
 ): Promise<boolean> {
   return runChecks(output, [
     check('isolation selected', () => isolationSelected(changeDir, change)),
+    check('isolation allowed for workflow', () => isolationAllowedForWorkflow(changeDir, change)),
     check('build_mode selected', () => buildModeSelected(changeDir, change)),
     check('build_mode allowed for workflow', () => buildModeAllowedForWorkflow(changeDir)),
     check('subagent dispatch confirmed', () => subagentDispatchConfirmed(changeDir, change)),
