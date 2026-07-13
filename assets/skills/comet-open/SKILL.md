@@ -69,9 +69,25 @@ Must not create proposal.md, design.md, or tasks.md before the user completes th
 
 In batch split mode, entering `/comet-open` for each split item must explicitly mark it as a "confirmed split item" and carry that split item's goals, scope, non-goals, and acceptance scenarios. Confirmed split items skip the PRD split preflight by default, unless the split item itself still clearly contains multiple independent capabilities.
 
-In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase. After splitting is complete, must pause and ask the user which change to start; after the user chooses, advance only that change into `/comet-design`, while other changes remain active and can be resumed later through `/comet`.
+In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase.
 
-Minimal resume rule: do not add a dedicated batch state file. On resume, first check already-created active changes; split items that already exist and contain `.comet.yaml` must not be created again, while uncreated split items continue through `/comet-open` according to the user-confirmed split list. If the confirmed split list cannot be recovered from the conversation, must ask the user to confirm the split list again before continuing.
+**Batch completion hard check (must not be skipped)**: after every split item completes its own open phase, run the following for each `<name>` in the user-confirmed list:
+
+```bash
+openspec status --change "<name>" --json
+comet state check <name> design
+```
+
+The OpenSpec JSON must satisfy all of these conditions:
+- `isComplete` must be `true`
+- Every item in `artifacts` must have `status: "done"`
+- Existing output paths returned in `artifactPaths` must exist and be non-empty; a fixed filename list must not replace the CLI status
+
+If any split item fails these checks, must not report splitting complete or ask which change to start. Stop and resume `/comet-open` from that change's first `ready` or `blocked` artifact. If OpenSpec passes but Comet state fails, repair `.comet.yaml` initialization or phase, then rerun the checks for the entire batch.
+
+Only after every split item passes both CLI checks may you pause and ask which change to start. After the user chooses, advance only that change into `/comet-design`; other changes remain active and can be resumed later through `/comet`.
+
+Minimal resume rule: do not add a dedicated batch state file. On resume, run the CLI checks above for already-created active changes. Do not recreate split items that fully pass; resume incomplete items from the first unfinished artifact returned by OpenSpec. Continue creating missing split items through `/comet-open` according to the user-confirmed list. If the confirmed list cannot be recovered from the conversation, ask the user to confirm it again before continuing.
 
 ### 1b. Requirements Clarification Completion Confirmation (Blocking Point)
 
@@ -108,29 +124,29 @@ After the skill loads, follow its guidance to create the change skeleton, but ov
 
 If the user has already confirmed a clarification summary (Step 1b), use that summary directly to populate artifact content. If no clarification summary exists (edge case), fall back to the skill's default behavior of asking the user.
 
-After the change skeleton is created, generate `proposal`, `design`, and `tasks` one by one using the standard artifact loop:
+After creating the change skeleton, generate every artifact required by the schema and dependency graph returned by the OpenSpec CLI until the CLI explicitly reports completion:
 
-**Standard Artifact Loop** (for each `artifact-id`: `proposal` → `design` → `tasks`):
+**OpenSpec status-driven artifact loop**:
 
-1. Refresh status: `openspec status --change "<name>" --json`
-2. Fetch artifact instructions:
+1. Run `openspec status --change "<name>" --json` and parse the complete JSON.
+2. If `isComplete: true`, exit the loop and initialize `.comet.yaml`; otherwise continue.
+3. From the status payload, select every item in `artifacts` with `status: "ready"` and process them one by one in CLI-returned order. Must not hard-code the artifact order or assume the schema contains only proposal/design/tasks.
+4. Fetch current instructions for each ready `<artifact-id>`:
 
    ```bash
-   openspec instructions proposal --change "<name>" --json
-   openspec instructions design --change "<name>" --json
-   openspec instructions tasks --change "<name>" --json
+   openspec instructions <artifact-id> --change "<name>" --json
    ```
 
-3. For the returned JSON instruction payload, you must:
+5. For the returned JSON instruction payload, you must:
    - Read every completed dependency artifact listed in `dependencies`
    - Use `template` as the artifact structure
    - Follow `instruction` guidance
-   - Apply `context` and `rules` as constraints — **must not copy them into the artifact content**
-   - Write to `resolvedOutputPath`
-   - Verify the output file exists and is non-empty
-4. After creating each artifact, re-run `openspec status --change "<name>" --json` to confirm status before continuing to the next artifact
+   - Apply `context` and `rules` as constraints — **must not copy them into artifact content**
+   - Write to `resolvedOutputPath`; for wildcard outputs, create each concrete file required by the instruction
+   - Verify the concrete output files returned by the CLI exist and are non-empty
+6. Re-run status after creating each artifact. Do not regenerate items that become `done`; process newly `ready` items in the next loop.
 
-**Failure handling**: If `openspec instructions` fails, returns invalid JSON, reports unmet `dependencies`, or does not provide a usable `resolvedOutputPath`, must immediately stop artifact creation and report the OpenSpec error. Must not fall back to hard-coded artifact prose because that would silently bypass project rules.
+**Blocking and failure handling**: if `isComplete: false` and there is no ready artifact, report `missingDeps` for every `blocked` artifact and stop. Do not guess the order or skip dependencies. Also stop and report the OpenSpec error if `openspec status` or `openspec instructions` fails, returns invalid JSON, or provides no usable `resolvedOutputPath`. Must not fall back to hard-coded artifact prose.
 
 **Naming and scope guard**: Change name must be the kebab-case English name confirmed by the user in Step 1c — must not auto-generate, infer, or use a non-kebab-case (e.g. Chinese) name. Change scope must match the user's description — must not expand or narrow it independently.
 
@@ -163,25 +179,31 @@ node "$COMET_STATE" check <name> open
 
 Proceed to Step 4 after verification passes. The script outputs specific failure reasons when verification fails.
 
-**Idempotency**: All open phase operations can be safely re-executed. If `.comet.yaml` is already at `phase: open` and all three artifact files exist, skip completed steps and continue from the first missing step.
+**Idempotent recovery algorithm**: all open phase operations can be safely re-executed. On recovery, process the status in this order:
+
+1. Run `openspec status --change "<name>" --json` and read the latest `isComplete`, `artifacts`, and `missingDeps`.
+2. `done`: the artifact is complete; keep its files unchanged and do not regenerate it.
+3. `ready`: its dependencies are satisfied and it can be generated now. Run `openspec instructions` for that artifact, write the returned output, then immediately rerun status before choosing the next action.
+4. `blocked`: it cannot be generated yet; this does not mean waiting for the user or for time to pass. Read its `missingDeps`, find those dependencies in `artifacts`, and complete the artifacts listed in `missingDeps` first. Rerun status after each dependency completes; never generate the blocked artifact directly.
+5. Repeat until status returns `isComplete: true`.
+
+If `isComplete: false` and there is no ready artifact, the dependency graph cannot currently advance. List every blocked artifact and its `missingDeps`, then stop and report the issue; do not guess an order or skip dependencies. Only `isComplete: true` means all OpenSpec open artifacts are complete. Directories, `.comet.yaml`, or the presence of three fixed files cannot replace this decision.
 
 ### 4. Content Completeness Check
 
-Confirm the three documents have complete content:
-- **proposal.md**: problem background, goals, scope, non-goals
-- **design.md**: high-level architecture decisions, approach selection, data flow
-- **tasks.md**: task list, each task has a clear description
+Run `openspec status --change "<name>" --json` again. Confirm `isComplete: true`, every item in `artifacts` is `done`, and all concrete output files returned by `artifactPaths` exist and are non-empty. If any condition fails, must not enter Step 5 or execute the phase guard.
 
-**File existence verification**: Confirm all three file paths exist and are non-empty. If any file is missing or empty, must not enter Step 5 or execute phase guard — return to creation step to fill the gap.
+Then check key artifact content: proposal covers problem, goals, scope, and non-goals; design covers high-level decisions and data flow; tasks contains clear work items. If the schema returns specs or other artifacts, check their content against their instructions as well; the fixed three documents must not hide an incomplete schema artifact.
 
 ### 5. User Review and Confirmation (Blocking Point)
 
-After the three documents are created and content completeness check passes, **must follow the `comet/reference/decision-point.md` protocol to pause and wait for user confirmation**. Must not execute phase guard or auto-transition before user confirmation.
+After all OpenSpec artifacts are complete and the content check passes, **must follow the `comet/reference/decision-point.md` protocol to pause and wait for user confirmation**. Must not execute the phase guard or auto-transition before user confirmation.
 
 The user confirmation question must be presented as a single-select question with the following summary and options:
 
 **Summary content**:
 - **proposal.md**: problem background, goals, scope
+- **specs and other schema artifacts**: capabilities, requirements, and key acceptance scenarios
 - **design.md**: high-level architecture decisions, approach selection
 - **tasks.md**: task count and key task descriptions
 
@@ -193,8 +215,8 @@ After user selects "Confirm", proceed to exit conditions. When user selects "Nee
 
 ## Exit Conditions
 
-- proposal.md, design.md, tasks.md all created with complete content
-- **User has confirmed** proposal, design, tasks content meets expectations
+- `openspec status --change "<name>" --json` returns `isComplete: true`, every artifact is `done`, and all concrete outputs are non-empty
+- **User has confirmed** all OpenSpec artifact content meets expectations
 - **Phase guard**: Run `node "$COMET_GUARD" <change-name> open --apply`; after all PASS, auto-transitions to next phase
 
 Must use `--apply` before exit, otherwise `.comet.yaml` remains at `phase: open` and the next phase entry check will fail.

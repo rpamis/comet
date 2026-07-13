@@ -69,9 +69,25 @@ comet state select <change-name>
 
 批量拆分模式下，进入每个拆分项的 `/comet-open` 时必须明确标注「已确认拆分项」并携带该拆分项的目标、范围、非目标和验收场景。已确认拆分项默认跳过 PRD 拆分预检，除非该拆分项本身仍明显包含多个独立 capability。
 
-批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`。拆分完毕后必须暂停询问用户开始哪一个 change；用户选择后，只推进该 change 进入 `/comet-design`，其他 change 保持 active，稍后通过 `/comet` 恢复。
+批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`。
 
-最小断点恢复规则：不新增专用批量状态文件。若批量拆分过程中断，恢复时先检查已创建的 active changes；已存在且包含 `.comet.yaml` 的拆分项不得重复创建，未创建的拆分项按用户已确认的拆分清单继续通过 `/comet-open` 创建。若对话中已确认的拆分清单不可恢复，必须重新向用户确认拆分清单后再继续。
+**批量完成硬性检查（不得跳过）**：全部拆分项完成各自的 open 阶段后，对用户确认清单中的每个 `<name>` 逐个运行：
+
+```bash
+openspec status --change "<name>" --json
+comet state check <name> design
+```
+
+解析 OpenSpec JSON 时必须同时确认：
+- `isComplete` 必须为 `true`
+- `artifacts` 中每一项的 `status` 必须为 `done`
+- `artifactPaths` 中 CLI 返回的已有输出路径必须存在且非空；不得用固定文件名清单代替 CLI 状态
+
+任一拆分项未通过检查时，不得宣告拆分完成，也不得询问用户开始哪个 change；必须停止并从该 change 的第一个 `ready` 或 `blocked` artifact 恢复 `/comet-open`。OpenSpec 检查通过但 Comet state 检查失败时，必须先修复 `.comet.yaml` 初始化或 phase，再重新执行整批检查。
+
+只有所有拆分项都通过两项 CLI 检查后，才暂停询问用户开始哪一个 change；用户选择后，只推进该 change 进入 `/comet-design`，其他 change 保持 active，稍后通过 `/comet` 恢复。
+
+最小断点恢复规则：不新增专用批量状态文件。若批量拆分过程中断，恢复时先对已创建的 active changes 运行上述 CLI 检查；已完整通过的拆分项不得重复创建，未通过的拆分项从 OpenSpec 返回的第一个未完成 artifact 继续。未创建的拆分项按用户已确认的拆分清单继续通过 `/comet-open` 创建。若对话中已确认的拆分清单不可恢复，必须重新向用户确认拆分清单后再继续。
 
 ### 1b. 需求澄清完成确认（阻塞点）
 
@@ -108,29 +124,29 @@ OpenSpec change 名称必须是 **kebab-case 英文**（小写字母、数字、
 
 如果用户已确认澄清摘要（Step 1b），直接使用该摘要填充产物内容。如果不存在澄清摘要（边缘情况），回退到技能的默认行为，询问用户。
 
-change 骨架创建后，按以下标准产物循环逐个生成 `proposal`、`design`、`tasks`：
+change 骨架创建后，必须按 OpenSpec CLI 返回的 schema 和依赖图生成全部 artifacts，直到 CLI 明确报告完成：
 
-**标准产物循环**（对每个 `artifact-id`：`proposal` → `design` → `tasks`）：
+**OpenSpec 状态驱动产物循环**：
 
-1. 刷新状态：`openspec status --change "<name>" --json`
-2. 获取产物指令：
+1. 运行 `openspec status --change "<name>" --json` 并解析完整 JSON。
+2. 若 `isComplete: true`，退出循环并进入 `.comet.yaml` 初始化；否则继续。
+3. 从 `artifacts` 中选择所有 `status: "ready"` 的项，按 CLI 返回顺序逐个处理。不得硬编码 artifact 顺序，也不得假设 schema 只有 proposal/design/tasks。
+4. 对每个 ready 的 `<artifact-id>` 获取实时指令：
 
    ```bash
-   openspec instructions proposal --change "<name>" --json
-   openspec instructions design --change "<name>" --json
-   openspec instructions tasks --change "<name>" --json
+   openspec instructions <artifact-id> --change "<name>" --json
    ```
 
-3. 对返回的 JSON 指令载荷，必须：
+5. 对返回的 JSON 指令载荷，必须：
    - 读取 `dependencies` 中列出的每个已完成依赖产物
    - 以 `template` 作为产物结构
    - 遵循 `instruction` 的指引
    - 将 `context` 和 `rules` 作为约束条件应用，**不得复制到 artifact 内容中**
-   - 写入 `resolvedOutputPath`
-   - 验证输出文件存在且非空
-4. 每创建一个 artifact 后，重新运行 `openspec status --change "<name>" --json` 确认状态，然后继续下一个 artifact
+   - 写入 `resolvedOutputPath`；通配输出必须按 instruction 创建每个实际文件
+   - 验证 CLI 返回的实际输出文件存在且非空
+6. 每创建一个 artifact 后，重新运行 status。已经变为 `done` 的项不得重复生成；新变为 `ready` 的项进入下一轮。
 
-**失败处理**：如果 `openspec instructions` 失败、返回无效 JSON、报告未满足的 `dependencies`、或未提供可用的 `resolvedOutputPath`，必须立即停止 artifact 创建并报告 OpenSpec 错误。不得回退为硬编码文档结构，因为那样会绕过项目规则。
+**阻塞与失败处理**：`isComplete: false` 时若没有任何 ready artifact，必须报告每个 `blocked` artifact 的 `missingDeps` 并停止，不得猜测顺序或跳过依赖。如果 `openspec status` / `openspec instructions` 失败、返回无效 JSON、或未提供可用的 `resolvedOutputPath`，也必须立即停止并报告 OpenSpec 错误。不得回退为硬编码文档结构。
 
 **命名与范围守卫**：change name 必须使用 Step 1c 中用户确认的 kebab-case 英文名，不得自动生成、推断或使用非 kebab-case（如中文）名称。变更范围必须与用户描述一致，不得自行扩大或缩小。
 
@@ -163,25 +179,31 @@ node "$COMET_STATE" check <name> open
 
 验证通过后继续 Step 4。验证失败时脚本会输出具体失败原因。
 
-**幂等性**：open 阶段所有操作可安全重复执行。如 `.comet.yaml` 已处于 `phase: open` 且三个产物文件均已存在，跳过已完成步骤，从第一个缺失步骤继续。
+**幂等恢复算法**：open 阶段所有操作可安全重复执行。恢复时按以下顺序处理：
+
+1. 运行 `openspec status --change "<name>" --json`，读取最新的 `isComplete`、`artifacts` 和 `missingDeps`。
+2. `done`：该 artifact 已完成，保持原文件不变，不重复生成。
+3. `ready`：依赖已经满足，可以立即生成。先运行该 artifact 的 `openspec instructions`，按返回内容写入；写完后立刻重新运行 status，再决定下一步。
+4. `blocked`：当前不可生成，不是等待用户或等待时间。读取它的 `missingDeps`，在 `artifacts` 中找到对应依赖，先完成 `missingDeps` 列出的依赖 artifact；每完成一个依赖都重新运行 status，不能直接生成 blocked artifact。
+5. 重复上述处理，直到 status 返回 `isComplete: true`。
+
+如果 `isComplete: false` 且没有任何 ready artifact，说明依赖图当前无法推进；必须列出每个 blocked artifact 及其 `missingDeps` 后停止并报告，不得猜测顺序或跳过依赖。只有 `isComplete: true` 才表示 OpenSpec open 产物全部完成；目录、`.comet.yaml` 或固定三个文件存在都不能替代这一判定。
 
 ### 4. 内容完整性检查
 
-确认三个文档内容完整：
-- **proposal.md**：问题背景、目标、范围、非目标
-- **design.md**：高层架构决策、方案选型、数据流
-- **tasks.md**：任务列表，每个任务有明确描述
+再次运行 `openspec status --change "<name>" --json`，确认 `isComplete: true`，`artifacts` 每项均为 `done`，且 `artifactPaths` 返回的实际输出文件存在且非空。任一条件不满足时，不得进入 Step 5 或执行阶段守卫。
 
-**文件存在性验证**：逐个确认三个文件路径存在且非空。任一文件缺失或为空时，不得进入 Step 5 或执行阶段守卫，必须回到创建步骤补充。
+随后检查关键 artifact 内容：proposal 覆盖问题、目标、范围和非目标；design 覆盖高层决策与数据流；tasks 包含明确任务；schema 返回 specs 等其他 artifact 时，也必须按其 instructions 检查内容，不能因固定三件套存在而跳过。
 
 ### 5. 用户审视确认（阻塞点）
 
-三个文档创建完成且内容完整性检查通过后，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认**。不得在用户确认前执行阶段守卫或自动流转。
+全部 OpenSpec artifacts 完成且内容完整性检查通过后，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认**。不得在用户确认前执行阶段守卫或自动流转。
 
 用户确认问题必须以单选题形式呈现，包含以下摘要和选项：
 
 **摘要内容**：
 - **proposal.md**：问题背景、目标、范围
+- **specs 等 schema artifacts**：能力、需求和关键验收场景
 - **design.md**：高层架构决策、方案选型
 - **tasks.md**：任务数量和关键任务描述
 
@@ -193,8 +215,8 @@ node "$COMET_STATE" check <name> open
 
 ## 退出条件
 
-- proposal.md、design.md、tasks.md 均已创建且内容完整
-- **用户已确认** proposal、design、tasks 内容符合预期
+- `openspec status --change "<name>" --json` 返回 `isComplete: true`，全部 artifacts 均为 `done` 且实际输出非空
+- **用户已确认** 全部 OpenSpec artifacts 内容符合预期
 - **阶段守卫**：运行 `node "$COMET_GUARD" <change-name> open --apply`，全部 PASS 后由守卫推进到下一阶段（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
 退出前必须使用 `--apply`，否则 `.comet.yaml` 仍停留在 `phase: open`，下一阶段入口检查会失败。

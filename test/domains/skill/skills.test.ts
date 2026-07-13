@@ -877,15 +877,15 @@ describe('skills', () => {
   });
 
   describe('Chinese Comet workflow safeguards', () => {
-    it('requires OpenSpec instructions for each standard open artifact', async () => {
+    it('uses the OpenSpec status graph to drive Chinese open artifacts', async () => {
       const zhOpen = await fs.readFile(
         path.resolve('assets', 'skills-zh', 'comet-open', 'SKILL.md'),
         'utf-8',
       );
 
-      expect(zhOpen).toContain('openspec instructions proposal --change "<name>" --json');
-      expect(zhOpen).toContain('openspec instructions design --change "<name>" --json');
-      expect(zhOpen).toContain('openspec instructions tasks --change "<name>" --json');
+      expect(zhOpen).toContain('openspec instructions <artifact-id> --change "<name>" --json');
+      expect(zhOpen).toContain('不得硬编码 artifact 顺序');
+      expect(zhOpen).not.toContain('openspec instructions proposal --change "<name>" --json');
       for (const field of [
         '`context`',
         '`rules`',
@@ -899,19 +899,19 @@ describe('skills', () => {
       expect(zhOpen).toContain('不得复制到 artifact 内容中');
       expect(zhOpen).toContain('每创建一个 artifact 后');
       expect(zhOpen).toContain('openspec status --change "<name>" --json');
-      expect(zhOpen).toContain('必须立即停止 artifact 创建');
+      expect(zhOpen).toContain('必须立即停止并报告 OpenSpec 错误');
       expect(zhOpen).toContain('不得回退为硬编码文档结构');
     });
 
-    it('requires OpenSpec instructions for each standard open artifact (English)', async () => {
+    it('uses the OpenSpec status graph to drive English open artifacts', async () => {
       const enOpen = await fs.readFile(
         path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'),
         'utf-8',
       );
 
-      expect(enOpen).toContain('openspec instructions proposal --change "<name>" --json');
-      expect(enOpen).toContain('openspec instructions design --change "<name>" --json');
-      expect(enOpen).toContain('openspec instructions tasks --change "<name>" --json');
+      expect(enOpen).toContain('openspec instructions <artifact-id> --change "<name>" --json');
+      expect(enOpen).toContain('Must not hard-code the artifact order');
+      expect(enOpen).not.toContain('openspec instructions proposal --change "<name>" --json');
       for (const field of [
         '`context`',
         '`rules`',
@@ -922,10 +922,10 @@ describe('skills', () => {
       ]) {
         expect(enOpen).toContain(field);
       }
-      expect(enOpen).toContain('must not copy them into the artifact content');
-      expect(enOpen).toContain('After creating each artifact');
+      expect(enOpen).toContain('must not copy them into artifact content');
+      expect(enOpen).toContain('Re-run status after creating each artifact');
       expect(enOpen).toContain('openspec status --change "<name>" --json');
-      expect(enOpen).toContain('must immediately stop artifact creation');
+      expect(enOpen).toContain('stop and report the OpenSpec error');
       expect(enOpen).toContain('Must not fall back to hard-coded artifact prose');
     });
 
@@ -1218,8 +1218,8 @@ describe('skills', () => {
       expect(zhOpen).toContain(
         '批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`',
       );
-      expect(zhOpen).toContain('拆分完毕后必须暂停询问用户开始哪一个 change');
-      expect(zhOpen).toContain('恢复时先检查已创建的 active changes');
+      expect(zhOpen).toContain('只有所有拆分项都通过两项 CLI 检查后');
+      expect(zhOpen).toContain('恢复时先对已创建的 active changes 运行上述 CLI 检查');
 
       // IMPORTANT: main entry and build subskill agree scope expansion is blocking
       expect(zhComet).toContain('build 阶段范围扩张需重新设计或拆分新 change');
@@ -1613,10 +1613,10 @@ describe('skills', () => {
       expect(enOpen).toContain(
         'In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase',
       );
+      expect(enOpen).toContain('Only after every split item passes both CLI checks');
       expect(enOpen).toContain(
-        'After splitting is complete, must pause and ask the user which change to start',
+        'On resume, run the CLI checks above for already-created active changes',
       );
-      expect(enOpen).toContain('On resume, first check already-created active changes');
       expect(enComet).toContain(
         'Build phase scope expansion requiring redesign or new change split',
       );
