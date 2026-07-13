@@ -41,12 +41,14 @@
 ### Task 1: Model the Codex hook destination and use it in Bundle planning
 
 **Files:**
+
 - Modify: `platform/install/platforms.ts`
 - Modify: `domains/bundle/bundle-platform.ts`
 - Test: `test/platform/detect.test.ts`
 - Test: `test/domains/bundle/bundle-platform.test.ts`
 
 **Interfaces:**
+
 - Produces: `Platform.hookConfigFile?: string`, `Platform.legacyHookConfigFiles?: string[]`, and `PlatformBundleLayout.configRoot: string`.
 - Consumes: existing `Platform.hookFormat` and `BundlePlatformTarget.platform`.
 - Invariant: missing `hookConfigFile` preserves the existing destination selected from `hookFormat`.
@@ -117,7 +119,7 @@ Add these values to the Codex platform entry:
 Import `getPlatformConfigDir` beside `getPlatformSkillsDir`, add this required field to `PlatformBundleLayout`:
 
 ```ts
-  configRoot: string;
+configRoot: string;
 ```
 
 Populate it inside `listBundlePlatformTargets()`:
@@ -129,10 +131,10 @@ Populate it inside `listBundlePlatformTargets()`:
 Then replace the first line of `hookDestination()` with:
 
 ```ts
-  const platformRoot = target.layout.configRoot;
-  if (target.platform.hookConfigFile) {
-    return path.join(platformRoot, target.platform.hookConfigFile);
-  }
+const platformRoot = target.layout.configRoot;
+if (target.platform.hookConfigFile) {
+  return path.join(platformRoot, target.platform.hookConfigFile);
+}
 ```
 
 Keep the existing switch unchanged so every platform without an override retains its current filename under its config root. The explicit `configRoot` is necessary for Codex because its Skill root is `.agents` while its Hook root is `.codex`.
@@ -157,12 +159,14 @@ git commit -m "fix(codex): route hooks to hooks.json"
 ### Task 2: Install canonical Codex hooks and migrate the historical file
 
 **Files:**
+
 - Modify: `domains/skill/platform-install.ts`
 - Test: `test/domains/skill/skills.test.ts`
 - Test: `test/app/init-e2e.test.ts`
 - Test: `test/app/update.test.ts`
 
 **Interfaces:**
+
 - Consumes: `Platform.hookConfigFile` and `Platform.legacyHookConfigFiles` from Task 1.
 - Produces: exported `removeManagedHooksFromJsonFile(settingsPath: string, scriptRelPaths: string[]): Promise<{ removed: number; failed: number }>` for Task 3.
 - Preserves: `installCometHooksForPlatform(...): Promise<{ installed: boolean; reason?: string }>`.
@@ -183,15 +187,13 @@ it.each([
     installed: true,
   });
 
-  const hooks = JSON.parse(
-    await fs.readFile(path.join(root, '.codex', 'hooks.json'), 'utf-8'),
-  );
+  const hooks = JSON.parse(await fs.readFile(path.join(root, '.codex', 'hooks.json'), 'utf-8'));
   expect(hooks.hooks.PreToolUse[0].hooks[0].command.replaceAll('\\', '/')).toContain(
     '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
   );
-  await expect(
-    fs.access(path.join(root, '.codex', 'settings.local.json')),
-  ).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(fs.access(path.join(root, '.codex', 'settings.local.json'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
 });
 ```
 
@@ -406,18 +408,18 @@ Change the `claude-code` branch in `installCometHooksForPlatform()` to:
 Extend `installClaudeCodeHooks()` with `configFile: string` and `strictJson: boolean`, resolve `settingsPath` with `configFile`, and read current settings with:
 
 ```ts
-  let settings: Record<string, unknown> = {};
-  if (await fileExists(settingsPath)) {
-    if (strictJson) {
-      settings = await readSettingsJsonObject(settingsPath, 'codex');
-    } else {
-      try {
-        settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
-      } catch {
-        settings = {};
-      }
+let settings: Record<string, unknown> = {};
+if (await fileExists(settingsPath)) {
+  if (strictJson) {
+    settings = await readSettingsJsonObject(settingsPath, 'codex');
+  } else {
+    try {
+      settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
+    } catch {
+      settings = {};
     }
   }
+}
 ```
 
 This keeps legacy Claude/Amazon Q parsing behavior unchanged while ensuring an invalid canonical Codex `hooks.json` is never overwritten.
@@ -442,10 +444,12 @@ git commit -m "fix(codex): migrate hook configuration"
 ### Task 3: Remove Codex hooks from canonical and historical files
 
 **Files:**
+
 - Modify: `domains/skill/uninstall.ts`
 - Test: `test/app/uninstall.test.ts`
 
 **Interfaces:**
+
 - Consumes: `removeManagedHooksFromJsonFile()` from Task 2 and `Platform.hookConfigFile` / `legacyHookConfigFiles` from Task 1.
 - Produces: the existing `RemovalResult` with totals combined across all configured files.
 
@@ -554,6 +558,7 @@ git commit -m "fix(codex): clean legacy hook files"
 ### Task 4: Record the released behavior and run final verification
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: `package-lock.json`
 - Modify: `assets/manifest.json`
@@ -562,6 +567,7 @@ git commit -m "fix(codex): clean legacy hook files"
 - Verify: all files changed by Tasks 1-3
 
 **Interfaces:**
+
 - Consumes: completed project/global installation, update migration, uninstall cleanup, and Bundle path behavior.
 - Produces: synchronized `0.4.0-beta.5` release metadata, one final user-facing release note, and fresh verification evidence.
 
