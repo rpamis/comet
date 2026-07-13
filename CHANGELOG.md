@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.5] - 2026-07-13
+
+### Fixed
+
+- **Codex hook configuration**: Project and global Codex installs now write phase guard hooks to the supported `.codex/hooks.json` location and safely migrate Comet-managed entries from the previously generated `settings.local.json` without changing user-defined hooks or settings ([#199](https://github.com/rpamis/comet/issues/199)).
+
 ## What's Changed [0.4.0-beta.4] - 2026-07-11
 
 ### Added
@@ -18,7 +24,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
-- **Codex hook configuration**: Project and global Codex installs now write phase guard hooks to the supported `.codex/hooks.json` location and safely migrate Comet-managed entries from the previously generated `settings.local.json` without changing user-defined hooks or settings ([#199](https://github.com/rpamis/comet/issues/199)).
 - **npm publish preflight**: Release security scanning now prunes literal and wildcard-excluded package paths before accessing the filesystem, so ignored Eval caches and temporary pytest directories cannot block Windows publishing with local permission errors.
 - **Parallel active change guards**: Classic source-write hooks now bind branch and worktree execution to the explicitly selected change, allow legal build work despite unrelated open/design/archive changes, and fail with an actionable selection prompt when multiple active changes are ambiguous ([#196](https://github.com/rpamis/comet/issues/196)).
 - **Codex CLI Skill discovery**: Codex project and global installs now place Comet Skills in the current `.agents/skills` discovery directory while keeping Codex-specific configuration under `.codex`; update and uninstall safely migrate managed legacy `.codex/skills` installs without removing unrelated Skills.

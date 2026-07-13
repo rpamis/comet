@@ -17,7 +17,7 @@
 - Invalid historical JSON must remain byte-for-byte unchanged and must not prevent the canonical hook file from being installed.
 - Claude Code, Amazon Q, and all other platform hook destinations must remain unchanged.
 - Do not alter the hook matcher, phase-guard runtime, or hook output protocol.
-- Keep `package.json` at `0.4.0-beta.4`; append one English user-facing `Fixed` bullet to the existing `0.4.0-beta.4` Changelog section.
+- Because `0.4.0-beta.4` is already the latest release tag, bump the project release metadata to `0.4.0-beta.5` and add one English user-facing `Fixed` bullet in a new `0.4.0-beta.5` Changelog section.
 - Do not comment on GitHub, open a pull request, or push without explicit user approval.
 
 ---
@@ -34,7 +34,9 @@
 - `test/app/update.test.ts`: verifies the real update migration path.
 - `test/app/uninstall.test.ts`: verifies canonical plus legacy cleanup through the uninstall helper.
 - `test/domains/bundle/bundle-platform.test.ts`: verifies the Codex Bundle destination.
-- `CHANGELOG.md`: records the final user-visible fix under `0.4.0-beta.4`.
+- `package.json`, `package-lock.json`, and `assets/manifest.json`: keep the next prerelease version synchronized at `0.4.0-beta.5`.
+- `test/app/cli-help.test.ts`: locks package, lockfile, and shipped manifest versions to the same release.
+- `CHANGELOG.md`: records the final user-visible fix under `0.4.0-beta.5`.
 
 ### Task 1: Model the Codex hook destination and use it in Bundle planning
 
@@ -534,12 +536,16 @@ git commit -m "fix(codex): clean legacy hook files"
 ### Task 4: Record the released behavior and run final verification
 
 **Files:**
+- Modify: `package.json`
+- Modify: `package-lock.json`
+- Modify: `assets/manifest.json`
 - Modify: `CHANGELOG.md`
+- Modify: `test/app/cli-help.test.ts`
 - Verify: all files changed by Tasks 1-3
 
 **Interfaces:**
 - Consumes: completed project/global installation, update migration, uninstall cleanup, and Bundle path behavior.
-- Produces: one final user-facing release note and fresh verification evidence.
+- Produces: synchronized `0.4.0-beta.5` release metadata, one final user-facing release note, and fresh verification evidence.
 
 - [ ] **Step 1: Confirm release baseline before editing Changelog**
 
@@ -552,17 +558,48 @@ git describe --tags --abbrev=0
 git log 0.4.0-beta.4..HEAD --oneline
 ```
 
-Expected: local and `origin/master` versions are `0.4.0-beta.4`; the latest tag is `0.4.0-beta.4`; the candidate behavior is a user-visible Codex fix rather than an internal-only development correction.
+Expected: local and `origin/master` versions are `0.4.0-beta.4`, and the latest tag is `0.4.0-beta.4`. Because the candidate behavior is a user-visible fix after that published tag, the next release must be `0.4.0-beta.5` rather than modifying the beta.4 release record.
 
-- [ ] **Step 2: Add the Changelog entry**
+- [ ] **Step 2: Add a failing release-version consistency assertion**
 
-Under the existing `0.4.0-beta.4` `### Fixed` section, add:
+Update the existing metadata assertions in `test/app/cli-help.test.ts` to expect `0.4.0-beta.5` from `package.json`, the lockfile top level, the lockfile root package, and `assets/manifest.json`. Then run:
+
+```bash
+npx vitest run test/app/cli-help.test.ts
+```
+
+Expected: the test fails because the shipped metadata still reports `0.4.0-beta.4`.
+
+- [ ] **Step 3: Synchronize the next prerelease version**
+
+Set only the project release versions to `0.4.0-beta.5`:
+
+- `package.json` top-level `version`
+- `package-lock.json` top-level `version`
+- `package-lock.json` root package (`packages[""]`) `version`
+- `assets/manifest.json` top-level `version`
+
+Do not change dependency versions. Rerun:
+
+```bash
+npx vitest run test/app/cli-help.test.ts
+```
+
+Expected: the release-version consistency test passes.
+
+- [ ] **Step 4: Add the Changelog entry**
+
+Before the existing `0.4.0-beta.4` section, add a new release section:
 
 ```markdown
+## What's Changed [0.4.0-beta.5] - 2026-07-13
+
+### Fixed
+
 - **Codex hook configuration**: Project and global Codex installs now write phase guard hooks to the supported `.codex/hooks.json` location and safely migrate Comet-managed entries from the previously generated `settings.local.json` without changing user-defined hooks or settings ([#199](https://github.com/rpamis/comet/issues/199)).
 ```
 
-- [ ] **Step 3: Run focused regression tests**
+- [ ] **Step 5: Run focused regression tests**
 
 Run:
 
@@ -572,7 +609,7 @@ npx vitest run test/platform/detect.test.ts test/domains/skill/skills.test.ts te
 
 Expected: all six test files pass with zero failed tests.
 
-- [ ] **Step 4: Run repository-required checks**
+- [ ] **Step 6: Run repository-required checks**
 
 Run each command separately and retain its exit code:
 
@@ -585,34 +622,35 @@ npx vitest run
 
 Expected: formatting, architecture lint/ESLint, TypeScript build, and full Vitest suite exit with code 0. If the default-parallel suite encounters the known shared `dist` race, capture the exact failure and rerun the full suite serially using the repository-supported Vitest worker option; report parallel and serialized evidence separately.
 
-- [ ] **Step 5: Inspect the final diff and requirements**
+- [ ] **Step 7: Inspect the final diff and requirements**
 
 Run:
 
 ```bash
 git diff --check
 git status --short
-git diff --stat HEAD~3
-git diff HEAD~3 -- platform/install/platforms.ts domains/skill/platform-install.ts domains/skill/uninstall.ts domains/bundle/bundle-platform.ts CHANGELOG.md
+git diff --stat c224fbce
+git diff c224fbce -- package.json package-lock.json assets/manifest.json platform/install/platforms.ts domains/skill/platform-install.ts domains/skill/uninstall.ts domains/bundle/bundle-platform.ts test/app/cli-help.test.ts CHANGELOG.md
 ```
 
-Expected: no whitespace errors; only the approved hook path, migration, cleanup, tests, plan, and Changelog changes are present.
+Expected: no whitespace errors; only the approved hook path, migration, cleanup, synchronized beta.5 release metadata, tests, plan, and Changelog changes are present.
 
-- [ ] **Step 6: Commit the release note**
+- [ ] **Step 8: Commit the release metadata and note**
 
 ```bash
-git add CHANGELOG.md
-git commit -m "docs: record Codex hook path fix"
+git add package.json package-lock.json assets/manifest.json CHANGELOG.md test/app/cli-help.test.ts docs/superpowers/plans/2026-07-13-codex-hook-path.md
+git commit -m "chore: bump version to 0.4.0-beta.5"
 ```
 
-- [ ] **Step 7: Run post-commit verification before claiming completion**
+- [ ] **Step 9: Run post-commit verification before claiming completion**
 
 Run:
 
 ```bash
 git status --short
 git log -4 --oneline
+npx vitest run test/app/cli-help.test.ts
 npx vitest run test/platform/detect.test.ts test/domains/skill/skills.test.ts test/app/init-e2e.test.ts test/app/update.test.ts test/app/uninstall.test.ts test/domains/bundle/bundle-platform.test.ts
 ```
 
-Expected: clean worktree, the planned conventional commits at HEAD, and all focused regression tests passing.
+Expected: clean worktree, `0.4.0-beta.5` synchronized across all release metadata, the planned conventional commits at HEAD, and all focused regression tests passing.
