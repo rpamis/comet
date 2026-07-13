@@ -12,6 +12,10 @@ import {
   getAssetsDir,
   getManagedSkillPaths,
 } from '../../domains/skill/platform-install.js';
+import {
+  getPlatformRuleDestinations,
+  inspectCometHooksForPlatform,
+} from '../../domains/skill/platform-inspect.js';
 import { PLATFORMS, getPlatformSkillsDirs } from '../../platform/install/platforms.js';
 import { hasPlatformDetectionPath } from '../../platform/install/detect.js';
 import type { InstallScope } from '../../platform/install/types.js';
@@ -167,6 +171,41 @@ function getScopeBases(
   return bases;
 }
 
+async function checkPlatformComponents(
+  baseDir: string,
+  platform: (typeof PLATFORMS)[number],
+  scope: InstallScope,
+): Promise<CheckResult[]> {
+  const results: CheckResult[] = [];
+  const ruleDestinations = await getPlatformRuleDestinations(baseDir, platform, scope);
+  if (ruleDestinations.length > 0) {
+    const present = (
+      await Promise.all(ruleDestinations.map((destination) => fileExists(destination)))
+    ).filter(Boolean).length;
+    results.push({
+      check: `rules: ${platform.name} (${scope})`,
+      status: present === ruleDestinations.length ? 'pass' : 'warn',
+      message:
+        present === ruleDestinations.length
+          ? `complete (${present} files)`
+          : `partial (${present}/${ruleDestinations.length} files) — run: comet update --scope ${scope}`,
+    });
+  }
+
+  if (platform.supportsHooks && platform.hookFormat) {
+    const inspection = await inspectCometHooksForPlatform(baseDir, platform, scope);
+    results.push({
+      check: `hooks: ${platform.name} (${scope})`,
+      status: inspection.present ? 'pass' : 'warn',
+      message: inspection.present
+        ? 'managed Hook present'
+        : `${inspection.error ?? 'managed Hook missing'} — run: comet update --scope ${scope}`,
+    });
+  }
+
+  return results;
+}
+
 async function checkSkillCompleteness(
   projectPath: string,
   scope: DoctorScope,
@@ -232,6 +271,7 @@ async function checkSkillCompleteness(
                 message: `partial (${present.length}/${total} files; missing ${missing.length}) — run: comet update --scope ${base.scope}`,
               },
       );
+      results.push(...(await checkPlatformComponents(base.baseDir, platform, base.scope)));
     }
   }
 

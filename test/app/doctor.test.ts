@@ -4,6 +4,11 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { doctorCommand } from '../../app/commands/doctor.js';
+import {
+  copyCometRulesForPlatform,
+  installCometHooksForPlatform,
+} from '../../domains/skill/platform-install.js';
+import { PLATFORMS } from '../../platform/install/platforms.js';
 
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
@@ -19,6 +24,19 @@ async function installManagedCometSkills(baseDir: string, platformDir = '.claude
     const target = path.join(baseDir, platformDir, 'skills', ...relPath.split('/'));
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, `${relPath}\n`);
+  }
+}
+
+async function collectDoctorResults(
+  targetPath: string,
+): Promise<Array<{ check: string; status: string; message: string }>> {
+  const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  try {
+    await doctorCommand(targetPath, { json: true, scope: 'project' });
+    const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    return JSON.parse(output).results;
+  } finally {
+    log.mockRestore();
   }
 }
 
@@ -156,6 +174,85 @@ describe('doctor command', () => {
     expect(output).toContain('skills: Claude Code (project): partial');
     expect(output).toContain('run: comet update --scope project');
     expect(output).not.toContain('missing 31:');
+  });
+
+  it('warns when a detected complete Skill install is missing its Rule and Hook', async () => {
+    await installManagedCometSkills(tmpDir);
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.find((result) => result.check === 'rules: Claude Code (project)')).toMatchObject(
+      {
+        status: 'warn',
+        message: expect.stringContaining('comet update --scope project'),
+      },
+    );
+    expect(results.find((result) => result.check === 'hooks: Claude Code (project)')).toMatchObject(
+      {
+        status: 'warn',
+        message: expect.stringContaining('comet update --scope project'),
+      },
+    );
+  });
+
+  it('passes Rule and Hook checks when the managed components are installed', async () => {
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude');
+    expect(claude).toBeDefined();
+    await installManagedCometSkills(tmpDir);
+    await copyCometRulesForPlatform(tmpDir, claude!, true, 'zh', 'project');
+    await installCometHooksForPlatform(tmpDir, claude!, 'project');
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.find((result) => result.check === 'rules: Claude Code (project)')).toMatchObject(
+      {
+        status: 'pass',
+      },
+    );
+    expect(results.find((result) => result.check === 'hooks: Claude Code (project)')).toMatchObject(
+      {
+        status: 'pass',
+      },
+    );
+  });
+
+  it('reports a Hook JSON parse failure without rewriting the canonical config', async () => {
+    const hookPath = path.join(tmpDir, '.claude', 'settings.local.json');
+    const malformed = '{\r\n  "hooks": {\r\n';
+    await installManagedCometSkills(tmpDir);
+    await fs.writeFile(hookPath, malformed);
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.find((result) => result.check === 'hooks: Claude Code (project)')).toMatchObject(
+      {
+        status: 'warn',
+        message: expect.stringContaining('Invalid Hook JSON'),
+      },
+    );
+    expect(await fs.readFile(hookPath, 'utf8')).toBe(malformed);
+  });
+
+  it('does not emit false Rule or Hook warnings for unsupported components', async () => {
+    const cursor = PLATFORMS.find((platform) => platform.id === 'cursor');
+    const gemini = PLATFORMS.find((platform) => platform.id === 'gemini');
+    expect(cursor).toBeDefined();
+    expect(gemini).toBeDefined();
+    await installManagedCometSkills(tmpDir, '.cursor');
+    await copyCometRulesForPlatform(tmpDir, cursor!, true, 'zh', 'project');
+    await installManagedCometSkills(tmpDir, '.gemini');
+    await installCometHooksForPlatform(tmpDir, gemini!, 'project');
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.some((result) => result.check === 'hooks: Cursor (project)')).toBe(false);
+    expect(results.some((result) => result.check === 'rules: Gemini CLI (project)')).toBe(false);
+    expect(results.find((result) => result.check === 'rules: Cursor (project)')).toMatchObject({
+      status: 'pass',
+    });
+    expect(results.find((result) => result.check === 'hooks: Gemini CLI (project)')).toMatchObject({
+      status: 'pass',
+    });
   });
 
   it('reports an explicitly scoped canonical global Codex install without a detection path', async () => {
