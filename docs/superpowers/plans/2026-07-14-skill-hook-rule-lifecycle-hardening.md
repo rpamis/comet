@@ -112,8 +112,10 @@ git commit -m "fix(skill): fail closed on invalid Hook configuration"
 - Modify: `platform/fs/file-system.ts`
 - Modify: `domains/skill/platform-install.ts`
 - Modify: `domains/skill/uninstall.ts`
+- Regenerate: `assets/skills/comet/scripts/comet-runtime.mjs`
 - Modify: `test/platform/file-system.test.ts`
 - Modify: `test/domains/skill/skills.test.ts`
+- Modify: `test/domains/skill/uninstall.test.ts`
 - Modify: `test/app/uninstall.test.ts`
 
 **Interfaces:**
@@ -145,13 +147,14 @@ Make `removeFile()`/`removeDir()` inspect `ENOENT` and rethrow every other error
 Run:
 
 ```bash
-npx vitest run test/platform/file-system.test.ts test/domains/skill/skills.test.ts test/app/uninstall.test.ts test/domains/skill/uninstall.test.ts
+npx vitest run test/platform/file-system.test.ts test/domains/skill/skills.test.ts test/domains/skill/uninstall.test.ts test/app/uninstall.test.ts
+npx vitest run test/domains/comet-classic/comet-scripts.test.ts
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add platform/fs/file-system.ts domains/skill/platform-install.ts domains/skill/uninstall.ts test/platform/file-system.test.ts test/domains/skill/skills.test.ts test/app/uninstall.test.ts
+git add platform/fs/file-system.ts domains/skill/platform-install.ts domains/skill/uninstall.ts assets/skills/comet/scripts/comet-runtime.mjs test/platform/file-system.test.ts test/domains/skill/skills.test.ts test/domains/skill/uninstall.test.ts test/app/uninstall.test.ts
 git commit -m "fix(skill): propagate Rule and removal failures"
 ```
 
