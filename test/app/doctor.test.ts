@@ -29,7 +29,7 @@ async function installManagedCometSkills(baseDir: string, platformDir = '.claude
 
 async function collectDoctorResults(
   targetPath: string,
-  scope: 'project' | 'auto' = 'project',
+  scope: 'project' | 'global' | 'auto' = 'project',
 ): Promise<Array<{ check: string; status: string; message: string }>> {
   const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   try {
@@ -283,14 +283,17 @@ describe('doctor command', () => {
     const fakeHome = path.join(tmpDir, 'canonical-global-home');
     await installManagedCometSkills(fakeHome, '.agents');
 
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    try {
-      await doctorCommand(tmpDir, { scope: 'global', homeDir: fakeHome });
-      const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
-      expect(output).toContain('skills: Codex (global): complete');
-    } finally {
-      log.mockRestore();
-    }
+    const results = await collectDoctorResults(fakeHome, 'global');
+
+    expect(results.find((result) => result.check === 'skills: Codex (global)')).toMatchObject({
+      status: 'pass',
+    });
+    expect(results.find((result) => result.check === 'rules: Codex (global)')).toMatchObject({
+      status: 'warn',
+    });
+    expect(results.find((result) => result.check === 'hooks: Codex (global)')).toMatchObject({
+      status: 'warn',
+    });
   });
 
   it('reports legacy-only Codex skills as requiring update and canonical Codex skills as healthy', async () => {

@@ -329,6 +329,80 @@ describe('comet init E2E', () => {
   );
 
   it(
+    'init --yes project scope does not treat a global-only Skill as a complete local install',
+    async () => {
+      mockExternalSuccess();
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const { initCommand } = await import('../../app/commands/init.js');
+
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, language: 'en', scope: 'global' }),
+      );
+      await fs.mkdir(path.join(tmpDir, '.agents'), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, '.agents', 'skills'), 'blocking file', 'utf8');
+
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, language: 'en', scope: 'project' }),
+      );
+      const codex = (result.results as Array<{ platform: string; comet: string }>).find(
+        (candidate) => candidate.platform === 'codex',
+      );
+
+      expect(codex?.comet).toBe('failed');
+      await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      await expect(fs.access(getProjectRegistryPath(fakeHome))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
+    'init --yes repairs a partial local Skill before restoring dependent Rule and Hook components',
+    async () => {
+      mockExternalSuccess();
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const { initCommand } = await import('../../app/commands/init.js');
+      const guardScript = path.join(
+        tmpDir,
+        '.agents',
+        'skills',
+        'comet',
+        'scripts',
+        'comet-hook-guard.mjs',
+      );
+
+      await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true, language: 'en' }));
+      await fs.rm(guardScript, { force: true });
+      await fs.rm(path.join(tmpDir, '.codex', 'rules'), { recursive: true, force: true });
+      await fs.rm(path.join(tmpDir, '.codex', 'hooks.json'), { force: true });
+      await fs.rm(getProjectRegistryPath(fakeHome), { force: true });
+
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, language: 'en' }),
+      );
+      const codex = (result.results as Array<{ platform: string; comet: string }>).find(
+        (candidate) => candidate.platform === 'codex',
+      );
+
+      expect(codex?.comet).toBe('installed');
+      await expect(fs.access(guardScript)).resolves.toBeUndefined();
+      await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
+      const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+        projects: Array<{ lastTargets: Array<{ platform: string }> }>;
+      };
+      expect(registry.projects[0].lastTargets).toContainEqual(
+        expect.objectContaining({ platform: 'codex' }),
+      );
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
     'init --yes does not register reused Skills when canonical Hook validation fails',
     async () => {
       mockExternalSuccess();

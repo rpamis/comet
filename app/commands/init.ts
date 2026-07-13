@@ -495,7 +495,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     let cmStatus: InstallStatus = 'skipped';
     let cometComponentInstalled = false;
     let skillFailed = false;
-    if (cmAction !== 'skip' && cmAction !== 'reuse') {
+    if (cmAction !== 'skip') {
       const { copied, failed } = await copyCometSkillsForPlatform(
         baseDir,
         platform,
@@ -507,13 +507,15 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       skillFailed = failed > 0;
       cmStatus = failed > 0 ? 'failed' : copied > 0 ? 'installed' : 'skipped';
       cometComponentInstalled = copied > 0;
-      log(
-        `  Comet -> ${platform.name}: ${cmStatus} (${copied} files${
-          failed > 0 ? `, ${failed} failed` : ''
-        }) -> ${skillsPath}`,
-      );
-    } else if (cmAction === 'reuse') {
-      log(`  Comet -> ${platform.name}: reused (${t(lang, 'alreadyExists')})`);
+      if (cmAction === 'reuse' && copied === 0 && failed === 0) {
+        log(`  Comet -> ${platform.name}: reused (${t(lang, 'alreadyExists')})`);
+      } else {
+        log(
+          `  Comet -> ${platform.name}: ${cmStatus} (${copied} files${
+            failed > 0 ? `, ${failed} failed` : ''
+          }) -> ${skillsPath}`,
+        );
+      }
     } else {
       log(`  Comet -> ${platform.name}: skipped (${t(lang, 'alreadyExists')})`);
     }

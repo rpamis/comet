@@ -228,9 +228,9 @@ async function getPlatformsForSkillInspection(
     await resolveCanonicalSkillRootOwners(baseDir, scope, {
       respectDetectionPaths: doctorScope === 'auto',
     })
-  ).map(({ platform, hasOwnershipEvidence }) => ({
+  ).map(({ platform, hasOwnershipEvidence, sharedCanonicalRoot }) => ({
     platform,
-    inspectComponents: hasOwnershipEvidence || getPlatformSkillsDirs(platform, scope).length === 1,
+    inspectComponents: !sharedCanonicalRoot || hasOwnershipEvidence,
   }));
 }
 

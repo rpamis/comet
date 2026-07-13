@@ -238,6 +238,103 @@ describe('skills', () => {
     },
   );
 
+  it.each(['copy', 'symlink'] as const)(
+    'counts an OpenCode command artifact access failure in %s mode without rejecting',
+    async (installMode) => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'opencode')!;
+      const blockedArtifact = path.join(tmpDir, '.opencode', 'commands', 'comet.md');
+      const access = fs.access.bind(fs);
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (filePath, mode) => {
+        if (path.resolve(String(filePath)) === path.resolve(blockedArtifact)) {
+          throw permissionError;
+        }
+        await access(filePath, mode);
+      });
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        const result = await copyCometSkillsForPlatform(
+          tmpDir,
+          platform,
+          false,
+          'skills',
+          'project',
+          installMode,
+        );
+        expect(result.failed).toBeGreaterThan(0);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('permission denied'));
+      } finally {
+        error.mockRestore();
+        accessSpy.mockRestore();
+      }
+    },
+  );
+
+  it.each(['copy', 'symlink'] as const)(
+    'counts a Pi settings write failure in %s mode without creating an extension',
+    async (installMode) => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'pi')!;
+      const settingsPath = path.join(tmpDir, '.pi', 'settings.json');
+      const extensionPath = path.join(tmpDir, '.pi', 'extensions', 'comet-commands.ts');
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      writeFileMock.mockImplementation(async (filePath, ...args) => {
+        const resolved = path.resolve(String(filePath));
+        if (resolved === path.resolve(settingsPath)) throw permissionError;
+        return fs.writeFile(filePath, ...args);
+      });
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        const result = await copyCometSkillsForPlatform(
+          tmpDir,
+          platform,
+          false,
+          'skills',
+          'project',
+          installMode,
+        );
+        expect(result.failed).toBeGreaterThanOrEqual(1);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('permission denied'));
+        await expect(fs.access(extensionPath)).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        error.mockRestore();
+      }
+    },
+  );
+
+  it.each(['copy', 'symlink'] as const)(
+    'counts a Pi extension write failure in %s mode without rejecting',
+    async (installMode) => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'pi')!;
+      const settingsPath = path.join(tmpDir, '.pi', 'settings.json');
+      const extensionPath = path.join(tmpDir, '.pi', 'extensions', 'comet-commands.ts');
+      await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+      await fs.writeFile(settingsPath, '{"enableSkillCommands":true}\n', 'utf8');
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      writeFileMock.mockImplementation(async (filePath, ...args) => {
+        if (path.resolve(String(filePath)) === path.resolve(extensionPath)) throw permissionError;
+        return fs.writeFile(filePath, ...args);
+      });
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        const result = await copyCometSkillsForPlatform(
+          tmpDir,
+          platform,
+          false,
+          'skills',
+          'project',
+          installMode,
+        );
+        expect(result.failed).toBeGreaterThanOrEqual(1);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('permission denied'));
+      } finally {
+        error.mockRestore();
+      }
+    },
+  );
+
   describe('createWorkingDirs', () => {
     it('creates superpowers spec and plan directories', async () => {
       await createWorkingDirs(tmpDir);

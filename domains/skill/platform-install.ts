@@ -336,6 +336,7 @@ async function installSkillsAsSymlink(
     );
     copied += result.copied;
     skippedCount += result.skipped;
+    failedCount += result.failed;
   }
 
   // Handle Pi platform command extension
@@ -349,6 +350,7 @@ async function installSkillsAsSymlink(
     );
     copied += result.copied;
     skippedCount += result.skipped;
+    failedCount += result.failed;
   }
 
   return { copied, skipped: skippedCount, failed: failedCount };
@@ -416,6 +418,7 @@ async function copyCometSkillsForPlatform(
     );
     copied += result.copied;
     skippedCount += result.skipped;
+    failedCount += result.failed;
   }
 
   if (platform.id === 'pi') {
@@ -428,6 +431,7 @@ async function copyCometSkillsForPlatform(
     );
     copied += result.copied;
     skippedCount += result.skipped;
+    failedCount += result.failed;
   }
 
   return { copied, skipped: skippedCount, failed: failedCount };
@@ -464,50 +468,58 @@ async function createPiCommandExtension(
   skillPaths: string[],
   overwrite: boolean,
   scope: InstallScope,
-): Promise<{ copied: number; skipped: number }> {
+): Promise<{ copied: number; skipped: number; failed: number }> {
   const platformBase = path.join(baseDir, getPlatformSkillsDir(platform, scope));
   const settingsPath = path.join(platformBase, 'settings.json');
   const extensionPath = path.join(platformBase, 'extensions', PI_COMMAND_EXTENSION_FILE);
 
-  let settings: Record<string, unknown> = {};
-  if (await fileExists(settingsPath)) {
-    try {
+  let copied = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  try {
+    let settings: Record<string, unknown> = {};
+    if (await fileExists(settingsPath)) {
       const parsed = JSON.parse(await readFile(settingsPath, 'utf-8')) as unknown;
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new Error('expected a JSON object');
       }
       settings = parsed as Record<string, unknown>;
-    } catch (err) {
-      throw new Error(`Invalid Pi settings at ${settingsPath}: ${(err as Error).message}`, {
-        cause: err,
-      });
     }
+
+    if (settings.enableSkillCommands !== true) {
+      settings.enableSkillCommands = true;
+      await ensureDir(path.dirname(settingsPath));
+      await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+      copied++;
+    }
+  } catch (err) {
+    failed++;
+    console.error(`    Failed to update Pi settings at ${settingsPath}: ${(err as Error).message}`);
   }
 
-  let copied = 0;
-  let skipped = 0;
+  if (failed > 0) return { copied, skipped, failed };
 
-  if (settings.enableSkillCommands !== true) {
-    settings.enableSkillCommands = true;
-    await ensureDir(path.dirname(settingsPath));
-    await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
-    copied++;
+  try {
+    if (!overwrite && (await fileExists(extensionPath))) {
+      skipped++;
+    } else {
+      await ensureDir(path.dirname(extensionPath));
+      await writeFile(
+        extensionPath,
+        renderPiCommandExtension(getTopLevelSkillNames(skillPaths)),
+        'utf-8',
+      );
+      copied++;
+    }
+  } catch (err) {
+    failed++;
+    console.error(
+      `    Failed to write Pi command extension at ${extensionPath}: ${(err as Error).message}`,
+    );
   }
 
-  if (!overwrite && (await fileExists(extensionPath))) {
-    skipped++;
-    return { copied, skipped };
-  }
-
-  await ensureDir(path.dirname(extensionPath));
-  await writeFile(
-    extensionPath,
-    renderPiCommandExtension(getTopLevelSkillNames(skillPaths)),
-    'utf-8',
-  );
-  copied++;
-
-  return { copied, skipped };
+  return { copied, skipped, failed };
 }
 
 function stripFrontmatter(content: string): string {
@@ -529,9 +541,10 @@ async function createOpenCodeCommands(
   overwrite: boolean,
   scope: InstallScope,
   languageSkillsDir: string,
-): Promise<{ copied: number; skipped: number }> {
+): Promise<{ copied: number; skipped: number; failed: number }> {
   let copied = 0;
   let skipped = 0;
+  let failed = 0;
   const assetsDir = getAssetsDir();
   const commandsDir = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'commands');
 
@@ -542,18 +555,19 @@ async function createOpenCodeCommands(
     const skillName = parts[0];
     const dest = path.join(commandsDir, `${skillName}.md`);
 
-    if (!overwrite && (await fileExists(dest))) {
-      skipped++;
-      continue;
-    }
+    try {
+      if (!overwrite && (await fileExists(dest))) {
+        skipped++;
+        continue;
+      }
 
-    await ensureDir(path.dirname(dest));
-    let skillSourcePath = path.join(assetsDir, languageSkillsDir, skillPath);
-    if (!(await fileExists(skillSourcePath))) {
-      skillSourcePath = path.join(assetsDir, 'skills', skillPath);
-    }
-    const skillBody = stripFrontmatter(await readFile(skillSourcePath, 'utf-8'));
-    const content = `${OPENCODE_COMMAND_HEADER.replace('{skillName}', skillName)}
+      await ensureDir(path.dirname(dest));
+      let skillSourcePath = path.join(assetsDir, languageSkillsDir, skillPath);
+      if (!(await fileExists(skillSourcePath))) {
+        skillSourcePath = path.join(assetsDir, 'skills', skillPath);
+      }
+      const skillBody = stripFrontmatter(await readFile(skillSourcePath, 'utf-8'));
+      const content = `${OPENCODE_COMMAND_HEADER.replace('{skillName}', skillName)}
 Equivalent Comet skill: \`${skillName}\`
 Command name: \`/${skillName}\`
 
@@ -565,11 +579,15 @@ $ARGUMENTS
 
 ${skillBody}
 `;
-    await writeFile(dest, content, 'utf-8');
-    copied++;
+      await writeFile(dest, content, 'utf-8');
+      copied++;
+    } catch (err) {
+      failed++;
+      console.error(`    Failed to create OpenCode command ${dest}: ${(err as Error).message}`);
+    }
   }
 
-  return { copied, skipped };
+  return { copied, skipped, failed };
 }
 
 async function readManifest(): Promise<Manifest> {

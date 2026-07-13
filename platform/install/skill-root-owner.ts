@@ -14,6 +14,7 @@ export interface CanonicalSkillRootOwner {
   platform: Platform;
   canonicalSkillsDir: string;
   hasOwnershipEvidence: boolean;
+  sharedCanonicalRoot: boolean;
 }
 
 interface ResolveCanonicalSkillRootOwnersOptions {
@@ -53,9 +54,23 @@ export async function resolveCanonicalSkillRootOwners(
   for (const { canonicalSkillsDir, platforms } of groups.values()) {
     if (platforms.length === 1) {
       const [platform] = platforms;
+      if (options.respectDetectionPaths === false) {
+        owners.push({
+          platform,
+          canonicalSkillsDir,
+          hasOwnershipEvidence: false,
+          sharedCanonicalRoot: false,
+        });
+        continue;
+      }
       const detected = await hasPlatformDetectionPath(baseDir, platform);
-      if (options.respectDetectionPaths !== false && !detected) continue;
-      owners.push({ platform, canonicalSkillsDir, hasOwnershipEvidence: detected });
+      if (!detected) continue;
+      owners.push({
+        platform,
+        canonicalSkillsDir,
+        hasOwnershipEvidence: true,
+        sharedCanonicalRoot: false,
+      });
       continue;
     }
 
@@ -70,8 +85,14 @@ export async function resolveCanonicalSkillRootOwners(
     const hasEvidence = owner !== undefined;
     owner ??= platforms.find((platform) => !platform.detectionPaths?.length);
     if (!owner && options.respectDetectionPaths === false) owner = platforms[0];
-    if (owner)
-      owners.push({ platform: owner, canonicalSkillsDir, hasOwnershipEvidence: hasEvidence });
+    if (owner) {
+      owners.push({
+        platform: owner,
+        canonicalSkillsDir,
+        hasOwnershipEvidence: hasEvidence,
+        sharedCanonicalRoot: true,
+      });
+    }
   }
 
   return owners;
