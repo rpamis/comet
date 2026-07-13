@@ -3,15 +3,17 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
-const { readJsonMock, writeFileMock } = vi.hoisted(() => ({
+const { readJsonMock, readFileMock, writeFileMock } = vi.hoisted(() => ({
   readJsonMock: vi.fn(),
+  readFileMock: vi.fn(),
   writeFileMock: vi.fn(),
 }));
 
 vi.mock('fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs/promises')>();
+  readFileMock.mockImplementation(actual.readFile);
   writeFileMock.mockImplementation(actual.writeFile);
-  return { ...actual, writeFile: writeFileMock };
+  return { ...actual, readFile: readFileMock, writeFile: writeFileMock };
 });
 
 vi.mock('../../../platform/fs/file-system.js', async (importOriginal) => {
@@ -26,6 +28,7 @@ import {
   getManifestSkills,
   createWorkingDirs,
   copyCometSkillsForPlatform,
+  copyCometRulesForPlatform,
   installCometHooksForPlatform,
   parseProjectConfigOverrides,
   renderProjectConfig,
@@ -43,6 +46,8 @@ describe('skills', () => {
       async (filePath: string) =>
         JSON.parse(await fs.readFile(filePath, 'utf-8')) as Record<string, unknown>,
     );
+    readFileMock.mockReset();
+    readFileMock.mockImplementation(fs.readFile);
     writeFileMock.mockReset();
     writeFileMock.mockImplementation(fs.writeFile);
     tmpDir = path.join(
@@ -122,6 +127,60 @@ describe('skills', () => {
       expect(Array.isArray(skills)).toBe(true);
       expect(skills.length).toBeGreaterThan(0);
       expect(skills.some((s) => s.includes('comet/SKILL.md'))).toBe(true);
+    });
+  });
+
+  describe('copyCometRulesForPlatform', () => {
+    it('reports a missing Rule source as failed', async () => {
+      readJsonMock.mockResolvedValue({
+        version: 'test',
+        skills: [],
+        rules: ['comet/rules/missing-rule.md'],
+      });
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        await expect(
+          copyCometRulesForPlatform(tmpDir, platform, true, 'zh', 'project'),
+        ).resolves.toEqual({ copied: 0, skipped: 0, failed: 1 });
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('Rule source not found'));
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it('reports a Rule source permission failure without calling it missing', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      readFileMock.mockRejectedValueOnce(permissionError);
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        await expect(
+          copyCometRulesForPlatform(tmpDir, platform, true, 'zh', 'project'),
+        ).resolves.toEqual({ copied: 0, skipped: 0, failed: 1 });
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('Failed to copy rule'));
+        expect(error).not.toHaveBeenCalledWith(expect.stringContaining('Rule source not found'));
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it('reports a Rule copy permission failure', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      writeFileMock.mockRejectedValueOnce(permissionError);
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        await expect(
+          copyCometRulesForPlatform(tmpDir, platform, true, 'zh', 'project'),
+        ).resolves.toEqual({ copied: 0, skipped: 0, failed: 1 });
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('Failed to copy rule'));
+      } finally {
+        error.mockRestore();
+      }
     });
   });
 

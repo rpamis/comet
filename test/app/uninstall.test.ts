@@ -178,6 +178,116 @@ describe('uninstall', () => {
     },
   );
 
+  it('counts a Skill removal failure and continues removing independent managed Skills', async () => {
+    const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
+    await copyCometSkillsForPlatform(tmpDir, codexPlatform, true, 'skills', 'project');
+    const blockedSkill = path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md');
+    const removableSkill = path.join(tmpDir, '.agents', 'skills', 'comet-open', 'SKILL.md');
+    const userSkill = path.join(tmpDir, '.agents', 'skills', 'personal', 'SKILL.md');
+    await fs.mkdir(path.dirname(userSkill), { recursive: true });
+    await fs.writeFile(userSkill, '# Personal\n');
+    const unlink = fs.unlink.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (filePath) => {
+      if (path.resolve(String(filePath)) === path.resolve(blockedSkill)) throw permissionError;
+      await unlink(filePath);
+    });
+
+    try {
+      await expect(
+        removeCometSkillsForPlatform(tmpDir, codexPlatform, 'project'),
+      ).resolves.toMatchObject({ failed: 1 });
+    } finally {
+      unlinkSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(blockedSkill, 'utf8')).resolves.toContain('# Comet');
+    await expect(fs.access(removableSkill)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(userSkill, 'utf8')).resolves.toBe('# Personal\n');
+  });
+
+  it('counts a Rule removal failure and continues removing independent managed Rules', async () => {
+    const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    const rulesDir = path.join(tmpDir, '.claude', 'rules');
+    const blockedRule = path.join(rulesDir, 'comet-phase-guard.md');
+    const removableRule = path.join(rulesDir, 'comet-phase-guard.en.md');
+    const userRule = path.join(rulesDir, 'personal.md');
+    await fs.mkdir(rulesDir, { recursive: true });
+    await fs.writeFile(blockedRule, '# Blocked Rule\n');
+    await fs.writeFile(removableRule, '# Removable Rule\n');
+    await fs.writeFile(userRule, '# Personal Rule\n');
+    const unlink = fs.unlink.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (filePath) => {
+      if (path.resolve(String(filePath)) === path.resolve(blockedRule)) throw permissionError;
+      await unlink(filePath);
+    });
+
+    try {
+      await expect(removeCometRulesForPlatform(tmpDir, claudePlatform, 'project')).resolves.toEqual(
+        { removed: 1, failed: 1 },
+      );
+    } finally {
+      unlinkSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(blockedRule, 'utf8')).resolves.toBe('# Blocked Rule\n');
+    await expect(fs.access(removableRule)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(userRule, 'utf8')).resolves.toBe('# Personal Rule\n');
+  });
+
+  it('counts a Hook-file removal failure without deleting user Hook files', async () => {
+    const kiroPlatform = PLATFORMS.find((platform) => platform.id === 'kiro')!;
+    const hooksDir = path.join(tmpDir, '.kiro', 'hooks');
+    const managedHook = path.join(hooksDir, 'comet-hook-guard.kiro.hook');
+    const userHook = path.join(hooksDir, 'personal.kiro.hook');
+    await fs.mkdir(hooksDir, { recursive: true });
+    await fs.writeFile(managedHook, '{}\n');
+    await fs.writeFile(userHook, '{}\n');
+    const unlink = fs.unlink.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (filePath) => {
+      if (path.resolve(String(filePath)) === path.resolve(managedHook)) throw permissionError;
+      await unlink(filePath);
+    });
+
+    try {
+      await expect(removeCometHooksForPlatform(tmpDir, kiroPlatform, 'project')).resolves.toEqual({
+        removed: 0,
+        failed: 1,
+      });
+    } finally {
+      unlinkSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(managedHook, 'utf8')).resolves.toBe('{}\n');
+    await expect(fs.readFile(userHook, 'utf8')).resolves.toBe('{}\n');
+  });
+
+  it('counts an empty Rule-directory removal failure after removing managed Rules', async () => {
+    const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    const rulesDir = path.join(tmpDir, '.claude', 'rules');
+    await fs.mkdir(rulesDir, { recursive: true });
+    await fs.writeFile(path.join(rulesDir, 'comet-phase-guard.md'), '# Rule\n');
+    await fs.writeFile(path.join(rulesDir, 'comet-phase-guard.en.md'), '# English Rule\n');
+    const rm = fs.rm.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const rmSpy = vi.spyOn(fs, 'rm').mockImplementation(async (dirPath, options) => {
+      if (path.resolve(String(dirPath)) === path.resolve(rulesDir)) throw permissionError;
+      await rm(dirPath, options);
+    });
+
+    try {
+      await expect(removeCometRulesForPlatform(tmpDir, claudePlatform, 'project')).resolves.toEqual(
+        { removed: 2, failed: 1 },
+      );
+    } finally {
+      rmSpy.mockRestore();
+    }
+
+    await expect(fs.readdir(rulesDir)).resolves.toEqual([]);
+  });
+
   describe('file-system utilities', () => {
     describe('removeFile', () => {
       it('removes an existing file and returns true', async () => {
@@ -207,10 +317,9 @@ describe('uninstall', () => {
         expect(await fileExists(dirPath)).toBe(false);
       });
 
-      it('returns true for non-existent directory (force mode)', async () => {
-        // fs.rm with { force: true } succeeds even if path doesn't exist
+      it('returns false for non-existent directory', async () => {
         const result = await removeDir(path.join(tmpDir, 'nope'));
-        expect(result).toBe(true);
+        expect(result).toBe(false);
       });
 
       it('removes a symlinked directory without deleting its target', async () => {

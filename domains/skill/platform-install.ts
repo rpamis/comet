@@ -631,15 +631,15 @@ async function copyCometRulesForPlatform(
   overwrite: boolean,
   languageId: SkillLanguageId,
   scope: InstallScope = 'project',
-): Promise<{ copied: number; skipped: number }> {
+): Promise<{ copied: number; skipped: number; failed: number }> {
   if (!platform.rulesDir || !platform.rulesFormat) {
-    return { copied: 0, skipped: 0 };
+    return { copied: 0, skipped: 0, failed: 0 };
   }
 
   const manifest = await readManifest();
   const rulePaths = selectRulePathsForLanguage(manifest.rules ?? [], languageId);
   if (!rulePaths || rulePaths.length === 0) {
-    return { copied: 0, skipped: 0 };
+    return { copied: 0, skipped: 0, failed: 0 };
   }
 
   const assetsDir = getAssetsDir();
@@ -653,11 +653,13 @@ async function copyCometRulesForPlatform(
       : path.join(baseDir, getPlatformSkillsDir(platform, scope));
   let copied = 0;
   let skippedCount = 0;
+  let failed = 0;
 
   for (const ruleRelPath of rulePaths) {
     const src = path.join(assetsDir, 'skills', ruleRelPath);
     if (!(await fileExists(src))) {
       console.error(`    Rule source not found: ${ruleRelPath}`);
+      failed++;
       continue;
     }
 
@@ -680,10 +682,11 @@ async function copyCometRulesForPlatform(
       copied++;
     } catch (err) {
       console.error(`    Failed to copy rule ${ruleRelPath}: ${(err as Error).message}`);
+      failed++;
     }
   }
 
-  return { copied, skipped: skippedCount };
+  return { copied, skipped: skippedCount, failed };
 }
 
 function computeRuleDestPath(

@@ -117,9 +117,9 @@ export async function removeFile(filePath: string): Promise<boolean> {
   try {
     await fs.unlink(filePath);
     return true;
-  } catch {
-    // Not found or failed (permissions/IO): nothing was removed.
-    return false;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 
@@ -136,10 +136,11 @@ export async function removeDir(dirPath: string): Promise<boolean> {
       await fs.unlink(dirPath);
       return true;
     }
-    await fs.rm(dirPath, { recursive: true, force: true });
+    await fs.rm(dirPath, { recursive: true, force: false });
     return true;
   } catch (error) {
-    return isNotFoundError(error);
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 
