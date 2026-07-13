@@ -927,18 +927,26 @@ function asHookGroup(value: unknown): unknown[] {
 async function removeManagedHooksFromJsonFile(
   settingsPath: string,
   scriptRelPaths: string[],
+  options: { ignoreInvalidJson?: boolean } = {},
 ): Promise<{ removed: number; failed: number }> {
   if (!(await fileExists(settingsPath))) return { removed: 0, failed: 0 };
 
+  let source: string;
+  try {
+    source = await readFile(settingsPath, 'utf-8');
+  } catch {
+    return { removed: 0, failed: 1 };
+  }
+
   let settings: Record<string, unknown>;
   try {
-    const parsed = JSON.parse(await readFile(settingsPath, 'utf-8')) as unknown;
+    const parsed = JSON.parse(source) as unknown;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { removed: 0, failed: 1 };
+      return { removed: 0, failed: options.ignoreInvalidJson ? 0 : 1 };
     }
     settings = parsed as Record<string, unknown>;
   } catch {
-    return { removed: 0, failed: 1 };
+    return { removed: 0, failed: options.ignoreInvalidJson ? 0 : 1 };
   }
 
   const existingHooks = settings.hooks as Record<string, unknown> | undefined;

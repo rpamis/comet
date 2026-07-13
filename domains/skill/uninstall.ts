@@ -223,16 +223,15 @@ async function removeCometHooksForPlatform(
   try {
     switch (hookFormat) {
       case 'claude-code': {
-        const files = [
-          platform.hookConfigFile ?? 'settings.local.json',
-          ...(platform.legacyHookConfigFiles ?? []),
-        ];
+        const canonicalFile = platform.hookConfigFile ?? 'settings.local.json';
+        const files = [canonicalFile, ...(platform.legacyHookConfigFiles ?? [])];
         let removed = 0;
         let failed = 0;
         for (const file of new Set(files)) {
           const result = await removeManagedHooksFromJsonFile(
             path.join(platformBase, file),
             scriptRelPaths,
+            { ignoreInvalidJson: file !== canonicalFile },
           );
           removed += result.removed;
           failed += result.failed;
