@@ -266,7 +266,7 @@ describe('comet init E2E', () => {
   );
 
   it(
-    'does not install Codex hooks when the managed Hook script cannot be copied',
+    'Skill failure skips dependent Rule and Hook installation and leaves init incomplete',
     async () => {
       mockExternalSuccess();
       await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
@@ -275,17 +275,20 @@ describe('comet init E2E', () => {
       await fs.writeFile(path.join(centralCometDir, 'scripts'), 'blocking file');
 
       const { initCommand } = await import('../../app/commands/init.js');
-      const result = await captureJsonOutput(() =>
-        initCommand(tmpDir, { yes: true, json: true, installMode: 'symlink' }),
+      const output = await captureTextOutput(() =>
+        initCommand(tmpDir, { yes: true, language: 'en', installMode: 'symlink' }),
       );
 
-      const codexResult = (result.results as { platform: string; comet: string }[]).find(
-        (candidate) => candidate.platform === 'codex',
-      );
-      expect(codexResult?.comet).toBe('failed');
+      expect(output).toMatch(/Codex \(Comet failed\)/u);
+      await expect(
+        fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
       await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).rejects.toMatchObject({
         code: 'ENOENT',
       });
+      await expect(
+        fs.access(getProjectRegistryPath(path.join(tmpDir, 'fake-home'))),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
     },
     INIT_E2E_TIMEOUT_MS,
   );

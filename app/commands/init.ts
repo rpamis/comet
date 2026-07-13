@@ -488,6 +488,8 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
         : `${scope === 'global' ? '~/' : ''}${platformSkillsDir}/skills/`;
 
     let cmStatus: InstallStatus = 'skipped';
+    let cometComponentInstalled = false;
+    let skillFailed = false;
     if (cmAction !== 'skip') {
       const { copied, failed } = await copyCometSkillsForPlatform(
         baseDir,
@@ -497,7 +499,9 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
         scope,
         installMode,
       );
+      skillFailed = failed > 0;
       cmStatus = failed > 0 ? 'failed' : copied > 0 ? 'installed' : 'skipped';
+      cometComponentInstalled = copied > 0;
       log(
         `  Comet -> ${platform.name}: ${cmStatus} (${copied} files${
           failed > 0 ? `, ${failed} failed` : ''
@@ -507,28 +511,53 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       log(`  Comet -> ${platform.name}: skipped (${t(lang, 'alreadyExists')})`);
     }
 
-    if (cmAction !== 'skip') {
-      const { copied: ruleCopied } = await copyCometRulesForPlatform(
-        baseDir,
-        platform,
-        cmAction === 'overwrite',
-        language.id,
-        scope,
-      );
-      if (ruleCopied > 0) {
-        log(`  Comet rules -> ${platform.name}: ${ruleCopied} ${t(lang, 'rulesInstalled')}`);
+    if (cmAction !== 'skip' && !skillFailed) {
+      try {
+        const { copied: ruleCopied, failed: ruleFailed } = await copyCometRulesForPlatform(
+          baseDir,
+          platform,
+          cmAction === 'overwrite',
+          language.id,
+          scope,
+        );
+        cometComponentInstalled ||= ruleCopied > 0;
+        if (ruleCopied > 0) {
+          log(`  Comet rules -> ${platform.name}: ${ruleCopied} ${t(lang, 'rulesInstalled')}`);
+        }
+        if (ruleFailed > 0) {
+          cmStatus = 'failed';
+          log(`  Comet rules -> ${platform.name}: ${t(lang, 'rulesFailed')} (${ruleFailed})`);
+        }
+      } catch (err) {
+        cmStatus = 'failed';
+        log(
+          `  Comet rules -> ${platform.name}: ${t(lang, 'rulesFailed')} (${(err as Error).message})`,
+        );
       }
     }
 
-    if (cmAction !== 'skip' && cmStatus !== 'failed' && platform.supportsHooks) {
-      const { status, reason } = await installCometHooksForPlatform(baseDir, platform, scope);
-      if (status === 'installed') {
-        log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksInstalled')}`);
-      } else if (status === 'failed') {
-        log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksFailed')} (${reason})`);
-      } else if (reason) {
-        log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksSkipped')} (${reason})`);
+    if (cmAction !== 'skip' && !skillFailed) {
+      try {
+        const { status, reason } = await installCometHooksForPlatform(baseDir, platform, scope);
+        cometComponentInstalled ||= status === 'installed';
+        if (status === 'installed') {
+          log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksInstalled')}`);
+        } else if (status === 'failed') {
+          cmStatus = 'failed';
+          log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksFailed')} (${reason})`);
+        } else if (reason && platform.supportsHooks) {
+          log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksSkipped')} (${reason})`);
+        }
+      } catch (err) {
+        cmStatus = 'failed';
+        log(
+          `  Comet hooks -> ${platform.name}: ${t(lang, 'hooksFailed')} (${(err as Error).message})`,
+        );
       }
+    }
+
+    if (cmAction !== 'skip' && cmStatus !== 'failed') {
+      cmStatus = cometComponentInstalled ? 'installed' : 'skipped';
     }
 
     results.push({
@@ -564,10 +593,16 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
   if (scope === 'project') {
     await createWorkingDirs(projectPath, language.artifactLanguage);
     const projectTargets = await detectInstalledCometTargets(projectPath, { scopes: ['project'] });
-    if (projectTargets.length > 0) {
+    const successfulCometPlatforms = new Set(
+      results.filter((result) => result.comet !== 'failed').map((result) => result.platform.id),
+    );
+    const completeProjectTargets = projectTargets.filter((target) =>
+      successfulCometPlatforms.has(target.platform.id),
+    );
+    if (completeProjectTargets.length > 0) {
       await upsertProjectInstallation(
         projectPath,
-        projectTargets.map((target) => ({
+        completeProjectTargets.map((target) => ({
           platform: target.platform.id,
           language: target.language,
         })),

@@ -87,6 +87,7 @@ interface SingleProjectUpdateResult {
   };
   skills: {
     totalCopied: number;
+    totalFailed: number;
     cleanupFailed: number;
     installMode?: InstallMode;
     targets: Array<{
@@ -97,12 +98,38 @@ interface SingleProjectUpdateResult {
       source: string;
       copied: number;
       skipped: number;
+      failed: number;
+      reason?: string;
       cleanupFailed: number;
       command: string;
     }>;
   };
-  rules: { totalCopied: number };
-  hooks: { totalInstalled: number };
+  rules: {
+    totalCopied: number;
+    totalFailed: number;
+    targets: Array<{
+      scope: InstallScope;
+      platform: string;
+      platformName: string;
+      copied: number;
+      skipped: number;
+      failed: number;
+      status: 'copied' | 'skipped' | 'failed';
+      reason?: string;
+    }>;
+  };
+  hooks: {
+    totalInstalled: number;
+    totalFailed: number;
+    targets: Array<{
+      scope: InstallScope;
+      platform: string;
+      platformName: string;
+      failed: number;
+      status: 'installed' | 'skipped' | 'failed';
+      reason?: string;
+    }>;
+  };
   projectInstructions: { updated: number };
   codegraph: CodegraphStatus;
 }
@@ -376,9 +403,11 @@ async function promptCodegraphInstall(lang: string): Promise<boolean> {
 
 function currentProjectJson(result: SingleProjectUpdateResult): Record<string, unknown> {
   return {
+    status: hasComponentFailures(result) ? 'incomplete' : 'complete',
     npm: result.npm,
     skills: {
       totalCopied: result.skills.totalCopied,
+      totalFailed: result.skills.totalFailed,
       cleanupFailed: result.skills.cleanupFailed,
       installMode: result.skills.installMode,
       targets: result.skills.targets,
@@ -388,6 +417,32 @@ function currentProjectJson(result: SingleProjectUpdateResult): Record<string, u
     projectInstructions: result.projectInstructions,
     codegraph: result.codegraph,
   };
+}
+
+function hasComponentFailures(result: SingleProjectUpdateResult): boolean {
+  return (
+    result.skills.totalFailed > 0 ||
+    result.skills.cleanupFailed > 0 ||
+    result.rules.totalFailed > 0 ||
+    result.hooks.totalFailed > 0
+  );
+}
+
+function componentFailureReason(result: SingleProjectUpdateResult): string {
+  const reasons: string[] = [];
+  if (result.skills.totalFailed > 0) {
+    reasons.push(`Skill update failed (${result.skills.totalFailed})`);
+  }
+  if (result.rules.totalFailed > 0) {
+    reasons.push(`Rule update failed (${result.rules.totalFailed})`);
+  }
+  if (result.hooks.totalFailed > 0) {
+    reasons.push(`Hook update failed (${result.hooks.totalFailed})`);
+  }
+  if (result.skills.cleanupFailed > 0) {
+    reasons.push(`legacy Skill cleanup failed (${result.skills.cleanupFailed})`);
+  }
+  return reasons.join('; ');
 }
 
 function summarizeTargets(targets: InstalledCometTarget[]): AllProjectsUpdateResult['targets'] {
@@ -481,9 +536,9 @@ async function updateSingleProject(
         command:
           options.skipNpm || skipRepeatedGlobalNpm ? null : formatNpmUpdateCommand(packageScope),
       },
-      skills: { totalCopied: 0, cleanupFailed: 0, targets: [] },
-      rules: { totalCopied: 0 },
-      hooks: { totalInstalled: 0 },
+      skills: { totalCopied: 0, totalFailed: 0, cleanupFailed: 0, targets: [] },
+      rules: { totalCopied: 0, totalFailed: 0, targets: [] },
+      hooks: { totalInstalled: 0, totalFailed: 0, targets: [] },
       projectInstructions: { updated: 0 },
       codegraph: 'skipped',
     };
@@ -506,11 +561,16 @@ async function updateSingleProject(
   );
 
   let totalCopied = 0;
+  let totalFailed = 0;
   let totalCleanupFailed = 0;
   let totalRulesCopied = 0;
+  let totalRulesFailed = 0;
   let totalHooksInstalled = 0;
+  let totalHooksFailed = 0;
   let projectInstructionsUpdated = 0;
   const targetResults: SingleProjectUpdateResult['skills']['targets'] = [];
+  const ruleTargetResults: SingleProjectUpdateResult['rules']['targets'] = [];
+  const hookTargetResults: SingleProjectUpdateResult['hooks']['targets'] = [];
   for (const target of targets) {
     const baseDir = getBaseDir(target.scope, projectPath);
     const languageId = resolveTargetLanguage(options.language, target.language);
@@ -529,6 +589,7 @@ async function updateSingleProject(
         : { removed: 0, failed: 0 };
     totalCleanupFailed += cleanupResult.failed;
     totalCopied += copied;
+    totalFailed += failed;
     targetResults.push({
       scope: target.scope,
       platform: target.platform.id,
@@ -537,6 +598,13 @@ async function updateSingleProject(
       source: languageSkillsDir,
       copied,
       skipped,
+      failed,
+      reason:
+        failed > 0
+          ? `${failed} Skill file(s) failed to install`
+          : cleanupResult.failed > 0
+            ? `legacy Skill cleanup failed (${cleanupResult.failed})`
+            : undefined,
       cleanupFailed: cleanupResult.failed,
       command: formatSkillUpdateCommand(
         target.scope,
@@ -554,44 +622,115 @@ async function updateSingleProject(
       );
     }
 
+    if (failed > 0) {
+      const dependencyReason = 'skipped because Skill installation failed';
+      ruleTargetResults.push({
+        scope: target.scope,
+        platform: target.platform.id,
+        platformName: target.platform.name,
+        copied: 0,
+        skipped: 0,
+        failed: 0,
+        status: 'skipped',
+        reason: dependencyReason,
+      });
+      hookTargetResults.push({
+        scope: target.scope,
+        platform: target.platform.id,
+        platformName: target.platform.name,
+        failed: 0,
+        status: 'skipped',
+        reason: dependencyReason,
+      });
+      continue;
+    }
+
     try {
-      const { copied: ruleCopied } = await copyCometRulesForPlatform(
+      const ruleResult = await copyCometRulesForPlatform(
         baseDir,
         target.platform,
         true,
         languageId,
         target.scope,
       );
-      totalRulesCopied += ruleCopied;
-      if (ruleCopied > 0) {
-        log(`  Comet rules -> ${target.platform.name}: ${ruleCopied} ${t(lang, 'rulesUpdated')}`);
+      totalRulesCopied += ruleResult.copied;
+      totalRulesFailed += ruleResult.failed;
+      const ruleStatus =
+        ruleResult.failed > 0 ? 'failed' : ruleResult.copied > 0 ? 'copied' : 'skipped';
+      const ruleReason =
+        ruleResult.failed > 0
+          ? `${ruleResult.failed} Rule file(s) failed to install`
+          : !target.platform.rulesDir || !target.platform.rulesFormat
+            ? 'platform does not support rules'
+            : undefined;
+      ruleTargetResults.push({
+        scope: target.scope,
+        platform: target.platform.id,
+        platformName: target.platform.name,
+        ...ruleResult,
+        status: ruleStatus,
+        reason: ruleReason,
+      });
+      if (ruleResult.copied > 0) {
+        log(
+          `  Comet rules -> ${target.platform.name}: ${ruleResult.copied} ${t(lang, 'rulesUpdated')}`,
+        );
+      }
+      if (ruleResult.failed > 0) {
+        log(`  Comet rules -> ${target.platform.name}: ${t(lang, 'rulesFailed')} (${ruleReason})`);
       }
     } catch (err) {
-      log(
-        `  Comet rules -> ${target.platform.name}: ${t(lang, 'rulesFailed')} (${(err as Error).message})`,
-      );
+      totalRulesFailed++;
+      const reason = (err as Error).message;
+      ruleTargetResults.push({
+        scope: target.scope,
+        platform: target.platform.id,
+        platformName: target.platform.name,
+        copied: 0,
+        skipped: 0,
+        failed: 1,
+        status: 'failed',
+        reason,
+      });
+      log(`  Comet rules -> ${target.platform.name}: ${t(lang, 'rulesFailed')} (${reason})`);
     }
 
-    if (failed === 0 && target.platform.supportsHooks) {
-      try {
-        const { status, reason } = await installCometHooksForPlatform(
-          baseDir,
-          target.platform,
-          target.scope,
-        );
-        if (status === 'installed') {
-          totalHooksInstalled++;
-          log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksUpdated')}`);
-        } else if (status === 'failed') {
-          log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksFailed')} (${reason})`);
-        } else if (reason) {
-          log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksSkipped')} (${reason})`);
-        }
-      } catch (err) {
-        log(
-          `  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksFailed')} (${(err as Error).message})`,
-        );
+    try {
+      const { status, reason } = await installCometHooksForPlatform(
+        baseDir,
+        target.platform,
+        target.scope,
+      );
+      const hookFailed = status === 'failed' ? 1 : 0;
+      totalHooksFailed += hookFailed;
+      hookTargetResults.push({
+        scope: target.scope,
+        platform: target.platform.id,
+        platformName: target.platform.name,
+        failed: hookFailed,
+        status,
+        reason,
+      });
+      if (status === 'installed') {
+        totalHooksInstalled++;
+        log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksUpdated')}`);
+      } else if (status === 'failed') {
+        log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksFailed')} (${reason})`);
+      } else if (reason && target.platform.supportsHooks) {
+        log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksSkipped')} (${reason})`);
       }
+    } catch (err) {
+      totalHooksFailed++;
+      const reason = (err as Error).message;
+      hookTargetResults.push({
+        scope: target.scope,
+        platform: target.platform.id,
+        platformName: target.platform.name,
+        failed: 1,
+        status: 'failed',
+        reason,
+      });
+      log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksFailed')} (${reason})`);
     }
   }
 
@@ -661,12 +800,21 @@ async function updateSingleProject(
     },
     skills: {
       totalCopied,
+      totalFailed,
       cleanupFailed: totalCleanupFailed,
       installMode,
       targets: targetResults,
     },
-    rules: { totalCopied: totalRulesCopied },
-    hooks: { totalInstalled: totalHooksInstalled },
+    rules: {
+      totalCopied: totalRulesCopied,
+      totalFailed: totalRulesFailed,
+      targets: ruleTargetResults,
+    },
+    hooks: {
+      totalInstalled: totalHooksInstalled,
+      totalFailed: totalHooksFailed,
+      targets: hookTargetResults,
+    },
     projectInstructions: { updated: projectInstructionsUpdated },
     codegraph: codegraphStatus,
   };
@@ -692,11 +840,20 @@ function logSingleProjectSummary(
   if (result.skills.cleanupFailed > 0) {
     log(`    Skill cleanup failures: ${result.skills.cleanupFailed} (update incomplete)`);
   }
+  if (result.skills.totalFailed > 0) {
+    log(`    Skill failures: ${result.skills.totalFailed} (update incomplete)`);
+  }
+  if (result.rules.totalFailed > 0) {
+    log(`    Rule failures: ${result.rules.totalFailed} (update incomplete)`);
+  }
+  if (result.hooks.totalFailed > 0) {
+    log(`    Hook failures: ${result.hooks.totalFailed} (update incomplete)`);
+  }
   log(`    ${t(lang, 'summaryCodegraph')} ${result.codegraph}`);
   log(`    ${t(lang, 'summaryScope')} ${scopes}`);
   log(`    ${t(lang, 'summaryLanguage')} ${languages}`);
-  if (result.skills.cleanupFailed > 0) {
-    log(`\n  Update incomplete. Canonical Skills were installed, but legacy cleanup failed.\n`);
+  if (hasComponentFailures(result)) {
+    log(`\n  Update incomplete. ${componentFailureReason(result)}.\n`);
   } else {
     log(`\n  ${t(lang, 'updateComplete')}\n`);
   }
@@ -791,11 +948,11 @@ async function updateAllIndexedProjects(
         continue;
       }
 
-      if (result.skills.cleanupFailed > 0) {
+      if (hasComponentFailures(result)) {
         results.push({
           projectPath,
           status: 'failed',
-          reason: `legacy Skill cleanup failed (${result.skills.cleanupFailed})`,
+          reason: componentFailureReason(result),
           targets: summarizeUpdatedTargets(result.skills.targets),
         });
         continue;
@@ -882,7 +1039,7 @@ export async function updateCommand(
     return;
   }
 
-  if (result.skills.cleanupFailed === 0) {
+  if (!hasComponentFailures(result)) {
     await upsertUpdatedProjectTargets(projectPath, result);
   }
 

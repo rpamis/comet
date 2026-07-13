@@ -43,6 +43,43 @@ const claudePlatform: Platform = {
   openspecToolId: 'claude',
 };
 
+type ComponentFailure = 'Skill' | 'Rule' | 'Hook';
+
+async function arrangeComponentFailure(
+  projectPath: string,
+  failure: ComponentFailure,
+): Promise<{ installMode: 'copy' | 'symlink' }> {
+  await fs.mkdir(path.join(projectPath, '.codex'), { recursive: true });
+
+  if (failure === 'Skill') {
+    await fs.mkdir(path.join(projectPath, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectPath, '.codex', 'skills', 'comet', 'SKILL.md'),
+      '# Legacy Comet\n',
+    );
+    await fs.mkdir(path.join(projectPath, '.agents', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectPath, '.agents', 'skills', 'comet', 'user-file.md'),
+      '# Keep\n',
+    );
+    return { installMode: 'symlink' };
+  }
+
+  await fs.mkdir(path.join(projectPath, '.agents', 'skills', 'comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(projectPath, '.agents', 'skills', 'comet', 'SKILL.md'),
+    '# Comet\n\nUse this skill.\n',
+  );
+
+  if (failure === 'Rule') {
+    await fs.writeFile(path.join(projectPath, '.codex', 'rules'), 'blocking file');
+  } else {
+    await fs.mkdir(path.join(projectPath, '.codex', 'hooks.json'), { recursive: true });
+  }
+
+  return { installMode: 'copy' };
+}
+
 describe('update command helpers', () => {
   let tmpDir: string;
 
@@ -295,6 +332,102 @@ describe('update command helpers', () => {
     });
   });
 
+  it.each<ComponentFailure>(['Skill', 'Rule', 'Hook'])(
+    '%s failure is reported as incomplete in JSON and does not refresh the registry',
+    async (failure) => {
+      const fakeHome = path.join(tmpDir, `component-failure-json-${failure}`);
+      const options = await arrangeComponentFailure(tmpDir, failure);
+      await upsertProjectInstallation(tmpDir, [{ platform: 'codex', language: 'en' }], 'init', {
+        homeDir: fakeHome,
+      });
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await updateCommand(tmpDir, {
+          json: true,
+          skipNpm: true,
+          scope: 'project',
+          installMode: options.installMode,
+        });
+        const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+        expect(result.status).toBe('incomplete');
+        expect(result.skills.totalFailed > 0).toBe(failure === 'Skill');
+        expect(result.rules.totalFailed > 0).toBe(failure === 'Rule');
+        expect(result.hooks.totalFailed > 0).toBe(failure === 'Hook');
+
+        const component = `${failure.toLowerCase()}s` as 'skills' | 'rules' | 'hooks';
+        expect(result[component].targets[0].failed).toBeGreaterThan(0);
+        expect(result[component].targets[0].reason).toEqual(expect.any(String));
+      } finally {
+        log.mockRestore();
+        homedirSpy.mockRestore();
+      }
+
+      const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8')) as {
+        projects: Array<{ lastSource: string }>;
+      };
+      expect(registry.projects[0].lastSource).toBe('init');
+
+      if (failure === 'Skill') {
+        await expect(
+          fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      }
+    },
+  );
+
+  it.each<ComponentFailure>(['Skill', 'Rule', 'Hook'])(
+    '%s failure is reported as incomplete in text output',
+    async (failure) => {
+      const fakeHome = path.join(tmpDir, `component-failure-text-${failure}`);
+      const options = await arrangeComponentFailure(tmpDir, failure);
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await updateCommand(tmpDir, {
+          skipNpm: true,
+          scope: 'project',
+          installMode: options.installMode,
+        });
+        expect(log.mock.calls.map((call) => call.join(' ')).join('\n')).toMatch(/incomplete/iu);
+      } finally {
+        log.mockRestore();
+        homedirSpy.mockRestore();
+      }
+    },
+  );
+
+  it.each<ComponentFailure>(['Skill', 'Rule', 'Hook'])(
+    '%s failure marks all-projects status failed',
+    async (failure) => {
+      const fakeHome = path.join(tmpDir, `component-failure-all-projects-${failure}`);
+      const project = path.join(tmpDir, `component-failure-project-${failure}`);
+      const options = await arrangeComponentFailure(project, failure);
+      await upsertProjectInstallation(project, [{ platform: 'codex', language: 'en' }], 'init', {
+        homeDir: fakeHome,
+      });
+      const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await updateCommand(project, {
+          allProjects: true,
+          json: true,
+          skipNpm: true,
+          installMode: options.installMode,
+        });
+        const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+        expect(result.projects[0].status).toBe('failed');
+        expect(result.projects[0].reason).toMatch(new RegExp(failure, 'iu'));
+      } finally {
+        log.mockRestore();
+        homedirSpy.mockRestore();
+      }
+    },
+  );
+
   it.each([true, false])(
     'reports legacy Codex cleanup refusal as incomplete in %s output',
     async (json) => {
@@ -319,6 +452,7 @@ describe('update command helpers', () => {
           const result = JSON.parse(output);
           expect(result.skills.cleanupFailed).toBeGreaterThan(0);
           expect(result.skills.targets[0].cleanupFailed).toBeGreaterThan(0);
+          expect(result.skills.targets[0].reason).toMatch(/cleanup/iu);
         } else {
           expect(output).toMatch(/incomplete|failed/iu);
         }
