@@ -177,6 +177,86 @@ describe('Classic hook guard command', () => {
       expect(result.stderr).toContain('multiple active changes require a current change');
       expect(result.stderr).toContain('comet state select <change-name>');
     });
+
+    it.each(['open', 'design', 'verify', 'archive'] as const)(
+      'blocks a standard plan first write during %s',
+      async (phase) => {
+        const dir = await makeProject();
+        await seedChange(dir, 'wrong-phase', phase);
+        const target = path.join(
+          dir,
+          'docs',
+          'superpowers',
+          'plans',
+          '2026-07-13-durable-retries.md',
+        );
+
+        const result = run(dir, 'hook-guard', [], hookInput(target));
+
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain('Expected phase: build');
+        expect(result.stderr).not.toContain('include the change name');
+      },
+    );
+
+    it('allows the recorded plan and blocks a second unrecorded plan', async () => {
+      const dir = await makeProject();
+      const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
+      await seedChange(dir, 'occupied-plan', 'build', { plan: recorded });
+
+      const recordedResult = run(
+        dir,
+        'hook-guard',
+        [],
+        hookInput(path.join(dir, ...recorded.split('/'))),
+      );
+      const secondResult = run(
+        dir,
+        'hook-guard',
+        [],
+        hookInput(path.join(dir, 'docs', 'superpowers', 'plans', '2026-07-13-second-feature.md')),
+      );
+
+      expect(recordedResult.status).toBe(0);
+      expect(secondResult.status).toBe(2);
+      expect(secondResult.stderr).toContain('plan is already recorded');
+      expect(secondResult.stderr).toContain(recorded);
+    });
+
+    it('fails closed for a stale selection before a standard plan first write', async () => {
+      const dir = await makeProject();
+      await initializeGitProject(dir);
+      await seedChange(dir, 'build-change', 'build');
+      await seedChange(dir, 'other-build', 'build');
+      expect(run(dir, 'state', ['select', 'build-change']).status).toBe(0);
+      git(dir, ['switch', '-c', 'other']);
+      const target = path.join(
+        dir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-durable-retries.md',
+      );
+
+      const result = run(dir, 'hook-guard', [], hookInput(target));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('current change selection is stale or invalid');
+    });
+
+    it.each([
+      path.join('docs', 'superpowers', 'notes', '2026-07-13-note.md'),
+      path.join('docs', 'superpowers', 'plans', 'nested', '2026-07-13-plan.md'),
+      path.join('docs', 'superpowers', 'plans', '2026-07-13-plan.txt'),
+    ])('keeps non-standard Superpowers paths blocked: %s', async (target) => {
+      const dir = await makeProject();
+      await seedChange(dir, 'build-change', 'build');
+
+      const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, target)));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('unmatched Superpowers artifact');
+    });
   });
 
   it('requires a current change before source writes with multiple active changes', async () => {

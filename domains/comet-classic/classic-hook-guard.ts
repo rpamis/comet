@@ -454,8 +454,33 @@ function blockedMissingDesignDoc(relativePath: string): ClassicCommandResult {
 
 function blockedUnmatchedSuperpowersArtifact(
   relativePath: string,
-  phase: ClassicPhase,
+  governing: GoverningChange,
 ): ClassicCommandResult {
+  const slot = governing.superpowersSlot;
+  const recorded = slot ? superpowersArtifactValue(governing, slot) : null;
+  const details = slot
+    ? governing.phase !== slot.phase
+      ? [
+          `  BLOCKED: ${slot.wireField} cannot be first-written in phase ${governing.phase}`,
+          `  Expected phase: ${slot.phase}`,
+          '  NEXT: resume the matching Comet phase or use an already recorded artifact path',
+        ]
+      : recorded
+        ? [
+            `  BLOCKED: ${slot.wireField} is already recorded for this change`,
+            `  Recorded path: ${recorded}`,
+            '  NEXT: write the recorded artifact or explicitly correct the state path',
+          ]
+        : [
+            '  BLOCKED: standard Superpowers artifact state is incomplete',
+            '  NEXT: validate the active change state, then retry the matching phase',
+          ]
+    : [
+        '  BLOCKED: unmatched Superpowers artifact',
+        '  This docs/superpowers/ path does not match any active change artifact',
+        '  NEXT: use a recorded artifact path or a standard phase artifact directory',
+      ];
+
   return result(
     2,
     [
@@ -464,12 +489,10 @@ function blockedUnmatchedSuperpowersArtifact(
       '║     COMET PHASE GUARD — WRITE BLOCKED    ║',
       '╚══════════════════════════════════════════╝',
       '',
-      `  Current phase: ${phase}`,
+      `  Current phase: ${governing.phase}`,
       `  Target file: ${relativePath}`,
       '',
-      '  BLOCKED: unmatched Superpowers artifact',
-      '  This docs/superpowers/ path does not match any active change artifact',
-      '  NEXT: record the artifact path in .comet.yaml or include the change name in the artifact filename',
+      ...details,
       '',
     ].join('\n'),
   );
@@ -559,7 +582,7 @@ export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
       return allowed(`${relativePath} (phase: ${phase}, superpowers)`);
     }
     if (governing.superpowersArtifact === 'unmatched') {
-      return blockedUnmatchedSuperpowersArtifact(relativePath, phase);
+      return blockedUnmatchedSuperpowersArtifact(relativePath, governing);
     }
   }
   if (phase === 'build' && governing.classic?.workflow === 'full' && !governing.classic.designDoc) {

@@ -4993,6 +4993,41 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('phase: build, superpowers');
     }, 20_000);
 
+    it('blocks a second write after the standard Superpowers plan slot is occupied', async () => {
+      const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
+      await createChange(
+        tmpDir,
+        'occupied-standard-plan',
+        [
+          'workflow: full',
+          'phase: build',
+          'design_doc: docs/superpowers/specs/occupied-standard-plan-design.md',
+          `plan: ${recorded}`,
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      const target = path.join(
+        tmpDir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-second-feature.md',
+      );
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(target));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('plan is already recorded');
+      expect(result.stderr).toContain(recorded);
+    }, 20_000);
+
     it('blocks source code writes in design phase', async () => {
       await createChange(
         tmpDir,
