@@ -167,6 +167,24 @@ describe('skills', () => {
       }
     });
 
+    it('reports a Rule source access failure without calling it missing', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const accessSpy = vi.spyOn(fs, 'access').mockRejectedValue(permissionError);
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      try {
+        await expect(
+          copyCometRulesForPlatform(tmpDir, platform, true, 'zh', 'project'),
+        ).resolves.toEqual({ copied: 0, skipped: 0, failed: 1 });
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('Failed to copy rule'));
+        expect(error).not.toHaveBeenCalledWith(expect.stringContaining('Rule source not found'));
+      } finally {
+        accessSpy.mockRestore();
+        error.mockRestore();
+      }
+    });
+
     it('reports a Rule copy permission failure', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
       const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });

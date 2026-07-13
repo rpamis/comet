@@ -10224,8 +10224,9 @@ async function fileExists3(filePath) {
   try {
     await fs13.access(filePath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 async function readDir(dirPath) {
@@ -10238,6 +10239,9 @@ async function readDir(dirPath) {
     }
     throw error;
   }
+}
+function isNotFoundError(error) {
+  return error?.code === "ENOENT";
 }
 
 // domains/comet-classic/classic-project-config.ts

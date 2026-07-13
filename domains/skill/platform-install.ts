@@ -657,24 +657,24 @@ async function copyCometRulesForPlatform(
 
   for (const ruleRelPath of rulePaths) {
     const src = path.join(assetsDir, 'skills', ruleRelPath);
-    if (!(await fileExists(src))) {
-      console.error(`    Rule source not found: ${ruleRelPath}`);
-      failed++;
-      continue;
-    }
-
-    // Normalize the `.en` infix away so the installed file name is the same
-    // regardless of which language variant was selected.
-    const ruleFileName = toRuleBaseName(path.basename(ruleRelPath));
-    const rulesDestDir = path.join(rulesBase, platform.rulesDir);
-    const dest = computeRuleDestPath(rulesDestDir, ruleFileName, platform.rulesFormat);
-
-    if (!overwrite && (await fileExists(dest))) {
-      skippedCount++;
-      continue;
-    }
-
     try {
+      if (!(await fileExists(src))) {
+        console.error(`    Rule source not found: ${ruleRelPath}`);
+        failed++;
+        continue;
+      }
+
+      // Normalize the `.en` infix away so the installed file name is the same
+      // regardless of which language variant was selected.
+      const ruleFileName = toRuleBaseName(path.basename(ruleRelPath));
+      const rulesDestDir = path.join(rulesBase, platform.rulesDir);
+      const dest = computeRuleDestPath(rulesDestDir, ruleFileName, platform.rulesFormat);
+
+      if (!overwrite && (await fileExists(dest))) {
+        skippedCount++;
+        continue;
+      }
+
       const content = await readFile(src, 'utf-8');
       await ensureDir(path.dirname(dest));
       const formatted = formatRuleContent(content, ruleFileName, platform.rulesFormat);

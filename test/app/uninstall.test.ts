@@ -493,6 +493,30 @@ describe('uninstall', () => {
       const result = await removeCometRulesForPlatform(tmpDir, geminiPlatform, 'project');
       expect(result.removed).toBe(0);
     });
+
+    it('counts a Rule-directory inspection permission failure without deleting user Rules', async () => {
+      const claudePlatform: Platform = PLATFORMS.find((p) => p.id === 'claude')!;
+      const rulesDir = path.join(tmpDir, '.claude', 'rules');
+      const userRule = path.join(rulesDir, 'personal.md');
+      await fs.mkdir(rulesDir, { recursive: true });
+      await fs.writeFile(userRule, '# Personal Rule\n');
+      const readdir = fs.readdir.bind(fs);
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const readdirSpy = vi.spyOn(fs, 'readdir').mockImplementation(async (dirPath, options) => {
+        if (path.resolve(String(dirPath)) === path.resolve(rulesDir)) throw permissionError;
+        return readdir(dirPath, options as never);
+      });
+
+      try {
+        await expect(
+          removeCometRulesForPlatform(tmpDir, claudePlatform, 'project'),
+        ).resolves.toEqual({ removed: 0, failed: 1 });
+      } finally {
+        readdirSpy.mockRestore();
+      }
+
+      await expect(fs.readFile(userRule, 'utf8')).resolves.toBe('# Personal Rule\n');
+    });
   });
 
   describe('removeCometHooksForPlatform', () => {

@@ -255,10 +255,16 @@ async function removeCometHooksForPlatform(
         let removed = 0;
         let failed = 0;
         for (const file of new Set(files)) {
-          const result = await removeManagedHooksFromJsonFile(
-            path.join(platformBase, file),
-            scriptRelPaths,
-          );
+          let result: RemovalResult;
+          try {
+            result = await removeManagedHooksFromJsonFile(
+              path.join(platformBase, file),
+              scriptRelPaths,
+            );
+          } catch {
+            if (file === canonicalFile) failed++;
+            continue;
+          }
           removed += result.removed;
           if (file === canonicalFile) failed += result.failed;
         }

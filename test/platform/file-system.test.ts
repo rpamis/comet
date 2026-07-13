@@ -11,6 +11,7 @@ import {
   readDir,
   removeFile,
   removeDir,
+  isDirEmpty,
 } from '../../platform/fs/file-system.js';
 
 describe('file-system utils', () => {
@@ -148,6 +149,17 @@ describe('file-system utils', () => {
     it('returns false for a non-existent path', async () => {
       expect(await fileExists(path.join(tmpDir, 'nope'))).toBe(false);
     });
+
+    it('propagates access permission errors', async () => {
+      const error = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const accessSpy = vi.spyOn(fs, 'access').mockRejectedValue(error);
+
+      try {
+        await expect(fileExists(path.join(tmpDir, 'blocked'))).rejects.toBe(error);
+      } finally {
+        accessSpy.mockRestore();
+      }
+    });
   });
 
   describe('readJson', () => {
@@ -230,6 +242,19 @@ describe('file-system utils', () => {
         await expect(removeDir(dirPath)).rejects.toBe(error);
       } finally {
         rmSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('isDirEmpty', () => {
+    it('propagates readdir permission errors', async () => {
+      const error = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const readdirSpy = vi.spyOn(fs, 'readdir').mockRejectedValue(error);
+
+      try {
+        await expect(isDirEmpty(path.join(tmpDir, 'blocked'))).rejects.toBe(error);
+      } finally {
+        readdirSpy.mockRestore();
       }
     });
   });

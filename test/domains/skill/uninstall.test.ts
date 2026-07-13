@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -66,5 +66,85 @@ describe('removeCometHooksForPlatform', () => {
       failed: 1,
     });
     await expect(fs.readFile(settingsPath, 'utf8')).resolves.toBe(malformedSettings);
+  });
+
+  it.each([
+    {
+      id: 'claude',
+      accessPath: ['.claude', 'settings.local.json'],
+      snapshotPath: ['.claude', 'settings.local.json'],
+    },
+    {
+      id: 'qwen',
+      accessPath: ['.qwen', 'settings.json'],
+      snapshotPath: ['.qwen', 'settings.json'],
+    },
+    {
+      id: 'gemini',
+      accessPath: ['.gemini', 'settings.json'],
+      snapshotPath: ['.gemini', 'settings.json'],
+    },
+    {
+      id: 'windsurf',
+      accessPath: ['.windsurf', 'hooks.json'],
+      snapshotPath: ['.windsurf', 'hooks.json'],
+    },
+    {
+      id: 'kiro',
+      accessPath: ['.kiro', 'hooks'],
+      snapshotPath: ['.kiro', 'hooks', 'comet-hook-guard.kiro.hook'],
+    },
+  ])(
+    'fails closed when canonical $id Hook configuration is unreadable',
+    async ({ id, accessPath, snapshotPath }) => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === id)!;
+      const blockedPath = path.join(tmpDir, ...accessPath);
+      const preservedPath = path.join(tmpDir, ...snapshotPath);
+      await installCometHooksForPlatform(tmpDir, platform, 'project');
+      const before = await fs.readFile(preservedPath, 'utf8');
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (filePath) => {
+        if (path.resolve(String(filePath)) === path.resolve(blockedPath)) throw permissionError;
+      });
+
+      try {
+        await expect(removeCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+          removed: 0,
+          failed: 1,
+        });
+      } finally {
+        accessSpy.mockRestore();
+      }
+
+      await expect(fs.readFile(preservedPath, 'utf8')).resolves.toBe(before);
+    },
+  );
+
+  it('keeps unreadable historical Codex Hook access best-effort after canonical cleanup', async () => {
+    const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
+    const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+    const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+    await installCometHooksForPlatform(tmpDir, codex, 'project');
+    const canonicalSource = await fs.readFile(canonicalPath, 'utf8');
+    await fs.writeFile(legacyPath, canonicalSource, 'utf8');
+    const access = fs.access.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (filePath, mode) => {
+      if (path.resolve(String(filePath)) === path.resolve(legacyPath)) throw permissionError;
+      await access(filePath, mode);
+    });
+
+    try {
+      await expect(removeCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+    } finally {
+      accessSpy.mockRestore();
+    }
+
+    const cleanedCanonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+    expect(cleanedCanonical.hooks.PreToolUse[0].hooks).toEqual([]);
+    await expect(fs.readFile(legacyPath, 'utf8')).resolves.toBe(canonicalSource);
   });
 });
