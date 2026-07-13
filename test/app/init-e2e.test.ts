@@ -293,6 +293,53 @@ describe('comet init E2E', () => {
     INIT_E2E_TIMEOUT_MS,
   );
 
+  it.each([
+    { component: 'Rule', outcome: 'returned' },
+    { component: 'Rule', outcome: 'thrown' },
+    { component: 'Hook', outcome: 'returned' },
+    { component: 'Hook', outcome: 'thrown' },
+  ] as const)(
+    '$component $outcome failure makes init Comet failed and prevents registry success',
+    async ({ component, outcome }) => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const platformInstall = await import('../../domains/skill/platform-install.js');
+
+      if (component === 'Rule') {
+        const ruleSpy = vi.spyOn(platformInstall, 'copyCometRulesForPlatform');
+        if (outcome === 'returned') {
+          ruleSpy.mockResolvedValueOnce({ copied: 0, skipped: 0, failed: 1 });
+        } else {
+          ruleSpy.mockRejectedValueOnce(new Error('rule install threw'));
+        }
+      } else {
+        const hookSpy = vi.spyOn(platformInstall, 'installCometHooksForPlatform');
+        if (outcome === 'returned') {
+          hookSpy.mockResolvedValueOnce({
+            status: 'failed',
+            reason: 'hook install returned failed',
+          });
+        } else {
+          hookSpy.mockRejectedValueOnce(new Error('hook install threw'));
+        }
+      }
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, language: 'en' }),
+      );
+      const codexResult = (result.results as { platform: string; comet: string }[]).find(
+        (candidate) => candidate.platform === 'codex',
+      );
+
+      expect(codexResult?.comet).toBe('failed');
+      await expect(
+        fs.access(getProjectRegistryPath(path.join(tmpDir, 'fake-home'))),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
   it('records project-scope Comet installs in the user project registry', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await fs.mkdir(fakeHome, { recursive: true });

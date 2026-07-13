@@ -134,6 +134,16 @@ interface SingleProjectUpdateResult {
   codegraph: CodegraphStatus;
 }
 
+interface ComponentFailureDetail {
+  scope: InstallScope;
+  platform: string;
+  platformName: string;
+  component: 'Skill' | 'Rule' | 'Hook';
+  status: 'failed';
+  failed: number;
+  reason: string;
+}
+
 interface AllProjectsUpdateResult {
   projectPath: string;
   status: 'updated' | 'skipped' | 'failed';
@@ -144,6 +154,7 @@ interface AllProjectsUpdateResult {
     platformName: string;
     language: SkillLanguage;
   }>;
+  failures?: ComponentFailureDetail[];
   summary?: {
     skillsCopied: number;
     rulesCopied: number;
@@ -443,6 +454,53 @@ function componentFailureReason(result: SingleProjectUpdateResult): string {
     reasons.push(`legacy Skill cleanup failed (${result.skills.cleanupFailed})`);
   }
   return reasons.join('; ');
+}
+
+function collectComponentFailures(result: SingleProjectUpdateResult): ComponentFailureDetail[] {
+  const skillFailures = result.skills.targets.flatMap((target): ComponentFailureDetail[] => {
+    const failed = target.failed + target.cleanupFailed;
+    if (failed === 0 || !target.reason) return [];
+    return [
+      {
+        scope: target.scope,
+        platform: target.platform,
+        platformName: target.platformName,
+        component: 'Skill',
+        status: 'failed',
+        failed,
+        reason: target.reason,
+      },
+    ];
+  });
+  const ruleFailures = result.rules.targets.flatMap((target): ComponentFailureDetail[] => {
+    if (target.failed === 0 || !target.reason) return [];
+    return [
+      {
+        scope: target.scope,
+        platform: target.platform,
+        platformName: target.platformName,
+        component: 'Rule',
+        status: 'failed',
+        failed: target.failed,
+        reason: target.reason,
+      },
+    ];
+  });
+  const hookFailures = result.hooks.targets.flatMap((target): ComponentFailureDetail[] => {
+    if (target.failed === 0 || !target.reason) return [];
+    return [
+      {
+        scope: target.scope,
+        platform: target.platform,
+        platformName: target.platformName,
+        component: 'Hook',
+        status: 'failed',
+        failed: target.failed,
+        reason: target.reason,
+      },
+    ];
+  });
+  return [...skillFailures, ...ruleFailures, ...hookFailures];
 }
 
 function summarizeTargets(targets: InstalledCometTarget[]): AllProjectsUpdateResult['targets'] {
@@ -849,6 +907,11 @@ function logSingleProjectSummary(
   if (result.hooks.totalFailed > 0) {
     log(`    Hook failures: ${result.hooks.totalFailed} (update incomplete)`);
   }
+  for (const failure of collectComponentFailures(result)) {
+    log(
+      `    ${failure.platformName} (${failure.scope}) ${failure.component}: ${failure.status} (${failure.failed}) - ${failure.reason}`,
+    );
+  }
   log(`    ${t(lang, 'summaryCodegraph')} ${result.codegraph}`);
   log(`    ${t(lang, 'summaryScope')} ${scopes}`);
   log(`    ${t(lang, 'summaryLanguage')} ${languages}`);
@@ -954,6 +1017,7 @@ async function updateAllIndexedProjects(
           status: 'failed',
           reason: componentFailureReason(result),
           targets: summarizeUpdatedTargets(result.skills.targets),
+          failures: collectComponentFailures(result),
         });
         continue;
       }

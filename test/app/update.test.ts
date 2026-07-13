@@ -392,7 +392,23 @@ describe('update command helpers', () => {
           scope: 'project',
           installMode: options.installMode,
         });
-        expect(log.mock.calls.map((call) => call.join(' ')).join('\n')).toMatch(/incomplete/iu);
+        const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+        expect(output).toMatch(/incomplete/iu);
+        if (failure === 'Skill') {
+          for (const platformName of ['Codex', 'Antigravity', 'Antigravity 2.0']) {
+            expect(output).toContain(
+              `${platformName} (project) Skill: failed (1) - 1 Skill file(s) failed to install`,
+            );
+          }
+        } else if (failure === 'Rule') {
+          expect(output).toContain(
+            'Codex (project) Rule: failed (1) - 1 Rule file(s) failed to install',
+          );
+        } else {
+          expect(output).toMatch(
+            /Codex \(project\) Hook: failed \(1\) - Invalid Codex settings at .*hooks\.json: EISDIR/iu,
+          );
+        }
       } finally {
         log.mockRestore();
         homedirSpy.mockRestore();
@@ -409,6 +425,7 @@ describe('update command helpers', () => {
       await upsertProjectInstallation(project, [{ platform: 'codex', language: 'en' }], 'init', {
         homeDir: fakeHome,
       });
+      const registryBefore = await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8');
       const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
       const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
       try {
@@ -421,10 +438,55 @@ describe('update command helpers', () => {
         const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
         expect(result.projects[0].status).toBe('failed');
         expect(result.projects[0].reason).toMatch(new RegExp(failure, 'iu'));
+        const failures = result.projects[0].failures as Array<Record<string, unknown>>;
+        if (failure === 'Skill') {
+          expect(failures).toEqual(
+            expect.arrayContaining(
+              ['Codex', 'Antigravity', 'Antigravity 2.0'].map((platformName) =>
+                expect.objectContaining({
+                  platformName,
+                  scope: 'project',
+                  component: 'Skill',
+                  status: 'failed',
+                  failed: 1,
+                  reason: '1 Skill file(s) failed to install',
+                }),
+              ),
+            ),
+          );
+        } else if (failure === 'Rule') {
+          expect(failures).toContainEqual(
+            expect.objectContaining({
+              platform: 'codex',
+              platformName: 'Codex',
+              scope: 'project',
+              component: 'Rule',
+              status: 'failed',
+              failed: 1,
+              reason: '1 Rule file(s) failed to install',
+            }),
+          );
+        } else {
+          expect(failures).toContainEqual(
+            expect.objectContaining({
+              platform: 'codex',
+              platformName: 'Codex',
+              scope: 'project',
+              component: 'Hook',
+              status: 'failed',
+              failed: 1,
+              reason: expect.stringMatching(/Invalid Codex settings at .*hooks\.json: EISDIR/iu),
+            }),
+          );
+        }
       } finally {
         log.mockRestore();
         homedirSpy.mockRestore();
       }
+
+      await expect(fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8')).resolves.toBe(
+        registryBefore,
+      );
     },
   );
 
