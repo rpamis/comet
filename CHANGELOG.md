@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.5] - 2026-07-13
+
+### Added
+
+- **Current-branch isolation**: Classic workflows now support `isolation: current`, letting users continue on the current branch without creating a new branch or worktree while still enforcing explicit isolation selection before build.
+
+### Changed
+
+- **Preset isolation decisions**: `/comet-hotfix` and `/comet-tweak` now require an explicit `branch` or `current` isolation choice instead of silently defaulting to a new branch, and `/comet-verify` / `/comet-archive` now document the current-branch handoff and archive commit path consistently in both Chinese and English Skills.
+
 ## What's Changed [0.4.0-beta.4] - 2026-07-11
 
 ### Added
