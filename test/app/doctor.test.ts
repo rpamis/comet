@@ -29,10 +29,11 @@ async function installManagedCometSkills(baseDir: string, platformDir = '.claude
 
 async function collectDoctorResults(
   targetPath: string,
+  scope: 'project' | 'auto' = 'project',
 ): Promise<Array<{ check: string; status: string; message: string }>> {
   const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   try {
-    await doctorCommand(targetPath, { json: true, scope: 'project' });
+    await doctorCommand(targetPath, { json: true, scope, homeDir: targetPath });
     const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
     return JSON.parse(output).results;
   } finally {
@@ -301,18 +302,46 @@ describe('doctor command', () => {
     }
   });
 
-  it('does not report Codex healthy from shared canonical Skills without Codex detection paths', async () => {
-    await installManagedCometSkills(tmpDir, '.agents');
+  it.each(['project', 'auto'] as const)(
+    'assigns a shared project .agents Skill root once without Codex evidence in %s scope',
+    async (scope) => {
+      await installManagedCometSkills(tmpDir, '.agents');
 
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    try {
-      await doctorCommand(tmpDir);
-      const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
-      expect(output).not.toContain('skills: Codex (project)');
-    } finally {
-      log.mockRestore();
-    }
-  });
+      const results = await collectDoctorResults(tmpDir, scope);
+      const sharedRootChecks = results.filter((result) =>
+        /^skills: (?:Codex|Antigravity(?: 2\.0)?) \(project\)$/u.test(result.check),
+      );
+
+      expect(sharedRootChecks.map((result) => result.check)).toEqual([
+        'skills: Antigravity (project)',
+      ]);
+      expect(results.some((result) => /^rules: Codex \(project\)$/u.test(result.check))).toBe(
+        false,
+      );
+      expect(results.some((result) => /^hooks: Codex \(project\)$/u.test(result.check))).toBe(
+        false,
+      );
+    },
+  );
+
+  it.each(['project', 'auto'] as const)(
+    'assigns a shared project .agents Skill root to Codex once with .codex evidence in %s scope',
+    async (scope) => {
+      await installManagedCometSkills(tmpDir, '.agents');
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+
+      const results = await collectDoctorResults(tmpDir, scope);
+      const sharedRootChecks = results.filter((result) =>
+        /^skills: (?:Codex|Antigravity(?: 2\.0)?) \(project\)$/u.test(result.check),
+      );
+
+      expect(sharedRootChecks.map((result) => result.check)).toEqual(['skills: Codex (project)']);
+      expect(results.filter((result) => result.check === 'rules: Codex (project)')).toHaveLength(1);
+      expect(results.filter((result) => result.check === 'hooks: Codex (project)')).toHaveLength(1);
+      expect(results.some((result) => /^rules: Antigravity/u.test(result.check))).toBe(false);
+      expect(results.some((result) => /^hooks: Antigravity/u.test(result.check))).toBe(false);
+    },
+  );
 
   it('uses the shared schema and leaves invalid state untouched', async () => {
     const invalidChangeDir = path.join(tmpDir, 'openspec', 'changes', 'top-level-invalid');
