@@ -20,6 +20,7 @@ import {
   getManagedSkillPaths,
   computeRuleDestPath,
   isManagedHookCommand,
+  removeManagedHooksFromJsonFile,
 } from './platform-install.js';
 import { removeCometProjectInstructions } from './project-instructions.js';
 
@@ -221,8 +222,23 @@ async function removeCometHooksForPlatform(
 
   try {
     switch (hookFormat) {
-      case 'claude-code':
-        return removeClaudeCodeHooks(platformBase, scriptRelPaths);
+      case 'claude-code': {
+        const files = [
+          platform.hookConfigFile ?? 'settings.local.json',
+          ...(platform.legacyHookConfigFiles ?? []),
+        ];
+        let removed = 0;
+        let failed = 0;
+        for (const file of new Set(files)) {
+          const result = await removeManagedHooksFromJsonFile(
+            path.join(platformBase, file),
+            scriptRelPaths,
+          );
+          removed += result.removed;
+          failed += result.failed;
+        }
+        return { removed, failed };
+      }
       case 'qwen':
       case 'qoder':
       case 'codebuddy':
@@ -241,60 +257,6 @@ async function removeCometHooksForPlatform(
   } catch {
     return { removed: 0, failed: 1 };
   }
-}
-
-async function removeClaudeCodeHooks(
-  platformBase: string,
-  scriptRelPaths: string[],
-): Promise<RemovalResult> {
-  const settingsPath = path.join(platformBase, 'settings.local.json');
-  if (!(await fileExists(settingsPath))) {
-    return { removed: 0, failed: 0 };
-  }
-
-  let removed = 0;
-  let settings: Record<string, unknown>;
-  try {
-    settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as Record<string, unknown>;
-  } catch {
-    return { removed: 0, failed: 0 };
-  }
-
-  const existingHooks = settings.hooks as Record<string, unknown> | undefined;
-  if (!existingHooks) {
-    return { removed: 0, failed: 0 };
-  }
-
-  const existingPreToolUse = existingHooks.PreToolUse as Array<Record<string, unknown>> | undefined;
-  if (!existingPreToolUse || !Array.isArray(existingPreToolUse)) {
-    return { removed: 0, failed: 0 };
-  }
-
-  const filtered = existingPreToolUse.flatMap((group) => {
-    if (!Array.isArray(group.hooks)) return [group];
-
-    const hooksBefore = (group.hooks as Array<Record<string, unknown>>).length;
-    const hooks = (group.hooks as Array<Record<string, unknown>>).filter(
-      (hook) => !isManagedHookCommand(hook.command, scriptRelPaths),
-    );
-    removed += hooksBefore - hooks.length;
-
-    if (hooks.length === 0) return [];
-    return [{ ...group, hooks }];
-  });
-
-  if (filtered.length === 0) {
-    delete existingHooks.PreToolUse;
-  } else {
-    existingHooks.PreToolUse = filtered;
-  }
-
-  if (Object.keys(existingHooks).length === 0) {
-    delete settings.hooks;
-  }
-
-  await writeFile(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
-  return { removed, failed: 0 };
 }
 
 async function removeQwenStyleHooks(

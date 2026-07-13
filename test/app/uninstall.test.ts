@@ -377,20 +377,40 @@ describe('uninstall', () => {
   });
 
   describe('removeCometHooksForPlatform', () => {
-    it('removes Codex hooks from .codex without creating .agents settings', async () => {
-      const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
-      await installCometHooksForPlatform(tmpDir, codexPlatform, 'project');
+    it('removes Codex hooks from canonical and historical files while preserving user config', async () => {
+      const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const userHandler = { type: 'command', command: 'node my-user-hook.mjs' };
 
-      const settingsPath = path.join(tmpDir, '.codex', 'settings.local.json');
-      await expect(fs.access(settingsPath)).resolves.toBeUndefined();
-      const result = await removeCometHooksForPlatform(tmpDir, codexPlatform, 'project');
+      await installCometHooksForPlatform(tmpDir, codex, 'project');
+      const canonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      const cometHandler = canonical.hooks.PreToolUse[0].hooks[0];
+      canonical.hooks.PreToolUse[0].hooks.push(userHandler);
+      await fs.writeFile(canonicalPath, JSON.stringify(canonical, null, 2), 'utf8');
+      await fs.writeFile(
+        legacyPath,
+        JSON.stringify(
+          {
+            model: 'gpt-5',
+            hooks: {
+              PreToolUse: [{ matcher: 'Write|Edit', hooks: [cometHandler, userHandler] }],
+            },
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
 
-      expect(result.removed).toBeGreaterThan(0);
-      const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
-      expect(settings.hooks).toBeUndefined();
-      await expect(
-        fs.access(path.join(tmpDir, '.agents', 'settings.local.json')),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+      const result = await removeCometHooksForPlatform(tmpDir, codex, 'project');
+
+      expect(result).toEqual({ removed: 2, failed: 0 });
+      const cleanedCanonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      expect(cleanedCanonical.hooks.PreToolUse[0].hooks).toEqual([userHandler]);
+      const cleanedLegacy = JSON.parse(await fs.readFile(legacyPath, 'utf8'));
+      expect(cleanedLegacy.model).toBe('gpt-5');
+      expect(cleanedLegacy.hooks.PreToolUse[0].hooks).toEqual([userHandler]);
     });
 
     it('removes Claude Code hooks while preserving non-Comet hooks', async () => {
@@ -497,7 +517,7 @@ describe('uninstall', () => {
       expect(result.removed).toBe(0);
     });
 
-    it('cleans up empty hooks section after removal', async () => {
+    it('preserves empty hook groups after removal', async () => {
       const claudePlatform: Platform = PLATFORMS.find((p) => p.id === 'claude')!;
       const settingsDir = path.join(tmpDir, '.claude');
       await fs.mkdir(settingsDir, { recursive: true });
@@ -525,7 +545,7 @@ describe('uninstall', () => {
 
       const updatedContent = await fs.readFile(settingsPath, 'utf-8');
       const updated = JSON.parse(updatedContent);
-      expect(updated.hooks).toBeUndefined();
+      expect(updated.hooks.PreToolUse).toEqual([{ matcher: 'Write|Edit', hooks: [] }]);
     });
   });
 
