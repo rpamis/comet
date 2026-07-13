@@ -903,6 +903,34 @@ describe('uninstallCommand interactive selection', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('does not apply project registry recovery targets to an explicit global uninstall', async () => {
+    const fakeHome = path.join(tmpDir, 'global-scope-recovery-home');
+    const opencode = PLATFORMS.find((platform) => platform.id === 'opencode')!;
+    const commandPath = path.join(tmpDir, '.opencode', 'commands', 'comet.md');
+    await copyCometSkillsForPlatform(tmpDir, opencode, true, 'skills', 'project');
+    await fs.rm(path.join(tmpDir, '.opencode', 'skills'), { recursive: true, force: true });
+    await upsertProjectInstallation(tmpDir, [{ platform: 'opencode', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(tmpDir, { scope: 'global', force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.targets).toEqual([]);
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.access(commandPath)).resolves.toBeUndefined();
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toHaveLength(1);
+  });
+
   it('does not auto-detect Codex from a shared canonical global Skill root', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
@@ -1107,7 +1135,7 @@ describe('uninstallCommand interactive selection', () => {
       log.mockClear();
       await uninstallCommand(tmpDir, { force: true, json: true });
       const retryResult = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
-      expect(retryResult.summary).toMatchObject({ targetsProcessed: 0, totalFailures: 0 });
+      expect(retryResult.summary).toMatchObject({ targetsProcessed: 1, totalFailures: 0 });
       expect(retryResult.workingDirsRemoved).toBe(1);
     } finally {
       log.mockRestore();
@@ -1116,6 +1144,83 @@ describe('uninstallCommand interactive selection', () => {
 
     expect(cometRemovalAttempts).toBe(2);
     await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('matches a registered current project through its canonical symlink identity', async () => {
+    const fakeHome = path.join(tmpDir, 'canonical-recovery-home');
+    const realProject = path.join(tmpDir, 'canonical-real-project');
+    const projectAlias = path.join(tmpDir, 'canonical-project-alias');
+    await fs.mkdir(path.join(realProject, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(realProject, '.comet', 'state'), 'recover\n', 'utf8');
+    await fs.symlink(realProject, projectAlias, process.platform === 'win32' ? 'junction' : 'dir');
+    await upsertProjectInstallation(realProject, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(projectAlias, { currentProject: true, force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.summary).toMatchObject({ targetsProcessed: 1, totalFailures: 0 });
+      expect(result.workingDirsRemoved).toBe(1);
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.access(path.join(realProject, '.comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('uses registry lastTargets to retry an OpenCode command cleanup for current-project', async () => {
+    const fakeHome = path.join(tmpDir, 'opencode-recovery-home');
+    const opencode = PLATFORMS.find((platform) => platform.id === 'opencode')!;
+    const commandPath = path.join(tmpDir, '.opencode', 'commands', 'comet.md');
+    await copyCometSkillsForPlatform(tmpDir, opencode, true, 'skills', 'project');
+    await upsertProjectInstallation(tmpDir, [{ platform: 'opencode', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const unlink = fs.unlink.bind(fs);
+    let commandAttempts = 0;
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (targetPath) => {
+      if (path.resolve(String(targetPath)) === path.resolve(commandPath)) {
+        commandAttempts++;
+        if (commandAttempts === 1) throw permissionError;
+      }
+      await unlink(targetPath);
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(tmpDir, { currentProject: true, force: true, json: true });
+      const first = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(first.summary.totalFailures).toBe(1);
+      await expect(fs.access(commandPath)).resolves.toBeUndefined();
+      log.mockClear();
+
+      await uninstallCommand(tmpDir, { currentProject: true, force: true, json: true });
+      const second = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(second.summary).toMatchObject({ targetsProcessed: 1, totalFailures: 0 });
+    } finally {
+      log.mockRestore();
+      unlinkSpy.mockRestore();
+    }
+
+    expect(commandAttempts).toBe(2);
+    await expect(fs.access(commandPath)).rejects.toMatchObject({ code: 'ENOENT' });
     const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
       projects: unknown[];
     };
@@ -1156,6 +1261,55 @@ describe('uninstallCommand interactive selection', () => {
     await expect(fs.readFile(path.join(project, 'AGENTS.md'), 'utf8')).resolves.not.toContain(
       'comet-ambient-resume',
     );
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('uses registry lastTargets to retry a Pi extension cleanup for all-projects', async () => {
+    const fakeHome = path.join(tmpDir, 'pi-all-projects-recovery-home');
+    const project = path.join(tmpDir, 'pi-all-projects-recovery-project');
+    const pi = PLATFORMS.find((platform) => platform.id === 'pi')!;
+    const extensionPath = path.join(project, '.pi', 'extensions', 'comet-commands.ts');
+    await copyCometSkillsForPlatform(project, pi, true, 'skills', 'project');
+    await upsertProjectInstallation(project, [{ platform: 'pi', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const unlink = fs.unlink.bind(fs);
+    let extensionAttempts = 0;
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (targetPath) => {
+      if (path.resolve(String(targetPath)) === path.resolve(extensionPath)) {
+        extensionAttempts++;
+        if (extensionAttempts === 1) throw permissionError;
+      }
+      await unlink(targetPath);
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(project, { allProjects: true, force: true, json: true });
+      const first = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(first.projects[0].status).toBe('failed');
+      await expect(fs.access(extensionPath)).resolves.toBeUndefined();
+      log.mockClear();
+
+      await uninstallCommand(project, { allProjects: true, force: true, json: true });
+      const second = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(second.projects[0]).toMatchObject({
+        status: 'uninstalled',
+        summary: { targetsProcessed: 1, totalFailures: 0 },
+      });
+    } finally {
+      log.mockRestore();
+      unlinkSpy.mockRestore();
+    }
+
+    expect(extensionAttempts).toBe(2);
+    await expect(fs.access(extensionPath)).rejects.toMatchObject({ code: 'ENOENT' });
     const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
       projects: unknown[];
     };

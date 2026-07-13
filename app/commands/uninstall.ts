@@ -2,7 +2,7 @@ import path from 'path';
 import { checkbox, select } from '@inquirer/prompts';
 
 import { getBaseDir, type InstallScope } from '../../platform/install/detect.js';
-import { getPlatformSkillsDir } from '../../platform/install/platforms.js';
+import { PLATFORMS, getPlatformSkillsDir } from '../../platform/install/platforms.js';
 import {
   removeCometSkillsForPlatform,
   removeCometRulesForPlatform,
@@ -13,8 +13,10 @@ import {
 import { detectInstalledCometTargets } from './update.js';
 import {
   listProjectRegistryEntries,
+  findProjectRegistryEntry,
   removeProjectInstallation,
   upsertProjectInstallation,
+  type ProjectRegistryTarget,
 } from '../../platform/install/project-registry.js';
 import { assertProjectScopeOptions, resolveProjectScopeMode } from './project-scope-selection.js';
 
@@ -25,6 +27,7 @@ interface UninstallOptions {
   allProjects?: boolean;
   currentProject?: boolean;
   recoverProjectCleanup?: boolean;
+  recoveryTargets?: ProjectRegistryTarget[];
 }
 
 interface TargetUninstallResult {
@@ -101,10 +104,19 @@ async function uninstallSingleProject(
   options: UninstallOptions = {},
   log: (message: string) => void,
 ): Promise<SingleProjectUninstallResult | null> {
-  const targets = await detectInstalledCometTargets(projectPath, {
+  const detectedTargets = await detectInstalledCometTargets(projectPath, {
     scopes: options.scope ? [options.scope] : undefined,
     respectDetectionPaths: options.scope === undefined,
   });
+  const targets =
+    detectedTargets.length > 0
+      ? detectedTargets
+      : (options.recoverProjectCleanup ? (options.recoveryTargets ?? []) : []).flatMap((target) => {
+          const platform = PLATFORMS.find((candidate) => candidate.id === target.platform);
+          return platform
+            ? [{ scope: 'project' as const, platform, language: target.language }]
+            : [];
+        });
 
   if (targets.length === 0 && !options.recoverProjectCleanup) {
     return null;
@@ -279,15 +291,15 @@ async function uninstallAllIndexedProjects(
   const runnableProjects = [];
   const staleRemoved = 0;
 
-  for (const project of registryProjects) {
-    const projectPath = project.path;
+  for (const registryProject of registryProjects) {
+    const projectPath = registryProject.path;
     try {
       const targets = await detectInstalledCometTargets(projectPath, { scopes: ['project'] });
       if (targets.length === 0) {
-        runnableProjects.push({ projectPath, targets });
+        runnableProjects.push({ projectPath, targets, registryProject });
         continue;
       }
-      runnableProjects.push({ projectPath, targets });
+      runnableProjects.push({ projectPath, targets, registryProject });
     } catch (error) {
       results.push({
         projectPath,
@@ -320,7 +332,7 @@ async function uninstallAllIndexedProjects(
   }
 
   for (const project of runnableProjects) {
-    const { projectPath, targets } = project;
+    const { projectPath, targets, registryProject } = project;
     try {
       const result = await uninstallSingleProject(
         projectPath,
@@ -331,6 +343,7 @@ async function uninstallAllIndexedProjects(
           currentProject: true,
           force: true,
           recoverProjectCleanup: true,
+          recoveryTargets: registryProject.lastTargets,
         },
         log,
       );
@@ -414,14 +427,13 @@ export async function uninstallCommand(
     return;
   }
 
-  const registeredProject = registryProjects.some(
-    (project) => path.resolve(project.path) === projectPath,
-  );
+  const registeredProject = await findProjectRegistryEntry(projectPath, registryProjects);
   const result = await uninstallSingleProject(
     projectPath,
     {
       ...options,
-      recoverProjectCleanup: registeredProject && options.scope !== 'global',
+      recoverProjectCleanup: Boolean(registeredProject) && options.scope !== 'global',
+      recoveryTargets: registeredProject?.lastTargets,
     },
     log,
   );
