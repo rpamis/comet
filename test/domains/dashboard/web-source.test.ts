@@ -21,6 +21,7 @@ describe('dashboard web source contracts', () => {
     const source = await readDashboardSource();
 
     expect(source).toContain('const scrollY = window.scrollY');
+    expect(source).toContain("document.body.style.position = 'fixed'");
     expect(source).toContain('document.body.style.top = `-${scrollY}px`');
     expect(source).toContain('window.scrollTo(0, scrollY)');
   });
@@ -33,6 +34,38 @@ describe('dashboard web source contracts', () => {
       expect(source).toContain(`${property}: document.body.style.${property}`);
       expect(source).toContain(`document.body.style.${property} = previousBodyStyle.${property}`);
     }
+  });
+
+  it('renders artifact previews through the shared markdown-preview pipeline', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain("from './markdown-preview.js'");
+    expect(source).toContain('className="md-github"');
+    expect(source).toContain('dangerouslySetInnerHTML={{ __html: loadState.html }}');
+    expect(source).toContain('runMermaid(articleRef.current)');
+    expect(source).toContain('extractToc(articleRef.current)');
+    expect(source).toContain('renderYamlTable');
+    expect(source).toContain('renderJsonPreview');
+    expect(source).toContain("artifact.key === 'cometYaml'");
+    expect(source).toContain("artifact.key === 'handoff'");
+  });
+
+  it('keeps the artifact table of contents behind fullscreen preview only', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('const [isFullscreen, setIsFullscreen] = useState(false)');
+    expect(source).toContain("aria-label={isFullscreen ? '退出全屏' : '全屏展示'}");
+    expect(source).toContain('{isFullscreen && toc.length > 0 && (');
+    expect(source).not.toContain('{toc.length > 0 && (');
+  });
+
+  it('wraps artifact paths and exposes a copy control beside them', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('break-all font-mono text-xs text-meta');
+    expect(source).toContain('aria-label="复制文件路径"');
+    expect(source).toContain("toast('路径已复制')");
+    expect(source).not.toContain('truncate font-mono text-xs text-meta');
   });
 
   it('does not suggest verify for archived changes in the task progress hint', async () => {
