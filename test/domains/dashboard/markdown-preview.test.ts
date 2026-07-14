@@ -42,6 +42,43 @@ describe('dashboard markdown-preview', () => {
     expect(html).toContain('id="section-two"');
   });
 
+  it('assigns unique ids for duplicate headings and falls back for symbol-only titles', async () => {
+    const html = await renderMarkdown(
+      ['# Same', '', '## Same', '', '### Same', '', '# !!!', '', '# !!!'].join('\n'),
+    );
+
+    expect(html).toContain('<h1 id="same">');
+    expect(html).toContain('<h2 id="same-1">');
+    expect(html).toContain('<h3 id="same-2">');
+    expect(html).toContain('<h1 id="heading">');
+    expect(html).toContain('<h1 id="heading-1">');
+
+    const toc = extractToc(containerFromHtml(html));
+    expect(toc.map((item) => item.id)).toEqual(['same', 'same-1', 'same-2', 'heading', 'heading-1']);
+  });
+
+  it('does not leak heading slug state across separate renderMarkdown calls', async () => {
+    const first = await renderMarkdown('# Dup\n\n# Dup');
+    const second = await renderMarkdown('# Dup');
+
+    expect(first).toContain('id="dup"');
+    expect(first).toContain('id="dup-1"');
+    expect(second).toContain('<h1 id="dup">');
+    expect(second).not.toContain('id="dup-1"');
+  });
+
+  it('renders inline markdown inside headings instead of raw markers', async () => {
+    const html = await renderMarkdown('# **Bold** title with `code`');
+
+    expect(html).toContain('<h1 id="bold-title-with-code">');
+    expect(html).toContain('<strong>Bold</strong>');
+    expect(html).toContain('<code>code</code>');
+    expect(html).not.toContain('**Bold**');
+
+    const toc = extractToc(containerFromHtml(html));
+    expect(toc).toEqual([{ id: 'bold-title-with-code', text: 'Bold title with code', depth: 1 }]);
+  });
+
   it('extracts h1–h3 toc entries from rendered markup', async () => {
     const html = await renderMarkdown('# One\n\n## Two\n\n#### Skip\n\n### Three');
     const toc = extractToc(containerFromHtml(html));

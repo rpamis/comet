@@ -20,6 +20,25 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+/** Document-scoped heading id generator (GitHub-style uniqueness). */
+function createHeadingSlugger() {
+  const counts = new Map();
+  return {
+    slug(raw) {
+      let base = String(raw ?? '')
+        .toLowerCase()
+        .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      if (!base) base = 'heading';
+      const seen = counts.get(base) ?? 0;
+      counts.set(base, seen + 1);
+      return seen === 0 ? base : `${base}-${seen}`;
+    },
+  };
+}
+
 async function sanitizePreviewHtml(dirty) {
   const createDOMPurify = (await import('dompurify')).default;
   let purify = createDOMPurify;
@@ -187,14 +206,15 @@ export async function renderJsonPreview(content) {
 
 /**
  * Render Markdown to an HTML string.
- * - Headings get id anchors (Chinese-safe)
+ * - Headings get unique Chinese-safe id anchors (duplicate titles suffix -1, -2, …)
+ * - Heading inline Markdown (bold/code/links) is rendered, not shown as raw markers
  * - ```mermaid → <div class="mermaid">
  * - Other fences use highlight.js when available
  * - Whole-stack failure falls back to escaped plaintext <pre>
  */
 export async function renderMarkdown(content) {
   try {
-    const { marked } = await import('marked');
+    const { Marked } = await import('marked');
 
     let hljs = null;
     try {
@@ -203,16 +223,16 @@ export async function renderMarkdown(content) {
       // highlight.js unavailable — skip syntax highlighting
     }
 
+    // Fresh Marked + slugger per call: avoid mutating the shared marked singleton.
+    const slugger = createHeadingSlugger();
+    const marked = new Marked();
     marked.use({
       renderer: {
-        heading({ text, depth }) {
-          const id = text
-            .toLowerCase()
-            .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-')
-            .replace(/^-|-$/g, '');
-          return `<h${depth} id="${id}">${text}</h${depth}>`;
+        heading({ text, depth, tokens }) {
+          const id = slugger.slug(text);
+          const inline =
+            tokens && this.parser?.parseInline ? this.parser.parseInline(tokens) : escapeHtml(text);
+          return `<h${depth} id="${escapeHtml(id)}">${inline}</h${depth}>`;
         },
         code({ text, lang }) {
           if (lang === 'mermaid') {
@@ -221,14 +241,14 @@ export async function renderMarkdown(content) {
           if (hljs) {
             const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
             const highlighted = hljs.highlight(text, { language }).value;
-            return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+            return `<pre><code class="hljs language-${escapeHtml(language)}">${highlighted}</code></pre>`;
           }
           return `<pre><code>${escapeHtml(text)}</code></pre>`;
         },
       },
     });
 
-    const result = await marked(content);
+    const result = marked.parse(content);
     const html = typeof result === 'string' ? result : String(result);
     return sanitizePreviewHtml(html);
   } catch {
