@@ -1,7 +1,28 @@
 /** Dashboard Markdown / YAML / JSON → HTML preview. */
 
+/** Safe URI schemes only; blocks javascript:/data:/vbscript: etc. */
+const ALLOWED_URI_REGEXP =
+  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+
+const PURIFY_CONFIG = {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+  FORBID_ATTR: ['style'],
+  ALLOWED_URI_REGEXP,
+};
+
 function escapeHtml(value) {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function sanitizePreviewHtml(dirty) {
+  const createDOMPurify = (await import('dompurify')).default;
+  let purify = createDOMPurify;
+  if (typeof window === 'undefined' || !window.document) {
+    const { JSDOM } = await import('jsdom');
+    purify = createDOMPurify(new JSDOM('').window);
+  }
+  return purify.sanitize(String(dirty ?? ''), PURIFY_CONFIG);
 }
 
 function isPlainObject(value) {
@@ -112,19 +133,19 @@ function renderStructuredObject(data) {
 export async function renderYamlTable(content) {
   const raw = String(content ?? '');
   if (!raw.trim()) {
-    return '<p>这个产物是空文件。</p>';
+    return sanitizePreviewHtml('<p>这个产物是空文件。</p>');
   }
 
   try {
     const { parse } = await import('yaml');
     const data = parse(raw);
     if (data === null || data === undefined) {
-      return '<p>这个产物是空文件。</p>';
+      return sanitizePreviewHtml('<p>这个产物是空文件。</p>');
     }
     if (typeof data !== 'object' || Array.isArray(data)) {
       return renderMarkdown(['```yaml', raw.replace(/\n$/, ''), '```'].join('\n'));
     }
-    return renderStructuredObject(data);
+    return sanitizePreviewHtml(renderStructuredObject(data));
   } catch {
     return renderMarkdown(['```yaml', raw.replace(/\n$/, ''), '```'].join('\n'));
   }
@@ -139,19 +160,19 @@ export async function renderYamlTable(content) {
 export async function renderJsonPreview(content) {
   const raw = String(content ?? '');
   if (!raw.trim()) {
-    return '<p>这个产物是空文件。</p>';
+    return sanitizePreviewHtml('<p>这个产物是空文件。</p>');
   }
 
   try {
     const data = JSON.parse(raw);
     if (data === null) {
-      return '<p>这个产物是空文件。</p>';
+      return sanitizePreviewHtml('<p>这个产物是空文件。</p>');
     }
     if (isUniformObjectArray(data)) {
-      return renderObjectArrayTable(data);
+      return sanitizePreviewHtml(renderObjectArrayTable(data));
     }
     if (isPlainObject(data)) {
-      return renderStructuredObject(data);
+      return sanitizePreviewHtml(renderStructuredObject(data));
     }
     return renderMarkdown(['```json', JSON.stringify(data, null, 2), '```'].join('\n'));
   } catch {
@@ -203,9 +224,10 @@ export async function renderMarkdown(content) {
     });
 
     const result = await marked(content);
-    return typeof result === 'string' ? result : String(result);
+    const html = typeof result === 'string' ? result : String(result);
+    return sanitizePreviewHtml(html);
   } catch {
-    return `<pre>${escapeHtml(content)}</pre>`;
+    return sanitizePreviewHtml(`<pre>${escapeHtml(content)}</pre>`);
   }
 }
 
@@ -231,7 +253,7 @@ export async function runMermaid(container) {
     mermaid.initialize({
       startOnLoad: false,
       theme: 'default',
-      securityLevel: 'loose',
+      securityLevel: 'strict',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif',
     });
     await mermaid.run({ nodes: Array.from(diagrams) });

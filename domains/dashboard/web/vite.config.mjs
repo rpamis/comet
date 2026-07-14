@@ -13,6 +13,13 @@ export default defineConfig({
   build: {
     outDir: path.resolve(here, '../../../dist/domains/dashboard/web'),
     emptyOutDir: true,
+    rollupOptions: {
+      // jsdom is Node-only fallback for Vitest; never ship it in the dashboard bundle.
+      external: ['jsdom'],
+    },
+  },
+  optimizeDeps: {
+    exclude: ['jsdom'],
   },
   server: {
     proxy: {

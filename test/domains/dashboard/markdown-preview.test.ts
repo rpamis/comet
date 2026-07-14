@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   extractToc,
   renderJsonPreview,
   renderMarkdown,
   renderYamlTable,
+  runMermaid,
 } from '../../../domains/dashboard/web/src/markdown-preview.js';
 
 function containerFromHtml(html) {
@@ -101,5 +102,66 @@ describe('dashboard markdown-preview', () => {
     expect(html).toContain('<th scope="col">sha256</th>');
     expect(html).toContain('openspec/changes/finance-tradein-vertical-layout/proposal.md');
     expect(html).not.toContain('"files":');
+  });
+
+  it('strips XSS payloads from raw HTML in Markdown', async () => {
+    const html = await renderMarkdown(
+      ['# Safe', '', '<img src=x onerror=alert(1)>', '', '<script>alert(2)</script>'].join('\n'),
+    );
+
+    expect(html).not.toMatch(/onerror\s*=/i);
+    expect(html).not.toMatch(/<script\b/i);
+    expect(html).not.toContain('alert(1)');
+    expect(html).not.toContain('alert(2)');
+    expect(html).toContain('id="safe"');
+  });
+
+  it('blocks dangerous URL protocols in Markdown links and images', async () => {
+    const html = await renderMarkdown(
+      [
+        '[click](javascript:alert(1))',
+        '',
+        '![x](javascript:alert(2))',
+        '',
+        '[ok](https://example.com/docs)',
+      ].join('\n'),
+    );
+
+    expect(html).not.toMatch(/javascript:/i);
+    expect(html).toContain('https://example.com/docs');
+  });
+
+  it('keeps mermaid source escaped and uses strict mermaid security', async () => {
+    const html = await renderMarkdown(
+      [
+        '```mermaid',
+        'flowchart TD',
+        '  A["<img src=x onerror=alert(1)>"] --> B',
+        '```',
+      ].join('\n'),
+    );
+
+    expect(html).toContain('<div class="mermaid">');
+    expect(html).toContain('&lt;img');
+    expect(html).not.toMatch(/<img[^>]+onerror/i);
+
+    const mermaidModule = await import('mermaid');
+    const initialize = vi.spyOn(mermaidModule.default, 'initialize').mockImplementation(() => {});
+    const run = vi.spyOn(mermaidModule.default, 'run').mockResolvedValue(undefined as never);
+    const container = {
+      querySelectorAll: () => [{ className: 'mermaid' }],
+    };
+
+    await runMermaid(container as unknown as ParentNode);
+
+    expect(initialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        securityLevel: 'strict',
+        startOnLoad: false,
+      }),
+    );
+    expect(run).toHaveBeenCalled();
+    initialize.mockRestore();
+    run.mockRestore();
   });
 });
