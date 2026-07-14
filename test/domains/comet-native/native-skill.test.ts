@@ -1,0 +1,91 @@
+import { promises as fs } from 'fs';
+import path from 'path';
+import { describe, expect, it } from 'vitest';
+import { parseDocument } from 'yaml';
+
+const root = path.resolve('assets', 'skills-zh', 'comet-native');
+
+async function read(relative: string): Promise<string> {
+  return fs.readFile(path.join(root, relative), 'utf8');
+}
+
+describe('Chinese Comet Native Skill', () => {
+  it('has the public Native identity and a compact decision core', async () => {
+    const source = await read('SKILL.md');
+    const frontmatter = /^---\n([\s\S]*?)\n---/u.exec(source)?.[1];
+    expect(frontmatter).toBeTruthy();
+    const metadata = parseDocument(frontmatter!).toJS() as { name?: string; description?: string };
+
+    expect(metadata.name).toBe('comet-native');
+    expect(metadata.description).toContain('Native');
+    expect(source).toContain('能从环境得到的事实不要询问用户');
+    expect(source).toContain('一次只问最重要的一个问题');
+    expect(source).toContain('推荐答案');
+    expect(source).toContain('实际影响');
+    expect(source).toContain('等待用户回答后再继续');
+    expect(source).toContain('实现方式、是否落盘计划、测试粒度、调试方法和审查强度都由模型');
+    expect(source).toContain('完整目标规格');
+    expect(source).toContain('comet native next <change-name>');
+  });
+
+  it('references only Comet-owned Native documentation and runtime', async () => {
+    const source = await read('SKILL.md');
+    const links = [...source.matchAll(/\]\(([^)]+)\)/gu)].map((match) => match[1]).sort();
+
+    expect(links).toEqual([
+      'reference/artifacts.md',
+      'reference/commands.md',
+      'reference/recovery.md',
+      'scripts/comet-native-runtime.mjs',
+    ]);
+    await Promise.all(
+      links.map((link) =>
+        fs.access(
+          link.startsWith('scripts/')
+            ? path.resolve('assets', 'skills', 'comet-native', link)
+            : path.join(root, link),
+        ),
+      ),
+    );
+  });
+
+  it('contains no external workflow or prescriptive-method dependency', async () => {
+    const files = [
+      await read('SKILL.md'),
+      await read('reference/artifacts.md'),
+      await read('reference/commands.md'),
+      await read('reference/recovery.md'),
+    ].join('\n');
+    expect(files).not.toMatch(
+      /openspec|superpowers|grill-me|grilling|brainstorming|requiredSkillCalls|subagent|test-driven-development|code-review/iu,
+    );
+    expect(files).not.toMatch(/comet\s+(state|guard|handoff)\b/iu);
+  });
+
+  it('documents every Native CLI surface and exact artifact roots', async () => {
+    const commands = await read('reference/commands.md');
+    const artifacts = await read('reference/artifacts.md');
+    const recovery = await read('reference/recovery.md');
+    for (const command of [
+      'init',
+      'root show',
+      'root move',
+      'new',
+      'list',
+      'show',
+      'status',
+      'select',
+      'next',
+      'archive',
+      'doctor',
+    ]) {
+      expect(commands).toContain(command);
+    }
+    expect(artifacts).toContain('<artifact-root>/comet/');
+    expect(artifacts).toContain('specs/<capability>/spec.md');
+    expect(artifacts).toContain('base_hash');
+    expect(recovery).toContain('copying');
+    expect(recovery).toContain('ready');
+    expect(recovery).toContain('switched');
+  });
+});
