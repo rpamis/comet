@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
+import manifest from '../../assets/manifest.json';
 
 const runtime = path.resolve(
   'assets',
@@ -13,6 +14,18 @@ const runtime = path.resolve(
 const builder = path.resolve('scripts', 'build', 'build-native-runtime.mjs');
 
 describe('Native runtime release asset', () => {
+  it('publishes the Native Skill, references, and runtime from the manifest', () => {
+    for (const relative of [
+      'comet-native/SKILL.md',
+      'comet-native/reference/artifacts.md',
+      'comet-native/reference/commands.md',
+      'comet-native/reference/recovery.md',
+      'comet-native/scripts/comet-native-runtime.mjs',
+    ]) {
+      expect(manifest.skills).toContain(relative);
+    }
+  });
+
   it('ships one fresh self-contained Node runtime', async () => {
     const source = await fs.readFile(runtime, 'utf8');
 

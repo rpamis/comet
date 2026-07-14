@@ -3,15 +3,18 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
 
-const root = path.resolve('assets', 'skills-zh', 'comet-native');
+const roots = {
+  en: path.resolve('assets', 'skills', 'comet-native'),
+  zh: path.resolve('assets', 'skills-zh', 'comet-native'),
+};
 
-async function read(relative: string): Promise<string> {
-  return fs.readFile(path.join(root, relative), 'utf8');
+async function read(language: keyof typeof roots, relative: string): Promise<string> {
+  return fs.readFile(path.join(roots[language], relative), 'utf8');
 }
 
 describe('Chinese Comet Native Skill', () => {
   it('has the public Native identity and a compact decision core', async () => {
-    const source = await read('SKILL.md');
+    const source = await read('zh', 'SKILL.md');
     const frontmatter = /^---\n([\s\S]*?)\n---/u.exec(source)?.[1];
     expect(frontmatter).toBeTruthy();
     const metadata = parseDocument(frontmatter!).toJS() as { name?: string; description?: string };
@@ -29,7 +32,7 @@ describe('Chinese Comet Native Skill', () => {
   });
 
   it('references only Comet-owned Native documentation and runtime', async () => {
-    const source = await read('SKILL.md');
+    const source = await read('zh', 'SKILL.md');
     const links = [...source.matchAll(/\]\(([^)]+)\)/gu)].map((match) => match[1]).sort();
 
     expect(links).toEqual([
@@ -43,7 +46,7 @@ describe('Chinese Comet Native Skill', () => {
         fs.access(
           link.startsWith('scripts/')
             ? path.resolve('assets', 'skills', 'comet-native', link)
-            : path.join(root, link),
+            : path.join(roots.zh, link),
         ),
       ),
     );
@@ -51,10 +54,10 @@ describe('Chinese Comet Native Skill', () => {
 
   it('contains no external workflow or prescriptive-method dependency', async () => {
     const files = [
-      await read('SKILL.md'),
-      await read('reference/artifacts.md'),
-      await read('reference/commands.md'),
-      await read('reference/recovery.md'),
+      await read('zh', 'SKILL.md'),
+      await read('zh', 'reference/artifacts.md'),
+      await read('zh', 'reference/commands.md'),
+      await read('zh', 'reference/recovery.md'),
     ].join('\n');
     expect(files).not.toMatch(
       /openspec|superpowers|grill-me|grilling|brainstorming|requiredSkillCalls|subagent|test-driven-development|code-review/iu,
@@ -63,9 +66,9 @@ describe('Chinese Comet Native Skill', () => {
   });
 
   it('documents every Native CLI surface and exact artifact roots', async () => {
-    const commands = await read('reference/commands.md');
-    const artifacts = await read('reference/artifacts.md');
-    const recovery = await read('reference/recovery.md');
+    const commands = await read('zh', 'reference/commands.md');
+    const artifacts = await read('zh', 'reference/artifacts.md');
+    const recovery = await read('zh', 'reference/recovery.md');
     for (const command of [
       'init',
       'root show',
@@ -87,5 +90,24 @@ describe('Chinese Comet Native Skill', () => {
     expect(recovery).toContain('copying');
     expect(recovery).toContain('ready');
     expect(recovery).toContain('switched');
+  });
+
+  it('ships an English Skill with the same Native protocol surfaces', async () => {
+    const source = await read('en', 'SKILL.md');
+    const files = [
+      source,
+      await read('en', 'reference/artifacts.md'),
+      await read('en', 'reference/commands.md'),
+      await read('en', 'reference/recovery.md'),
+    ].join('\n');
+
+    expect(source).toContain('Ask only the single most important question');
+    expect(source).toContain('recommended answer');
+    expect(source).toContain('complete target specification');
+    expect(source).toContain('comet native next <change-name>');
+    expect(files).toContain('<artifact-root>/comet/');
+    expect(files).not.toMatch(
+      /openspec|superpowers|grill-me|grilling|brainstorming|requiredSkillCalls|subagent|test-driven-development|code-review/iu,
+    );
   });
 });
