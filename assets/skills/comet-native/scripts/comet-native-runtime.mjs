@@ -7455,6 +7455,14 @@ async function physicalPath(target) {
   const existing = await fs2.realpath(cursor);
   return path2.resolve(existing, ...missing.reverse());
 }
+async function isSymbolicLink(target) {
+  try {
+    return (await fs2.lstat(target)).isSymbolicLink();
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
 async function discoverNativeProject(startPath) {
   let cursor = path2.resolve(startPath);
   try {
@@ -7500,6 +7508,16 @@ async function nativeProjectPaths(projectRoot, artifactRootRef) {
   const normalized = normalizeArtifactRootRef(artifactRootRef);
   const artifactRoot = await resolveArtifactRoot(projectRoot, normalized);
   const nativeRoot = path2.join(artifactRoot, "comet");
+  if (await isSymbolicLink(nativeRoot)) {
+    throw new Error("The configured Native comet root must not be a symbolic link");
+  }
+  const [physicalArtifactRoot, physicalNativeRoot] = await Promise.all([
+    physicalPath(artifactRoot),
+    physicalPath(nativeRoot)
+  ]);
+  if (!inside(physicalArtifactRoot, physicalNativeRoot)) {
+    throw new Error("The configured Native comet root resolves outside its artifact root");
+  }
   return {
     projectRoot: path2.resolve(projectRoot),
     configFile: path2.join(projectRoot, PROJECT_CONFIG_FILE),
@@ -7516,6 +7534,24 @@ async function nativeProjectPaths(projectRoot, artifactRootRef) {
 }
 function isInsidePath(parent, target) {
   return inside(path2.resolve(parent), path2.resolve(target));
+}
+async function resolveContainedNativePath(root, target) {
+  const lexicalRoot = path2.resolve(root);
+  const lexicalTarget = path2.resolve(target);
+  if (!inside(lexicalRoot, lexicalTarget)) {
+    throw new Error(`Path is outside the Native root: ${target}`);
+  }
+  if (await isSymbolicLink(lexicalRoot)) {
+    throw new Error(`Native root must not be a symbolic link: ${root}`);
+  }
+  const [physicalRoot, physicalTarget] = await Promise.all([
+    physicalPath(lexicalRoot),
+    physicalPath(lexicalTarget)
+  ]);
+  if (!inside(physicalRoot, physicalTarget)) {
+    throw new Error(`Path resolves outside the Native root: ${target}`);
+  }
+  return lexicalTarget;
 }
 
 // domains/comet-native/native-config.ts
@@ -7856,6 +7892,7 @@ async function createNativeChange(options) {
   await assertNoPendingNativeRootMove(options.paths.projectRoot);
   assertNativeName(options.name);
   const changeDir = nativeChangeDir(options.paths, options.name);
+  await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
   try {
     await fs4.mkdir(changeDir, { recursive: false });
   } catch (error) {
@@ -7893,6 +7930,7 @@ async function createNativeChange(options) {
 }
 async function readNativeChange(paths, name) {
   const file = path4.join(nativeChangeDir(paths, name), "change.yaml");
+  await resolveContainedNativePath(paths.nativeRoot, file);
   const document = (0, import_yaml2.parseDocument)(await fs4.readFile(file, "utf8"), { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid Native change ${name}: ${document.errors[0].message}`);
@@ -7904,6 +7942,7 @@ async function readNativeChange(paths, name) {
 async function writeNativeChange(paths, state) {
   await assertNoPendingNativeRootMove(paths.projectRoot);
   const file = path4.join(nativeChangeDir(paths, state.name), "change.yaml");
+  await resolveContainedNativePath(paths.nativeRoot, file);
   await atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(state)));
 }
 async function writeNativeChangeFile(file, state) {
@@ -8619,16 +8658,22 @@ async function selectNativeChange(paths, name) {
   assertNativeName(name);
   await readNativeChange(paths, name);
   const selection = { schema: "comet.native.selection.v1", change: name };
-  await atomicWriteJson(nativeSelectionFile(paths), selection);
+  const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
+  await atomicWriteJson(file, selection);
 }
 async function clearNativeSelection(paths) {
   await assertNoPendingNativeRootMove(paths.projectRoot);
-  await fs9.rm(nativeSelectionFile(paths), { force: true });
+  await fs9.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
+    force: true
+  });
 }
 async function clearNativeSelectionIf(paths, name) {
   let source;
   try {
-    source = await fs9.readFile(nativeSelectionFile(paths), "utf8");
+    source = await fs9.readFile(
+      await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)),
+      "utf8"
+    );
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -8642,6 +8687,151 @@ async function clearNativeSelectionIf(paths, name) {
 // domains/comet-native/native-transaction.ts
 import { promises as fs10 } from "fs";
 import path12 from "path";
+var JOURNAL_KEYS = /* @__PURE__ */ new Set([
+  "schema",
+  "id",
+  "kind",
+  "status",
+  "projectRoot",
+  "nativeRoot",
+  "change",
+  "createdAt",
+  "operations"
+]);
+var OPERATION_KEYS = /* @__PURE__ */ new Set(["id", "type", "source", "target", "staged", "backup"]);
+var EVENT_KEYS = /* @__PURE__ */ new Set(["sequence", "timestamp", "type", "operationId"]);
+var TRANSACTION_STATUSES = /* @__PURE__ */ new Set([
+  "prepared",
+  "applying",
+  "committed",
+  "rolling-back",
+  "rolled-back"
+]);
+var EVENT_TYPES = /* @__PURE__ */ new Set([
+  "prepared",
+  "operation-started",
+  "operation-completed",
+  "archive-finalization-started",
+  "archive-finalized",
+  "commit",
+  "rollback-started",
+  "rollback-completed"
+]);
+function record3(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+function rejectUnknown3(value, keys, label) {
+  const unknown = Object.keys(value).filter((key) => !keys.has(key));
+  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
+}
+function validTimestamp(value) {
+  if (typeof value !== "string") return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString() === value;
+}
+function assertRef(ref, label) {
+  if (typeof ref !== "string" || ref.length === 0 || path12.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
+    throw new Error(`${label} must stay inside the Native root`);
+  }
+}
+function parseOperation(value, index) {
+  const operation = record3(value, `transaction operations[${index}]`);
+  rejectUnknown3(operation, OPERATION_KEYS, `transaction operations[${index}]`);
+  if (typeof operation.id !== "string" || !/^[a-z0-9][a-z0-9-]*$/u.test(operation.id)) {
+    throw new Error(`transaction operations[${index}].id is invalid`);
+  }
+  if (operation.type !== "write" && operation.type !== "remove" && operation.type !== "move") {
+    throw new Error(`transaction operation ${operation.id} has an invalid type`);
+  }
+  assertRef(operation.target, `transaction operation ${operation.id} target`);
+  for (const field2 of ["source", "staged", "backup"]) {
+    if (operation[field2] !== void 0) {
+      assertRef(operation[field2], `transaction operation ${operation.id} ${field2}`);
+    }
+  }
+  if (operation.type === "write") {
+    if (operation.staged === void 0 || operation.source !== void 0) {
+      throw new Error(`write operation ${operation.id} requires staged and forbids source`);
+    }
+  } else if (operation.type === "remove") {
+    if (operation.source !== void 0 || operation.staged !== void 0) {
+      throw new Error(`remove operation ${operation.id} forbids source and staged`);
+    }
+  } else if (operation.source === void 0 || operation.staged !== void 0 || operation.backup !== void 0) {
+    throw new Error(`move operation ${operation.id} requires source and forbids staged and backup`);
+  }
+  return operation;
+}
+function parseJournal(value) {
+  const journal = record3(value, "Native transaction journal");
+  rejectUnknown3(journal, JOURNAL_KEYS, "Native transaction journal");
+  if (journal.schema !== "comet.native.transaction.v1") {
+    throw new Error("Unsupported Native transaction schema");
+  }
+  if (typeof journal.id !== "string" || !/^[a-f0-9-]{8,}$/u.test(journal.id)) {
+    throw new Error("Native transaction id is invalid");
+  }
+  if (journal.kind !== "archive" && journal.kind !== "root-move") {
+    throw new Error("Native transaction kind is invalid");
+  }
+  if (typeof journal.status !== "string" || !TRANSACTION_STATUSES.has(journal.status)) {
+    throw new Error("Native transaction status is invalid");
+  }
+  if (typeof journal.projectRoot !== "string" || !path12.isAbsolute(journal.projectRoot) || typeof journal.nativeRoot !== "string" || !path12.isAbsolute(journal.nativeRoot)) {
+    throw new Error("Native transaction roots must be absolute paths");
+  }
+  if (journal.change !== void 0 && (typeof journal.change !== "string" || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(journal.change))) {
+    throw new Error("Native transaction change name is invalid");
+  }
+  if (!validTimestamp(journal.createdAt)) {
+    throw new Error("Native transaction createdAt is invalid");
+  }
+  if (!Array.isArray(journal.operations)) {
+    throw new Error("Native transaction operations must be an array");
+  }
+  const operations = journal.operations.map(parseOperation);
+  const operationIds = operations.map((operation) => operation.id);
+  if (new Set(operationIds).size !== operationIds.length) {
+    throw new Error("Native transaction operation ids must be unique");
+  }
+  return {
+    schema: "comet.native.transaction.v1",
+    id: journal.id,
+    kind: journal.kind,
+    status: journal.status,
+    projectRoot: journal.projectRoot,
+    nativeRoot: journal.nativeRoot,
+    ...typeof journal.change === "string" ? { change: journal.change } : {},
+    createdAt: journal.createdAt,
+    operations
+  };
+}
+function parseEvent(value, line) {
+  const event = record3(value, `Native transaction event at line ${line}`);
+  rejectUnknown3(event, EVENT_KEYS, `Native transaction event at line ${line}`);
+  if (event.sequence !== line) {
+    throw new Error(`Native transaction event sequence at line ${line} must be ${line}`);
+  }
+  if (!validTimestamp(event.timestamp)) {
+    throw new Error(`Native transaction event timestamp at line ${line} is invalid`);
+  }
+  if (typeof event.type !== "string" || !EVENT_TYPES.has(event.type)) {
+    throw new Error(`Native transaction event type at line ${line} is invalid`);
+  }
+  const operationEvent = event.type === "operation-started" || event.type === "operation-completed";
+  if (operationEvent && typeof event.operationId !== "string" || !operationEvent && event.operationId !== void 0) {
+    throw new Error(`Native transaction event operationId at line ${line} is invalid`);
+  }
+  return {
+    sequence: event.sequence,
+    timestamp: event.timestamp,
+    type: event.type,
+    ...typeof event.operationId === "string" ? { operationId: event.operationId } : {}
+  };
+}
 function transactionDir(paths, id) {
   if (!/^[a-f0-9-]{8,}$/u.test(id)) throw new Error(`Invalid Native transaction id: ${id}`);
   return path12.join(paths.transactionsDir, id);
@@ -8656,7 +8846,7 @@ function nativeTransactionPaths(paths, id) {
     backups: path12.join(directory, "backups")
   };
 }
-function resolveRef(paths, ref) {
+function resolveRefLexically(paths, ref) {
   if (ref.length === 0 || path12.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
     throw new Error(`Unsafe Native transaction ref: ${ref}`);
   }
@@ -8664,6 +8854,9 @@ function resolveRef(paths, ref) {
   if (!isInsidePath(paths.nativeRoot, target))
     throw new Error(`Unsafe Native transaction ref: ${ref}`);
   return target;
+}
+async function resolveRef(paths, ref) {
+  return resolveContainedNativePath(paths.nativeRoot, resolveRefLexically(paths, ref));
 }
 async function exists(file) {
   try {
@@ -8694,6 +8887,7 @@ async function appendEvent(paths, journal, type, operationId) {
   return event;
 }
 async function createNativeTransaction(paths, journal) {
+  journal = parseJournal(journal);
   const tx = nativeTransactionPaths(paths, journal.id);
   await fs10.mkdir(tx.staged, { recursive: true });
   await fs10.mkdir(tx.backups, { recursive: true });
@@ -8704,10 +8898,11 @@ async function readNativeTransaction(paths, id) {
   const value = JSON.parse(
     await fs10.readFile(nativeTransactionPaths(paths, id).journal, "utf8")
   );
-  if (value.schema !== "comet.native.transaction.v1" || value.id !== id) {
+  const journal = parseJournal(value);
+  if (journal.id !== id) {
     throw new Error(`Invalid Native transaction journal: ${id}`);
   }
-  return value;
+  return journal;
 }
 async function readNativeTransactionEvents(paths, id) {
   let source;
@@ -8717,10 +8912,17 @@ async function readNativeTransactionEvents(paths, id) {
     if (error.code === "ENOENT") return [];
     throw error;
   }
-  return source.split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line));
+  return source.split(/\r?\n/u).filter(Boolean).map((entry2, index) => {
+    const line = index + 1;
+    try {
+      return parseEvent(JSON.parse(entry2), line);
+    } catch (error) {
+      throw new Error(`Invalid Native transaction event at line ${line}`, { cause: error });
+    }
+  });
 }
 async function setNativeTransactionStatus(paths, journal, status) {
-  const updated = { ...journal, status };
+  const updated = parseJournal({ ...journal, status });
   await atomicWriteJson(nativeTransactionPaths(paths, journal.id).journal, updated);
   return updated;
 }
@@ -8730,18 +8932,18 @@ async function copyAtomic(source, target) {
 }
 async function backupTarget(paths, operation) {
   if (!operation.backup) return;
-  const target = resolveRef(paths, operation.target);
-  const backup = resolveRef(paths, operation.backup);
+  const target = await resolveRef(paths, operation.target);
+  const backup = await resolveRef(paths, operation.backup);
   if (!await exists(target) || await exists(backup)) return;
   await fs10.mkdir(path12.dirname(backup), { recursive: true });
   await fs10.copyFile(target, backup);
 }
 async function applyOperation(paths, operation) {
-  const target = resolveRef(paths, operation.target);
+  const target = await resolveRef(paths, operation.target);
   if (operation.type === "write") {
     if (!operation.staged) throw new Error(`Write operation ${operation.id} has no staged ref`);
     await backupTarget(paths, operation);
-    await copyAtomic(resolveRef(paths, operation.staged), target);
+    await copyAtomic(await resolveRef(paths, operation.staged), target);
     return;
   }
   if (operation.type === "remove") {
@@ -8750,7 +8952,7 @@ async function applyOperation(paths, operation) {
     return;
   }
   if (!operation.source) throw new Error(`Move operation ${operation.id} has no source ref`);
-  const source = resolveRef(paths, operation.source);
+  const source = await resolveRef(paths, operation.source);
   const [sourceExists, targetExists] = await Promise.all([exists(source), exists(target)]);
   if (!sourceExists && targetExists) return;
   if (targetExists) throw new Error(`Move target already exists: ${operation.target}`);
@@ -8777,11 +8979,11 @@ async function applyNativeTransaction(paths, journal, hooks) {
   return current;
 }
 async function rollbackOperation(paths, operation) {
-  const target = resolveRef(paths, operation.target);
-  const backup = operation.backup ? resolveRef(paths, operation.backup) : null;
+  const target = await resolveRef(paths, operation.target);
+  const backup = operation.backup ? await resolveRef(paths, operation.backup) : null;
   if (operation.type === "move") {
     if (!operation.source) throw new Error(`Move operation ${operation.id} has no source ref`);
-    const source = resolveRef(paths, operation.source);
+    const source = await resolveRef(paths, operation.source);
     if (await exists(target)) {
       await fs10.mkdir(path12.dirname(source), { recursive: true });
       await fs10.rename(target, source);
@@ -9233,6 +9435,15 @@ async function assertNoUnfinishedTransactions(paths) {
     }
   }
 }
+async function assertNoOtherLocks(paths, ownedLock) {
+  for (const entry2 of await fs13.readdir(paths.locksDir, { withFileTypes: true })) {
+    const file = path14.join(paths.locksDir, entry2.name);
+    if (path14.resolve(file) === path14.resolve(ownedLock)) continue;
+    if (entry2.isFile() || entry2.isSymbolicLink()) {
+      throw new Error(`Native lock must be diagnosed before moving the root: ${file}`);
+    }
+  }
+}
 async function walkTree(root, options) {
   const files = [];
   async function visit(directory) {
@@ -9454,6 +9665,7 @@ async function moveNativeRoot(options) {
   const journal = rootMoveJournal({ id, paths: sourcePaths, now: options.now ?? /* @__PURE__ */ new Date() });
   const staging = stagingDirectory(destinationPaths, id);
   try {
+    await assertNoOtherLocks(sourcePaths, lock.file);
     if (await exists2(staging)) throw new Error(`Native move staging path is occupied: ${staging}`);
     await writeProjectConfig(options.projectRoot, pendingConfig(current, pending));
     await createNativeTransaction(sourcePaths, journal);
@@ -9543,6 +9755,41 @@ async function directoryEntries(directory) {
     throw error;
   }
 }
+async function clearStaleRecoveryLocks(files, findings) {
+  for (const file of [...new Set(files.map((entry2) => path15.resolve(entry2)))]) {
+    let diagnosis;
+    try {
+      diagnosis = await diagnoseNativeLock(file);
+    } catch (error) {
+      findings.push({
+        severity: "error",
+        code: "lock-invalid",
+        message: `Native recovery lock is invalid: ${error.message}`,
+        path: file
+      });
+      return false;
+    }
+    if (diagnosis.status === "missing") continue;
+    if (diagnosis.status === "stale") {
+      await fs14.rm(file, { force: true });
+      findings.push({
+        severity: "info",
+        code: "stale-recovery-lock-removed",
+        message: `Removed stale lock before explicit transaction recovery`,
+        path: file
+      });
+      continue;
+    }
+    findings.push({
+      severity: "error",
+      code: diagnosis.status === "active" ? "lock-active" : "lock-owner-unknown",
+      message: diagnosis.status === "active" ? `Native recovery lock is still owned by a live process` : `Native recovery lock owner cannot be proven stale`,
+      path: file
+    });
+    return false;
+  }
+  return true;
+}
 async function inspectSelection(paths, repair) {
   const file = nativeSelectionFile(paths);
   let value;
@@ -9623,10 +9870,25 @@ async function inspectTransactions(paths, options) {
     }
     if (journal.status === "committed" || journal.status === "rolled-back") continue;
     if (options.name && journal.change && journal.change !== options.name) continue;
-    unfinished.push(journal);
-    if (journal.kind !== "archive") continue;
+    if (journal.kind !== "archive") {
+      unfinished.push(journal);
+      findings.push({
+        severity: "error",
+        code: "root-move-transaction-orphaned",
+        message: `Root-move transaction ${journal.id} is incomplete but project config has no matching pending move`
+      });
+      continue;
+    }
     if (options.repair && options.recoveryStrategy) {
       try {
+        const locksReady = await clearStaleRecoveryLocks(
+          [path15.join(paths.locksDir, "root-move.lock"), path15.join(paths.locksDir, "archive.lock")],
+          findings
+        );
+        if (!locksReady) {
+          unfinished.push(journal);
+          continue;
+        }
         await recoverArchiveTransaction({
           paths,
           transactionId: journal.id,
@@ -9638,6 +9900,7 @@ async function inspectTransactions(paths, options) {
           message: `${options.recoveryStrategy === "continue" ? "Continued" : "Rolled back"} archive transaction ${journal.id}`
         });
       } catch (error) {
+        unfinished.push(journal);
         findings.push({
           severity: "error",
           code: "archive-recovery-failed",
@@ -9645,6 +9908,7 @@ async function inspectTransactions(paths, options) {
         });
       }
     } else {
+      unfinished.push(journal);
       findings.push({
         severity: "error",
         code: "archive-transaction-incomplete",
@@ -9762,8 +10026,20 @@ async function doctorNativeProject(options) {
   }
   if (config?.native.pending_root_move) {
     const pending = config.native.pending_root_move;
+    const [fromPaths, toPaths] = await Promise.all([
+      nativeProjectPaths(paths.projectRoot, pending.fromArtifactRoot),
+      nativeProjectPaths(paths.projectRoot, pending.toArtifactRoot)
+    ]);
     if (repair && options.recoveryStrategy) {
       try {
+        const locksReady = await clearStaleRecoveryLocks(
+          [
+            path15.join(fromPaths.locksDir, "root-move.lock"),
+            path15.join(toPaths.locksDir, "root-move.lock")
+          ],
+          findings
+        );
+        if (!locksReady) return { healthy: false, findings };
         const recovered = await recoverNativeRootMove({
           projectRoot: paths.projectRoot,
           strategy: options.recoveryStrategy
@@ -9783,10 +10059,6 @@ async function doctorNativeProject(options) {
         return { healthy: false, findings };
       }
     } else {
-      const [fromPaths, toPaths] = await Promise.all([
-        nativeProjectPaths(paths.projectRoot, pending.fromArtifactRoot),
-        nativeProjectPaths(paths.projectRoot, pending.toArtifactRoot)
-      ]);
       findings.push({
         severity: "error",
         code: "root-move-incomplete",
@@ -10160,6 +10432,9 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const language = languageOption(rawArgs);
     assertNoArguments(rawArgs);
     const existing = await readProjectConfig(projectRoot);
+    if (existing?.native.pending_root_move) {
+      throw new Error(`Native root move ${existing.native.pending_root_move.id} is incomplete`);
+    }
     const artifactRoot = normalizeArtifactRootRef(
       requestedRoot ?? existing?.native.artifact_root ?? "."
     );

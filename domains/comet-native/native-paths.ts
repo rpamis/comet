@@ -36,6 +36,15 @@ async function physicalPath(target: string): Promise<string> {
   return path.resolve(existing, ...missing.reverse());
 }
 
+async function isSymbolicLink(target: string): Promise<boolean> {
+  try {
+    return (await fs.lstat(target)).isSymbolicLink();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 export async function discoverNativeProject(startPath: string): Promise<string> {
   let cursor = path.resolve(startPath);
   try {
@@ -87,6 +96,16 @@ export async function nativeProjectPaths(
   const normalized = normalizeArtifactRootRef(artifactRootRef);
   const artifactRoot = await resolveArtifactRoot(projectRoot, normalized);
   const nativeRoot = path.join(artifactRoot, 'comet');
+  if (await isSymbolicLink(nativeRoot)) {
+    throw new Error('The configured Native comet root must not be a symbolic link');
+  }
+  const [physicalArtifactRoot, physicalNativeRoot] = await Promise.all([
+    physicalPath(artifactRoot),
+    physicalPath(nativeRoot),
+  ]);
+  if (!inside(physicalArtifactRoot, physicalNativeRoot)) {
+    throw new Error('The configured Native comet root resolves outside its artifact root');
+  }
   return {
     projectRoot: path.resolve(projectRoot),
     configFile: path.join(projectRoot, PROJECT_CONFIG_FILE),
@@ -104,4 +123,23 @@ export async function nativeProjectPaths(
 
 export function isInsidePath(parent: string, target: string): boolean {
   return inside(path.resolve(parent), path.resolve(target));
+}
+
+export async function resolveContainedNativePath(root: string, target: string): Promise<string> {
+  const lexicalRoot = path.resolve(root);
+  const lexicalTarget = path.resolve(target);
+  if (!inside(lexicalRoot, lexicalTarget)) {
+    throw new Error(`Path is outside the Native root: ${target}`);
+  }
+  if (await isSymbolicLink(lexicalRoot)) {
+    throw new Error(`Native root must not be a symbolic link: ${root}`);
+  }
+  const [physicalRoot, physicalTarget] = await Promise.all([
+    physicalPath(lexicalRoot),
+    physicalPath(lexicalTarget),
+  ]);
+  if (!inside(physicalRoot, physicalTarget)) {
+    throw new Error(`Path resolves outside the Native root: ${target}`);
+  }
+  return lexicalTarget;
 }

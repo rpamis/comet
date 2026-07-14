@@ -99,4 +99,25 @@ describe('Native artifact root moves', () => {
       await releaseNativeLock(archiveGlobalLock);
     }
   });
+
+  it('refuses to copy any unresolved operation lock into the destination root', async () => {
+    await seedNativeRoot(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const staleArchiveLock = await acquireNativeLock(
+      paths,
+      'archive',
+      'archive interrupted-change',
+    );
+    try {
+      await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'docs' })).rejects.toThrow(
+        'must be diagnosed before moving',
+      );
+      expect((await readProjectConfig(projectRoot))?.native).toEqual({ artifact_root: '.' });
+      await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    } finally {
+      await releaseNativeLock(staleArchiveLock);
+    }
+  });
 });

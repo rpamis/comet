@@ -233,4 +233,38 @@ describe('Native archive', () => {
     expect(await fs.readFile(path.join(target, 'sentinel.txt'), 'utf8')).toBe('keep');
     expect(await fs.stat(changeDir)).toBeTruthy();
   });
+
+  it('refuses canonical spec junctions that would write outside comet', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-spec-outside-'));
+    try {
+      await fs.mkdir(paths.specsDir, { recursive: true });
+      await fs.symlink(
+        outside,
+        path.join(paths.specsDir, 'escaped-spec'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      const { changeDir } = await prepareArchiveChange({
+        paths,
+        name: 'escaped-spec-change',
+        specChanges: [
+          {
+            capability: 'escaped-spec',
+            operation: 'create',
+            source: 'specs/escaped-spec.md',
+            base_hash: null,
+          },
+        ],
+      });
+      await fs.writeFile(path.join(changeDir, 'specs', 'escaped-spec.md'), 'outside denied\n');
+
+      await expect(archiveNativeChange({ paths, name: 'escaped-spec-change' })).rejects.toThrow(
+        'resolves outside the Native root',
+      );
+      await expect(fs.access(path.join(outside, 'spec.md'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
 });

@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 
 import {
+  nativeProjectPaths,
   normalizeArtifactRootRef,
   resolveArtifactRoot,
 } from '../../../domains/comet-native/native-paths.js';
@@ -49,6 +50,15 @@ describe('Native artifact root safety', () => {
 
     await expect(resolveArtifactRoot(projectRoot, 'escaped')).rejects.toThrow(
       'resolves outside the project root',
+    );
+  });
+
+  it('rejects a configured comet root that is itself a junction', async () => {
+    const linkedRoot = path.join(projectRoot, 'comet');
+    await fs.symlink(outside, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');
+
+    await expect(nativeProjectPaths(projectRoot, '.')).rejects.toThrow(
+      'Native comet root must not be a symbolic link',
     );
   });
 });

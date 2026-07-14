@@ -4,7 +4,7 @@ import { parseDocument, stringify } from 'yaml';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
-import { isInsidePath } from './native-paths.js';
+import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import type {
   NativeApproval,
   NativeChangeState,
@@ -233,6 +233,7 @@ export async function createNativeChange(options: {
   await assertNoPendingNativeRootMove(options.paths.projectRoot);
   assertNativeName(options.name);
   const changeDir = nativeChangeDir(options.paths, options.name);
+  await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
   try {
     await fs.mkdir(changeDir, { recursive: false });
   } catch (error) {
@@ -274,6 +275,7 @@ export async function readNativeChange(
   name: string,
 ): Promise<NativeChangeState> {
   const file = path.join(nativeChangeDir(paths, name), 'change.yaml');
+  await resolveContainedNativePath(paths.nativeRoot, file);
   const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid Native change ${name}: ${document.errors[0].message}`);
@@ -289,6 +291,7 @@ export async function writeNativeChange(
 ): Promise<void> {
   await assertNoPendingNativeRootMove(paths.projectRoot);
   const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+  await resolveContainedNativePath(paths.nativeRoot, file);
   await atomicWriteText(file, stringify(nativeChangeDocument(state)));
 }
 

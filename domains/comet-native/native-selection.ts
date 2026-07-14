@@ -4,6 +4,7 @@ import path from 'path';
 import { atomicWriteJson } from './native-atomic-file.js';
 import { assertNativeName, readNativeChange } from './native-change.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
+import { resolveContainedNativePath } from './native-paths.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 interface NativeSelection {
@@ -20,7 +21,8 @@ export async function selectNativeChange(paths: NativeProjectPaths, name: string
   assertNativeName(name);
   await readNativeChange(paths, name);
   const selection: NativeSelection = { schema: 'comet.native.selection.v1', change: name };
-  await atomicWriteJson(nativeSelectionFile(paths), selection);
+  const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
+  await atomicWriteJson(file, selection);
 }
 
 export async function resolveSelectedNativeChange(
@@ -28,7 +30,10 @@ export async function resolveSelectedNativeChange(
 ): Promise<string | null> {
   let source: string;
   try {
-    source = await fs.readFile(nativeSelectionFile(paths), 'utf8');
+    source = await fs.readFile(
+      await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)),
+      'utf8',
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
@@ -44,7 +49,9 @@ export async function resolveSelectedNativeChange(
 
 export async function clearNativeSelection(paths: NativeProjectPaths): Promise<void> {
   await assertNoPendingNativeRootMove(paths.projectRoot);
-  await fs.rm(nativeSelectionFile(paths), { force: true });
+  await fs.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
+    force: true,
+  });
 }
 
 export async function clearNativeSelectionIf(
@@ -53,7 +60,10 @@ export async function clearNativeSelectionIf(
 ): Promise<boolean> {
   let source: string;
   try {
-    source = await fs.readFile(nativeSelectionFile(paths), 'utf8');
+    source = await fs.readFile(
+      await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)),
+      'utf8',
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;

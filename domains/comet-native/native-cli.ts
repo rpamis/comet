@@ -170,6 +170,9 @@ async function dispatch(
     const language = languageOption(rawArgs);
     assertNoArguments(rawArgs);
     const existing = await readProjectConfig(projectRoot);
+    if (existing?.native.pending_root_move) {
+      throw new Error(`Native root move ${existing.native.pending_root_move.id} is incomplete`);
+    }
     const artifactRoot = normalizeArtifactRootRef(
       requestedRoot ?? existing?.native.artifact_root ?? '.',
     );

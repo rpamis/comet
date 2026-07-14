@@ -25,6 +25,48 @@ async function directoryEntries(directory: string): Promise<Dirent[]> {
   }
 }
 
+async function clearStaleRecoveryLocks(
+  files: string[],
+  findings: NativeDoctorFinding[],
+): Promise<boolean> {
+  for (const file of [...new Set(files.map((entry) => path.resolve(entry)))]) {
+    let diagnosis;
+    try {
+      diagnosis = await diagnoseNativeLock(file);
+    } catch (error) {
+      findings.push({
+        severity: 'error',
+        code: 'lock-invalid',
+        message: `Native recovery lock is invalid: ${(error as Error).message}`,
+        path: file,
+      });
+      return false;
+    }
+    if (diagnosis.status === 'missing') continue;
+    if (diagnosis.status === 'stale') {
+      await fs.rm(file, { force: true });
+      findings.push({
+        severity: 'info',
+        code: 'stale-recovery-lock-removed',
+        message: `Removed stale lock before explicit transaction recovery`,
+        path: file,
+      });
+      continue;
+    }
+    findings.push({
+      severity: 'error',
+      code: diagnosis.status === 'active' ? 'lock-active' : 'lock-owner-unknown',
+      message:
+        diagnosis.status === 'active'
+          ? `Native recovery lock is still owned by a live process`
+          : `Native recovery lock owner cannot be proven stale`,
+      path: file,
+    });
+    return false;
+  }
+  return true;
+}
+
 async function inspectSelection(
   paths: NativeProjectPaths,
   repair: boolean,
@@ -116,10 +158,25 @@ async function inspectTransactions(
     }
     if (journal.status === 'committed' || journal.status === 'rolled-back') continue;
     if (options.name && journal.change && journal.change !== options.name) continue;
-    unfinished.push(journal);
-    if (journal.kind !== 'archive') continue;
+    if (journal.kind !== 'archive') {
+      unfinished.push(journal);
+      findings.push({
+        severity: 'error',
+        code: 'root-move-transaction-orphaned',
+        message: `Root-move transaction ${journal.id} is incomplete but project config has no matching pending move`,
+      });
+      continue;
+    }
     if (options.repair && options.recoveryStrategy) {
       try {
+        const locksReady = await clearStaleRecoveryLocks(
+          [path.join(paths.locksDir, 'root-move.lock'), path.join(paths.locksDir, 'archive.lock')],
+          findings,
+        );
+        if (!locksReady) {
+          unfinished.push(journal);
+          continue;
+        }
         await recoverArchiveTransaction({
           paths,
           transactionId: journal.id,
@@ -131,6 +188,7 @@ async function inspectTransactions(
           message: `${options.recoveryStrategy === 'continue' ? 'Continued' : 'Rolled back'} archive transaction ${journal.id}`,
         });
       } catch (error) {
+        unfinished.push(journal);
         findings.push({
           severity: 'error',
           code: 'archive-recovery-failed',
@@ -138,6 +196,7 @@ async function inspectTransactions(
         });
       }
     } else {
+      unfinished.push(journal);
       findings.push({
         severity: 'error',
         code: 'archive-transaction-incomplete',
@@ -277,8 +336,20 @@ export async function doctorNativeProject(options: {
   }
   if (config?.native.pending_root_move) {
     const pending = config.native.pending_root_move;
+    const [fromPaths, toPaths] = await Promise.all([
+      nativeProjectPaths(paths.projectRoot, pending.fromArtifactRoot),
+      nativeProjectPaths(paths.projectRoot, pending.toArtifactRoot),
+    ]);
     if (repair && options.recoveryStrategy) {
       try {
+        const locksReady = await clearStaleRecoveryLocks(
+          [
+            path.join(fromPaths.locksDir, 'root-move.lock'),
+            path.join(toPaths.locksDir, 'root-move.lock'),
+          ],
+          findings,
+        );
+        if (!locksReady) return { healthy: false, findings };
         const recovered = await recoverNativeRootMove({
           projectRoot: paths.projectRoot,
           strategy: options.recoveryStrategy,
@@ -298,10 +369,6 @@ export async function doctorNativeProject(options: {
         return { healthy: false, findings };
       }
     } else {
-      const [fromPaths, toPaths] = await Promise.all([
-        nativeProjectPaths(paths.projectRoot, pending.fromArtifactRoot),
-        nativeProjectPaths(paths.projectRoot, pending.toArtifactRoot),
-      ]);
       findings.push({
         severity: 'error',
         code: 'root-move-incomplete',

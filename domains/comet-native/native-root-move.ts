@@ -64,6 +64,16 @@ async function assertNoUnfinishedTransactions(paths: NativeProjectPaths): Promis
   }
 }
 
+async function assertNoOtherLocks(paths: NativeProjectPaths, ownedLock: string): Promise<void> {
+  for (const entry of await fs.readdir(paths.locksDir, { withFileTypes: true })) {
+    const file = path.join(paths.locksDir, entry.name);
+    if (path.resolve(file) === path.resolve(ownedLock)) continue;
+    if (entry.isFile() || entry.isSymbolicLink()) {
+      throw new Error(`Native lock must be diagnosed before moving the root: ${file}`);
+    }
+  }
+}
+
 async function walkTree(
   root: string,
   options: { rejectSymlinks: boolean; excludedFiles?: ReadonlySet<string> },
@@ -338,6 +348,7 @@ export async function moveNativeRoot(options: {
   const journal = rootMoveJournal({ id, paths: sourcePaths, now: options.now ?? new Date() });
   const staging = stagingDirectory(destinationPaths, id);
   try {
+    await assertNoOtherLocks(sourcePaths, lock.file);
     if (await exists(staging)) throw new Error(`Native move staging path is occupied: ${staging}`);
     await writeProjectConfig(options.projectRoot, pendingConfig(current, pending));
     await createNativeTransaction(sourcePaths, journal);

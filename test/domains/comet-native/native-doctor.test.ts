@@ -135,6 +135,16 @@ describe('Native doctor', () => {
         },
       }),
     ).rejects.toThrow('stop at ready');
+    await fs.writeFile(
+      path.join(paths.locksDir, 'root-move.lock'),
+      JSON.stringify({
+        id: 'stale-root-move',
+        pid: 2_147_483_647,
+        hostname: os.hostname(),
+        createdAt: '2026-07-14T00:00:00.000Z',
+        operation: 'move root to docs',
+      }),
+    );
 
     const inspected = await doctorNativeProject({ paths });
     expect(inspected.findings).toContainEqual(
@@ -149,6 +159,9 @@ describe('Native doctor', () => {
     });
     expect(repaired.findings).toContainEqual(
       expect.objectContaining({ code: 'root-move-recovered', severity: 'info' }),
+    );
+    expect(repaired.findings).toContainEqual(
+      expect.objectContaining({ code: 'stale-recovery-lock-removed', severity: 'info' }),
     );
     expect(await readProjectConfig(projectRoot)).toEqual(defaultProjectConfig('.'));
   });
