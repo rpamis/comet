@@ -100,7 +100,12 @@ def test_build_treatment_skills_rejects_path_without_skill_md(tmp_path: Path):
 def test_load_treatments_keeps_comet_core_categories_only():
     treatments = load_treatments()
 
-    assert set(treatments) == {"CONTROL", "COMET_FULL_040_BETA", "COMET_FULL_039"}
+    assert set(treatments) == {
+        "CONTROL",
+        "COMET_FULL_040_BETA",
+        "COMET_FULL_039",
+        "COMET_NATIVE_PHASE1",
+    }
     assert all(isinstance(treatment, TreatmentConfig) for treatment in treatments.values())
 
 
@@ -147,6 +152,19 @@ def test_comet_full_039_includes_same_dependency_snapshot():
     )
     assert names.issuperset(_benchmark_child_names("dependency", "openspec"))
     assert names.issuperset(_benchmark_child_names("dependency", "superpowers"))
+
+
+def test_comet_native_phase1_is_self_contained():
+    treatment = load_treatments()["COMET_NATIVE_PHASE1"]
+
+    assert {skill["name"] for skill in treatment.skills} == {"comet-native"}
+    assert treatment.skills[0]["source"] == "path"
+    assert "assets/skills/comet-native" in treatment.skills[0]["path"]
+
+    skills = build_treatment_skills(treatment.skills)
+    assert set(skills) == {"comet-native"}
+    assert skills["comet-native"]["scripts_dir"].name == "scripts"
+    assert skills["comet-native"]["source_dir"].name == "comet-native"
 
 
 def test_comet_treatments_point_at_versioned_comet_snapshots():
@@ -241,4 +259,9 @@ def test_comet_full_040_beta_dependency_paths_are_loadable():
 
 
 def test_list_treatments_is_sorted_for_stable_cli_output():
-    assert list_treatments() == ["COMET_FULL_039", "COMET_FULL_040_BETA", "CONTROL"]
+    assert list_treatments() == [
+        "COMET_FULL_039",
+        "COMET_FULL_040_BETA",
+        "COMET_NATIVE_PHASE1",
+        "CONTROL",
+    ]

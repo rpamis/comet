@@ -1,0 +1,36 @@
+[metadata]
+name = "comet-native-workflow"
+description = "Test the self-contained Comet Native Shape to Archive workflow"
+difficulty = "hard"
+category = "comet-native"
+tags = ["comet-native", "workflow", "self-contained", "full-cycle"]
+default_treatments = ["COMET_NATIVE_PHASE1"]
+
+[template]
+required = []
+
+[environment]
+description = "Python workspace with Node.js and the Comet Native Skill package, without OpenSpec or external workflow Skills."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_native_workflow.py"
+target_artifacts = ["docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
+timeout = 120
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet-native"]
+expected_artifacts = ["comet.config.yaml", "docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
+require_skill_invocation = true
+rubric_criteria = [
+  "Uses only the Comet Native Skill and bundled runtime",
+  "Creates a detailed brief and complete target specification",
+  "Advances through Shape, Build, Verify, and Archive with real evidence",
+  "Leaves no OpenSpec, Classic, or hidden Native artifact tree",
+]
+
+[interaction]
+mode = "none"
+max_turns = 1

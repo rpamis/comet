@@ -143,7 +143,7 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
-    assert len(names) == 20
+    assert len(names) == 21
     assert set(names) == {
         "authoring-skill-smoke",
         "comet-agent-memory-routing",
@@ -161,8 +161,22 @@ def test_comet_task_index_lists_real_tasks():
         "comet-refactor-counter",
         "comet-robust-config",
         "comet-noise-distractor",
+        "comet-native-workflow",
         "comet-observability-env-template",
         "generic-skill-smoke",
         "workflow-overlay-contract",
         "workflow-route-conformance",
     }
+
+
+def test_native_task_uses_its_own_skill_contract():
+    task = load_task("comet-native-workflow")
+
+    assert task.config.evaluation.profile == "generic"
+    assert task.config.evaluation.required_skills == ["comet-native"]
+    assert task.config.evaluation.require_skill_invocation is True
+    assert task.config.interaction.mode == "none"
+    prompt = task.render_prompt()
+    assert prompt.startswith("You are working on a Python project")
+    assert "Begin by invoking the `/comet-native` Skill" in prompt
+    assert "/comet` Skill/slash command" not in prompt

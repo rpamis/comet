@@ -17,6 +17,14 @@ uv run pytest local/tests/tasks/test_tasks.py -v
 uv run pytest local/tests/tasks/test_tasks.py --task=generic-skill-smoke --treatment=CONTROL -v
 ```
 
+运行只安装 Comet Native、自包含且不注入 OpenSpec / Superpowers 的完整流程评估：
+
+```bash
+uv run pytest local/tests/tasks/test_tasks.py \
+  --task=comet-native-workflow \
+  --treatment=COMET_NATIVE_PHASE1 -v
+```
+
 运行生成 Skill 的 authoring smoke 任务：
 
 ```bash

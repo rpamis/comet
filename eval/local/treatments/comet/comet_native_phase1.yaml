@@ -1,0 +1,9 @@
+# Self-contained Comet Native treatment. It loads only the current repository's
+# Native Skill package; no Classic, OpenSpec, Superpowers, or dependency snapshot
+# is injected.
+COMET_NATIVE_PHASE1:
+  description: 'Self-contained Comet Native Phase 1 workflow for strong coding models'
+  skills:
+    - name: comet-native
+      source: path
+      path: ../assets/skills/comet-native
