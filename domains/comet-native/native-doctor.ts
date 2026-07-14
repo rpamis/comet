@@ -1,0 +1,327 @@
+import { promises as fs, type Dirent } from 'fs';
+import path from 'path';
+
+import { recoverArchiveTransaction } from './native-archive.js';
+import { readNativeChange } from './native-change.js';
+import { readProjectConfig } from './native-config.js';
+import { inspectNativeArtifactFindings, listNativeStatus } from './native-diagnostics.js';
+import { diagnoseNativeLock } from './native-lock.js';
+import { nativeProjectPaths } from './native-paths.js';
+import { recoverNativeRootMove } from './native-root-move.js';
+import { nativeSelectionFile } from './native-selection.js';
+import { readNativeTransaction } from './native-transaction.js';
+import type {
+  NativeDoctorFinding,
+  NativeProjectPaths,
+  NativeTransactionJournal,
+} from './native-types.js';
+
+async function directoryEntries(directory: string): Promise<Dirent[]> {
+  try {
+    return await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+async function inspectSelection(
+  paths: NativeProjectPaths,
+  repair: boolean,
+): Promise<NativeDoctorFinding[]> {
+  const file = nativeSelectionFile(paths);
+  let value: { schema?: unknown; change?: unknown };
+  try {
+    value = JSON.parse(await fs.readFile(file, 'utf8')) as typeof value;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    return [
+      {
+        severity: 'error',
+        code: 'selection-invalid',
+        message: `Native selection is invalid: ${(error as Error).message}`,
+        path: file,
+      },
+    ];
+  }
+  if (value.schema !== 'comet.native.selection.v1' || typeof value.change !== 'string') {
+    return [
+      {
+        severity: 'error',
+        code: 'selection-invalid',
+        message: 'Native selection has an invalid schema or change name',
+        path: file,
+      },
+    ];
+  }
+  try {
+    await readNativeChange(paths, value.change);
+    return [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      return [
+        {
+          severity: 'error',
+          code: 'selection-target-invalid',
+          message: `Selected Native change is invalid: ${(error as Error).message}`,
+          path: file,
+        },
+      ];
+    }
+  }
+  if (repair) {
+    await fs.rm(file, { force: true });
+    return [
+      {
+        severity: 'info',
+        code: 'selection-cleared',
+        message: `Cleared stale Native selection ${value.change}`,
+        path: file,
+      },
+    ];
+  }
+  return [
+    {
+      severity: 'warning',
+      code: 'selection-stale',
+      message: `Selected Native change does not exist: ${value.change}`,
+      path: file,
+    },
+  ];
+}
+
+async function inspectTransactions(
+  paths: NativeProjectPaths,
+  options: {
+    name?: string;
+    repair: boolean;
+    recoveryStrategy?: 'continue' | 'rollback';
+  },
+): Promise<{ findings: NativeDoctorFinding[]; unfinished: NativeTransactionJournal[] }> {
+  const findings: NativeDoctorFinding[] = [];
+  const unfinished: NativeTransactionJournal[] = [];
+  for (const entry of await directoryEntries(paths.transactionsDir)) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    let journal: NativeTransactionJournal;
+    try {
+      journal = await readNativeTransaction(paths, entry.name);
+    } catch (error) {
+      findings.push({
+        severity: 'error',
+        code: 'transaction-invalid',
+        message: `Native transaction ${entry.name} is invalid: ${(error as Error).message}`,
+        path: path.join(paths.transactionsDir, entry.name),
+      });
+      continue;
+    }
+    if (journal.status === 'committed' || journal.status === 'rolled-back') continue;
+    if (options.name && journal.change && journal.change !== options.name) continue;
+    unfinished.push(journal);
+    if (journal.kind !== 'archive') continue;
+    if (options.repair && options.recoveryStrategy) {
+      try {
+        await recoverArchiveTransaction({
+          paths,
+          transactionId: journal.id,
+          strategy: options.recoveryStrategy,
+        });
+        findings.push({
+          severity: 'info',
+          code: 'archive-transaction-recovered',
+          message: `${options.recoveryStrategy === 'continue' ? 'Continued' : 'Rolled back'} archive transaction ${journal.id}`,
+        });
+      } catch (error) {
+        findings.push({
+          severity: 'error',
+          code: 'archive-recovery-failed',
+          message: `Archive recovery failed: ${(error as Error).message}`,
+        });
+      }
+    } else {
+      findings.push({
+        severity: 'error',
+        code: 'archive-transaction-incomplete',
+        message: options.repair
+          ? `Archive transaction ${journal.id} needs an explicit recovery strategy`
+          : `Archive transaction ${journal.id} is incomplete`,
+        repair: options.recoveryStrategy ?? 'continue',
+      });
+    }
+  }
+  return { findings, unfinished };
+}
+
+async function inspectLocks(
+  paths: NativeProjectPaths,
+  repair: boolean,
+  unfinished: NativeTransactionJournal[],
+): Promise<NativeDoctorFinding[]> {
+  const findings: NativeDoctorFinding[] = [];
+  for (const entry of await directoryEntries(paths.locksDir)) {
+    if (!entry.isFile() || entry.isSymbolicLink() || !entry.name.endsWith('.lock')) continue;
+    const file = path.join(paths.locksDir, entry.name);
+    try {
+      const diagnosis = await diagnoseNativeLock(file);
+      if (diagnosis.status === 'active') {
+        findings.push({
+          severity: 'warning',
+          code: 'lock-active',
+          message: `Native lock is active for ${diagnosis.owner?.operation ?? 'an operation'}`,
+          path: file,
+        });
+      } else if (diagnosis.status === 'unknown') {
+        findings.push({
+          severity: 'warning',
+          code: 'lock-owner-unknown',
+          message: 'Native lock owner cannot be proven stale',
+          path: file,
+        });
+      } else if (diagnosis.status === 'stale') {
+        if (repair && unfinished.length === 0) {
+          await fs.rm(file, { force: true });
+          findings.push({
+            severity: 'info',
+            code: 'stale-lock-removed',
+            message: 'Removed a Native lock whose local owner process is absent',
+            path: file,
+          });
+        } else {
+          findings.push({
+            severity: unfinished.length > 0 ? 'error' : 'warning',
+            code: 'lock-stale',
+            message:
+              unfinished.length > 0
+                ? 'Native lock is stale but an unfinished transaction still requires recovery'
+                : 'Native lock owner process is absent',
+            path: file,
+          });
+        }
+      }
+    } catch (error) {
+      findings.push({
+        severity: 'error',
+        code: 'lock-invalid',
+        message: `Native lock metadata is invalid: ${(error as Error).message}`,
+        path: file,
+      });
+    }
+  }
+  return findings;
+}
+
+async function inspectChanges(
+  paths: NativeProjectPaths,
+  name?: string,
+): Promise<NativeDoctorFinding[]> {
+  const findings: NativeDoctorFinding[] = [];
+  const statuses = name
+    ? await listNativeStatus(paths).then((all) => all.filter((status) => status.name === name))
+    : await listNativeStatus(paths);
+  if (name && statuses.length === 0) {
+    return [
+      {
+        severity: 'error',
+        code: 'change-missing',
+        message: `Native change does not exist: ${name}`,
+      },
+    ];
+  }
+  for (const status of statuses) {
+    if (status.phase === 'invalid') {
+      findings.push({
+        severity: 'error',
+        code: 'change-invalid',
+        message: status.error ?? `Native change ${status.name} is invalid`,
+        path: path.join(paths.changesDir, status.name, 'change.yaml'),
+      });
+      continue;
+    }
+    const state = await readNativeChange(paths, status.name);
+    for (const artifact of await inspectNativeArtifactFindings(paths, state)) {
+      findings.push({
+        severity: 'error',
+        code: artifact.code,
+        message: `${status.name}: ${artifact.message}`,
+        ...(artifact.path ? { path: artifact.path } : {}),
+      });
+    }
+  }
+  return findings;
+}
+
+export async function doctorNativeProject(options: {
+  paths: NativeProjectPaths;
+  name?: string;
+  repair?: boolean;
+  recoveryStrategy?: 'continue' | 'rollback';
+}): Promise<{ healthy: boolean; findings: NativeDoctorFinding[] }> {
+  const repair = options.repair ?? false;
+  const findings: NativeDoctorFinding[] = [];
+  let paths = options.paths;
+  let config;
+  try {
+    config = await readProjectConfig(paths.projectRoot);
+  } catch (error) {
+    const result = {
+      healthy: false,
+      findings: [
+        {
+          severity: 'error' as const,
+          code: 'config-invalid',
+          message: `Comet project config is invalid: ${(error as Error).message}`,
+          path: paths.configFile,
+        },
+      ],
+    };
+    return result;
+  }
+  if (config?.native.pending_root_move) {
+    const pending = config.native.pending_root_move;
+    if (repair && options.recoveryStrategy) {
+      try {
+        const recovered = await recoverNativeRootMove({
+          projectRoot: paths.projectRoot,
+          strategy: options.recoveryStrategy,
+        });
+        paths = await nativeProjectPaths(paths.projectRoot, recovered.config.native.artifact_root);
+        findings.push({
+          severity: 'info',
+          code: 'root-move-recovered',
+          message: `${options.recoveryStrategy === 'continue' ? 'Continued' : 'Rolled back'} Native root move ${pending.id}`,
+        });
+      } catch (error) {
+        findings.push({
+          severity: 'error',
+          code: 'root-move-recovery-failed',
+          message: `Native root recovery failed: ${(error as Error).message}`,
+        });
+        return { healthy: false, findings };
+      }
+    } else {
+      const [fromPaths, toPaths] = await Promise.all([
+        nativeProjectPaths(paths.projectRoot, pending.fromArtifactRoot),
+        nativeProjectPaths(paths.projectRoot, pending.toArtifactRoot),
+      ]);
+      findings.push({
+        severity: 'error',
+        code: 'root-move-incomplete',
+        message: `Native root move ${pending.id} is ${pending.stage}; inspect ${fromPaths.nativeRoot} and ${toPaths.nativeRoot}`,
+        repair: options.recoveryStrategy ?? 'continue',
+      });
+    }
+  }
+
+  const transactions = await inspectTransactions(paths, {
+    name: options.name,
+    repair,
+    recoveryStrategy: options.recoveryStrategy,
+  });
+  findings.push(...transactions.findings);
+  findings.push(...(await inspectLocks(paths, repair, transactions.unfinished)));
+  findings.push(...(await inspectSelection(paths, repair)));
+  findings.push(...(await inspectChanges(paths, options.name)));
+  return {
+    healthy: findings.every((finding) => finding.severity === 'info'),
+    findings,
+  };
+}

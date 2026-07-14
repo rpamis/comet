@@ -83,6 +83,26 @@ export interface NativeAdvanceResult {
   findings: NativeFinding[];
 }
 
+export interface NativeStatusProjection {
+  name: string;
+  phase: NativePhase | 'invalid';
+  approval: NativeApproval;
+  verificationResult: NativeVerificationResult;
+  specChanges: number;
+  selected: boolean;
+  nextCommand: string | null;
+  archiveReady: boolean;
+  error?: string;
+}
+
+export interface NativeDoctorFinding {
+  severity: 'info' | 'warning' | 'error';
+  code: string;
+  message: string;
+  path?: string;
+  repair?: 'continue' | 'rollback';
+}
+
 export type NativeTransactionKind = 'archive' | 'root-move';
 export type NativeTransactionStatus =
   | 'prepared'

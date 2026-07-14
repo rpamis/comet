@@ -1,0 +1,164 @@
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import {
+  createNativeChange,
+  nativeChangeDir,
+} from '../../../domains/comet-native/native-change.js';
+import {
+  defaultProjectConfig,
+  readProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
+import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
+import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
+import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
+import { nativeSelectionFile } from '../../../domains/comet-native/native-selection.js';
+import { createNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
+import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+
+describe('Native doctor', () => {
+  let projectRoot: string;
+  let paths: NativeProjectPaths;
+
+  beforeEach(async () => {
+    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-doctor-'));
+    await fs.mkdir(path.join(projectRoot, '.git'));
+    paths = await nativeProjectPaths(projectRoot, '.');
+  });
+
+  afterEach(async () => {
+    await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('is read-only by default and can explicitly clear a stale selection', async () => {
+    await fs.mkdir(paths.runtimeDir, { recursive: true });
+    const selection = nativeSelectionFile(paths);
+    const source = JSON.stringify({
+      schema: 'comet.native.selection.v1',
+      change: 'missing-change',
+    });
+    await fs.writeFile(selection, source);
+
+    const inspected = await doctorNativeProject({ paths });
+    expect(inspected).toMatchObject({ healthy: false });
+    expect(inspected.findings).toContainEqual(
+      expect.objectContaining({ code: 'selection-stale', severity: 'warning' }),
+    );
+    expect(await fs.readFile(selection, 'utf8')).toBe(source);
+
+    const repaired = await doctorNativeProject({ paths, repair: true });
+    expect(repaired.findings).toContainEqual(
+      expect.objectContaining({ code: 'selection-cleared', severity: 'info' }),
+    );
+    await expect(fs.access(selection)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('reports malformed user-authored state and artifacts without modifying them', async () => {
+    const state = await createNativeChange({ paths, name: 'incomplete-change', language: 'en' });
+    const briefFile = path.join(nativeChangeDir(paths, state.name), 'brief.md');
+    const briefBefore = await fs.readFile(briefFile, 'utf8');
+    const result = await doctorNativeProject({ paths, repair: true });
+
+    expect(result.healthy).toBe(false);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ code: 'brief-section-empty', severity: 'error' }),
+    );
+    expect(await fs.readFile(briefFile, 'utf8')).toBe(briefBefore);
+  });
+
+  it('diagnoses live and stale locks and only removes a proven stale lock', async () => {
+    const live = await acquireNativeLock(paths, 'archive', 'archive live-change');
+    try {
+      expect((await doctorNativeProject({ paths })).findings).toContainEqual(
+        expect.objectContaining({ code: 'lock-active', severity: 'warning' }),
+      );
+    } finally {
+      await releaseNativeLock(live);
+    }
+
+    const staleFile = path.join(paths.locksDir, 'archive.lock');
+    await fs.mkdir(paths.locksDir, { recursive: true });
+    await fs.writeFile(
+      staleFile,
+      JSON.stringify({
+        id: 'stale-lock',
+        pid: 2_147_483_647,
+        hostname: os.hostname(),
+        createdAt: '2026-07-14T00:00:00.000Z',
+        operation: 'archive stale-change',
+      }),
+    );
+    const repaired = await doctorNativeProject({ paths, repair: true });
+    expect(repaired.findings).toContainEqual(
+      expect.objectContaining({ code: 'stale-lock-removed', severity: 'info' }),
+    );
+    await expect(fs.access(staleFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('reports incomplete archive journals and requires an explicit strategy to repair', async () => {
+    await createNativeTransaction(paths, {
+      schema: 'comet.native.transaction.v1',
+      id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      kind: 'archive',
+      status: 'prepared',
+      projectRoot,
+      nativeRoot: paths.nativeRoot,
+      change: 'example-change',
+      createdAt: '2026-07-14T00:00:00.000Z',
+      operations: [],
+    });
+    const result = await doctorNativeProject({ paths, repair: true });
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        code: 'archive-transaction-incomplete',
+        severity: 'error',
+      }),
+    );
+  });
+
+  it('inspects and repairs a pending root move using the requested strategy', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await fs.mkdir(path.join(paths.specsDir, 'example'), { recursive: true });
+    await fs.writeFile(path.join(paths.specsDir, 'example', 'spec.md'), 'example\n');
+    await expect(
+      moveNativeRoot({
+        projectRoot,
+        toArtifactRoot: 'docs',
+        hooks: {
+          afterRootMoveStage(stage) {
+            if (stage === 'ready') throw new Error('stop at ready');
+          },
+        },
+      }),
+    ).rejects.toThrow('stop at ready');
+
+    const inspected = await doctorNativeProject({ paths });
+    expect(inspected.findings).toContainEqual(
+      expect.objectContaining({ code: 'root-move-incomplete', severity: 'error' }),
+    );
+    expect((await readProjectConfig(projectRoot))?.native.pending_root_move).toBeTruthy();
+
+    const repaired = await doctorNativeProject({
+      paths,
+      repair: true,
+      recoveryStrategy: 'rollback',
+    });
+    expect(repaired.findings).toContainEqual(
+      expect.objectContaining({ code: 'root-move-recovered', severity: 'info' }),
+    );
+    expect(await readProjectConfig(projectRoot)).toEqual(defaultProjectConfig('.'));
+  });
+
+  it('fails closed on malformed config and preserves its exact bytes', async () => {
+    const configFile = path.join(projectRoot, 'comet.config.yaml');
+    const malformed = 'schema: comet.project.v1\nnative: [broken\n';
+    await fs.writeFile(configFile, malformed);
+    const result = await doctorNativeProject({ paths, repair: true });
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'config-invalid' }));
+    expect(await fs.readFile(configFile, 'utf8')).toBe(malformed);
+  });
+});
