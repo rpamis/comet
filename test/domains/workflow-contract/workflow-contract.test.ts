@@ -1,12 +1,49 @@
 import { describe, expect, it } from 'vitest';
 import {
   builtinCometFivePhaseWorkflow,
+  builtinCometNativeWorkflow,
   hashWorkflowProtocol,
   normalizeWorkflowDefinition,
   validateWorkflowDefinition,
 } from '../../../domains/workflow-contract/index.js';
 
 describe('workflow contract normalization', () => {
+  it('normalizes the self-contained Native workflow without external Skill calls', () => {
+    const workflow = normalizeWorkflowDefinition(
+      builtinCometNativeWorkflow({
+        name: 'native-product-change',
+        goal: 'Ship through the lightweight Native workflow.',
+      }),
+    );
+
+    expect(workflow.protocol.kind).toBe('comet-native');
+    expect(workflow.protocol.nodes.map((node) => node.id)).toEqual([
+      'shape',
+      'build',
+      'verify',
+      'archive',
+    ]);
+    expect(workflow.protocol.nodes.every((node) => node.implementation.skill === 'comet-native')).toBe(true);
+    expect(workflow.protocol.nodes.every((node) => node.requiredSkillCalls.length === 0)).toBe(true);
+    expect(workflow.protocol.nodes.every((node) => node.augmentations.length === 0)).toBe(true);
+    expect(workflow.requiredSkills).toEqual(['comet-native']);
+    expect(workflow.protocol.outputSchemas.map((schema) => schema.id)).toEqual([
+      'comet.native.brief.v1',
+      'comet.native.spec-change.v1',
+      'comet.native.implementation.v1',
+      'comet.native.verify.v1',
+      'comet.native.archive.v1',
+    ]);
+    expect(workflow.protocol.state).toEqual({
+      kind: 'native-change',
+      statePath: 'changes/*/change.yaml',
+      pathBase: 'native-root',
+      currentNodeField: 'phase',
+      completedNodesField: 'runtime.completedNodes',
+      evidenceField: 'runtime.trajectory',
+    });
+  });
+
   it('normalizes the Comet five-phase template into Nodes with Output Schemas', () => {
     const workflow = normalizeWorkflowDefinition(
       builtinCometFivePhaseWorkflow({

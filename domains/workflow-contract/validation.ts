@@ -1,4 +1,9 @@
-import { BUILTIN_COMET_OUTPUT_SCHEMAS, COMET_FIVE_PHASE_NODES } from './builtins.js';
+import {
+  BUILTIN_COMET_NATIVE_OUTPUT_SCHEMAS,
+  BUILTIN_COMET_OUTPUT_SCHEMAS,
+  COMET_FIVE_PHASE_NODES,
+  COMET_NATIVE_NODES,
+} from './builtins.js';
 import type {
   WorkflowBindingOperation,
   WorkflowDefinitionInput,
@@ -11,11 +16,19 @@ function templatesFor(input: WorkflowDefinitionInput): WorkflowNodeTemplate[] {
   if (input.kind === 'comet-five-phase-overlay') {
     return [...COMET_FIVE_PHASE_NODES, ...(input.customNodes ?? [])];
   }
+  if (input.kind === 'comet-native') {
+    return [...COMET_NATIVE_NODES, ...(input.customNodes ?? [])];
+  }
   return input.customNodes ?? [];
 }
 
 function schemaIdsFor(input: WorkflowDefinitionInput): Set<string> {
-  const schemas = input.kind === 'comet-five-phase-overlay' ? BUILTIN_COMET_OUTPUT_SCHEMAS : [];
+  const schemas =
+    input.kind === 'comet-five-phase-overlay'
+      ? BUILTIN_COMET_OUTPUT_SCHEMAS
+      : input.kind === 'comet-native'
+        ? BUILTIN_COMET_NATIVE_OUTPUT_SCHEMAS
+        : [];
   return new Set([...schemas, ...(input.outputSchemas ?? [])].map((schema) => schema.id));
 }
 
@@ -188,10 +201,14 @@ export function validateWorkflowDefinition(
     if (!byId.has(nodeId)) continue;
     for (const schema of patch.outputSchemas ?? []) attachedSchemas.add(schema);
   }
-  const builtinSchemas =
-    input.kind === 'comet-five-phase-overlay'
-      ? new Set(BUILTIN_COMET_OUTPUT_SCHEMAS.map((schema) => schema.id))
-      : new Set<string>();
+  const builtinSchemas = new Set(
+    (input.kind === 'comet-five-phase-overlay'
+      ? BUILTIN_COMET_OUTPUT_SCHEMAS
+      : input.kind === 'comet-native'
+        ? BUILTIN_COMET_NATIVE_OUTPUT_SCHEMAS
+        : []
+    ).map((schema) => schema.id),
+  );
   for (const schema of input.outputSchemas ?? []) {
     if (!builtinSchemas.has(schema.id) && !attachedSchemas.has(schema.id)) {
       findings.push({

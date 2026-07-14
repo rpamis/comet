@@ -1,4 +1,4 @@
-export type WorkflowKind = 'comet-five-phase-overlay' | 'workflow-kernel';
+export type WorkflowKind = 'comet-five-phase-overlay' | 'comet-native' | 'workflow-kernel';
 
 export type WorkflowNodeKind = 'control' | 'producer' | 'action' | 'handoff' | 'guardrail';
 
@@ -20,6 +20,7 @@ export interface WorkflowArtifactSchema {
   kind: 'file' | 'directory' | 'state' | 'report';
   required: boolean;
   paths: string[];
+  pathBase?: 'project' | 'native-root';
   validations: OutputValidationKind[];
 }
 
@@ -109,8 +110,9 @@ export interface WorkflowEdge {
 }
 
 export interface WorkflowStateSpec {
-  kind: 'comet-overlay' | 'workflow-run';
+  kind: 'comet-overlay' | 'native-change' | 'workflow-run';
   statePath: string;
+  pathBase?: 'project' | 'native-root';
   currentNodeField: string;
   completedNodesField: string;
   evidenceField: string;

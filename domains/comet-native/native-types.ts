@@ -66,3 +66,19 @@ export interface NativeArtifactValidation {
   valid: boolean;
   findings: NativeFinding[];
 }
+
+export interface NativeAdvanceEvidence {
+  summary: string;
+  artifacts?: string[];
+  noCodeReason?: string;
+  verificationResult?: 'pass' | 'fail';
+  verificationReport?: string;
+}
+
+export interface NativeAdvanceResult {
+  change: NativeChangeState;
+  previousPhase: NativePhase;
+  next: 'auto' | 'manual' | 'done';
+  nextCommand: string | null;
+  findings: NativeFinding[];
+}

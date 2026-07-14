@@ -228,6 +228,143 @@ export const COMET_FIVE_PHASE_NODES: WorkflowNodeTemplate[] = [
   },
 ];
 
+export const BUILTIN_COMET_NATIVE_OUTPUT_SCHEMAS: WorkflowOutputSchema[] = [
+  {
+    id: 'comet.native.brief.v1',
+    description: 'Native change outcome, scope, acceptance, decisions, and open questions.',
+    artifacts: [
+      {
+        id: 'native-brief',
+        kind: 'file',
+        required: true,
+        paths: ['changes/*/brief.md'],
+        pathBase: 'native-root',
+        validations: ['artifact-exists', 'artifact-structured'],
+      },
+    ],
+    evidence: [{ id: 'shape-summary', required: true }],
+  },
+  {
+    id: 'comet.native.spec-change.v1',
+    description: 'Complete target capability specs and their canonical base hashes.',
+    artifacts: [
+      {
+        id: 'native-target-specs',
+        kind: 'directory',
+        required: false,
+        paths: ['changes/*/specs'],
+        pathBase: 'native-root',
+        validations: ['artifact-structured', 'semantic'],
+      },
+    ],
+    evidence: [{ id: 'spec-change-summary', required: false }],
+  },
+  {
+    id: 'comet.native.implementation.v1',
+    description: 'Implementation or explicit no-code outcome evidence.',
+    artifacts: [],
+    evidence: [{ id: 'implementation-summary', required: true }],
+  },
+  {
+    id: 'comet.native.verify.v1',
+    description: 'Acceptance, command, risk, and spec-consistency verification evidence.',
+    artifacts: [
+      {
+        id: 'native-verification',
+        kind: 'report',
+        required: true,
+        paths: ['changes/*/verification.md'],
+        pathBase: 'native-root',
+        validations: ['artifact-exists', 'artifact-structured', 'semantic'],
+      },
+    ],
+    evidence: [{ id: 'verification-result', required: true }],
+  },
+  {
+    id: 'comet.native.archive.v1',
+    description: 'Conflict-safe canonical spec update and frozen Native change history.',
+    artifacts: [
+      {
+        id: 'native-archive',
+        kind: 'directory',
+        required: true,
+        paths: ['archive/*'],
+        pathBase: 'native-root',
+        validations: ['artifact-exists', 'state-transition'],
+      },
+    ],
+    evidence: [{ id: 'archive-summary', required: true }],
+  },
+];
+
+export const COMET_NATIVE_NODES: WorkflowNodeTemplate[] = [
+  {
+    id: 'shape',
+    label: 'Shape',
+    kind: 'control',
+    responsibility: 'Resolve the decision frontier and establish the Native change contract.',
+    implementation: { skill: 'comet-native', operation: 'default', scope: 'main' },
+    operations: ['require', 'augment'],
+    outputSchemas: ['comet.native.brief.v1', 'comet.native.spec-change.v1'],
+    guardrails: [
+      {
+        id: 'native-shape-ready',
+        label: 'Native brief and target specs are ready',
+        validation: 'artifact-structured',
+      },
+    ],
+  },
+  {
+    id: 'build',
+    label: 'Build',
+    kind: 'control',
+    responsibility: 'Implement the Native change using the host model’s native capabilities.',
+    implementation: { skill: 'comet-native', operation: 'default', scope: 'main' },
+    operations: ['require', 'augment'],
+    outputSchemas: ['comet.native.implementation.v1'],
+    guardrails: [
+      {
+        id: 'native-build-ready',
+        label: 'Implementation evidence is recorded',
+        validation: 'semantic',
+      },
+    ],
+  },
+  {
+    id: 'verify',
+    label: 'Verify',
+    kind: 'control',
+    responsibility: 'Prove acceptance scenarios and target-spec consistency with evidence.',
+    implementation: { skill: 'comet-native', operation: 'default', scope: 'main' },
+    operations: ['require', 'augment'],
+    outputSchemas: ['comet.native.verify.v1'],
+    guardrails: [
+      {
+        id: 'native-verification-ready',
+        label: 'Native verification report is complete',
+        validation: 'semantic',
+      },
+    ],
+  },
+  {
+    id: 'archive',
+    label: 'Archive',
+    kind: 'control',
+    responsibility:
+      'Apply target specs and freeze the Native change through a recoverable transaction.',
+    implementation: { skill: 'comet-native', operation: 'default', scope: 'main' },
+    operations: ['require', 'augment'],
+    outputSchemas: ['comet.native.archive.v1'],
+    guardrails: [
+      {
+        id: 'native-archive-ready',
+        label: 'Native archive transaction completed',
+        validation: 'state-transition',
+      },
+    ],
+  },
+];
+
 export function builtinCometFivePhaseWorkflow(options: {
   name: string;
   goal: string;
@@ -237,4 +374,11 @@ export function builtinCometFivePhaseWorkflow(options: {
     name: options.name,
     goal: options.goal,
   };
+}
+
+export function builtinCometNativeWorkflow(options: {
+  name: string;
+  goal: string;
+}): WorkflowDefinitionInput {
+  return { kind: 'comet-native', name: options.name, goal: options.goal };
 }

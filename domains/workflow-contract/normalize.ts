@@ -1,4 +1,9 @@
-import { BUILTIN_COMET_OUTPUT_SCHEMAS, COMET_FIVE_PHASE_NODES } from './builtins.js';
+import {
+  BUILTIN_COMET_NATIVE_OUTPUT_SCHEMAS,
+  BUILTIN_COMET_OUTPUT_SCHEMAS,
+  COMET_FIVE_PHASE_NODES,
+  COMET_NATIVE_NODES,
+} from './builtins.js';
 import type {
   NormalizedWorkflowDefinition,
   WorkflowDefinitionInput,
@@ -66,11 +71,19 @@ function templatesFor(
   if (kind === 'comet-five-phase-overlay') {
     return [...COMET_FIVE_PHASE_NODES.map(cloneTemplate), ...customNodes.map(cloneTemplate)];
   }
+  if (kind === 'comet-native') {
+    return [...COMET_NATIVE_NODES.map(cloneTemplate), ...customNodes.map(cloneTemplate)];
+  }
   return customNodes.map(cloneTemplate);
 }
 
 function outputSchemasFor(input: WorkflowDefinitionInput): WorkflowOutputSchema[] {
-  const schemas = input.kind === 'comet-five-phase-overlay' ? BUILTIN_COMET_OUTPUT_SCHEMAS : [];
+  const schemas =
+    input.kind === 'comet-five-phase-overlay'
+      ? BUILTIN_COMET_OUTPUT_SCHEMAS
+      : input.kind === 'comet-native'
+        ? BUILTIN_COMET_NATIVE_OUTPUT_SCHEMAS
+        : [];
   const byId = new Map<string, WorkflowOutputSchema>();
   for (const schema of [...schemas, ...(input.outputSchemas ?? [])]) {
     byId.set(schema.id, structuredClone(schema));
@@ -153,19 +166,30 @@ export function normalizeWorkflowDefinition(
             completedNodesField: 'completedNodes',
             evidenceField: 'evidence',
           }
-        : {
-            kind: 'workflow-run',
-            statePath: `.comet/runs/${input.name}/state.json`,
-            currentNodeField: 'currentNode',
-            completedNodesField: 'completedNodes',
-            evidenceField: 'evidence',
-          },
+        : input.kind === 'comet-native'
+          ? {
+              kind: 'native-change',
+              statePath: 'changes/*/change.yaml',
+              pathBase: 'native-root',
+              currentNodeField: 'phase',
+              completedNodesField: 'runtime.completedNodes',
+              evidenceField: 'runtime.trajectory',
+            }
+          : {
+              kind: 'workflow-run',
+              statePath: `.comet/runs/${input.name}/state.json`,
+              currentNodeField: 'currentNode',
+              completedNodesField: 'completedNodes',
+              evidenceField: 'evidence',
+            },
     evals: [
       {
         id:
           input.kind === 'comet-five-phase-overlay'
             ? 'comet-five-phase-contract'
-            : 'workflow-route-conformance',
+            : input.kind === 'comet-native'
+              ? 'comet-native-contract'
+              : 'workflow-route-conformance',
         expectedNodeOrder: nodes.filter((node) => !node.disabled).map((node) => node.id),
         requiredOutputSchemas: dedupe(nodes.flatMap((node) => node.outputSchemas)),
       },
