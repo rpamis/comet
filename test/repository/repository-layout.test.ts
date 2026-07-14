@@ -35,6 +35,7 @@ describe('repository layout registry', () => {
     expect(layout.domainModules).toEqual([
       'bundle',
       'comet-classic',
+      'comet-native',
       'dashboard',
       'engine',
       'eval',
