@@ -104,6 +104,19 @@ describe('dashboard markdown-preview', () => {
     expect(html).not.toContain('"files":');
   });
 
+  it('escapes quotes in structured keys used as HTML attributes', async () => {
+    const maliciousKey = 'x" onmouseover="alert(1)';
+    const html = await renderJsonPreview(
+      JSON.stringify({
+        [maliciousKey]: [{ path: 'a', sha256: 'b' }],
+      }),
+    );
+
+    // A single quoted id attribute — quotes are entities, so nothing breaks out into extra attrs.
+    expect(html).toContain('<h3 id="x&quot; onmouseover=&quot;alert(1)">');
+    expect(html).not.toMatch(/<h3 id="[^"]*"\s+\w+\s*=/i);
+  });
+
   it('strips XSS payloads from raw HTML in Markdown', async () => {
     const html = await renderMarkdown(
       ['# Safe', '', '<img src=x onerror=alert(1)>', '', '<script>alert(2)</script>'].join('\n'),

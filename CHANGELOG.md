@@ -10,7 +10,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Security
 
-- **Dashboard preview XSS hardening**: Markdown / YAML / JSON artifact HTML is sanitized with DOMPurify before DOM injection, dangerous URL schemes are blocked, and Mermaid runs with `securityLevel: 'strict'` so untrusted artifact content cannot execute scripts via raw HTML, event handlers, or loose diagram rendering.
+- **Dashboard preview XSS hardening**: Markdown / YAML / JSON artifact HTML is sanitized with DOMPurify before DOM injection, dangerous URL schemes are blocked, Mermaid runs with `securityLevel: 'strict'`, and structured preview key/attribute escaping covers quotes so untrusted artifact content cannot execute scripts via raw HTML, event handlers, attribute breakout, or loose diagram rendering.
 
 ## What's Changed [0.4.0-beta.4] - 2026-07-11
 

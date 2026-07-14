@@ -12,7 +12,12 @@ const PURIFY_CONFIG = {
 };
 
 function escapeHtml(value) {
-  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function sanitizePreviewHtml(dirty) {
@@ -61,7 +66,7 @@ function renderKvTable(entries, { className = 'yaml-kv-table' } = {}) {
     .join('');
 
   return [
-    `<table class="${className}">`,
+    `<table class="${escapeHtml(className)}">`,
     '<thead><tr><th scope="col">字段</th><th scope="col">值</th></tr></thead>',
     `<tbody>${rows}</tbody>`,
     '</table>',
@@ -93,7 +98,7 @@ function renderObjectArrayTable(items, { className = 'json-array-table' } = {}) 
     .join('');
 
   return [
-    `<table class="${className}">`,
+    `<table class="${escapeHtml(className)}">`,
     `<thead><tr>${head}</tr></thead>`,
     `<tbody>${body}</tbody>`,
     '</table>',
