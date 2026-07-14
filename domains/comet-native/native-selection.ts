@@ -3,6 +3,7 @@ import path from 'path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
 import { assertNativeName, readNativeChange } from './native-change.js';
+import { assertNoPendingNativeRootMove } from './native-config.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 interface NativeSelection {
@@ -15,6 +16,7 @@ export function nativeSelectionFile(paths: NativeProjectPaths): string {
 }
 
 export async function selectNativeChange(paths: NativeProjectPaths, name: string): Promise<void> {
+  await assertNoPendingNativeRootMove(paths.projectRoot);
   assertNativeName(name);
   await readNativeChange(paths, name);
   const selection: NativeSelection = { schema: 'comet.native.selection.v1', change: name };
@@ -41,6 +43,7 @@ export async function resolveSelectedNativeChange(
 }
 
 export async function clearNativeSelection(paths: NativeProjectPaths): Promise<void> {
+  await assertNoPendingNativeRootMove(paths.projectRoot);
   await fs.rm(nativeSelectionFile(paths), { force: true });
 }
 

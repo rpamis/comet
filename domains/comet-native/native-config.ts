@@ -103,6 +103,15 @@ export async function readProjectConfig(projectRoot: string): Promise<CometProje
   return parseConfig(document.toJS());
 }
 
+export async function assertNoPendingNativeRootMove(projectRoot: string): Promise<void> {
+  const config = await readProjectConfig(projectRoot);
+  if (config?.native.pending_root_move) {
+    throw new Error(
+      `Native root move ${config.native.pending_root_move.id} is incomplete; use comet native doctor --repair`,
+    );
+  }
+}
+
 export async function writeProjectConfig(
   projectRoot: string,
   config: CometProjectConfig,
@@ -153,6 +162,11 @@ export async function resolveNativeProject(options: {
   const existing = await readProjectConfig(projectRoot);
   if (!existing && options.allowMissingConfig === false) {
     throw new Error(`${PROJECT_CONFIG_FILE} was not found`);
+  }
+  if (existing?.native.pending_root_move) {
+    throw new Error(
+      `Native root move ${existing.native.pending_root_move.id} is incomplete; use comet native doctor --repair`,
+    );
   }
   const explicit = options.explicitArtifactRoot
     ? normalizeArtifactRootRef(options.explicitArtifactRoot)

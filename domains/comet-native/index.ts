@@ -6,6 +6,7 @@ export * from './native-guards.js';
 export * from './native-hash.js';
 export * from './native-lock.js';
 export * from './native-paths.js';
+export * from './native-root-move.js';
 export * from './native-selection.js';
 export * from './native-transitions.js';
 export * from './native-transaction.js';

@@ -3,6 +3,7 @@ import path from 'path';
 import { parseDocument, stringify } from 'yaml';
 
 import { atomicWriteText } from './native-atomic-file.js';
+import { assertNoPendingNativeRootMove } from './native-config.js';
 import { isInsidePath } from './native-paths.js';
 import type {
   NativeApproval,
@@ -229,6 +230,7 @@ export async function createNativeChange(options: {
   language: 'en' | 'zh-CN';
   now?: Date;
 }): Promise<NativeChangeState> {
+  await assertNoPendingNativeRootMove(options.paths.projectRoot);
   assertNativeName(options.name);
   const changeDir = nativeChangeDir(options.paths, options.name);
   try {
@@ -285,6 +287,7 @@ export async function writeNativeChange(
   paths: NativeProjectPaths,
   state: NativeChangeState,
 ): Promise<void> {
+  await assertNoPendingNativeRootMove(paths.projectRoot);
   const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
   await atomicWriteText(file, stringify(nativeChangeDocument(state)));
 }

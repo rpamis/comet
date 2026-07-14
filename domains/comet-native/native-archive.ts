@@ -18,6 +18,7 @@ import {
   readNativeChangeFile,
   writeNativeChangeFile,
 } from './native-change.js';
+import { assertNoPendingNativeRootMove } from './native-config.js';
 import { sha256File, sha256Text } from './native-hash.js';
 import { acquireNativeLock, releaseNativeLock } from './native-lock.js';
 import { NATIVE_RUNTIME_PACKAGE, nativePhaseResolver } from './native-runtime-package.js';
@@ -289,8 +290,11 @@ export async function archiveNativeChange(options: {
   now?: Date;
   hooks?: NativeTransactionHooks;
 }): Promise<{ archiveDir: string; transactionId: string }> {
-  const lock = await acquireNativeLock(options.paths, 'archive', `archive ${options.name}`);
+  await assertNoPendingNativeRootMove(options.paths.projectRoot);
+  const globalLock = await acquireNativeLock(options.paths, 'root-move', `archive ${options.name}`);
+  let lock: Awaited<ReturnType<typeof acquireNativeLock>> | undefined;
   try {
+    lock = await acquireNativeLock(options.paths, 'archive', `archive ${options.name}`);
     const state = await readNativeChange(options.paths, options.name);
     assertArchiveReady(state);
     await assertArchiveArtifacts(options.paths, state);
@@ -307,7 +311,8 @@ export async function archiveNativeChange(options: {
     await continueArchive(options.paths, journal, options.hooks);
     return { archiveDir: archiveDirectoryFromJournal(options.paths, journal), transactionId };
   } finally {
-    await releaseNativeLock(lock);
+    if (lock) await releaseNativeLock(lock);
+    await releaseNativeLock(globalLock);
   }
 }
 
@@ -316,12 +321,19 @@ export async function recoverArchiveTransaction(options: {
   transactionId: string;
   strategy: 'continue' | 'rollback';
 }): Promise<NativeTransactionJournal> {
-  const lock = await acquireNativeLock(
+  await assertNoPendingNativeRootMove(options.paths.projectRoot);
+  const globalLock = await acquireNativeLock(
     options.paths,
-    'archive',
+    'root-move',
     `recover archive ${options.transactionId}`,
   );
+  let lock: Awaited<ReturnType<typeof acquireNativeLock>> | undefined;
   try {
+    lock = await acquireNativeLock(
+      options.paths,
+      'archive',
+      `recover archive ${options.transactionId}`,
+    );
     const journal = await readNativeTransaction(options.paths, options.transactionId);
     assertMatchingJournal(options.paths, journal);
     if (journal.status === 'committed' || journal.status === 'rolled-back') return journal;
@@ -329,6 +341,7 @@ export async function recoverArchiveTransaction(options: {
       ? continueArchive(options.paths, journal)
       : rollbackNativeTransaction(options.paths, journal);
   } finally {
-    await releaseNativeLock(lock);
+    if (lock) await releaseNativeLock(lock);
+    await releaseNativeLock(globalLock);
   }
 }

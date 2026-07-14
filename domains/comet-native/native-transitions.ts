@@ -6,6 +6,7 @@ import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
 import { readRunStateAt, startRunWithStorage, writeRunStateAt } from '../engine/storage-run.js';
 import { inspectNativeGuard } from './native-guards.js';
 import { nativeChangeDir, readNativeChange, writeNativeChange } from './native-change.js';
+import { assertNoPendingNativeRootMove } from './native-config.js';
 import { sha256Text } from './native-hash.js';
 import {
   NATIVE_RUNTIME_HASH,
@@ -39,6 +40,7 @@ export async function advanceNativeChange(options: {
   now?: Date;
   runId?: () => string;
 }): Promise<NativeAdvanceResult> {
+  await assertNoPendingNativeRootMove(options.paths.projectRoot);
   const state = await readNativeChange(options.paths, options.name);
   const previousPhase = state.phase;
   const changeDir = nativeChangeDir(options.paths, options.name);

@@ -133,4 +133,8 @@ export interface NativeTransactionHooks {
     operation: NativeTransactionOperation,
     completedCount: number,
   ) => void | Promise<void>;
+  afterRootMoveStage?: (
+    stage: NativePendingRootMove['stage'],
+    journal: NativeTransactionJournal,
+  ) => void | Promise<void>;
 }
