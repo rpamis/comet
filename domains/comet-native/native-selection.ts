@@ -43,3 +43,20 @@ export async function resolveSelectedNativeChange(
 export async function clearNativeSelection(paths: NativeProjectPaths): Promise<void> {
   await fs.rm(nativeSelectionFile(paths), { force: true });
 }
+
+export async function clearNativeSelectionIf(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<boolean> {
+  let source: string;
+  try {
+    source = await fs.readFile(nativeSelectionFile(paths), 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+  const value = JSON.parse(source) as Partial<NativeSelection>;
+  if (value.schema !== 'comet.native.selection.v1' || value.change !== name) return false;
+  await clearNativeSelection(paths);
+  return true;
+}

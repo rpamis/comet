@@ -127,7 +127,7 @@ function validDate(value: string): boolean {
   return new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
 }
 
-function parseChange(value: unknown): NativeChangeState {
+export function parseNativeChangeValue(value: unknown): NativeChangeState {
   const root = record(value, 'change.yaml');
   rejectUnknown(root, CHANGE_KEYS, 'change.yaml');
   if (root.schema !== 'comet.native.v1') throw new Error('Unsupported Native change schema');
@@ -192,8 +192,8 @@ function parseChange(value: unknown): NativeChangeState {
   };
 }
 
-function serializedChange(state: NativeChangeState): Record<string, unknown> {
-  const parsed = parseChange(state);
+export function nativeChangeDocument(state: NativeChangeState): Record<string, unknown> {
+  const parsed = parseNativeChangeValue(state);
   return {
     schema: parsed.schema,
     name: parsed.name,
@@ -276,7 +276,7 @@ export async function readNativeChange(
   if (document.errors.length > 0) {
     throw new Error(`Invalid Native change ${name}: ${document.errors[0].message}`);
   }
-  const parsed = parseChange(document.toJS());
+  const parsed = parseNativeChangeValue(document.toJS());
   if (parsed.name !== name) throw new Error(`Native change directory/name mismatch: ${name}`);
   return parsed;
 }
@@ -286,7 +286,19 @@ export async function writeNativeChange(
   state: NativeChangeState,
 ): Promise<void> {
   const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
-  await atomicWriteText(file, stringify(serializedChange(state)));
+  await atomicWriteText(file, stringify(nativeChangeDocument(state)));
+}
+
+export async function writeNativeChangeFile(file: string, state: NativeChangeState): Promise<void> {
+  await atomicWriteText(file, stringify(nativeChangeDocument(state)));
+}
+
+export async function readNativeChangeFile(file: string): Promise<NativeChangeState> {
+  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
+  }
+  return parseNativeChangeValue(document.toJS());
 }
 
 export async function listNativeChanges(paths: NativeProjectPaths): Promise<NativeChangeState[]> {

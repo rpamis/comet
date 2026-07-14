@@ -82,3 +82,55 @@ export interface NativeAdvanceResult {
   nextCommand: string | null;
   findings: NativeFinding[];
 }
+
+export type NativeTransactionKind = 'archive' | 'root-move';
+export type NativeTransactionStatus =
+  | 'prepared'
+  | 'applying'
+  | 'committed'
+  | 'rolling-back'
+  | 'rolled-back';
+
+export interface NativeTransactionOperation {
+  id: string;
+  type: 'write' | 'remove' | 'move';
+  source?: string;
+  target: string;
+  staged?: string;
+  backup?: string;
+}
+
+export interface NativeTransactionJournal {
+  schema: 'comet.native.transaction.v1';
+  id: string;
+  kind: NativeTransactionKind;
+  status: NativeTransactionStatus;
+  projectRoot: string;
+  nativeRoot: string;
+  change?: string;
+  createdAt: string;
+  operations: NativeTransactionOperation[];
+}
+
+export interface NativeTransactionEvent {
+  sequence: number;
+  timestamp: string;
+  type:
+    | 'prepared'
+    | 'operation-started'
+    | 'operation-completed'
+    | 'archive-finalization-started'
+    | 'archive-finalized'
+    | 'commit'
+    | 'rollback-started'
+    | 'rollback-completed';
+  operationId?: string;
+}
+
+export interface NativeTransactionHooks {
+  afterPrepared?: (journal: NativeTransactionJournal) => void | Promise<void>;
+  afterOperation?: (
+    operation: NativeTransactionOperation,
+    completedCount: number,
+  ) => void | Promise<void>;
+}
