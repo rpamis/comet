@@ -121,7 +121,7 @@ input {
   font-size: 16px;
   line-height: 1.75;
   color: #24292f;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .md-github h1,
@@ -300,8 +300,6 @@ input {
 .md-github .yaml-kv-table td {
   vertical-align: top;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85em;
   line-height: 1.55;
@@ -310,8 +308,6 @@ input {
 .md-github .json-array-table td {
   vertical-align: top;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85em;
   line-height: 1.55;
