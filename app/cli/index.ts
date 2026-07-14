@@ -12,6 +12,7 @@ import {
   runClassicFacade,
   type PublicClassicCommand,
 } from '../commands/classic.js';
+import { runNativeFacade } from '../commands/native.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { COMET_TAGLINE } from './comet-banner.js';
 import {
@@ -202,6 +203,16 @@ for (const command of PUBLIC_CLASSIC_COMMANDS) {
       process.exitCode = await runClassicFacade(command, args);
     });
 }
+
+program
+  .command('native [args...]')
+  .description('Manage the self-contained Comet Native workflow')
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .helpOption(false)
+  .action(async (args: string[]) => {
+    process.exitCode = await runNativeFacade(args);
+  });
 
 const skill = program
   .command('skill')

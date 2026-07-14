@@ -51,4 +51,35 @@ describe('built CLI smoke', () => {
     expect(result.stdout).toMatch(/\d+\.\d+\.\d+/u);
     expect(result.stderr).toBe('');
   });
+
+  it('runs the Native facade without changing root status and doctor commands', async () => {
+    const initialized = runCli('native', 'init', '--project-root', projectRoot, '--json');
+    const created = runCli(
+      'native',
+      'new',
+      'smoke-change',
+      '--project-root',
+      projectRoot,
+      '--json',
+    );
+    const status = runCli(
+      'native',
+      'status',
+      'smoke-change',
+      '--project-root',
+      projectRoot,
+      '--json',
+    );
+
+    expect(initialized.status, initialized.stderr).toBe(0);
+    expect(JSON.parse(initialized.stdout)).toMatchObject({ command: 'init', exitCode: 0 });
+    expect(created.status, created.stderr).toBe(0);
+    expect(JSON.parse(created.stdout)).toMatchObject({ command: 'new', exitCode: 0 });
+    expect(status.status, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      command: 'status',
+      data: { name: 'smoke-change', phase: 'shape' },
+    });
+    expect(runCli('status', projectRoot).stdout).toContain('No active changes.');
+  });
 });

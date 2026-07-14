@@ -89,6 +89,19 @@ describe('CLI help text', () => {
       facadeDescriptions.filter((description) => help.stdout.includes(description)),
     ).toHaveLength(4);
     expect(help.stdout).toMatch(/^\s+resume-probe \[options\] \[path\]\s+Probe whether/mu);
+    expect(help.stdout).toContain('Manage the self-contained Comet Native workflow');
+  });
+
+  it('keeps Native behind one isolated root command', () => {
+    const help = runCli('--help');
+    const nativeHelp = runCli('native', '--help');
+
+    expect(help.status, help.stderr).toBe(0);
+    expect(nativeHelp.status, nativeHelp.stderr).toBe(0);
+    expect(help.stdout).toMatch(/^\s+native \[args\.\.\.\]\s+Manage the self-contained/mu);
+    expect(nativeHelp.stdout).toContain('Usage: comet native <command> [options]');
+    expect(nativeHelp.stdout).toContain('root move <artifact-root>');
+    expect(nativeHelp.stdout).toContain('doctor [<change-name>]');
   });
 
   it('separates repository evals from Engine Run runtime checks', () => {

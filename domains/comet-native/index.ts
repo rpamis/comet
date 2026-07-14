@@ -1,6 +1,7 @@
 export * from './native-artifacts.js';
 export * from './native-archive.js';
 export * from './native-change.js';
+export * from './native-cli.js';
 export * from './native-config.js';
 export * from './native-diagnostics.js';
 export * from './native-doctor.js';
