@@ -21,6 +21,7 @@ import {
 import { assertNoPendingNativeRootMove } from './native-config.js';
 import { sha256File, sha256Text } from './native-hash.js';
 import { acquireNativeLock, releaseNativeLock } from './native-lock.js';
+import { resolveContainedNativePath } from './native-paths.js';
 import { NATIVE_RUNTIME_PACKAGE, nativePhaseResolver } from './native-runtime-package.js';
 import { clearNativeSelectionIf } from './native-selection.js';
 import {
@@ -94,6 +95,7 @@ async function assertArchiveArtifacts(
 
 async function assertSpecBase(paths: NativeProjectPaths, change: NativeSpecChange): Promise<void> {
   const canonical = canonicalSpecPath(paths, change.capability);
+  await resolveContainedNativePath(paths.nativeRoot, canonical);
   const actual = await optionalHash(canonical);
   const expected = change.operation === 'create' ? null : change.base_hash;
   if (actual !== expected) {

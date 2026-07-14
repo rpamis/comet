@@ -8,10 +8,16 @@ import {
   validateNativeSpecChanges,
   validateNativeVerification,
 } from '../../../domains/comet-native/native-artifacts.js';
-import { createNativeChange, nativeChangeDir } from '../../../domains/comet-native/native-change.js';
+import {
+  createNativeChange,
+  nativeChangeDir,
+} from '../../../domains/comet-native/native-change.js';
 import { sha256Text } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import type { NativeChangeState, NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import type {
+  NativeChangeState,
+  NativeProjectPaths,
+} from '../../../domains/comet-native/native-types.js';
 
 const brief = `# Outcome
 Ship authentication.
@@ -68,7 +74,10 @@ describe('Native artifact validation', () => {
 
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
-      brief.replace('# Open questions\n', '# Open questions\n- [blocking] Choose token lifetime.\n'),
+      brief.replace(
+        '# Open questions\n',
+        '# Open questions\n- [blocking] Choose token lifetime.\n',
+      ),
     );
     expect((await validateNativeBrief(changeDir, 'brief.md')).findings).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'brief-blocking-question' })]),
@@ -119,11 +128,7 @@ describe('Native artifact validation', () => {
     const sourceDirectory = path.join(changeDir, 'specs', 'escaped');
     await fs.mkdir(outside);
     await fs.writeFile(path.join(outside, 'spec.md'), 'outside');
-    await fs.symlink(
-      outside,
-      sourceDirectory,
-      process.platform === 'win32' ? 'junction' : 'dir',
-    );
+    await fs.symlink(outside, sourceDirectory, process.platform === 'win32' ? 'junction' : 'dir');
     state.spec_changes = [
       {
         capability: 'escaped',
@@ -134,6 +139,30 @@ describe('Native artifact validation', () => {
     ];
     expect((await validateNativeSpecChanges(paths, state)).findings[0]).toMatchObject({
       code: 'spec-source-invalid',
+    });
+  });
+
+  it('rejects a canonical spec directory symlink that escapes the Native root', async () => {
+    const outside = path.join(projectRoot, 'outside-canonical');
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(outside, 'spec.md'), 'outside canonical\n');
+    await fs.mkdir(paths.specsDir, { recursive: true });
+    await fs.symlink(
+      outside,
+      path.join(paths.specsDir, 'escaped'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    state.spec_changes = [
+      {
+        capability: 'escaped',
+        operation: 'replace',
+        source: 'specs/escaped/spec.md',
+        base_hash: '0'.repeat(64),
+      },
+    ];
+
+    expect((await validateNativeSpecChanges(paths, state)).findings[0]).toMatchObject({
+      code: 'spec-canonical-unsafe',
     });
   });
 });

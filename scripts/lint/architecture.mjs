@@ -242,6 +242,14 @@ for (const file of walkFiles('.', ignoredGeneratedTrees, ignoredGeneratedRelativ
   }
 }
 
+for (const file of walkFiles('domains/comet-native')) {
+  if (!/\.ts$/u.test(file)) continue;
+  const content = readFileSync(path.join(root, file), 'utf8');
+  if (/\bfrom\s+['"][^'"]*comet-classic[^'"]*['"]/u.test(content)) {
+    fail(`${file} must not import the Classic domain`);
+  }
+}
+
 for (const guide of ['AGENTS.md', 'CLAUDE.md']) {
   const content = readFileSync(path.join(root, guide), 'utf8');
   if (!content.includes('## 项目结构规范')) {

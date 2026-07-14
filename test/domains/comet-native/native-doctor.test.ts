@@ -174,4 +174,25 @@ describe('Native doctor', () => {
     expect(result.findings).toContainEqual(expect.objectContaining({ code: 'config-invalid' }));
     expect(await fs.readFile(configFile, 'utf8')).toBe(malformed);
   });
+
+  it('fails closed when a managed Native directory escapes through a symlink', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-doctor-outside-'));
+    try {
+      await fs.mkdir(paths.nativeRoot, { recursive: true });
+      await fs.symlink(
+        outside,
+        paths.runtimeDir,
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      const result = await doctorNativeProject({ paths, repair: true });
+
+      expect(result.healthy).toBe(false);
+      expect(result.findings).toContainEqual(
+        expect.objectContaining({ code: 'native-path-unsafe', severity: 'error' }),
+      );
+      expect(await fs.readdir(outside)).toEqual([]);
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
 });

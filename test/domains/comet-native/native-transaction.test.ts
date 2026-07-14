@@ -111,4 +111,13 @@ describe('Native transaction schema', () => {
     );
     expect((await readNativeTransaction(paths, journal.id)).id).toBe(journal.id);
   });
+
+  it('rejects blank lines inside an append-only event log', async () => {
+    await createNativeTransaction(paths, journal);
+    await fs.appendFile(nativeTransactionPaths(paths, journal.id).events, '\n');
+
+    await expect(readNativeTransactionEvents(paths, journal.id)).rejects.toThrow(
+      'Invalid Native transaction event at line 2',
+    );
+  });
 });

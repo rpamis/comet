@@ -3,7 +3,7 @@ import path from 'path';
 
 import { nativeChangeDir } from './native-change.js';
 import { sha256File } from './native-hash.js';
-import { isInsidePath } from './native-paths.js';
+import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import type {
   NativeArtifactValidation,
   NativeChangeState,
@@ -154,9 +154,17 @@ export async function validateNativeSpecChanges(
     const canonical = canonicalSpecPath(paths, change.capability);
     let canonicalHash: string | null = null;
     try {
+      await resolveContainedNativePath(paths.nativeRoot, canonical);
       canonicalHash = await sha256File(canonical);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        findings.push({
+          code: 'spec-canonical-unsafe',
+          message: (error as Error).message,
+          path: canonical,
+        });
+        continue;
+      }
     }
     if (change.operation === 'create' && canonicalHash !== null) {
       findings.push({

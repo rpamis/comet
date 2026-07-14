@@ -308,17 +308,17 @@ export async function readNativeTransactionEvents(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
-  return source
-    .split(/\r?\n/u)
-    .filter(Boolean)
-    .map((entry, index) => {
-      const line = index + 1;
-      try {
-        return parseEvent(JSON.parse(entry) as unknown, line);
-      } catch (error) {
-        throw new Error(`Invalid Native transaction event at line ${line}`, { cause: error });
-      }
-    });
+  const entries = source.split(/\r?\n/u);
+  if (entries.at(-1) === '') entries.pop();
+  return entries.map((entry, index) => {
+    const line = index + 1;
+    try {
+      if (entry.length === 0) throw new Error('Blank transaction event line');
+      return parseEvent(JSON.parse(entry) as unknown, line);
+    } catch (error) {
+      throw new Error(`Invalid Native transaction event at line ${line}`, { cause: error });
+    }
+  });
 }
 
 export async function setNativeTransactionStatus(

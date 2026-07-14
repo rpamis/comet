@@ -8107,9 +8107,17 @@ async function validateNativeSpecChanges(paths, state) {
     const canonical = canonicalSpecPath(paths, change.capability);
     let canonicalHash = null;
     try {
+      await resolveContainedNativePath(paths.nativeRoot, canonical);
       canonicalHash = await sha256File(canonical);
     } catch (error) {
-      if (error.code !== "ENOENT") throw error;
+      if (error.code !== "ENOENT") {
+        findings.push({
+          code: "spec-canonical-unsafe",
+          message: error.message,
+          path: canonical
+        });
+        continue;
+      }
     }
     if (change.operation === "create" && canonicalHash !== null) {
       findings.push({
@@ -8912,9 +8920,12 @@ async function readNativeTransactionEvents(paths, id) {
     if (error.code === "ENOENT") return [];
     throw error;
   }
-  return source.split(/\r?\n/u).filter(Boolean).map((entry2, index) => {
+  const entries = source.split(/\r?\n/u);
+  if (entries.at(-1) === "") entries.pop();
+  return entries.map((entry2, index) => {
     const line = index + 1;
     try {
+      if (entry2.length === 0) throw new Error("Blank transaction event line");
       return parseEvent(JSON.parse(entry2), line);
     } catch (error) {
       throw new Error(`Invalid Native transaction event at line ${line}`, { cause: error });
@@ -9100,6 +9111,7 @@ async function assertArchiveArtifacts(paths, state) {
 }
 async function assertSpecBase(paths, change) {
   const canonical = canonicalSpecPath(paths, change.capability);
+  await resolveContainedNativePath(paths.nativeRoot, canonical);
   const actual = await optionalHash(canonical);
   const expected = change.operation === "create" ? null : change.base_hash;
   if (actual !== expected) {
@@ -9794,6 +9806,7 @@ async function inspectSelection(paths, repair) {
   const file = nativeSelectionFile(paths);
   let value;
   try {
+    await resolveContainedNativePath(paths.nativeRoot, file);
     value = JSON.parse(await fs14.readFile(file, "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") return [];
@@ -9850,6 +9863,29 @@ async function inspectSelection(paths, repair) {
       path: file
     }
   ];
+}
+async function inspectManagedPaths(paths) {
+  const findings = [];
+  for (const managedPath of [
+    paths.specsDir,
+    paths.changesDir,
+    paths.archiveDir,
+    paths.runtimeDir,
+    paths.locksDir,
+    paths.transactionsDir
+  ]) {
+    try {
+      await resolveContainedNativePath(paths.nativeRoot, managedPath);
+    } catch (error) {
+      findings.push({
+        severity: "error",
+        code: "native-path-unsafe",
+        message: `Managed Native path is unsafe: ${error.message}`,
+        path: managedPath
+      });
+    }
+  }
+  return findings;
 }
 async function inspectTransactions(paths, options) {
   const findings = [];
@@ -10067,6 +10103,9 @@ async function doctorNativeProject(options) {
       });
     }
   }
+  const managedPathFindings = await inspectManagedPaths(paths);
+  findings.push(...managedPathFindings);
+  if (managedPathFindings.length > 0) return { healthy: false, findings };
   const transactions = await inspectTransactions(paths, {
     name: options.name,
     repair,
@@ -10401,10 +10440,18 @@ async function projectRootFrom(explicit) {
   return explicit ? path17.resolve(explicit) : discoverNativeProject(process.cwd());
 }
 async function ensureNativeDirectories(paths) {
+  const directories = [
+    paths.specsDir,
+    paths.changesDir,
+    paths.archiveDir,
+    paths.locksDir,
+    paths.transactionsDir
+  ];
   await Promise.all(
-    [paths.specsDir, paths.changesDir, paths.archiveDir, paths.locksDir, paths.transactionsDir].map(
-      (directory) => fs16.mkdir(directory, { recursive: true })
-    )
+    directories.map(async (directory) => {
+      await resolveContainedNativePath(paths.nativeRoot, directory);
+      await fs16.mkdir(directory, { recursive: true });
+    })
   );
 }
 async function configuredPaths(projectRoot) {
@@ -10630,6 +10677,14 @@ function errorResult(command, error) {
     };
   }
   if (error instanceof Error) {
+    const systemCode = error.code;
+    if (systemCode && (/* @__PURE__ */ new Set(["EACCES", "EPERM", "EIO", "EMFILE", "ENFILE", "ENOSPC", "EROFS"])).has(systemCode)) {
+      return {
+        command,
+        exitCode: 70,
+        error: { code: "internal", message: error.message }
+      };
+    }
     const conflict = /\b(lock|transaction|conflict|occupied|incomplete|recovery)\b/iu.test(
       error.message
     );

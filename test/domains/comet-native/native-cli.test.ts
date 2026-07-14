@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
@@ -231,5 +231,17 @@ describe('Comet Native CLI dispatcher', () => {
     expect(repaired.exitCode).toBe(0);
     const data = json(repaired).data as { findings: Array<{ code: string }> };
     expect(data.findings).toContainEqual(expect.objectContaining({ code: 'selection-cleared' }));
+  });
+
+  it('returns exit 70 for an unexpected filesystem failure', async () => {
+    const failure = Object.assign(new Error('simulated storage failure'), { code: 'EIO' });
+    const realpath = vi.spyOn(fs, 'realpath').mockRejectedValueOnce(failure);
+    try {
+      const result = await runNativeCli(['init', '--json', ...projectArgs()]);
+      expect(result.exitCode).toBe(70);
+      expect(json(result)).toMatchObject({ error: { code: 'internal' } });
+    } finally {
+      realpath.mockRestore();
+    }
   });
 });

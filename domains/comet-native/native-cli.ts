@@ -21,6 +21,7 @@ import {
   discoverNativeProject,
   nativeProjectPaths,
   normalizeArtifactRootRef,
+  resolveContainedNativePath,
 } from './native-paths.js';
 import { moveNativeRoot } from './native-root-move.js';
 import { selectNativeChange } from './native-selection.js';
@@ -129,10 +130,18 @@ async function projectRootFrom(explicit: string | undefined): Promise<string> {
 }
 
 async function ensureNativeDirectories(paths: NativeProjectPaths): Promise<void> {
+  const directories = [
+    paths.specsDir,
+    paths.changesDir,
+    paths.archiveDir,
+    paths.locksDir,
+    paths.transactionsDir,
+  ];
   await Promise.all(
-    [paths.specsDir, paths.changesDir, paths.archiveDir, paths.locksDir, paths.transactionsDir].map(
-      (directory) => fs.mkdir(directory, { recursive: true }),
-    ),
+    directories.map(async (directory) => {
+      await resolveContainedNativePath(paths.nativeRoot, directory);
+      await fs.mkdir(directory, { recursive: true });
+    }),
   );
 }
 
@@ -374,6 +383,17 @@ function errorResult(command: string | null, error: unknown): DispatchResult {
     };
   }
   if (error instanceof Error) {
+    const systemCode = (error as NodeJS.ErrnoException).code;
+    if (
+      systemCode &&
+      new Set(['EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EROFS']).has(systemCode)
+    ) {
+      return {
+        command,
+        exitCode: 70,
+        error: { code: 'internal', message: error.message },
+      };
+    }
     const conflict = /\b(lock|transaction|conflict|occupied|incomplete|recovery)\b/iu.test(
       error.message,
     );

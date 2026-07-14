@@ -6,7 +6,7 @@ import { readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import { inspectNativeArtifactFindings, listNativeStatus } from './native-diagnostics.js';
 import { diagnoseNativeLock } from './native-lock.js';
-import { nativeProjectPaths } from './native-paths.js';
+import { nativeProjectPaths, resolveContainedNativePath } from './native-paths.js';
 import { recoverNativeRootMove } from './native-root-move.js';
 import { nativeSelectionFile } from './native-selection.js';
 import { readNativeTransaction } from './native-transaction.js';
@@ -74,6 +74,7 @@ async function inspectSelection(
   const file = nativeSelectionFile(paths);
   let value: { schema?: unknown; change?: unknown };
   try {
+    await resolveContainedNativePath(paths.nativeRoot, file);
     value = JSON.parse(await fs.readFile(file, 'utf8')) as typeof value;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
@@ -130,6 +131,30 @@ async function inspectSelection(
       path: file,
     },
   ];
+}
+
+async function inspectManagedPaths(paths: NativeProjectPaths): Promise<NativeDoctorFinding[]> {
+  const findings: NativeDoctorFinding[] = [];
+  for (const managedPath of [
+    paths.specsDir,
+    paths.changesDir,
+    paths.archiveDir,
+    paths.runtimeDir,
+    paths.locksDir,
+    paths.transactionsDir,
+  ]) {
+    try {
+      await resolveContainedNativePath(paths.nativeRoot, managedPath);
+    } catch (error) {
+      findings.push({
+        severity: 'error',
+        code: 'native-path-unsafe',
+        message: `Managed Native path is unsafe: ${(error as Error).message}`,
+        path: managedPath,
+      });
+    }
+  }
+  return findings;
 }
 
 async function inspectTransactions(
@@ -377,6 +402,10 @@ export async function doctorNativeProject(options: {
       });
     }
   }
+
+  const managedPathFindings = await inspectManagedPaths(paths);
+  findings.push(...managedPathFindings);
+  if (managedPathFindings.length > 0) return { healthy: false, findings };
 
   const transactions = await inspectTransactions(paths, {
     name: options.name,
