@@ -53,6 +53,7 @@
     "build:dashboard": "vite build --config domains/dashboard/web/vite.config.mjs",
     "dev:dashboard": "node scripts/dev-dashboard.mjs",
     "build:classic-runtime": "node scripts/build/build-classic-runtime.mjs",
+    "build:native-runtime": "node scripts/build/build-native-runtime.mjs",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:script-smoke": "vitest run test/domains/comet-classic/comet-scripts.test.ts",

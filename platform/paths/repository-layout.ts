@@ -12,6 +12,10 @@ export interface RepositoryLayout {
     entries: Record<string, string>;
     outputs: Record<string, string>;
   };
+  nativeRuntime: {
+    entries: { runtime: string };
+    outputs: { runtime: string };
+  };
   allowedTopLevelEntries: string[];
   sourceRoots: string[];
   appModules: string[];

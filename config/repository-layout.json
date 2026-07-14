@@ -29,6 +29,14 @@
       "resume-probe": "assets/skills/comet/scripts/comet-resume-probe.mjs"
     }
   },
+  "nativeRuntime": {
+    "entries": {
+      "runtime": "domains/comet-native/native-cli-entry.ts"
+    },
+    "outputs": {
+      "runtime": "assets/skills/comet-native/scripts/comet-native-runtime.mjs"
+    }
+  },
   "allowedTopLevelEntries": [
     ".agents",
     ".claude",
