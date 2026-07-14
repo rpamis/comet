@@ -62,21 +62,26 @@ Run `node "$WORKFLOW_STATE" status` to confirm the detected Node. If the script'
 - If workflow state shows a Node as complete but its expected artifacts are missing, treat the Node as incomplete and re-enter it.
 - If the user resumes mid-Node with a different topic, confirm whether to continue the current Node or start a new one.
 
-### Decision Points (must pause)
+### Decision Classification And Decision Points
+
+Classify before acting: a user decision has two or more valid options that change scope, behavior, accepted risk, or an irreversible outcome; a sole safe next action is automatic handling; a missing dependency, corrupt state, or guard failure with no valid continuation is a stop condition; `NEXT: manual` only returns control. Only the first category must pause.
 
 | Situation | Action |
 |-----------|--------|
-| First invocation, no workflow state exists | Initialize state, confirm the topic/scope with the user before starting the first Node |
-| User input is ambiguous between two Nodes | Ask the user which Node they mean; do not guess |
+| First invocation with an unambiguous topic and scope | Initialize state automatically and enter the first Node; do not pause to approve known information |
+| Topic, scope, or target Node has two or more mutually exclusive valid interpretations | Merge them into one question and let the user choose; do not guess |
 | Node requires user approval of output before advancing | Stop after recording evidence; wait for explicit confirmation |
-| Node fails its guard and the cause is unclear | Present the guard output and ask the user how to proceed |
+| Accepting a WARNING/deviation or performing an irreversible publish has a real tradeoff | Show only currently executable options and persist the choice |
+
+When a Node guard fails, inspect evidence and perform the sole safe repair first. If a missing dependency or corrupt state prevents progress, report the stop condition and recovery requirement. Escalate to the decision table only when multiple valid recovery options would change scope or risk.
 
 ### Red Flags
 
 | Agent Thought | Actual Risk |
 |--------------|-------------|
-| "The user mentioned the topic, so research is implicitly confirmed" | Mentioning ≠ confirming. Pause at the first Node boundary and confirm scope. |
+| "Every first invocation needs another confirmation" | Clear input does not need duplicate approval; ask only when mutually exclusive interpretations still change scope. |
 | "The script returned NEXT: auto, so I should immediately load the next Skill" | `NEXT: auto` means the Node is done, not that you should skip confirmation. Check if the next Node has a decision point. |
+| "The guard failed, so ask the user what to do" | Diagnose automatically and apply the sole safe repair first; if no valid action exists, report a stop condition instead of inventing options. |
 | "This looks like the same topic as last time, resume from where we left off" | Always re-read state. Conversation memory is unreliable after context compaction. |
 | "The exit check passed, so the work is good enough" | Exit checks are mechanical. Your job is to judge quality beyond the check — sparse notes, shallow analysis, or missing perspectives are not caught by scripts. |
 ```

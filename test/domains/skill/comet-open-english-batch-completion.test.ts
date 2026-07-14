@@ -9,8 +9,9 @@ describe('comet-open English batch completion protocol', () => {
       'utf8',
     );
 
-    expect(skill).toContain('select every item in `artifacts` with `status: "ready"`');
-    expect(skill).toContain('Must not hard-code the artifact order');
+    expect(skill).toContain('From unfinished `ready` artifacts');
+    expect(skill).toContain('Must not hard-code generation order');
+    expect(skill).toContain('advance the `applyRequires` dependency closure');
     expect(skill).not.toContain(
       '**Standard Artifact Loop** (for each `artifact-id`: `proposal` → `design` → `tasks`)',
     );
@@ -23,7 +24,8 @@ describe('comet-open English batch completion protocol', () => {
     );
 
     expect(skill).toContain('openspec status --change "<name>" --json');
-    expect(skill).toContain('`isComplete` must be `true`');
+    expect(skill).toContain('Every artifact listed in `applyRequires` must be `done`');
+    expect(skill).toContain('Treat `isComplete` as diagnostic only');
     expect(skill).toContain('If any split item fails these checks');
     expect(skill).toContain('comet state check <name> design');
   });
@@ -35,14 +37,11 @@ describe('comet-open English batch completion protocol', () => {
     );
 
     expect(skill).toContain('On recovery, process the status in this order');
-    expect(skill).toContain('`done`: the artifact is complete; keep its files unchanged');
-    expect(skill).toContain('`ready`: its dependencies are satisfied and it can be generated now');
-    expect(skill).toContain(
-      '`blocked`: it cannot be generated yet; this does not mean waiting for the user or for time to pass',
-    );
-    expect(skill).toContain('complete the artifacts listed in `missingDeps` first');
-    expect(skill).toContain(
-      'Only `isComplete: true` means all OpenSpec open artifacts are complete',
-    );
+    expect(skill).toContain('`done`: keep the artifact unchanged and do not regenerate it');
+    expect(skill).toContain('`ready`: fetch its instructions');
+    expect(skill).toContain('`blocked`: follow `missingDeps`');
+    expect(skill).toContain('dependencies in the `applyRequires` closure');
+    expect(skill).toContain('until every item in `applyRequires` is `done`');
+    expect(skill).toContain('an optional artifact outside `applyRequires` must not block');
   });
 });

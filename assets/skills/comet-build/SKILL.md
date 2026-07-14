@@ -1,6 +1,6 @@
 ---
 name: comet-build
-description: "Use when a full Comet change has completed design and needs an implementation plan, execution-mode selection, or resumed build tasks."
+description: "Use only when explicitly invoked as /comet-build or routed by the root Comet skill/runtime to a full workflow build phase; create or recover the implementation plan and execute tasks."
 ---
 
 # Comet Phase 3: Plan and Build (Build)
@@ -23,7 +23,7 @@ comet state check <name> build
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
-**Idempotency**: All build phase operations can be safely re-executed. Read `.comet.yaml` `phase` field to confirm still in build, read plan header `base-ref`, then use `grep -n '\- \[ \]' tasks.md | head -1` to find the first unchecked task. Already-committed tasks must not be re-committed.
+**Idempotency**: All build phase operations can be safely re-executed. Read `.comet.yaml` `phase` to confirm build, read the plan header `base-ref`, then parse tasks.md checkboxes in document order and resume from the first unchecked task. Already-committed tasks must not be re-committed.
 
 ### 1. Create Plan (Subagent Offload)
 
@@ -65,7 +65,7 @@ After the subagent completes:
 - If a valid file path is returned and the file exists, record it as the plan
 - If the subagent fails or returns an invalid path, fall back to loading the Superpowers `writing-plans` skill inline in the main session (degraded fallback)
 
-### 2. Update Plan Status and Provide Plan-Ready Pause Point
+### 2. Update Plan Status and Jointly Confirm Workflow Configuration
 
 Record plan path:
 
@@ -75,16 +75,18 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 No manual phase update needed — guard auto-transitions when exit conditions are met.
 
-After the plan is recorded, immediately provide a new user decision point:
+Check current platform capabilities before presenting the joint decision: verify whether `using-git-worktrees` is available, whether a real background subagent/Task/multi-agent dispatcher exists, and whether the repository can safely create a branch. Show only isolation and execution options that are currently executable. If a field has only one valid value, explain why and apply it without manufacturing another pause.
+
+After recording the plan, provide exactly **one joint decision point** that collects whether to continue now, available workspace isolation, available execution method, TDD mode, and code review mode. The branch name must be confirmed in the same Step 2 joint decision when `branch` is selected. Do not ask continue/pause first and then create another configuration or naming blocker.
 
 | Option | Behavior | Description |
 |--------|----------|-------------|
-| A | Continue execution | Stay in the current model and proceed to Step 3 to choose workspace isolation, execution method, TDD mode, and code review mode |
+| A | Continue with configuration | Provide all Step 3 isolation, execution, TDD, and review choices in the same response; include the branch name when branch is selected |
 | B | Pause to switch model | Record `build_pause: plan-ready`, stop this `/comet-build` invocation, and allow the user to resume later from `/comet` or `/comet-build` |
 
-This is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to explicitly choose**. Must not auto-continue and must not write the pause into `build_mode`.
+This is a user decision point. **Follow `comet/reference/decision-point.md` once and show the plan summary, pause option, and every executable Step 3 setting together**. Continuing requires all settings and any conditional branch name in the same response. Do not auto-select or write the pause into `build_mode`.
 
-When the user chooses to continue:
+When the user chooses to continue and supplies complete configuration:
 
 ```bash
 comet state set <name> build_pause null
@@ -98,17 +100,17 @@ comet state set <name> build_pause plan-ready
 
 After setting `build_pause: plan-ready`, stop the current invocation. Do not choose `isolation` or `build_mode`, and do not load an execution skill.
 
-### 3. Select Workflow Configuration
+### 3. Apply the Confirmed Workflow Configuration
 
-If resuming with `build_pause: plan-ready` and the `plan` file exists, do not rerun `writing-plans`. First tell the user the workflow is stopped at the plan-ready pause point; after the user confirms continuing, set:
+If resuming with `build_pause: plan-ready` and the `plan` file exists, do not rerun `writing-plans`. Reissue the same joint Step 2 decision and clear the pause only after the user supplies complete configuration:
 
 ```bash
 comet state set <name> build_pause null
 ```
 
-Then continue this step to choose workspace isolation, execution method, TDD mode, and code review mode.
+Then apply the workspace isolation, execution method, TDD mode, and code review mode below.
 
-Plan has been written to the current branch. Before starting execution, **ask the user to choose workspace isolation, execution method, TDD mode, and code review mode in a single interaction**:
+The plan is on the current branch. These settings are all part of the single Step 2 decision:
 
 **Workspace Isolation**:
 
@@ -133,7 +135,7 @@ Plan has been written to the current branch. Before starting execution, **ask th
 - Task count ≤ 2 and no cross-module dependencies → Recommend B
 - From hotfix path → Recommend B
 
-This is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to explicitly choose isolation method, execution method, TDD mode, and code review mode**. Must not choose `branch` or `worktree` based on recommendation rules, and must not choose the execution method, TDD mode, or code review mode based on recommendation rules. Recommendation rules are for suggestion only, not a substitute for user confirmation.
+These tables are part of the Step 2 joint decision and do not create another pause. First remove options that capability preflight found unavailable. When multiple valid options remain, do not choose `branch` or `worktree`, execution method, TDD mode, or review mode from recommendations. Recommendations explain a preference; they never replace user confirmation.
 
 After user selection, update `isolation`, execution method, TDD mode, and code review mode fields:
 
@@ -143,14 +145,14 @@ comet state set <name> isolation <branch|worktree>
 
 - If the user chooses `executing-plans`: run `comet state set <name> subagent_dispatch null`, then run `comet state set <name> build_mode executing-plans`
 - If the user chooses `subagent-driven-development`: first confirm the current platform has real background subagent / Task / multi-agent dispatch capability; after confirming, run `comet state set <name> subagent_dispatch confirmed`, then run `comet state set <name> build_mode subagent-driven-development`
-- If real background dispatch capability cannot be confirmed, must not write `build_mode: subagent-driven-development`; must pause and wait for the user to choose `executing-plans` instead
+- If real background dispatch capability cannot be confirmed, do not show or write `build_mode: subagent-driven-development`. If recovered state already records that mode but capability is unavailable, return to the same Step 2 joint decision with only executable modes; do not create a separate "switch to executing-plans" pause
 
 **TDD Mode**:
 
 | Option | Meaning | Applicable Scenario |
 |--------|---------|---------------------|
 | `tdd` | Write a failing test first for each task, then implement | Recommended. Changes involving business logic, new features, APIs |
-| `direct` | Implement directly, no enforced TDD flow | Changes that don't need test coverage, or user chooses to skip tests and write code directly. hotfix/tweak presets default to `direct` |
+| `direct` | Implementation-first, no per-task Red-Green-Refactor requirement | Still requires relevant tests and bug-regression evidence; hotfix/tweak presets default to `direct` |
 
 Run `comet state set <name> tdd_mode <tdd|direct>`
 
@@ -183,18 +185,18 @@ Without `direct_override: true`, `build_mode=direct` in full workflow is blocked
 
 **Execute isolation**:
 
-- **branch**: Recommend a branch name based on the workflow type and current date, then let the user confirm or input a custom name. This is a user decision point — **must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm or override the branch name**. Must not skip this step and create the branch directly.
+- **branch**: Use the branch name already confirmed in Step 2; do not pause again. If legacy recovery no longer has the branch name from that joint decision, re-enter the same Step 2 decision instead of creating a separate branch-naming decision.
 
   Branch naming convention:
   - Read the `workflow` field from `.comet.yaml` to determine the prefix
   - `workflow: full` → recommend `feature/YYYYMMDD/<change-name>`
   - `workflow: hotfix` → recommend `hotfix/YYYYMMDD/<change-name>`
   - `workflow: tweak` → recommend `tweak/YYYYMMDD/<change-name>`
-  - Date is derived from `date +%Y%m%d` at runtime
+  - Format the current runtime date as `YYYYMMDD`; do not depend on one shell's date command
 
   Example: if change name is `fix-login-bug` and today is 2026-06-09, recommend `feature/20260609/fix-login-bug`
 
-  After the user confirms or provides a custom branch name, run `git checkout -b <branch-name>`, subsequent work on the new branch.
+  Immediately after Step 2 confirms the branch name, run `git checkout -b <branch-name>` and continue on the new branch.
 
 - **worktree**: Must use the Skill tool to load the Superpowers `using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
 
@@ -217,7 +219,7 @@ Do not begin source writes until this binding succeeds.
 
 - `build_mode: executing-plans`: **Immediately execute:** Use the Skill tool to load the Superpowers `executing-plans` skill. Skipping this step is prohibited. If the skill is unavailable, stop the process and prompt to install or enable the corresponding skill; do not substitute with normal conversation. After the skill loads, ARGUMENTS must include the same Language constraint as Step 1: `Language: Use the configured Comet artifact language from comet state get <name> language`. Execute according to plan.
 - `build_mode: subagent-driven-development`: The main session only coordinates and must not write implementation code directly. **Immediately execute:** Use the Skill tool to load the Superpowers `subagent-driven-development` skill. After the skill loads, read `comet/reference/subagent-dispatch.md` for Comet-specific extensions (real background dispatch, task isolation, checkoff verification, TDD constraints, continuous execution, context recovery) and apply them alongside the skill's workflow. If they conflict, the more specific Comet extensions take precedence.
-- If the current platform has no real background agent dispatch capability, must pause and wait for the user to choose main window execution instead. After the user chooses, must run `comet state set <name> build_mode executing-plans`, then follow the `build_mode: executing-plans` branch to load the Superpowers `executing-plans` skill. Must not continue executing tasks before the user explicitly chooses.
+- If the execution preflight finds that background dispatch capability has disappeared, do not execute directly in the main window and do not create a new second decision. Return to the same Step 2 joint decision with the unavailable mode removed. After the user selects main-window execution there, run `comet state set <name> build_mode executing-plans`, then continue through that branch.
 
 **TDD Mode Execution Constraints**:
 
@@ -237,7 +239,7 @@ Under `executing-plans`, the main session executes tasks directly (no isolated i
 
 Requirements (apply to `standard` and `thorough`):
 - the `requesting-code-review` skill must be loaded before `comet guard <change-name> build --apply`
-- if `requesting-code-review` skill is unavailable, skip the review gate but must record `<!-- review skipped: skill unavailable -->` in tasks.md, then continue guard transition
+- if `requesting-code-review` is unavailable under `standard` or `thorough`, stop and ask the user to install/enable it and retry, or explicitly switch to `review_mode: off` with a recorded reason; never skip the gate or continue guard before that explicit switch
 - CRITICAL review findings (security vulnerabilities, data loss risk, build/test failures) must be fixed first and must not be carried into verify
 - if non-CRITICAL review findings are accepted, record the acceptance reason and impact scope in tasks.md, the commit body, a verification report draft, or another durable artifact
 
@@ -275,7 +277,7 @@ When creating an independent change, must invoke `/comet-open`, not `/opsx:new` 
 
 Build is the longest phase and may span many tasks. To support resume after context compaction:
 
-- **After each task**: complete acceptance per the current execution branch and `review_mode` before checking off and committing. `subagent-driven-development` dispatches no per-task reviewer under `off`; under `standard`, a per-task reviewer fires only when the task hits a risk signal; under `thorough`, every task gets a per-task reviewer. All modes must perform targeted verification by unique task text. Use `grep -c '\- \[ \]' tasks.md` to check remaining unchecked count; no need to re-read the entire file
+- **After each task**: complete acceptance per the current execution branch and `review_mode` before checking off and committing. `subagent-driven-development` dispatches no per-task reviewer under `off`; under `standard`, a per-task reviewer fires only when the task hits a risk signal; under `thorough`, every task gets a per-task reviewer. All modes must perform targeted verification by unique task text. Parse tasks.md checkboxes to count remaining work without rereading unrelated task bodies
 - **Context compression recovery**: Follow `comet/reference/context-recovery.md` with phase set to `build`.
 - **User manual-change resume**: handle uncommitted changes through `comet/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions. Build-specific handling:
   1. After attribution, if the diff implies plan or spec changes, handle it through Step 4 "Spec Incremental Updates"
@@ -320,5 +322,5 @@ comet state next <change-name>
 ```
 
 - `NEXT: auto` → invoke the skill pointed to by `SKILL` to enter the next phase
-- `NEXT: manual` → do not invoke the next skill; prompt user to run `/<SKILL>` manually
+- `NEXT: manual` → do not invoke the next skill; return control with `HINT`, end the invocation, and do not create another confirmation point
 - `NEXT: done` → workflow is complete, no further action needed

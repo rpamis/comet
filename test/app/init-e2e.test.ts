@@ -65,6 +65,9 @@ function mockExternalSuccess() {
     if ((cmd === 'which' || cmd === 'where') && cmdArgs[0] === 'openspec') {
       return Buffer.from('/usr/bin/openspec');
     }
+    if (cmd === 'openspec' && cmdArgs[0] === '--version') {
+      return Buffer.from('1.5.0');
+    }
     if (cmd === 'openspec' && cmdArgs[0] === 'init') {
       return Buffer.from('ok');
     }

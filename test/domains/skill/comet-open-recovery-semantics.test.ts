@@ -11,9 +11,10 @@ describe('comet-open 恢复语义', () => {
 
     expect(skill).toContain('恢复时按以下顺序处理');
     expect(skill).toContain('`done`：该 artifact 已完成，保持原文件不变');
-    expect(skill).toContain('`ready`：依赖已经满足，可以立即生成');
-    expect(skill).toContain('`blocked`：当前不可生成，不是等待用户或等待时间');
-    expect(skill).toContain('先完成 `missingDeps` 列出的依赖 artifact');
-    expect(skill).toContain('只有 `isComplete: true` 才表示 OpenSpec open 产物全部完成');
+    expect(skill).toContain('`ready`：依赖已经满足，可以生成');
+    expect(skill).toContain('`blocked`：读取 `missingDeps`');
+    expect(skill).toContain('先完成属于 `applyRequires` 依赖闭包的依赖 artifact');
+    expect(skill).toContain('直到 `applyRequires` 全部为 `done`');
+    expect(skill).toContain('非 `applyRequires` 的可选 artifact');
   });
 });

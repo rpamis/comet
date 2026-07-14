@@ -1,6 +1,6 @@
 ---
 name: comet-archive
-description: "Use when a Comet change has passed verification and needs archive confirmation, delta spec merge, or archive-phase recovery."
+description: "Use only when explicitly invoked as /comet-archive or routed by the root Comet skill/runtime to the archive phase; confirm archive, merge delta specs, and finish the branch."
 ---
 
 # Comet Phase 5: Archive (Archive)
@@ -8,7 +8,7 @@ description: "Use when a Comet change has passed verification and needs archive 
 ## Prerequisites
 
 - Verification passed (Phase 4 complete)
-- Branch handled
+- Archive commit and branch handling are still pending (`branch_status: pending`)
 - `verify_result: pass` in `openspec/changes/<name>/.comet.yaml`
 
 ## Steps
@@ -35,7 +35,7 @@ After entry verification passes, **must follow the `comet/reference/decision-poi
 Before confirmation, show the user a brief summary:
 - Change name
 - Verification report path and result
-- Branch handling status
+- Current branch/workspace and attribution summary for pre-existing dirty changes
 - Irreversible actions this archive will perform: merge main specs with OpenSpec delta semantics, annotate design doc / plan, and move the change to the archive directory
 
 The user confirmation question must be presented as a single-select question with these options:
@@ -70,11 +70,6 @@ The script automatically executes:
 If script returns non-zero exit code, report error and stop.
 If script returns zero exit code, archive is complete.
 
-After a successful archive, clear the current execution context; this command is idempotent:
-
-```bash
-comet state clear-selection
-```
 The summary `X/Y steps succeeded` counts real executed steps and does not double-count delta spec sync or document annotation.
 
 The script calls OpenSpec archive to merge `ADDED/MODIFIED/REMOVED/RENAMED` delta semantics into main specs, then verifies main specs do not contain delta-only section headings.
@@ -88,31 +83,57 @@ Spec lifecycle completes here:
 brainstorming → delta spec → implementation → verification → main spec merge → design doc annotation → archive
 ```
 
-### 4. Commit the Archive Changes
+### 4. Commit Archive Changes with Exact Paths
 
 The archive script only moves files and merges the spec; it does not commit. After archiving, the worktree holds these uncommitted changes:
 - The change directory moved from `openspec/changes/<name>/` to `openspec/changes/archive/YYYY-MM-DD-<name>/`
 - The main spec content merged via delta semantics
 - Archive metadata annotations on the design doc / plan
 
-**You must prompt the user to commit these archive changes**, otherwise the archived result stays in the worktree. After showing the pending files, suggest:
+After archive, read `git status --short` and compare it with the pre-archive dirty-worktree attribution baseline. Stage only paths attributable to this change: the original active path, actual archive path printed by the command, main specs changed by this delta, and archive metadata on this Design Doc/Plan. Stop if any path cannot be attributed.
+
+Use explicit pathspecs, then inspect the staged diff. Never stage the whole repository or mix the user's pre-existing changes into the archive commit:
 
 ```bash
-git add -A
+git add -- <individually verified archive paths...>
+git diff --cached --stat
 git commit -m "chore: archive <change-name>"
 ```
 
-If branch handling (phase 4) chose not to merge into the main branch yet, finish up via the selected option (merge / PR / keep branch) together with this commit.
+Stop if the commit fails or the staged diff contains unrelated paths.
+
+### 5. Handle the Branch After the Archive Commit
+
+After the archive commit succeeds, **immediately execute:** use the Skill tool to load Superpowers `finishing-a-development-branch`. This ordering ensures the final branch or PR contains the main-spec merge and archive metadata.
+
+If the skill is unavailable, stop and prompt the user to enable/install it; do not mark `branch_status` handled. After loading it, pause under `comet/reference/decision-point.md` and let the user choose:
+
+1. Merge locally into the main branch
+2. Push and create a PR
+3. Keep the current branch for later
+
+Archive is already complete, so do not offer "discard work". Only after the selected operation succeeds (or the user explicitly keeps the branch), run:
+
+```bash
+comet state set <change-name> branch_status handled
+comet guard <change-name> archive
+comet state clear-selection
+```
+
+The archive guard must verify both archive completeness and `branch_status: handled`; a failure means the workflow is still incomplete.
 
 ## Exit Conditions
 
 - Archive script executed successfully (exit code 0)
 - Archive directory `openspec/changes/archive/YYYY-MM-DD-<change-name>/` exists
 - Archived `.comet.yaml` contains `archived: true`
+- Archive changes were committed with exact pathspecs
+- The user's branch decision completed and archived state has `branch_status: handled`
+- `comet guard <change-name> archive` passes
 
 The archive script moves `openspec/changes/<name>/` to `openspec/changes/archive/YYYY-MM-DD-<name>/`.
 
-> **WARNING**: After successful archive, **do not run** `comet guard <change-name> archive` against the old active change name; the active directory no longer exists. Doing so will cause the guard to error with "change directory not found". Archive completeness is determined by script exit code and archived directory state.
+`comet guard <change-name> archive` resolves the actual archive directory from the original change name; do not construct a dated archive path manually.
 
 ## Complete
 

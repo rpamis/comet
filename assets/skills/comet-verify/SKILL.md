@@ -1,9 +1,9 @@
 ---
 name: comet-verify
-description: "Use when a Comet change has completed build and needs implementation verification, verification-failure decisions, or branch closeout."
+description: "Use only when explicitly invoked as /comet-verify or routed by the root Comet skill/runtime to the verify phase; verify a Comet change, record evidence, and manage repair loops."
 ---
 
-# Comet Phase 4: Verify and Close (Verify)
+# Comet Phase 4: Verify
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ description: "Use when a Comet change has completed build and needs implementati
 
 ### 0a. Output Language Constraint
 
-Verification reports and branch-handling notes must use the configured Comet artifact language from `comet state get <name> language`.
+Verification reports must use the configured Comet artifact language from `comet state get <name> language`.
 
 ### 0b. Entry State Verification (Entry Check)
 
@@ -27,7 +27,7 @@ comet state check <change-name> verify
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
-**Idempotency**: All verify phase checks can be safely re-executed. If `verify_result` is already `pass` and `branch_status` is `handled`, verification is complete — execute guard to transition. If `verify_result` is `pending`, start verification from the beginning.
+**Idempotency**: All verify checks are safe to repeat. If `verify_result` is already `pass`, verification is complete and archive should continue; keep `branch_status: pending` until archive changes are committed and final branch handling finishes. If `verify_result` is `pending`, start verification from the beginning.
 
 ### 1. Scale Assessment
 
@@ -41,26 +41,25 @@ The script automatically counts tasks, delta spec count, changed file count, det
 
 Before verification begins, handle uncommitted changes through `comet/reference/dirty-worktree.md` protocol. Verify phase special handling:
 
-1. If dirty diff belongs to current change and involves implementation, tests, tasks, delta spec, or design doc changes, do not fix or commit directly in verify phase; report failures and enter Step 1b verification failure decision blocking point
-2. If dirty diff is only verify phase artifacts (e.g., verification report draft, branch handling records), may continue and record state in verify phase
-3. If dirty diff shows implementation but tasks.md not checked, treat as build state lag; report failures and enter Step 1b, let user decide to roll back for fix or accept deviation
+1. If dirty diff clearly belongs to the current change, it is verification input. Continue verification, but do not modify or commit implementation, tests, tasks, delta specs, or the Design Doc in verify
+2. If dirty diff is only a verify phase artifact such as a verification report draft, may continue and record state in verify phase
+3. If dirty diff shows implementation but tasks.md remains unchecked, treat it as lagging build state. This has one valid next action: run `verify-fail`, return to build, verify evidence, and update task state without asking whether to accept incomplete tasks
+4. If dirty diff cannot be attributed or belongs to another change, report a stop condition through the dirty-worktree protocol. Do not disguise attribution failure as a continue/ignore choice
 
-Only after user chooses fix, allow rollback to build phase:
+When repair or state reconciliation must return to build, run:
 
 ```bash
-# Execute only after user confirms fix
 comet state transition <change-name> verify-fail
 ```
-
-Note: When verify-fail rolls back to build, `branch_status` is not reset. If branch handling was already completed during the first verify attempt, skip the branch handling step on re-verify and keep the existing `branch_status: handled`.
 
 Note: If every task in build phase was committed, the script's file count based on working tree diff may underestimate change scale. In this case, must read plan file header `base-ref` and verify with commit range:
 
 ```bash
-PLAN=$(comet state get <change-name> plan)
-BASE_REF=$(grep '^base-ref:' "$PLAN" 2>/dev/null | head -1 | sed 's/^base-ref: *//')
-git diff --stat "$BASE_REF"...HEAD
+comet state get <change-name> plan
+git diff --stat <base-ref read from plan frontmatter>...HEAD
 ```
+
+The first command returns the plan path. Use the host's file reader to parse the single `base-ref` frontmatter field, validate it as a commit, then substitute it into the second command. Do not depend on POSIX text pipelines.
 
 If commit range shows changes exceed lightweight threshold (> 8 files, cross-module coordination, or delta spec spans more than 1 capability), manually set to full verification:
 
@@ -70,33 +69,34 @@ comet state set <change-name> verify_mode full
 
 **Override mechanism**: If the agent or user believes the automated assessment is inappropriate, override at any time with `comet state set <change-name> verify_mode <light|full>`.
 
-### 1b. Verification Failure Decision (Blocking Point)
+### 1b. Automatic Verification Repair and Exception Decisions
 
-When verification does not pass, **must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to decide whether to fix or accept the deviation**. Must not automatically run `comet state transition <change-name> verify-fail`, nor automatically invoke `/comet-build`.
+Run `comet state get <change-name> verify_failures` first to read the persisted consecutive failure count. Automatically return to build for the first 3 repairable failures: report the failures, run `comet state transition <change-name> verify-fail`, then invoke `/comet-build` without asking for confirmation.
 
-When pausing, must list:
+The report must list:
 - Failed items
 - Whether CRITICAL or IMPORTANT (build failure, test failure, security issues, core acceptance scenario failure, lightweight code review correctness/security/edge-case issue)
 - Recommended handling approach
 
-**Uncertainty principle**: When severity is unclear, downgrade (SUGGESTION > WARNING > CRITICAL). Only use CRITICAL for build failures, test failures, and security issues; ambiguous or uncertain issues should be WARNING or SUGGESTION.
+**Uncertainty principle**: Use a lower severity when evidence is unclear. Reserve CRITICAL for build failures, test failures, and security issues; use IMPORTANT for confirmed core-acceptance or correctness failures; mark ambiguous findings WARNING or SUGGESTION.
 
-After user selection, continue as follows:
-- **Fix all**: Run `comet state transition <change-name> verify-fail`, then invoke `/comet-build` to fix
-- **Handle item by item**: CRITICAL or IMPORTANT failures must be fixed; WARNING/SUGGESTION failures may choose to accept deviation, but must record acceptance reason and impact scope in verification report. If any CRITICAL or IMPORTANT failure exists, skipping fix to accept all is not allowed
+Handle failures as follows:
+- **CRITICAL/IMPORTANT or objectively repairable in-scope issues**: automatically return to build below the retry limit. Do not manufacture a "whether to fix" decision, and never accept these as deviations
+- **WARNING/SUGGESTION whose fix introduces a behavior, scope, or risk tradeoff**: use `comet/reference/decision-point.md` to ask whether to fix or accept. Record the reason and impact scope when accepted
+- **WARNING/SUGGESTION with a safe, local, tradeoff-free fix**: repair automatically below the retry limit; low severity alone does not justify a pause
 
-**Retry limit**: After 3 consecutive verify-fail cycles, on the 4th failure the agent must not automatically choose to continue fixing; **must use the current platform's available user input/confirmation mechanism to pause** with only two options: "Accept all deviations and record" or "Continue fixing", for the user to explicitly decide.
+Only accepting WARNING/SUGGESTION deviations or choosing a strategy after the 4th failure is a user decision point. When `verify_failures >= 3`, do not automatically execute another `verify-fail`. Offer only "Continue fixing" or "Stop this workflow and seek an external decision" under the decision protocol. Record the next failure and return to build only after the user chooses continue. CRITICAL/IMPORTANT findings are never waivable.
 
 ### 2. Artifact Context Loading (Hash On-Demand Read)
 
 When verification needs to read OpenSpec artifacts, first check whether they have changed since the design phase:
 
 ```bash
-RECORDED_HASH=$(comet state get <change-name> handoff_hash)
-CURRENT_HASH=$(comet handoff <change-name> --hash-only 2>/dev/null || echo "")
+comet state get <change-name> handoff_hash
+comet handoff <change-name> --hash-only
 ```
 
-- If `RECORDED_HASH` = `CURRENT_HASH` and both are non-empty and neither is `null`: OpenSpec artifacts are unchanged. **tasks.md does not need to be re-read in full** (use `grep -c '\- \[ \]' tasks.md` to confirm completion count). proposal.md, design.md, and delta specs must still be read for comparison checks.
+- Read the two standard outputs separately. If they match and both are non-empty and non-`null`, OpenSpec artifacts are unchanged. **tasks.md does not need to be re-read in full**; parse its checkboxes to confirm none remain unchecked. proposal.md, design.md, and delta specs must still be read for comparison checks.
 - If `RECORDED_HASH` is empty, is `null`, or differs from `CURRENT_HASH`: artifacts have changed or hash was never recorded. Read all required files in full normally.
 
 This optimization only skips re-reading tasks.md in full. proposal.md and design.md contain the full context needed for verification checks and must not be skipped due to hash match.
@@ -116,7 +116,7 @@ Run these 6 checks:
 5. No obvious security issues (no hardcoded keys, no new unsafe operations)
 6. Code review strategy: when `review_mode: standard` or `thorough`, use the Skill tool to load the Superpowers `requesting-code-review` skill and request a lightweight review that checks only correctness, security, and edge cases; when `review_mode: off`, skip automatic code review and record the skip reason in the verification report
 
-The lightweight code review input should be limited to this change's diff, tasks.md, and necessary test results; the review scope covers implementation correctness, security risk, and edge cases only, and does not perform spec coverage, Design Doc consistency, or drift checks. If the review finds CRITICAL or IMPORTANT issues, treat verification as failed and enter Step 1b. `review_mode: off` only skips automatic code review, not build, test, security checks, or debug gate protocol.
+The lightweight code review input should be limited to this change's diff, tasks.md, and necessary test results; the review scope covers implementation correctness, security risk, and edge cases only, and does not perform spec coverage, Design Doc consistency, or drift checks. If the review finds CRITICAL or IMPORTANT issues, follow Step 1b automatic repair and retry handling. `review_mode: off` only skips automatic code review, not build, test, security checks, or debug gate protocol.
 
 If the project has no automatically inferred verification command, the user or Agent must run the real verification command first, then record its evidence separately:
 
@@ -130,10 +130,9 @@ comet state record-check <change-name> verify --command "<actual verification co
 
 **Pass criteria**: All 6 items OK, no CRITICAL or IMPORTANT issues.
 
-**When not passing**: Report failures, enter Step 1b verification failure decision blocking point. Only after user confirms fix, execute the following command to record failure and roll back to build phase, then invoke `/comet-build` to fix:
+**When not passing**: Report failures and classify them under Step 1b. Below the automatic retry limit, when an issue must or should be repaired, run the following command directly and invoke `/comet-build`:
 
 ```bash
-# Execute only after user confirms fix
 comet state transition <change-name> verify-fail
 ```
 
@@ -160,10 +159,9 @@ After the skill loads, follow its guidance to verify. Check items:
 6. No contradictions between delta spec and design doc (if Build phase had incremental spec modifications, check if design doc has corresponding records)
 7. Associated design documents under `docs/superpowers/specs/` are locatable (file exists and is related to current change)
 
-When verification does not pass: report missing items, enter Step 1b verification failure decision blocking point. Only after user confirms fix, execute the following command to record failure and roll back to build phase, then invoke `/comet-build` to supplement:
+When verification does not pass, report missing items and classify them under Step 1b. Below the automatic retry limit, when the current change can supply the missing evidence, run the following command directly and invoke `/comet-build`:
 
 ```bash
-# Execute only after user confirms fix
 comet state transition <change-name> verify-fail
 ```
 
@@ -173,46 +171,24 @@ comet state transition <change-name> verify-fail
   - Option B: After user selects B, run `comet state transition <change-name> verify-fail`, then invoke `/comet-build`; `/comet-build`'s Spec Incremental Update rules will load the Superpowers `brainstorming` skill to update Design Doc + delta spec
   - Option C: Confirm deviation is acceptable, continue verification (design doc will be marked as `superseded-by-main-spec` during archiving)
 
-### 3. Finishing (Superpowers)
+### 3. Record Verification Evidence
 
-**Immediately execute:** Use the Skill tool to load the Superpowers `finishing-a-development-branch` skill. Skipping this step is prohibited.
-
-If the Superpowers `finishing-a-development-branch` skill is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
-
-After the skill loads, follow its guidance to finish. Branch handling options:
-1. Merge to main branch locally
-2. Push and create PR
-3. Keep branch (handle later)
-4. Discard work
-
-This is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to choose branch handling method**. Must not select based on recommendations, defaults, or current branch status. Only after the user completes selection and the corresponding operation finishes, may `branch_status: handled` be written.
-
-**Confirmation items**:
-- All tests pass
-- No hardcoded keys or security issues
-
-### 4. Record Verification Evidence
-
-Verification report must be saved to disk and recorded in `.comet.yaml`; after branch handling completes, state fields must also be written. Do not manually set `verify_result: pass`; use guard for auto-transition.
+Save the verification report and record it in `.comet.yaml`. Do not handle, merge, or discard branches in verify and do not write `branch_status: handled`: archive creates spec and metadata changes that belong in the final commit, so `/comet-archive` owns branch finishing after that commit. Do not set `verify_result: pass` manually; use the phase guard.
 
 ```bash
-mkdir -p docs/superpowers/reports
-# Write verification conclusions to report file, e.g.:
-# docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
-
 comet state set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
-comet state set <change-name> branch_status handled
 ```
+
+Use the host's file API to create `docs/superpowers/reports/` and the report file; do not depend on a POSIX-only directory command.
 
 ## Exit Conditions
 
 - Verification report passed
-- Branch handled
 - `verification_report` in `.comet.yaml` points to an existing verification report file
-- `branch_status: handled` in `.comet.yaml`
+- `branch_status` remains `pending`
 - **Phase guard**: Run `comet guard <change-name> verify --apply`; after all PASS, auto-transitions to `phase: archive` through `comet state transition verify-pass`
 
-After both verification and branch handling are complete, run guard for auto-transition:
+After verification evidence is complete, run guard for auto-transition:
 
 ```bash
 comet guard <change-name> verify --apply
@@ -233,7 +209,7 @@ comet state next <change-name>
 ```
 
 - `NEXT: auto` → invoke the skill pointed to by `SKILL` to enter the next phase
-- `NEXT: manual` → do not invoke the next skill; prompt user to run `/<SKILL>` manually
+- `NEXT: manual` → do not invoke the next skill; return control with `HINT`, end the invocation, and do not create another confirmation point
 - `NEXT: done` → workflow is complete, no further action needed
 
 Note: after `comet-archive` starts, it must first execute the final archive confirmation blocking point and wait for the user to explicitly choose "Confirm archive" before running the archive script. Must not automatically archive just because verification passed.

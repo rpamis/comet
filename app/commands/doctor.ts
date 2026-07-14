@@ -1,8 +1,12 @@
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
 import { fileExists, readDir } from '../../platform/fs/file-system.js';
-import { isCommandAvailable } from '../../domains/integrations/openspec.js';
+import {
+  getOpenSpecVersion,
+  isCommandAvailable,
+  isOpenSpecVersionCompatible,
+  MINIMUM_OPENSPEC_VERSION,
+} from '../../domains/integrations/openspec.js';
 import {
   hasCodegraphProjectIndex,
   resolveCodegraphCommand,
@@ -59,14 +63,15 @@ async function checkOpenSpecCli(): Promise<CheckResult> {
       message: 'not installed — install with: npm install -g @fission-ai/openspec@latest',
     };
   }
-  try {
-    const version = execSync('openspec --version', { stdio: 'pipe', timeout: 10_000 })
-      .toString()
-      .trim();
-    return { check: 'openspec CLI', status: 'pass', message: `installed (${version})` };
-  } catch {
-    return { check: 'openspec CLI', status: 'pass', message: 'installed' };
+  const version = getOpenSpecVersion();
+  if (!version || !isOpenSpecVersionCompatible(version)) {
+    return {
+      check: 'openspec CLI',
+      status: 'warn',
+      message: `installed (${version || 'version unknown'}), but Comet requires >= ${MINIMUM_OPENSPEC_VERSION} — run: npm install -g @fission-ai/openspec@latest`,
+    };
   }
+  return { check: 'openspec CLI', status: 'pass', message: `installed (${version})` };
 }
 
 function checkEnvironment(projectPath: string, context: DoctorContext): CheckResult {

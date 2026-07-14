@@ -27,6 +27,7 @@ function classicState(): ClassicState {
     designDoc: 'docs/superpowers/specs/design.md',
     plan: 'docs/superpowers/plans/plan.md',
     verifyResult: 'fail',
+    verifyFailures: 2,
     verificationReport: 'docs/verification.md',
     branchStatus: 'handled',
     createdAt: '2026-06-01',

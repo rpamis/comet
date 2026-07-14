@@ -11,8 +11,9 @@
 > 仅在以下情况才停止并等待用户输入：
 > - 任务处于 **BLOCKED** 状态（`review_mode: standard` 下风险任务 1 轮 review-fix 或最终轻量复查仍未通过，或 `review_mode: thorough` 下任务级/最终审查 2 轮审查-修复仍未通过）
 > - 存在无法从仓库、计划或既有上下文消除的真实歧义
-> - 平台没有真实后台 agent 调度能力，需要用户改选 `executing-plans`
 > - 用户**明确**要求暂停
+>
+> 后台调度能力在执行中失效属于运行停止条件，不自动构成新的用户决策点：退出派发循环并返回 `/comet-build` Step 2 的同一个联合决策，移除 `subagent-driven-development`。若只剩一个合法执行方式，说明原因后直接采用；仍有多个合法方式时才等待用户重新选择。
 >
 > 此规则适用于整个派发循环，而非单个任务。
 
@@ -34,14 +35,14 @@
 - **Claude Code**：对每个 implementer，以及 `review_mode` 要求的 task reviewer、修复 agent 和 final reviewer 使用 `Agent` 工具并设置 `run_in_background: true`。禁止内联执行 task，禁止错误进入需要预先创建 team 的团队模式。
 - **其他平台**：使用平台等效的后台 agent / Task / 多 agent 派发机制。
 - **禁止**跨 task 或角色复用 implementer、reviewer 或修复 agent。每个 agent 拥有全新的隔离上下文，并且只接收当前角色所需的单个 task 上下文。
-- 若平台无真实后台派发能力，不得继续；暂停并等待用户改选 `build_mode: executing-plans`。
+- 若真实后台派发能力在执行中失效，不得继续派发或由主会话代写实现；返回 `/comet-build` Step 2 的同一个联合决策并移除不可用模式。不得另设“是否改用 executing-plans”的停顿点；只剩一个合法模式时直接采用。
 
 ### 1. 派发 Prompt 与回报契约
 
 每个 implementer 或修复 agent prompt 必须包含：
 
 - 当前单个 task 的完整文本、架构背景和依赖上下文
-- `Language: 使用 "$COMET_BASH" "$COMET_STATE" get <name> language 读取到的 Comet 配置产物语言输出`
+- `Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`
 - 允许修改的文件范围和禁止修改的范围
 - 必须执行的测试命令和提交要求
 - 修复 agent 还必须收到对应 reviewer 的完整反馈
@@ -142,8 +143,8 @@ Comet 不读取、不写入、也不要求任何 Superpowers `subagent-driven-de
 4. 运行定向验证：
 
 ```bash
-node "$COMET_STATE" task-checkoff "$PLAN_FILE" "$PLAN_TASK_TEXT"
-node "$COMET_STATE" task-checkoff "openspec/changes/<name>/tasks.md" "$OPENSPEC_TASK_TEXT"
+comet state task-checkoff <plan-file> <plan-task-text>
+comet state task-checkoff openspec/changes/<name>/tasks.md <openspec-task-text>
 ```
 
 仅在对应映射存在时运行第二条。脚本会要求任务文本恰好出现一次且该项已勾选；验证失败时不得进入下一个 task。

@@ -1,6 +1,6 @@
 ---
 name: comet-tweak
-description: "Use when the user wants a lightweight or medium change that fits a single OpenSpec change and does not need full design; also use when resuming tweak workflow."
+description: "Use only when explicitly invoked as /comet-tweak or routed by the root Comet skill/runtime to the tweak preset; handle a lightweight or medium change that fits one OpenSpec change."
 ---
 
 # Comet Preset Path: Tweak
@@ -23,7 +23,7 @@ Applicable for OpenSpec-chained lightweight changes, such as configuration adjus
 
 ### 0. Output Language Constraint
 
-Streamlined OpenSpec artifacts must use the configured Comet artifact language. Before `.comet.yaml` exists, read `language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after initialization, use `"$COMET_BASH" "$COMET_STATE" get <name> language`.
+Streamlined OpenSpec artifacts must use the configured Comet artifact language. Before `.comet.yaml` exists, read `language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after initialization, use `comet state get <name> language`.
 
 Execution chain: open → OpenSpec apply → verify → archive. Tweak provides default decisions for each phase: streamlined open, direct build through OpenSpec apply, scale- and delta-spec-driven verification weight, and final archive confirmation after verification passes.
 
@@ -46,19 +46,22 @@ After the skill loads, follow its guidance to create streamlined artifacts:
 Initialize Comet state file:
 
 ```bash
-node "$COMET_STATE" init <name> tweak
+comet state init <name> tweak
+comet state select <name>
 ```
+
+Tweak defaults to `isolation: current`, truthfully indicating execution in the current workspace. Change it to `branch` or `worktree` only after that workspace is actually created/selected.
 
 Verify initialized state:
 
 ```bash
-node "$COMET_STATE" check <name> open
+comet state check <name> open
 ```
 
 Run phase guard to transition open → build:
 
 ```bash
-node "$COMET_GUARD" <change-name> open --apply
+comet guard <change-name> open --apply
 ```
 
 ### 2. OpenSpec Apply Build (tweak-only preset build)
@@ -95,7 +98,7 @@ For specific investigation, minimal failing test, fix verification, and keeping 
 7. Run phase guard to transition build → verify:
 
 ```bash
-node "$COMET_GUARD" <change-name> build --apply
+comet guard <change-name> build --apply
 ```
 
 State automatically updates to `phase: verify`, `verify_result: pending`, then enter verification.
@@ -109,10 +112,10 @@ Reuse `/comet-verify`; let comet-verify's scale assessment decide lightweight or
 **Delta-spec verification routing**: tweak accepts delta spec as a normal artifact. If this change created a delta spec, explicitly set full verification mode before entering comet-verify, to run OpenSpec-native verification (`openspec-verify-change`) covering delta-spec consistency:
 
 ```bash
-node "$COMET_STATE" set <change-name> verify_mode full
+comet state set <change-name> verify_mode full
 ```
 
-A tweak without delta spec usually meets lightweight verification conditions (≤ 3 tasks, changed files below the scale threshold); comet-verify's scale assessment selects the lightweight verification path (6 quick checks). If the user wants to add review, run `node "$COMET_STATE" set <name> review_mode standard` or `thorough` before verification.
+A tweak without delta spec usually meets lightweight verification conditions (≤ 3 tasks, changed files below the scale threshold); comet-verify's scale assessment selects the lightweight verification path (6 quick checks). If the user wants to add review, run `comet state set <name> review_mode standard` or `thorough` before verification.
 
 After verification passes, record `.comet.yaml` `verify_result` as `pass` according to `/comet-verify` rules, must not skip this status before archiving. After verification passes, still enter `/comet-archive`'s final archive confirmation; do not automatically run the archive script.
 
@@ -129,13 +132,13 @@ Reuse `/comet-archive`. Must satisfy `verify_result: pass` in `.comet.yaml` befo
 <IMPORTANT>
 Tweak workflow is **one-time continuous execution**. After invoking `/comet-tweak`, agent must automatically advance through tweak steps, without pausing to wait for user input mid-way.
 
-Exception: when `.comet.yaml` has `auto_transition: false`, after each phase guard advances `phase`, do not auto-invoke the next skill. In this case, use `node "$COMET_STATE" next <name>` output and pause for manual continuation as instructed.
+Exception: when `.comet.yaml` has `auto_transition: false`, end the current invocation at each phase boundary and return control with `HINT`; the user may run the next phase later. This is a manual handoff, not a new confirmation point.
 
-The following situations must pause and wait for user confirmation:
+The following genuine user decisions still pause:
 
 1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the tweak lightweight flow, or upgrade to the full `/comet` workflow
-2. verify phase (comet-verify) verification-failure and branch-handling decisions
-3. Final archive confirmation (before comet-archive runs the archive script)
+2. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or strategy after the automatic repair limit; the first 3 clearly repairable failures close automatically
+3. Final archive confirmation and the branch-handling decision after the archive commit
 
 Execution order: quick open → build (with upgrade assessment) → verification → archive → complete
 
@@ -146,7 +149,7 @@ After each phase completes, immediately enter next phase. Within each phase, mus
 
 ## Upgrade Assessment
 
-Tweak upgrade assessment only decides whether to move from the lightweight preset to full; delta spec alone is not an upgrade reason, file count never upgrades automatically, and `comet-state scale` only decides verification weight.
+Tweak upgrade assessment only decides whether to move from the lightweight preset to full; delta spec alone is not an upgrade reason, file count never upgrades automatically, and `comet state scale` only decides verification weight.
 
 If `/comet` passes an intent frame from the entry, tweak must recheck `risk_signal` and escalation signals only before build: new capability, public API, schema change, cross-module coordination, or deep architecture work. When any signal matches, enter the existing escalation decision point. Delta spec remains a normal tweak artifact and must not trigger escalation by itself; do not reimplement entry intent recognition.
 
@@ -159,10 +162,10 @@ When a qualitative-change signal or file-count tripwire is hit, **must pause und
 After the user chooses upgrade (option B), use the legal state-machine upgrade channel, a single command that converts the preset workflow to full and rolls back to design:
 
 ```bash
-node "$COMET_STATE" transition <name> preset-escalate
+comet state transition <name> preset-escalate
 ```
 
-This command atomically sets `workflow`/`classic_profile` to `full`, rolls `phase` back to `design`, and clears `design_doc` (satisfying comet-design entry requirements). Then add the Design Doc on the current change: **immediately use the Skill tool to load the `comet-design` skill**, then proceed through the normal full workflow.
+This command atomically sets `workflow`/`classic_profile` to `full`, rolls `phase` back to `design`, clears `design_doc`, and clears preset-only `build_mode`, `tdd_mode`, `review_mode`, `isolation`, and `verify_mode`. Then add the Design Doc on the current change: **immediately use the Skill tool to load the `comet-design` skill**. On entering build, run the full joint workflow-configuration decision again.
 
 When the user chooses continue (option A), continue the tweak workflow and record the user's reason for continuing.
 
@@ -173,16 +176,16 @@ When the user chooses continue (option A), continue the tweak workflow and recor
 - Change completed, tests pass
 - Change archived
 - If spec changed, synced to main spec
-- **Phase guard**: Before build → verify run `node "$COMET_GUARD" <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `node "$COMET_GUARD" <change-name> verify --apply`
+- **Phase guard**: Before build → verify run `comet guard <change-name> build --apply`; before verify → archive follow `/comet-verify` and run `comet guard <change-name> verify --apply`
 
 ## Automatic Handoff to Next Phase
 
 Follow `comet/reference/auto-transition.md`. Key command:
 
 ```bash
-node "$COMET_STATE" next <name>
+comet state next <name>
 ```
 
 - `NEXT: auto` → invoke the skill pointed to by `SKILL` to continue tweak workflow (`phase: build` returns `comet-tweak`, `verify` returns `comet-verify`, `archive` returns `comet-archive`)
-- `NEXT: manual` → do not invoke the next skill; prompt user to manually run `/<SKILL>` per `HINT`
+- `NEXT: manual` → do not invoke the next skill; return control with `HINT`, end the invocation, and do not create another confirmation point
 - `NEXT: done` → workflow is complete, no further action needed

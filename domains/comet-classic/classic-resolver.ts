@@ -27,7 +27,7 @@ function presetBuildConfigured(classic: ClassicState): boolean {
   return Boolean(
     classic.buildMode === 'direct' &&
     classic.tddMode === 'direct' &&
-    classic.isolation === 'branch' &&
+    classic.isolation !== null &&
     classic.verifyMode === 'light',
   );
 }

@@ -429,7 +429,7 @@ function blocked(relativePath: string, phase: ClassicPhase): ClassicCommandResul
             '  BLOCKED: source writes are not allowed during design',
             '  This phase does not allow source writes',
             '  ALLOWED: run brainstorming, create the Design Doc, and run guard',
-            '  NEXT: finish the Design Doc, then run comet-guard design --apply to enter build',
+            '  NEXT: finish the Design Doc, then run comet guard <change-name> design --apply to enter build',
           ]
         : [
             '  BLOCKED: source writes are not allowed during archive',

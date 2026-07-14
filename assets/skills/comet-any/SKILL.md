@@ -1,6 +1,6 @@
 ---
 name: comet-any
-description: "Use when the user wants to customize Comet five-phase skills, create a workflow skill, organize an existing skill, or compose skills with Workflow Node / Skill Binding / Output Schema."
+description: "Use only when explicitly invoked as /comet-any or when the user explicitly wants to customize Comet's five-phase workflow or create/upgrade a workflow Skill managed by Comet Creator. Do not use for general Skill authoring, cleanup, or review."
 ---
 
 # Comet Any - Skill Creator
