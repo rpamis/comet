@@ -240,7 +240,7 @@ export async function createNativeChange(options: {
       await fs.mkdir(options.paths.changesDir, { recursive: true });
       await fs.mkdir(changeDir, { recursive: false });
     } else if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      throw new Error(`Native change already exists: ${options.name}`);
+      throw new Error(`Native change already exists: ${options.name}`, { cause: error });
     } else {
       throw error;
     }

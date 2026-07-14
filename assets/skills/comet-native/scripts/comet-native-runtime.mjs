@@ -7863,7 +7863,7 @@ async function createNativeChange(options) {
       await fs4.mkdir(options.paths.changesDir, { recursive: true });
       await fs4.mkdir(changeDir, { recursive: false });
     } else if (error.code === "EEXIST") {
-      throw new Error(`Native change already exists: ${options.name}`);
+      throw new Error(`Native change already exists: ${options.name}`, { cause: error });
     } else {
       throw error;
     }
@@ -8516,7 +8516,8 @@ async function acquireNativeLock(paths, name, operation) {
     if (error.code === "EEXIST") {
       const existing = await readNativeLock(file);
       throw new Error(
-        `Native lock is already held: ${file}${existing ? ` by pid ${existing.pid} for ${existing.operation}` : ""}`
+        `Native lock is already held: ${file}${existing ? ` by pid ${existing.pid} for ${existing.operation}` : ""}`,
+        { cause: error }
       );
     }
     throw error;
@@ -9221,7 +9222,8 @@ async function assertNoUnfinishedTransactions(paths) {
     } catch (error) {
       if (error.code === "ENOENT") {
         throw new Error(
-          `Native transaction ${entry2.name} has no journal; run doctor before moving`
+          `Native transaction ${entry2.name} has no journal; run doctor before moving`,
+          { cause: error }
         );
       }
       throw error;
@@ -9330,7 +9332,7 @@ async function readRootMoveJournal(sourcePaths, destinationPaths, stage, id) {
     return { journal, paths: destinationPaths };
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
-    throw new Error(`Native root-move journal is missing: ${id}`);
+    throw new Error(`Native root-move journal is missing: ${id}`, { cause: error });
   }
 }
 async function setPendingStage(options) {

@@ -69,6 +69,7 @@ export async function acquireNativeLock(
       const existing = await readNativeLock(file);
       throw new Error(
         `Native lock is already held: ${file}${existing ? ` by pid ${existing.pid} for ${existing.operation}` : ''}`,
+        { cause: error },
       );
     }
     throw error;

@@ -9,7 +9,6 @@ import { isInsidePath, nativeProjectPaths, normalizeArtifactRootRef } from './na
 import {
   createNativeTransaction,
   finalizeNativeTransaction,
-  nativeTransactionPaths,
   readNativeTransaction,
   rollbackNativeTransaction,
 } from './native-transaction.js';
@@ -54,6 +53,7 @@ async function assertNoUnfinishedTransactions(paths: NativeProjectPaths): Promis
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new Error(
           `Native transaction ${entry.name} has no journal; run doctor before moving`,
+          { cause: error },
         );
       }
       throw error;
@@ -189,7 +189,7 @@ async function readRootMoveJournal(
     return { journal, paths: destinationPaths };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    throw new Error(`Native root-move journal is missing: ${id}`);
+    throw new Error(`Native root-move journal is missing: ${id}`, { cause: error });
   }
 }
 

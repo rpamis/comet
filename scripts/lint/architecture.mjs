@@ -163,12 +163,12 @@ for (const [name, output] of Object.entries(layout.classicRuntime.outputs ?? {})
     fail(`classic runtime output "${name}" -> "${output}" is missing`);
   }
 }
-for (const [name, entry] of Object.entries(layout.nativeRuntime.entries ?? {})) {
+for (const [name, entry] of Object.entries(layout.nativeRuntime?.entries ?? {})) {
   if (!isFile(entry)) {
     fail(`native runtime entry "${name}" -> "${entry}" is missing`);
   }
 }
-for (const [name, output] of Object.entries(layout.nativeRuntime.outputs ?? {})) {
+for (const [name, output] of Object.entries(layout.nativeRuntime?.outputs ?? {})) {
   if (!isFile(output)) {
     fail(`native runtime output "${name}" -> "${output}" is missing`);
   }
