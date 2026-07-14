@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { extractToc, renderJsonPreview, renderMarkdown, renderYamlTable, runMermaid } from './markdown-preview.js';
+import {
+  extractToc,
+  renderJsonPreview,
+  renderMarkdown,
+  renderYamlTable,
+  runMermaid,
+} from './markdown-preview.js';
 import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
@@ -1021,12 +1027,9 @@ function ArtifactDrawer({ artifact, onClose }) {
 
     const preview = artifact.preview;
     const previewPath = preview?.path ?? '';
-    const isYamlPreview =
-      artifact.key === 'cometYaml' || /\.ya?ml$/i.test(previewPath);
+    const isYamlPreview = artifact.key === 'cometYaml' || /\.ya?ml$/i.test(previewPath);
     const isJsonPreview =
-      artifact.key === 'handoff' ||
-      artifact.key === 'checkpoint' ||
-      /\.json$/i.test(previewPath);
+      artifact.key === 'handoff' || artifact.key === 'checkpoint' || /\.json$/i.test(previewPath);
     const useStructuredPreview = isYamlPreview || isJsonPreview;
 
     const content = preview?.exists
