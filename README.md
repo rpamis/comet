@@ -54,6 +54,7 @@ It allows you to use a toolchain to handle everything from requirements to archi
 
 ## Why Comet
 
+- **Native workflow for strong models** — `/comet-native` uses a detailed brief, complete target specifications, phase checks, and recoverable archive to constrain outcomes while leaving planning, implementation, testing, and review methods to the model. It uses a configurable `comet/` artifact root and remains fully separate from Classic. See the [Native workflow guide](website/en/concepts/native-workflow.mdx).
 - **The stable core for long-running tasks** — Comet's Classic Spec mode combines OpenSpec and Superpowers with a state
   machine, phase guards, and scripts that connect the full lifecycle. Agents can only do the work allowed in the current
   phase and can only exit after the phase work is complete. The core flow can advance automatically, with HITL only at
