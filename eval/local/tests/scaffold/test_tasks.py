@@ -1,5 +1,7 @@
 """Unit tests for the comet eval task loader."""
 
+import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -82,6 +84,7 @@ mode = "auto_user"
 max_turns = 7
 simulator_prompt = "Answer as a concise developer user."
 decision_patterns = ["confirm", "choose"]
+decision_reply = "Use the recommended option."
 continue_prompt = "Please continue."
 """
     )
@@ -96,6 +99,7 @@ continue_prompt = "Please continue."
     assert task.config.interaction.max_turns == 7
     assert task.config.interaction.simulator_prompt == "Answer as a concise developer user."
     assert task.config.interaction.decision_patterns == ["confirm", "choose"]
+    assert task.config.interaction.decision_reply == "Use the recommended option."
     assert task.config.interaction.continue_prompt == "Please continue."
 
 
@@ -192,11 +196,149 @@ def test_native_clarification_task_requires_one_decision_and_confirmed_resume():
     assert task.config.evaluation.required_skills == ["comet-native"]
     assert task.config.interaction.mode == "auto_user"
     assert task.config.interaction.max_turns == 4
+    assert task.config.interaction.decision_reply == (
+        "Abbreviations such as e.g. and Dr. do not end a sentence; use a small explicit abbreviation list."
+    )
+    assert "docs/comet/specs/sentence-counting/spec.md" not in (
+        task.config.evaluation.expected_artifacts
+    )
+    assert "verify the Native status from disk" in task.config.interaction.continue_prompt
     assert "one highest-value question" in task.config.interaction.simulator_prompt
-    assert "Abbreviations such as e.g. do not end a sentence" in task.config.interaction.continue_prompt
     prompt = task.render_prompt()
     assert "Do not guess how abbreviations should behave" in prompt
     assert "Do not begin implementation before the user answers" in prompt
+
+
+def test_native_clarification_validator_rejects_multiple_archives(tmp_path: Path):
+    validator_path = (
+        get_tasks_dir() / "comet-native-clarification" / "validation" / "test_native_clarification.py"
+    )
+    spec = importlib.util.spec_from_file_location("native_clarification_validator", validator_path)
+    assert spec and spec.loader
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.WORKSPACE = tmp_path
+
+    archive_root = tmp_path / "docs" / "comet" / "archive"
+    (archive_root / "2026-07-15-first-change").mkdir(parents=True)
+    current = archive_root / "2026-07-15-second-change"
+    current.mkdir()
+    (current / "change.yaml").write_text("approval: confirmed\n", encoding="utf-8")
+    (current / "brief.md").write_text("Abbreviation decision confirmed.\n", encoding="utf-8")
+    canonical = tmp_path / "docs" / "comet" / "specs" / "sentence-counting" / "spec.md"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text("# Sentence counting\n", encoding="utf-8")
+
+    result = validator.check_confirmed_archive()
+
+    assert result["status"] == "failed"
+    assert "exactly one Native archive" in result["reason"]
+
+
+def test_native_clarification_validator_accepts_one_semantic_canonical_spec(tmp_path: Path):
+    validator_path = (
+        get_tasks_dir() / "comet-native-clarification" / "validation" / "test_native_clarification.py"
+    )
+    spec = importlib.util.spec_from_file_location("native_clarification_validator", validator_path)
+    assert spec and spec.loader
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.WORKSPACE = tmp_path
+
+    archived = tmp_path / "docs" / "comet" / "archive" / "2026-07-15-add-sentences"
+    archived.mkdir(parents=True)
+    (archived / "change.yaml").write_text(
+        """schema: comet.native.v1
+name: add-sentences
+phase: archive
+approval: confirmed
+spec_changes:
+  - capability: sentences
+    operation: create
+    source: specs/sentences/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+archived: true
+""",
+        encoding="utf-8",
+    )
+    (archived / "brief.md").write_text(
+        "# Decisions\nAbbreviations such as e.g. and Dr. do not end a sentence.\n",
+        encoding="utf-8",
+    )
+    canonical = tmp_path / "docs" / "comet" / "specs" / "sentences" / "spec.md"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text(
+        "# Sentence counting\nThe --sentences flag ignores e.g. and Dr. boundaries.\n",
+        encoding="utf-8",
+    )
+    archived_spec = archived / "specs" / "sentences" / "spec.md"
+    archived_spec.parent.mkdir(parents=True)
+    archived_spec.write_text(canonical.read_text(encoding="utf-8"), encoding="utf-8")
+    (archived / "verification.md").write_text(
+        "# Commands and results\npytest: 24 passed\n# Conclusion\npass\n",
+        encoding="utf-8",
+    )
+    trajectory = archived / "runtime" / "trajectory.jsonl"
+    trajectory.parent.mkdir(parents=True)
+    trajectory.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "type": "state_transitioned",
+                    "data": {"previousPhase": previous, "nextPhase": following},
+                }
+            )
+            for previous, following in [
+                ("shape", "build"),
+                ("build", "verify"),
+                ("verify", "archive"),
+                ("archive", None),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "_test_context.json").write_text(
+        json.dumps(
+            {
+                "interaction": {
+                    "mode": "auto_user",
+                    "actual_turns": 2,
+                    "max_turns": 4,
+                    "decision_points": 1,
+                    "deterministic_replies": 1,
+                    "completion_signals": 1,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = validator.check_confirmed_archive()
+
+    assert result["status"] == "passed"
+
+
+def test_native_clarification_validator_rejects_leftover_active_change(tmp_path: Path):
+    validator_path = (
+        get_tasks_dir() / "comet-native-clarification" / "validation" / "test_native_clarification.py"
+    )
+    spec = importlib.util.spec_from_file_location("native_clarification_validator", validator_path)
+    assert spec and spec.loader
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.WORKSPACE = tmp_path
+
+    archive = tmp_path / "docs" / "comet" / "archive" / "2026-07-15-add-sentences"
+    archive.mkdir(parents=True)
+    active = tmp_path / "docs" / "comet" / "changes" / "add-sentences"
+    active.mkdir(parents=True)
+
+    result = validator.check_confirmed_archive()
+
+    assert result["status"] == "failed"
+    assert "active change" in result["reason"]
 
 
 def test_native_repository_fact_task_requires_investigation_without_interaction():

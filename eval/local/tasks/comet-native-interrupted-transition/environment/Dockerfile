@@ -13,7 +13,7 @@ RUN npm config set registry https://registry.npmmirror.com && \
 RUN pip install --no-cache-dir pyyaml pytest
 
 COPY wordcount.py test_wordcount.py comet.config.yaml /workspace/
-COPY comet /workspace/docs/comet
+COPY docs/comet /workspace/docs/comet
 
 RUN useradd --create-home --shell /bin/bash agent && \
     chown -R agent:agent /workspace

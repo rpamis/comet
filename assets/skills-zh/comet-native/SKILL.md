@@ -9,9 +9,11 @@ description: 使用 Comet 自有 Native change、状态检查与自动推进，�
 
 ## 开始或恢复
 
+`/comet-native` 是 Skill 入口，不是 shell 命令。通过宿主的 Skill 机制调用它；不要在 Bash 中执行 `/comet-native`。
+
 先运行 Native `status` 和 `show`，再读取 `comet.config.yaml`、`change.yaml`、brief、拟议完整规格、canonical 规格、仓库实现、项目规则和相关测试。能从环境得到的事实不要询问用户。
 
-若没有 change，先把用户目标归纳成 lowercase kebab-case 名称，再用 `comet native new <change-name> --language zh-CN` 创建 Native change。只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
+若 `status` 或 `show` 显示已有 active change，就继续该 change。用户回答澄清问题或补充约束后，重新读取它并更新原有 brief 与规格；不得为用户刚补充的答案创建第二个 change。只有磁盘事实证明没有 active change 时，才把用户目标归纳成 lowercase kebab-case 名称，再用 `comet native new <change-name> --language zh-CN` 创建 Native change。只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
 
 命令与 runtime 定位见 [命令参考](reference/commands.md)，产物格式见 [产物参考](reference/artifacts.md)，中断与恢复见 [恢复参考](reference/recovery.md)。自带 runtime 位于 [scripts/comet-native-runtime.mjs](scripts/comet-native-runtime.mjs)。
 
@@ -35,6 +37,7 @@ description: 使用 Comet 自有 Native change、状态检查与自动推进，�
 理解达成一致后：
 
 - 更新 `brief.md`，让它足以约束实现和验收；
+- 用户明确给出的 lowercase kebab-case capability ID 必须原样保留，并用于 `specs/<capability>/spec.md`；若用户只给出自然语言显示名称，就在规格正文中原样保留显示名称，并稳定派生 lowercase kebab-case capability ID；不得悄悄替换用户明确给出的合法 ID；
 - 若长期行为发生变化，在 `specs/<capability>/spec.md` 写完整目标规格，不写只描述增量的 patch；
 - 删除长期 capability 时使用 `comet native spec remove <change-name> <capability>`；create/replace 和 canonical base hash 由 runtime 推断并冻结；
 - 只有高影响决定刚由用户确认时才记录显式确认；仍未解决时保留 `[blocking]` 并停下。

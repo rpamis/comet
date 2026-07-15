@@ -13,6 +13,7 @@ Supports pytest-xdist parallel execution via worker coordination.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -42,6 +43,21 @@ from scaffold.python import (
 )
 from scaffold.python.sample_quality import infer_sample_quality
 from scaffold.python.skill_parser import SCRIPT_EXTENSIONS
+
+
+def _extract_loop_turns(stderr: str | None) -> int | None:
+    match = re.search(r"\[loop\] finished after (\d+) turns", stderr or "")
+    return int(match.group(1)) if match else None
+
+
+def _extract_loop_interaction(stderr: str | None) -> dict[str, int | None]:
+    source = stderr or ""
+    return {
+        "actual_turns": _extract_loop_turns(source),
+        "decision_points": source.count("[loop] decision point detected"),
+        "deterministic_replies": source.count("[loop] deterministic decision reply applied"),
+        "completion_signals": source.count("[loop] workflow completion detected"),
+    }
 
 # =============================================================================
 # CONSTANTS
@@ -396,6 +412,7 @@ def _resolve_interaction_config(task, profile_name: str, config):
     max_turns = task_interaction.max_turns or profile_default.max_turns
     simulator_prompt = task_interaction.simulator_prompt or profile_default.simulator_prompt
     decision_patterns = list(task_interaction.decision_patterns or profile_default.decision_patterns)
+    decision_reply = task_interaction.decision_reply or profile_default.decision_reply
     continue_prompt = task_interaction.continue_prompt or profile_default.continue_prompt
 
     mode_override = config.getoption("--interaction-mode")
@@ -423,6 +440,7 @@ def _resolve_interaction_config(task, profile_name: str, config):
         max_turns=max_turns,
         simulator_prompt=simulator_prompt,
         decision_patterns=decision_patterns,
+        decision_reply=decision_reply,
         continue_prompt=continue_prompt,
     )
 
@@ -765,7 +783,7 @@ def run_claude(test_dir, experiment_logger, request):
             loop_args = [
                 "run-claude-loop",
                 test_dir,
-                "@/workspace/.eval-task-prompt.txt",
+                "@//workspace/.eval-task-prompt.txt",
                 "--max-turns",
                 str(interaction.max_turns),
             ]
@@ -775,13 +793,15 @@ def run_claude(test_dir, experiment_logger, request):
                 loop_args += ["--continue-prompt", interaction.continue_prompt]
             for pattern in interaction.decision_patterns:
                 loop_args += ["--decision-pattern", pattern]
+            if interaction.decision_reply:
+                loop_args += ["--decision-reply", interaction.decision_reply]
 
             prompt_file = None
             try:
                 if interaction.simulator_prompt:
                     prompt_file = test_dir / ".eval-simulator-prompt.txt"
                     prompt_file.write_text(interaction.simulator_prompt, encoding="utf-8")
-                    loop_args += ["--simulator-prompt-file", "/workspace/.eval-simulator-prompt.txt"]
+                    loop_args += ["--simulator-prompt-file", "//workspace/.eval-simulator-prompt.txt"]
                 result = run_shell("docker.sh", *loop_args, timeout=timeout + 60, check=False)
             finally:
                 task_prompt_file.unlink(missing_ok=True)

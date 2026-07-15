@@ -30,6 +30,10 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('完整目标规格');
     expect(source).toContain('comet native new <change-name> --language zh-CN');
     expect(source).toContain('comet native next <change-name>');
+    expect(source).toContain('不得为用户刚补充的答案创建第二个 change');
+    expect(source).toContain('`/comet-native` 是 Skill 入口，不是 shell 命令');
+    expect(source).toContain('用户明确给出的 lowercase kebab-case capability ID 必须原样保留');
+    expect(source).toContain('自然语言显示名称');
   });
 
   it('references only Comet-owned Native documentation and runtime', async () => {
@@ -119,6 +123,12 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('comet native new <change-name> --language en');
     expect(source).toContain('comet native next <change-name>');
     expect(source).toContain('--confirmed');
+    expect(source).toContain("Do not create a second change for the user's answer");
+    expect(source).toContain('`/comet-native` is a Skill entry, not a shell command');
+    expect(source).toContain(
+      'Preserve any lowercase kebab-case capability ID explicitly supplied by the user exactly',
+    );
+    expect(source).toContain('natural-language display name');
     expect(files).toContain('comet native spec remove <change-name> <capability>');
     expect(files).toContain('comet native spec rebase <change-name> --summary <text>');
     expect(source).toContain('pass `--confirmed` when leaving Build');

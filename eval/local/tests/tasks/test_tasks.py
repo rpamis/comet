@@ -375,6 +375,7 @@ def test_task_treatment(task_name, treatment_name):
     result = fixtures.run_claude(prompt, timeout=CLAUDE_TIMEOUT, interaction=interaction)
 
     events = extract_events(parse_output(result.stdout))
+    loop_interaction = conftest._extract_loop_interaction(result.stderr)
     outputs = {
         "run_id": run_id,
         "treatment_name": treatment_name,
@@ -402,6 +403,7 @@ def test_task_treatment(task_name, treatment_name):
         "interaction": {
             "mode": interaction.mode,
             "max_turns": interaction.max_turns,
+            **loop_interaction,
         },
     }
     events["profile"] = outputs["profile"]

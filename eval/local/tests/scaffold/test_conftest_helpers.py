@@ -34,6 +34,32 @@ def test_unit_test_detection_keeps_task_runs_as_experiments():
     assert conftest._is_unit_tests_only(Config()) is False
 
 
+def test_extract_loop_turns_reads_driver_completion_line():
+    stderr = (
+        "[loop] turn 1/4\n"
+        "[loop] decision point detected; simulating user reply\n"
+        "[loop] deterministic decision reply applied\n"
+        "[loop] workflow completion detected; ending\n"
+        "[loop] finished after 3 turns\n"
+    )
+
+    assert conftest._extract_loop_turns(stderr) == 3
+    assert conftest._extract_loop_interaction(stderr) == {
+        "actual_turns": 3,
+        "decision_points": 1,
+        "deterministic_replies": 1,
+        "completion_signals": 1,
+    }
+    assert conftest._extract_loop_turns("ordinary stderr") is None
+
+
+def test_auto_user_prompt_paths_bypass_msys_path_conversion():
+    source = (Path(__file__).resolve().parents[1] / "conftest.py").read_text(encoding="utf-8")
+
+    assert '"@//workspace/.eval-task-prompt.txt"' in source
+    assert '"//workspace/.eval-simulator-prompt.txt"' in source
+
+
 def test_dynamic_treatment_config_from_skill_path(tmp_path: Path):
     skill_dir = tmp_path / "demo-skill"
     skill_dir.mkdir()

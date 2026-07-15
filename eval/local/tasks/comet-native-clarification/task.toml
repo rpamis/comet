@@ -16,13 +16,13 @@ timeout_sec = 900
 
 [validation]
 test_scripts = "test_native_clarification.py"
-target_artifacts = ["docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
+target_artifacts = ["docs/comet/archive", "docs/comet/specs"]
 timeout = 120
 
 [evaluation]
 profile = "generic"
 required_skills = ["comet-native"]
-expected_artifacts = ["comet.config.yaml", "docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
+expected_artifacts = ["comet.config.yaml", "docs/comet/archive", "docs/comet/specs"]
 require_skill_invocation = true
 rubric_criteria = [
   "Before implementation, asks exactly one highest-value question about abbreviation behavior",
@@ -36,4 +36,5 @@ mode = "auto_user"
 max_turns = 4
 simulator_prompt = """You are the developer user in a Comet Native eval. The assistant should ask one highest-value question about how abbreviations affect sentence boundaries. Answer that question in one sentence: Abbreviations such as e.g. and Dr. do not end a sentence; use a small explicit abbreviation list. If the assistant asks multiple questions, answer only the abbreviation question and remind it to handle one decision at a time. Do not write code or choose implementation tooling."""
 decision_patterns = ["abbreviation", "e.g.", "Dr.", "sentence boundary"]
-continue_prompt = "Abbreviations such as e.g. do not end a sentence; record that decision as confirmed and continue the Native change."
+decision_reply = "Abbreviations such as e.g. and Dr. do not end a sentence; use a small explicit abbreviation list."
+continue_prompt = "Please verify the Native status from disk and continue until the same change is actually archived with its canonical specification."

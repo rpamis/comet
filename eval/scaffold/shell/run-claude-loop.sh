@@ -10,6 +10,7 @@
 #   --max-turns N             Maximum number of subject<->simulator round trips (default 12)
 #   --model MODEL             Model for both subject and simulator
 #   --simulator-prompt-file   File containing the simulator system prompt
+#   --decision-reply TEXT     Deterministic reply for each detected decision point
 #   --continue-prompt TEXT    Nudge used when the workflow should continue
 #   --decision-pattern TEXT   Extra case-insensitive substring to treat as a decision point
 #
@@ -18,6 +19,9 @@
 # Stderr: driver progress log.
 
 set -uo pipefail
+shopt -s nocasematch
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PROMPT_ARG="${1:?usage: run-claude-loop.sh <prompt|@prompt-file> [--max-turns N]}"
 shift || true
@@ -31,6 +35,7 @@ fi
 MAX_TURNS=12
 MODEL="${ANTHROPIC_MODEL:-}"
 SIMULATOR_PROMPT=""
+DECISION_REPLY=""
 CONTINUE_PROMPT="Please continue with the next phase of the comet workflow."
 DECISION_PATTERNS=()
 PLUGIN_ARGS=()
@@ -46,6 +51,7 @@ while [[ $# -gt 0 ]]; do
             SIMULATOR_PROMPT="$(cat "$2")"
             shift 2
             ;;
+        --decision-reply) DECISION_REPLY="$2"; shift 2 ;;
         --continue-prompt) CONTINUE_PROMPT="$2"; shift 2 ;;
         --decision-pattern)
             DECISION_PATTERNS+=("$2")
@@ -60,21 +66,6 @@ MODEL_FLAG=()
 
 # Detect whether the last subject turn is waiting on the user. comet decision
 # points present as a question / confirmation request with no pending tool call.
-is_decision_point() {
-    local text="$1"
-    local pattern
-    for pattern in "${DECISION_PATTERNS[@]}"; do
-        if [[ -n "$pattern" ]] && echo "$text" | grep -qiF -- "$pattern"; then
-            return 0
-        fi
-    done
-    # Heuristics: question marks, explicit "confirm/choose/proceed/continue" asks.
-    if echo "$text" | grep -qiE '\?|confirm|choose|proceed|continue|approve|select an option|which (option|approach|name)|enter the|provide|would you|shall we|do you want|preferred'; then
-        return 0
-    fi
-    return 1
-}
-
 # Drive the user-simulator: given the subject's last message, produce a concise
 # affirmative/clarifying reply that lets the workflow proceed.
 simulate_user() {
@@ -154,20 +145,26 @@ except: print('')
         break
     fi
 
-    if is_decision_point "$RESULT_TEXT"; then
+    # Completion is task-validated from exported artifacts after the loop. Stop
+    # only on an explicit, non-negated workflow/archive completion statement.
+    if bash "$SCRIPT_DIR/completion-point.sh" "$RESULT_TEXT"; then
+        echo "[loop] workflow completion detected; ending" >&2
+        break
+    fi
+
+    if bash "$SCRIPT_DIR/decision-point.sh" "$RESULT_TEXT" "${DECISION_PATTERNS[@]}"; then
         echo "[loop] decision point detected; simulating user reply" >&2
-        USER_REPLY=$(simulate_user "$RESULT_TEXT")
+        if [[ -n "$DECISION_REPLY" ]]; then
+            USER_REPLY="$DECISION_REPLY"
+            echo "[loop] deterministic decision reply applied" >&2
+        else
+            USER_REPLY=$(simulate_user "$RESULT_TEXT")
+        fi
         if [[ -z "$USER_REPLY" ]]; then
             USER_REPLY="Yes, please proceed with the recommended option."
         fi
         echo "[loop] simulated reply (${#USER_REPLY} chars)" >&2
         continue
-    fi
-
-    # Not a decision point: check if workflow looks complete.
-    if echo "$RESULT_TEXT" | grep -qiE 'archive(d)? complete|workflow complete|change archived|all (5|five) phases|finished|done'; then
-        echo "[loop] workflow appears complete; ending" >&2
-        break
     fi
 
     # If the result has no question and isn't complete, the subject likely finished

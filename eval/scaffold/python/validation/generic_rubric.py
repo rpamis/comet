@@ -75,11 +75,10 @@ def _score_instruction_following(outputs: dict[str, Any]) -> tuple[float, str]:
 
 def _score_interaction_compliance(outputs: dict[str, Any]) -> tuple[float, str]:
     interaction = outputs.get("interaction") or {}
-    events = outputs.get("events") or {}
     if interaction.get("mode") != "auto_user":
         return 1.0, "single-turn or no simulator"
     max_turns = int(interaction.get("max_turns") or 12)
-    turns = int(events.get("num_turns") or 0)
+    turns = int(interaction.get("actual_turns") or 0)
     if turns <= max_turns:
         return 1.0, f"turns={turns}, max={max_turns}"
     return 0.0, f"turns={turns}, max={max_turns}"

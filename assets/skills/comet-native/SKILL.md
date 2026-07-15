@@ -9,9 +9,11 @@ Understand first, then act. Native preserves requirements, complete target speci
 
 ## Start or resume
 
+`/comet-native` is a Skill entry, not a shell command. Invoke it through the host's Skill mechanism; never execute `/comet-native` in Bash.
+
 Run Native `status` and `show` first. Then read `comet.config.yaml`, `change.yaml`, the brief, proposed complete specifications, canonical specifications, repository implementation, project rules, and relevant tests. Do not ask the user for facts available from the environment.
 
-If no change exists, summarize the user's goal as a lowercase kebab-case name and create it with `comet native new <change-name> --language en`. Use only the configured `<artifact-root>/comet/`; do not scan or modify directories owned by other workflows.
+If `status` or `show` reports an active change, continue that change. After the user answers a clarification or adds a constraint, re-read it and update the existing brief and specifications. Do not create a second change for the user's answer. Only when disk evidence shows that no active change exists, summarize the user's goal as a lowercase kebab-case name and create it with `comet native new <change-name> --language en`. Use only the configured `<artifact-root>/comet/`; do not scan or modify directories owned by other workflows.
 
 See the [command reference](reference/commands.md) for commands and runtime discovery, the [artifact reference](reference/artifacts.md) for formats, and the [recovery reference](reference/recovery.md) for interruption handling. The bundled runtime is at [scripts/comet-native-runtime.mjs](scripts/comet-native-runtime.mjs).
 
@@ -35,6 +37,7 @@ Establish the Outcome, Scope, Non-goals, Acceptance examples, Constraints and in
 Once understanding is aligned:
 
 - update `brief.md` until it constrains implementation and acceptance;
+- Preserve any lowercase kebab-case capability ID explicitly supplied by the user exactly and use it for `specs/<capability>/spec.md`. If the user supplies only a natural-language display name, preserve that display name in the specification body and derive a stable lowercase kebab-case capability ID; never silently replace an explicitly supplied valid ID;
 - when durable behavior changes, write each complete target specification at `specs/<capability>/spec.md`, not as an incremental patch;
 - remove a durable capability with `comet native spec remove <change-name> <capability>`; the runtime infers create/replace operations and freezes canonical base hashes;
 - record explicit confirmation only when the user has just confirmed a high-impact decision; while it remains unresolved, keep `[blocking]` and stop.

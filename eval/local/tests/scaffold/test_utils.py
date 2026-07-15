@@ -55,6 +55,23 @@ def test_to_bash_path_uses_msys_drive_prefix_for_git_bash(monkeypatch):
     assert utils._to_bash_path(r"D:\Project\Comet\eval") == "/d/Project/Comet/eval"
 
 
+def test_resolve_bash_prefers_git_bash_when_path_bash_is_wsl(monkeypatch):
+    monkeypatch.setattr(utils.os, "name", "nt")
+    monkeypatch.delenv("GIT_BASH", raising=False)
+    monkeypatch.setattr(
+        utils.shutil,
+        "which",
+        lambda name: {"bash": r"C:\Windows\System32\bash.exe", "git": r"D:\Git\cmd\git.exe"}.get(name),
+    )
+    monkeypatch.setattr(
+        utils.os.path,
+        "isfile",
+        lambda path: str(path).replace("/", "\\").lower() == r"d:\git\bin\bash.exe",
+    )
+
+    assert utils._resolve_bash() == r"D:\Git\bin\bash.exe"
+
+
 def test_to_bash_path_uses_wsl_mount_prefix_for_windowsapps_bash(monkeypatch):
     monkeypatch.setattr(utils.os, "name", "nt")
     monkeypatch.setattr(
@@ -134,6 +151,81 @@ def test_claude_loop_applies_plugin_args_to_subject_turns_only():
     loop_sh = (utils.SHELL_DIR / "run-claude-loop.sh").read_text(encoding="utf-8")
 
     assert "PLUGIN_ARGS=()" in loop_sh
+    assert "shopt -s nocasematch" in loop_sh
+    assert "DECISION_REPLY=" in loop_sh
+    assert 'USER_REPLY="$DECISION_REPLY"' in loop_sh
+    assert 'bash "$SCRIPT_DIR/decision-point.sh" "$RESULT_TEXT"' in loop_sh
+    assert 'bash "$SCRIPT_DIR/completion-point.sh" "$RESULT_TEXT"' in loop_sh
+    assert loop_sh.index("workflow completion detected") < loop_sh.index(
+        'bash "$SCRIPT_DIR/decision-point.sh" "$RESULT_TEXT"'
+    )
     assert 'claude -p "$PROMPT" "${PLUGIN_ARGS[@]}"' in loop_sh
     assert 'claude -p "$USER_REPLY" "${PLUGIN_ARGS[@]}"' in loop_sh
     assert 'claude -p "$sim_prompt" "${PLUGIN_ARGS[@]}"' not in loop_sh
+
+
+def test_decision_point_detector_rejects_completion_statements():
+    statement = "Implementation is complete and the artifacts provide the requested evidence."
+    punctuation_summary = "Done. The counter recognizes ., !, and ? terminators."
+    question = "Please confirm whether abbreviations should end a sentence."
+
+    statement_result = utils.run_shell("decision-point.sh", statement, check=False)
+    punctuation_result = utils.run_shell("decision-point.sh", punctuation_summary, check=False)
+    question_result = utils.run_shell("decision-point.sh", question, check=False)
+
+    assert statement_result.returncode == 1
+    assert punctuation_result.returncode == 1
+    assert question_result.returncode == 0
+
+
+def test_decision_point_patterns_require_an_unresolved_decision_signal():
+    ordinary = utils.run_shell(
+        "decision-point.sh",
+        "The brief records abbreviation behavior.",
+        "abbreviation",
+        check=False,
+    )
+    unresolved = utils.run_shell(
+        "decision-point.sh",
+        "Abbreviation behavior is unresolved; I need your decision before continuing.",
+        "abbreviation",
+        check=False,
+    )
+
+    assert ordinary.returncode == 1
+    assert unresolved.returncode == 0
+
+
+def test_decision_point_detector_accepts_question_followed_by_recommendation_and_impact():
+    result = utils.run_shell(
+        "decision-point.sh",
+        """How should abbreviations affect sentence boundaries?
+
+Recommendation: Ignore a small explicit list.
+Impact: Counts remain intuitive, but the list needs maintenance.""",
+        check=False,
+    )
+
+    assert result.returncode == 0
+
+
+def test_completion_point_detector_requires_explicit_non_negated_workflow_completion():
+    archived = utils.run_shell(
+        "completion-point.sh",
+        "Change archived at docs/comet/archive/2026-07-15-add-counting/.",
+        check=False,
+    )
+    archive_complete = utils.run_shell(
+        "completion-point.sh", "The archive is complete and verified from disk.", check=False
+    )
+    phase_done = utils.run_shell(
+        "completion-point.sh", "Shape is done; Build remains pending.", check=False
+    )
+    negated = utils.run_shell(
+        "completion-point.sh", "The workflow is not complete yet.", check=False
+    )
+
+    assert archived.returncode == 0
+    assert archive_complete.returncode == 0
+    assert phase_done.returncode == 1
+    assert negated.returncode == 1

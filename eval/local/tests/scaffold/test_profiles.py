@@ -576,6 +576,23 @@ def test_generic_rubric_with_required_skills_scores_numeric(tmp_path: Path):
     assert any("[RUBRIC] artifact_presence: N/A -" in msg for msg in passed)
 
 
+def test_generic_interaction_compliance_uses_driver_turns(tmp_path: Path):
+    outputs = {
+        "completion": {"passed": ["ok"], "failed": []},
+        "events": {"num_turns": 28, "tool_calls": [], "duration_seconds": 5, "commands_run": []},
+        "required_skills": [],
+        "expected_artifacts": [],
+        "interaction": {"mode": "auto_user", "max_turns": 4, "actual_turns": 4},
+    }
+
+    passed, _ = run_profile_rubric("generic", tmp_path, outputs)
+
+    assert any(
+        "[RUBRIC] interaction_compliance: 1.00 - turns=4, max=4" in message
+        for message in passed
+    )
+
+
 def test_comet_control_marks_workflow_dimensions_not_applicable(tmp_path: Path):
     """CONTROL should score business completion without requiring Comet Skill use."""
     outputs = {

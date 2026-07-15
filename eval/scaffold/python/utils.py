@@ -12,6 +12,11 @@ load_dotenv(get_suite_root() / ".env", override=True)
 SHELL_DIR = Path(__file__).parent.parent / "shell"
 SCAFFOLD_PYTHON_DIR = Path(__file__).parent
 
+def _uses_wsl_bash(bash_exec: str) -> bool:
+    normalized = bash_exec.replace("\\", "/").lower()
+    return normalized.endswith("/windowsapps/bash.exe") or normalized.endswith("/system32/bash.exe")
+
+
 def _resolve_bash() -> str:
     """Resolve a reliable bash executable for running MSYS shell scripts.
 
@@ -32,8 +37,15 @@ def _resolve_bash() -> str:
         return env_bash
 
     resolved = shutil.which("bash")
-    if resolved and os.path.isfile(resolved):
+    if resolved and os.path.isfile(resolved) and not _uses_wsl_bash(resolved):
         return resolved
+
+    git_exec = shutil.which("git")
+    if git_exec:
+        git_root = Path(git_exec).parent.parent
+        for candidate in (git_root / "bin" / "bash.exe", git_root / "usr" / "bin" / "bash.exe"):
+            if os.path.isfile(candidate):
+                return str(candidate)
 
     return "bash"
 
@@ -88,11 +100,6 @@ def _to_bash_path(value) -> str:
             prefix = f"/mnt/{drive}" if _uses_wsl_bash(BASH_EXEC) else f"/{drive}"
             s = prefix + s[2:]
     return s
-
-
-def _uses_wsl_bash(bash_exec: str) -> bool:
-    normalized = bash_exec.replace("\\", "/").lower()
-    return normalized.endswith("/windowsapps/bash.exe") or normalized.endswith("/system32/bash.exe")
 
 
 def _bash_env() -> dict[str, str]:
