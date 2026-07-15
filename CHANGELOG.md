@@ -18,6 +18,16 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Windows interactive evals**: Interactive Docker evals now prefer Git Bash over WSL, preserve container prompt-file paths through MSYS argument conversion, count real driver turns for interaction limits, support deterministic task-supplied decision replies, and distinguish user decisions from completion before ending a workflow.
 
+## What's Changed [0.4.0-beta.5] - 2026-07-14
+
+### Changed
+
+- **Dashboard artifact preview**: Artifact drawers now render full Markdown (tables, quotes, task lists) with syntax highlighting and Mermaid diagrams instead of the previous subset renderer. Side-panel preview stays distraction-free without a TOC; fullscreen mode adds an expand/collapse control and shows the table of contents when headings exist, with unique heading anchors for duplicate titles and properly rendered inline formatting in headings. Long artifact paths wrap in the drawer header and can be copied with a one-click control. `.comet.yaml` / YAML and handoff / checkpoint JSON artifacts render as structured tables (scalars as key-value rows; uniform object arrays such as `files` as dedicated data tables) instead of raw text.
+
+### Security
+
+- **Dashboard preview XSS hardening**: Markdown / YAML / JSON artifact HTML is sanitized with DOMPurify before DOM injection, dangerous URL schemes are blocked, Mermaid runs with `securityLevel: 'strict'`, and structured preview key/attribute escaping covers quotes so untrusted artifact content cannot execute scripts via raw HTML, event handlers, attribute breakout, or loose diagram rendering.
+
 ## What's Changed [0.4.0-beta.4] - 2026-07-11
 
 ### Added

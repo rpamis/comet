@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import {
+  extractToc,
+  renderJsonPreview,
+  renderMarkdown,
+  renderYamlTable,
+  runMermaid,
+} from './markdown-preview.js';
 import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
@@ -973,8 +980,18 @@ function KeyValue({ k, v }) {
 }
 
 function ArtifactDrawer({ artifact, onClose }) {
+  const [loadState, setLoadState] = useState({ status: 'idle' });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [toc, setToc] = useState([]);
+  const [activeTocId, setActiveTocId] = useState('');
+  const articleRef = useRef(null);
+  const contentScrollRef = useRef(null);
+
   useEffect(() => {
-    if (!artifact) return;
+    if (!artifact) {
+      setIsFullscreen(false);
+      return;
+    }
     const scrollY = window.scrollY;
     const previousBodyStyle = {
       position: document.body.style.position,
@@ -989,6 +1006,7 @@ function ArtifactDrawer({ artifact, onClose }) {
     document.body.style.right = '0';
     document.body.style.width = '100%';
     return () => {
+      setIsFullscreen(false);
       document.body.style.position = previousBodyStyle.position;
       document.body.style.top = previousBodyStyle.top;
       document.body.style.left = previousBodyStyle.left;
@@ -998,23 +1016,163 @@ function ArtifactDrawer({ artifact, onClose }) {
     };
   }, [artifact]);
 
+  useEffect(() => {
+    if (!artifact) {
+      setLoadState({ status: 'idle' });
+      return;
+    }
+
+    let cancelled = false;
+    setLoadState({ status: 'loading' });
+
+    const preview = artifact.preview;
+    const previewPath = preview?.path ?? '';
+    const isYamlPreview = artifact.key === 'cometYaml' || /\.ya?ml$/i.test(previewPath);
+    const isJsonPreview =
+      artifact.key === 'handoff' || artifact.key === 'checkpoint' || /\.json$/i.test(previewPath);
+    const useStructuredPreview = isYamlPreview || isJsonPreview;
+
+    const content = preview?.exists
+      ? useStructuredPreview
+        ? preview.content?.trimEnd() || ''
+        : `${preview.content?.trimEnd() || '这个产物是空文件。'}${preview.truncated ? '\n\n> 内容过长，已截取前 256KB。' : ''}`
+      : preview
+        ? `尚未生成 ${artifact.name}。`
+        : '这个产物文件存在，但当前 dashboard 服务返回的数据里没有全文内容。请重启 dashboard 服务后再刷新页面。';
+
+    (async () => {
+      try {
+        let html;
+        if (preview?.exists && useStructuredPreview) {
+          if (!content.trim()) {
+            html = isJsonPreview ? await renderJsonPreview('') : await renderYamlTable('');
+          } else {
+            html = isJsonPreview
+              ? await renderJsonPreview(content)
+              : await renderYamlTable(content);
+            if (preview.truncated) {
+              html += '<p><em>内容过长，已截取前 256KB。</em></p>';
+            }
+          }
+        } else {
+          html = await renderMarkdown(content);
+        }
+        if (cancelled) return;
+        if (!html.trim()) {
+          setLoadState({ status: 'empty' });
+          return;
+        }
+        setLoadState({ status: 'success', html });
+      } catch (err) {
+        if (cancelled) return;
+        setLoadState({
+          status: 'error',
+          message: err instanceof Error ? err.message : '产物预览渲染失败，请重试',
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [artifact]);
+
+  useEffect(() => {
+    if (loadState.status === 'success' && articleRef.current) {
+      runMermaid(articleRef.current);
+      const items = extractToc(articleRef.current);
+      setToc(items);
+      if (items.length > 0) setActiveTocId(items[0].id);
+    } else {
+      setToc([]);
+      setActiveTocId('');
+    }
+  }, [loadState]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const scrollEl = contentScrollRef.current;
+    const article = articleRef.current;
+    if (!scrollEl || !article || toc.length === 0) return;
+
+    const onScroll = () => {
+      const headings = toc.map(({ id }) => document.getElementById(id)).filter(Boolean);
+
+      let current = headings[0]?.id ?? '';
+      for (const el of headings) {
+        const rect = el.getBoundingClientRect();
+        const containerRect = scrollEl.getBoundingClientRect();
+        if (rect.top - containerRect.top <= 80) {
+          current = el.id;
+        }
+      }
+      setActiveTocId(current);
+    };
+
+    scrollEl.addEventListener('scroll', onScroll, { passive: true });
+    return () => scrollEl.removeEventListener('scroll', onScroll);
+  }, [toc, isFullscreen]);
+
   if (!artifact) return null;
   const preview = artifact.preview;
-  const content = preview?.exists
-    ? `${preview.content?.trimEnd() || '这个产物是空文件。'}${preview.truncated ? '\n\n> 内容过长，已截取前 256KB。' : ''}`
-    : preview
-      ? `尚未生成 ${artifact.name}。`
-      : '这个产物文件存在，但当前 dashboard 服务返回的数据里没有全文内容。请重启 dashboard 服务后再刷新页面。';
   return (
-    <div className="fixed inset-0 z-[90] grid grid-cols-[minmax(0,1fr)_minmax(360px,760px)] max-sm:grid-cols-1">
-      <button aria-label="关闭产物预览" className="bg-black/30 max-sm:hidden" onClick={onClose} />
-      <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-bg shadow-[-20px_0_44px_rgba(0,0,0,0.12)]">
+    <div
+      className={
+        isFullscreen
+          ? 'fixed inset-0 z-[90] flex'
+          : 'fixed inset-0 z-[90] grid grid-cols-[minmax(0,1fr)_minmax(360px,760px)] max-sm:grid-cols-1'
+      }
+    >
+      {!isFullscreen && (
+        <button aria-label="关闭产物预览" className="bg-black/30 max-sm:hidden" onClick={onClose} />
+      )}
+      <section
+        className={[
+          'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg',
+          isFullscreen
+            ? 'h-full w-full'
+            : 'border-l border-border shadow-[-20px_0_44px_rgba(0,0,0,0.12)]',
+        ].join(' ')}
+      >
         <header className="flex items-start gap-3 border-b border-border-soft p-5">
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-bold">{artifact.name}</h2>
-            <p className="mt-1 truncate font-mono text-xs text-meta">
-              {preview?.path ?? '当前服务未返回全文内容'}
-            </p>
+            <div className="mt-1 flex items-start gap-1.5">
+              {preview?.path && (
+                <button
+                  type="button"
+                  className="grid size-7 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface hover:text-fg-2"
+                  aria-label="复制文件路径"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(preview.path);
+                      toast('路径已复制');
+                    } catch {
+                      toast('复制失败');
+                    }
+                  }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="size-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
+                  </svg>
+                </button>
+              )}
+              <p className="min-w-0 flex-1 break-all font-mono text-xs text-meta">
+                {preview?.path ?? '当前服务未返回全文内容'}
+              </p>
+            </div>
             {(preview?.size != null || preview?.updatedAt) && (
               <div className="mt-1.5 flex flex-wrap gap-3 text-[11px] text-muted">
                 {preview?.size != null && <span>{formatFileSize(preview.size)}</span>}
@@ -1022,18 +1180,131 @@ function ArtifactDrawer({ artifact, onClose }) {
               </div>
             )}
           </div>
-          <button
-            className="grid size-10 place-items-center rounded-xl text-fg-2 hover:bg-surface"
-            onClick={onClose}
-            aria-label="关闭产物预览"
-          >
-            ×
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className="grid size-10 place-items-center rounded-xl text-fg-2 hover:bg-surface"
+              onClick={() => setIsFullscreen((value) => !value)}
+              aria-label={isFullscreen ? '退出全屏' : '全屏展示'}
+            >
+              {isFullscreen ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="size-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="size-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+                  />
+                </svg>
+              )}
+            </button>
+            <button
+              className="grid size-10 place-items-center rounded-xl text-fg-2 hover:bg-surface"
+              onClick={onClose}
+              aria-label="关闭产物预览"
+            >
+              ×
+            </button>
+          </div>
         </header>
-        <div
-          className="artifact-markdown min-h-0 flex-1 overflow-y-auto overscroll-contain p-5"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
-        />
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          {isFullscreen && toc.length > 0 && (
+            <nav
+              aria-label="文档目录"
+              className="hidden w-[220px] shrink-0 overflow-y-auto border-r border-border-soft bg-surface px-3 py-4 sm:block"
+            >
+              <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                目录
+              </p>
+              <ul className="space-y-0.5">
+                {toc.map((item) => (
+                  <li key={item.id}>
+                    <a
+                      href={`#${item.id}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        const target = document.getElementById(item.id);
+                        const scrollEl = contentScrollRef.current;
+                        if (!target || !scrollEl) return;
+                        const top =
+                          target.getBoundingClientRect().top -
+                          scrollEl.getBoundingClientRect().top +
+                          scrollEl.scrollTop -
+                          16;
+                        scrollEl.scrollTo({ top, behavior: 'smooth' });
+                        setActiveTocId(item.id);
+                      }}
+                      className={[
+                        'block rounded-md px-2 py-1.5 leading-snug transition-colors',
+                        item.depth === 1 ? 'text-[13px] font-medium' : '',
+                        item.depth === 2 ? 'pl-4 text-xs' : '',
+                        item.depth === 3 ? 'pl-7 text-xs' : '',
+                        activeTocId === item.id
+                          ? 'bg-accent-soft font-medium text-accent'
+                          : 'text-fg-2 hover:bg-surface-warm hover:text-fg',
+                      ].join(' ')}
+                    >
+                      {item.text}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+          <div
+            ref={contentScrollRef}
+            className={[
+              'min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain',
+              isFullscreen ? 'px-12 py-6' : 'p-5',
+            ].join(' ')}
+          >
+            {loadState.status === 'loading' && (
+              <p className="py-10 text-center text-sm text-muted" aria-live="polite">
+                正在加载...
+              </p>
+            )}
+            {loadState.status === 'empty' && (
+              <p className="py-10 text-center text-sm text-muted" aria-live="polite">
+                该产物文件尚未生成
+              </p>
+            )}
+            {loadState.status === 'error' && (
+              <p role="alert" className="py-10 text-center text-sm text-danger">
+                {loadState.message}
+              </p>
+            )}
+            {loadState.status === 'success' && (
+              <article
+                ref={articleRef}
+                className="md-github"
+                dangerouslySetInnerHTML={{ __html: loadState.html }}
+              />
+            )}
+          </div>
+        </div>
       </section>
     </div>
   );
@@ -1176,75 +1447,6 @@ function toast(message) {
   el.classList.add('show');
   window.clearTimeout(toast.timer);
   toast.timer = window.setTimeout(() => el.classList.remove('show'), 2200);
-}
-
-function renderMarkdown(markdown) {
-  const lines = String(markdown ?? '')
-    .replace(/\r\n?/g, '\n')
-    .split('\n');
-  const html = [];
-  let inCode = false;
-  let code = [];
-  let list = [];
-
-  const flushList = () => {
-    if (list.length) {
-      html.push(`<ul>${list.map((item) => `<li>${inline(item)}</li>`).join('')}</ul>`);
-      list = [];
-    }
-  };
-  const flushCode = () => {
-    html.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
-    code = [];
-  };
-
-  for (const line of lines) {
-    if (/^```/u.test(line)) {
-      if (inCode) flushCode();
-      else flushList();
-      inCode = !inCode;
-      continue;
-    }
-    if (inCode) {
-      code.push(line);
-      continue;
-    }
-    if (!line.trim()) {
-      flushList();
-      continue;
-    }
-    const heading = line.match(/^(#{1,4})\s+(.+)$/u);
-    if (heading) {
-      flushList();
-      html.push(`<h${heading[1].length}>${inline(heading[2])}</h${heading[1].length}>`);
-      continue;
-    }
-    const bullet = line.match(/^\s*[-*+]\s+(.*)$/u);
-    if (bullet) {
-      list.push(bullet[1]);
-      continue;
-    }
-    flushList();
-    html.push(`<p>${inline(line)}</p>`);
-  }
-  if (inCode) flushCode();
-  flushList();
-  return html.join('\n') || '<p>这个产物是空文件。</p>';
-}
-
-function inline(value) {
-  return escapeHtml(value)
-    .replace(/`([^`]+)`/gu, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/gu, '<strong>$1</strong>');
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 createRoot(document.getElementById('root')).render(<App />);
