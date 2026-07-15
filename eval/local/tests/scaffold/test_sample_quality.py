@@ -93,6 +93,32 @@ def test_completed_run_with_container_wording_in_logs_stays_in_analysis():
     assert quality.include_in_analysis is True
 
 
+def test_completed_run_with_container_wording_only_in_result_is_valid_signal():
+    quality = infer_sample_quality(
+        events={
+            "duration_seconds": 42,
+            "total_tokens": 1000,
+            "total_cost_usd": 0.12,
+        },
+        checks_failed=[],
+        stdout=(
+            json.dumps(
+                {
+                    "type": "result",
+                    "duration_ms": 42000,
+                    "result": "The Docker container workflow completed successfully.",
+                }
+            )
+            + "\n"
+        ),
+        stderr="[loop] workflow completion detected; ending\n",
+        returncode=0,
+    )
+
+    assert quality.status == "included"
+    assert quality.reason_code == "valid_signal"
+
+
 def test_validator_failure_with_observable_run_is_included():
     quality = infer_sample_quality(
         events={

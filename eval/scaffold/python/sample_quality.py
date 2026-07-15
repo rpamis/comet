@@ -275,7 +275,11 @@ def infer_sample_quality(
     if hard:
         return hard
 
-    soft = _soft_noise(text, failure_attribution, events, has_result)
+    # A completed task may legitimately discuss Docker, networking, auth, or
+    # timeout behavior in its result. Only runner stderr and failed checks are
+    # evidence that those terms describe the evaluation environment itself.
+    soft_text = _text_parts(stderr, checks_failed)
+    soft = _soft_noise(soft_text, failure_attribution, events, has_result)
     if soft:
         return soft
 

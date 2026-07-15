@@ -16,7 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
-- **Windows interactive evals**: Interactive Docker evals now prefer Git Bash over WSL, preserve container prompt-file paths through MSYS argument conversion, count real driver turns for interaction limits, support deterministic task-supplied decision replies, and distinguish user decisions from completion before ending a workflow.
+- **Windows interactive evals**: Interactive Docker evals now prefer Git Bash over WSL, preserve container prompt-file paths through MSYS argument conversion, count real driver turns for interaction limits, support deterministic task-supplied decision replies, distinguish user decisions from completion before ending a workflow, and avoid false environment-failure flags from successful result text.
 
 ## What's Changed [0.4.0-beta.5] - 2026-07-14
 
