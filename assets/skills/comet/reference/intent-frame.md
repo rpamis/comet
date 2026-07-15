@@ -1,13 +1,13 @@
 # CometIntentFrame Field Reference
 
-Read this file only when field meanings are needed. Normal `/comet` routing only needs the minimal skeleton in the main Skill; the runtime fills omitted defaults and outputs the final `route`.
+Read this file only when field meanings are needed. Normal `/comet-classic` routing only needs the minimal skeleton in the main Skill; the runtime fills omitted defaults and outputs the final `route`.
 
 ## Top-Level Fields
 
 | Field | Meaning |
 |-------|---------|
 | `schema_version` | Frame version. Currently fixed to `comet.intent.v1`. |
-| `utterance` | The user request that triggered `/comet`. |
+| `utterance` | The user request that triggered `/comet-classic`. |
 | `intent` | High-level user intent and confidence. If confidence is below the runtime threshold, routing falls back to `ask_user`. |
 | `slots` | Routing slots normalized from the user request. |
 | `context` | Repository context read from local state; this is not extracted from the user utterance. |

@@ -34,6 +34,15 @@ describe('repository layout registry', () => {
     expect(resolveRepositoryPath(layout.nativeRuntime.outputs.runtime)).toBe(
       path.resolve('assets', 'skills', 'comet-native', 'scripts', 'comet-native-runtime.mjs'),
     );
+    expect(layout.entryRuntime).toEqual({
+      entries: { runtime: 'domains/comet-entry/entry-runtime-entry.ts' },
+      outputs: {
+        runtime: 'assets/skills/comet/scripts/comet-entry-runtime.mjs',
+      },
+    });
+    expect(resolveRepositoryPath(layout.entryRuntime.outputs.runtime)).toBe(
+      path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-entry-runtime.mjs'),
+    );
   });
 
   it('tracks active source roots', () => {
@@ -44,6 +53,7 @@ describe('repository layout registry', () => {
     expect(layout.domainModules).toEqual([
       'bundle',
       'comet-classic',
+      'comet-entry',
       'comet-native',
       'dashboard',
       'engine',

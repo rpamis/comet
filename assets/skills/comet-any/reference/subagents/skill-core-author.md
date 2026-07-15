@@ -94,7 +94,7 @@ Return internal Node Skill drafts that show:
 - If the Node goal is not complete, continue working instead of exiting because a checklist is exhausted.
 - Automatic advancement must come from script outputs `NEXT:` and `SKILL:`, not agent guesses.
 - Nested Skill calls use only Skill names, not provider prefixes.
-- When users customize existing Comet Skills, preserve `open / design / build / verify / archive` and `.comet.yaml` semantics.
+- When users customize `/comet-classic`, preserve `open / design / build / verify / archive` and `.comet.yaml` semantics.
 - For arbitrary Skill composition, organize the result as a Comet-like multi-Node workflow.
 
 Forbidden:

@@ -64,12 +64,12 @@ prompt:
 - 中文 Skill 混入英文流程句。
 - 嵌套 Skill 调用使用 provider 前缀。
 - 用户可见 `SKILL.md` 泄漏生成审计章节、source hash 或内部 metadata。
-- `/comet` 定制替换或删除了 `open / design / build / verify / archive`、`.comet.yaml`、decision point、verify-result-transition 或 archive-delta-sync。
+- `/comet-classic` 定制替换或删除了 `open / design / build / verify / archive`、`.comet.yaml`、decision point、verify-result-transition 或 archive-delta-sync。
 - 任意 Skill 组合缺少自动推进、脚本守卫、用户停顿点、恢复或当前 draft hash 的 eval evidence。
 
 ## 严重级别
 
-- Critical：会让生成 Skill 不可用、不可恢复、不可审计，或破坏 `/comet` 受保护语义。
+- Critical：会让生成 Skill 不可用、不可恢复、不可审计，或破坏 `/comet-classic` 受保护语义。
 - Important：会让阶段流程、脚本守卫、停顿点、Skill 调用或证据链不可信；必须修复后才能 ready。
 - Minor：不阻塞 ready 的清晰度、命名或维护性改进。
 

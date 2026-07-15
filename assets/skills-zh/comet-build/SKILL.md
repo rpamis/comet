@@ -80,7 +80,7 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 | 选项 | 行为 | 说明 |
 |------|------|------|
 | A | 继续执行 | 保持在当前模型中，进入 Step 3 选择工作区隔离、执行方式、TDD 模式和代码审查模式 |
-| B | 暂停切换模型 | 记录 `build_pause: plan-ready`，本次 `/comet-build` 停止，用户稍后可从 `/comet` 或 `/comet-build` 恢复 |
+| B | 暂停切换模型 | 记录 `build_pause: plan-ready`，本次 `/comet-build` 停止，用户稍后可从 `/comet-classic` 或 `/comet-build` 恢复 |
 
 这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择**，不得自动继续，也不得把暂停写入 `build_mode`。
 

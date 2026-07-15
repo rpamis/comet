@@ -23,6 +23,11 @@ describe('Comet project instructions', () => {
       expect(content).toContain('<comet-ambient-resume>');
       expect(content).toContain('</comet-ambient-resume>');
       expect(content).toContain('开始处理需要改动或调查的任务前');
+      expect(content).toContain('comet resume-probe . --stdin --json');
+      expect(content).toContain('comet.resume_probe.v2');
+      expect(content).toContain('只信任返回的 `workflow`、`skill`');
+      expect(content).toContain('不得扫描或切换另一套 workflow');
+      expect(content).not.toContain('`.comet.yaml`');
     }
   });
 
@@ -37,7 +42,20 @@ describe('Comet project instructions', () => {
     expect(content.startsWith('# User Rules\n\n必须中文回答。')).toBe(true);
     expect(content.match(/<comet-ambient-resume>/gu)).toHaveLength(1);
     expect(content).toContain('开始处理需要改动或调查的任务前');
-    expect(content).not.toContain('before starting work that may need code changes or investigation');
+    expect(content).not.toContain(
+      'before starting work that may need code changes or investigation',
+    );
+  });
+
+  it('renders the same workflow isolation contract in English', async () => {
+    await installCometProjectInstructions(tmpDir, 'en');
+
+    const content = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    expect(content).toContain('comet resume-probe . --stdin --json');
+    expect(content).toContain('Trust only the returned `workflow`, `skill`');
+    expect(content).toContain('Do not scan or switch to the other workflow');
+    expect(content).toContain('permanent entry in `nextCommand`');
+    expect(content).not.toContain('`.comet.yaml`');
   });
 
   it('removes only the managed block', async () => {

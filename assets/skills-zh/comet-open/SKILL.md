@@ -69,7 +69,7 @@ comet state select <change-name>
 
 批量拆分模式下，进入每个拆分项的 `/comet-open` 时必须明确标注「已确认拆分项」并携带该拆分项的目标、范围、非目标和验收场景。已确认拆分项默认跳过 PRD 拆分预检，除非该拆分项本身仍明显包含多个独立 capability。
 
-批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`。拆分完毕后必须暂停询问用户开始哪一个 change；用户选择后，只推进该 change 进入 `/comet-design`，其他 change 保持 active，稍后通过 `/comet` 恢复。
+批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`。拆分完毕后必须暂停询问用户开始哪一个 change；用户选择后，只推进该 change 进入 `/comet-design`，其他 change 保持 active，稍后通过 `/comet-classic` 恢复。
 
 最小断点恢复规则：不新增专用批量状态文件。若批量拆分过程中断，恢复时先检查已创建的 active changes；已存在且包含 `.comet.yaml` 的拆分项不得重复创建，未创建的拆分项按用户已确认的拆分清单继续通过 `/comet-open` 创建。若对话中已确认的拆分清单不可恢复，必须重新向用户确认拆分清单后再继续。
 
@@ -102,7 +102,7 @@ OpenSpec change 名称必须是 **kebab-case 英文**（小写字母、数字、
 
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
 
-完整 `/comet` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能；只有用户明确要求一次性生成提案和 artifacts 时才允许加载。
+完整 `/comet-classic` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能；只有用户明确要求一次性生成提案和 artifacts 时才允许加载。
 
 技能加载后，按其指引创建 change 骨架，但当 Step 1b 的已确认澄清摘要已存在于对话上下文时，覆盖其"STOP and wait for user direction"行为。
 

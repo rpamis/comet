@@ -121,6 +121,22 @@ export async function nativeProjectPaths(
   };
 }
 
+export async function ensureNativeDirectories(paths: NativeProjectPaths): Promise<void> {
+  const directories = [
+    paths.specsDir,
+    paths.changesDir,
+    paths.archiveDir,
+    paths.locksDir,
+    paths.transactionsDir,
+  ];
+  await Promise.all(
+    directories.map(async (directory) => {
+      await resolveContainedNativePath(paths.nativeRoot, directory);
+      await fs.mkdir(directory, { recursive: true });
+    }),
+  );
+}
+
 export function isInsidePath(parent: string, target: string): boolean {
   return inside(path.resolve(parent), path.resolve(target));
 }

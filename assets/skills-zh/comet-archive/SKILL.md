@@ -116,7 +116,7 @@ git commit -m "chore: archive <change-name>"
 
 ## 完成
 
-Comet 流程全部完成。如需开始新工作，调用 `/comet` 或 `/comet-open`。
+Comet Classic 流程全部完成。如需开始新的 Classic 工作，调用 `/comet-classic` 或 `/comet-open`。
 
 ## 上下文压缩恢复
 

@@ -8,7 +8,7 @@ The new `plan.json` uses `workflow` as the primary input:
 
 ```json
 {
-  "goal": "Customize existing Comet Skills with component and whitebox review requirements.",
+  "goal": "Customize /comet-classic five-phase Skills with component and whitebox review requirements.",
   "skillCreatorIntent": "customize-comet",
   "workflow": {
     "kind": "comet-five-phase-overlay",

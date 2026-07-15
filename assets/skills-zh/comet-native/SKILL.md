@@ -11,7 +11,7 @@ description: 使用 Comet 自有 Native change、状态检查与自动推进，�
 
 先运行 Native `status` 和 `show`，再读取 `comet.config.yaml`、`change.yaml`、brief、拟议完整规格、canonical 规格、仓库实现、项目规则和相关测试。能从环境得到的事实不要询问用户。
 
-若没有 change，先把用户目标归纳成 lowercase kebab-case 名称，再创建 Native change。只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
+若没有 change，先把用户目标归纳成 lowercase kebab-case 名称，再用 `comet native new <change-name> --language zh-CN` 创建 Native change。只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
 
 命令与 runtime 定位见 [命令参考](reference/commands.md)，产物格式见 [产物参考](reference/artifacts.md)，中断与恢复见 [恢复参考](reference/recovery.md)。自带 runtime 位于 [scripts/comet-native-runtime.mjs](scripts/comet-native-runtime.mjs)。
 

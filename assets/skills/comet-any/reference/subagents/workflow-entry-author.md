@@ -35,7 +35,7 @@ Read the common input from the main session, especially:
 - Node order, Required Skill Calls, and recovery paths from
   `reference/workflow-protocol.json`.
 - The script author's `status`, `init`, `next`, `NEXT:`, `SKILL:`, and guard contracts.
-- The open / design / build / verify / archive boundary that must be preserved when users customize existing Comet Skills.
+- The open / design / build / verify / archive boundary that must be preserved when users customize `/comet-classic`.
 
 Use file handoff: the main session provides paths instead of pasting large bodies of text. Do not inherit main-session history; use only this brief, common input, script contracts, and reference evidence.
 
@@ -64,10 +64,10 @@ The entry draft must show:
 - If not started, initialize state before querying `next`.
 - Only after scripts output `NEXT: auto` and `SKILL: <node-skill>` should the agent load that single Node Skill.
 - The Node route table is reference only; it must not use "immediately execute" or "must load" execution directives.
-- When users customize existing Comet Skills, the entry must list Required Skill Calls as Node-local obligations,
+- When users customize `/comet-classic`, the entry must list Required Skill Calls as Node-local obligations,
   not as an immediate execution checklist.
 - User pause points, recovery paths, and reference files are visible.
-- When users customize existing Comet Skills, preserve the open / design / build / verify / archive main path and Guardrails.
+- When users customize `/comet-classic`, preserve the open / design / build / verify / archive main path and Guardrails.
 
 Forbidden:
 

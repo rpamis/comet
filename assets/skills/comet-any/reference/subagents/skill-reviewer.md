@@ -65,12 +65,12 @@ Any of these must produce blocking findings:
 - English Skills mix in Chinese process sentences.
 - Nested Skill calls use provider prefixes.
 - User-visible `SKILL.md` leaks generated audit sections, source hashes, or internal metadata.
-- Customizing existing Comet Skills replaces or removes `open / design / build / verify / archive`, `.comet.yaml`, decision point, verify-result-transition, or archive-delta-sync.
+- Customizing `/comet-classic` replaces or removes `open / design / build / verify / archive`, `.comet.yaml`, decision point, verify-result-transition, or archive-delta-sync.
 - Arbitrary Skill composition is missing automatic advancement, script guards, user pause points, recovery, or current draft hash eval evidence.
 
 ## Severity
 
-- Critical: makes the generated Skill unusable, unrecoverable, unauditable, or breaks protected `/comet` semantics.
+- Critical: makes the generated Skill unusable, unrecoverable, unauditable, or breaks protected `/comet-classic` semantics.
 - Important: makes the Node flow, script guards, pause points, Skill calls, or evidence chain untrustworthy; must be fixed before ready.
 - Minor: clarity, naming, or maintainability improvements that do not block ready.
 

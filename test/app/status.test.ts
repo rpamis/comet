@@ -5,6 +5,12 @@ import os from 'os';
 import path from 'path';
 import { statusCommand } from '../../app/commands/status.js';
 import { ensureClassicRuntimeRun } from '../../domains/comet-classic/classic-runtime-run.js';
+import { createNativeChange } from '../../domains/comet-native/native-change.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../domains/comet-native/native-config.js';
+import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
@@ -83,7 +89,29 @@ describe('status command', () => {
       log.mockRestore();
     }
 
-    const changes = JSON.parse(json).changes;
+    const payload = JSON.parse(json);
+    expect(payload).toMatchObject({
+      schema: 'comet.status.v2',
+      defaultEntry: {
+        workflow: 'classic',
+        skill: 'comet-classic',
+        source: 'legacy-fallback',
+      },
+      workflows: {
+        native: { changes: [] },
+        classic: {
+          changes: [
+            expect.objectContaining({ name: 'b-invalid-comet' }),
+            expect.objectContaining({ name: 'z-comet-ready' }),
+          ],
+        },
+      },
+      unmanagedOpenSpec: [
+        expect.objectContaining({ name: 'a-open-complete' }),
+        expect.objectContaining({ name: 'c-open-incomplete' }),
+      ],
+    });
+    const changes = payload.changes;
     expect(changes.map((change: { name: string }) => change.name)).toEqual([
       'a-open-complete',
       'b-invalid-comet',
@@ -443,5 +471,26 @@ describe('status command', () => {
       currentStep: 'full.open',
       runtimeMode: 'engine-projection',
     });
+  });
+
+  it('renders the default entry and workflow partitions in text output', async () => {
+    await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
+    const paths = await nativeProjectPaths(tmpDir, 'docs');
+    await createNativeChange({ paths, name: 'native-text', language: 'en' });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      await statusCommand(tmpDir);
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(output).toContain('Default Entry: native -> /comet-native [project-config]');
+    expect(output).toContain('Native Changes:');
+    expect(output).toContain('native-text [Native] [phase: shape]');
+    expect(output).toContain('Classic Changes:');
+    expect(output).toContain('Unmanaged OpenSpec Changes:');
   });
 });

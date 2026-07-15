@@ -8,7 +8,7 @@
 
 ```json
 {
-  "goal": "基于 Comet 现有 Skill 的五阶段定制，要求组件库和白盒审查。",
+  "goal": "基于 /comet-classic 的五阶段定制，要求组件库和白盒审查。",
   "skillCreatorIntent": "customize-comet",
   "workflow": {
     "kind": "comet-five-phase-overlay",

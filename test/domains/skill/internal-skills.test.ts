@@ -18,7 +18,7 @@ const manifest: Manifest = {
 describe('internal Skill assets', () => {
   it('binds every Classic entry Skill to an explicit current change', async () => {
     const skillNames = [
-      'comet',
+      'comet-classic',
       'comet-open',
       'comet-design',
       'comet-build',
@@ -78,7 +78,7 @@ describe('internal Skill assets', () => {
       'comet/runtime/classic/guardrails.yaml',
       'comet/runtime/classic/checks.yaml',
     ]);
-    expect(getUserFacingSkillNames(shipped)).not.toContain('comet-classic');
+    expect(getUserFacingSkillNames(shipped)).toContain('comet-classic');
     expect(getUserFacingSkillNames(shipped)).not.toContain('runtime');
     expect(await getManifestSkills()).toEqual(getManagedSkillPaths(shipped));
   });

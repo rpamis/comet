@@ -1,6 +1,6 @@
 ---
 name: comet-any
-description: "Use when the user wants to customize Comet five-phase skills, create a workflow skill, organize an existing skill, or compose skills with Workflow Node / Skill Binding / Output Schema."
+description: "Use when the user wants to customize /comet-classic five-phase Skills, create a workflow Skill, organize an existing Skill, or compose Skills with Workflow Node / Skill Binding / Output Schema."
 ---
 
 # Comet Any - Skill Creator
@@ -9,7 +9,7 @@ description: "Use when the user wants to customize Comet five-phase skills, crea
 
 Ordinary users see three starting points:
 
-- `customize existing Comet Skills`: overlay the existing five phase Skills for `open / design / build / verify / archive` without modifying the `/comet` command itself.
+- `customize /comet-classic five-phase Skills`: overlay the existing `open / design / build / verify / archive` Skills without modifying the permanent `/comet-classic` entry itself.
 - `create a new workflow Skill`: generate a new `workflow-kernel` from the goal and candidate Skills.
 - `upgrade an existing Skill`: read existing Skills and add Workflow Nodes, Skill Bindings, Output Schemas, Guardrails, Handoffs, eval, and readiness.
 
@@ -30,7 +30,7 @@ Every path compiles to one Workflow Contract:
 
 ## Protected Boundary
 
-`comet-five-phase-overlay` preserves the Comet control flow and `.comet.yaml` state semantics. In ordinary mode:
+`comet-five-phase-overlay` preserves the Comet Classic five-phase control flow and `.comet.yaml` state semantics. In ordinary mode:
 
 - `comet-five-phase-overlay` primary state comes only from `openspec/changes/<name>/.comet.yaml`; no active change or multiple active changes must block and ask the user to choose.
 - The overlay must not create `.comet/runs/<workflow>/state.json` as the Comet overlay primary state. Bundle drafts, eval evidence, and publish readiness may keep their own evidence files, but they cannot replace `.comet.yaml`.
@@ -59,7 +59,7 @@ Component-library and whitebox-review requirements should produce a plan like:
 
 ```json
 {
-  "goal": "Customize existing Comet Skills with component and whitebox review requirements.",
+  "goal": "Customize /comet-classic five-phase Skills with component and whitebox review requirements.",
   "skillCreatorIntent": "customize-comet",
   "workflow": {
     "kind": "comet-five-phase-overlay",

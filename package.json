@@ -54,6 +54,7 @@
     "dev:dashboard": "node scripts/dev-dashboard.mjs",
     "build:classic-runtime": "node scripts/build/build-classic-runtime.mjs",
     "build:native-runtime": "node scripts/build/build-native-runtime.mjs",
+    "build:entry-runtime": "node scripts/build/build-entry-runtime.mjs",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:script-smoke": "vitest run test/domains/comet-classic/comet-scripts.test.ts",

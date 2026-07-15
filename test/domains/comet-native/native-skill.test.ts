@@ -28,6 +28,7 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('等待用户回答后再继续');
     expect(source).toContain('实现方式、是否落盘计划、测试粒度、调试方法和审查强度都由模型');
     expect(source).toContain('完整目标规格');
+    expect(source).toContain('comet native new <change-name> --language zh-CN');
     expect(source).toContain('comet native next <change-name>');
   });
 
@@ -115,6 +116,7 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('Ask only the single most important question');
     expect(source).toContain('recommended answer');
     expect(source).toContain('complete target specification');
+    expect(source).toContain('comet native new <change-name> --language en');
     expect(source).toContain('comet native next <change-name>');
     expect(source).toContain('--confirmed');
     expect(files).toContain('comet native spec remove <change-name> <capability>');

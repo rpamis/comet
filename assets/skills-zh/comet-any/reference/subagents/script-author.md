@@ -22,7 +22,7 @@ factory 还会从同一份 `workflow-protocol.json` 确定性生成 `scripts/com
 - `reference/workflow-protocol.json`
 - `plan.json` 的 `workflow.kind`、`workflow.nodes`、`engineMode`、`runnerMode`，以及规范化后的 `workflow-protocol.json`
 - `reference/resolved-skills.json`
-- `/comet` 定制时的 `.comet.yaml` 受保护语义；`comet-five-phase-overlay` 的主状态只来自 `openspec/changes/<name>/.comet.yaml`，不得创建 `.comet/runs/<workflow>/state.json` 作为 Comet overlay 主状态
+- `/comet-classic` 定制时的 `.comet.yaml` 受保护语义；`comet-five-phase-overlay` 的主状态只来自 `openspec/changes/<name>/.comet.yaml`，不得创建 `.comet/runs/<workflow>/state.json` 作为 Comet overlay 主状态
 
 使用文件交接：主会话提供路径，不粘贴大段全文。不要读取主会话历史，也不要要求用户重新解释已经写入
 artifact 的内容。

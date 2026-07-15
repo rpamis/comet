@@ -206,7 +206,7 @@ function workflowContractEntryMarkdown(
   const startupProtocol =
     protocol.kind === 'comet-five-phase-overlay'
       ? `1. Run \`node ${plan.name}/scripts/workflow-state.mjs status\` to read the active Comet change state.
-2. If there is no active Comet change, use \`/comet-open\` or the original \`/comet\` entry to create or resume one.
+2. If there is no active Comet change, use \`/comet-open\` or the permanent \`/comet-classic\` entry to create or resume one.
 3. Run \`node ${plan.name}/scripts/workflow-state.mjs next\` and load **only** the returned Skill. Do not load multiple Skills at once.`
       : `1. Run \`node ${plan.name}/scripts/workflow-state.mjs status\` to read current state.
 2. If the workflow is not started, confirm scope with the user, then run \`node ${plan.name}/scripts/workflow-state.mjs init\`.
@@ -499,7 +499,9 @@ async function activeCometChanges() {
 async function resolveCometOverlayChange() {
   const changes = await activeCometChanges();
   if (changes.length === 0) {
-    throw new Error('No active Comet change; use /comet-open or the original /comet entry to create one.');
+    throw new Error(
+      'No active Comet change; use /comet-open or the permanent /comet-classic entry to create one.',
+    );
   }
   if (changes.length > 1) {
     throw new Error(
@@ -760,7 +762,7 @@ async function main() {
   if (isCometOverlay(protocol)) {
     if (command === 'init') {
       throw new Error(
-        'Comet overlay state is created by /comet-open; use the original /comet entry to start a change.',
+        'Comet overlay state is created by /comet-open; use the permanent /comet-classic entry to start a change.',
       );
     }
     if (command === 'status') {

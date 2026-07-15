@@ -12,11 +12,11 @@ The user may resume the workflow directly from `/comet-open`, `/comet-design`, `
 node "$COMET_STATE" check <change-name> <phase> --recover
 ```
 
-If the check shows the actual phase, workflow, or evidence belongs to another skill, switch according to script output and `/comet` routing rules; do not keep writing state in the wrong phase. If the worktree has uncommitted changes, attribute them first via `comet/reference/dirty-worktree.md`.
+If the check shows the actual phase, workflow, or evidence belongs to another skill, switch according to script output and `/comet-classic` routing rules; do not keep writing state in the wrong phase. If the worktree has uncommitted changes, attribute them first via `comet/reference/dirty-worktree.md`.
 
-## Recovery Without Explicit `/comet`
+## Recovery Without Explicit `/comet-classic`
 
-If the user did not mention `/comet`, but this repository may have an active change, run the Ambient Resume probe before starting work that may need code changes or investigation. First locate scripts via `comet/reference/scripts.md` and ensure `$COMET_RESUME_PROBE` is available, then pass the current user request on stdin:
+If the user did not mention `/comet-classic`, but this repository may have an active change, run the Ambient Resume probe before starting work that may need code changes or investigation. First locate scripts via `comet/reference/scripts.md` and ensure `$COMET_RESUME_PROBE` is available, then pass the current user request on stdin:
 
 ```bash
 node "$COMET_RESUME_PROBE" probe --stdin

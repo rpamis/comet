@@ -21,7 +21,7 @@ describe('package scripts', () => {
     expect(packageJson.scripts?.prepare).toBe('node scripts/release/prepare.js');
   });
 
-  it('exposes independent Classic and Native runtime builders', async () => {
+  it('exposes independent Classic, Native, and entry resolver runtime builders', async () => {
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf-8')) as {
       scripts?: Record<string, string>;
     };
@@ -33,10 +33,16 @@ describe('package scripts', () => {
     expect(packageJson.scripts?.['build:native-runtime']).toBe(
       'node scripts/build/build-native-runtime.mjs',
     );
+    expect(packageJson.scripts?.['build:entry-runtime']).toBe(
+      'node scripts/build/build-entry-runtime.mjs',
+    );
     expect(buildSource.indexOf('buildClassicRuntime();')).toBeLessThan(
       buildSource.indexOf('buildNativeRuntime();'),
     );
     expect(buildSource.indexOf('buildNativeRuntime();')).toBeLessThan(
+      buildSource.indexOf('buildEntryRuntime();'),
+    );
+    expect(buildSource.indexOf('buildEntryRuntime();')).toBeLessThan(
       buildSource.indexOf("runTsc(['--version']);"),
     );
   });

@@ -1,208 +1,8 @@
 import path from 'path';
-import { promises as fs } from 'fs';
-import { fileExists, readDir } from '../../platform/fs/file-system.js';
-import { inspectClassicChangeReadOnly } from '../../domains/comet-classic/classic-diagnostics.js';
-import { readClassicState } from '../../domains/comet-classic/classic-store.js';
-import {
-  latestCommandCheck,
-  type RecordedCommandCheck,
-} from '../../domains/comet-classic/classic-command-checks.js';
-
-export interface ChangeStatus {
-  name: string;
-  cometManaged: boolean;
-  archiveReady: boolean;
-  recommendedArchiveCommand: string;
-  workflow: string | null;
-  phase: string | null;
-  buildMode: string | null;
-  isolation: string | null;
-  verifyMode: string | null;
-  verifyResult: string | null;
-  designDoc: string | null;
-  plan: string | null;
-  tasksCompleted: number;
-  tasksTotal: number;
-  nextCommand: string | null;
-  currentStep: string | null;
-  runtimeMode: string | null;
-  runtimeEval: {
-    stepId: string;
-    passed: boolean;
-    requiredEvidence: string[];
-    missingEvidence: string[];
-  } | null;
-  commandChecks: {
-    build: RecordedCommandCheck | null;
-    verify: RecordedCommandCheck | null;
-  } | null;
-  error?: string;
-}
-
-async function countTasks(tasksPath: string): Promise<{ done: number; total: number }> {
-  if (!(await fileExists(tasksPath))) return { done: 0, total: 0 };
-  const content = await fs.readFile(tasksPath, 'utf-8');
-  const lines = content.split('\n');
-  const total = lines.filter((l) => /^\s*- \[[ x]\]/i.test(l)).length;
-  const done = lines.filter((l) => /^\s*- \[x\]/i.test(l)).length;
-  return { done, total };
-}
-
-async function getActiveChanges(projectPath: string): Promise<ChangeStatus[]> {
-  const changesDir = path.join(projectPath, 'openspec', 'changes');
-  if (!(await fileExists(changesDir))) return [];
-
-  const entries = (await readDir(changesDir)).sort();
-  const changes: ChangeStatus[] = [];
-
-  for (const entry of entries) {
-    if (entry === 'archive') continue;
-    const changeDir = path.join(changesDir, entry);
-    const stat = await fs.stat(changeDir);
-    if (!stat.isDirectory()) continue;
-
-    const yamlPath = path.join(changeDir, '.comet.yaml');
-    const { done, total } = await countTasks(path.join(changeDir, 'tasks.md'));
-    if (!(await fileExists(yamlPath))) {
-      changes.push({
-        name: entry,
-        cometManaged: false,
-        archiveReady: total > 0 && done === total,
-        recommendedArchiveCommand: `openspec archive ${entry} -y`,
-        workflow: null,
-        phase: null,
-        buildMode: null,
-        isolation: null,
-        verifyMode: null,
-        verifyResult: null,
-        designDoc: null,
-        plan: null,
-        tasksCompleted: done,
-        tasksTotal: total,
-        nextCommand: null,
-        currentStep: null,
-        runtimeMode: null,
-        runtimeEval: null,
-        commandChecks: null,
-      });
-      continue;
-    }
-    try {
-      const projection = await readClassicState(changeDir, { migrate: false });
-      const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
-      if (unknownKeys.length > 0) {
-        changes.push({
-          name: entry,
-          cometManaged: true,
-          archiveReady: false,
-          recommendedArchiveCommand: `comet archive ${entry}`,
-          workflow: 'unknown',
-          phase: 'invalid',
-          buildMode: projection.classic?.buildMode ?? null,
-          isolation: projection.classic?.isolation ?? null,
-          verifyMode: projection.classic?.verifyMode ?? null,
-          verifyResult: projection.classic?.verifyResult ?? 'pending',
-          designDoc: projection.classic?.designDoc ?? null,
-          plan: projection.classic?.plan ?? null,
-          tasksCompleted: done,
-          tasksTotal: total,
-          nextCommand: null,
-          currentStep: null,
-          runtimeMode: 'invalid',
-          runtimeEval: null,
-          commandChecks: null,
-          error: `Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`,
-        });
-        continue;
-      }
-
-      const diagnostic = await inspectClassicChangeReadOnly(changeDir, entry);
-
-      if (diagnostic.valid && projection.classic) {
-        if (projection.classic.archived) continue;
-        const run = projection.run;
-        changes.push({
-          name: entry,
-          cometManaged: true,
-          archiveReady:
-            projection.classic.phase === 'archive' &&
-            projection.classic.verifyResult === 'pass' &&
-            !projection.classic.archived,
-          recommendedArchiveCommand: `comet archive ${entry}`,
-          workflow: diagnostic.workflow,
-          phase: diagnostic.phase,
-          buildMode: projection.classic.buildMode,
-          isolation: projection.classic.isolation,
-          verifyMode: projection.classic.verifyMode,
-          verifyResult: projection.classic.verifyResult,
-          designDoc: projection.classic.designDoc,
-          plan: projection.classic.plan,
-          tasksCompleted: done,
-          tasksTotal: total,
-          nextCommand: diagnostic.nextCommand,
-          currentStep: diagnostic.currentStep,
-          runtimeMode: diagnostic.runtimeMode,
-          runtimeEval: diagnostic.runtimeEval,
-          commandChecks: run
-            ? {
-                build: await latestCommandCheck(changeDir, run, 'build'),
-                verify: await latestCommandCheck(changeDir, run, 'verify'),
-              }
-            : null,
-        });
-        continue;
-      }
-
-      changes.push({
-        name: entry,
-        cometManaged: true,
-        archiveReady: false,
-        recommendedArchiveCommand: `comet archive ${entry}`,
-        workflow: diagnostic.workflow,
-        phase: diagnostic.phase,
-        buildMode: projection.classic?.buildMode ?? null,
-        isolation: projection.classic?.isolation ?? null,
-        verifyMode: projection.classic?.verifyMode ?? null,
-        verifyResult: projection.classic?.verifyResult ?? 'pending',
-        designDoc: projection.classic?.designDoc ?? null,
-        plan: projection.classic?.plan ?? null,
-        tasksCompleted: done,
-        tasksTotal: total,
-        nextCommand: diagnostic.nextCommand,
-        currentStep: diagnostic.currentStep,
-        runtimeMode: diagnostic.runtimeMode,
-        runtimeEval: diagnostic.runtimeEval,
-        commandChecks: null,
-        error: diagnostic.error,
-      });
-    } catch (error) {
-      changes.push({
-        name: entry,
-        cometManaged: true,
-        archiveReady: false,
-        recommendedArchiveCommand: `comet archive ${entry}`,
-        workflow: 'unknown',
-        phase: 'invalid',
-        buildMode: null,
-        isolation: null,
-        verifyMode: null,
-        verifyResult: 'pending',
-        designDoc: null,
-        plan: null,
-        tasksCompleted: done,
-        tasksTotal: total,
-        nextCommand: null,
-        currentStep: null,
-        runtimeMode: 'invalid',
-        runtimeEval: null,
-        commandChecks: null,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  return changes;
-}
+import { inspectCometProjectStatus } from '../../domains/comet-entry/project-status.js';
+import type { ChangeStatus, CometProjectStatus } from '../../domains/comet-entry/types.js';
+import type { RecordedCommandCheck } from '../../domains/comet-classic/classic-command-checks.js';
+import type { NativeStatusProjection } from '../../domains/comet-native/native-types.js';
 
 function formatMissingEvidence(missingEvidence: readonly string[]): string {
   return missingEvidence.join(', ');
@@ -224,13 +24,12 @@ function formatCommandCheck(check: RecordedCommandCheck): string {
   return `${result} (${check.command}; cwd: ${check.cwd}; recorded: ${check.timestamp})`;
 }
 
-function displayStatus(changes: ChangeStatus[]): void {
+function displayChangeSection(title: string, changes: ChangeStatus[]): void {
+  console.log(`${title}:\n`);
   if (changes.length === 0) {
-    console.log('No active changes.\n');
+    console.log('  No active changes.\n');
     return;
   }
-
-  console.log('Active Changes:\n');
 
   for (let i = 0; i < changes.length; i++) {
     const c = changes[i];
@@ -279,6 +78,46 @@ function displayStatus(changes: ChangeStatus[]): void {
   }
 }
 
+function displayNativeChanges(section: CometProjectStatus['workflows']['native']): void {
+  console.log('Native Changes:\n');
+  if (section.error) {
+    console.log(`  error: ${section.error}\n`);
+    return;
+  }
+  if (section.changes.length === 0) {
+    console.log('  No active changes.\n');
+    return;
+  }
+  for (let index = 0; index < section.changes.length; index++) {
+    const change: NativeStatusProjection = section.changes[index];
+    console.log(`  ${index + 1}. ${change.name} [Native] [phase: ${change.phase}]`);
+    console.log(
+      `     approval: ${change.approval ?? 'pending'} | verification: ${change.verificationResult} | spec_changes: ${change.specChanges}`,
+    );
+    if (change.selected) console.log('     selected: true');
+    if (change.error) console.log(`     error: ${change.error}`);
+    if (change.nextCommand) console.log(`     next: ${change.nextCommand}`);
+    console.log();
+  }
+}
+
+function displayDefaultEntry(defaultEntry: CometProjectStatus['defaultEntry']): void {
+  if ('error' in defaultEntry) {
+    console.log(`Default Entry: error (${defaultEntry.error})\n`);
+    return;
+  }
+  console.log(
+    `Default Entry: ${defaultEntry.workflow} -> /${defaultEntry.skill} [${defaultEntry.source}]\n`,
+  );
+}
+
+function displayStatus(status: CometProjectStatus): void {
+  displayDefaultEntry(status.defaultEntry);
+  displayNativeChanges(status.workflows.native);
+  displayChangeSection('Classic Changes', status.workflows.classic.changes);
+  displayChangeSection('Unmanaged OpenSpec Changes', status.unmanagedOpenSpec);
+}
+
 interface StatusOptions {
   json?: boolean;
 }
@@ -288,12 +127,15 @@ export async function statusCommand(
   options: StatusOptions = {},
 ): Promise<void> {
   const projectPath = path.resolve(targetPath);
-  const changes = await getActiveChanges(projectPath);
+  const status = await inspectCometProjectStatus(projectPath);
+  const changes = [...status.workflows.classic.changes, ...status.unmanagedOpenSpec].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
 
   if (options.json) {
-    console.log(JSON.stringify({ changes }, null, 2));
+    console.log(JSON.stringify({ ...status, changes }, null, 2));
     return;
   }
 
-  displayStatus(changes);
+  displayStatus(status);
 }

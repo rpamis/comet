@@ -1,4 +1,3 @@
-import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
@@ -46,28 +45,21 @@ describe('Comet Native isolation boundaries', () => {
     expect(source).not.toMatch(/comet\s+(?:state|guard|handoff)\b/iu);
   });
 
-  it('does not modify Classic runtime or Skill source relative to origin/master', () => {
-    const classicPaths = [
-      'domains/comet-classic',
-      'assets/skills/comet',
-      'assets/skills-zh/comet',
-      'assets/skills/comet-open',
-      'assets/skills/comet-design',
-      'assets/skills/comet-build',
-      'assets/skills/comet-verify',
-      'assets/skills/comet-archive',
-      'assets/skills-zh/comet-open',
-      'assets/skills-zh/comet-design',
-      'assets/skills-zh/comet-build',
-      'assets/skills-zh/comet-verify',
-      'assets/skills-zh/comet-archive',
-    ];
-    const changed = execFileSync(
-      'git',
-      ['diff', '--name-only', 'origin/master', '--', ...classicPaths],
-      { encoding: 'utf8' },
-    ).trim();
+  it('keeps both workflow domains independent below the entry seam', async () => {
+    const [nativeSource, classicSource] = await Promise.all([
+      combined(
+        (await filesUnder(path.resolve('domains', 'comet-native'))).filter((file) =>
+          file.endsWith('.ts'),
+        ),
+      ),
+      combined(
+        (await filesUnder(path.resolve('domains', 'comet-classic'))).filter((file) =>
+          file.endsWith('.ts'),
+        ),
+      ),
+    ]);
 
-    expect(changed).toBe('');
+    expect(nativeSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-(?:classic|entry)[^'"]*['"]/u);
+    expect(classicSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-(?:native|entry)[^'"]*['"]/u);
   });
 });

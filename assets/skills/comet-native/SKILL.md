@@ -11,7 +11,7 @@ Understand first, then act. Native preserves requirements, complete target speci
 
 Run Native `status` and `show` first. Then read `comet.config.yaml`, `change.yaml`, the brief, proposed complete specifications, canonical specifications, repository implementation, project rules, and relevant tests. Do not ask the user for facts available from the environment.
 
-If no change exists, summarize the user's goal as a lowercase kebab-case name and create a Native change. Use only the configured `<artifact-root>/comet/`; do not scan or modify directories owned by other workflows.
+If no change exists, summarize the user's goal as a lowercase kebab-case name and create it with `comet native new <change-name> --language en`. Use only the configured `<artifact-root>/comet/`; do not scan or modify directories owned by other workflows.
 
 See the [command reference](reference/commands.md) for commands and runtime discovery, the [artifact reference](reference/artifacts.md) for formats, and the [recovery reference](reference/recovery.md) for interruption handling. The bundled runtime is at [scripts/comet-native-runtime.mjs](scripts/comet-native-runtime.mjs).
 

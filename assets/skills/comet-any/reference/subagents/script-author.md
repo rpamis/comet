@@ -22,7 +22,7 @@ Read the common input from the main session, especially:
 - `workflow.kind`, `workflow.nodes`, `engineMode`, and `runnerMode` from `plan.json`, plus the
   derived internal `callChain` source inventory from Skill Creator metadata
 - `reference/resolved-skills.json`
-- Protected `.comet.yaml` semantics when users customize existing Comet Skills; `comet-five-phase-overlay` primary state comes only from `openspec/changes/<name>/.comet.yaml` and must not create `.comet/runs/<workflow>/state.json` as the Comet overlay primary state.
+- Protected `.comet.yaml` semantics when users customize `/comet-classic`; `comet-five-phase-overlay` primary state comes only from `openspec/changes/<name>/.comet.yaml` and must not create `.comet/runs/<workflow>/state.json` as the Comet overlay primary state.
 
 Use file handoff: the main session provides paths instead of pasting large bodies of text. Do not read main-session history or ask the user to restate content already written to artifacts.
 

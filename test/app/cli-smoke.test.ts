@@ -44,6 +44,31 @@ describe('built CLI smoke', () => {
     expect(result.stdout).toContain('No active changes.');
   });
 
+  it('resolves the configured workflow through bin/comet.js from a nested directory', async () => {
+    const initialized = runCli(
+      'native',
+      'init',
+      '--project-root',
+      projectRoot,
+      '--root',
+      'docs',
+      '--json',
+    );
+    expect(initialized.status, initialized.stderr).toBe(0);
+    const nested = path.join(projectRoot, 'packages', 'app', 'src');
+    await fs.mkdir(nested, { recursive: true });
+
+    const resolved = runCli('workflow', 'resolve', nested, '--json');
+
+    expect(resolved.status, resolved.stderr).toBe(0);
+    expect(JSON.parse(resolved.stdout)).toEqual({
+      schema: 'comet.workflow-resolution.v1',
+      workflow: 'native',
+      skill: 'comet-native',
+      source: 'project-config',
+    });
+  });
+
   it('accepts -v as a version alias', async () => {
     const result = runCli('-v');
 

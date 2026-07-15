@@ -7,7 +7,7 @@ description: "Use when 用户要进行可收敛为单一 OpenSpec change 的轻�
 
 Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程。它串联 OpenSpec 的核心流程，复用 open、build、verify、archive 能力，仅跳过 Superpowers brainstorming 和完整 plan。
 
-适用于串联 OpenSpec 的轻量改动，例如配置调整、文档或 prompt 优化，以及需 spec 驱动（含 delta spec）但不需要完整 `/comet` 深度设计流程的中等变更。delta spec 在 tweak 中是一等公民正常产物，需要 delta spec 本身不构成升级理由。
+适用于串联 OpenSpec 的轻量改动，例如配置调整、文档或 prompt 优化，以及需 spec 驱动（含 delta spec）但不需要完整 `/comet-classic` 深度设计流程的中等变更。delta spec 在 tweak 中是一等公民正常产物，需要 delta spec 本身不构成升级理由。
 
 **适用条件**（必须全部满足）：
 1. 可收敛为**单一 OpenSpec change**
@@ -15,7 +15,7 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 3. 不涉及跨模块、跨层级的架构协调
 4. 任务规模可预估（文件数和任务数仅作提示，不作为硬性升级条件，见下方升级判定）
 
-**不适用**：如变更过程中命中质变信号（见「升级判定」章节），由用户决定是否升级为完整 `/comet` 流程。
+**不适用**：如变更过程中命中质变信号（见「升级判定」章节），由用户决定是否升级为完整 `/comet-classic` 流程。
 
 ---
 
@@ -66,7 +66,7 @@ node "$COMET_GUARD" <change-name> open --apply
 使用 tweak 默认值：`build_mode: direct`。跳过 Superpowers `brainstorming` 和 `writing-plans`，改由 OpenSpec 的 apply action 执行当前 change 的 tasks。
 
 <IMPORTANT>
-这条 apply 路径只属于 tweak。完整 `/comet` 或 `workflow: full` 不得套用 tweak 的 `openspec-apply-change` 构建路径；full 仍必须先通过 `/comet-design` 生成 Design Doc，再由 `/comet-build` 通过 Superpowers `writing-plans`、执行方式选择和对应执行技能完成构建。
+这条 apply 路径只属于 tweak。完整 `/comet-classic` 或 `workflow: full` 不得套用 tweak 的 `openspec-apply-change` 构建路径；full 仍必须先通过 `/comet-design` 生成 Design Doc，再由 `/comet-build` 通过 Superpowers `writing-plans`、执行方式选择和对应执行技能完成构建。
 </IMPORTANT>
 
 继续或开始修改前，按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。若归因后发现命中质变信号或文件数 tripwire，按本文件「升级判定」处理。
@@ -91,7 +91,7 @@ node "$COMET_GUARD" <change-name> open --apply
 
 具体调查、最小失败测试、修复验证和保持当前 change 验证闭环的要求，按 `comet/reference/debug-gate.md` 执行。
 
-**升级判定检查**：build 全程持续判断，并在 build→verify 守卫执行前做一次集中复核。判定采用三层分工（详见「升级判定」章节）：质变信号靠 agent 语义识别、文件数仅作提示交用户拍板、scale 脚本仅管验证轻重。命中质变信号或文件数超提示阈值时，**不得自行升级或自行判定可继续**，必须按 `comet/reference/decision-point.md` 暂停并把决策权交给用户：继续 tweak 轻量流程，还是升级为完整 `/comet`。
+**升级判定检查**：build 全程持续判断，并在 build→verify 守卫执行前做一次集中复核。判定采用三层分工（详见「升级判定」章节）：质变信号靠 agent 语义识别、文件数仅作提示交用户拍板、scale 脚本仅管验证轻重。命中质变信号或文件数超提示阈值时，**不得自行升级或自行判定可继续**，必须按 `comet/reference/decision-point.md` 暂停并把决策权交给用户：继续 tweak 轻量流程，还是升级为完整 `/comet-classic`。
 
 运行阶段守卫完成 build → verify 过渡：
 
@@ -130,7 +130,7 @@ node "$COMET_STATE" set <change-name> verify_mode full
 <IMPORTANT>
 Tweak 流程默认 **一次性连续执行**。调用 `/comet-tweak` 后，agent 在 tweak 自有步骤间自动推进，不主动停顿。**例外**：若 `auto_transition: false`，则在每个 phase 边界（build/verify/archive 之间）停下，由用户手动运行下一阶段命令——此时连续执行降级为逐阶段手动推进，详见下方「自动衔接下一阶段」。但无论 `auto_transition` 取何值，以下情况都必须暂停等待用户确认：
 
-1. 遇到升级判定信号（见「升级判定」章节），**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择**：继续 tweak 轻量流程，还是升级为完整 `/comet` 流程
+1. 遇到升级判定信号（见「升级判定」章节），**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择**：继续 tweak 轻量流程，还是升级为完整 `/comet-classic` 流程
 2. 验证阶段（comet-verify）的验证失败决策和分支处理决策
 3. 归档前最终确认（comet-archive 执行归档脚本前）
 
@@ -145,7 +145,7 @@ Tweak 流程默认 **一次性连续执行**。调用 `/comet-tweak` 后，agent
 
 tweak 的升级判定只决定是否从轻量预设转为 full；delta spec 本身不是升级理由，文件数不自动升级，`comet-state scale` 只决定验证轻重。
 
-若由 `/comet` 入口传入 intent frame，tweak 在 build 前只复核 `risk_signal` 和升级信号：新增 capability、public API、schema 变更、跨模块协调或深层架构问题。命中时进入现有升级决策点；delta spec 仍是 tweak 的正常产物，不因存在 delta spec 自动升级；不得重新实现入口意图识别。
+若由 `/comet-classic` 入口传入 intent frame，tweak 在 build 前只复核 `risk_signal` 和升级信号：新增 capability、public API、schema 变更、跨模块协调或深层架构问题。命中时进入现有升级决策点；delta spec 仍是 tweak 的正常产物，不因存在 delta spec 自动升级；不得重新实现入口意图识别。
 
 持续检查以下质变信号：跨模块协调修改、需要新增 capability、数据库 schema 变更、引入新的 public API、触及深层架构问题；以及 tweak 特有信号：需要拆分为多个 OpenSpec changes。命中任一信号时，agent **不得自行升级或自行判定可继续**。
 

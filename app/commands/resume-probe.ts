@@ -3,10 +3,10 @@ import path from 'path';
 import { parseDocument } from 'yaml';
 import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
-  resolveCometResumeProbe,
-  type CometResumeProbeInput,
-  type CometResumeProbeResult,
-} from '../../domains/comet-classic/classic-resume-probe.js';
+  resolveCometEntryResumeProbe,
+  type CometEntryResumeProbeInput,
+  type CometEntryResumeProbeResult,
+} from '../../domains/comet-entry/resume-probe.js';
 
 interface ResumeProbeOptions {
   utterance?: string;
@@ -25,12 +25,15 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-function formatText(result: CometResumeProbeResult): string {
+function formatText(result: CometEntryResumeProbeResult): string {
   const lines = [
     `action: ${result.action}`,
     `confidence: ${result.confidence}`,
     `reason: ${result.reason}`,
   ];
+  if (result.workflow) lines.push(`workflow: ${result.workflow}`);
+  if (result.skill) lines.push(`skill: ${result.skill}`);
+  if (result.entrySource) lines.push(`entry_source: ${result.entrySource}`);
   if (result.changeName) lines.push(`change: ${result.changeName}`);
   if (result.phase) lines.push(`phase: ${result.phase}`);
   if (result.nextCommand) lines.push(`next: ${result.nextCommand}`);
@@ -63,7 +66,7 @@ export async function resumeProbeCommand(
   const projectPath = path.resolve(targetPath);
   const utterance = await resolveUtterance(options);
   const workflowWork = options.workflowWork !== false && options.nonTrivialWork !== false;
-  const input: CometResumeProbeInput = {
+  const input: CometEntryResumeProbeInput = {
     schema_version: COMET_RESUME_PROBE_SCHEMA_VERSION,
     utterance,
     locale: await resolveProjectLanguage(projectPath),
@@ -72,6 +75,6 @@ export async function resumeProbeCommand(
       already_in_comet_flow: options.alreadyInCometFlow === true,
     },
   };
-  const result = await resolveCometResumeProbe(projectPath, input);
+  const result = await resolveCometEntryResumeProbe(projectPath, input);
   process.stdout.write(options.json ? `${JSON.stringify(result, null, 2)}\n` : formatText(result));
 }

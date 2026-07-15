@@ -195,6 +195,25 @@ describe('detect', () => {
   });
 
   describe('hasSkills', () => {
+    it('can restrict project detection to the selected target scope', async () => {
+      const globalSkills = path.join(os.homedir(), '.claude', 'skills', 'comet');
+      await fs.mkdir(globalSkills, { recursive: true });
+
+      expect(await hasSkills(tmpDir, mockPlatform, 'comet')).toBe(true);
+      expect(
+        await hasSkills(tmpDir, mockPlatform, 'comet', [], 'project', {
+          includeGlobalFallback: false,
+        }),
+      ).toBe(false);
+
+      await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+      expect(
+        await hasSkills(tmpDir, mockPlatform, 'comet', [], 'project', {
+          includeGlobalFallback: false,
+        }),
+      ).toBe(true);
+    });
+
     it('detects openspec skills when openspec- prefixed dirs exist', async () => {
       await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'openspec-core'), {
         recursive: true,

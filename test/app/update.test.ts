@@ -812,6 +812,391 @@ describe('update command helpers', () => {
     expect(claude).not.toContain('<comet-ambient-resume>');
   });
 
+  it('updates Native project Skills without creating or rewriting Classic project state', async () => {
+    const fakeHome = path.join(tmpDir, 'native-update-home');
+    const nativeConfig = [
+      'schema: comet.project.v1',
+      'default_workflow: native',
+      'native:',
+      '  artifact_root: docs',
+      '',
+    ].join('\n');
+    await fs.writeFile(path.join(tmpDir, 'comet.config.yaml'), nativeConfig, 'utf8');
+
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Stale Comet\n',
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet-classic'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'keep.md'),
+      'keep classic history\n',
+      'utf8',
+    );
+
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'language: legacy\nkeep: true\n',
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'keep.md'),
+      'keep classic working files\n',
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.claude', 'rules'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md'),
+      'keep classic rule\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'settings.local.json'),
+      '{"keep":"classic hook"}\n',
+      'utf8',
+    );
+    await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), '# User\nKeep this.\n', 'utf8');
+    await fs.writeFile(path.join(tmpDir, 'CLAUDE.md'), '# User\nAlso keep this.\n', 'utf8');
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'symlink',
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    await expect(
+      fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('comet workflow resolve . --json');
+    await expect(
+      fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet-native', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('name: comet-native');
+    await expect(
+      fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'keep.md'), 'utf8'),
+    ).resolves.toBe('keep classic history\n');
+    await expect(fs.access(path.join(tmpDir, '.comet', 'skills'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')).resolves.toBe(
+      'language: legacy\nkeep: true\n',
+    );
+    await expect(
+      fs.readFile(path.join(tmpDir, 'docs', 'superpowers', 'keep.md'), 'utf8'),
+    ).resolves.toBe('keep classic working files\n');
+    await expect(
+      fs.readFile(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md'), 'utf8'),
+    ).resolves.toBe('keep classic rule\n');
+    await expect(
+      fs.readFile(path.join(tmpDir, '.claude', 'settings.local.json'), 'utf8'),
+    ).resolves.toBe('{"keep":"classic hook"}\n');
+    const agents = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    const claude = await fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
+    for (const content of [agents, claude]) {
+      expect(content).toContain('<comet-ambient-resume>');
+      expect(content).toContain('comet resume-probe . --stdin --json');
+      expect(content).toContain('Trust only the returned `workflow`, `skill`');
+      expect(content).toContain('permanent entry in `nextCommand`');
+      expect(content).not.toContain('`.comet.yaml`');
+    }
+    expect(agents).toContain('# User\nKeep this.');
+    expect(claude).toContain('# User\nAlso keep this.');
+    expect(mockedSelect).not.toHaveBeenCalled();
+  });
+
+  it('migrates manifest-managed legacy Codex Skills for Native without touching unrelated state', async () => {
+    const fakeHome = path.join(tmpDir, 'native-codex-migration-home');
+    await fs.writeFile(
+      path.join(tmpDir, 'comet.config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const legacyComet = path.join(tmpDir, '.codex', 'skills', 'comet');
+    const legacyPersonal = path.join(tmpDir, '.codex', 'skills', 'personal');
+    const legacyOpenSpec = path.join(tmpDir, '.codex', 'skills', 'openspec');
+    await fs.mkdir(legacyComet, { recursive: true });
+    await fs.mkdir(legacyPersonal, { recursive: true });
+    await fs.mkdir(legacyOpenSpec, { recursive: true });
+    await fs.writeFile(path.join(legacyComet, 'SKILL.md'), '# Legacy thick Comet\n', 'utf8');
+    await fs.writeFile(path.join(legacyPersonal, 'SKILL.md'), '# Personal\n', 'utf8');
+    await fs.writeFile(path.join(legacyOpenSpec, 'SKILL.md'), '# OpenSpec\n', 'utf8');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'keep: classic\n', 'utf8');
+    await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'keep.md'),
+      'keep classic state\n',
+      'utf8',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        skipNpm: true,
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    await expect(
+      fs.readFile(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('comet workflow resolve . --json');
+    await expect(fs.access(legacyComet)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(path.join(legacyPersonal, 'SKILL.md'), 'utf8')).resolves.toBe(
+      '# Personal\n',
+    );
+    await expect(fs.readFile(path.join(legacyOpenSpec, 'SKILL.md'), 'utf8')).resolves.toBe(
+      '# OpenSpec\n',
+    );
+    await expect(fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')).resolves.toBe(
+      'keep: classic\n',
+    );
+    await expect(
+      fs.readFile(path.join(tmpDir, 'docs', 'superpowers', 'keep.md'), 'utf8'),
+    ).resolves.toBe('keep classic state\n');
+  });
+
+  it.each(['skills-root', 'managed-entry'] as const)(
+    'converts an old %s symlink installation to Native copies without writing through it',
+    async (layout) => {
+      const fakeHome = path.join(tmpDir, `native-symlink-${layout}-home`);
+      await fs.writeFile(
+        path.join(tmpDir, 'comet.config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'native:',
+          '  artifact_root: docs',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      const centralSkills = path.join(tmpDir, '.comet', 'skills', 'skills');
+      const centralComet = path.join(centralSkills, 'comet');
+      const platformSkills = path.join(tmpDir, '.claude', 'skills');
+      await fs.mkdir(centralComet, { recursive: true });
+      await fs.writeFile(path.join(centralComet, 'SKILL.md'), '# Central stale Comet\n', 'utf8');
+      await fs.mkdir(path.dirname(platformSkills), { recursive: true });
+      if (layout === 'skills-root') {
+        await fs.symlink(
+          centralSkills,
+          platformSkills,
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      } else {
+        await fs.mkdir(platformSkills, { recursive: true });
+        await fs.symlink(
+          centralComet,
+          path.join(platformSkills, 'comet'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+        await fs.mkdir(path.join(platformSkills, 'personal'), { recursive: true });
+        await fs.writeFile(
+          path.join(platformSkills, 'personal', 'SKILL.md'),
+          '# Personal\n',
+          'utf8',
+        );
+      }
+
+      const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      let json: string;
+      try {
+        await updateCommand(tmpDir, {
+          currentProject: true,
+          installMode: 'symlink',
+          json: true,
+          skipNpm: true,
+        });
+        json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      } finally {
+        log.mockRestore();
+        homeSpy.mockRestore();
+      }
+
+      expect(JSON.parse(json).skills.installMode).toBe('copy');
+      expect((await fs.lstat(platformSkills)).isSymbolicLink()).toBe(false);
+      expect((await fs.lstat(path.join(platformSkills, 'comet'))).isSymbolicLink()).toBe(false);
+      await expect(
+        fs.readFile(path.join(platformSkills, 'comet', 'SKILL.md'), 'utf8'),
+      ).resolves.toContain('comet workflow resolve . --json');
+      await expect(fs.readFile(path.join(centralComet, 'SKILL.md'), 'utf8')).resolves.toBe(
+        '# Central stale Comet\n',
+      );
+      await expect(
+        fs.access(path.join(centralSkills, 'comet-native', 'SKILL.md')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      if (layout === 'managed-entry') {
+        await expect(
+          fs.readFile(path.join(platformSkills, 'personal', 'SKILL.md'), 'utf8'),
+        ).resolves.toBe('# Personal\n');
+      }
+    },
+  );
+
+  it('refuses to detach a shared Skill-root symlink that contains unmanaged Skills', async () => {
+    const fakeHome = path.join(tmpDir, 'native-shared-symlink-home');
+    await fs.writeFile(
+      path.join(tmpDir, 'comet.config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const centralSkills = path.join(tmpDir, '.comet', 'skills', 'skills');
+    const platformSkills = path.join(tmpDir, '.claude', 'skills');
+    await fs.mkdir(path.join(centralSkills, 'comet'), { recursive: true });
+    await fs.mkdir(path.join(centralSkills, 'openspec'), { recursive: true });
+    await fs.writeFile(
+      path.join(centralSkills, 'comet', 'SKILL.md'),
+      '# Central stale Comet\n',
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(centralSkills, 'openspec', 'SKILL.md'),
+      '# Keep OpenSpec\n',
+      'utf8',
+    );
+    await fs.mkdir(path.dirname(platformSkills), { recursive: true });
+    await fs.symlink(
+      centralSkills,
+      platformSkills,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await expect(
+        updateCommand(tmpDir, {
+          currentProject: true,
+          installMode: 'symlink',
+          json: true,
+          skipNpm: true,
+        }),
+      ).rejects.toThrow(/unmanaged entries: openspec/iu);
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect((await fs.lstat(platformSkills)).isSymbolicLink()).toBe(true);
+    await expect(
+      fs.readFile(path.join(centralSkills, 'openspec', 'SKILL.md'), 'utf8'),
+    ).resolves.toBe('# Keep OpenSpec\n');
+    await expect(fs.readFile(path.join(centralSkills, 'comet', 'SKILL.md'), 'utf8')).resolves.toBe(
+      '# Central stale Comet\n',
+    );
+  });
+
+  it('updates a Native project at its root when invoked from a nested directory', async () => {
+    const fakeHome = path.join(tmpDir, 'nested-native-update-home');
+    const nestedDir = path.join(tmpDir, 'src', 'features', 'nested');
+    await fs.mkdir(nestedDir, { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'comet.config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Stale Comet\n',
+      'utf8',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(nestedDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        skipNpm: true,
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.skills.targets).toHaveLength(1);
+    await expect(
+      fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet-native', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('name: comet-native');
+    await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain(
+      '<comet-ambient-resume>',
+    );
+    await expect(fs.access(path.join(nestedDir, '.claude'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.access(path.join(nestedDir, 'AGENTS.md'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: Array<{ path: string }>;
+    };
+    expect(registry.projects.map((entry) => entry.path)).toEqual([tmpDir]);
+  });
+
+  it('fails a project update before npm or file writes when entry resolution fails', async () => {
+    const fakeHome = path.join(tmpDir, 'invalid-native-update-home');
+    await fs.writeFile(path.join(tmpDir, 'comet.config.yaml'), 'schema: [', 'utf8');
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    const staleSkill = path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md');
+    await fs.writeFile(staleSkill, '# Stale Comet\n', 'utf8');
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await expect(
+        updateCommand(tmpDir, {
+          currentProject: true,
+          installMode: 'copy',
+        }),
+      ).rejects.toThrow(/comet\.config\.yaml/iu);
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(mockedSpawn).not.toHaveBeenCalled();
+    await expect(fs.readFile(staleSkill, 'utf8')).resolves.toBe('# Stale Comet\n');
+  });
+
   it('installs ambient resume instructions and preserves existing user AGENTS/CLAUDE rules', async () => {
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(

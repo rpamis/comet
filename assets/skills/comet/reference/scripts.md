@@ -24,7 +24,7 @@ Guard `--apply` advances state after checks pass. Use `comet state transition` w
 
 ## Compatibility, Recovery, and Internal Command Bootstrap
 
-The script discovery below is only for legacy compatibility, recovery when the CLI is unavailable, and internal `/comet` entry commands. Normal public workflows must not prefer it. Comet scripts are distributed in `comet/scripts/`; recovery code must locate them once and cache environment variables instead of hardcoding paths:
+The script discovery below is only for legacy compatibility, recovery when the CLI is unavailable, and internal `/comet-classic` entry commands. Normal public workflows must not prefer it. Comet scripts are distributed in `comet/scripts/`; recovery code must locate them once and cache environment variables instead of hardcoding paths:
 
 ```bash
 COMET_ENV="${COMET_ENV:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet/scripts/comet-env.mjs' -type f -print -quit 2>/dev/null)}"
@@ -55,7 +55,7 @@ Agents run this bootstrap only when entering one of the compatibility, recovery,
 | `COMET_GUARD` | Phase exit guard and `--apply` state advancement |
 | `COMET_HANDOFF` | Design/Build handoff context pack generation |
 | `COMET_ARCHIVE` | One-command archive and main spec sync |
-| `COMET_INTENT` | `/comet` entry intent recognition and route scoring |
+| `COMET_INTENT` | `/comet-classic` entry intent recognition and route scoring |
 | `COMET_RESUME_PROBE` | Read-only Ambient Resume probe that decides whether to resume an active Comet workflow |
 
 ## Auto state update

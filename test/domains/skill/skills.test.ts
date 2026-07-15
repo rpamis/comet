@@ -653,7 +653,7 @@ describe('skills', () => {
       expect(zhTweak).toContain('使用 Skill 工具加载 `openspec-apply-change` 技能');
       expect(zhTweak).toContain('这条 apply 路径只属于 tweak');
       expect(zhTweak).toContain(
-        '完整 `/comet` 或 `workflow: full` 不得套用 tweak 的 `openspec-apply-change` 构建路径',
+        '完整 `/comet-classic` 或 `workflow: full` 不得套用 tweak 的 `openspec-apply-change` 构建路径',
       );
       expect(zhTweak).toContain('单一 OpenSpec change');
       expect(zhTweak).not.toContain('不新增 capability');
@@ -662,7 +662,7 @@ describe('skills', () => {
 
     it('requires explicit user confirmation at full-workflow decision points', async () => {
       const zhComet = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet', 'SKILL.md'),
+        path.resolve('assets', 'skills-zh', 'comet-classic', 'SKILL.md'),
         'utf-8',
       );
       const zhOpen = await fs.readFile(
@@ -764,7 +764,7 @@ describe('skills', () => {
       );
       expect(zhOpen).toContain('`comet/reference/decision-point.md`');
       expect(zhOpen).toContain(
-        '完整 `/comet` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能',
+        '完整 `/comet-classic` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能',
       );
       expect(zhOpen).toContain(
         '技能加载后，按其指引创建 change 骨架，但当 Step 1b 的已确认澄清摘要已存在于对话上下文时',
@@ -805,6 +805,8 @@ describe('skills', () => {
       expect(zhArchive).toContain('「需要调整或重新验证」');
       expect(zhArchive).toContain('「暂不归档」');
       expect(zhArchive).toContain('`comet state transition <change-name> archive-reopen`');
+      expect(zhArchive).toContain('调用 `/comet-classic` 或 `/comet-open`');
+      expect(zhArchive).not.toContain('调用 `/comet` 或 `/comet-open`');
       expect(zhVerify).toContain('不得因为验证已通过就自动归档');
       expect(zhHotfix).toContain(
         '命中质变信号或文件数 tripwire 时，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择**',
@@ -1034,7 +1036,7 @@ describe('skills', () => {
   describe('English Comet workflow safeguards', () => {
     it('matches the Chinese workflow decision-point requirements', async () => {
       const enComet = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet', 'SKILL.md'),
+        path.resolve('assets', 'skills', 'comet-classic', 'SKILL.md'),
         'utf-8',
       );
       const enOpen = await fs.readFile(
@@ -1140,7 +1142,7 @@ describe('skills', () => {
         'Must not create proposal.md, design.md, or tasks.md before the user confirms requirements clarification is complete',
       );
       expect(enOpen).toContain(
-        'Full `/comet` workflow must not use the Skill tool to load the `openspec-propose` skill',
+        'Full `/comet-classic` workflow must not use the Skill tool to load the `openspec-propose` skill',
       );
       expect(enOpen).toContain('`comet/reference/decision-point.md`');
       expect(enOpen).toContain(
@@ -1188,7 +1190,7 @@ describe('skills', () => {
       expect(enTweak).toContain('Use the Skill tool to load the `openspec-apply-change` skill');
       expect(enTweak).toContain('This apply path belongs only to tweak');
       expect(enTweak).toContain(
-        "Full `/comet` or `workflow: full` must not use tweak's `openspec-apply-change` build path",
+        "Full `/comet-classic` or `workflow: full` must not use tweak's `openspec-apply-change` build path",
       );
       expect(enTweak).toContain('single OpenSpec change');
       expect(enTweak).not.toContain('No new capability');
@@ -1202,6 +1204,8 @@ describe('skills', () => {
       expect(enArchive).toContain('Needs adjustment or re-verification');
       expect(enArchive).toContain('Do not archive yet');
       expect(enArchive).toContain('`comet state transition <change-name> archive-reopen`');
+      expect(enArchive).toContain('invoke `/comet-classic` or `/comet-open`');
+      expect(enArchive).not.toContain('invoke `/comet` or `/comet-open`');
       expect(enVerify).toContain('Must not automatically archive just because verification passed');
       expect(enHotfix).toContain(
         "must pause under the `comet/reference/decision-point.md` protocol and wait for the user's explicit choice",
@@ -1436,7 +1440,7 @@ describe('skills', () => {
   describe('Comet output language safeguards', () => {
     it('requires OpenSpec and Superpowers outputs to follow the configured Comet artifact language', async () => {
       const skillNames = [
-        'comet',
+        'comet-classic',
         'comet-open',
         'comet-design',
         'comet-build',
@@ -1462,8 +1466,8 @@ describe('skills', () => {
       const zhSkills = await readSkills('skills-zh');
       const enSkills = await readSkills('skills');
 
-      expect(zhSkills.comet).toContain('输出语言规则');
-      expect(zhSkills.comet).toContain(
+      expect(zhSkills['comet-classic']).toContain('输出语言规则');
+      expect(zhSkills['comet-classic']).toContain(
         '所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言',
       );
       expect(zhSkills['comet-open']).toContain(
@@ -1485,8 +1489,8 @@ describe('skills', () => {
       expect(zhSkills['comet-hotfix']).toContain('精简版 OpenSpec 产物必须使用 Comet 配置产物语言');
       expect(zhSkills['comet-tweak']).toContain('精简版 OpenSpec 产物必须使用 Comet 配置产物语言');
 
-      expect(enSkills.comet).toContain('Output Language Rule');
-      expect(enSkills.comet).toContain(
+      expect(enSkills['comet-classic']).toContain('Output Language Rule');
+      expect(enSkills['comet-classic']).toContain(
         'Use the configured Comet artifact language as the output language for every OpenSpec and Superpowers artifact',
       );
       expect(enSkills['comet-open']).toContain(
@@ -1872,10 +1876,13 @@ describe('skills', () => {
 
     it('documents Ambient Resume in both Comet entry Skills', async () => {
       const zh = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet', 'SKILL.md'),
+        path.resolve('assets', 'skills-zh', 'comet-classic', 'SKILL.md'),
         'utf-8',
       );
-      const en = await fs.readFile(path.resolve('assets', 'skills', 'comet', 'SKILL.md'), 'utf-8');
+      const en = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-classic', 'SKILL.md'),
+        'utf-8',
+      );
 
       expect(zh).toContain('Comet Ambient Resume');
       expect(zh).toContain('node "$COMET_RESUME_PROBE" probe --stdin');

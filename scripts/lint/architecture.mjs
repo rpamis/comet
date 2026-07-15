@@ -173,6 +173,16 @@ for (const [name, output] of Object.entries(layout.nativeRuntime?.outputs ?? {})
     fail(`native runtime output "${name}" -> "${output}" is missing`);
   }
 }
+for (const [name, entry] of Object.entries(layout.entryRuntime?.entries ?? {})) {
+  if (!isFile(entry)) {
+    fail(`entry resolver runtime entry "${name}" -> "${entry}" is missing`);
+  }
+}
+for (const [name, output] of Object.entries(layout.entryRuntime?.outputs ?? {})) {
+  if (!isFile(output)) {
+    fail(`entry resolver runtime output "${name}" -> "${output}" is missing`);
+  }
+}
 if (!isFile(layout.manifestPath)) {
   fail(`asset manifest "${layout.manifestPath}" is missing`);
 }

@@ -20,7 +20,7 @@ Read the common input from the main session, especially:
 - Resolved Skill name, source, description, hash, references, rules, scripts, and hooks.
 - `sourceSummaries`, which must come from real `SKILL.md` bodies and direct references.
 - Project preferences, missing or ambiguous candidate handling, deviation reasons, and executable disclosures.
-- The five-phase Comet semantics preserved when users customize existing Comet Skills.
+- The five-phase Comet semantics preserved when users customize `/comet-classic`.
 
 Use file handoff: the main session provides paths instead of pasting large bodies of text. Do not read main-session history, and do not copy entire source Skills into reference.
 

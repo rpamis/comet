@@ -10,11 +10,7 @@ const cli = path.join(repositoryRoot, 'bin', 'comet.js');
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 const activeChange = 'resume-probe-change';
 
-function runCli(
-  cwd: string,
-  args: string[],
-  input?: string,
-): ReturnType<typeof spawnSync> {
+function runCli(cwd: string, args: string[], input?: string): ReturnType<typeof spawnSync> {
   return spawnSync(process.execPath, [cli, ...args], {
     cwd,
     encoding: 'utf8',
@@ -39,6 +35,9 @@ function parseResult(stdout: string) {
   return JSON.parse(stdout) as {
     action: string;
     schema_version: string;
+    workflow: string | null;
+    skill: string | null;
+    entrySource: string | null;
     changeName: string | null;
     phase: string | null;
     confidence: string;
@@ -76,16 +75,102 @@ describe('resumeProbe command', () => {
   });
 
   it('returns JSON using top-level CLI invocation and --utterance', () => {
+    const result = runCli(tmpDir, ['resume-probe', tmpDir, '--utterance', '继续', '--json']);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(parseResult(result.stdout)).toMatchObject({
+      schema_version: 'comet.resume_probe.v2',
+      workflow: 'classic',
+      skill: 'comet-classic',
+      entrySource: 'legacy-fallback',
+      action: 'auto_resume',
+      nextCommand: '/comet-classic',
+    });
+  });
+
+  it('renders the resolved workflow and permanent entry in text mode', () => {
+    const result = runCli(tmpDir, ['resume-probe', tmpDir, '--utterance', '继续']);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('workflow: classic');
+    expect(result.stdout).toContain('skill: comet-classic');
+    expect(result.stdout).toContain('next: /comet-classic');
+  });
+
+  it('routes a configured Native project without considering Classic changes', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'comet.config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: .',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const changeDir = path.join(tmpDir, 'comet', 'changes', 'native-resume');
+    await fs.mkdir(changeDir, { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'change.yaml'),
+      [
+        'schema: comet.native.v1',
+        'name: native-resume',
+        'language: en',
+        'phase: shape',
+        'brief: brief.md',
+        'approval: null',
+        'spec_changes: []',
+        'verification_result: pending',
+        'verification_report: null',
+        'archived: false',
+        'created_at: 2026-07-15',
+        'run_id: null',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      [
+        '# Outcome',
+        'Resume Native.',
+        '# Scope',
+        'One change.',
+        '# Non-goals',
+        'No Classic work.',
+        '# Acceptance examples',
+        '- Resume the selected change.',
+        '# Constraints and invariants',
+        'Keep workflows separate.',
+        '# Decisions',
+        'Use Native.',
+        '# Open questions',
+        'None.',
+        '# Verification expectations',
+        'Run focused tests.',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
     const result = runCli(tmpDir, [
       'resume-probe',
       tmpDir,
       '--utterance',
-      '继续',
+      '继续 native-resume',
       '--json',
     ]);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(parseResult(result.stdout).action).toBe('auto_resume');
+    expect(parseResult(result.stdout)).toMatchObject({
+      workflow: 'native',
+      skill: 'comet-native',
+      entrySource: 'project-config',
+      action: 'auto_resume',
+      changeName: 'native-resume',
+      nextCommand: '/comet-native',
+    });
   });
 
   it('uses stdin over --utterance when --stdin is set', () => {

@@ -7,6 +7,12 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **Comet Native workflow**: Adds a self-contained workflow for strong coding models with one-question requirement clarification in Shape or Build, runtime-owned confirmations and spec baselines, configurable `comet/` artifact roots, Native change/spec/archive management, conflict rebase back to Build, crash-recoverable automatic progression, verification evidence, and recoverable root moves—without requiring OpenSpec, Superpowers, or other external Skills.
+- **Stable workflow entries**: Adds permanent `/comet-native` and `/comet-classic` entry points plus `comet workflow resolve`; `/comet` is now a configuration-only alias that selects exactly one workflow without converting or combining their changes, state, or artifacts, and remains available in Skill-only installs through a bundled self-contained resolver when the CLI is not on PATH.
+
+### Changed
+
+- **Native-first project setup**: Project-scope `comet init` now defaults genuinely new Comet projects to self-contained Native, supports explicit `--workflow native|classic` and Native `--root`, preserves projects with strong Classic state markers, safely fills compatible Comet-managed entry assets, requires `--overwrite` for incompatible pinned entries, and activates Native only after every selected platform is ready—without installing OpenSpec, Superpowers, CodeGraph, Classic rules/hooks, or `.comet` state.
+- **Partitioned status and recovery**: `comet status` now reports the configured entry and separate Native, Classic, and unmanaged OpenSpec changes, while `comet resume-probe` uses a workflow-aware v2 result to resume only through `/comet-native` or `/comet-classic`, fail closed on malformed configuration or workflow state, and preserve each workflow's own ambiguity and worktree rules.
 
 ## What's Changed [0.4.0-beta.4] - 2026-07-11
 

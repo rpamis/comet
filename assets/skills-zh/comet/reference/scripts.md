@@ -24,7 +24,7 @@ guard 的 `--apply` 在检查通过后推进状态。需要直接表达状态事
 
 ## 兼容、恢复与内部命令引导
 
-以下脚本定位只用于旧版兼容、CLI 不可用时的恢复，以及 `/comet` 内部入口命令。正常公开工作流不得优先采用此方式。Comet 脚本随 Skill 包分发在 `comet/scripts/` 下；需要恢复时不要硬编码路径，而应定位一次并缓存环境变量：
+以下脚本定位只用于旧版兼容、CLI 不可用时的恢复，以及 `/comet-classic` 内部入口命令。正常公开工作流不得优先采用此方式。Comet 脚本随 Skill 包分发在 `comet/scripts/` 下；需要恢复时不要硬编码路径，而应定位一次并缓存环境变量：
 
 ```bash
 COMET_ENV="${COMET_ENV:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet/scripts/comet-env.mjs' -type f -print -quit 2>/dev/null)}"
@@ -55,7 +55,7 @@ fi
 | `COMET_GUARD` | 阶段退出守卫和 `--apply` 状态推进 |
 | `COMET_HANDOFF` | Design/Build handoff 上下文包生成 |
 | `COMET_ARCHIVE` | 一键归档和主 spec 同步 |
-| `COMET_INTENT` | `/comet` 入口意图识别和路由评分 |
+| `COMET_INTENT` | `/comet-classic` 入口意图识别和路由评分 |
 | `COMET_RESUME_PROBE` | 只读 Ambient Resume 探针，判断是否应恢复 active Comet workflow |
 
 ## 自动状态更新

@@ -1,13 +1,13 @@
 # CometIntentFrame 字段参考
 
-本文件只在需要解释字段含义时读取。正常 `/comet` 路由只需按主 Skill 的最小骨架填写；runtime 会补齐省略字段并输出最终 `route`。
+本文件只在需要解释字段含义时读取。正常 `/comet-classic` 路由只需按主 Skill 的最小骨架填写；runtime 会补齐省略字段并输出最终 `route`。
 
 ## 顶层字段
 
 | 字段 | 含义 |
 |------|------|
 | `schema_version` | frame 版本，当前固定为 `comet.intent.v1`。 |
-| `utterance` | 触发 `/comet` 的用户原话。 |
+| `utterance` | 触发 `/comet-classic` 的用户原话。 |
 | `intent` | 用户高层意图和置信度。低于 runtime 阈值时会路由到 `ask_user`。 |
 | `slots` | 从用户原话归一化出来的路由槽位。 |
 | `context` | 从仓库状态读取的上下文，不是用户原话抽取结果。 |

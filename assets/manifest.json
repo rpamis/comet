@@ -2,6 +2,7 @@
   "version": "0.4.0-beta.5",
   "skills": [
     "comet/SKILL.md",
+    "comet-classic/SKILL.md",
     "comet/reference/auto-transition.md",
     "comet/reference/comet-yaml-fields.md",
     "comet/reference/context-recovery.md",
@@ -33,6 +34,7 @@
     "comet/scripts/comet-hook-guard.mjs",
     "comet/scripts/comet-intent.mjs",
     "comet/scripts/comet-resume-probe.mjs",
+    "comet/scripts/comet-entry-runtime.mjs",
     "comet-native/SKILL.md",
     "comet-native/reference/artifacts.md",
     "comet-native/reference/commands.md",

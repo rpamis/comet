@@ -12,6 +12,7 @@ import {
   installCometHooksForPlatform,
   getManifestSkills,
   mergeProjectConfig,
+  prepareManagedSkillCopyTarget,
 } from '../../domains/skill/platform-install.js';
 import { removeLegacyCometSkillsForPlatform } from '../../domains/skill/uninstall.js';
 import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
@@ -33,6 +34,8 @@ import {
   hasCodegraphProjectIndex,
   installCodegraph,
 } from '../../domains/integrations/codegraph.js';
+import { discoverNativeProject } from '../../domains/comet-native/native-paths.js';
+import { resolveCometEntry } from '../../domains/comet-entry/resolve-entry.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
 import { printVersionInfo } from '../../platform/version/version.js';
 import { t, type TranslationKey } from './i18n.js';
@@ -428,11 +431,17 @@ async function upsertUpdatedProjectTargets(
 }
 
 async function updateSingleProject(
-  projectPath: string,
+  startPath: string,
   options: UpdateOptions,
   log: (message: string) => void,
 ): Promise<SingleProjectUpdateResult> {
   const lang = options.language ?? 'en';
+  const includesProjectScope = options.targetScopes
+    ? options.targetScopes.includes('project')
+    : options.scope !== 'global';
+  const projectPath = includesProjectScope ? await discoverNativeProject(startPath) : startPath;
+  const projectEntry = includesProjectScope ? await resolveCometEntry(projectPath) : null;
+  const nativeProject = projectEntry?.workflow === 'native';
   const packageScope =
     options.scope && !options.targetScopes
       ? options.scope
@@ -465,8 +474,6 @@ async function updateSingleProject(
     }
   }
 
-  const installMode = await selectInstallMode(options, lang);
-
   const targets = await detectInstalledCometTargets(projectPath, {
     scopes: options.targetScopes ?? (options.scope ? [options.scope] : undefined),
     respectDetectionPaths: options.scope === undefined,
@@ -489,15 +496,28 @@ async function updateSingleProject(
     };
   }
 
+  const hasClassicCompatibleTarget = targets.some(
+    (target) => target.scope === 'global' || !nativeProject,
+  );
+  const selectedInstallMode = hasClassicCompatibleTarget
+    ? await selectInstallMode(options, lang)
+    : 'copy';
+  const installModeFor = (target: InstalledCometTarget): InstallMode =>
+    nativeProject && target.scope === 'project' ? 'copy' : selectedInstallMode;
+  const reportedInstallMode = targets.every((target) => nativeProject && target.scope === 'project')
+    ? 'copy'
+    : selectedInstallMode;
+
   log(`\n  ${t(lang, 'updatingSkillsOnTargets')} ${targets.length} target(s):`);
   for (const target of targets) {
     const language = options.language ?? target.language;
     const scopeLabel = target.scope === 'global' ? 'global' : `project (${projectPath})`;
     const languageId = resolveTargetLanguage(options.language, target.language);
     const languageSkillsDir = languageToSkillsDir(languageId);
+    const targetInstallMode = installModeFor(target);
     log(`    - ${target.platform.name} (${scopeLabel}, ${language})`);
     log(
-      `      $ ${formatSkillUpdateCommand(target.scope, target.platform, languageSkillsDir, installMode)}`,
+      `      $ ${formatSkillUpdateCommand(target.scope, target.platform, languageSkillsDir, targetInstallMode)}`,
     );
   }
 
@@ -515,13 +535,18 @@ async function updateSingleProject(
     const baseDir = getBaseDir(target.scope, projectPath);
     const languageId = resolveTargetLanguage(options.language, target.language);
     const languageSkillsDir = languageToSkillsDir(languageId);
+    const targetInstallMode = installModeFor(target);
+    const nativeProjectTarget = nativeProject && target.scope === 'project';
+    if (nativeProjectTarget) {
+      await prepareManagedSkillCopyTarget(baseDir, target.platform, target.scope);
+    }
     const { copied, skipped, failed } = await copyCometSkillsForPlatform(
       baseDir,
       target.platform,
       true,
       languageSkillsDir,
       target.scope,
-      installMode,
+      targetInstallMode,
     );
     const cleanupResult =
       failed === 0
@@ -542,7 +567,7 @@ async function updateSingleProject(
         target.scope,
         target.platform,
         languageSkillsDir,
-        installMode,
+        targetInstallMode,
       ),
     });
     log(
@@ -554,25 +579,27 @@ async function updateSingleProject(
       );
     }
 
-    try {
-      const { copied: ruleCopied } = await copyCometRulesForPlatform(
-        baseDir,
-        target.platform,
-        true,
-        languageId,
-        target.scope,
-      );
-      totalRulesCopied += ruleCopied;
-      if (ruleCopied > 0) {
-        log(`  Comet rules -> ${target.platform.name}: ${ruleCopied} ${t(lang, 'rulesUpdated')}`);
+    if (!nativeProjectTarget) {
+      try {
+        const { copied: ruleCopied } = await copyCometRulesForPlatform(
+          baseDir,
+          target.platform,
+          true,
+          languageId,
+          target.scope,
+        );
+        totalRulesCopied += ruleCopied;
+        if (ruleCopied > 0) {
+          log(`  Comet rules -> ${target.platform.name}: ${ruleCopied} ${t(lang, 'rulesUpdated')}`);
+        }
+      } catch (err) {
+        log(
+          `  Comet rules -> ${target.platform.name}: ${t(lang, 'rulesFailed')} (${(err as Error).message})`,
+        );
       }
-    } catch (err) {
-      log(
-        `  Comet rules -> ${target.platform.name}: ${t(lang, 'rulesFailed')} (${(err as Error).message})`,
-      );
     }
 
-    if (target.platform.supportsHooks) {
+    if (!nativeProjectTarget && target.platform.supportsHooks) {
       try {
         const { installed, reason } = await installCometHooksForPlatform(
           baseDir,
@@ -596,6 +623,7 @@ async function updateSingleProject(
   for (const scope of ['project', 'global'] as const) {
     const scopeTargets = targets.filter((candidate) => candidate.scope === scope);
     if (scopeTargets.length === 0) continue;
+    if (scope === 'project' && nativeProject) continue;
     // An explicit --language always wins. Otherwise only force the persisted language when
     // every platform installed at this scope agrees — if two platforms disagree (e.g. one
     // installed with English skills, another with Chinese) and the user didn't say which one
@@ -635,6 +663,8 @@ async function updateSingleProject(
 
   if (options.json) {
     codegraphStatus = 'skipped';
+  } else if (nativeProject) {
+    codegraphStatus = 'skipped';
   } else if (codegraphAlreadyIndexed) {
     log('\n  CodeGraph: skipped (existing .codegraph index detected)');
   } else {
@@ -660,7 +690,7 @@ async function updateSingleProject(
     skills: {
       totalCopied,
       cleanupFailed: totalCleanupFailed,
-      installMode,
+      installMode: reportedInstallMode,
       targets: targetResults,
     },
     rules: { totalCopied: totalRulesCopied },
@@ -881,7 +911,7 @@ export async function updateCommand(
   }
 
   if (result.skills.cleanupFailed === 0) {
-    await upsertUpdatedProjectTargets(projectPath, result);
+    await upsertUpdatedProjectTargets(result.projectPath, result);
   }
 
   if (options.json) {

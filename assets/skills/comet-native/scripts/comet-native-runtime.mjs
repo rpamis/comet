@@ -7894,6 +7894,21 @@ async function nativeProjectPaths(projectRoot, artifactRootRef) {
     transactionsDir: path6.join(nativeRoot, "runtime", "transactions")
   };
 }
+async function ensureNativeDirectories(paths) {
+  const directories = [
+    paths.specsDir,
+    paths.changesDir,
+    paths.archiveDir,
+    paths.locksDir,
+    paths.transactionsDir
+  ];
+  await Promise.all(
+    directories.map(async (directory) => {
+      await resolveContainedNativePath(paths.nativeRoot, directory);
+      await fs4.mkdir(directory, { recursive: true });
+    })
+  );
+}
 function isInsidePath(parent, target) {
   return inside(path6.resolve(parent), path6.resolve(target));
 }
@@ -11060,21 +11075,6 @@ function languageOption(args) {
 async function projectRootFrom(explicit) {
   return explicit ? path21.resolve(explicit) : discoverNativeProject(process.cwd());
 }
-async function ensureNativeDirectories(paths) {
-  const directories = [
-    paths.specsDir,
-    paths.changesDir,
-    paths.archiveDir,
-    paths.locksDir,
-    paths.transactionsDir
-  ];
-  await Promise.all(
-    directories.map(async (directory) => {
-      await resolveContainedNativePath(paths.nativeRoot, directory);
-      await fs19.mkdir(directory, { recursive: true });
-    })
-  );
-}
 async function configuredPaths(projectRoot) {
   const resolved = await resolveNativeProject({
     startPath: projectRoot,
@@ -11112,9 +11112,9 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       );
     }
     const config = existing ?? defaultProjectConfig(artifactRoot);
-    if (!existing) await writeProjectConfig(projectRoot, config);
     const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
     await ensureNativeDirectories(paths);
+    if (!existing) await writeProjectConfig(projectRoot, config);
     return success(
       "init",
       {
@@ -11155,9 +11155,9 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const language = languageOption(rawArgs);
     assertNoArguments(rawArgs);
     let config = await readProjectConfig(projectRoot);
+    const shouldWriteConfig = config === null;
     if (!config) {
       config = defaultProjectConfig(".");
-      await writeProjectConfig(projectRoot, config);
     }
     if (config.native.pending_root_move) {
       throw new Error(`Native root move ${config.native.pending_root_move.id} is incomplete`);
@@ -11165,6 +11165,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
     await ensureNativeDirectories(paths);
     const state = await createNativeChange({ paths, name, language });
+    if (shouldWriteConfig) await writeProjectConfig(projectRoot, config);
     return success("new", state, `Created Native change ${state.name}
 `);
   }

@@ -35,7 +35,7 @@
 
 **Comet is a resumable long-running task workflow and Skill platform for coding.**
 
-It uses a unified cross-platform runtime to connect OpenSpec artifacts, Superpowers execution methodology, Skill creation, evaluation, and release into a closed-loop workflow. 
+It provides two independent requirements workflows: Native for strong models, powered only by Comet's own runtime, and Classic, which preserves the full OpenSpec + Superpowers phase-governance model. Comet also covers Skill creation, evaluation, and release.
 
 It allows you to use a toolchain to handle everything from requirements to archiving, combine any skill to make it like Comet, evolving your skills based on scientific **Rubric**, **Pass@k**, and **Pass^k** scoring.
 
@@ -50,18 +50,13 @@ It allows you to use a toolchain to handle everything from requirements to archi
 >
 > See [NEWS.md](NEWS.md) for details.
 
-> Combining OpenSpec and Superpowers is not Comet's ultimate goal. We hope to track long-running skills like these and find the Harness capabilities that enable stable execution of long-running skills. If you are interested in participating, you are welcome to contribute to our project or learn from our source code.
+> Native and Classic are not lightweight and heavyweight tiers, and neither upgrades into the other. Native is for strong models that can plan and verify autonomously; Classic is for scenarios that benefit from a complete phased methodology and stronger constraints.
 
 ## Why Comet
 
 - **Native workflow for strong models** — `/comet-native` uses a detailed brief, complete target specifications, phase checks, and recoverable archive to constrain outcomes while leaving planning, implementation, testing, and review methods to the model. It uses a configurable `comet/` artifact root and remains fully separate from Classic. See the [Native workflow guide](website/en/concepts/native-workflow.mdx).
-- **The stable core for long-running tasks** — Comet's Classic Spec mode combines OpenSpec and Superpowers with a state
-  machine, phase guards, and scripts that connect the full lifecycle. Agents can only do the work allowed in the current
-  phase and can only exit after the phase work is complete. The core flow can advance automatically, with HITL only at
-  moments that need your confirmation.
-- **Resumable workflow and intelligent routing** — Comet uses intent recognition to route each task toward the path it
-  needs. `/comet` remembers where a change stopped, supports zero-context recovery across devices, and removes the need
-  to memorize long Skill command names: use `/comet` to advance or resume your work.
+- **The stable core for long-running tasks** — Comet's Classic Spec mode combines OpenSpec and Superpowers into a five-phase flow with a state machine, phase checks, and scripts. It suits work that needs an explicit method and strong constraints; its permanent entry point is `/comet-classic`.
+- **A configuration-driven shared entry point** — `/comet` reads only the project-root `comet.config.yaml` and deterministically forwards to `/comet-native` or `/comet-classic`. It does not guess from task size or mix changes, state, or directories across workflows. `comet resume-probe` uses the same configuration to resume through the correct permanent entry point.
 - **Skill platform** — Comet can author reusable Skill packages and use `/comet-any` to organize them into distributable
   Bundles, so Skills you create can be distributed to coding platforms with one command, much like `comet init`.
 - **Eval platform** — Comet assesses your skills using scientific Rubric, Pass@k, and Pass^k scoring, ensuring skill evolution is based on scientific evidence rather than intuition. It supports integration with LangSmith assessments, bringing evaluation to real-world enterprise production environments. Its dual-agent architecture automates the assessment process in your production environment.
@@ -70,7 +65,7 @@ It allows you to use a toolchain to handle everything from requirements to archi
 
 With Comet, you only need to remember two skills and one command, covering coding, creation, and evaluation with an extremely low barrier to entry：
 
-- Use `/comet` for coding tasks
+- Use `/comet` to enter the project's configured Native or Classic workflow
 - Use `/comet-any` to compose any Skills
 - Use `comet eval` to evaluate any Skill
 
@@ -141,6 +136,18 @@ cd your-project
 comet init
 ```
 
+A new project-scope initialization defaults to Native, installs only Comet-owned capabilities, and creates `comet.config.yaml` plus `comet/`. Select Classic explicitly when you need it:
+
+```bash
+comet init --workflow classic
+```
+
+Native artifacts can also live under a project-relative root such as `docs/comet/`:
+
+```bash
+comet init --workflow native --root docs
+```
+
 ## Support for OpenClaw and Hermes, and other AI platforms
 
 For platforms that use the generic `skills` CLI directly, you can install the Comet skill package with:
@@ -184,13 +191,15 @@ Comet Eval's automated dual-agent architecture can integrate online with LangSmi
 <details>
 <summary><code>comet init [path]</code> — Initialize Comet workflow</summary>
 
-Initializes OpenSpec, Superpowers, and Comet skills for selected AI coding platforms.
+Initializes Comet for selected AI coding platforms. New project-scope installs default to self-contained Native, while projects with existing Classic state remain Classic. Only an explicit Classic initialization installs OpenSpec, Superpowers, rules, and hooks.
 
 | Option              | Description                                                                    |
 | ------------------- | ------------------------------------------------------------------------------ |
 | `--yes`             | Non-interactive mode, auto-select detected platforms (or all if none detected) |
 | `--scope <scope>`   | Install scope: `project` or `global`                                           |
 | `--language <lang>` | Skill language: `en` or `zh` (skips interactive language prompt)               |
+| `--workflow <mode>` | Project default workflow: `native` or `classic`                                |
+| `--root <path>`     | Project-relative Native artifact root, such as `docs`                          |
 | `--skip-existing`   | Skip already installed components                                              |
 | `--overwrite`       | Overwrite already installed components                                         |
 | `--json`            | Output structured JSON                                                         |
@@ -203,8 +212,7 @@ all, skip all, or choose per component.
 <details>
 <summary><code>comet status [path]</code> — Show active changes and next workflow command</summary>
 
-Displays active changes, task progress, the recommended next Comet workflow command, the current step, runtime mode,
-and diagnostic recovery hints when a change is malformed or missing required evidence.
+Displays the configured default entry point and separate Native, Classic, and unmanaged OpenSpec sections. Native entries include phase, approval, verification, selection, and next-step data; Classic entries retain workflow, phase, runtime mode, current step, evidence, and recovery diagnostics.
 
 | Option   | Description                                                               |
 | -------- | ------------------------------------------------------------------------- |
@@ -215,9 +223,7 @@ and diagnostic recovery hints when a change is malformed or missing required evi
 <details>
 <summary><code>comet resume-probe [path]</code> — Decide whether an active Comet workflow should resume</summary>
 
-Read-only probe for active changes, `.comet.yaml`, current phase, and the user request. It returns `auto_resume`,
-`ask_user`, `out_of_scope`, or `none`. `comet init/update` merges a `<comet-ambient-resume>` managed block into
-`AGENTS.md` and `CLAUDE.md` while preserving user-authored rules.
+Read-only probe that resolves the configured default workflow and inspects only that side. It returns `auto_resume`, `ask_user`, `out_of_scope`, or `none`, and routes Native to `/comet-native` or Classic to `/comet-classic`. A malformed root configuration stops recovery instead of falling back or scanning the other workflow. `comet init/update` still merges a `<comet-ambient-resume>` managed block into `AGENTS.md` and `CLAUDE.md` while preserving user-authored rules.
 
 </details>
 

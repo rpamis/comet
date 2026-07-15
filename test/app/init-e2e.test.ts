@@ -160,7 +160,7 @@ describe('comet init E2E', () => {
   });
 
   it(
-    'installs Comet skills at project scope with --yes --json',
+    'initializes a genuinely new project as self-contained Native with --yes --json',
     async () => {
       mockExternalSuccess();
       await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
@@ -173,11 +173,24 @@ describe('comet init E2E', () => {
       expect(result.language).toBe('en');
       expect(result.selectedPlatforms).toContain('claude');
       expect(result.workingDirsCreated).toBe(true);
+      expect(result).toMatchObject({
+        workflow: 'native',
+        workflowSource: 'new-project-default',
+        projectConfigCreated: true,
+        nativeArtifactRoot: '.',
+      });
 
-      const claudeResult = (result.results as { platform: string; comet: string }[]).find(
-        (r) => r.platform === 'claude',
-      );
+      const claudeResult = (
+        result.results as {
+          platform: string;
+          comet: string;
+          openspec: string;
+          superpowers: string;
+        }[]
+      ).find((r) => r.platform === 'claude');
       expect(claudeResult?.comet).toBe('installed');
+      expect(claudeResult?.openspec).toBe('skipped');
+      expect(claudeResult?.superpowers).toBe('skipped');
 
       const manifest = await readManifest();
       for (const skillPath of manifest.skills) {
@@ -185,14 +198,405 @@ describe('comet init E2E', () => {
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }
 
+      await expect(fs.stat(path.join(tmpDir, 'comet', 'specs'))).resolves.toBeDefined();
+      await expect(fs.stat(path.join(tmpDir, 'comet', 'changes'))).resolves.toBeDefined();
+      await expect(fs.stat(path.join(tmpDir, 'comet', 'archive'))).resolves.toBeDefined();
+      await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers'))).rejects.toThrow();
+      await expect(fs.stat(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
       await expect(
-        fs.stat(path.join(tmpDir, 'docs', 'superpowers', 'specs')),
-      ).resolves.toBeDefined();
-      await expect(
-        fs.stat(path.join(tmpDir, 'docs', 'superpowers', 'plans')),
-      ).resolves.toBeDefined();
+        fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md')),
+      ).rejects.toThrow();
+      await expect(fs.stat(path.join(tmpDir, '.claude', 'settings.local.json'))).rejects.toThrow();
+
+      const projectConfig = await fs.readFile(path.join(tmpDir, 'comet.config.yaml'), 'utf8');
+      expect(projectConfig).toContain('default_workflow: native');
+      expect(projectConfig).toContain('artifact_root: .');
+      expect(mockedExecFileSync.mock.calls.some((call) => String(call[0]) === 'openspec')).toBe(
+        false,
+      );
+      expect(
+        mockedExecFileSync.mock.calls.some(
+          (call) =>
+            (String(call[0]) === 'npx' || String(call[0]) === 'npx.cmd') &&
+            Array.isArray(call[1]) &&
+            call[1].includes('skills'),
+        ),
+      ).toBe(false);
     },
     INIT_E2E_TIMEOUT_MS,
+  );
+
+  it('preserves a legacy Classic project and its dependency-aware setup by default', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: en\n', 'utf8');
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true }));
+
+    expect(result).toMatchObject({
+      workflow: 'classic',
+      workflowSource: 'legacy-project',
+      projectConfigCreated: false,
+    });
+    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toThrow();
+    await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers', 'specs'))).resolves.toBeDefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'settings.local.json')),
+    ).resolves.toBeUndefined();
+    expect(mockedExecFileSync.mock.calls.some((call) => String(call[0]) === 'openspec')).toBe(true);
+  });
+
+  it('supports an explicit Native artifact root through the main init command', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'native',
+        artifactRoot: 'docs',
+        installMode: 'symlink',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      workflow: 'native',
+      workflowSource: 'explicit-option',
+      projectConfigCreated: true,
+      nativeArtifactRoot: 'docs',
+    });
+    await expect(fs.stat(path.join(tmpDir, 'docs', 'comet', 'changes'))).resolves.toBeDefined();
+    await expect(fs.stat(path.join(tmpDir, 'comet'))).rejects.toThrow();
+    await expect(fs.stat(path.join(tmpDir, '.comet'))).rejects.toThrow();
+  });
+
+  it('materializes an old symlink installation before Native copy without writing through it', async () => {
+    mockExternalSuccess();
+    const centralSkills = path.join(tmpDir, '.comet', 'skills', 'skills');
+    const centralComet = path.join(centralSkills, 'comet');
+    const platformSkills = path.join(tmpDir, '.claude', 'skills');
+    await fs.mkdir(centralComet, { recursive: true });
+    await fs.writeFile(path.join(centralComet, 'SKILL.md'), '# Central stale Comet\n', 'utf8');
+    await fs.mkdir(path.dirname(platformSkills), { recursive: true });
+    await fs.symlink(
+      centralSkills,
+      platformSkills,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'project',
+        workflow: 'native',
+        installMode: 'symlink',
+      }),
+    );
+
+    expect(result).toMatchObject({ workflow: 'native', projectConfigCreated: true });
+    expect((await fs.lstat(platformSkills)).isSymbolicLink()).toBe(false);
+    await expect(
+      fs.readFile(path.join(platformSkills, 'comet', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('comet workflow resolve . --json');
+    await expect(fs.readFile(path.join(centralComet, 'SKILL.md'), 'utf8')).resolves.toBe(
+      '# Central stale Comet\n',
+    );
+    await expect(
+      fs.access(path.join(centralSkills, 'comet-native', 'SKILL.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['native', 'classic'] as const)(
+    'installs project-scoped %s assets even when Comet is installed globally',
+    async (workflow) => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+      await fs.mkdir(path.join(os.homedir(), '.claude', 'skills', 'comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(os.homedir(), '.claude', 'skills', 'comet', 'SKILL.md'),
+        '# global Comet\n',
+        'utf8',
+      );
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, scope: 'project', workflow }),
+      );
+
+      const claudeResult = (result.results as { platform: string; comet: string }[]).find(
+        (candidate) => candidate.platform === 'claude',
+      );
+      expect(claudeResult?.comet).toBe('installed');
+
+      const manifest = await readManifest();
+      for (const skillPath of manifest.skills) {
+        await expect(
+          fs.access(path.join(tmpDir, '.claude', 'skills', skillPath)),
+        ).resolves.toBeUndefined();
+      }
+    },
+  );
+
+  it('fills missing workflow entries without overwriting an existing Comet Skill', async () => {
+    mockExternalSuccess();
+    const existingSkill = path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md');
+    await fs.mkdir(path.dirname(existingSkill), { recursive: true });
+    const bundledEntry = await fs.readFile(
+      path.resolve('assets', 'skills', 'comet', 'SKILL.md'),
+      'utf8',
+    );
+    await fs.writeFile(existingSkill, bundledEntry, 'utf8');
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'project',
+        workflow: 'native',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      workflow: 'native',
+      projectConfigCreated: true,
+      results: [expect.objectContaining({ platform: 'claude', comet: 'installed' })],
+    });
+    await expect(fs.readFile(existingSkill, 'utf8')).resolves.toBe(bundledEntry);
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'skills', 'comet-native', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+  });
+
+  it('does not activate Native with --skip-existing when required Native assets are missing', async () => {
+    mockExternalSuccess();
+    const skillsRoot = path.join(tmpDir, '.claude', 'skills');
+    const preinstalledFiles = ['comet/SKILL.md', 'comet/scripts/comet-entry-runtime.mjs'];
+
+    for (const relativePath of preinstalledFiles) {
+      const destination = path.join(skillsRoot, ...relativePath.split('/'));
+      await fs.mkdir(path.dirname(destination), { recursive: true });
+      await fs.copyFile(path.resolve('assets', 'skills', ...relativePath.split('/')), destination);
+    }
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    await expect(
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'project',
+        workflow: 'native',
+        skipExisting: true,
+      }),
+    ).rejects.toThrow(/required Native asset comet-native\/SKILL\.md is missing/u);
+
+    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('does not activate Native over a mismatched existing /comet entry without overwrite', async () => {
+    mockExternalSuccess();
+    const existingSkill = path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md');
+    await fs.mkdir(path.dirname(existingSkill), { recursive: true });
+    await fs.writeFile(existingSkill, '# User-pinned legacy Comet\n', 'utf8');
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    await expect(
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'project',
+        workflow: 'native',
+      }),
+    ).rejects.toThrow(/differs from the bundled routing contract.*--overwrite/iu);
+
+    await expect(fs.readFile(existingSkill, 'utf8')).resolves.toBe('# User-pinned legacy Comet\n');
+    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('fails closed on malformed project config before installer writes', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const configPath = path.join(tmpDir, 'comet.config.yaml');
+    const malformed = 'schema: [broken\n';
+    await fs.writeFile(configPath, malformed, 'utf8');
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    await expect(initCommand(tmpDir, { yes: true, json: true, scope: 'project' })).rejects.toThrow(
+      /Invalid comet\.config\.yaml/u,
+    );
+
+    await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(malformed);
+    await expect(fs.access(path.join(tmpDir, '.claude', 'skills'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toThrow();
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it('does not persist workflow state when no platform is selected', async () => {
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    const { platformSelectPrompt } = await import('../../app/commands/platform-select-prompt.js');
+    vi.mocked(platformSelectPrompt).mockResolvedValue([]);
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        json: true,
+        scope: 'project',
+        language: 'en',
+        installMode: 'copy',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      workflow: 'native',
+      projectConfigCreated: false,
+      selectedPlatforms: [],
+      results: [],
+    });
+    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toThrow();
+  });
+
+  it.each([{ workflow: 'native' as const }, { artifactRoot: 'docs' }])(
+    'rejects project workflow options at global scope without writes',
+    async (selection) => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      await expect(
+        initCommand(tmpDir, { yes: true, json: true, scope: 'global', ...selection }),
+      ).rejects.toThrow(/only valid for project-scope initialization/u);
+
+      await expect(fs.access(path.join(os.homedir(), '.comet'))).rejects.toThrow();
+      await expect(fs.access(path.join(os.homedir(), '.claude'))).rejects.toThrow();
+      await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toThrow();
+      expect(mockedExecFileSync).not.toHaveBeenCalled();
+    },
+  );
+
+  it('leaves project workflow state untouched when every Comet asset copy fails', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills'), 'not a directory', 'utf8');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, scope: 'project' }),
+    );
+
+    expect(result).toMatchObject({
+      workflow: 'native',
+      projectConfigCreated: false,
+      workingDirsCreated: false,
+    });
+    expect(result.results).toEqual([
+      expect.objectContaining({ platform: 'claude', comet: 'failed' }),
+    ]);
+    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toThrow();
+  });
+
+  it('does not activate a project workflow when any selected platform copy fails', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills'), 'not a directory', 'utf8');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'project',
+        workflow: 'native',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      workflow: 'native',
+      projectConfigCreated: false,
+      workingDirsCreated: false,
+      results: expect.arrayContaining([
+        expect.objectContaining({ platform: 'claude', comet: 'failed' }),
+        expect.objectContaining({ platform: 'codex', comet: 'installed' }),
+      ]),
+    });
+    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each([
+    { label: 'create', existingWorkflow: null },
+    { label: 'switch', existingWorkflow: 'classic' as const },
+  ])(
+    'does not $label Native activation when the second project instructions file is invalid',
+    async ({ existingWorkflow }) => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+      await fs.writeFile(
+        path.join(tmpDir, 'CLAUDE.md'),
+        '# User rules\n\n<comet-ambient-resume>\nincomplete\n',
+        'utf8',
+      );
+
+      const configPath = path.join(tmpDir, 'comet.config.yaml');
+      if (existingWorkflow) {
+        await fs.writeFile(
+          configPath,
+          [
+            'schema: comet.project.v1',
+            `default_workflow: ${existingWorkflow}`,
+            'native:',
+            '  artifact_root: .',
+            '',
+          ].join('\n'),
+          'utf8',
+        );
+      }
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      await expect(
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          scope: 'project',
+          workflow: 'native',
+        }),
+      ).rejects.toThrow(/incomplete managed block/u);
+
+      if (existingWorkflow) {
+        const config = await fs.readFile(configPath, 'utf8');
+        expect(config).toContain(`default_workflow: ${existingWorkflow}`);
+        expect(config).not.toContain('default_workflow: native');
+      } else {
+        await expect(fs.access(configPath)).rejects.toThrow();
+      }
+    },
   );
 
   it(
@@ -235,7 +639,9 @@ describe('comet init E2E', () => {
       await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
 
       const { initCommand } = await import('../../app/commands/init.js');
-      const result = await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true }));
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, workflow: 'classic' }),
+      );
 
       expect(result.selectedPlatforms).toEqual(['codex']);
       await expect(
@@ -750,7 +1156,7 @@ describe('comet init E2E', () => {
 
       const { initCommand } = await import('../../app/commands/init.js');
       const output = await captureTextOutput(() =>
-        initCommand(tmpDir, { yes: true, language: 'en' }),
+        initCommand(tmpDir, { yes: true, language: 'en', workflow: 'classic' }),
       );
 
       expect(output).not.toContain('Installed:\n    OpenCode -> .opencode/skills/');
@@ -773,7 +1179,12 @@ describe('comet init E2E', () => {
     const { initCommand } = await import('../../app/commands/init.js');
 
     await captureJsonOutput(() =>
-      initCommand(tmpDir, { json: true, scope: 'project', language: 'en' }),
+      initCommand(tmpDir, {
+        json: true,
+        scope: 'project',
+        language: 'en',
+        workflow: 'classic',
+      }),
     );
 
     expect(platformSelectPrompt).toHaveBeenCalledWith(

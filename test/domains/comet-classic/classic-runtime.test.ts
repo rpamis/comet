@@ -38,6 +38,34 @@ afterEach(async () => {
 });
 
 describe('Classic runtime CLI adapter', () => {
+  it('ignores a user-facing comet-classic wrapper when discovering the internal runtime package', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-wrapper-'));
+    temporaryDirectories.push(directory);
+    const wrapper = path.join(directory, 'comet-classic');
+    await fs.mkdir(wrapper, { recursive: true });
+    await fs.writeFile(
+      path.join(wrapper, 'SKILL.md'),
+      '---\nname: comet-classic\n---\n\n# User-facing wrapper\n',
+      'utf8',
+    );
+    const previousRoot = process.env.COMET_RUNTIME_CLASSIC_ROOT;
+    const previous = process.cwd();
+    process.env.COMET_RUNTIME_CLASSIC_ROOT = wrapper;
+    process.chdir(directory);
+    try {
+      const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
+      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      const changeDir = path.join(directory, 'openspec', 'changes', 'demo');
+
+      await expect(ensureClassicRuntimeRun(changeDir)).resolves.toBeDefined();
+      await expect(readRunState(changeDir)).resolves.toMatchObject({ skill: 'comet-classic' });
+    } finally {
+      process.chdir(previous);
+      if (previousRoot === undefined) delete process.env.COMET_RUNTIME_CLASSIC_ROOT;
+      else process.env.COMET_RUNTIME_CLASSIC_ROOT = previousRoot;
+    }
+  });
+
   it('records current-Run command checks through the state dispatcher', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-record-check-'));
     temporaryDirectories.push(directory);

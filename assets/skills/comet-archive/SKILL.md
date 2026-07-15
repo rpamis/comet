@@ -116,7 +116,7 @@ The archive script moves `openspec/changes/<name>/` to `openspec/changes/archive
 
 ## Complete
 
-Comet workflow complete. To start new work, invoke `/comet` or `/comet-open`.
+Comet Classic workflow complete. To start new Classic work, invoke `/comet-classic` or `/comet-open`.
 
 ## Context Compression Recovery
 

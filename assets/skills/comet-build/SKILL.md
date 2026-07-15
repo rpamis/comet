@@ -80,7 +80,7 @@ After the plan is recorded, immediately provide a new user decision point:
 | Option | Behavior | Description |
 |--------|----------|-------------|
 | A | Continue execution | Stay in the current model and proceed to Step 3 to choose workspace isolation, execution method, TDD mode, and code review mode |
-| B | Pause to switch model | Record `build_pause: plan-ready`, stop this `/comet-build` invocation, and allow the user to resume later from `/comet` or `/comet-build` |
+| B | Pause to switch model | Record `build_pause: plan-ready`, stop this `/comet-build` invocation, and allow the user to resume later from `/comet-classic` or `/comet-build` |
 
 This is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to explicitly choose**. Must not auto-continue and must not write the pause into `build_mode`.
 

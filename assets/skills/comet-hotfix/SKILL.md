@@ -12,7 +12,7 @@ Quick bug fix workflow: open → build → verify → archive. Skip brainstormin
 2. No interface changes or architecture adjustments
 3. Change scope is predictable (file count is a hint only, not a hard upgrade condition; see Upgrade Assessment below)
 
-**Not applicable**: If the fix process hits a qualitative-change signal (see "Upgrade Assessment" section), the user decides whether to upgrade to the full `/comet` workflow.
+**Not applicable**: If the fix process hits a qualitative-change signal (see "Upgrade Assessment" section), the user decides whether to upgrade to the full `/comet-classic` workflow.
 
 ---
 
@@ -140,7 +140,7 @@ Exception: when `.comet.yaml` has `auto_transition: false`, after each phase gua
 
 The following situations must also pause and wait for user confirmation:
 
-1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the hotfix flow, or upgrade to the full `/comet` workflow
+1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the hotfix flow, or upgrade to the full `/comet-classic` workflow
 2. workspace isolation and execution-method selection when tasks exceed 3 and transfer to `/comet-build`
 3. verify phase (comet-verify) verification-failure and branch-handling decisions
 4. Final archive confirmation (before comet-archive runs the archive script)
@@ -156,7 +156,7 @@ After each step completes, immediately enter next step. Within each phase, must 
 
 Hotfix upgrade assessment only decides whether to move from the preset workflow to full; file count never upgrades automatically, and `comet-state scale` only decides verification weight.
 
-If `/comet` passes an intent frame from the entry, hotfix must recheck `risk_signal` and escalation signals only before build: new capability, public API, schema change, cross-module coordination, or deep architecture work. When any signal matches, enter the existing escalation decision point; do not reimplement entry intent recognition.
+If `/comet-classic` passes an intent frame from the entry, hotfix must recheck `risk_signal` and escalation signals only before build: new capability, public API, schema change, cross-module coordination, or deep architecture work. When any signal matches, enter the existing escalation decision point; do not reimplement entry intent recognition.
 
 Continuously check these qualitative-change signals: cross-module coordination, needing a new capability, database schema changes, introducing a new public API, or touching a deep architecture problem (in hotfix context this often surfaces during the root-cause elimination check). If any signal appears, the agent **must not self-upgrade or self-decide to continue**.
 

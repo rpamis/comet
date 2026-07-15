@@ -316,15 +316,24 @@ describe('Comet Native CLI dispatcher', () => {
     expect(data.findings).toContainEqual(expect.objectContaining({ code: 'selection-cleared' }));
   });
 
-  it('returns exit 70 for an unexpected filesystem failure', async () => {
-    const failure = Object.assign(new Error('simulated storage failure'), { code: 'EIO' });
-    const realpath = vi.spyOn(fs, 'realpath').mockRejectedValueOnce(failure);
-    try {
-      const result = await runNativeCli(['init', '--json', ...projectArgs()]);
-      expect(result.exitCode).toBe(70);
-      expect(json(result)).toMatchObject({ error: { code: 'internal' } });
-    } finally {
-      realpath.mockRestore();
-    }
-  });
+  it.each([
+    ['init', ['init']],
+    ['new', ['new', 'storage-failure']],
+  ] as const)(
+    'returns exit 70 without activating Native when %s hits an unexpected filesystem failure',
+    async (_command, args) => {
+      const failure = Object.assign(new Error('simulated storage failure'), { code: 'EIO' });
+      const realpath = vi.spyOn(fs, 'realpath').mockRejectedValueOnce(failure);
+      try {
+        const result = await runNativeCli([...args, '--json', ...projectArgs()]);
+        expect(result.exitCode).toBe(70);
+        expect(json(result)).toMatchObject({ error: { code: 'internal' } });
+        await expect(fs.access(path.join(projectRoot, 'comet.config.yaml'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      } finally {
+        realpath.mockRestore();
+      }
+    },
+  );
 });

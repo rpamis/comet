@@ -21,8 +21,21 @@ import {
   installCometHooksForPlatform,
   createWorkingDirs,
   mergeProjectConfig,
+  prepareNativeSkillInstallTarget,
 } from '../../domains/skill/platform-install.js';
+import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import { LANGUAGES, type LanguageConfig } from '../../domains/skill/languages.js';
+import { resolveInitWorkflow } from '../../domains/comet-entry/init-workflow.js';
+import type { CometWorkflow } from '../../domains/comet-entry/types.js';
+import {
+  defaultProjectConfig,
+  readProjectConfig,
+  writeProjectConfig,
+} from '../../domains/comet-native/native-config.js';
+import {
+  ensureNativeDirectories,
+  nativeProjectPaths,
+} from '../../domains/comet-native/native-paths.js';
 import { installOpenSpec, isCommandAvailable } from '../../domains/integrations/openspec.js';
 import { installSuperpowersForPlatforms } from '../../domains/integrations/superpowers.js';
 import {
@@ -43,6 +56,8 @@ type InitOptions = {
   scope?: InstallScope;
   language?: string;
   installMode?: InstallMode;
+  workflow?: CometWorkflow;
+  artifactRoot?: string;
 };
 
 type InstallStatus = 'installed' | 'skipped' | 'failed';
@@ -198,7 +213,10 @@ async function selectNpmDeps(
   spPlatformIds: string[],
   options: InitOptions,
   lang: string,
+  workflow: CometWorkflow,
 ): Promise<Set<NpmDepId>> {
+  if (workflow === 'native') return new Set();
+
   const openSpecInstalled = isCommandAvailable('openspec');
   const codegraphInstalled =
     hasCodegraphProjectIndex(projectPath) || resolveCodegraphCommand() !== null;
@@ -278,7 +296,12 @@ function isAllSkipped(r: PlatformResult): boolean {
   );
 }
 
-function displaySummary(results: PlatformResult[], scope: InstallScope, lang: string): void {
+function displaySummary(
+  results: PlatformResult[],
+  scope: InstallScope,
+  lang: string,
+  workflow: CometWorkflow,
+): void {
   const scopeLabel = scope === 'global' ? os.homedir() : 'project';
   const componentStatuses: Array<[keyof Omit<PlatformResult, 'platform'>, string]> = [
     ['openspec', 'OpenSpec'],
@@ -322,8 +345,11 @@ function displaySummary(results: PlatformResult[], scope: InstallScope, lang: st
 
   console.log(`\n  ${t(lang, 'getStarted')}`);
   console.log(`    ${t(lang, 'getStartedComet')}`);
-  console.log(`    ${t(lang, 'getStartedHotfix')}`);
-  console.log(`    ${t(lang, 'getStartedTweak')}\n`);
+  if (workflow === 'classic') {
+    console.log(`    ${t(lang, 'getStartedHotfix')}`);
+    console.log(`    ${t(lang, 'getStartedTweak')}`);
+  }
+  console.log();
 }
 
 export async function initCommand(targetPath: string, options: InitOptions = {}): Promise<void> {
@@ -342,7 +368,22 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
 
   const detected = await detectPlatforms(projectPath);
   const scope = await selectScope(options, lang);
-  const installMode = await selectInstallMode(options, lang);
+  if (
+    scope === 'global' &&
+    (options.workflow !== undefined || options.artifactRoot !== undefined)
+  ) {
+    throw new Error('--workflow and --root are only valid for project-scope initialization');
+  }
+  const workflowDecision =
+    scope === 'project'
+      ? await resolveInitWorkflow(projectPath, {
+          workflow: options.workflow,
+          artifactRoot: options.artifactRoot,
+        })
+      : null;
+  const workflow: CometWorkflow = workflowDecision?.workflow ?? 'classic';
+  const workflowSource = workflowDecision?.source ?? 'global-install';
+  const installMode = workflow === 'native' ? 'copy' : await selectInstallMode(options, lang);
 
   const selectedPlatformIds = await selectPlatforms(detected, options, lang);
   if (selectedPlatformIds.length === 0) {
@@ -353,8 +394,14 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
             projectPath,
             scope,
             language: language.id,
+            workflow,
+            workflowSource,
+            projectConfigCreated: false,
+            projectConfigUpdated: false,
+            nativeArtifactRoot: null,
             selectedPlatforms: [],
             results: [],
+            workingDirsCreated: false,
           },
           null,
           2,
@@ -379,13 +426,24 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
   const plans: PlatformPlan[] = [];
 
   for (const platform of selectedPlatforms) {
-    const hasOS = await hasSkills(baseDir, platform, 'openspec', selectedPlatforms, scope);
-    const hasSP = await hasSkills(baseDir, platform, 'superpowers', selectedPlatforms, scope);
-    const hasCM = await hasSkills(baseDir, platform, 'comet', selectedPlatforms, scope);
+    const hasOS =
+      workflow === 'classic'
+        ? await hasSkills(baseDir, platform, 'openspec', selectedPlatforms, scope)
+        : false;
+    const hasSP =
+      workflow === 'classic'
+        ? await hasSkills(baseDir, platform, 'superpowers', selectedPlatforms, scope)
+        : false;
+    const hasCM = await hasSkills(baseDir, platform, 'comet', selectedPlatforms, scope, {
+      includeGlobalFallback: false,
+    });
 
-    let osAction = resolveAction(hasOS, options);
-    let spAction = resolveAction(hasSP, options);
+    let osAction = workflow === 'classic' ? resolveAction(hasOS, options) : 'skip';
+    let spAction = workflow === 'classic' ? resolveAction(hasSP, options) : 'skip';
     let cmAction = resolveAction(hasCM, options);
+    if (hasCM && options.yes && !options.skipExisting && !options.overwrite) {
+      cmAction = 'install';
+    }
 
     if (!options.yes) {
       const existingComponents = [
@@ -419,6 +477,20 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     plans.push({ platform, osAction, spAction, cmAction, hasOS, hasSP, hasCM });
   }
 
+  if (workflow === 'native' && scope === 'project') {
+    for (const plan of plans) {
+      const action =
+        plan.cmAction === 'overwrite' ? 'overwrite' : plan.cmAction === 'install' ? 'fill' : 'skip';
+      await prepareNativeSkillInstallTarget(
+        baseDir,
+        plan.platform,
+        scope,
+        language.skillsDir,
+        action,
+      );
+    }
+  }
+
   const osToolIds = Array.from(
     new Set(plans.filter((p) => p.osAction !== 'skip').map((p) => p.platform.openspecToolId)),
   );
@@ -434,7 +506,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     ['zcode', 'mimocode'].includes(id),
   );
 
-  const selectedNpmDeps = await selectNpmDeps(projectPath, spPlatformIds, options, lang);
+  const selectedNpmDeps = await selectNpmDeps(projectPath, spPlatformIds, options, lang, workflow);
   const shouldInstallOpenSpecCli = selectedNpmDeps.has('openspec');
   const shouldInstallSuperpowers = selectedNpmDeps.has('superpowers');
   const shouldInstallCodegraphCli = selectedNpmDeps.has('codegraph');
@@ -507,7 +579,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       log(`  Comet -> ${platform.name}: skipped (${t(lang, 'alreadyExists')})`);
     }
 
-    if (cmAction !== 'skip') {
+    if (workflow === 'classic' && cmAction !== 'skip') {
       const { copied: ruleCopied } = await copyCometRulesForPlatform(
         baseDir,
         platform,
@@ -520,7 +592,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       }
     }
 
-    if (cmAction !== 'skip' && platform.supportsHooks) {
+    if (workflow === 'classic' && cmAction !== 'skip' && platform.supportsHooks) {
       const { installed, reason } = await installCometHooksForPlatform(baseDir, platform, scope);
       if (installed) {
         log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksInstalled')}`);
@@ -559,8 +631,27 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     log(`\n  CodeGraph: ${t(lang, 'cgSkippedByUser')}`);
   }
 
-  if (scope === 'project') {
-    await createWorkingDirs(projectPath, language.artifactLanguage);
+  let projectConfigCreated = false;
+  let projectConfigUpdated = false;
+  let nativeArtifactRoot: string | null = null;
+  let workingDirsCreated = false;
+  const cometInstallComplete =
+    results.length > 0 && results.every((result) => result.comet !== 'failed');
+
+  if (scope === 'project' && workflowDecision && cometInstallComplete) {
+    if (workflow === 'native') {
+      const paths = await nativeProjectPaths(projectPath, workflowDecision.artifactRoot);
+      await ensureNativeDirectories(paths);
+      nativeArtifactRoot = workflowDecision.artifactRoot;
+    } else {
+      await createWorkingDirs(projectPath, language.artifactLanguage);
+    }
+    workingDirsCreated = true;
+
+    if (workflow === 'native') {
+      await installCometProjectInstructions(projectPath, language.id);
+    }
+
     const projectTargets = await detectInstalledCometTargets(projectPath, { scopes: ['project'] });
     if (projectTargets.length > 0) {
       await upsertProjectInstallation(
@@ -572,7 +663,19 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
         'init',
       );
     }
-  } else {
+
+    // The project config activates the selected workflow. Commit it only after
+    // every required project artifact has been written successfully so a
+    // partial initialization cannot route later commands into Native.
+    if (workflowDecision.writeProjectConfig) {
+      const existing = await readProjectConfig(projectPath);
+      const config = existing ?? defaultProjectConfig(workflowDecision.artifactRoot);
+      config.default_workflow = workflowDecision.workflow;
+      await writeProjectConfig(projectPath, config);
+      projectConfigCreated = existing === null;
+      projectConfigUpdated = existing !== null;
+    }
+  } else if (scope === 'global') {
     await mergeProjectConfig(baseDir, language.artifactLanguage);
   }
 
@@ -583,6 +686,11 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
           projectPath,
           scope,
           language: language.id,
+          workflow,
+          workflowSource,
+          projectConfigCreated,
+          projectConfigUpdated,
+          nativeArtifactRoot,
           selectedPlatforms: selectedPlatformIds,
           results: results.map((result) => ({
             platform: result.platform.id,
@@ -592,7 +700,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
             comet: result.comet,
             codegraph: result.codegraph,
           })),
-          workingDirsCreated: scope === 'project',
+          workingDirsCreated,
         },
         null,
         2,
@@ -601,7 +709,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     return;
   }
 
-  displaySummary(results, scope, lang);
+  displaySummary(results, scope, lang, workflow);
 }
 
 export { applyBulkOverwriteChoice };

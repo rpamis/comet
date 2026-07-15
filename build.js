@@ -24,6 +24,12 @@ const buildNativeRuntime = () => {
   });
 };
 
+const buildEntryRuntime = () => {
+  execFileSync(process.execPath, ['scripts/build/build-entry-runtime.mjs'], {
+    stdio: 'inherit',
+  });
+};
+
 const buildDashboardFrontend = () => {
   const vitePath = path.join(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js');
   execFileSync(
@@ -47,6 +53,8 @@ try {
   buildClassicRuntime();
   console.log('Building Native runtime...');
   buildNativeRuntime();
+  console.log('Building entry resolver runtime...');
+  buildEntryRuntime();
   console.log('Compiling TypeScript...');
   runTsc(['--version']);
   runTsc();

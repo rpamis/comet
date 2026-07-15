@@ -7,7 +7,7 @@ description: "Use when the user wants a lightweight or medium change that fits a
 
 Tweak is a preset workflow of Comet's five-phase capabilities, not an independent parallel process. It chains OpenSpec's core flow, reusing open, build, verify, archive capabilities, only skipping Superpowers brainstorming and full plan.
 
-Applicable for OpenSpec-chained lightweight changes, such as configuration adjustments, documentation or prompt optimization, and spec-driven (including delta spec) medium changes that do not need the full `/comet` deep design workflow. Delta spec is a first-class normal artifact in tweak; needing delta spec alone does not constitute an upgrade reason.
+Applicable for OpenSpec-chained lightweight changes, such as configuration adjustments, documentation or prompt optimization, and spec-driven (including delta spec) medium changes that do not need the full `/comet-classic` deep design workflow. Delta spec is a first-class normal artifact in tweak; needing delta spec alone does not constitute an upgrade reason.
 
 **Applicable conditions** (all must be met):
 1. Can fit a **single OpenSpec change**
@@ -15,7 +15,7 @@ Applicable for OpenSpec-chained lightweight changes, such as configuration adjus
 3. Does not involve cross-module or cross-layer architecture coordination
 4. Task scope is estimable (file count and task count are hints only, not hard upgrade conditions; see Upgrade Assessment below)
 
-**Not applicable**: If the change process hits a qualitative-change signal (see "Upgrade Assessment" section), the user decides whether to upgrade to the full `/comet` workflow.
+**Not applicable**: If the change process hits a qualitative-change signal (see "Upgrade Assessment" section), the user decides whether to upgrade to the full `/comet-classic` workflow.
 
 ---
 
@@ -66,7 +66,7 @@ node "$COMET_GUARD" <change-name> open --apply
 Use tweak defaults: `build_mode: direct`. Skip Superpowers `brainstorming` and `writing-plans`, and let OpenSpec's apply action execute the current change's tasks.
 
 <IMPORTANT>
-This apply path belongs only to tweak. Full `/comet` or `workflow: full` must not use tweak's `openspec-apply-change` build path; full must still generate a Design Doc through `/comet-design`, then let `/comet-build` use Superpowers `writing-plans`, execution-method selection, and the corresponding execution skill to build.
+This apply path belongs only to tweak. Full `/comet-classic` or `workflow: full` must not use tweak's `openspec-apply-change` build path; full must still generate a Design Doc through `/comet-design`, then let `/comet-build` use Superpowers `writing-plans`, execution-method selection, and the corresponding execution skill to build.
 </IMPORTANT>
 
 Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows a qualitative-change signal or file-count tripwire is hit, handle it through this file's "Upgrade Assessment".
@@ -90,7 +90,7 @@ During tweak execution, whenever running programs, tests, builds, or manual veri
 
 For specific investigation, minimal failing test, fix verification, and keeping the current change verification loop, follow `comet/reference/debug-gate.md`.
 
-**Upgrade assessment check**: Continuously judge throughout build, and do a consolidated re-check before running the build→verify guard. Assessment uses a three-layer division of labor (see "Upgrade Assessment" section): qualitative-change signals rely on agent semantic recognition, file count is only a hint delegated to the user, and the scale script only governs verification weight. When a qualitative-change signal or file-count tripwire is hit, **do not upgrade on your own or decide to continue on your own** — must pause per `comet/reference/decision-point.md` and delegate the decision to the user: continue the tweak lightweight flow, or upgrade to the full `/comet`.
+**Upgrade assessment check**: Continuously judge throughout build, and do a consolidated re-check before running the build→verify guard. Assessment uses a three-layer division of labor (see "Upgrade Assessment" section): qualitative-change signals rely on agent semantic recognition, file count is only a hint delegated to the user, and the scale script only governs verification weight. When a qualitative-change signal or file-count tripwire is hit, **do not upgrade on your own or decide to continue on your own** — must pause per `comet/reference/decision-point.md` and delegate the decision to the user: continue the tweak lightweight flow, or upgrade to the full `/comet-classic`.
 
 7. Run phase guard to transition build → verify:
 
@@ -133,7 +133,7 @@ Exception: when `.comet.yaml` has `auto_transition: false`, after each phase gua
 
 The following situations must pause and wait for user confirmation:
 
-1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the tweak lightweight flow, or upgrade to the full `/comet` workflow
+1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the tweak lightweight flow, or upgrade to the full `/comet-classic` workflow
 2. verify phase (comet-verify) verification-failure and branch-handling decisions
 3. Final archive confirmation (before comet-archive runs the archive script)
 
@@ -148,7 +148,7 @@ After each phase completes, immediately enter next phase. Within each phase, mus
 
 Tweak upgrade assessment only decides whether to move from the lightweight preset to full; delta spec alone is not an upgrade reason, file count never upgrades automatically, and `comet-state scale` only decides verification weight.
 
-If `/comet` passes an intent frame from the entry, tweak must recheck `risk_signal` and escalation signals only before build: new capability, public API, schema change, cross-module coordination, or deep architecture work. When any signal matches, enter the existing escalation decision point. Delta spec remains a normal tweak artifact and must not trigger escalation by itself; do not reimplement entry intent recognition.
+If `/comet-classic` passes an intent frame from the entry, tweak must recheck `risk_signal` and escalation signals only before build: new capability, public API, schema change, cross-module coordination, or deep architecture work. When any signal matches, enter the existing escalation decision point. Delta spec remains a normal tweak artifact and must not trigger escalation by itself; do not reimplement entry intent recognition.
 
 Continuously check these qualitative-change signals: cross-module coordination, needing a new capability, database schema changes, introducing a new public API, or touching a deep architecture problem; plus the tweak-specific signal: needing to split into multiple OpenSpec changes. If any signal appears, the agent **must not self-upgrade or self-decide to continue**.
 

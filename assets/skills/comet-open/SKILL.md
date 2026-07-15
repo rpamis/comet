@@ -69,7 +69,7 @@ Must not create proposal.md, design.md, or tasks.md before the user completes th
 
 In batch split mode, entering `/comet-open` for each split item must explicitly mark it as a "confirmed split item" and carry that split item's goals, scope, non-goals, and acceptance scenarios. Confirmed split items skip the PRD split preflight by default, unless the split item itself still clearly contains multiple independent capabilities.
 
-In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase. After splitting is complete, must pause and ask the user which change to start; after the user chooses, advance only that change into `/comet-design`, while other changes remain active and can be resumed later through `/comet`.
+In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase. After splitting is complete, must pause and ask the user which change to start; after the user chooses, advance only that change into `/comet-design`, while other changes remain active and can be resumed later through `/comet-classic`.
 
 Minimal resume rule: do not add a dedicated batch state file. On resume, first check already-created active changes; split items that already exist and contain `.comet.yaml` must not be created again, while uncreated split items continue through `/comet-open` according to the user-confirmed split list. If the confirmed split list cannot be recovered from the conversation, must ask the user to confirm the split list again before continuing.
 
@@ -102,7 +102,7 @@ Must not run `openspec new change` or create `.comet.yaml` before the user confi
 
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
 
-Full `/comet` workflow must not use the Skill tool to load the `openspec-propose` skill by default; only load it when the user explicitly requests generating the proposal and artifacts in one pass.
+Full `/comet-classic` workflow must not use the Skill tool to load the `openspec-propose` skill by default; only load it when the user explicitly requests generating the proposal and artifacts in one pass.
 
 After the skill loads, follow its guidance to create the change skeleton, but override its "STOP and wait for user direction" behavior when a confirmed clarification summary from Step 1b is already available in the conversation context.
 

@@ -58,7 +58,7 @@ Every subagent must receive the same common context:
   the derived internal `callChain` source inventory from Skill Creator metadata.
 - `reference/resolved-skills.json` or an equivalent real Skill source summary.
 - `reference/workflow-protocol.json` or the workflow protocol that will be written there.
-- For customize existing Comet Skills, the protected boundary: `open / design / build / verify / archive`, `.comet.yaml`, decision point, verify-result-transition, and archive-delta-sync.
+- For `/comet-classic` customization, the protected boundary is `open / design / build / verify / archive`, `.comet.yaml`, decision point, verify-result-transition, and archive-delta-sync.
 - Project preferences, missing or ambiguous candidate decisions, deviation reasons, and scripts/hooks executable disclosures.
 
 ## Output Format

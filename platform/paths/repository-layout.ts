@@ -16,6 +16,10 @@ export interface RepositoryLayout {
     entries: { runtime: string };
     outputs: { runtime: string };
   };
+  entryRuntime: {
+    entries: { runtime: string };
+    outputs: { runtime: string };
+  };
   allowedTopLevelEntries: string[];
   sourceRoots: string[];
   appModules: string[];

@@ -35,7 +35,7 @@
 
 **Comet 是一个面向Coding的可恢复长程任务工作流与 Skill 平台。**
 
-它用统一的跨平台运行时把 OpenSpec 产物、Superpowers 执行方法论、Skill 创建、评估与发布串成一条工作闭环
+它提供两套彼此独立的需求工作流：面向强模型、只依赖 Comet 自有 runtime 的 Native，以及保留 OpenSpec + Superpowers 完整阶段治理的 Classic；同时覆盖 Skill 创建、评估与发布。
 
 让你可以用一个工具链处理需求到归档、中断后恢复，将任意Skill组合得像Comet一样，基于科学的**Rubric**、**Pass@k**、**Pass^k**评分演进你的Skill
 
@@ -50,13 +50,13 @@
 >
 > 详见 [NEWS.md](NEWS.md)。
 
-> 组合OpenSpec+Superpowers不是Comet的最终目的，我们希望能够追踪类似这样的长程任务Skill找到能够让长链路Skill稳定执行的Harness能力，如果你也感兴趣，欢迎参与我们的项目贡献，或通过我们的源码进行学习
+> Native 与 Classic 不是轻重档位，也不会互相升级。Native 服务于能够自主规划和验证的强模型；Classic 服务于需要完整阶段方法与强约束的场景。
 
 ## 为什么需要 Comet
 
 - **面向强模型的 Native 工作流** — `/comet-native` 用详细 brief、完整目标规格、状态检查和可恢复归档约束结果，同时把计划、实现、测试与审查方法交给模型自主判断；它使用可配置的 `comet/` 产物根目录，并与 Classic 完全分离。详见 [Native 工作流](website/zh/concepts/native-workflow.mdx)。
-- **长程任务稳定的核心**— Comet的经典Spec模式结合了OpenSpec和Superpowers，用状态机、Gate守卫、脚本串联整个链路，Agent只能够在特定阶段做特定事情，只有在完成阶段任务后才能够退出。支持自动推进机制，核心流程全自动推进，只在必要时刻进入HITL与你交互确认。
-- **可恢复工作流&智能路由** — Comet采用意图识别技术，能够路由你当前任务最需要走向的路径。`/comet` 会记住一个 change 停在什么阶段，长任务恢复时不需要让 Agent 重新猜上下文，支持跨设备0上下文断点恢复。你不在需要记忆冗长的Skill命令，无论何时何地，只需要/comet推进或恢复你的所有任务。
+- **长程任务稳定的核心**— Comet 的 Classic Spec 模式结合 OpenSpec 和 Superpowers，用状态机、阶段检查与脚本串联五阶段流程，适合需要明确方法和强约束的任务；永久入口是 `/comet-classic`。
+- **配置驱动的统一入口** — `/comet` 只读取项目根 `comet.config.yaml`，确定性转发到 `/comet-native` 或 `/comet-classic`。它不按任务大小猜工作流，也不混用两边的 change、状态和目录。`comet resume-probe` 使用同一配置恢复正确的永久入口。
 - **Skill 平台** — Comet能够编写可复用 Skill 包，并通过 `/comet-any` 把它们整理成可分发 Bundle，你制作的Skill可以像如comet init一样一键分发到所有Coding平台。
 - **Eval 平台**— Comet基于科学的Rubric、Pass@k、Pass^k评分评估你的Skill，让Skill演进是基于科学依据，而不是依靠感觉，支持接入LangSmith评估，让评估真实走进企业级生产环境。基于双Agent架构自动化在你的生产环境完成评估工作
 
@@ -64,7 +64,7 @@
 
 使用Comet你只需要记忆2个Skill和1条命令，用极低的使用门槛覆盖Coding、创建与评估
 
-- **用`/comet`进行任何Coding任务**
+- **用 `/comet` 进入项目配置的 Native 或 Classic 工作流**
 - **用`/comet-any`组合任意Skill**
 - **用comet eval评估任意Skill**
 
@@ -119,6 +119,18 @@ cd your-project
 comet init
 ```
 
+新的项目级初始化默认使用 Native，只安装 Comet 自有能力并创建 `comet.config.yaml` 与 `comet/`。需要 Classic 时显式选择：
+
+```bash
+comet init --workflow classic
+```
+
+Native 产物也可以放在项目内指定根目录，例如 `docs/comet/`：
+
+```bash
+comet init --workflow native --root docs
+```
+
 ## 对OpenClaw和Hermes、或其他AI平台的支持
 
 对于直接使用通用 `skills` CLI 的平台，可以用下面的方式安装 Comet skill 包：
@@ -161,13 +173,15 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 <details>
 <summary><code>comet init [path]</code> — 初始化 Comet 工作流</summary>
 
-为选定的 AI 编码平台初始化 OpenSpec、Superpowers 和 Comet 技能。
+为选定的 AI 编码平台初始化 Comet。新的项目级初始化默认使用自包含 Native；检测到既有 Classic 状态时保持 Classic。显式 Classic 初始化才安装其 OpenSpec、Superpowers、rules 和 hooks。
 
 | 选项                | 描述                                                 |
 | ------------------- | ---------------------------------------------------- |
 | `--yes`             | 非交互模式，自动选择已检测平台（未检测到则选择全部） |
 | `--scope <scope>`   | 安装范围：`project` 或 `global`                      |
 | `--language <lang>` | 技能语言：`en` 或 `zh`（跳过交互式语言选择）         |
+| `--workflow <mode>` | 项目默认工作流：`native` 或 `classic`                |
+| `--root <path>`     | Native 的项目内产物根目录，例如 `docs`               |
 | `--skip-existing`   | 跳过已安装的组件                                     |
 | `--overwrite`       | 覆盖已安装的组件                                     |
 | `--json`            | 输出结构化 JSON                                      |
@@ -179,7 +193,7 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 <details>
 <summary><code>comet status [path]</code> — 显示活跃更改和下一步命令</summary>
 
-显示活跃更改、任务进度、推荐的下一步 Comet 工作流命令，以及当前 step、runtime mode 和针对畸形状态或缺失证据的 diagnostic 恢复提示。
+分别显示默认入口、Native changes、Classic changes 和未托管 OpenSpec changes；两套状态保持独立，同时保留 Classic 的 runtime 诊断字段。
 
 | 选项     | 描述                                                           |
 | -------- | -------------------------------------------------------------- |
@@ -190,7 +204,7 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 <details>
 <summary><code>comet resume-probe [path]</code> — 判断是否应恢复活跃 Comet workflow</summary>
 
-只读检查 active change、`.comet.yaml`、当前 phase 和用户请求，输出 `auto_resume`、`ask_user`、`out_of_scope` 或 `none`。
+只读解析项目默认工作流，再只检查该工作流的 active changes、当前阶段和用户请求，输出 `auto_resume`、`ask_user`、`out_of_scope` 或 `none`。Native 返回 `/comet-native`，Classic 返回 `/comet-classic`；配置损坏时不会回退或扫描另一套目录。
 `comet init/update` 会把 `<comet-ambient-resume>` managed block 合并进 `AGENTS.md` 和 `CLAUDE.md`，保留用户已有规则。
 
 </details>

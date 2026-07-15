@@ -31,7 +31,7 @@ describe('comet-any Skill workflow contract docs', () => {
     const combined = Object.values(docs).join('\n');
 
     for (const expected of [
-      '基于 Comet 现有 Skill 的五阶段定制',
+      '基于 /comet-classic 的五阶段定制',
       'Workflow Node',
       'Skill Binding',
       'Output Schema',
@@ -58,6 +58,8 @@ describe('comet-any Skill workflow contract docs', () => {
     ]) {
       expect(combined).toContain(expected);
     }
+    expect(combined).not.toContain('`/comet` 定制');
+    expect(combined).not.toContain('破坏 `/comet` 受保护语义');
   });
 
   it('uses the same Workflow Contract vocabulary in English docs', async () => {
@@ -65,7 +67,7 @@ describe('comet-any Skill workflow contract docs', () => {
     const combined = Object.values(docs).join('\n');
 
     for (const expected of [
-      'customize existing Comet Skills',
+      'customize /comet-classic five-phase Skills',
       'Workflow Node',
       'Skill Binding',
       'Output Schema',
@@ -92,5 +94,7 @@ describe('comet-any Skill workflow contract docs', () => {
     ]) {
       expect(combined).toContain(expected);
     }
+    expect(combined).not.toContain('without modifying the `/comet` command');
+    expect(combined).not.toContain('protected `/comet` semantics');
   });
 });

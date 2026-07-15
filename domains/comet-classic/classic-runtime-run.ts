@@ -34,6 +34,15 @@ async function fileExists(file: string): Promise<boolean> {
   }
 }
 
+async function isClassicRuntimePackageRoot(root: string): Promise<boolean> {
+  if (!(await directoryExists(root))) return false;
+  if (await fileExists(path.join(root, 'skill.yaml'))) return true;
+  return (
+    (await fileExists(path.join(root, 'SKILL.md'))) &&
+    (await fileExists(path.join(root, 'comet', 'skill.yaml')))
+  );
+}
+
 function embeddedClassicRuntimePackage(root: string): SkillPackage {
   return {
     root,
@@ -276,7 +285,7 @@ async function classicRuntimeRoot(): Promise<string | null> {
   ].filter((candidate): candidate is string => Boolean(candidate));
 
   for (const candidate of candidates) {
-    if (await directoryExists(candidate)) return candidate;
+    if (await isClassicRuntimePackageRoot(candidate)) return candidate;
   }
   return null;
 }

@@ -34,7 +34,7 @@ Auto 区的 Node 路由表仅供参考——不要复制成执行清单，不要
 - 用户确认的目标、语言和阶段名。
 - `reference/workflow-protocol.json` 的阶段顺序、插槽、`requiredSkillCalls` 和恢复路径。
 - 脚本作者返回的 `status`、`init`、`next`、`NEXT:`、`SKILL:` 和 guard 契约。
-- `/comet` 定制场景下必须保留的 open / design / build / verify / archive 边界。
+- `/comet-classic` 定制场景下必须保留的 open / design / build / verify / archive 边界。
 
 使用文件交接：主会话提供路径，不粘贴大段全文。不要继承主会话历史；只使用本 brief、通用输入、脚本契约和 reference 证据。
 
@@ -63,9 +63,9 @@ entry 草稿必须体现：
 - 未启动时先初始化状态，再查询 `next`。
 - 只有脚本输出 `NEXT: auto` 和 `SKILL: <node-skill>` 后，才加载这一个 Node Skill。
 - 阶段路线只能作为参考表，不能使用“立即执行”或“必须加载”这类执行指令。
-- 对 `/comet` 定制，entry 必须列出必调槽位 Skill，但只能作为阶段内义务说明，不能变成 entry 立即执行清单。
+- 对 `/comet-classic` 定制，entry 必须列出必调槽位 Skill，但只能作为阶段内义务说明，不能变成 entry 立即执行清单。
 - 用户停顿点、恢复路径和参考文件清楚可见。
-- 对 `/comet` 定制，说明保留 open / design / build / verify / archive 主路径和阶段守卫。
+- 对 `/comet-classic` 定制，说明保留 open / design / build / verify / archive 主路径和阶段守卫。
 
 禁止：
 

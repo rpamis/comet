@@ -214,6 +214,102 @@ async function lstatOrNull(filePath: string): Promise<Awaited<ReturnType<typeof 
   }
 }
 
+async function prepareManagedSkillCopyTarget(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope = 'project',
+): Promise<void> {
+  const manifest = await readManifest();
+  const managedEntries = new Set(getManagedSkillTopLevelEntries(manifest));
+  const skillsRoot = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
+  const rootStat = await lstatOrNull(skillsRoot);
+  if (!rootStat) return;
+
+  if (rootStat.isSymbolicLink()) {
+    let linkedEntries: string[] = [];
+    try {
+      linkedEntries = await readdir(skillsRoot);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const unmanagedEntries = linkedEntries.filter((entry) => !managedEntries.has(entry));
+    if (unmanagedEntries.length > 0) {
+      throw new Error(
+        `Refusing to replace ${skillsRoot} with managed copies because the linked directory contains unmanaged entries: ${unmanagedEntries.join(', ')}`,
+      );
+    }
+    await unlink(skillsRoot);
+    await ensureDir(skillsRoot);
+    return;
+  }
+
+  if (!rootStat.isDirectory()) return;
+  for (const entry of managedEntries) {
+    const entryPath = path.join(skillsRoot, entry);
+    const entryStat = await lstatOrNull(entryPath);
+    if (entryStat?.isSymbolicLink()) {
+      await unlink(entryPath);
+    }
+  }
+}
+
+async function prepareNativeSkillInstallTarget(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope,
+  languageSkillsDir: string,
+  action: 'overwrite' | 'fill' | 'skip',
+): Promise<void> {
+  if (action !== 'skip') {
+    await prepareManagedSkillCopyTarget(baseDir, platform, scope);
+  }
+  if (action === 'overwrite') return;
+
+  const skillsRoot = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
+  const assetsDir = getAssetsDir();
+  const manifest = await readManifest();
+  const requiredFiles = getManagedSkillPaths(manifest)
+    .filter(
+      (relativePath) =>
+        relativePath === 'comet/SKILL.md' ||
+        relativePath === 'comet/scripts/comet-entry-runtime.mjs' ||
+        relativePath.startsWith('comet-native/'),
+    )
+    .map((relativePath) => {
+      const pathParts = relativePath.split('/');
+      const sourceDir = relativePath.includes('/scripts/') ? 'skills' : languageSkillsDir;
+      return {
+        label: `the required Native asset ${relativePath}`,
+        destination: path.join(skillsRoot, ...pathParts),
+        source: path.join(assetsDir, sourceDir, ...pathParts),
+      };
+    });
+
+  for (const required of requiredFiles) {
+    const destinationStat = await lstatOrNull(required.destination);
+    if (!destinationStat) {
+      if (action === 'fill') continue;
+      throw new Error(
+        `Cannot activate Native while skipping existing Comet files because ${required.label} is missing at ${required.destination}`,
+      );
+    }
+    if (!destinationStat.isFile()) {
+      throw new Error(
+        `Cannot activate Native because ${required.label} is not a regular file at ${required.destination}; rerun with --overwrite after preserving any custom content`,
+      );
+    }
+    const [installed, bundled] = await Promise.all([
+      readFile(required.destination),
+      readFile(required.source),
+    ]);
+    if (!installed.equals(bundled)) {
+      throw new Error(
+        `Cannot activate Native because ${required.label} differs from the bundled routing contract at ${required.destination}; rerun with --overwrite after preserving any custom content`,
+      );
+    }
+  }
+}
+
 async function createSkillsSymlinks(
   targetRoot: string,
   linkRoot: string,
@@ -1238,5 +1334,7 @@ export {
   renderProjectConfig,
   getCentralSkillsDir,
   installSkillsAsSymlink,
+  prepareManagedSkillCopyTarget,
+  prepareNativeSkillInstallTarget,
 };
 export type { Manifest, LanguageConfig, PlannedSkillFile, PlannedSkillSourceFile };

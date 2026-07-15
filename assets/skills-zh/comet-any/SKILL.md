@@ -1,6 +1,6 @@
 ---
 name: comet-any
-description: "Use when 用户想定制 Comet 五阶段 Skill、创建 workflow Skill、整理已有 Skill，或用 Workflow Node / Skill Binding / Output Schema 编排 Skill。"
+description: "Use when 用户想定制 /comet-classic 五阶段 Skill、创建 workflow Skill、整理已有 Skill，或用 Workflow Node / Skill Binding / Output Schema 编排 Skill。"
 ---
 
 # Comet Any - Skill Creator
@@ -9,7 +9,7 @@ description: "Use when 用户想定制 Comet 五阶段 Skill、创建 workflow S
 
 普通用户第一层只看到三种起点：
 
-- `基于 Comet 现有 Skill 的五阶段定制`：覆盖 `open / design / build / verify / archive` 五阶段的 Skill 编排，但不修改 `/comet` 命令本身。
+- `基于 /comet-classic 的五阶段定制`：覆盖 `open / design / build / verify / archive` 五阶段的 Skill 编排，但不修改 `/comet-classic` 永久入口本身。
 - `创建全新 workflow Skill`：从目标和候选 Skills 生成新的 `workflow-kernel`。
 - `整理已有 Skill`：读取已有 Skill，补齐 Workflow Node、Skill Binding、Output Schema、Guardrail、Handoff、eval 和 readiness。
 
@@ -30,7 +30,7 @@ description: "Use when 用户想定制 Comet 五阶段 Skill、创建 workflow S
 
 ## 受保护边界
 
-`comet-five-phase-overlay` 保留 Comet 主流程和 `.comet.yaml` 状态语义。普通模式下：
+`comet-five-phase-overlay` 保留 Comet Classic 五阶段主流程和 `.comet.yaml` 状态语义。普通模式下：
 
 - `comet-five-phase-overlay` 的主状态只来自 `openspec/changes/<name>/.comet.yaml`；没有 active change 或多个 active changes 时必须阻塞并请用户选择。
 - 不得创建 `.comet/runs/<workflow>/state.json` 作为 Comet overlay 主状态。Bundle 草稿、eval evidence 和 publish readiness 可以有自己的证据文件，但不能替代 `.comet.yaml`。
@@ -59,7 +59,7 @@ description: "Use when 用户想定制 Comet 五阶段 Skill、创建 workflow S
 
 ```json
 {
-  "goal": "基于 Comet 现有 Skill 的五阶段定制，要求组件库和白盒审查。",
+  "goal": "基于 /comet-classic 的五阶段定制，要求组件库和白盒审查。",
   "skillCreatorIntent": "customize-comet",
   "workflow": {
     "kind": "comet-five-phase-overlay",

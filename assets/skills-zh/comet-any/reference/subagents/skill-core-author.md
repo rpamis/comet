@@ -93,7 +93,7 @@ prompt:
 - 阶段未达成目标时继续工作，不因为流程清单走完就退出。
 - 自动推进必须来自脚本输出的 `NEXT:` 和 `SKILL:`，而不是让 Agent 猜下一步。
 - 嵌套 Skill 调用只写 Skill 名字，不写 provider 前缀。
-- 对 `/comet` 定制，保留 `open / design / build / verify / archive` 与 `.comet.yaml` 语义。
+- 对 `/comet-classic` 定制，保留 `open / design / build / verify / archive` 与 `.comet.yaml` 语义。
 - 对任意 Skill 组合，整理为 Comet-like 多 Node workflow。
 
 禁止：

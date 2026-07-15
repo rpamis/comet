@@ -147,6 +147,7 @@ async function hasSkills(
   component: 'openspec' | 'superpowers' | 'comet',
   _selectedPlatforms: Platform[] = [],
   scope: InstallScope = 'project',
+  options: { includeGlobalFallback?: boolean } = {},
 ): Promise<boolean> {
   const skillDirEntries = await Promise.all(
     getPlatformSkillsDirs(platform, scope).map(async (skillsDir) => {
@@ -175,6 +176,10 @@ async function hasSkills(
       }
       if (entries.some((e) => e.startsWith('comet'))) return true;
       break;
+  }
+
+  if (scope === 'project' && options.includeGlobalFallback === false) {
+    return false;
   }
 
   if (scope === 'project' && baseDir !== os.homedir()) {

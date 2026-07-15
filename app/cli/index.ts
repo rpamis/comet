@@ -1,5 +1,6 @@
 import { Command, Option } from 'commander';
 import { initCommand } from '../commands/init.js';
+import { workflowResolveCommand } from '../commands/workflow.js';
 import { statusCommand } from '../commands/status.js';
 import { resumeProbeCommand } from '../commands/resume-probe.js';
 import { dashboardCommand } from '../commands/dashboard.js';
@@ -70,9 +71,13 @@ program
   .option('--json', 'Output as JSON')
   .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
   .addOption(new Option('--language <lang>', 'Language for skills').choices(['en', 'zh']))
+  .addOption(
+    new Option('--workflow <workflow>', 'Project default workflow').choices(['native', 'classic']),
+  )
+  .option('--root <artifact-root>', 'Native artifact root relative to the project')
   .action(async (targetPath = '.', options) => {
     try {
-      await initCommand(targetPath, options);
+      await initCommand(targetPath, { ...options, artifactRoot: options.root });
     } catch (error) {
       if (error instanceof Error && error.name === 'ExitPromptError') {
         console.log('\n  Cancelled.\n');
@@ -88,6 +93,16 @@ program
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     await statusCommand(targetPath, options);
+  });
+
+const workflow = program.command('workflow').description('Resolve the configured Comet workflow');
+
+workflow
+  .command('resolve [path]')
+  .description('Resolve /comet to its permanent Native or Classic entry')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    await workflowResolveCommand(targetPath, options);
   });
 
 program

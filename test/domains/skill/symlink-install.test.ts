@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'path';
-import { mkdir, mkdtemp, rm, lstat, readFile, realpath, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, rm, lstat, readFile, realpath, symlink, writeFile } from 'fs/promises';
 import os from 'os';
 import {
   copyCometSkillsForPlatform,
   getCentralSkillsDir,
+  prepareManagedSkillCopyTarget,
 } from '../../../domains/skill/platform-install.js';
 import { fileExists } from '../../../platform/fs/file-system.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
@@ -47,6 +48,57 @@ describe('symlink install mode', () => {
     it('returns .comet/skills for global scope', () => {
       const result = getCentralSkillsDir(tmpDir, 'global');
       expect(result).toBe(path.join(tmpDir, '.comet', 'skills'));
+    });
+  });
+
+  describe('prepareManagedSkillCopyTarget', () => {
+    it('detaches a fully managed Skill-root symlink without changing its target', async () => {
+      await copyCometSkillsForPlatform(tmpDir, mockPlatform, true, 'skills', 'project', 'symlink');
+      const platformSkills = path.join(tmpDir, '.claude', 'skills');
+      const centralComet = path.join(tmpDir, '.comet', 'skills', 'skills', 'comet', 'SKILL.md');
+      const centralContent = await readFile(centralComet, 'utf8');
+
+      await prepareManagedSkillCopyTarget(tmpDir, mockPlatform, 'project');
+
+      expect((await lstat(platformSkills)).isSymbolicLink()).toBe(false);
+      expect(await fileExists(path.join(platformSkills, 'comet', 'SKILL.md'))).toBe(false);
+      expect(await readFile(centralComet, 'utf8')).toBe(centralContent);
+    });
+
+    it('detaches managed entry symlinks while preserving unrelated Skills', async () => {
+      const centralComet = path.join(tmpDir, '.comet', 'skills', 'skills', 'comet');
+      const platformSkills = path.join(tmpDir, '.claude', 'skills');
+      const personalSkill = path.join(platformSkills, 'personal', 'SKILL.md');
+      await mkdir(centralComet, { recursive: true });
+      await writeFile(path.join(centralComet, 'SKILL.md'), '# Central Comet\n', 'utf8');
+      await mkdir(path.dirname(personalSkill), { recursive: true });
+      await writeFile(personalSkill, '# Personal\n', 'utf8');
+      await symlink(
+        centralComet,
+        path.join(platformSkills, 'comet'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      await prepareManagedSkillCopyTarget(tmpDir, mockPlatform, 'project');
+
+      expect(await fileExists(path.join(platformSkills, 'comet'))).toBe(false);
+      expect(await readFile(personalSkill, 'utf8')).toBe('# Personal\n');
+      expect(await readFile(path.join(centralComet, 'SKILL.md'), 'utf8')).toBe('# Central Comet\n');
+    });
+
+    it('refuses to detach a shared Skill-root symlink with unmanaged entries', async () => {
+      await copyCometSkillsForPlatform(tmpDir, mockPlatform, true, 'skills', 'project', 'symlink');
+      const platformSkills = path.join(tmpDir, '.claude', 'skills');
+      const openSpecSkill = path.join(tmpDir, '.comet', 'skills', 'skills', 'openspec', 'SKILL.md');
+      await mkdir(path.dirname(openSpecSkill), { recursive: true });
+      await writeFile(openSpecSkill, '# OpenSpec\n', 'utf8');
+
+      await expect(prepareManagedSkillCopyTarget(tmpDir, mockPlatform, 'project')).rejects.toThrow(
+        /unmanaged entries: openspec/iu,
+      );
+
+      expect((await lstat(platformSkills)).isSymbolicLink()).toBe(true);
+      expect(await readFile(openSpecSkill, 'utf8')).toBe('# OpenSpec\n');
     });
   });
 

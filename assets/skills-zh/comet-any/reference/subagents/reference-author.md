@@ -21,7 +21,7 @@ reference 层承载证据，不把内部审计内容塞进用户可见 `SKILL.md
 - resolved Skill 的名称、来源、description、hash、reference、rules、scripts、hooks。
 - `sourceSummaries`，必须来自真实 `SKILL.md` 正文和直接 reference。
 - 项目级偏好、缺失/歧义候选处理、偏离原因和可执行披露。
-- `/comet` 定制时保留的五阶段语义。
+- `/comet-classic` 定制时保留的五阶段语义。
 
 使用文件交接：主会话提供路径，不粘贴大段全文。不要读取主会话历史，也不要把来源 Skill 原文整段搬进
 reference。

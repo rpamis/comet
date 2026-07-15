@@ -9002,6 +9002,11 @@ async function fileExists2(file) {
     throw error;
   }
 }
+async function isClassicRuntimePackageRoot(root) {
+  if (!await directoryExists(root)) return false;
+  if (await fileExists2(path10.join(root, "skill.yaml"))) return true;
+  return await fileExists2(path10.join(root, "SKILL.md")) && await fileExists2(path10.join(root, "comet", "skill.yaml"));
+}
 function embeddedClassicRuntimePackage(root) {
   return {
     root,
@@ -9240,7 +9245,7 @@ async function classicRuntimeRoot() {
     path10.resolve("assets", "skills", "comet-classic")
   ].filter((candidate) => Boolean(candidate));
   for (const candidate of candidates) {
-    if (await directoryExists(candidate)) return candidate;
+    if (await isClassicRuntimePackageRoot(candidate)) return candidate;
   }
   return null;
 }

@@ -199,6 +199,8 @@ describe('Factory skill package generation', () => {
     expect(entry).toContain('Output Schemas');
     expect(entry).not.toContain('workflow-state.mjs init');
     expect(entry).toContain('/comet-open');
+    expect(entry).toContain('permanent `/comet-classic` entry');
+    expect(entry).not.toContain('original `/comet` entry');
     expect(skillYaml.orchestration?.steps?.[0]?.action?.ref).toBe('team-comet-open');
 
     const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-workflow-contract-run-'));
@@ -209,10 +211,10 @@ describe('Factory skill package generation', () => {
     try {
       await expect(
         execFileAsync(process.execPath, [hookGuardScript, 'before_write'], { env }),
-      ).rejects.toThrow(/No active Comet change/iu);
+      ).rejects.toThrow(/permanent \/comet-classic entry/iu);
 
       await expect(execFileAsync(process.execPath, [stateScript, 'init'], { env })).rejects.toThrow(
-        /\/comet-open|active Comet change/iu,
+        /permanent \/comet-classic entry/iu,
       );
       await expect(
         fs.access(path.join(runRoot, '.comet', 'runs', 'team-comet', 'state.json')),
@@ -220,7 +222,7 @@ describe('Factory skill package generation', () => {
       const blockedStatus = await execFileAsync(process.execPath, [stateScript, 'status'], { env });
       expect(JSON.parse(blockedStatus.stdout)).toMatchObject({
         status: 'blocked',
-        reason: expect.stringContaining('No active Comet change'),
+        reason: expect.stringContaining('/comet-classic'),
       });
 
       const changeRoot = path.join(runRoot, 'openspec', 'changes', 'contract-test');
