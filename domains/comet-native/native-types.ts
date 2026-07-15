@@ -47,7 +47,6 @@ export interface NativeChangeState {
   phase: NativePhase;
   brief: 'brief.md';
   approval: NativeApproval;
-  confirmation_required: boolean;
   spec_changes: NativeSpecChange[];
   verification_result: NativeVerificationResult;
   verification_report: string | null;
@@ -69,6 +68,7 @@ export interface NativeArtifactValidation {
 
 export interface NativeAdvanceEvidence {
   summary: string;
+  confirmed?: boolean;
   artifacts?: string[];
   noCodeReason?: string;
   verificationResult?: 'pass' | 'fail';
@@ -81,6 +81,25 @@ export interface NativeAdvanceResult {
   next: 'auto' | 'manual' | 'done';
   nextCommand: string | null;
   findings: NativeFinding[];
+}
+
+export interface NativeTransitionJournal {
+  schema: 'comet.native.transition.v1';
+  id: string;
+  change: string;
+  evidenceHash: string;
+  createdAt: string;
+  previousState: NativeChangeState;
+  nextState: NativeChangeState;
+  previousRun: RunState | null;
+  nextRun: RunState;
+  eventData: Record<string, unknown>;
+}
+
+export interface NativeTransitionHooks {
+  afterPrepared?: (journal: NativeTransitionJournal) => void | Promise<void>;
+  afterRunStateWritten?: (journal: NativeTransitionJournal) => void | Promise<void>;
+  afterChangeStateWritten?: (journal: NativeTransitionJournal) => void | Promise<void>;
 }
 
 export interface NativeStatusProjection {
@@ -158,3 +177,4 @@ export interface NativeTransactionHooks {
     journal: NativeTransactionJournal,
   ) => void | Promise<void>;
 }
+import type { RunState } from '../engine/types.js';

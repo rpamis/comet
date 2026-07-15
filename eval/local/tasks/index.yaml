@@ -1,9 +1,27 @@
 tasks:
+  - name: comet-native-clarification
+    category: comet-native
+    default_treatments:
+      - COMET_NATIVE_PHASE1
+    description: Interactive Native workflow that must clarify one high-impact requirement before confirmed execution.
+
   - name: comet-native-workflow
     category: comet-native
     default_treatments:
       - COMET_NATIVE_PHASE1
     description: Self-contained Shape-Build-Verify-Archive workflow using only the Comet Native Skill and its bundled runtime.
+
+  - name: comet-native-repository-fact
+    category: comet-native
+    default_treatments:
+      - COMET_NATIVE_PHASE1
+    description: Native workflow that must investigate a repository-owned product rule instead of asking the user.
+
+  - name: comet-native-interrupted-transition
+    category: comet-native
+    default_treatments:
+      - COMET_NATIVE_PHASE1
+    description: Native workflow that must recover a prepared phase transition before implementing and archiving.
 
   # ── Default / canonical full-workflow task ──────────────────────────────
   - name: comet-full-workflow

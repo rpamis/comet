@@ -66,6 +66,7 @@ describe('Chinese Comet Native Skill', () => {
   });
 
   it('documents every Native CLI surface and exact artifact roots', async () => {
+    const source = await read('zh', 'SKILL.md');
     const commands = await read('zh', 'reference/commands.md');
     const artifacts = await read('zh', 'reference/artifacts.md');
     const recovery = await read('zh', 'reference/recovery.md');
@@ -74,6 +75,8 @@ describe('Chinese Comet Native Skill', () => {
       'root show',
       'root move',
       'new',
+      'spec remove',
+      'spec rebase',
       'list',
       'show',
       'status',
@@ -87,6 +90,14 @@ describe('Chinese Comet Native Skill', () => {
     expect(artifacts).toContain('<artifact-root>/comet/');
     expect(artifacts).toContain('specs/<capability>/spec.md');
     expect(artifacts).toContain('base_hash');
+    expect(source).toContain('--confirmed');
+    expect(source).not.toContain('记录正确的 canonical base hash');
+    expect(artifacts).toContain('`spec_changes`、operation 和 `base_hash` 由 runtime 管理');
+    expect(commands).toContain('comet native spec remove <change-name> <capability>');
+    expect(commands).toContain('comet native spec rebase <change-name> --summary <text>');
+    expect(source).toContain('离开 Build 时传 `--confirmed`');
+    expect(recovery).toContain('受控重开到 Build');
+    expect(recovery).toContain('transition.json');
     expect(recovery).toContain('copying');
     expect(recovery).toContain('ready');
     expect(recovery).toContain('switched');
@@ -105,6 +116,13 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('recommended answer');
     expect(source).toContain('complete target specification');
     expect(source).toContain('comet native next <change-name>');
+    expect(source).toContain('--confirmed');
+    expect(files).toContain('comet native spec remove <change-name> <capability>');
+    expect(files).toContain('comet native spec rebase <change-name> --summary <text>');
+    expect(source).toContain('pass `--confirmed` when leaving Build');
+    expect(files).toContain('reopens the change in Build');
+    expect(files).toContain('runtime owns `approval`, `spec_changes`, operation, and `base_hash`');
+    expect(files).toContain('runtime/transition.json');
     expect(files).toContain('<artifact-root>/comet/');
     expect(files).not.toMatch(
       /openspec|superpowers|grill-me|grilling|brainstorming|requiredSkillCalls|subagent|test-driven-development|code-review/iu,

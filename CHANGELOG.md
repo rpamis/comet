@@ -2,11 +2,11 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.5] - 2026-07-14
+## What's Changed [0.4.0-beta.5] - 2026-07-15
 
 ### Added
 
-- **Comet Native workflow**: Adds a self-contained workflow for strong coding models with configurable `comet/` artifact roots, Native change/spec/archive management, guarded automatic progression, verification evidence, conflict-safe spec archiving, and recoverable root moves—without requiring OpenSpec, Superpowers, or other external Skills.
+- **Comet Native workflow**: Adds a self-contained workflow for strong coding models with one-question requirement clarification in Shape or Build, runtime-owned confirmations and spec baselines, configurable `comet/` artifact roots, Native change/spec/archive management, conflict rebase back to Build, crash-recoverable automatic progression, verification evidence, and recoverable root moves—without requiring OpenSpec, Superpowers, or other external Skills.
 
 ## What's Changed [0.4.0-beta.4] - 2026-07-11
 

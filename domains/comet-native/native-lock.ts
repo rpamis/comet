@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
+import { resolveContainedNativePath } from './native-paths.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 export interface NativeLockOwner {
@@ -52,8 +53,12 @@ export async function acquireNativeLock(
   name: string,
   operation: string,
 ): Promise<NativeLock> {
-  await fs.mkdir(paths.locksDir, { recursive: true });
-  const file = path.join(paths.locksDir, lockName(name));
+  const locksDir = await resolveContainedNativePath(paths.nativeRoot, paths.locksDir);
+  await fs.mkdir(locksDir, { recursive: true });
+  const file = await resolveContainedNativePath(
+    paths.nativeRoot,
+    path.join(locksDir, lockName(name)),
+  );
   const owner: NativeLockOwner = {
     id: randomUUID(),
     pid: process.pid,

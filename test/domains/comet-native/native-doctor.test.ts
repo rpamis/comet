@@ -18,7 +18,26 @@ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.j
 import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
 import { nativeSelectionFile } from '../../../domains/comet-native/native-selection.js';
 import { createNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
+import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+
+const validBrief = `# Outcome
+Ship the feature.
+# Scope
+One capability.
+# Non-goals
+No migration.
+# Acceptance examples
+- The feature works.
+# Constraints and invariants
+Keep compatibility.
+# Decisions
+Use existing APIs.
+# Open questions
+
+# Verification expectations
+Run focused tests.
+`;
 
 describe('Native doctor', () => {
   let projectRoot: string;
@@ -68,6 +87,79 @@ describe('Native doctor', () => {
       expect.objectContaining({ code: 'brief-section-empty', severity: 'error' }),
     );
     expect(await fs.readFile(briefFile, 'utf8')).toBe(briefBefore);
+  });
+
+  it('reports an interrupted phase transition and only continues it explicitly', async () => {
+    const state = await createNativeChange({ paths, name: 'pending-transition', language: 'en' });
+    await fs.writeFile(
+      path.join(nativeChangeDir(paths, state.name), 'brief.md'),
+      `# Outcome
+Ship the feature.
+# Scope
+One capability.
+# Non-goals
+No migration.
+# Acceptance examples
+- The feature works.
+# Constraints and invariants
+Keep compatibility.
+# Decisions
+Use existing APIs.
+# Open questions
+
+# Verification expectations
+Run focused tests.
+`,
+    );
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: state.name,
+        evidence: { summary: 'shape is ready' },
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('interrupt transition');
+          },
+        },
+      }),
+    ).rejects.toThrow('interrupt transition');
+
+    const inspected = await doctorNativeProject({ paths });
+    expect(inspected.findings).toContainEqual(
+      expect.objectContaining({ code: 'transition-incomplete', severity: 'error' }),
+    );
+
+    const repaired = await doctorNativeProject({
+      paths,
+      repair: true,
+      recoveryStrategy: 'continue',
+    });
+    expect(repaired.findings).toContainEqual(
+      expect.objectContaining({ code: 'transition-recovered', severity: 'info' }),
+    );
+  });
+
+  it('reports malformed Run trajectory data with its path', async () => {
+    const state = await createNativeChange({ paths, name: 'broken-trajectory', language: 'en' });
+    const changeDir = nativeChangeDir(paths, state.name);
+    await fs.writeFile(path.join(changeDir, 'brief.md'), validBrief);
+    await advanceNativeChange({
+      paths,
+      name: state.name,
+      evidence: { summary: 'shape is ready' },
+    });
+    const trajectory = path.join(changeDir, 'runtime', 'trajectory.jsonl');
+    await fs.appendFile(trajectory, '{not-json}\n');
+
+    const inspected = await doctorNativeProject({ paths });
+    expect(inspected).toMatchObject({ healthy: false });
+    expect(inspected.findings).toContainEqual(
+      expect.objectContaining({
+        code: 'trajectory-invalid',
+        severity: 'error',
+        path: trajectory,
+      }),
+    );
   });
 
   it('diagnoses live and stale locks and only removes a proven stale lock', async () => {

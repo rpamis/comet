@@ -4,6 +4,7 @@ import { parseDocument, stringify } from 'yaml';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import type {
   NativeApproval,
@@ -21,7 +22,6 @@ const CHANGE_KEYS = new Set([
   'phase',
   'brief',
   'approval',
-  'confirmation_required',
   'spec_changes',
   'verification_result',
   'verification_report',
@@ -144,9 +144,6 @@ export function parseNativeChangeValue(value: unknown): NativeChangeState {
   if (root.approval !== null && !APPROVALS.has(root.approval as Exclude<NativeApproval, null>)) {
     throw new Error('Native change approval is invalid');
   }
-  if (typeof root.confirmation_required !== 'boolean') {
-    throw new Error('Native confirmation_required must be boolean');
-  }
   if (!Array.isArray(root.spec_changes)) throw new Error('Native spec_changes must be an array');
   const specChanges = root.spec_changes.map(parseSpecChange);
   const duplicates = specChanges
@@ -183,7 +180,6 @@ export function parseNativeChangeValue(value: unknown): NativeChangeState {
     phase: root.phase as NativePhase,
     brief: 'brief.md',
     approval: root.approval as NativeApproval,
-    confirmation_required: root.confirmation_required,
     spec_changes: specChanges,
     verification_result: root.verification_result as NativeVerificationResult,
     verification_report: root.verification_report as string | null,
@@ -202,7 +198,6 @@ export function nativeChangeDocument(state: NativeChangeState): Record<string, u
     phase: parsed.phase,
     brief: parsed.brief,
     approval: parsed.approval,
-    confirmation_required: parsed.confirmation_required,
     spec_changes: parsed.spec_changes.map((change) => ({
       capability: change.capability,
       operation: change.operation,
@@ -230,7 +225,17 @@ export async function createNativeChange(options: {
   language: 'en' | 'zh-CN';
   now?: Date;
 }): Promise<NativeChangeState> {
-  await assertNoPendingNativeRootMove(options.paths.projectRoot);
+  return withNativeMutationLock(options.paths, `create change ${options.name}`, () =>
+    createNativeChangeLocked(options),
+  );
+}
+
+async function createNativeChangeLocked(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  language: 'en' | 'zh-CN';
+  now?: Date;
+}): Promise<NativeChangeState> {
   assertNativeName(options.name);
   const changeDir = nativeChangeDir(options.paths, options.name);
   await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
@@ -253,7 +258,6 @@ export async function createNativeChange(options: {
     phase: 'shape',
     brief: 'brief.md',
     approval: null,
-    confirmation_required: false,
     spec_changes: [],
     verification_result: 'pending',
     verification_report: null,

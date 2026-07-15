@@ -96,6 +96,11 @@ describe('Comet Native CLI dispatcher', () => {
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'sentence-counting');
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
+    await fs.mkdir(path.join(changeDir, 'specs', 'sentence-counting'), { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'sentence-counting', 'spec.md'),
+      '# Sentence counting\nCount sentences by punctuation.\n',
+    );
 
     expect(json(await runNativeCli(['list', '--json', ...projectArgs()])).data).toHaveLength(1);
     expect(
@@ -103,7 +108,10 @@ describe('Comet Native CLI dispatcher', () => {
     ).toMatchObject({ state: { language: 'zh-CN', phase: 'shape' } });
     expect(
       json(await runNativeCli(['status', 'sentence-counting', '--json', ...projectArgs()])).data,
-    ).toMatchObject({ phase: 'shape', nextCommand: 'comet native next sentence-counting' });
+    ).toMatchObject({
+      phase: 'shape',
+      nextCommand: 'comet native next sentence-counting --summary "<summary>"',
+    });
     expect(await runNativeCli(['select', 'sentence-counting', ...projectArgs()])).toMatchObject({
       exitCode: 0,
     });
@@ -118,7 +126,22 @@ describe('Comet Native CLI dispatcher', () => {
         ...projectArgs(),
       ]),
     );
-    expect(shaped).toMatchObject({ exitCode: 0, data: { change: { phase: 'build' } } });
+    expect(shaped).toMatchObject({
+      exitCode: 0,
+      data: {
+        change: {
+          phase: 'build',
+          spec_changes: [
+            {
+              capability: 'sentence-counting',
+              operation: 'create',
+              source: 'specs/sentence-counting/spec.md',
+              base_hash: null,
+            },
+          ],
+        },
+      },
+    });
 
     await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const count = 2;\n');
     const built = await runNativeCli([
@@ -186,6 +209,10 @@ describe('Comet Native CLI dispatcher', () => {
     });
     expect(usage.stderr).toBeUndefined();
 
+    const help = await runNativeCli(['--help', ...projectArgs()]);
+    expect(help.stdout).toContain('[--confirmed]');
+    expect(help.stdout).toContain('spec rebase <change-name> --summary <text>');
+
     const missing = await runNativeCli(['list', '--json', ...projectArgs()]);
     expect(missing.exitCode).toBe(65);
     expect(json(missing)).toMatchObject({ error: { code: 'invalid-data' } });
@@ -217,6 +244,62 @@ describe('Comet Native CLI dispatcher', () => {
       command: 'next',
       error: { code: 'invalid-data' },
       data: { next: 'manual' },
+    });
+  });
+
+  it('records explicit confirmation through Shape next without editing change state', async () => {
+    await runNativeCli(['new', 'confirmed-shape', ...projectArgs()]);
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const changeDir = path.join(paths.changesDir, 'confirmed-shape');
+    await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
+
+    const result = json(
+      await runNativeCli([
+        'next',
+        'confirmed-shape',
+        '--summary',
+        'The user confirmed the product decision',
+        '--confirmed',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+
+    expect(result).toMatchObject({
+      exitCode: 0,
+      data: { change: { phase: 'build', approval: 'confirmed' } },
+    });
+  });
+
+  it('records a remove intent and canonical hash through the spec command', async () => {
+    await runNativeCli(['new', 'remove-capability', ...projectArgs()]);
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const canonical = path.join(paths.specsDir, 'legacy-capability', 'spec.md');
+    await fs.mkdir(path.dirname(canonical), { recursive: true });
+    await fs.writeFile(canonical, '# Legacy capability\nRemove this behavior.\n');
+
+    const result = json(
+      await runNativeCli([
+        'spec',
+        'remove',
+        'remove-capability',
+        'legacy-capability',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+
+    expect(result).toMatchObject({
+      command: 'spec remove',
+      exitCode: 0,
+      data: {
+        spec_changes: [
+          {
+            capability: 'legacy-capability',
+            operation: 'remove',
+          },
+        ],
+      },
     });
   });
 

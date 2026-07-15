@@ -3,10 +3,17 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { createNativeChange, nativeChangeDir } from '../../../domains/comet-native/native-change.js';
+import {
+  createNativeChange,
+  nativeChangeDir,
+} from '../../../domains/comet-native/native-change.js';
 import { inspectNativeGuard } from '../../../domains/comet-native/native-guards.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import type { NativeChangeState, NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
+import type {
+  NativeChangeState,
+  NativeProjectPaths,
+} from '../../../domains/comet-native/native-types.js';
 
 const completeBrief = `# Outcome
 Ship the feature.
@@ -51,26 +58,51 @@ describe('Native phase guards', () => {
     );
   });
 
-  it('requires confirmed approval only for an explicit decision point', async () => {
-    await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
-    state.confirmation_required = true;
-    expect(
-      (await inspectNativeGuard({ paths, state, evidence: { summary: 'ready' } })).findings,
-    ).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: 'shape-confirmation-required' })]),
+  it('does not let a confirmation flag bypass a blocking decision', async () => {
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      completeBrief.replace(
+        '# Open questions\n',
+        '# Open questions\n- [blocking] Choose the public behavior.\n',
+      ),
     );
-    state.approval = 'confirmed';
-    expect(await inspectNativeGuard({ paths, state, evidence: { summary: 'ready' } })).toEqual({
+    expect(
+      (
+        await inspectNativeGuard({
+          paths,
+          state,
+          evidence: { summary: 'ready', confirmed: true },
+        })
+      ).findings,
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'brief-blocking-question' })]),
+    );
+
+    await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
+    expect(
+      await inspectNativeGuard({
+        paths,
+        state,
+        evidence: { summary: 'ready', confirmed: true },
+      }),
+    ).toEqual({
       valid: true,
       findings: [],
     });
   });
 
   it('requires a real artifact or a no-code reason in Build', async () => {
-    state.phase = 'build';
+    await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
+    state = (
+      await advanceNativeChange({
+        paths,
+        name: state.name,
+        evidence: { summary: 'shape is ready' },
+      })
+    ).change;
     expect(
-      (await inspectNativeGuard({ paths, state, evidence: { summary: 'built' } })).findings[0],
-    ).toMatchObject({ code: 'build-evidence-missing' });
+      (await inspectNativeGuard({ paths, state, evidence: { summary: 'built' } })).findings,
+    ).toContainEqual(expect.objectContaining({ code: 'build-evidence-missing' }));
     expect(
       await inspectNativeGuard({
         paths,
@@ -78,5 +110,36 @@ describe('Native phase guards', () => {
         evidence: { summary: 'docs only', noCodeReason: 'The change only updates documentation.' },
       }),
     ).toEqual({ valid: true, findings: [] });
+  });
+
+  it('keeps a newly discovered blocking decision from leaving Build', async () => {
+    await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
+    state = (
+      await advanceNativeChange({
+        paths,
+        name: state.name,
+        evidence: { summary: 'shape is ready' },
+      })
+    ).change;
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      completeBrief.replace(
+        '# Open questions\n',
+        '# Open questions\n- [blocking] Choose the newly discovered public behavior.\n',
+      ),
+    );
+
+    const result = await inspectNativeGuard({
+      paths,
+      state,
+      evidence: {
+        summary: 'implementation paused for the decision',
+        noCodeReason: 'The decision is still unresolved.',
+        confirmed: true,
+      },
+    });
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ code: 'brief-blocking-question' }),
+    );
   });
 });

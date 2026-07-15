@@ -41,11 +41,10 @@ language: en
 phase: shape
 brief: brief.md
 approval: null
-confirmation_required: false
 spec_changes:
   - capability: sentence-counting
     operation: create
-    source: specs/sentence-counting.md
+    source: specs/sentence-counting/spec.md
     base_hash: null
 verification_result: pending
 verification_report: null
@@ -54,7 +53,7 @@ created_at: 2026-07-14
 run_id: null
 ```
 
-Do not edit runtime-managed fields directly. To change requirements, update the brief, proposed specifications, and `spec_changes`, then let the command validate and advance the state.
+Do not edit runtime-managed fields directly. The runtime owns `approval`, `spec_changes`, operation, and `base_hash`. To change requirements, edit only the brief and `specs/<capability>/spec.md`; remove a capability with `comet native spec remove`, then let the command validate and advance the state.
 
 ## Brief
 
@@ -75,7 +74,7 @@ The first four sections require substantive content. Prefix unresolved implement
 
 ## Complete target specifications
 
-A proposed specification describes the complete behavior the capability should have after archive, rather than an incremental fragment meaningful only against old text. Each capability has exactly one operation:
+A proposed specification lives at `changes/<change-name>/specs/<capability>/spec.md` and describes the complete behavior the capability should have after archive, rather than an incremental fragment meaningful only against old text. Each capability has exactly one operation:
 
 | operation | canonical state | source | base_hash |
 | --- | --- | --- | --- |
@@ -83,7 +82,7 @@ A proposed specification describes the complete behavior the capability should h
 | `replace` | Must exist | Required | SHA-256 of the current canonical file |
 | `remove` | Must exist | Forbidden | SHA-256 of the current canonical file |
 
-Archive recalculates hashes while holding the lock. When the actual value differs from `base_hash`, re-read and decide again or explicitly split the work; never overwrite the concurrent change.
+On first discovery, `next` infers create/replace and freezes its hash; `spec remove` freezes the remove hash. Archive recalculates hashes while holding the lock. When the actual value differs from `base_hash`, re-read and rewrite the complete target specification, then use `spec rebase` to refresh the baseline under runtime control, return to Build, and verify again. Never overwrite the concurrent change or edit the hash manually.
 
 ## Verification
 

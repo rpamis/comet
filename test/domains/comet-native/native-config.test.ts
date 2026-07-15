@@ -67,10 +67,19 @@ describe('Native project configuration', () => {
   });
 
   it.each([
-    ['duplicate keys', 'schema: comet.project.v1\nschema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: .\n'],
-    ['unknown root field', 'schema: comet.project.v1\ndefault_workflow: native\nunknown: true\nnative:\n  artifact_root: .\n'],
+    [
+      'duplicate keys',
+      'schema: comet.project.v1\nschema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: .\n',
+    ],
+    [
+      'unknown root field',
+      'schema: comet.project.v1\ndefault_workflow: native\nunknown: true\nnative:\n  artifact_root: .\n',
+    ],
     ['missing Native root', 'schema: comet.project.v1\ndefault_workflow: native\nnative: {}\n'],
-    ['bad pending move', 'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: .\n  pending_root_move:\n    id: bad\n    from_artifact_root: .\n    to_artifact_root: docs\n    stage: unknown\n'],
+    [
+      'bad pending move',
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: .\n  pending_root_move:\n    id: bad\n    from_artifact_root: .\n    to_artifact_root: docs\n    stage: unknown\n',
+    ],
   ])('fails closed for %s', async (_label, source) => {
     await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), source);
     await expect(readProjectConfig(projectRoot)).rejects.toBeInstanceOf(Error);

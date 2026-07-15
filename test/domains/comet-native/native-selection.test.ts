@@ -53,6 +53,7 @@ describe('Native current change selection', () => {
 
   it('refuses a runtime junction that would write selection outside comet', async () => {
     await createNativeChange({ paths, name: 'selected-change', language: 'en' });
+    await fs.rm(paths.runtimeDir, { recursive: true, force: true });
     await fs.symlink(outside, paths.runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');
 
     await expect(selectNativeChange(paths, 'selected-change')).rejects.toThrow(
@@ -61,5 +62,6 @@ describe('Native current change selection', () => {
     await expect(fs.access(path.join(outside, 'current-change.json'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
+    await expect(fs.access(path.join(outside, 'locks'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

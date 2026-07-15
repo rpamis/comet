@@ -1,0 +1,39 @@
+[metadata]
+name = "comet-native-clarification"
+description = "Test the Native one-question clarification boundary and confirmed resume"
+difficulty = "hard"
+category = "comet-native"
+tags = ["comet-native", "clarification", "confirmation", "multi-turn"]
+default_treatments = ["COMET_NATIVE_PHASE1"]
+
+[template]
+required = []
+
+[environment]
+description = "Python word-count workspace with only the self-contained Comet Native Skill available."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_native_clarification.py"
+target_artifacts = ["docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
+timeout = 120
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet-native"]
+expected_artifacts = ["comet.config.yaml", "docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
+require_skill_invocation = true
+rubric_criteria = [
+  "Before implementation, asks exactly one highest-value question about abbreviation behavior",
+  "Does not ask the user for repository facts or implementation-method choices",
+  "Records the supplied abbreviation decision in the brief and leaves Shape with explicit confirmation",
+  "Completes Build, Verify, and Archive using only the Comet Native Skill and bundled runtime",
+]
+
+[interaction]
+mode = "auto_user"
+max_turns = 4
+simulator_prompt = """You are the developer user in a Comet Native eval. The assistant should ask one highest-value question about how abbreviations affect sentence boundaries. Answer that question in one sentence: Abbreviations such as e.g. and Dr. do not end a sentence; use a small explicit abbreviation list. If the assistant asks multiple questions, answer only the abbreviation question and remind it to handle one decision at a time. Do not write code or choose implementation tooling."""
+decision_patterns = ["abbreviation", "e.g.", "Dr.", "sentence boundary"]
+continue_prompt = "Abbreviations such as e.g. do not end a sentence; record that decision as confirmed and continue the Native change."

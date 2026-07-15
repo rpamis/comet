@@ -1,8 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
-import { readRunStateAt } from '../engine/storage-run.js';
 import {
   validateNativeBrief,
   validateNativeSpecChanges,
@@ -10,6 +8,7 @@ import {
 } from './native-artifacts.js';
 import { nativeChangeDir } from './native-change.js';
 import { isInsidePath } from './native-paths.js';
+import { inspectNativeRunConsistency } from './native-run-consistency.js';
 import type {
   NativeAdvanceEvidence,
   NativeArtifactValidation,
@@ -82,36 +81,26 @@ export async function inspectNativeGuard(options: {
       message: 'Phase transition requires a summary',
     });
   }
-  if (options.state.run_id) {
-    const run = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
-    if (!run) {
-      findings.push({
-        code: 'run-state-missing',
-        message: 'Native change references a missing Run state',
-      });
-    } else if (run.pending || run.status === 'waiting') {
-      findings.push({
-        code: 'run-action-pending',
-        message: 'Native Run has an unresolved pending action',
-      });
-    } else if (run.currentStep !== options.state.phase) {
-      findings.push({
-        code: 'run-phase-mismatch',
-        message: `Native Run step ${run.currentStep ?? '(none)'} does not match phase ${options.state.phase}`,
-      });
-    }
+  if (
+    options.evidence.confirmed &&
+    options.state.phase !== 'shape' &&
+    options.state.phase !== 'build'
+  ) {
+    findings.push({
+      code: 'confirmation-not-shape',
+      message: 'Explicit confirmation is only valid while leaving Shape or Build',
+    });
   }
+  findings.push(...(await inspectNativeRunConsistency(options.paths, options.state)));
   if (options.state.phase === 'shape') {
     const brief = await validateNativeBrief(changeDir, options.state.brief);
     const specs = await validateNativeSpecChanges(options.paths, options.state);
     findings.push(...brief.findings, ...specs.findings);
-    if (options.state.confirmation_required && options.state.approval !== 'confirmed') {
-      findings.push({
-        code: 'shape-confirmation-required',
-        message: 'Shape requires explicit user confirmation',
-      });
-    }
   } else if (options.state.phase === 'build') {
+    findings.push(
+      ...(await validateNativeBrief(changeDir, options.state.brief)).findings,
+      ...(await validateNativeSpecChanges(options.paths, options.state)).findings,
+    );
     findings.push(...(await validateBuildArtifacts(options.paths, options.evidence)));
   } else if (options.state.phase === 'verify') {
     const report = options.evidence.verificationReport ?? options.state.verification_report;

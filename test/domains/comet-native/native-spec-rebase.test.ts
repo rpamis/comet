@@ -1,0 +1,188 @@
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { archiveNativeChange } from '../../../domains/comet-native/native-archive.js';
+import {
+  createNativeChange,
+  nativeChangeDir,
+} from '../../../domains/comet-native/native-change.js';
+import { sha256File } from '../../../domains/comet-native/native-hash.js';
+import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  markNativeSpecRemoval,
+  rebaseNativeSpecChanges,
+} from '../../../domains/comet-native/native-specs.js';
+import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
+import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+
+const brief = `# Outcome
+Ship the feature.
+# Scope
+One capability.
+# Non-goals
+No migration.
+# Acceptance examples
+- The feature works.
+# Constraints and invariants
+Keep compatibility.
+# Decisions
+Use existing APIs.
+# Open questions
+
+# Verification expectations
+Run focused tests.
+`;
+
+const verification = `# Acceptance evidence
+Scenario passed.
+# Commands and results
+Tests passed.
+# Skipped checks
+None.
+# Spec consistency
+Matches.
+# Known limitations and risks
+None.
+# Conclusion
+Pass.
+`;
+
+describe('Native spec conflict rebase', () => {
+  let projectRoot: string;
+  let paths: NativeProjectPaths;
+
+  beforeEach(async () => {
+    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-spec-rebase-'));
+    paths = await nativeProjectPaths(projectRoot, '.');
+    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+  });
+
+  afterEach(async () => {
+    await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  async function canonical(capability: string, source: string): Promise<string> {
+    const file = path.join(paths.specsDir, capability, 'spec.md');
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, source);
+    return file;
+  }
+
+  async function advanceToArchive(name: string): Promise<string> {
+    const changeDir = nativeChangeDir(paths, name);
+    await advanceNativeChange({ paths, name, evidence: { summary: 'shape is ready' } });
+    await advanceNativeChange({
+      paths,
+      name,
+      evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
+    });
+    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
+    await advanceNativeChange({
+      paths,
+      name,
+      evidence: {
+        summary: 'verification passed',
+        verificationResult: 'pass',
+        verificationReport: 'verification.md',
+      },
+    });
+    return changeDir;
+  }
+
+  async function verifyAgain(name: string): Promise<void> {
+    const build = await advanceNativeChange({
+      paths,
+      name,
+      evidence: {
+        summary: 'rebased implementation confirmed',
+        artifacts: ['feature.ts'],
+        confirmed: true,
+      },
+    });
+    expect(build.change).toMatchObject({ phase: 'verify', approval: 'confirmed' });
+    await advanceNativeChange({
+      paths,
+      name,
+      evidence: {
+        summary: 'rebased verification passed',
+        verificationResult: 'pass',
+        verificationReport: 'verification.md',
+      },
+    });
+  }
+
+  it('refreshes a replace base and reopens Archive to Build for re-verification', async () => {
+    const canonicalFile = await canonical('authentication', 'old canonical\n');
+    const state = await createNativeChange({ paths, name: 'replace-conflict', language: 'en' });
+    const changeDir = nativeChangeDir(paths, state.name);
+    await fs.writeFile(path.join(changeDir, state.brief), brief);
+    const proposed = path.join(changeDir, 'specs', 'authentication', 'spec.md');
+    await fs.mkdir(path.dirname(proposed), { recursive: true });
+    await fs.writeFile(proposed, 'target canonical\n');
+    await advanceNativeChange({ paths, name: state.name, evidence: { summary: 'shape ready' } });
+    await advanceNativeChange({
+      paths,
+      name: state.name,
+      evidence: { summary: 'build ready', artifacts: ['feature.ts'] },
+    });
+    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
+    await advanceNativeChange({
+      paths,
+      name: state.name,
+      evidence: {
+        summary: 'verify ready',
+        verificationResult: 'pass',
+        verificationReport: 'verification.md',
+      },
+    });
+    await fs.writeFile(canonicalFile, 'concurrent canonical\n');
+    const concurrentHash = await sha256File(canonicalFile);
+    await expect(archiveNativeChange({ paths, name: state.name })).rejects.toThrow(
+      'Canonical spec conflict',
+    );
+
+    const rebased = await rebaseNativeSpecChanges({
+      paths,
+      name: state.name,
+      summary: 'Re-read the concurrent authentication spec',
+    });
+    expect(rebased).toMatchObject({
+      phase: 'build',
+      verification_result: 'pending',
+      verification_report: null,
+      spec_changes: [{ operation: 'replace', base_hash: concurrentHash }],
+    });
+    await verifyAgain(state.name);
+    await archiveNativeChange({ paths, name: state.name });
+    expect(await fs.readFile(canonicalFile, 'utf8')).toBe('target canonical\n');
+  });
+
+  it('refreshes a remove base and preserves the explicit removal intent', async () => {
+    const canonicalFile = await canonical('legacy-auth', 'legacy v1\n');
+    await createNativeChange({ paths, name: 'remove-conflict', language: 'en' });
+    await fs.writeFile(path.join(nativeChangeDir(paths, 'remove-conflict'), 'brief.md'), brief);
+    await markNativeSpecRemoval(paths, 'remove-conflict', 'legacy-auth');
+    const changeDir = await advanceToArchive('remove-conflict');
+    await fs.writeFile(canonicalFile, 'legacy v2 from another change\n');
+    const concurrentHash = await sha256File(canonicalFile);
+    await expect(archiveNativeChange({ paths, name: 'remove-conflict' })).rejects.toThrow(
+      'Canonical spec conflict',
+    );
+
+    const rebased = await rebaseNativeSpecChanges({
+      paths,
+      name: 'remove-conflict',
+      summary: 'Re-read the concurrent legacy spec',
+    });
+    expect(rebased).toMatchObject({
+      phase: 'build',
+      spec_changes: [{ operation: 'remove', base_hash: concurrentHash }],
+    });
+    expect(changeDir).toContain('remove-conflict');
+    await verifyAgain('remove-conflict');
+    await archiveNativeChange({ paths, name: 'remove-conflict' });
+    await expect(fs.access(canonicalFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+});

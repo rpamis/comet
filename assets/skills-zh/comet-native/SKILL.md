@@ -35,9 +35,9 @@ description: 使用 Comet 自有 Native change、状态检查与自动推进，�
 理解达成一致后：
 
 - 更新 `brief.md`，让它足以约束实现和验收；
-- 若长期行为发生变化，为每个 capability 写完整目标规格，不写只描述增量的 patch；
-- create/replace/remove 都记录正确的 canonical base hash；
-- 只有仍存在高影响未知决定时才要求显式确认。
+- 若长期行为发生变化，在 `specs/<capability>/spec.md` 写完整目标规格，不写只描述增量的 patch；
+- 删除长期 capability 时使用 `comet native spec remove <change-name> <capability>`；create/replace 和 canonical base hash 由 runtime 推断并冻结；
+- 只有高影响决定刚由用户确认时才记录显式确认；仍未解决时保留 `[blocking]` 并停下。
 
 随后提交可验证摘要并运行：
 
@@ -45,16 +45,18 @@ description: 使用 Comet 自有 Native change、状态检查与自动推进，�
 comet native next <change-name> --summary <摘要>
 ```
 
+如果摘要包含用户刚刚确认的高影响决定，追加 `--confirmed`。否则不加；`approval` 由 runtime 记录，不能手工修改。
+
 ## Build
 
 选择满足 brief 与拟议规格的最简单可靠方案。实现方式、是否落盘计划、测试粒度、调试方法和审查强度都由模型根据风险自主决定。
 
-不要为了遵守流程制造额外文档或步骤。若实现中发现需求或规格漂移，先更新 Native 产物；只有出现新的高影响用户决定时才暂停。
+不要为了遵守流程制造额外文档或步骤。若实现中发现需求或规格漂移，先更新 Native 产物。出现新的高影响用户决定时，把它标成 `[blocking]`，一次只问一个；用户回答后更新 Decisions、移除阻塞项，继续实现，并在离开 Build 时传 `--confirmed`。
 
 完成后提供真实产物引用；没有代码变化时给出明确理由。然后运行：
 
 ```text
-comet native next <change-name> --summary <摘要> --artifact <项目内路径>
+comet native next <change-name> --summary <摘要> --artifact <项目内路径> [--confirmed]
 ```
 
 ## Verify
@@ -77,11 +79,11 @@ comet native next <change-name> --summary <摘要> --result pass|fail --report v
 comet native archive <change-name>
 ```
 
-归档会在 hash 一致时更新 canonical 规格，并把 change 移到日期前缀的 archive 目录。遇到冲突或未完成事务时停止，按恢复参考检查，不覆盖并发变化。
+归档会在 hash 一致时更新 canonical 规格，并把 change 移到日期前缀的 archive 目录。遇到 canonical 冲突时先重读并改写完整目标规格，再用 `comet native spec rebase <change-name> --summary <摘要>` 刷新基线并受控回到 Build 重新实现、确认和验证；不覆盖并发变化。未完成事务按恢复参考处理。
 
 ## 不变规则
 
-- 不直接编辑 `phase`、Run state、trajectory、锁或 transaction journal。
+- 不直接编辑 `phase`、`approval`、`spec_changes`、Run state、trajectory、锁或 transaction journal。
 - 不跳过阶段检查；每个阶段用 `comet native next` 或自带 runtime 的等价命令推进。
 - 不调用外部 Skill；Native 主流程只依赖 Comet 自带 runtime。
 - 不记录隐藏推理过程，只保存摘要、产物引用、命令结果、hash、状态变化和时间戳。

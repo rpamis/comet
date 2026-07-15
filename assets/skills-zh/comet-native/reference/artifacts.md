@@ -41,11 +41,10 @@ language: zh-CN
 phase: shape
 brief: brief.md
 approval: null
-confirmation_required: false
 spec_changes:
   - capability: sentence-counting
     operation: create
-    source: specs/sentence-counting.md
+    source: specs/sentence-counting/spec.md
     base_hash: null
 verification_result: pending
 verification_report: null
@@ -54,7 +53,7 @@ created_at: 2026-07-14
 run_id: null
 ```
 
-不要直接编辑 runtime 管理字段。需要改变需求时可更新 brief、拟议规格和 `spec_changes`，再由命令检查并推进。
+不要直接编辑 runtime 管理字段。`approval`、`spec_changes`、operation 和 `base_hash` 由 runtime 管理。需要改变需求时只更新 brief 和 `specs/<capability>/spec.md`；删除 capability 使用 `comet native spec remove`，再由命令检查并推进。
 
 ## Brief
 
@@ -75,7 +74,7 @@ run_id: null
 
 ## 完整目标规格
 
-拟议规格描述归档后 capability 应有的完整行为，不写只在旧文本上成立的增量片段。每个 capability 只能出现一次操作：
+拟议规格固定写在 `changes/<change-name>/specs/<capability>/spec.md`，描述归档后 capability 应有的完整行为，不写只在旧文本上成立的增量片段。每个 capability 只能出现一次操作：
 
 | operation | canonical 现状 | source | base_hash |
 | --- | --- | --- | --- |
@@ -83,7 +82,7 @@ run_id: null
 | `replace` | 必须存在 | 必填 | 当前 canonical 文件 SHA-256 |
 | `remove` | 必须存在 | 禁止 | 当前 canonical 文件 SHA-256 |
 
-归档在锁内重新计算 hash。实际值与 `base_hash` 不同表示并发变化，必须重新读取、重新决策或显式拆分，不能覆盖。
+`next` 首次发现 proposed spec 时推断 create/replace 并冻结 hash；`spec remove` 为 remove 冻结 hash。归档在锁内重新计算 hash，实际值与 `base_hash` 不同表示并发变化，必须重新读取并改写完整目标规格，再用 `spec rebase` 受控刷新基线、回到 Build 并重新验证，不能覆盖或手改 hash。
 
 ## Verification
 

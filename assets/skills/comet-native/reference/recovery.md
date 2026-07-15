@@ -12,6 +12,30 @@ Resume from facts on disk every time:
 
 When state, Run state, trajectory, or a transaction journal is malformed, stop writing and run read-only doctor. Never bypass the problem by editing `phase` manually.
 
+## Ordinary phase progression
+
+Before updating Run state, `change.yaml`, trajectory, and checkpoint, `next` writes a prepared journal to the change's `runtime/transition.json`. It removes the journal only after every update completes.
+
+`status` and doctor report an unfinished transition. Running `next` again or entering Archive makes the runtime continue it deterministically. You can also run:
+
+```text
+comet native doctor <change-name> --repair --strategy continue
+```
+
+An ordinary phase transition has no canonical-file side effects, so it supports only `continue`, not `rollback`. Preserve a malformed journal and stop instead of assembling state by hand.
+
+## Canonical specification conflicts
+
+Archive stops when another change modifies a canonical specification after the current change froze its `base_hash`. Do not edit the hash:
+
+1. Re-read the latest canonical specification, brief, and proposed complete specification.
+2. Rewrite the complete target specification to reflect user intent, resolving one high-impact decision first when necessary.
+3. Run `comet native spec rebase <change-name> --summary <summary>`.
+4. The runtime refreshes operation/hash, reopens the change in Build, and clears the old verification conclusion.
+5. Implement again, record a newly confirmed decision with `--confirmed` when needed, then rerun Verify and Archive.
+
+If another change already removed the target of a remove intent, rebase drops that satisfied intent. Other remove intents freeze the latest canonical hash before re-verification.
+
 ## Archive transactions
 
 Archive uses a global lock, staged specifications, an append-only per-operation event log, and backups. After interruption, the canonical tree may be mid-transaction, but the journal preserves the unfinished facts.

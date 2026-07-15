@@ -217,6 +217,19 @@ export function nativeTransactionPaths(
   };
 }
 
+export async function resolveNativeTransactionPaths(
+  paths: NativeProjectPaths,
+  id: string,
+): Promise<ReturnType<typeof nativeTransactionPaths>> {
+  const transaction = nativeTransactionPaths(paths, id);
+  await Promise.all(
+    Object.values(transaction).map((target) =>
+      resolveContainedNativePath(paths.nativeRoot, target),
+    ),
+  );
+  return transaction;
+}
+
 function resolveRefLexically(paths: NativeProjectPaths, ref: string): string {
   if (
     ref.length === 0 ||
@@ -252,7 +265,7 @@ async function appendEvent(
   type: NativeTransactionEvent['type'],
   operationId?: string,
 ): Promise<NativeTransactionEvent> {
-  const tx = nativeTransactionPaths(paths, journal.id);
+  const tx = await resolveNativeTransactionPaths(paths, journal.id);
   const events = await readNativeTransactionEvents(paths, journal.id);
   const event: NativeTransactionEvent = {
     sequence: events.length + 1,
@@ -276,7 +289,7 @@ export async function createNativeTransaction(
   journal: NativeTransactionJournal,
 ): Promise<void> {
   journal = parseJournal(journal);
-  const tx = nativeTransactionPaths(paths, journal.id);
+  const tx = await resolveNativeTransactionPaths(paths, journal.id);
   await fs.mkdir(tx.staged, { recursive: true });
   await fs.mkdir(tx.backups, { recursive: true });
   await atomicWriteJson(tx.journal, journal);
@@ -288,7 +301,7 @@ export async function readNativeTransaction(
   id: string,
 ): Promise<NativeTransactionJournal> {
   const value = JSON.parse(
-    await fs.readFile(nativeTransactionPaths(paths, id).journal, 'utf8'),
+    await fs.readFile((await resolveNativeTransactionPaths(paths, id)).journal, 'utf8'),
   ) as unknown;
   const journal = parseJournal(value);
   if (journal.id !== id) {
@@ -303,7 +316,7 @@ export async function readNativeTransactionEvents(
 ): Promise<NativeTransactionEvent[]> {
   let source: string;
   try {
-    source = await fs.readFile(nativeTransactionPaths(paths, id).events, 'utf8');
+    source = await fs.readFile((await resolveNativeTransactionPaths(paths, id)).events, 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
@@ -327,7 +340,7 @@ export async function setNativeTransactionStatus(
   status: NativeTransactionStatus,
 ): Promise<NativeTransactionJournal> {
   const updated = parseJournal({ ...journal, status });
-  await atomicWriteJson(nativeTransactionPaths(paths, journal.id).journal, updated);
+  await atomicWriteJson((await resolveNativeTransactionPaths(paths, journal.id)).journal, updated);
   return updated;
 }
 

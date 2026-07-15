@@ -10,6 +10,11 @@ import { nativeProjectPaths, resolveContainedNativePath } from './native-paths.j
 import { recoverNativeRootMove } from './native-root-move.js';
 import { nativeSelectionFile } from './native-selection.js';
 import { readNativeTransaction } from './native-transaction.js';
+import {
+  continueNativeTransition,
+  inspectPendingNativeTransition,
+  nativeTransitionJournalFile,
+} from './native-transition-journal.js';
 import type {
   NativeDoctorFinding,
   NativeProjectPaths,
@@ -333,6 +338,68 @@ async function inspectChanges(
   return findings;
 }
 
+async function inspectTransitionJournals(
+  paths: NativeProjectPaths,
+  options: {
+    name?: string;
+    repair: boolean;
+    recoveryStrategy?: 'continue' | 'rollback';
+  },
+): Promise<NativeDoctorFinding[]> {
+  const findings: NativeDoctorFinding[] = [];
+  const names = options.name
+    ? [options.name]
+    : (await directoryEntries(paths.changesDir))
+        .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+        .map((entry) => entry.name)
+        .sort();
+  for (const name of names) {
+    let journal;
+    try {
+      journal = await inspectPendingNativeTransition(paths, name);
+    } catch (error) {
+      findings.push({
+        severity: 'error',
+        code: 'transition-invalid',
+        message: `Native transition journal is invalid: ${(error as Error).message}`,
+        path: nativeTransitionJournalFile(paths, name),
+      });
+      continue;
+    }
+    if (!journal) continue;
+    if (options.repair && options.recoveryStrategy === 'continue') {
+      try {
+        await continueNativeTransition(paths, name);
+        findings.push({
+          severity: 'info',
+          code: 'transition-recovered',
+          message: `Continued Native phase transition ${journal.id} for ${name}`,
+          path: nativeTransitionJournalFile(paths, name),
+        });
+      } catch (error) {
+        findings.push({
+          severity: 'error',
+          code: 'transition-recovery-failed',
+          message: `Native transition recovery failed: ${(error as Error).message}`,
+          path: nativeTransitionJournalFile(paths, name),
+        });
+      }
+      continue;
+    }
+    findings.push({
+      severity: 'error',
+      code: 'transition-incomplete',
+      message:
+        options.repair && options.recoveryStrategy === 'rollback'
+          ? `Native phase transition ${journal.id} only supports deterministic continue recovery`
+          : `Native phase transition ${journal.id} is incomplete for ${name}`,
+      path: nativeTransitionJournalFile(paths, name),
+      repair: 'continue',
+    });
+  }
+  return findings;
+}
+
 export async function doctorNativeProject(options: {
   paths: NativeProjectPaths;
   name?: string;
@@ -413,6 +480,13 @@ export async function doctorNativeProject(options: {
     recoveryStrategy: options.recoveryStrategy,
   });
   findings.push(...transactions.findings);
+  findings.push(
+    ...(await inspectTransitionJournals(paths, {
+      name: options.name,
+      repair,
+      recoveryStrategy: options.recoveryStrategy,
+    })),
+  );
   findings.push(...(await inspectLocks(paths, repair, transactions.unfinished)));
   findings.push(...(await inspectSelection(paths, repair)));
   findings.push(...(await inspectChanges(paths, options.name)));

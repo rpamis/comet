@@ -45,6 +45,7 @@ describe('Native runtime release asset', () => {
       expect(source).toContain(command);
     }
     expect(source).not.toMatch(/domains\/comet-classic|openspec|superpowers|requiredSkillCalls/iu);
+    expect(source).not.toMatch(/CLASSIC_RUN_STORAGE|\.comet\//u);
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
   });
 

@@ -3,28 +3,35 @@ import { randomUUID } from 'crypto';
 import { decideWithResolver, recordOutcomeWithResolver } from '../engine/loop.js';
 import { readTrajectory } from '../engine/run-store.js';
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
-import { readRunStateAt, startRunWithStorage, writeRunStateAt } from '../engine/storage-run.js';
+import { readRunStateAt, startRunWithStorage } from '../engine/storage-run.js';
 import { inspectNativeGuard } from './native-guards.js';
-import { nativeChangeDir, readNativeChange, writeNativeChange } from './native-change.js';
-import { assertNoPendingNativeRootMove } from './native-config.js';
+import { nativeChangeDir, readNativeChange } from './native-change.js';
 import { sha256Text } from './native-hash.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
 import {
   NATIVE_RUNTIME_HASH,
   NATIVE_RUNTIME_PACKAGE,
   nativePhaseResolver,
 } from './native-runtime-package.js';
-import { appendNativeTrajectoryEvent, writeNativeCheckpoint } from './native-trajectory.js';
+import { reconcileNativeSpecChanges } from './native-specs.js';
+import {
+  continueNativeTransitionLocked,
+  prepareNativeTransition,
+  withNativeTransitionLock,
+} from './native-transition-journal.js';
 import type {
   NativeAdvanceEvidence,
   NativeAdvanceResult,
   NativePhase,
   NativeProjectPaths,
+  NativeTransitionHooks,
 } from './native-types.js';
 
 function evidenceHash(evidence: NativeAdvanceEvidence): string {
   return sha256Text(
     JSON.stringify({
       summary: evidence.summary,
+      confirmed: evidence.confirmed ?? false,
       artifacts: [...(evidence.artifacts ?? [])].sort(),
       noCodeReason: evidence.noCodeReason ?? null,
       verificationResult: evidence.verificationResult ?? null,
@@ -33,14 +40,30 @@ function evidenceHash(evidence: NativeAdvanceEvidence): string {
   );
 }
 
-export async function advanceNativeChange(options: {
+interface AdvanceNativeChangeOptions {
   paths: NativeProjectPaths;
   name: string;
   evidence: NativeAdvanceEvidence;
   now?: Date;
   runId?: () => string;
-}): Promise<NativeAdvanceResult> {
-  await assertNoPendingNativeRootMove(options.paths.projectRoot);
+  transitionId?: () => string;
+  hooks?: NativeTransitionHooks;
+}
+
+export async function advanceNativeChange(
+  options: AdvanceNativeChangeOptions,
+): Promise<NativeAdvanceResult> {
+  return withNativeMutationLock(options.paths, `advance ${options.name}`, () =>
+    withNativeTransitionLock(options.paths, options.name, `advance ${options.name}`, () =>
+      advanceNativeChangeLocked(options),
+    ),
+  );
+}
+
+async function advanceNativeChangeLocked(
+  options: AdvanceNativeChangeOptions,
+): Promise<NativeAdvanceResult> {
+  await continueNativeTransitionLocked(options.paths, options.name);
   const state = await readNativeChange(options.paths, options.name);
   const previousPhase = state.phase;
   const changeDir = nativeChangeDir(options.paths, options.name);
@@ -64,9 +87,14 @@ export async function advanceNativeChange(options: {
     }
   }
 
+  const candidate = {
+    ...state,
+    spec_changes: await reconcileNativeSpecChanges(options.paths, state),
+  };
+
   const guard = await inspectNativeGuard({
     paths: options.paths,
-    state,
+    state: candidate,
     evidence: options.evidence,
   });
   if (!guard.valid) {
@@ -90,13 +118,6 @@ export async function advanceNativeChange(options: {
       NATIVE_RUNTIME_HASH,
       NATIVE_RUN_STORAGE,
     );
-    await appendNativeTrajectoryEvent({
-      changeDir,
-      run,
-      type: 'run_started',
-      data: { runtime: 'comet-native', phase: state.phase },
-      now: options.now,
-    });
   }
   if (run.currentStep !== state.phase) {
     throw new Error(`Native Run step ${run.currentStep ?? '(none)'} does not match ${state.phase}`);
@@ -126,10 +147,11 @@ export async function advanceNativeChange(options: {
   if (!advanced.currentStep) throw new Error('Archive completion must use the archive command');
 
   const updated = {
-    ...state,
+    ...candidate,
     phase: advanced.currentStep as NativePhase,
-    approval:
-      state.phase === 'shape' && state.approval === null && !state.confirmation_required
+    approval: options.evidence.confirmed
+      ? ('confirmed' as const)
+      : state.phase === 'shape' && state.approval === null
         ? ('implicit' as const)
         : state.approval,
     run_id: run.runId,
@@ -141,35 +163,38 @@ export async function advanceNativeChange(options: {
         }
       : {}),
   };
-  await writeRunStateAt(changeDir, advanced, NATIVE_RUN_STORAGE);
-  await writeNativeChange(options.paths, updated);
-  const event = await appendNativeTrajectoryEvent({
-    changeDir,
-    run: advanced,
-    type: 'state_transitioned',
-    data: {
-      previousPhase,
-      nextPhase: updated.phase,
-      evidenceHash: hash,
-      summary: options.evidence.summary,
-      artifacts: options.evidence.artifacts ?? [],
-      noCodeReason: options.evidence.noCodeReason ?? null,
-      verificationResult: options.evidence.verificationResult ?? null,
-    },
-    now: options.now,
-  });
-  await writeNativeCheckpoint({
-    changeDir,
-    run: advanced,
-    trajectoryOffset: event.sequence,
+  const eventData = {
+    previousPhase,
+    nextPhase: updated.phase,
     evidenceHash: hash,
+    summary: options.evidence.summary,
+    artifacts: options.evidence.artifacts ?? [],
+    noCodeReason: options.evidence.noCodeReason ?? null,
+    verificationResult: options.evidence.verificationResult ?? null,
+  };
+  const journal = await prepareNativeTransition({
+    paths: options.paths,
+    previousState: state,
+    nextState: updated,
+    previousRun: existingRun,
+    nextRun: advanced,
+    evidenceHash: hash,
+    eventData,
     now: options.now,
+    transitionId: options.transitionId,
   });
+  await options.hooks?.afterPrepared?.(journal);
+  const persisted = await continueNativeTransitionLocked(
+    options.paths,
+    options.name,
+    options.hooks,
+  );
+  if (!persisted) throw new Error('Native transition journal disappeared before completion');
   return {
-    change: updated,
+    change: persisted,
     previousPhase,
     next: 'auto',
-    nextCommand: updated.phase === 'archive' ? `comet native archive ${updated.name}` : null,
+    nextCommand: persisted.phase === 'archive' ? `comet native archive ${persisted.name}` : null,
     findings: [],
   };
 }

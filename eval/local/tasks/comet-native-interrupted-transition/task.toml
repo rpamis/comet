@@ -1,0 +1,35 @@
+[metadata]
+name = "comet-native-interrupted-transition"
+description = "Test recovery from a prepared ordinary Native transition before implementation"
+difficulty = "hard"
+category = "comet-native"
+tags = ["comet-native", "recovery", "transition-journal", "full-cycle"]
+default_treatments = ["COMET_NATIVE_PHASE1"]
+
+[template]
+required = []
+
+[environment]
+description = "Python workspace with a prepared Shape-to-Build Native journal left by an interrupted process."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_native_interrupted_transition.py"
+target_artifacts = ["docs/comet/archive", "docs/comet/specs/character-counting/spec.md"]
+timeout = 120
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet-native"]
+expected_artifacts = ["docs/comet/archive", "docs/comet/specs/character-counting/spec.md"]
+require_skill_invocation = true
+rubric_criteria = [
+  "Starts from status and doctor evidence instead of creating or hand-editing Native state",
+  "Continues the prepared transition exactly once before Build",
+  "Implements, verifies, and archives without external workflow Skills",
+]
+
+[interaction]
+mode = "none"
+max_turns = 1

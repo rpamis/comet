@@ -12,6 +12,30 @@
 
 状态、Run state、trajectory 或 transaction journal 畸形时停止写入并运行只读 doctor。不要通过手工改 phase 来绕过问题。
 
+## 普通阶段推进
+
+`next` 在 change 的 `runtime/transition.json` 先写入 prepared journal，再更新 Run state、`change.yaml`、trajectory 和 checkpoint。全部完成后才删除 journal。
+
+`status` 和 doctor 会报告未完成 transition。再次运行 `next` 或进入 Archive 时，runtime 会先确定性续做；也可以显式执行：
+
+```text
+comet native doctor <change-name> --repair --strategy continue
+```
+
+普通阶段推进没有 canonical 文件副作用，因此只支持 `continue`，不支持 `rollback`。journal 畸形时保留原文件并停止，不手工拼接状态。
+
+## Canonical spec 冲突
+
+若另一个 change 在当前 change 冻结 `base_hash` 后改变了同一 canonical spec，Archive 会停止。不要手改 hash：
+
+1. 重读最新 canonical spec、brief 和拟议完整规格；
+2. 按用户意图改写完整目标规格，必要时先解决一个高影响决定；
+3. 运行 `comet native spec rebase <change-name> --summary <摘要>`；
+4. runtime 刷新 operation/hash，把 change 受控重开到 Build，并清除旧验证结论；
+5. 重新实现、在需要时用 `--confirmed` 记录刚确认的决定、重新 Verify 和 Archive。
+
+若 remove 的目标已经被并发 change 删除，rebase 会移除已满足的 remove 意图；其他 remove 会冻结最新 canonical hash 后重新验证。
+
 ## Archive 事务
 
 Archive 使用全局锁、staged specs、逐操作事件日志和备份。中断时 canonical 树可能处于事务中间状态，但 journal 会保留未完成事实。

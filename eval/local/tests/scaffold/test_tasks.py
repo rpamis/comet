@@ -143,7 +143,7 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
-    assert len(names) == 21
+    assert len(names) == 24
     assert set(names) == {
         "authoring-skill-smoke",
         "comet-agent-memory-routing",
@@ -162,6 +162,9 @@ def test_comet_task_index_lists_real_tasks():
         "comet-robust-config",
         "comet-noise-distractor",
         "comet-native-workflow",
+        "comet-native-clarification",
+        "comet-native-repository-fact",
+        "comet-native-interrupted-transition",
         "comet-observability-env-template",
         "generic-skill-smoke",
         "workflow-overlay-contract",
@@ -180,3 +183,37 @@ def test_native_task_uses_its_own_skill_contract():
     assert prompt.startswith("You are working on a Python project")
     assert "Begin by invoking the `/comet-native` Skill" in prompt
     assert "/comet` Skill/slash command" not in prompt
+
+
+def test_native_clarification_task_requires_one_decision_and_confirmed_resume():
+    task = load_task("comet-native-clarification")
+
+    assert task.config.evaluation.profile == "generic"
+    assert task.config.evaluation.required_skills == ["comet-native"]
+    assert task.config.interaction.mode == "auto_user"
+    assert task.config.interaction.max_turns == 4
+    assert "one highest-value question" in task.config.interaction.simulator_prompt
+    assert "Abbreviations such as e.g. do not end a sentence" in task.config.interaction.continue_prompt
+    prompt = task.render_prompt()
+    assert "Do not guess how abbreviations should behave" in prompt
+    assert "Do not begin implementation before the user answers" in prompt
+
+
+def test_native_repository_fact_task_requires_investigation_without_interaction():
+    task = load_task("comet-native-repository-fact")
+
+    assert task.config.evaluation.required_skills == ["comet-native"]
+    assert task.config.interaction.mode == "none"
+    prompt = task.render_prompt()
+    assert "already documented somewhere in this repository" in prompt
+    assert "do not ask the user to repeat repository facts" in prompt
+
+
+def test_native_interrupted_transition_task_requires_runtime_recovery():
+    task = load_task("comet-native-interrupted-transition")
+
+    assert task.config.evaluation.required_skills == ["comet-native"]
+    assert task.config.interaction.mode == "none"
+    prompt = task.render_prompt()
+    assert "recover the existing `add-character-counting` change" in prompt
+    assert "do not create a replacement change" in prompt

@@ -4,6 +4,7 @@ import path from 'path';
 import { atomicWriteJson } from './native-atomic-file.js';
 import { assertNativeName, readNativeChange } from './native-change.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
 import { resolveContainedNativePath } from './native-paths.js';
 import type { NativeProjectPaths } from './native-types.js';
 
@@ -17,12 +18,13 @@ export function nativeSelectionFile(paths: NativeProjectPaths): string {
 }
 
 export async function selectNativeChange(paths: NativeProjectPaths, name: string): Promise<void> {
-  await assertNoPendingNativeRootMove(paths.projectRoot);
-  assertNativeName(name);
-  await readNativeChange(paths, name);
-  const selection: NativeSelection = { schema: 'comet.native.selection.v1', change: name };
-  const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
-  await atomicWriteJson(file, selection);
+  return withNativeMutationLock(paths, `select change ${name}`, async () => {
+    assertNativeName(name);
+    await readNativeChange(paths, name);
+    const selection: NativeSelection = { schema: 'comet.native.selection.v1', change: name };
+    const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
+    await atomicWriteJson(file, selection);
+  });
 }
 
 export async function resolveSelectedNativeChange(
@@ -48,6 +50,12 @@ export async function resolveSelectedNativeChange(
 }
 
 export async function clearNativeSelection(paths: NativeProjectPaths): Promise<void> {
+  return withNativeMutationLock(paths, 'clear change selection', () =>
+    clearNativeSelectionLocked(paths),
+  );
+}
+
+export async function clearNativeSelectionLocked(paths: NativeProjectPaths): Promise<void> {
   await assertNoPendingNativeRootMove(paths.projectRoot);
   await fs.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
     force: true,
@@ -55,6 +63,15 @@ export async function clearNativeSelection(paths: NativeProjectPaths): Promise<v
 }
 
 export async function clearNativeSelectionIf(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<boolean> {
+  return withNativeMutationLock(paths, `clear selection for ${name}`, () =>
+    clearNativeSelectionIfLocked(paths, name),
+  );
+}
+
+export async function clearNativeSelectionIfLocked(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<boolean> {
@@ -70,6 +87,6 @@ export async function clearNativeSelectionIf(
   }
   const value = JSON.parse(source) as Partial<NativeSelection>;
   if (value.schema !== 'comet.native.selection.v1' || value.change !== name) return false;
-  await clearNativeSelection(paths);
+  await clearNativeSelectionLocked(paths);
   return true;
 }

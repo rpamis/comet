@@ -284,6 +284,8 @@ comet native init [--root <artifact-root>]
 comet native root show
 comet native root move <artifact-root>
 comet native new <change-name>
+comet native spec remove <change-name> <capability>
+comet native spec rebase <change-name> --summary <text>
 comet native list
 comet native show <change-name>
 comet native status [<change-name>]
@@ -307,7 +309,7 @@ comet native doctor [<change-name>]
 
 ### 7.5 并发 change 冲突
 
-两个 active change 可以引用同一 canonical capability spec。它们各自记录创建时的 `base_hash`。
+两个 active change 可以引用同一 canonical capability spec。runtime 在首次协调 proposed spec 时为它们分别冻结 `base_hash`。
 
 先归档的 change 更新 canonical spec 后，后归档 change 的 base hash 会失效。archive 守卫必须阻塞并输出：
 
@@ -316,7 +318,7 @@ comet native doctor [<change-name>]
 - 当前 canonical spec 路径。
 - 需要模型重新读取并重写目标完整 spec 的恢复动作。
 
-Comet 不自动三方语义合并，也不静默覆盖。
+重读最新 canonical spec 并更新完整目标 spec 后，模型运行 `spec rebase`。runtime 在锁内刷新 operation/base hash，通过 transition journal 把 change 受控重开到 Build，并清除旧 verification 结论。Comet 不自动三方语义合并，也不静默覆盖。
 
 ## 8. Native 状态
 
@@ -329,7 +331,6 @@ language: zh-CN
 phase: shape
 brief: brief.md
 approval: null
-confirmation_required: false
 spec_changes: []
 verification_result: pending
 verification_report: null
@@ -342,8 +343,7 @@ run_id: null
 
 - `phase`: `shape | build | verify | archive`
 - `approval`: `null | implicit | confirmed`
-- `confirmation_required`: 重大取舍或不可逆行为是否需要明确确认
-- `spec_changes`: create/replace/remove 操作与 base hash
+- `spec_changes`: runtime 根据完整目标规格和显式 remove 命令维护的 create/replace/remove 操作与 base hash
 - `verification_result`: `pending | pass | fail`
 - `verification_report`: change 内相对路径或 `null`
 - `run_id`: 链接 `runtime/run-state.json`
@@ -410,10 +410,10 @@ Native 状态机没有 Classic transition，也没有 upgrade/downgrade event。
 2. 读取 canonical specs、仓库代码、文档和测试。
 3. 沿决策前沿澄清目标、范围和验收条件。
 4. 创建或更新 brief。
-5. 为受影响 capability 生成完整目标 spec，并记录 base hash。
+5. 为受影响 capability 生成完整目标 spec，由 runtime 推导 operation 并冻结 base hash。
 6. 运行 Shape 守卫并请求推进。
 
-用户请求已明确且没有重大新取舍时，`approval: implicit`。存在重大范围、产品行为或不可逆操作选择时，必须得到用户回答并记录 `approval: confirmed`。
+用户请求已明确且没有重大新取舍时，Shape `next` 记录 `approval: implicit`。存在重大范围、产品行为或不可逆操作选择时，必须得到用户回答，并通过 `next --confirmed` 记录 `approval: confirmed`；模型不直接编辑 approval。
 
 ### 9.2 Build
 
@@ -426,6 +426,8 @@ Build 读取 brief、proposed specs、canonical specs、仓库规则和当前 Ru
 - 在发现需求或 spec 漂移时更新 Native 产物。
 
 只有跨 session 或多个依赖任务需要持久恢复时才创建 `plan.md`。短任务的完整计划不要求落盘，恢复所需当前步骤和 checkpoint 写入 `runtime/`。
+
+若实现中发现新的高影响决定，模型把它记录为一个 `[blocking]` 问题并只询问最重要的一个。用户回答后，模型更新 Decisions、移除 blocking 项，并在离开 Build 时传入 `--confirmed`。Build 守卫会重新读取 brief 与 proposed specs，不能用已有产物绕过新发现的阻塞项。
 
 ### 9.3 Verify
 
@@ -489,7 +491,7 @@ Native Skill 不得：
 测试用于提供行为证据，不是固定仪式。发现漂移时先更新 Native change 产物，
 再判断是否需要用户决策。
 
-每个阶段结束时提交可验证证据，并运行 comet native next <change-name>。
+每个阶段结束时提交可验证证据，并运行 comet native next <change-name>；用户刚确认高影响 Shape 或 Build 决策时追加 --confirmed。
 不要直接修改 phase，不要跳过失败的守卫，不要调用任何外部 Skill。
 ```
 
@@ -508,12 +510,13 @@ Native Skill 不得：
 - `change.yaml` 与 `brief.md` 有效。
 - brief 必需章节非空。
 - 没有 blocking open question。
-- `confirmation_required: true` 时 approval 为 `confirmed`。
+- `--confirmed` 只在用户已回答高影响决策时记录 confirmed approval；否则记录 implicit approval。
 - 每个 spec change 的 operation、source 和 base hash 结构有效。
 
 ### 11.2 Build 守卫
 
 - 当前 Run 没有未处理 blocker。
+- brief 必需章节与 proposed specs 仍然完整，且没有 `[blocking]` 问题。
 - 实现或明确的无代码结果存在。
 - 实现范围与 brief/proposed specs 一致。
 - 验证期望可执行；例外已有理由。
@@ -657,7 +660,7 @@ change state、Run state 或事件日志畸形时 fail closed。doctor 输出字
 ### 14.3 Brief/spec 漂移
 
 - 兼容细化：更新 Decisions 或 Acceptance。
-- 改变用户可见行为：回到 Shape 并按决策前沿请求必要确认。
+- 实现中发现新的用户可见行为决定：在当前 Build 写入 `[blocking]`，按决策前沿请求必要确认；冲突 rebase 也受控重开到 Build，不增加新 phase。
 - 改变长期能力行为：更新完整 proposed spec 与 spec change metadata。
 - change 扩大为多个独立目标：创建多个独立 Native change，由用户选择先执行哪个；不切换 Classic。
 
@@ -679,6 +682,9 @@ change state、Run state 或事件日志畸形时 fail closed。doctor 输出字
 - 守卫失败不改变 phase。
 - 重复成功 transition 不重复追加等价事件。
 - state 与单个 spec 写入使用同目录临时文件 + 原子 rename。
+- 普通 phase transition 先写 `runtime/transition.json`，再记录 `run_started` 并幂等更新 Run state、change state、trajectory 与 checkpoint；`next`、archive 和 doctor 可确定性续做。
+- 所有 mutation 使用 Native root mutation lock 和 change lock；同时需要两者时固定按 root → change 获取，未完成事务阻塞新的 mutation。
+- `status/doctor` 交叉检查 change state、Run state、trajectory 与 checkpoint；只有不存在 pending 事务时才能清理可证明陈旧的锁。
 - root move 和 archive 使用全局锁、staged tree 与 append-only 事务日志；它们是可恢复事务，不宣称整个多文件操作具有单次文件系统原子性。
 - archive 任一步失败时，doctor 必须能根据事务日志继续或回滚到一个一致状态；不得同时开放旧、新两套 canonical specs 写入。
 
@@ -698,6 +704,10 @@ Native 与 Classic 可以在相同任务集上对比，但 eval 只比较结果�
 - 上下文压缩后恢复。
 - verify-fail repair loop。
 - archive 中的 base-hash 冲突。
+- 冲突后的 spec rebase 与重新验证。
+- Build 中新发现高影响决定后的单问题确认。
+- 仓库可调查事实不向用户提问。
+- 普通 transition 中断后的幂等恢复。
 - 外部 Skill 完全不可用的环境。
 
 ### 15.2 指标

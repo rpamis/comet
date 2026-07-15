@@ -22,18 +22,21 @@ comet native root move <artifact-root>
 
 ```text
 comet native new <change-name> [--language en|zh-CN]
+comet native spec remove <change-name> <capability>
+comet native spec rebase <change-name> --summary <text>
 comet native list
 comet native show <change-name>
 comet native status [<change-name>]
 comet native select <change-name>
 ```
 
-`new` creates default configuration and `<project>/comet/` when configuration is absent. `show` returns state, the brief, and proposed complete specifications. `status` returns the current phase, verification result, next Native command, and archive readiness. `select` writes only Native-owned selection state.
+`new` creates default configuration and `<project>/comet/` when configuration is absent. Write complete target specifications at `specs/<capability>/spec.md`; `next` infers create/replace and freezes the canonical hash. Use `spec remove` to remove a capability instead of editing `spec_changes`. After a concurrent canonical change causes a conflict, re-read and rewrite the complete target specification, then use `spec rebase` to refresh operation/hash, return to Build, and clear the old verification conclusion. `show` returns state, the brief, and proposed complete specifications. `status` returns the current phase, verification result, next Native command, and archive readiness. `select` writes only Native-owned selection state.
 
 ## Phase progression
 
 ```text
 comet native next <change-name> --summary <text> \
+  [--confirmed] \
   [--artifact <project-relative-path>]... \
   [--no-code-reason <text>] \
   [--result pass|fail] \
@@ -42,8 +45,8 @@ comet native next <change-name> --summary <text> \
 comet native archive <change-name>
 ```
 
-- Shape advances after the brief, proposed specifications, and required confirmations pass.
-- Build requires at least one real project artifact or `--no-code-reason`.
+- Shape advances after the brief and proposed specifications pass; add `--confirmed` only when this turn contains a high-impact decision the user just confirmed.
+- Build rechecks the brief and proposed specifications, then requires at least one real project artifact or `--no-code-reason`. Also pass `--confirmed` when this turn includes a high-impact decision the user just confirmed during implementation.
 - Verify requires `--result` and a complete `--report`; fail returns to Build and pass enters Archive.
 - Archive is completed only by `archive`; `next` cannot substitute for it.
 
@@ -54,7 +57,7 @@ comet native doctor [<change-name>]
 comet native doctor [<change-name>] --repair --strategy continue|rollback
 ```
 
-Read-only doctor does not modify files. `--repair` is limited to provably safe selection cleanup, stale locks, and deterministic transaction recovery; user-authored YAML, Markdown, and specifications are never rewritten automatically.
+Read-only doctor does not modify files. `--repair` is limited to provably safe selection cleanup, stale locks, ordinary phase transitions, and deterministic transaction recovery; user-authored YAML, Markdown, and specifications are never rewritten automatically. Ordinary transitions support `continue`, not `rollback`.
 
 ## Output and exit codes
 

@@ -114,17 +114,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path18) {
-      const ctrl = callVisitor(key, node, visitor, path18);
+    function visit_(key, node, visitor, path22) {
+      const ctrl = callVisitor(key, node, visitor, path22);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path18, ctrl);
-        return visit_(key, ctrl, visitor, path18);
+        replaceNode(key, path22, ctrl);
+        return visit_(key, ctrl, visitor, path22);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path18 = Object.freeze(path18.concat(node));
+          path22 = Object.freeze(path22.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path18);
+            const ci = visit_(i, node.items[i], visitor, path22);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -135,13 +135,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path18 = Object.freeze(path18.concat(node));
-          const ck = visit_("key", node.key, visitor, path18);
+          path22 = Object.freeze(path22.concat(node));
+          const ck = visit_("key", node.key, visitor, path22);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path18);
+          const cv = visit_("value", node.value, visitor, path22);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -162,17 +162,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path18) {
-      const ctrl = await callVisitor(key, node, visitor, path18);
+    async function visitAsync_(key, node, visitor, path22) {
+      const ctrl = await callVisitor(key, node, visitor, path22);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path18, ctrl);
-        return visitAsync_(key, ctrl, visitor, path18);
+        replaceNode(key, path22, ctrl);
+        return visitAsync_(key, ctrl, visitor, path22);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path18 = Object.freeze(path18.concat(node));
+          path22 = Object.freeze(path22.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path18);
+            const ci = await visitAsync_(i, node.items[i], visitor, path22);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -183,13 +183,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path18 = Object.freeze(path18.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path18);
+          path22 = Object.freeze(path22.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path22);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path18);
+          const cv = await visitAsync_("value", node.value, visitor, path22);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -216,23 +216,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path18) {
+    function callVisitor(key, node, visitor, path22) {
       if (typeof visitor === "function")
-        return visitor(key, node, path18);
+        return visitor(key, node, path22);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path18);
+        return visitor.Map?.(key, node, path22);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path18);
+        return visitor.Seq?.(key, node, path22);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path18);
+        return visitor.Pair?.(key, node, path22);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path18);
+        return visitor.Scalar?.(key, node, path22);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path18);
+        return visitor.Alias?.(key, node, path22);
       return void 0;
     }
-    function replaceNode(key, path18, node) {
-      const parent = path18[path18.length - 1];
+    function replaceNode(key, path22, node) {
+      const parent = path22[path22.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -842,10 +842,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path18, value) {
+    function collectionFromPath(schema, path22, value) {
       let v = value;
-      for (let i = path18.length - 1; i >= 0; --i) {
-        const k = path18[i];
+      for (let i = path22.length - 1; i >= 0; --i) {
+        const k = path22[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -864,7 +864,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path18) => path18 == null || typeof path18 === "object" && !!path18[Symbol.iterator]().next().done;
+    var isEmptyPath = (path22) => path22 == null || typeof path22 === "object" && !!path22[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -894,11 +894,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path18, value) {
-        if (isEmptyPath(path18))
+      addIn(path22, value) {
+        if (isEmptyPath(path22))
           this.add(value);
         else {
-          const [key, ...rest] = path18;
+          const [key, ...rest] = path22;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -912,8 +912,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path18) {
-        const [key, ...rest] = path18;
+      deleteIn(path22) {
+        const [key, ...rest] = path22;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -927,8 +927,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path18, keepScalar) {
-        const [key, ...rest] = path18;
+      getIn(path22, keepScalar) {
+        const [key, ...rest] = path22;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -946,8 +946,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path18) {
-        const [key, ...rest] = path18;
+      hasIn(path22) {
+        const [key, ...rest] = path22;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -957,8 +957,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path18, value) {
-        const [key, ...rest] = path18;
+      setIn(path22, value) {
+        const [key, ...rest] = path22;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3473,9 +3473,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path18, value) {
+      addIn(path22, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path18, value);
+          this.contents.addIn(path22, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3550,14 +3550,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path18) {
-        if (Collection.isEmptyPath(path18)) {
+      deleteIn(path22) {
+        if (Collection.isEmptyPath(path22)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path18) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path22) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3572,10 +3572,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path18, keepScalar) {
-        if (Collection.isEmptyPath(path18))
+      getIn(path22, keepScalar) {
+        if (Collection.isEmptyPath(path22))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path18, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path22, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3586,10 +3586,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path18) {
-        if (Collection.isEmptyPath(path18))
+      hasIn(path22) {
+        if (Collection.isEmptyPath(path22))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path18) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path22) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3606,13 +3606,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path18, value) {
-        if (Collection.isEmptyPath(path18)) {
+      setIn(path22, value) {
+        if (Collection.isEmptyPath(path22)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path18), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path22), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path18, value);
+          this.contents.setIn(path22, value);
         }
       }
       /**
@@ -5572,9 +5572,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path18) => {
+    visit.itemAtPath = (cst, path22) => {
       let item = cst;
-      for (const [field2, index] of path18) {
+      for (const [field2, index] of path22) {
         const tok = item?.[field2];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5583,23 +5583,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path18) => {
-      const parent = visit.itemAtPath(cst, path18.slice(0, -1));
-      const field2 = path18[path18.length - 1][0];
+    visit.parentCollection = (cst, path22) => {
+      const parent = visit.itemAtPath(cst, path22.slice(0, -1));
+      const field2 = path22[path22.length - 1][0];
       const coll = parent?.[field2];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path18, item, visitor) {
-      let ctrl = visitor(item, path18);
+    function _visit(path22, item, visitor) {
+      let ctrl = visitor(item, path22);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field2 of ["key", "value"]) {
         const token = item[field2];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path18.concat([[field2, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path22.concat([[field2, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5610,10 +5610,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field2 === "key")
-            ctrl = ctrl(item, path18);
+            ctrl = ctrl(item, path22);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path18) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path22) : ctrl;
     }
     exports.visit = visit;
   }
@@ -6915,14 +6915,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs17 = this.flowScalar(this.type);
+              const fs20 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs17, sep: [] });
+                map.items.push({ start, key: fs20, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs17);
+                this.stack.push(fs20);
               } else {
-                Object.assign(it, { key: fs17, sep: [] });
+                Object.assign(it, { key: fs20, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7050,13 +7050,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs17 = this.flowScalar(this.type);
+              const fs20 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs17, sep: [] });
+                fc.items.push({ start: [], key: fs20, sep: [] });
               else if (it.sep)
-                this.stack.push(fs17);
+                this.stack.push(fs20);
               else
-                Object.assign(it, { key: fs17, sep: [] });
+                Object.assign(it, { key: fs20, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7368,803 +7368,16 @@ var require_dist = __commonJS({
 import { pathToFileURL } from "url";
 
 // domains/comet-native/native-cli.ts
-import { promises as fs16 } from "fs";
-import path17 from "path";
-
-// domains/comet-native/native-artifacts.ts
-import { promises as fs5 } from "fs";
-import path5 from "path";
-
-// domains/comet-native/native-change.ts
-var import_yaml2 = __toESM(require_dist(), 1);
-import { promises as fs4 } from "fs";
-import path4 from "path";
-
-// domains/comet-native/native-atomic-file.ts
-import { randomUUID } from "crypto";
-import { promises as fs } from "fs";
-import path from "path";
-async function syncDirectory(directory) {
-  let handle;
-  try {
-    handle = await fs.open(directory, "r");
-    await handle.sync();
-  } catch (error) {
-    const code = error.code;
-    if (!["EACCES", "EBADF", "EINVAL", "EISDIR", "ENOTSUP", "EPERM"].includes(code ?? "")) {
-      throw error;
-    }
-  } finally {
-    await handle?.close();
-  }
-}
-async function atomicWriteText(file, content) {
-  const directory = path.dirname(file);
-  await fs.mkdir(directory, { recursive: true });
-  const temporary = path.join(directory, `.${path.basename(file)}.${randomUUID()}.tmp`);
-  let handle;
-  try {
-    handle = await fs.open(temporary, "wx");
-    await handle.writeFile(content, "utf8");
-    await handle.sync();
-    await handle.close();
-    handle = void 0;
-    await fs.rename(temporary, file);
-    await syncDirectory(directory);
-  } catch (error) {
-    await handle?.close();
-    await fs.rm(temporary, { force: true });
-    throw error;
-  }
-}
-async function atomicWriteJson(file, value) {
-  await atomicWriteText(file, JSON.stringify(value, null, 2) + "\n");
-}
-
-// domains/comet-native/native-config.ts
-var import_yaml = __toESM(require_dist(), 1);
-import { promises as fs3 } from "fs";
-import path3 from "path";
-
-// domains/comet-native/native-paths.ts
-import { promises as fs2 } from "fs";
-import path2 from "path";
-var PROJECT_CONFIG_FILE = "comet.config.yaml";
-async function isFileOrDirectory(target) {
-  try {
-    await fs2.lstat(target);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-function inside(parent, target) {
-  const relative = path2.relative(parent, target);
-  return relative === "" || !path2.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path2.sep}`);
-}
-async function physicalPath(target) {
-  const missing = [];
-  let cursor = target;
-  while (!await isFileOrDirectory(cursor)) {
-    const parent = path2.dirname(cursor);
-    if (parent === cursor) break;
-    missing.push(path2.basename(cursor));
-    cursor = parent;
-  }
-  const existing = await fs2.realpath(cursor);
-  return path2.resolve(existing, ...missing.reverse());
-}
-async function isSymbolicLink(target) {
-  try {
-    return (await fs2.lstat(target)).isSymbolicLink();
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-async function discoverNativeProject(startPath) {
-  let cursor = path2.resolve(startPath);
-  try {
-    if (!(await fs2.stat(cursor)).isDirectory()) cursor = path2.dirname(cursor);
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  const fallback = cursor;
-  while (true) {
-    if (await isFileOrDirectory(path2.join(cursor, PROJECT_CONFIG_FILE))) return cursor;
-    if (await isFileOrDirectory(path2.join(cursor, ".git"))) return cursor;
-    const parent = path2.dirname(cursor);
-    if (parent === cursor) return fallback;
-    cursor = parent;
-  }
-}
-function normalizeArtifactRootRef(value) {
-  const trimmed = value.trim();
-  if (trimmed.length === 0 || path2.isAbsolute(trimmed) || /^(?:[A-Za-z]:|~|[\\/])/u.test(trimmed)) {
-    throw new Error("native.artifact_root must be a project-relative path");
-  }
-  const segments = trimmed.replaceAll("\\", "/").split("/");
-  if (segments.includes("..")) {
-    throw new Error("native.artifact_root must stay inside the project root");
-  }
-  const normalized = path2.posix.normalize(segments.filter((segment) => segment !== "").join("/"));
-  if (normalized === ".." || normalized.startsWith("../")) {
-    throw new Error("native.artifact_root must stay inside the project root");
-  }
-  return normalized === "" ? "." : normalized;
-}
-async function resolveArtifactRoot(projectRoot, value) {
-  const normalized = normalizeArtifactRootRef(value);
-  const lexical = path2.resolve(projectRoot, ...normalized.split("/"));
-  const physicalProject = await fs2.realpath(projectRoot);
-  const physicalTarget = await physicalPath(lexical);
-  if (!inside(physicalProject, physicalTarget)) {
-    throw new Error("native.artifact_root resolves outside the project root");
-  }
-  return lexical;
-}
-async function nativeProjectPaths(projectRoot, artifactRootRef) {
-  const normalized = normalizeArtifactRootRef(artifactRootRef);
-  const artifactRoot = await resolveArtifactRoot(projectRoot, normalized);
-  const nativeRoot = path2.join(artifactRoot, "comet");
-  if (await isSymbolicLink(nativeRoot)) {
-    throw new Error("The configured Native comet root must not be a symbolic link");
-  }
-  const [physicalArtifactRoot, physicalNativeRoot] = await Promise.all([
-    physicalPath(artifactRoot),
-    physicalPath(nativeRoot)
-  ]);
-  if (!inside(physicalArtifactRoot, physicalNativeRoot)) {
-    throw new Error("The configured Native comet root resolves outside its artifact root");
-  }
-  return {
-    projectRoot: path2.resolve(projectRoot),
-    configFile: path2.join(projectRoot, PROJECT_CONFIG_FILE),
-    artifactRoot,
-    artifactRootRef: normalized,
-    nativeRoot,
-    specsDir: path2.join(nativeRoot, "specs"),
-    changesDir: path2.join(nativeRoot, "changes"),
-    archiveDir: path2.join(nativeRoot, "archive"),
-    runtimeDir: path2.join(nativeRoot, "runtime"),
-    locksDir: path2.join(nativeRoot, "runtime", "locks"),
-    transactionsDir: path2.join(nativeRoot, "runtime", "transactions")
-  };
-}
-function isInsidePath(parent, target) {
-  return inside(path2.resolve(parent), path2.resolve(target));
-}
-async function resolveContainedNativePath(root, target) {
-  const lexicalRoot = path2.resolve(root);
-  const lexicalTarget = path2.resolve(target);
-  if (!inside(lexicalRoot, lexicalTarget)) {
-    throw new Error(`Path is outside the Native root: ${target}`);
-  }
-  if (await isSymbolicLink(lexicalRoot)) {
-    throw new Error(`Native root must not be a symbolic link: ${root}`);
-  }
-  const [physicalRoot, physicalTarget] = await Promise.all([
-    physicalPath(lexicalRoot),
-    physicalPath(lexicalTarget)
-  ]);
-  if (!inside(physicalRoot, physicalTarget)) {
-    throw new Error(`Path resolves outside the Native root: ${target}`);
-  }
-  return lexicalTarget;
-}
-
-// domains/comet-native/native-config.ts
-var ROOT_KEYS = /* @__PURE__ */ new Set(["schema", "default_workflow", "native"]);
-var NATIVE_KEYS = /* @__PURE__ */ new Set(["artifact_root", "pending_root_move"]);
-var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage"]);
-function record(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be a mapping`);
-  }
-  return value;
-}
-function rejectUnknown(value, known, label) {
-  const unknown = Object.keys(value).filter((key) => !known.has(key));
-  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
-}
-function parsePending(value) {
-  if (value === void 0) return void 0;
-  const pending = record(value, "native.pending_root_move");
-  rejectUnknown(pending, PENDING_KEYS, "native.pending_root_move");
-  const id = pending.id;
-  const from = pending.from_artifact_root;
-  const to = pending.to_artifact_root;
-  const stage = pending.stage;
-  if (typeof id !== "string" || !/^[a-f0-9-]{8,}$/u.test(id)) {
-    throw new Error("native.pending_root_move.id is invalid");
-  }
-  if (typeof from !== "string" || typeof to !== "string") {
-    throw new Error("native.pending_root_move roots must be strings");
-  }
-  if (stage !== "copying" && stage !== "ready" && stage !== "switched") {
-    throw new Error("native.pending_root_move.stage is invalid");
-  }
-  return {
-    id,
-    fromArtifactRoot: normalizeArtifactRootRef(from),
-    toArtifactRoot: normalizeArtifactRootRef(to),
-    stage
-  };
-}
-function parseConfig(value) {
-  const root = record(value, PROJECT_CONFIG_FILE);
-  rejectUnknown(root, ROOT_KEYS, PROJECT_CONFIG_FILE);
-  if (root.schema !== "comet.project.v1") throw new Error("Unsupported Comet project schema");
-  if (root.default_workflow !== "native" && root.default_workflow !== "classic") {
-    throw new Error("default_workflow must be native or classic");
-  }
-  const native = record(root.native, "native");
-  rejectUnknown(native, NATIVE_KEYS, "native");
-  if (typeof native.artifact_root !== "string") {
-    throw new Error("native.artifact_root must be a string");
-  }
-  const pending = parsePending(native.pending_root_move);
-  return {
-    schema: "comet.project.v1",
-    default_workflow: root.default_workflow,
-    native: {
-      artifact_root: normalizeArtifactRootRef(native.artifact_root),
-      ...pending ? { pending_root_move: pending } : {}
-    }
-  };
-}
-function defaultProjectConfig(artifactRoot = ".") {
-  return {
-    schema: "comet.project.v1",
-    default_workflow: "native",
-    native: { artifact_root: normalizeArtifactRootRef(artifactRoot) }
-  };
-}
-async function readProjectConfig(projectRoot) {
-  const file = path3.join(projectRoot, PROJECT_CONFIG_FILE);
-  let source;
-  try {
-    source = await fs3.readFile(file, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-  const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
-  }
-  return parseConfig(document.toJS());
-}
-async function assertNoPendingNativeRootMove(projectRoot) {
-  const config = await readProjectConfig(projectRoot);
-  if (config?.native.pending_root_move) {
-    throw new Error(
-      `Native root move ${config.native.pending_root_move.id} is incomplete; use comet native doctor --repair`
-    );
-  }
-}
-async function writeProjectConfig(projectRoot, config) {
-  const validated = parseConfig({
-    schema: config.schema,
-    default_workflow: config.default_workflow,
-    native: {
-      artifact_root: config.native.artifact_root,
-      ...config.native.pending_root_move ? {
-        pending_root_move: {
-          id: config.native.pending_root_move.id,
-          from_artifact_root: config.native.pending_root_move.fromArtifactRoot,
-          to_artifact_root: config.native.pending_root_move.toArtifactRoot,
-          stage: config.native.pending_root_move.stage
-        }
-      } : {}
-    }
-  });
-  const document = {
-    schema: validated.schema,
-    default_workflow: validated.default_workflow,
-    native: {
-      artifact_root: validated.native.artifact_root,
-      ...validated.native.pending_root_move ? {
-        pending_root_move: {
-          id: validated.native.pending_root_move.id,
-          from_artifact_root: validated.native.pending_root_move.fromArtifactRoot,
-          to_artifact_root: validated.native.pending_root_move.toArtifactRoot,
-          stage: validated.native.pending_root_move.stage
-        }
-      } : {}
-    }
-  };
-  await atomicWriteText(path3.join(projectRoot, PROJECT_CONFIG_FILE), (0, import_yaml.stringify)(document));
-}
-async function resolveNativeProject(options) {
-  const projectRoot = await discoverNativeProject(options.startPath);
-  const existing = await readProjectConfig(projectRoot);
-  if (!existing && options.allowMissingConfig === false) {
-    throw new Error(`${PROJECT_CONFIG_FILE} was not found`);
-  }
-  if (existing?.native.pending_root_move) {
-    throw new Error(
-      `Native root move ${existing.native.pending_root_move.id} is incomplete; use comet native doctor --repair`
-    );
-  }
-  const explicit = options.explicitArtifactRoot ? normalizeArtifactRootRef(options.explicitArtifactRoot) : void 0;
-  if (existing && explicit && explicit !== existing.native.artifact_root) {
-    throw new Error(
-      `Configured Native artifact root is ${existing.native.artifact_root}; refusing conflicting root ${explicit}`
-    );
-  }
-  const config = existing ?? defaultProjectConfig(explicit ?? ".");
-  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
-  return { config, paths, configured: existing !== null };
-}
-
-// domains/comet-native/native-change.ts
-var CHANGE_KEYS = /* @__PURE__ */ new Set([
-  "schema",
-  "name",
-  "language",
-  "phase",
-  "brief",
-  "approval",
-  "confirmation_required",
-  "spec_changes",
-  "verification_result",
-  "verification_report",
-  "archived",
-  "created_at",
-  "run_id"
-]);
-var SPEC_CHANGE_KEYS = /* @__PURE__ */ new Set(["capability", "operation", "source", "base_hash"]);
-var PHASES = /* @__PURE__ */ new Set(["shape", "build", "verify", "archive"]);
-var APPROVALS = /* @__PURE__ */ new Set(["implicit", "confirmed"]);
-var VERIFY_RESULTS = /* @__PURE__ */ new Set(["pending", "pass", "fail"]);
-var HASH_PATTERN = /^[a-f0-9]{64}$/u;
-var NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
-var NATIVE_BRIEF_TEMPLATE = [
-  "# Outcome",
-  "",
-  "# Scope",
-  "",
-  "# Non-goals",
-  "",
-  "# Acceptance examples",
-  "",
-  "# Constraints and invariants",
-  "",
-  "# Decisions",
-  "",
-  "# Open questions",
-  "",
-  "# Verification expectations",
-  ""
-].join("\n");
-function record2(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be a mapping`);
-  }
-  return value;
-}
-function rejectUnknown2(value, known, label) {
-  const unknown = Object.keys(value).filter((key) => !known.has(key));
-  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
-}
-function assertNativeName(value) {
-  if (!NAME_PATTERN.test(value)) throw new Error(`Invalid Native change name: ${value}`);
-}
-function assertCapabilityId(value) {
-  if (!NAME_PATTERN.test(value)) throw new Error(`Invalid Native capability id: ${value}`);
-}
-function assertRelativeRef(value, label) {
-  if (value.length === 0 || path4.isAbsolute(value) || /^(?:[A-Za-z]:|~|[\\/])/u.test(value) || value.split(/[\\/]/u).includes("..")) {
-    throw new Error(`${label} must stay inside the Native change`);
-  }
-}
-function parseSpecChange(value, index) {
-  const item = record2(value, `spec_changes[${index}]`);
-  rejectUnknown2(item, SPEC_CHANGE_KEYS, `spec_changes[${index}]`);
-  if (typeof item.capability !== "string") throw new Error("spec change capability is required");
-  assertCapabilityId(item.capability);
-  if (item.operation !== "create" && item.operation !== "replace" && item.operation !== "remove") {
-    throw new Error(`Invalid spec operation for ${item.capability}`);
-  }
-  const source = item.source;
-  const baseHash = item.base_hash;
-  if (source !== void 0 && typeof source !== "string") {
-    throw new Error(`Spec source for ${item.capability} must be a string`);
-  }
-  if (typeof source === "string") assertRelativeRef(source, `Spec source for ${item.capability}`);
-  if (item.operation === "create") {
-    if (!source) throw new Error(`Create spec ${item.capability} requires source`);
-    if (baseHash !== null)
-      throw new Error(`Create spec ${item.capability} requires null base_hash`);
-  } else if (item.operation === "replace") {
-    if (!source) throw new Error(`Replace spec ${item.capability} requires source`);
-    if (typeof baseHash !== "string" || !HASH_PATTERN.test(baseHash)) {
-      throw new Error(`Replace spec ${item.capability} requires a SHA-256 base_hash`);
-    }
-  } else {
-    if (source !== void 0) throw new Error(`Remove spec ${item.capability} forbids source`);
-    if (typeof baseHash !== "string" || !HASH_PATTERN.test(baseHash)) {
-      throw new Error(`Remove spec ${item.capability} requires a SHA-256 base_hash`);
-    }
-  }
-  return {
-    capability: item.capability,
-    operation: item.operation,
-    ...typeof source === "string" ? { source } : {},
-    base_hash: baseHash
-  };
-}
-function validDate(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
-  return (/* @__PURE__ */ new Date(`${value}T00:00:00.000Z`)).toISOString().slice(0, 10) === value;
-}
-function parseNativeChangeValue(value) {
-  const root = record2(value, "change.yaml");
-  rejectUnknown2(root, CHANGE_KEYS, "change.yaml");
-  if (root.schema !== "comet.native.v1") throw new Error("Unsupported Native change schema");
-  if (typeof root.name !== "string") throw new Error("Native change name is required");
-  assertNativeName(root.name);
-  if (root.language !== "en" && root.language !== "zh-CN") {
-    throw new Error("Native change language must be en or zh-CN");
-  }
-  if (typeof root.phase !== "string" || !PHASES.has(root.phase)) {
-    throw new Error("Native change phase is invalid");
-  }
-  if (root.brief !== "brief.md") throw new Error("Native change brief must be brief.md");
-  if (root.approval !== null && !APPROVALS.has(root.approval)) {
-    throw new Error("Native change approval is invalid");
-  }
-  if (typeof root.confirmation_required !== "boolean") {
-    throw new Error("Native confirmation_required must be boolean");
-  }
-  if (!Array.isArray(root.spec_changes)) throw new Error("Native spec_changes must be an array");
-  const specChanges = root.spec_changes.map(parseSpecChange);
-  const duplicates = specChanges.map((change) => change.capability).filter((capability, index, all) => all.indexOf(capability) !== index);
-  if (duplicates.length > 0) {
-    throw new Error(
-      `Duplicate Native capability operation: ${[...new Set(duplicates)].join(", ")}`
-    );
-  }
-  if (typeof root.verification_result !== "string" || !VERIFY_RESULTS.has(root.verification_result)) {
-    throw new Error("Native verification_result is invalid");
-  }
-  if (root.verification_report !== null && typeof root.verification_report !== "string") {
-    throw new Error("Native verification_report must be a string or null");
-  }
-  if (typeof root.verification_report === "string") {
-    assertRelativeRef(root.verification_report, "Native verification_report");
-  }
-  if (typeof root.archived !== "boolean") throw new Error("Native archived must be boolean");
-  if (typeof root.created_at !== "string" || !validDate(root.created_at)) {
-    throw new Error("Native created_at must be a valid YYYY-MM-DD date");
-  }
-  if (root.run_id !== null && (typeof root.run_id !== "string" || root.run_id.length === 0)) {
-    throw new Error("Native run_id must be a non-empty string or null");
-  }
-  return {
-    schema: "comet.native.v1",
-    name: root.name,
-    language: root.language,
-    phase: root.phase,
-    brief: "brief.md",
-    approval: root.approval,
-    confirmation_required: root.confirmation_required,
-    spec_changes: specChanges,
-    verification_result: root.verification_result,
-    verification_report: root.verification_report,
-    archived: root.archived,
-    created_at: root.created_at,
-    run_id: root.run_id
-  };
-}
-function nativeChangeDocument(state) {
-  const parsed = parseNativeChangeValue(state);
-  return {
-    schema: parsed.schema,
-    name: parsed.name,
-    language: parsed.language,
-    phase: parsed.phase,
-    brief: parsed.brief,
-    approval: parsed.approval,
-    confirmation_required: parsed.confirmation_required,
-    spec_changes: parsed.spec_changes.map((change) => ({
-      capability: change.capability,
-      operation: change.operation,
-      ...change.source ? { source: change.source } : {},
-      base_hash: change.base_hash
-    })),
-    verification_result: parsed.verification_result,
-    verification_report: parsed.verification_report,
-    archived: parsed.archived,
-    created_at: parsed.created_at,
-    run_id: parsed.run_id
-  };
-}
-function nativeChangeDir(paths, name) {
-  assertNativeName(name);
-  const target = path4.join(paths.changesDir, name);
-  if (!isInsidePath(paths.changesDir, target)) throw new Error("Native change path escaped");
-  return target;
-}
-async function createNativeChange(options) {
-  await assertNoPendingNativeRootMove(options.paths.projectRoot);
-  assertNativeName(options.name);
-  const changeDir = nativeChangeDir(options.paths, options.name);
-  await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
-  try {
-    await fs4.mkdir(changeDir, { recursive: false });
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      await fs4.mkdir(options.paths.changesDir, { recursive: true });
-      await fs4.mkdir(changeDir, { recursive: false });
-    } else if (error.code === "EEXIST") {
-      throw new Error(`Native change already exists: ${options.name}`, { cause: error });
-    } else {
-      throw error;
-    }
-  }
-  const state = {
-    schema: "comet.native.v1",
-    name: options.name,
-    language: options.language,
-    phase: "shape",
-    brief: "brief.md",
-    approval: null,
-    confirmation_required: false,
-    spec_changes: [],
-    verification_result: "pending",
-    verification_report: null,
-    archived: false,
-    created_at: (options.now ?? /* @__PURE__ */ new Date()).toISOString().slice(0, 10),
-    run_id: null
-  };
-  await Promise.all([
-    fs4.mkdir(path4.join(changeDir, "specs"), { recursive: true }),
-    fs4.mkdir(path4.join(changeDir, "runtime", "checkpoints"), { recursive: true }),
-    atomicWriteText(path4.join(changeDir, "brief.md"), NATIVE_BRIEF_TEMPLATE)
-  ]);
-  await writeNativeChange(options.paths, state);
-  return state;
-}
-async function readNativeChange(paths, name) {
-  const file = path4.join(nativeChangeDir(paths, name), "change.yaml");
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  const document = (0, import_yaml2.parseDocument)(await fs4.readFile(file, "utf8"), { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid Native change ${name}: ${document.errors[0].message}`);
-  }
-  const parsed = parseNativeChangeValue(document.toJS());
-  if (parsed.name !== name) throw new Error(`Native change directory/name mismatch: ${name}`);
-  return parsed;
-}
-async function writeNativeChange(paths, state) {
-  await assertNoPendingNativeRootMove(paths.projectRoot);
-  const file = path4.join(nativeChangeDir(paths, state.name), "change.yaml");
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  await atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(state)));
-}
-async function writeNativeChangeFile(file, state) {
-  await atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(state)));
-}
-async function readNativeChangeFile(file) {
-  const document = (0, import_yaml2.parseDocument)(await fs4.readFile(file, "utf8"), { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
-  }
-  return parseNativeChangeValue(document.toJS());
-}
-async function listNativeChanges(paths) {
-  let entries;
-  try {
-    entries = await fs4.readdir(paths.changesDir, { withFileTypes: true });
-  } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
-  const names = entries.filter((entry2) => entry2.isDirectory() && !entry2.isSymbolicLink()).map((entry2) => entry2.name).sort();
-  return Promise.all(names.map((name) => readNativeChange(paths, name)));
-}
-
-// domains/comet-native/native-hash.ts
-import { createHash } from "crypto";
-import { createReadStream } from "fs";
-async function sha256File(file) {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(file)) hash.update(chunk);
-  return hash.digest("hex");
-}
-function sha256Text(content) {
-  return createHash("sha256").update(content).digest("hex");
-}
-
-// domains/comet-native/native-artifacts.ts
-var BRIEF_REQUIRED = ["Outcome", "Scope", "Non-goals", "Acceptance examples"];
-var BRIEF_ALL = [
-  ...BRIEF_REQUIRED,
-  "Constraints and invariants",
-  "Decisions",
-  "Open questions",
-  "Verification expectations"
-];
-var VERIFICATION_ALL = [
-  "Acceptance evidence",
-  "Commands and results",
-  "Skipped checks",
-  "Spec consistency",
-  "Known limitations and risks",
-  "Conclusion"
-];
-function markdownSections(source) {
-  const sections = /* @__PURE__ */ new Map();
-  let heading = null;
-  let body = [];
-  const flush = () => {
-    if (heading !== null) sections.set(heading, body.join("\n").trim());
-  };
-  for (const line of source.split(/\r?\n/u)) {
-    const match = /^# ([^#].*)$/u.exec(line);
-    if (match) {
-      flush();
-      heading = match[1].trim();
-      body = [];
-    } else if (heading !== null) {
-      body.push(line);
-    }
-  }
-  flush();
-  return sections;
-}
-async function readContainedFile(root, relativeRef) {
-  const target = path5.resolve(root, ...relativeRef.split(/[\\/]/u));
-  if (!isInsidePath(root, target))
-    throw new Error(`Artifact escapes Native change: ${relativeRef}`);
-  const realRoot = await fs5.realpath(root);
-  const realTarget = await fs5.realpath(target);
-  if (!isInsidePath(realRoot, realTarget)) {
-    throw new Error(`Artifact symlink escapes Native change: ${relativeRef}`);
-  }
-  if (!(await fs5.stat(realTarget)).isFile())
-    throw new Error(`Artifact is not a file: ${relativeRef}`);
-  return realTarget;
-}
-function result(findings) {
-  return { valid: findings.length === 0, findings };
-}
-async function validateNativeBrief(changeDir, briefRef) {
-  const findings = [];
-  let file;
-  try {
-    file = await readContainedFile(changeDir, briefRef);
-  } catch (error) {
-    return result([{ code: "brief-missing", message: error.message, path: briefRef }]);
-  }
-  const sections = markdownSections(await fs5.readFile(file, "utf8"));
-  for (const heading of BRIEF_ALL) {
-    if (!sections.has(heading)) {
-      findings.push({
-        code: "brief-section-missing",
-        message: `Missing brief section: ${heading}`,
-        path: briefRef
-      });
-    }
-  }
-  for (const heading of BRIEF_REQUIRED) {
-    if ((sections.get(heading) ?? "").length === 0) {
-      findings.push({
-        code: "brief-section-empty",
-        message: `Brief section is empty: ${heading}`,
-        path: briefRef
-      });
-    }
-  }
-  const openQuestions = sections.get("Open questions") ?? "";
-  if (/^\s*-\s*\[blocking\]/imu.test(openQuestions)) {
-    findings.push({
-      code: "brief-blocking-question",
-      message: "Brief has a blocking open question",
-      path: briefRef
-    });
-  }
-  return result(findings);
-}
-async function validateNativeVerification(changeDir, reportRef) {
-  const findings = [];
-  let file;
-  try {
-    file = await readContainedFile(changeDir, reportRef);
-  } catch (error) {
-    return result([
-      { code: "verification-missing", message: error.message, path: reportRef }
-    ]);
-  }
-  const sections = markdownSections(await fs5.readFile(file, "utf8"));
-  for (const heading of VERIFICATION_ALL) {
-    if (!sections.has(heading)) {
-      findings.push({
-        code: "verification-section-missing",
-        message: `Missing verification section: ${heading}`,
-        path: reportRef
-      });
-    } else if ((sections.get(heading) ?? "").length === 0) {
-      findings.push({
-        code: "verification-section-empty",
-        message: `Verification section is empty: ${heading}`,
-        path: reportRef
-      });
-    }
-  }
-  return result(findings);
-}
-function canonicalSpecPath(paths, capability) {
-  return path5.join(paths.specsDir, capability, "spec.md");
-}
-async function validateNativeSpecChanges(paths, state) {
-  const findings = [];
-  const changeDir = nativeChangeDir(paths, state.name);
-  for (const change of state.spec_changes) {
-    const canonical = canonicalSpecPath(paths, change.capability);
-    let canonicalHash = null;
-    try {
-      await resolveContainedNativePath(paths.nativeRoot, canonical);
-      canonicalHash = await sha256File(canonical);
-    } catch (error) {
-      if (error.code !== "ENOENT") {
-        findings.push({
-          code: "spec-canonical-unsafe",
-          message: error.message,
-          path: canonical
-        });
-        continue;
-      }
-    }
-    if (change.operation === "create" && canonicalHash !== null) {
-      findings.push({
-        code: "spec-create-exists",
-        message: `Canonical spec already exists: ${change.capability}`,
-        path: canonical
-      });
-    }
-    if (change.operation !== "create" && canonicalHash === null) {
-      findings.push({
-        code: "spec-base-missing",
-        message: `Canonical spec is missing: ${change.capability}`,
-        path: canonical
-      });
-    }
-    if (change.operation !== "create" && canonicalHash !== null && canonicalHash !== change.base_hash) {
-      findings.push({
-        code: "spec-base-conflict",
-        message: `Canonical spec changed for ${change.capability}: expected ${change.base_hash}, actual ${canonicalHash}`,
-        path: canonical
-      });
-    }
-    if (change.source) {
-      try {
-        await readContainedFile(changeDir, change.source);
-      } catch (error) {
-        findings.push({
-          code: "spec-source-invalid",
-          message: error.message,
-          path: change.source
-        });
-      }
-    }
-  }
-  return result(findings);
-}
-async function resolveNativeArtifactFile(changeDir, relativeRef) {
-  return readContainedFile(changeDir, relativeRef);
-}
+import { promises as fs19 } from "fs";
+import path21 from "path";
 
 // domains/comet-native/native-archive.ts
-import { randomUUID as randomUUID5 } from "crypto";
-import { promises as fs11 } from "fs";
-import path13 from "path";
+import { randomUUID as randomUUID6 } from "crypto";
+import { promises as fs13 } from "fs";
+import path15 from "path";
 
 // domains/engine/loop.ts
-import { createHash as createHash2 } from "crypto";
+import { createHash } from "crypto";
 
 // domains/engine/guardrails.ts
 function checkAction(action, state, guardrails, confirmations) {
@@ -8220,7 +7433,7 @@ function resolveDeterministicNext(resolver, pkg, state, step, outcome, context) 
 
 // domains/engine/loop.ts
 function actionId(runId, iteration, stepId) {
-  return createHash2("sha256").update(`${runId}:${iteration}:${stepId ?? "adaptive"}`).digest("hex").slice(0, 16);
+  return createHash("sha256").update(`${runId}:${iteration}:${stepId ?? "adaptive"}`).digest("hex").slice(0, 16);
 }
 function stepFor(pkg, id) {
   return pkg.definition.orchestration.steps?.find((step) => step.id === id);
@@ -8297,28 +7510,28 @@ function recordOutcomeWithResolver(pkg, state, outcome, resolver, context) {
 }
 
 // domains/engine/run-store.ts
-import { randomUUID as randomUUID2 } from "crypto";
-import { promises as fs6 } from "fs";
-import path6 from "path";
+import { randomUUID } from "crypto";
+import { promises as fs } from "fs";
+import path from "path";
 function resolveRunPath(changeDir, relativePath) {
-  if (path6.isAbsolute(relativePath))
+  if (path.isAbsolute(relativePath))
     throw new Error("Run path must stay inside the change directory");
-  const root = path6.resolve(changeDir);
-  const target = path6.resolve(root, relativePath);
-  if (target !== root && !target.startsWith(root + path6.sep)) {
+  const root = path.resolve(changeDir);
+  const target = path.resolve(root, relativePath);
+  if (target !== root && !target.startsWith(root + path.sep)) {
     throw new Error("Run path must stay inside the change directory");
   }
   return target;
 }
 async function atomicWrite(file, content) {
-  await fs6.mkdir(path6.dirname(file), { recursive: true });
-  const temporary = `${file}.${randomUUID2()}.tmp`;
-  await fs6.writeFile(temporary, content, "utf8");
-  await fs6.rename(temporary, file);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  await fs.writeFile(temporary, content, "utf8");
+  await fs.rename(temporary, file);
 }
 async function readOptionalText(file) {
   try {
-    return await fs6.readFile(file, "utf8");
+    return await fs.readFile(file, "utf8");
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -8326,8 +7539,8 @@ async function readOptionalText(file) {
 }
 async function appendTrajectory(changeDir, relativePath, event) {
   const file = resolveRunPath(changeDir, relativePath);
-  await fs6.mkdir(path6.dirname(file), { recursive: true });
-  await fs6.appendFile(file, JSON.stringify(event) + "\n", "utf8");
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.appendFile(file, JSON.stringify(event) + "\n", "utf8");
 }
 async function readTrajectory(changeDir, relativePath) {
   const raw = await readOptionalText(resolveRunPath(changeDir, relativePath));
@@ -8346,19 +7559,14 @@ async function writeCheckpoint(changeDir, relativePath, checkpoint) {
     JSON.stringify(checkpoint, null, 2) + "\n"
   );
 }
+async function readCheckpoint(changeDir, relativePath) {
+  const raw = await readOptionalText(resolveRunPath(changeDir, relativePath));
+  return raw === null ? null : JSON.parse(raw);
+}
 
 // domains/engine/storage-layout.ts
-import path7 from "path";
-var CLASSIC_RUN_STORAGE = Object.freeze({
-  stateRef: ".comet/run-state.json",
-  pendingRef: ".comet/pending-action.json",
-  trajectoryRef: ".comet/trajectory.jsonl",
-  contextRef: ".comet/context.md",
-  artifactsRef: ".comet/artifacts.json",
-  checkpointRef: ".comet/checkpoint.json",
-  snapshotsRef: ".comet/skill-snapshots"
-});
-var NATIVE_RUN_STORAGE = Object.freeze({
+import path2 from "path";
+var NATIVE_RUN_STORAGE = /* @__PURE__ */ Object.freeze({
   stateRef: "runtime/run-state.json",
   pendingRef: "runtime/pending-action.json",
   trajectoryRef: "runtime/trajectory.jsonl",
@@ -8368,7 +7576,7 @@ var NATIVE_RUN_STORAGE = Object.freeze({
   snapshotsRef: "runtime/skill-snapshots"
 });
 function assertRunStorageRef(value) {
-  if (value.length === 0 || path7.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+  if (value.length === 0 || path2.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
     throw new Error("Run storage ref must stay inside the Run root");
   }
 }
@@ -8377,12 +7585,12 @@ function assertRunStorageLayout(storage) {
 }
 
 // domains/engine/storage-run.ts
-import { randomUUID as randomUUID3 } from "crypto";
-import { promises as fs7 } from "fs";
-import path9 from "path";
+import { randomUUID as randomUUID2 } from "crypto";
+import { promises as fs2 } from "fs";
+import path4 from "path";
 
 // domains/engine/state.ts
-import path8 from "path";
+import path3 from "path";
 var field = (doc, key) => {
   const value = doc[key];
   return value === null || value === void 0 ? null : String(value);
@@ -8396,7 +7604,7 @@ function requiredString(doc, key) {
 }
 function requiredRunReference(doc, key) {
   const value = requiredString(doc, key);
-  if (path8.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+  if (path3.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
     throw new Error(`Invalid Run state: ${key} must stay inside the change directory`);
   }
   return value;
@@ -8485,7 +7693,7 @@ function fromStoredState(json) {
 }
 function stateFile(changeDir, storage) {
   assertRunStorageLayout(storage);
-  return path9.resolve(changeDir, ...storage.stateRef.split(/[\\/]/u));
+  return path4.resolve(changeDir, ...storage.stateRef.split(/[\\/]/u));
 }
 function startRunWithStorage(pkg, runId, skillHash, storage) {
   assertRunStorageLayout(storage);
@@ -8510,7 +7718,7 @@ function startRunWithStorage(pkg, runId, skillHash, storage) {
 async function readRunStateAt(changeDir, storage) {
   let raw;
   try {
-    raw = await fs7.readFile(stateFile(changeDir, storage), "utf8");
+    raw = await fs2.readFile(stateFile(changeDir, storage), "utf8");
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -8519,24 +7727,356 @@ async function readRunStateAt(changeDir, storage) {
 }
 async function writeRunStateAt(changeDir, state, storage) {
   const file = stateFile(changeDir, storage);
-  await fs7.mkdir(path9.dirname(file), { recursive: true });
-  const temporary = path9.join(path9.dirname(file), `run-state.${randomUUID3()}.tmp`);
-  await fs7.writeFile(temporary, JSON.stringify(toStoredState(state), null, 2), "utf8");
-  await fs7.rename(temporary, file);
+  await fs2.mkdir(path4.dirname(file), { recursive: true });
+  const temporary = path4.join(path4.dirname(file), `run-state.${randomUUID2()}.tmp`);
+  await fs2.writeFile(temporary, JSON.stringify(toStoredState(state), null, 2), "utf8");
+  await fs2.rename(temporary, file);
 }
+
+// domains/comet-native/native-artifacts.ts
+import { promises as fs10 } from "fs";
+import path12 from "path";
+
+// domains/comet-native/native-change.ts
+var import_yaml2 = __toESM(require_dist(), 1);
+import { promises as fs9 } from "fs";
+import path11 from "path";
+
+// domains/comet-native/native-atomic-file.ts
+import { randomUUID as randomUUID3 } from "crypto";
+import { promises as fs3 } from "fs";
+import path5 from "path";
+async function syncDirectory(directory) {
+  let handle;
+  try {
+    handle = await fs3.open(directory, "r");
+    await handle.sync();
+  } catch (error) {
+    const code = error.code;
+    if (!["EACCES", "EBADF", "EINVAL", "EISDIR", "ENOTSUP", "EPERM"].includes(code ?? "")) {
+      throw error;
+    }
+  } finally {
+    await handle?.close();
+  }
+}
+async function atomicWriteText(file, content) {
+  const directory = path5.dirname(file);
+  await fs3.mkdir(directory, { recursive: true });
+  const temporary = path5.join(directory, `.${path5.basename(file)}.${randomUUID3()}.tmp`);
+  let handle;
+  try {
+    handle = await fs3.open(temporary, "wx");
+    await handle.writeFile(content, "utf8");
+    await handle.sync();
+    await handle.close();
+    handle = void 0;
+    await fs3.rename(temporary, file);
+    await syncDirectory(directory);
+  } catch (error) {
+    await handle?.close();
+    await fs3.rm(temporary, { force: true });
+    throw error;
+  }
+}
+async function atomicWriteJson(file, value) {
+  await atomicWriteText(file, JSON.stringify(value, null, 2) + "\n");
+}
+
+// domains/comet-native/native-config.ts
+var import_yaml = __toESM(require_dist(), 1);
+import { promises as fs5 } from "fs";
+import path7 from "path";
+
+// domains/comet-native/native-paths.ts
+import { promises as fs4 } from "fs";
+import path6 from "path";
+var PROJECT_CONFIG_FILE = "comet.config.yaml";
+async function isFileOrDirectory(target) {
+  try {
+    await fs4.lstat(target);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+function inside(parent, target) {
+  const relative = path6.relative(parent, target);
+  return relative === "" || !path6.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path6.sep}`);
+}
+async function physicalPath(target) {
+  const missing = [];
+  let cursor = target;
+  while (!await isFileOrDirectory(cursor)) {
+    const parent = path6.dirname(cursor);
+    if (parent === cursor) break;
+    missing.push(path6.basename(cursor));
+    cursor = parent;
+  }
+  const existing = await fs4.realpath(cursor);
+  return path6.resolve(existing, ...missing.reverse());
+}
+async function isSymbolicLink(target) {
+  try {
+    return (await fs4.lstat(target)).isSymbolicLink();
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+async function discoverNativeProject(startPath) {
+  let cursor = path6.resolve(startPath);
+  try {
+    if (!(await fs4.stat(cursor)).isDirectory()) cursor = path6.dirname(cursor);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const fallback = cursor;
+  while (true) {
+    if (await isFileOrDirectory(path6.join(cursor, PROJECT_CONFIG_FILE))) return cursor;
+    if (await isFileOrDirectory(path6.join(cursor, ".git"))) return cursor;
+    const parent = path6.dirname(cursor);
+    if (parent === cursor) return fallback;
+    cursor = parent;
+  }
+}
+function normalizeArtifactRootRef(value) {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || path6.isAbsolute(trimmed) || /^(?:[A-Za-z]:|~|[\\/])/u.test(trimmed)) {
+    throw new Error("native.artifact_root must be a project-relative path");
+  }
+  const segments = trimmed.replaceAll("\\", "/").split("/");
+  if (segments.includes("..")) {
+    throw new Error("native.artifact_root must stay inside the project root");
+  }
+  const normalized = path6.posix.normalize(segments.filter((segment) => segment !== "").join("/"));
+  if (normalized === ".." || normalized.startsWith("../")) {
+    throw new Error("native.artifact_root must stay inside the project root");
+  }
+  return normalized === "" ? "." : normalized;
+}
+async function resolveArtifactRoot(projectRoot, value) {
+  const normalized = normalizeArtifactRootRef(value);
+  const lexical = path6.resolve(projectRoot, ...normalized.split("/"));
+  const physicalProject = await fs4.realpath(projectRoot);
+  const physicalTarget = await physicalPath(lexical);
+  if (!inside(physicalProject, physicalTarget)) {
+    throw new Error("native.artifact_root resolves outside the project root");
+  }
+  return lexical;
+}
+async function nativeProjectPaths(projectRoot, artifactRootRef) {
+  const normalized = normalizeArtifactRootRef(artifactRootRef);
+  const artifactRoot = await resolveArtifactRoot(projectRoot, normalized);
+  const nativeRoot = path6.join(artifactRoot, "comet");
+  if (await isSymbolicLink(nativeRoot)) {
+    throw new Error("The configured Native comet root must not be a symbolic link");
+  }
+  const [physicalArtifactRoot, physicalNativeRoot] = await Promise.all([
+    physicalPath(artifactRoot),
+    physicalPath(nativeRoot)
+  ]);
+  if (!inside(physicalArtifactRoot, physicalNativeRoot)) {
+    throw new Error("The configured Native comet root resolves outside its artifact root");
+  }
+  return {
+    projectRoot: path6.resolve(projectRoot),
+    configFile: path6.join(projectRoot, PROJECT_CONFIG_FILE),
+    artifactRoot,
+    artifactRootRef: normalized,
+    nativeRoot,
+    specsDir: path6.join(nativeRoot, "specs"),
+    changesDir: path6.join(nativeRoot, "changes"),
+    archiveDir: path6.join(nativeRoot, "archive"),
+    runtimeDir: path6.join(nativeRoot, "runtime"),
+    locksDir: path6.join(nativeRoot, "runtime", "locks"),
+    transactionsDir: path6.join(nativeRoot, "runtime", "transactions")
+  };
+}
+function isInsidePath(parent, target) {
+  return inside(path6.resolve(parent), path6.resolve(target));
+}
+async function resolveContainedNativePath(root, target) {
+  const lexicalRoot = path6.resolve(root);
+  const lexicalTarget = path6.resolve(target);
+  if (!inside(lexicalRoot, lexicalTarget)) {
+    throw new Error(`Path is outside the Native root: ${target}`);
+  }
+  if (await isSymbolicLink(lexicalRoot)) {
+    throw new Error(`Native root must not be a symbolic link: ${root}`);
+  }
+  const [physicalRoot, physicalTarget] = await Promise.all([
+    physicalPath(lexicalRoot),
+    physicalPath(lexicalTarget)
+  ]);
+  if (!inside(physicalRoot, physicalTarget)) {
+    throw new Error(`Path resolves outside the Native root: ${target}`);
+  }
+  return lexicalTarget;
+}
+
+// domains/comet-native/native-config.ts
+var ROOT_KEYS = /* @__PURE__ */ new Set(["schema", "default_workflow", "native"]);
+var NATIVE_KEYS = /* @__PURE__ */ new Set(["artifact_root", "pending_root_move"]);
+var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage"]);
+function record(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a mapping`);
+  }
+  return value;
+}
+function rejectUnknown(value, known, label) {
+  const unknown = Object.keys(value).filter((key) => !known.has(key));
+  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
+}
+function parsePending(value) {
+  if (value === void 0) return void 0;
+  const pending = record(value, "native.pending_root_move");
+  rejectUnknown(pending, PENDING_KEYS, "native.pending_root_move");
+  const id = pending.id;
+  const from = pending.from_artifact_root;
+  const to = pending.to_artifact_root;
+  const stage = pending.stage;
+  if (typeof id !== "string" || !/^[a-f0-9-]{8,}$/u.test(id)) {
+    throw new Error("native.pending_root_move.id is invalid");
+  }
+  if (typeof from !== "string" || typeof to !== "string") {
+    throw new Error("native.pending_root_move roots must be strings");
+  }
+  if (stage !== "copying" && stage !== "ready" && stage !== "switched") {
+    throw new Error("native.pending_root_move.stage is invalid");
+  }
+  return {
+    id,
+    fromArtifactRoot: normalizeArtifactRootRef(from),
+    toArtifactRoot: normalizeArtifactRootRef(to),
+    stage
+  };
+}
+function parseConfig(value) {
+  const root = record(value, PROJECT_CONFIG_FILE);
+  rejectUnknown(root, ROOT_KEYS, PROJECT_CONFIG_FILE);
+  if (root.schema !== "comet.project.v1") throw new Error("Unsupported Comet project schema");
+  if (root.default_workflow !== "native" && root.default_workflow !== "classic") {
+    throw new Error("default_workflow must be native or classic");
+  }
+  const native = record(root.native, "native");
+  rejectUnknown(native, NATIVE_KEYS, "native");
+  if (typeof native.artifact_root !== "string") {
+    throw new Error("native.artifact_root must be a string");
+  }
+  const pending = parsePending(native.pending_root_move);
+  return {
+    schema: "comet.project.v1",
+    default_workflow: root.default_workflow,
+    native: {
+      artifact_root: normalizeArtifactRootRef(native.artifact_root),
+      ...pending ? { pending_root_move: pending } : {}
+    }
+  };
+}
+function defaultProjectConfig(artifactRoot = ".") {
+  return {
+    schema: "comet.project.v1",
+    default_workflow: "native",
+    native: { artifact_root: normalizeArtifactRootRef(artifactRoot) }
+  };
+}
+async function readProjectConfig(projectRoot) {
+  const file = path7.join(projectRoot, PROJECT_CONFIG_FILE);
+  let source;
+  try {
+    source = await fs5.readFile(file, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
+  }
+  return parseConfig(document.toJS());
+}
+async function assertNoPendingNativeRootMove(projectRoot) {
+  const config = await readProjectConfig(projectRoot);
+  if (config?.native.pending_root_move) {
+    throw new Error(
+      `Native root move ${config.native.pending_root_move.id} is incomplete; use comet native doctor --repair`
+    );
+  }
+}
+async function writeProjectConfig(projectRoot, config) {
+  const validated = parseConfig({
+    schema: config.schema,
+    default_workflow: config.default_workflow,
+    native: {
+      artifact_root: config.native.artifact_root,
+      ...config.native.pending_root_move ? {
+        pending_root_move: {
+          id: config.native.pending_root_move.id,
+          from_artifact_root: config.native.pending_root_move.fromArtifactRoot,
+          to_artifact_root: config.native.pending_root_move.toArtifactRoot,
+          stage: config.native.pending_root_move.stage
+        }
+      } : {}
+    }
+  });
+  const document = {
+    schema: validated.schema,
+    default_workflow: validated.default_workflow,
+    native: {
+      artifact_root: validated.native.artifact_root,
+      ...validated.native.pending_root_move ? {
+        pending_root_move: {
+          id: validated.native.pending_root_move.id,
+          from_artifact_root: validated.native.pending_root_move.fromArtifactRoot,
+          to_artifact_root: validated.native.pending_root_move.toArtifactRoot,
+          stage: validated.native.pending_root_move.stage
+        }
+      } : {}
+    }
+  };
+  await atomicWriteText(path7.join(projectRoot, PROJECT_CONFIG_FILE), (0, import_yaml.stringify)(document));
+}
+async function resolveNativeProject(options) {
+  const projectRoot = await discoverNativeProject(options.startPath);
+  const existing = await readProjectConfig(projectRoot);
+  if (!existing && options.allowMissingConfig === false) {
+    throw new Error(`${PROJECT_CONFIG_FILE} was not found`);
+  }
+  if (existing?.native.pending_root_move) {
+    throw new Error(
+      `Native root move ${existing.native.pending_root_move.id} is incomplete; use comet native doctor --repair`
+    );
+  }
+  const explicit = options.explicitArtifactRoot ? normalizeArtifactRootRef(options.explicitArtifactRoot) : void 0;
+  if (existing && explicit && explicit !== existing.native.artifact_root) {
+    throw new Error(
+      `Configured Native artifact root is ${existing.native.artifact_root}; refusing conflicting root ${explicit}`
+    );
+  }
+  const config = existing ?? defaultProjectConfig(explicit ?? ".");
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  return { config, paths, configured: existing !== null };
+}
+
+// domains/comet-native/native-mutation-lock.ts
+import { promises as fs8 } from "fs";
+import path10 from "path";
 
 // domains/comet-native/native-lock.ts
 import { randomUUID as randomUUID4 } from "crypto";
-import { promises as fs8 } from "fs";
+import { promises as fs6 } from "fs";
 import os from "os";
-import path10 from "path";
+import path8 from "path";
 function lockName(value) {
   if (!/^[a-z][a-z0-9-]*$/u.test(value)) throw new Error(`Invalid Native lock name: ${value}`);
   return `${value}.lock`;
 }
 async function readNativeLock(file) {
   try {
-    const value = JSON.parse(await fs8.readFile(file, "utf8"));
+    const value = JSON.parse(await fs6.readFile(file, "utf8"));
     if (typeof value.id !== "string" || typeof value.pid !== "number" || typeof value.hostname !== "string" || typeof value.createdAt !== "string" || typeof value.operation !== "string") {
       throw new Error(`Invalid Native lock metadata: ${file}`);
     }
@@ -8547,8 +8087,12 @@ async function readNativeLock(file) {
   }
 }
 async function acquireNativeLock(paths, name, operation) {
-  await fs8.mkdir(paths.locksDir, { recursive: true });
-  const file = path10.join(paths.locksDir, lockName(name));
+  const locksDir = await resolveContainedNativePath(paths.nativeRoot, paths.locksDir);
+  await fs6.mkdir(locksDir, { recursive: true });
+  const file = await resolveContainedNativePath(
+    paths.nativeRoot,
+    path8.join(locksDir, lockName(name))
+  );
   const owner = {
     id: randomUUID4(),
     pid: process.pid,
@@ -8558,7 +8102,7 @@ async function acquireNativeLock(paths, name, operation) {
   };
   let handle;
   try {
-    handle = await fs8.open(file, "wx");
+    handle = await fs6.open(file, "wx");
   } catch (error) {
     if (error.code === "EEXIST") {
       const existing = await readNativeLock(file);
@@ -8581,7 +8125,7 @@ async function releaseNativeLock(lock) {
   const current = await readNativeLock(lock.file);
   if (!current) return;
   if (current.id !== lock.owner.id) throw new Error(`Native lock ownership changed: ${lock.file}`);
-  await fs8.rm(lock.file, { force: true });
+  await fs6.rm(lock.file, { force: true });
 }
 function isProcessAlive(pid) {
   try {
@@ -8600,6 +8144,867 @@ async function diagnoseNativeLock(file) {
   if (owner.hostname !== os.hostname()) return { status: "unknown", owner };
   const alive = isProcessAlive(owner.pid);
   return { status: alive === true ? "active" : alive === false ? "stale" : "unknown", owner };
+}
+
+// domains/comet-native/native-transaction.ts
+import { promises as fs7 } from "fs";
+import path9 from "path";
+var JOURNAL_KEYS = /* @__PURE__ */ new Set([
+  "schema",
+  "id",
+  "kind",
+  "status",
+  "projectRoot",
+  "nativeRoot",
+  "change",
+  "createdAt",
+  "operations"
+]);
+var OPERATION_KEYS = /* @__PURE__ */ new Set(["id", "type", "source", "target", "staged", "backup"]);
+var EVENT_KEYS = /* @__PURE__ */ new Set(["sequence", "timestamp", "type", "operationId"]);
+var TRANSACTION_STATUSES = /* @__PURE__ */ new Set([
+  "prepared",
+  "applying",
+  "committed",
+  "rolling-back",
+  "rolled-back"
+]);
+var EVENT_TYPES = /* @__PURE__ */ new Set([
+  "prepared",
+  "operation-started",
+  "operation-completed",
+  "archive-finalization-started",
+  "archive-finalized",
+  "commit",
+  "rollback-started",
+  "rollback-completed"
+]);
+function record2(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+function rejectUnknown2(value, keys, label) {
+  const unknown = Object.keys(value).filter((key) => !keys.has(key));
+  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
+}
+function validTimestamp(value) {
+  if (typeof value !== "string") return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString() === value;
+}
+function assertRef(ref, label) {
+  if (typeof ref !== "string" || ref.length === 0 || path9.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
+    throw new Error(`${label} must stay inside the Native root`);
+  }
+}
+function parseOperation(value, index) {
+  const operation = record2(value, `transaction operations[${index}]`);
+  rejectUnknown2(operation, OPERATION_KEYS, `transaction operations[${index}]`);
+  if (typeof operation.id !== "string" || !/^[a-z0-9][a-z0-9-]*$/u.test(operation.id)) {
+    throw new Error(`transaction operations[${index}].id is invalid`);
+  }
+  if (operation.type !== "write" && operation.type !== "remove" && operation.type !== "move") {
+    throw new Error(`transaction operation ${operation.id} has an invalid type`);
+  }
+  assertRef(operation.target, `transaction operation ${operation.id} target`);
+  for (const field2 of ["source", "staged", "backup"]) {
+    if (operation[field2] !== void 0) {
+      assertRef(operation[field2], `transaction operation ${operation.id} ${field2}`);
+    }
+  }
+  if (operation.type === "write") {
+    if (operation.staged === void 0 || operation.source !== void 0) {
+      throw new Error(`write operation ${operation.id} requires staged and forbids source`);
+    }
+  } else if (operation.type === "remove") {
+    if (operation.source !== void 0 || operation.staged !== void 0) {
+      throw new Error(`remove operation ${operation.id} forbids source and staged`);
+    }
+  } else if (operation.source === void 0 || operation.staged !== void 0 || operation.backup !== void 0) {
+    throw new Error(`move operation ${operation.id} requires source and forbids staged and backup`);
+  }
+  return operation;
+}
+function parseJournal(value) {
+  const journal = record2(value, "Native transaction journal");
+  rejectUnknown2(journal, JOURNAL_KEYS, "Native transaction journal");
+  if (journal.schema !== "comet.native.transaction.v1") {
+    throw new Error("Unsupported Native transaction schema");
+  }
+  if (typeof journal.id !== "string" || !/^[a-f0-9-]{8,}$/u.test(journal.id)) {
+    throw new Error("Native transaction id is invalid");
+  }
+  if (journal.kind !== "archive" && journal.kind !== "root-move") {
+    throw new Error("Native transaction kind is invalid");
+  }
+  if (typeof journal.status !== "string" || !TRANSACTION_STATUSES.has(journal.status)) {
+    throw new Error("Native transaction status is invalid");
+  }
+  if (typeof journal.projectRoot !== "string" || !path9.isAbsolute(journal.projectRoot) || typeof journal.nativeRoot !== "string" || !path9.isAbsolute(journal.nativeRoot)) {
+    throw new Error("Native transaction roots must be absolute paths");
+  }
+  if (journal.change !== void 0 && (typeof journal.change !== "string" || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(journal.change))) {
+    throw new Error("Native transaction change name is invalid");
+  }
+  if (!validTimestamp(journal.createdAt)) {
+    throw new Error("Native transaction createdAt is invalid");
+  }
+  if (!Array.isArray(journal.operations)) {
+    throw new Error("Native transaction operations must be an array");
+  }
+  const operations = journal.operations.map(parseOperation);
+  const operationIds = operations.map((operation) => operation.id);
+  if (new Set(operationIds).size !== operationIds.length) {
+    throw new Error("Native transaction operation ids must be unique");
+  }
+  return {
+    schema: "comet.native.transaction.v1",
+    id: journal.id,
+    kind: journal.kind,
+    status: journal.status,
+    projectRoot: journal.projectRoot,
+    nativeRoot: journal.nativeRoot,
+    ...typeof journal.change === "string" ? { change: journal.change } : {},
+    createdAt: journal.createdAt,
+    operations
+  };
+}
+function parseEvent(value, line) {
+  const event = record2(value, `Native transaction event at line ${line}`);
+  rejectUnknown2(event, EVENT_KEYS, `Native transaction event at line ${line}`);
+  if (event.sequence !== line) {
+    throw new Error(`Native transaction event sequence at line ${line} must be ${line}`);
+  }
+  if (!validTimestamp(event.timestamp)) {
+    throw new Error(`Native transaction event timestamp at line ${line} is invalid`);
+  }
+  if (typeof event.type !== "string" || !EVENT_TYPES.has(event.type)) {
+    throw new Error(`Native transaction event type at line ${line} is invalid`);
+  }
+  const operationEvent = event.type === "operation-started" || event.type === "operation-completed";
+  if (operationEvent && typeof event.operationId !== "string" || !operationEvent && event.operationId !== void 0) {
+    throw new Error(`Native transaction event operationId at line ${line} is invalid`);
+  }
+  return {
+    sequence: event.sequence,
+    timestamp: event.timestamp,
+    type: event.type,
+    ...typeof event.operationId === "string" ? { operationId: event.operationId } : {}
+  };
+}
+function transactionDir(paths, id) {
+  if (!/^[a-f0-9-]{8,}$/u.test(id)) throw new Error(`Invalid Native transaction id: ${id}`);
+  return path9.join(paths.transactionsDir, id);
+}
+function nativeTransactionPaths(paths, id) {
+  const directory = transactionDir(paths, id);
+  return {
+    directory,
+    journal: path9.join(directory, "transaction.json"),
+    events: path9.join(directory, "events.jsonl"),
+    staged: path9.join(directory, "staged"),
+    backups: path9.join(directory, "backups")
+  };
+}
+async function resolveNativeTransactionPaths(paths, id) {
+  const transaction = nativeTransactionPaths(paths, id);
+  await Promise.all(
+    Object.values(transaction).map(
+      (target) => resolveContainedNativePath(paths.nativeRoot, target)
+    )
+  );
+  return transaction;
+}
+function resolveRefLexically(paths, ref) {
+  if (ref.length === 0 || path9.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
+    throw new Error(`Unsafe Native transaction ref: ${ref}`);
+  }
+  const target = path9.resolve(paths.nativeRoot, ...ref.split(/[\\/]/u));
+  if (!isInsidePath(paths.nativeRoot, target))
+    throw new Error(`Unsafe Native transaction ref: ${ref}`);
+  return target;
+}
+async function resolveRef(paths, ref) {
+  return resolveContainedNativePath(paths.nativeRoot, resolveRefLexically(paths, ref));
+}
+async function exists(file) {
+  try {
+    await fs7.access(file);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+async function appendEvent(paths, journal, type, operationId) {
+  const tx = await resolveNativeTransactionPaths(paths, journal.id);
+  const events = await readNativeTransactionEvents(paths, journal.id);
+  const event = {
+    sequence: events.length + 1,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    type,
+    ...operationId ? { operationId } : {}
+  };
+  await fs7.mkdir(tx.directory, { recursive: true });
+  const handle = await fs7.open(tx.events, "a");
+  try {
+    await handle.writeFile(JSON.stringify(event) + "\n", "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  return event;
+}
+async function createNativeTransaction(paths, journal) {
+  journal = parseJournal(journal);
+  const tx = await resolveNativeTransactionPaths(paths, journal.id);
+  await fs7.mkdir(tx.staged, { recursive: true });
+  await fs7.mkdir(tx.backups, { recursive: true });
+  await atomicWriteJson(tx.journal, journal);
+  await appendEvent(paths, journal, "prepared");
+}
+async function readNativeTransaction(paths, id) {
+  const value = JSON.parse(
+    await fs7.readFile((await resolveNativeTransactionPaths(paths, id)).journal, "utf8")
+  );
+  const journal = parseJournal(value);
+  if (journal.id !== id) {
+    throw new Error(`Invalid Native transaction journal: ${id}`);
+  }
+  return journal;
+}
+async function readNativeTransactionEvents(paths, id) {
+  let source;
+  try {
+    source = await fs7.readFile((await resolveNativeTransactionPaths(paths, id)).events, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  const entries = source.split(/\r?\n/u);
+  if (entries.at(-1) === "") entries.pop();
+  return entries.map((entry2, index) => {
+    const line = index + 1;
+    try {
+      if (entry2.length === 0) throw new Error("Blank transaction event line");
+      return parseEvent(JSON.parse(entry2), line);
+    } catch (error) {
+      throw new Error(`Invalid Native transaction event at line ${line}`, { cause: error });
+    }
+  });
+}
+async function setNativeTransactionStatus(paths, journal, status) {
+  const updated = parseJournal({ ...journal, status });
+  await atomicWriteJson((await resolveNativeTransactionPaths(paths, journal.id)).journal, updated);
+  return updated;
+}
+async function copyAtomic(source, target) {
+  const content = await fs7.readFile(source);
+  await atomicWriteText(target, content.toString("utf8"));
+}
+async function backupTarget(paths, operation) {
+  if (!operation.backup) return;
+  const target = await resolveRef(paths, operation.target);
+  const backup = await resolveRef(paths, operation.backup);
+  if (!await exists(target) || await exists(backup)) return;
+  await fs7.mkdir(path9.dirname(backup), { recursive: true });
+  await fs7.copyFile(target, backup);
+}
+async function applyOperation(paths, operation) {
+  const target = await resolveRef(paths, operation.target);
+  if (operation.type === "write") {
+    if (!operation.staged) throw new Error(`Write operation ${operation.id} has no staged ref`);
+    await backupTarget(paths, operation);
+    await copyAtomic(await resolveRef(paths, operation.staged), target);
+    return;
+  }
+  if (operation.type === "remove") {
+    await backupTarget(paths, operation);
+    await fs7.rm(target, { force: true });
+    return;
+  }
+  if (!operation.source) throw new Error(`Move operation ${operation.id} has no source ref`);
+  const source = await resolveRef(paths, operation.source);
+  const [sourceExists, targetExists] = await Promise.all([exists(source), exists(target)]);
+  if (!sourceExists && targetExists) return;
+  if (targetExists) throw new Error(`Move target already exists: ${operation.target}`);
+  if (!sourceExists) throw new Error(`Move source does not exist: ${operation.source}`);
+  await fs7.mkdir(path9.dirname(target), { recursive: true });
+  await fs7.rename(source, target);
+}
+async function applyNativeTransaction(paths, journal, hooks) {
+  let current = journal.status === "prepared" ? await setNativeTransactionStatus(paths, journal, "applying") : journal;
+  const events = await readNativeTransactionEvents(paths, journal.id);
+  const completed = new Set(
+    events.filter((event) => event.type === "operation-completed").map((event) => event.operationId)
+  );
+  let completedCount = completed.size;
+  for (const operation of current.operations) {
+    if (completed.has(operation.id)) continue;
+    await appendEvent(paths, current, "operation-started", operation.id);
+    await applyOperation(paths, operation);
+    await appendEvent(paths, current, "operation-completed", operation.id);
+    completedCount += 1;
+    await hooks?.afterOperation?.(operation, completedCount);
+  }
+  current = await readNativeTransaction(paths, current.id);
+  return current;
+}
+async function rollbackOperation(paths, operation) {
+  const target = await resolveRef(paths, operation.target);
+  const backup = operation.backup ? await resolveRef(paths, operation.backup) : null;
+  if (operation.type === "move") {
+    if (!operation.source) throw new Error(`Move operation ${operation.id} has no source ref`);
+    const source = await resolveRef(paths, operation.source);
+    if (await exists(target)) {
+      await fs7.mkdir(path9.dirname(source), { recursive: true });
+      await fs7.rename(target, source);
+    }
+    return;
+  }
+  if (backup && await exists(backup)) {
+    await copyAtomic(backup, target);
+  } else {
+    await fs7.rm(target, { force: true });
+  }
+}
+async function rollbackNativeTransaction(paths, journal) {
+  const events = await readNativeTransactionEvents(paths, journal.id);
+  if (events.some(
+    (event) => event.type === "archive-finalization-started" || event.type === "archive-finalized"
+  )) {
+    throw new Error("An archive whose finalization started can only be recovered by continuing it");
+  }
+  let current = await setNativeTransactionStatus(paths, journal, "rolling-back");
+  await appendEvent(paths, current, "rollback-started");
+  const started = new Set(
+    events.filter((event) => event.type === "operation-started" || event.type === "operation-completed").map((event) => event.operationId)
+  );
+  for (const operation of [...current.operations].reverse()) {
+    if (started.has(operation.id)) await rollbackOperation(paths, operation);
+  }
+  await appendEvent(paths, current, "rollback-completed");
+  current = await setNativeTransactionStatus(paths, current, "rolled-back");
+  return current;
+}
+async function finalizeNativeTransaction(paths, journal, event) {
+  await appendEvent(paths, journal, event);
+  return event === "commit" ? setNativeTransactionStatus(paths, journal, "committed") : journal;
+}
+function nativeRootRef(paths, target) {
+  const absolute = path9.resolve(target);
+  if (!isInsidePath(paths.nativeRoot, absolute)) {
+    throw new Error(`Path is outside the Native root: ${target}`);
+  }
+  return path9.relative(paths.nativeRoot, absolute).split(path9.sep).join("/");
+}
+
+// domains/comet-native/native-mutation-lock.ts
+async function hasUnfinishedTransaction(paths, allowedTransactionId) {
+  let entries;
+  try {
+    entries = await fs8.readdir(paths.transactionsDir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+  for (const entry2 of entries) {
+    if (!entry2.isDirectory() || entry2.isSymbolicLink()) continue;
+    try {
+      const transaction = await readNativeTransaction(paths, entry2.name);
+      if (transaction.id !== allowedTransactionId && transaction.status !== "committed" && transaction.status !== "rolled-back") {
+        return true;
+      }
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+async function acquireNativeMutationLock(paths, operation, allowedTransactionId) {
+  try {
+    return await acquireNativeLock(paths, "root-move", operation);
+  } catch (error) {
+    const file = path10.join(paths.locksDir, "root-move.lock");
+    const diagnosis = await diagnoseNativeLock(file);
+    if (diagnosis.status !== "stale") throw error;
+    await assertNoPendingNativeRootMove(paths.projectRoot);
+    if (await hasUnfinishedTransaction(paths, allowedTransactionId)) throw error;
+    await fs8.rm(file, { force: true });
+    return acquireNativeLock(paths, "root-move", operation);
+  }
+}
+async function withNativeMutationLock(paths, operation, work, options) {
+  const lock = await acquireNativeMutationLock(paths, operation, options?.allowedTransactionId);
+  try {
+    await assertNoPendingNativeRootMove(paths.projectRoot);
+    if (await hasUnfinishedTransaction(paths, options?.allowedTransactionId)) {
+      throw new Error("Native transaction recovery is required before another mutation");
+    }
+    return await work();
+  } finally {
+    await releaseNativeLock(lock);
+  }
+}
+
+// domains/comet-native/native-change.ts
+var CHANGE_KEYS = /* @__PURE__ */ new Set([
+  "schema",
+  "name",
+  "language",
+  "phase",
+  "brief",
+  "approval",
+  "spec_changes",
+  "verification_result",
+  "verification_report",
+  "archived",
+  "created_at",
+  "run_id"
+]);
+var SPEC_CHANGE_KEYS = /* @__PURE__ */ new Set(["capability", "operation", "source", "base_hash"]);
+var PHASES = /* @__PURE__ */ new Set(["shape", "build", "verify", "archive"]);
+var APPROVALS = /* @__PURE__ */ new Set(["implicit", "confirmed"]);
+var VERIFY_RESULTS = /* @__PURE__ */ new Set(["pending", "pass", "fail"]);
+var HASH_PATTERN = /^[a-f0-9]{64}$/u;
+var NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+var NATIVE_BRIEF_TEMPLATE = [
+  "# Outcome",
+  "",
+  "# Scope",
+  "",
+  "# Non-goals",
+  "",
+  "# Acceptance examples",
+  "",
+  "# Constraints and invariants",
+  "",
+  "# Decisions",
+  "",
+  "# Open questions",
+  "",
+  "# Verification expectations",
+  ""
+].join("\n");
+function record3(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a mapping`);
+  }
+  return value;
+}
+function rejectUnknown3(value, known, label) {
+  const unknown = Object.keys(value).filter((key) => !known.has(key));
+  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
+}
+function assertNativeName(value) {
+  if (!NAME_PATTERN.test(value)) throw new Error(`Invalid Native change name: ${value}`);
+}
+function assertCapabilityId(value) {
+  if (!NAME_PATTERN.test(value)) throw new Error(`Invalid Native capability id: ${value}`);
+}
+function assertRelativeRef(value, label) {
+  if (value.length === 0 || path11.isAbsolute(value) || /^(?:[A-Za-z]:|~|[\\/])/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+    throw new Error(`${label} must stay inside the Native change`);
+  }
+}
+function parseSpecChange(value, index) {
+  const item = record3(value, `spec_changes[${index}]`);
+  rejectUnknown3(item, SPEC_CHANGE_KEYS, `spec_changes[${index}]`);
+  if (typeof item.capability !== "string") throw new Error("spec change capability is required");
+  assertCapabilityId(item.capability);
+  if (item.operation !== "create" && item.operation !== "replace" && item.operation !== "remove") {
+    throw new Error(`Invalid spec operation for ${item.capability}`);
+  }
+  const source = item.source;
+  const baseHash = item.base_hash;
+  if (source !== void 0 && typeof source !== "string") {
+    throw new Error(`Spec source for ${item.capability} must be a string`);
+  }
+  if (typeof source === "string") assertRelativeRef(source, `Spec source for ${item.capability}`);
+  if (item.operation === "create") {
+    if (!source) throw new Error(`Create spec ${item.capability} requires source`);
+    if (baseHash !== null)
+      throw new Error(`Create spec ${item.capability} requires null base_hash`);
+  } else if (item.operation === "replace") {
+    if (!source) throw new Error(`Replace spec ${item.capability} requires source`);
+    if (typeof baseHash !== "string" || !HASH_PATTERN.test(baseHash)) {
+      throw new Error(`Replace spec ${item.capability} requires a SHA-256 base_hash`);
+    }
+  } else {
+    if (source !== void 0) throw new Error(`Remove spec ${item.capability} forbids source`);
+    if (typeof baseHash !== "string" || !HASH_PATTERN.test(baseHash)) {
+      throw new Error(`Remove spec ${item.capability} requires a SHA-256 base_hash`);
+    }
+  }
+  return {
+    capability: item.capability,
+    operation: item.operation,
+    ...typeof source === "string" ? { source } : {},
+    base_hash: baseHash
+  };
+}
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  return (/* @__PURE__ */ new Date(`${value}T00:00:00.000Z`)).toISOString().slice(0, 10) === value;
+}
+function parseNativeChangeValue(value) {
+  const root = record3(value, "change.yaml");
+  rejectUnknown3(root, CHANGE_KEYS, "change.yaml");
+  if (root.schema !== "comet.native.v1") throw new Error("Unsupported Native change schema");
+  if (typeof root.name !== "string") throw new Error("Native change name is required");
+  assertNativeName(root.name);
+  if (root.language !== "en" && root.language !== "zh-CN") {
+    throw new Error("Native change language must be en or zh-CN");
+  }
+  if (typeof root.phase !== "string" || !PHASES.has(root.phase)) {
+    throw new Error("Native change phase is invalid");
+  }
+  if (root.brief !== "brief.md") throw new Error("Native change brief must be brief.md");
+  if (root.approval !== null && !APPROVALS.has(root.approval)) {
+    throw new Error("Native change approval is invalid");
+  }
+  if (!Array.isArray(root.spec_changes)) throw new Error("Native spec_changes must be an array");
+  const specChanges = root.spec_changes.map(parseSpecChange);
+  const duplicates = specChanges.map((change) => change.capability).filter((capability, index, all) => all.indexOf(capability) !== index);
+  if (duplicates.length > 0) {
+    throw new Error(
+      `Duplicate Native capability operation: ${[...new Set(duplicates)].join(", ")}`
+    );
+  }
+  if (typeof root.verification_result !== "string" || !VERIFY_RESULTS.has(root.verification_result)) {
+    throw new Error("Native verification_result is invalid");
+  }
+  if (root.verification_report !== null && typeof root.verification_report !== "string") {
+    throw new Error("Native verification_report must be a string or null");
+  }
+  if (typeof root.verification_report === "string") {
+    assertRelativeRef(root.verification_report, "Native verification_report");
+  }
+  if (typeof root.archived !== "boolean") throw new Error("Native archived must be boolean");
+  if (typeof root.created_at !== "string" || !validDate(root.created_at)) {
+    throw new Error("Native created_at must be a valid YYYY-MM-DD date");
+  }
+  if (root.run_id !== null && (typeof root.run_id !== "string" || root.run_id.length === 0)) {
+    throw new Error("Native run_id must be a non-empty string or null");
+  }
+  return {
+    schema: "comet.native.v1",
+    name: root.name,
+    language: root.language,
+    phase: root.phase,
+    brief: "brief.md",
+    approval: root.approval,
+    spec_changes: specChanges,
+    verification_result: root.verification_result,
+    verification_report: root.verification_report,
+    archived: root.archived,
+    created_at: root.created_at,
+    run_id: root.run_id
+  };
+}
+function nativeChangeDocument(state) {
+  const parsed = parseNativeChangeValue(state);
+  return {
+    schema: parsed.schema,
+    name: parsed.name,
+    language: parsed.language,
+    phase: parsed.phase,
+    brief: parsed.brief,
+    approval: parsed.approval,
+    spec_changes: parsed.spec_changes.map((change) => ({
+      capability: change.capability,
+      operation: change.operation,
+      ...change.source ? { source: change.source } : {},
+      base_hash: change.base_hash
+    })),
+    verification_result: parsed.verification_result,
+    verification_report: parsed.verification_report,
+    archived: parsed.archived,
+    created_at: parsed.created_at,
+    run_id: parsed.run_id
+  };
+}
+function nativeChangeDir(paths, name) {
+  assertNativeName(name);
+  const target = path11.join(paths.changesDir, name);
+  if (!isInsidePath(paths.changesDir, target)) throw new Error("Native change path escaped");
+  return target;
+}
+async function createNativeChange(options) {
+  return withNativeMutationLock(
+    options.paths,
+    `create change ${options.name}`,
+    () => createNativeChangeLocked(options)
+  );
+}
+async function createNativeChangeLocked(options) {
+  assertNativeName(options.name);
+  const changeDir = nativeChangeDir(options.paths, options.name);
+  await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
+  try {
+    await fs9.mkdir(changeDir, { recursive: false });
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      await fs9.mkdir(options.paths.changesDir, { recursive: true });
+      await fs9.mkdir(changeDir, { recursive: false });
+    } else if (error.code === "EEXIST") {
+      throw new Error(`Native change already exists: ${options.name}`, { cause: error });
+    } else {
+      throw error;
+    }
+  }
+  const state = {
+    schema: "comet.native.v1",
+    name: options.name,
+    language: options.language,
+    phase: "shape",
+    brief: "brief.md",
+    approval: null,
+    spec_changes: [],
+    verification_result: "pending",
+    verification_report: null,
+    archived: false,
+    created_at: (options.now ?? /* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+    run_id: null
+  };
+  await Promise.all([
+    fs9.mkdir(path11.join(changeDir, "specs"), { recursive: true }),
+    fs9.mkdir(path11.join(changeDir, "runtime", "checkpoints"), { recursive: true }),
+    atomicWriteText(path11.join(changeDir, "brief.md"), NATIVE_BRIEF_TEMPLATE)
+  ]);
+  await writeNativeChange(options.paths, state);
+  return state;
+}
+async function readNativeChange(paths, name) {
+  const file = path11.join(nativeChangeDir(paths, name), "change.yaml");
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  const document = (0, import_yaml2.parseDocument)(await fs9.readFile(file, "utf8"), { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid Native change ${name}: ${document.errors[0].message}`);
+  }
+  const parsed = parseNativeChangeValue(document.toJS());
+  if (parsed.name !== name) throw new Error(`Native change directory/name mismatch: ${name}`);
+  return parsed;
+}
+async function writeNativeChange(paths, state) {
+  await assertNoPendingNativeRootMove(paths.projectRoot);
+  const file = path11.join(nativeChangeDir(paths, state.name), "change.yaml");
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  await atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(state)));
+}
+async function writeNativeChangeFile(file, state) {
+  await atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(state)));
+}
+async function readNativeChangeFile(file) {
+  const document = (0, import_yaml2.parseDocument)(await fs9.readFile(file, "utf8"), { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
+  }
+  return parseNativeChangeValue(document.toJS());
+}
+async function listNativeChanges(paths) {
+  let entries;
+  try {
+    entries = await fs9.readdir(paths.changesDir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  const names = entries.filter((entry2) => entry2.isDirectory() && !entry2.isSymbolicLink()).map((entry2) => entry2.name).sort();
+  return Promise.all(names.map((name) => readNativeChange(paths, name)));
+}
+
+// domains/comet-native/native-hash.ts
+import { createHash as createHash2 } from "crypto";
+import { createReadStream } from "fs";
+async function sha256File(file) {
+  const hash = createHash2("sha256");
+  for await (const chunk of createReadStream(file)) hash.update(chunk);
+  return hash.digest("hex");
+}
+function sha256Text(content) {
+  return createHash2("sha256").update(content).digest("hex");
+}
+
+// domains/comet-native/native-artifacts.ts
+var BRIEF_REQUIRED = ["Outcome", "Scope", "Non-goals", "Acceptance examples"];
+var BRIEF_ALL = [
+  ...BRIEF_REQUIRED,
+  "Constraints and invariants",
+  "Decisions",
+  "Open questions",
+  "Verification expectations"
+];
+var VERIFICATION_ALL = [
+  "Acceptance evidence",
+  "Commands and results",
+  "Skipped checks",
+  "Spec consistency",
+  "Known limitations and risks",
+  "Conclusion"
+];
+function markdownSections(source) {
+  const sections = /* @__PURE__ */ new Map();
+  let heading = null;
+  let body = [];
+  const flush = () => {
+    if (heading !== null) sections.set(heading, body.join("\n").trim());
+  };
+  for (const line of source.split(/\r?\n/u)) {
+    const match = /^# ([^#].*)$/u.exec(line);
+    if (match) {
+      flush();
+      heading = match[1].trim();
+      body = [];
+    } else if (heading !== null) {
+      body.push(line);
+    }
+  }
+  flush();
+  return sections;
+}
+async function readContainedFile(root, relativeRef) {
+  const target = path12.resolve(root, ...relativeRef.split(/[\\/]/u));
+  if (!isInsidePath(root, target))
+    throw new Error(`Artifact escapes Native change: ${relativeRef}`);
+  const realRoot = await fs10.realpath(root);
+  const realTarget = await fs10.realpath(target);
+  if (!isInsidePath(realRoot, realTarget)) {
+    throw new Error(`Artifact symlink escapes Native change: ${relativeRef}`);
+  }
+  if (!(await fs10.stat(realTarget)).isFile())
+    throw new Error(`Artifact is not a file: ${relativeRef}`);
+  return realTarget;
+}
+function result(findings) {
+  return { valid: findings.length === 0, findings };
+}
+async function validateNativeBrief(changeDir, briefRef) {
+  const findings = [];
+  let file;
+  try {
+    file = await readContainedFile(changeDir, briefRef);
+  } catch (error) {
+    return result([{ code: "brief-missing", message: error.message, path: briefRef }]);
+  }
+  const sections = markdownSections(await fs10.readFile(file, "utf8"));
+  for (const heading of BRIEF_ALL) {
+    if (!sections.has(heading)) {
+      findings.push({
+        code: "brief-section-missing",
+        message: `Missing brief section: ${heading}`,
+        path: briefRef
+      });
+    }
+  }
+  for (const heading of BRIEF_REQUIRED) {
+    if ((sections.get(heading) ?? "").length === 0) {
+      findings.push({
+        code: "brief-section-empty",
+        message: `Brief section is empty: ${heading}`,
+        path: briefRef
+      });
+    }
+  }
+  const openQuestions = sections.get("Open questions") ?? "";
+  if (/^\s*-\s*\[blocking\]/imu.test(openQuestions)) {
+    findings.push({
+      code: "brief-blocking-question",
+      message: "Brief has a blocking open question",
+      path: briefRef
+    });
+  }
+  return result(findings);
+}
+async function validateNativeVerification(changeDir, reportRef) {
+  const findings = [];
+  let file;
+  try {
+    file = await readContainedFile(changeDir, reportRef);
+  } catch (error) {
+    return result([
+      { code: "verification-missing", message: error.message, path: reportRef }
+    ]);
+  }
+  const sections = markdownSections(await fs10.readFile(file, "utf8"));
+  for (const heading of VERIFICATION_ALL) {
+    if (!sections.has(heading)) {
+      findings.push({
+        code: "verification-section-missing",
+        message: `Missing verification section: ${heading}`,
+        path: reportRef
+      });
+    } else if ((sections.get(heading) ?? "").length === 0) {
+      findings.push({
+        code: "verification-section-empty",
+        message: `Verification section is empty: ${heading}`,
+        path: reportRef
+      });
+    }
+  }
+  return result(findings);
+}
+function canonicalSpecPath(paths, capability) {
+  return path12.join(paths.specsDir, capability, "spec.md");
+}
+async function validateNativeSpecChanges(paths, state) {
+  const findings = [];
+  const changeDir = nativeChangeDir(paths, state.name);
+  for (const change of state.spec_changes) {
+    const canonical = canonicalSpecPath(paths, change.capability);
+    let canonicalHash = null;
+    try {
+      await resolveContainedNativePath(paths.nativeRoot, canonical);
+      canonicalHash = await sha256File(canonical);
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        findings.push({
+          code: "spec-canonical-unsafe",
+          message: error.message,
+          path: canonical
+        });
+        continue;
+      }
+    }
+    if (change.operation === "create" && canonicalHash !== null) {
+      findings.push({
+        code: "spec-create-exists",
+        message: `Canonical spec already exists: ${change.capability}`,
+        path: canonical
+      });
+    }
+    if (change.operation !== "create" && canonicalHash === null) {
+      findings.push({
+        code: "spec-base-missing",
+        message: `Canonical spec is missing: ${change.capability}`,
+        path: canonical
+      });
+    }
+    if (change.operation !== "create" && canonicalHash !== null && canonicalHash !== change.base_hash) {
+      findings.push({
+        code: "spec-base-conflict",
+        message: `Canonical spec changed for ${change.capability}: expected ${change.base_hash}, actual ${canonicalHash}`,
+        path: canonical
+      });
+    }
+    if (change.source) {
+      try {
+        await readContainedFile(changeDir, change.source);
+      } catch (error) {
+        findings.push({
+          code: "spec-source-invalid",
+          message: error.message,
+          path: change.source
+        });
+      }
+    }
+  }
+  return result(findings);
+}
+async function resolveNativeArtifactFile(changeDir, relativeRef) {
+  return readContainedFile(changeDir, relativeRef);
 }
 
 // domains/comet-native/native-runtime-package.ts
@@ -8656,29 +9061,30 @@ var nativePhaseResolver = {
 };
 
 // domains/comet-native/native-selection.ts
-import { promises as fs9 } from "fs";
-import path11 from "path";
+import { promises as fs11 } from "fs";
+import path13 from "path";
 function nativeSelectionFile(paths) {
-  return path11.join(paths.runtimeDir, "current-change.json");
+  return path13.join(paths.runtimeDir, "current-change.json");
 }
 async function selectNativeChange(paths, name) {
-  await assertNoPendingNativeRootMove(paths.projectRoot);
-  assertNativeName(name);
-  await readNativeChange(paths, name);
-  const selection = { schema: "comet.native.selection.v1", change: name };
-  const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
-  await atomicWriteJson(file, selection);
+  return withNativeMutationLock(paths, `select change ${name}`, async () => {
+    assertNativeName(name);
+    await readNativeChange(paths, name);
+    const selection = { schema: "comet.native.selection.v1", change: name };
+    const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
+    await atomicWriteJson(file, selection);
+  });
 }
-async function clearNativeSelection(paths) {
+async function clearNativeSelectionLocked(paths) {
   await assertNoPendingNativeRootMove(paths.projectRoot);
-  await fs9.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
+  await fs11.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
     force: true
   });
 }
-async function clearNativeSelectionIf(paths, name) {
+async function clearNativeSelectionIfLocked(paths, name) {
   let source;
   try {
-    source = await fs9.readFile(
+    source = await fs11.readFile(
       await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)),
       "utf8"
     );
@@ -8688,354 +9094,8 @@ async function clearNativeSelectionIf(paths, name) {
   }
   const value = JSON.parse(source);
   if (value.schema !== "comet.native.selection.v1" || value.change !== name) return false;
-  await clearNativeSelection(paths);
+  await clearNativeSelectionLocked(paths);
   return true;
-}
-
-// domains/comet-native/native-transaction.ts
-import { promises as fs10 } from "fs";
-import path12 from "path";
-var JOURNAL_KEYS = /* @__PURE__ */ new Set([
-  "schema",
-  "id",
-  "kind",
-  "status",
-  "projectRoot",
-  "nativeRoot",
-  "change",
-  "createdAt",
-  "operations"
-]);
-var OPERATION_KEYS = /* @__PURE__ */ new Set(["id", "type", "source", "target", "staged", "backup"]);
-var EVENT_KEYS = /* @__PURE__ */ new Set(["sequence", "timestamp", "type", "operationId"]);
-var TRANSACTION_STATUSES = /* @__PURE__ */ new Set([
-  "prepared",
-  "applying",
-  "committed",
-  "rolling-back",
-  "rolled-back"
-]);
-var EVENT_TYPES = /* @__PURE__ */ new Set([
-  "prepared",
-  "operation-started",
-  "operation-completed",
-  "archive-finalization-started",
-  "archive-finalized",
-  "commit",
-  "rollback-started",
-  "rollback-completed"
-]);
-function record3(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  return value;
-}
-function rejectUnknown3(value, keys, label) {
-  const unknown = Object.keys(value).filter((key) => !keys.has(key));
-  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
-}
-function validTimestamp(value) {
-  if (typeof value !== "string") return false;
-  const parsed = new Date(value);
-  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString() === value;
-}
-function assertRef(ref, label) {
-  if (typeof ref !== "string" || ref.length === 0 || path12.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
-    throw new Error(`${label} must stay inside the Native root`);
-  }
-}
-function parseOperation(value, index) {
-  const operation = record3(value, `transaction operations[${index}]`);
-  rejectUnknown3(operation, OPERATION_KEYS, `transaction operations[${index}]`);
-  if (typeof operation.id !== "string" || !/^[a-z0-9][a-z0-9-]*$/u.test(operation.id)) {
-    throw new Error(`transaction operations[${index}].id is invalid`);
-  }
-  if (operation.type !== "write" && operation.type !== "remove" && operation.type !== "move") {
-    throw new Error(`transaction operation ${operation.id} has an invalid type`);
-  }
-  assertRef(operation.target, `transaction operation ${operation.id} target`);
-  for (const field2 of ["source", "staged", "backup"]) {
-    if (operation[field2] !== void 0) {
-      assertRef(operation[field2], `transaction operation ${operation.id} ${field2}`);
-    }
-  }
-  if (operation.type === "write") {
-    if (operation.staged === void 0 || operation.source !== void 0) {
-      throw new Error(`write operation ${operation.id} requires staged and forbids source`);
-    }
-  } else if (operation.type === "remove") {
-    if (operation.source !== void 0 || operation.staged !== void 0) {
-      throw new Error(`remove operation ${operation.id} forbids source and staged`);
-    }
-  } else if (operation.source === void 0 || operation.staged !== void 0 || operation.backup !== void 0) {
-    throw new Error(`move operation ${operation.id} requires source and forbids staged and backup`);
-  }
-  return operation;
-}
-function parseJournal(value) {
-  const journal = record3(value, "Native transaction journal");
-  rejectUnknown3(journal, JOURNAL_KEYS, "Native transaction journal");
-  if (journal.schema !== "comet.native.transaction.v1") {
-    throw new Error("Unsupported Native transaction schema");
-  }
-  if (typeof journal.id !== "string" || !/^[a-f0-9-]{8,}$/u.test(journal.id)) {
-    throw new Error("Native transaction id is invalid");
-  }
-  if (journal.kind !== "archive" && journal.kind !== "root-move") {
-    throw new Error("Native transaction kind is invalid");
-  }
-  if (typeof journal.status !== "string" || !TRANSACTION_STATUSES.has(journal.status)) {
-    throw new Error("Native transaction status is invalid");
-  }
-  if (typeof journal.projectRoot !== "string" || !path12.isAbsolute(journal.projectRoot) || typeof journal.nativeRoot !== "string" || !path12.isAbsolute(journal.nativeRoot)) {
-    throw new Error("Native transaction roots must be absolute paths");
-  }
-  if (journal.change !== void 0 && (typeof journal.change !== "string" || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(journal.change))) {
-    throw new Error("Native transaction change name is invalid");
-  }
-  if (!validTimestamp(journal.createdAt)) {
-    throw new Error("Native transaction createdAt is invalid");
-  }
-  if (!Array.isArray(journal.operations)) {
-    throw new Error("Native transaction operations must be an array");
-  }
-  const operations = journal.operations.map(parseOperation);
-  const operationIds = operations.map((operation) => operation.id);
-  if (new Set(operationIds).size !== operationIds.length) {
-    throw new Error("Native transaction operation ids must be unique");
-  }
-  return {
-    schema: "comet.native.transaction.v1",
-    id: journal.id,
-    kind: journal.kind,
-    status: journal.status,
-    projectRoot: journal.projectRoot,
-    nativeRoot: journal.nativeRoot,
-    ...typeof journal.change === "string" ? { change: journal.change } : {},
-    createdAt: journal.createdAt,
-    operations
-  };
-}
-function parseEvent(value, line) {
-  const event = record3(value, `Native transaction event at line ${line}`);
-  rejectUnknown3(event, EVENT_KEYS, `Native transaction event at line ${line}`);
-  if (event.sequence !== line) {
-    throw new Error(`Native transaction event sequence at line ${line} must be ${line}`);
-  }
-  if (!validTimestamp(event.timestamp)) {
-    throw new Error(`Native transaction event timestamp at line ${line} is invalid`);
-  }
-  if (typeof event.type !== "string" || !EVENT_TYPES.has(event.type)) {
-    throw new Error(`Native transaction event type at line ${line} is invalid`);
-  }
-  const operationEvent = event.type === "operation-started" || event.type === "operation-completed";
-  if (operationEvent && typeof event.operationId !== "string" || !operationEvent && event.operationId !== void 0) {
-    throw new Error(`Native transaction event operationId at line ${line} is invalid`);
-  }
-  return {
-    sequence: event.sequence,
-    timestamp: event.timestamp,
-    type: event.type,
-    ...typeof event.operationId === "string" ? { operationId: event.operationId } : {}
-  };
-}
-function transactionDir(paths, id) {
-  if (!/^[a-f0-9-]{8,}$/u.test(id)) throw new Error(`Invalid Native transaction id: ${id}`);
-  return path12.join(paths.transactionsDir, id);
-}
-function nativeTransactionPaths(paths, id) {
-  const directory = transactionDir(paths, id);
-  return {
-    directory,
-    journal: path12.join(directory, "transaction.json"),
-    events: path12.join(directory, "events.jsonl"),
-    staged: path12.join(directory, "staged"),
-    backups: path12.join(directory, "backups")
-  };
-}
-function resolveRefLexically(paths, ref) {
-  if (ref.length === 0 || path12.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
-    throw new Error(`Unsafe Native transaction ref: ${ref}`);
-  }
-  const target = path12.resolve(paths.nativeRoot, ...ref.split(/[\\/]/u));
-  if (!isInsidePath(paths.nativeRoot, target))
-    throw new Error(`Unsafe Native transaction ref: ${ref}`);
-  return target;
-}
-async function resolveRef(paths, ref) {
-  return resolveContainedNativePath(paths.nativeRoot, resolveRefLexically(paths, ref));
-}
-async function exists(file) {
-  try {
-    await fs10.access(file);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-async function appendEvent(paths, journal, type, operationId) {
-  const tx = nativeTransactionPaths(paths, journal.id);
-  const events = await readNativeTransactionEvents(paths, journal.id);
-  const event = {
-    sequence: events.length + 1,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    type,
-    ...operationId ? { operationId } : {}
-  };
-  await fs10.mkdir(tx.directory, { recursive: true });
-  const handle = await fs10.open(tx.events, "a");
-  try {
-    await handle.writeFile(JSON.stringify(event) + "\n", "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  return event;
-}
-async function createNativeTransaction(paths, journal) {
-  journal = parseJournal(journal);
-  const tx = nativeTransactionPaths(paths, journal.id);
-  await fs10.mkdir(tx.staged, { recursive: true });
-  await fs10.mkdir(tx.backups, { recursive: true });
-  await atomicWriteJson(tx.journal, journal);
-  await appendEvent(paths, journal, "prepared");
-}
-async function readNativeTransaction(paths, id) {
-  const value = JSON.parse(
-    await fs10.readFile(nativeTransactionPaths(paths, id).journal, "utf8")
-  );
-  const journal = parseJournal(value);
-  if (journal.id !== id) {
-    throw new Error(`Invalid Native transaction journal: ${id}`);
-  }
-  return journal;
-}
-async function readNativeTransactionEvents(paths, id) {
-  let source;
-  try {
-    source = await fs10.readFile(nativeTransactionPaths(paths, id).events, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
-  const entries = source.split(/\r?\n/u);
-  if (entries.at(-1) === "") entries.pop();
-  return entries.map((entry2, index) => {
-    const line = index + 1;
-    try {
-      if (entry2.length === 0) throw new Error("Blank transaction event line");
-      return parseEvent(JSON.parse(entry2), line);
-    } catch (error) {
-      throw new Error(`Invalid Native transaction event at line ${line}`, { cause: error });
-    }
-  });
-}
-async function setNativeTransactionStatus(paths, journal, status) {
-  const updated = parseJournal({ ...journal, status });
-  await atomicWriteJson(nativeTransactionPaths(paths, journal.id).journal, updated);
-  return updated;
-}
-async function copyAtomic(source, target) {
-  const content = await fs10.readFile(source);
-  await atomicWriteText(target, content.toString("utf8"));
-}
-async function backupTarget(paths, operation) {
-  if (!operation.backup) return;
-  const target = await resolveRef(paths, operation.target);
-  const backup = await resolveRef(paths, operation.backup);
-  if (!await exists(target) || await exists(backup)) return;
-  await fs10.mkdir(path12.dirname(backup), { recursive: true });
-  await fs10.copyFile(target, backup);
-}
-async function applyOperation(paths, operation) {
-  const target = await resolveRef(paths, operation.target);
-  if (operation.type === "write") {
-    if (!operation.staged) throw new Error(`Write operation ${operation.id} has no staged ref`);
-    await backupTarget(paths, operation);
-    await copyAtomic(await resolveRef(paths, operation.staged), target);
-    return;
-  }
-  if (operation.type === "remove") {
-    await backupTarget(paths, operation);
-    await fs10.rm(target, { force: true });
-    return;
-  }
-  if (!operation.source) throw new Error(`Move operation ${operation.id} has no source ref`);
-  const source = await resolveRef(paths, operation.source);
-  const [sourceExists, targetExists] = await Promise.all([exists(source), exists(target)]);
-  if (!sourceExists && targetExists) return;
-  if (targetExists) throw new Error(`Move target already exists: ${operation.target}`);
-  if (!sourceExists) throw new Error(`Move source does not exist: ${operation.source}`);
-  await fs10.mkdir(path12.dirname(target), { recursive: true });
-  await fs10.rename(source, target);
-}
-async function applyNativeTransaction(paths, journal, hooks) {
-  let current = journal.status === "prepared" ? await setNativeTransactionStatus(paths, journal, "applying") : journal;
-  const events = await readNativeTransactionEvents(paths, journal.id);
-  const completed = new Set(
-    events.filter((event) => event.type === "operation-completed").map((event) => event.operationId)
-  );
-  let completedCount = completed.size;
-  for (const operation of current.operations) {
-    if (completed.has(operation.id)) continue;
-    await appendEvent(paths, current, "operation-started", operation.id);
-    await applyOperation(paths, operation);
-    await appendEvent(paths, current, "operation-completed", operation.id);
-    completedCount += 1;
-    await hooks?.afterOperation?.(operation, completedCount);
-  }
-  current = await readNativeTransaction(paths, current.id);
-  return current;
-}
-async function rollbackOperation(paths, operation) {
-  const target = await resolveRef(paths, operation.target);
-  const backup = operation.backup ? await resolveRef(paths, operation.backup) : null;
-  if (operation.type === "move") {
-    if (!operation.source) throw new Error(`Move operation ${operation.id} has no source ref`);
-    const source = await resolveRef(paths, operation.source);
-    if (await exists(target)) {
-      await fs10.mkdir(path12.dirname(source), { recursive: true });
-      await fs10.rename(target, source);
-    }
-    return;
-  }
-  if (backup && await exists(backup)) {
-    await copyAtomic(backup, target);
-  } else {
-    await fs10.rm(target, { force: true });
-  }
-}
-async function rollbackNativeTransaction(paths, journal) {
-  const events = await readNativeTransactionEvents(paths, journal.id);
-  if (events.some(
-    (event) => event.type === "archive-finalization-started" || event.type === "archive-finalized"
-  )) {
-    throw new Error("An archive whose finalization started can only be recovered by continuing it");
-  }
-  let current = await setNativeTransactionStatus(paths, journal, "rolling-back");
-  await appendEvent(paths, current, "rollback-started");
-  const started = new Set(
-    events.filter((event) => event.type === "operation-started" || event.type === "operation-completed").map((event) => event.operationId)
-  );
-  for (const operation of [...current.operations].reverse()) {
-    if (started.has(operation.id)) await rollbackOperation(paths, operation);
-  }
-  await appendEvent(paths, current, "rollback-completed");
-  current = await setNativeTransactionStatus(paths, current, "rolled-back");
-  return current;
-}
-async function finalizeNativeTransaction(paths, journal, event) {
-  await appendEvent(paths, journal, event);
-  return event === "commit" ? setNativeTransactionStatus(paths, journal, "committed") : journal;
-}
-function nativeRootRef(paths, target) {
-  const absolute = path12.resolve(target);
-  if (!isInsidePath(paths.nativeRoot, absolute)) {
-    throw new Error(`Path is outside the Native root: ${target}`);
-  }
-  return path12.relative(paths.nativeRoot, absolute).split(path12.sep).join("/");
 }
 
 // domains/comet-native/native-trajectory.ts
@@ -9062,6 +9122,175 @@ async function writeNativeCheckpoint(options) {
   };
   await writeCheckpoint(options.changeDir, options.run.checkpointRef, checkpoint);
   return checkpoint;
+}
+
+// domains/comet-native/native-transition-journal.ts
+import { randomUUID as randomUUID5 } from "crypto";
+import { promises as fs12 } from "fs";
+import path14 from "path";
+function nativeTransitionJournalFile(paths, name) {
+  return path14.join(nativeChangeDir(paths, name), "runtime", "transition.json");
+}
+function nativeTransitionLockName(name) {
+  return `transition-${name}`;
+}
+async function acquireNativeTransitionLock(paths, name, operation) {
+  const lockName2 = nativeTransitionLockName(name);
+  try {
+    return await acquireNativeLock(paths, lockName2, operation);
+  } catch (error) {
+    const file = path14.join(paths.locksDir, `${lockName2}.lock`);
+    const diagnosis = await diagnoseNativeLock(file);
+    if (diagnosis.status !== "stale") throw error;
+    await fs12.rm(file, { force: true });
+    return acquireNativeLock(paths, lockName2, operation);
+  }
+}
+async function withNativeTransitionLock(paths, name, operation, work) {
+  const lock = await acquireNativeTransitionLock(paths, name, operation);
+  try {
+    return await work();
+  } finally {
+    await releaseNativeLock(lock);
+  }
+}
+function parseJournal2(value, expectedName) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Native transition journal must be an object");
+  }
+  const journal = value;
+  if (journal.schema !== "comet.native.transition.v1") {
+    throw new Error("Unsupported Native transition journal schema");
+  }
+  if (journal.change !== expectedName) throw new Error("Native transition journal change mismatch");
+  if (typeof journal.id !== "string" || journal.id.length === 0) {
+    throw new Error("Native transition journal id is invalid");
+  }
+  if (typeof journal.evidenceHash !== "string" || !/^[a-f0-9]{64}$/u.test(journal.evidenceHash)) {
+    throw new Error("Native transition journal evidence hash is invalid");
+  }
+  if (typeof journal.createdAt !== "string" || Number.isNaN(Date.parse(journal.createdAt))) {
+    throw new Error("Native transition journal timestamp is invalid");
+  }
+  const previousState = parseNativeChangeValue(journal.previousState);
+  const nextState = parseNativeChangeValue(journal.nextState);
+  if (previousState.name !== expectedName || nextState.name !== expectedName) {
+    throw new Error("Native transition journal state mismatch");
+  }
+  if (!journal.nextRun || typeof journal.nextRun !== "object") {
+    throw new Error("Native transition journal next Run is invalid");
+  }
+  if (journal.nextRun.runId !== nextState.run_id || journal.nextRun.currentStep !== nextState.phase) {
+    throw new Error("Native transition journal Run/state mismatch");
+  }
+  if (!journal.eventData || typeof journal.eventData !== "object" || Array.isArray(journal.eventData)) {
+    throw new Error("Native transition journal event data is invalid");
+  }
+  return {
+    schema: "comet.native.transition.v1",
+    id: journal.id,
+    change: expectedName,
+    evidenceHash: journal.evidenceHash,
+    createdAt: journal.createdAt,
+    previousState,
+    nextState,
+    previousRun: journal.previousRun ?? null,
+    nextRun: journal.nextRun,
+    eventData: journal.eventData
+  };
+}
+async function inspectPendingNativeTransition(paths, name) {
+  const file = nativeTransitionJournalFile(paths, name);
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    return parseJournal2(JSON.parse(await fs12.readFile(file, "utf8")), name);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+async function prepareNativeTransition(options) {
+  const journal = {
+    schema: "comet.native.transition.v1",
+    id: options.transitionId?.() ?? randomUUID5(),
+    change: options.nextState.name,
+    evidenceHash: options.evidenceHash,
+    createdAt: (options.now ?? /* @__PURE__ */ new Date()).toISOString(),
+    previousState: options.previousState,
+    nextState: options.nextState,
+    previousRun: options.previousRun,
+    nextRun: options.nextRun,
+    eventData: options.eventData
+  };
+  const file = nativeTransitionJournalFile(options.paths, journal.change);
+  await resolveContainedNativePath(options.paths.nativeRoot, file);
+  if (await inspectPendingNativeTransition(options.paths, journal.change)) {
+    throw new Error(`Native transition recovery is already pending for ${journal.change}`);
+  }
+  await atomicWriteJson(file, journal);
+  return journal;
+}
+async function continueNativeTransitionLocked(paths, name, hooks) {
+  const journal = await inspectPendingNativeTransition(paths, name);
+  if (!journal) return null;
+  const changeDir = nativeChangeDir(paths, name);
+  await writeRunStateAt(changeDir, journal.nextRun, NATIVE_RUN_STORAGE);
+  await hooks?.afterRunStateWritten?.(journal);
+  await writeNativeChange(paths, journal.nextState);
+  await hooks?.afterChangeStateWritten?.(journal);
+  let trajectory = await readTrajectory(changeDir, journal.nextRun.trajectoryRef);
+  if (journal.previousRun === null) {
+    let started = trajectory.find(
+      (item) => item.type === "run_started" && item.data.transitionId === journal.id
+    );
+    if (!started) {
+      started = await appendNativeTrajectoryEvent({
+        changeDir,
+        run: journal.nextRun,
+        type: "run_started",
+        data: {
+          runtime: "comet-native",
+          phase: journal.previousState.phase,
+          transitionId: journal.id
+        },
+        now: new Date(journal.createdAt)
+      });
+      trajectory = [...trajectory, started];
+    }
+  }
+  let event = trajectory.find(
+    (item) => item.type === "state_transitioned" && item.data.transitionId === journal.id
+  );
+  if (!event) {
+    event = await appendNativeTrajectoryEvent({
+      changeDir,
+      run: journal.nextRun,
+      type: "state_transitioned",
+      data: { ...journal.eventData, transitionId: journal.id },
+      now: new Date(journal.createdAt)
+    });
+  }
+  await writeNativeCheckpoint({
+    changeDir,
+    run: journal.nextRun,
+    trajectoryOffset: event.sequence,
+    evidenceHash: journal.evidenceHash,
+    now: new Date(journal.createdAt)
+  });
+  await fs12.rm(nativeTransitionJournalFile(paths, name), { force: true });
+  return journal.nextState;
+}
+async function continueNativeTransition(paths, name, hooks) {
+  return withNativeMutationLock(
+    paths,
+    `continue transition ${name}`,
+    () => withNativeTransitionLock(
+      paths,
+      name,
+      `continue transition ${name}`,
+      () => continueNativeTransitionLocked(paths, name, hooks)
+    )
+  );
 }
 
 // domains/comet-native/native-archive.ts
@@ -9119,11 +9348,11 @@ async function assertSpecBase(paths, change) {
   }
 }
 function archiveTarget(paths, name, now) {
-  return path13.join(paths.archiveDir, `${now.toISOString().slice(0, 10)}-${name}`);
+  return path15.join(paths.archiveDir, `${now.toISOString().slice(0, 10)}-${name}`);
 }
 async function pathExists(target) {
   try {
-    await fs11.access(target);
+    await fs13.access(target);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -9134,12 +9363,12 @@ async function buildArchiveJournal(options) {
   const { paths, state, now, transactionId } = options;
   const target = archiveTarget(paths, state.name, now);
   if (await pathExists(target)) throw new Error(`Native archive target already exists: ${target}`);
-  const tx = nativeTransactionPaths(paths, transactionId);
+  const tx = await resolveNativeTransactionPaths(paths, transactionId);
   const operations = [];
   for (const [index, change] of state.spec_changes.entries()) {
     await assertSpecBase(paths, change);
     const canonical = canonicalSpecPath(paths, change.capability);
-    const backup = path13.join(tx.backups, "specs", change.capability, "spec.md");
+    const backup = path15.join(tx.backups, "specs", change.capability, "spec.md");
     if (change.operation === "remove") {
       operations.push({
         id: `spec-${index + 1}-${change.capability}`,
@@ -9153,9 +9382,9 @@ async function buildArchiveJournal(options) {
       nativeChangeDir(paths, state.name),
       change.source
     );
-    const staged = path13.join(tx.staged, "specs", change.capability, "spec.md");
-    await fs11.mkdir(path13.dirname(staged), { recursive: true });
-    await fs11.copyFile(source, staged);
+    const staged = path15.join(tx.staged, "specs", change.capability, "spec.md");
+    await fs13.mkdir(path15.dirname(staged), { recursive: true });
+    await fs13.copyFile(source, staged);
     const [sourceHash, stagedHash] = await Promise.all([sha256File(source), sha256File(staged)]);
     if (sourceHash !== stagedHash) throw new Error(`Failed to stage spec ${change.capability}`);
     operations.push({
@@ -9189,7 +9418,7 @@ function archiveDirectoryFromJournal(paths, journal) {
   if (!operation || operation.type !== "move") {
     throw new Error(`Archive transaction ${journal.id} has no archive move`);
   }
-  return path13.resolve(paths.nativeRoot, ...operation.target.split("/"));
+  return path15.resolve(paths.nativeRoot, ...operation.target.split("/"));
 }
 async function finalizeArchive(paths, journal) {
   const events = await readNativeTransactionEvents(paths, journal.id);
@@ -9198,7 +9427,7 @@ async function finalizeArchive(paths, journal) {
     await finalizeNativeTransaction(paths, journal, "archive-finalization-started");
   }
   const archiveDir = archiveDirectoryFromJournal(paths, journal);
-  const stateFile2 = path13.join(archiveDir, "change.yaml");
+  const stateFile2 = path15.join(archiveDir, "change.yaml");
   const state = await readNativeChangeFile(stateFile2);
   if (!journal.change || state.name !== journal.change) {
     throw new Error(`Archive transaction ${journal.id} change mismatch`);
@@ -9257,7 +9486,7 @@ async function finalizeArchive(paths, journal) {
     evidenceHash: evidenceHash2
   });
   await writeRunStateAt(archiveDir, completed, NATIVE_RUN_STORAGE);
-  await clearNativeSelectionIf(paths, state.name);
+  await clearNativeSelectionIfLocked(paths, state.name);
   await finalizeNativeTransaction(paths, journal, "archive-finalized");
 }
 async function continueArchive(paths, journal, hooks) {
@@ -9267,65 +9496,173 @@ async function continueArchive(paths, journal, hooks) {
 }
 function assertMatchingJournal(paths, journal) {
   if (journal.kind !== "archive") throw new Error(`Transaction ${journal.id} is not an archive`);
-  if (path13.resolve(journal.projectRoot) !== path13.resolve(paths.projectRoot) || path13.resolve(journal.nativeRoot) !== path13.resolve(paths.nativeRoot)) {
+  if (path15.resolve(journal.projectRoot) !== path15.resolve(paths.projectRoot) || path15.resolve(journal.nativeRoot) !== path15.resolve(paths.nativeRoot)) {
     throw new Error(`Transaction ${journal.id} belongs to a different Native root`);
   }
 }
 async function archiveNativeChange(options) {
-  await assertNoPendingNativeRootMove(options.paths.projectRoot);
-  const globalLock = await acquireNativeLock(options.paths, "root-move", `archive ${options.name}`);
-  let lock;
-  try {
-    lock = await acquireNativeLock(options.paths, "archive", `archive ${options.name}`);
-    const state = await readNativeChange(options.paths, options.name);
-    assertArchiveReady(state);
-    await assertArchiveArtifacts(options.paths, state);
-    const now = options.now ?? /* @__PURE__ */ new Date();
-    const transactionId = randomUUID5();
-    const journal = await buildArchiveJournal({
-      paths: options.paths,
-      state,
-      now,
-      transactionId
-    });
-    await createNativeTransaction(options.paths, journal);
-    await options.hooks?.afterPrepared?.(journal);
-    await continueArchive(options.paths, journal, options.hooks);
-    return { archiveDir: archiveDirectoryFromJournal(options.paths, journal), transactionId };
-  } finally {
-    if (lock) await releaseNativeLock(lock);
-    await releaseNativeLock(globalLock);
-  }
+  return withNativeMutationLock(
+    options.paths,
+    `archive ${options.name}`,
+    () => withNativeTransitionLock(options.paths, options.name, `archive ${options.name}`, async () => {
+      await continueNativeTransitionLocked(options.paths, options.name);
+      const lock = await acquireNativeLock(options.paths, "archive", `archive ${options.name}`);
+      try {
+        const state = await readNativeChange(options.paths, options.name);
+        assertArchiveReady(state);
+        await assertArchiveArtifacts(options.paths, state);
+        const now = options.now ?? /* @__PURE__ */ new Date();
+        const transactionId = randomUUID6();
+        const journal = await buildArchiveJournal({
+          paths: options.paths,
+          state,
+          now,
+          transactionId
+        });
+        await createNativeTransaction(options.paths, journal);
+        await options.hooks?.afterPrepared?.(journal);
+        await continueArchive(options.paths, journal, options.hooks);
+        return { archiveDir: archiveDirectoryFromJournal(options.paths, journal), transactionId };
+      } finally {
+        await releaseNativeLock(lock);
+      }
+    })
+  );
 }
 async function recoverArchiveTransaction(options) {
-  await assertNoPendingNativeRootMove(options.paths.projectRoot);
-  const globalLock = await acquireNativeLock(
+  return withNativeMutationLock(
     options.paths,
-    "root-move",
-    `recover archive ${options.transactionId}`
+    `recover archive ${options.transactionId}`,
+    async () => {
+      const lock = await acquireNativeLock(
+        options.paths,
+        "archive",
+        `recover archive ${options.transactionId}`
+      );
+      try {
+        const journal = await readNativeTransaction(options.paths, options.transactionId);
+        assertMatchingJournal(options.paths, journal);
+        if (journal.status === "committed" || journal.status === "rolled-back") return journal;
+        return options.strategy === "continue" ? continueArchive(options.paths, journal) : rollbackNativeTransaction(options.paths, journal);
+      } finally {
+        await releaseNativeLock(lock);
+      }
+    },
+    { allowedTransactionId: options.transactionId }
   );
-  let lock;
-  try {
-    lock = await acquireNativeLock(
-      options.paths,
-      "archive",
-      `recover archive ${options.transactionId}`
-    );
-    const journal = await readNativeTransaction(options.paths, options.transactionId);
-    assertMatchingJournal(options.paths, journal);
-    if (journal.status === "committed" || journal.status === "rolled-back") return journal;
-    return options.strategy === "continue" ? continueArchive(options.paths, journal) : rollbackNativeTransaction(options.paths, journal);
-  } finally {
-    if (lock) await releaseNativeLock(lock);
-    await releaseNativeLock(globalLock);
-  }
 }
 
 // domains/comet-native/native-diagnostics.ts
-import { promises as fs12 } from "fs";
+import { promises as fs14 } from "fs";
+
+// domains/comet-native/native-run-consistency.ts
+import path16 from "path";
+function runPath(changeDir, ref) {
+  return path16.resolve(changeDir, ...ref.split(/[\\/]/u));
+}
+async function inspectNativeRunConsistency(paths, state) {
+  const findings = [];
+  const changeDir = nativeChangeDir(paths, state.name);
+  const stateFile2 = runPath(changeDir, NATIVE_RUN_STORAGE.stateRef);
+  let run;
+  try {
+    run = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
+  } catch (error) {
+    return [
+      {
+        code: "run-state-invalid",
+        message: `Native Run state is invalid: ${error.message}`,
+        path: stateFile2
+      }
+    ];
+  }
+  if (!run) {
+    if (state.run_id !== null || state.phase !== "shape") {
+      findings.push({
+        code: "run-state-missing",
+        message: "Native change references a missing Run state",
+        path: stateFile2
+      });
+    }
+    return findings;
+  }
+  if (state.run_id === null) {
+    return [
+      {
+        code: "run-state-unexpected",
+        message: "Native change has a Run state but no run_id",
+        path: stateFile2
+      }
+    ];
+  }
+  if (run.runId !== state.run_id) {
+    findings.push({
+      code: "run-id-mismatch",
+      message: `Native Run id ${run.runId} does not match change run_id ${state.run_id}`,
+      path: stateFile2
+    });
+  }
+  if (run.pending || run.status === "waiting") {
+    findings.push({
+      code: "run-action-pending",
+      message: "Native Run has an unresolved pending action",
+      path: stateFile2
+    });
+  }
+  if (run.currentStep !== state.phase) {
+    findings.push({
+      code: "run-phase-mismatch",
+      message: `Native Run step ${run.currentStep ?? "(none)"} does not match phase ${state.phase}`,
+      path: stateFile2
+    });
+  }
+  const trajectoryFile = runPath(changeDir, run.trajectoryRef);
+  let trajectory;
+  try {
+    trajectory = await readTrajectory(changeDir, run.trajectoryRef);
+    if (trajectory.length === 0 || trajectory.some(
+      (event, index) => !event || typeof event !== "object" || event.sequence !== index + 1 || event.runId !== run.runId || typeof event.type !== "string" || !event.data || typeof event.data !== "object" || Array.isArray(event.data)
+    )) {
+      throw new Error("trajectory events are missing or inconsistent");
+    }
+  } catch (error) {
+    findings.push({
+      code: "trajectory-invalid",
+      message: `Native trajectory is invalid: ${error.message}`,
+      path: trajectoryFile
+    });
+    return findings;
+  }
+  const checkpointFile = runPath(changeDir, run.checkpointRef);
+  try {
+    const checkpoint = await readCheckpoint(changeDir, run.checkpointRef);
+    if (!checkpoint) {
+      findings.push({
+        code: "checkpoint-missing",
+        message: "Native Run checkpoint is missing",
+        path: checkpointFile
+      });
+    } else if (checkpoint.runId !== run.runId || checkpoint.stateVersion !== run.iteration || checkpoint.trajectoryOffset !== trajectory.length) {
+      findings.push({
+        code: "checkpoint-mismatch",
+        message: "Native Run checkpoint does not match Run state and trajectory",
+        path: checkpointFile
+      });
+    }
+  } catch (error) {
+    findings.push({
+      code: "checkpoint-invalid",
+      message: `Native Run checkpoint is invalid: ${error.message}`,
+      path: checkpointFile
+    });
+  }
+  return findings;
+}
+
+// domains/comet-native/native-diagnostics.ts
 async function selectedName(paths) {
   try {
-    const value = JSON.parse(await fs12.readFile(nativeSelectionFile(paths), "utf8"));
+    const value = JSON.parse(await fs14.readFile(nativeSelectionFile(paths), "utf8"));
     return value.schema === "comet.native.selection.v1" && typeof value.change === "string" ? value.change : null;
   } catch (error) {
     if (error.code === "ENOENT") return null;
@@ -9336,14 +9673,28 @@ function nativeNextCommand(state, archiveReady) {
   if (state.phase === "archive") {
     return archiveReady ? `comet native archive ${state.name}` : null;
   }
-  return `comet native next ${state.name}`;
+  return `comet native next ${state.name} --summary "<summary>"`;
 }
 async function statusFindings(paths, state) {
   const changeDir = nativeChangeDir(paths, state.name);
   const findings = [
     ...(await validateNativeBrief(changeDir, state.brief)).findings,
-    ...(await validateNativeSpecChanges(paths, state)).findings
+    ...(await validateNativeSpecChanges(paths, state)).findings,
+    ...await inspectNativeRunConsistency(paths, state)
   ];
+  try {
+    if (await inspectPendingNativeTransition(paths, state.name)) {
+      findings.unshift({
+        code: "transition-incomplete",
+        message: "Native phase transition recovery is pending"
+      });
+    }
+  } catch (error) {
+    findings.unshift({
+      code: "transition-invalid",
+      message: `Native transition journal is invalid: ${error.message}`
+    });
+  }
   if (state.verification_report) {
     findings.push(
       ...(await validateNativeVerification(changeDir, state.verification_report)).findings
@@ -9391,7 +9742,7 @@ async function inspectNativeStatus(paths, name) {
 async function listNativeStatus(paths) {
   let entries;
   try {
-    entries = await fs12.readdir(paths.changesDir, { withFileTypes: true });
+    entries = await fs14.readdir(paths.changesDir, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return [];
     throw error;
@@ -9404,16 +9755,16 @@ async function inspectNativeArtifactFindings(paths, state) {
 }
 
 // domains/comet-native/native-doctor.ts
-import { promises as fs14 } from "fs";
-import path15 from "path";
+import { promises as fs16 } from "fs";
+import path18 from "path";
 
 // domains/comet-native/native-root-move.ts
-import { randomUUID as randomUUID6 } from "crypto";
-import { promises as fs13 } from "fs";
-import path14 from "path";
+import { randomUUID as randomUUID7 } from "crypto";
+import { promises as fs15 } from "fs";
+import path17 from "path";
 async function exists2(target) {
   try {
-    await fs13.access(target);
+    await fs15.access(target);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -9423,7 +9774,7 @@ async function exists2(target) {
 async function assertNoUnfinishedTransactions(paths) {
   let entries;
   try {
-    entries = await fs13.readdir(paths.transactionsDir, { withFileTypes: true });
+    entries = await fs15.readdir(paths.transactionsDir, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return;
     throw error;
@@ -9448,9 +9799,9 @@ async function assertNoUnfinishedTransactions(paths) {
   }
 }
 async function assertNoOtherLocks(paths, ownedLock) {
-  for (const entry2 of await fs13.readdir(paths.locksDir, { withFileTypes: true })) {
-    const file = path14.join(paths.locksDir, entry2.name);
-    if (path14.resolve(file) === path14.resolve(ownedLock)) continue;
+  for (const entry2 of await fs15.readdir(paths.locksDir, { withFileTypes: true })) {
+    const file = path17.join(paths.locksDir, entry2.name);
+    if (path17.resolve(file) === path17.resolve(ownedLock)) continue;
     if (entry2.isFile() || entry2.isSymbolicLink()) {
       throw new Error(`Native lock must be diagnosed before moving the root: ${file}`);
     }
@@ -9459,11 +9810,11 @@ async function assertNoOtherLocks(paths, ownedLock) {
 async function walkTree(root, options) {
   const files = [];
   async function visit(directory) {
-    const entries = await fs13.readdir(directory, { withFileTypes: true });
+    const entries = await fs15.readdir(directory, { withFileTypes: true });
     entries.sort((left, right) => left.name.localeCompare(right.name));
     for (const entry2 of entries) {
-      const target = path14.join(directory, entry2.name);
-      if (options.excludedFiles?.has(path14.resolve(target))) continue;
+      const target = path17.join(directory, entry2.name);
+      if (options.excludedFiles?.has(path17.resolve(target))) continue;
       if (entry2.isSymbolicLink()) {
         if (options.rejectSymlinks) throw new Error(`Native root contains a symlink: ${target}`);
         continue;
@@ -9471,9 +9822,9 @@ async function walkTree(root, options) {
       if (entry2.isDirectory()) {
         await visit(target);
       } else if (entry2.isFile()) {
-        const stat = await fs13.stat(target);
+        const stat = await fs15.stat(target);
         files.push({
-          ref: path14.relative(root, target).split(path14.sep).join("/"),
+          ref: path17.relative(root, target).split(path17.sep).join("/"),
           size: stat.size,
           hash: await sha256File(target)
         });
@@ -9484,20 +9835,20 @@ async function walkTree(root, options) {
   return files;
 }
 async function copyTree(source, target, excludedFile) {
-  await fs13.mkdir(path14.dirname(target), { recursive: true });
-  await fs13.mkdir(target, { recursive: false });
+  await fs15.mkdir(path17.dirname(target), { recursive: true });
+  await fs15.mkdir(target, { recursive: false });
   async function copyDirectory(from, to) {
-    const entries = await fs13.readdir(from, { withFileTypes: true });
+    const entries = await fs15.readdir(from, { withFileTypes: true });
     for (const entry2 of entries) {
-      const sourceEntry = path14.join(from, entry2.name);
-      if (path14.resolve(sourceEntry) === path14.resolve(excludedFile)) continue;
+      const sourceEntry = path17.join(from, entry2.name);
+      if (path17.resolve(sourceEntry) === path17.resolve(excludedFile)) continue;
       if (entry2.isSymbolicLink()) throw new Error(`Native root contains a symlink: ${sourceEntry}`);
-      const targetEntry = path14.join(to, entry2.name);
+      const targetEntry = path17.join(to, entry2.name);
       if (entry2.isDirectory()) {
-        await fs13.mkdir(targetEntry);
+        await fs15.mkdir(targetEntry);
         await copyDirectory(sourceEntry, targetEntry);
       } else if (entry2.isFile()) {
-        await fs13.copyFile(sourceEntry, targetEntry);
+        await fs15.copyFile(sourceEntry, targetEntry);
       }
     }
   }
@@ -9506,7 +9857,7 @@ async function copyTree(source, target, excludedFile) {
 async function assertEquivalentTrees(source, target, excludedSourceLock) {
   const sourceFiles = await walkTree(source, {
     rejectSymlinks: true,
-    excludedFiles: excludedSourceLock ? /* @__PURE__ */ new Set([path14.resolve(excludedSourceLock)]) : void 0
+    excludedFiles: excludedSourceLock ? /* @__PURE__ */ new Set([path17.resolve(excludedSourceLock)]) : void 0
   });
   const targetFiles = await walkTree(target, { rejectSymlinks: true });
   if (JSON.stringify(sourceFiles) !== JSON.stringify(targetFiles)) {
@@ -9516,7 +9867,7 @@ async function assertEquivalentTrees(source, target, excludedSourceLock) {
   }
 }
 function stagingDirectory(targetPaths, id) {
-  return path14.join(targetPaths.artifactRoot, `.comet-native-move-${id}`);
+  return path17.join(targetPaths.artifactRoot, `.comet-native-move-${id}`);
 }
 function pendingConfig(config, pending, activeArtifactRoot = config.native.artifact_root) {
   return {
@@ -9546,9 +9897,9 @@ async function readRootMoveJournal(sourcePaths, destinationPaths, stage, id) {
       if (error.code !== "ENOENT") throw error;
     }
   }
-  const stageJournal = path14.join(stage, "runtime", "transactions", id, "transaction.json");
+  const stageJournal = path17.join(stage, "runtime", "transactions", id, "transaction.json");
   try {
-    const journal = JSON.parse(await fs13.readFile(stageJournal, "utf8"));
+    const journal = JSON.parse(await fs15.readFile(stageJournal, "utf8"));
     if (journal.schema !== "comet.native.transaction.v1" || journal.kind !== "root-move") {
       throw new Error(`Invalid staged root-move journal: ${id}`);
     }
@@ -9574,10 +9925,10 @@ async function finishForwardMove(options) {
     if (!await exists2(options.sourcePaths.nativeRoot)) {
       throw new Error(`Native source root is missing: ${options.sourcePaths.nativeRoot}`);
     }
-    if (await exists2(options.staging)) await fs13.rm(options.staging, { recursive: true });
+    if (await exists2(options.staging)) await fs15.rm(options.staging, { recursive: true });
     await walkTree(options.sourcePaths.nativeRoot, {
       rejectSymlinks: true,
-      excludedFiles: /* @__PURE__ */ new Set([path14.resolve(options.lockFile)])
+      excludedFiles: /* @__PURE__ */ new Set([path17.resolve(options.lockFile)])
     });
     await copyTree(options.sourcePaths.nativeRoot, options.staging, options.lockFile);
     await assertEquivalentTrees(options.sourcePaths.nativeRoot, options.staging, options.lockFile);
@@ -9607,7 +9958,7 @@ async function finishForwardMove(options) {
         options.staging,
         options.lockFile
       );
-      await fs13.rename(options.staging, options.destinationPaths.nativeRoot);
+      await fs15.rename(options.staging, options.destinationPaths.nativeRoot);
     }
     config = await setPendingStage({
       projectRoot: options.projectRoot,
@@ -9629,7 +9980,7 @@ async function finishForwardMove(options) {
       options.destinationPaths.nativeRoot,
       options.lockFile
     );
-    await fs13.rm(options.sourcePaths.nativeRoot, { recursive: true });
+    await fs15.rm(options.sourcePaths.nativeRoot, { recursive: true });
   }
   const destinationJournal = await readNativeTransaction(
     options.destinationPaths,
@@ -9667,7 +10018,7 @@ async function moveNativeRoot(options) {
     throw new Error(`Native destination is occupied: ${destinationPaths.nativeRoot}`);
   }
   const lock = await acquireNativeLock(sourcePaths, "root-move", `move root to ${toArtifactRoot}`);
-  const id = randomUUID6();
+  const id = randomUUID7();
   const pending = {
     id,
     fromArtifactRoot: current.native.artifact_root,
@@ -9739,11 +10090,11 @@ async function recoverNativeRootMove(options) {
     }
     if (await exists2(destinationPaths.nativeRoot)) {
       await assertEquivalentTrees(sourcePaths.nativeRoot, destinationPaths.nativeRoot, lock.file);
-      await fs13.rm(destinationPaths.nativeRoot, { recursive: true });
+      await fs15.rm(destinationPaths.nativeRoot, { recursive: true });
     }
     if (await exists2(staging)) {
       await assertEquivalentTrees(sourcePaths.nativeRoot, staging, lock.file);
-      await fs13.rm(staging, { recursive: true });
+      await fs15.rm(staging, { recursive: true });
     }
     const sourceJournal = await readNativeTransaction(sourcePaths, pending.id);
     await rollbackNativeTransaction(sourcePaths, sourceJournal);
@@ -9761,14 +10112,14 @@ async function recoverNativeRootMove(options) {
 // domains/comet-native/native-doctor.ts
 async function directoryEntries(directory) {
   try {
-    return await fs14.readdir(directory, { withFileTypes: true });
+    return await fs16.readdir(directory, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return [];
     throw error;
   }
 }
 async function clearStaleRecoveryLocks(files, findings) {
-  for (const file of [...new Set(files.map((entry2) => path15.resolve(entry2)))]) {
+  for (const file of [...new Set(files.map((entry2) => path18.resolve(entry2)))]) {
     let diagnosis;
     try {
       diagnosis = await diagnoseNativeLock(file);
@@ -9783,7 +10134,7 @@ async function clearStaleRecoveryLocks(files, findings) {
     }
     if (diagnosis.status === "missing") continue;
     if (diagnosis.status === "stale") {
-      await fs14.rm(file, { force: true });
+      await fs16.rm(file, { force: true });
       findings.push({
         severity: "info",
         code: "stale-recovery-lock-removed",
@@ -9807,7 +10158,7 @@ async function inspectSelection(paths, repair) {
   let value;
   try {
     await resolveContainedNativePath(paths.nativeRoot, file);
-    value = JSON.parse(await fs14.readFile(file, "utf8"));
+    value = JSON.parse(await fs16.readFile(file, "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") return [];
     return [
@@ -9845,7 +10196,7 @@ async function inspectSelection(paths, repair) {
     }
   }
   if (repair) {
-    await fs14.rm(file, { force: true });
+    await fs16.rm(file, { force: true });
     return [
       {
         severity: "info",
@@ -9900,7 +10251,7 @@ async function inspectTransactions(paths, options) {
         severity: "error",
         code: "transaction-invalid",
         message: `Native transaction ${entry2.name} is invalid: ${error.message}`,
-        path: path15.join(paths.transactionsDir, entry2.name)
+        path: path18.join(paths.transactionsDir, entry2.name)
       });
       continue;
     }
@@ -9918,7 +10269,7 @@ async function inspectTransactions(paths, options) {
     if (options.repair && options.recoveryStrategy) {
       try {
         const locksReady = await clearStaleRecoveryLocks(
-          [path15.join(paths.locksDir, "root-move.lock"), path15.join(paths.locksDir, "archive.lock")],
+          [path18.join(paths.locksDir, "root-move.lock"), path18.join(paths.locksDir, "archive.lock")],
           findings
         );
         if (!locksReady) {
@@ -9959,7 +10310,7 @@ async function inspectLocks(paths, repair, unfinished) {
   const findings = [];
   for (const entry2 of await directoryEntries(paths.locksDir)) {
     if (!entry2.isFile() || entry2.isSymbolicLink() || !entry2.name.endsWith(".lock")) continue;
-    const file = path15.join(paths.locksDir, entry2.name);
+    const file = path18.join(paths.locksDir, entry2.name);
     try {
       const diagnosis = await diagnoseNativeLock(file);
       if (diagnosis.status === "active") {
@@ -9978,7 +10329,7 @@ async function inspectLocks(paths, repair, unfinished) {
         });
       } else if (diagnosis.status === "stale") {
         if (repair && unfinished.length === 0) {
-          await fs14.rm(file, { force: true });
+          await fs16.rm(file, { force: true });
           findings.push({
             severity: "info",
             code: "stale-lock-removed",
@@ -10023,7 +10374,7 @@ async function inspectChanges(paths, name) {
         severity: "error",
         code: "change-invalid",
         message: status.error ?? `Native change ${status.name} is invalid`,
-        path: path15.join(paths.changesDir, status.name, "change.yaml")
+        path: path18.join(paths.changesDir, status.name, "change.yaml")
       });
       continue;
     }
@@ -10036,6 +10387,52 @@ async function inspectChanges(paths, name) {
         ...artifact.path ? { path: artifact.path } : {}
       });
     }
+  }
+  return findings;
+}
+async function inspectTransitionJournals(paths, options) {
+  const findings = [];
+  const names = options.name ? [options.name] : (await directoryEntries(paths.changesDir)).filter((entry2) => entry2.isDirectory() && !entry2.isSymbolicLink()).map((entry2) => entry2.name).sort();
+  for (const name of names) {
+    let journal;
+    try {
+      journal = await inspectPendingNativeTransition(paths, name);
+    } catch (error) {
+      findings.push({
+        severity: "error",
+        code: "transition-invalid",
+        message: `Native transition journal is invalid: ${error.message}`,
+        path: nativeTransitionJournalFile(paths, name)
+      });
+      continue;
+    }
+    if (!journal) continue;
+    if (options.repair && options.recoveryStrategy === "continue") {
+      try {
+        await continueNativeTransition(paths, name);
+        findings.push({
+          severity: "info",
+          code: "transition-recovered",
+          message: `Continued Native phase transition ${journal.id} for ${name}`,
+          path: nativeTransitionJournalFile(paths, name)
+        });
+      } catch (error) {
+        findings.push({
+          severity: "error",
+          code: "transition-recovery-failed",
+          message: `Native transition recovery failed: ${error.message}`,
+          path: nativeTransitionJournalFile(paths, name)
+        });
+      }
+      continue;
+    }
+    findings.push({
+      severity: "error",
+      code: "transition-incomplete",
+      message: options.repair && options.recoveryStrategy === "rollback" ? `Native phase transition ${journal.id} only supports deterministic continue recovery` : `Native phase transition ${journal.id} is incomplete for ${name}`,
+      path: nativeTransitionJournalFile(paths, name),
+      repair: "continue"
+    });
   }
   return findings;
 }
@@ -10070,8 +10467,8 @@ async function doctorNativeProject(options) {
       try {
         const locksReady = await clearStaleRecoveryLocks(
           [
-            path15.join(fromPaths.locksDir, "root-move.lock"),
-            path15.join(toPaths.locksDir, "root-move.lock")
+            path18.join(fromPaths.locksDir, "root-move.lock"),
+            path18.join(toPaths.locksDir, "root-move.lock")
           ],
           findings
         );
@@ -10112,6 +10509,13 @@ async function doctorNativeProject(options) {
     recoveryStrategy: options.recoveryStrategy
   });
   findings.push(...transactions.findings);
+  findings.push(
+    ...await inspectTransitionJournals(paths, {
+      name: options.name,
+      repair,
+      recoveryStrategy: options.recoveryStrategy
+    })
+  );
   findings.push(...await inspectLocks(paths, repair, transactions.unfinished));
   findings.push(...await inspectSelection(paths, repair));
   findings.push(...await inspectChanges(paths, options.name));
@@ -10121,12 +10525,228 @@ async function doctorNativeProject(options) {
   };
 }
 
+// domains/comet-native/native-specs.ts
+import { promises as fs17 } from "fs";
+import path19 from "path";
+async function optionalHash2(file) {
+  try {
+    return await sha256File(file);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+async function proposedCapabilities(paths, name) {
+  const specsDir = path19.join(nativeChangeDir(paths, name), "specs");
+  let entries;
+  try {
+    entries = await fs17.readdir(specsDir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  const capabilities = [];
+  for (const entry2 of entries) {
+    if (entry2.isSymbolicLink()) {
+      throw new Error(`Proposed spec capability must not be a symbolic link: ${entry2.name}`);
+    }
+    if (!entry2.isDirectory()) continue;
+    assertNativeName(entry2.name);
+    const source = path19.join(specsDir, entry2.name, "spec.md");
+    await resolveContainedNativePath(paths.nativeRoot, source);
+    let stat;
+    try {
+      stat = await fs17.lstat(source);
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      throw error;
+    }
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error(`Proposed spec must be a regular file: ${entry2.name}`);
+    }
+    capabilities.push(entry2.name);
+  }
+  return capabilities.sort();
+}
+async function reconcileNativeSpecChanges(paths, state) {
+  const previous = new Map(state.spec_changes.map((change) => [change.capability, change]));
+  const proposed = await proposedCapabilities(paths, state.name);
+  const changes = [];
+  for (const capability of proposed) {
+    const existing = previous.get(capability);
+    if (existing?.operation === "remove") {
+      throw new Error(`Capability ${capability} has both a proposed spec and a remove intent`);
+    }
+    if (existing) {
+      changes.push({
+        ...existing,
+        source: `specs/${capability}/spec.md`
+      });
+      continue;
+    }
+    const canonical = canonicalSpecPath(paths, capability);
+    await resolveContainedNativePath(paths.nativeRoot, canonical);
+    const baseHash = await optionalHash2(canonical);
+    changes.push({
+      capability,
+      operation: baseHash === null ? "create" : "replace",
+      source: `specs/${capability}/spec.md`,
+      base_hash: baseHash
+    });
+  }
+  for (const change of state.spec_changes) {
+    if (change.operation === "remove" && !proposed.includes(change.capability)) {
+      changes.push(change);
+    }
+  }
+  return changes.sort((left, right) => left.capability.localeCompare(right.capability));
+}
+async function refreshNativeSpecChanges(paths, state) {
+  const proposed = await proposedCapabilities(paths, state.name);
+  const changes = [];
+  for (const capability of proposed) {
+    const existing = state.spec_changes.find((change) => change.capability === capability);
+    if (existing?.operation === "remove") {
+      throw new Error(`Capability ${capability} has both a proposed spec and a remove intent`);
+    }
+    const canonical = canonicalSpecPath(paths, capability);
+    await resolveContainedNativePath(paths.nativeRoot, canonical);
+    const baseHash = await optionalHash2(canonical);
+    changes.push({
+      capability,
+      operation: baseHash === null ? "create" : "replace",
+      source: `specs/${capability}/spec.md`,
+      base_hash: baseHash
+    });
+  }
+  for (const change of state.spec_changes) {
+    if (change.operation !== "remove" || proposed.includes(change.capability)) continue;
+    const canonical = canonicalSpecPath(paths, change.capability);
+    await resolveContainedNativePath(paths.nativeRoot, canonical);
+    const baseHash = await optionalHash2(canonical);
+    if (baseHash !== null) {
+      changes.push({ ...change, base_hash: baseHash });
+    }
+  }
+  return changes.sort((left, right) => left.capability.localeCompare(right.capability));
+}
+async function rebaseNativeSpecChanges(options) {
+  assertNativeName(options.name);
+  if (options.summary.trim().length === 0) throw new Error("Spec rebase requires a summary");
+  return withNativeMutationLock(
+    options.paths,
+    `rebase specs for ${options.name}`,
+    () => withNativeTransitionLock(
+      options.paths,
+      options.name,
+      `rebase specs for ${options.name}`,
+      async () => {
+        await continueNativeTransitionLocked(options.paths, options.name);
+        const state = await readNativeChange(options.paths, options.name);
+        if (state.phase === "shape") {
+          throw new Error("Shape spec metadata is refreshed by the next command");
+        }
+        if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
+        const changeDir = nativeChangeDir(options.paths, options.name);
+        const run = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
+        if (!run || run.runId !== state.run_id || run.currentStep !== state.phase || run.pending) {
+          throw new Error(`Native Run state is missing or inconsistent for ${state.name}`);
+        }
+        const specChanges = await refreshNativeSpecChanges(options.paths, state);
+        const nextState = {
+          ...state,
+          phase: "build",
+          spec_changes: specChanges,
+          verification_result: "pending",
+          verification_report: null
+        };
+        const nextRun = {
+          ...run,
+          currentStep: "build",
+          iteration: run.iteration + 1,
+          pending: null,
+          status: "running"
+        };
+        const evidenceHash2 = sha256Text(`spec-rebase:${state.name}:${options.summary}`);
+        await prepareNativeTransition({
+          paths: options.paths,
+          previousState: state,
+          nextState,
+          previousRun: run,
+          nextRun,
+          evidenceHash: evidenceHash2,
+          eventData: {
+            previousPhase: state.phase,
+            nextPhase: "build",
+            evidenceHash: evidenceHash2,
+            summary: options.summary,
+            reason: "spec-rebase"
+          },
+          now: options.now,
+          transitionId: options.transitionId
+        });
+        const rebased = await continueNativeTransitionLocked(options.paths, options.name);
+        if (!rebased) throw new Error("Native spec rebase journal disappeared before completion");
+        return rebased;
+      }
+    )
+  );
+}
+async function markNativeSpecRemoval(paths, name, capability) {
+  assertNativeName(name);
+  assertNativeName(capability);
+  return withNativeMutationLock(
+    paths,
+    `remove spec ${capability} from ${name}`,
+    () => withNativeTransitionLock(paths, name, `remove spec ${capability} from ${name}`, async () => {
+      await continueNativeTransitionLocked(paths, name);
+      return markNativeSpecRemovalLocked(paths, name, capability);
+    })
+  );
+}
+async function markNativeSpecRemovalLocked(paths, name, capability) {
+  const state = await readNativeChange(paths, name);
+  if (state.phase === "archive" || state.archived) {
+    throw new Error(`Native change ${name} no longer accepts spec changes`);
+  }
+  const proposed = await proposedCapabilities(paths, name);
+  if (proposed.includes(capability)) {
+    throw new Error(`Capability ${capability} has both a proposed spec and a remove intent`);
+  }
+  const previous = state.spec_changes.find((change) => change.capability === capability);
+  if (previous?.operation === "remove") return state;
+  const canonical = canonicalSpecPath(paths, capability);
+  await resolveContainedNativePath(paths.nativeRoot, canonical);
+  const baseHash = await optionalHash2(canonical);
+  if (baseHash === null) throw new Error(`Canonical spec is missing: ${capability}`);
+  const updated = {
+    ...state,
+    spec_changes: [
+      ...state.spec_changes.filter((change) => change.capability !== capability),
+      { capability, operation: "remove", base_hash: baseHash }
+    ].sort((left, right) => left.capability.localeCompare(right.capability))
+  };
+  await writeNativeChange(paths, updated);
+  return updated;
+}
+async function readNativeProposedSpecs(paths, name) {
+  const changeDir = nativeChangeDir(paths, name);
+  const result2 = {};
+  for (const capability of await proposedCapabilities(paths, name)) {
+    result2[capability] = await fs17.readFile(
+      path19.join(changeDir, "specs", capability, "spec.md"),
+      "utf8"
+    );
+  }
+  return result2;
+}
+
 // domains/comet-native/native-transitions.ts
-import { randomUUID as randomUUID7 } from "crypto";
+import { randomUUID as randomUUID8 } from "crypto";
 
 // domains/comet-native/native-guards.ts
-import { promises as fs15 } from "fs";
-import path16 from "path";
+import { promises as fs18 } from "fs";
+import path20 from "path";
 function validation(findings) {
   return { valid: findings.length === 0, findings };
 }
@@ -10142,14 +10762,14 @@ async function validateBuildArtifacts(paths, evidence) {
     ];
   }
   for (const artifact of evidence.artifacts) {
-    if (path16.isAbsolute(artifact) || artifact.split(/[\\/]/u).includes("..") || /^(?:[A-Za-z]:|~|[\\/])/u.test(artifact)) {
+    if (path20.isAbsolute(artifact) || artifact.split(/[\\/]/u).includes("..") || /^(?:[A-Za-z]:|~|[\\/])/u.test(artifact)) {
       findings.push({
         code: "build-artifact-unsafe",
         message: `Unsafe build artifact: ${artifact}`
       });
       continue;
     }
-    const target = path16.resolve(paths.projectRoot, ...artifact.split(/[\\/]/u));
+    const target = path20.resolve(paths.projectRoot, ...artifact.split(/[\\/]/u));
     if (!isInsidePath(paths.projectRoot, target)) {
       findings.push({
         code: "build-artifact-unsafe",
@@ -10158,7 +10778,7 @@ async function validateBuildArtifacts(paths, evidence) {
       continue;
     }
     try {
-      await fs15.access(target);
+      await fs18.access(target);
     } catch {
       findings.push({
         code: "build-artifact-missing",
@@ -10178,36 +10798,22 @@ async function inspectNativeGuard(options) {
       message: "Phase transition requires a summary"
     });
   }
-  if (options.state.run_id) {
-    const run = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
-    if (!run) {
-      findings.push({
-        code: "run-state-missing",
-        message: "Native change references a missing Run state"
-      });
-    } else if (run.pending || run.status === "waiting") {
-      findings.push({
-        code: "run-action-pending",
-        message: "Native Run has an unresolved pending action"
-      });
-    } else if (run.currentStep !== options.state.phase) {
-      findings.push({
-        code: "run-phase-mismatch",
-        message: `Native Run step ${run.currentStep ?? "(none)"} does not match phase ${options.state.phase}`
-      });
-    }
+  if (options.evidence.confirmed && options.state.phase !== "shape" && options.state.phase !== "build") {
+    findings.push({
+      code: "confirmation-not-shape",
+      message: "Explicit confirmation is only valid while leaving Shape or Build"
+    });
   }
+  findings.push(...await inspectNativeRunConsistency(options.paths, options.state));
   if (options.state.phase === "shape") {
     const brief = await validateNativeBrief(changeDir, options.state.brief);
     const specs = await validateNativeSpecChanges(options.paths, options.state);
     findings.push(...brief.findings, ...specs.findings);
-    if (options.state.confirmation_required && options.state.approval !== "confirmed") {
-      findings.push({
-        code: "shape-confirmation-required",
-        message: "Shape requires explicit user confirmation"
-      });
-    }
   } else if (options.state.phase === "build") {
+    findings.push(
+      ...(await validateNativeBrief(changeDir, options.state.brief)).findings,
+      ...(await validateNativeSpecChanges(options.paths, options.state)).findings
+    );
     findings.push(...await validateBuildArtifacts(options.paths, options.evidence));
   } else if (options.state.phase === "verify") {
     const report = options.evidence.verificationReport ?? options.state.verification_report;
@@ -10240,6 +10846,7 @@ function evidenceHash(evidence) {
   return sha256Text(
     JSON.stringify({
       summary: evidence.summary,
+      confirmed: evidence.confirmed ?? false,
       artifacts: [...evidence.artifacts ?? []].sort(),
       noCodeReason: evidence.noCodeReason ?? null,
       verificationResult: evidence.verificationResult ?? null,
@@ -10248,7 +10855,19 @@ function evidenceHash(evidence) {
   );
 }
 async function advanceNativeChange(options) {
-  await assertNoPendingNativeRootMove(options.paths.projectRoot);
+  return withNativeMutationLock(
+    options.paths,
+    `advance ${options.name}`,
+    () => withNativeTransitionLock(
+      options.paths,
+      options.name,
+      `advance ${options.name}`,
+      () => advanceNativeChangeLocked(options)
+    )
+  );
+}
+async function advanceNativeChangeLocked(options) {
+  await continueNativeTransitionLocked(options.paths, options.name);
   const state = await readNativeChange(options.paths, options.name);
   const previousPhase = state.phase;
   const changeDir = nativeChangeDir(options.paths, options.name);
@@ -10267,9 +10886,13 @@ async function advanceNativeChange(options) {
       };
     }
   }
+  const candidate = {
+    ...state,
+    spec_changes: await reconcileNativeSpecChanges(options.paths, state)
+  };
   const guard = await inspectNativeGuard({
     paths: options.paths,
-    state,
+    state: candidate,
     evidence: options.evidence
   });
   if (!guard.valid) {
@@ -10288,17 +10911,10 @@ async function advanceNativeChange(options) {
     }
     run = startRunWithStorage(
       NATIVE_RUNTIME_PACKAGE,
-      options.runId?.() ?? randomUUID7(),
+      options.runId?.() ?? randomUUID8(),
       NATIVE_RUNTIME_HASH,
       NATIVE_RUN_STORAGE
     );
-    await appendNativeTrajectoryEvent({
-      changeDir,
-      run,
-      type: "run_started",
-      data: { runtime: "comet-native", phase: state.phase },
-      now: options.now
-    });
   }
   if (run.currentStep !== state.phase) {
     throw new Error(`Native Run step ${run.currentStep ?? "(none)"} does not match ${state.phase}`);
@@ -10325,9 +10941,9 @@ async function advanceNativeChange(options) {
   );
   if (!advanced.currentStep) throw new Error("Archive completion must use the archive command");
   const updated = {
-    ...state,
+    ...candidate,
     phase: advanced.currentStep,
-    approval: state.phase === "shape" && state.approval === null && !state.confirmation_required ? "implicit" : state.approval,
+    approval: options.evidence.confirmed ? "confirmed" : state.phase === "shape" && state.approval === null ? "implicit" : state.approval,
     run_id: run.runId,
     ...state.phase === "build" ? { verification_result: "pending" } : {},
     ...state.phase === "verify" ? {
@@ -10335,35 +10951,38 @@ async function advanceNativeChange(options) {
       verification_report: options.evidence.verificationReport ?? state.verification_report
     } : {}
   };
-  await writeRunStateAt(changeDir, advanced, NATIVE_RUN_STORAGE);
-  await writeNativeChange(options.paths, updated);
-  const event = await appendNativeTrajectoryEvent({
-    changeDir,
-    run: advanced,
-    type: "state_transitioned",
-    data: {
-      previousPhase,
-      nextPhase: updated.phase,
-      evidenceHash: hash,
-      summary: options.evidence.summary,
-      artifacts: options.evidence.artifacts ?? [],
-      noCodeReason: options.evidence.noCodeReason ?? null,
-      verificationResult: options.evidence.verificationResult ?? null
-    },
-    now: options.now
-  });
-  await writeNativeCheckpoint({
-    changeDir,
-    run: advanced,
-    trajectoryOffset: event.sequence,
+  const eventData = {
+    previousPhase,
+    nextPhase: updated.phase,
     evidenceHash: hash,
-    now: options.now
+    summary: options.evidence.summary,
+    artifacts: options.evidence.artifacts ?? [],
+    noCodeReason: options.evidence.noCodeReason ?? null,
+    verificationResult: options.evidence.verificationResult ?? null
+  };
+  const journal = await prepareNativeTransition({
+    paths: options.paths,
+    previousState: state,
+    nextState: updated,
+    previousRun: existingRun,
+    nextRun: advanced,
+    evidenceHash: hash,
+    eventData,
+    now: options.now,
+    transitionId: options.transitionId
   });
+  await options.hooks?.afterPrepared?.(journal);
+  const persisted = await continueNativeTransitionLocked(
+    options.paths,
+    options.name,
+    options.hooks
+  );
+  if (!persisted) throw new Error("Native transition journal disappeared before completion");
   return {
-    change: updated,
+    change: persisted,
     previousPhase,
     next: "auto",
-    nextCommand: updated.phase === "archive" ? `comet native archive ${updated.name}` : null,
+    nextCommand: persisted.phase === "archive" ? `comet native archive ${persisted.name}` : null,
     findings: []
   };
 }
@@ -10378,11 +10997,13 @@ Commands:
   root show
   root move <artifact-root>
   new <change-name> [--language en|zh-CN]
+  spec remove <change-name> <capability>
+  spec rebase <change-name> --summary <text>
   list
   show <change-name>
   status [<change-name>]
   select <change-name>
-  next <change-name> --summary <text> [--artifact <path>] [--no-code-reason <text>] [--result pass|fail] [--report <path>]
+  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--result pass|fail] [--report <path>]
   archive <change-name>
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
 `;
@@ -10437,7 +11058,7 @@ function languageOption(args) {
   return language;
 }
 async function projectRootFrom(explicit) {
-  return explicit ? path17.resolve(explicit) : discoverNativeProject(process.cwd());
+  return explicit ? path21.resolve(explicit) : discoverNativeProject(process.cwd());
 }
 async function ensureNativeDirectories(paths) {
   const directories = [
@@ -10450,7 +11071,7 @@ async function ensureNativeDirectories(paths) {
   await Promise.all(
     directories.map(async (directory) => {
       await resolveContainedNativePath(paths.nativeRoot, directory);
-      await fs16.mkdir(directory, { recursive: true });
+      await fs19.mkdir(directory, { recursive: true });
     })
   );
 }
@@ -10547,6 +11168,33 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     return success("new", state, `Created Native change ${state.name}
 `);
   }
+  if (command === "spec") {
+    const subcommand = requiredPositional(rawArgs, "spec subcommand");
+    if (subcommand === "remove") {
+      const name = requiredPositional(rawArgs, "change name");
+      const capability = requiredPositional(rawArgs, "capability");
+      assertNoArguments(rawArgs);
+      const { paths } = await configuredPaths(projectRoot);
+      const state = await markNativeSpecRemoval(paths, name, capability);
+      return success(
+        "spec remove",
+        state,
+        `Marked Native capability ${capability} for removal in ${name}
+`
+      );
+    }
+    if (subcommand === "rebase") {
+      const name = requiredPositional(rawArgs, "change name");
+      const summary = takeOption(rawArgs, "--summary");
+      if (!summary) throw new NativeUsageError("--summary is required");
+      assertNoArguments(rawArgs);
+      const { paths } = await configuredPaths(projectRoot);
+      const state = await rebaseNativeSpecChanges({ paths, name, summary });
+      return success("spec rebase", state, `Rebased Native specs for ${name}
+`);
+    }
+    throw new NativeUsageError(`Unknown spec command: ${subcommand}`);
+  }
   if (command === "list") {
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
@@ -10559,18 +11207,10 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const { paths } = await configuredPaths(projectRoot);
     const state = await readNativeChange(paths, name);
     const changeDir = nativeChangeDir(paths, name);
-    const proposedSpecs = {};
-    for (const spec of state.spec_changes) {
-      if (spec.source) {
-        proposedSpecs[spec.capability] = await fs16.readFile(
-          await resolveNativeArtifactFile(changeDir, spec.source),
-          "utf8"
-        );
-      }
-    }
+    const proposedSpecs = await readNativeProposedSpecs(paths, name);
     return success("show", {
       state,
-      brief: await fs16.readFile(path17.join(changeDir, state.brief), "utf8"),
+      brief: await fs19.readFile(path21.join(changeDir, state.brief), "utf8"),
       proposedSpecs
     });
   }
@@ -10593,6 +11233,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const name = requiredPositional(rawArgs, "change name");
     const summary = takeOption(rawArgs, "--summary");
     if (!summary) throw new NativeUsageError("--summary is required");
+    const confirmed = takeFlag(rawArgs, "--confirmed");
     const artifacts = takeMany(rawArgs, "--artifact");
     const noCodeReason = takeOption(rawArgs, "--no-code-reason");
     const verificationResult = takeOption(rawArgs, "--result");
@@ -10604,6 +11245,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const { paths } = await configuredPaths(projectRoot);
     const evidence = {
       summary,
+      ...confirmed ? { confirmed: true } : {},
       ...artifacts.length > 0 ? { artifacts } : {},
       ...noCodeReason ? { noCodeReason } : {},
       ...verificationResult ? { verificationResult } : {},

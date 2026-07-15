@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createNativeChange,
   nativeChangeDir,
-  writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
 import {
   inspectNativeStatus,
@@ -14,6 +13,7 @@ import {
 } from '../../../domains/comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
+import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
 const brief = `# Outcome
@@ -80,7 +80,7 @@ describe('Native status diagnostics', () => {
     expect(statuses[0]).toMatchObject({
       phase: 'shape',
       selected: false,
-      nextCommand: 'comet native next alpha-change',
+      nextCommand: 'comet native next alpha-change --summary "<summary>"',
     });
     expect(statuses[1]).toMatchObject({ selected: true });
     expect(JSON.stringify(statuses)).not.toMatch(/openspec|superpowers|comet classic/iu);
@@ -104,15 +104,26 @@ describe('Native status diagnostics', () => {
   it('only marks Archive ready after brief, spec, and verification checks pass', async () => {
     await validChange('ready-change');
     const changeDir = nativeChangeDir(paths, 'ready-change');
+    await advanceNativeChange({
+      paths,
+      name: 'ready-change',
+      evidence: { summary: 'shape is ready' },
+    });
+    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+    await advanceNativeChange({
+      paths,
+      name: 'ready-change',
+      evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
+    });
     await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
-    const state = await import('../../../domains/comet-native/native-change.js').then(
-      ({ readNativeChange }) => readNativeChange(paths, 'ready-change'),
-    );
-    await writeNativeChange(paths, {
-      ...state,
-      phase: 'archive',
-      verification_result: 'pass',
-      verification_report: 'verification.md',
+    await advanceNativeChange({
+      paths,
+      name: 'ready-change',
+      evidence: {
+        summary: 'verification passed',
+        verificationResult: 'pass',
+        verificationReport: 'verification.md',
+      },
     });
 
     expect(await inspectNativeStatus(paths, 'ready-change')).toMatchObject({
@@ -136,5 +147,41 @@ describe('Native status diagnostics', () => {
       'not: native\n',
     );
     expect((await listNativeStatus(paths)).map((status) => status.name)).toEqual(['native-only']);
+  });
+
+  it('reports a pending ordinary transition without changing it', async () => {
+    await validChange('pending-transition');
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'pending-transition',
+        evidence: { summary: 'shape is ready' },
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('interrupt transition');
+          },
+        },
+      }),
+    ).rejects.toThrow('interrupt transition');
+
+    expect(await inspectNativeStatus(paths, 'pending-transition')).toMatchObject({
+      phase: 'shape',
+      error: 'Native phase transition recovery is pending',
+    });
+  });
+
+  it('reports a missing Run state after a change has started', async () => {
+    await validChange('missing-run');
+    await advanceNativeChange({
+      paths,
+      name: 'missing-run',
+      evidence: { summary: 'shape is ready' },
+    });
+    await fs.rm(path.join(nativeChangeDir(paths, 'missing-run'), 'runtime', 'run-state.json'));
+
+    expect(await inspectNativeStatus(paths, 'missing-run')).toMatchObject({
+      phase: 'build',
+      error: 'Native change references a missing Run state',
+    });
   });
 });

@@ -1,0 +1,35 @@
+[metadata]
+name = "comet-native-repository-fact"
+description = "Test that Native investigates a repository fact instead of asking the user"
+difficulty = "hard"
+category = "comet-native"
+tags = ["comet-native", "repository-fact", "autonomy", "full-cycle"]
+default_treatments = ["COMET_NATIVE_PHASE1"]
+
+[template]
+required = []
+
+[environment]
+description = "Python word-count workspace whose paragraph rule is documented in the repository."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_native_repository_fact.py"
+target_artifacts = ["docs/comet/archive", "docs/comet/specs/paragraph-counting/spec.md"]
+timeout = 120
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet-native"]
+expected_artifacts = ["comet.config.yaml", "docs/comet/archive", "docs/comet/specs/paragraph-counting/spec.md"]
+require_skill_invocation = true
+rubric_criteria = [
+  "Reads PRODUCT_RULES.md and does not ask the user to restate repository facts",
+  "Records the documented whitespace-only paragraph boundary without explicit user confirmation",
+  "Completes the self-contained Native workflow and archives real verification evidence",
+]
+
+[interaction]
+mode = "none"
+max_turns = 1

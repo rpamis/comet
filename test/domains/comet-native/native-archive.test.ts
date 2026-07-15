@@ -180,6 +180,40 @@ describe('Native archive', () => {
     });
   });
 
+  it('refuses a transactions junction that would stage archive data outside comet', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-transactions-outside-'));
+    try {
+      const specChanges: NativeSpecChange[] = [
+        {
+          capability: 'sessions',
+          operation: 'create',
+          source: 'specs/sessions.md',
+          base_hash: null,
+        },
+      ];
+      const { changeDir } = await prepareArchiveChange({
+        paths,
+        name: 'unsafe-transactions',
+        specChanges,
+      });
+      await fs.mkdir(path.join(changeDir, 'specs'), { recursive: true });
+      await fs.writeFile(path.join(changeDir, 'specs', 'sessions.md'), 'session spec\n');
+      await fs.rm(paths.transactionsDir, { recursive: true, force: true });
+      await fs.symlink(
+        outside,
+        paths.transactionsDir,
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      await expect(archiveNativeChange({ paths, name: 'unsafe-transactions' })).rejects.toThrow(
+        'resolves outside the Native root',
+      );
+      expect(await fs.readdir(outside)).toEqual([]);
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
   it('returns structured base-hash conflicts and leaves canonical specs unchanged', async () => {
     const canonical = path.join(paths.specsDir, 'authentication', 'spec.md');
     await fs.mkdir(path.dirname(canonical), { recursive: true });

@@ -1,0 +1,69 @@
+{
+  "schema": "comet.native.transition.v1",
+  "id": "11111111-2222-4333-8444-555555555555",
+  "change": "add-character-counting",
+  "evidenceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "createdAt": "2026-07-15T00:00:00.000Z",
+  "previousState": {
+    "schema": "comet.native.v1",
+    "name": "add-character-counting",
+    "language": "en",
+    "phase": "shape",
+    "brief": "brief.md",
+    "approval": null,
+    "spec_changes": [],
+    "verification_result": "pending",
+    "verification_report": null,
+    "archived": false,
+    "created_at": "2026-07-15",
+    "run_id": null
+  },
+  "nextState": {
+    "schema": "comet.native.v1",
+    "name": "add-character-counting",
+    "language": "en",
+    "phase": "build",
+    "brief": "brief.md",
+    "approval": "implicit",
+    "spec_changes": [
+      {
+        "capability": "character-counting",
+        "operation": "create",
+        "source": "specs/character-counting/spec.md",
+        "base_hash": null
+      }
+    ],
+    "verification_result": "pending",
+    "verification_report": null,
+    "archived": false,
+    "created_at": "2026-07-15",
+    "run_id": "native-recovery-eval-run"
+  },
+  "previousRun": null,
+  "nextRun": {
+    "runId": "native-recovery-eval-run",
+    "skill": "comet-native-runtime",
+    "skillVersion": "1",
+    "skillHash": "0b3f6bfae0a75f4af9798d3c687c625e0dabcab852d07f5f1f85d746389ab5e9",
+    "orchestration": "deterministic",
+    "currentStep": "build",
+    "iteration": 1,
+    "pending": null,
+    "pendingRef": "runtime/pending-action.json",
+    "trajectoryRef": "runtime/trajectory.jsonl",
+    "contextRef": "runtime/context.md",
+    "artifactsRef": "runtime/artifacts.json",
+    "checkpointRef": "runtime/checkpoints/latest.json",
+    "status": "running",
+    "retries": {}
+  },
+  "eventData": {
+    "previousPhase": "shape",
+    "nextPhase": "build",
+    "evidenceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "summary": "Shape was complete before the process stopped",
+    "artifacts": [],
+    "noCodeReason": null,
+    "verificationResult": null
+  }
+}

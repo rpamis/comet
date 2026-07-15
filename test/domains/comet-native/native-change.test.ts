@@ -40,16 +40,29 @@ describe('Native change store', () => {
       verification_result: 'pending',
       created_at: '2026-07-14',
     });
+    expect(state).not.toHaveProperty('confirmation_required');
     expect(await readNativeChange(paths, state.name)).toEqual(state);
     expect(await fs.stat(path.join(paths.changesDir, state.name, 'specs'))).toBeDefined();
-    expect(await fs.stat(path.join(paths.changesDir, state.name, 'runtime', 'checkpoints'))).toBeDefined();
+    expect(
+      await fs.stat(path.join(paths.changesDir, state.name, 'runtime', 'checkpoints')),
+    ).toBeDefined();
   });
 
   it('round-trips create, replace, and remove spec operations', async () => {
     const state = await createNativeChange({ paths, name: 'update-auth', language: 'en' });
     state.spec_changes = [
-      { capability: 'new-auth', operation: 'create', source: 'specs/new-auth/spec.md', base_hash: null },
-      { capability: 'old-auth', operation: 'replace', source: 'specs/old-auth/spec.md', base_hash: 'a'.repeat(64) },
+      {
+        capability: 'new-auth',
+        operation: 'create',
+        source: 'specs/new-auth/spec.md',
+        base_hash: null,
+      },
+      {
+        capability: 'old-auth',
+        operation: 'replace',
+        source: 'specs/old-auth/spec.md',
+        base_hash: 'a'.repeat(64),
+      },
       { capability: 'legacy-auth', operation: 'remove', base_hash: 'b'.repeat(64) },
     ];
     await writeNativeChange(paths, state);
@@ -86,7 +99,12 @@ describe('Native change store', () => {
       stringify({
         ...state,
         spec_changes: [
-          { capability: 'auth', operation: 'create', source: 'specs/auth/spec.md', base_hash: null },
+          {
+            capability: 'auth',
+            operation: 'create',
+            source: 'specs/auth/spec.md',
+            base_hash: null,
+          },
           { capability: 'auth', operation: 'create', source: '../auth.md', base_hash: null },
         ],
       }),

@@ -1,0 +1,12 @@
+schema: comet.native.v1
+name: add-character-counting
+language: en
+phase: shape
+brief: brief.md
+approval: null
+spec_changes: []
+verification_result: pending
+verification_report: null
+archived: false
+created_at: 2026-07-15
+run_id: null

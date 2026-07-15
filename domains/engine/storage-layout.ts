@@ -10,7 +10,7 @@ export interface RunStorageLayout {
   snapshotsRef: string;
 }
 
-export const CLASSIC_RUN_STORAGE: Readonly<RunStorageLayout> = Object.freeze({
+export const CLASSIC_RUN_STORAGE: Readonly<RunStorageLayout> = /* @__PURE__ */ Object.freeze({
   stateRef: '.comet/run-state.json',
   pendingRef: '.comet/pending-action.json',
   trajectoryRef: '.comet/trajectory.jsonl',
@@ -20,7 +20,7 @@ export const CLASSIC_RUN_STORAGE: Readonly<RunStorageLayout> = Object.freeze({
   snapshotsRef: '.comet/skill-snapshots',
 });
 
-export const NATIVE_RUN_STORAGE: Readonly<RunStorageLayout> = Object.freeze({
+export const NATIVE_RUN_STORAGE: Readonly<RunStorageLayout> = /* @__PURE__ */ Object.freeze({
   stateRef: 'runtime/run-state.json',
   pendingRef: 'runtime/pending-action.json',
   trajectoryRef: 'runtime/trajectory.jsonl',

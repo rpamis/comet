@@ -35,9 +35,9 @@ Establish the Outcome, Scope, Non-goals, Acceptance examples, Constraints and in
 Once understanding is aligned:
 
 - update `brief.md` until it constrains implementation and acceptance;
-- when durable behavior changes, write a complete target specification for every capability, not an incremental patch;
-- record the correct canonical base hash for every create, replace, or remove operation;
-- require explicit confirmation only while a high-impact decision remains unresolved.
+- when durable behavior changes, write each complete target specification at `specs/<capability>/spec.md`, not as an incremental patch;
+- remove a durable capability with `comet native spec remove <change-name> <capability>`; the runtime infers create/replace operations and freezes canonical base hashes;
+- record explicit confirmation only when the user has just confirmed a high-impact decision; while it remains unresolved, keep `[blocking]` and stop.
 
 Then provide a verifiable summary and run:
 
@@ -45,16 +45,18 @@ Then provide a verifiable summary and run:
 comet native next <change-name> --summary <summary>
 ```
 
+Append `--confirmed` when the summary includes a high-impact decision the user just confirmed. Otherwise omit it. The runtime records `approval`; never edit it manually.
+
 ## Build
 
 Choose the simplest reliable approach that satisfies the brief and proposed specifications. The model decides the implementation method, whether a written plan is useful, test granularity, debugging method, and review depth according to risk.
 
-Do not create extra documents or steps merely to satisfy a process. If implementation reveals requirement or specification drift, update the Native artifacts first; pause only when a new high-impact user decision appears.
+Do not create extra documents or steps merely to satisfy a process. If implementation reveals requirement or specification drift, update the Native artifacts first. When a new high-impact user decision appears, mark it `[blocking]` and ask only one question. After the answer, update Decisions, remove the blocker, continue implementation, and pass `--confirmed` when leaving Build.
 
 When complete, provide real artifact references. If no code changed, provide an explicit reason. Then run:
 
 ```text
-comet native next <change-name> --summary <summary> --artifact <project-relative-path>
+comet native next <change-name> --summary <summary> --artifact <project-relative-path> [--confirmed]
 ```
 
 ## Verify
@@ -77,11 +79,11 @@ Archive only after the state reaches Archive with Verify marked pass:
 comet native archive <change-name>
 ```
 
-Archive updates canonical specifications only when their hashes still match, then moves the change into a date-prefixed archive directory. On a conflict or incomplete transaction, stop and follow the recovery reference; never overwrite concurrent changes.
+Archive updates canonical specifications only when their hashes still match, then moves the change into a date-prefixed archive directory. On a canonical conflict, re-read and rewrite the complete target specification, then run `comet native spec rebase <change-name> --summary <summary>` to refresh the baseline and reopen Build for implementation, confirmation, and verification. Never overwrite concurrent changes. Follow the recovery reference for an incomplete transaction.
 
 ## Invariants
 
-- Do not edit `phase`, Run state, trajectory, locks, or transaction journals directly.
+- Do not edit `phase`, `approval`, `spec_changes`, Run state, trajectory, locks, or transaction journals directly.
 - Do not bypass phase checks; advance each phase with `comet native next` or the bundled runtime equivalent.
 - Do not invoke external Skills; the Native core workflow depends only on Comet's bundled runtime.
 - Do not persist hidden reasoning. Persist only summaries, artifact references, command results, hashes, state changes, and timestamps.

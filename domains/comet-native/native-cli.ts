@@ -1,7 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-import { resolveNativeArtifactFile } from './native-artifacts.js';
 import { archiveNativeChange, NativeSpecConflictError } from './native-archive.js';
 import {
   createNativeChange,
@@ -25,6 +24,11 @@ import {
 } from './native-paths.js';
 import { moveNativeRoot } from './native-root-move.js';
 import { selectNativeChange } from './native-selection.js';
+import {
+  markNativeSpecRemoval,
+  readNativeProposedSpecs,
+  rebaseNativeSpecChanges,
+} from './native-specs.js';
 import { advanceNativeChange } from './native-transitions.js';
 import type {
   CometProjectConfig,
@@ -60,11 +64,13 @@ Commands:
   root show
   root move <artifact-root>
   new <change-name> [--language en|zh-CN]
+  spec remove <change-name> <capability>
+  spec rebase <change-name> --summary <text>
   list
   show <change-name>
   status [<change-name>]
   select <change-name>
-  next <change-name> --summary <text> [--artifact <path>] [--no-code-reason <text>] [--result pass|fail] [--report <path>]
+  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--result pass|fail] [--report <path>]
   archive <change-name>
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
 `;
@@ -244,6 +250,31 @@ async function dispatch(
     const state = await createNativeChange({ paths, name, language });
     return success('new', state, `Created Native change ${state.name}\n`);
   }
+  if (command === 'spec') {
+    const subcommand = requiredPositional(rawArgs, 'spec subcommand');
+    if (subcommand === 'remove') {
+      const name = requiredPositional(rawArgs, 'change name');
+      const capability = requiredPositional(rawArgs, 'capability');
+      assertNoArguments(rawArgs);
+      const { paths } = await configuredPaths(projectRoot);
+      const state = await markNativeSpecRemoval(paths, name, capability);
+      return success(
+        'spec remove',
+        state,
+        `Marked Native capability ${capability} for removal in ${name}\n`,
+      );
+    }
+    if (subcommand === 'rebase') {
+      const name = requiredPositional(rawArgs, 'change name');
+      const summary = takeOption(rawArgs, '--summary');
+      if (!summary) throw new NativeUsageError('--summary is required');
+      assertNoArguments(rawArgs);
+      const { paths } = await configuredPaths(projectRoot);
+      const state = await rebaseNativeSpecChanges({ paths, name, summary });
+      return success('spec rebase', state, `Rebased Native specs for ${name}\n`);
+    }
+    throw new NativeUsageError(`Unknown spec command: ${subcommand}`);
+  }
   if (command === 'list') {
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
@@ -256,15 +287,7 @@ async function dispatch(
     const { paths } = await configuredPaths(projectRoot);
     const state = await readNativeChange(paths, name);
     const changeDir = nativeChangeDir(paths, name);
-    const proposedSpecs: Record<string, string> = {};
-    for (const spec of state.spec_changes) {
-      if (spec.source) {
-        proposedSpecs[spec.capability] = await fs.readFile(
-          await resolveNativeArtifactFile(changeDir, spec.source),
-          'utf8',
-        );
-      }
-    }
+    const proposedSpecs = await readNativeProposedSpecs(paths, name);
     return success('show', {
       state,
       brief: await fs.readFile(path.join(changeDir, state.brief), 'utf8'),
@@ -289,6 +312,7 @@ async function dispatch(
     const name = requiredPositional(rawArgs, 'change name');
     const summary = takeOption(rawArgs, '--summary');
     if (!summary) throw new NativeUsageError('--summary is required');
+    const confirmed = takeFlag(rawArgs, '--confirmed');
     const artifacts = takeMany(rawArgs, '--artifact');
     const noCodeReason = takeOption(rawArgs, '--no-code-reason');
     const verificationResult = takeOption(rawArgs, '--result');
@@ -304,6 +328,7 @@ async function dispatch(
     const { paths } = await configuredPaths(projectRoot);
     const evidence: NativeAdvanceEvidence = {
       summary,
+      ...(confirmed ? { confirmed: true } : {}),
       ...(artifacts.length > 0 ? { artifacts } : {}),
       ...(noCodeReason ? { noCodeReason } : {}),
       ...(verificationResult ? { verificationResult } : {}),

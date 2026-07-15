@@ -7,6 +7,8 @@ import {
 } from './native-artifacts.js';
 import { nativeChangeDir, readNativeChange } from './native-change.js';
 import { nativeSelectionFile } from './native-selection.js';
+import { inspectNativeRunConsistency } from './native-run-consistency.js';
+import { inspectPendingNativeTransition } from './native-transition-journal.js';
 import type {
   NativeChangeState,
   NativeFinding,
@@ -33,7 +35,7 @@ export function nativeNextCommand(state: NativeChangeState, archiveReady: boolea
   if (state.phase === 'archive') {
     return archiveReady ? `comet native archive ${state.name}` : null;
   }
-  return `comet native next ${state.name}`;
+  return `comet native next ${state.name} --summary "<summary>"`;
 }
 
 async function statusFindings(
@@ -44,7 +46,21 @@ async function statusFindings(
   const findings = [
     ...(await validateNativeBrief(changeDir, state.brief)).findings,
     ...(await validateNativeSpecChanges(paths, state)).findings,
+    ...(await inspectNativeRunConsistency(paths, state)),
   ];
+  try {
+    if (await inspectPendingNativeTransition(paths, state.name)) {
+      findings.unshift({
+        code: 'transition-incomplete',
+        message: 'Native phase transition recovery is pending',
+      });
+    }
+  } catch (error) {
+    findings.unshift({
+      code: 'transition-invalid',
+      message: `Native transition journal is invalid: ${(error as Error).message}`,
+    });
+  }
   if (state.verification_report) {
     findings.push(
       ...(await validateNativeVerification(changeDir, state.verification_report)).findings,
