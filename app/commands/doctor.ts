@@ -1,8 +1,12 @@
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
 import { fileExists, readDir } from '../../platform/fs/file-system.js';
-import { isCommandAvailable } from '../../domains/integrations/openspec.js';
+import {
+  getOpenSpecVersion,
+  isCommandAvailable,
+  isOpenSpecVersionCompatible,
+  MINIMUM_OPENSPEC_VERSION,
+} from '../../domains/integrations/openspec.js';
 import {
   hasCodegraphProjectIndex,
   resolveCodegraphCommand,
@@ -12,8 +16,16 @@ import {
   getAssetsDir,
   getManagedSkillPaths,
 } from '../../domains/skill/platform-install.js';
-import { PLATFORMS, getPlatformSkillsDirs } from '../../platform/install/platforms.js';
-import { hasPlatformDetectionPath } from '../../platform/install/detect.js';
+import {
+  getPlatformRuleDestinations,
+  inspectCometHooksForPlatform,
+} from '../../domains/skill/platform-inspect.js';
+import {
+  PLATFORMS,
+  getPlatformSkillsDirs,
+  type Platform,
+} from '../../platform/install/platforms.js';
+import { resolveCanonicalSkillRootOwners } from '../../platform/install/skill-root-owner.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import { inspectClassicChange } from '../../domains/comet-classic/classic-diagnostics.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
@@ -51,14 +63,15 @@ async function checkOpenSpecCli(): Promise<CheckResult> {
       message: 'not installed — install with: npm install -g @fission-ai/openspec@latest',
     };
   }
-  try {
-    const version = execSync('openspec --version', { stdio: 'pipe', timeout: 10_000 })
-      .toString()
-      .trim();
-    return { check: 'openspec CLI', status: 'pass', message: `installed (${version})` };
-  } catch {
-    return { check: 'openspec CLI', status: 'pass', message: 'installed' };
+  const version = getOpenSpecVersion();
+  if (!version || !isOpenSpecVersionCompatible(version)) {
+    return {
+      check: 'openspec CLI',
+      status: 'warn',
+      message: `installed (${version || 'version unknown'}), but Comet requires >= ${MINIMUM_OPENSPEC_VERSION} — run: npm install -g @fission-ai/openspec@latest`,
+    };
   }
+  return { check: 'openspec CLI', status: 'pass', message: `installed (${version})` };
 }
 
 function checkEnvironment(projectPath: string, context: DoctorContext): CheckResult {
@@ -167,6 +180,65 @@ function getScopeBases(
   return bases;
 }
 
+async function checkPlatformComponents(
+  baseDir: string,
+  platform: (typeof PLATFORMS)[number],
+  scope: InstallScope,
+): Promise<CheckResult[]> {
+  const results: CheckResult[] = [];
+  const ruleDestinations = await getPlatformRuleDestinations(baseDir, platform, scope);
+  if (ruleDestinations.length > 0) {
+    let present = 0;
+    const inspectionErrors: string[] = [];
+    for (const destination of ruleDestinations) {
+      try {
+        if (await fileExists(destination)) present++;
+      } catch (error) {
+        inspectionErrors.push(`${destination}: ${(error as Error).message}`);
+      }
+    }
+    results.push({
+      check: `rules: ${platform.name} (${scope})`,
+      status:
+        inspectionErrors.length === 0 && present === ruleDestinations.length ? 'pass' : 'warn',
+      message:
+        inspectionErrors.length > 0
+          ? `unable to inspect managed Rule (${inspectionErrors.join('; ')}) — run: comet update --scope ${scope}`
+          : present === ruleDestinations.length
+            ? `complete (${present} files)`
+            : `partial (${present}/${ruleDestinations.length} files) — run: comet update --scope ${scope}`,
+    });
+  }
+
+  if (platform.supportsHooks && platform.hookFormat) {
+    const inspection = await inspectCometHooksForPlatform(baseDir, platform, scope);
+    results.push({
+      check: `hooks: ${platform.name} (${scope})`,
+      status: inspection.present ? 'pass' : 'warn',
+      message: inspection.present
+        ? 'managed Hook present'
+        : `${inspection.error ?? 'managed Hook missing'} — run: comet update --scope ${scope}`,
+    });
+  }
+
+  return results;
+}
+
+async function getPlatformsForSkillInspection(
+  baseDir: string,
+  scope: InstallScope,
+  doctorScope: DoctorScope,
+): Promise<Array<{ platform: Platform; inspectComponents: boolean }>> {
+  return (
+    await resolveCanonicalSkillRootOwners(baseDir, scope, {
+      respectDetectionPaths: doctorScope === 'auto',
+    })
+  ).map(({ platform, hasOwnershipEvidence, sharedCanonicalRoot }) => ({
+    platform,
+    inspectComponents: !sharedCanonicalRoot || hasOwnershipEvidence,
+  }));
+}
+
 async function checkSkillCompleteness(
   projectPath: string,
   scope: DoctorScope,
@@ -183,8 +255,8 @@ async function checkSkillCompleteness(
     global: { hasInstall: false, hasComplete: false },
   };
   for (const base of getScopeBases(projectPath, scope, context)) {
-    for (const platform of PLATFORMS) {
-      if (scope === 'auto' && !(await hasPlatformDetectionPath(base.baseDir, platform))) continue;
+    const platforms = await getPlatformsForSkillInspection(base.baseDir, base.scope, scope);
+    for (const { platform, inspectComponents } of platforms) {
       const skillsDirs = getPlatformSkillsDirs(platform, base.scope);
       const canonicalSkillsDir = skillsDirs[0];
       let detectedSkillsDir: string | undefined;
@@ -232,6 +304,9 @@ async function checkSkillCompleteness(
                 message: `partial (${present.length}/${total} files; missing ${missing.length}) — run: comet update --scope ${base.scope}`,
               },
       );
+      if (inspectComponents) {
+        results.push(...(await checkPlatformComponents(base.baseDir, platform, base.scope)));
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 ---
 name: comet
-description: 按项目配置把 /comet 路由到永久的 Comet Native 或 Comet Classic 入口。
+description: "当用户调用 /comet 或需要恢复 active Comet change 时，按项目配置路由到永久的 Comet Native 或 Comet Classic 入口。"
 ---
 
 # Comet 入口

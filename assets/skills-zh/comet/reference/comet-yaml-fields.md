@@ -22,6 +22,7 @@ auto_transition: true
 isolation: branch
 verify_mode: light
 verify_result: pending
+verify_failures: 0
 verification_report: null
 branch_status: pending
 created_at: 2026-05-26
@@ -43,14 +44,15 @@ archived: false
 | `build_mode` | 已选择的执行方式，可为空。取值：`subagent-driven-development`（隔离后台 subagent 逐任务实现并审查）、`executing-plans`（主会话按计划顺序执行）、`direct`（主会话直接编码，默认仅 hotfix/tweak 允许，full workflow 需 `direct_override: true`） |
 | `build_pause` | build 阶段内部暂停点。`null` 表示无暂停，`plan-ready` 表示 plan 已生成，用户选择切换模型后暂停 |
 | `subagent_dispatch` | `null` 或 `confirmed`。仅当已确认当前平台存在真实后台 subagent / Task / multi-agent 调度能力时，`build_mode: subagent-driven-development` 才能写入并用于离开 build 阶段 |
-| `tdd_mode` | `tdd` 或 `direct`。full workflow 离开 build 阶段前必须已选择。`tdd` 强制每个任务先写失败测试再实现；`direct` 不强制 TDD。hotfix/tweak 默认 `direct` |
+| `tdd_mode` | `tdd` 或 `direct`。full workflow 离开 build 阶段前必须已选择。`tdd` 强制每个任务先写失败测试再实现；`direct` 不强制逐任务 TDD，但仍需相关测试与 bug 回归证据。hotfix/tweak 默认 `direct` |
 | `review_mode` | `off`、`standard` 或 `thorough`。full workflow 离开 build 阶段前必须已选择；hotfix/tweak 默认 `off` |
-| `isolation` | `branch` 或 `worktree`，工作区隔离方式。full 初始化可为 `null`，但只允许持续到 `/comet-build` Step 3 前；hotfix/tweak 默认 `branch` |
+| `isolation` | `current`、`branch` 或 `worktree`。full 初始化可为 `null`，离开 build 前必须实际创建/选择 `branch` 或 `worktree`；hotfix/tweak 默认 `current`，不得在未创建分支时虚构为 `branch` |
 | `verify_mode` | `light` 或 `full`，可为空 |
 | `auto_transition` | `true` 或 `false`。只控制阶段守卫推进 phase 后是否自动调用下一个 skill；`false` 时由 `comet-state next` 输出 `manual`，暂停下一 skill 调用，但不阻止 phase 字段更新 |
 | `verify_result` | `pending`、`pass` 或 `fail` |
+| `verify_failures` | 机器维护的连续验证失败次数；`verify-fail` 自动加一，`verify-pass` 或 `archive-reopen` 重置为 `0`。达到 `3` 后下一次失败必须进入超限策略决策 |
 | `verification_report` | 验证报告文件路径，verify 通过前必须指向已存在文件 |
-| `branch_status` | `pending` 或 `handled`，分支处理完成后设为 `handled` |
+| `branch_status` | `pending` 或 `handled`。verify 和 archive 执行期间保持 `pending`；归档改动提交且用户选择的分支处理完成后设为 `handled` |
 | `created_at` | change 创建日期（init 时自动写入），格式 `YYYY-MM-DD` |
 | `verified_at` | 验证通过时间，可为空 |
 | `archive_confirmation` | `null`、`pending` 或 `confirmed`。`verify-pass` 进入 archive 阶段时写入 `pending`；用户在 `/comet-archive` 最终确认选择「确认归档」后，`archive-confirm` transition 写入 `confirmed`；`archive-reopen` 会清空该字段，防止复用旧确认 |
@@ -64,7 +66,7 @@ archived: false
 
 ## 状态机硬约束
 
-- `build → verify` 前，`isolation` 必须是 `branch` 或 `worktree`
+- full workflow 的 `build → verify` 前，`isolation` 必须是 `branch` 或 `worktree`；hotfix/tweak 可使用 `current`
 - `build → verify` 前，`build_mode` 必须已选择
 - `build_mode: subagent-driven-development` 必须同时有 `subagent_dispatch: confirmed`
 - full workflow 离开 build 阶段前 `tdd_mode` 必须已选择为 `tdd` 或 `direct`

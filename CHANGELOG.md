@@ -22,7 +22,18 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Skill trigger and decision authoring**: Built-in phase Skills and Creator-generated internal Node Skills now declare explicit entry/runtime boundaries, while Creator templates classify automatic handling, stop conditions, and manual handoffs before emitting user pauses. This prevents ordinary tasks, guard failures, capability gaps, and single-option recovery paths from invoking internal phases or prompting unnecessarily.
+- **Comet workflow checkpoints**: Clear requests now skip redundant pre-artifact naming confirmation, Build preflights executable capabilities and combines adjacent configuration choices into one decision, and manual handoffs return control without asking again. Full workflows also initialize recoverable state before artifact generation, persist large-PRD batch manifests, and keep resumability independent of unwritten conversation state.
+- **Verification repair loops and archive ownership**: Verification now automatically returns the first three actionable failures to Build, persists the consecutive failure count across resumes, pauses only for real tradeoffs or retry-limit decisions, and keeps CRITICAL and IMPORTANT findings non-waivable. Verification records evidence without finishing the branch, while archive commits only attributed paths before branch handling so the final branch or PR includes merged specs and archive metadata.
+- **Preset execution semantics**: Hotfix and tweak workflows now record truthful current-workspace isolation, retain regression testing in direct mode, avoid escalating on task count alone, and discard lightweight execution settings when upgraded to the full workflow.
 - **Dashboard artifact preview**: Artifact drawers now render full Markdown (tables, quotes, task lists) with syntax highlighting and Mermaid diagrams instead of the previous subset renderer. Side-panel preview stays distraction-free without a TOC; fullscreen mode adds an expand/collapse control and shows the table of contents when headings exist, with unique heading anchors for duplicate titles and properly rendered inline formatting in headings. Long artifact paths wrap in the drawer header and can be copied with a one-click control. `.comet.yaml` / YAML and handoff / checkpoint JSON artifacts render as structured tables (scalars as key-value rows; uniform object arrays such as `files` as dedicated data tables) instead of raw text.
+
+### Fixed
+
+- **OpenSpec workflow compatibility**: Comet now requires OpenSpec 1.5 or newer, reports incompatible installations in setup and Doctor, drives `/comet-open` from `applyRequires` and the live schema, validates repository-local paths and concrete outputs, and resumes persisted split batches without recreating completed changes.
+- **Codex hook configuration**: Project and global Codex installs now write phase guard hooks to the supported `.codex/hooks.json` location and safely migrate Comet-managed entries from the previously generated `settings.local.json` without changing user-defined hooks or settings ([#199](https://github.com/rpamis/comet/issues/199)).
+- **Standard Superpowers artifacts**: Classic write hooks now accept first-time design, plan, and verification artifacts in their standard workflow directories without requiring Comet-specific filename suffixes, while selected-change, phase, and occupied-slot checks still prevent ambiguous or duplicate writes.
+- **Skill lifecycle integrity**: Comet now preserves malformed user Hook configuration, reports Skill, Rule, and Hook failures consistently across init, update, Doctor, and uninstall, and avoids registering partial installations as complete.
 
 ### Security
 

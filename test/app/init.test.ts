@@ -155,7 +155,7 @@ describe('init command helpers', () => {
     }
   });
 
-  it('rejects invalid Pi settings without writing a command extension', async () => {
+  it('counts invalid Pi settings without writing a command extension', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-pi-invalid-'));
     const piPlatform = PLATFORMS.find((platform) => platform.id === 'pi')!;
     const settingsPath = path.join(tmpDir, '.pi', 'settings.json');
@@ -165,9 +165,14 @@ describe('init command helpers', () => {
       await fs.mkdir(path.dirname(settingsPath), { recursive: true });
       await fs.writeFile(settingsPath, '{ invalid', 'utf-8');
 
-      await expect(
-        copyCometSkillsForPlatform(tmpDir, piPlatform, true, 'skills', 'project'),
-      ).rejects.toThrow(/invalid Pi settings/i);
+      const result = await copyCometSkillsForPlatform(
+        tmpDir,
+        piPlatform,
+        true,
+        'skills',
+        'project',
+      );
+      expect(result.failed).toBe(1);
       await expect(fs.readFile(settingsPath, 'utf-8')).resolves.toBe('{ invalid');
       await expect(fs.access(extensionPath)).rejects.toThrow();
     } finally {

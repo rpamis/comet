@@ -35,6 +35,10 @@ export interface Platform {
     | 'kiro'
     | 'qoder'
     | 'codebuddy';
+  /** Hook config filename relative to the platform config root when it differs from the format default. */
+  hookConfigFile?: string;
+  /** Historical hook config filenames checked during migration and uninstall. */
+  legacyHookConfigFiles?: string[];
 }
 
 export function getPlatformSkillsDir(platform: Platform, scope: InstallScope): string {
@@ -89,6 +93,8 @@ export const PLATFORMS: Platform[] = [
     rulesFormat: 'md',
     supportsHooks: true,
     hookFormat: 'claude-code',
+    hookConfigFile: 'hooks.json',
+    legacyHookConfigFiles: ['settings.local.json'],
   },
   {
     id: 'opencode',

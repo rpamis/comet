@@ -9,6 +9,9 @@ import {
   readJson,
   writeFile,
   readDir,
+  removeFile,
+  removeDir,
+  isDirEmpty,
 } from '../../platform/fs/file-system.js';
 
 describe('file-system utils', () => {
@@ -146,6 +149,17 @@ describe('file-system utils', () => {
     it('returns false for a non-existent path', async () => {
       expect(await fileExists(path.join(tmpDir, 'nope'))).toBe(false);
     });
+
+    it('propagates access permission errors', async () => {
+      const error = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const accessSpy = vi.spyOn(fs, 'access').mockRejectedValue(error);
+
+      try {
+        await expect(fileExists(path.join(tmpDir, 'blocked'))).rejects.toBe(error);
+      } finally {
+        accessSpy.mockRestore();
+      }
+    });
   });
 
   describe('readJson', () => {
@@ -200,6 +214,45 @@ describe('file-system utils', () => {
 
       try {
         await expect(readDir(tmpDir)).rejects.toThrow('permission denied');
+      } finally {
+        readdirSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('removal failures', () => {
+    it('propagates removeFile permission errors', async () => {
+      const error = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const unlinkSpy = vi.spyOn(fs, 'unlink').mockRejectedValue(error);
+
+      try {
+        await expect(removeFile(path.join(tmpDir, 'blocked.txt'))).rejects.toBe(error);
+      } finally {
+        unlinkSpy.mockRestore();
+      }
+    });
+
+    it('propagates removeDir permission errors', async () => {
+      const dirPath = path.join(tmpDir, 'blocked');
+      await fs.mkdir(dirPath);
+      const error = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const rmSpy = vi.spyOn(fs, 'rm').mockRejectedValue(error);
+
+      try {
+        await expect(removeDir(dirPath)).rejects.toBe(error);
+      } finally {
+        rmSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('isDirEmpty', () => {
+    it('propagates readdir permission errors', async () => {
+      const error = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const readdirSpy = vi.spyOn(fs, 'readdir').mockRejectedValue(error);
+
+      try {
+        await expect(isDirEmpty(path.join(tmpDir, 'blocked'))).rejects.toBe(error);
       } finally {
         readdirSpy.mockRestore();
       }

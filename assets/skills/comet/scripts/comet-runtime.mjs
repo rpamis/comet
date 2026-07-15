@@ -7739,7 +7739,7 @@ function fullBuildConfigured(classic) {
 }
 function presetBuildConfigured(classic) {
   return Boolean(
-    classic.buildMode === "direct" && classic.tddMode === "direct" && classic.isolation === "branch" && classic.verifyMode === "light"
+    classic.buildMode === "direct" && classic.tddMode === "direct" && classic.isolation !== null && classic.verifyMode === "light"
   );
 }
 function resolveBuild(profile, classic, evidence) {
@@ -7808,7 +7808,7 @@ var BUILD_PAUSES = ["plan-ready"];
 var SUBAGENT_DISPATCH = ["confirmed"];
 var TDD_MODES = ["tdd", "direct"];
 var REVIEW_MODES = ["off", "standard", "thorough"];
-var ISOLATIONS = ["branch", "worktree"];
+var ISOLATIONS = ["current", "branch", "worktree"];
 var VERIFY_MODES = ["light", "full"];
 var VERIFY_RESULTS = ["pending", "pass", "fail"];
 var BRANCH_STATUSES = ["pending", "handled"];
@@ -7830,6 +7830,7 @@ var CLASSIC_WIRE_KEYS = [
   "design_doc",
   "plan",
   "verify_result",
+  "verify_failures",
   "verification_report",
   "branch_status",
   "created_at",
@@ -7891,6 +7892,14 @@ function booleanValue(doc, key, nullable = true) {
   }
   return value;
 }
+function nonNegativeInteger(doc, key, fallback = 0) {
+  const value = doc[key];
+  if (value === null || value === void 0 || value === "") return fallback;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid Classic state: ${key} must be a non-negative integer`);
+  }
+  return value;
+}
 function relativePath(doc, key) {
   const value = nullableString(doc, key);
   if (value === null) return null;
@@ -7939,6 +7948,7 @@ function classicStateFromDocument(doc) {
     designDoc: relativePath(doc, "design_doc"),
     plan: relativePath(doc, "plan"),
     verifyResult: enumValue(doc, "verify_result", VERIFY_RESULTS, false),
+    verifyFailures: nonNegativeInteger(doc, "verify_failures"),
     verificationReport: relativePath(doc, "verification_report"),
     branchStatus: enumValue(doc, "branch_status", BRANCH_STATUSES),
     createdAt: nullableString(doc, "created_at"),
@@ -8003,6 +8013,7 @@ function classicStateToDocument(state) {
     design_doc: state.designDoc,
     plan: state.plan,
     verify_result: state.verifyResult,
+    verify_failures: state.verifyFailures,
     verification_report: state.verificationReport,
     branch_status: state.branchStatus,
     created_at: state.createdAt,
@@ -9395,7 +9406,7 @@ var CLASSIC_TRANSITION_TABLE = {
   "verify-pass": {
     event: "verify-pass",
     from: "verify",
-    guardRefs: ["verification-report-present", "branch-status-handled"]
+    guardRefs: ["verification-report-present"]
   },
   "verify-fail": {
     event: "verify-fail",
@@ -9455,18 +9466,22 @@ function applyClassicTransition(current, event, options = {}) {
     const preserveEvidence = classic.verifyResult === "fail";
     setField(classic, effects, "phase", "verify");
     setField(classic, effects, "verifyResult", "pending");
+    setField(classic, effects, "branchStatus", "pending");
     if (!preserveEvidence) {
       setField(classic, effects, "verificationReport", null);
-      setField(classic, effects, "branchStatus", "pending");
     }
   } else if (event === "verify-pass") {
     setField(classic, effects, "verifyResult", "pass");
+    setField(classic, effects, "verifyFailures", 0);
     setField(classic, effects, "phase", "archive");
     setField(classic, effects, "verifiedAt", dateOnly(now));
     setField(classic, effects, "archiveConfirmation", "pending");
+    setField(classic, effects, "branchStatus", "pending");
   } else if (event === "verify-fail") {
     setField(classic, effects, "verifyResult", "fail");
+    setField(classic, effects, "verifyFailures", classic.verifyFailures + 1);
     setField(classic, effects, "phase", "build");
+    setField(classic, effects, "branchStatus", "pending");
   } else if (event === "preset-escalate") {
     if (classic.workflow !== "hotfix" && classic.workflow !== "tweak") {
       throw new Error(
@@ -9477,6 +9492,14 @@ function applyClassicTransition(current, event, options = {}) {
     setField(classic, effects, "classicProfile", "full");
     setField(classic, effects, "phase", "design");
     setField(classic, effects, "designDoc", null);
+    setField(classic, effects, "buildPause", null);
+    setField(classic, effects, "buildMode", null);
+    setField(classic, effects, "subagentDispatch", null);
+    setField(classic, effects, "tddMode", null);
+    setField(classic, effects, "reviewMode", null);
+    setField(classic, effects, "isolation", null);
+    setField(classic, effects, "verifyMode", null);
+    setField(classic, effects, "directOverride", null);
   } else if (event === "archive-confirm") {
     if (classic.verifyResult !== "pass") {
       throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
@@ -9486,9 +9509,11 @@ function applyClassicTransition(current, event, options = {}) {
   } else if (event === "archive-reopen") {
     if (classic.archived) throw new Error(`Cannot apply ${event}: already archived`);
     setField(classic, effects, "verifyResult", "pending");
+    setField(classic, effects, "verifyFailures", 0);
     setField(classic, effects, "phase", "verify");
     setField(classic, effects, "verifiedAt", null);
     setField(classic, effects, "archiveConfirmation", null);
+    setField(classic, effects, "branchStatus", "pending");
   } else {
     if (classic.verifyResult !== "pass") {
       throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
@@ -10100,7 +10125,7 @@ var ENUMS = {
   subagent_dispatch: ["confirmed"],
   tdd_mode: ["tdd", "direct"],
   review_mode: ["off", "standard", "thorough"],
-  isolation: ["branch", "worktree"],
+  isolation: ["current", "branch", "worktree"],
   verify_mode: ["light", "full"],
   auto_transition: ["true", "false"],
   verify_result: ["pending", "pass", "fail"],
@@ -10193,6 +10218,12 @@ var classicValidateCommand = async (args) => {
       fail3(`${field2}='${value}' is not valid. Expected: ${values.join(" ")}`);
     }
   }
+  if (Object.prototype.hasOwnProperty.call(record, "verify_failures")) {
+    const value = record.verify_failures;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+      fail3(`verify_failures='${text(value)}' is not a non-negative integer`);
+    }
+  }
   for (const field2 of ["design_doc", "plan", "handoff_context"]) {
     const value = text(record[field2]);
     if (value && !await exists3(path14.resolve(value))) {
@@ -10229,8 +10260,9 @@ async function fileExists3(filePath) {
   try {
     await fs13.access(filePath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 async function readDir(dirPath) {
@@ -10243,6 +10275,9 @@ async function readDir(dirPath) {
     }
     throw error;
   }
+}
+function isNotFoundError(error) {
+  return error?.code === "ENOENT";
 }
 
 // domains/comet-classic/classic-project-config.ts
@@ -10649,11 +10684,14 @@ Next: check off corresponding completed plan tasks, then commit the plan update.
 }
 async function isolationSelected(changeDir, change) {
   const isolation = await readField(changeDir, "isolation");
+  const workflow = await readField(changeDir, "workflow");
   if (isolation === "branch" || isolation === "worktree") return pass();
+  if (isolation === "current" && (workflow === "hotfix" || workflow === "tweak")) return pass();
+  const allowedValues = workflow === "full" ? "<branch|worktree>" : "<current|branch|worktree>";
   return fail(
-    `isolation must be branch or worktree, got '${isolation || "null"}'
-Next: ask the user to choose branch or worktree, create the chosen isolation, then run:
-  node "$COMET_STATE" set ${change} isolation <branch|worktree>`
+    `isolation must be ${workflow === "full" ? "branch or worktree" : "current, branch, or worktree"}, got '${isolation || "null"}'
+Next: choose a valid workspace mode, prepare it when needed, then run:
+  comet state set ${change} isolation ${allowedValues}`
   );
 }
 async function buildModeSelected(changeDir, change) {
@@ -10663,7 +10701,7 @@ async function buildModeSelected(changeDir, change) {
   return fail(
     `build_mode must be selected before leaving build, got '${buildMode || "null"}'
 Next: ask the user to choose an execution mode, then run:
-  node "$COMET_STATE" set ${change} build_mode <subagent-driven-development|executing-plans>`
+  comet state set ${change} build_mode <subagent-driven-development|executing-plans>`
   );
 }
 async function buildModeAllowedForWorkflow(changeDir) {
@@ -10685,9 +10723,9 @@ async function subagentDispatchConfirmed(changeDir, change) {
   return fail(
     `subagent_dispatch must be confirmed before using build_mode=subagent-driven-development
 Next: confirm the current platform has a real background subagent/Task/multi-agent dispatcher, then run:
-  node "$COMET_STATE" set ${change} subagent_dispatch confirmed
-Or ask the user to switch to executing-plans and run:
-  node "$COMET_STATE" set ${change} build_mode executing-plans`
+  comet state set ${change} subagent_dispatch confirmed
+If dispatch is unavailable, return to /comet-build Step 2 with subagent-driven-development removed. When executing-plans is the only valid mode, run:
+  comet state set ${change} build_mode executing-plans`
   );
 }
 async function tddModeSelected(changeDir, change) {
@@ -10698,7 +10736,7 @@ async function tddModeSelected(changeDir, change) {
   return fail(
     `tdd_mode must be tdd or direct for full workflow, got '${tddMode || "null"}'
 Next: ask the user to choose TDD enforcement level, then run:
-  node "$COMET_STATE" set ${change} tdd_mode <tdd|direct>`
+  comet state set ${change} tdd_mode <tdd|direct>`
   );
 }
 async function reviewModeSelected(changeDir, change) {
@@ -10711,7 +10749,7 @@ async function reviewModeSelected(changeDir, change) {
   return fail(
     `review_mode must be off, standard, or thorough before leaving build, got '${reviewMode || "null"}'
 Next: ask the user to choose review strength, then run:
-  node "$COMET_STATE" set ${change} review_mode <off|standard|thorough>`
+  comet state set ${change} review_mode <off|standard|thorough>`
   );
 }
 async function verificationReportExists(changeDir) {
@@ -10742,7 +10780,7 @@ async function designDocRecorded(changeDir, change) {
   if (designDoc && designDoc !== "null" && existsSync(designDoc)) return pass();
   return fail(
     `design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design.
-Next: create the Design Doc and run: node "$COMET_STATE" set ${change} design_doc <path>`
+Next: create the Design Doc and run: comet state set ${change} design_doc <path>`
   );
 }
 async function designHandoffContextValid(changeDir, change) {
@@ -10757,13 +10795,13 @@ Next: run node "$COMET_HANDOFF" ${change} design --write before invoking Superpo
   if (!await nonempty(context)) {
     return fail(
       `handoff_context does not point to a non-empty file: ${context}
-Next: regenerate the design handoff with comet-handoff.mjs.`
+Next: regenerate the design handoff with comet handoff ${change} design --write.`
     );
   }
   if (!/^[a-f0-9]{64}$/u.test(recordedHash)) {
     return fail(
       `handoff_hash is missing or invalid: ${recordedHash || "null"}
-Next: regenerate the design handoff with comet-handoff.mjs.`
+Next: regenerate the design handoff with comet handoff ${change} design --write.`
     );
   }
   const actualHash = await computeHandoffHash(changeDir);
@@ -10772,14 +10810,14 @@ Next: regenerate the design handoff with comet-handoff.mjs.`
       `OpenSpec artifacts changed after handoff was generated.
 Expected handoff_hash: ${recordedHash}
 Actual handoff_hash:   ${actualHash}
-Next: rerun comet-handoff.mjs so Superpowers receives the current OpenSpec context.`
+Next: run comet handoff ${change} design --write so Superpowers receives the current OpenSpec context.`
     );
   }
   const markdown = `${context.replace(/\.json$/u, "")}.md`;
   if (!await nonempty(markdown)) {
     return fail(
       `design handoff markdown is missing or empty: ${markdown}
-Next: regenerate the design handoff with comet-handoff.mjs.`
+Next: regenerate the design handoff with comet handoff ${change} design --write.`
     );
   }
   return pass();
@@ -11012,11 +11050,7 @@ async function guardVerifyChecks(output, changeDir, change, run) {
       const report = await readField(changeDir, "verification_report");
       if (!report || report === "null" || !await exists4(report)) return pass();
       return documentLanguageMatchesConfigured(changeDir, report);
-    }),
-    check(
-      "branch_status=handled",
-      async () => await branchStatusHandled(changeDir) ? pass() : fail("")
-    )
+    })
   ]);
 }
 async function guardArchiveChecks(output, changeDir) {
@@ -11030,7 +11064,11 @@ async function guardArchiveChecks(output, changeDir) {
       "design.md exists",
       async () => await nonempty(path16.join(changeDir, "design.md")) ? pass() : fail("")
     ),
-    check("tasks.md all tasks checked", () => tasksAllDone(changeDir))
+    check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
+    check(
+      "branch_status=handled",
+      async () => await branchStatusHandled(changeDir) ? pass() : fail("")
+    )
   ]);
 }
 async function applyStateUpdate(output, change, changeDir, phase, context) {
@@ -11741,6 +11779,10 @@ function inputTarget() {
 function normalized(value) {
   return value.replaceAll("\\", "/").replace(/\/+/gu, "/");
 }
+function comparisonKey(value) {
+  const normalizedValue = normalized(value);
+  return process.platform === "win32" ? normalizedValue.toLowerCase() : normalizedValue;
+}
 function parseProjectRoot(args) {
   const index = args.indexOf("--project-root");
   const value = index >= 0 ? args[index + 1] : void 0;
@@ -11795,12 +11837,17 @@ async function projectRelative(target, projectRoot2) {
 }
 async function loadGoverningChange(changeDir) {
   try {
-    const runtime = await ensureStrictClassicRuntimeRun(changeDir);
+    const projection = await readClassicState(changeDir, { migrate: false });
+    const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+    if (unknownKeys.length > 0) {
+      throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(", ")}`);
+    }
+    if (!projection.classic) throw new Error("Classic state projection is unavailable");
     return {
       changeDir,
-      phase: runtime.classic.phase,
-      classic: runtime.classic,
-      archived: runtime.classic.archived
+      phase: projection.classic.phase,
+      classic: projection.classic,
+      archived: projection.classic.archived
     };
   } catch {
     const legacy = await readLegacyState(changeDir);
@@ -11830,7 +11877,41 @@ async function activeChanges(projectRoot2) {
   return governingChanges;
 }
 function isSuperpowersArtifactPath(relativePath2) {
-  return relativePath2.startsWith("docs/superpowers/");
+  return comparisonKey(relativePath2).startsWith("docs/superpowers/");
+}
+var SUPERPOWERS_ARTIFACT_SLOTS = [
+  {
+    prefix: "docs/superpowers/specs/",
+    field: "designDoc",
+    wireField: "design_doc",
+    phase: "design"
+  },
+  {
+    prefix: "docs/superpowers/plans/",
+    field: "plan",
+    wireField: "plan",
+    phase: "build"
+  },
+  {
+    prefix: "docs/superpowers/reports/",
+    field: "verificationReport",
+    wireField: "verification_report",
+    phase: "verify"
+  }
+];
+function standardSuperpowersArtifactSlot(relativePath2) {
+  const key = comparisonKey(relativePath2);
+  const slot = SUPERPOWERS_ARTIFACT_SLOTS.find((candidate) => key.startsWith(candidate.prefix));
+  if (!slot) return null;
+  const fileName = key.slice(slot.prefix.length);
+  if (!fileName || fileName.includes("/") || !fileName.endsWith(".md")) return null;
+  return slot;
+}
+function superpowersArtifactValue(governing, slot) {
+  return governing.classic?.[slot.field] ?? null;
+}
+function allowsFirstSuperpowersArtifactWrite(governing, slot) {
+  return governing.classic !== null && governing.phase === slot.phase && !superpowersArtifactValue(governing, slot);
 }
 function allowsSuperpowersArtifacts(governing) {
   return governing.phase === "design" || governing.phase === "build" || governing.phase === "verify";
@@ -11856,7 +11937,7 @@ function matchesRecordedSuperpowersArtifact(relativePath2, governing) {
     governing.classic?.verificationReport
   ];
   return artifactPaths.some(
-    (artifactPath) => artifactPath && normalized(artifactPath) === relativePath2
+    (artifactPath) => artifactPath && comparisonKey(artifactPath) === comparisonKey(relativePath2)
   );
 }
 function matchesSuperpowersArtifactName(relativePath2, changeName) {
@@ -11872,7 +11953,7 @@ async function superpowersArtifactGoverningChange(relativePath2, projectRoot2) {
   const recorded = active.find(
     (governing) => matchesRecordedSuperpowersArtifact(relativePath2, governing)
   );
-  if (recorded) return recorded;
+  if (recorded) return { governing: recorded, match: "recorded" };
   const eligible = active.filter(allowsSuperpowersArtifacts);
   const named = eligible.filter((governing) => {
     const name = governingChangeName(governing);
@@ -11880,7 +11961,7 @@ async function superpowersArtifactGoverningChange(relativePath2, projectRoot2) {
   }).sort(
     (a, b) => (governingChangeName(b)?.length ?? 0) - (governingChangeName(a)?.length ?? 0)
   )[0];
-  if (named) return named;
+  if (named) return { governing: named, match: "named" };
   return null;
 }
 async function repoSourceGoverningChange(projectRoot2, relativePath2) {
@@ -11928,7 +12009,26 @@ async function governingChange(relativePath2, projectRoot2) {
   }
   if (isSuperpowersArtifactPath(relativePath2)) {
     const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot2);
-    if (superpowers) return { ...superpowers, superpowersArtifact: "matched" };
+    if (superpowers?.match === "recorded") {
+      return { ...superpowers.governing, superpowersArtifact: "matched" };
+    }
+    const slot = standardSuperpowersArtifactSlot(relativePath2);
+    if (superpowers) {
+      return slot ? {
+        ...superpowers.governing,
+        superpowersArtifact: allowsFirstSuperpowersArtifactWrite(superpowers.governing, slot) ? "matched" : "unmatched",
+        superpowersSlot: slot
+      } : { ...superpowers.governing, superpowersArtifact: "matched" };
+    }
+    if (slot) {
+      const candidate = await repoSourceGoverningChange(projectRoot2, relativePath2);
+      if (!candidate || "blockedResult" in candidate) return candidate;
+      return {
+        ...candidate,
+        superpowersArtifact: allowsFirstSuperpowersArtifactWrite(candidate, slot) ? "matched" : "unmatched",
+        superpowersSlot: slot
+      };
+    }
     const fallback = (await activeChanges(projectRoot2))[0] ?? null;
     return fallback ? { ...fallback, superpowersArtifact: "unmatched" } : null;
   }
@@ -11976,7 +12076,7 @@ function blocked(relativePath2, phase) {
     "  BLOCKED: source writes are not allowed during design",
     "  This phase does not allow source writes",
     "  ALLOWED: run brainstorming, create the Design Doc, and run guard",
-    "  NEXT: finish the Design Doc, then run comet-guard design --apply to enter build"
+    "  NEXT: finish the Design Doc, then run comet guard <change-name> design --apply to enter build"
   ] : [
     "  BLOCKED: source writes are not allowed during archive",
     "  This phase does not allow source writes",
@@ -12017,7 +12117,25 @@ function blockedMissingDesignDoc(relativePath2) {
     ].join("\n")
   );
 }
-function blockedUnmatchedSuperpowersArtifact(relativePath2, phase) {
+function blockedUnmatchedSuperpowersArtifact(relativePath2, governing) {
+  const slot = governing.superpowersSlot;
+  const recorded = slot ? superpowersArtifactValue(governing, slot) : null;
+  const details = slot ? governing.phase !== slot.phase ? [
+    `  BLOCKED: ${slot.wireField} cannot be first-written in phase ${governing.phase}`,
+    `  Expected phase: ${slot.phase}`,
+    "  NEXT: resume the matching Comet phase or use an already recorded artifact path"
+  ] : recorded ? [
+    `  BLOCKED: ${slot.wireField} is already recorded for this change`,
+    `  Recorded path: ${recorded}`,
+    "  NEXT: write the recorded artifact or explicitly correct the state path"
+  ] : [
+    "  BLOCKED: standard Superpowers artifact state is incomplete",
+    "  NEXT: validate the active change state, then retry the matching phase"
+  ] : [
+    "  BLOCKED: unmatched Superpowers artifact",
+    "  This docs/superpowers/ path does not match any active change artifact",
+    "  NEXT: use a recorded artifact path or a standard phase artifact directory"
+  ];
   return result(
     2,
     [
@@ -12026,12 +12144,10 @@ function blockedUnmatchedSuperpowersArtifact(relativePath2, phase) {
       "║     COMET PHASE GUARD — WRITE BLOCKED    ║",
       "╚══════════════════════════════════════════╝",
       "",
-      `  Current phase: ${phase}`,
+      `  Current phase: ${governing.phase}`,
       `  Target file: ${relativePath2}`,
       "",
-      "  BLOCKED: unmatched Superpowers artifact",
-      "  This docs/superpowers/ path does not match any active change artifact",
-      "  NEXT: record the artifact path in .comet.yaml or include the change name in the artifact filename",
+      ...details,
       ""
     ].join("\n")
   );
@@ -12109,7 +12225,7 @@ var classicHookGuardCommand = async (args) => {
       return allowed(`${relativePath2} (phase: ${phase}, superpowers)`);
     }
     if (governing.superpowersArtifact === "unmatched") {
-      return blockedUnmatchedSuperpowersArtifact(relativePath2, phase);
+      return blockedUnmatchedSuperpowersArtifact(relativePath2, governing);
     }
   }
   if (phase === "build" && governing.classic?.workflow === "full" && !governing.classic.designDoc) {
@@ -12933,6 +13049,7 @@ var EVENTS = CLASSIC_TRANSITION_EVENTS;
 var MACHINE_OWNED_FIELDS = /* @__PURE__ */ new Set([
   ...RUN_WIRE_KEYS,
   "archive_confirmation",
+  "verify_failures",
   "classic_profile",
   "classic_migration"
 ]);
@@ -12948,7 +13065,7 @@ var FIELD_ENUMS = {
   subagent_dispatch: ["null", "confirmed"],
   tdd_mode: ["tdd", "direct"],
   review_mode: ["off", "standard", "thorough"],
-  isolation: ["branch", "worktree"],
+  isolation: ["current", "branch", "worktree"],
   verify_mode: ["light", "full"],
   auto_transition: ["true", "false"],
   verify_result: ["pending", "pass", "fail"],
@@ -12971,6 +13088,7 @@ var CLASSIC_FIELD_WIRE_NAMES2 = {
   verifiedAt: "verified_at",
   archiveConfirmation: "archive_confirmation",
   verifyResult: "verify_result",
+  verifyFailures: "verify_failures",
   workflow: "workflow"
 };
 var CommandFailure = class extends Error {
@@ -13105,6 +13223,10 @@ function nullableRecordBoolean(record, field2) {
   if (value === "false") return false;
   return null;
 }
+function nonNegativeRecordInteger(record, field2, fallback = 0) {
+  const value = record[field2];
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback;
+}
 function sparseClassicState(record) {
   const workflow = enumRecordValue(record, "workflow", PROFILES, "full");
   return {
@@ -13132,7 +13254,12 @@ function sparseClassicState(record) {
       ["off", "standard", "thorough"],
       null
     ),
-    isolation: enumRecordValue(record, "isolation", ["branch", "worktree"], null),
+    isolation: enumRecordValue(
+      record,
+      "isolation",
+      ["current", "branch", "worktree"],
+      null
+    ),
     verifyMode: enumRecordValue(record, "verify_mode", ["light", "full"], null),
     autoTransition: nullableRecordBoolean(record, "auto_transition"),
     baseRef: nullableRecordString(record, "base_ref"),
@@ -13144,6 +13271,7 @@ function sparseClassicState(record) {
       ["pending", "pass", "fail"],
       "pending"
     ),
+    verifyFailures: nonNegativeRecordInteger(record, "verify_failures"),
     verificationReport: nullableRecordString(record, "verification_report"),
     branchStatus: enumRecordValue(record, "branch_status", ["pending", "handled"], null),
     createdAt: nullableRecordString(record, "created_at"),
@@ -13320,13 +13448,14 @@ async function init(output, name, workflow) {
     subagent_dispatch: null,
     tdd_mode: preset ? "direct" : null,
     review_mode: reviewMode,
-    isolation: preset ? "branch" : null,
+    isolation: preset ? "current" : null,
     verify_mode: preset ? "light" : null,
     auto_transition: await autoTransition() === "true",
     base_ref: gitOutput(["rev-parse", "--verify", "HEAD"]),
     design_doc: null,
     plan: null,
     verify_result: "pending",
+    verify_failures: 0,
     verification_report: null,
     branch_status: "pending",
     created_at: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
@@ -13351,9 +13480,10 @@ async function requireBuildDecisions(name) {
   const subagentDispatch = await readField3(name, "subagent_dispatch");
   const tddMode = await readField3(name, "tdd_mode");
   const reviewMode = await readField3(name, "review_mode");
-  if (!["branch", "worktree"].includes(isolation)) {
+  const allowedIsolation = workflow === "full" ? ["branch", "worktree"] : ["current", "branch", "worktree"];
+  if (!allowedIsolation.includes(isolation)) {
     fail2(
-      `ERROR: Cannot transition '${name}': isolation must be branch or worktree, got '${isolation || "null"}'`
+      `ERROR: Cannot transition '${name}': isolation must be ${workflow === "full" ? "branch or worktree" : "current, branch, or worktree"}, got '${isolation || "null"}'`
     );
   }
   if (!["subagent-driven-development", "executing-plans", "direct"].includes(buildMode)) {
@@ -13473,9 +13603,6 @@ async function transition(output, name, event) {
       fail2(
         `ERROR: Cannot transition '${name}': verification_report must point to an existing report file`
       );
-    }
-    if (await readField3(name, "branch_status") !== "handled") {
-      fail2(`ERROR: Cannot transition '${name}': branch_status must be handled`);
     }
   } else if (event === "verify-fail") {
     await requirePhase(name, "verify");
@@ -13736,7 +13863,7 @@ function resolveBuildRecoveryAction(workflow, isolation, buildMode, pause, subag
   }
   if (pause === "plan-ready") {
     if (buildMode === "subagent-driven-development" && (pending > 0 || planPending > 0)) {
-      return subagentDispatch === "confirmed" ? "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing.";
+      return subagentDispatch === "confirmed" ? "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.";
     }
     if (pending > 0 || planPending > 0) {
       return "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task.";
@@ -13757,13 +13884,13 @@ function resolveBuildRecoveryAction(workflow, isolation, buildMode, pause, subag
   }
   if (pending > 0) {
     if (buildMode === "subagent-driven-development") {
-      return subagentDispatch === "confirmed" ? "Recovery action: Read tasks.md and the Superpowers plan (which may include additions beyond OpenSpec), then inspect the first unchecked task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing.";
+      return subagentDispatch === "confirmed" ? "Recovery action: Read tasks.md and the Superpowers plan (which may include additions beyond OpenSpec), then inspect the first unchecked task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.";
     }
     return "Recovery action: Read tasks.md and continue from first unchecked task.";
   }
   if (planPending > 0) {
     if (buildMode === "subagent-driven-development") {
-      return subagentDispatch === "confirmed" ? "Recovery action: Read the Superpowers plan, then inspect the first unchecked Superpowers plan task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing.";
+      return subagentDispatch === "confirmed" ? "Recovery action: Read the Superpowers plan, then inspect the first unchecked Superpowers plan task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.";
     }
     return "Recovery action: Read the Superpowers plan and continue from the first unchecked plan task.";
   }
@@ -13771,17 +13898,19 @@ function resolveBuildRecoveryAction(workflow, isolation, buildMode, pause, subag
 }
 async function recoverVerify(output, name) {
   const result5 = await readField3(name, "verify_result");
+  const failures = await readField3(name, "verify_failures");
   const mode = await readField3(name, "verify_mode");
   const report = await readField3(name, "verification_report");
   const branch = await readField3(name, "branch_status");
   output.stdout.push(
     "  Verification:",
     fieldStatus("verify_result", result5),
+    `  - verify_failures: ${failures || "0"}`,
     fieldStatus("verify_mode", mode),
     fieldStatus("verification_report", report, report),
-    fieldStatus("branch_status", branch),
+    branch === "handled" ? "  - branch_status: LEGACY (handled before archive; archive still owns final closure)" : "  - branch_status: DEFERRED (handled after the archive commit)",
     "",
-    result5 === "pass" && branch === "handled" ? "Recovery action: Verification complete. Run guard to transition to archive." : result5 === "fail" ? "Recovery action: Verification failed and rolled back to build. Resume from /comet-build." : "Recovery action: Verification not yet started or in progress. Run scale assessment then verify."
+    result5 === "pass" ? "Recovery action: Verification complete. Continue to archive; branch handling happens after archive changes are committed." : result5 === "fail" ? "Recovery action: Verification failed and rolled back to build. Resume from /comet-build." : "Recovery action: Verification not yet started or in progress. Run scale assessment then verify."
   );
 }
 async function recoverArchive(output, name) {

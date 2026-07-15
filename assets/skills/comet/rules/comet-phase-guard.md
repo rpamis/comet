@@ -25,8 +25,8 @@ comet state select <change-name>
 | `open` | 创建 proposal/design/tasks, 运行 guard | 写源代码 |
 | `design` | brainstorming, 创建 Design Doc, 运行 guard | 写源代码 |
 | `build` | 写源代码、测试、执行计划 | 跳过用户确认点 |
-| `verify` | 验证、branch handling | 跳过失败处理 |
-| `archive` | 确认归档、运行归档脚本 | 写源代码 |
+| `verify` | 验证、记录验证报告 | 跳过失败处理、提前处理分支 |
+| `archive` | 确认归档、运行归档脚本、提交归档改动、分支处理 | 写源代码 |
 
 Hook 硬拦截白名单包括 `openspec/*`、`docs/superpowers/*`、`.superpowers/*`、`.claude/*` 和 `.comet/*` 等流程/平台工作区；这些路径可写不代表可以跳过当前阶段的产物和确认要求。
 
@@ -44,7 +44,7 @@ Hook 硬拦截白名单包括 `openspec/*`、`docs/superpowers/*`、`.superpower
 
 预设例外：`workflow: hotfix/tweak` 本就跳过 design，`design_doc` 为空属正常，不算非法。
 
-升级态说明：预设（hotfix/tweak）命中升级信号并经用户确认升级后，通过 `comet-state transition <name> preset-escalate` 合法地变为 `workflow: full` + `phase: design` + `design_doc: null`。此时 `phase: design` + `design_doc` 为空**属正常升级前置态**，不是非法空跳——agent 应进入 `/comet-design` 补 Design Doc。该终态不命中上表「绕过 design 空跳」行（该行仅检测 `phase: build`）。
+升级态说明：预设（hotfix/tweak）命中升级信号并经用户确认升级后，通过 `comet state transition <name> preset-escalate` 合法地变为 `workflow: full` + `phase: design` + `design_doc: null`，同时清除预设专属 build 配置。此时 `phase: design` + `design_doc` 为空**属正常升级前置态**，不是非法空跳——agent 应进入 `/comet-design` 补 Design Doc，并在 build 重新完成联合工作方式选择。该终态不命中上表「绕过 design 空跳」行（该行仅检测 `phase: build`）。
 
 ### Skill 调用（不可用普通对话替代）
 
@@ -60,50 +60,50 @@ Hook 硬拦截白名单包括 `openspec/*`、`docs/superpowers/*`、`.superpower
 
 ### 脚本执行（不可跳过）
 
-- **阶段退出**: `comet-guard <name> <phase> --apply`（必须看到 ALL CHECKS PASSED）
-- **压缩恢复**: `comet-state check <name> <phase> --recover`
-- **状态更新**: 关键操作后通过 `comet-state set` 更新字段，禁止手工编辑 .comet.yaml
-- **阶段推进只能经 guard/transition**: 禁止用 `comet-state set <name> phase <值>` 手动跳阶段（会绕过证据校验，脚本已硬拦截）；确需修复畸形状态时才用 `COMET_FORCE_PHASE=1` 逃生阀。预设（hotfix/tweak）升级到 full 必须用 `comet-state transition <name> preset-escalate`——这是唯一能合法回退 phase 到 design 并同步 workflow/classic_profile 的通道，直接 `set phase design` 和 `set classic_profile` 都会被硬拦截
-- **handoff 生成**: `comet-handoff <name> design --write`（禁止手写摘要）
+- **阶段退出**: `comet guard <name> <phase> --apply`（必须看到 ALL CHECKS PASSED）
+- **压缩恢复**: `comet state check <name> <phase> --recover`
+- **状态更新**: 关键操作后通过 `comet state set` 更新字段，禁止手工编辑 .comet.yaml
+- **阶段推进只能经 guard/transition**: 禁止用 `comet state set <name> phase <值>` 手动跳阶段；预设升级到 full 必须用 `comet state transition <name> preset-escalate`
+- **handoff 生成**: `comet handoff <name> design --write`（禁止手写摘要）
 
 ### 用户确认（不可自动跳过）
 
 以下决策点必须暂停等待用户明确选择，不得根据推荐规则自动填写：
 
-- **open**: 需求澄清完成确认、artifact 评审确认
+- **open**: artifact 最终审视（同时确认 change 名称与范围）；只有目标/范围仍有互斥选择或大型 PRD 拆分时增加前置决策
 - **design**: brainstorming 方案确认（确认前不得创建 Design Doc）
-- **build**: plan-ready 暂停、`isolation` / `build_mode` / `tdd_mode` / `review_mode` 四项选择（工作区隔离、执行方式、TDD 模式、代码审查模式）、spec 大规模变更确认、预设（hotfix/tweak）升级判定二选一（命中质变信号或文件数 tripwire 时，交用户决定继续预设流程还是升级 full）
-- **verify**: 验证失败处理策略、branch handling 选择
-- **archive**: 归档前最终确认
+- **build**: 能力预检后，在一个联合决策中选择 plan-ready 暂停或所有可执行的 `isolation` / `build_mode` / `tdd_mode` / `review_mode`；选择 branch 时同时确认分支名，另含 spec 大规模变更确认、预设升级判定
+- **verify**: 接受 WARNING/SUGGESTION 偏差、Spec 漂移处理，或超过自动修复上限后的继续/停止策略
+- **archive**: 归档前最终确认，以及归档提交后的 branch handling 选择
 
 ## Design 阶段专项
 
-1. 第一个脚本操作 = `comet-handoff <name> design --write`（未生成 handoff 禁止加载 brainstorming）
+1. 第一个脚本操作 = `comet handoff <name> design --write`（未生成 handoff 禁止加载 brainstorming）
 2. brainstorming in progress: incrementally update brainstorm-summary.md（每轮澄清或方案迭代后增量更新恢复检查点，未确认内容标注为待确认/候选）
 3. brainstorming 完成后下一步 = brainstorm-summary.md 定稿 → Design Doc → guard
-4. active compaction gate: brainstorm-summary.md 定稿后、创建 Design Doc 前，优先触发宿主平台原生上下文压缩；无法程序化触发时暂停提示用户手动压缩或确认继续
+4. 主动式上下文压缩只能在 Design Doc、状态和最新 handoff 落盘后按需执行；无法程序化触发时给出非阻塞建议并继续
 5. **绝对不能直接开始写实现代码** — 必须先创建 Design Doc 并通过 guard
 
 ## Build 阶段专项
 
-1. plan 创建后必须询问用户选择继续或暂停（`build_pause` 机制）
+1. plan 创建后先过滤不可执行选项，再只发起一个联合决策：暂停，或一次性提交工作区/执行/TDD/审查配置及条件性的分支名
 2. 每个 task 验收后必须: tasks.md 打勾 → git commit（不得积攒）。`subagent-driven-development` 必须按当前 `review_mode` 完成验收，再由协调者按任务唯一文本定向勾选和验证；不得用未完成任务总表代替当前任务验证
 3. 遇到失败必须加载 **systematic-debugging** skill，根因未定位前不得提出源码修复
 4. spec 变更分级: 小改直接编辑 | 中改加载 brainstorming | 大改暂停等用户确认拆分
 
 ## Verify 阶段专项
 
-1. 第一步运行 `comet-state scale <name>` 确定验证级别
-2. 验证失败后列出失败项等用户选择，CRITICAL 必须修
-3. 连续 3 次失败后必须让用户选择接受偏差或继续修
-4. 用户选择修复时运行 `comet-state transition <name> verify-fail`：该转移会把 `phase` 回退到 `build`（不是停在 verify），随后进入 `/comet-build` 修复，修完重新过 build→verify guard
+1. 第一步运行 `comet state scale <name>` 确定验证级别
+2. 前 3 次明确可修复失败自动运行 `comet state transition <name> verify-fail` 回到 build，并进入 `/comet-build`；CRITICAL/IMPORTANT 不得接受偏差
+3. `verify_failures` 由状态机维护。达到 `3` 后的下一次失败必须让用户选择继续修复或停止 workflow 寻求外部决策
+4. WARNING/SUGGESTION 只有在修复涉及行为、范围或风险取舍时才询问修复/接受；安全、局部、无取舍的修复自动闭环
 
 ## 上下文压缩恢复
 
 如果怀疑发生上下文压缩（之前对话被摘要、找不到之前讨论的内容），立即运行：
 
 ```bash
-node "$COMET_STATE" check <name> <phase> --recover
+comet state check <name> <phase> --recover
 ```
 
 按脚本输出的 **Recovery action** 决定下一步。
@@ -124,17 +124,11 @@ node "$COMET_STATE" check <name> <phase> --recover
 guard `--apply` 成功后，不得在本规则中硬编码下一阶段 skill。必须先运行：
 
 ```bash
-comet-state next <change-name>
-```
-
-若已通过 `comet-env.mjs` 定位脚本，等价运行：
-
-```bash
-node "$COMET_STATE" next <change-name>
+comet state next <change-name>
 ```
 
 按脚本输出决定下一步：
 
 - `NEXT: auto` → 使用 Skill 工具加载 `SKILL` 指向的 skill
-- `NEXT: manual` → 不加载下一 skill，按 `HINT` 提示用户手动继续
+- `NEXT: manual` → 不加载下一 skill，按 `HINT` 交还控制权并结束当前调用；不再创建确认点
 - `NEXT: done` → 流程已完成，无需继续

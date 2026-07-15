@@ -1,6 +1,6 @@
 ---
 name: comet-classic
-description: "Use when 用户明确启动或恢复 Comet Classic，需要 OpenSpec、Superpowers、阶段状态和详细方法约束。"
+description: "用于用户明确调用 /comet-classic、要求启动或恢复永久 Comet Classic，或仓库中存在可无歧义恢复的 active Classic change；负责通过 intent runtime 和 .comet.yaml 路由阶段。"
 ---
 
 # Comet Classic — OpenSpec + Superpowers 双星开发流程
@@ -22,7 +22,7 @@ agent 做决策只需读本节，参考附录按需查阅。
 
 ### 输出语言规则
 
-所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言。配置值是规范化语言 ID，`en` 或 `zh-CN`。已有 change 优先通过 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取 `openspec/changes/<name>/.comet.yaml` 中的 `language`；`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `language`；都不存在时才回退到当前用户请求语言。调用外部 OpenSpec/Superpowers skill 时，必须把解析后的语言显式写入 prompt 或 ARGUMENTS。
+所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言。配置值是规范化语言 ID，`en` 或 `zh-CN`。已有 change 优先通过 `comet state get <name> language` 读取 `openspec/changes/<name>/.comet.yaml` 中的 `language`；`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `language`；都不存在时才回退到当前用户请求语言。调用外部 OpenSpec/Superpowers skill 时，必须把解析后的语言显式写入 prompt 或 ARGUMENTS。
 
 ### 阶段自动检测
 
@@ -126,22 +126,22 @@ node "$COMET_RESUME_PROBE" probe --stdin
 - 每次恢复上下文时，先重新执行 Step 0 和 Step 1，不依赖对话历史判断阶段
 - 只要存在 active change 且工作区有未提交改动，必须按 `comet/reference/dirty-worktree.md` 协议处理。该协议定义了检查步骤、归因分类和禁令，本文件不重复
 - 若 `phase: build`，先检查 `build_pause`、`plan`、`isolation`、`build_mode`、`tdd_mode` 和 `review_mode`（详见下方）：
-  - 若 `build_pause: plan-ready` 但 `isolation`、`build_mode`、`tdd_mode` 和 `review_mode` 都已经设置，则视为 stale pause：先输出 `[COMET] 检测到 stale pause（build_pause=plan-ready 但 isolation/build_mode/tdd_mode/review_mode 已设置），自动清除并继续`，再运行 `node "$COMET_STATE" set <name> build_pause null`，然后读取 tasks.md 的下一个未勾选任务并按 `build_mode` 恢复执行
+  - 若 `build_pause: plan-ready` 但 `isolation`、`build_mode`、`tdd_mode` 和 `review_mode` 都已经设置，则视为 stale pause：先输出 `[COMET] 检测到 stale pause（build_pause=plan-ready 但 isolation/build_mode/tdd_mode/review_mode 已设置），自动清除并继续`，再运行 `comet state set <name> build_pause null`，然后读取 tasks.md 的下一个未勾选任务并按 `build_mode` 恢复执行
   - 若 `build_pause: plan-ready` 且 plan 文件存在，但 `isolation`、`build_mode`、`tdd_mode` 或 `review_mode` 尚未设置，回到 `/comet-build` 的 plan-ready 恢复点，提示用户继续补齐/确认工作区隔离、执行方式、TDD 模式和代码审查模式，不重新生成 plan
   - 若 `build_pause: plan-ready` 但 plan 文件缺失，回到 `/comet-build` 处理状态损坏或重新生成 plan
   - 若 `isolation`、`build_mode`、`tdd_mode` 或 `review_mode` 未设置，回到 `/comet-build` 对应步骤补充后再执行
   - 若均已设置，读取 tasks.md 的下一个未勾选任务，并按 `build_mode` 恢复执行：
     - 若 `build_mode: subagent-driven-development`，不得在主窗口直接执行任务；必须回到 `/comet-build` 的后台 subagent 调度规则，由主窗口只做协调
     - 其他执行方式按 `/comet-build` 的对应规则继续
-- 若 `phase: verify` 且 `verify_result: fail`，进入验证失败决策阻塞点：暂停并询问用户修复或接受偏差；用户选择修复后才运行 `node "$COMET_STATE" transition <name> verify-fail` 并调用 `/comet-build`
-- 若 `phase: open` 但 proposal/design/tasks 已完整，先运行 `node "$COMET_GUARD" <change-name> open --apply` 修正状态，再继续判定
-- 若 `phase: archive`，只允许调用 `/comet-archive`；`/comet-archive` 必须先等待归档前最终确认，归档成功后 change 会移动到 archive 目录，不再对原活跃目录运行 guard
+- 若 `verify_result: fail`，读取 `verify_failures`：未超过 3 次时直接调用 `/comet-build` 继续已记录的修复循环，不重复询问；超过自动修复上限时回到 `/comet-verify` 的例外决策点。只有接受 WARNING/SUGGESTION 偏差或超限后的继续/停止策略需要用户选择
+- 若 `phase: open` 但 OpenSpec `applyRequires` 已完整，先运行 `comet guard <change-name> open --apply` 修正状态，再继续判定
+- 若 `phase: archive`，只允许调用 `/comet-archive`；归档前先等待最终确认，归档后精确提交归档改动，再处理分支并运行 archive guard
 
 **Step 2: 阶段判定**（按顺序，命中即停）
 
 1. `archived: true` 或 change 已移入 archive → 流程已完成
 2. `verify_result: pass` 且 `archived` 不是 `true` → `/comet-archive`（先进行归档前最终确认）
-3. `verify_result: fail` → 进入验证失败决策阻塞点（暂停询问修复或接受偏差；用户选择修复后才 `verify-fail` 并 `/comet-build`）
+3. `verify_result: fail` → 自动调用 `/comet-build` 继续修复；若 `verify_failures` 已超过自动修复上限，则进入 `/comet-verify` 的超限策略决策点
 4. `phase: verify` 或 tasks.md 全部勾选 → `/comet-verify`
 5. `phase: build` 或已有 Design Doc 但计划/执行未完成 → 优先按 workflow 路由：`hotfix` → `/comet-hotfix`，`tweak` → `/comet-tweak`，`full` → `/comet-build`
 6. `phase: design` 或有 change 但无 Design Doc → `/comet-design`
@@ -156,11 +156,11 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 
 1. **质变信号**（agent 语义识别，命中任一即暂停交用户二选一）：跨模块协调修改、需要新增 capability、数据库 schema 变更、引入新的 public API、触及深层架构问题（各预设沿用这套核心信号，并可追加自身语境的特有信号，如 tweak 的「需要拆分为多个 OpenSpec changes」）
 2. **文件数 tripwire**（用户拍板，非自动升级）：改动文件数超提示阈值时，暂停交用户决定继续预设流程还是升级 full，不自动踢
-3. **验证级别**（scale 脚本判定）：`comet-state scale` 仅决定 `verify_mode`（验证轻重），不卡流程、不触发升级
+3. **验证级别**（scale 脚本判定）：`comet state scale` 仅决定 `verify_mode`（验证轻重），不卡流程、不触发升级
 
 **升级决策点（用户二选一）**：
 - 继续预设轻量流程（用户确认范围可控）
-- 升级为完整 `/comet-classic`（使用 `node "$COMET_STATE" transition <name> preset-escalate` 合法回退到 design 阶段，补 Design Doc 和 Superpowers plan）
+- 升级为完整 `/comet-classic`（使用 `comet state transition <name> preset-escalate` 合法回退到 design 阶段，同时清除预设专属的 build 配置；补 Design Doc 后重新联合选择完整工作方式）
 
 详细判定规则见 `comet-hotfix` / `comet-tweak` 各自的「升级判定」章节。
 
@@ -170,7 +170,8 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 |------|---------|
 | `openspec list --json` 失败 | 检查 openspec 是否已安装，提示 `openspec init` |
 | 子 skill 不可用 | 停止流程，提示安装或启用对应 skill |
-| `.comet.yaml` 格式异常或缺失 | 以文件状态为准，用 `node "$COMET_STATE" set` 修正后继续 |
+| `.comet.yaml` 缺失 | 进入对应 preset 的 `/comet-open` 初始化状态，再运行 `comet state select`；不得跳过初始化 |
+| `.comet.yaml` 格式异常 | 停止并报告解析错误；从版本控制、备份或可验证产物人工修复，不能用 `comet state set` 覆盖损坏文件 |
 | 构建/测试失败 | 返回 build 阶段修复，不进入 verify |
 | change 目录结构不完整 | 按 `comet-open` 产物要求补齐 |
 
@@ -183,20 +184,21 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 
 **连续执行要求**：从检测到的阶段开始，agent 自动推进后续阶段。但**自动推进仅适用于没有用户决策的衔接点**。遇到用户决策点时，**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确回复**，不得用推荐规则、默认值或历史偏好代替用户确认，也不得仅输出文字提示后继续执行。
 
-**阶段推进与自动衔接的区分**：每个子 skill 退出前都会运行阶段守卫 `--apply` 推进 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。之后子 skill 运行 `node "$COMET_STATE" next <name>` 解析下一步：`auto_transition` 不为 `false` 时输出 `NEXT: auto`（自动调用下一 skill），为 `false` 时输出 `NEXT: manual`（不调用下一 skill，提示用户手动运行）。因此 `auto_transition` **只控制是否自动调用下一个 skill，不影响 phase 推进**。无论 `auto_transition` 取何值，下方的用户决策点都必须阻塞等待。
+**阶段推进与自动衔接的区分**：每个子 skill 退出前都会运行阶段守卫 `--apply` 推进 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。之后子 skill 运行 `comet state next <name>` 解析下一步：`auto_transition` 不为 `false` 时输出 `NEXT: auto`（自动调用下一 skill），为 `false` 时输出 `NEXT: manual`（不调用下一 skill，按 `HINT` 交还控制权）。`NEXT: manual` 不是用户决策点，不得再询问“是否继续”。因此 `auto_transition` **只控制是否自动调用下一个 skill，不影响 phase 推进**。无论 `auto_transition` 取何值，下方真正的用户决策点都必须阻塞等待。
 
 **决策点是阻塞点**：只要到达下列任一节点，当前 `/comet-classic` 调用必须停住，并按 `comet/reference/decision-point.md` 的协议获取用户明确选择。用户明确选择后才能写入对应状态字段、执行对应操作，随后再继续自动流转。
 
 需要用户参与的节点（仅在这些节点暂停）：
-1. open 阶段 proposal/design/tasks 审视确认
-2. brainstorming 确认设计方案
-3. build 阶段 plan-ready 暂停选择，以及随后选择工作方式（工作区隔离 + 执行方式 + TDD 模式 + 代码审查模式）
-4. verify 不通过时决定修复或接受偏差（含 Spec 漂移处理方式选择）
-5. finishing-branch 选择分支处理方式
+1. workflow 目标选择：多个 active changes、继续现有 change/创建新 change、或批量拆分完成后选择先启动哪一个
+2. open 阶段 proposal/design/tasks 最终审视确认（同时确认 change 名称与范围；清晰请求不做前置摘要/命名确认）
+3. brainstorming 确认设计方案
+4. build 阶段一次性联合选择 plan-ready 暂停或完整工作方式（可用的工作区隔离 + 执行方式 + TDD 模式 + 代码审查模式；选择 branch 时同时确认分支名）
+5. verify 阶段接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移，或第 4 次失败后选择继续修复/停止；前 3 次明确可修复失败自动闭环
 6. archive 阶段执行归档脚本前的最终确认
-7. 遇到升级判定信号（hotfix/tweak → 用户二选一：继续预设流程 / 升级完整流程）
-8. build 阶段范围扩张需重新设计或拆分新 change
-9. open 阶段大型 PRD 需确认拆分为多个 change
+7. 归档改动精确提交后选择 finishing-branch 分支处理方式
+8. 遇到升级判定信号（hotfix/tweak → 用户二选一：继续预设流程 / 升级完整流程）
+9. build 阶段范围扩张需重新设计或拆分新 change
+10. open 阶段大型 PRD 是否拆分为多个 changes
 
 agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须自动继续推进，不得中途退出。到达决策点时，**禁止跳过用户确认或自动选择——必须通过当前平台可用的用户输入/确认机制明确获取用户选择后才能继续**。
 
@@ -220,8 +222,8 @@ agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须�
 | `/comet-open` | 1. 开启 | OpenSpec | proposal.md、design.md、tasks.md |
 | `/comet-design` | 2. 深度设计 | Superpowers | Design Doc、delta spec |
 | `/comet-build` | 3. 计划与构建 | Superpowers | 实施计划、代码提交 |
-| `/comet-verify` | 4. 验证与收尾 | Both | 验证报告、分支处理 |
-| `/comet-archive` | 5. 归档 | OpenSpec | delta→main spec 同步、design doc 标注、归档 |
+| `/comet-verify` | 4. 验证 | Both | 验证报告 |
+| `/comet-archive` | 5. 归档与收尾 | OpenSpec | delta→main spec 同步、design doc 标注、归档提交、分支处理 |
 | `/comet-hotfix` | 预设路径 | Both | 快速修复（跳过 brainstorming） |
 | `/comet-tweak` | 预设路径 | Both | 串联 OpenSpec 的中等改动（delta spec 为一等公民，跳过 brainstorming 和完整 plan） |
 
@@ -254,24 +256,24 @@ agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须�
 
 ### 状态机硬约束
 
-- `build → verify` 前，`isolation` 必须是 `branch` 或 `worktree`
+- full workflow 的 `build → verify` 前，`isolation` 必须是 `branch` 或 `worktree`；hotfix/tweak 可如实使用 `current`
 - `build → verify` 前，`build_mode` 必须已选择
 - `build_mode: subagent-driven-development` 必须同时有 `subagent_dispatch: confirmed`
 - full workflow 离开 build 阶段前 `tdd_mode` 必须已选择为 `tdd` 或 `direct`
 - full workflow 离开 build 阶段前 `review_mode` 必须已选择为 `off`、`standard` 或 `thorough`
 - `build_mode: direct` 默认只允许 `hotfix` / `tweak`；full workflow 需要 `direct_override: true`
 - `build_pause` 不是执行方式，不得写入 `build_mode`
-- 这些约束同时存在于 `comet-guard.mjs build --apply` 和 `comet-state.mjs transition <name> build-complete`
+- 这些约束同时由 `comet guard <name> build --apply` 和 `comet state transition <name> build-complete` 执行
 
 ### 脚本定位
 
-Comet 脚本随 skill 包分发在 `comet/scripts/` 下。**不硬编码路径** — 定位一次，缓存到环境变量。完整引导块、命令参考（`--apply`、`transition`、`next`、`archive`）和输出格式见 `comet/reference/scripts.md`。每会话运行一次该引导，后续全程复用 `$COMET_GUARD`、`$COMET_STATE`、`$COMET_HANDOFF`、`$COMET_ARCHIVE`、`$COMET_RUNTIME`。关键入口：
+面向 workflow 的状态、守卫、handoff 和 archive 操作统一使用稳定 `comet` CLI；只有尚无公开子命令的 intent/resume probe 才按 `comet/reference/scripts.md` 定位内部 launcher。关键入口：
 
 ```bash
-node "$COMET_GUARD" <change-name> <phase> --apply    # 阶段守卫 + 自动状态更新
-node "$COMET_STATE" transition <change-name> <event> # open-complete | design-complete | build-complete | verify-pass | verify-fail
-node "$COMET_STATE" next <change-name>               # NEXT: auto|manual|done  + SKILL: <skill-name>；auto_transition:false → manual，只暂停下一 skill 调用，不影响已发生的 phase 推进
-node "$COMET_ARCHIVE" <change-name>                  # 一键完成归档
+comet guard <change-name> <phase> --apply             # 阶段守卫 + 自动状态更新
+comet state transition <change-name> <event>          # open-complete | design-complete | build-complete | verify-pass | verify-fail
+comet state next <change-name>                        # NEXT: auto|manual|done + SKILL: <skill-name>
+comet archive <change-name>                           # 一键完成归档
 ```
 
 ### 文件结构

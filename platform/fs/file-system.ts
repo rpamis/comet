@@ -59,8 +59,9 @@ export async function fileExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 
@@ -117,9 +118,9 @@ export async function removeFile(filePath: string): Promise<boolean> {
   try {
     await fs.unlink(filePath);
     return true;
-  } catch {
-    // Not found or failed (permissions/IO): nothing was removed.
-    return false;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 
@@ -136,23 +137,27 @@ export async function removeDir(dirPath: string): Promise<boolean> {
       await fs.unlink(dirPath);
       return true;
     }
-    await fs.rm(dirPath, { recursive: true, force: true });
+    await fs.rm(dirPath, { recursive: true, force: false });
     return true;
   } catch (error) {
-    return isNotFoundError(error);
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 
 /**
- * Check if a directory is empty. A missing directory is treated as empty;
- * unreadable directories (permissions/IO) return false so callers never delete
- * a directory they could not inspect.
+ * Check if a directory is empty. A missing directory is treated as empty and
+ * a non-directory path as non-empty; inspection failures are propagated so
+ * callers can report that cleanup was incomplete.
  */
 export async function isDirEmpty(dirPath: string): Promise<boolean> {
   try {
     const entries = await fs.readdir(dirPath);
     return entries.length === 0;
   } catch (error) {
-    return isNotFoundError(error);
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ENOENT') return true;
+    if (code === 'ENOTDIR') return false;
+    throw error;
   }
 }

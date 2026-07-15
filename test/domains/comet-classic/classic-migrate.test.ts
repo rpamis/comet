@@ -63,6 +63,7 @@ function classic(overrides: Partial<ClassicState> = {}): ClassicState {
     designDoc: null,
     plan: null,
     verifyResult: 'pending',
+    verifyFailures: 0,
     verificationReport: null,
     branchStatus: 'pending',
     createdAt: '2026-06-14',

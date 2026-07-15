@@ -4,6 +4,11 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { doctorCommand } from '../../app/commands/doctor.js';
+import {
+  copyCometRulesForPlatform,
+  installCometHooksForPlatform,
+} from '../../domains/skill/platform-install.js';
+import { PLATFORMS } from '../../platform/install/platforms.js';
 
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
@@ -19,6 +24,20 @@ async function installManagedCometSkills(baseDir: string, platformDir = '.claude
     const target = path.join(baseDir, platformDir, 'skills', ...relPath.split('/'));
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, `${relPath}\n`);
+  }
+}
+
+async function collectDoctorResults(
+  targetPath: string,
+  scope: 'project' | 'global' | 'auto' = 'project',
+): Promise<Array<{ check: string; status: string; message: string }>> {
+  const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  try {
+    await doctorCommand(targetPath, { json: true, scope, homeDir: targetPath });
+    const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    return JSON.parse(output).results;
+  } finally {
+    log.mockRestore();
   }
 }
 
@@ -158,18 +177,123 @@ describe('doctor command', () => {
     expect(output).not.toContain('missing 31:');
   });
 
+  it('warns when a detected complete Skill install is missing its Rule and Hook', async () => {
+    await installManagedCometSkills(tmpDir);
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.find((result) => result.check === 'rules: Claude Code (project)')).toMatchObject(
+      {
+        status: 'warn',
+        message: expect.stringContaining('comet update --scope project'),
+      },
+    );
+    expect(results.find((result) => result.check === 'hooks: Claude Code (project)')).toMatchObject(
+      {
+        status: 'warn',
+        message: expect.stringContaining('comet update --scope project'),
+      },
+    );
+  });
+
+  it('passes Rule and Hook checks when the managed components are installed', async () => {
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude');
+    expect(claude).toBeDefined();
+    await installManagedCometSkills(tmpDir);
+    await copyCometRulesForPlatform(tmpDir, claude!, true, 'zh', 'project');
+    await installCometHooksForPlatform(tmpDir, claude!, 'project');
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.find((result) => result.check === 'rules: Claude Code (project)')).toMatchObject(
+      {
+        status: 'pass',
+      },
+    );
+    expect(results.find((result) => result.check === 'hooks: Claude Code (project)')).toMatchObject(
+      {
+        status: 'pass',
+      },
+    );
+  });
+
+  it('reports a Hook JSON parse failure without rewriting the canonical config', async () => {
+    const hookPath = path.join(tmpDir, '.claude', 'settings.local.json');
+    const malformed = '{\r\n  "hooks": {\r\n';
+    await installManagedCometSkills(tmpDir);
+    await fs.writeFile(hookPath, malformed);
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.find((result) => result.check === 'hooks: Claude Code (project)')).toMatchObject(
+      {
+        status: 'warn',
+        message: expect.stringContaining('Invalid Hook JSON'),
+      },
+    );
+    expect(await fs.readFile(hookPath, 'utf8')).toBe(malformed);
+  });
+
+  it('reports a Rule destination access failure as a component warning', async () => {
+    await installManagedCometSkills(tmpDir);
+    const rulePath = path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md');
+    const access = fs.access.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (filePath, mode) => {
+      if (path.resolve(String(filePath)) === path.resolve(rulePath)) throw permissionError;
+      await access(filePath, mode);
+    });
+
+    try {
+      const results = await collectDoctorResults(tmpDir);
+      expect(
+        results.find((result) => result.check === 'rules: Claude Code (project)'),
+      ).toMatchObject({
+        status: 'warn',
+        message: expect.stringContaining('permission denied'),
+      });
+    } finally {
+      accessSpy.mockRestore();
+    }
+  });
+
+  it('does not emit false Rule or Hook warnings for unsupported components', async () => {
+    const cursor = PLATFORMS.find((platform) => platform.id === 'cursor');
+    const gemini = PLATFORMS.find((platform) => platform.id === 'gemini');
+    expect(cursor).toBeDefined();
+    expect(gemini).toBeDefined();
+    await installManagedCometSkills(tmpDir, '.cursor');
+    await copyCometRulesForPlatform(tmpDir, cursor!, true, 'zh', 'project');
+    await installManagedCometSkills(tmpDir, '.gemini');
+    await installCometHooksForPlatform(tmpDir, gemini!, 'project');
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.some((result) => result.check === 'hooks: Cursor (project)')).toBe(false);
+    expect(results.some((result) => result.check === 'rules: Gemini CLI (project)')).toBe(false);
+    expect(results.find((result) => result.check === 'rules: Cursor (project)')).toMatchObject({
+      status: 'pass',
+    });
+    expect(results.find((result) => result.check === 'hooks: Gemini CLI (project)')).toMatchObject({
+      status: 'pass',
+    });
+  });
+
   it('reports an explicitly scoped canonical global Codex install without a detection path', async () => {
     const fakeHome = path.join(tmpDir, 'canonical-global-home');
     await installManagedCometSkills(fakeHome, '.agents');
 
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    try {
-      await doctorCommand(tmpDir, { scope: 'global', homeDir: fakeHome });
-      const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
-      expect(output).toContain('skills: Codex (global): complete');
-    } finally {
-      log.mockRestore();
-    }
+    const results = await collectDoctorResults(fakeHome, 'global');
+
+    expect(results.find((result) => result.check === 'skills: Codex (global)')).toMatchObject({
+      status: 'pass',
+    });
+    expect(results.find((result) => result.check === 'rules: Codex (global)')).toMatchObject({
+      status: 'warn',
+    });
+    expect(results.find((result) => result.check === 'hooks: Codex (global)')).toMatchObject({
+      status: 'warn',
+    });
   });
 
   it('reports legacy-only Codex skills as requiring update and canonical Codex skills as healthy', async () => {
@@ -204,18 +328,46 @@ describe('doctor command', () => {
     }
   });
 
-  it('does not report Codex healthy from shared canonical Skills without Codex detection paths', async () => {
-    await installManagedCometSkills(tmpDir, '.agents');
+  it.each(['project', 'auto'] as const)(
+    'assigns a shared project .agents Skill root once without Codex evidence in %s scope',
+    async (scope) => {
+      await installManagedCometSkills(tmpDir, '.agents');
 
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    try {
-      await doctorCommand(tmpDir);
-      const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
-      expect(output).not.toContain('skills: Codex (project)');
-    } finally {
-      log.mockRestore();
-    }
-  });
+      const results = await collectDoctorResults(tmpDir, scope);
+      const sharedRootChecks = results.filter((result) =>
+        /^skills: (?:Codex|Antigravity(?: 2\.0)?) \(project\)$/u.test(result.check),
+      );
+
+      expect(sharedRootChecks.map((result) => result.check)).toEqual([
+        'skills: Antigravity (project)',
+      ]);
+      expect(results.some((result) => /^rules: Codex \(project\)$/u.test(result.check))).toBe(
+        false,
+      );
+      expect(results.some((result) => /^hooks: Codex \(project\)$/u.test(result.check))).toBe(
+        false,
+      );
+    },
+  );
+
+  it.each(['project', 'auto'] as const)(
+    'assigns a shared project .agents Skill root to Codex once with .codex evidence in %s scope',
+    async (scope) => {
+      await installManagedCometSkills(tmpDir, '.agents');
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+
+      const results = await collectDoctorResults(tmpDir, scope);
+      const sharedRootChecks = results.filter((result) =>
+        /^skills: (?:Codex|Antigravity(?: 2\.0)?) \(project\)$/u.test(result.check),
+      );
+
+      expect(sharedRootChecks.map((result) => result.check)).toEqual(['skills: Codex (project)']);
+      expect(results.filter((result) => result.check === 'rules: Codex (project)')).toHaveLength(1);
+      expect(results.filter((result) => result.check === 'hooks: Codex (project)')).toHaveLength(1);
+      expect(results.some((result) => /^rules: Antigravity/u.test(result.check))).toBe(false);
+      expect(results.some((result) => /^hooks: Antigravity/u.test(result.check))).toBe(false);
+    },
+  );
 
   it('uses the shared schema and leaves invalid state untouched', async () => {
     const invalidChangeDir = path.join(tmpDir, 'openspec', 'changes', 'top-level-invalid');

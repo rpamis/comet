@@ -228,6 +228,21 @@ describe('comet scripts', () => {
     expect(yaml).toContain('branch_status: pending');
   }, 20_000);
 
+  it.each(['hotfix', 'tweak'])(
+    'initializes %s in the current workspace without claiming branch isolation',
+    async (workflow) => {
+      const result = runNode(tmpDir, stateScript, ['init', `${workflow}-current`, workflow]);
+      const yaml = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', `${workflow}-current`, '.comet.yaml'),
+        'utf8',
+      );
+
+      expect(result.status).toBe(0);
+      expect(yaml).toContain('isolation: current');
+    },
+    20_000,
+  );
+
   it('prints successful initialization to stdout so PowerShell does not surface NativeCommandError', async () => {
     const result = runNode(tmpDir, stateScript, ['init', 'powershell-friendly', 'full']);
 
@@ -238,11 +253,14 @@ describe('comet scripts', () => {
     expect(result.stderr).toBe('');
   }, 20_000);
 
-  it('loads the classic runtime package from COMET_RUNTIME_CLASSIC_ROOT', async () => {
+  it('keeps hook guard read-only when COMET_RUNTIME_CLASSIC_ROOT is configured', async () => {
     const init = runNode(tmpDir, stateScript, ['init', 'runtime-root', 'full'], {
       COMET_RUNTIME_CLASSIC_ROOT: classicRuntimeRoot,
       COMET_CLASSIC_SKILL_ROOT: '',
     });
+    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'runtime-root');
+    const stateFile = path.join(changeDir, '.comet.yaml');
+    const before = await fs.readFile(stateFile, 'utf8');
     const targetFile = path.join(tmpDir, 'src', 'index.ts');
     await fs.mkdir(path.dirname(targetFile), { recursive: true });
     const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile), {
@@ -252,11 +270,10 @@ describe('comet scripts', () => {
 
     expect(init.status).toBe(0);
     expect(result.status).toBe(2);
-    const runState = await fs.readFile(
-      path.join(tmpDir, 'openspec', 'changes', 'runtime-root', '.comet', 'run-state.json'),
-      'utf8',
-    );
-    expect(JSON.parse(runState)).toMatchObject({ skill: 'comet-classic' });
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+    await expect(fs.access(path.join(changeDir, '.comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   }, 20_000);
 
   it('keeps COMET_CLASSIC_SKILL_ROOT as a compatibility fallback', async () => {
@@ -2041,7 +2058,10 @@ describe('comet scripts', () => {
     expect(guard.status).not.toBe(0);
     expect(guard.stderr).toContain('[FAIL] isolation selected');
     expect(guard.stderr).toContain('[FAIL] build_mode selected');
-    expect(guard.stderr).toContain('Next: ask the user to choose branch or worktree');
+    expect(guard.stderr).toContain('Next: choose a valid workspace mode');
+    expect(guard.stderr).toContain(
+      'comet state set missing-build-decisions isolation <branch|worktree>',
+    );
     expect(guard.stderr).toContain('Next: ask the user to choose an execution mode');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('isolation must be branch or worktree');
@@ -2541,6 +2561,8 @@ describe('comet scripts', () => {
     expect(guard.status).not.toBe(0);
     expect(guard.stderr).toContain('[FAIL] subagent dispatch confirmed');
     expect(guard.stderr).toContain('subagent_dispatch must be confirmed');
+    expect(guard.stderr).toContain('return to /comet-build Step 2');
+    expect(guard.stderr).not.toContain('ask the user to switch');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('subagent_dispatch must be confirmed');
   }, 20_000);
@@ -2812,23 +2834,44 @@ describe('comet scripts', () => {
       [
         'workflow: full',
         'phase: archive',
+        'context_compression: off',
         'build_mode: executing-plans',
         'build_pause: null',
-        'tdd_mode: null',
+        'subagent_dispatch: null',
+        'tdd_mode: tdd',
+        'review_mode: off',
         'isolation: branch',
         'verify_mode: light',
+        'base_ref: null',
         'design_doc: null',
         'plan: null',
         'verify_result: pass',
+        'verification_report: null',
+        'branch_status: pending',
+        'auto_transition: true',
+        'created_at: 2026-05-21',
         'verified_at: 2026-05-21',
         'archived: true',
+        'direct_override: null',
+        'handoff_context: null',
+        'handoff_hash: null',
         '',
       ].join('\n'),
     );
 
+    const pending = runNode(tmpDir, guardScript, ['done-change', 'archive']);
+    const handled = runNode(tmpDir, stateScript, [
+      'set',
+      'done-change',
+      'branch_status',
+      'handled',
+    ]);
     const result = runNode(tmpDir, guardScript, ['done-change', 'archive']);
 
-    expect(result.status).toBe(0);
+    expect(pending.status).not.toBe(0);
+    expect(pending.stderr).toContain('[FAIL] branch_status=handled');
+    expect(handled.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain('ALL CHECKS PASSED');
   });
 
@@ -3570,18 +3613,28 @@ describe('comet scripts', () => {
       ].join('\n'),
     );
 
+    const manualFailureCount = runNode(tmpDir, stateScript, [
+      'set',
+      'verify-change',
+      'verify_failures',
+      '7',
+    ]);
     const fail = runNode(tmpDir, stateScript, ['transition', 'verify-change', 'verify-fail']);
     const failedPhase = runNode(tmpDir, stateScript, ['get', 'verify-change', 'phase']);
     const failedResult = runNode(tmpDir, stateScript, ['get', 'verify-change', 'verify_result']);
+    const failedCount = runNode(tmpDir, stateScript, ['get', 'verify-change', 'verify_failures']);
     const failedBranchStatus = runNode(tmpDir, stateScript, [
       'get',
       'verify-change',
       'branch_status',
     ]);
 
+    expect(manualFailureCount.status).not.toBe(0);
+    expect(manualFailureCount.stderr).toContain('machine-owned field');
     expect(fail.status).toBe(0);
     expect(failedPhase.stdout.trim()).toBe('build');
     expect(failedResult.stdout.trim()).toBe('fail');
+    expect(failedCount.stdout.trim()).toBe('1');
     expect(failedBranchStatus.stdout.trim()).toBe('pending');
 
     const forceVerify = runNode(tmpDir, stateScript, ['set', 'verify-change', 'phase', 'verify'], {
@@ -3599,11 +3652,10 @@ describe('comet scripts', () => {
       'verification_report',
       'docs/superpowers/reports/verify-change.md',
     ]);
-    runNode(tmpDir, stateScript, ['set', 'verify-change', 'branch_status', 'handled']);
-
     const pass = runNode(tmpDir, stateScript, ['transition', 'verify-change', 'verify-pass']);
     const passedPhase = runNode(tmpDir, stateScript, ['get', 'verify-change', 'phase']);
     const passedResult = runNode(tmpDir, stateScript, ['get', 'verify-change', 'verify_result']);
+    const passedCount = runNode(tmpDir, stateScript, ['get', 'verify-change', 'verify_failures']);
     const verifiedAt = runNode(tmpDir, stateScript, ['get', 'verify-change', 'verified_at']);
     const archiveConfirmation = runNode(tmpDir, stateScript, [
       'get',
@@ -3614,6 +3666,10 @@ describe('comet scripts', () => {
     expect(pass.status).toBe(0);
     expect(passedPhase.stdout.trim()).toBe('archive');
     expect(passedResult.stdout.trim()).toBe('pass');
+    expect(passedCount.stdout.trim()).toBe('0');
+    expect(
+      runNode(tmpDir, stateScript, ['get', 'verify-change', 'branch_status']).stdout.trim(),
+    ).toBe('pending');
     expect(verifiedAt.stdout.trim()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(archiveConfirmation.stdout.trim()).toBe('pending');
   }, 20_000);
@@ -3715,7 +3771,7 @@ describe('comet scripts', () => {
     expect(verifyResult.stdout.trim()).toBe('pending');
     expect(verifiedAt.stdout.trim()).toBe('null');
     expect(report.stdout.trim()).toBe('docs/superpowers/reports/archive-reopen.md');
-    expect(branchStatus.stdout.trim()).toBe('handled');
+    expect(branchStatus.stdout.trim()).toBe('pending');
     expect(confirmation.stdout.trim()).toBe('null');
   }, 20_000);
 
@@ -3799,7 +3855,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] verification_report exists');
-    expect(result.stderr).toContain('[FAIL] branch_status=handled');
+    expect(result.stderr).not.toContain('branch_status=handled');
     expect(phase.stdout.trim()).toBe('verify');
   }, 20_000);
 
@@ -3918,12 +3974,20 @@ describe('comet scripts', () => {
       const escalatedWorkflow = runNode(tmpDir, stateScript, ['get', name, 'workflow']);
       const profile = runNode(tmpDir, stateScript, ['get', name, 'classic_profile']);
       const designDoc = runNode(tmpDir, stateScript, ['get', name, 'design_doc']);
+      const buildMode = runNode(tmpDir, stateScript, ['get', name, 'build_mode']);
+      const tddMode = runNode(tmpDir, stateScript, ['get', name, 'tdd_mode']);
+      const reviewMode = runNode(tmpDir, stateScript, ['get', name, 'review_mode']);
+      const isolation = runNode(tmpDir, stateScript, ['get', name, 'isolation']);
 
       expect(result.status).toBe(0);
       expect(phase.stdout.trim()).toBe('design');
       expect(escalatedWorkflow.stdout.trim()).toBe('full');
       expect(profile.stdout.trim()).toBe('full');
       expect(designDoc.stdout.trim()).toBe('null');
+      expect(buildMode.stdout.trim()).toBe('null');
+      expect(tddMode.stdout.trim()).toBe('null');
+      expect(reviewMode.stdout.trim()).toBe('null');
+      expect(isolation.stdout.trim()).toBe('null');
     }
   }, 20_000);
 
@@ -4387,7 +4451,7 @@ describe('comet scripts', () => {
           'plan: null',
           'verify_result: pass',
           'verification_report: docs/superpowers/reports/recover-verify.md',
-          'branch_status: handled',
+          'branch_status: pending',
           'verified_at: null',
           'archived: false',
           '',
@@ -4404,8 +4468,10 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Phase: verify');
       expect(result.stdout).toContain('verify_result: DONE (pass)');
-      expect(result.stdout).toContain('branch_status: DONE (handled)');
-      expect(result.stdout).toContain('guard to transition to archive');
+      expect(result.stdout).toContain('branch_status: DEFERRED (handled after the archive commit)');
+      expect(result.stdout).toContain(
+        'Continue to archive; branch handling happens after archive changes are committed',
+      );
     });
 
     it('outputs recovery context for design phase with handoff but no design doc', async () => {
@@ -4638,12 +4704,12 @@ describe('comet scripts', () => {
       );
       expect(yaml).toContain('verify_result: pending');
       expect(yaml).toContain('verification_report: docs/report.md');
-      expect(yaml).toContain('branch_status: handled');
+      expect(yaml).toContain('branch_status: pending');
     });
   });
 
-  describe('review fix: verify-fail preserves branch_status', () => {
-    it('does not reset branch_status on verify-fail (H6)', async () => {
+  describe('verify-fail invalidates premature branch handling', () => {
+    it('resets branch_status so archive owns final branch handling', async () => {
       await createChange(
         tmpDir,
         'branch-preserve',
@@ -4678,7 +4744,7 @@ describe('comet scripts', () => {
       );
       expect(yaml).toContain('verify_result: fail');
       expect(yaml).toContain('phase: build');
-      expect(yaml).toContain('branch_status: handled');
+      expect(yaml).toContain('branch_status: pending');
     });
   });
 
@@ -4887,6 +4953,48 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
     }, 20_000);
 
+    it.each([
+      ['valid pre-Run state', ''],
+      [
+        'legacy command fields',
+        'build_command: node legacy-build.js\nverify_command: node legacy-verify.js\n',
+      ],
+    ])('does not mutate %s or create distributed Run files', async (_label, legacyFields) => {
+      const changeDir = await createChange(
+        tmpDir,
+        'read-only-hook',
+        [
+          'workflow: full',
+          'phase: design',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'verified_at: null',
+          'archived: false',
+          legacyFields,
+        ].join('\n'),
+      );
+      const stateFile = path.join(changeDir, '.comet.yaml');
+      const before = await fs.readFile(stateFile, 'utf8');
+
+      const result = runHookGuard(
+        tmpDir,
+        hookGuardScript,
+        hookStdin(path.join(tmpDir, 'src', 'feature.ts')),
+      );
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Current phase: design');
+      expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+      await expect(fs.access(path.join(changeDir, '.comet'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    });
+
     it('allows writes to openspec/ in design phase', async () => {
       await createChange(
         tmpDir,
@@ -4959,6 +5067,148 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
     }, 20_000);
+
+    it('allows the first standard Superpowers plan write without a private suffix', async () => {
+      await createChange(
+        tmpDir,
+        'standard-plan-write',
+        [
+          'workflow: full',
+          'phase: build',
+          'design_doc: docs/superpowers/specs/standard-design.md',
+          'plan: null',
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      const target = path.join(
+        tmpDir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-durable-retries.md',
+      );
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(target));
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('phase: build, superpowers');
+    }, 20_000);
+
+    it('blocks a second write after the standard Superpowers plan slot is occupied', async () => {
+      const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
+      await createChange(
+        tmpDir,
+        'occupied-standard-plan',
+        [
+          'workflow: full',
+          'phase: build',
+          'design_doc: docs/superpowers/specs/occupied-standard-plan-design.md',
+          `plan: ${recorded}`,
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      const target = path.join(
+        tmpDir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-second-feature.md',
+      );
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(target));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('plan is already recorded');
+      expect(result.stderr).toContain(recorded);
+    }, 20_000);
+
+    it('blocks a named standard plan after the distributed plan slot is occupied', async () => {
+      const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
+      await createChange(
+        tmpDir,
+        'occupied-standard-plan',
+        [
+          'workflow: full',
+          'phase: build',
+          'design_doc: docs/superpowers/specs/occupied-standard-plan-design.md',
+          `plan: ${recorded}`,
+          'build_mode: executing-plans',
+          'isolation: branch',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      const target = path.join(
+        tmpDir,
+        'docs',
+        'superpowers',
+        'plans',
+        '2026-07-13-occupied-standard-plan-plan.md',
+      );
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(target));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('plan is already recorded');
+      expect(result.stderr).toContain(recorded);
+    }, 20_000);
+
+    it.skipIf(process.platform !== 'win32')(
+      'blocks a Windows case-variant named plan after the distributed slot is occupied',
+      async () => {
+        const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
+        await createChange(
+          tmpDir,
+          'windows-occupied-plan',
+          [
+            'workflow: full',
+            'phase: build',
+            'design_doc: docs/superpowers/specs/windows-occupied-plan-design.md',
+            `plan: ${recorded}`,
+            'build_mode: executing-plans',
+            'isolation: branch',
+            'verify_mode: null',
+            'verify_result: pending',
+            'verification_report: null',
+            'verified_at: null',
+            'archived: false',
+            '',
+          ].join('\n'),
+        );
+        const target = path.join(
+          tmpDir,
+          'Docs',
+          'superpowers',
+          'plans',
+          '2026-07-13-windows-occupied-plan-plan.md',
+        );
+
+        const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(target));
+
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain('plan is already recorded');
+        expect(result.stderr).toContain(recorded);
+      },
+      20_000,
+    );
 
     it('blocks source code writes in design phase', async () => {
       await createChange(
@@ -5327,7 +5577,19 @@ describe('comet scripts', () => {
       await createChange(
         tmpDir,
         'env-issue-ledger',
-        ['workflow: full', 'phase: design', 'archived: false', ''].join('\n'),
+        [
+          'workflow: full',
+          'phase: design',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
       );
 
       const docsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
@@ -5349,7 +5611,19 @@ describe('comet scripts', () => {
       await createChange(
         tmpDir,
         'auth-v2',
-        ['workflow: full', 'phase: design', 'archived: false', ''].join('\n'),
+        [
+          'workflow: full',
+          'phase: design',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
       );
 
       const docsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
@@ -5362,7 +5636,7 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('phase: design, superpowers');
     }, 20_000);
 
-    it('does not route unmatched docs/superpowers writes to an unrelated eligible change', async () => {
+    it('requires selection before a standard specs write with multiple active changes', async () => {
       await createChange(
         tmpDir,
         'a-open-change',
@@ -5381,10 +5655,11 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain('Current phase: open');
+      expect(result.stderr).toContain('multiple active changes require a current change');
+      expect(result.stderr).toContain('comet state select <change-name>');
     }, 20_000);
 
-    it('blocks unmatched docs/superpowers writes when all active changes are eligible phases', async () => {
+    it('requires selection before an unmatched standard specs write with multiple eligible changes', async () => {
       await createChange(
         tmpDir,
         'auth',
@@ -5409,7 +5684,8 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain('unmatched Superpowers artifact');
+      expect(result.stderr).toContain('multiple active changes require a current change');
+      expect(result.stderr).toContain('comet state select <change-name>');
     }, 20_000);
 
     it('requires a current change for repo source writes with multiple active changes', async () => {

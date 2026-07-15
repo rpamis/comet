@@ -1,6 +1,6 @@
 ---
 name: comet
-description: Route /comet to the permanent Comet Native or Comet Classic entry selected by the project configuration.
+description: "Route /comet requests or an active Comet change to the permanent Comet Native or Comet Classic entry selected by project configuration."
 ---
 
 # Comet Entry

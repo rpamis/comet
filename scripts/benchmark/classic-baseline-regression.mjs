@@ -83,6 +83,23 @@ function hookInput(filePath) {
   });
 }
 
+const CONTROLLED_MIGRATION_GUARD_DIAGNOSTIC =
+  'BLOCKED — fix failing checks before proceeding to next phase';
+
+function migrationGuardOutcome(result, phase) {
+  const diagnostic = result.stderr.includes(CONTROLLED_MIGRATION_GUARD_DIAGNOSTIC)
+    ? CONTROLLED_MIGRATION_GUARD_DIAGNOSTIC
+    : null;
+  return {
+    phase,
+    status: result.status,
+    signal: result.signal ?? null,
+    controlledOutcome:
+      result.status === 1 && result.signal === null && !result.error && diagnostic !== null,
+    diagnostic,
+  };
+}
+
 async function resetScenario(workspace, name) {
   const directory = path.join(workspace, name);
   await fs.rm(directory, { recursive: true, force: true });
@@ -109,27 +126,33 @@ async function profileScenario(workspace, profile) {
   state(directory, 'init', name, profile);
   const changeDir = path.join(directory, 'openspec', 'changes', name);
 
-  const first = run(directory, ['hook-guard'], { input: hookInput('src/index.ts') });
+  const migrationGuard = migrationGuardOutcome(run(directory, ['guard', name, 'open']), 'open');
   const migrated = await readState(changeDir);
-  const firstBytes = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const beforeHooks = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const first = run(directory, ['hook-guard'], { input: hookInput('src/index.ts') });
+  const afterFirst = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
   const second = run(directory, ['hook-guard'], { input: hookInput('src/index.ts') });
-  const secondBytes = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const afterSecond = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
 
   return result(
     name,
     startedAt,
     {
       transitionAccuracy:
-        first.status === 2 && second.status === 2 && migrated.current_step === `${profile}.open`,
+        migrationGuard.controlledOutcome &&
+        first.status === 2 &&
+        second.status === 2 &&
+        migrated.current_step === `${profile}.open`,
       migrationSuccess:
+        migrationGuard.controlledOutcome &&
         migrated.classic_migration === 1 &&
         migrated.classic_profile === profile &&
         migrated.skill === 'comet-classic',
-      idempotent: firstBytes === secondBytes,
+      idempotent: beforeHooks === afterFirst && afterFirst === afterSecond,
       contractMatch:
         migrated.workflow === profile && migrated.phase === 'open' && migrated.archived === false,
     },
-    { currentStep: migrated.current_step },
+    { currentStep: migrated.current_step, migrationGuard },
   );
 }
 
@@ -149,25 +172,33 @@ async function retryFixScenario(workspace) {
     state(directory, 'set', name, field, value);
   }
   const changeDir = path.join(directory, 'openspec', 'changes', name);
-  const first = run(directory, ['hook-guard'], { input: hookInput('src/fix.ts') });
+  const migrationGuard = migrationGuardOutcome(run(directory, ['guard', name, 'build']), 'build');
   const migrated = await readState(changeDir);
-  const firstBytes = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const beforeHooks = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const first = run(directory, ['hook-guard'], { input: hookInput('src/fix.ts') });
+  const afterFirst = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
   const second = run(directory, ['hook-guard'], { input: hookInput('src/fix.ts') });
-  const secondBytes = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+  const afterSecond = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
 
   return result(
     name,
     startedAt,
     {
-      transitionAccuracy: first.status === 0 && migrated.current_step === 'hotfix.build.execute',
-      migrationSuccess: migrated.classic_migration === 1 && migrated.skill === 'comet-classic',
-      idempotent: second.status === 0 && firstBytes === secondBytes,
+      transitionAccuracy:
+        migrationGuard.controlledOutcome &&
+        first.status === 0 &&
+        migrated.current_step === 'hotfix.build.execute',
+      migrationSuccess:
+        migrationGuard.controlledOutcome &&
+        migrated.classic_migration === 1 &&
+        migrated.skill === 'comet-classic',
+      idempotent: second.status === 0 && beforeHooks === afterFirst && afterFirst === afterSecond,
       contractMatch:
         migrated.workflow === 'hotfix' &&
         migrated.phase === 'build' &&
         migrated.verify_result === 'fail',
     },
-    { currentStep: migrated.current_step },
+    { currentStep: migrated.current_step, migrationGuard },
   );
 }
 
