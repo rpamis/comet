@@ -23,7 +23,13 @@ import {
   type ClassicState,
 } from './classic-state.js';
 import { readClassicState, writeClassicState } from './classic-store.js';
-import { liveGitBranch } from './classic-branch-binding.js';
+import {
+  driftBlockedMessage,
+  evaluateBranchBinding,
+  healBoundBranch,
+  liveGitBranch,
+  unboundDetachedMessage,
+} from './classic-branch-binding.js';
 import {
   CLASSIC_TRANSITION_EVENTS,
   applyClassicTransition,
@@ -862,6 +868,25 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
     await expectField('verify_result', 'pass');
     const archived = await readField(name, 'archived');
     (archived !== 'true' ? pass : reject)(`archived=${archived} (expected: not true)`);
+  }
+  const isolation = await readField(name, 'isolation');
+  if (isolation === 'current') {
+    const boundBranch = await readField(name, 'bound_branch');
+    const verdict = evaluateBranchBinding({
+      isolation,
+      boundBranch: boundBranch && boundBranch !== 'null' ? boundBranch : null,
+      currentBranch: liveGitBranch(process.cwd()),
+    });
+    if (verdict.status === 'drift') {
+      reject(driftBlockedMessage(name, verdict.boundBranch, verdict.currentBranch));
+    } else if (verdict.status === 'unbound-detached') {
+      reject(unboundDetachedMessage(name));
+    } else if (verdict.status === 'needs-heal') {
+      await healBoundBranch(directory, verdict.branch);
+      pass(`bound_branch lazily set to ${verdict.branch} (isolation=current)`);
+    } else {
+      pass(`bound_branch matches current branch (isolation=current)`);
+    }
   }
   output.stdout.push('');
   if (blocked) {

@@ -2275,6 +2275,89 @@ describe('comet scripts', () => {
     });
   });
 
+  describe('state check current-isolation drift', () => {
+    async function gitInit(branch: string) {
+      execFileSync('git', ['init', '-b', branch], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), '# t\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'base'], { cwd: tmpDir, stdio: 'ignore' });
+    }
+
+    function currentChangeYaml(bound: string | null): string {
+      return [
+        'workflow: full',
+        'phase: verify',
+        'design_doc: null',
+        'plan: null',
+        'build_mode: executing-plans',
+        'isolation: current',
+        `bound_branch: ${bound ?? 'null'}`,
+        'verify_mode: full',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n');
+    }
+
+    it('blocks the verify entry check after the branch drifts off bound_branch', async () => {
+      await gitInit('feature-A');
+      await createChange(tmpDir, 'verify-drift', currentChangeYaml('feature-A'));
+      runNode(tmpDir, stateScript, ['select', 'verify-drift']);
+      execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+      const check = runNode(tmpDir, stateScript, ['check', 'verify-drift', 'verify']);
+
+      expect(check.status).not.toBe(0);
+      expect(check.stdout + check.stderr).toContain('BLOCKED');
+      expect(check.stdout).toContain(
+        "change 'verify-drift' is bound to branch 'feature-A', but current branch is 'feature-B'",
+      );
+    });
+
+    it('still detects drift after the sidecar is deleted and re-selected', async () => {
+      await gitInit('feature-A');
+      await createChange(tmpDir, 'sidecar-loss', currentChangeYaml('feature-A'));
+      runNode(tmpDir, stateScript, ['select', 'sidecar-loss']);
+      await fs.rm(path.join(tmpDir, '.comet'), { recursive: true, force: true });
+      execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+      runNode(tmpDir, stateScript, ['select', 'sidecar-loss']);
+
+      const check = runNode(tmpDir, stateScript, ['check', 'sidecar-loss', 'verify']);
+
+      expect(check.status).not.toBe(0);
+      expect(check.stdout).toContain("bound to branch 'feature-A'");
+    });
+
+    it('blocks the check when a bound change is inspected while HEAD is detached', async () => {
+      await gitInit('feature-A');
+      await createChange(tmpDir, 'detached-check', currentChangeYaml('feature-A'));
+      const sha = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: tmpDir,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['checkout', sha], { cwd: tmpDir, stdio: 'ignore' });
+
+      const check = runNode(tmpDir, stateScript, ['check', 'detached-check', 'verify']);
+
+      expect(check.status).not.toBe(0);
+      expect(check.stdout).toContain('detached HEAD');
+    });
+
+    it('lazily binds a legacy unbound current-isolation change and passes', async () => {
+      await gitInit('feature-A');
+      await createChange(tmpDir, 'legacy-unbound', currentChangeYaml(null));
+
+      const check = runNode(tmpDir, stateScript, ['check', 'legacy-unbound', 'verify']);
+      const bound = runNode(tmpDir, stateScript, ['get', 'legacy-unbound', 'bound_branch']);
+
+      expect(check.status).toBe(0);
+      expect(bound.stdout.trim()).toBe('feature-A');
+    });
+  });
+
   it('blocks build completion until tdd_mode is selected for full workflow', async () => {
     await createChange(
       tmpDir,

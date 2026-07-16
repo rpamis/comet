@@ -11661,6 +11661,10 @@ async function healBoundBranch(changeDir, branch) {
 function branchLabel(currentBranch) {
   return currentBranch ?? "detached HEAD";
 }
+function driftBlockedMessage(change, boundBranch, currentBranch) {
+  return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'.
+Next: ask the user to confirm — switch back to '${boundBranch}', or run \`comet state rebind ${change}\` after explicit confirmation.`;
+}
 function driftStaleReason(change, boundBranch, currentBranch) {
   return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'`;
 }
@@ -13717,6 +13721,25 @@ async function check2(output, name, phase) {
     await expectField("verify_result", "pass");
     const archived = await readField3(name, "archived");
     (archived !== "true" ? pass2 : reject)(`archived=${archived} (expected: not true)`);
+  }
+  const isolation = await readField3(name, "isolation");
+  if (isolation === "current") {
+    const boundBranch = await readField3(name, "bound_branch");
+    const verdict = evaluateBranchBinding({
+      isolation,
+      boundBranch: boundBranch && boundBranch !== "null" ? boundBranch : null,
+      currentBranch: liveGitBranch(process.cwd())
+    });
+    if (verdict.status === "drift") {
+      reject(driftBlockedMessage(name, verdict.boundBranch, verdict.currentBranch));
+    } else if (verdict.status === "unbound-detached") {
+      reject(unboundDetachedMessage(name));
+    } else if (verdict.status === "needs-heal") {
+      await healBoundBranch(directory, verdict.branch);
+      pass2(`bound_branch lazily set to ${verdict.branch} (isolation=current)`);
+    } else {
+      pass2(`bound_branch matches current branch (isolation=current)`);
+    }
   }
   output.stdout.push("");
   if (blocked2) {
