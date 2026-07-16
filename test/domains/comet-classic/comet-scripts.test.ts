@@ -2358,6 +2358,80 @@ describe('comet scripts', () => {
     });
   });
 
+  describe('state rebind', () => {
+    async function gitInit(branch: string) {
+      execFileSync('git', ['init', '-b', branch], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), '# t\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'base'], { cwd: tmpDir, stdio: 'ignore' });
+    }
+
+    function boundYaml(bound: string | null): string {
+      return [
+        'workflow: full',
+        'phase: verify',
+        'design_doc: null',
+        'plan: null',
+        'build_mode: executing-plans',
+        'isolation: current',
+        `bound_branch: ${bound ?? 'null'}`,
+        'verify_mode: full',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n');
+    }
+
+    it('rebinds to the current branch, passes a later check, and records an audit event', async () => {
+      await gitInit('feature-A');
+      await createChange(tmpDir, 'rebind-ok', boundYaml('feature-A'));
+      execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+      const rebind = runNode(tmpDir, stateScript, ['rebind', 'rebind-ok']);
+      const bound = runNode(tmpDir, stateScript, ['get', 'rebind-ok', 'bound_branch']);
+      const check = runNode(tmpDir, stateScript, ['check', 'rebind-ok', 'verify']);
+
+      expect(rebind.status).toBe(0);
+      expect(bound.stdout.trim()).toBe('feature-B');
+      expect(check.status).toBe(0);
+
+      const log = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', 'rebind-ok', '.comet', 'state-events.jsonl'),
+        'utf8',
+      );
+      const record = JSON.parse(log.trim().split('\n').at(-1)!);
+      expect(record.event).toBe('rebind');
+      expect(record.effects).toContainEqual(
+        expect.objectContaining({ field: 'boundBranch', from: 'feature-A', to: 'feature-B' }),
+      );
+    });
+
+    it('refuses to rebind a change that has no bound_branch', async () => {
+      await gitInit('feature-A');
+      await createChange(tmpDir, 'rebind-unbound', boundYaml(null));
+
+      const rebind = runNode(tmpDir, stateScript, ['rebind', 'rebind-unbound']);
+
+      expect(rebind.status).not.toBe(0);
+      expect(rebind.stderr).toContain('not yet bound');
+    });
+
+    it('refuses to rebind while HEAD is detached', async () => {
+      await gitInit('feature-A');
+      await createChange(tmpDir, 'rebind-detached', boundYaml('feature-A'));
+      const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, encoding: 'utf8' }).trim();
+      execFileSync('git', ['checkout', sha], { cwd: tmpDir, stdio: 'ignore' });
+
+      const rebind = runNode(tmpDir, stateScript, ['rebind', 'rebind-detached']);
+
+      expect(rebind.status).not.toBe(0);
+      expect(rebind.stderr).toContain('HEAD is detached');
+    });
+  });
+
   it('blocks build completion until tdd_mode is selected for full workflow', async () => {
     await createChange(
       tmpDir,
