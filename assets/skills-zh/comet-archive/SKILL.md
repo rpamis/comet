@@ -102,9 +102,15 @@ git add -A
 git commit -m "chore: archive <change-name>"
 ```
 
-如分支处理（阶段 4）选择尚未合并到主分支，提交后按所选方式（合并 / PR / 保持分支）一并收尾。
+提交归档 commit 后，读取 `isolation` 与 `branch_action`，按下列场景处理这个新 commit 是否需要推送：
 
-如果本次 change 使用 `isolation: current`，这些 archive 改动会直接追加在当前分支上；若验证阶段已经按用户选择 push 过当前分支，需要明确告知用户 archive commit 仍需单独提交，并且通常还要再 push 一次。不要假设一定存在独立开发分支、合并动作或 PR 收尾。
+- **场景 A — `branch_action: push`**（`current` 模式，验证阶段已 push 过当前分支）：验证阶段已授权 push 这条分支，archive commit 落在同一分支上，**直接执行 `git push`**（无需 `-u`，tracking 已存在），并告知用户"archive commit 已随之前的 push 一起同步到远端"。这是延续同一个已授权动作，不再二次确认。
+- **场景 B — `branch_action: pushed-pr`**（`branch`/`worktree` 模式，之前选了"推送并创建 PR"）：PR 分支已 `push -u` 且有 tracking，archive commit 落在同一条分支上，性质同场景 A，**直接执行 `git push`**（无需 `-u`），告知用户"archive commit 已追加推送到 PR 分支 `<branch>`"。
+- **场景 C — `branch_action: merged-locally`**（`branch`/`worktree` 模式，之前选了"本地合并到主分支"）：合并动作从未 push 过 base 分支，base 本地领先 `origin/<base>`（含合并内容与本次 archive commit）。**不自动 push**：按 `comet/reference/decision-point.md` 协议暂停，询问用户"base 分支本地已领先远端，是否现在一起 push"，由用户现场决定。不持久化这次决策。
+- **场景 D — `branch_action: keep-local`**（`current` 或 `branch`/`worktree` 均可能）：不执行 push，只在回复里明确提示"archive commit 目前只在本地，尚未推送"，尊重用户"稍后自己处理"的原始选择。
+- **兜底 — `branch_action` 为空**（升级前创建、未走过新版 verify 流程的存量 change）：退回散文提示，询问用户要不要 push；不因字段缺失报错或阻塞。
+
+不要假设一定存在独立开发分支、合并动作或 PR 收尾——以 `isolation` 与 `branch_action` 的实际取值为准。
 
 ## 退出条件
 
