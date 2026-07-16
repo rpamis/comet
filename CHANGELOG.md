@@ -4,9 +4,14 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.4.0-beta.6] - 2026-07-16
 
+### Added
+
+- **`comet state rebind`**: new command to explicitly re-bind an `isolation: current` change to the current branch after user confirmation, recording an audit event; refuses to run while HEAD is detached or before an initial binding exists.
+
 ### Fixed
 
 - **Preset isolation**: hotfix and tweak workflows can again select `isolation: worktree`; a prior change had incorrectly restricted preset workflows to `branch` and `current` only.
+- **Current-branch isolation drift detection**: `isolation: current` changes now persist their bound branch in the committed change state instead of a local sidecar, so switching branches mid-change is reliably detected at every build/verify/archive entry check and by the write guard, and is no longer silently reset by re-selecting the current change. Establishing `isolation: current` while on a detached HEAD is now rejected.
 
 ## What's Changed [0.4.0-beta.5] - 2026-07-13
 
