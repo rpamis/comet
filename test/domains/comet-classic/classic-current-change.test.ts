@@ -88,12 +88,12 @@ describe('Classic current change selection', () => {
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  it('atomically selects an active change without recording a branch', async () => {
+  it('atomically selects an active change and records the current branch', async () => {
     await seedActiveChange(root, 'change-a', false);
 
     const selected = await selectCurrentChange(root, 'change-a');
 
-    expect(selected).toEqual({ version: 1, change: 'change-a' });
+    expect(selected).toEqual({ version: 1, change: 'change-a', branch: 'main' });
     expect(JSON.parse(await fs.readFile(currentChangeFile(root), 'utf8'))).toEqual(selected);
     expect((await fs.readdir(path.join(root, '.comet'))).sort()).toEqual(['current-change.json']);
   });
@@ -117,13 +117,16 @@ describe('Classic current change selection', () => {
     });
   });
 
-  it('keeps a branch-isolation selection valid across branch switches', async () => {
+  it('marks a branch-isolation selection stale when the branch changes', async () => {
     await seedActiveChange(root, 'change-a', false);
     await selectCurrentChange(root, 'change-a');
 
     git(root, 'switch', '-c', 'other');
 
-    expect(await resolveCurrentChange(root)).toMatchObject({ status: 'selected' });
+    expect(await resolveCurrentChange(root)).toEqual({
+      status: 'stale',
+      reason: "current change 'change-a' was selected on branch 'main', current branch is 'other'",
+    });
   });
 
   it('reports malformed selection data as stale instead of missing', async () => {

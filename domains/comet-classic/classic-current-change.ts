@@ -15,6 +15,7 @@ import {
 export interface CurrentChangeSelection {
   version: 1;
   change: string;
+  branch: string | null;
 }
 
 export type CurrentChangeResolution =
@@ -86,7 +87,10 @@ function parseSelection(source: string): CurrentChangeSelection {
     throw new Error('current change selection change must be a string');
   }
   assertOpenSpecChangeName(record.change);
-  return { version: 1, change: record.change };
+  if (record.branch !== null && typeof record.branch !== 'string') {
+    throw new Error('current change selection branch must be a string or null');
+  }
+  return { version: 1, change: record.change, branch: record.branch as string | null };
 }
 
 export async function selectCurrentChange(
@@ -94,7 +98,11 @@ export async function selectCurrentChange(
   changeName: string,
 ): Promise<CurrentChangeSelection> {
   await validateActiveChange(projectRoot, changeName);
-  const selection: CurrentChangeSelection = { version: 1, change: changeName };
+  const selection: CurrentChangeSelection = {
+    version: 1,
+    change: changeName,
+    branch: liveGitBranch(projectRoot),
+  };
   const file = currentChangeFile(projectRoot);
   const temporary = `${file}.${randomUUID()}.tmp`;
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -133,25 +141,32 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
   }
 
   const branch = liveGitBranch(projectRoot);
-  const verdict = evaluateBranchBinding({
-    isolation: classic.isolation,
-    boundBranch: classic.boundBranch,
-    currentBranch: branch,
-  });
-  if (verdict.status === 'drift') {
+  if (classic.isolation === 'current') {
+    const verdict = evaluateBranchBinding({
+      isolation: classic.isolation,
+      boundBranch: classic.boundBranch,
+      currentBranch: branch,
+    });
+    if (verdict.status === 'drift') {
+      return {
+        status: 'stale',
+        reason: driftStaleReason(selection.change, verdict.boundBranch, verdict.currentBranch),
+      };
+    }
+    if (verdict.status === 'unbound-detached') {
+      return { status: 'stale', reason: unboundDetachedMessage(selection.change) };
+    }
+    if (verdict.status === 'needs-heal') {
+      await healBoundBranch(
+        path.join(projectRoot, 'openspec', 'changes', selection.change),
+        verdict.branch,
+      );
+    }
+  } else if (selection.branch !== null && branch !== selection.branch) {
     return {
       status: 'stale',
-      reason: driftStaleReason(selection.change, verdict.boundBranch, verdict.currentBranch),
+      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${branch ?? 'detached HEAD'}'`,
     };
-  }
-  if (verdict.status === 'unbound-detached') {
-    return { status: 'stale', reason: unboundDetachedMessage(selection.change) };
-  }
-  if (verdict.status === 'needs-heal') {
-    await healBoundBranch(
-      path.join(projectRoot, 'openspec', 'changes', selection.change),
-      verdict.branch,
-    );
   }
   return { status: 'selected', selection, classic, branch };
 }
