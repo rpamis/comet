@@ -36,6 +36,7 @@ const ENUMS: Record<string, readonly string[]> = {
   auto_transition: ['true', 'false'],
   verify_result: ['pending', 'pass', 'fail'],
   branch_status: ['pending', 'handled'],
+  branch_action: ['push', 'keep-local', 'merged-locally', 'pushed-pr'],
   archive_confirmation: ['pending', 'confirmed'],
   archived: ['true', 'false'],
   direct_override: ['true', 'false'],

@@ -649,6 +649,77 @@ describe('comet scripts', () => {
     expect(setInvalid.stderr).toContain('Invalid value');
   }, 20_000);
 
+  it('sets each branch_action value and rejects invalid branch_action values', async () => {
+    await createChange(
+      tmpDir,
+      'branch-action-set',
+      [
+        'workflow: full',
+        'phase: verify',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'tdd_mode: tdd',
+        'isolation: branch',
+        'verify_mode: full',
+        'review_mode: off',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'branch_status: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    for (const value of ['push', 'keep-local', 'merged-locally', 'pushed-pr']) {
+      const set = runNode(tmpDir, stateScript, ['set', 'branch-action-set', 'branch_action', value]);
+      const get = runNode(tmpDir, stateScript, ['get', 'branch-action-set', 'branch_action']);
+      expect(set.status).toBe(0);
+      expect(get.stdout.trim()).toBe(value);
+    }
+
+    const setInvalid = runNode(tmpDir, stateScript, [
+      'set',
+      'branch-action-set',
+      'branch_action',
+      'bogus',
+    ]);
+    expect(setInvalid.status).not.toBe(0);
+    expect(setInvalid.stderr).toContain('Invalid value');
+  }, 20_000);
+
+  it('rejects invalid branch_action values during schema validation', async () => {
+    await createChange(
+      tmpDir,
+      'invalid-branch-action',
+      [
+        'workflow: full',
+        'phase: verify',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'tdd_mode: tdd',
+        'isolation: branch',
+        'verify_mode: full',
+        'review_mode: off',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'branch_status: pending',
+        'branch_action: bogus',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runNode(tmpDir, guardScript, ['invalid-branch-action', 'verify']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("branch_action='bogus' is not valid");
+    expect(result.stderr).toContain('FATAL: .comet.yaml schema validation failed');
+  }, 20_000);
+
   it('validates the language field in .comet.yaml', async () => {
     await createChange(
       tmpDir,

@@ -25,6 +25,7 @@ export const PRESET_ALLOWED_ISOLATIONS = ISOLATION_MODES.filter((mode) => mode.a
 const VERIFY_MODES = ['light', 'full'] as const;
 const VERIFY_RESULTS = ['pending', 'pass', 'fail'] as const;
 const BRANCH_STATUSES = ['pending', 'handled'] as const;
+const BRANCH_ACTIONS = ['push', 'keep-local', 'merged-locally', 'pushed-pr'] as const;
 const ARCHIVE_CONFIRMATIONS = ['pending', 'confirmed'] as const;
 
 export type ClassicProfile = (typeof CLASSIC_PROFILES)[number];
@@ -50,6 +51,7 @@ export interface ClassicState {
   verifyResult: (typeof VERIFY_RESULTS)[number];
   verificationReport: string | null;
   branchStatus: (typeof BRANCH_STATUSES)[number] | null;
+  branchAction: (typeof BRANCH_ACTIONS)[number] | null;
   createdAt: string | null;
   verifiedAt: string | null;
   archiveConfirmation: (typeof ARCHIVE_CONFIRMATIONS)[number] | null;
@@ -86,6 +88,7 @@ export const CLASSIC_WIRE_KEYS = [
   'verify_result',
   'verification_report',
   'branch_status',
+  'branch_action',
   'created_at',
   'verified_at',
   'archive_confirmation',
@@ -217,6 +220,7 @@ function classicStateFromDocument(doc: StateDocument): ClassicState | null {
     verifyResult: enumValue(doc, 'verify_result', VERIFY_RESULTS, false)!,
     verificationReport: relativePath(doc, 'verification_report'),
     branchStatus: enumValue(doc, 'branch_status', BRANCH_STATUSES),
+    branchAction: enumValue(doc, 'branch_action', BRANCH_ACTIONS),
     createdAt: nullableString(doc, 'created_at'),
     verifiedAt: nullableString(doc, 'verified_at'),
     archiveConfirmation: enumValue(doc, 'archive_confirmation', ARCHIVE_CONFIRMATIONS),
@@ -305,6 +309,7 @@ export function classicStateToDocument(state: ClassicState): StateDocument {
     verify_result: state.verifyResult,
     verification_report: state.verificationReport,
     branch_status: state.branchStatus,
+    branch_action: state.branchAction,
     created_at: state.createdAt,
     verified_at: state.verifiedAt,
     archive_confirmation: state.archiveConfirmation,

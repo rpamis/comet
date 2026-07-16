@@ -7747,6 +7747,7 @@ var PRESET_ALLOWED_ISOLATIONS = ISOLATION_MODES.filter((mode) => mode.allowedInP
 var VERIFY_MODES = ["light", "full"];
 var VERIFY_RESULTS = ["pending", "pass", "fail"];
 var BRANCH_STATUSES = ["pending", "handled"];
+var BRANCH_ACTIONS = ["push", "keep-local", "merged-locally", "pushed-pr"];
 var ARCHIVE_CONFIRMATIONS = ["pending", "confirmed"];
 var CLASSIC_WIRE_KEYS = [
   "workflow",
@@ -7767,6 +7768,7 @@ var CLASSIC_WIRE_KEYS = [
   "verify_result",
   "verification_report",
   "branch_status",
+  "branch_action",
   "created_at",
   "verified_at",
   "archive_confirmation",
@@ -7876,6 +7878,7 @@ function classicStateFromDocument(doc) {
     verifyResult: enumValue(doc, "verify_result", VERIFY_RESULTS, false),
     verificationReport: relativePath(doc, "verification_report"),
     branchStatus: enumValue(doc, "branch_status", BRANCH_STATUSES),
+    branchAction: enumValue(doc, "branch_action", BRANCH_ACTIONS),
     createdAt: nullableString(doc, "created_at"),
     verifiedAt: nullableString(doc, "verified_at"),
     archiveConfirmation: enumValue(doc, "archive_confirmation", ARCHIVE_CONFIRMATIONS),
@@ -7940,6 +7943,7 @@ function classicStateToDocument(state) {
     verify_result: state.verifyResult,
     verification_report: state.verificationReport,
     branch_status: state.branchStatus,
+    branch_action: state.branchAction,
     created_at: state.createdAt,
     verified_at: state.verifiedAt,
     archive_confirmation: state.archiveConfirmation,
@@ -10106,6 +10110,7 @@ var ENUMS = {
   auto_transition: ["true", "false"],
   verify_result: ["pending", "pass", "fail"],
   branch_status: ["pending", "handled"],
+  branch_action: ["push", "keep-local", "merged-locally", "pushed-pr"],
   archive_confirmation: ["pending", "confirmed"],
   archived: ["true", "false"],
   direct_override: ["true", "false"],
@@ -12968,6 +12973,7 @@ var FIELD_ENUMS = {
   auto_transition: ["true", "false"],
   verify_result: ["pending", "pass", "fail"],
   branch_status: ["pending", "handled"],
+  branch_action: ["push", "keep-local", "merged-locally", "pushed-pr"],
   archive_confirmation: ["pending", "confirmed"],
   archived: ["true", "false"],
   direct_override: ["true", "false"],
@@ -12978,6 +12984,7 @@ var PATH_FIELDS = /* @__PURE__ */ new Set(["design_doc", "plan", "verification_r
 var CLASSIC_FIELD_WIRE_NAMES2 = {
   archived: "archived",
   branchStatus: "branch_status",
+  branchAction: "branch_action",
   classicProfile: "classic_profile",
   designDoc: "design_doc",
   language: "language",
@@ -13161,6 +13168,12 @@ function sparseClassicState(record) {
     ),
     verificationReport: nullableRecordString(record, "verification_report"),
     branchStatus: enumRecordValue(record, "branch_status", ["pending", "handled"], null),
+    branchAction: enumRecordValue(
+      record,
+      "branch_action",
+      ["push", "keep-local", "merged-locally", "pushed-pr"],
+      null
+    ),
     createdAt: nullableRecordString(record, "created_at"),
     verifiedAt: nullableRecordString(record, "verified_at"),
     archiveConfirmation: enumRecordValue(

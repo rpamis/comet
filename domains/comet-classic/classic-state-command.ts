@@ -65,6 +65,7 @@ const FIELD_ENUMS: Record<string, readonly string[]> = {
   auto_transition: ['true', 'false'],
   verify_result: ['pending', 'pass', 'fail'],
   branch_status: ['pending', 'handled'],
+  branch_action: ['push', 'keep-local', 'merged-locally', 'pushed-pr'],
   archive_confirmation: ['pending', 'confirmed'],
   archived: ['true', 'false'],
   direct_override: ['true', 'false'],
@@ -76,6 +77,7 @@ const PATH_FIELDS = new Set(['design_doc', 'plan', 'verification_report', 'hando
 const CLASSIC_FIELD_WIRE_NAMES: Partial<Record<keyof ClassicState, string>> = {
   archived: 'archived',
   branchStatus: 'branch_status',
+  branchAction: 'branch_action',
   classicProfile: 'classic_profile',
   designDoc: 'design_doc',
   language: 'language',
@@ -288,6 +290,12 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
     )!,
     verificationReport: nullableRecordString(record, 'verification_report'),
     branchStatus: enumRecordValue(record, 'branch_status', ['pending', 'handled'] as const, null),
+    branchAction: enumRecordValue(
+      record,
+      'branch_action',
+      ['push', 'keep-local', 'merged-locally', 'pushed-pr'] as const,
+      null,
+    ),
     createdAt: nullableRecordString(record, 'created_at'),
     verifiedAt: nullableRecordString(record, 'verified_at'),
     archiveConfirmation: enumRecordValue(
