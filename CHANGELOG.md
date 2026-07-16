@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.6] - 2026-07-16
+
+### Fixed
+
+- **Preset isolation**: hotfix and tweak workflows can again select `isolation: worktree`; a prior change had incorrectly restricted preset workflows to `branch` and `current` only.
+
 ## What's Changed [0.4.0-beta.5] - 2026-07-13
 
 ### Added

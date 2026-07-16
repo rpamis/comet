@@ -3385,6 +3385,32 @@ describe('comet scripts', () => {
     expect(result.status).toBe(0);
   });
 
+  it('allows build-complete for hotfix workflow with isolation worktree', async () => {
+    await createChange(
+      tmpDir,
+      'hotfix-worktree',
+      [
+        'workflow: hotfix',
+        'phase: build',
+        'build_mode: direct',
+        'build_pause: null',
+        'tdd_mode: direct',
+        'isolation: worktree',
+        'verify_mode: light',
+        'review_mode: off',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runNode(tmpDir, stateScript, ['transition', 'hotfix-worktree', 'build-complete']);
+
+    expect(result.status).toBe(0);
+  }, 20_000);
+
   it('transitions full workflow from open to design', async () => {
     await createChange(
       tmpDir,

@@ -14,7 +14,7 @@ const TDD_MODES = ['tdd', 'direct'] as const;
 const REVIEW_MODES = ['off', 'standard', 'thorough'] as const;
 export const ISOLATION_MODES = [
   { value: 'branch', allowedInPreset: true },
-  { value: 'worktree', allowedInPreset: false },
+  { value: 'worktree', allowedInPreset: true },
   { value: 'current', allowedInPreset: true },
 ] as const;
 type IsolationMode = (typeof ISOLATION_MODES)[number]['value'];

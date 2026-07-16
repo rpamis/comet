@@ -7737,7 +7737,7 @@ var TDD_MODES = ["tdd", "direct"];
 var REVIEW_MODES = ["off", "standard", "thorough"];
 var ISOLATION_MODES = [
   { value: "branch", allowedInPreset: true },
-  { value: "worktree", allowedInPreset: false },
+  { value: "worktree", allowedInPreset: true },
   { value: "current", allowedInPreset: true }
 ];
 var ISOLATIONS = ISOLATION_MODES.map((mode) => mode.value);
