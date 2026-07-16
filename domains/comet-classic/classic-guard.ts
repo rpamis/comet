@@ -14,6 +14,13 @@ import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classi
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import type { ClassicRunContext } from './classic-migrate.js';
 import {
+  driftBlockedMessage,
+  evaluateBranchBinding,
+  healBoundBranch,
+  liveGitBranch,
+  unboundDetachedMessage,
+} from './classic-branch-binding.js';
+import {
   ISOLATIONS,
   PRESET_ALLOWED_ISOLATIONS,
   type ClassicPhase,
@@ -511,6 +518,25 @@ async function isolationAllowedForWorkflow(
   );
 }
 
+async function boundBranchMatches(changeDir: string, change: string): Promise<CheckResult> {
+  const isolation = await readField(changeDir, 'isolation');
+  const boundBranch = await readField(changeDir, 'bound_branch');
+  const verdict = evaluateBranchBinding({
+    isolation,
+    boundBranch: boundBranch && boundBranch !== 'null' ? boundBranch : null,
+    currentBranch: liveGitBranch(process.cwd()),
+  });
+  if (verdict.status === 'drift') {
+    return fail(driftBlockedMessage(change, verdict.boundBranch, verdict.currentBranch));
+  }
+  if (verdict.status === 'unbound-detached') return fail(unboundDetachedMessage(change));
+  if (verdict.status === 'needs-heal') {
+    await healBoundBranch(changeDir, verdict.branch);
+    return pass(`bound_branch lazily set to ${verdict.branch} (isolation=current)`);
+  }
+  return pass();
+}
+
 async function buildModeSelected(changeDir: string, change: string): Promise<CheckResult> {
   const buildMode = await readField(changeDir, 'build_mode');
   if (['subagent-driven-development', 'executing-plans', 'direct'].includes(buildMode))
@@ -826,6 +852,7 @@ async function guardBuildChecks(
   run: ClassicRunContext['run'],
 ): Promise<boolean> {
   return runChecks(output, [
+    check('bound branch matches isolation=current', () => boundBranchMatches(changeDir, change)),
     check('isolation selected', () => isolationSelected(changeDir, change)),
     check('isolation allowed for workflow', () => isolationAllowedForWorkflow(changeDir, change)),
     check('build_mode selected', () => buildModeSelected(changeDir, change)),
@@ -862,6 +889,7 @@ async function guardVerifyChecks(
   run: ClassicRunContext['run'],
 ): Promise<boolean> {
   return runChecks(output, [
+    check('bound branch matches isolation=current', () => boundBranchMatches(changeDir, change)),
     check('tasks.md all tasks checked', () => tasksAllDone(changeDir)),
     // Verification command runs after tasks check — no point running tests
     // if tasks.md is incomplete.
@@ -883,8 +911,13 @@ async function guardVerifyChecks(
   ]);
 }
 
-async function guardArchiveChecks(output: GuardOutput, changeDir: string): Promise<boolean> {
+async function guardArchiveChecks(
+  output: GuardOutput,
+  changeDir: string,
+  change: string,
+): Promise<boolean> {
   return runChecks(output, [
+    check('bound branch matches isolation=current', () => boundBranchMatches(changeDir, change)),
     check('archived is true', async () => ((await archivedIsTrue(changeDir)) ? pass() : fail(''))),
     check('proposal.md exists', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),
@@ -962,7 +995,7 @@ export const classicGuardCommand: ClassicCommandHandler = async (args, options) 
       blocked = await guardBuildChecks(output, changeDir, change, runContext.run);
     else if (phase === 'verify')
       blocked = await guardVerifyChecks(output, changeDir, change, runContext.run);
-    else blocked = await guardArchiveChecks(output, changeDir);
+    else blocked = await guardArchiveChecks(output, changeDir, change);
 
     if (blocked) {
       output.stderr.push('');

@@ -9895,11 +9895,11 @@ var classicArchiveCommand = async (args) => {
 };
 
 // domains/comet-classic/classic-guard.ts
-var import_yaml5 = __toESM(require_dist(), 1);
+var import_yaml6 = __toESM(require_dist(), 1);
 import { spawnSync as spawnSync2 } from "child_process";
 import { createHash as createHash4 } from "crypto";
-import { existsSync, promises as fs15, readFileSync } from "fs";
-import path16 from "path";
+import { existsSync, promises as fs16, readFileSync } from "fs";
+import path17 from "path";
 
 // domains/comet-classic/classic-command-checks.ts
 import path13 from "path";
@@ -10078,10 +10078,67 @@ async function inspectClassicChange(changeDir, name) {
   }
 }
 
-// domains/comet-classic/classic-validate-command.ts
+// domains/comet-classic/classic-branch-binding.ts
 var import_yaml3 = __toESM(require_dist(), 1);
+import { execFileSync } from "child_process";
+import { randomUUID as randomUUID6 } from "crypto";
 import { promises as fs12 } from "fs";
 import path14 from "path";
+function liveGitBranch(cwd) {
+  try {
+    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    return branch && branch !== "HEAD" ? branch : null;
+  } catch {
+    return null;
+  }
+}
+function evaluateBranchBinding(input) {
+  if (input.isolation !== "current") return { status: "not-applicable" };
+  if (input.boundBranch === null) {
+    return input.currentBranch === null ? { status: "unbound-detached" } : { status: "needs-heal", branch: input.currentBranch };
+  }
+  if (input.currentBranch === input.boundBranch) return { status: "ok" };
+  return {
+    status: "drift",
+    boundBranch: input.boundBranch,
+    currentBranch: input.currentBranch
+  };
+}
+async function healBoundBranch(changeDir, branch) {
+  const file = path14.join(changeDir, ".comet.yaml");
+  const document = (0, import_yaml3.parseDocument)(await fs12.readFile(file, "utf8"), { uniqueKeys: false });
+  document.set("bound_branch", branch);
+  const temporary = `${file}.${randomUUID6()}.tmp`;
+  try {
+    await fs12.writeFile(temporary, document.toString(), "utf8");
+    await fs12.rename(temporary, file);
+  } catch (error) {
+    await fs12.rm(temporary, { force: true });
+    throw error;
+  }
+}
+function branchLabel(currentBranch) {
+  return currentBranch ?? "detached HEAD";
+}
+function driftBlockedMessage(change, boundBranch, currentBranch) {
+  return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'.
+Next: ask the user to confirm — switch back to '${boundBranch}', or run \`comet state rebind ${change}\` after explicit confirmation.`;
+}
+function driftStaleReason(change, boundBranch, currentBranch) {
+  return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'`;
+}
+function unboundDetachedMessage(change) {
+  return `change '${change}' uses isolation=current but has no bound branch and HEAD is detached; checkout a branch first before continuing.`;
+}
+
+// domains/comet-classic/classic-validate-command.ts
+var import_yaml4 = __toESM(require_dist(), 1);
+import { promises as fs13 } from "fs";
+import path15 from "path";
 var GREEN2 = "\x1B[32m";
 var RED2 = "\x1B[31m";
 var YELLOW2 = "\x1B[33m";
@@ -10132,7 +10189,7 @@ function color(code, message) {
 }
 async function exists3(file) {
   try {
-    await fs12.access(file);
+    await fs13.access(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -10153,7 +10210,7 @@ var classicValidateCommand = async (args) => {
     };
   }
   const { directory, label } = await resolveClassicChangeDirectory(name);
-  const yamlFile = path14.join(directory, ".comet.yaml");
+  const yamlFile = path15.join(directory, ".comet.yaml");
   const lines = [`[VALIDATE] ${label}/.comet.yaml`];
   let errors = 0;
   let warnings = 0;
@@ -10167,7 +10224,7 @@ var classicValidateCommand = async (args) => {
   };
   let source;
   try {
-    source = await fs12.readFile(yamlFile, "utf8");
+    source = await fs13.readFile(yamlFile, "utf8");
   } catch (error) {
     if (error.code === "ENOENT") {
       fail3(".comet.yaml does not exist");
@@ -10176,10 +10233,10 @@ var classicValidateCommand = async (args) => {
     }
     throw error;
   }
-  const document = (0, import_yaml3.parseDocument)(source);
-  if (document.errors.length > 0 || !(0, import_yaml3.isMap)(document.contents)) {
+  const document = (0, import_yaml4.parseDocument)(source);
+  if (document.errors.length > 0 || !(0, import_yaml4.isMap)(document.contents)) {
     for (const error of document.errors) fail3(error.message);
-    if (!(0, import_yaml3.isMap)(document.contents)) fail3("document root must be a mapping");
+    if (!(0, import_yaml4.isMap)(document.contents)) fail3("document root must be a mapping");
     lines.push("", color(RED2, `${errors} error(s), ${warnings} warning(s) — validation FAILED`));
     return { exitCode: 1, stderr: lines.join("\n") };
   }
@@ -10204,7 +10261,7 @@ var classicValidateCommand = async (args) => {
   }
   for (const field2 of ["design_doc", "plan", "handoff_context"]) {
     const value = text(record[field2]);
-    if (value && !await exists3(path14.resolve(value))) {
+    if (value && !await exists3(path15.resolve(value))) {
       fail3(`${field2}='${value}' does not exist on disk`);
     }
   }
@@ -10227,16 +10284,16 @@ var classicValidateCommand = async (args) => {
 };
 
 // domains/comet-classic/classic-project-config.ts
-var import_yaml4 = __toESM(require_dist(), 1);
+var import_yaml5 = __toESM(require_dist(), 1);
 import os from "os";
-import { promises as fs14 } from "fs";
-import path15 from "path";
+import { promises as fs15 } from "fs";
+import path16 from "path";
 
 // platform/fs/file-system.ts
-import { promises as fs13 } from "fs";
+import { promises as fs14 } from "fs";
 async function fileExists3(filePath) {
   try {
-    await fs13.access(filePath);
+    await fs14.access(filePath);
     return true;
   } catch {
     return false;
@@ -10244,7 +10301,7 @@ async function fileExists3(filePath) {
 }
 async function readDir(dirPath) {
   try {
-    return await fs13.readdir(dirPath);
+    return await fs14.readdir(dirPath);
   } catch (error) {
     const code = error?.code;
     if (code === "ENOENT" || code === "ENOTDIR") {
@@ -10259,9 +10316,9 @@ function configCandidates(options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const homeDir = options.homeDir ?? os.homedir();
   const candidates = [
-    { file: path15.resolve(cwd, ".comet", "config.yaml"), source: ".comet/config.yaml" },
+    { file: path16.resolve(cwd, ".comet", "config.yaml"), source: ".comet/config.yaml" },
     {
-      file: path15.resolve(homeDir, ".comet", "config.yaml"),
+      file: path16.resolve(homeDir, ".comet", "config.yaml"),
       source: "~/.comet/config.yaml"
     }
   ];
@@ -10272,7 +10329,7 @@ function configCandidates(options = {}) {
 async function readClassicConfigValue(field2, options = {}) {
   for (const candidate of configCandidates(options)) {
     if (!await fileExists3(candidate.file)) continue;
-    const document = (0, import_yaml4.parseDocument)(await fs14.readFile(candidate.file, "utf8"), {
+    const document = (0, import_yaml5.parseDocument)(await fs15.readFile(candidate.file, "utf8"), {
       uniqueKeys: false
     });
     const value = document.get(field2);
@@ -10346,7 +10403,7 @@ var GuardOutput = class {
 };
 async function exists4(file) {
   try {
-    await fs15.access(file);
+    await fs16.access(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -10355,7 +10412,7 @@ async function exists4(file) {
 }
 async function nonempty(file) {
   try {
-    return (await fs15.stat(file)).size > 0;
+    return (await fs16.stat(file)).size > 0;
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -10369,8 +10426,8 @@ async function resolveChangeDir(name) {
   return (await resolveClassicChangeDirectory(name)).label;
 }
 async function readField(changeDir, field2) {
-  const file = path16.join(changeDir, ".comet.yaml");
-  const document = (0, import_yaml5.parseDocument)(await fs15.readFile(file, "utf8"), { uniqueKeys: false });
+  const file = path17.join(changeDir, ".comet.yaml");
+  const document = (0, import_yaml6.parseDocument)(await fs16.readFile(file, "utf8"), { uniqueKeys: false });
   if (document.errors.length > 0) {
     throw new GuardFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
   }
@@ -10411,7 +10468,7 @@ function countEnglishWords(source) {
 }
 async function documentLanguageMatchesConfigured(changeDir, file) {
   const language = await configuredLanguage(changeDir);
-  const source = stripFencedCodeBlocks(await fs15.readFile(file, "utf8"));
+  const source = stripFencedCodeBlocks(await fs16.readFile(file, "utf8"));
   const cjk = countCjkChars(source);
   const englishWords = countEnglishWords(source);
   if (language === "zh-CN" && cjk < 20 && englishWords >= 20) {
@@ -10435,7 +10492,7 @@ async function handoffSourceFiles(changeDir) {
   const files = [`${changeDir}/proposal.md`, `${changeDir}/design.md`, `${changeDir}/tasks.md`];
   const specs = `${changeDir}/specs`;
   if (await exists4(specs)) {
-    for (const entry2 of (await fs15.readdir(specs)).sort()) {
+    for (const entry2 of (await fs16.readdir(specs)).sort()) {
       const spec = `${specs}/${entry2}/spec.md`;
       if (await exists4(spec)) files.push(spec);
     }
@@ -10455,7 +10512,7 @@ async function preflight(changeDir, name) {
   if (!await exists4(changeDir)) {
     throw new GuardFailure(red2(`FATAL: change directory not found: ${changeDir}`));
   }
-  if (!await exists4(path16.join(changeDir, ".comet.yaml"))) {
+  if (!await exists4(path17.join(changeDir, ".comet.yaml"))) {
     throw new GuardFailure(red2(`FATAL: .comet.yaml not found in ${changeDir}`));
   }
   const result5 = await classicValidateCommand([name], { json: false });
@@ -10525,9 +10582,9 @@ var INFERRED_COMMAND_SOURCES = [
   "Cargo.toml"
 ];
 async function removedProjectCommandField(field2) {
-  const config = path16.join(".comet", "config.yaml");
+  const config = path17.join(".comet", "config.yaml");
   if (!await exists4(config)) return false;
-  const document = (0, import_yaml5.parseDocument)(await fs15.readFile(config, "utf8"));
+  const document = (0, import_yaml6.parseDocument)(await fs16.readFile(config, "utf8"));
   if (document.errors.length > 0) {
     throw new Error(
       `.comet/config.yaml is invalid YAML (${document.errors[0].message}); cannot check for removed "${field2}" field. Fix the config and retry.`
@@ -10608,14 +10665,14 @@ ${recoveryCommand(change, scope, recorded.command)}`
   return { status: 0, output: evidenceDetail(recorded) };
 }
 async function tasksAllDone(changeDir) {
-  const tasks = path16.join(changeDir, "tasks.md");
+  const tasks = path17.join(changeDir, "tasks.md");
   if (!await exists4(tasks)) {
     return fail(
       `tasks.md is missing at ${tasks}
 Next: restore or create tasks.md for this change before leaving build.`
     );
   }
-  const source = await fs15.readFile(tasks, "utf8");
+  const source = await fs16.readFile(tasks, "utf8");
   if (!/- \[x\]/u.test(source)) {
     return fail(
       "tasks.md has no completed tasks.\nNext: complete implementation tasks and mark them with '- [x]'."
@@ -10632,9 +10689,9 @@ Next: complete or explicitly remove unfinished tasks, then mark tasks.md with '-
   return pass();
 }
 async function tasksHasAny(changeDir) {
-  const tasks = path16.join(changeDir, "tasks.md");
+  const tasks = path17.join(changeDir, "tasks.md");
   if (!await exists4(tasks)) return false;
-  return /- \[/u.test(await fs15.readFile(tasks, "utf8"));
+  return /- \[/u.test(await fs16.readFile(tasks, "utf8"));
 }
 async function planTasksAllDone(changeDir) {
   const plan = await readField(changeDir, "plan");
@@ -10645,7 +10702,7 @@ async function planTasksAllDone(changeDir) {
 Next: restore the Superpowers plan file or update .comet.yaml plan before leaving build.`
     );
   }
-  const source = await fs15.readFile(plan, "utf8");
+  const source = await fs16.readFile(plan, "utf8");
   const unfinished = source.split(/\r?\n/u).map((line, index) => ({ line, number: index + 1 })).filter((entry2) => /^\s*- \[ \]/u.test(entry2.line));
   if (unfinished.length > 0) {
     return fail(
@@ -10675,6 +10732,24 @@ async function isolationAllowedForWorkflow(changeDir, change) {
 Next: ask the user to choose ${PRESET_ALLOWED_ISOLATIONS.join(" or ")}, then run:
   node "$COMET_STATE" set ${change} isolation <${PRESET_ALLOWED_ISOLATIONS.join("|")}>`
   );
+}
+async function boundBranchMatches(changeDir, change) {
+  const isolation = await readField(changeDir, "isolation");
+  const boundBranch = await readField(changeDir, "bound_branch");
+  const verdict = evaluateBranchBinding({
+    isolation,
+    boundBranch: boundBranch && boundBranch !== "null" ? boundBranch : null,
+    currentBranch: liveGitBranch(process.cwd())
+  });
+  if (verdict.status === "drift") {
+    return fail(driftBlockedMessage(change, verdict.boundBranch, verdict.currentBranch));
+  }
+  if (verdict.status === "unbound-detached") return fail(unboundDetachedMessage(change));
+  if (verdict.status === "needs-heal") {
+    await healBoundBranch(changeDir, verdict.branch);
+    return pass(`bound_branch lazily set to ${verdict.branch} (isolation=current)`);
+  }
+  return pass();
 }
 async function buildModeSelected(changeDir, change) {
   const buildMode = await readField(changeDir, "build_mode");
@@ -10745,7 +10820,7 @@ async function archivedIsTrue(changeDir) {
   return await readField(changeDir, "archived") === "true";
 }
 async function designDocFrontmatterHas(designDoc, field2, expected) {
-  const source = (await fs15.readFile(designDoc, "utf8")).replace(/^\uFEFF/u, "");
+  const source = (await fs16.readFile(designDoc, "utf8")).replace(/^\uFEFF/u, "");
   let inFrontmatter = false;
   for (const line of source.split(/\r?\n/u)) {
     if (!inFrontmatter) {
@@ -10810,7 +10885,7 @@ async function designHandoffMarkdownTraceable(changeDir) {
   const markdown = `${context.replace(/\.json$/u, "")}.md`;
   if (!await nonempty(markdown))
     return fail(`design handoff markdown is missing or empty: ${markdown}`);
-  const source = await fs15.readFile(markdown, "utf8");
+  const source = await fs16.readFile(markdown, "utf8");
   const problems = [];
   if (!/^Generated-by: comet-handoff\.sh$/mu.test(source)) {
     problems.push("handoff markdown is missing Generated-by marker");
@@ -10837,7 +10912,7 @@ async function betaSpecJsonStructurallyValid(changeDir) {
   const context = await readField(changeDir, "handoff_context");
   if (!context || context === "null") return fail("handoff_context is missing from .comet.yaml");
   if (!await nonempty(context)) return fail(`spec-context.json is missing or empty: ${context}`);
-  const source = await fs15.readFile(context, "utf8");
+  const source = await fs16.readFile(context, "utf8");
   const problems = [];
   let parsed;
   try {
@@ -10874,19 +10949,19 @@ async function guardOpenChecks(output, changeDir) {
   const checks = [
     check(
       "proposal.md exists and non-empty",
-      async () => await nonempty(path16.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path17.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path16.join(changeDir, "proposal.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path17.join(changeDir, "proposal.md"))
     ),
     check(
       "tasks.md exists and non-empty",
-      async () => await nonempty(path16.join(changeDir, "tasks.md")) ? pass() : fail("")
+      async () => await nonempty(path17.join(changeDir, "tasks.md")) ? pass() : fail("")
     ),
     check(
       "tasks.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path16.join(changeDir, "tasks.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path17.join(changeDir, "tasks.md"))
     ),
     check(
       "tasks.md has at least one task",
@@ -10899,11 +10974,11 @@ async function guardOpenChecks(output, changeDir) {
       0,
       check(
         "design.md exists and non-empty",
-        async () => await nonempty(path16.join(changeDir, "design.md")) ? pass() : fail("")
+        async () => await nonempty(path17.join(changeDir, "design.md")) ? pass() : fail("")
       ),
       check(
         "design.md matches configured language",
-        () => documentLanguageMatchesConfigured(changeDir, path16.join(changeDir, "design.md"))
+        () => documentLanguageMatchesConfigured(changeDir, path17.join(changeDir, "design.md"))
       )
     );
   }
@@ -10915,27 +10990,27 @@ async function guardDesignChecks(output, changeDir, change) {
   const builders = [
     check(
       "proposal.md exists",
-      async () => await nonempty(path16.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path17.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path16.join(changeDir, "proposal.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path17.join(changeDir, "proposal.md"))
     ),
     check(
       "design.md exists",
-      async () => await nonempty(path16.join(changeDir, "design.md")) ? pass() : fail("")
+      async () => await nonempty(path17.join(changeDir, "design.md")) ? pass() : fail("")
     ),
     check(
       "design.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path16.join(changeDir, "design.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path17.join(changeDir, "design.md"))
     ),
     check(
       "tasks.md exists",
-      async () => await nonempty(path16.join(changeDir, "tasks.md")) ? pass() : fail("")
+      async () => await nonempty(path17.join(changeDir, "tasks.md")) ? pass() : fail("")
     ),
     check(
       "tasks.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path16.join(changeDir, "tasks.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path17.join(changeDir, "tasks.md"))
     ),
     check("design handoff context exists", () => designHandoffContextValid(changeDir, change)),
     check("design handoff markdown is traceable", () => designHandoffMarkdownTraceable(changeDir))
@@ -10986,6 +11061,7 @@ async function guardDesignChecks(output, changeDir, change) {
 }
 async function guardBuildChecks(output, changeDir, change, run) {
   return runChecks(output, [
+    check("bound branch matches isolation=current", () => boundBranchMatches(changeDir, change)),
     check("isolation selected", () => isolationSelected(changeDir, change)),
     check("isolation allowed for workflow", () => isolationAllowedForWorkflow(changeDir, change)),
     check("build_mode selected", () => buildModeSelected(changeDir, change)),
@@ -10997,11 +11073,11 @@ async function guardBuildChecks(output, changeDir, change, run) {
     check("Superpowers plan all tasks checked", () => planTasksAllDone(changeDir)),
     check(
       "proposal.md exists",
-      async () => await nonempty(path16.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path17.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path16.join(changeDir, "proposal.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path17.join(changeDir, "proposal.md"))
     ),
     check("Superpowers plan matches configured language", async () => {
       const plan = await readField(changeDir, "plan");
@@ -11018,6 +11094,7 @@ async function guardBuildChecks(output, changeDir, change, run) {
 }
 async function guardVerifyChecks(output, changeDir, change, run) {
   return runChecks(output, [
+    check("bound branch matches isolation=current", () => boundBranchMatches(changeDir, change)),
     check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
     // Verification command runs after tasks check — no point running tests
     // if tasks.md is incomplete.
@@ -11040,16 +11117,17 @@ async function guardVerifyChecks(output, changeDir, change, run) {
     )
   ]);
 }
-async function guardArchiveChecks(output, changeDir) {
+async function guardArchiveChecks(output, changeDir, change) {
   return runChecks(output, [
+    check("bound branch matches isolation=current", () => boundBranchMatches(changeDir, change)),
     check("archived is true", async () => await archivedIsTrue(changeDir) ? pass() : fail("")),
     check(
       "proposal.md exists",
-      async () => await nonempty(path16.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path17.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "design.md exists",
-      async () => await nonempty(path16.join(changeDir, "design.md")) ? pass() : fail("")
+      async () => await nonempty(path17.join(changeDir, "design.md")) ? pass() : fail("")
     ),
     check("tasks.md all tasks checked", () => tasksAllDone(changeDir))
   ]);
@@ -11110,7 +11188,7 @@ Valid phases: open, design, build, verify, archive`
       blocked2 = await guardBuildChecks(output, changeDir, change, runContext.run);
     else if (phase === "verify")
       blocked2 = await guardVerifyChecks(output, changeDir, change, runContext.run);
-    else blocked2 = await guardArchiveChecks(output, changeDir);
+    else blocked2 = await guardArchiveChecks(output, changeDir, change);
     if (blocked2) {
       output.stderr.push("");
       output.stderr.push(red2("BLOCKED — fix failing checks before proceeding to next phase"));
@@ -11132,10 +11210,10 @@ Valid phases: open, design, build, verify, archive`
 };
 
 // domains/comet-classic/classic-handoff.ts
-var import_yaml6 = __toESM(require_dist(), 1);
+var import_yaml7 = __toESM(require_dist(), 1);
 import { createHash as createHash5 } from "crypto";
-import { promises as fs16, readFileSync as readFileSync2 } from "fs";
-import path17 from "path";
+import { promises as fs17, readFileSync as readFileSync2 } from "fs";
+import path18 from "path";
 var GREEN4 = "\x1B[32m";
 var RED4 = "\x1B[31m";
 var YELLOW4 = "\x1B[33m";
@@ -11169,7 +11247,7 @@ var HandoffOutput = class {
 };
 async function exists5(file) {
   try {
-    await fs16.access(file);
+    await fs17.access(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -11178,7 +11256,7 @@ async function exists5(file) {
 }
 async function nonempty2(file) {
   try {
-    return (await fs16.stat(file)).size > 0;
+    return (await fs17.stat(file)).size > 0;
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -11207,7 +11285,7 @@ async function handoffSourceFiles2(changeDir) {
   const files = [`${changeDir}/proposal.md`, `${changeDir}/design.md`, `${changeDir}/tasks.md`];
   const specs = `${changeDir}/specs`;
   if (await exists5(specs)) {
-    for (const entry2 of (await fs16.readdir(specs)).sort()) {
+    for (const entry2 of (await fs17.readdir(specs)).sort()) {
       const spec = `${specs}/${entry2}/spec.md`;
       if (await exists5(spec)) files.push(spec);
     }
@@ -11255,7 +11333,7 @@ async function writeMarkdownContext(changeDir, change, mode, contextHash, output
   ];
   for (const file of await handoffSourceFiles2(changeDir)) {
     if (!await exists5(file)) continue;
-    const content = await fs16.readFile(file, "utf8");
+    const content = await fs17.readFile(file, "utf8");
     const total = lineCount(content);
     lines.push(
       `## ${file}`,
@@ -11280,7 +11358,7 @@ async function writeMarkdownContext(changeDir, change, mode, contextHash, output
     }
     lines.push("");
   }
-  await fs16.writeFile(output, lines.join("\n"));
+  await fs17.writeFile(output, lines.join("\n"));
 }
 async function writeJsonContext(changeDir, change, mode, contextHash, output) {
   const entries = [];
@@ -11303,7 +11381,7 @@ async function writeJsonContext(changeDir, change, mode, contextHash, output) {
     "}",
     ""
   ].join("\n");
-  await fs16.writeFile(output, document);
+  await fs17.writeFile(output, document);
 }
 async function writeSpecProjectionForFile(file, content) {
   return [
@@ -11343,11 +11421,11 @@ async function writeSpecMarkdownContext(changeDir, change, contextHash, output) 
   const specs = `${changeDir}/specs`;
   let projected = false;
   if (await exists5(specs)) {
-    for (const entry2 of (await fs16.readdir(specs)).sort()) {
+    for (const entry2 of (await fs17.readdir(specs)).sort()) {
       const spec = `${specs}/${entry2}/spec.md`;
       if (!await exists5(spec)) continue;
       projected = true;
-      lines.push(...await writeSpecProjectionForFile(spec, await fs16.readFile(spec, "utf8")));
+      lines.push(...await writeSpecProjectionForFile(spec, await fs17.readFile(spec, "utf8")));
     }
   }
   if (!projected) {
@@ -11356,7 +11434,7 @@ async function writeSpecMarkdownContext(changeDir, change, contextHash, output) 
   lines.push(
     "Full source files remain canonical. If a required heading or scenario is missing here, regenerate the handoff or read the source spec directly. Supporting files (proposal, design, tasks) are referenced by hash only."
   );
-  await fs16.writeFile(output, lines.join("\n"));
+  await fs17.writeFile(output, lines.join("\n"));
 }
 async function writeSpecJsonContext(changeDir, change, contextHash, output) {
   const entries = [];
@@ -11365,7 +11443,7 @@ async function writeSpecJsonContext(changeDir, change, contextHash, output) {
     const role = /\/specs\/[^/]+\/spec\.md$/u.test(file) ? "spec" : "supporting";
     entries.push({ path: file, sha256: hashFile2(file), role });
   }
-  await fs16.writeFile(
+  await fs17.writeFile(
     output,
     `${JSON.stringify(
       {
@@ -11384,8 +11462,8 @@ async function writeSpecJsonContext(changeDir, change, contextHash, output) {
   );
 }
 async function readField2(changeDir, field2) {
-  const file = path17.join(changeDir, ".comet.yaml");
-  const document = (0, import_yaml6.parseDocument)(await fs16.readFile(file, "utf8"), { uniqueKeys: false });
+  const file = path18.join(changeDir, ".comet.yaml");
+  const document = (0, import_yaml7.parseDocument)(await fs17.readFile(file, "utf8"), { uniqueKeys: false });
   if (document.errors.length > 0) {
     throw new HandoffFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
   }
@@ -11419,7 +11497,7 @@ async function completedHandoffIsCurrent(changeDir, run, contextHash, contextJso
     readCheckpoint(changeDir, run.checkpointRef)
   ]);
   if (!await exists5(contextJson) || !await exists5(contextMd)) return false;
-  if (context !== await fs16.readFile(contextMd, "utf8")) return false;
+  if (context !== await fs17.readFile(contextMd, "utf8")) return false;
   if (artifacts.handoff_context !== contextJson || artifacts.handoff_markdown !== contextMd) {
     return false;
   }
@@ -11542,7 +11620,7 @@ var classicHandoffCommand = async (args) => {
       run: pendingRun,
       unknownKeys: (await readClassicState(changeDir)).unknownKeys
     });
-    await fs16.mkdir(handoffDir, { recursive: true });
+    await fs17.mkdir(handoffDir, { recursive: true });
     if (handoffMode === "beta") {
       await writeSpecMarkdownContext(changeDir, change, contextHash, contextMd);
       await writeSpecJsonContext(changeDir, change, contextHash, contextJson);
@@ -11550,7 +11628,7 @@ var classicHandoffCommand = async (args) => {
       await writeMarkdownContext(changeDir, change, handoffMode, contextHash, contextMd);
       await writeJsonContext(changeDir, change, handoffMode, contextHash, contextJson);
     }
-    const context = await fs16.readFile(contextMd, "utf8");
+    const context = await fs17.readFile(contextMd, "utf8");
     await writeContext(changeDir, pendingRun.contextRef, context);
     const artifacts = {
       ...await readArtifacts(changeDir, pendingRun.artifactsRef),
@@ -11614,65 +11692,6 @@ import path20 from "path";
 import { randomUUID as randomUUID7 } from "crypto";
 import { promises as fs18 } from "fs";
 import path19 from "path";
-
-// domains/comet-classic/classic-branch-binding.ts
-var import_yaml7 = __toESM(require_dist(), 1);
-import { execFileSync } from "child_process";
-import { randomUUID as randomUUID6 } from "crypto";
-import { promises as fs17 } from "fs";
-import path18 from "path";
-function liveGitBranch(cwd) {
-  try {
-    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    return branch && branch !== "HEAD" ? branch : null;
-  } catch {
-    return null;
-  }
-}
-function evaluateBranchBinding(input) {
-  if (input.isolation !== "current") return { status: "not-applicable" };
-  if (input.boundBranch === null) {
-    return input.currentBranch === null ? { status: "unbound-detached" } : { status: "needs-heal", branch: input.currentBranch };
-  }
-  if (input.currentBranch === input.boundBranch) return { status: "ok" };
-  return {
-    status: "drift",
-    boundBranch: input.boundBranch,
-    currentBranch: input.currentBranch
-  };
-}
-async function healBoundBranch(changeDir, branch) {
-  const file = path18.join(changeDir, ".comet.yaml");
-  const document = (0, import_yaml7.parseDocument)(await fs17.readFile(file, "utf8"), { uniqueKeys: false });
-  document.set("bound_branch", branch);
-  const temporary = `${file}.${randomUUID6()}.tmp`;
-  try {
-    await fs17.writeFile(temporary, document.toString(), "utf8");
-    await fs17.rename(temporary, file);
-  } catch (error) {
-    await fs17.rm(temporary, { force: true });
-    throw error;
-  }
-}
-function branchLabel(currentBranch) {
-  return currentBranch ?? "detached HEAD";
-}
-function driftBlockedMessage(change, boundBranch, currentBranch) {
-  return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'.
-Next: ask the user to confirm — switch back to '${boundBranch}', or run \`comet state rebind ${change}\` after explicit confirmation.`;
-}
-function driftStaleReason(change, boundBranch, currentBranch) {
-  return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'`;
-}
-function unboundDetachedMessage(change) {
-  return `change '${change}' uses isolation=current but has no bound branch and HEAD is detached; checkout a branch first before continuing.`;
-}
-
-// domains/comet-classic/classic-current-change.ts
 function currentChangeFile(projectRoot2) {
   return path19.join(projectRoot2, ".comet", "current-change.json");
 }

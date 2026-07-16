@@ -2124,6 +2124,9 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('allows full workflow build completion with isolation=current', async () => {
+    execFileSync('git', ['init', '-b', 'feature-A'], { cwd: tmpDir, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
     await createChange(
       tmpDir,
       'current-isolation-build',
@@ -2136,6 +2139,7 @@ describe('comet scripts', () => {
         'tdd_mode: tdd',
         'review_mode: standard',
         'isolation: current',
+        'bound_branch: feature-A',
         'verify_mode: full',
         'design_doc: null',
         'plan: null',
@@ -2150,6 +2154,8 @@ describe('comet scripts', () => {
       path.join(tmpDir, 'package.json'),
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
+    execFileSync('git', ['add', '.'], { cwd: tmpDir });
+    execFileSync('git', ['commit', '-m', 'base'], { cwd: tmpDir, stdio: 'ignore' });
 
     const guard = runNode(tmpDir, guardScript, ['current-isolation-build', 'build']);
     const transition = runNode(tmpDir, stateScript, [
@@ -2422,7 +2428,10 @@ describe('comet scripts', () => {
     it('refuses to rebind while HEAD is detached', async () => {
       await gitInit('feature-A');
       await createChange(tmpDir, 'rebind-detached', boundYaml('feature-A'));
-      const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, encoding: 'utf8' }).trim();
+      const sha = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: tmpDir,
+        encoding: 'utf8',
+      }).trim();
       execFileSync('git', ['checkout', sha], { cwd: tmpDir, stdio: 'ignore' });
 
       const rebind = runNode(tmpDir, stateScript, ['rebind', 'rebind-detached']);
@@ -3264,6 +3273,41 @@ describe('comet scripts', () => {
     expect(validate.status, validate.stderr).toBe(0);
     expect(validate.stderr).toContain(
       '[VALIDATE] openspec/changes/archive/2026-05-21-resolved-archive/.comet.yaml',
+    );
+  }, 20_000);
+
+  it('guard blocks archive when a current-isolation change drifted off its bound branch', async () => {
+    execFileSync('git', ['init', '-b', 'feature-A'], { cwd: tmpDir, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+    await createChange(
+      tmpDir,
+      'archive-drift',
+      [
+        'workflow: full',
+        'phase: archive',
+        'design_doc: null',
+        'plan: null',
+        'build_mode: executing-plans',
+        'isolation: current',
+        'bound_branch: feature-A',
+        'verify_mode: full',
+        'verify_result: pass',
+        'verified_at: 2026-07-16',
+        'archived: true',
+        '',
+      ].join('\n'),
+    );
+    execFileSync('git', ['add', '.'], { cwd: tmpDir });
+    execFileSync('git', ['commit', '-m', 'base'], { cwd: tmpDir, stdio: 'ignore' });
+    execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+    const guard = runNode(tmpDir, guardScript, ['archive-drift', 'archive']);
+
+    expect(guard.status).not.toBe(0);
+    expect(guard.stderr).toContain('BLOCKED');
+    expect(guard.stderr).toContain(
+      "change 'archive-drift' is bound to branch 'feature-A', but current branch is 'feature-B'",
     );
   }, 20_000);
 
