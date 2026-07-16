@@ -4,7 +4,12 @@ from pathlib import Path
 
 import yaml
 
-from scaffold.python.native_eval import adapt_checks_for_native, adapt_prompt_for_native
+from scaffold.python.native_eval import (
+    adapt_checks_for_native,
+    adapt_prompt_for_native,
+    filter_control_workflow_checks,
+    split_comet_completion_checks,
+)
 from scaffold.python.validation.native_workflow import validate_native_workflow
 
 
@@ -173,6 +178,56 @@ def test_adapt_prompt_for_native_leaves_other_treatments_unchanged():
     prompt = "Use the comet workflow."
 
     assert adapt_prompt_for_native(prompt, "COMET_FULL_040_BETA") == prompt
+
+
+def test_split_completion_classifies_native_checks_as_workflow():
+    completion = split_comet_completion_checks(
+        [
+            "sentence_feature",
+            "native_skill_invocation",
+            "native_artifacts",
+            "native_trajectory",
+        ],
+        [
+            "business_rule: failed",
+            "native_state: incomplete",
+            "native_isolation: forbidden artifacts",
+        ],
+    )
+
+    assert completion == {
+        "business_completion": {
+            "passed": ["sentence_feature"],
+            "failed": ["business_rule: failed"],
+        },
+        "workflow_completion": {
+            "passed": [
+                "native_skill_invocation",
+                "native_artifacts",
+                "native_trajectory",
+            ],
+            "failed": [
+                "native_state: incomplete",
+                "native_isolation: forbidden artifacts",
+            ],
+        },
+    }
+
+
+def test_control_filter_removes_classic_and_native_workflow_checks():
+    passed, failed = filter_control_workflow_checks(
+        "comet-workflow",
+        "CONTROL",
+        ["sentence_feature", "workflow_phases: 5/5", "native_state"],
+        [
+            "business_rule: failed",
+            "openspec_artifacts: missing",
+            "native_isolation: forbidden artifacts",
+        ],
+    )
+
+    assert passed == ["sentence_feature"]
+    assert failed == ["business_rule: failed"]
 
 
 def test_validate_native_workflow_rejects_artifact_root_outside_workspace(tmp_path: Path):

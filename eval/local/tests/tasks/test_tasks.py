@@ -23,7 +23,13 @@ from conftest import get_fixtures
 
 from scaffold import Treatment
 from scaffold.python import extract_events, parse_output
-from scaffold.python.native_eval import adapt_checks_for_native, adapt_prompt_for_native
+from scaffold.python.native_eval import (
+    adapt_checks_for_native,
+    adapt_prompt_for_native,
+    filter_control_workflow_checks as _filter_control_workflow_checks,
+    is_control_business_only_run as _is_control_business_only_run,
+    split_comet_completion_checks as _split_comet_completion_checks,
+)
 from scaffold.python.profiles import resolve_profile_name, run_profile_rubric
 from scaffold.python.tasks import list_tasks, load_task
 from scaffold.python.treatments import TreatmentConfig, build_treatment_skills, load_treatments
@@ -33,14 +39,6 @@ from scaffold.python.validation import run_validators
 CLAUDE_TIMEOUT = 1500  # 25 minutes for Claude to complete task (multi-turn loop)
 PYTEST_TIMEOUT = 1800  # 30 minutes total including setup/teardown
 MANIFEST_DYNAMIC_ONLY_TASKS = {"workflow-overlay-contract"}
-CONTROL_BUSINESS_ONLY_TREATMENTS = {"CONTROL"}
-COMET_WORKFLOW_ONLY_CHECK_PREFIXES = (
-    "openspec_artifacts",
-    "comet_state",
-    "workflow_phases",
-    "tests_written",
-    "tests_exist",
-)
 
 
 # =============================================================================
@@ -131,52 +129,6 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
     return params
 
 
-def _is_control_business_only_run(profile_name: str, treatment_name: str) -> bool:
-    return profile_name == "comet-workflow" and treatment_name in CONTROL_BUSINESS_ONLY_TREATMENTS
-
-
-def _filter_control_workflow_checks(
-    profile_name: str,
-    treatment_name: str,
-    passed: list[str],
-    failed: list[str],
-) -> tuple[list[str], list[str]]:
-    """For CONTROL, evaluate comet tasks by business outcome only.
-
-    CONTROL intentionally has no Skill mounted. OpenSpec/Comet state, phase
-    evidence, and workflow-test discipline are reported by the rubric as
-    non-applicable instead of counted as task failures.
-    """
-    if not _is_control_business_only_run(profile_name, treatment_name):
-        return passed, failed
-
-    def keep(check: str) -> bool:
-        return not any(check.startswith(prefix) for prefix in COMET_WORKFLOW_ONLY_CHECK_PREFIXES)
-
-    return [check for check in passed if keep(check)], [check for check in failed if keep(check)]
-
-
-def _split_comet_completion_checks(
-    passed: list[str],
-    failed: list[str],
-) -> dict[str, dict[str, list[str]]]:
-    """Split validator results into business and workflow completion buckets."""
-
-    def is_workflow_check(check: str) -> bool:
-        return any(check.startswith(prefix) for prefix in COMET_WORKFLOW_ONLY_CHECK_PREFIXES)
-
-    return {
-        "business_completion": {
-            "passed": [check for check in passed if not is_workflow_check(check)],
-            "failed": [check for check in failed if not is_workflow_check(check)],
-        },
-        "workflow_completion": {
-            "passed": [check for check in passed if is_workflow_check(check)],
-            "failed": [check for check in failed if is_workflow_check(check)],
-        },
-    }
-
-
 def test_eval_manifest_baselines_extend_dynamic_treatment_list(tmp_path, monkeypatch):
     package = tmp_path / "manifest-skill"
     package.mkdir()
@@ -243,13 +195,23 @@ def test_control_comet_workflow_filters_workflow_only_checks():
     passed, failed = _filter_control_workflow_checks(
         "comet-workflow",
         "CONTROL",
-        ["sentence_feature", "tests_written: ok", "workflow_phases: 5/5", "tests_exist"],
+        [
+            "sentence_feature",
+            "tests_written: ok",
+            "workflow_phases: 5/5",
+            "tests_exist",
+            "native_skill_invocation",
+            "native_artifacts",
+            "native_trajectory",
+        ],
         [
             "openspec_artifacts: openspec/changes/ directory not found",
             "comet_state: No .comet.yaml found",
             "workflow_phases: Only 1/5 phases",
             "tests_written: No test files written by the agent",
             "tests_exist: No test files found",
+            "native_state: no terminal Native archive exists",
+            "native_isolation: Classic or hidden workflow artifacts exist",
             "sentence_feature: --sentences flag not found",
         ],
     )
@@ -260,10 +222,19 @@ def test_control_comet_workflow_filters_workflow_only_checks():
 
 def test_split_comet_completion_checks_separates_business_and_workflow():
     completion = _split_comet_completion_checks(
-        ["sentence_feature", "tests_exist", "workflow_phases: 5/5"],
+        [
+            "sentence_feature",
+            "tests_exist",
+            "workflow_phases: 5/5",
+            "native_skill_invocation",
+            "native_artifacts",
+            "native_trajectory",
+        ],
         [
             "openspec_artifacts: missing",
             "comet_state: missing",
+            "native_state: incomplete",
+            "native_isolation: forbidden artifacts",
             "business_rule: failed",
         ],
     )
@@ -273,8 +244,19 @@ def test_split_comet_completion_checks_separates_business_and_workflow():
         "failed": ["business_rule: failed"],
     }
     assert completion["workflow_completion"] == {
-        "passed": ["tests_exist", "workflow_phases: 5/5"],
-        "failed": ["openspec_artifacts: missing", "comet_state: missing"],
+        "passed": [
+            "tests_exist",
+            "workflow_phases: 5/5",
+            "native_skill_invocation",
+            "native_artifacts",
+            "native_trajectory",
+        ],
+        "failed": [
+            "openspec_artifacts: missing",
+            "comet_state: missing",
+            "native_state: incomplete",
+            "native_isolation: forbidden artifacts",
+        ],
     }
 
 

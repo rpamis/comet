@@ -80,10 +80,20 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
 
     # Map tool_use_id -> index in tool_calls list for matching outputs
     tool_id_to_index = {}
+    duration_ms_total = 0.0
+    duration_observed = False
 
     for msg in parsed.get("messages", []):
         if msg.get("type") == "result":
-            events["duration_seconds"] = msg.get("duration_ms", 0) / 1000
+            duration_ms = msg.get("duration_ms")
+            if isinstance(duration_ms, (int, float)) and not isinstance(duration_ms, bool):
+                duration_ms_total += duration_ms
+                duration_observed = True
+
+            # A loop concatenates one result per resumed subject invocation, so
+            # duration is additive. Preserve legacy latest-result semantics for
+            # turns, usage, cost, and modelUsage until their resumed CLI fields
+            # have an explicit cumulative-versus-delta contract.
             events["num_turns"] = msg.get("num_turns")
             usage = msg.get("usage") or {}
             input_tokens = usage.get("input_tokens")
@@ -142,6 +152,9 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
                                 for c in content
                             )
                         events["tool_calls"][idx]["output"] = content
+
+    if duration_observed:
+        events["duration_seconds"] = duration_ms_total / 1000
 
     return events
 

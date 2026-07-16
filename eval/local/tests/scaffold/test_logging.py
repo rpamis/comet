@@ -65,6 +65,8 @@ def test_extract_events_captures_token_usage_and_cost():
 
     events = extract_events(parse_output(stdout))
 
+    assert events["duration_seconds"] == 1.2
+    assert events["num_turns"] == 3
     assert events["input_tokens"] == 100
     assert events["output_tokens"] == 25
     assert events["cache_read_input_tokens"] == 300
@@ -72,6 +74,61 @@ def test_extract_events_captures_token_usage_and_cost():
     assert events["total_tokens"] == 475
     assert events["total_cost_usd"] == 0.123456
     assert events["model_usage"]["mimo-v2.5-pro"]["costUSD"] == 0.123456
+
+
+def test_extract_events_accumulates_duration_across_results():
+    stdout = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "result",
+                    "duration_ms": 1200,
+                    "num_turns": 2,
+                    "total_cost_usd": 0.1,
+                    "usage": {"input_tokens": 100, "output_tokens": 20},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "result",
+                    "duration_ms": 800,
+                    "num_turns": 4,
+                    "total_cost_usd": 0.2,
+                    "usage": {"input_tokens": 200, "output_tokens": 40},
+                }
+            ),
+        ]
+    )
+
+    events = extract_events(parse_output(stdout))
+
+    assert events["duration_seconds"] == 2.0
+    # Preserve the legacy latest-result semantics for telemetry whose resumed
+    # Claude CLI contract may already be cumulative. Do not sum it blindly.
+    assert events["num_turns"] == 4
+    assert events["input_tokens"] == 200
+    assert events["output_tokens"] == 40
+    assert events["total_tokens"] == 240
+    assert events["total_cost_usd"] == 0.2
+
+
+def test_extract_events_ignores_missing_result_duration():
+    stdout = "\n".join(
+        [
+            json.dumps({"type": "result", "duration_ms": 1200}),
+            json.dumps({"type": "result"}),
+        ]
+    )
+
+    events = extract_events(parse_output(stdout))
+
+    assert events["duration_seconds"] == 1.2
+
+
+def test_extract_events_keeps_duration_missing_without_observed_value():
+    events = extract_events(parse_output(json.dumps({"type": "result"})))
+
+    assert events["duration_seconds"] is None
 
 
 def test_extract_events_normalizes_openspec_skill_aliases():
