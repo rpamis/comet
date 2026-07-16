@@ -4,6 +4,7 @@ import { readCheckpoint, readTrajectory } from '../engine/run-store.js';
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
 import { readRunStateAt } from '../engine/storage-run.js';
 import { nativeChangeDir } from './native-change.js';
+import { inspectNativeTrajectoryTail } from './native-trajectory-recovery.js';
 import type { NativeChangeState, NativeFinding, NativeProjectPaths } from './native-types.js';
 
 function runPath(changeDir: string, ref: string): string {
@@ -71,6 +72,23 @@ export async function inspectNativeRunConsistency(
   }
 
   const trajectoryFile = runPath(changeDir, run.trajectoryRef);
+  const tailInspection = await inspectNativeTrajectoryTail(paths, state.name);
+  if (tailInspection.status === 'repairable') {
+    findings.push({
+      code: 'trajectory-tail-incomplete',
+      message: `Native trajectory final line is incomplete at line ${tailInspection.line}; doctor repair can discard ${tailInspection.discardedBytes} incomplete byte(s)`,
+      path: trajectoryFile,
+    });
+    return findings;
+  }
+  if (tailInspection.status === 'invalid') {
+    findings.push({
+      code: 'trajectory-invalid',
+      message: `Native trajectory is invalid at line ${tailInspection.line}: ${tailInspection.message}`,
+      path: trajectoryFile,
+    });
+    return findings;
+  }
   let trajectory;
   try {
     trajectory = await readTrajectory(changeDir, run.trajectoryRef);

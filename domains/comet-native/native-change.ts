@@ -6,16 +6,26 @@ import { atomicWriteText } from './native-atomic-file.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import { compareAndSwapNativeRevision } from './native-revision.js';
+import { createNativeContentSnapshot, writeNativeBaselineManifest } from './native-snapshot.js';
+import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
 import type {
   NativeApproval,
+  NativeChangeSchemaInspection,
   NativeChangeState,
+  NativeLegacyChangeState,
   NativePhase,
   NativeProjectPaths,
   NativeSpecChange,
   NativeVerificationResult,
 } from './native-types.js';
+import {
+  NATIVE_CHANGE_SCHEMA,
+  NATIVE_LEGACY_CHANGE_SCHEMA,
+  NATIVE_RUNTIME_PROTOCOL_VERSION,
+} from './native-types.js';
 
-const CHANGE_KEYS = new Set([
+const CHANGE_KEYS = [
   'schema',
   'name',
   'language',
@@ -28,6 +38,12 @@ const CHANGE_KEYS = new Set([
   'archived',
   'created_at',
   'run_id',
+] as const;
+const LEGACY_CHANGE_KEYS = new Set<string>(CHANGE_KEYS);
+const CURRENT_CHANGE_KEYS = new Set<string>([
+  ...CHANGE_KEYS,
+  'minimum_runtime_version',
+  'revision',
 ]);
 const SPEC_CHANGE_KEYS = new Set(['capability', 'operation', 'source', 'base_hash']);
 const PHASES = new Set<NativePhase>(['shape', 'build', 'verify', 'archive']);
@@ -35,6 +51,51 @@ const APPROVALS = new Set<Exclude<NativeApproval, null>>(['implicit', 'confirmed
 const VERIFY_RESULTS = new Set<NativeVerificationResult>(['pending', 'pass', 'fail']);
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+
+export class NativeSchemaMigrationRequiredError extends Error {
+  readonly code = 'native-schema-migration-required';
+
+  constructor(
+    readonly change: string,
+    readonly schema: string,
+  ) {
+    super(
+      `Native change ${change} uses ${schema}; run comet native doctor ${change} --repair before mutating it`,
+    );
+    this.name = 'NativeSchemaMigrationRequiredError';
+  }
+}
+
+export class NativeRuntimeCompatibilityError extends Error {
+  readonly code = 'native-runtime-incompatible';
+
+  constructor(
+    readonly schema: string,
+    readonly minimumRuntimeVersion: number | null,
+  ) {
+    super(
+      schema !== NATIVE_CHANGE_SCHEMA || minimumRuntimeVersion === null
+        ? `Unsupported Native change schema ${schema} for runtime protocol ${NATIVE_RUNTIME_PROTOCOL_VERSION}`
+        : `Native change ${schema} requires runtime protocol ${minimumRuntimeVersion}; current protocol is ${NATIVE_RUNTIME_PROTOCOL_VERSION}`,
+    );
+    this.name = 'NativeRuntimeCompatibilityError';
+  }
+}
+
+export class NativeChangeRevisionConflictError extends Error {
+  readonly code = 'native-change-revision-conflict';
+
+  constructor(
+    readonly change: string,
+    readonly expectedRevision: number,
+    readonly actualRevision: number,
+  ) {
+    super(
+      `Native change ${change} revision conflict: expected ${expectedRevision}, actual ${actualRevision}`,
+    );
+    this.name = 'NativeChangeRevisionConflictError';
+  }
+}
 
 export const NATIVE_BRIEF_TEMPLATE = [
   '# Outcome',
@@ -128,10 +189,13 @@ function validDate(value: string): boolean {
   return new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
 }
 
-export function parseNativeChangeValue(value: unknown): NativeChangeState {
-  const root = record(value, 'change.yaml');
-  rejectUnknown(root, CHANGE_KEYS, 'change.yaml');
-  if (root.schema !== 'comet.native.v1') throw new Error('Unsupported Native change schema');
+type ParsedChangeFields = Omit<NativeLegacyChangeState, 'schema'>;
+
+function parseChangeFields(
+  root: Record<string, unknown>,
+  knownKeys: Set<string>,
+): ParsedChangeFields {
+  rejectUnknown(root, knownKeys, 'change.yaml');
   if (typeof root.name !== 'string') throw new Error('Native change name is required');
   assertNativeName(root.name);
   if (root.language !== 'en' && root.language !== 'zh-CN') {
@@ -174,7 +238,6 @@ export function parseNativeChangeValue(value: unknown): NativeChangeState {
     throw new Error('Native run_id must be a non-empty string or null');
   }
   return {
-    schema: 'comet.native.v1',
     name: root.name,
     language: root.language,
     phase: root.phase as NativePhase,
@@ -189,10 +252,114 @@ export function parseNativeChangeValue(value: unknown): NativeChangeState {
   };
 }
 
+export function parseLegacyNativeChangeValue(value: unknown): NativeLegacyChangeState {
+  const root = record(value, 'change.yaml');
+  if (root.schema !== NATIVE_LEGACY_CHANGE_SCHEMA) {
+    throw new Error(`Expected ${NATIVE_LEGACY_CHANGE_SCHEMA}`);
+  }
+  return {
+    schema: NATIVE_LEGACY_CHANGE_SCHEMA,
+    ...parseChangeFields(root, LEGACY_CHANGE_KEYS),
+  };
+}
+
+function positiveInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return value as number;
+}
+
+export function parseNativeChangeValue(value: unknown): NativeChangeState {
+  const root = record(value, 'change.yaml');
+  if (root.schema !== NATIVE_CHANGE_SCHEMA) {
+    if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA) {
+      const legacy = parseLegacyNativeChangeValue(root);
+      throw new NativeSchemaMigrationRequiredError(legacy.name, legacy.schema);
+    }
+    throw new NativeRuntimeCompatibilityError(
+      typeof root.schema === 'string' ? root.schema : '(missing)',
+      typeof root.minimum_runtime_version === 'number' ? root.minimum_runtime_version : null,
+    );
+  }
+  const minimumRuntimeVersion = positiveInteger(
+    root.minimum_runtime_version,
+    'Native minimum_runtime_version',
+  );
+  if (minimumRuntimeVersion > NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new NativeRuntimeCompatibilityError(root.schema, minimumRuntimeVersion);
+  }
+  if (minimumRuntimeVersion !== NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new Error(
+      `Native ${root.schema} minimum_runtime_version must be ${NATIVE_RUNTIME_PROTOCOL_VERSION}`,
+    );
+  }
+  const revision = positiveInteger(root.revision, 'Native revision');
+  return {
+    schema: NATIVE_CHANGE_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision,
+    ...parseChangeFields(root, CURRENT_CHANGE_KEYS),
+  };
+}
+
+export function inspectNativeChangeValue(value: unknown): NativeChangeSchemaInspection {
+  const root = record(value, 'change.yaml');
+  if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA) {
+    const state = parseLegacyNativeChangeValue(root);
+    return {
+      status: 'migration-required',
+      schema: state.schema,
+      minimumRuntimeVersion: 1,
+      state,
+      message: `Native change ${state.name} requires migration to ${NATIVE_CHANGE_SCHEMA}`,
+    };
+  }
+  if (root.schema !== NATIVE_CHANGE_SCHEMA) {
+    const minimumRuntimeVersion =
+      typeof root.minimum_runtime_version === 'number' &&
+      Number.isSafeInteger(root.minimum_runtime_version)
+        ? root.minimum_runtime_version
+        : null;
+    return {
+      status: 'runtime-incompatible',
+      schema: typeof root.schema === 'string' ? root.schema : '(missing)',
+      minimumRuntimeVersion,
+      state: null,
+      message: new NativeRuntimeCompatibilityError(
+        typeof root.schema === 'string' ? root.schema : '(missing)',
+        minimumRuntimeVersion,
+      ).message,
+    };
+  }
+  const minimumRuntimeVersion = positiveInteger(
+    root.minimum_runtime_version,
+    'Native minimum_runtime_version',
+  );
+  if (minimumRuntimeVersion > NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    return {
+      status: 'runtime-incompatible',
+      schema: root.schema,
+      minimumRuntimeVersion,
+      state: null,
+      message: new NativeRuntimeCompatibilityError(root.schema, minimumRuntimeVersion).message,
+    };
+  }
+  const state = parseNativeChangeValue(root);
+  return {
+    status: 'current',
+    schema: state.schema,
+    minimumRuntimeVersion: state.minimum_runtime_version,
+    state,
+  };
+}
+
 export function nativeChangeDocument(state: NativeChangeState): Record<string, unknown> {
   const parsed = parseNativeChangeValue(state);
   return {
     schema: parsed.schema,
+    minimum_runtime_version: parsed.minimum_runtime_version,
+    revision: parsed.revision,
     name: parsed.name,
     language: parsed.language,
     phase: parsed.phase,
@@ -219,6 +386,21 @@ export function nativeChangeDir(paths: NativeProjectPaths, name: string): string
   return target;
 }
 
+export async function hasPendingNativeSchemaMigration(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<boolean> {
+  const file = path.join(nativeChangeDir(paths, name), 'runtime', 'schema-migration.json');
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    await fs.lstat(file);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 export async function createNativeChange(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -239,76 +421,197 @@ async function createNativeChangeLocked(options: {
   assertNativeName(options.name);
   const changeDir = nativeChangeDir(options.paths, options.name);
   await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
+  let createdChangeDir = false;
   try {
-    await fs.mkdir(changeDir, { recursive: false });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      await fs.mkdir(options.paths.changesDir, { recursive: true });
+    try {
       await fs.mkdir(changeDir, { recursive: false });
-    } else if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      throw new Error(`Native change already exists: ${options.name}`, { cause: error });
-    } else {
-      throw error;
+      createdChangeDir = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        await fs.mkdir(options.paths.changesDir, { recursive: true });
+        try {
+          await fs.mkdir(changeDir, { recursive: false });
+          createdChangeDir = true;
+        } catch (retryError) {
+          if ((retryError as NodeJS.ErrnoException).code === 'EEXIST') {
+            throw new Error(`Native change already exists: ${options.name}`, {
+              cause: retryError,
+            });
+          }
+          throw retryError;
+        }
+      } else if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(`Native change already exists: ${options.name}`, { cause: error });
+      } else {
+        throw error;
+      }
     }
+    const state: NativeChangeState = {
+      schema: NATIVE_CHANGE_SCHEMA,
+      minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+      revision: 1,
+      name: options.name,
+      language: options.language,
+      phase: 'shape',
+      brief: 'brief.md',
+      approval: null,
+      spec_changes: [],
+      verification_result: 'pending',
+      verification_report: null,
+      archived: false,
+      created_at: (options.now ?? new Date()).toISOString().slice(0, 10),
+      run_id: null,
+    };
+    await Promise.all([
+      fs.mkdir(path.join(changeDir, 'specs'), { recursive: true }),
+      fs.mkdir(path.join(changeDir, 'runtime', 'checkpoints'), { recursive: true }),
+      atomicWriteText(path.join(changeDir, 'brief.md'), NATIVE_BRIEF_TEMPLATE),
+    ]);
+    const baseline = await createNativeContentSnapshot(options.paths, {
+      now: options.now,
+      origin: 'change-created',
+    });
+    await writeNativeBaselineManifest(options.paths, state.name, baseline);
+    await createNativeChangeFile(options.paths, state);
+    return state;
+  } catch (error) {
+    if (createdChangeDir) await fs.rm(changeDir, { recursive: true, force: true });
+    throw error;
   }
-  const state: NativeChangeState = {
-    schema: 'comet.native.v1',
-    name: options.name,
-    language: options.language,
-    phase: 'shape',
-    brief: 'brief.md',
-    approval: null,
-    spec_changes: [],
-    verification_result: 'pending',
-    verification_report: null,
-    archived: false,
-    created_at: (options.now ?? new Date()).toISOString().slice(0, 10),
-    run_id: null,
-  };
-  await Promise.all([
-    fs.mkdir(path.join(changeDir, 'specs'), { recursive: true }),
-    fs.mkdir(path.join(changeDir, 'runtime', 'checkpoints'), { recursive: true }),
-    atomicWriteText(path.join(changeDir, 'brief.md'), NATIVE_BRIEF_TEMPLATE),
-  ]);
-  await writeNativeChange(options.paths, state);
-  return state;
+}
+
+async function readChangeDocumentFile(file: string): Promise<unknown> {
+  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
+  }
+  return document.toJS();
+}
+
+export async function inspectNativeChange(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<NativeChangeSchemaInspection> {
+  const file = path.join(nativeChangeDir(paths, name), 'change.yaml');
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file));
+  if (inspection.state && inspection.state.name !== name) {
+    throw new Error(`Native change directory/name mismatch: ${name}`);
+  }
+  if (await hasPendingNativeSchemaMigration(paths, name)) {
+    return {
+      status: 'migration-required',
+      schema: inspection.schema,
+      minimumRuntimeVersion: inspection.minimumRuntimeVersion,
+      state: inspection.state,
+      message: `Native schema migration is incomplete for ${name}; run doctor --repair`,
+    };
+  }
+  return inspection;
 }
 
 export async function readNativeChange(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<NativeChangeState> {
-  const file = path.join(nativeChangeDir(paths, name), 'change.yaml');
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid Native change ${name}: ${document.errors[0].message}`);
+  const inspection = await inspectNativeChange(paths, name);
+  if (inspection.status === 'migration-required') {
+    throw new NativeSchemaMigrationRequiredError(name, inspection.schema);
   }
-  const parsed = parseNativeChangeValue(document.toJS());
-  if (parsed.name !== name) throw new Error(`Native change directory/name mismatch: ${name}`);
-  return parsed;
+  if (inspection.status === 'runtime-incompatible' || !inspection.state) {
+    throw new NativeRuntimeCompatibilityError(inspection.schema, inspection.minimumRuntimeVersion);
+  }
+  return inspection.state as NativeChangeState;
 }
 
 export async function writeNativeChange(
   paths: NativeProjectPaths,
   state: NativeChangeState,
+): Promise<NativeChangeState> {
+  return compareAndSwapNativeChange(paths, state, state.revision);
+}
+
+async function createNativeChangeFile(
+  paths: NativeProjectPaths,
+  state: NativeChangeState,
 ): Promise<void> {
-  await assertNoPendingNativeRootMove(paths.projectRoot);
   const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
   await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    await fs.access(file);
+    throw new Error(`Native change state already exists: ${state.name}`);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  if (state.revision !== 1) throw new Error('New Native change must start at revision 1');
   await atomicWriteText(file, stringify(nativeChangeDocument(state)));
 }
 
-export async function writeNativeChangeFile(file: string, state: NativeChangeState): Promise<void> {
-  await atomicWriteText(file, stringify(nativeChangeDocument(state)));
+export async function compareAndSwapNativeChangeFile(
+  file: string,
+  state: NativeChangeState,
+  expectedRevision: number,
+): Promise<NativeChangeState> {
+  const next = {
+    ...state,
+    schema: NATIVE_CHANGE_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision: expectedRevision + 1,
+  } satisfies NativeChangeState;
+  const result = await compareAndSwapNativeRevision({
+    expectedRevision,
+    next,
+    read: async () => {
+      const current = parseNativeChangeValue(await readChangeDocumentFile(file));
+      if (current.name !== state.name) {
+        throw new Error(`Native change file/name mismatch: ${state.name}`);
+      }
+      return current;
+    },
+    write: (value) => atomicWriteText(file, stringify(nativeChangeDocument(value))),
+    equals: (left, right) =>
+      JSON.stringify(nativeChangeDocument(left)) === JSON.stringify(nativeChangeDocument(right)),
+    conflict: (actualRevision) =>
+      new NativeChangeRevisionConflictError(state.name, expectedRevision, actualRevision),
+  });
+  Object.assign(state, result);
+  return result;
+}
+
+export async function compareAndSwapNativeChangeLocked(
+  paths: NativeProjectPaths,
+  state: NativeChangeState,
+  expectedRevision: number,
+): Promise<NativeChangeState> {
+  await assertNoPendingNativeRootMove(paths.projectRoot);
+  if (await hasPendingNativeSchemaMigration(paths, state.name)) {
+    throw new NativeSchemaMigrationRequiredError(state.name, state.schema);
+  }
+  await assertNativeTrajectoryHealthy(paths, state.name);
+  const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  return compareAndSwapNativeChangeFile(file, state, expectedRevision);
+}
+
+export async function compareAndSwapNativeChange(
+  paths: NativeProjectPaths,
+  state: NativeChangeState,
+  expectedRevision: number,
+): Promise<NativeChangeState> {
+  return withNativeMutationLock(paths, `write change ${state.name}`, () =>
+    compareAndSwapNativeChangeLocked(paths, state, expectedRevision),
+  );
+}
+
+export async function writeNativeChangeFile(
+  file: string,
+  state: NativeChangeState,
+): Promise<NativeChangeState> {
+  return compareAndSwapNativeChangeFile(file, state, state.revision);
 }
 
 export async function readNativeChangeFile(file: string): Promise<NativeChangeState> {
-  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
-  }
-  return parseNativeChangeValue(document.toJS());
+  return parseNativeChangeValue(await readChangeDocumentFile(file));
 }
 
 export async function listNativeChanges(paths: NativeProjectPaths): Promise<NativeChangeState[]> {

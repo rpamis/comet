@@ -6,9 +6,9 @@ import { readRunStateAt } from '../engine/storage-run.js';
 import { canonicalSpecPath } from './native-artifacts.js';
 import {
   assertNativeName,
+  compareAndSwapNativeChangeLocked,
   nativeChangeDir,
   readNativeChange,
-  writeNativeChange,
 } from './native-change.js';
 import { sha256File, sha256Text } from './native-hash.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
@@ -161,6 +161,7 @@ export async function rebaseNativeSpecChanges(options: {
         const specChanges = await refreshNativeSpecChanges(options.paths, state);
         const nextState: NativeChangeState = {
           ...state,
+          revision: state.revision + 1,
           phase: 'build',
           spec_changes: specChanges,
           verification_result: 'pending',
@@ -240,7 +241,7 @@ async function markNativeSpecRemovalLocked(
       { capability, operation: 'remove' as const, base_hash: baseHash },
     ].sort((left, right) => left.capability.localeCompare(right.capability)),
   };
-  await writeNativeChange(paths, updated);
+  await compareAndSwapNativeChangeLocked(paths, updated, state.revision);
   return updated;
 }
 

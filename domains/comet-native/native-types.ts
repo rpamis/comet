@@ -3,6 +3,12 @@ export type NativeApproval = null | 'implicit' | 'confirmed';
 export type NativeVerificationResult = 'pending' | 'pass' | 'fail';
 export type NativeSpecOperation = 'create' | 'replace' | 'remove';
 
+export const NATIVE_RUNTIME_PROTOCOL_VERSION = 2 as const;
+export const NATIVE_CHANGE_SCHEMA = 'comet.native.v2' as const;
+export const NATIVE_LEGACY_CHANGE_SCHEMA = 'comet.native.v1' as const;
+export const NATIVE_TRANSITION_SCHEMA = 'comet.native.transition.v2' as const;
+export const NATIVE_LEGACY_TRANSITION_SCHEMA = 'comet.native.transition.v1' as const;
+
 export interface NativePendingRootMove {
   id: string;
   fromArtifactRoot: string;
@@ -40,8 +46,7 @@ export interface NativeSpecChange {
   base_hash: string | null;
 }
 
-export interface NativeChangeState {
-  schema: 'comet.native.v1';
+interface NativeChangeStateFields {
   name: string;
   language: 'en' | 'zh-CN';
   phase: NativePhase;
@@ -53,6 +58,69 @@ export interface NativeChangeState {
   archived: boolean;
   created_at: string;
   run_id: string | null;
+}
+
+export interface NativeLegacyChangeState extends NativeChangeStateFields {
+  schema: typeof NATIVE_LEGACY_CHANGE_SCHEMA;
+}
+
+export interface NativeChangeState extends NativeChangeStateFields {
+  schema: typeof NATIVE_CHANGE_SCHEMA;
+  minimum_runtime_version: typeof NATIVE_RUNTIME_PROTOCOL_VERSION;
+  revision: number;
+}
+
+export type NativeReadableChangeState = NativeLegacyChangeState | NativeChangeState;
+
+export interface NativeChangeSchemaInspection {
+  status: 'current' | 'migration-required' | 'runtime-incompatible';
+  schema: string;
+  minimumRuntimeVersion: number | null;
+  state: NativeReadableChangeState | null;
+  message?: string;
+}
+
+export interface NativeSnapshotEntry {
+  path: string;
+  hash: string;
+  size: number;
+  type: 'file';
+}
+
+export interface NativeSnapshotOmission {
+  path: string;
+  size: number | null;
+  type: 'file' | 'directory' | 'other';
+  reason:
+    | 'file-size'
+    | 'file-count'
+    | 'total-size'
+    | 'manifest-size'
+    | 'changed-during-read'
+    | 'unreadable';
+}
+
+export interface NativeSnapshotOmissionOverflow {
+  ref: string;
+  hash: string;
+  count: number;
+}
+
+export interface NativeContentSnapshotManifest {
+  schema: 'comet.native.content-snapshot.v1';
+  origin: 'change-created' | 'legacy-migration' | 'explicit';
+  createdAt: string;
+  complete: boolean;
+  limits: {
+    maxFiles: number;
+    maxFileBytes: number;
+    maxTotalBytes: number;
+    maxManifestBytes: number;
+  };
+  entries: NativeSnapshotEntry[];
+  omitted: NativeSnapshotOmission[];
+  omittedCount: number;
+  omissionOverflow?: NativeSnapshotOmissionOverflow;
 }
 
 export interface NativeFinding {
@@ -83,18 +151,31 @@ export interface NativeAdvanceResult {
   findings: NativeFinding[];
 }
 
-export interface NativeTransitionJournal {
-  schema: 'comet.native.transition.v1';
+interface NativeTransitionJournalFields<TState extends NativeReadableChangeState> {
   id: string;
   change: string;
   evidenceHash: string;
   createdAt: string;
-  previousState: NativeChangeState;
-  nextState: NativeChangeState;
+  previousState: TState;
+  nextState: TState;
   previousRun: RunState | null;
   nextRun: RunState;
   eventData: Record<string, unknown>;
 }
+
+export interface NativeLegacyTransitionJournal extends NativeTransitionJournalFields<NativeLegacyChangeState> {
+  schema: typeof NATIVE_LEGACY_TRANSITION_SCHEMA;
+}
+
+export interface NativeTransitionJournal extends NativeTransitionJournalFields<NativeChangeState> {
+  schema: typeof NATIVE_TRANSITION_SCHEMA;
+  minimum_runtime_version: typeof NATIVE_RUNTIME_PROTOCOL_VERSION;
+  revision: number;
+}
+
+export type NativeTransitionSchemaInspection =
+  | { status: 'current'; journal: NativeTransitionJournal }
+  | { status: 'migration-required'; journal: NativeLegacyTransitionJournal };
 
 export interface NativeTransitionHooks {
   afterPrepared?: (journal: NativeTransitionJournal) => void | Promise<void>;
@@ -111,6 +192,9 @@ export interface NativeStatusProjection {
   selected: boolean;
   nextCommand: string | null;
   archiveReady: boolean;
+  schema?: string;
+  migrationRequired?: boolean;
+  minimumRuntimeVersion?: number | null;
   error?: string;
 }
 
@@ -119,7 +203,30 @@ export interface NativeDoctorFinding {
   code: string;
   message: string;
   path?: string;
-  repair?: 'continue' | 'rollback';
+  repair?: 'continue' | 'rollback' | 'migrate' | 'truncate-tail';
+}
+
+export interface NativeSchemaMigrationJournal {
+  schema: 'comet.native.schema-migration.v1';
+  id: string;
+  change: string;
+  fromSchema: typeof NATIVE_LEGACY_CHANGE_SCHEMA;
+  toSchema: typeof NATIVE_CHANGE_SCHEMA;
+  sourceHash: string;
+  targetHash: string;
+  createdAt: string;
+  nextState: NativeChangeState;
+  transition?: {
+    sourceHash: string;
+    targetHash: string;
+    nextJournal: NativeTransitionJournal;
+  };
+}
+
+export interface NativeSchemaMigrationHooks {
+  afterPrepared?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
+  afterStateWritten?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
+  afterTransitionWritten?: (journal: NativeSchemaMigrationJournal) => void | Promise<void>;
 }
 
 export type NativeTransactionKind = 'archive' | 'root-move';

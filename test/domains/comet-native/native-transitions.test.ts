@@ -95,6 +95,7 @@ describe('Native guarded transitions', () => {
       now: new Date('2026-07-14T01:00:00Z'),
     });
     expect(first.change).toMatchObject({
+      revision: 2,
       phase: 'build',
       approval: 'implicit',
       run_id: 'native-run-1',
@@ -107,6 +108,7 @@ describe('Native guarded transitions', () => {
       evidence: { summary: 'shape done' },
     });
     expect(retry.change.phase).toBe('build');
+    expect(retry.change.revision).toBe(2);
     const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
     expect(
       (await readTrajectory(changeDir, run.trajectoryRef)).filter(
@@ -121,6 +123,7 @@ describe('Native guarded transitions', () => {
       evidence: { summary: 'implemented', artifacts: ['feature.ts'] },
     });
     expect(build.change.phase).toBe('verify');
+    expect(build.change.revision).toBe(3);
   });
 
   it('records explicit confirmation from Shape or an agile Build decision', async () => {

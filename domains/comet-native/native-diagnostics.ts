@@ -5,7 +5,7 @@ import {
   validateNativeSpecChanges,
   validateNativeVerification,
 } from './native-artifacts.js';
-import { nativeChangeDir, readNativeChange } from './native-change.js';
+import { inspectNativeChange, nativeChangeDir } from './native-change.js';
 import { nativeSelectionFile } from './native-selection.js';
 import { inspectNativeRunConsistency } from './native-run-consistency.js';
 import { inspectPendingNativeTransition } from './native-transition-journal.js';
@@ -85,7 +85,39 @@ export async function inspectNativeStatus(
   const selected = (await selectedName(paths)) === name;
   let state: NativeChangeState;
   try {
-    state = await readNativeChange(paths, name);
+    const inspection = await inspectNativeChange(paths, name);
+    if (inspection.status === 'migration-required' && inspection.state) {
+      return {
+        name,
+        phase: inspection.state.phase,
+        approval: inspection.state.approval,
+        verificationResult: inspection.state.verification_result,
+        specChanges: inspection.state.spec_changes.length,
+        selected,
+        nextCommand: null,
+        archiveReady: false,
+        schema: inspection.schema,
+        migrationRequired: true,
+        minimumRuntimeVersion: inspection.minimumRuntimeVersion,
+        error: inspection.message,
+      };
+    }
+    if (inspection.status !== 'current' || !inspection.state) {
+      return {
+        name,
+        phase: 'invalid',
+        approval: null,
+        verificationResult: 'pending',
+        specChanges: 0,
+        selected,
+        nextCommand: null,
+        archiveReady: false,
+        schema: inspection.schema,
+        minimumRuntimeVersion: inspection.minimumRuntimeVersion,
+        error: inspection.message ?? `Native change ${name} is incompatible`,
+      };
+    }
+    state = inspection.state as NativeChangeState;
   } catch (error) {
     return {
       name,
@@ -102,6 +134,10 @@ export async function inspectNativeStatus(
   const findings = await statusFindings(paths, state);
   const archiveReady =
     state.phase === 'archive' && state.verification_result === 'pass' && findings.length === 0;
+  const mutationBlocked = findings.some(
+    (finding) =>
+      finding.code === 'trajectory-tail-incomplete' || finding.code === 'trajectory-invalid',
+  );
   return {
     name: state.name,
     phase: state.phase,
@@ -109,8 +145,10 @@ export async function inspectNativeStatus(
     verificationResult: state.verification_result,
     specChanges: state.spec_changes.length,
     selected,
-    nextCommand: nativeNextCommand(state, archiveReady),
+    nextCommand: mutationBlocked ? null : nativeNextCommand(state, archiveReady),
     archiveReady,
+    schema: state.schema,
+    minimumRuntimeVersion: state.minimum_runtime_version,
     ...(findings[0] ? { error: findings[0].message } : {}),
   };
 }

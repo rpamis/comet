@@ -114,17 +114,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path22) {
-      const ctrl = callVisitor(key, node, visitor, path22);
+    function visit_(key, node, visitor, path25) {
+      const ctrl = callVisitor(key, node, visitor, path25);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path22, ctrl);
-        return visit_(key, ctrl, visitor, path22);
+        replaceNode(key, path25, ctrl);
+        return visit_(key, ctrl, visitor, path25);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path22 = Object.freeze(path22.concat(node));
+          path25 = Object.freeze(path25.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path22);
+            const ci = visit_(i, node.items[i], visitor, path25);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -135,13 +135,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path22 = Object.freeze(path22.concat(node));
-          const ck = visit_("key", node.key, visitor, path22);
+          path25 = Object.freeze(path25.concat(node));
+          const ck = visit_("key", node.key, visitor, path25);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path22);
+          const cv = visit_("value", node.value, visitor, path25);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -162,17 +162,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path22) {
-      const ctrl = await callVisitor(key, node, visitor, path22);
+    async function visitAsync_(key, node, visitor, path25) {
+      const ctrl = await callVisitor(key, node, visitor, path25);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path22, ctrl);
-        return visitAsync_(key, ctrl, visitor, path22);
+        replaceNode(key, path25, ctrl);
+        return visitAsync_(key, ctrl, visitor, path25);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path22 = Object.freeze(path22.concat(node));
+          path25 = Object.freeze(path25.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path22);
+            const ci = await visitAsync_(i, node.items[i], visitor, path25);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -183,13 +183,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path22 = Object.freeze(path22.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path22);
+          path25 = Object.freeze(path25.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path25);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path22);
+          const cv = await visitAsync_("value", node.value, visitor, path25);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -216,23 +216,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path22) {
+    function callVisitor(key, node, visitor, path25) {
       if (typeof visitor === "function")
-        return visitor(key, node, path22);
+        return visitor(key, node, path25);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path22);
+        return visitor.Map?.(key, node, path25);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path22);
+        return visitor.Seq?.(key, node, path25);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path22);
+        return visitor.Pair?.(key, node, path25);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path22);
+        return visitor.Scalar?.(key, node, path25);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path22);
+        return visitor.Alias?.(key, node, path25);
       return void 0;
     }
-    function replaceNode(key, path22, node) {
-      const parent = path22[path22.length - 1];
+    function replaceNode(key, path25, node) {
+      const parent = path25[path25.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -842,10 +842,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path22, value) {
+    function collectionFromPath(schema, path25, value) {
       let v = value;
-      for (let i = path22.length - 1; i >= 0; --i) {
-        const k = path22[i];
+      for (let i = path25.length - 1; i >= 0; --i) {
+        const k = path25[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -864,7 +864,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path22) => path22 == null || typeof path22 === "object" && !!path22[Symbol.iterator]().next().done;
+    var isEmptyPath = (path25) => path25 == null || typeof path25 === "object" && !!path25[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -894,11 +894,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path22, value) {
-        if (isEmptyPath(path22))
+      addIn(path25, value) {
+        if (isEmptyPath(path25))
           this.add(value);
         else {
-          const [key, ...rest] = path22;
+          const [key, ...rest] = path25;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -912,8 +912,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path22) {
-        const [key, ...rest] = path22;
+      deleteIn(path25) {
+        const [key, ...rest] = path25;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -927,8 +927,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path22, keepScalar) {
-        const [key, ...rest] = path22;
+      getIn(path25, keepScalar) {
+        const [key, ...rest] = path25;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -946,8 +946,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path22) {
-        const [key, ...rest] = path22;
+      hasIn(path25) {
+        const [key, ...rest] = path25;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -957,8 +957,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path22, value) {
-        const [key, ...rest] = path22;
+      setIn(path25, value) {
+        const [key, ...rest] = path25;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -1505,7 +1505,7 @@ var require_stringify = __commonJS({
         props.push(doc.directives.tagString(tag));
       return props.join(" ");
     }
-    function stringify3(item, ctx, onComment, onChompKeep) {
+    function stringify4(item, ctx, onComment, onChompKeep) {
       if (identity.isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
       if (identity.isAlias(item)) {
@@ -1534,7 +1534,7 @@ var require_stringify = __commonJS({
 ${ctx.indent}${str}`;
     }
     exports.createStringifyContext = createStringifyContext;
-    exports.stringify = stringify3;
+    exports.stringify = stringify4;
   }
 });
 
@@ -1544,7 +1544,7 @@ var require_stringifyPair = __commonJS({
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
-    var stringify3 = require_stringify();
+    var stringify4 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
@@ -1566,7 +1566,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify3.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify4.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -1618,7 +1618,7 @@ ${indent}:`;
         ctx.indent = ctx.indent.substring(2);
       }
       let valueCommentDone = false;
-      const valueStr = stringify3.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
+      const valueStr = stringify4.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
       let ws = " ";
       if (keyComment || vsb || vcb) {
         ws = vsb ? "\n" : "";
@@ -1759,7 +1759,7 @@ var require_addPairToJSMap = __commonJS({
     "use strict";
     var log = require_log();
     var merge = require_merge();
-    var stringify3 = require_stringify();
+    var stringify4 = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
     function addPairToJSMap(ctx, map, { key, value }) {
@@ -1795,7 +1795,7 @@ var require_addPairToJSMap = __commonJS({
       if (typeof jsKey !== "object")
         return String(jsKey);
       if (identity.isNode(key) && ctx?.doc) {
-        const strCtx = stringify3.createStringifyContext(ctx.doc, {});
+        const strCtx = stringify4.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
@@ -1862,12 +1862,12 @@ var require_stringifyCollection = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify3 = require_stringify();
+    var stringify4 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyCollection(collection, ctx, options) {
       const flow = ctx.inFlow ?? collection.flow;
-      const stringify4 = flow ? stringifyFlowCollection : stringifyBlockCollection;
-      return stringify4(collection, ctx, options);
+      const stringify5 = flow ? stringifyFlowCollection : stringifyBlockCollection;
+      return stringify5(collection, ctx, options);
     }
     function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
       const { indent, options: { commentString } } = ctx;
@@ -1892,7 +1892,7 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str2 = stringify3.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str2 = stringify4.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
           str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
@@ -1959,7 +1959,7 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str = stringify3.stringify(item, itemCtx, () => comment = null);
+        let str = stringify4.stringify(item, itemCtx, () => comment = null);
         reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
         if (i < items.length - 1) {
           str += ",";
@@ -3320,7 +3320,7 @@ var require_stringifyDocument = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify3 = require_stringify();
+    var stringify4 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyDocument(doc, options) {
       const lines = [];
@@ -3335,7 +3335,7 @@ var require_stringifyDocument = __commonJS({
       }
       if (hasDirectives)
         lines.push("---");
-      const ctx = stringify3.createStringifyContext(doc, options);
+      const ctx = stringify4.createStringifyContext(doc, options);
       const { commentString } = ctx.options;
       if (doc.commentBefore) {
         if (lines.length !== 1)
@@ -3357,7 +3357,7 @@ var require_stringifyDocument = __commonJS({
           contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? void 0 : () => chompKeep = true;
-        let body = stringify3.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
+        let body = stringify4.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
         if (contentComment)
           body += stringifyComment.lineComment(body, "", commentString(contentComment));
         if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
@@ -3365,7 +3365,7 @@ var require_stringifyDocument = __commonJS({
         } else
           lines.push(body);
       } else {
-        lines.push(stringify3.stringify(doc.contents, ctx));
+        lines.push(stringify4.stringify(doc.contents, ctx));
       }
       if (doc.directives?.docEnd) {
         if (doc.comment) {
@@ -3473,9 +3473,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path22, value) {
+      addIn(path25, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path22, value);
+          this.contents.addIn(path25, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3550,14 +3550,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path22) {
-        if (Collection.isEmptyPath(path22)) {
+      deleteIn(path25) {
+        if (Collection.isEmptyPath(path25)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path22) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path25) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3572,10 +3572,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path22, keepScalar) {
-        if (Collection.isEmptyPath(path22))
+      getIn(path25, keepScalar) {
+        if (Collection.isEmptyPath(path25))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path22, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path25, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3586,10 +3586,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path22) {
-        if (Collection.isEmptyPath(path22))
+      hasIn(path25) {
+        if (Collection.isEmptyPath(path25))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path22) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path25) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3606,13 +3606,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path22, value) {
-        if (Collection.isEmptyPath(path22)) {
+      setIn(path25, value) {
+        if (Collection.isEmptyPath(path25)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path22), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path25), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path22, value);
+          this.contents.setIn(path25, value);
         }
       }
       /**
@@ -5500,7 +5500,7 @@ var require_cst_scalar = __commonJS({
 var require_cst_stringify = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
-    var stringify3 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
+    var stringify4 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
       switch (token.type) {
         case "block-scalar": {
@@ -5553,7 +5553,7 @@ var require_cst_stringify = __commonJS({
         res += stringifyToken(value);
       return res;
     }
-    exports.stringify = stringify3;
+    exports.stringify = stringify4;
   }
 });
 
@@ -5572,9 +5572,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path22) => {
+    visit.itemAtPath = (cst, path25) => {
       let item = cst;
-      for (const [field2, index] of path22) {
+      for (const [field2, index] of path25) {
         const tok = item?.[field2];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5583,23 +5583,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path22) => {
-      const parent = visit.itemAtPath(cst, path22.slice(0, -1));
-      const field2 = path22[path22.length - 1][0];
+    visit.parentCollection = (cst, path25) => {
+      const parent = visit.itemAtPath(cst, path25.slice(0, -1));
+      const field2 = path25[path25.length - 1][0];
       const coll = parent?.[field2];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path22, item, visitor) {
-      let ctrl = visitor(item, path22);
+    function _visit(path25, item, visitor) {
+      let ctrl = visitor(item, path25);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field2 of ["key", "value"]) {
         const token = item[field2];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path22.concat([[field2, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path25.concat([[field2, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5610,10 +5610,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field2 === "key")
-            ctrl = ctrl(item, path22);
+            ctrl = ctrl(item, path25);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path22) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path25) : ctrl;
     }
     exports.visit = visit;
   }
@@ -6915,14 +6915,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs20 = this.flowScalar(this.type);
+              const fs23 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs20, sep: [] });
+                map.items.push({ start, key: fs23, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs20);
+                this.stack.push(fs23);
               } else {
-                Object.assign(it, { key: fs20, sep: [] });
+                Object.assign(it, { key: fs23, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7050,13 +7050,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs20 = this.flowScalar(this.type);
+              const fs23 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs20, sep: [] });
+                fc.items.push({ start: [], key: fs23, sep: [] });
               else if (it.sep)
-                this.stack.push(fs20);
+                this.stack.push(fs23);
               else
-                Object.assign(it, { key: fs20, sep: [] });
+                Object.assign(it, { key: fs23, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7283,7 +7283,7 @@ var require_public_api = __commonJS({
       }
       return doc.toJS(Object.assign({ reviver: _reviver }, options));
     }
-    function stringify3(value, replacer, options) {
+    function stringify4(value, replacer, options) {
       let _replacer = null;
       if (typeof replacer === "function" || Array.isArray(replacer)) {
         _replacer = replacer;
@@ -7308,7 +7308,7 @@ var require_public_api = __commonJS({
     exports.parse = parse;
     exports.parseAllDocuments = parseAllDocuments;
     exports.parseDocument = parseDocument3;
-    exports.stringify = stringify3;
+    exports.stringify = stringify4;
   }
 });
 
@@ -7368,13 +7368,13 @@ var require_dist = __commonJS({
 import { pathToFileURL } from "url";
 
 // domains/comet-native/native-cli.ts
-import { promises as fs19 } from "fs";
-import path21 from "path";
+import { promises as fs22 } from "fs";
+import path24 from "path";
 
 // domains/comet-native/native-archive.ts
 import { randomUUID as randomUUID6 } from "crypto";
-import { promises as fs13 } from "fs";
-import path15 from "path";
+import { promises as fs15 } from "fs";
+import path17 from "path";
 
 // domains/engine/loop.ts
 import { createHash } from "crypto";
@@ -7734,13 +7734,13 @@ async function writeRunStateAt(changeDir, state, storage) {
 }
 
 // domains/comet-native/native-artifacts.ts
-import { promises as fs10 } from "fs";
-import path12 from "path";
+import { promises as fs12 } from "fs";
+import path14 from "path";
 
 // domains/comet-native/native-change.ts
 var import_yaml2 = __toESM(require_dist(), 1);
-import { promises as fs9 } from "fs";
-import path11 from "path";
+import { promises as fs11 } from "fs";
+import path13 from "path";
 
 // domains/comet-native/native-atomic-file.ts
 import { randomUUID as randomUUID3 } from "crypto";
@@ -8564,8 +8564,674 @@ async function withNativeMutationLock(paths, operation, work, options) {
   }
 }
 
+// domains/comet-native/native-revision.ts
+function validRevision(value) {
+  return Number.isSafeInteger(value) && value >= 1;
+}
+async function compareAndSwapNativeRevision(options) {
+  if (!validRevision(options.expectedRevision)) {
+    throw new Error("Native expected revision must be a positive integer");
+  }
+  if (options.next.revision !== options.expectedRevision + 1) {
+    throw new Error("Native CAS next revision must increment the expected revision exactly once");
+  }
+  const current = await options.read();
+  if (!validRevision(current.revision)) {
+    throw new Error("Native current revision must be a positive integer");
+  }
+  const equals = options.equals ?? ((left, right) => JSON.stringify(left) === JSON.stringify(right));
+  if (current.revision === options.next.revision && equals(current, options.next)) {
+    return current;
+  }
+  if (current.revision !== options.expectedRevision) {
+    throw options.conflict(current.revision);
+  }
+  await options.write(options.next);
+  return options.next;
+}
+
+// domains/comet-native/native-snapshot.ts
+import { createHash as createHash3 } from "crypto";
+import { promises as fs9 } from "fs";
+import path11 from "path";
+
+// domains/comet-native/native-hash.ts
+import { createHash as createHash2 } from "crypto";
+import { createReadStream } from "fs";
+async function sha256File(file) {
+  const hash = createHash2("sha256");
+  for await (const chunk of createReadStream(file)) hash.update(chunk);
+  return hash.digest("hex");
+}
+function sha256Text(content) {
+  return createHash2("sha256").update(content).digest("hex");
+}
+
+// domains/comet-native/native-snapshot.ts
+var DEFAULT_NATIVE_SNAPSHOT_LIMITS = {
+  maxFiles: 1e4,
+  maxFileBytes: 5 * 1024 * 1024,
+  maxTotalBytes: 64 * 1024 * 1024,
+  maxManifestBytes: 1024 * 1024
+};
+var MAX_RECORDED_OMISSIONS = 1e3;
+var CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+var EXCLUDED_DIRECTORIES = /* @__PURE__ */ new Set([
+  ".cache",
+  ".git",
+  ".gradle",
+  ".mypy_cache",
+  ".next",
+  ".npm",
+  ".pnpm-store",
+  ".pytest_cache",
+  ".turbo",
+  ".venv",
+  ".yarn",
+  "__pycache__",
+  "node_modules",
+  "venv"
+]);
+var MANIFEST_KEYS = /* @__PURE__ */ new Set([
+  "schema",
+  "origin",
+  "createdAt",
+  "complete",
+  "limits",
+  "entries",
+  "omitted",
+  "omittedCount",
+  "omissionOverflow"
+]);
+var LIMIT_KEYS = /* @__PURE__ */ new Set(["maxFiles", "maxFileBytes", "maxTotalBytes", "maxManifestBytes"]);
+var ENTRY_KEYS = /* @__PURE__ */ new Set(["path", "hash", "size", "type"]);
+var OMISSION_KEYS = /* @__PURE__ */ new Set(["path", "size", "type", "reason"]);
+var OMISSION_OVERFLOW_KEYS = /* @__PURE__ */ new Set(["ref", "hash", "count"]);
+var SNAPSHOT_ORIGINS = /* @__PURE__ */ new Set([
+  "change-created",
+  "legacy-migration",
+  "explicit"
+]);
+var OMISSION_TYPES = /* @__PURE__ */ new Set(["file", "directory", "other"]);
+var OMISSION_REASONS = /* @__PURE__ */ new Set([
+  "file-size",
+  "file-count",
+  "total-size",
+  "manifest-size",
+  "changed-during-read",
+  "unreadable"
+]);
+var HASH_PATTERN = /^[a-f0-9]{64}$/u;
+var UNREADABLE_ERROR_CODES = /* @__PURE__ */ new Set(["EACCES", "EPERM"]);
+function portableRelative(root, target) {
+  return path11.relative(root, target).split(path11.sep).join("/");
+}
+function isEnvFile(name) {
+  return name.toLowerCase().startsWith(".env");
+}
+function normalizedDenylist(projectRoot, values) {
+  return values.map((value) => path11.resolve(projectRoot, ...value.split(/[\\/]/u)));
+}
+function sameOrInside(root, target) {
+  const normalizedRoot = path11.resolve(root);
+  const normalizedTarget = path11.resolve(target);
+  return normalizedTarget === normalizedRoot || isInsidePath(normalizedRoot, normalizedTarget);
+}
+function isUnreadableError(error) {
+  return UNREADABLE_ERROR_CODES.has(error.code ?? "");
+}
+function isChangedDuringReadError(error) {
+  return error.code === "ENOENT";
+}
+function serializedManifestBytes(manifest) {
+  return Buffer.byteLength(JSON.stringify(manifest, null, 2) + "\n");
+}
+function sameFileIdentity(left, right) {
+  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
+    return left.dev === right.dev && left.ino === right.ino;
+  }
+  return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
+}
+async function sha256FileBounded(file, maxBytes, expected) {
+  const handle = await fs9.open(file, "r");
+  const hash = createHash3("sha256");
+  const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+  let bytes = 0;
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile() || !sameFileIdentity(expected, opened)) return { status: "changed" };
+    while (true) {
+      const remaining = maxBytes + 1 - bytes;
+      if (remaining < 1) return { status: "changed" };
+      const result2 = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+      if (result2.bytesRead === 0) {
+        const finalStat = await handle.stat();
+        if (!finalStat.isFile() || !sameFileIdentity(opened, finalStat)) {
+          return { status: "changed" };
+        }
+        return { status: "complete", hash: hash.digest("hex"), bytes, finalStat };
+      }
+      if (bytes + result2.bytesRead > maxBytes) return { status: "changed" };
+      hash.update(buffer.subarray(0, result2.bytesRead));
+      bytes += result2.bytesRead;
+    }
+  } finally {
+    await handle.close();
+  }
+}
+function omissionType(child) {
+  if (child.isFile()) return "file";
+  if (child.isDirectory()) return "directory";
+  return "other";
+}
+function record3(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+function rejectUnknown3(value, keys, label) {
+  const unknown = Object.keys(value).find((key) => !keys.has(key));
+  if (unknown) throw new Error(`${label} contains unknown field: ${unknown}`);
+}
+function positiveInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return value;
+}
+function nonNegativeInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  return value;
+}
+function snapshotPath(value, label) {
+  if (typeof value !== "string" || value.length === 0 || value.includes("\\")) {
+    throw new Error(`${label} must be a normalized project-relative path`);
+  }
+  const normalized = path11.posix.normalize(value);
+  if (normalized !== value || path11.posix.isAbsolute(value) || normalized === ".." || normalized.startsWith("../")) {
+    throw new Error(`${label} must stay inside the project root`);
+  }
+  return value;
+}
+function parseEntry(value, index) {
+  const entry2 = record3(value, `Native snapshot entry ${index}`);
+  rejectUnknown3(entry2, ENTRY_KEYS, `Native snapshot entry ${index}`);
+  const entryPath = snapshotPath(entry2.path, `Native snapshot entry ${index} path`);
+  if (typeof entry2.hash !== "string" || !HASH_PATTERN.test(entry2.hash)) {
+    throw new Error(`Native snapshot entry ${index} hash is invalid`);
+  }
+  if (entry2.type !== "file") throw new Error(`Native snapshot entry ${index} type is invalid`);
+  return {
+    path: entryPath,
+    hash: entry2.hash,
+    size: nonNegativeInteger(entry2.size, `Native snapshot entry ${index} size`),
+    type: "file"
+  };
+}
+function parseOmission(value, index) {
+  const omission = record3(value, `Native snapshot omission ${index}`);
+  rejectUnknown3(omission, OMISSION_KEYS, `Native snapshot omission ${index}`);
+  if (!OMISSION_TYPES.has(omission.type)) {
+    throw new Error(`Native snapshot omission ${index} type is invalid`);
+  }
+  if (!OMISSION_REASONS.has(omission.reason)) {
+    throw new Error(`Native snapshot omission ${index} reason is invalid`);
+  }
+  return {
+    path: snapshotPath(omission.path, `Native snapshot omission ${index} path`),
+    size: omission.size === null ? null : nonNegativeInteger(omission.size, `Native snapshot omission ${index} size`),
+    type: omission.type,
+    reason: omission.reason
+  };
+}
+function parseOmissionOverflow(value) {
+  const overflow = record3(value, "Native snapshot omission overflow");
+  rejectUnknown3(overflow, OMISSION_OVERFLOW_KEYS, "Native snapshot omission overflow");
+  if (typeof overflow.hash !== "string" || !HASH_PATTERN.test(overflow.hash)) {
+    throw new Error("Native snapshot omission overflow hash is invalid");
+  }
+  const expectedRef = `native-snapshot://omitted-overflow/${overflow.hash}`;
+  if (overflow.ref !== expectedRef) {
+    throw new Error("Native snapshot omission overflow ref is invalid");
+  }
+  return {
+    ref: expectedRef,
+    hash: overflow.hash,
+    count: positiveInteger(overflow.count, "Native snapshot omission overflow count")
+  };
+}
+function parseNativeContentSnapshotManifest(value) {
+  const manifest = record3(value, "Native content snapshot manifest");
+  rejectUnknown3(manifest, MANIFEST_KEYS, "Native content snapshot manifest");
+  if (manifest.schema !== "comet.native.content-snapshot.v1") {
+    throw new Error("Unsupported Native content snapshot schema");
+  }
+  if (!SNAPSHOT_ORIGINS.has(manifest.origin)) {
+    throw new Error("Native content snapshot origin is invalid");
+  }
+  if (typeof manifest.createdAt !== "string" || Number.isNaN(Date.parse(manifest.createdAt))) {
+    throw new Error("Native content snapshot timestamp is invalid");
+  }
+  if (typeof manifest.complete !== "boolean") {
+    throw new Error("Native content snapshot complete flag is invalid");
+  }
+  const limitValue = record3(manifest.limits, "Native content snapshot limits");
+  rejectUnknown3(limitValue, LIMIT_KEYS, "Native content snapshot limits");
+  const limits = {
+    maxFiles: positiveInteger(limitValue.maxFiles, "Native snapshot maxFiles"),
+    maxFileBytes: positiveInteger(limitValue.maxFileBytes, "Native snapshot maxFileBytes"),
+    maxTotalBytes: positiveInteger(limitValue.maxTotalBytes, "Native snapshot maxTotalBytes"),
+    maxManifestBytes: positiveInteger(
+      limitValue.maxManifestBytes,
+      "Native snapshot maxManifestBytes"
+    )
+  };
+  if (!Array.isArray(manifest.entries) || !Array.isArray(manifest.omitted)) {
+    throw new Error("Native content snapshot entries and omissions must be arrays");
+  }
+  const entries = manifest.entries.map(parseEntry);
+  const omitted = manifest.omitted.map(parseOmission);
+  const omittedCount = nonNegativeInteger(
+    manifest.omittedCount,
+    "Native content snapshot omittedCount"
+  );
+  const omissionOverflow = manifest.omissionOverflow === void 0 ? void 0 : parseOmissionOverflow(manifest.omissionOverflow);
+  if (entries.length > limits.maxFiles) {
+    throw new Error("Native content snapshot exceeds its file-count limit");
+  }
+  if (entries.some((entry2) => entry2.size > limits.maxFileBytes) || entries.reduce((total, entry2) => total + entry2.size, 0) > limits.maxTotalBytes) {
+    throw new Error("Native content snapshot exceeds its byte limits");
+  }
+  if (new Set(entries.map((entry2) => entry2.path)).size !== entries.length) {
+    throw new Error("Native content snapshot contains duplicate paths");
+  }
+  if (omitted.length > MAX_RECORDED_OMISSIONS || omittedCount < omitted.length) {
+    throw new Error("Native content snapshot omission count is invalid");
+  }
+  const overflowCount = omittedCount - omitted.length;
+  if (overflowCount === 0 && omissionOverflow || overflowCount > 0 && omissionOverflow?.count !== overflowCount) {
+    throw new Error("Native content snapshot omission overflow is inconsistent");
+  }
+  if (manifest.complete !== (omittedCount === 0)) {
+    throw new Error("Native content snapshot completeness is inconsistent");
+  }
+  const parsed = {
+    schema: "comet.native.content-snapshot.v1",
+    origin: manifest.origin,
+    createdAt: manifest.createdAt,
+    complete: manifest.complete,
+    limits,
+    entries,
+    omitted,
+    omittedCount,
+    ...omissionOverflow ? { omissionOverflow } : {}
+  };
+  if (serializedManifestBytes(parsed) > limits.maxManifestBytes) {
+    throw new Error("Native content snapshot exceeds its manifest byte limit");
+  }
+  return parsed;
+}
+function nativeBaselineManifestFile(paths, name) {
+  if (!CHANGE_NAME_PATTERN.test(name)) throw new Error(`Invalid Native change name: ${name}`);
+  const changeDir = path11.join(paths.changesDir, name);
+  if (!isInsidePath(paths.changesDir, changeDir)) throw new Error("Native change path escaped");
+  return path11.join(changeDir, "runtime", "baseline-manifest.json");
+}
+async function createNativeContentSnapshot(paths, options = {}) {
+  const limits = {
+    maxFiles: options.limits?.maxFiles ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFiles,
+    maxFileBytes: options.limits?.maxFileBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFileBytes,
+    maxTotalBytes: options.limits?.maxTotalBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxTotalBytes,
+    maxManifestBytes: options.limits?.maxManifestBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxManifestBytes
+  };
+  if (limits.maxFiles < 1 || limits.maxFileBytes < 1 || limits.maxTotalBytes < 1 || limits.maxManifestBytes < 1) {
+    throw new Error("Native snapshot limits must be positive");
+  }
+  const projectRoot = path11.resolve(paths.projectRoot);
+  const physicalProjectRoot = await fs9.realpath(projectRoot);
+  const nativeRoot = path11.resolve(paths.nativeRoot);
+  const physicalNativeRoot = await fs9.realpath(nativeRoot);
+  const configFile = path11.resolve(paths.configFile);
+  const denylist = normalizedDenylist(projectRoot, options.denylist ?? []);
+  const entries = [];
+  const omitted = [];
+  let omittedCount = 0;
+  let overflowCount = 0;
+  let overflowHash = sha256Text("comet.native.snapshot-omission-overflow.v1");
+  let totalBytes = 0;
+  const foldOverflow = (value) => {
+    overflowCount += 1;
+    overflowHash = sha256Text(`${overflowHash}
+${JSON.stringify(value)}`);
+  };
+  const omit = (value) => {
+    omittedCount += 1;
+    if (omitted.length < MAX_RECORDED_OMISSIONS) {
+      omitted.push(value);
+      return;
+    }
+    foldOverflow(value);
+  };
+  const visit = async (directory) => {
+    let children;
+    try {
+      children = (await fs9.readdir(directory, { withFileTypes: true })).sort(
+        (left, right) => left.name.localeCompare(right.name, "en")
+      );
+    } catch (error) {
+      if (directory === projectRoot) throw error;
+      if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+      omit({
+        path: portableRelative(projectRoot, directory),
+        size: null,
+        type: "directory",
+        reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
+      });
+      return;
+    }
+    for (const child of children) {
+      const target = path11.join(directory, child.name);
+      const relative = portableRelative(projectRoot, target);
+      if (target === configFile || sameOrInside(nativeRoot, target) || denylist.some((denied) => sameOrInside(denied, target)) || isEnvFile(child.name) || child.name.toLowerCase() === ".git") {
+        continue;
+      }
+      let before;
+      try {
+        before = await fs9.lstat(target);
+      } catch (error) {
+        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+        omit({
+          path: relative,
+          size: null,
+          type: omissionType(child),
+          reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
+        });
+        continue;
+      }
+      if (child.isSymbolicLink() || before.isSymbolicLink()) continue;
+      if (child.isDirectory()) {
+        if (!before.isDirectory()) continue;
+        if (EXCLUDED_DIRECTORIES.has(child.name.toLowerCase())) continue;
+        let realDirectory;
+        try {
+          realDirectory = await fs9.realpath(target);
+        } catch (error) {
+          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+          omit({
+            path: relative,
+            size: null,
+            type: "directory",
+            reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
+          });
+          continue;
+        }
+        if (!isInsidePath(physicalProjectRoot, realDirectory) || sameOrInside(physicalNativeRoot, realDirectory)) {
+          continue;
+        }
+        await visit(target);
+        continue;
+      }
+      if (!child.isFile()) continue;
+      if (!before.isFile() || before.isSymbolicLink()) continue;
+      let realTarget;
+      try {
+        realTarget = await fs9.realpath(target);
+      } catch (error) {
+        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+        omit({
+          path: relative,
+          size: before.size,
+          type: "file",
+          reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
+        });
+        continue;
+      }
+      if (!isInsidePath(physicalProjectRoot, realTarget) || sameOrInside(physicalNativeRoot, realTarget)) {
+        continue;
+      }
+      if (entries.length >= limits.maxFiles) {
+        omit({ path: relative, size: before.size, type: "file", reason: "file-count" });
+        continue;
+      }
+      if (before.size > limits.maxFileBytes) {
+        omit({ path: relative, size: before.size, type: "file", reason: "file-size" });
+        continue;
+      }
+      if (totalBytes + before.size > limits.maxTotalBytes) {
+        omit({ path: relative, size: before.size, type: "file", reason: "total-size" });
+        continue;
+      }
+      let boundedHash;
+      let after;
+      let afterRealTarget;
+      try {
+        boundedHash = await sha256FileBounded(realTarget, before.size, before);
+        if (boundedHash.status === "changed") {
+          omit({
+            path: relative,
+            size: null,
+            type: "file",
+            reason: "changed-during-read"
+          });
+          continue;
+        }
+        afterRealTarget = await fs9.realpath(target);
+        after = await fs9.lstat(target);
+      } catch (error) {
+        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+        omit({
+          path: relative,
+          size: before.size,
+          type: "file",
+          reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
+        });
+        continue;
+      }
+      if (boundedHash.bytes !== before.size || afterRealTarget !== realTarget || !sameFileIdentity(before, boundedHash.finalStat) || !sameFileIdentity(boundedHash.finalStat, after) || !after.isFile() || after.isSymbolicLink() || after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+        omit({
+          path: relative,
+          size: after.isFile() ? after.size : null,
+          type: after.isFile() ? "file" : "other",
+          reason: "changed-during-read"
+        });
+        continue;
+      }
+      entries.push({ path: relative, hash: boundedHash.hash, size: after.size, type: "file" });
+      totalBytes += after.size;
+    }
+  };
+  await visit(projectRoot);
+  entries.sort((left, right) => left.path.localeCompare(right.path, "en"));
+  omitted.sort((left, right) => left.path.localeCompare(right.path, "en"));
+  const buildManifest = () => ({
+    schema: "comet.native.content-snapshot.v1",
+    origin: options.origin ?? "explicit",
+    createdAt: (options.now ?? /* @__PURE__ */ new Date()).toISOString(),
+    complete: omittedCount === 0,
+    limits,
+    entries,
+    omitted,
+    omittedCount,
+    ...overflowCount > 0 ? {
+      omissionOverflow: {
+        ref: `native-snapshot://omitted-overflow/${overflowHash}`,
+        hash: overflowHash,
+        count: overflowCount
+      }
+    } : {}
+  });
+  let manifest = buildManifest();
+  while (serializedManifestBytes(manifest) > limits.maxManifestBytes) {
+    if (omitted.length > 0) {
+      const removeCount = Math.max(1, Math.ceil(omitted.length / 4));
+      for (const value of omitted.splice(-removeCount)) foldOverflow(value);
+    } else if (entries.length > 0) {
+      const removeCount = Math.max(1, Math.ceil(entries.length / 4));
+      for (const entry2 of entries.splice(-removeCount)) {
+        omittedCount += 1;
+        foldOverflow({
+          path: entry2.path,
+          size: entry2.size,
+          type: "file",
+          reason: "manifest-size"
+        });
+      }
+    } else {
+      throw new Error("Native snapshot manifest byte limit is too small for its metadata");
+    }
+    manifest = buildManifest();
+  }
+  return manifest;
+}
+async function writeNativeBaselineManifest(paths, name, manifest) {
+  const file = nativeBaselineManifestFile(paths, name);
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  await atomicWriteJson(file, parseNativeContentSnapshotManifest(manifest));
+}
+async function readNativeBaselineManifest(paths, name) {
+  const file = nativeBaselineManifestFile(paths, name);
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    return parseNativeContentSnapshotManifest(JSON.parse(await fs9.readFile(file, "utf8")));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+// domains/comet-native/native-trajectory-recovery.ts
+import { createHash as createHash4 } from "crypto";
+import { promises as fs10 } from "fs";
+import path12 from "path";
+var CHANGE_NAME_PATTERN2 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+var NativeTrajectoryRepairRequiredError = class extends Error {
+  constructor(inspection) {
+    super(
+      inspection.status === "repairable" ? `Native trajectory has an incomplete final line at ${inspection.file}:${inspection.line}; run doctor --repair` : `Native trajectory is invalid at ${inspection.file}:${inspection.line}: ${inspection.message}`
+    );
+    this.inspection = inspection;
+    this.name = "NativeTrajectoryRepairRequiredError";
+  }
+  inspection;
+  code = "native-trajectory-tail-repair-required";
+};
+function sha256Buffer(value) {
+  return createHash4("sha256").update(value).digest("hex");
+}
+function trajectoryFile(paths, name) {
+  if (!CHANGE_NAME_PATTERN2.test(name)) throw new Error(`Invalid Native change name: ${name}`);
+  const changeDir = path12.join(paths.changesDir, name);
+  if (!isInsidePath(paths.changesDir, changeDir)) throw new Error("Native change path escaped");
+  return path12.join(changeDir, "runtime", "trajectory.jsonl");
+}
+function parseCompleteLines(content) {
+  const lines = content.split(/\n/u);
+  let count = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].endsWith("\r") ? lines[index].slice(0, -1) : lines[index];
+    if (line.length === 0) continue;
+    count = index + 1;
+    try {
+      JSON.parse(line);
+    } catch (error) {
+      return { status: "invalid", line: index + 1, message: error.message };
+    }
+  }
+  return { status: "valid", count };
+}
+function looksTruncated(error, content) {
+  if (/Unexpected end|Unterminated string/iu.test(error.message)) return true;
+  const position = /position (\d+)/iu.exec(error.message)?.[1];
+  return position !== void 0 && Number(position) >= Math.max(0, content.length - 1);
+}
+function analyzeTrajectory(file, source) {
+  const lastNewline = source.lastIndexOf(10);
+  const prefix = source.subarray(0, lastNewline + 1);
+  const complete = parseCompleteLines(prefix.toString("utf8"));
+  if (complete.status === "invalid") {
+    return { status: "invalid", file, line: complete.line, message: complete.message };
+  }
+  if (lastNewline === source.length - 1) return { status: "clean", file };
+  const tail = source.subarray(lastNewline + 1);
+  const tailText = tail.toString("utf8");
+  const line = complete.count + 1;
+  let reason;
+  let target;
+  try {
+    JSON.parse(tailText.endsWith("\r") ? tailText.slice(0, -1) : tailText);
+    reason = "missing-newline";
+    target = Buffer.concat([source, Buffer.from("\n")]);
+  } catch (error) {
+    if (!looksTruncated(error, tailText)) {
+      return { status: "invalid", file, line, message: error.message };
+    }
+    reason = "incomplete-json";
+    target = prefix;
+  }
+  const inspection = {
+    status: "repairable",
+    file,
+    reason,
+    line,
+    originalHash: sha256Buffer(source),
+    targetHash: sha256Buffer(target),
+    tailHash: sha256Buffer(tail),
+    discardedBytes: reason === "incomplete-json" ? tail.length : 0
+  };
+  return { inspection, targetContent: target.toString("utf8") };
+}
+async function inspectFile(paths, name) {
+  const file = trajectoryFile(paths, name);
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    return analyzeTrajectory(file, await fs10.readFile(file));
+  } catch (error) {
+    if (error.code === "ENOENT") return { status: "clean", file };
+    throw error;
+  }
+}
+async function inspectNativeTrajectoryTail(paths, name) {
+  const result2 = await inspectFile(paths, name);
+  return "inspection" in result2 ? result2.inspection : result2;
+}
+async function assertNativeTrajectoryHealthy(paths, name) {
+  const inspection = await inspectNativeTrajectoryTail(paths, name);
+  if (inspection.status !== "clean") throw new NativeTrajectoryRepairRequiredError(inspection);
+}
+async function repairNativeTrajectoryTail(paths, name) {
+  return withNativeMutationLock(paths, `repair trajectory tail for ${name}`, async () => {
+    const result2 = await inspectFile(paths, name);
+    if (!("inspection" in result2)) {
+      if (result2.status === "clean") return null;
+      throw new NativeTrajectoryRepairRequiredError(result2);
+    }
+    const current = await fs10.readFile(result2.inspection.file);
+    if (sha256Buffer(current) !== result2.inspection.originalHash) {
+      throw new Error(
+        `Native trajectory changed while preparing tail repair for ${name}; inspect it again before retrying`
+      );
+    }
+    await atomicWriteText(result2.inspection.file, result2.targetContent);
+    const repaired = await inspectNativeTrajectoryTail(paths, name);
+    if (repaired.status !== "clean") {
+      throw new Error(`Native trajectory tail repair did not produce a clean file for ${name}`);
+    }
+    return result2.inspection;
+  });
+}
+
+// domains/comet-native/native-types.ts
+var NATIVE_RUNTIME_PROTOCOL_VERSION = 2;
+var NATIVE_CHANGE_SCHEMA = "comet.native.v2";
+var NATIVE_LEGACY_CHANGE_SCHEMA = "comet.native.v1";
+var NATIVE_TRANSITION_SCHEMA = "comet.native.transition.v2";
+var NATIVE_LEGACY_TRANSITION_SCHEMA = "comet.native.transition.v1";
+
 // domains/comet-native/native-change.ts
-var CHANGE_KEYS = /* @__PURE__ */ new Set([
+var CHANGE_KEYS = [
   "schema",
   "name",
   "language",
@@ -8578,13 +9244,60 @@ var CHANGE_KEYS = /* @__PURE__ */ new Set([
   "archived",
   "created_at",
   "run_id"
+];
+var LEGACY_CHANGE_KEYS = new Set(CHANGE_KEYS);
+var CURRENT_CHANGE_KEYS = /* @__PURE__ */ new Set([
+  ...CHANGE_KEYS,
+  "minimum_runtime_version",
+  "revision"
 ]);
 var SPEC_CHANGE_KEYS = /* @__PURE__ */ new Set(["capability", "operation", "source", "base_hash"]);
 var PHASES = /* @__PURE__ */ new Set(["shape", "build", "verify", "archive"]);
 var APPROVALS = /* @__PURE__ */ new Set(["implicit", "confirmed"]);
 var VERIFY_RESULTS = /* @__PURE__ */ new Set(["pending", "pass", "fail"]);
-var HASH_PATTERN = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN2 = /^[a-f0-9]{64}$/u;
 var NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+var NativeSchemaMigrationRequiredError = class extends Error {
+  constructor(change, schema) {
+    super(
+      `Native change ${change} uses ${schema}; run comet native doctor ${change} --repair before mutating it`
+    );
+    this.change = change;
+    this.schema = schema;
+    this.name = "NativeSchemaMigrationRequiredError";
+  }
+  change;
+  schema;
+  code = "native-schema-migration-required";
+};
+var NativeRuntimeCompatibilityError = class extends Error {
+  constructor(schema, minimumRuntimeVersion) {
+    super(
+      schema !== NATIVE_CHANGE_SCHEMA || minimumRuntimeVersion === null ? `Unsupported Native change schema ${schema} for runtime protocol ${NATIVE_RUNTIME_PROTOCOL_VERSION}` : `Native change ${schema} requires runtime protocol ${minimumRuntimeVersion}; current protocol is ${NATIVE_RUNTIME_PROTOCOL_VERSION}`
+    );
+    this.schema = schema;
+    this.minimumRuntimeVersion = minimumRuntimeVersion;
+    this.name = "NativeRuntimeCompatibilityError";
+  }
+  schema;
+  minimumRuntimeVersion;
+  code = "native-runtime-incompatible";
+};
+var NativeChangeRevisionConflictError = class extends Error {
+  constructor(change, expectedRevision, actualRevision) {
+    super(
+      `Native change ${change} revision conflict: expected ${expectedRevision}, actual ${actualRevision}`
+    );
+    this.change = change;
+    this.expectedRevision = expectedRevision;
+    this.actualRevision = actualRevision;
+    this.name = "NativeChangeRevisionConflictError";
+  }
+  change;
+  expectedRevision;
+  actualRevision;
+  code = "native-change-revision-conflict";
+};
 var NATIVE_BRIEF_TEMPLATE = [
   "# Outcome",
   "",
@@ -8603,13 +9316,13 @@ var NATIVE_BRIEF_TEMPLATE = [
   "# Verification expectations",
   ""
 ].join("\n");
-function record3(value, label) {
+function record4(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be a mapping`);
   }
   return value;
 }
-function rejectUnknown3(value, known, label) {
+function rejectUnknown4(value, known, label) {
   const unknown = Object.keys(value).filter((key) => !known.has(key));
   if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
 }
@@ -8620,13 +9333,13 @@ function assertCapabilityId(value) {
   if (!NAME_PATTERN.test(value)) throw new Error(`Invalid Native capability id: ${value}`);
 }
 function assertRelativeRef(value, label) {
-  if (value.length === 0 || path11.isAbsolute(value) || /^(?:[A-Za-z]:|~|[\\/])/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+  if (value.length === 0 || path13.isAbsolute(value) || /^(?:[A-Za-z]:|~|[\\/])/u.test(value) || value.split(/[\\/]/u).includes("..")) {
     throw new Error(`${label} must stay inside the Native change`);
   }
 }
 function parseSpecChange(value, index) {
-  const item = record3(value, `spec_changes[${index}]`);
-  rejectUnknown3(item, SPEC_CHANGE_KEYS, `spec_changes[${index}]`);
+  const item = record4(value, `spec_changes[${index}]`);
+  rejectUnknown4(item, SPEC_CHANGE_KEYS, `spec_changes[${index}]`);
   if (typeof item.capability !== "string") throw new Error("spec change capability is required");
   assertCapabilityId(item.capability);
   if (item.operation !== "create" && item.operation !== "replace" && item.operation !== "remove") {
@@ -8644,12 +9357,12 @@ function parseSpecChange(value, index) {
       throw new Error(`Create spec ${item.capability} requires null base_hash`);
   } else if (item.operation === "replace") {
     if (!source) throw new Error(`Replace spec ${item.capability} requires source`);
-    if (typeof baseHash !== "string" || !HASH_PATTERN.test(baseHash)) {
+    if (typeof baseHash !== "string" || !HASH_PATTERN2.test(baseHash)) {
       throw new Error(`Replace spec ${item.capability} requires a SHA-256 base_hash`);
     }
   } else {
     if (source !== void 0) throw new Error(`Remove spec ${item.capability} forbids source`);
-    if (typeof baseHash !== "string" || !HASH_PATTERN.test(baseHash)) {
+    if (typeof baseHash !== "string" || !HASH_PATTERN2.test(baseHash)) {
       throw new Error(`Remove spec ${item.capability} requires a SHA-256 base_hash`);
     }
   }
@@ -8664,10 +9377,8 @@ function validDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
   return (/* @__PURE__ */ new Date(`${value}T00:00:00.000Z`)).toISOString().slice(0, 10) === value;
 }
-function parseNativeChangeValue(value) {
-  const root = record3(value, "change.yaml");
-  rejectUnknown3(root, CHANGE_KEYS, "change.yaml");
-  if (root.schema !== "comet.native.v1") throw new Error("Unsupported Native change schema");
+function parseChangeFields(root, knownKeys) {
+  rejectUnknown4(root, knownKeys, "change.yaml");
   if (typeof root.name !== "string") throw new Error("Native change name is required");
   assertNativeName(root.name);
   if (root.language !== "en" && root.language !== "zh-CN") {
@@ -8705,7 +9416,6 @@ function parseNativeChangeValue(value) {
     throw new Error("Native run_id must be a non-empty string or null");
   }
   return {
-    schema: "comet.native.v1",
     name: root.name,
     language: root.language,
     phase: root.phase,
@@ -8719,10 +9429,106 @@ function parseNativeChangeValue(value) {
     run_id: root.run_id
   };
 }
+function parseLegacyNativeChangeValue(value) {
+  const root = record4(value, "change.yaml");
+  if (root.schema !== NATIVE_LEGACY_CHANGE_SCHEMA) {
+    throw new Error(`Expected ${NATIVE_LEGACY_CHANGE_SCHEMA}`);
+  }
+  return {
+    schema: NATIVE_LEGACY_CHANGE_SCHEMA,
+    ...parseChangeFields(root, LEGACY_CHANGE_KEYS)
+  };
+}
+function positiveInteger2(value, label) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return value;
+}
+function parseNativeChangeValue(value) {
+  const root = record4(value, "change.yaml");
+  if (root.schema !== NATIVE_CHANGE_SCHEMA) {
+    if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA) {
+      const legacy = parseLegacyNativeChangeValue(root);
+      throw new NativeSchemaMigrationRequiredError(legacy.name, legacy.schema);
+    }
+    throw new NativeRuntimeCompatibilityError(
+      typeof root.schema === "string" ? root.schema : "(missing)",
+      typeof root.minimum_runtime_version === "number" ? root.minimum_runtime_version : null
+    );
+  }
+  const minimumRuntimeVersion = positiveInteger2(
+    root.minimum_runtime_version,
+    "Native minimum_runtime_version"
+  );
+  if (minimumRuntimeVersion > NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new NativeRuntimeCompatibilityError(root.schema, minimumRuntimeVersion);
+  }
+  if (minimumRuntimeVersion !== NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new Error(
+      `Native ${root.schema} minimum_runtime_version must be ${NATIVE_RUNTIME_PROTOCOL_VERSION}`
+    );
+  }
+  const revision = positiveInteger2(root.revision, "Native revision");
+  return {
+    schema: NATIVE_CHANGE_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision,
+    ...parseChangeFields(root, CURRENT_CHANGE_KEYS)
+  };
+}
+function inspectNativeChangeValue(value) {
+  const root = record4(value, "change.yaml");
+  if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA) {
+    const state2 = parseLegacyNativeChangeValue(root);
+    return {
+      status: "migration-required",
+      schema: state2.schema,
+      minimumRuntimeVersion: 1,
+      state: state2,
+      message: `Native change ${state2.name} requires migration to ${NATIVE_CHANGE_SCHEMA}`
+    };
+  }
+  if (root.schema !== NATIVE_CHANGE_SCHEMA) {
+    const minimumRuntimeVersion2 = typeof root.minimum_runtime_version === "number" && Number.isSafeInteger(root.minimum_runtime_version) ? root.minimum_runtime_version : null;
+    return {
+      status: "runtime-incompatible",
+      schema: typeof root.schema === "string" ? root.schema : "(missing)",
+      minimumRuntimeVersion: minimumRuntimeVersion2,
+      state: null,
+      message: new NativeRuntimeCompatibilityError(
+        typeof root.schema === "string" ? root.schema : "(missing)",
+        minimumRuntimeVersion2
+      ).message
+    };
+  }
+  const minimumRuntimeVersion = positiveInteger2(
+    root.minimum_runtime_version,
+    "Native minimum_runtime_version"
+  );
+  if (minimumRuntimeVersion > NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    return {
+      status: "runtime-incompatible",
+      schema: root.schema,
+      minimumRuntimeVersion,
+      state: null,
+      message: new NativeRuntimeCompatibilityError(root.schema, minimumRuntimeVersion).message
+    };
+  }
+  const state = parseNativeChangeValue(root);
+  return {
+    status: "current",
+    schema: state.schema,
+    minimumRuntimeVersion: state.minimum_runtime_version,
+    state
+  };
+}
 function nativeChangeDocument(state) {
   const parsed = parseNativeChangeValue(state);
   return {
     schema: parsed.schema,
+    minimum_runtime_version: parsed.minimum_runtime_version,
+    revision: parsed.revision,
     name: parsed.name,
     language: parsed.language,
     phase: parsed.phase,
@@ -8743,9 +9549,20 @@ function nativeChangeDocument(state) {
 }
 function nativeChangeDir(paths, name) {
   assertNativeName(name);
-  const target = path11.join(paths.changesDir, name);
+  const target = path13.join(paths.changesDir, name);
   if (!isInsidePath(paths.changesDir, target)) throw new Error("Native change path escaped");
   return target;
+}
+async function hasPendingNativeSchemaMigration(paths, name) {
+  const file = path13.join(nativeChangeDir(paths, name), "runtime", "schema-migration.json");
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    await fs11.lstat(file);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
 }
 async function createNativeChange(options) {
   return withNativeMutationLock(
@@ -8758,89 +9575,161 @@ async function createNativeChangeLocked(options) {
   assertNativeName(options.name);
   const changeDir = nativeChangeDir(options.paths, options.name);
   await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
+  let createdChangeDir = false;
   try {
-    await fs9.mkdir(changeDir, { recursive: false });
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      await fs9.mkdir(options.paths.changesDir, { recursive: true });
-      await fs9.mkdir(changeDir, { recursive: false });
-    } else if (error.code === "EEXIST") {
-      throw new Error(`Native change already exists: ${options.name}`, { cause: error });
-    } else {
-      throw error;
+    try {
+      await fs11.mkdir(changeDir, { recursive: false });
+      createdChangeDir = true;
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        await fs11.mkdir(options.paths.changesDir, { recursive: true });
+        try {
+          await fs11.mkdir(changeDir, { recursive: false });
+          createdChangeDir = true;
+        } catch (retryError) {
+          if (retryError.code === "EEXIST") {
+            throw new Error(`Native change already exists: ${options.name}`, {
+              cause: retryError
+            });
+          }
+          throw retryError;
+        }
+      } else if (error.code === "EEXIST") {
+        throw new Error(`Native change already exists: ${options.name}`, { cause: error });
+      } else {
+        throw error;
+      }
     }
+    const state = {
+      schema: NATIVE_CHANGE_SCHEMA,
+      minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+      revision: 1,
+      name: options.name,
+      language: options.language,
+      phase: "shape",
+      brief: "brief.md",
+      approval: null,
+      spec_changes: [],
+      verification_result: "pending",
+      verification_report: null,
+      archived: false,
+      created_at: (options.now ?? /* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+      run_id: null
+    };
+    await Promise.all([
+      fs11.mkdir(path13.join(changeDir, "specs"), { recursive: true }),
+      fs11.mkdir(path13.join(changeDir, "runtime", "checkpoints"), { recursive: true }),
+      atomicWriteText(path13.join(changeDir, "brief.md"), NATIVE_BRIEF_TEMPLATE)
+    ]);
+    const baseline = await createNativeContentSnapshot(options.paths, {
+      now: options.now,
+      origin: "change-created"
+    });
+    await writeNativeBaselineManifest(options.paths, state.name, baseline);
+    await createNativeChangeFile(options.paths, state);
+    return state;
+  } catch (error) {
+    if (createdChangeDir) await fs11.rm(changeDir, { recursive: true, force: true });
+    throw error;
   }
-  const state = {
-    schema: "comet.native.v1",
-    name: options.name,
-    language: options.language,
-    phase: "shape",
-    brief: "brief.md",
-    approval: null,
-    spec_changes: [],
-    verification_result: "pending",
-    verification_report: null,
-    archived: false,
-    created_at: (options.now ?? /* @__PURE__ */ new Date()).toISOString().slice(0, 10),
-    run_id: null
-  };
-  await Promise.all([
-    fs9.mkdir(path11.join(changeDir, "specs"), { recursive: true }),
-    fs9.mkdir(path11.join(changeDir, "runtime", "checkpoints"), { recursive: true }),
-    atomicWriteText(path11.join(changeDir, "brief.md"), NATIVE_BRIEF_TEMPLATE)
-  ]);
-  await writeNativeChange(options.paths, state);
-  return state;
 }
-async function readNativeChange(paths, name) {
-  const file = path11.join(nativeChangeDir(paths, name), "change.yaml");
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  const document = (0, import_yaml2.parseDocument)(await fs9.readFile(file, "utf8"), { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid Native change ${name}: ${document.errors[0].message}`);
-  }
-  const parsed = parseNativeChangeValue(document.toJS());
-  if (parsed.name !== name) throw new Error(`Native change directory/name mismatch: ${name}`);
-  return parsed;
-}
-async function writeNativeChange(paths, state) {
-  await assertNoPendingNativeRootMove(paths.projectRoot);
-  const file = path11.join(nativeChangeDir(paths, state.name), "change.yaml");
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  await atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(state)));
-}
-async function writeNativeChangeFile(file, state) {
-  await atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(state)));
-}
-async function readNativeChangeFile(file) {
-  const document = (0, import_yaml2.parseDocument)(await fs9.readFile(file, "utf8"), { uniqueKeys: true });
+async function readChangeDocumentFile(file) {
+  const document = (0, import_yaml2.parseDocument)(await fs11.readFile(file, "utf8"), { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
   }
-  return parseNativeChangeValue(document.toJS());
+  return document.toJS();
+}
+async function inspectNativeChange(paths, name) {
+  const file = path13.join(nativeChangeDir(paths, name), "change.yaml");
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file));
+  if (inspection.state && inspection.state.name !== name) {
+    throw new Error(`Native change directory/name mismatch: ${name}`);
+  }
+  if (await hasPendingNativeSchemaMigration(paths, name)) {
+    return {
+      status: "migration-required",
+      schema: inspection.schema,
+      minimumRuntimeVersion: inspection.minimumRuntimeVersion,
+      state: inspection.state,
+      message: `Native schema migration is incomplete for ${name}; run doctor --repair`
+    };
+  }
+  return inspection;
+}
+async function readNativeChange(paths, name) {
+  const inspection = await inspectNativeChange(paths, name);
+  if (inspection.status === "migration-required") {
+    throw new NativeSchemaMigrationRequiredError(name, inspection.schema);
+  }
+  if (inspection.status === "runtime-incompatible" || !inspection.state) {
+    throw new NativeRuntimeCompatibilityError(inspection.schema, inspection.minimumRuntimeVersion);
+  }
+  return inspection.state;
+}
+async function createNativeChangeFile(paths, state) {
+  const file = path13.join(nativeChangeDir(paths, state.name), "change.yaml");
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    await fs11.access(file);
+    throw new Error(`Native change state already exists: ${state.name}`);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (state.revision !== 1) throw new Error("New Native change must start at revision 1");
+  await atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(state)));
+}
+async function compareAndSwapNativeChangeFile(file, state, expectedRevision) {
+  const next = {
+    ...state,
+    schema: NATIVE_CHANGE_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision: expectedRevision + 1
+  };
+  const result2 = await compareAndSwapNativeRevision({
+    expectedRevision,
+    next,
+    read: async () => {
+      const current = parseNativeChangeValue(await readChangeDocumentFile(file));
+      if (current.name !== state.name) {
+        throw new Error(`Native change file/name mismatch: ${state.name}`);
+      }
+      return current;
+    },
+    write: (value) => atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(value))),
+    equals: (left, right) => JSON.stringify(nativeChangeDocument(left)) === JSON.stringify(nativeChangeDocument(right)),
+    conflict: (actualRevision) => new NativeChangeRevisionConflictError(state.name, expectedRevision, actualRevision)
+  });
+  Object.assign(state, result2);
+  return result2;
+}
+async function compareAndSwapNativeChangeLocked(paths, state, expectedRevision) {
+  await assertNoPendingNativeRootMove(paths.projectRoot);
+  if (await hasPendingNativeSchemaMigration(paths, state.name)) {
+    throw new NativeSchemaMigrationRequiredError(state.name, state.schema);
+  }
+  await assertNativeTrajectoryHealthy(paths, state.name);
+  const file = path13.join(nativeChangeDir(paths, state.name), "change.yaml");
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  return compareAndSwapNativeChangeFile(file, state, expectedRevision);
+}
+async function writeNativeChangeFile(file, state) {
+  return compareAndSwapNativeChangeFile(file, state, state.revision);
+}
+async function readNativeChangeFile(file) {
+  return parseNativeChangeValue(await readChangeDocumentFile(file));
 }
 async function listNativeChanges(paths) {
   let entries;
   try {
-    entries = await fs9.readdir(paths.changesDir, { withFileTypes: true });
+    entries = await fs11.readdir(paths.changesDir, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return [];
     throw error;
   }
   const names = entries.filter((entry2) => entry2.isDirectory() && !entry2.isSymbolicLink()).map((entry2) => entry2.name).sort();
   return Promise.all(names.map((name) => readNativeChange(paths, name)));
-}
-
-// domains/comet-native/native-hash.ts
-import { createHash as createHash2 } from "crypto";
-import { createReadStream } from "fs";
-async function sha256File(file) {
-  const hash = createHash2("sha256");
-  for await (const chunk of createReadStream(file)) hash.update(chunk);
-  return hash.digest("hex");
-}
-function sha256Text(content) {
-  return createHash2("sha256").update(content).digest("hex");
 }
 
 // domains/comet-native/native-artifacts.ts
@@ -8881,15 +9770,15 @@ function markdownSections(source) {
   return sections;
 }
 async function readContainedFile(root, relativeRef) {
-  const target = path12.resolve(root, ...relativeRef.split(/[\\/]/u));
+  const target = path14.resolve(root, ...relativeRef.split(/[\\/]/u));
   if (!isInsidePath(root, target))
     throw new Error(`Artifact escapes Native change: ${relativeRef}`);
-  const realRoot = await fs10.realpath(root);
-  const realTarget = await fs10.realpath(target);
+  const realRoot = await fs12.realpath(root);
+  const realTarget = await fs12.realpath(target);
   if (!isInsidePath(realRoot, realTarget)) {
     throw new Error(`Artifact symlink escapes Native change: ${relativeRef}`);
   }
-  if (!(await fs10.stat(realTarget)).isFile())
+  if (!(await fs12.stat(realTarget)).isFile())
     throw new Error(`Artifact is not a file: ${relativeRef}`);
   return realTarget;
 }
@@ -8904,7 +9793,7 @@ async function validateNativeBrief(changeDir, briefRef) {
   } catch (error) {
     return result([{ code: "brief-missing", message: error.message, path: briefRef }]);
   }
-  const sections = markdownSections(await fs10.readFile(file, "utf8"));
+  const sections = markdownSections(await fs12.readFile(file, "utf8"));
   for (const heading of BRIEF_ALL) {
     if (!sections.has(heading)) {
       findings.push({
@@ -8943,7 +9832,7 @@ async function validateNativeVerification(changeDir, reportRef) {
       { code: "verification-missing", message: error.message, path: reportRef }
     ]);
   }
-  const sections = markdownSections(await fs10.readFile(file, "utf8"));
+  const sections = markdownSections(await fs12.readFile(file, "utf8"));
   for (const heading of VERIFICATION_ALL) {
     if (!sections.has(heading)) {
       findings.push({
@@ -8962,7 +9851,7 @@ async function validateNativeVerification(changeDir, reportRef) {
   return result(findings);
 }
 function canonicalSpecPath(paths, capability) {
-  return path12.join(paths.specsDir, capability, "spec.md");
+  return path14.join(paths.specsDir, capability, "spec.md");
 }
 async function validateNativeSpecChanges(paths, state) {
   const findings = [];
@@ -9076,10 +9965,10 @@ var nativePhaseResolver = {
 };
 
 // domains/comet-native/native-selection.ts
-import { promises as fs11 } from "fs";
-import path13 from "path";
+import { promises as fs13 } from "fs";
+import path15 from "path";
 function nativeSelectionFile(paths) {
-  return path13.join(paths.runtimeDir, "current-change.json");
+  return path15.join(paths.runtimeDir, "current-change.json");
 }
 async function selectNativeChange(paths, name) {
   return withNativeMutationLock(paths, `select change ${name}`, async () => {
@@ -9092,14 +9981,14 @@ async function selectNativeChange(paths, name) {
 }
 async function clearNativeSelectionLocked(paths) {
   await assertNoPendingNativeRootMove(paths.projectRoot);
-  await fs11.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
+  await fs13.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
     force: true
   });
 }
 async function clearNativeSelectionIfLocked(paths, name) {
   let source;
   try {
-    source = await fs11.readFile(
+    source = await fs13.readFile(
       await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)),
       "utf8"
     );
@@ -9141,10 +10030,37 @@ async function writeNativeCheckpoint(options) {
 
 // domains/comet-native/native-transition-journal.ts
 import { randomUUID as randomUUID5 } from "crypto";
-import { promises as fs12 } from "fs";
-import path14 from "path";
+import { promises as fs14 } from "fs";
+import path16 from "path";
+var COMMON_JOURNAL_KEYS = [
+  "schema",
+  "id",
+  "change",
+  "evidenceHash",
+  "createdAt",
+  "previousState",
+  "nextState",
+  "previousRun",
+  "nextRun",
+  "eventData"
+];
+var LEGACY_JOURNAL_KEYS = new Set(COMMON_JOURNAL_KEYS);
+var CURRENT_JOURNAL_KEYS = /* @__PURE__ */ new Set([
+  ...COMMON_JOURNAL_KEYS,
+  "minimum_runtime_version",
+  "revision"
+]);
+var NativeTransitionMigrationRequiredError = class extends Error {
+  constructor(change) {
+    super(`Native transition for ${change} requires doctor migration before recovery`);
+    this.change = change;
+    this.name = "NativeTransitionMigrationRequiredError";
+  }
+  change;
+  code = "native-transition-migration-required";
+};
 function nativeTransitionJournalFile(paths, name) {
-  return path14.join(nativeChangeDir(paths, name), "runtime", "transition.json");
+  return path16.join(nativeChangeDir(paths, name), "runtime", "transition.json");
 }
 function nativeTransitionLockName(name) {
   return `transition-${name}`;
@@ -9154,10 +10070,10 @@ async function acquireNativeTransitionLock(paths, name, operation) {
   try {
     return await acquireNativeLock(paths, lockName2, operation);
   } catch (error) {
-    const file = path14.join(paths.locksDir, `${lockName2}.lock`);
+    const file = path16.join(paths.locksDir, `${lockName2}.lock`);
     const diagnosis = await diagnoseNativeLock(file);
     if (diagnosis.status !== "stale") throw error;
-    await fs12.rm(file, { force: true });
+    await fs14.rm(file, { force: true });
     return acquireNativeLock(paths, lockName2, operation);
   }
 }
@@ -9169,14 +10085,23 @@ async function withNativeTransitionLock(paths, name, operation, work) {
     await releaseNativeLock(lock);
   }
 }
-function parseJournal2(value, expectedName) {
+function journalRecord(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Native transition journal must be an object");
   }
-  const journal = value;
-  if (journal.schema !== "comet.native.transition.v1") {
-    throw new Error("Unsupported Native transition journal schema");
+  return value;
+}
+function rejectUnknownJournalFields(journal, known) {
+  const unknown = Object.keys(journal).find((key) => !known.has(key));
+  if (unknown) throw new Error(`Native transition journal contains unknown field: ${unknown}`);
+}
+function positiveInteger3(value, label) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${label} must be a positive integer`);
   }
+  return value;
+}
+function validateJournalEnvelope(journal, expectedName) {
   if (journal.change !== expectedName) throw new Error("Native transition journal change mismatch");
   if (typeof journal.id !== "string" || journal.id.length === 0) {
     throw new Error("Native transition journal id is invalid");
@@ -9187,46 +10112,140 @@ function parseJournal2(value, expectedName) {
   if (typeof journal.createdAt !== "string" || Number.isNaN(Date.parse(journal.createdAt))) {
     throw new Error("Native transition journal timestamp is invalid");
   }
-  const previousState = parseNativeChangeValue(journal.previousState);
-  const nextState = parseNativeChangeValue(journal.nextState);
-  if (previousState.name !== expectedName || nextState.name !== expectedName) {
-    throw new Error("Native transition journal state mismatch");
-  }
   if (!journal.nextRun || typeof journal.nextRun !== "object") {
     throw new Error("Native transition journal next Run is invalid");
-  }
-  if (journal.nextRun.runId !== nextState.run_id || journal.nextRun.currentStep !== nextState.phase) {
-    throw new Error("Native transition journal Run/state mismatch");
   }
   if (!journal.eventData || typeof journal.eventData !== "object" || Array.isArray(journal.eventData)) {
     throw new Error("Native transition journal event data is invalid");
   }
+  if (journal.previousRun !== null && (typeof journal.previousRun !== "object" || Array.isArray(journal.previousRun))) {
+    throw new Error("Native transition journal previous Run is invalid");
+  }
   return {
-    schema: "comet.native.transition.v1",
     id: journal.id,
-    change: expectedName,
     evidenceHash: journal.evidenceHash,
     createdAt: journal.createdAt,
-    previousState,
-    nextState,
     previousRun: journal.previousRun ?? null,
     nextRun: journal.nextRun,
     eventData: journal.eventData
   };
 }
-async function inspectPendingNativeTransition(paths, name) {
+function parseNativeTransitionJournalValue(value, expectedName) {
+  const journal = journalRecord(value);
+  rejectUnknownJournalFields(journal, CURRENT_JOURNAL_KEYS);
+  if (journal.schema !== NATIVE_TRANSITION_SCHEMA) {
+    throw new Error(`Expected Native transition schema ${NATIVE_TRANSITION_SCHEMA}`);
+  }
+  const minimumRuntimeVersion = positiveInteger3(
+    journal.minimum_runtime_version,
+    "Native transition minimum_runtime_version"
+  );
+  if (minimumRuntimeVersion > NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new Error(
+      `Native transition requires runtime protocol ${minimumRuntimeVersion}; current protocol is ${NATIVE_RUNTIME_PROTOCOL_VERSION}`
+    );
+  }
+  if (minimumRuntimeVersion !== NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new Error(
+      `Native transition ${NATIVE_TRANSITION_SCHEMA} minimum_runtime_version must be ${NATIVE_RUNTIME_PROTOCOL_VERSION}`
+    );
+  }
+  const revision = positiveInteger3(journal.revision, "Native transition revision");
+  if (revision !== 1) throw new Error("Native transition journal revision must be 1");
+  const envelope = validateJournalEnvelope(journal, expectedName);
+  const previousState = parseNativeChangeValue(journal.previousState);
+  const nextState = parseNativeChangeValue(journal.nextState);
+  if (previousState.name !== expectedName || nextState.name !== expectedName) {
+    throw new Error("Native transition journal state mismatch");
+  }
+  if (envelope.nextRun.runId !== nextState.run_id || envelope.nextRun.currentStep !== nextState.phase || nextState.revision !== previousState.revision + 1) {
+    throw new Error("Native transition journal Run/state mismatch");
+  }
+  return {
+    schema: NATIVE_TRANSITION_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision,
+    id: envelope.id,
+    change: expectedName,
+    evidenceHash: envelope.evidenceHash,
+    createdAt: envelope.createdAt,
+    previousState,
+    nextState,
+    previousRun: envelope.previousRun,
+    nextRun: envelope.nextRun,
+    eventData: envelope.eventData
+  };
+}
+function parseLegacyNativeTransitionJournalValue(value, expectedName) {
+  const journal = journalRecord(value);
+  rejectUnknownJournalFields(journal, LEGACY_JOURNAL_KEYS);
+  if (journal.schema !== NATIVE_LEGACY_TRANSITION_SCHEMA) {
+    throw new Error(`Expected Native transition schema ${NATIVE_LEGACY_TRANSITION_SCHEMA}`);
+  }
+  const envelope = validateJournalEnvelope(journal, expectedName);
+  const previousState = parseLegacyNativeChangeValue(journal.previousState);
+  const nextState = parseLegacyNativeChangeValue(journal.nextState);
+  if (previousState.name !== expectedName || nextState.name !== expectedName) {
+    throw new Error("Native transition journal state mismatch");
+  }
+  if (envelope.nextRun.runId !== nextState.run_id || envelope.nextRun.currentStep !== nextState.phase) {
+    throw new Error("Native transition journal Run/state mismatch");
+  }
+  return {
+    schema: NATIVE_LEGACY_TRANSITION_SCHEMA,
+    id: envelope.id,
+    change: expectedName,
+    evidenceHash: envelope.evidenceHash,
+    createdAt: envelope.createdAt,
+    previousState,
+    nextState,
+    previousRun: envelope.previousRun,
+    nextRun: envelope.nextRun,
+    eventData: envelope.eventData
+  };
+}
+function inspectNativeTransitionJournalValue(value, expectedName) {
+  const journal = journalRecord(value);
+  if (journal.schema === NATIVE_TRANSITION_SCHEMA) {
+    return { status: "current", journal: parseNativeTransitionJournalValue(journal, expectedName) };
+  }
+  if (journal.schema === NATIVE_LEGACY_TRANSITION_SCHEMA) {
+    return {
+      status: "migration-required",
+      journal: parseLegacyNativeTransitionJournalValue(journal, expectedName)
+    };
+  }
+  throw new Error(`Unsupported Native transition journal schema: ${String(journal.schema)}`);
+}
+async function inspectPendingNativeTransitionSchema(paths, name) {
   const file = nativeTransitionJournalFile(paths, name);
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
-    return parseJournal2(JSON.parse(await fs12.readFile(file, "utf8")), name);
+    return inspectNativeTransitionJournalValue(JSON.parse(await fs14.readFile(file, "utf8")), name);
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
   }
 }
+async function inspectPendingNativeTransition(paths, name) {
+  const inspection = await inspectPendingNativeTransitionSchema(paths, name);
+  if (!inspection) return null;
+  if (inspection.status === "migration-required") {
+    throw new NativeTransitionMigrationRequiredError(name);
+  }
+  return inspection.journal;
+}
 async function prepareNativeTransition(options) {
+  if (await hasPendingNativeSchemaMigration(options.paths, options.nextState.name)) {
+    throw new Error(
+      `Native schema migration is incomplete for ${options.nextState.name}; run doctor --repair`
+    );
+  }
+  await assertNativeTrajectoryHealthy(options.paths, options.nextState.name);
   const journal = {
-    schema: "comet.native.transition.v1",
+    schema: NATIVE_TRANSITION_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision: 1,
     id: options.transitionId?.() ?? randomUUID5(),
     change: options.nextState.name,
     evidenceHash: options.evidenceHash,
@@ -9246,12 +10265,16 @@ async function prepareNativeTransition(options) {
   return journal;
 }
 async function continueNativeTransitionLocked(paths, name, hooks) {
+  if (await hasPendingNativeSchemaMigration(paths, name)) {
+    throw new Error(`Native schema migration is incomplete for ${name}; run doctor --repair`);
+  }
+  await assertNativeTrajectoryHealthy(paths, name);
   const journal = await inspectPendingNativeTransition(paths, name);
   if (!journal) return null;
   const changeDir = nativeChangeDir(paths, name);
   await writeRunStateAt(changeDir, journal.nextRun, NATIVE_RUN_STORAGE);
   await hooks?.afterRunStateWritten?.(journal);
-  await writeNativeChange(paths, journal.nextState);
+  await compareAndSwapNativeChangeLocked(paths, journal.nextState, journal.previousState.revision);
   await hooks?.afterChangeStateWritten?.(journal);
   let trajectory = await readTrajectory(changeDir, journal.nextRun.trajectoryRef);
   if (journal.previousRun === null) {
@@ -9292,7 +10315,7 @@ async function continueNativeTransitionLocked(paths, name, hooks) {
     evidenceHash: journal.evidenceHash,
     now: new Date(journal.createdAt)
   });
-  await fs12.rm(nativeTransitionJournalFile(paths, name), { force: true });
+  await fs14.rm(nativeTransitionJournalFile(paths, name), { force: true });
   return journal.nextState;
 }
 async function continueNativeTransition(paths, name, hooks) {
@@ -9363,11 +10386,11 @@ async function assertSpecBase(paths, change) {
   }
 }
 function archiveTarget(paths, name, now) {
-  return path15.join(paths.archiveDir, `${now.toISOString().slice(0, 10)}-${name}`);
+  return path17.join(paths.archiveDir, `${now.toISOString().slice(0, 10)}-${name}`);
 }
 async function pathExists(target) {
   try {
-    await fs13.access(target);
+    await fs15.access(target);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -9383,7 +10406,7 @@ async function buildArchiveJournal(options) {
   for (const [index, change] of state.spec_changes.entries()) {
     await assertSpecBase(paths, change);
     const canonical = canonicalSpecPath(paths, change.capability);
-    const backup = path15.join(tx.backups, "specs", change.capability, "spec.md");
+    const backup = path17.join(tx.backups, "specs", change.capability, "spec.md");
     if (change.operation === "remove") {
       operations.push({
         id: `spec-${index + 1}-${change.capability}`,
@@ -9397,9 +10420,9 @@ async function buildArchiveJournal(options) {
       nativeChangeDir(paths, state.name),
       change.source
     );
-    const staged = path15.join(tx.staged, "specs", change.capability, "spec.md");
-    await fs13.mkdir(path15.dirname(staged), { recursive: true });
-    await fs13.copyFile(source, staged);
+    const staged = path17.join(tx.staged, "specs", change.capability, "spec.md");
+    await fs15.mkdir(path17.dirname(staged), { recursive: true });
+    await fs15.copyFile(source, staged);
     const [sourceHash, stagedHash] = await Promise.all([sha256File(source), sha256File(staged)]);
     if (sourceHash !== stagedHash) throw new Error(`Failed to stage spec ${change.capability}`);
     operations.push({
@@ -9433,7 +10456,7 @@ function archiveDirectoryFromJournal(paths, journal) {
   if (!operation || operation.type !== "move") {
     throw new Error(`Archive transaction ${journal.id} has no archive move`);
   }
-  return path15.resolve(paths.nativeRoot, ...operation.target.split("/"));
+  return path17.resolve(paths.nativeRoot, ...operation.target.split("/"));
 }
 async function finalizeArchive(paths, journal) {
   const events = await readNativeTransactionEvents(paths, journal.id);
@@ -9442,7 +10465,7 @@ async function finalizeArchive(paths, journal) {
     await finalizeNativeTransaction(paths, journal, "archive-finalization-started");
   }
   const archiveDir = archiveDirectoryFromJournal(paths, journal);
-  const stateFile2 = path15.join(archiveDir, "change.yaml");
+  const stateFile2 = path17.join(archiveDir, "change.yaml");
   const state = await readNativeChangeFile(stateFile2);
   if (!journal.change || state.name !== journal.change) {
     throw new Error(`Archive transaction ${journal.id} change mismatch`);
@@ -9474,8 +10497,10 @@ async function finalizeArchive(paths, journal) {
     );
   }
   const evidenceHash2 = sha256Text(`archive:${journal.id}:${state.name}`);
-  const updated = { ...state, archived: true };
-  await writeNativeChangeFile(stateFile2, updated);
+  if (!state.archived) {
+    const updated = { ...state, archived: true };
+    await writeNativeChangeFile(stateFile2, updated);
+  }
   const trajectory = await readTrajectory(archiveDir, completed.trajectoryRef);
   let event = trajectory.find(
     (item) => item.type === "state_transitioned" && item.data.transactionId === journal.id
@@ -9511,7 +10536,7 @@ async function continueArchive(paths, journal, hooks) {
 }
 function assertMatchingJournal(paths, journal) {
   if (journal.kind !== "archive") throw new Error(`Transaction ${journal.id} is not an archive`);
-  if (path15.resolve(journal.projectRoot) !== path15.resolve(paths.projectRoot) || path15.resolve(journal.nativeRoot) !== path15.resolve(paths.nativeRoot)) {
+  if (path17.resolve(journal.projectRoot) !== path17.resolve(paths.projectRoot) || path17.resolve(journal.nativeRoot) !== path17.resolve(paths.nativeRoot)) {
     throw new Error(`Transaction ${journal.id} belongs to a different Native root`);
   }
 }
@@ -9568,12 +10593,12 @@ async function recoverArchiveTransaction(options) {
 }
 
 // domains/comet-native/native-diagnostics.ts
-import { promises as fs14 } from "fs";
+import { promises as fs16 } from "fs";
 
 // domains/comet-native/native-run-consistency.ts
-import path16 from "path";
+import path18 from "path";
 function runPath(changeDir, ref) {
-  return path16.resolve(changeDir, ...ref.split(/[\\/]/u));
+  return path18.resolve(changeDir, ...ref.split(/[\\/]/u));
 }
 async function inspectNativeRunConsistency(paths, state) {
   const findings = [];
@@ -9631,7 +10656,24 @@ async function inspectNativeRunConsistency(paths, state) {
       path: stateFile2
     });
   }
-  const trajectoryFile = runPath(changeDir, run.trajectoryRef);
+  const trajectoryFile2 = runPath(changeDir, run.trajectoryRef);
+  const tailInspection = await inspectNativeTrajectoryTail(paths, state.name);
+  if (tailInspection.status === "repairable") {
+    findings.push({
+      code: "trajectory-tail-incomplete",
+      message: `Native trajectory final line is incomplete at line ${tailInspection.line}; doctor repair can discard ${tailInspection.discardedBytes} incomplete byte(s)`,
+      path: trajectoryFile2
+    });
+    return findings;
+  }
+  if (tailInspection.status === "invalid") {
+    findings.push({
+      code: "trajectory-invalid",
+      message: `Native trajectory is invalid at line ${tailInspection.line}: ${tailInspection.message}`,
+      path: trajectoryFile2
+    });
+    return findings;
+  }
   let trajectory;
   try {
     trajectory = await readTrajectory(changeDir, run.trajectoryRef);
@@ -9644,7 +10686,7 @@ async function inspectNativeRunConsistency(paths, state) {
     findings.push({
       code: "trajectory-invalid",
       message: `Native trajectory is invalid: ${error.message}`,
-      path: trajectoryFile
+      path: trajectoryFile2
     });
     return findings;
   }
@@ -9677,7 +10719,7 @@ async function inspectNativeRunConsistency(paths, state) {
 // domains/comet-native/native-diagnostics.ts
 async function selectedName(paths) {
   try {
-    const value = JSON.parse(await fs14.readFile(nativeSelectionFile(paths), "utf8"));
+    const value = JSON.parse(await fs16.readFile(nativeSelectionFile(paths), "utf8"));
     return value.schema === "comet.native.selection.v1" && typeof value.change === "string" ? value.change : null;
   } catch (error) {
     if (error.code === "ENOENT") return null;
@@ -9726,7 +10768,39 @@ async function inspectNativeStatus(paths, name) {
   const selected = await selectedName(paths) === name;
   let state;
   try {
-    state = await readNativeChange(paths, name);
+    const inspection = await inspectNativeChange(paths, name);
+    if (inspection.status === "migration-required" && inspection.state) {
+      return {
+        name,
+        phase: inspection.state.phase,
+        approval: inspection.state.approval,
+        verificationResult: inspection.state.verification_result,
+        specChanges: inspection.state.spec_changes.length,
+        selected,
+        nextCommand: null,
+        archiveReady: false,
+        schema: inspection.schema,
+        migrationRequired: true,
+        minimumRuntimeVersion: inspection.minimumRuntimeVersion,
+        error: inspection.message
+      };
+    }
+    if (inspection.status !== "current" || !inspection.state) {
+      return {
+        name,
+        phase: "invalid",
+        approval: null,
+        verificationResult: "pending",
+        specChanges: 0,
+        selected,
+        nextCommand: null,
+        archiveReady: false,
+        schema: inspection.schema,
+        minimumRuntimeVersion: inspection.minimumRuntimeVersion,
+        error: inspection.message ?? `Native change ${name} is incompatible`
+      };
+    }
+    state = inspection.state;
   } catch (error) {
     return {
       name,
@@ -9742,6 +10816,9 @@ async function inspectNativeStatus(paths, name) {
   }
   const findings = await statusFindings(paths, state);
   const archiveReady = state.phase === "archive" && state.verification_result === "pass" && findings.length === 0;
+  const mutationBlocked = findings.some(
+    (finding) => finding.code === "trajectory-tail-incomplete" || finding.code === "trajectory-invalid"
+  );
   return {
     name: state.name,
     phase: state.phase,
@@ -9749,15 +10826,17 @@ async function inspectNativeStatus(paths, name) {
     verificationResult: state.verification_result,
     specChanges: state.spec_changes.length,
     selected,
-    nextCommand: nativeNextCommand(state, archiveReady),
+    nextCommand: mutationBlocked ? null : nativeNextCommand(state, archiveReady),
     archiveReady,
+    schema: state.schema,
+    minimumRuntimeVersion: state.minimum_runtime_version,
     ...findings[0] ? { error: findings[0].message } : {}
   };
 }
 async function listNativeStatus(paths) {
   let entries;
   try {
-    entries = await fs14.readdir(paths.changesDir, { withFileTypes: true });
+    entries = await fs16.readdir(paths.changesDir, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return [];
     throw error;
@@ -9770,16 +10849,16 @@ async function inspectNativeArtifactFindings(paths, state) {
 }
 
 // domains/comet-native/native-doctor.ts
-import { promises as fs16 } from "fs";
-import path18 from "path";
+import { promises as fs19 } from "fs";
+import path21 from "path";
 
 // domains/comet-native/native-root-move.ts
 import { randomUUID as randomUUID7 } from "crypto";
-import { promises as fs15 } from "fs";
-import path17 from "path";
+import { promises as fs17 } from "fs";
+import path19 from "path";
 async function exists2(target) {
   try {
-    await fs15.access(target);
+    await fs17.access(target);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -9789,7 +10868,7 @@ async function exists2(target) {
 async function assertNoUnfinishedTransactions(paths) {
   let entries;
   try {
-    entries = await fs15.readdir(paths.transactionsDir, { withFileTypes: true });
+    entries = await fs17.readdir(paths.transactionsDir, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return;
     throw error;
@@ -9814,9 +10893,9 @@ async function assertNoUnfinishedTransactions(paths) {
   }
 }
 async function assertNoOtherLocks(paths, ownedLock) {
-  for (const entry2 of await fs15.readdir(paths.locksDir, { withFileTypes: true })) {
-    const file = path17.join(paths.locksDir, entry2.name);
-    if (path17.resolve(file) === path17.resolve(ownedLock)) continue;
+  for (const entry2 of await fs17.readdir(paths.locksDir, { withFileTypes: true })) {
+    const file = path19.join(paths.locksDir, entry2.name);
+    if (path19.resolve(file) === path19.resolve(ownedLock)) continue;
     if (entry2.isFile() || entry2.isSymbolicLink()) {
       throw new Error(`Native lock must be diagnosed before moving the root: ${file}`);
     }
@@ -9825,11 +10904,11 @@ async function assertNoOtherLocks(paths, ownedLock) {
 async function walkTree(root, options) {
   const files = [];
   async function visit(directory) {
-    const entries = await fs15.readdir(directory, { withFileTypes: true });
+    const entries = await fs17.readdir(directory, { withFileTypes: true });
     entries.sort((left, right) => left.name.localeCompare(right.name));
     for (const entry2 of entries) {
-      const target = path17.join(directory, entry2.name);
-      if (options.excludedFiles?.has(path17.resolve(target))) continue;
+      const target = path19.join(directory, entry2.name);
+      if (options.excludedFiles?.has(path19.resolve(target))) continue;
       if (entry2.isSymbolicLink()) {
         if (options.rejectSymlinks) throw new Error(`Native root contains a symlink: ${target}`);
         continue;
@@ -9837,9 +10916,9 @@ async function walkTree(root, options) {
       if (entry2.isDirectory()) {
         await visit(target);
       } else if (entry2.isFile()) {
-        const stat = await fs15.stat(target);
+        const stat = await fs17.stat(target);
         files.push({
-          ref: path17.relative(root, target).split(path17.sep).join("/"),
+          ref: path19.relative(root, target).split(path19.sep).join("/"),
           size: stat.size,
           hash: await sha256File(target)
         });
@@ -9850,20 +10929,20 @@ async function walkTree(root, options) {
   return files;
 }
 async function copyTree(source, target, excludedFile) {
-  await fs15.mkdir(path17.dirname(target), { recursive: true });
-  await fs15.mkdir(target, { recursive: false });
+  await fs17.mkdir(path19.dirname(target), { recursive: true });
+  await fs17.mkdir(target, { recursive: false });
   async function copyDirectory(from, to) {
-    const entries = await fs15.readdir(from, { withFileTypes: true });
+    const entries = await fs17.readdir(from, { withFileTypes: true });
     for (const entry2 of entries) {
-      const sourceEntry = path17.join(from, entry2.name);
-      if (path17.resolve(sourceEntry) === path17.resolve(excludedFile)) continue;
+      const sourceEntry = path19.join(from, entry2.name);
+      if (path19.resolve(sourceEntry) === path19.resolve(excludedFile)) continue;
       if (entry2.isSymbolicLink()) throw new Error(`Native root contains a symlink: ${sourceEntry}`);
-      const targetEntry = path17.join(to, entry2.name);
+      const targetEntry = path19.join(to, entry2.name);
       if (entry2.isDirectory()) {
-        await fs15.mkdir(targetEntry);
+        await fs17.mkdir(targetEntry);
         await copyDirectory(sourceEntry, targetEntry);
       } else if (entry2.isFile()) {
-        await fs15.copyFile(sourceEntry, targetEntry);
+        await fs17.copyFile(sourceEntry, targetEntry);
       }
     }
   }
@@ -9872,7 +10951,7 @@ async function copyTree(source, target, excludedFile) {
 async function assertEquivalentTrees(source, target, excludedSourceLock) {
   const sourceFiles = await walkTree(source, {
     rejectSymlinks: true,
-    excludedFiles: excludedSourceLock ? /* @__PURE__ */ new Set([path17.resolve(excludedSourceLock)]) : void 0
+    excludedFiles: excludedSourceLock ? /* @__PURE__ */ new Set([path19.resolve(excludedSourceLock)]) : void 0
   });
   const targetFiles = await walkTree(target, { rejectSymlinks: true });
   if (JSON.stringify(sourceFiles) !== JSON.stringify(targetFiles)) {
@@ -9882,7 +10961,7 @@ async function assertEquivalentTrees(source, target, excludedSourceLock) {
   }
 }
 function stagingDirectory(targetPaths, id) {
-  return path17.join(targetPaths.artifactRoot, `.comet-native-move-${id}`);
+  return path19.join(targetPaths.artifactRoot, `.comet-native-move-${id}`);
 }
 function pendingConfig(config, pending, activeArtifactRoot = config.native.artifact_root) {
   return {
@@ -9912,9 +10991,9 @@ async function readRootMoveJournal(sourcePaths, destinationPaths, stage, id) {
       if (error.code !== "ENOENT") throw error;
     }
   }
-  const stageJournal = path17.join(stage, "runtime", "transactions", id, "transaction.json");
+  const stageJournal = path19.join(stage, "runtime", "transactions", id, "transaction.json");
   try {
-    const journal = JSON.parse(await fs15.readFile(stageJournal, "utf8"));
+    const journal = JSON.parse(await fs17.readFile(stageJournal, "utf8"));
     if (journal.schema !== "comet.native.transaction.v1" || journal.kind !== "root-move") {
       throw new Error(`Invalid staged root-move journal: ${id}`);
     }
@@ -9940,10 +11019,10 @@ async function finishForwardMove(options) {
     if (!await exists2(options.sourcePaths.nativeRoot)) {
       throw new Error(`Native source root is missing: ${options.sourcePaths.nativeRoot}`);
     }
-    if (await exists2(options.staging)) await fs15.rm(options.staging, { recursive: true });
+    if (await exists2(options.staging)) await fs17.rm(options.staging, { recursive: true });
     await walkTree(options.sourcePaths.nativeRoot, {
       rejectSymlinks: true,
-      excludedFiles: /* @__PURE__ */ new Set([path17.resolve(options.lockFile)])
+      excludedFiles: /* @__PURE__ */ new Set([path19.resolve(options.lockFile)])
     });
     await copyTree(options.sourcePaths.nativeRoot, options.staging, options.lockFile);
     await assertEquivalentTrees(options.sourcePaths.nativeRoot, options.staging, options.lockFile);
@@ -9973,7 +11052,7 @@ async function finishForwardMove(options) {
         options.staging,
         options.lockFile
       );
-      await fs15.rename(options.staging, options.destinationPaths.nativeRoot);
+      await fs17.rename(options.staging, options.destinationPaths.nativeRoot);
     }
     config = await setPendingStage({
       projectRoot: options.projectRoot,
@@ -9995,7 +11074,7 @@ async function finishForwardMove(options) {
       options.destinationPaths.nativeRoot,
       options.lockFile
     );
-    await fs15.rm(options.sourcePaths.nativeRoot, { recursive: true });
+    await fs17.rm(options.sourcePaths.nativeRoot, { recursive: true });
   }
   const destinationJournal = await readNativeTransaction(
     options.destinationPaths,
@@ -10105,11 +11184,11 @@ async function recoverNativeRootMove(options) {
     }
     if (await exists2(destinationPaths.nativeRoot)) {
       await assertEquivalentTrees(sourcePaths.nativeRoot, destinationPaths.nativeRoot, lock.file);
-      await fs15.rm(destinationPaths.nativeRoot, { recursive: true });
+      await fs17.rm(destinationPaths.nativeRoot, { recursive: true });
     }
     if (await exists2(staging)) {
       await assertEquivalentTrees(sourcePaths.nativeRoot, staging, lock.file);
-      await fs15.rm(staging, { recursive: true });
+      await fs17.rm(staging, { recursive: true });
     }
     const sourceJournal = await readNativeTransaction(sourcePaths, pending.id);
     await rollbackNativeTransaction(sourcePaths, sourceJournal);
@@ -10124,17 +11203,244 @@ async function recoverNativeRootMove(options) {
   }
 }
 
+// domains/comet-native/native-schema-migration.ts
+var import_yaml3 = __toESM(require_dist(), 1);
+import { randomUUID as randomUUID8 } from "crypto";
+import { promises as fs18 } from "fs";
+import path20 from "path";
+var HASH_PATTERN3 = /^[a-f0-9]{64}$/u;
+function transitionContent(journal) {
+  return JSON.stringify(journal, null, 2) + "\n";
+}
+function upgradeLegacyState(state, revision) {
+  return {
+    ...state,
+    schema: NATIVE_CHANGE_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision
+  };
+}
+function upgradeLegacyTransition(journal) {
+  return {
+    ...journal,
+    schema: NATIVE_TRANSITION_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision: 1,
+    previousState: upgradeLegacyState(journal.previousState, 1),
+    nextState: upgradeLegacyState(journal.nextState, 2)
+  };
+}
+function sameLegacyState(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+function sameCurrentState(left, right) {
+  return JSON.stringify(nativeChangeDocument(left)) === JSON.stringify(nativeChangeDocument(right));
+}
+function nativeSchemaMigrationJournalFile(paths, name) {
+  return path20.join(nativeChangeDir(paths, name), "runtime", "schema-migration.json");
+}
+function parseMigrationJournal(value, expectedName) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Native schema migration journal must be an object");
+  }
+  const journal = value;
+  if (journal.schema !== "comet.native.schema-migration.v1") {
+    throw new Error("Unsupported Native schema migration journal");
+  }
+  if (journal.change !== expectedName) throw new Error("Schema migration change mismatch");
+  if (journal.fromSchema !== NATIVE_LEGACY_CHANGE_SCHEMA || journal.toSchema !== NATIVE_CHANGE_SCHEMA) {
+    throw new Error("Schema migration route is unsupported");
+  }
+  if (typeof journal.id !== "string" || journal.id.length === 0) {
+    throw new Error("Schema migration id is invalid");
+  }
+  if (typeof journal.sourceHash !== "string" || !HASH_PATTERN3.test(journal.sourceHash) || typeof journal.targetHash !== "string" || !HASH_PATTERN3.test(journal.targetHash)) {
+    throw new Error("Schema migration hash is invalid");
+  }
+  if (typeof journal.createdAt !== "string" || Number.isNaN(Date.parse(journal.createdAt))) {
+    throw new Error("Schema migration timestamp is invalid");
+  }
+  const nextState = parseNativeChangeValue(journal.nextState);
+  let transition;
+  if (journal.transition !== void 0) {
+    if (!journal.transition || typeof journal.transition !== "object") {
+      throw new Error("Schema migration transition target is invalid");
+    }
+    const transitionValue = journal.transition;
+    if (typeof transitionValue.sourceHash !== "string" || !HASH_PATTERN3.test(transitionValue.sourceHash) || typeof transitionValue.targetHash !== "string" || !HASH_PATTERN3.test(transitionValue.targetHash)) {
+      throw new Error("Schema migration transition hash is invalid");
+    }
+    const nextJournal = parseNativeTransitionJournalValue(
+      transitionValue.nextJournal,
+      expectedName
+    );
+    if (!sameCurrentState(nextState, nextJournal.previousState) && !sameCurrentState(nextState, nextJournal.nextState)) {
+      throw new Error("Schema migration state/transition target mismatch");
+    }
+    transition = {
+      sourceHash: transitionValue.sourceHash,
+      targetHash: transitionValue.targetHash,
+      nextJournal
+    };
+  }
+  if (nextState.name !== expectedName || !transition && nextState.revision !== 1 || transition && nextState.revision !== 1 && nextState.revision !== 2) {
+    throw new Error("Schema migration target state is invalid");
+  }
+  return {
+    schema: "comet.native.schema-migration.v1",
+    id: journal.id,
+    change: expectedName,
+    fromSchema: NATIVE_LEGACY_CHANGE_SCHEMA,
+    toSchema: NATIVE_CHANGE_SCHEMA,
+    sourceHash: journal.sourceHash,
+    targetHash: journal.targetHash,
+    createdAt: journal.createdAt,
+    nextState,
+    ...transition ? { transition } : {}
+  };
+}
+async function inspectPendingNativeSchemaMigration(paths, name) {
+  const file = nativeSchemaMigrationJournalFile(paths, name);
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    return parseMigrationJournal(JSON.parse(await fs18.readFile(file, "utf8")), name);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+async function ensureMigrationBaseline(paths, name, createdAt) {
+  if (await readNativeBaselineManifest(paths, name)) return;
+  const baseline = await createNativeContentSnapshot(paths, {
+    now: new Date(createdAt),
+    origin: "legacy-migration"
+  });
+  await writeNativeBaselineManifest(paths, name, baseline);
+}
+async function continueNativeSchemaMigrationLocked(paths, name, hooks) {
+  const journal = await inspectPendingNativeSchemaMigration(paths, name);
+  if (!journal) return null;
+  const changeFile = path20.join(nativeChangeDir(paths, name), "change.yaml");
+  const actualHash = await sha256File(changeFile);
+  if (actualHash !== journal.targetHash) {
+    if (actualHash !== journal.sourceHash) {
+      throw new Error(
+        `Native schema migration source changed for ${name}: expected ${journal.sourceHash}, actual ${actualHash}`
+      );
+    }
+    await atomicWriteText(changeFile, (0, import_yaml3.stringify)(nativeChangeDocument(journal.nextState)));
+    await hooks?.afterStateWritten?.(journal);
+  }
+  if (journal.transition) {
+    const transitionFile = nativeTransitionJournalFile(paths, name);
+    const actualTransitionHash = await sha256File(transitionFile);
+    if (actualTransitionHash !== journal.transition.targetHash) {
+      if (actualTransitionHash !== journal.transition.sourceHash) {
+        throw new Error(
+          `Native transition migration source changed for ${name}: expected ${journal.transition.sourceHash}, actual ${actualTransitionHash}`
+        );
+      }
+      await atomicWriteJson(transitionFile, journal.transition.nextJournal);
+      await hooks?.afterTransitionWritten?.(journal);
+    }
+  }
+  await ensureMigrationBaseline(paths, name, journal.createdAt);
+  await fs18.rm(nativeSchemaMigrationJournalFile(paths, name), { force: true });
+  return journal.nextState;
+}
+async function migrateNativeChange(options) {
+  return withNativeMutationLock(
+    options.paths,
+    `migrate schema for ${options.name}`,
+    () => withNativeTransitionLock(
+      options.paths,
+      options.name,
+      `migrate schema for ${options.name}`,
+      async () => {
+        const continued = await continueNativeSchemaMigrationLocked(
+          options.paths,
+          options.name,
+          options.hooks
+        );
+        if (continued) return continued;
+        const pendingTransition = await inspectPendingNativeTransitionSchema(
+          options.paths,
+          options.name
+        );
+        if (pendingTransition?.status === "current") {
+          throw new Error(
+            `Native change ${options.name} has a pending transition; recover it before schema migration`
+          );
+        }
+        const inspection = await inspectNativeChange(options.paths, options.name);
+        if (inspection.status === "current" && inspection.state) {
+          return inspection.state;
+        }
+        if (inspection.status !== "migration-required" || !inspection.state) {
+          throw new Error(inspection.message ?? `Native change ${options.name} cannot be migrated`);
+        }
+        const legacyState = inspection.state;
+        let nextState = upgradeLegacyState(legacyState, 1);
+        let transition;
+        if (pendingTransition?.status === "migration-required") {
+          const nextJournal = upgradeLegacyTransition(pendingTransition.journal);
+          if (sameLegacyState(legacyState, pendingTransition.journal.previousState)) {
+            nextState = nextJournal.previousState;
+          } else if (sameLegacyState(legacyState, pendingTransition.journal.nextState)) {
+            nextState = nextJournal.nextState;
+          } else {
+            throw new Error(
+              `Native change ${options.name} does not match either state in its legacy transition journal`
+            );
+          }
+          const transitionFile = nativeTransitionJournalFile(options.paths, options.name);
+          transition = {
+            sourceHash: await sha256File(transitionFile),
+            targetHash: sha256Text(transitionContent(nextJournal)),
+            nextJournal
+          };
+        }
+        const changeFile = path20.join(nativeChangeDir(options.paths, options.name), "change.yaml");
+        const targetContent = (0, import_yaml3.stringify)(nativeChangeDocument(nextState));
+        const journal = {
+          schema: "comet.native.schema-migration.v1",
+          id: options.id?.() ?? randomUUID8(),
+          change: options.name,
+          fromSchema: NATIVE_LEGACY_CHANGE_SCHEMA,
+          toSchema: NATIVE_CHANGE_SCHEMA,
+          sourceHash: await sha256File(changeFile),
+          targetHash: sha256Text(targetContent),
+          createdAt: (options.now ?? /* @__PURE__ */ new Date()).toISOString(),
+          nextState,
+          ...transition ? { transition } : {}
+        };
+        const journalFile = nativeSchemaMigrationJournalFile(options.paths, options.name);
+        await resolveContainedNativePath(options.paths.nativeRoot, journalFile);
+        await atomicWriteJson(journalFile, journal);
+        await options.hooks?.afterPrepared?.(journal);
+        const migrated = await continueNativeSchemaMigrationLocked(
+          options.paths,
+          options.name,
+          options.hooks
+        );
+        if (!migrated) throw new Error("Native schema migration journal disappeared");
+        return migrated;
+      }
+    )
+  );
+}
+
 // domains/comet-native/native-doctor.ts
 async function directoryEntries(directory) {
   try {
-    return await fs16.readdir(directory, { withFileTypes: true });
+    return await fs19.readdir(directory, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return [];
     throw error;
   }
 }
 async function clearStaleRecoveryLocks(files, findings) {
-  for (const file of [...new Set(files.map((entry2) => path18.resolve(entry2)))]) {
+  for (const file of [...new Set(files.map((entry2) => path21.resolve(entry2)))]) {
     let diagnosis;
     try {
       diagnosis = await diagnoseNativeLock(file);
@@ -10149,7 +11455,7 @@ async function clearStaleRecoveryLocks(files, findings) {
     }
     if (diagnosis.status === "missing") continue;
     if (diagnosis.status === "stale") {
-      await fs16.rm(file, { force: true });
+      await fs19.rm(file, { force: true });
       findings.push({
         severity: "info",
         code: "stale-recovery-lock-removed",
@@ -10173,7 +11479,7 @@ async function inspectSelection(paths, repair) {
   let value;
   try {
     await resolveContainedNativePath(paths.nativeRoot, file);
-    value = JSON.parse(await fs16.readFile(file, "utf8"));
+    value = JSON.parse(await fs19.readFile(file, "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") return [];
     return [
@@ -10211,7 +11517,7 @@ async function inspectSelection(paths, repair) {
     }
   }
   if (repair) {
-    await fs16.rm(file, { force: true });
+    await fs19.rm(file, { force: true });
     return [
       {
         severity: "info",
@@ -10266,7 +11572,7 @@ async function inspectTransactions(paths, options) {
         severity: "error",
         code: "transaction-invalid",
         message: `Native transaction ${entry2.name} is invalid: ${error.message}`,
-        path: path18.join(paths.transactionsDir, entry2.name)
+        path: path21.join(paths.transactionsDir, entry2.name)
       });
       continue;
     }
@@ -10284,7 +11590,7 @@ async function inspectTransactions(paths, options) {
     if (options.repair && options.recoveryStrategy) {
       try {
         const locksReady = await clearStaleRecoveryLocks(
-          [path18.join(paths.locksDir, "root-move.lock"), path18.join(paths.locksDir, "archive.lock")],
+          [path21.join(paths.locksDir, "root-move.lock"), path21.join(paths.locksDir, "archive.lock")],
           findings
         );
         if (!locksReady) {
@@ -10325,7 +11631,7 @@ async function inspectLocks(paths, repair, unfinished) {
   const findings = [];
   for (const entry2 of await directoryEntries(paths.locksDir)) {
     if (!entry2.isFile() || entry2.isSymbolicLink() || !entry2.name.endsWith(".lock")) continue;
-    const file = path18.join(paths.locksDir, entry2.name);
+    const file = path21.join(paths.locksDir, entry2.name);
     try {
       const diagnosis = await diagnoseNativeLock(file);
       if (diagnosis.status === "active") {
@@ -10344,7 +11650,7 @@ async function inspectLocks(paths, repair, unfinished) {
         });
       } else if (diagnosis.status === "stale") {
         if (repair && unfinished.length === 0) {
-          await fs16.rm(file, { force: true });
+          await fs19.rm(file, { force: true });
           findings.push({
             severity: "info",
             code: "stale-lock-removed",
@@ -10384,22 +11690,108 @@ async function inspectChanges(paths, name) {
     ];
   }
   for (const status of statuses) {
+    if (status.migrationRequired) continue;
     if (status.phase === "invalid") {
       findings.push({
         severity: "error",
         code: "change-invalid",
         message: status.error ?? `Native change ${status.name} is invalid`,
-        path: path18.join(paths.changesDir, status.name, "change.yaml")
+        path: path21.join(paths.changesDir, status.name, "change.yaml")
       });
       continue;
     }
     const state = await readNativeChange(paths, status.name);
     for (const artifact of await inspectNativeArtifactFindings(paths, state)) {
+      if (artifact.code === "trajectory-tail-incomplete") continue;
       findings.push({
         severity: "error",
         code: artifact.code,
         message: `${status.name}: ${artifact.message}`,
         ...artifact.path ? { path: artifact.path } : {}
+      });
+    }
+  }
+  return findings;
+}
+async function inspectTrajectoryTailRepairs(paths, options) {
+  const findings = [];
+  const names = options.name ? [options.name] : (await directoryEntries(paths.changesDir)).filter((entry2) => entry2.isDirectory() && !entry2.isSymbolicLink()).map((entry2) => entry2.name).sort();
+  for (const name of names) {
+    try {
+      const inspection = await inspectNativeTrajectoryTail(paths, name);
+      if (inspection.status !== "repairable") continue;
+      if (!options.repair) {
+        findings.push({
+          severity: "error",
+          code: "trajectory-tail-incomplete",
+          message: `Native trajectory for ${name} has an incomplete final line ${inspection.line}; ${inspection.discardedBytes} byte(s) are outside the last complete event`,
+          path: inspection.file,
+          repair: "truncate-tail"
+        });
+        continue;
+      }
+      const repaired = await repairNativeTrajectoryTail(paths, name);
+      if (repaired) {
+        findings.push({
+          severity: "info",
+          code: "trajectory-tail-repaired",
+          message: `Removed the incomplete Native trajectory tail for ${name} and preserved all complete events`,
+          path: repaired.file
+        });
+      }
+    } catch (error) {
+      findings.push({
+        severity: "error",
+        code: "trajectory-tail-repair-failed",
+        message: `Native trajectory tail repair failed for ${name}: ${error.message}`,
+        path: path21.join(paths.changesDir, name, "runtime", "trajectory.jsonl")
+      });
+    }
+  }
+  return findings;
+}
+async function inspectSchemaMigrations(paths, options) {
+  const findings = [];
+  const names = options.name ? [options.name] : (await directoryEntries(paths.changesDir)).filter((entry2) => entry2.isDirectory() && !entry2.isSymbolicLink()).map((entry2) => entry2.name).sort();
+  for (const name of names) {
+    const file = nativeSchemaMigrationJournalFile(paths, name);
+    try {
+      const pending = await inspectPendingNativeSchemaMigration(paths, name);
+      const inspection = await inspectNativeChange(paths, name);
+      if (!pending && inspection.status === "current") continue;
+      if (inspection.status === "runtime-incompatible") {
+        findings.push({
+          severity: "error",
+          code: "change-runtime-incompatible",
+          message: inspection.message ?? `Native change ${name} requires a newer runtime`,
+          path: path21.join(paths.changesDir, name, "change.yaml")
+        });
+        continue;
+      }
+      if (!options.repair) {
+        findings.push({
+          severity: "error",
+          code: pending ? "schema-migration-incomplete" : "schema-migration-required",
+          message: pending ? `Native schema migration ${pending.id} is incomplete for ${name}` : `Native change ${name} requires migration to the current schema`,
+          path: pending ? file : path21.join(paths.changesDir, name, "change.yaml"),
+          repair: "migrate"
+        });
+        continue;
+      }
+      await migrateNativeChange({ paths, name });
+      findings.push({
+        severity: "info",
+        code: pending ? "schema-migration-recovered" : "schema-migrated",
+        message: `Migrated Native change ${name} to the current schema`,
+        path: path21.join(paths.changesDir, name, "change.yaml")
+      });
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      findings.push({
+        severity: "error",
+        code: "schema-migration-failed",
+        message: `Native schema migration failed for ${name}: ${error.message}`,
+        path: file
       });
     }
   }
@@ -10413,6 +11805,7 @@ async function inspectTransitionJournals(paths, options) {
     try {
       journal = await inspectPendingNativeTransition(paths, name);
     } catch (error) {
+      if (error instanceof NativeTransitionMigrationRequiredError) continue;
       findings.push({
         severity: "error",
         code: "transition-invalid",
@@ -10482,8 +11875,8 @@ async function doctorNativeProject(options) {
       try {
         const locksReady = await clearStaleRecoveryLocks(
           [
-            path18.join(fromPaths.locksDir, "root-move.lock"),
-            path18.join(toPaths.locksDir, "root-move.lock")
+            path21.join(fromPaths.locksDir, "root-move.lock"),
+            path21.join(toPaths.locksDir, "root-move.lock")
           ],
           findings
         );
@@ -10524,6 +11917,8 @@ async function doctorNativeProject(options) {
     recoveryStrategy: options.recoveryStrategy
   });
   findings.push(...transactions.findings);
+  findings.push(...await inspectSchemaMigrations(paths, { name: options.name, repair }));
+  findings.push(...await inspectTrajectoryTailRepairs(paths, { name: options.name, repair }));
   findings.push(
     ...await inspectTransitionJournals(paths, {
       name: options.name,
@@ -10541,8 +11936,8 @@ async function doctorNativeProject(options) {
 }
 
 // domains/comet-native/native-specs.ts
-import { promises as fs17 } from "fs";
-import path19 from "path";
+import { promises as fs20 } from "fs";
+import path22 from "path";
 async function optionalHash2(file) {
   try {
     return await sha256File(file);
@@ -10552,10 +11947,10 @@ async function optionalHash2(file) {
   }
 }
 async function proposedCapabilities(paths, name) {
-  const specsDir = path19.join(nativeChangeDir(paths, name), "specs");
+  const specsDir = path22.join(nativeChangeDir(paths, name), "specs");
   let entries;
   try {
-    entries = await fs17.readdir(specsDir, { withFileTypes: true });
+    entries = await fs20.readdir(specsDir, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return [];
     throw error;
@@ -10567,11 +11962,11 @@ async function proposedCapabilities(paths, name) {
     }
     if (!entry2.isDirectory()) continue;
     assertNativeName(entry2.name);
-    const source = path19.join(specsDir, entry2.name, "spec.md");
+    const source = path22.join(specsDir, entry2.name, "spec.md");
     await resolveContainedNativePath(paths.nativeRoot, source);
     let stat;
     try {
-      stat = await fs17.lstat(source);
+      stat = await fs20.lstat(source);
     } catch (error) {
       if (error.code === "ENOENT") continue;
       throw error;
@@ -10670,6 +12065,7 @@ async function rebaseNativeSpecChanges(options) {
         const specChanges = await refreshNativeSpecChanges(options.paths, state);
         const nextState = {
           ...state,
+          revision: state.revision + 1,
           phase: "build",
           spec_changes: specChanges,
           verification_result: "pending",
@@ -10741,15 +12137,15 @@ async function markNativeSpecRemovalLocked(paths, name, capability) {
       { capability, operation: "remove", base_hash: baseHash }
     ].sort((left, right) => left.capability.localeCompare(right.capability))
   };
-  await writeNativeChange(paths, updated);
+  await compareAndSwapNativeChangeLocked(paths, updated, state.revision);
   return updated;
 }
 async function readNativeProposedSpecs(paths, name) {
   const changeDir = nativeChangeDir(paths, name);
   const result2 = {};
   for (const capability of await proposedCapabilities(paths, name)) {
-    result2[capability] = await fs17.readFile(
-      path19.join(changeDir, "specs", capability, "spec.md"),
+    result2[capability] = await fs20.readFile(
+      path22.join(changeDir, "specs", capability, "spec.md"),
       "utf8"
     );
   }
@@ -10757,11 +12153,11 @@ async function readNativeProposedSpecs(paths, name) {
 }
 
 // domains/comet-native/native-transitions.ts
-import { randomUUID as randomUUID8 } from "crypto";
+import { randomUUID as randomUUID9 } from "crypto";
 
 // domains/comet-native/native-guards.ts
-import { promises as fs18 } from "fs";
-import path20 from "path";
+import { promises as fs21 } from "fs";
+import path23 from "path";
 function validation(findings) {
   return { valid: findings.length === 0, findings };
 }
@@ -10777,14 +12173,14 @@ async function validateBuildArtifacts(paths, evidence) {
     ];
   }
   for (const artifact of evidence.artifacts) {
-    if (path20.isAbsolute(artifact) || artifact.split(/[\\/]/u).includes("..") || /^(?:[A-Za-z]:|~|[\\/])/u.test(artifact)) {
+    if (path23.isAbsolute(artifact) || artifact.split(/[\\/]/u).includes("..") || /^(?:[A-Za-z]:|~|[\\/])/u.test(artifact)) {
       findings.push({
         code: "build-artifact-unsafe",
         message: `Unsafe build artifact: ${artifact}`
       });
       continue;
     }
-    const target = path20.resolve(paths.projectRoot, ...artifact.split(/[\\/]/u));
+    const target = path23.resolve(paths.projectRoot, ...artifact.split(/[\\/]/u));
     if (!isInsidePath(paths.projectRoot, target)) {
       findings.push({
         code: "build-artifact-unsafe",
@@ -10793,7 +12189,7 @@ async function validateBuildArtifacts(paths, evidence) {
       continue;
     }
     try {
-      await fs18.access(target);
+      await fs21.access(target);
     } catch {
       findings.push({
         code: "build-artifact-missing",
@@ -10926,7 +12322,7 @@ async function advanceNativeChangeLocked(options) {
     }
     run = startRunWithStorage(
       NATIVE_RUNTIME_PACKAGE,
-      options.runId?.() ?? randomUUID8(),
+      options.runId?.() ?? randomUUID9(),
       NATIVE_RUNTIME_HASH,
       NATIVE_RUN_STORAGE
     );
@@ -10957,6 +12353,7 @@ async function advanceNativeChangeLocked(options) {
   if (!advanced.currentStep) throw new Error("Archive completion must use the archive command");
   const updated = {
     ...candidate,
+    revision: state.revision + 1,
     phase: advanced.currentStep,
     approval: options.evidence.confirmed ? "confirmed" : state.phase === "shape" && state.approval === null ? "implicit" : state.approval,
     run_id: run.runId,
@@ -11073,7 +12470,7 @@ function languageOption(args) {
   return language;
 }
 async function projectRootFrom(explicit) {
-  return explicit ? path21.resolve(explicit) : discoverNativeProject(process.cwd());
+  return explicit ? path24.resolve(explicit) : discoverNativeProject(process.cwd());
 }
 async function configuredPaths(projectRoot) {
   const resolved = await resolveNativeProject({
@@ -11206,12 +12603,28 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const name = requiredPositional(rawArgs, "change name");
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
-    const state = await readNativeChange(paths, name);
+    const inspection = await inspectNativeChange(paths, name);
+    if (inspection.status === "migration-required") {
+      return success("show", {
+        name,
+        schema: inspection.schema,
+        minimumRuntimeVersion: inspection.minimumRuntimeVersion,
+        migrationRequired: true,
+        message: inspection.message
+      });
+    }
+    if (inspection.status !== "current" || !inspection.state) {
+      throw new NativeRuntimeCompatibilityError(
+        inspection.schema,
+        inspection.minimumRuntimeVersion
+      );
+    }
+    const state = inspection.state;
     const changeDir = nativeChangeDir(paths, name);
     const proposedSpecs = await readNativeProposedSpecs(paths, name);
     return success("show", {
       state,
-      brief: await fs19.readFile(path21.join(changeDir, state.brief), "utf8"),
+      brief: await fs22.readFile(path24.join(changeDir, state.brief), "utf8"),
       proposedSpecs
     });
   }

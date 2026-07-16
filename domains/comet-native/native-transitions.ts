@@ -148,6 +148,7 @@ async function advanceNativeChangeLocked(
 
   const updated = {
     ...candidate,
+    revision: state.revision + 1,
     phase: advanced.currentStep as NativePhase,
     approval: options.evidence.confirmed
       ? ('confirmed' as const)

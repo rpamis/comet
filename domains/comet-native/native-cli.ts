@@ -4,9 +4,10 @@ import path from 'path';
 import { archiveNativeChange, NativeSpecConflictError } from './native-archive.js';
 import {
   createNativeChange,
+  inspectNativeChange,
   listNativeChanges,
+  NativeRuntimeCompatibilityError,
   nativeChangeDir,
-  readNativeChange,
 } from './native-change.js';
 import {
   defaultProjectConfig,
@@ -270,7 +271,23 @@ async function dispatch(
     const name = requiredPositional(rawArgs, 'change name');
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
-    const state = await readNativeChange(paths, name);
+    const inspection = await inspectNativeChange(paths, name);
+    if (inspection.status === 'migration-required') {
+      return success('show', {
+        name,
+        schema: inspection.schema,
+        minimumRuntimeVersion: inspection.minimumRuntimeVersion,
+        migrationRequired: true,
+        message: inspection.message,
+      });
+    }
+    if (inspection.status !== 'current' || !inspection.state) {
+      throw new NativeRuntimeCompatibilityError(
+        inspection.schema,
+        inspection.minimumRuntimeVersion,
+      );
+    }
+    const state = inspection.state;
     const changeDir = nativeChangeDir(paths, name);
     const proposedSpecs = await readNativeProposedSpecs(paths, name);
     return success('show', {

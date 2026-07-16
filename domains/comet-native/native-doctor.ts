@@ -2,19 +2,29 @@ import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
 
 import { recoverArchiveTransaction } from './native-archive.js';
-import { readNativeChange } from './native-change.js';
+import { inspectNativeChange, readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import { inspectNativeArtifactFindings, listNativeStatus } from './native-diagnostics.js';
 import { diagnoseNativeLock } from './native-lock.js';
 import { nativeProjectPaths, resolveContainedNativePath } from './native-paths.js';
 import { recoverNativeRootMove } from './native-root-move.js';
 import { nativeSelectionFile } from './native-selection.js';
+import {
+  inspectPendingNativeSchemaMigration,
+  migrateNativeChange,
+  nativeSchemaMigrationJournalFile,
+} from './native-schema-migration.js';
 import { readNativeTransaction } from './native-transaction.js';
 import {
   continueNativeTransition,
   inspectPendingNativeTransition,
+  NativeTransitionMigrationRequiredError,
   nativeTransitionJournalFile,
 } from './native-transition-journal.js';
+import {
+  inspectNativeTrajectoryTail,
+  repairNativeTrajectoryTail,
+} from './native-trajectory-recovery.js';
 import type {
   NativeDoctorFinding,
   NativeProjectPaths,
@@ -316,6 +326,7 @@ async function inspectChanges(
     ];
   }
   for (const status of statuses) {
+    if (status.migrationRequired) continue;
     if (status.phase === 'invalid') {
       findings.push({
         severity: 'error',
@@ -327,11 +338,116 @@ async function inspectChanges(
     }
     const state = await readNativeChange(paths, status.name);
     for (const artifact of await inspectNativeArtifactFindings(paths, state)) {
+      if (artifact.code === 'trajectory-tail-incomplete') continue;
       findings.push({
         severity: 'error',
         code: artifact.code,
         message: `${status.name}: ${artifact.message}`,
         ...(artifact.path ? { path: artifact.path } : {}),
+      });
+    }
+  }
+  return findings;
+}
+
+async function inspectTrajectoryTailRepairs(
+  paths: NativeProjectPaths,
+  options: { name?: string; repair: boolean },
+): Promise<NativeDoctorFinding[]> {
+  const findings: NativeDoctorFinding[] = [];
+  const names = options.name
+    ? [options.name]
+    : (await directoryEntries(paths.changesDir))
+        .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+        .map((entry) => entry.name)
+        .sort();
+  for (const name of names) {
+    try {
+      const inspection = await inspectNativeTrajectoryTail(paths, name);
+      if (inspection.status !== 'repairable') continue;
+      if (!options.repair) {
+        findings.push({
+          severity: 'error',
+          code: 'trajectory-tail-incomplete',
+          message: `Native trajectory for ${name} has an incomplete final line ${inspection.line}; ${inspection.discardedBytes} byte(s) are outside the last complete event`,
+          path: inspection.file,
+          repair: 'truncate-tail',
+        });
+        continue;
+      }
+      const repaired = await repairNativeTrajectoryTail(paths, name);
+      if (repaired) {
+        findings.push({
+          severity: 'info',
+          code: 'trajectory-tail-repaired',
+          message: `Removed the incomplete Native trajectory tail for ${name} and preserved all complete events`,
+          path: repaired.file,
+        });
+      }
+    } catch (error) {
+      findings.push({
+        severity: 'error',
+        code: 'trajectory-tail-repair-failed',
+        message: `Native trajectory tail repair failed for ${name}: ${(error as Error).message}`,
+        path: path.join(paths.changesDir, name, 'runtime', 'trajectory.jsonl'),
+      });
+    }
+  }
+  return findings;
+}
+
+async function inspectSchemaMigrations(
+  paths: NativeProjectPaths,
+  options: { name?: string; repair: boolean },
+): Promise<NativeDoctorFinding[]> {
+  const findings: NativeDoctorFinding[] = [];
+  const names = options.name
+    ? [options.name]
+    : (await directoryEntries(paths.changesDir))
+        .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+        .map((entry) => entry.name)
+        .sort();
+  for (const name of names) {
+    const file = nativeSchemaMigrationJournalFile(paths, name);
+    try {
+      const pending = await inspectPendingNativeSchemaMigration(paths, name);
+      const inspection = await inspectNativeChange(paths, name);
+      if (!pending && inspection.status === 'current') continue;
+      if (inspection.status === 'runtime-incompatible') {
+        findings.push({
+          severity: 'error',
+          code: 'change-runtime-incompatible',
+          message: inspection.message ?? `Native change ${name} requires a newer runtime`,
+          path: path.join(paths.changesDir, name, 'change.yaml'),
+        });
+        continue;
+      }
+      if (!options.repair) {
+        findings.push({
+          severity: 'error',
+          code: pending ? 'schema-migration-incomplete' : 'schema-migration-required',
+          message: pending
+            ? `Native schema migration ${pending.id} is incomplete for ${name}`
+            : `Native change ${name} requires migration to the current schema`,
+          path: pending ? file : path.join(paths.changesDir, name, 'change.yaml'),
+          repair: 'migrate',
+        });
+        continue;
+      }
+      await migrateNativeChange({ paths, name });
+      findings.push({
+        severity: 'info',
+        code: pending ? 'schema-migration-recovered' : 'schema-migrated',
+        message: `Migrated Native change ${name} to the current schema`,
+        path: path.join(paths.changesDir, name, 'change.yaml'),
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      findings.push({
+        severity: 'error',
+        code: 'schema-migration-failed',
+        message: `Native schema migration failed for ${name}: ${(error as Error).message}`,
+        path: file,
       });
     }
   }
@@ -358,6 +474,7 @@ async function inspectTransitionJournals(
     try {
       journal = await inspectPendingNativeTransition(paths, name);
     } catch (error) {
+      if (error instanceof NativeTransitionMigrationRequiredError) continue;
       findings.push({
         severity: 'error',
         code: 'transition-invalid',
@@ -480,6 +597,8 @@ export async function doctorNativeProject(options: {
     recoveryStrategy: options.recoveryStrategy,
   });
   findings.push(...transactions.findings);
+  findings.push(...(await inspectSchemaMigrations(paths, { name: options.name, repair })));
+  findings.push(...(await inspectTrajectoryTailRepairs(paths, { name: options.name, repair })));
   findings.push(
     ...(await inspectTransitionJournals(paths, {
       name: options.name,

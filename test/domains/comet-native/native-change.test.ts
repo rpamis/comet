@@ -5,13 +5,20 @@ import path from 'path';
 import { stringify } from 'yaml';
 
 import {
+  compareAndSwapNativeChange,
   createNativeChange,
   listNativeChanges,
+  NativeChangeRevisionConflictError,
   readNativeChange,
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import { readNativeBaselineManifest } from '../../../domains/comet-native/native-snapshot.js';
+import {
+  NATIVE_CHANGE_SCHEMA,
+  NATIVE_RUNTIME_PROTOCOL_VERSION,
+  type NativeProjectPaths,
+} from '../../../domains/comet-native/native-types.js';
 
 describe('Native change store', () => {
   let projectRoot: string;
@@ -35,6 +42,9 @@ describe('Native change store', () => {
     });
 
     expect(state).toMatchObject({
+      schema: NATIVE_CHANGE_SCHEMA,
+      minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+      revision: 1,
       phase: 'shape',
       approval: null,
       verification_result: 'pending',
@@ -46,6 +56,12 @@ describe('Native change store', () => {
     expect(
       await fs.stat(path.join(paths.changesDir, state.name, 'runtime', 'checkpoints')),
     ).toBeDefined();
+    expect(await readNativeBaselineManifest(paths, state.name)).toMatchObject({
+      schema: 'comet.native.content-snapshot.v1',
+      origin: 'change-created',
+      complete: true,
+      entries: [],
+    });
   });
 
   it('round-trips create, replace, and remove spec operations', async () => {
@@ -66,7 +82,40 @@ describe('Native change store', () => {
       { capability: 'legacy-auth', operation: 'remove', base_hash: 'b'.repeat(64) },
     ];
     await writeNativeChange(paths, state);
+    expect(state.revision).toBe(2);
     expect(await readNativeChange(paths, state.name)).toEqual(state);
+  });
+
+  it('rejects a stale change write instead of silently overwriting a newer revision', async () => {
+    const created = await createNativeChange({ paths, name: 'revision-conflict', language: 'en' });
+    const first = structuredClone(created);
+    const stale = structuredClone(created);
+    first.approval = 'implicit';
+    stale.approval = 'confirmed';
+
+    await compareAndSwapNativeChange(paths, first, created.revision);
+    expect(first.revision).toBe(2);
+    await expect(compareAndSwapNativeChange(paths, stale, created.revision)).rejects.toBeInstanceOf(
+      NativeChangeRevisionConflictError,
+    );
+    expect(await readNativeChange(paths, created.name)).toMatchObject({
+      revision: 2,
+      approval: 'implicit',
+    });
+  });
+
+  it('allows only one competing writer to advance the same revision', async () => {
+    const created = await createNativeChange({ paths, name: 'concurrent-cas', language: 'en' });
+    const left = { ...structuredClone(created), approval: 'implicit' as const };
+    const right = { ...structuredClone(created), approval: 'confirmed' as const };
+    const results = await Promise.allSettled([
+      compareAndSwapNativeChange(paths, left, created.revision),
+      compareAndSwapNativeChange(paths, right, created.revision),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect((await readNativeChange(paths, created.name)).revision).toBe(2);
   });
 
   it('lists multiple active changes in name order', async () => {

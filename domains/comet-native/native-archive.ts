@@ -239,8 +239,10 @@ async function finalizeArchive(
     );
   }
   const evidenceHash = sha256Text(`archive:${journal.id}:${state.name}`);
-  const updated = { ...state, archived: true };
-  await writeNativeChangeFile(stateFile, updated);
+  if (!state.archived) {
+    const updated = { ...state, archived: true };
+    await writeNativeChangeFile(stateFile, updated);
+  }
   const trajectory = await readTrajectory(archiveDir, completed.trajectoryRef);
   let event = trajectory.find(
     (item) => item.type === 'state_transitioned' && item.data.transactionId === journal.id,

@@ -6,7 +6,13 @@ import { readTrajectory } from '../engine/run-store.js';
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
 import { writeRunStateAt } from '../engine/storage-run.js';
 import { atomicWriteJson } from './native-atomic-file.js';
-import { nativeChangeDir, parseNativeChangeValue, writeNativeChange } from './native-change.js';
+import {
+  hasPendingNativeSchemaMigration,
+  compareAndSwapNativeChangeLocked,
+  nativeChangeDir,
+  parseLegacyNativeChangeValue,
+  parseNativeChangeValue,
+} from './native-change.js';
 import {
   acquireNativeLock,
   diagnoseNativeLock,
@@ -16,12 +22,48 @@ import {
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { resolveContainedNativePath } from './native-paths.js';
 import { appendNativeTrajectoryEvent, writeNativeCheckpoint } from './native-trajectory.js';
+import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
 import type {
   NativeChangeState,
+  NativeLegacyTransitionJournal,
   NativeProjectPaths,
   NativeTransitionHooks,
   NativeTransitionJournal,
+  NativeTransitionSchemaInspection,
 } from './native-types.js';
+import {
+  NATIVE_LEGACY_TRANSITION_SCHEMA,
+  NATIVE_RUNTIME_PROTOCOL_VERSION,
+  NATIVE_TRANSITION_SCHEMA,
+} from './native-types.js';
+
+const COMMON_JOURNAL_KEYS = [
+  'schema',
+  'id',
+  'change',
+  'evidenceHash',
+  'createdAt',
+  'previousState',
+  'nextState',
+  'previousRun',
+  'nextRun',
+  'eventData',
+] as const;
+const LEGACY_JOURNAL_KEYS = new Set<string>(COMMON_JOURNAL_KEYS);
+const CURRENT_JOURNAL_KEYS = new Set<string>([
+  ...COMMON_JOURNAL_KEYS,
+  'minimum_runtime_version',
+  'revision',
+]);
+
+export class NativeTransitionMigrationRequiredError extends Error {
+  readonly code = 'native-transition-migration-required';
+
+  constructor(readonly change: string) {
+    super(`Native transition for ${change} requires doctor migration before recovery`);
+    this.name = 'NativeTransitionMigrationRequiredError';
+  }
+}
 
 export function nativeTransitionJournalFile(paths: NativeProjectPaths, name: string): string {
   return path.join(nativeChangeDir(paths, name), 'runtime', 'transition.json');
@@ -62,14 +104,36 @@ export async function withNativeTransitionLock<T>(
   }
 }
 
-function parseJournal(value: unknown, expectedName: string): NativeTransitionJournal {
+function journalRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Native transition journal must be an object');
   }
-  const journal = value as Partial<NativeTransitionJournal>;
-  if (journal.schema !== 'comet.native.transition.v1') {
-    throw new Error('Unsupported Native transition journal schema');
+  return value as Record<string, unknown>;
+}
+
+function rejectUnknownJournalFields(journal: Record<string, unknown>, known: Set<string>): void {
+  const unknown = Object.keys(journal).find((key) => !known.has(key));
+  if (unknown) throw new Error(`Native transition journal contains unknown field: ${unknown}`);
+}
+
+function positiveInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new Error(`${label} must be a positive integer`);
   }
+  return value as number;
+}
+
+function validateJournalEnvelope(
+  journal: Record<string, unknown>,
+  expectedName: string,
+): {
+  id: string;
+  evidenceHash: string;
+  createdAt: string;
+  previousRun: NativeTransitionJournal['previousRun'];
+  nextRun: NativeTransitionJournal['nextRun'];
+  eventData: Record<string, unknown>;
+} {
   if (journal.change !== expectedName) throw new Error('Native transition journal change mismatch');
   if (typeof journal.id !== 'string' || journal.id.length === 0) {
     throw new Error('Native transition journal id is invalid');
@@ -80,19 +144,8 @@ function parseJournal(value: unknown, expectedName: string): NativeTransitionJou
   if (typeof journal.createdAt !== 'string' || Number.isNaN(Date.parse(journal.createdAt))) {
     throw new Error('Native transition journal timestamp is invalid');
   }
-  const previousState = parseNativeChangeValue(journal.previousState);
-  const nextState = parseNativeChangeValue(journal.nextState);
-  if (previousState.name !== expectedName || nextState.name !== expectedName) {
-    throw new Error('Native transition journal state mismatch');
-  }
   if (!journal.nextRun || typeof journal.nextRun !== 'object') {
     throw new Error('Native transition journal next Run is invalid');
-  }
-  if (
-    journal.nextRun.runId !== nextState.run_id ||
-    journal.nextRun.currentStep !== nextState.phase
-  ) {
-    throw new Error('Native transition journal Run/state mismatch');
   }
   if (
     !journal.eventData ||
@@ -101,32 +154,152 @@ function parseJournal(value: unknown, expectedName: string): NativeTransitionJou
   ) {
     throw new Error('Native transition journal event data is invalid');
   }
+  if (
+    journal.previousRun !== null &&
+    (typeof journal.previousRun !== 'object' || Array.isArray(journal.previousRun))
+  ) {
+    throw new Error('Native transition journal previous Run is invalid');
+  }
   return {
-    schema: 'comet.native.transition.v1',
     id: journal.id,
-    change: expectedName,
     evidenceHash: journal.evidenceHash,
     createdAt: journal.createdAt,
+    previousRun: (journal.previousRun ?? null) as NativeTransitionJournal['previousRun'],
+    nextRun: journal.nextRun as NativeTransitionJournal['nextRun'],
+    eventData: journal.eventData as Record<string, unknown>,
+  };
+}
+
+export function parseNativeTransitionJournalValue(
+  value: unknown,
+  expectedName: string,
+): NativeTransitionJournal {
+  const journal = journalRecord(value);
+  rejectUnknownJournalFields(journal, CURRENT_JOURNAL_KEYS);
+  if (journal.schema !== NATIVE_TRANSITION_SCHEMA) {
+    throw new Error(`Expected Native transition schema ${NATIVE_TRANSITION_SCHEMA}`);
+  }
+  const minimumRuntimeVersion = positiveInteger(
+    journal.minimum_runtime_version,
+    'Native transition minimum_runtime_version',
+  );
+  if (minimumRuntimeVersion > NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new Error(
+      `Native transition requires runtime protocol ${minimumRuntimeVersion}; current protocol is ${NATIVE_RUNTIME_PROTOCOL_VERSION}`,
+    );
+  }
+  if (minimumRuntimeVersion !== NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new Error(
+      `Native transition ${NATIVE_TRANSITION_SCHEMA} minimum_runtime_version must be ${NATIVE_RUNTIME_PROTOCOL_VERSION}`,
+    );
+  }
+  const revision = positiveInteger(journal.revision, 'Native transition revision');
+  if (revision !== 1) throw new Error('Native transition journal revision must be 1');
+  const envelope = validateJournalEnvelope(journal, expectedName);
+  const previousState = parseNativeChangeValue(journal.previousState);
+  const nextState = parseNativeChangeValue(journal.nextState);
+  if (previousState.name !== expectedName || nextState.name !== expectedName) {
+    throw new Error('Native transition journal state mismatch');
+  }
+  if (
+    envelope.nextRun.runId !== nextState.run_id ||
+    envelope.nextRun.currentStep !== nextState.phase ||
+    nextState.revision !== previousState.revision + 1
+  ) {
+    throw new Error('Native transition journal Run/state mismatch');
+  }
+  return {
+    schema: NATIVE_TRANSITION_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision,
+    id: envelope.id,
+    change: expectedName,
+    evidenceHash: envelope.evidenceHash,
+    createdAt: envelope.createdAt,
     previousState,
     nextState,
-    previousRun: journal.previousRun ?? null,
-    nextRun: journal.nextRun,
-    eventData: journal.eventData,
+    previousRun: envelope.previousRun,
+    nextRun: envelope.nextRun,
+    eventData: envelope.eventData,
   };
+}
+
+export function parseLegacyNativeTransitionJournalValue(
+  value: unknown,
+  expectedName: string,
+): NativeLegacyTransitionJournal {
+  const journal = journalRecord(value);
+  rejectUnknownJournalFields(journal, LEGACY_JOURNAL_KEYS);
+  if (journal.schema !== NATIVE_LEGACY_TRANSITION_SCHEMA) {
+    throw new Error(`Expected Native transition schema ${NATIVE_LEGACY_TRANSITION_SCHEMA}`);
+  }
+  const envelope = validateJournalEnvelope(journal, expectedName);
+  const previousState = parseLegacyNativeChangeValue(journal.previousState);
+  const nextState = parseLegacyNativeChangeValue(journal.nextState);
+  if (previousState.name !== expectedName || nextState.name !== expectedName) {
+    throw new Error('Native transition journal state mismatch');
+  }
+  if (
+    envelope.nextRun.runId !== nextState.run_id ||
+    envelope.nextRun.currentStep !== nextState.phase
+  ) {
+    throw new Error('Native transition journal Run/state mismatch');
+  }
+  return {
+    schema: NATIVE_LEGACY_TRANSITION_SCHEMA,
+    id: envelope.id,
+    change: expectedName,
+    evidenceHash: envelope.evidenceHash,
+    createdAt: envelope.createdAt,
+    previousState,
+    nextState,
+    previousRun: envelope.previousRun,
+    nextRun: envelope.nextRun,
+    eventData: envelope.eventData,
+  };
+}
+
+export function inspectNativeTransitionJournalValue(
+  value: unknown,
+  expectedName: string,
+): NativeTransitionSchemaInspection {
+  const journal = journalRecord(value);
+  if (journal.schema === NATIVE_TRANSITION_SCHEMA) {
+    return { status: 'current', journal: parseNativeTransitionJournalValue(journal, expectedName) };
+  }
+  if (journal.schema === NATIVE_LEGACY_TRANSITION_SCHEMA) {
+    return {
+      status: 'migration-required',
+      journal: parseLegacyNativeTransitionJournalValue(journal, expectedName),
+    };
+  }
+  throw new Error(`Unsupported Native transition journal schema: ${String(journal.schema)}`);
+}
+
+export async function inspectPendingNativeTransitionSchema(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<NativeTransitionSchemaInspection | null> {
+  const file = nativeTransitionJournalFile(paths, name);
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    return inspectNativeTransitionJournalValue(JSON.parse(await fs.readFile(file, 'utf8')), name);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
 }
 
 export async function inspectPendingNativeTransition(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<NativeTransitionJournal | null> {
-  const file = nativeTransitionJournalFile(paths, name);
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  try {
-    return parseJournal(JSON.parse(await fs.readFile(file, 'utf8')), name);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
+  const inspection = await inspectPendingNativeTransitionSchema(paths, name);
+  if (!inspection) return null;
+  if (inspection.status === 'migration-required') {
+    throw new NativeTransitionMigrationRequiredError(name);
   }
+  return inspection.journal;
 }
 
 export async function prepareNativeTransition(options: {
@@ -140,8 +313,16 @@ export async function prepareNativeTransition(options: {
   now?: Date;
   transitionId?: () => string;
 }): Promise<NativeTransitionJournal> {
+  if (await hasPendingNativeSchemaMigration(options.paths, options.nextState.name)) {
+    throw new Error(
+      `Native schema migration is incomplete for ${options.nextState.name}; run doctor --repair`,
+    );
+  }
+  await assertNativeTrajectoryHealthy(options.paths, options.nextState.name);
   const journal: NativeTransitionJournal = {
-    schema: 'comet.native.transition.v1',
+    schema: NATIVE_TRANSITION_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision: 1,
     id: options.transitionId?.() ?? randomUUID(),
     change: options.nextState.name,
     evidenceHash: options.evidenceHash,
@@ -166,12 +347,16 @@ export async function continueNativeTransitionLocked(
   name: string,
   hooks?: NativeTransitionHooks,
 ): Promise<NativeChangeState | null> {
+  if (await hasPendingNativeSchemaMigration(paths, name)) {
+    throw new Error(`Native schema migration is incomplete for ${name}; run doctor --repair`);
+  }
+  await assertNativeTrajectoryHealthy(paths, name);
   const journal = await inspectPendingNativeTransition(paths, name);
   if (!journal) return null;
   const changeDir = nativeChangeDir(paths, name);
   await writeRunStateAt(changeDir, journal.nextRun, NATIVE_RUN_STORAGE);
   await hooks?.afterRunStateWritten?.(journal);
-  await writeNativeChange(paths, journal.nextState);
+  await compareAndSwapNativeChangeLocked(paths, journal.nextState, journal.previousState.revision);
   await hooks?.afterChangeStateWritten?.(journal);
 
   let trajectory = await readTrajectory(changeDir, journal.nextRun.trajectoryRef);
