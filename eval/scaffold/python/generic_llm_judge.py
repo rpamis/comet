@@ -18,7 +18,6 @@ Usage::
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -47,6 +46,7 @@ _SKIP_DIRS = {
     ".venv",
     "env",
 }
+_SKIP_FILES = {"_test_context.json", "_test_results.json"}
 
 # Max chars per file, total budget across all files.
 _PER_FILE_LIMIT = 3000
@@ -73,6 +73,8 @@ def _collect_workspace_artifacts(test_dir: Path) -> str:
 
     for path in sorted(test_dir.rglob("*")):
         if not path.is_file():
+            continue
+        if path.name in _SKIP_FILES:
             continue
         # Skip hidden paths.
         if any(part.startswith(".") for part in path.relative_to(test_dir).parts):

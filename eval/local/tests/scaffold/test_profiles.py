@@ -714,6 +714,22 @@ def test_generic_llm_judge_collects_workspace_files(tmp_path: Path):
     assert ".git" not in artifacts
 
 
+def test_generic_llm_judge_ignores_harness_transport_files(tmp_path: Path):
+    """The judge should use adapted completion output, not stale container transport."""
+    from scaffold.python.generic_llm_judge import _collect_workspace_artifacts
+
+    (tmp_path / "result.md").write_text("# Result\nDone")
+    (tmp_path / "_test_context.json").write_text('{"treatment_name":"legacy"}')
+    (tmp_path / "_test_results.json").write_text('{"failed":["openspec missing"]}')
+
+    artifacts = _collect_workspace_artifacts(tmp_path)
+
+    assert "result.md" in artifacts
+    assert "_test_context.json" not in artifacts
+    assert "_test_results.json" not in artifacts
+    assert "openspec missing" not in artifacts
+
+
 def test_judge_env_requires_explicit_judge_model(monkeypatch):
     """LLM judge must not silently reuse the subject model."""
     from scaffold.python.judge_config import build_judge_invocation
