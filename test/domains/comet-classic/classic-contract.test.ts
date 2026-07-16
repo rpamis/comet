@@ -209,6 +209,9 @@ function legacyProjection(document: Record<string, unknown>): Record<string, unk
     // branch_action is a brand-new field the active runtime writes (as null
     // when unset); the frozen 0.3.9 bash scripts have never heard of it.
     'branch_action',
+    // bound_branch is a brand-new field the active runtime writes (as null
+    // when unset); the frozen 0.3.9 bash scripts have never heard of it.
+    'bound_branch',
   ]);
   return Object.fromEntries(Object.entries(document).filter(([key]) => !runKeys.has(key)));
 }
