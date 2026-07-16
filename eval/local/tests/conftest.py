@@ -18,7 +18,6 @@ import shutil
 import subprocess
 import tempfile
 import time
-import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +27,7 @@ from typing import Any
 import pytest
 from dotenv import load_dotenv
 
-from scaffold import run_claude_in_docker, run_node_in_docker, run_python_in_docker, run_shell
+from scaffold import run_claude_in_docker, run_python_in_docker, run_shell
 from scaffold.python import (
     ExperimentLogger,
     TreatmentResult,
@@ -1048,14 +1047,25 @@ def _build_docker_image_with_lock(environment_dir: Path) -> str | None:
 
 
 @contextmanager
-def file_lock(path: Path):
+def file_lock(path: Path, timeout: float = 600):
     """Cross-platform exclusive file lock for pytest-xdist coordination."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a+b") as lock_file:
         if os.name == "nt":
             import msvcrt
 
-            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            deadline = time.monotonic() + timeout
+            while True:
+                lock_file.seek(0)
+                try:
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as error:
+                    if error.errno not in {13, 36}:
+                        raise
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.05)
             try:
                 yield
             finally:

@@ -21,8 +21,9 @@ import pytest
 import conftest
 from conftest import get_fixtures
 
-from scaffold import NoiseTask, Treatment
+from scaffold import Treatment
 from scaffold.python import extract_events, parse_output
+from scaffold.python.native_eval import adapt_checks_for_native, adapt_prompt_for_native
 from scaffold.python.profiles import resolve_profile_name, run_profile_rubric
 from scaffold.python.tasks import list_tasks, load_task
 from scaffold.python.treatments import TreatmentConfig, build_treatment_skills, load_treatments
@@ -352,7 +353,10 @@ def test_task_treatment(task_name, treatment_name):
     for var_name, var_template in task.config.setup.template_vars.items():
         template_vars[var_name] = var_template.format(run_id=run_id)
 
-    prompt = task.render_prompt(**template_vars)
+    prompt = adapt_prompt_for_native(
+        task.render_prompt(**template_vars),
+        treatment_name,
+    )
     target_profile = None
     if treatment_cfg.skills:
         target_profile = treatment_cfg.skills[0].get("profile")
@@ -387,7 +391,8 @@ def test_task_treatment(task_name, treatment_name):
         or task.config.evaluation.required_skills,
         "expected_artifacts": skill_hints.get("expected_artifacts")
         or task.config.evaluation.expected_artifacts,
-        "require_skill_invocation": task.config.evaluation.require_skill_invocation,
+        "require_skill_invocation": skill_hints.get("require_skill_invocation")
+        or task.config.evaluation.require_skill_invocation,
         "rubric_criteria": task.config.evaluation.rubric_criteria,
         "skill_package_path": skill_package_path,
         "generated_node_skills": skill_hints.get("generated_node_skills") or [],
@@ -412,6 +417,12 @@ def test_task_treatment(task_name, treatment_name):
     events["interaction"] = outputs["interaction"]
 
     passed, failed = run_validators(validators, fixtures.test_dir, outputs)
+    passed, failed = adapt_checks_for_native(
+        fixtures.test_dir,
+        outputs,
+        passed,
+        failed,
+    )
     completion_slices = _split_comet_completion_checks(passed, failed)
     passed, failed = _filter_control_workflow_checks(
         profile_name,

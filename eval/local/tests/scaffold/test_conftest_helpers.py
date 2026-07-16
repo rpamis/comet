@@ -3,9 +3,11 @@
 import importlib.util
 import json
 import os
+import msvcrt
 from pathlib import Path
 
 import conftest
+import pytest
 from scaffold.python.tasks import load_task
 from scaffold.python.treatments import build_treatment_skills, load_treatments
 
@@ -18,6 +20,41 @@ def test_file_lock_context_manager_allows_exclusive_writes(tmp_path: Path):
         data_file.write_text("held")
 
     assert data_file.read_text() == "held"
+
+
+def test_file_lock_waits_when_windows_lock_is_temporarily_busy(tmp_path: Path, monkeypatch):
+    lock_file = tmp_path / "coordination.lock"
+    real_locking = msvcrt.locking
+    attempts = 0
+
+    def flaky_locking(fd, mode, size):
+        nonlocal attempts
+        if mode == msvcrt.LK_NBLCK and attempts < 2:
+            attempts += 1
+            raise OSError(36, "Resource deadlock avoided")
+        return real_locking(fd, mode, size)
+
+    monkeypatch.setattr(msvcrt, "locking", flaky_locking)
+
+    with conftest.file_lock(lock_file, timeout=1):
+        assert attempts == 2
+
+
+def test_file_lock_does_not_retry_non_contention_windows_errors(tmp_path: Path, monkeypatch):
+    lock_file = tmp_path / "coordination.lock"
+    attempts = 0
+
+    def broken_locking(_fd, _mode, _size):
+        nonlocal attempts
+        attempts += 1
+        raise OSError(22, "Invalid argument")
+
+    monkeypatch.setattr(msvcrt, "locking", broken_locking)
+
+    with pytest.raises(OSError, match="Invalid argument"):
+        with conftest.file_lock(lock_file, timeout=1):
+            pass
+    assert attempts == 1
 
 
 def test_unit_test_detection_handles_scaffold_and_script_paths():

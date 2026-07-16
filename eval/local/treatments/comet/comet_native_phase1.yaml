@@ -3,7 +3,21 @@
 # is injected.
 COMET_NATIVE_PHASE1:
   description: 'Self-contained Comet Native Phase 1 workflow for strong coding models'
+  claude_md: |
+    Begin by invoking the /comet-native Skill and use only its bundled runtime.
+    Never invoke /comet or any Skill other than /comet-native, even when the task
+    text says "use the comet workflow" or names legacy Comet phases.
+    When the task describes the legacy Comet Open, Design, Build, Verify, and
+    Archive phases, preserve the business requirements but execute them as the
+    Native Shape, Build, Verify, and Archive workflow. Initialize Native with
+    artifact_root `docs`, continue automatically while no material user decision
+    is unresolved, and leave a terminal verified Native archive. Do not create
+    OpenSpec, Classic, Superpowers, or hidden `.comet` workflow artifacts.
   skills:
     - name: comet-native
       source: path
       path: ../assets/skills/comet-native
+      profile: generic
+      required_skills:
+        - comet-native
+      require_skill_invocation: true

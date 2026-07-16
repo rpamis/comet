@@ -25,6 +25,16 @@ uv run pytest local/tests/tasks/test_tasks.py \
   --treatment=COMET_NATIVE_PHASE1 -v
 ```
 
+将 Native 与 0.4.0 基线按相同的 16 个 canonical Comet 任务、每任务 3 次对齐运行：
+
+```bash
+uv run pytest local/tests/tasks/test_tasks.py::test_task_treatment \
+  --treatment=COMET_NATIVE_PHASE1 --count=3 -n 4 \
+  -k "not comet-native and not generic-skill-smoke and not authoring-skill-smoke and not workflow-route-conformance and not workflow-overlay-contract" -v
+```
+
+对齐评估保留每个任务原有的业务 validator，但会把 Classic/OpenSpec 专属流程检查替换为 Native 的 Skill 隔离、配置、终态 change、验证归档和安全 trajectory 检查。调用 `/comet` 或其他外部 Skill、留下活动 change、缺少完整规格/验证证据，都会作为真实 Native workflow failure 进入 pass@k，而不会被当成环境噪声排除。
+
 运行生成 Skill 的 authoring smoke 任务：
 
 ```bash

@@ -160,6 +160,11 @@ def test_comet_native_phase1_is_self_contained():
     assert {skill["name"] for skill in treatment.skills} == {"comet-native"}
     assert treatment.skills[0]["source"] == "path"
     assert "assets/skills/comet-native" in treatment.skills[0]["path"]
+    assert treatment.skills[0]["profile"] == "generic"
+    assert treatment.skills[0]["required_skills"] == ["comet-native"]
+    assert treatment.skills[0]["require_skill_invocation"] is True
+    assert "Shape, Build, Verify, and Archive" in treatment.claude_md
+    assert "OpenSpec" in treatment.claude_md
 
     skills = build_treatment_skills(treatment.skills)
     assert set(skills) == {"comet-native"}
