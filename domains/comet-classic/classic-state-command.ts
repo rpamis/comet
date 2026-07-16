@@ -1233,11 +1233,7 @@ async function selectChange(output: CommandOutput, name: string): Promise<void> 
   validateChangeName(name);
   try {
     const selection = await selectCurrentChange(process.cwd(), name);
-    output.stderr.push(
-      green(
-        `[SELECTED] current change: ${selection.change}${selection.branch ? ` (branch: ${selection.branch})` : ''}`,
-      ),
-    );
+    output.stderr.push(green(`[SELECTED] current change: ${selection.change}`));
   } catch (error) {
     fail(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -1248,7 +1244,7 @@ async function currentChange(output: CommandOutput): Promise<void> {
   if (resolution.status === 'selected') {
     output.stdout.push(resolution.selection.change);
     const isolation = resolution.classic.isolation ?? null;
-    const branch = resolution.selection.branch ?? resolution.branch;
+    const branch = resolution.classic.boundBranch ?? resolution.branch;
     output.stderr.push(
       `[CURRENT] isolation: ${isolation ?? 'null'}${branch ? `, branch: ${branch}` : ''}`,
     );

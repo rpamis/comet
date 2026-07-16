@@ -45,6 +45,32 @@ async function seedActiveChange(root: string, name: string, archived: boolean): 
   );
 }
 
+async function seedCurrentIsolationChange(
+  root: string,
+  name: string,
+  boundBranch: string,
+): Promise<void> {
+  const changeDir = path.join(root, 'openspec', 'changes', name);
+  await fs.mkdir(changeDir, { recursive: true });
+  await fs.writeFile(
+    path.join(changeDir, '.comet.yaml'),
+    [
+      'workflow: full',
+      'phase: build',
+      'design_doc: docs/superpowers/specs/design.md',
+      'plan: null',
+      'build_mode: executing-plans',
+      'isolation: current',
+      `bound_branch: ${boundBranch}`,
+      'verify_mode: null',
+      'verify_result: pending',
+      'verified_at: null',
+      'archived: false',
+      '',
+    ].join('\n'),
+  );
+}
+
 describe('Classic current change selection', () => {
   let root: string;
 
@@ -62,12 +88,12 @@ describe('Classic current change selection', () => {
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  it('atomically selects an active change with the current branch', async () => {
+  it('atomically selects an active change without recording a branch', async () => {
     await seedActiveChange(root, 'change-a', false);
 
     const selected = await selectCurrentChange(root, 'change-a');
 
-    expect(selected).toEqual({ version: 1, change: 'change-a', branch: 'main' });
+    expect(selected).toEqual({ version: 1, change: 'change-a' });
     expect(JSON.parse(await fs.readFile(currentChangeFile(root), 'utf8'))).toEqual(selected);
     expect((await fs.readdir(path.join(root, '.comet'))).sort()).toEqual(['current-change.json']);
   });
@@ -79,16 +105,25 @@ describe('Classic current change selection', () => {
     await expect(selectCurrentChange(root, 'archived-change')).rejects.toThrow('archived');
   });
 
-  it('marks a selection stale after the branch changes', async () => {
-    await seedActiveChange(root, 'change-a', false);
+  it('marks a current-isolation selection stale when the bound branch drifts', async () => {
+    await seedCurrentIsolationChange(root, 'change-a', 'main');
     await selectCurrentChange(root, 'change-a');
 
     git(root, 'switch', '-c', 'other');
 
     expect(await resolveCurrentChange(root)).toEqual({
       status: 'stale',
-      reason: "current change 'change-a' was selected on branch 'main', current branch is 'other'",
+      reason: "change 'change-a' is bound to branch 'main', but current branch is 'other'",
     });
+  });
+
+  it('keeps a branch-isolation selection valid across branch switches', async () => {
+    await seedActiveChange(root, 'change-a', false);
+    await selectCurrentChange(root, 'change-a');
+
+    git(root, 'switch', '-c', 'other');
+
+    expect(await resolveCurrentChange(root)).toMatchObject({ status: 'selected' });
   });
 
   it('reports malformed selection data as stale instead of missing', async () => {

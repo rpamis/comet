@@ -673,7 +673,12 @@ describe('comet scripts', () => {
     );
 
     for (const value of ['push', 'keep-local', 'merged-locally', 'pushed-pr']) {
-      const set = runNode(tmpDir, stateScript, ['set', 'branch-action-set', 'branch_action', value]);
+      const set = runNode(tmpDir, stateScript, [
+        'set',
+        'branch-action-set',
+        'branch_action',
+        value,
+      ]);
       const get = runNode(tmpDir, stateScript, ['get', 'branch-action-set', 'branch_action']);
       expect(set.status).toBe(0);
       expect(get.stdout.trim()).toBe(value);
@@ -3504,7 +3509,11 @@ describe('comet scripts', () => {
       ].join('\n'),
     );
 
-    const result = runNode(tmpDir, stateScript, ['transition', 'hotfix-worktree', 'build-complete']);
+    const result = runNode(tmpDir, stateScript, [
+      'transition',
+      'hotfix-worktree',
+      'build-complete',
+    ]);
 
     expect(result.status).toBe(0);
   }, 20_000);
@@ -5759,6 +5768,47 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, editStdin);
 
       expect(result.status).toBe(0);
+    }, 20_000);
+
+    it('blocks a repo source write when the current-isolation change drifted off its bound branch', async () => {
+      execFileSync('git', ['init', '-b', 'feature-A'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await createChange(
+        tmpDir,
+        'drift-hook',
+        [
+          'workflow: full',
+          'phase: build',
+          'design_doc: docs/superpowers/specs/drift-hook.md',
+          'plan: null',
+          'build_mode: executing-plans',
+          'isolation: current',
+          'bound_branch: feature-A',
+          'verify_mode: full',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      await writeFile(
+        path.join(tmpDir, 'docs', 'superpowers', 'specs', 'drift-hook.md'),
+        '# Design\n',
+      );
+      expect(runNode(tmpDir, stateScript, ['select', 'drift-hook']).status).toBe(0);
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'base'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+      const targetFile = path.join(tmpDir, 'src', 'feature.ts');
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('current change selection is stale or invalid');
+      expect(result.stderr).toContain(
+        "change 'drift-hook' is bound to branch 'feature-A', but current branch is 'feature-B'",
+      );
     }, 20_000);
   });
 });
