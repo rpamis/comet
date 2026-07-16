@@ -2072,7 +2072,7 @@ describe('comet scripts', () => {
     );
     await writeFile(
       path.join(tmpDir, 'package.json'),
-      JSON.stringify({ scripts: { build: 'node -e \"process.exit(0)\"' } }),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
 
     const guard = runNode(tmpDir, guardScript, ['current-isolation-build', 'build']);
