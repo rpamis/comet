@@ -182,19 +182,19 @@ comet state transition <change-name> verify-fail
 
 如 `isolation: branch` 或 `worktree` 且 Superpowers `finishing-a-development-branch` 技能不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
 
-`branch/worktree` 模式下，技能加载后按其指引收尾。分支处理选项：
-1. 本地合并到主分支
-2. 推送并创建 PR
-3. 保持分支（稍后处理）
-4. 丢弃工作
+`branch/worktree` 模式下，技能加载后按其指引收尾。分支处理选项及对应 `branch_action`：
+1. 本地合并到主分支 → `branch_action: merged-locally`
+2. 推送并创建 PR → `branch_action: pushed-pr`
+3. 保持分支（稍后处理）→ `branch_action: keep-local`
+4. 丢弃工作 → 不写 `branch_action`，也不写 `branch_status: handled`；change 视为放弃，不进入 archive
 
-这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户选择分支处理方式**，不得根据推荐、默认值或当前分支状态自行选择。只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`。
+这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户选择分支处理方式**，不得根据推荐、默认值或当前分支状态自行选择。只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled` 与对应的 `branch_action`。
 
-`current` 模式下，这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择当前分支处理方式**：
-1. 立即 push 当前分支
-2. 暂不 push，保留本地分支状态
+`current` 模式下，这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择当前分支处理方式**及对应 `branch_action`：
+1. 立即 push 当前分支 → `branch_action: push`
+2. 暂不 push，保留本地分支状态 → `branch_action: keep-local`
 
-同样地，只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled`。
+同样地，只有在用户完成选择且对应操作完成后，才允许写入 `branch_status: handled` 与对应的 `branch_action`。
 
 **确认项**：
 - 全部测试通过
@@ -211,6 +211,10 @@ mkdir -p docs/superpowers/reports
 
 comet state set <change-name> verification_report docs/superpowers/reports/YYYY-MM-DD-<change-name>-verify.md
 comet state set <change-name> branch_status handled
+# 按 Step 3 用户实际选择写入 branch_action（映射见 Step 3）：
+#   current 模式：push | keep-local
+#   branch/worktree 模式：merged-locally | pushed-pr | keep-local
+comet state set <change-name> branch_action <value>
 ```
 
 ## 退出条件
