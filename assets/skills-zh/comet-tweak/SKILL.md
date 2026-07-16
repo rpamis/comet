@@ -31,6 +31,8 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 
 恢复已有 tweak change 时，第一项状态操作必须是 `comet state select <change-name>`；创建新 change 时，在 `.comet.yaml` 初始化成功后立即运行该命令，再进入源码写入步骤。
 
+若入口 `comet state check` 因分支绑定不一致返回 `BLOCKED`（`isolation: current` 的 change 绑定分支与当前分支不同，或当前处于 detached HEAD），这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择**：切回绑定分支后重试，或在用户明确确认换绑后运行 `comet state rebind <change-name>` 再重试。不得自行切换分支，也不得自行换绑。
+
 ### 1. 快速开启（预设 open）
 
 复用 Comet open 能力创建 change，但使用 tweak 默认值：不执行 `openspec-explore` 长探索，直接进入精简 change 创建。

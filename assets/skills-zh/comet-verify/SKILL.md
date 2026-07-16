@@ -25,6 +25,8 @@ comet state select <change-name>
 comet state check <change-name> verify
 ```
 
+若入口 `comet state check` 因分支绑定不一致返回 `BLOCKED`（`isolation: current` 的 change 绑定分支与当前分支不同，或当前处于 detached HEAD），这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择**：切回绑定分支后重试，或在用户明确确认换绑后运行 `comet state rebind <change-name>` 再重试。不得自行切换分支，也不得自行换绑。
+
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
 **幂等性**：verify 阶段所有检查可安全重复执行。如 `verify_result` 已为 `pass` 且 `branch_status` 已为 `handled`，说明验证已完成，直接执行 guard 流转。如 `verify_result` 为 `pending`，从头开始验证。

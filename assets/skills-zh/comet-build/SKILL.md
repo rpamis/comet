@@ -21,6 +21,8 @@ comet state select <change-name>
 comet state check <name> build
 ```
 
+若入口 `comet state check` 因分支绑定不一致返回 `BLOCKED`（`isolation: current` 的 change 绑定分支与当前分支不同，或当前处于 detached HEAD），这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择**：切回绑定分支后重试，或在用户明确确认换绑后运行 `comet state rebind <change-name>` 再重试。不得自行切换分支，也不得自行换绑。
+
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
 **幂等性**：build 阶段所有操作可安全重复执行。读取 `.comet.yaml` 的 `phase` 字段确认仍在 build 阶段，读取 plan 文件头的 `base-ref`，再用 `grep -n '\- \[ \]' tasks.md | head -1` 找到第一个未勾选任务继续执行。已提交的任务不得重复提交。

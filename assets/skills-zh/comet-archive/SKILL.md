@@ -26,6 +26,8 @@ comet state select <change-name>
 comet state check <name> archive
 ```
 
+若入口 `comet state check` 因分支绑定不一致返回 `BLOCKED`（`isolation: current` 的 change 绑定分支与当前分支不同，或当前处于 detached HEAD），这是用户决策点。**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择**：切回绑定分支后重试，或在用户明确确认换绑后运行 `comet state rebind <change-name>` 再重试。不得自行切换分支，也不得自行换绑。
+
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
 ### 1. 归档前最终确认（阻塞点）
