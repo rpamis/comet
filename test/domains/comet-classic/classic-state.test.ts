@@ -29,6 +29,7 @@ function classicState(): ClassicState {
     verifyResult: 'fail',
     verificationReport: 'docs/verification.md',
     branchStatus: 'handled',
+    branchAction: null,
     createdAt: '2026-06-01',
     verifiedAt: '2026-06-02',
     archiveConfirmation: null,

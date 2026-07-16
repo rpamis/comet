@@ -206,6 +206,9 @@ function legacyProjection(document: Record<string, unknown>): Record<string, unk
     // runtime intentionally stopped doing that (isolation: current support)
     // so preset workflows must explicitly choose isolation before build.
     'isolation',
+    // branch_action is a brand-new field the active runtime writes (as null
+    // when unset); the frozen 0.3.9 bash scripts have never heard of it.
+    'branch_action',
   ]);
   return Object.fromEntries(Object.entries(document).filter(([key]) => !runKeys.has(key)));
 }
