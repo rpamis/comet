@@ -2162,6 +2162,119 @@ describe('comet scripts', () => {
     expect(transition.status).toBe(0);
   }, 20_000);
 
+  describe('isolation=current branch binding', () => {
+    async function gitInit(branch: string) {
+      execFileSync('git', ['init', '-b', branch], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), '# t\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'base'], { cwd: tmpDir, stdio: 'ignore' });
+    }
+
+    async function readBoundBranch(name: string): Promise<string> {
+      const get = runNode(tmpDir, stateScript, ['get', name, 'bound_branch']);
+      return get.stdout.trim();
+    }
+
+    it('captures the current branch when isolation is first set to current', async () => {
+      await gitInit('feature-A');
+      await createChange(
+        tmpDir,
+        'bind-once',
+        ['workflow: full', 'phase: build', 'isolation: null', 'archived: false', ''].join('\n'),
+      );
+
+      const set = runNode(tmpDir, stateScript, ['set', 'bind-once', 'isolation', 'current']);
+
+      expect(set.status).toBe(0);
+      expect(await readBoundBranch('bind-once')).toBe('feature-A');
+    });
+
+    it('does not overwrite an existing bound_branch on a repeated set isolation current', async () => {
+      await gitInit('feature-A');
+      await createChange(
+        tmpDir,
+        'bind-idempotent',
+        [
+          'workflow: full',
+          'phase: build',
+          'isolation: current',
+          'bound_branch: feature-A',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+      execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+      const set = runNode(tmpDir, stateScript, ['set', 'bind-idempotent', 'isolation', 'current']);
+
+      expect(set.status).toBe(0);
+      expect(await readBoundBranch('bind-idempotent')).toBe('feature-A');
+    });
+
+    it('clears bound_branch when isolation switches away from current', async () => {
+      await gitInit('feature-A');
+      await createChange(
+        tmpDir,
+        'switch-away',
+        [
+          'workflow: full',
+          'phase: build',
+          'isolation: current',
+          'bound_branch: feature-A',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const set = runNode(tmpDir, stateScript, ['set', 'switch-away', 'isolation', 'branch']);
+
+      expect(set.status).toBe(0);
+      expect(await readBoundBranch('switch-away')).toBe('null');
+    });
+
+    it('rejects set isolation current while HEAD is detached', async () => {
+      await gitInit('feature-A');
+      const sha = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: tmpDir,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['checkout', sha], { cwd: tmpDir, stdio: 'ignore' });
+      await createChange(
+        tmpDir,
+        'detached-bind',
+        [
+          'workflow: full',
+          'phase: build',
+          'isolation: null',
+          'bound_branch: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const set = runNode(tmpDir, stateScript, ['set', 'detached-bind', 'isolation', 'current']);
+
+      expect(set.status).not.toBe(0);
+      expect(set.stderr).toContain('HEAD is detached');
+      expect(await readBoundBranch('detached-bind')).toBe('null');
+    });
+
+    it('rejects a direct set of the machine-owned bound_branch field', async () => {
+      await createChange(
+        tmpDir,
+        'direct-bound',
+        ['workflow: full', 'phase: build', 'isolation: current', 'archived: false', ''].join('\n'),
+      );
+
+      const set = runNode(tmpDir, stateScript, ['set', 'direct-bound', 'bound_branch', 'x']);
+
+      expect(set.status).not.toBe(0);
+      expect(set.stderr).toContain('machine-owned');
+    });
+  });
+
   it('blocks build completion until tdd_mode is selected for full workflow', async () => {
     await createChange(
       tmpDir,
