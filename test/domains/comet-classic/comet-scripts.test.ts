@@ -2992,6 +2992,33 @@ describe('comet scripts', () => {
     );
   }, 20_000);
 
+  it('accepts bound_branch as a known optional field in validation', async () => {
+    await createChange(
+      tmpDir,
+      'bound-branch-known',
+      [
+        'workflow: full',
+        'phase: build',
+        'design_doc: null',
+        'plan: null',
+        'build_mode: executing-plans',
+        'isolation: current',
+        'bound_branch: feature-A',
+        'verify_mode: full',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const valid = runNode(tmpDir, validateScript, ['bound-branch-known']);
+
+    expect(valid.status).toBe(0);
+    expect(valid.stderr).toContain('validation PASSED');
+    expect(valid.stderr).not.toContain("unknown field 'bound_branch'");
+  });
+
   it('reports accurate archive step counts when syncing and annotating', async () => {
     const archiveScript = path.join(tmpDir, 'scripts', 'comet-archive.mjs');
     const { command, logFile } = await createFakeOpenSpecArchive(tmpDir);

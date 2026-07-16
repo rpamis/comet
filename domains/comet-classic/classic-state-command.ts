@@ -277,6 +277,7 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
       null,
     ),
     isolation: enumRecordValue(record, 'isolation', ISOLATIONS, null),
+    boundBranch: nullableRecordString(record, 'bound_branch'),
     verifyMode: enumRecordValue(record, 'verify_mode', ['light', 'full'] as const, null),
     autoTransition: nullableRecordBoolean(record, 'auto_transition'),
     baseRef: nullableRecordString(record, 'base_ref'),

@@ -21,6 +21,7 @@ function classicState(): ClassicState {
     tddMode: 'tdd',
     reviewMode: null,
     isolation: 'worktree',
+    boundBranch: null,
     verifyMode: 'full',
     autoTransition: false,
     baseRef: 'abc123',
