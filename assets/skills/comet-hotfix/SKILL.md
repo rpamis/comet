@@ -28,6 +28,8 @@ Before starting, locate Comet scripts via `comet/reference/scripts.md`. When res
 
 When resuming an existing hotfix change, the first state operation must be `comet state select <change-name>`. For a new change, run the command immediately after `.comet.yaml` initialization and before source writes.
 
+If entry `comet state check` returns `BLOCKED` due to a branch binding mismatch (an `isolation: current` change's bound branch differs from the current branch, or HEAD is currently detached), this is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user's explicit choice**: switch back to the bound branch and retry, or run `comet state rebind <change-name>` and retry only after the user explicitly confirms the rebind. Do not switch branches or rebind on your own.
+
 ### 1. Quick Open (preset open)
 
 Reuse Comet open capability to create change, but use hotfix defaults: do not execute `openspec-explore` long exploration, directly enter streamlined change creation.

@@ -21,6 +21,8 @@ comet state select <change-name>
 comet state check <name> build
 ```
 
+If entry `comet state check` returns `BLOCKED` due to a branch binding mismatch (an `isolation: current` change's bound branch differs from the current branch, or HEAD is currently detached), this is a user decision point. **Must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user's explicit choice**: switch back to the bound branch and retry, or run `comet state rebind <change-name>` and retry only after the user explicitly confirms the rebind. Do not switch branches or rebind on your own.
+
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
 **Idempotency**: All build phase operations can be safely re-executed. Read `.comet.yaml` `phase` to confirm build, read the plan header `base-ref`, then parse tasks.md checkboxes in document order and resume from the first unchecked task. Already-committed tasks must not be re-committed.
