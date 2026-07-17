@@ -1489,7 +1489,7 @@ describe('skills', () => {
       // MEDIUM: hotfix task count alone does not escalate; only qualitative scope signals do.
       expect(zhHotfix).toContain('任务数量本身不触发 `/comet-build`');
       // MEDIUM: hotfix requires an explicit isolation choice as a user decision point.
-      expect(zhHotfix).toContain('初始隔离选择（`branch` / `current`）');
+      expect(zhHotfix).toContain('初始隔离选择（`branch` / `worktree` / `current`）');
 
       // LOW: comet-build "中" level requires user confirmation before brainstorming
       expect(zhBuild).toContain(
@@ -1888,7 +1888,7 @@ describe('skills', () => {
       );
       expect(enHotfix).toContain('6 quick checks');
       expect(enHotfix).toContain('task count alone does not route to `/comet-build`');
-      expect(enHotfix).toContain('initial isolation choice (`branch` / `current`)');
+      expect(enHotfix).toContain('initial isolation choice (`branch` / `worktree` / `current`)');
       expect(enBuild).toContain(
         "Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly confirm",
       );

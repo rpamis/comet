@@ -71,15 +71,16 @@ comet guard <change-name> open --apply
 Before execution starts, the user must explicitly choose isolation. This is a user decision point and must pause per `comet/reference/decision-point.md` until the user explicitly chooses:
 
 - A. create a branch (recommended default)
-- B. use the current branch
+- B. use a worktree
+- C. use the current branch
 
 After the choice, immediately write:
 
 ```bash
-comet state set <name> isolation <branch|current>
+comet state set <name> isolation <branch|worktree|current>
 ```
 
-If `branch` is chosen, follow `/comet-build`'s branch rules to confirm the branch name and create it, then re-run `comet state select <change-name>` to bind the current change; if `current` is chosen, create no new branch and do not force an extra re-selection when no workspace switch happened.
+If `branch` is chosen, follow `/comet-build`'s branch rules to confirm the branch name and create it, then re-run `comet state select <change-name>` to bind the current change. If `worktree` is chosen, follow `/comet-build`'s worktree rules and re-run `comet state select <change-name>` inside the worktree. If `current` is chosen, create no new branch or worktree and do not force an extra re-selection when no workspace switch happened.
 
 Use tweak defaults: `build_mode: direct`. Skip Superpowers `brainstorming` and `writing-plans`, and let OpenSpec's apply action execute the current change's tasks.
 
@@ -152,7 +153,7 @@ Exception: when `.comet.yaml` has `auto_transition: false`, end the current invo
 The following genuine user decisions still pause:
 
 1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the tweak lightweight flow, or upgrade to the full `/comet` workflow
-2. initial isolation choice (`branch` / `current`)
+2. initial isolation choice (`branch` / `worktree` / `current`)
 3. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or strategy after the automatic repair limit; the first 3 clearly repairable failures close automatically
 4. Final archive confirmation and the branch-handling decision after the archive commit
 

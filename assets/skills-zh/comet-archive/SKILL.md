@@ -122,8 +122,8 @@ git commit -m "chore: archive <change-name>"
 只有用户选择的操作成功完成（或明确选择保持分支）后，才运行：
 
 ```bash
-comet state set <change-name> branch_status handled
 comet state set <change-name> branch_action <value>
+comet state set <change-name> branch_status handled
 comet guard <change-name> archive
 comet state clear-selection
 ```

@@ -44,7 +44,7 @@ comet state select <name>
 comet state check <name> open
 ```
 
-Hotfix defaults to `isolation: current`, truthfully indicating execution in the current workspace. Change it to `branch` or `worktree` only after that workspace is actually created/selected. Then create the streamlined artifacts:
+Hotfix starts with `isolation: null`. Do not assume a workspace until the explicit isolation decision in Step 2. Then create the streamlined artifacts:
   - `proposal.md` — problem description + root cause analysis + fix goal (no solution comparison needed)
   - `design.md` — fix solution (one is enough, no multi-solution comparison needed)
   - `tasks.md` — fix task list
@@ -70,15 +70,16 @@ comet state next <name>
 Before execution starts, the user must explicitly choose isolation. This is a user decision point and must pause per `comet/reference/decision-point.md` until the user explicitly chooses:
 
 - A. create a branch (recommended default)
-- B. use the current branch
+- B. use a worktree
+- C. use the current branch
 
 After the choice, immediately write:
 
 ```bash
-comet state set <name> isolation <branch|current>
+comet state set <name> isolation <branch|worktree|current>
 ```
 
-If `branch` is chosen, follow `/comet-build`'s branch rules to confirm the branch name and create it, then re-run `comet state select <change-name>` to bind the current change; if `current` is chosen, create no new branch and do not force an extra re-selection when no workspace switch happened.
+If `branch` is chosen, follow `/comet-build`'s branch rules to confirm the branch name and create it, then re-run `comet state select <change-name>` to bind the current change. If `worktree` is chosen, follow `/comet-build`'s worktree rules and re-run `comet state select <change-name>` inside the worktree. If `current` is chosen, create no new branch or worktree and do not force an extra re-selection when no workspace switch happened.
 
 Use hotfix defaults: `build_mode: direct`, `tdd_mode: direct`, `review_mode: off`. Here `direct` skips full planning/TDD orchestration; it never skips reproduction, regression coverage, or verification. Skip Superpowers `brainstorming` and `writing-plans`; **task count alone does not route to `/comet-build`**. Keep larger task lists ordered in the current hotfix and ask about upgrading only when a qualitative-change signal or scope tripwire is hit.
 
@@ -158,7 +159,7 @@ Exception: when `.comet.yaml` has `auto_transition: false`, end the current invo
 The following genuine user decisions still pause:
 
 1. Encountering an upgrade-assessment signal (see "Upgrade Assessment" section). **Must use the current platform's available user input/confirmation mechanism to pause and wait for the user to explicitly choose**: continue the hotfix flow, or upgrade to the full `/comet` workflow
-2. initial isolation choice (`branch` / `current`)
+2. initial isolation choice (`branch` / `worktree` / `current`)
 3. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or strategy after the automatic repair limit; the first 3 clearly repairable failures close automatically
 4. Final archive confirmation and the branch-handling decision after the archive commit
 

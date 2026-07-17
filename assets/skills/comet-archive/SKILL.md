@@ -122,8 +122,8 @@ After the archive commit succeeds, read the `isolation` field:
 Only after the selected operation succeeds (or the user explicitly keeps the branch), run:
 
 ```bash
-comet state set <change-name> branch_status handled
 comet state set <change-name> branch_action <value>
+comet state set <change-name> branch_status handled
 comet guard <change-name> archive
 comet state clear-selection
 ```

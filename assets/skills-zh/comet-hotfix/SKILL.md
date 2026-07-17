@@ -44,7 +44,7 @@ comet state select <name>
 comet state check <name> open
 ```
 
-hotfix 默认 `isolation: current`，表示在当前工作区执行；只有用户实际创建/选择了分支或 worktree 后，才能把它改为 `branch` 或 `worktree`。随后按指引创建精简版产物：
+hotfix 初始保持 `isolation: null`。在 Step 2 明确选择隔离方式前，不要假定工作区。随后按指引创建精简版产物：
   - `proposal.md` — 问题描述 + 根因分析 + 修复目标（无需方案对比）
   - `design.md` — 修复方案（1 个即可，无需多方案对比）
   - `tasks.md` — 修复任务清单
@@ -70,15 +70,16 @@ comet state next <name>
 开始执行前，必须先让用户显式选择隔离方式。这是用户决策点，必须按 `comet/reference/decision-point.md` 暂停并等待用户明确选择：
 
 - A. 创建分支（推荐默认）
-- B. 使用当前分支
+- B. 使用 worktree
+- C. 使用当前分支
 
 用户选择后立即写入：
 
 ```bash
-comet state set <name> isolation <branch|current>
+comet state set <name> isolation <branch|worktree|current>
 ```
 
-若选择 `branch`，按 `/comet-build` 中的 branch 规则确认分支名并创建分支，然后重新执行 `comet state select <change-name>` 绑定当前 change；若选择 `current`，不创建新分支，也不要因为没有切换工作区而额外重新选择。
+若选择 `branch`，按 `/comet-build` 中的 branch 规则确认分支名并创建分支，然后重新执行 `comet state select <change-name>` 绑定当前 change。若选择 `worktree`，按 `/comet-build` 中的 worktree 规则创建隔离工作区，并在 worktree 内重新执行 `comet state select <change-name>`。若选择 `current`，不创建新分支或 worktree，也不要因为没有切换工作区而额外重新选择。
 
 使用 hotfix 默认值：`build_mode: direct`、`tdd_mode: direct`、`review_mode: off`。`direct` 表示不进入完整规划/TDD 编排，不表示可以跳过复现、回归测试或验证。跳过 Superpowers `brainstorming` 和 `writing-plans`；**任务数量本身不触发 `/comet-build`**，任务较多时仍在当前 hotfix 的 tasks.md 中按顺序执行，只有命中后文质变信号或范围 tripwire 才交给用户决定是否升级 full。
 
@@ -154,7 +155,7 @@ comet guard <change-name> build --apply
 Hotfix 流程默认 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 在 hotfix 自有步骤间自动推进，不主动停顿。**例外**：若 `auto_transition: false`，则在每个 phase 边界（build/verify/archive 之间）结束当前调用并按 `HINT` 交还控制权，由用户稍后手动运行下一阶段命令；这是手动衔接，不是新的确认点。无论 `auto_transition` 取何值，以下真正的用户决策仍需暂停：
 
 1. 遇到升级判定信号（见「升级判定」章节），**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择**：继续 hotfix 流程，还是升级为完整 `/comet` 流程
-2. 初始隔离选择（`branch` / `current`）
+2. 初始隔离选择（`branch` / `worktree` / `current`）
 3. 验证阶段（comet-verify）接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移或超过自动修复上限后的策略决策；前 3 次明确可修复失败自动闭环
 4. 归档前最终确认，以及归档提交后的分支处理决策
 
