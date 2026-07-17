@@ -379,6 +379,37 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 - 可公开证据：252 项 Native 回归、跨命令 exactly-once WAL、默认 status 的硬预算、内容寻址 checkpoint 与内部 junction 防护。
 - 不应公开的内部过程或不确定结论：Website 不展开临时模块名和 review 往返；在中文/英文 Skill 同步与真实模型专项 eval 前，不宣称澄清质量已达到 grilling，也不宣称所有宿主都会后台续跑。
 
+## 2026-07-17：波次 C 开发中——从“有验证报告”到“报告仍然有效”
+
+> 状态：开发中。本节保留已经被测试或复审证伪的设计边界；最终 CLI、测试数量与交付结论将在波次收口后补全，不应提前作为已发布能力引用。
+
+### 当时假设
+
+- 期望改善的强模型失败模式：模型可以写出看似完整的 `verification.md`，但报告没有绑定当时的需求契约、实现范围与验收场景；验证后继续修改代码，旧的 pass 仍可能被当成当前事实。
+- 为什么现有 Native 不足：当前 `verification_result: pass` 和报告路径只证明某个文件存在，不能证明 scope 完整、证据未过期、每项 Acceptance 都有对应证据，也不能保证 Archive 执行时仍然是用户刚预览的 canonical 变化。
+- 为什么这仍是轻流程：用户与模型继续使用 Shape、Build、Verify、Archive 四阶段；contract、snapshot、scope、trace、preflight hash 与事务恢复由 Runtime 派生和校验，不要求用户维护 coverage matrix 或理解内部 manifest。
+
+### 已证伪的初版边界
+
+- **恢复日志只有结构校验仍不够。** 第一版 v3 transition parser 能拒绝缺字段，却仍可能接受 `waiting` Run、伪造的 pending action、跳号 iteration 或改变了 storage identity 的 `nextRun`。这说明内容寻址字段不能建立在可伪造的恢复语义上。
+- **独立 scope 文档不能自己证明完整。** 若调用方能够删掉 snapshot omission、把 `complete` 改为 `true`，再重算 scope hash，纯结构 parser 仍会接受。scope 必须与内容寻址的 baseline/current snapshot projection 一起重建，存储入口也不能接受任意 standalone scope。
+- **“最终路径安全”不等于“敏感内容从未逃逸”。** 原子写若先向临时文件写内容、再检查父目录是否被 junction 替换，即使最终 rename 被拒绝，敏感字节也已经短暂写到 Native root 外。安全顺序必须是打开临时文件后先固定 identity、验证真实父链和物理包含关系，再写入内容，并在 rename 前再次复核。
+- **排除默认 `comet/` 不能覆盖自定义 root。** 用户可把 Native root 放在 `docs/comet/` 等位置；证据引用必须绑定实际 `nativeRootRef`，同时排除 `.npmrc`、`.pypirc`、`.netrc`、Git credential、SSH/GnuPG 与其他凭据文件，不能只写死 `runtime/` 或默认目录名。
+
+### 当前修正方向
+
+- v1、v2、v3 transition journal 共享同一语义校验：首跳与非首跳分别验证 Run/change 对齐、固定 Runtime metadata、storage refs、iteration、retry、status 与 pending；不可信 journal 保留在原地并 fail closed，不能写入 Run/change 或被当成已恢复删除。
+- implementation scope 改为 authority bundle：baseline/current snapshot projection 分别内容寻址，scope 只能由 contract、声明产物、no-code reason、可选 Git advisory 与两份 projection 确定性重建；读取时重新验证引用、hash 与派生字段。
+- evidence 文件使用有界读取与内容寻址存储，拒绝绝对路径、逃逸、symlink/junction、父目录替换、文件替换和敏感 ref；错误投影不得回显文件内容、绝对路径或凭据。
+- Archive preflight 绑定 change schema/revision/phase、pending journal、spec operation/base/proposed hash、evidence hash 与 freshness。后续公开流程将要求 dry-run 返回 preflight hash，真实 Archive 在锁内重算并通过 `--expect-preflight` 比较，而不是信任调用前的检查结果。
+
+### Website 可用叙事草稿
+
+- 用户问题：验证报告最危险的失败不是“没写”，而是代码或需求已经变了，报告看起来却仍然是绿色。
+- 关键取舍：Comet 不规定强模型怎样测试；它只记录“当时验证了哪份需求、哪一组实现文件、哪些验收场景”，并在这些事实变化时把旧结论标为 stale。
+- 可公开的设计故事：本轮复审从四个看似独立的漏洞得到同一结论——hash 只在输入来源可信、写入顺序安全、读取时可重建时才有意义。Native 因此选择内容寻址 projection + 派生 scope + 锁内 preflight，而不是再增加人工表单。
+- 暂不可公开为已交付事实：Archive dry-run/expect-preflight、完整/partial freshness、验收 trace 与专项真实模型效果尚未收口；正式 Website 只能在对应 Runtime、生成资产、测试和 eval 证据完成后改写为当前能力。
+
 ## 附录 A：原始 58 个检查点及收敛去向
 
 这份原始清单保留探索覆盖面。它不代表 58 个待发布功能；“收敛去向”才是当前设计决定。
