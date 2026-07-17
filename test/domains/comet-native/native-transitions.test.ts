@@ -14,6 +14,7 @@ import {
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 const brief = `# Outcome
 Ship the feature.
@@ -31,20 +32,6 @@ Use existing APIs.
 
 # Verification expectations
 Run focused tests.
-`;
-
-const verification = `# Acceptance evidence
-Scenario passed.
-# Commands and results
-Tests passed.
-# Skipped checks
-None.
-# Spec consistency
-Matches.
-# Known limitations and risks
-None.
-# Conclusion
-Pass.
 `;
 
 describe('Native guarded transitions', () => {
@@ -142,7 +129,14 @@ describe('Native guarded transitions', () => {
     });
     expect(build.change).toMatchObject({ phase: 'verify', approval: 'confirmed' });
 
-    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      await nativeVerificationFixtureReport({
+        paths,
+        name: 'advance-change',
+        evidenceRefs: ['feature.ts'],
+      }),
+    );
     const verify = await advanceNativeChange({
       paths,
       name: 'advance-change',
@@ -173,7 +167,12 @@ describe('Native guarded transitions', () => {
     });
     await fs.writeFile(
       path.join(changeDir, 'verification.md'),
-      verification.replace('Pass.', 'Fail.'),
+      await nativeVerificationFixtureReport({
+        paths,
+        name: 'advance-change',
+        evidenceRefs: ['feature.ts'],
+        conclusion: 'Fail',
+      }),
     );
 
     const result = await advanceNativeChange({
@@ -204,7 +203,14 @@ describe('Native guarded transitions', () => {
       name: 'advance-change',
       evidence: { summary: 'built', artifacts: ['feature.ts'] },
     });
-    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      await nativeVerificationFixtureReport({
+        paths,
+        name: 'advance-change',
+        evidenceRefs: ['feature.ts'],
+      }),
+    );
     const result = await advanceNativeChange({
       paths,
       name: 'advance-change',
@@ -215,7 +221,7 @@ describe('Native guarded transitions', () => {
       },
     });
     expect(result.change.phase).toBe('archive');
-    expect(result.nextCommand).toBe('comet native archive advance-change');
+    expect(result.nextCommand).toBe('comet native archive advance-change --dry-run');
     const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
     const source = await fs.readFile(path.join(changeDir, run.trajectoryRef), 'utf8');
     expect(source).not.toMatch(/reasoning|thoughts|chain_of_thought/iu);

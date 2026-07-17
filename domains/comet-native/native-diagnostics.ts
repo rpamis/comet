@@ -15,6 +15,7 @@ import {
   buildNativeResumeView,
   NATIVE_INSPECTION_REASON_DETAIL_BUDGET,
 } from './native-resume-view.js';
+import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
 import type {
   NativeChangeState,
   NativeFinding,
@@ -37,9 +38,17 @@ async function selectedName(paths: NativeProjectPaths): Promise<string | null> {
   }
 }
 
-export function nativeNextCommand(state: NativeChangeState, archiveReady: boolean): string | null {
+export function nativeNextCommand(
+  state: NativeChangeState,
+  archiveReady: boolean,
+  evidenceRetreat = false,
+): string | null {
   if (state.phase === 'archive') {
-    return archiveReady ? `comet native archive ${state.name}` : null;
+    return archiveReady
+      ? `comet native archive ${state.name} --dry-run`
+      : evidenceRetreat
+        ? `comet native next ${state.name} --summary "<summary>"`
+        : null;
   }
   return `comet native next ${state.name} --summary "<summary>"`;
 }
@@ -196,10 +205,50 @@ export async function inspectNativeStatus(
     };
   }
   const resume = await buildNativeResumeView({ paths, state });
-  const rawFindings = [...(await statusFindings(paths, state)), ...resume.findings];
+  let archivePreflight: Awaited<ReturnType<typeof inspectNativeArchivePreflight>> | null = null;
+  const archiveFindings: NativeFinding[] = [];
+  if (state.phase === 'archive') {
+    try {
+      archivePreflight = await inspectNativeArchivePreflight({ paths, name: state.name });
+      archiveFindings.push(
+        ...archivePreflight.findingCodes.map((code) => ({
+          code,
+          message: `Native Archive is blocked: ${code}`,
+        })),
+      );
+    } catch {
+      archiveFindings.push({
+        code: 'archive-preflight-invalid',
+        message: 'Native Archive preflight could not be recomputed safely',
+      });
+    }
+  }
+  const rawFindings = [
+    ...(await statusFindings(paths, state)),
+    ...resume.findings,
+    ...archiveFindings,
+  ].filter(
+    (finding, index, values) =>
+      values.findIndex(
+        (candidate) => candidate.code === finding.code && candidate.path === finding.path,
+      ) === index,
+  );
   const findings = structureNativeFindings({ paths, state, findings: rawFindings });
   const archiveReady =
-    state.phase === 'archive' && state.verification_result === 'pass' && findings.length === 0;
+    state.phase === 'archive' && archivePreflight?.ready === true && findings.length === 0;
+  const evidenceRetreat =
+    state.phase === 'archive' &&
+    (archivePreflight?.findingCodes ?? []).some((code) =>
+      new Set([
+        'verification-evidence-stale',
+        'verification-evidence-invalid',
+        'verification-evidence-missing',
+        'verification-contract-stale',
+        'verification-implementation-stale',
+        'verification-report-stale',
+        'verification-state-mismatch',
+      ]).has(code),
+    );
   const mutationBlocked = findings.some(
     (finding) =>
       finding.code === 'trajectory-tail-incomplete' || finding.code === 'trajectory-invalid',
@@ -212,13 +261,13 @@ export async function inspectNativeStatus(
     verificationResult: state.verification_result,
     specChanges: state.spec_changes.length,
     selected,
-    nextCommand: mutationBlocked ? null : nativeNextCommand(state, archiveReady),
+    nextCommand: mutationBlocked ? null : nativeNextCommand(state, archiveReady, evidenceRetreat),
     archiveReady,
     inspection: resume.inspection,
     findingSummary: summarizeNativeFindings(findings),
     detailsCommand: `comet native status ${state.name} --details`,
     checkpoint: resume.checkpoint,
-    continuation: nativeContinuation({ state, findings, archiveReady }),
+    continuation: nativeContinuation({ state, findings, archiveReady, evidenceRetreat }),
     ...(options?.details
       ? {
           findings: findings.slice(0, 50),

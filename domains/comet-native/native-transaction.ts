@@ -24,6 +24,27 @@ const JOURNAL_KEYS = new Set([
   'operations',
 ]);
 const OPERATION_KEYS = new Set(['id', 'type', 'source', 'target', 'staged', 'backup']);
+const ARCHIVE_V2_JOURNAL_KEYS = new Set([
+  'schema',
+  'id',
+  'kind',
+  'status',
+  'change',
+  'createdAt',
+  'preflightHash',
+  'operations',
+]);
+const ARCHIVE_V2_OPERATION_KEYS = new Set([
+  'id',
+  'type',
+  'source',
+  'target',
+  'staged',
+  'backup',
+  'expectedSourceHash',
+  'expectedTargetHash',
+  'stagedHash',
+]);
 const EVENT_KEYS = new Set(['sequence', 'timestamp', 'type', 'operationId']);
 const TRANSACTION_STATUSES = new Set<NativeTransactionStatus>([
   'prepared',
@@ -42,6 +63,29 @@ const EVENT_TYPES = new Set<NativeTransactionEvent['type']>([
   'rollback-started',
   'rollback-completed',
 ]);
+
+export interface NativeArchiveTransactionOperationV2 {
+  id: string;
+  type: 'write' | 'remove' | 'move';
+  source?: string;
+  target: string;
+  staged?: string;
+  backup?: string;
+  expectedSourceHash?: string;
+  expectedTargetHash: string | null;
+  stagedHash?: string;
+}
+
+export interface NativeArchiveTransactionJournalV2 {
+  schema: 'comet.native.transaction.v2';
+  id: string;
+  kind: 'archive';
+  status: NativeTransactionStatus;
+  change: string;
+  createdAt: string;
+  preflightHash: string;
+  operations: NativeArchiveTransactionOperationV2[];
+}
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -70,6 +114,25 @@ function assertRef(ref: unknown, label: string): asserts ref is string {
     ref.split(/[\\/]/u).includes('..')
   ) {
     throw new Error(`${label} must stay inside the Native root`);
+  }
+}
+
+function assertHash(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/u.test(value)) {
+    throw new Error(`${label} must be a SHA-256 hash`);
+  }
+}
+
+function assertArchiveRef(ref: unknown, label: string): asserts ref is string {
+  assertRef(ref, label);
+  if (
+    ref.includes('\\') ||
+    ref !== path.posix.normalize(ref) ||
+    ref.split('/').includes('.') ||
+    ref.endsWith('/') ||
+    Buffer.byteLength(ref, 'utf8') > 1024
+  ) {
+    throw new Error(`${label} must be a normalized Native-relative ref`);
   }
 }
 
@@ -106,8 +169,168 @@ function parseOperation(value: unknown, index: number): NativeTransactionOperati
   return operation as unknown as NativeTransactionOperation;
 }
 
+export function parseNativeArchiveTransactionJournalV2(
+  value: unknown,
+): NativeArchiveTransactionJournalV2 {
+  const journal = record(value, 'Native Archive transaction journal');
+  rejectUnknown(journal, ARCHIVE_V2_JOURNAL_KEYS, 'Native Archive transaction journal');
+  if (journal.schema !== 'comet.native.transaction.v2') {
+    throw new Error('Unsupported Native Archive transaction schema');
+  }
+  if (typeof journal.id !== 'string' || !/^[a-f0-9-]{8,}$/u.test(journal.id)) {
+    throw new Error('Native Archive transaction id is invalid');
+  }
+  if (journal.kind !== 'archive') throw new Error('Native v2 transaction kind must be archive');
+  if (
+    typeof journal.status !== 'string' ||
+    !TRANSACTION_STATUSES.has(journal.status as NativeTransactionStatus)
+  ) {
+    throw new Error('Native Archive transaction status is invalid');
+  }
+  if (
+    typeof journal.change !== 'string' ||
+    !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(journal.change)
+  ) {
+    throw new Error('Native Archive transaction change name is invalid');
+  }
+  if (!validTimestamp(journal.createdAt)) {
+    throw new Error('Native Archive transaction createdAt is invalid');
+  }
+  assertHash(journal.preflightHash, 'Native Archive transaction preflightHash');
+  if (!Array.isArray(journal.operations) || journal.operations.length > 65) {
+    throw new Error('Native Archive transaction operations must be an array');
+  }
+  const operations = journal.operations.map((value, index) => {
+    const operation = record(value, `Archive transaction operations[${index}]`);
+    rejectUnknown(operation, ARCHIVE_V2_OPERATION_KEYS, `Archive transaction operations[${index}]`);
+    if (typeof operation.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/u.test(operation.id)) {
+      throw new Error(`Archive transaction operations[${index}].id is invalid`);
+    }
+    if (operation.type !== 'write' && operation.type !== 'remove' && operation.type !== 'move') {
+      throw new Error(`Archive transaction operation ${operation.id} has an invalid type`);
+    }
+    assertArchiveRef(operation.target, `Archive transaction operation ${operation.id} target`);
+    for (const field of ['source', 'staged', 'backup'] as const) {
+      if (operation[field] !== undefined) {
+        assertArchiveRef(
+          operation[field],
+          `Archive transaction operation ${operation.id} ${field}`,
+        );
+      }
+    }
+    if (operation.expectedTargetHash !== null) {
+      assertHash(
+        operation.expectedTargetHash,
+        `Archive transaction operation ${operation.id} expectedTargetHash`,
+      );
+    }
+    if (operation.type === 'write') {
+      if (
+        operation.staged === undefined ||
+        operation.source !== undefined ||
+        operation.expectedSourceHash !== undefined
+      ) {
+        throw new Error(
+          `Archive write operation ${operation.id} requires staged and forbids source`,
+        );
+      }
+      assertHash(operation.stagedHash, `Archive write operation ${operation.id} stagedHash`);
+      if ((operation.expectedTargetHash === null) !== (operation.backup === undefined)) {
+        throw new Error(
+          `Archive write operation ${operation.id} backup must match target existence`,
+        );
+      }
+    } else if (operation.type === 'remove') {
+      if (
+        operation.source !== undefined ||
+        operation.staged !== undefined ||
+        operation.stagedHash !== undefined ||
+        operation.expectedSourceHash !== undefined ||
+        operation.backup === undefined ||
+        operation.expectedTargetHash === null
+      ) {
+        throw new Error(
+          `Archive remove operation ${operation.id} requires a bound target and backup`,
+        );
+      }
+    } else {
+      if (
+        operation.source === undefined ||
+        operation.staged !== undefined ||
+        operation.stagedHash !== undefined ||
+        operation.backup !== undefined ||
+        operation.expectedTargetHash !== null
+      ) {
+        throw new Error(
+          `Archive move operation ${operation.id} requires source and an absent target`,
+        );
+      }
+      assertHash(
+        operation.expectedSourceHash,
+        `Archive move operation ${operation.id} expectedSourceHash`,
+      );
+    }
+    return operation as unknown as NativeArchiveTransactionOperationV2;
+  });
+  const operationIds = operations.map((operation) => operation.id);
+  if (new Set(operationIds).size !== operationIds.length) {
+    throw new Error('Native Archive transaction operation ids must be unique');
+  }
+  const transactionPrefix = `runtime/transactions/${journal.id}`;
+  const archiveMoves = operations.filter((operation) => operation.type === 'move');
+  if (
+    archiveMoves.length !== 1 ||
+    archiveMoves[0].id !== 'archive-change' ||
+    archiveMoves[0].source !== `changes/${journal.change}` ||
+    !new RegExp(`^archive/\\d{4}-\\d{2}-\\d{2}-${journal.change}$`, 'u').test(
+      archiveMoves[0].target,
+    ) ||
+    operations.at(-1) !== archiveMoves[0]
+  ) {
+    throw new Error('Native Archive transaction must end with its exact change move');
+  }
+  const specTargets = new Set<string>();
+  for (const operation of operations.slice(0, -1)) {
+    if (
+      operation.type === 'move' ||
+      !/^specs\/[a-z][a-z0-9]*(?:-[a-z0-9]+)*\/spec\.md$/u.test(operation.target) ||
+      specTargets.has(operation.target)
+    ) {
+      throw new Error(`Native Archive transaction spec target is invalid: ${operation.target}`);
+    }
+    specTargets.add(operation.target);
+    if (
+      operation.staged !== undefined &&
+      !operation.staged.startsWith(`${transactionPrefix}/staged/specs/`)
+    ) {
+      throw new Error(`Native Archive transaction staged ref is invalid: ${operation.staged}`);
+    }
+    if (
+      operation.backup !== undefined &&
+      !operation.backup.startsWith(`${transactionPrefix}/backups/specs/`)
+    ) {
+      throw new Error(`Native Archive transaction backup ref is invalid: ${operation.backup}`);
+    }
+  }
+  return {
+    schema: 'comet.native.transaction.v2',
+    id: journal.id,
+    kind: 'archive',
+    status: journal.status as NativeTransactionStatus,
+    change: journal.change,
+    createdAt: journal.createdAt,
+    preflightHash: journal.preflightHash,
+    operations,
+  };
+}
+
 function parseJournal(value: unknown): NativeTransactionJournal {
   const journal = record(value, 'Native transaction journal');
+  if (journal.schema === 'comet.native.transaction.v2') {
+    // Generic callers (mutation lock and doctor) only consume the common id/kind/status/change
+    // fields. Archive execution always reparses through the v2-specific API below.
+    return parseNativeArchiveTransactionJournalV2(journal) as unknown as NativeTransactionJournal;
+  }
   rejectUnknown(journal, JOURNAL_KEYS, 'Native transaction journal');
   if (journal.schema !== 'comet.native.transaction.v1') {
     throw new Error('Unsupported Native transaction schema');
@@ -288,6 +511,9 @@ export async function createNativeTransaction(
   paths: NativeProjectPaths,
   journal: NativeTransactionJournal,
 ): Promise<void> {
+  if ((journal as unknown as { schema: string }).schema !== 'comet.native.transaction.v1') {
+    throw new Error('Native Archive v2 transactions require the content-bound transaction API');
+  }
   journal = parseJournal(journal);
   const tx = await resolveNativeTransactionPaths(paths, journal.id);
   await fs.mkdir(tx.staged, { recursive: true });
@@ -339,6 +565,9 @@ export async function setNativeTransactionStatus(
   journal: NativeTransactionJournal,
   status: NativeTransactionStatus,
 ): Promise<NativeTransactionJournal> {
+  if ((journal as unknown as { schema: string }).schema !== 'comet.native.transaction.v1') {
+    throw new Error('Native Archive v2 transactions require the content-bound transaction API');
+  }
   const updated = parseJournal({ ...journal, status });
   await atomicWriteJson((await resolveNativeTransactionPaths(paths, journal.id)).journal, updated);
   return updated;
@@ -392,6 +621,9 @@ export async function applyNativeTransaction(
   journal: NativeTransactionJournal,
   hooks?: NativeTransactionHooks,
 ): Promise<NativeTransactionJournal> {
+  if ((journal as unknown as { schema: string }).schema !== 'comet.native.transaction.v1') {
+    throw new Error('Native Archive v2 transactions require the content-bound transaction API');
+  }
   let current =
     journal.status === 'prepared'
       ? await setNativeTransactionStatus(paths, journal, 'applying')
@@ -441,6 +673,9 @@ export async function rollbackNativeTransaction(
   paths: NativeProjectPaths,
   journal: NativeTransactionJournal,
 ): Promise<NativeTransactionJournal> {
+  if ((journal as unknown as { schema: string }).schema !== 'comet.native.transaction.v1') {
+    throw new Error('Native Archive v2 transactions require the content-bound transaction API');
+  }
   const events = await readNativeTransactionEvents(paths, journal.id);
   if (
     events.some(
@@ -470,6 +705,9 @@ export async function finalizeNativeTransaction(
   journal: NativeTransactionJournal,
   event: 'archive-finalization-started' | 'archive-finalized' | 'commit',
 ): Promise<NativeTransactionJournal> {
+  if ((journal as unknown as { schema: string }).schema !== 'comet.native.transaction.v1') {
+    throw new Error('Native Archive v2 transactions require the content-bound transaction API');
+  }
   await appendEvent(paths, journal, event);
   return event === 'commit' ? setNativeTransactionStatus(paths, journal, 'committed') : journal;
 }

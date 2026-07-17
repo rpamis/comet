@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildNativeImplementationScope } from '../../../domains/comet-native/native-verification-scope.js';
+import { canonicalHash } from '../../../domains/comet-native/native-canonical-hash.js';
+import {
+  buildNativeImplementationScopeBundle,
+  buildNativeImplementationScope,
+  NATIVE_IMPLEMENTATION_SCOPE_SCHEMA,
+  parseNativeImplementationScopeBundle,
+  parseNativeImplementationScope,
+} from '../../../domains/comet-native/native-verification-scope.js';
 import type {
   NativeContentSnapshotManifest,
   NativeSnapshotEntry,
@@ -54,7 +61,7 @@ describe('Native implementation scope', () => {
       current: manifest({
         entries: [entry('modified.ts', HASH_B), entry('added.ts', HASH_C)],
       }),
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [
         { path: 'modified.ts', kind: 'file' },
         { path: 'added.ts', kind: 'file' },
@@ -82,7 +89,7 @@ describe('Native implementation scope', () => {
           entry('src/features-extra/b.ts', HASH_C),
         ],
       }),
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [
         { path: 'src/exact.ts', kind: 'file' },
         { path: 'src/features', kind: 'directory' },
@@ -123,7 +130,7 @@ describe('Native implementation scope', () => {
     const input = {
       baseline: manifest({ omitted: [omission], omittedCount: 3, overflow }),
       current: manifest(),
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [],
       noCodeReason: 'No tracked content changed.',
     };
@@ -156,14 +163,14 @@ describe('Native implementation scope', () => {
     const missing = buildNativeImplementationScope({
       baseline: unchanged,
       current: { ...unchanged, createdAt: '2026-07-18T00:00:00.000Z' },
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [],
       noCodeReason: '   ',
     });
     const explained = buildNativeImplementationScope({
       baseline: unchanged,
       current: { ...unchanged, createdAt: '2026-07-18T00:00:00.000Z' },
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [],
       noCodeReason: ' Documentation-only review. ',
     });
@@ -180,7 +187,7 @@ describe('Native implementation scope', () => {
     const result = buildNativeImplementationScope({
       baseline: manifest(),
       current: manifest({ entries: [entry('src/changed.ts', HASH_A)] }),
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [],
       noCodeReason: 'Claimed no-code change',
     });
@@ -192,10 +199,81 @@ describe('Native implementation scope', () => {
     ]);
   });
 
+  it('does not let a self-rehashed persisted document erase unresolved implementation work', () => {
+    const original = buildNativeImplementationScope({
+      baseline: manifest(),
+      current: manifest({ entries: [entry('src/changed.ts', HASH_A)] }),
+      contractHash: HASH_B,
+      declaredArtifacts: [],
+    });
+    const forged = structuredClone(original);
+    forged.complete = true;
+    forged.unattributed = [];
+    forged.unresolvedScopes = [];
+    const content = { ...forged } as Partial<typeof forged>;
+    delete content.scopeHash;
+    forged.scopeHash = canonicalHash(NATIVE_IMPLEMENTATION_SCOPE_SCHEMA, content);
+
+    expect(() => parseNativeImplementationScope(forged)).toThrow(
+      /unattributed changes|derived scopes|unresolved scopes/iu,
+    );
+  });
+
+  it('rebuilds snapshot omissions instead of trusting a self-rehashed complete scope', () => {
+    const omission: NativeSnapshotOmission = {
+      path: 'secret.ts',
+      size: 1,
+      type: 'file',
+      reason: 'file-size',
+    };
+    const bundle = buildNativeImplementationScopeBundle({
+      baseline: manifest({ omitted: [omission] }),
+      current: manifest(),
+      contractHash: HASH_B,
+      declaredArtifacts: [],
+      noCodeReason: 'No visible content changed.',
+    });
+    const forged = structuredClone(bundle);
+    forged.scope.complete = true;
+    forged.scope.unresolvedScopes = [];
+    const content = { ...forged.scope } as Partial<typeof forged.scope>;
+    delete content.scopeHash;
+    forged.scope.scopeHash = canonicalHash(NATIVE_IMPLEMENTATION_SCOPE_SCHEMA, content);
+
+    expect(() => parseNativeImplementationScope(forged.scope)).not.toThrow();
+    expect(() => parseNativeImplementationScopeBundle(forged)).toThrow(
+      'does not match its authoritative bundle',
+    );
+  });
+
+  it('does not let a caller rewrite scope attribution outside the build authority', () => {
+    const bundle = buildNativeImplementationScopeBundle({
+      baseline: manifest(),
+      current: manifest({ entries: [entry('src/changed.ts', HASH_A)] }),
+      contractHash: HASH_B,
+      declaredArtifacts: [],
+    });
+    const forged = structuredClone(bundle);
+    const declaration = { path: 'src/changed.ts', kind: 'file' as const };
+    forged.scope.declaredArtifacts = [declaration];
+    forged.scope.changes[0].attributedTo = [declaration];
+    forged.scope.unattributed = [];
+    forged.scope.unresolvedScopes = [];
+    forged.scope.complete = true;
+    const content = { ...forged.scope } as Partial<typeof forged.scope>;
+    delete content.scopeHash;
+    forged.scope.scopeHash = canonicalHash(NATIVE_IMPLEMENTATION_SCOPE_SCHEMA, content);
+
+    expect(() => parseNativeImplementationScope(forged.scope)).not.toThrow();
+    expect(() => parseNativeImplementationScopeBundle(forged)).toThrow(
+      'does not match its authoritative bundle',
+    );
+  });
+
   it('is invariant to timestamps and input array order', () => {
     const baselineEntries = [entry('z.ts', HASH_A), entry('a.ts', HASH_B)];
     const currentEntries = [entry('z.ts', HASH_C), entry('a.ts', HASH_B)];
-    const first = buildNativeImplementationScope({
+    const firstBundle = buildNativeImplementationScopeBundle({
       baseline: manifest({
         createdAt: '2026-01-01T00:00:00.000Z',
         entries: baselineEntries,
@@ -204,14 +282,14 @@ describe('Native implementation scope', () => {
         createdAt: '2026-02-01T00:00:00.000Z',
         entries: currentEntries,
       }),
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [
         { path: 'z.ts', kind: 'file' },
         { path: 'a.ts', kind: 'file' },
       ],
       gitChangedPaths: ['z.ts', 'a.ts'],
     });
-    const reordered = buildNativeImplementationScope({
+    const reorderedBundle = buildNativeImplementationScopeBundle({
       baseline: manifest({
         createdAt: '2030-01-01T00:00:00.000Z',
         entries: [...baselineEntries].reverse(),
@@ -220,7 +298,7 @@ describe('Native implementation scope', () => {
         createdAt: '2031-01-01T00:00:00.000Z',
         entries: [...currentEntries].reverse(),
       }),
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [
         { path: 'a.ts', kind: 'file' },
         { path: 'z.ts', kind: 'file' },
@@ -228,14 +306,18 @@ describe('Native implementation scope', () => {
       gitChangedPaths: ['a.ts', 'z.ts'],
     });
 
-    expect(reordered).toEqual(first);
+    expect(reorderedBundle).toEqual(firstBundle);
+    expect(reorderedBundle.scope.baselineProjectionRef).toBe(
+      firstBundle.scope.baselineProjectionRef,
+    );
+    expect(reorderedBundle.scope.currentProjectionRef).toBe(firstBundle.scope.currentProjectionRef);
   });
 
   it('changes the content address when content, contract, or ownership changes', () => {
     const baseInput = {
       baseline: manifest({ entries: [entry('src/a.ts', HASH_A)] }),
       current: manifest({ entries: [entry('src/a.ts', HASH_B)] }),
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [{ path: 'src/a.ts', kind: 'file' } as const],
     };
     const original = buildNativeImplementationScope(baseInput);
@@ -245,7 +327,7 @@ describe('Native implementation scope', () => {
     });
     const contractChanged = buildNativeImplementationScope({
       ...baseInput,
-      contractHash: 'contract-v2',
+      contractHash: HASH_C,
     });
     const ownershipChanged = buildNativeImplementationScope({
       ...baseInput,
@@ -262,14 +344,14 @@ describe('Native implementation scope', () => {
     const withoutGit = buildNativeImplementationScope({
       baseline: manifest(),
       current: manifest(),
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [],
       noCodeReason: 'Snapshots contain no changes.',
     });
     const withGit = buildNativeImplementationScope({
       baseline: manifest(),
       current: manifest(),
-      contractHash: 'contract-v1',
+      contractHash: HASH_B,
       declaredArtifacts: [],
       noCodeReason: 'Snapshots contain no changes.',
       gitChangedPaths: ['outside-snapshot.ts'],
@@ -300,7 +382,7 @@ describe('Native implementation scope', () => {
       buildNativeImplementationScope({
         baseline: manifest(),
         current: manifest(),
-        contractHash: 'contract-v1',
+        contractHash: HASH_B,
         declaredArtifacts: [{ path: invalidPath, kind: 'file' }],
         noCodeReason: 'No changes.',
       }),
@@ -309,7 +391,7 @@ describe('Native implementation scope', () => {
       buildNativeImplementationScope({
         baseline: manifest({ entries: [entry(invalidPath, HASH_A)] }),
         current: manifest(),
-        contractHash: 'contract-v1',
+        contractHash: HASH_B,
         declaredArtifacts: [],
       }),
     ).toThrow(/project root|project-relative/u);
@@ -317,7 +399,7 @@ describe('Native implementation scope', () => {
       buildNativeImplementationScope({
         baseline: manifest(),
         current: manifest(),
-        contractHash: 'contract-v1',
+        contractHash: HASH_B,
         declaredArtifacts: [],
         noCodeReason: 'No changes.',
         gitChangedPaths: [invalidPath],
@@ -330,7 +412,7 @@ describe('Native implementation scope', () => {
       buildNativeImplementationScope({
         baseline: manifest(),
         current: manifest(),
-        contractHash: 'contract-v1',
+        contractHash: HASH_B,
         declaredArtifacts: [
           { path: 'src/a.ts', kind: 'file' },
           { path: 'src/a.ts', kind: 'directory' },
@@ -343,7 +425,7 @@ describe('Native implementation scope', () => {
       buildNativeImplementationScope({
         baseline: manifest({ entries: [entry('a.ts', HASH_A), entry('a.ts', HASH_A)] }),
         current: manifest(),
-        contractHash: 'contract-v1',
+        contractHash: HASH_B,
         declaredArtifacts: [],
       }),
     ).toThrow('duplicate paths');

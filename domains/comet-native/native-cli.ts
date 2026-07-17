@@ -1,7 +1,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-import { archiveNativeChange, NativeSpecConflictError } from './native-archive.js';
+import {
+  archiveNativeChange,
+  NativeArchivePreflightError,
+  NativeSpecConflictError,
+} from './native-archive.js';
+import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
 import {
   createNativeChange,
   inspectNativeChange,
@@ -76,8 +81,9 @@ Commands:
   status [<change-name>]
   select <change-name>
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
-  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--result pass|fail] [--report <path>]
-  archive <change-name>
+  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>]
+  archive <change-name> --dry-run
+  archive <change-name> --expect-preflight <sha256>
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
 `;
 
@@ -382,6 +388,8 @@ async function dispatch(
     const confirmed = takeFlag(rawArgs, '--confirmed');
     const artifacts = takeMany(rawArgs, '--artifact');
     const noCodeReason = takeOption(rawArgs, '--no-code-reason');
+    const allowPartialScopeHash = takeOption(rawArgs, '--allow-partial-scope');
+    const partialReason = takeOption(rawArgs, '--partial-reason');
     const verificationResult = takeOption(rawArgs, '--result');
     const verificationReport = takeOption(rawArgs, '--report');
     if (
@@ -391,6 +399,17 @@ async function dispatch(
     ) {
       throw new NativeUsageError('--result must be pass or fail');
     }
+    if ((allowPartialScopeHash === undefined) !== (partialReason === undefined)) {
+      throw new NativeUsageError(
+        '--allow-partial-scope and --partial-reason must be provided together',
+      );
+    }
+    if (allowPartialScopeHash && !/^[a-f0-9]{64}$/u.test(allowPartialScopeHash)) {
+      throw new NativeUsageError('--allow-partial-scope must be a SHA-256 hash');
+    }
+    if (allowPartialScopeHash && !confirmed) {
+      throw new NativeUsageError('--allow-partial-scope requires --confirmed');
+    }
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
     const evidence: NativeAdvanceEvidence = {
@@ -398,6 +417,8 @@ async function dispatch(
       ...(confirmed ? { confirmed: true } : {}),
       ...(artifacts.length > 0 ? { artifacts } : {}),
       ...(noCodeReason ? { noCodeReason } : {}),
+      ...(allowPartialScopeHash ? { allowPartialScopeHash } : {}),
+      ...(partialReason ? { partialReason } : {}),
       ...(verificationResult ? { verificationResult } : {}),
       ...(verificationReport ? { verificationReport } : {}),
     };
@@ -418,10 +439,33 @@ async function dispatch(
   }
   if (command === 'archive') {
     const name = requiredPositional(rawArgs, 'change name');
+    const dryRun = takeFlag(rawArgs, '--dry-run');
+    const expectedPreflightHash = takeOption(rawArgs, '--expect-preflight');
+    if (dryRun && expectedPreflightHash) {
+      throw new NativeUsageError('--dry-run and --expect-preflight cannot be combined');
+    }
+    if (!dryRun && !expectedPreflightHash) {
+      throw new NativeUsageError('archive requires --dry-run or --expect-preflight <sha256>');
+    }
+    if (expectedPreflightHash && !/^[a-f0-9]{64}$/u.test(expectedPreflightHash)) {
+      throw new NativeUsageError('--expect-preflight must be a SHA-256 hash');
+    }
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
+    if (dryRun) {
+      const preview = await inspectNativeArchivePreflight({ paths, name });
+      return success(
+        'archive --dry-run',
+        preview,
+        `Native Archive preview ${preview.preflightHash}: ${preview.ready ? 'ready' : 'blocked'}\n`,
+      );
+    }
     const state = await readNativeChange(paths, name);
-    const result = await archiveNativeChange({ paths, name });
+    const result = await archiveNativeChange({
+      paths,
+      name,
+      expectedPreflightHash: expectedPreflightHash!,
+    });
     return success(
       'archive',
       { ...result, continuation: nativeContinuation({ state, done: true }) },
@@ -477,6 +521,14 @@ function errorResult(command: string | null, error: unknown): DispatchResult {
         actualHash: error.actualHash,
         canonicalPath: error.canonicalPath,
       },
+      error: { code: 'conflict', message: error.message },
+    };
+  }
+  if (error instanceof NativeArchivePreflightError) {
+    return {
+      command,
+      exitCode: 73,
+      data: error.preflight,
       error: { code: 'conflict', message: error.message },
     };
   }

@@ -4,6 +4,7 @@ import path from 'path';
 
 export interface NativeAtomicWriteOptions {
   containedRoot?: string;
+  beforeTemporaryOpen?: () => void | Promise<void>;
   beforeCommit?: () => void | Promise<void>;
 }
 
@@ -129,10 +130,29 @@ export async function atomicWriteText(
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   let temporaryIdentity: import('fs').Stats | undefined;
   try {
+    await options.beforeTemporaryOpen?.();
     handle = await fs.open(temporary, 'wx');
+    temporaryIdentity = await handle.stat();
+    if (directoryChain) {
+      const [temporaryPathStat, temporaryRealPath] = await Promise.all([
+        fs.lstat(temporary),
+        fs.realpath(temporary),
+      ]);
+      await verifyDirectoryChain(directoryChain);
+      if (
+        !temporaryPathStat.isFile() ||
+        temporaryPathStat.isSymbolicLink() ||
+        !sameFileIdentity(temporaryIdentity, temporaryPathStat) ||
+        !isInside(directoryChain[0].realPath, temporaryRealPath)
+      ) {
+        throw new Error('Native atomic write temporary file opened outside its managed parent');
+      }
+    }
     await handle.writeFile(content, 'utf8');
     await handle.sync();
-    temporaryIdentity = await handle.stat();
+    if (!sameFileIdentity(temporaryIdentity, await handle.stat())) {
+      throw new Error('Native atomic write temporary file changed while writing');
+    }
     await handle.close();
     handle = undefined;
     await options.beforeCommit?.();

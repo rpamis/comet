@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 const brief = `# Outcome
 Add sentence counting.
@@ -23,20 +24,6 @@ Use punctuation boundaries.
 None.
 # Verification expectations
 Run focused tests.
-`;
-
-const verification = `# Acceptance evidence
-Acceptance examples passed.
-# Commands and results
-Focused tests passed.
-# Skipped checks
-None.
-# Spec consistency
-Consistent.
-# Known limitations and risks
-None.
-# Conclusion
-Pass.
 `;
 
 interface JsonEnvelope {
@@ -155,7 +142,14 @@ describe('Comet Native CLI dispatcher', () => {
     ]);
     expect(built.exitCode, built.stderr).toBe(0);
 
-    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      await nativeVerificationFixtureReport({
+        paths,
+        name: 'sentence-counting',
+        evidenceRefs: ['feature.ts'],
+      }),
+    );
     const verified = json(
       await runNativeCli([
         'next',
@@ -172,7 +166,23 @@ describe('Comet Native CLI dispatcher', () => {
     );
     expect(verified).toMatchObject({ data: { change: { phase: 'archive' } } });
 
-    const archived = await runNativeCli(['archive', 'sentence-counting', ...projectArgs()]);
+    const preview = json(
+      await runNativeCli([
+        'archive',
+        'sentence-counting',
+        '--dry-run',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    const preflightHash = (preview.data as { preflightHash: string }).preflightHash;
+    const archived = await runNativeCli([
+      'archive',
+      'sentence-counting',
+      '--expect-preflight',
+      preflightHash,
+      ...projectArgs(),
+    ]);
     expect(archived.exitCode, archived.stderr).toBe(0);
     expect(archived.stdout).toContain('Archived Native change sentence-counting');
 

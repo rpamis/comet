@@ -13,6 +13,7 @@ import {
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { inspectNativeChangeConflicts } from '../../../domains/comet-native/native-conflict-inspection.js';
 import { readProjectConfig } from '../../../domains/comet-native/native-config.js';
 import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
@@ -25,6 +26,8 @@ import type {
   NativeProjectPaths,
   NativeSpecChange,
 } from '../../../domains/comet-native/native-types.js';
+import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+import { readyNativeArchivePreflight } from '../../helpers/native-archive.js';
 
 const BRIEF = `# Outcome
 Ship sentence counting.
@@ -42,20 +45,6 @@ Use punctuation terminators.
 None.
 # Verification expectations
 Run focused tests.
-`;
-
-const verification = (result: 'Pass' | 'Fail') => `# Acceptance evidence
-Sentence-counting acceptance examples ${result === 'Pass' ? 'passed' : 'failed'}.
-# Commands and results
-Focused tests ${result === 'Pass' ? 'passed' : 'failed'}.
-# Skipped checks
-None.
-# Spec consistency
-${result === 'Pass' ? 'Consistent' : 'Implementation needs repair'}.
-# Known limitations and risks
-None.
-# Conclusion
-${result}.
 `;
 
 interface JsonEnvelope {
@@ -135,7 +124,15 @@ async function prepareChange(options: {
 
   const report = path.join(changeDir, 'verification.md');
   if (options.failVerificationFirst) {
-    await fs.writeFile(report, verification('Fail'));
+    await fs.writeFile(
+      report,
+      await nativeVerificationFixtureReport({
+        paths: options.paths,
+        name: options.name,
+        evidenceRefs: [implementation],
+        conclusion: 'Fail',
+      }),
+    );
     const failed = await runNativeCli([
       'next',
       options.name,
@@ -164,7 +161,14 @@ async function prepareChange(options: {
     ).toBe(0);
   }
 
-  await fs.writeFile(report, verification('Pass'));
+  await fs.writeFile(
+    report,
+    await nativeVerificationFixtureReport({
+      paths: options.paths,
+      name: options.name,
+      evidenceRefs: [implementation],
+    }),
+  );
   const passed = await runNativeCli([
     'next',
     options.name,
@@ -217,7 +221,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     }
   });
 
-  it('returns Verify failure to Build and rejects a stale concurrent base hash at archive', async () => {
+  it('returns Verify failure to Build and blocks concurrent overlapping changes at archive', async () => {
     const projectRoot = await project();
     const paths = await initialize(projectRoot, 'docs');
     const canonical = path.join(paths.specsDir, 'sentence-counting', 'spec.md');
@@ -250,25 +254,57 @@ describe('Comet Native Phase 1 behavior matrix', () => {
       },
       proposed: '# Sentence counting\nSecond target behavior.\n',
     });
-
-    const first = await runNativeCli([
-      'archive',
-      'first-sentence-change',
-      '--project-root',
-      projectRoot,
-    ]);
-    expect(first.exitCode, first.stderr).toBe(0);
-    const second = json(
+    await expect(inspectNativeChangeConflicts(paths, 'first-sentence-change')).resolves.toMatchObject({
+      definiteConflictCount: 1,
+      findingCodes: ['native-change-conflict'],
+    });
+    const first = json(
       await runNativeCli([
         'archive',
-        'second-sentence-change',
+        'first-sentence-change',
+        '--dry-run',
         '--json',
         '--project-root',
         projectRoot,
       ]),
     );
-    expect(second).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });
-    expect(await fs.readFile(canonical, 'utf8')).toContain('First target behavior');
+    const second = json(
+      await runNativeCli([
+        'archive',
+        'second-sentence-change',
+        '--dry-run',
+        '--json',
+        '--project-root',
+        projectRoot,
+      ]),
+    );
+    expect(first).toMatchObject({
+      exitCode: 0,
+      data: {
+        ready: false,
+        findingCodes: expect.arrayContaining(['native-change-conflict']),
+      },
+    });
+    expect(second).toMatchObject({
+      exitCode: 0,
+      data: {
+        ready: false,
+        findingCodes: expect.arrayContaining(['native-change-conflict']),
+      },
+    });
+    const blockedCommit = json(
+      await runNativeCli([
+        'archive',
+        'first-sentence-change',
+        '--expect-preflight',
+        (first.data as { preflightHash: string }).preflightHash,
+        '--json',
+        '--project-root',
+        projectRoot,
+      ]),
+    );
+    expect(blockedCommit).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });
+    expect(await fs.readFile(canonical, 'utf8')).toContain('Original behavior');
   });
 
   it('continues and rolls back interrupted archive transactions deterministically', async () => {
@@ -288,10 +324,18 @@ describe('Comet Native Phase 1 behavior matrix', () => {
       proposed: '# Continue capability\nTarget behavior.\n',
     });
     let continueTransaction = '';
+    const continueNow = new Date();
+    const continuePreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'continue-archive',
+      now: continueNow,
+    });
     await expect(
       archiveNativeChange({
         paths,
         name: 'continue-archive',
+        expectedPreflightHash: continuePreflightHash,
+        now: continueNow,
         hooks: {
           afterPrepared(journal) {
             continueTransaction = journal.id;
@@ -325,10 +369,18 @@ describe('Comet Native Phase 1 behavior matrix', () => {
       proposed: '# Rollback capability\nTarget behavior.\n',
     });
     let rollbackTransaction = '';
+    const rollbackNow = new Date();
+    const rollbackPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'rollback-archive',
+      now: rollbackNow,
+    });
     await expect(
       archiveNativeChange({
         paths,
         name: 'rollback-archive',
+        expectedPreflightHash: rollbackPreflightHash,
+        now: rollbackNow,
         hooks: {
           afterPrepared(journal) {
             rollbackTransaction = journal.id;

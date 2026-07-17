@@ -167,6 +167,9 @@ export async function rebaseNativeSpecChanges(options: {
           spec_changes: specChanges,
           verification_result: 'pending',
           verification_report: null,
+          implementation_scope: null,
+          verification_evidence: null,
+          partial_allowance: null,
         };
         const nextRun = {
           ...run,
@@ -175,7 +178,14 @@ export async function rebaseNativeSpecChanges(options: {
           pending: null,
           status: 'running' as const,
         };
-        const evidenceHash = sha256Text(`spec-rebase:${state.name}:${options.summary}`);
+        const evidenceHash = sha256Text(
+          JSON.stringify({
+            operation: 'spec-rebase',
+            change: state.name,
+            summary: options.summary,
+            specChanges,
+          }),
+        );
         await prepareNativeTransition({
           paths: options.paths,
           previousState: state,
@@ -188,8 +198,11 @@ export async function rebaseNativeSpecChanges(options: {
             nextPhase: 'build',
             evidenceHash,
             summary: options.summary,
-            reason: 'spec-rebase',
+            artifacts: [],
+            noCodeReason: null,
+            verificationResult: null,
           },
+          operation: 'spec-rebase',
           now: options.now,
           transitionId: options.transitionId,
         });

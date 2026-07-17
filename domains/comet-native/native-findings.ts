@@ -57,6 +57,24 @@ const EXACT_METADATA: Record<string, FindingMetadata> = {
     retry: 'status',
     repair: 'none',
   },
+  'verification-scope-partial': {
+    severity: 'error',
+    requiredAction: 'confirm-partial-verification-scope',
+    retry: 'next',
+    repair: 'none',
+  },
+  'native-change-conflict': {
+    severity: 'error',
+    requiredAction: 'resolve-native-change-conflict',
+    retry: 'status',
+    repair: 'none',
+  },
+  'native-change-overlap': {
+    severity: 'error',
+    requiredAction: 'inspect-native-change-overlap',
+    retry: 'status',
+    repair: 'none',
+  },
 };
 
 function inferredMetadata(code: string): FindingMetadata {
@@ -160,7 +178,9 @@ export function structureNativeFindings(options: {
             : null,
         // This is intentionally code-based, not severity-based. Model-actionable
         // missing data must never be presented as a user decision.
-        requiresUserDecision: finding.code === 'brief-blocking-question',
+        requiresUserDecision:
+          finding.code === 'brief-blocking-question' ||
+          finding.code === 'verification-scope-partial',
       };
     })
     .sort((left, right) => {

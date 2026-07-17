@@ -403,12 +403,27 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 - evidence 文件使用有界读取与内容寻址存储，拒绝绝对路径、逃逸、symlink/junction、父目录替换、文件替换和敏感 ref；错误投影不得回显文件内容、绝对路径或凭据。
 - Archive preflight 绑定 change schema/revision/phase、pending journal、spec operation/base/proposed hash、evidence hash 与 freshness。后续公开流程将要求 dry-run 返回 preflight hash，真实 Archive 在锁内重算并通过 `--expect-preflight` 比较，而不是信任调用前的检查结果。
 
+### 实施过程补记
+
+- **状态引用第一次接线时把“新 scope”误写成“ref 必须变化”。** 内容寻址意味着同一契约与同一实现快照重新采集后必然得到相同 ref；若 Verify fail 后没有有效修改，直接由 journal 以 ref 相同拒绝，会让后续的重复失败告警与停止策略永远没有机会工作。修正后，Build→Verify 要求本次重新派生并读取校验非空 scope；scope 改变时禁止沿用旧 allowance，scope 相同时允许复用仍与该 hash 精确绑定的 allowance。是否“没有进展”改由波次 D 的失败签名判断。
+- **旧失败报告不能作为下一次 Verify 的当前输入。** 第一版沿用已存在的 `verification_report`，使 Build→Verify 后的 pending 状态仍携带上次 fail 报告。修正后 Build→Verify 清空 report 与 verification evidence，只保留上一次失败直到离开 Build；新的 Verify outcome 必须重新解析固定 Acceptance block 并生成新 envelope。
+- **旧 schema 中已准备好的证据型 transition 不能伪装成当前 transition。** v1/v2 的 Build→Verify、Verify fail→Build 和 Verify pass→Archive 都缺少当前 schema 所需的 scope/evidence refs。迁移不再补空字段后继续，而是由 migration journal 以 source content hash 收口旧 transition，必要时同步 Run、trajectory 与 checkpoint 退回 Build，清空旧 result/report/refs 后重新采集证据。
+- **真实接线让宽松测试夹具立即失败。** 旧生命周期测试只写人类可读的 `verification.md`，没有 Runtime 派生的 Acceptance ID，因此在新主链上全部被拒绝。没有为测试加入生产绕过；测试改为从实际 brief/proposed spec 收集 contract，再生成同一固定机器块。这轮失败证明 evidence parser 已位于真实 `next` 路径，而不是只存在于孤立模块测试。
+- **partial scope 是用户决定，不只是普通校验错误。** 未归属变化首次只返回 scope hash、精确未解决项和 `await-user` continuation；只有相同 scope hash、明确理由与 `--confirmed` 同时出现时才写入 allowance。确认后 Verify 与 Archive 只消费该内容寻址 allowance，不再次询问或从 Markdown 推断授权。
+- **Archive 从单步调用改成两步协议后，旧测试不能只补一个占位 hash。** 预演返回的 hash 同时绑定 revision、canonical spec、证据、目标目录和 pending WAL；实际归档必须显式携带同一个 hash，并在锁内重算。旧用例因此改为“先恢复 pending transition，再预演，再确认”，而不是在生产实现里为测试保留隐式归档入口。
+- **预检曾检查了一个并不存在的 journal 文件名。** transition 的真实文件是 `runtime/transition.json`，Archive inspection 初版却检查 `transition-journal.json`，导致中断 transition 没有进入 `pending-journal`。修正为复用状态机导出的唯一路径函数，并让测试也从同一函数构造 fixture，避免路径再次漂移。
+- **dry-run 的 blocked 不是命令执行失败。** `archive --dry-run` 即使发现冲突也以成功 envelope 返回完整、可检查的 blocked preview；只有随后携带 hash 的实际归档才返回 conflict。这样模型和 Dashboard 能读取所有 findings，而不是从异常字符串猜原因。
+- **事务日志不能靠绝对路径证明属于当前项目。** Archive transaction v2 只保存 Native 相对 ref、每步前后内容 hash 和完整 change tree hash；第一步前再次重算 preflight，恢复与回滚都会复验已完成操作。v1 日志只作为旧事务恢复兼容保留，新的归档不再把本机路径写入持久状态。
+- **并行 change 冲突必须在 canonical 写入前暴露。** 同一 Native root 内可见 change 会按 capability、operation、base hash 和声明产物形成确定冲突或可能重叠；两个竞争 change 都会得到 blocked preflight，不再允许“先归档者静默获胜”。workspace identity 只作为提示，不能改变冲突分类。
+
+截至本次补记，scope/evidence 的独立构造与存储、真实 Build→Verify→Archive/Build 接线、stale evidence 自动退回 Build、partial 确认、v1/v2 transition supersede、Archive transaction v2 和冲突阻塞已经进入同一主链；Native 全域 48 个测试文件、428 项通过。可选安全命令 receipt 已完成独立安全实现，但尚未接入公开 `check` seam；生成资产、专项 eval 和双语 Skill 也尚未最终收口，因此本节继续保持“开发中”，不提前作为发布结论。
+
 ### Website 可用叙事草稿
 
 - 用户问题：验证报告最危险的失败不是“没写”，而是代码或需求已经变了，报告看起来却仍然是绿色。
 - 关键取舍：Comet 不规定强模型怎样测试；它只记录“当时验证了哪份需求、哪一组实现文件、哪些验收场景”，并在这些事实变化时把旧结论标为 stale。
 - 可公开的设计故事：本轮复审从四个看似独立的漏洞得到同一结论——hash 只在输入来源可信、写入顺序安全、读取时可重建时才有意义。Native 因此选择内容寻址 projection + 派生 scope + 锁内 preflight，而不是再增加人工表单。
-- 暂不可公开为已交付事实：Archive dry-run/expect-preflight、完整/partial freshness、验收 trace 与专项真实模型效果尚未收口；正式 Website 只能在对应 Runtime、生成资产、测试和 eval 证据完成后改写为当前能力。
+- 暂不可公开为已交付事实：确定性 Runtime 主链已经通过回归，但生成资产、可选 receipt 接缝、双语 Skill 和专项真实模型效果尚未一起收口；正式 Website 只能在这些交付面完成后改写为当前能力。
 
 ## 附录 A：原始 58 个检查点及收敛去向
 

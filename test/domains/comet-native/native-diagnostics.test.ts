@@ -15,6 +15,7 @@ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.j
 import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
 import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 const brief = `# Outcome
 Ship a focused outcome.
@@ -32,20 +33,6 @@ Use Native state.
 None.
 # Verification expectations
 Run focused checks.
-`;
-
-const verification = `# Acceptance evidence
-Acceptance passed.
-# Commands and results
-Tests passed.
-# Skipped checks
-None.
-# Spec consistency
-Consistent.
-# Known limitations and risks
-None.
-# Conclusion
-Pass.
 `;
 
 describe('Native status diagnostics', () => {
@@ -115,7 +102,14 @@ describe('Native status diagnostics', () => {
       name: 'ready-change',
       evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
     });
-    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      await nativeVerificationFixtureReport({
+        paths,
+        name: 'ready-change',
+        evidenceRefs: ['feature.ts'],
+      }),
+    );
     await advanceNativeChange({
       paths,
       name: 'ready-change',
@@ -128,12 +122,12 @@ describe('Native status diagnostics', () => {
 
     expect(await inspectNativeStatus(paths, 'ready-change')).toMatchObject({
       archiveReady: true,
-      nextCommand: 'comet native archive ready-change',
+      nextCommand: 'comet native archive ready-change --dry-run',
     });
     await fs.rm(path.join(changeDir, 'verification.md'));
     expect(await inspectNativeStatus(paths, 'ready-change')).toMatchObject({
       archiveReady: false,
-      nextCommand: null,
+      nextCommand: 'comet native next ready-change --summary "<summary>"',
     });
   });
 

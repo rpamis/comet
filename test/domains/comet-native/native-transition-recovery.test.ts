@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { readCheckpoint, readTrajectory } from '../../../domains/engine/run-store.js';
 import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
-import { readRunStateAt } from '../../../domains/engine/storage-run.js';
+import { readRunStateAt, writeRunStateAt } from '../../../domains/engine/storage-run.js';
 import { archiveNativeChange } from '../../../domains/comet-native/native-archive.js';
+import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
 import {
   createNativeChange,
   nativeChangeDir,
@@ -15,7 +16,13 @@ import {
 } from '../../../domains/comet-native/native-change.js';
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
+import { sha256Text } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  inspectPendingNativeSchemaMigration,
+  migrateNativeChange,
+  nativeSchemaMigrationJournalFile,
+} from '../../../domains/comet-native/native-schema-migration.js';
 import {
   nativeBaselineManifestFile,
   readNativeBaselineManifest,
@@ -23,6 +30,8 @@ import {
 import {
   continueNativeTransition,
   inspectPendingNativeTransition,
+  inspectPendingNativeTransitionSchema,
+  inspectNativeTransitionJournalValue,
   nativeTransitionJournalFile,
 } from '../../../domains/comet-native/native-transition-journal.js';
 import { appendNativeTrajectoryEvent } from '../../../domains/comet-native/native-trajectory.js';
@@ -31,15 +40,20 @@ import { advanceNativeChange } from '../../../domains/comet-native/native-transi
 import type {
   NativeChangeState,
   NativeProjectPaths,
+  NativeSchemaMigrationHooks,
   NativeTransitionHooks,
   NativeTransitionJournal,
 } from '../../../domains/comet-native/native-types.js';
+import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+import { readyNativeArchivePreflight } from '../../helpers/native-archive.js';
 import {
   NATIVE_CHANGE_SCHEMA,
   NATIVE_LEGACY_CHANGE_SCHEMA,
   NATIVE_LEGACY_TRANSITION_SCHEMA,
   NATIVE_RUNTIME_PROTOCOL_VERSION,
   NATIVE_TRANSITION_SCHEMA,
+  NATIVE_V2_CHANGE_SCHEMA,
+  NATIVE_V2_TRANSITION_SCHEMA,
 } from '../../../domains/comet-native/native-types.js';
 
 const brief = `# Outcome
@@ -60,24 +74,14 @@ Use existing APIs.
 Run focused tests.
 `;
 
-const verification = `# Acceptance evidence
-Scenario passed.
-# Commands and results
-Tests passed.
-# Skipped checks
-None.
-# Spec consistency
-Matches.
-# Known limitations and risks
-None.
-# Conclusion
-Pass.
-`;
-
 function legacyState(state: NativeChangeState): Record<string, unknown> {
   const legacy: Record<string, unknown> = { ...state };
   delete legacy.minimum_runtime_version;
   delete legacy.revision;
+  delete legacy.operation;
+  delete legacy.implementation_scope;
+  delete legacy.verification_evidence;
+  delete legacy.partial_allowance;
   return { ...legacy, schema: NATIVE_LEGACY_CHANGE_SCHEMA };
 }
 
@@ -85,12 +89,50 @@ function legacyTransition(journal: NativeTransitionJournal): Record<string, unkn
   const legacy: Record<string, unknown> = { ...journal };
   delete legacy.minimum_runtime_version;
   delete legacy.revision;
+  delete legacy.operation;
   return {
     ...legacy,
     schema: NATIVE_LEGACY_TRANSITION_SCHEMA,
     previousState: legacyState(journal.previousState),
     nextState: legacyState(journal.nextState),
   };
+}
+
+function v2State(state: NativeChangeState): Record<string, unknown> {
+  const previous: Record<string, unknown> = { ...state };
+  delete previous.implementation_scope;
+  delete previous.verification_evidence;
+  delete previous.partial_allowance;
+  return {
+    ...previous,
+    schema: NATIVE_V2_CHANGE_SCHEMA,
+    minimum_runtime_version: 2,
+  };
+}
+
+function v2Transition(journal: NativeTransitionJournal): Record<string, unknown> {
+  const previous: Record<string, unknown> = {
+    ...journal,
+    schema: NATIVE_V2_TRANSITION_SCHEMA,
+    minimum_runtime_version: 2,
+    previousState: v2State(journal.previousState),
+    nextState: v2State(journal.nextState),
+  };
+  delete previous.operation;
+  return previous;
+}
+
+function transitionForGeneration(
+  journal: NativeTransitionJournal,
+  generation: 'v1' | 'v2' | 'v3',
+): Record<string, unknown> {
+  return structuredClone(
+    generation === 'v1'
+      ? legacyTransition(journal)
+      : generation === 'v2'
+        ? v2Transition(journal)
+        : journal,
+  ) as Record<string, unknown>;
 }
 
 describe('Native transition recovery', () => {
@@ -170,6 +212,580 @@ describe('Native transition recovery', () => {
     ).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it.each(['v1', 'v2', 'v3'] as const)(
+    'fails closed on a %s transition journal whose next Run is still waiting',
+    async (generation) => {
+      await expect(
+        advanceNativeChange({
+          paths,
+          name: 'recover-transition',
+          evidence: { summary: 'prepare corrupt Run journal' },
+          runId: () => `corrupt-${generation}-run`,
+          transitionId: () => `corrupt-${generation}-transition`,
+          hooks: {
+            afterPrepared: () => {
+              throw new Error('seed corrupt transition');
+            },
+          },
+        }),
+      ).rejects.toThrow('seed corrupt transition');
+      const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+      const stateAtCrash = await readNativeChange(paths, 'recover-transition');
+      const changeFile = path.join(changeDir, 'change.yaml');
+      const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
+      const journal = transitionForGeneration(currentJournal, generation);
+      Object.assign(journal.nextRun as Record<string, unknown>, {
+        status: 'waiting',
+        pending: 'corrupt-action',
+      });
+      if (generation === 'v1') {
+        await fs.writeFile(changeFile, stringify(legacyState(stateAtCrash)));
+      } else if (generation === 'v2') {
+        await fs.writeFile(changeFile, stringify(v2State(stateAtCrash)));
+      }
+      await fs.writeFile(transitionFile, JSON.stringify(journal, null, 2) + '\n');
+      const [changeBefore, transitionBefore] = await Promise.all([
+        fs.readFile(changeFile, 'utf8'),
+        fs.readFile(transitionFile, 'utf8'),
+      ]);
+
+      await expect(
+        inspectPendingNativeTransitionSchema(paths, 'recover-transition'),
+      ).rejects.toThrow(/status must be running/iu);
+      if (generation === 'v3') {
+        await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
+          /status must be running/iu,
+        );
+      } else {
+        await expect(migrateNativeChange({ paths, name: 'recover-transition' })).rejects.toThrow(
+          /status must be running/iu,
+        );
+      }
+      expect(await fs.readFile(changeFile, 'utf8')).toBe(changeBefore);
+      expect(await fs.readFile(transitionFile, 'utf8')).toBe(transitionBefore);
+      expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toBeNull();
+      await expect(
+        fs.access(path.join(changeDir, 'runtime', 'schema-migration.json')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
+  it.each(['v1', 'v2', 'v3'] as const)(
+    'rejects %s non-first-hop Run identity, ref, retry, and iteration tampering',
+    async (generation) => {
+      await advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'shape ready for invariant matrix' },
+        runId: () => `matrix-${generation}-run`,
+      });
+      await fs.writeFile(
+        path.join(projectRoot, 'matrix-feature.ts'),
+        'export const ready = true;\n',
+      );
+      await expect(
+        advanceNativeChange({
+          paths,
+          name: 'recover-transition',
+          evidence: { summary: 'build ready', artifacts: ['matrix-feature.ts'] },
+          hooks: {
+            afterPrepared: () => {
+              throw new Error('seed non-first transition');
+            },
+          },
+        }),
+      ).rejects.toThrow('seed non-first transition');
+      const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+      expect(current.previousRun).not.toBeNull();
+
+      const mutations: Array<{
+        label: string;
+        apply: (journal: Record<string, unknown>) => void;
+      }> = [
+        {
+          label: 'waiting next Run',
+          apply: (journal) =>
+            Object.assign(journal.nextRun as Record<string, unknown>, {
+              status: 'waiting',
+              pending: 'corrupt-action',
+            }),
+        },
+        {
+          label: 'pending next Run action',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).pending = 'corrupt-action';
+          },
+        },
+        {
+          label: 'iteration reuse',
+          apply: (journal) => {
+            const previous = journal.previousRun as Record<string, unknown>;
+            (journal.nextRun as Record<string, unknown>).iteration = previous.iteration;
+          },
+        },
+        {
+          label: 'run identity',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).runId = 'different-run';
+          },
+        },
+        {
+          label: 'runtime metadata',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).skillHash = 'f'.repeat(64);
+          },
+        },
+        {
+          label: 'context ref',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).contextRef = 'runtime/other-context.md';
+          },
+        },
+        {
+          label: 'trajectory ref',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).trajectoryRef =
+              'runtime/other-trajectory.jsonl';
+          },
+        },
+        {
+          label: 'retry counters',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).retries = { corrupt: 1 };
+          },
+        },
+        {
+          label: 'previous phase',
+          apply: (journal) => {
+            (journal.previousRun as Record<string, unknown>).currentStep = 'verify';
+          },
+        },
+        {
+          label: 'waiting previous Run',
+          apply: (journal) =>
+            Object.assign(journal.previousRun as Record<string, unknown>, {
+              status: 'waiting',
+              pending: 'corrupt-action',
+            }),
+        },
+      ];
+
+      for (const mutation of mutations) {
+        const journal = transitionForGeneration(current, generation);
+        mutation.apply(journal);
+        expect(
+          () => inspectNativeTransitionJournalValue(journal, 'recover-transition'),
+          mutation.label,
+        ).toThrow(/Native transition journal/iu);
+      }
+    },
+  );
+
+  it.each(['v1', 'v2', 'v3'] as const)(
+    'rejects %s first-hop Run metadata, iteration, retry, and previous-run tampering',
+    async (generation) => {
+      await expect(
+        advanceNativeChange({
+          paths,
+          name: 'recover-transition',
+          evidence: { summary: 'shape ready for first-hop matrix' },
+          runId: () => `first-hop-${generation}-run`,
+          hooks: {
+            afterPrepared: () => {
+              throw new Error('seed first-hop transition');
+            },
+          },
+        }),
+      ).rejects.toThrow('seed first-hop transition');
+      const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+      expect(current.previousRun).toBeNull();
+
+      const mutations: Array<{
+        label: string;
+        apply: (journal: Record<string, unknown>) => void;
+      }> = [
+        {
+          label: 'first pending action',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).pending = 'corrupt-action';
+          },
+        },
+        {
+          label: 'first iteration skip',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).iteration = 2;
+          },
+        },
+        {
+          label: 'first retries',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).retries = { corrupt: 1 };
+          },
+        },
+        {
+          label: 'first runtime metadata',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).skill = 'other-runtime';
+          },
+        },
+        {
+          label: 'first storage ref',
+          apply: (journal) => {
+            (journal.nextRun as Record<string, unknown>).checkpointRef =
+              'runtime/checkpoints/other.json';
+          },
+        },
+        {
+          label: 'first previous state run id',
+          apply: (journal) => {
+            (journal.previousState as Record<string, unknown>).run_id = (
+              journal.nextRun as Record<string, unknown>
+            ).runId;
+          },
+        },
+        {
+          label: 'unexpected previous Run',
+          apply: (journal) => {
+            journal.previousRun = {
+              ...(journal.nextRun as Record<string, unknown>),
+              currentStep: 'shape',
+              iteration: 0,
+            };
+          },
+        },
+      ];
+
+      for (const mutation of mutations) {
+        const journal = transitionForGeneration(current, generation);
+        mutation.apply(journal);
+        expect(
+          () => inspectNativeTransitionJournalValue(journal, 'recover-transition'),
+          mutation.label,
+        ).toThrow(/Native transition journal/iu);
+      }
+    },
+  );
+
+  it.each(['v1', 'v2', 'v3'] as const)(
+    'rejects %s non-adjacent phases and non-canonical event evidence',
+    async (generation) => {
+      await expect(
+        advanceNativeChange({
+          paths,
+          name: 'recover-transition',
+          evidence: { summary: 'shape ready for semantic matrix' },
+          runId: () => `semantics-${generation}-run`,
+          hooks: {
+            afterPrepared: () => {
+              throw new Error('seed semantic transition');
+            },
+          },
+        }),
+      ).rejects.toThrow('seed semantic transition');
+      const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+      const mutations: Array<{
+        label: string;
+        apply: (journal: Record<string, unknown>) => void;
+      }> = [
+        {
+          label: 'Shape skips Build',
+          apply: (journal) => {
+            (journal.nextState as Record<string, unknown>).phase = 'verify';
+            (journal.nextRun as Record<string, unknown>).currentStep = 'verify';
+            (journal.eventData as Record<string, unknown>).nextPhase = 'verify';
+          },
+        },
+        {
+          label: 'event has an unknown key',
+          apply: (journal) => {
+            (journal.eventData as Record<string, unknown>).extra = true;
+          },
+        },
+        {
+          label: 'event omits a canonical key',
+          apply: (journal) => {
+            delete (journal.eventData as Record<string, unknown>).summary;
+          },
+        },
+        {
+          label: 'event evidence hash diverges',
+          apply: (journal) => {
+            (journal.eventData as Record<string, unknown>).evidenceHash = 'f'.repeat(64);
+          },
+        },
+        {
+          label: 'event phase diverges',
+          apply: (journal) => {
+            (journal.eventData as Record<string, unknown>).previousPhase = 'build';
+          },
+        },
+        {
+          label: 'Shape claims verification evidence',
+          apply: (journal) => {
+            (journal.eventData as Record<string, unknown>).verificationResult = 'pass';
+          },
+        },
+        {
+          label: 'Shape claims build artifacts',
+          apply: (journal) => {
+            (journal.eventData as Record<string, unknown>).artifacts = ['unexpected.ts'];
+          },
+        },
+      ];
+
+      for (const mutation of mutations) {
+        const journal = transitionForGeneration(current, generation);
+        mutation.apply(journal);
+        expect(
+          () => inspectNativeTransitionJournalValue(journal, 'recover-transition'),
+          mutation.label,
+        ).toThrow(/Native transition journal/iu);
+      }
+    },
+  );
+
+  it('requires a typed v3 operation and does not let spec-rebase bypass advance semantics', async () => {
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'shape ready for typed operation checks' },
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('seed typed operation transition');
+          },
+        },
+      }),
+    ).rejects.toThrow('seed typed operation transition');
+    const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+    const missing = structuredClone(current) as unknown as Record<string, unknown>;
+    delete missing.operation;
+    expect(() => inspectNativeTransitionJournalValue(missing, 'recover-transition')).toThrow(
+      /operation is invalid/iu,
+    );
+    const spoofed = structuredClone(current);
+    spoofed.operation = 'spec-rebase';
+    expect(() => inspectNativeTransitionJournalValue(spoofed, 'recover-transition')).toThrow(
+      /spec rebase semantics are invalid/iu,
+    );
+  });
+
+  it.each(['v1', 'v2'] as const)(
+    'deterministically migrates an old %s spec-rebase journal into the typed operation',
+    async (generation) => {
+      await advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'shape ready before old rebase' },
+        runId: () => `old-${generation}-rebase-run`,
+      });
+      await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const ready = true;\n');
+      await expect(
+        advanceNativeChange({
+          paths,
+          name: 'recover-transition',
+          evidence: { summary: 'seed source journal', artifacts: ['feature.ts'] },
+          hooks: {
+            afterPrepared: () => {
+              throw new Error('seed old spec rebase');
+            },
+          },
+        }),
+      ).rejects.toThrow('seed old spec rebase');
+      const current = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+      const summary = 'Refresh the old spec base';
+      const legacyHash = sha256Text(`spec-rebase:${current.change}:${summary}`);
+      const rebase = structuredClone(current);
+      rebase.operation = 'spec-rebase';
+      rebase.evidenceHash = legacyHash;
+      rebase.nextState.phase = 'build';
+      rebase.nextState.verification_result = 'pending';
+      rebase.nextState.verification_report = null;
+      rebase.nextState.implementation_scope = null;
+      rebase.nextState.verification_evidence = null;
+      rebase.nextState.partial_allowance = null;
+      rebase.nextRun.currentStep = 'build';
+      rebase.eventData = {
+        previousPhase: 'build',
+        nextPhase: 'build',
+        evidenceHash: legacyHash,
+        summary,
+        artifacts: [],
+        noCodeReason: null,
+        verificationResult: null,
+      };
+      const old = transitionForGeneration(rebase, generation);
+      old.eventData = {
+        previousPhase: 'build',
+        nextPhase: 'build',
+        evidenceHash: legacyHash,
+        summary,
+        reason: 'spec-rebase',
+      };
+      const state = await readNativeChange(paths, 'recover-transition');
+      await fs.writeFile(
+        path.join(changeDir, 'change.yaml'),
+        stringify(generation === 'v1' ? legacyState(state) : v2State(state)),
+      );
+      await fs.writeFile(
+        nativeTransitionJournalFile(paths, 'recover-transition'),
+        JSON.stringify(old, null, 2) + '\n',
+      );
+
+      await migrateNativeChange({ paths, name: 'recover-transition' });
+      const migrated = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+      expect(migrated).toMatchObject({
+        operation: 'spec-rebase',
+        previousState: { phase: 'build' },
+        nextState: {
+          phase: 'build',
+          verification_result: 'pending',
+          verification_report: null,
+          implementation_scope: null,
+          verification_evidence: null,
+          partial_allowance: null,
+        },
+      });
+      expect(migrated.evidenceHash).not.toBe(legacyHash);
+      await continueNativeTransition(paths, 'recover-transition');
+      const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+      const event = (await readTrajectory(changeDir, run.trajectoryRef)).at(-1)!;
+      expect(event).toMatchObject({
+        type: 'state_transitioned',
+        data: {
+          previousPhase: 'build',
+          nextPhase: 'build',
+          summary,
+          artifacts: [],
+          noCodeReason: null,
+          verificationResult: null,
+          transitionId: current.id,
+        },
+      });
+      expect(Object.keys(event.data).sort()).toEqual(
+        [
+          'artifacts',
+          'evidenceHash',
+          'nextPhase',
+          'noCodeReason',
+          'previousPhase',
+          'summary',
+          'transitionId',
+          'verificationResult',
+        ].sort(),
+      );
+    },
+  );
+
+  it('preserves a pending journal when the same-revision change content diverges', async () => {
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'seed change CAS recovery' },
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('seed pending change CAS');
+          },
+        },
+      }),
+    ).rejects.toThrow('seed pending change CAS');
+    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
+    const changeFile = path.join(changeDir, 'change.yaml');
+    const current = await readNativeChange(paths, 'recover-transition');
+    await fs.writeFile(changeFile, stringify({ ...current, approval: 'confirmed' }));
+    const [changeBefore, journalBefore] = await Promise.all([
+      fs.readFile(changeFile, 'utf8'),
+      fs.readFile(transitionFile, 'utf8'),
+    ]);
+
+    await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
+      /change content changed/iu,
+    );
+    expect(await fs.readFile(changeFile, 'utf8')).toBe(changeBefore);
+    expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
+    expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toBeNull();
+  });
+
+  it('preserves a pending journal when a different valid Run is present', async () => {
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'seed Run CAS recovery' },
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('seed pending Run CAS');
+          },
+        },
+      }),
+    ).rejects.toThrow('seed pending Run CAS');
+    const journal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
+    await writeRunStateAt(
+      changeDir,
+      { ...journal.nextRun, runId: 'other-valid-run' },
+      NATIVE_RUN_STORAGE,
+    );
+    const [changeBefore, journalBefore] = await Promise.all([
+      fs.readFile(path.join(changeDir, 'change.yaml'), 'utf8'),
+      fs.readFile(transitionFile, 'utf8'),
+    ]);
+
+    await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
+      /Run content changed/iu,
+    );
+    expect(await fs.readFile(path.join(changeDir, 'change.yaml'), 'utf8')).toBe(changeBefore);
+    expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
+    expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toMatchObject({
+      runId: 'other-valid-run',
+    });
+  });
+
+  it('rejects an existing transition event whose full content does not match the journal', async () => {
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'seed trajectory collision' },
+        transitionId: () => '55555555-6666-4777-8888-999999999999',
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('seed pending trajectory collision');
+          },
+        },
+      }),
+    ).rejects.toThrow('seed pending trajectory collision');
+    const journal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+    await appendNativeTrajectoryEvent({
+      changeDir,
+      run: journal.nextRun,
+      type: 'run_started',
+      data: {
+        runtime: 'comet-native',
+        phase: journal.previousState.phase,
+        transitionId: journal.id,
+      },
+      now: new Date(journal.createdAt),
+    });
+    await appendNativeTrajectoryEvent({
+      changeDir,
+      run: journal.nextRun,
+      type: 'state_transitioned',
+      data: { ...journal.eventData, summary: 'tampered summary', transitionId: journal.id },
+      now: new Date(journal.createdAt),
+    });
+    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
+    const journalBefore = await fs.readFile(transitionFile, 'utf8');
+
+    await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
+      /trajectory event changed/iu,
+    );
+    expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
+    expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toBeNull();
+    expect((await readNativeChange(paths, 'recover-transition')).phase).toBe('shape');
   });
 
   it.each<{
@@ -345,6 +961,368 @@ describe('Native transition recovery', () => {
       expect((await readNativeChange(paths, 'recover-transition')).revision).toBe(2);
       const replayedEvents = await readTrajectory(changeDir, currentJournal.nextRun.trajectoryRef);
       expect(replayedEvents).toEqual(events);
+    },
+  );
+
+  it('migrates and continues a directly persisted v2 transition exactly once', async () => {
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'shape was ready under v2' },
+        runId: () => 'v2-transition-run',
+        transitionId: () => '22222222-3333-4444-8555-666666666666',
+        now: new Date('2026-07-17T04:00:00.000Z'),
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('interrupt v2 transition');
+          },
+        },
+      }),
+    ).rejects.toThrow('interrupt v2 transition');
+    const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+    const changeFile = path.join(changeDir, 'change.yaml');
+    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
+    await fs.writeFile(
+      changeFile,
+      stringify(v2State(await readNativeChange(paths, 'recover-transition'))),
+    );
+    await fs.writeFile(
+      transitionFile,
+      JSON.stringify(v2Transition(currentJournal), null, 2) + '\n',
+    );
+
+    expect(await inspectNativeStatus(paths, 'recover-transition')).toMatchObject({
+      schema: NATIVE_V2_CHANGE_SCHEMA,
+      migrationRequired: true,
+      nextCommand: null,
+    });
+    const repaired = await doctorNativeProject({
+      paths,
+      name: 'recover-transition',
+      repair: true,
+      recoveryStrategy: 'continue',
+    });
+    expect(repaired.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'schema-migrated', severity: 'info' }),
+        expect.objectContaining({ code: 'transition-recovered', severity: 'info' }),
+      ]),
+    );
+    expect(await readNativeChange(paths, 'recover-transition')).toMatchObject({
+      schema: NATIVE_CHANGE_SCHEMA,
+      phase: 'build',
+      revision: 2,
+      implementation_scope: null,
+      verification_evidence: null,
+      partial_allowance: null,
+    });
+    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+    expect(run).toMatchObject({ runId: 'v2-transition-run', currentStep: 'build' });
+    const events = await readTrajectory(changeDir, run.trajectoryRef);
+    expect(
+      events.filter(
+        (event) =>
+          event.type === 'state_transitioned' && event.data.transitionId === currentJournal.id,
+      ),
+    ).toHaveLength(1);
+    await expect(fs.access(transitionFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('recovers a v1 transition migration interrupted after writing the v2 journal', async () => {
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'shape ready before migration interruption' },
+        runId: () => 'transition-migration-run',
+        transitionId: () => '44444444-5555-4666-8777-888888888888',
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('seed pending transition');
+          },
+        },
+      }),
+    ).rejects.toThrow('seed pending transition');
+    const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+    const changeFile = path.join(changeDir, 'change.yaml');
+    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
+    await fs.writeFile(
+      changeFile,
+      stringify(legacyState(await readNativeChange(paths, 'recover-transition'))),
+    );
+    await fs.writeFile(
+      transitionFile,
+      JSON.stringify(legacyTransition(currentJournal), null, 2) + '\n',
+    );
+
+    await expect(
+      migrateNativeChange({
+        paths,
+        name: 'recover-transition',
+        id: () => 'interrupted-transition-migration',
+        hooks: {
+          afterTransitionWritten: () => {
+            throw new Error('interrupt after v2 transition write');
+          },
+        },
+      }),
+    ).rejects.toThrow('interrupt after v2 transition write');
+    expect(await inspectPendingNativeSchemaMigration(paths, 'recover-transition')).toMatchObject({
+      fromSchema: NATIVE_LEGACY_CHANGE_SCHEMA,
+      toSchema: NATIVE_V2_CHANGE_SCHEMA,
+      transition: {
+        nextJournal: { schema: NATIVE_V2_TRANSITION_SCHEMA },
+      },
+    });
+
+    await migrateNativeChange({ paths, name: 'recover-transition' });
+    await continueNativeTransition(paths, 'recover-transition');
+    expect(await readNativeChange(paths, 'recover-transition')).toMatchObject({
+      schema: NATIVE_CHANGE_SCHEMA,
+      phase: 'build',
+      revision: 2,
+    });
+    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+    expect(
+      (await readTrajectory(changeDir, run.trajectoryRef)).filter(
+        (event) =>
+          event.type === 'state_transitioned' && event.data.transitionId === currentJournal.id,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('supersedes a durable v2 Archive transition through the schema-migration journal', async () => {
+    await advanceNativeChange({
+      paths,
+      name: 'recover-transition',
+      evidence: { summary: 'shape ready' },
+      runId: () => 'v2-archive-transition-run',
+    });
+    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const ready = true;\n');
+    await advanceNativeChange({
+      paths,
+      name: 'recover-transition',
+      evidence: { summary: 'build ready', artifacts: ['feature.ts'] },
+    });
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      await nativeVerificationFixtureReport({
+        paths,
+        name: 'recover-transition',
+        evidenceRefs: ['feature.ts'],
+      }),
+    );
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: {
+          summary: 'verification passed under v2',
+          verificationResult: 'pass',
+          verificationReport: 'verification.md',
+        },
+        transitionId: () => '33333333-4444-4555-8666-777777777777',
+        now: new Date('2026-07-17T05:00:00.000Z'),
+        hooks: {
+          afterChangeStateWritten: () => {
+            throw new Error('interrupt after archive state');
+          },
+        },
+      }),
+    ).rejects.toThrow('interrupt after archive state');
+    const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+    await appendNativeTrajectoryEvent({
+      changeDir,
+      run: currentJournal.nextRun,
+      type: 'state_transitioned',
+      data: { ...currentJournal.eventData, transitionId: currentJournal.id },
+      now: new Date(currentJournal.createdAt),
+    });
+
+    const changeFile = path.join(changeDir, 'change.yaml');
+    const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
+    await fs.writeFile(
+      changeFile,
+      stringify(v2State(await readNativeChange(paths, 'recover-transition'))),
+    );
+    await fs.writeFile(
+      transitionFile,
+      JSON.stringify(v2Transition(currentJournal), null, 2) + '\n',
+    );
+
+    await doctorNativeProject({
+      paths,
+      name: 'recover-transition',
+      repair: true,
+      recoveryStrategy: 'continue',
+    });
+    const state = await readNativeChange(paths, 'recover-transition');
+    expect(state).toMatchObject({
+      phase: 'build',
+      revision: currentJournal.nextState.revision + 1,
+      verification_result: 'pending',
+      verification_report: null,
+      implementation_scope: null,
+      verification_evidence: null,
+      partial_allowance: null,
+    });
+    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+    expect(run).toMatchObject({
+      currentStep: 'build',
+      iteration: currentJournal.nextRun.iteration + 1,
+      pending: null,
+      status: 'running',
+    });
+    const events = await readTrajectory(changeDir, run.trajectoryRef);
+    expect(
+      events.filter(
+        (event) =>
+          event.type === 'state_transitioned' && event.data.transitionId === currentJournal.id,
+      ),
+    ).toHaveLength(1);
+    expect(
+      events.filter(
+        (event) =>
+          event.type === 'state_migrated' &&
+          event.data.supersededTransitionId === currentJournal.id &&
+          event.data.previousPhase === 'archive' &&
+          event.data.nextPhase === 'build',
+      ),
+    ).toHaveLength(1);
+    await expect(fs.access(transitionFile)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readCheckpoint(changeDir, run.checkpointRef)).toMatchObject({
+      runId: run.runId,
+      stateVersion: run.iteration,
+      trajectoryOffset: events.length,
+    });
+    const status = await inspectNativeStatus(paths, 'recover-transition', { details: true });
+    expect((status.findings ?? []).map((finding) => finding.code)).not.toEqual(
+      expect.arrayContaining(['run-phase-mismatch', 'checkpoint-mismatch', 'trajectory-invalid']),
+    );
+  });
+
+  it.each<{
+    label: string;
+    slug: string;
+    hook: keyof NativeSchemaMigrationHooks;
+  }>([
+    { label: 'prepared plan', slug: 'prepared', hook: 'afterPrepared' },
+    { label: 'state write', slug: 'state', hook: 'afterStateWritten' },
+    { label: 'Run write', slug: 'run', hook: 'afterRunStateWritten' },
+    { label: 'migration event', slug: 'event', hook: 'afterTrajectoryWritten' },
+    { label: 'checkpoint', slug: 'checkpoint', hook: 'afterCheckpointWritten' },
+    {
+      label: 'source transition removal',
+      slug: 'transition',
+      hook: 'afterTransitionSuperseded',
+    },
+  ])(
+    'recovers a pending v2 Archive supersede interrupted after $label exactly once',
+    async ({ slug, hook }) => {
+      await advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'shape ready for supersede recovery' },
+        runId: () => `supersede-${slug}-run`,
+      });
+      await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const ready = true;\n');
+      await advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'build ready for supersede recovery', artifacts: ['feature.ts'] },
+      });
+      await fs.writeFile(
+        path.join(changeDir, 'verification.md'),
+        await nativeVerificationFixtureReport({
+          paths,
+          name: 'recover-transition',
+          evidenceRefs: ['feature.ts'],
+        }),
+      );
+      await expect(
+        advanceNativeChange({
+          paths,
+          name: 'recover-transition',
+          evidence: {
+            summary: 'verification passed before supersede recovery',
+            verificationResult: 'pass',
+            verificationReport: 'verification.md',
+          },
+          transitionId: () => `superseded-${slug}-transition`,
+          now: new Date('2026-07-17T06:00:00.000Z'),
+          hooks: {
+            afterChangeStateWritten: () => {
+              throw new Error('seed durable Archive transition');
+            },
+          },
+        }),
+      ).rejects.toThrow('seed durable Archive transition');
+      const pending = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
+      await appendNativeTrajectoryEvent({
+        changeDir,
+        run: pending.nextRun,
+        type: 'state_transitioned',
+        data: { ...pending.eventData, transitionId: pending.id },
+        now: new Date(pending.createdAt),
+      });
+      const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
+      await fs.writeFile(
+        path.join(changeDir, 'change.yaml'),
+        stringify(v2State(await readNativeChange(paths, 'recover-transition'))),
+      );
+      await fs.writeFile(transitionFile, JSON.stringify(v2Transition(pending), null, 2) + '\n');
+      const hooks = {
+        [hook]: () => {
+          throw new Error(`interrupt supersede after ${slug}`);
+        },
+      } as NativeSchemaMigrationHooks;
+
+      await expect(
+        migrateNativeChange({
+          paths,
+          name: 'recover-transition',
+          id: () => `supersede-migration-${slug}`,
+          now: new Date('2026-07-17T06:01:00.000Z'),
+          hooks,
+        }),
+      ).rejects.toThrow(`interrupt supersede after ${slug}`);
+      expect(await inspectPendingNativeSchemaMigration(paths, 'recover-transition')).toMatchObject({
+        transitionSupersede: {
+          transitionId: pending.id,
+          eventData: { reason: 'implementation-scope-required' },
+        },
+      });
+
+      const recovered = await migrateNativeChange({ paths, name: 'recover-transition' });
+      expect(recovered).toMatchObject({
+        phase: 'build',
+        verification_result: 'pending',
+        verification_report: null,
+      });
+      const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+      const events = await readTrajectory(changeDir, run.trajectoryRef);
+      expect(
+        events.filter(
+          (event) => event.type === 'state_transitioned' && event.data.transitionId === pending.id,
+        ),
+      ).toHaveLength(1);
+      expect(
+        events.filter(
+          (event) =>
+            event.type === 'state_migrated' &&
+            event.data.migrationId === `supersede-migration-${slug}` &&
+            event.data.supersededTransitionId === pending.id,
+        ),
+      ).toHaveLength(1);
+      await expect(fs.access(transitionFile)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(
+        fs.access(nativeSchemaMigrationJournalFile(paths, 'recover-transition')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readCheckpoint(changeDir, run.checkpointRef)).toMatchObject({
+        runId: run.runId,
+        stateVersion: run.iteration,
+      });
     },
   );
 
@@ -601,7 +1579,7 @@ describe('Native transition recovery', () => {
     );
   });
 
-  it('finishes a pending Verify transition before archive starts', async () => {
+  it('requires pending Verify recovery before archive preview and commit', async () => {
     await advanceNativeChange({
       paths,
       name: 'recover-transition',
@@ -613,7 +1591,14 @@ describe('Native transition recovery', () => {
       name: 'recover-transition',
       evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
     });
-    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      await nativeVerificationFixtureReport({
+        paths,
+        name: 'recover-transition',
+        evidenceRefs: ['feature.ts'],
+      }),
+    );
     await expect(
       advanceNativeChange({
         paths,
@@ -631,10 +1616,25 @@ describe('Native transition recovery', () => {
       }),
     ).rejects.toThrow('interrupt before archive');
 
+    const now = new Date('2026-07-15T00:00:00Z');
+    await expect(
+      inspectNativeArchivePreflight({ paths, name: 'recover-transition', now }),
+    ).resolves.toMatchObject({
+      ready: false,
+      findingCodes: expect.arrayContaining(['pending-journal']),
+    });
+
+    await continueNativeTransition(paths, 'recover-transition');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'recover-transition',
+      now,
+    });
     const archived = await archiveNativeChange({
       paths,
       name: 'recover-transition',
-      now: new Date('2026-07-15T00:00:00Z'),
+      expectedPreflightHash,
+      now,
     });
     expect(archived.archiveDir).toContain('2026-07-15-recover-transition');
   });

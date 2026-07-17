@@ -140,6 +140,45 @@ describe('Native change store', () => {
     await expect(readNativeChange(paths, state.name)).rejects.toBeInstanceOf(Error);
   });
 
+  it('requires field-specific change-relative content-addressed evidence refs', async () => {
+    const state = await createNativeChange({ paths, name: 'strict-evidence', language: 'en' });
+    const file = path.join(paths.changesDir, state.name, 'change.yaml');
+    const hash = 'a'.repeat(64);
+    await fs.writeFile(
+      file,
+      stringify({
+        ...state,
+        implementation_scope: `runtime/evidence/scopes/${hash}.json`,
+        verification_evidence: `runtime/evidence/verifications/${hash}.json`,
+        partial_allowance: `runtime/evidence/allowances/${hash}.json`,
+      }),
+    );
+    await expect(readNativeChange(paths, state.name)).resolves.toMatchObject({
+      implementation_scope: `runtime/evidence/scopes/${hash}.json`,
+      verification_evidence: `runtime/evidence/verifications/${hash}.json`,
+      partial_allowance: `runtime/evidence/allowances/${hash}.json`,
+    });
+
+    for (const patch of [
+      { implementation_scope: `runtime/evidence/verifications/${hash}.json` },
+      { verification_evidence: `runtime/evidence/verifications/${'A'.repeat(64)}.json` },
+      { partial_allowance: `runtime/evidence/allowances/../${hash}.json` },
+      { implementation_scope: `runtime/evidence/${hash}.json` },
+    ]) {
+      await fs.writeFile(file, stringify({ ...state, ...patch }));
+      await expect(readNativeChange(paths, state.name)).rejects.toThrow(
+        /must be null or runtime\/evidence/iu,
+      );
+    }
+
+    const missing = { ...state } as Record<string, unknown>;
+    delete missing.verification_evidence;
+    await fs.writeFile(file, stringify(missing));
+    await expect(readNativeChange(paths, state.name)).rejects.toThrow(
+      /Native verification_evidence must be null/iu,
+    );
+  });
+
   it('rejects duplicate capabilities and path traversal sources', async () => {
     const state = await createNativeChange({ paths, name: 'strict-specs', language: 'en' });
     const file = path.join(paths.changesDir, state.name, 'change.yaml');

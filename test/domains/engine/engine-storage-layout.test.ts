@@ -3,12 +3,10 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import {
-  CLASSIC_RUN_STORAGE,
-  NATIVE_RUN_STORAGE,
-} from '../../../domains/engine/storage-layout.js';
+import { CLASSIC_RUN_STORAGE, NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
 import { startRun } from '../../../domains/engine/loop.js';
 import {
+  parseStoredRunStateValue,
   readRunStateAt,
   removeRunStateAt,
   startRunWithStorage,
@@ -116,5 +114,35 @@ describe('Engine Run storage layouts', () => {
         stateRef: '../run-state.json',
       }),
     ).toThrow('Run storage ref must stay inside the Run root');
+  });
+
+  it('validates every persisted RunState field before a journal can reuse it', () => {
+    const state = startRunWithStorage(
+      runtimePackage(),
+      'strict-native-run',
+      'd'.repeat(64),
+      NATIVE_RUN_STORAGE,
+    );
+    expect(parseStoredRunStateValue(state)).toEqual(state);
+
+    for (const key of Object.keys(state)) {
+      const missing = { ...state } as Record<string, unknown>;
+      delete missing[key];
+      expect(() => parseStoredRunStateValue(missing), `missing ${key}`).toThrow(
+        'Invalid Run state',
+      );
+    }
+    expect(() => parseStoredRunStateValue({ ...state, contextRef: '../context.md' })).toThrow(
+      'must stay inside the change directory',
+    );
+    expect(() => parseStoredRunStateValue({ ...state, status: 'paused' })).toThrow(
+      'run_status is invalid',
+    );
+    expect(() => parseStoredRunStateValue({ ...state, retries: { shape: -1 } })).toThrow(
+      'retry counts must be non-negative integers',
+    );
+    expect(() => parseStoredRunStateValue({ ...state, unexpected: true })).toThrow(
+      'unknown field unexpected',
+    );
   });
 });

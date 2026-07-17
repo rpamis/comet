@@ -25,6 +25,24 @@ interface StoredRunState {
   retries: Record<string, number>;
 }
 
+const STORED_RUN_STATE_KEYS = new Set<keyof StoredRunState>([
+  'runId',
+  'skill',
+  'skillVersion',
+  'skillHash',
+  'orchestration',
+  'currentStep',
+  'iteration',
+  'pending',
+  'pendingRef',
+  'trajectoryRef',
+  'contextRef',
+  'artifactsRef',
+  'checkpointRef',
+  'status',
+  'retries',
+]);
+
 function toStoredState(state: RunState): StoredRunState {
   return { ...state };
 }
@@ -47,7 +65,33 @@ function fromStoredState(json: StoredRunState): RunState {
     run_status: json.status,
     run_retries: JSON.stringify(json.retries),
   };
-  return runStateFromDocument(document)!;
+  const parsed = runStateFromDocument(document);
+  if (!parsed) throw new Error('Invalid Run state: runId must be a non-empty string');
+  return parsed;
+}
+
+export function parseStoredRunStateValue(value: unknown): RunState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid Run state: stored value must be an object');
+  }
+  const json = value as Record<string, unknown>;
+  const unknown = Object.keys(json).find(
+    (key) => !STORED_RUN_STATE_KEYS.has(key as keyof StoredRunState),
+  );
+  if (unknown) throw new Error(`Invalid Run state: unknown field ${unknown}`);
+  if (
+    json.currentStep !== null &&
+    (typeof json.currentStep !== 'string' || json.currentStep.length === 0)
+  ) {
+    throw new Error('Invalid Run state: currentStep must be a non-empty string or null');
+  }
+  if (json.pending !== null && (typeof json.pending !== 'string' || json.pending.length === 0)) {
+    throw new Error('Invalid Run state: pending must be a non-empty string or null');
+  }
+  if (!json.retries || typeof json.retries !== 'object' || Array.isArray(json.retries)) {
+    throw new Error('Invalid Run state: retries must be an object');
+  }
+  return fromStoredState(json as unknown as StoredRunState);
 }
 
 function stateFile(changeDir: string, storage: Readonly<RunStorageLayout>): string {
@@ -92,7 +136,7 @@ export async function readRunStateAt(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
-  return fromStoredState(JSON.parse(raw) as StoredRunState);
+  return parseStoredRunStateValue(JSON.parse(raw) as unknown);
 }
 
 export async function writeRunStateAt(
@@ -103,7 +147,8 @@ export async function writeRunStateAt(
   const file = stateFile(changeDir, storage);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temporary = path.join(path.dirname(file), `run-state.${randomUUID()}.tmp`);
-  await fs.writeFile(temporary, JSON.stringify(toStoredState(state), null, 2), 'utf8');
+  const validated = parseStoredRunStateValue(toStoredState(state));
+  await fs.writeFile(temporary, JSON.stringify(toStoredState(validated), null, 2), 'utf8');
   await fs.rename(temporary, file);
 }
 

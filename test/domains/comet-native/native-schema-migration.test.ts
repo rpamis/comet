@@ -4,6 +4,9 @@ import path from 'path';
 import { stringify } from 'yaml';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { readCheckpoint, readTrajectory } from '../../../domains/engine/run-store.js';
+import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
+import { readRunStateAt } from '../../../domains/engine/storage-run.js';
 import {
   compareAndSwapNativeChange,
   createNativeChange,
@@ -29,20 +32,58 @@ import {
   nativeBaselineManifestFile,
   readNativeBaselineManifest,
 } from '../../../domains/comet-native/native-snapshot.js';
+import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import {
   NATIVE_CHANGE_SCHEMA,
   NATIVE_LEGACY_CHANGE_SCHEMA,
   NATIVE_RUNTIME_PROTOCOL_VERSION,
+  NATIVE_V2_CHANGE_SCHEMA,
   type NativeChangeState,
+  type NativePhase,
   type NativeProjectPaths,
+  type NativeSchemaMigrationHooks,
 } from '../../../domains/comet-native/native-types.js';
+import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 function legacyDocument(state: NativeChangeState): Record<string, unknown> {
   const fields: Record<string, unknown> = { ...state };
   delete fields.minimum_runtime_version;
   delete fields.revision;
+  delete fields.implementation_scope;
+  delete fields.verification_evidence;
+  delete fields.partial_allowance;
   return { ...fields, schema: NATIVE_LEGACY_CHANGE_SCHEMA };
 }
+
+function v2Document(state: NativeChangeState): Record<string, unknown> {
+  const fields: Record<string, unknown> = { ...state };
+  delete fields.implementation_scope;
+  delete fields.verification_evidence;
+  delete fields.partial_allowance;
+  return {
+    ...fields,
+    schema: NATIVE_V2_CHANGE_SCHEMA,
+    minimum_runtime_version: 2,
+  };
+}
+
+const brief = `# Outcome
+Ship the feature.
+# Scope
+One capability.
+# Non-goals
+No migration.
+# Acceptance examples
+- The feature works.
+# Constraints and invariants
+Keep compatibility.
+# Decisions
+Use existing APIs.
+# Open questions
+
+# Verification expectations
+Run focused tests.
+`;
 
 describe('Native schema compatibility and journalized migration', () => {
   let projectRoot: string;
@@ -62,6 +103,56 @@ describe('Native schema compatibility and journalized migration', () => {
     const file = path.join(nativeChangeDir(paths, name), 'change.yaml');
     await fs.writeFile(file, stringify(legacyDocument(state)));
     await fs.rm(nativeBaselineManifestFile(paths, name), { force: true });
+    return file;
+  }
+
+  async function seedCurrentPhase(
+    name: string,
+    phase: NativePhase,
+  ): Promise<{ changeDir: string; state: NativeChangeState }> {
+    const created = await createNativeChange({ paths, name, language: 'en' });
+    const changeDir = nativeChangeDir(paths, created.name);
+    await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
+    if (phase !== 'shape') {
+      await advanceNativeChange({
+        paths,
+        name,
+        evidence: { summary: 'shape is ready' },
+        runId: () => `${name}-run`,
+        now: new Date('2026-07-17T00:00:00.000Z'),
+      });
+    }
+    if (phase === 'verify' || phase === 'archive') {
+      await fs.writeFile(path.join(projectRoot, `${name}.ts`), 'export const ready = true;\n');
+      await advanceNativeChange({
+        paths,
+        name,
+        evidence: { summary: 'build is ready', artifacts: [`${name}.ts`] },
+        now: new Date('2026-07-17T00:01:00.000Z'),
+      });
+    }
+    if (phase === 'archive') {
+      await fs.writeFile(
+        path.join(changeDir, 'verification.md'),
+        await nativeVerificationFixtureReport({ paths, name, evidenceRefs: [`${name}.ts`] }),
+      );
+      await advanceNativeChange({
+        paths,
+        name,
+        evidence: {
+          summary: 'verification passed',
+          verificationResult: 'pass',
+          verificationReport: 'verification.md',
+        },
+        now: new Date('2026-07-17T00:02:00.000Z'),
+      });
+    }
+    return { changeDir, state: await readNativeChange(paths, name) };
+  }
+
+  async function downgradeToV2(state: NativeChangeState): Promise<string> {
+    const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+    await fs.writeFile(file, stringify(v2Document(state)));
     return file;
   }
 
@@ -127,6 +218,281 @@ describe('Native schema compatibility and journalized migration', () => {
     });
   });
 
+  it('projects a v2 change as migration-required in status and show without rewriting it', async () => {
+    const { state } = await seedCurrentPhase('v2-visible', 'shape');
+    const file = await downgradeToV2(state);
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const before = await fs.readFile(file, 'utf8');
+
+    await expect(readNativeChange(paths, state.name)).rejects.toBeInstanceOf(
+      NativeSchemaMigrationRequiredError,
+    );
+    expect(await inspectNativeStatus(paths, state.name)).toMatchObject({
+      name: state.name,
+      phase: 'shape',
+      revision: state.revision,
+      schema: NATIVE_V2_CHANGE_SCHEMA,
+      migrationRequired: true,
+      minimumRuntimeVersion: 2,
+      nextCommand: null,
+    });
+    const shown = await runNativeCli(['show', state.name, '--json', '--project-root', projectRoot]);
+    expect(shown.exitCode).toBe(0);
+    expect(JSON.parse(shown.stdout!)).toMatchObject({
+      data: {
+        name: state.name,
+        schema: NATIVE_V2_CHANGE_SCHEMA,
+        migrationRequired: true,
+        minimumRuntimeVersion: 2,
+      },
+    });
+    expect(await fs.readFile(file, 'utf8')).toBe(before);
+  });
+
+  it.each<NativePhase>(['shape', 'build', 'verify'])(
+    'migrates a stable v2 %s state to v3 without changing its phase or revision',
+    async (phase) => {
+      const name = `v2-${phase}`;
+      const { changeDir, state } = await seedCurrentPhase(name, phase);
+      await downgradeToV2(state);
+
+      const migrated = await migrateNativeChange({
+        paths,
+        name,
+        now: new Date('2026-07-17T01:00:00.000Z'),
+        id: () => `migration-${phase}`,
+      });
+      expect(migrated).toMatchObject({
+        schema: NATIVE_CHANGE_SCHEMA,
+        minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+        phase,
+        revision: state.revision,
+        implementation_scope: null,
+        verification_evidence: null,
+        partial_allowance: null,
+      });
+      if (phase !== 'shape') {
+        expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toMatchObject({
+          runId: state.run_id,
+          currentStep: phase,
+        });
+      }
+      const status = await inspectNativeStatus(paths, name, { details: true });
+      expect(status.phase).toBe(phase);
+      expect((status.findings ?? []).map((finding) => finding.code)).not.toContain(
+        'run-phase-mismatch',
+      );
+    },
+  );
+
+  it.each<NativePhase>(['build', 'verify', 'archive'])(
+    'migrates a stable v1 %s state through v2 without leaving Run/state phase drift',
+    async (phase) => {
+      const name = `v1-${phase}`;
+      const { changeDir, state } = await seedCurrentPhase(name, phase);
+      const file = path.join(changeDir, 'change.yaml');
+      await fs.writeFile(file, stringify(legacyDocument(state)));
+
+      const migrated = await migrateNativeChange({
+        paths,
+        name,
+        now: new Date('2026-07-17T01:30:00.000Z'),
+        id: () => `migration-v1-${phase}`,
+      });
+      expect(migrated).toMatchObject({
+        schema: NATIVE_CHANGE_SCHEMA,
+        phase: phase === 'archive' ? 'verify' : phase,
+        revision: phase === 'archive' ? 2 : 1,
+        implementation_scope: null,
+        verification_evidence: null,
+        partial_allowance: null,
+      });
+      if (phase === 'archive') {
+        expect(migrated).toMatchObject({
+          verification_result: 'pending',
+          verification_report: null,
+        });
+      }
+      expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toMatchObject({
+        runId: state.run_id,
+        currentStep: phase === 'archive' ? 'verify' : phase,
+      });
+      const status = await inspectNativeStatus(paths, name, { details: true });
+      expect((status.findings ?? []).map((finding) => finding.code)).not.toEqual(
+        expect.arrayContaining(['run-phase-mismatch', 'checkpoint-mismatch']),
+      );
+    },
+  );
+
+  it('retreats a stable v2 Archive state to Verify and synchronizes Run history exactly once', async () => {
+    const name = 'v2-archive';
+    const { changeDir, state } = await seedCurrentPhase(name, 'archive');
+    await downgradeToV2(state);
+
+    const migrated = await migrateNativeChange({
+      paths,
+      name,
+      now: new Date('2026-07-17T02:00:00.000Z'),
+      id: () => 'migration-archive',
+    });
+    expect(migrated).toMatchObject({
+      schema: NATIVE_CHANGE_SCHEMA,
+      phase: 'verify',
+      revision: state.revision + 1,
+      verification_result: 'pending',
+      verification_report: null,
+      implementation_scope: null,
+      verification_evidence: null,
+      partial_allowance: null,
+      archived: false,
+    });
+    const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+    expect(run).toMatchObject({
+      runId: state.run_id,
+      currentStep: 'verify',
+      pending: null,
+      status: 'running',
+    });
+    const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
+    expect(
+      trajectory.filter(
+        (event) =>
+          event.type === 'state_migrated' && event.data.migrationId === 'migration-archive',
+      ),
+    ).toHaveLength(1);
+    expect(await readCheckpoint(changeDir, run.checkpointRef)).toMatchObject({
+      runId: run.runId,
+      stateVersion: run.iteration,
+      trajectoryOffset: trajectory.length,
+    });
+
+    const status = await inspectNativeStatus(paths, name, { details: true });
+    expect(status).toMatchObject({ phase: 'verify', archiveReady: false });
+    expect((status.findings ?? []).map((finding) => finding.code)).not.toEqual(
+      expect.arrayContaining(['run-phase-mismatch', 'checkpoint-mismatch', 'trajectory-invalid']),
+    );
+    await migrateNativeChange({ paths, name });
+    expect(await readTrajectory(changeDir, run.trajectoryRef)).toEqual(trajectory);
+  });
+
+  it.each<{
+    label: string;
+    slug: string;
+    hook: keyof NativeSchemaMigrationHooks;
+  }>([
+    { label: 'state write', slug: 'state', hook: 'afterStateWritten' },
+    { label: 'Run state write', slug: 'run', hook: 'afterRunStateWritten' },
+    { label: 'trajectory write', slug: 'trajectory', hook: 'afterTrajectoryWritten' },
+    { label: 'checkpoint write', slug: 'checkpoint', hook: 'afterCheckpointWritten' },
+  ])(
+    'recovers a v2 Archive retreat interrupted after $label without duplicate migration events',
+    async ({ slug, hook }) => {
+      const name = `v2-archive-${slug}`;
+      const { changeDir, state } = await seedCurrentPhase(name, 'archive');
+      await downgradeToV2(state);
+      const hooks = {
+        [hook]: () => {
+          throw new Error(`interrupt after ${slug}`);
+        },
+      } as NativeSchemaMigrationHooks;
+
+      await expect(
+        migrateNativeChange({
+          paths,
+          name,
+          now: new Date('2026-07-17T03:00:00.000Z'),
+          id: () => `migration-${slug}`,
+          hooks,
+        }),
+      ).rejects.toThrow(`interrupt after ${slug}`);
+      expect(await inspectPendingNativeSchemaMigration(paths, name)).not.toBeNull();
+
+      const recovered = await migrateNativeChange({ paths, name });
+      expect(recovered).toMatchObject({
+        phase: 'verify',
+        verification_result: 'pending',
+        verification_report: null,
+        verification_evidence: null,
+      });
+      const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
+      const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
+      expect(
+        trajectory.filter(
+          (event) =>
+            event.type === 'state_migrated' && event.data.migrationId === `migration-${slug}`,
+        ),
+      ).toHaveLength(1);
+      expect(await readCheckpoint(changeDir, run.checkpointRef)).toMatchObject({
+        runId: run.runId,
+        stateVersion: run.iteration,
+        trajectoryOffset: trajectory.length,
+      });
+      expect((await inspectNativeStatus(paths, name, { details: true })).findings).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'run-phase-mismatch' }),
+          expect.objectContaining({ code: 'checkpoint-mismatch' }),
+        ]),
+      );
+    },
+  );
+
+  it('fails closed when a prepared migration target is changed without its content hash', async () => {
+    const { state } = await seedCurrentPhase('tampered-migration', 'shape');
+    const changeFile = await downgradeToV2(state);
+    const source = await fs.readFile(changeFile, 'utf8');
+    await expect(
+      migrateNativeChange({
+        paths,
+        name: state.name,
+        id: () => 'migration-tampered',
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('interrupt after prepared migration');
+          },
+        },
+      }),
+    ).rejects.toThrow('interrupt after prepared migration');
+    const journalFile = nativeSchemaMigrationJournalFile(paths, state.name);
+    const journal = JSON.parse(await fs.readFile(journalFile, 'utf8')) as {
+      nextState: Record<string, unknown>;
+    };
+    journal.nextState.approval = 'implicit';
+    await fs.writeFile(journalFile, JSON.stringify(journal, null, 2) + '\n');
+
+    await expect(inspectPendingNativeSchemaMigration(paths, state.name)).rejects.toThrow(
+      'target hash does not match',
+    );
+    await expect(migrateNativeChange({ paths, name: state.name })).rejects.toThrow(
+      'target hash does not match',
+    );
+    expect(await fs.readFile(changeFile, 'utf8')).toBe(source);
+  });
+
+  it('does not continue a prepared schema migration over a pending v2 checkpoint journal', async () => {
+    const { changeDir, state } = await seedCurrentPhase('checkpoint-before-migration', 'shape');
+    const changeFile = await downgradeToV2(state);
+    const source = await fs.readFile(changeFile, 'utf8');
+    await expect(
+      migrateNativeChange({
+        paths,
+        name: state.name,
+        id: () => 'migration-before-checkpoint',
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('interrupt before checkpoint appeared');
+          },
+        },
+      }),
+    ).rejects.toThrow('interrupt before checkpoint appeared');
+    await fs.writeFile(path.join(changeDir, 'runtime', 'checkpoint-journal.json'), '{}\n');
+
+    await expect(migrateNativeChange({ paths, name: state.name })).rejects.toThrow(
+      'pending progress checkpoint',
+    );
+    expect(await fs.readFile(changeFile, 'utf8')).toBe(source);
+    expect(await inspectPendingNativeSchemaMigration(paths, state.name)).not.toBeNull();
+  });
+
   it('recovers a migration journal when the state write completed before interruption', async () => {
     await seedLegacyChange('interrupted-migration');
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
@@ -149,7 +515,7 @@ describe('Native schema compatibility and journalized migration', () => {
       NativeSchemaMigrationRequiredError,
     );
     expect(await inspectNativeStatus(paths, 'interrupted-migration')).toMatchObject({
-      schema: NATIVE_CHANGE_SCHEMA,
+      schema: NATIVE_V2_CHANGE_SCHEMA,
       migrationRequired: true,
       nextCommand: null,
     });
@@ -162,7 +528,7 @@ describe('Native schema compatibility and journalized migration', () => {
     ]);
     expect(shown.exitCode).toBe(0);
     expect(JSON.parse(shown.stdout!)).toMatchObject({
-      data: { schema: NATIVE_CHANGE_SCHEMA, migrationRequired: true },
+      data: { schema: NATIVE_V2_CHANGE_SCHEMA, migrationRequired: true },
     });
     expect(
       await fs.stat(nativeSchemaMigrationJournalFile(paths, 'interrupted-migration')),
@@ -210,7 +576,7 @@ describe('Native schema compatibility and journalized migration', () => {
     const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
     const source = stringify({
       ...state,
-      schema: 'comet.native.v3',
+      schema: 'comet.native.v4',
       minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION + 1,
     });
     await fs.writeFile(file, source);
@@ -220,8 +586,34 @@ describe('Native schema compatibility and journalized migration', () => {
     );
     expect(await inspectNativeStatus(paths, state.name)).toMatchObject({
       phase: 'invalid',
-      schema: 'comet.native.v3',
+      schema: 'comet.native.v4',
       minimumRuntimeVersion: NATIVE_RUNTIME_PROTOCOL_VERSION + 1,
+      nextCommand: null,
+    });
+    const result = await doctorNativeProject({ paths, name: state.name, repair: true });
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ code: 'change-runtime-incompatible', severity: 'error' }),
+    );
+    expect(await fs.readFile(file, 'utf8')).toBe(source);
+  });
+
+  it('fails closed on an unsupported older schema without inventing a migration route', async () => {
+    const state = await createNativeChange({ paths, name: 'ancient-change', language: 'en' });
+    const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+    const source = stringify({
+      ...state,
+      schema: 'comet.native.v0',
+      minimum_runtime_version: 1,
+    });
+    await fs.writeFile(file, source);
+
+    await expect(readNativeChange(paths, state.name)).rejects.toBeInstanceOf(
+      NativeRuntimeCompatibilityError,
+    );
+    expect(await inspectNativeStatus(paths, state.name)).toMatchObject({
+      phase: 'invalid',
+      schema: 'comet.native.v0',
+      minimumRuntimeVersion: 1,
       nextCommand: null,
     });
     const result = await doctorNativeProject({ paths, name: state.name, repair: true });

@@ -18,6 +18,7 @@ export function nativeContinuation(options: {
   state: NativeChangeState;
   findings?: readonly NativeStructuredFinding[];
   archiveReady?: boolean;
+  evidenceRetreat?: boolean;
   done?: boolean;
 }): NativeContinuation {
   const findings = options.findings ?? [];
@@ -69,7 +70,35 @@ export function nativeContinuation(options: {
       requiredInputs,
     };
   }
+  if (options.evidenceRetreat) {
+    return {
+      schema: 'comet.native.continuation.v1',
+      skill: 'comet-native',
+      change: options.state.name,
+      phase: options.state.phase,
+      revision: options.state.revision,
+      disposition: 'continue',
+      action: 'advance-phase',
+      command: `comet native next ${options.state.name} --summary "<summary>"`,
+      requiresUserDecision: false,
+      requiredInputs: ['summary'],
+    };
+  }
   if (findings.length > 0) {
+    if (options.state.phase === 'archive') {
+      return {
+        schema: 'comet.native.continuation.v1',
+        skill: 'comet-native',
+        change: options.state.name,
+        phase: options.state.phase,
+        revision: options.state.revision,
+        disposition: 'blocked',
+        action: 'none',
+        command: null,
+        requiresUserDecision: false,
+        requiredInputs,
+      };
+    }
     return {
       schema: 'comet.native.continuation.v1',
       skill: 'comet-native',
@@ -92,7 +121,7 @@ export function nativeContinuation(options: {
       revision: options.state.revision,
       disposition: options.archiveReady ? 'continue' : 'blocked',
       action: options.archiveReady ? 'archive' : 'none',
-      command: options.archiveReady ? `comet native archive ${options.state.name}` : null,
+      command: options.archiveReady ? `comet native archive ${options.state.name} --dry-run` : null,
       requiresUserDecision: false,
       requiredInputs: options.archiveReady ? [] : ['archive-readiness'],
     };

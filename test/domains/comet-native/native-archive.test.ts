@@ -5,100 +5,24 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   archiveNativeChange,
-  NativeSpecConflictError,
+  NativeArchivePreflightError,
 } from '../../../domains/comet-native/native-archive.js';
-import {
-  createNativeChange,
-  nativeChangeDir,
-  readNativeChangeFile,
-  writeNativeChange,
-} from '../../../domains/comet-native/native-change.js';
+import { nativeArchiveTransactionPaths } from '../../../domains/comet-native/native-archive-transaction.js';
+import { readNativeChangeFile } from '../../../domains/comet-native/native-change.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
 import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
-import {
-  NATIVE_RUNTIME_HASH,
-  NATIVE_RUNTIME_PACKAGE,
-} from '../../../domains/comet-native/native-runtime-package.js';
 import type {
-  NativeChangeState,
   NativeProjectPaths,
   NativeSpecChange,
 } from '../../../domains/comet-native/native-types.js';
 import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
+import { readRunStateAt } from '../../../domains/engine/storage-run.js';
 import {
-  readRunStateAt,
-  startRunWithStorage,
-  writeRunStateAt,
-} from '../../../domains/engine/storage-run.js';
-
-const brief = `# Outcome
-Ship the capability.
-# Scope
-One focused behavior.
-# Non-goals
-No Classic migration.
-# Acceptance examples
-- The capability works.
-# Constraints and invariants
-Keep Native self-contained.
-# Decisions
-Use canonical specs.
-# Open questions
-None.
-# Verification expectations
-Run focused tests.
-`;
-
-const verification = `# Acceptance evidence
-Acceptance examples passed.
-# Commands and results
-Focused tests passed.
-# Skipped checks
-None.
-# Spec consistency
-Consistent.
-# Known limitations and risks
-None.
-# Conclusion
-Pass.
-`;
-
-async function prepareArchiveChange(options: {
-  paths: NativeProjectPaths;
-  name: string;
-  specChanges?: NativeSpecChange[];
-}): Promise<{ state: NativeChangeState; changeDir: string }> {
-  const state = await createNativeChange({
-    paths: options.paths,
-    name: options.name,
-    language: 'en',
-  });
-  const changeDir = nativeChangeDir(options.paths, options.name);
-  await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
-  await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
-  const ready: NativeChangeState = {
-    ...state,
-    phase: 'archive',
-    approval: 'implicit',
-    verification_result: 'pass',
-    verification_report: 'verification.md',
-    spec_changes: options.specChanges ?? [],
-    run_id: `run-${options.name}`,
-  };
-  await writeNativeChange(options.paths, ready);
-  const run = startRunWithStorage(
-    NATIVE_RUNTIME_PACKAGE,
-    ready.run_id!,
-    NATIVE_RUNTIME_HASH,
-    NATIVE_RUN_STORAGE,
-  );
-  run.currentStep = 'archive';
-  run.iteration = 3;
-  await writeRunStateAt(changeDir, run, NATIVE_RUN_STORAGE);
-  return { state: ready, changeDir };
-}
+  prepareNativeArchiveFixture,
+  readyNativeArchivePreflight,
+} from '../../helpers/native-archive.js';
 
 describe('Native archive', () => {
   let projectRoot: string;
@@ -134,16 +58,28 @@ describe('Native archive', () => {
         base_hash: await sha256File(remove),
       },
     ];
-    const { changeDir } = await prepareArchiveChange({ paths, name: 'auth-update', specChanges });
-    await fs.mkdir(path.join(changeDir, 'specs'), { recursive: true });
-    await fs.writeFile(path.join(changeDir, 'specs', 'sessions.md'), 'session spec\n');
-    await fs.writeFile(path.join(changeDir, 'specs', 'authentication.md'), 'new auth spec\n');
+    const now = new Date('2026-07-14T02:00:00.000Z');
+    const { changeDir } = await prepareNativeArchiveFixture({
+      paths,
+      name: 'auth-update',
+      specChanges,
+      proposedSpecs: {
+        'specs/sessions.md': 'session spec\n',
+        'specs/authentication.md': 'new auth spec\n',
+      },
+    });
     await selectNativeChange(paths, 'auth-update');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'auth-update',
+      now,
+    });
 
     const result = await archiveNativeChange({
       paths,
       name: 'auth-update',
-      now: new Date('2026-07-14T02:00:00.000Z'),
+      expectedPreflightHash,
+      now,
     });
 
     expect(result.archiveDir).toBe(path.join(paths.archiveDir, '2026-07-14-auth-update'));
@@ -159,20 +95,49 @@ describe('Native archive', () => {
     });
     expect((await readRunStateAt(result.archiveDir, NATIVE_RUN_STORAGE))?.status).toBe('completed');
     expect(await readNativeTransaction(paths, result.transactionId)).toMatchObject({
+      schema: 'comet.native.transaction.v2',
       kind: 'archive',
       status: 'committed',
+      preflightHash: expectedPreflightHash,
     });
+    const storedJournal = JSON.parse(
+      await fs.readFile(nativeArchiveTransactionPaths(paths, result.transactionId).journal, 'utf8'),
+    ) as Record<string, unknown>;
+    expect(storedJournal).not.toHaveProperty('projectRoot');
+    expect(storedJournal).not.toHaveProperty('nativeRoot');
+    expect(JSON.stringify(storedJournal)).not.toContain(projectRoot);
+    expect(storedJournal.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'write',
+          expectedTargetHash: null,
+          stagedHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        }),
+        expect.objectContaining({
+          type: 'move',
+          expectedSourceHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+          expectedTargetHash: null,
+        }),
+      ]),
+    );
     await expect(
       fs.access(path.join(paths.runtimeDir, 'current-change.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('supports an archive with no spec changes', async () => {
-    await prepareArchiveChange({ paths, name: 'docs-only' });
+    const now = new Date('2026-07-15T00:00:00.000Z');
+    await prepareNativeArchiveFixture({ paths, name: 'docs-only' });
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'docs-only',
+      now,
+    });
     const result = await archiveNativeChange({
       paths,
       name: 'docs-only',
-      now: new Date('2026-07-15T00:00:00.000Z'),
+      expectedPreflightHash,
+      now,
     });
     expect(await fs.readdir(paths.specsDir).catch(() => [])).toEqual([]);
     expect(await readNativeChangeFile(path.join(result.archiveDir, 'change.yaml'))).toMatchObject({
@@ -191,13 +156,18 @@ describe('Native archive', () => {
           base_hash: null,
         },
       ];
-      const { changeDir } = await prepareArchiveChange({
+      const now = new Date('2026-07-17T00:00:00.000Z');
+      await prepareNativeArchiveFixture({
         paths,
         name: 'unsafe-transactions',
         specChanges,
+        proposedSpecs: { 'specs/sessions.md': 'session spec\n' },
       });
-      await fs.mkdir(path.join(changeDir, 'specs'), { recursive: true });
-      await fs.writeFile(path.join(changeDir, 'specs', 'sessions.md'), 'session spec\n');
+      const expectedPreflightHash = await readyNativeArchivePreflight({
+        paths,
+        name: 'unsafe-transactions',
+        now,
+      });
       await fs.rm(paths.transactionsDir, { recursive: true, force: true });
       await fs.symlink(
         outside,
@@ -205,9 +175,14 @@ describe('Native archive', () => {
         process.platform === 'win32' ? 'junction' : 'dir',
       );
 
-      await expect(archiveNativeChange({ paths, name: 'unsafe-transactions' })).rejects.toThrow(
-        'resolves outside the Native root',
-      );
+      await expect(
+        archiveNativeChange({
+          paths,
+          name: 'unsafe-transactions',
+          expectedPreflightHash,
+          now,
+        }),
+      ).rejects.toThrow('resolves outside the Native root');
       expect(await fs.readdir(outside)).toEqual([]);
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
@@ -217,10 +192,10 @@ describe('Native archive', () => {
   it('returns structured base-hash conflicts and leaves canonical specs unchanged', async () => {
     const canonical = path.join(paths.specsDir, 'authentication', 'spec.md');
     await fs.mkdir(path.dirname(canonical), { recursive: true });
-    await fs.writeFile(canonical, 'current canonical\n');
-    const expectedHash = 'a'.repeat(64);
-    const actualHash = await sha256File(canonical);
-    const { changeDir } = await prepareArchiveChange({
+    await fs.writeFile(canonical, 'expected canonical\n');
+    const expectedHash = await sha256File(canonical);
+    const now = new Date('2026-07-17T00:00:00.000Z');
+    const { changeDir } = await prepareNativeArchiveFixture({
       paths,
       name: 'conflicting-auth',
       specChanges: [
@@ -231,29 +206,44 @@ describe('Native archive', () => {
           base_hash: expectedHash,
         },
       ],
+      proposedSpecs: { 'specs/authentication.md': 'proposed spec\n' },
     });
-    await fs.writeFile(path.join(changeDir, 'specs', 'authentication.md'), 'proposed spec\n');
+    // Preview the exact facts first, then simulate another writer changing the canonical spec.
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'conflicting-auth',
+      now,
+    });
+    await fs.writeFile(canonical, 'current canonical\n');
 
     let thrown: unknown;
     try {
-      await archiveNativeChange({ paths, name: 'conflicting-auth' });
+      await archiveNativeChange({
+        paths,
+        name: 'conflicting-auth',
+        expectedPreflightHash,
+        now,
+      });
     } catch (error) {
       thrown = error;
     }
-    expect(thrown).toBeInstanceOf(NativeSpecConflictError);
-    expect(thrown).toMatchObject({
-      code: 'native-spec-conflict',
-      capability: 'authentication',
-      expectedHash,
-      actualHash,
-      canonicalPath: canonical,
-    });
+    expect(thrown).toBeInstanceOf(NativeArchivePreflightError);
+    expect(thrown).toMatchObject({ code: 'native-archive-preflight' });
     expect(await fs.readFile(canonical, 'utf8')).toBe('current canonical\n');
     expect(await fs.stat(changeDir)).toBeTruthy();
   });
 
   it('never overwrites an existing date-prefixed archive target', async () => {
-    const { changeDir } = await prepareArchiveChange({ paths, name: 'immutable-target' });
+    const now = new Date('2026-07-16T00:00:00.000Z');
+    const { changeDir } = await prepareNativeArchiveFixture({
+      paths,
+      name: 'immutable-target',
+    });
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'immutable-target',
+      now,
+    });
     const target = path.join(paths.archiveDir, '2026-07-16-immutable-target');
     await fs.mkdir(target, { recursive: true });
     await fs.writeFile(path.join(target, 'sentinel.txt'), 'keep');
@@ -261,9 +251,10 @@ describe('Native archive', () => {
       archiveNativeChange({
         paths,
         name: 'immutable-target',
-        now: new Date('2026-07-16T00:00:00.000Z'),
+        expectedPreflightHash,
+        now,
       }),
-    ).rejects.toThrow(/already exists/u);
+    ).rejects.toBeInstanceOf(NativeArchivePreflightError);
     expect(await fs.readFile(path.join(target, 'sentinel.txt'), 'utf8')).toBe('keep');
     expect(await fs.stat(changeDir)).toBeTruthy();
   });
@@ -277,7 +268,8 @@ describe('Native archive', () => {
         path.join(paths.specsDir, 'escaped-spec'),
         process.platform === 'win32' ? 'junction' : 'dir',
       );
-      const { changeDir } = await prepareArchiveChange({
+      const now = new Date('2026-07-17T00:00:00.000Z');
+      await prepareNativeArchiveFixture({
         paths,
         name: 'escaped-spec-change',
         specChanges: [
@@ -288,12 +280,12 @@ describe('Native archive', () => {
             base_hash: null,
           },
         ],
+        proposedSpecs: { 'specs/escaped-spec.md': 'outside denied\n' },
       });
-      await fs.writeFile(path.join(changeDir, 'specs', 'escaped-spec.md'), 'outside denied\n');
 
-      await expect(archiveNativeChange({ paths, name: 'escaped-spec-change' })).rejects.toThrow(
-        'resolves outside the Native root',
-      );
+      await expect(
+        readyNativeArchivePreflight({ paths, name: 'escaped-spec-change', now }),
+      ).rejects.toThrow(/must be a real directory|outside the Native root/u);
       await expect(fs.access(path.join(outside, 'spec.md'))).rejects.toMatchObject({
         code: 'ENOENT',
       });

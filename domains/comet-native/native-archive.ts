@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { isDeepStrictEqual } from 'util';
 
 import { decideWithResolver, recordOutcomeWithResolver } from '../engine/loop.js';
 import { readTrajectory } from '../engine/run-store.js';
@@ -12,6 +13,17 @@ import {
   validateNativeBrief,
   validateNativeVerification,
 } from './native-artifacts.js';
+import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
+import type { NativeArchivePreflight } from './native-archive-preflight.js';
+import { hashNativeArchiveTree, inspectNativeArchiveContent } from './native-archive-content.js';
+import {
+  applyNativeArchiveTransactionV2,
+  createNativeArchiveTransactionV2,
+  finalizeNativeArchiveTransactionV2,
+  readNativeArchiveTransactionV2,
+  rollbackNativeArchiveTransactionV2,
+  type NativeArchiveTransactionHooksV2,
+} from './native-archive-transaction.js';
 import {
   nativeChangeDir,
   readNativeChange,
@@ -27,13 +39,14 @@ import { NATIVE_RUNTIME_PACKAGE, nativePhaseResolver } from './native-runtime-pa
 import { clearNativeSelectionIfLocked } from './native-selection.js';
 import {
   applyNativeTransaction,
-  createNativeTransaction,
   finalizeNativeTransaction,
   nativeRootRef,
   readNativeTransaction,
   readNativeTransactionEvents,
   resolveNativeTransactionPaths,
   rollbackNativeTransaction,
+  type NativeArchiveTransactionJournalV2,
+  type NativeArchiveTransactionOperationV2,
 } from './native-transaction.js';
 import { appendNativeTrajectoryEvent, writeNativeCheckpoint } from './native-trajectory.js';
 import { withNativeTransitionLock } from './native-transition-journal.js';
@@ -41,10 +54,10 @@ import type {
   NativeChangeState,
   NativeProjectPaths,
   NativeSpecChange,
-  NativeTransactionHooks,
   NativeTransactionJournal,
-  NativeTransactionOperation,
 } from './native-types.js';
+
+type AnyArchiveTransactionJournal = NativeTransactionJournal | NativeArchiveTransactionJournalV2;
 
 export class NativeSpecConflictError extends Error {
   readonly code = 'native-spec-conflict';
@@ -59,6 +72,20 @@ export class NativeSpecConflictError extends Error {
       `Canonical spec conflict for ${capability}: expected ${expectedHash ?? '(missing)'}, actual ${actualHash ?? '(missing)'}`,
     );
     this.name = 'NativeSpecConflictError';
+  }
+}
+
+export class NativeArchivePreflightError extends Error {
+  readonly code = 'native-archive-preflight';
+
+  constructor(
+    readonly preflight: NativeArchivePreflight,
+    message = preflight.ready
+      ? 'Native Archive preflight no longer matches the expected hash'
+      : `Native Archive preflight is blocked: ${preflight.findingCodes.join(', ')}`,
+  ) {
+    super(message);
+    this.name = 'NativeArchivePreflightError';
   }
 }
 
@@ -124,16 +151,27 @@ async function buildArchiveJournal(options: {
   state: NativeChangeState;
   now: Date;
   transactionId: string;
-}): Promise<NativeTransactionJournal> {
-  const { paths, state, now, transactionId } = options;
+  preflight: NativeArchivePreflight;
+}): Promise<NativeArchiveTransactionJournalV2> {
+  const { paths, state, now, transactionId, preflight } = options;
   const target = archiveTarget(paths, state.name, now);
   if (await pathExists(target)) throw new Error(`Native archive target already exists: ${target}`);
+  if (nativeRootRef(paths, target) !== preflight.targetRef) {
+    throw new Error('Native Archive target changed after preflight');
+  }
 
   const tx = await resolveNativeTransactionPaths(paths, transactionId);
-  const operations: NativeTransactionOperation[] = [];
+  const operations: NativeArchiveTransactionOperationV2[] = [];
   for (const [index, change] of state.spec_changes.entries()) {
     await assertSpecBase(paths, change);
     const canonical = canonicalSpecPath(paths, change.capability);
+    const preview = preflight.operations.find(
+      (operation) =>
+        operation.capability === change.capability && operation.operation === change.operation,
+    );
+    if (!preview) {
+      throw new Error(`Native Archive preflight has no operation for ${change.capability}`);
+    }
     const backup = path.join(tx.backups, 'specs', change.capability, 'spec.md');
     if (change.operation === 'remove') {
       operations.push({
@@ -141,6 +179,7 @@ async function buildArchiveJournal(options: {
         type: 'remove',
         target: nativeRootRef(paths, canonical),
         backup: nativeRootRef(paths, backup),
+        expectedTargetHash: change.base_hash,
       });
       continue;
     }
@@ -153,36 +192,43 @@ async function buildArchiveJournal(options: {
     await fs.copyFile(source, staged);
     const [sourceHash, stagedHash] = await Promise.all([sha256File(source), sha256File(staged)]);
     if (sourceHash !== stagedHash) throw new Error(`Failed to stage spec ${change.capability}`);
+    if (stagedHash !== preview.proposedHash) {
+      throw new Error(`Proposed Native spec changed after preflight: ${change.capability}`);
+    }
     operations.push({
       id: `spec-${index + 1}-${change.capability}`,
       type: 'write',
       target: nativeRootRef(paths, canonical),
       staged: nativeRootRef(paths, staged),
       ...(change.operation === 'replace' ? { backup: nativeRootRef(paths, backup) } : {}),
+      expectedTargetHash: change.operation === 'create' ? null : change.base_hash,
+      stagedHash,
     });
   }
+  const source = nativeChangeDir(paths, state.name);
   operations.push({
     id: 'archive-change',
     type: 'move',
-    source: nativeRootRef(paths, nativeChangeDir(paths, state.name)),
+    source: nativeRootRef(paths, source),
     target: nativeRootRef(paths, target),
+    expectedSourceHash: await hashNativeArchiveTree(source),
+    expectedTargetHash: null,
   });
   return {
-    schema: 'comet.native.transaction.v1',
+    schema: 'comet.native.transaction.v2',
     id: transactionId,
     kind: 'archive',
     status: 'prepared',
-    projectRoot: paths.projectRoot,
-    nativeRoot: paths.nativeRoot,
     change: state.name,
     createdAt: now.toISOString(),
+    preflightHash: preflight.preflightHash,
     operations,
   };
 }
 
 function archiveDirectoryFromJournal(
   paths: NativeProjectPaths,
-  journal: NativeTransactionJournal,
+  journal: AnyArchiveTransactionJournal,
 ): string {
   const operation = journal.operations.find((item) => item.id === 'archive-change');
   if (!operation || operation.type !== 'move') {
@@ -193,12 +239,33 @@ function archiveDirectoryFromJournal(
 
 async function finalizeArchive(
   paths: NativeProjectPaths,
-  journal: NativeTransactionJournal,
+  journal: AnyArchiveTransactionJournal,
 ): Promise<void> {
   const events = await readNativeTransactionEvents(paths, journal.id);
   if (events.some((event) => event.type === 'archive-finalized')) return;
+  if (
+    journal.schema === 'comet.native.transaction.v2' &&
+    !events.some((event) => event.type === 'archive-finalization-started')
+  ) {
+    const move = journal.operations.find((operation) => operation.id === 'archive-change');
+    if (!move || move.type !== 'move' || !move.expectedSourceHash) {
+      throw new Error(`Archive transaction ${journal.id} has no content-bound archive move`);
+    }
+    const archiveContent = await inspectNativeArchiveContent(
+      archiveDirectoryFromJournal(paths, journal),
+    );
+    if (archiveContent?.kind !== 'directory' || archiveContent.hash !== move.expectedSourceHash) {
+      throw new Error(
+        `Native Archive content changed before finalization for transaction ${journal.id}`,
+      );
+    }
+  }
   if (!events.some((event) => event.type === 'archive-finalization-started')) {
-    await finalizeNativeTransaction(paths, journal, 'archive-finalization-started');
+    if (journal.schema === 'comet.native.transaction.v2') {
+      await finalizeNativeArchiveTransactionV2(paths, journal, 'archive-finalization-started');
+    } else {
+      await finalizeNativeTransaction(paths, journal, 'archive-finalization-started');
+    }
   }
   const archiveDir = archiveDirectoryFromJournal(paths, journal);
   const stateFile = path.join(archiveDir, 'change.yaml');
@@ -242,21 +309,41 @@ async function finalizeArchive(
     await writeNativeChangeFile(stateFile, updated);
   }
   const trajectory = await readTrajectory(archiveDir, completed.trajectoryRef);
-  let event = trajectory.find(
-    (item) => item.type === 'state_transitioned' && item.data.transactionId === journal.id,
-  );
+  const transactionEvents = trajectory.filter((item) => item.data.transactionId === journal.id);
+  if (
+    journal.schema === 'comet.native.transaction.v2' &&
+    (transactionEvents.length > 1 ||
+      transactionEvents.some((item) => item.type !== 'state_transitioned'))
+  ) {
+    throw new Error(`Native Archive trajectory has a transaction id collision: ${journal.id}`);
+  }
+  let event = transactionEvents.find((item) => item.type === 'state_transitioned');
+  const eventData = {
+    previousPhase: 'archive',
+    nextPhase: null,
+    evidenceHash,
+    summary: `Archived Native change ${state.name}`,
+    transactionId: journal.id,
+  };
+  if (
+    event &&
+    journal.schema === 'comet.native.transaction.v2' &&
+    (!isDeepStrictEqual(event.data, eventData) ||
+      event.runId !== completed.runId ||
+      event.timestamp !== journal.createdAt ||
+      event !== trajectory.at(-1))
+  ) {
+    throw new Error(`Native Archive trajectory event changed for transaction ${journal.id}`);
+  }
   if (!event) {
     event = await appendNativeTrajectoryEvent({
       changeDir: archiveDir,
       run: completed,
       type: 'state_transitioned',
-      data: {
-        previousPhase: 'archive',
-        nextPhase: null,
-        evidenceHash,
-        summary: `Archived Native change ${state.name}`,
-        transactionId: journal.id,
-      },
+      data: eventData,
+      ...(journal.schema === 'comet.native.transaction.v2'
+        ? { now: new Date(journal.createdAt) }
+        : {}),
     });
   }
   await writeNativeCheckpoint({
@@ -264,24 +351,57 @@ async function finalizeArchive(
     run: completed,
     trajectoryOffset: event.sequence,
     evidenceHash,
+    ...(journal.schema === 'comet.native.transaction.v2'
+      ? { now: new Date(journal.createdAt) }
+      : {}),
   });
   await writeRunStateAt(archiveDir, completed, NATIVE_RUN_STORAGE);
   await clearNativeSelectionIfLocked(paths, state.name);
-  await finalizeNativeTransaction(paths, journal, 'archive-finalized');
+  if (journal.schema === 'comet.native.transaction.v2') {
+    await finalizeNativeArchiveTransactionV2(paths, journal, 'archive-finalized');
+  } else {
+    await finalizeNativeTransaction(paths, journal, 'archive-finalized');
+  }
 }
 
 async function continueArchive(
   paths: NativeProjectPaths,
-  journal: NativeTransactionJournal,
-  hooks?: NativeTransactionHooks,
-): Promise<NativeTransactionJournal> {
-  const applied = await applyNativeTransaction(paths, journal, hooks);
+  journal: AnyArchiveTransactionJournal,
+  hooks?: NativeArchiveTransactionHooksV2,
+): Promise<AnyArchiveTransactionJournal> {
+  if (journal.schema === 'comet.native.transaction.v2') {
+    const events = await readNativeTransactionEvents(paths, journal.id);
+    if (!events.some((event) => event.type === 'operation-started')) {
+      const preflight = await inspectNativeArchivePreflight({
+        paths,
+        name: journal.change,
+        now: new Date(journal.createdAt),
+      });
+      if (!preflight.ready || preflight.preflightHash !== journal.preflightHash) {
+        throw new NativeArchivePreflightError(
+          preflight,
+          'Native Archive facts changed before the first transaction operation',
+        );
+      }
+    }
+    const applied = await applyNativeArchiveTransactionV2(paths, journal, hooks);
+    await finalizeArchive(paths, applied);
+    return finalizeNativeArchiveTransactionV2(paths, applied, 'commit');
+  }
+  const applied = await applyNativeTransaction(paths, journal);
   await finalizeArchive(paths, applied);
   return finalizeNativeTransaction(paths, applied, 'commit');
 }
 
-function assertMatchingJournal(paths: NativeProjectPaths, journal: NativeTransactionJournal): void {
+function assertMatchingJournal(
+  paths: NativeProjectPaths,
+  journal: AnyArchiveTransactionJournal,
+): void {
   if (journal.kind !== 'archive') throw new Error(`Transaction ${journal.id} is not an archive`);
+  if (journal.schema === 'comet.native.transaction.v2') {
+    if (!journal.change) throw new Error(`Archive transaction ${journal.id} has no change`);
+    return;
+  }
   if (
     path.resolve(journal.projectRoot) !== path.resolve(paths.projectRoot) ||
     path.resolve(journal.nativeRoot) !== path.resolve(paths.nativeRoot)
@@ -293,29 +413,46 @@ function assertMatchingJournal(paths: NativeProjectPaths, journal: NativeTransac
 export async function archiveNativeChange(options: {
   paths: NativeProjectPaths;
   name: string;
+  expectedPreflightHash: string;
   now?: Date;
-  hooks?: NativeTransactionHooks;
-}): Promise<{ archiveDir: string; transactionId: string }> {
+  hooks?: NativeArchiveTransactionHooksV2;
+}): Promise<{ archiveDir: string; transactionId: string; preflightHash: string }> {
   return withNativeMutationLock(options.paths, `archive ${options.name}`, () =>
     withNativeTransitionLock(options.paths, options.name, `archive ${options.name}`, async () => {
       await settleNativeChangeJournalsLocked(options.paths, options.name);
       const lock = await acquireNativeLock(options.paths, 'archive', `archive ${options.name}`);
       try {
+        if (!/^[a-f0-9]{64}$/u.test(options.expectedPreflightHash)) {
+          throw new Error('Native Archive expected preflight must be a SHA-256 hash');
+        }
+        const now = options.now ?? new Date();
+        const preflight = await inspectNativeArchivePreflight({
+          paths: options.paths,
+          name: options.name,
+          now,
+        });
+        if (!preflight.ready || preflight.preflightHash !== options.expectedPreflightHash) {
+          throw new NativeArchivePreflightError(preflight);
+        }
         const state = await readNativeChange(options.paths, options.name);
         assertArchiveReady(state);
         await assertArchiveArtifacts(options.paths, state);
-        const now = options.now ?? new Date();
         const transactionId = randomUUID();
         const journal = await buildArchiveJournal({
           paths: options.paths,
           state,
           now,
           transactionId,
+          preflight,
         });
-        await createNativeTransaction(options.paths, journal);
+        await createNativeArchiveTransactionV2(options.paths, journal);
         await options.hooks?.afterPrepared?.(journal);
         await continueArchive(options.paths, journal, options.hooks);
-        return { archiveDir: archiveDirectoryFromJournal(options.paths, journal), transactionId };
+        return {
+          archiveDir: archiveDirectoryFromJournal(options.paths, journal),
+          transactionId,
+          preflightHash: preflight.preflightHash,
+        };
       } finally {
         await releaseNativeLock(lock);
       }
@@ -327,7 +464,7 @@ export async function recoverArchiveTransaction(options: {
   paths: NativeProjectPaths;
   transactionId: string;
   strategy: 'continue' | 'rollback';
-}): Promise<NativeTransactionJournal> {
+}): Promise<AnyArchiveTransactionJournal> {
   return withNativeMutationLock(
     options.paths,
     `recover archive ${options.transactionId}`,
@@ -338,12 +475,18 @@ export async function recoverArchiveTransaction(options: {
         `recover archive ${options.transactionId}`,
       );
       try {
-        const journal = await readNativeTransaction(options.paths, options.transactionId);
+        const generic = await readNativeTransaction(options.paths, options.transactionId);
+        const journal: AnyArchiveTransactionJournal =
+          (generic as unknown as { schema: string }).schema === 'comet.native.transaction.v2'
+            ? await readNativeArchiveTransactionV2(options.paths, options.transactionId)
+            : generic;
         assertMatchingJournal(options.paths, journal);
         if (journal.status === 'committed' || journal.status === 'rolled-back') return journal;
         return options.strategy === 'continue'
           ? continueArchive(options.paths, journal)
-          : rollbackNativeTransaction(options.paths, journal);
+          : journal.schema === 'comet.native.transaction.v2'
+            ? rollbackNativeArchiveTransactionV2(options.paths, journal)
+            : rollbackNativeTransaction(options.paths, journal);
       } finally {
         await releaseNativeLock(lock);
       }

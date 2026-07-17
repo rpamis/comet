@@ -13,16 +13,19 @@ import type {
   NativeApproval,
   NativeChangeSchemaInspection,
   NativeChangeState,
+  NativeContentAddressedRef,
   NativeLegacyChangeState,
   NativePhase,
   NativeProjectPaths,
   NativeSpecChange,
   NativeVerificationResult,
+  NativeV2ChangeState,
 } from './native-types.js';
 import {
   NATIVE_CHANGE_SCHEMA,
   NATIVE_LEGACY_CHANGE_SCHEMA,
   NATIVE_RUNTIME_PROTOCOL_VERSION,
+  NATIVE_V2_CHANGE_SCHEMA,
 } from './native-types.js';
 
 const CHANGE_KEYS = [
@@ -40,10 +43,12 @@ const CHANGE_KEYS = [
   'run_id',
 ] as const;
 const LEGACY_CHANGE_KEYS = new Set<string>(CHANGE_KEYS);
+const V2_CHANGE_KEYS = new Set<string>([...CHANGE_KEYS, 'minimum_runtime_version', 'revision']);
 const CURRENT_CHANGE_KEYS = new Set<string>([
-  ...CHANGE_KEYS,
-  'minimum_runtime_version',
-  'revision',
+  ...V2_CHANGE_KEYS,
+  'implementation_scope',
+  'verification_evidence',
+  'partial_allowance',
 ]);
 const SPEC_CHANGE_KEYS = new Set(['capability', 'operation', 'source', 'base_hash']);
 const PHASES = new Set<NativePhase>(['shape', 'build', 'verify', 'archive']);
@@ -51,6 +56,8 @@ const APPROVALS = new Set<Exclude<NativeApproval, null>>(['implicit', 'confirmed
 const VERIFY_RESULTS = new Set<NativeVerificationResult>(['pending', 'pass', 'fail']);
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+const CONTENT_ADDRESSED_REF_PATTERN =
+  /^runtime\/evidence\/(scopes|allowances|verifications)\/([a-f0-9]{64})\.json$/u;
 
 export class NativeSchemaMigrationRequiredError extends Error {
   readonly code = 'native-schema-migration-required';
@@ -270,12 +277,50 @@ function positiveInteger(value: unknown, label: string): number {
   return value as number;
 }
 
+function contentAddressedRef(
+  value: unknown,
+  label: string,
+  kind: 'scopes' | 'allowances' | 'verifications',
+): NativeContentAddressedRef | null {
+  if (value === null) return null;
+  const match = typeof value === 'string' ? CONTENT_ADDRESSED_REF_PATTERN.exec(value) : null;
+  if (!match || match[1] !== kind) {
+    throw new Error(
+      `${label} must be null or runtime/evidence/${kind}/<sha256>.json relative to the Native change`,
+    );
+  }
+  return value as NativeContentAddressedRef;
+}
+
+export function parseV2NativeChangeValue(value: unknown): NativeV2ChangeState {
+  const root = record(value, 'change.yaml');
+  if (root.schema !== NATIVE_V2_CHANGE_SCHEMA) {
+    throw new Error(`Expected ${NATIVE_V2_CHANGE_SCHEMA}`);
+  }
+  const minimumRuntimeVersion = positiveInteger(
+    root.minimum_runtime_version,
+    'Native v2 minimum_runtime_version',
+  );
+  if (minimumRuntimeVersion !== 2) {
+    throw new Error(`Native ${NATIVE_V2_CHANGE_SCHEMA} minimum_runtime_version must be 2`);
+  }
+  return {
+    schema: NATIVE_V2_CHANGE_SCHEMA,
+    minimum_runtime_version: 2,
+    revision: positiveInteger(root.revision, 'Native v2 revision'),
+    ...parseChangeFields(root, V2_CHANGE_KEYS),
+  };
+}
+
 export function parseNativeChangeValue(value: unknown): NativeChangeState {
   const root = record(value, 'change.yaml');
   if (root.schema !== NATIVE_CHANGE_SCHEMA) {
-    if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA) {
-      const legacy = parseLegacyNativeChangeValue(root);
-      throw new NativeSchemaMigrationRequiredError(legacy.name, legacy.schema);
+    if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA || root.schema === NATIVE_V2_CHANGE_SCHEMA) {
+      const previous =
+        root.schema === NATIVE_LEGACY_CHANGE_SCHEMA
+          ? parseLegacyNativeChangeValue(root)
+          : parseV2NativeChangeValue(root);
+      throw new NativeSchemaMigrationRequiredError(previous.name, previous.schema);
     }
     throw new NativeRuntimeCompatibilityError(
       typeof root.schema === 'string' ? root.schema : '(missing)',
@@ -300,6 +345,21 @@ export function parseNativeChangeValue(value: unknown): NativeChangeState {
     minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
     revision,
     ...parseChangeFields(root, CURRENT_CHANGE_KEYS),
+    implementation_scope: contentAddressedRef(
+      root.implementation_scope,
+      'Native implementation_scope',
+      'scopes',
+    ),
+    verification_evidence: contentAddressedRef(
+      root.verification_evidence,
+      'Native verification_evidence',
+      'verifications',
+    ),
+    partial_allowance: contentAddressedRef(
+      root.partial_allowance,
+      'Native partial_allowance',
+      'allowances',
+    ),
   };
 }
 
@@ -311,6 +371,16 @@ export function inspectNativeChangeValue(value: unknown): NativeChangeSchemaInsp
       status: 'migration-required',
       schema: state.schema,
       minimumRuntimeVersion: 1,
+      state,
+      message: `Native change ${state.name} requires migration to ${NATIVE_CHANGE_SCHEMA}`,
+    };
+  }
+  if (root.schema === NATIVE_V2_CHANGE_SCHEMA) {
+    const state = parseV2NativeChangeValue(root);
+    return {
+      status: 'migration-required',
+      schema: state.schema,
+      minimumRuntimeVersion: state.minimum_runtime_version,
       state,
       message: `Native change ${state.name} requires migration to ${NATIVE_CHANGE_SCHEMA}`,
     };
@@ -356,6 +426,34 @@ export function inspectNativeChangeValue(value: unknown): NativeChangeSchemaInsp
 
 export function nativeChangeDocument(state: NativeChangeState): Record<string, unknown> {
   const parsed = parseNativeChangeValue(state);
+  return {
+    schema: parsed.schema,
+    minimum_runtime_version: parsed.minimum_runtime_version,
+    revision: parsed.revision,
+    name: parsed.name,
+    language: parsed.language,
+    phase: parsed.phase,
+    brief: parsed.brief,
+    approval: parsed.approval,
+    spec_changes: parsed.spec_changes.map((change) => ({
+      capability: change.capability,
+      operation: change.operation,
+      ...(change.source ? { source: change.source } : {}),
+      base_hash: change.base_hash,
+    })),
+    verification_result: parsed.verification_result,
+    verification_report: parsed.verification_report,
+    implementation_scope: parsed.implementation_scope,
+    verification_evidence: parsed.verification_evidence,
+    partial_allowance: parsed.partial_allowance,
+    archived: parsed.archived,
+    created_at: parsed.created_at,
+    run_id: parsed.run_id,
+  };
+}
+
+export function nativeV2ChangeDocument(state: NativeV2ChangeState): Record<string, unknown> {
+  const parsed = parseV2NativeChangeValue(state);
   return {
     schema: parsed.schema,
     minimum_runtime_version: parsed.minimum_runtime_version,
@@ -473,6 +571,9 @@ async function createNativeChangeLocked(options: {
       spec_changes: [],
       verification_result: 'pending',
       verification_report: null,
+      implementation_scope: null,
+      verification_evidence: null,
+      partial_allowance: null,
       archived: false,
       created_at: (options.now ?? new Date()).toISOString().slice(0, 10),
       run_id: null,

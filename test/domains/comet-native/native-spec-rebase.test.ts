@@ -4,6 +4,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { archiveNativeChange } from '../../../domains/comet-native/native-archive.js';
+import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
 import {
   createNativeChange,
   nativeChangeDir,
@@ -16,6 +17,8 @@ import {
 } from '../../../domains/comet-native/native-specs.js';
 import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+import { readyNativeArchivePreflight } from '../../helpers/native-archive.js';
 
 const brief = `# Outcome
 Ship the feature.
@@ -33,20 +36,6 @@ Use existing APIs.
 
 # Verification expectations
 Run focused tests.
-`;
-
-const verification = `# Acceptance evidence
-Scenario passed.
-# Commands and results
-Tests passed.
-# Skipped checks
-None.
-# Spec consistency
-Matches.
-# Known limitations and risks
-None.
-# Conclusion
-Pass.
 `;
 
 describe('Native spec conflict rebase', () => {
@@ -78,7 +67,10 @@ describe('Native spec conflict rebase', () => {
       name,
       evidence: { summary: 'build is ready', artifacts: ['feature.ts'] },
     });
-    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      await nativeVerificationFixtureReport({ paths, name, evidenceRefs: ['feature.ts'] }),
+    );
     await advanceNativeChange({
       paths,
       name,
@@ -92,15 +84,28 @@ describe('Native spec conflict rebase', () => {
   }
 
   async function verifyAgain(name: string): Promise<void> {
-    const build = await advanceNativeChange({
+    const evidence = {
+      summary: 'rebased implementation confirmed',
+      artifacts: ['feature.ts'],
+      confirmed: true,
+    } as const;
+    const prepared = await advanceNativeChange({
       paths,
       name,
-      evidence: {
-        summary: 'rebased implementation confirmed',
-        artifacts: ['feature.ts'],
-        confirmed: true,
-      },
+      evidence,
     });
+    const build =
+      prepared.next === 'manual'
+        ? await advanceNativeChange({
+            paths,
+            name,
+            evidence: {
+              ...evidence,
+              allowPartialScopeHash: prepared.preparedScope!.scopeHash,
+              partialReason: 'The concurrent canonical edit is intentionally outside this change.',
+            },
+          })
+        : prepared;
     expect(build.change).toMatchObject({ phase: 'verify', approval: 'confirmed' });
     await advanceNativeChange({
       paths,
@@ -111,6 +116,12 @@ describe('Native spec conflict rebase', () => {
         verificationReport: 'verification.md',
       },
     });
+  }
+
+  async function archiveReadyChange(name: string): Promise<void> {
+    const now = new Date();
+    const expectedPreflightHash = await readyNativeArchivePreflight({ paths, name, now });
+    await archiveNativeChange({ paths, name, expectedPreflightHash, now });
   }
 
   it('refreshes a replace base and reopens Archive to Build for re-verification', async () => {
@@ -127,7 +138,14 @@ describe('Native spec conflict rebase', () => {
       name: state.name,
       evidence: { summary: 'build ready', artifacts: ['feature.ts'] },
     });
-    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      await nativeVerificationFixtureReport({
+        paths,
+        name: state.name,
+        evidenceRefs: ['feature.ts'],
+      }),
+    );
     await advanceNativeChange({
       paths,
       name: state.name,
@@ -139,9 +157,10 @@ describe('Native spec conflict rebase', () => {
     });
     await fs.writeFile(canonicalFile, 'concurrent canonical\n');
     const concurrentHash = await sha256File(canonicalFile);
-    await expect(archiveNativeChange({ paths, name: state.name })).rejects.toThrow(
-      'Canonical spec conflict',
-    );
+    await expect(inspectNativeArchivePreflight({ paths, name: state.name })).resolves.toMatchObject({
+      ready: false,
+      findingCodes: expect.arrayContaining(['spec-base-conflict']),
+    });
 
     const rebased = await rebaseNativeSpecChanges({
       paths,
@@ -152,10 +171,13 @@ describe('Native spec conflict rebase', () => {
       phase: 'build',
       verification_result: 'pending',
       verification_report: null,
+      implementation_scope: null,
+      verification_evidence: null,
+      partial_allowance: null,
       spec_changes: [{ operation: 'replace', base_hash: concurrentHash }],
     });
     await verifyAgain(state.name);
-    await archiveNativeChange({ paths, name: state.name });
+    await archiveReadyChange(state.name);
     expect(await fs.readFile(canonicalFile, 'utf8')).toBe('target canonical\n');
   });
 
@@ -167,9 +189,12 @@ describe('Native spec conflict rebase', () => {
     const changeDir = await advanceToArchive('remove-conflict');
     await fs.writeFile(canonicalFile, 'legacy v2 from another change\n');
     const concurrentHash = await sha256File(canonicalFile);
-    await expect(archiveNativeChange({ paths, name: 'remove-conflict' })).rejects.toThrow(
-      'Canonical spec conflict',
-    );
+    await expect(
+      inspectNativeArchivePreflight({ paths, name: 'remove-conflict' }),
+    ).resolves.toMatchObject({
+      ready: false,
+      findingCodes: expect.arrayContaining(['spec-base-conflict']),
+    });
 
     const rebased = await rebaseNativeSpecChanges({
       paths,
@@ -182,7 +207,7 @@ describe('Native spec conflict rebase', () => {
     });
     expect(changeDir).toContain('remove-conflict');
     await verifyAgain('remove-conflict');
-    await archiveNativeChange({ paths, name: 'remove-conflict' });
+    await archiveReadyChange('remove-conflict');
     await expect(fs.access(canonicalFile)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });
