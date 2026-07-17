@@ -5,6 +5,7 @@ import path from 'path';
 import { atomicWriteJson } from './native-atomic-file.js';
 import { sha256Text } from './native-hash.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import { isNativeEnvFileName, NATIVE_EXCLUDED_DIRECTORY_NAMES } from './native-sensitive-paths.js';
 import type {
   NativeContentSnapshotManifest,
   NativeProjectPaths,
@@ -22,22 +23,6 @@ export const DEFAULT_NATIVE_SNAPSHOT_LIMITS = {
 
 const MAX_RECORDED_OMISSIONS = 1_000;
 const CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
-const EXCLUDED_DIRECTORIES = new Set([
-  '.cache',
-  '.git',
-  '.gradle',
-  '.mypy_cache',
-  '.next',
-  '.npm',
-  '.pnpm-store',
-  '.pytest_cache',
-  '.turbo',
-  '.venv',
-  '.yarn',
-  '__pycache__',
-  'node_modules',
-  'venv',
-]);
 const MANIFEST_KEYS = new Set([
   'schema',
   'origin',
@@ -79,10 +64,6 @@ interface SnapshotOptions {
 
 function portableRelative(root: string, target: string): string {
   return path.relative(root, target).split(path.sep).join('/');
-}
-
-function isEnvFile(name: string): boolean {
-  return name.toLowerCase().startsWith('.env');
 }
 
 function normalizedDenylist(projectRoot: string, values: readonly string[]): string[] {
@@ -413,7 +394,7 @@ export async function createNativeContentSnapshot(
         target === configFile ||
         sameOrInside(nativeRoot, target) ||
         denylist.some((denied) => sameOrInside(denied, target)) ||
-        isEnvFile(child.name) ||
+        isNativeEnvFileName(child.name) ||
         child.name.toLowerCase() === '.git'
       ) {
         continue;
@@ -434,7 +415,7 @@ export async function createNativeContentSnapshot(
       if (child.isSymbolicLink() || before.isSymbolicLink()) continue;
       if (child.isDirectory()) {
         if (!before.isDirectory()) continue;
-        if (EXCLUDED_DIRECTORIES.has(child.name.toLowerCase())) continue;
+        if (NATIVE_EXCLUDED_DIRECTORY_NAMES.has(child.name.toLowerCase())) continue;
         let realDirectory;
         try {
           realDirectory = await fs.realpath(target);

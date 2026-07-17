@@ -4,10 +4,15 @@ import path from 'path';
 import { recoverArchiveTransaction } from './native-archive.js';
 import { inspectNativeChange, readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
-import { inspectNativeArtifactFindings, listNativeStatus } from './native-diagnostics.js';
+import { inspectNativeStatus, listNativeStatus } from './native-diagnostics.js';
 import { diagnoseNativeLock } from './native-lock.js';
 import { nativeProjectPaths, resolveContainedNativePath } from './native-paths.js';
 import { recoverNativeRootMove } from './native-root-move.js';
+import { continueNativeCheckpoint } from './native-checkpoint-journal.js';
+import {
+  nativeCheckpointJournalFile,
+  readNativeCheckpointJournal,
+} from './native-checkpoint-storage.js';
 import { nativeSelectionFile } from './native-selection.js';
 import {
   inspectPendingNativeSchemaMigration,
@@ -336,14 +341,19 @@ async function inspectChanges(
       });
       continue;
     }
-    const state = await readNativeChange(paths, status.name);
-    for (const artifact of await inspectNativeArtifactFindings(paths, state)) {
-      if (artifact.code === 'trajectory-tail-incomplete') continue;
+    const detailed = await inspectNativeStatus(paths, status.name, { details: true });
+    for (const artifact of detailed.findings ?? []) {
+      if (
+        artifact.code === 'trajectory-tail-incomplete' ||
+        artifact.code === 'checkpoint-progress-incomplete'
+      ) {
+        continue;
+      }
       findings.push({
-        severity: 'error',
+        severity: artifact.severity,
         code: artifact.code,
         message: `${status.name}: ${artifact.message}`,
-        ...(artifact.path ? { path: artifact.path } : {}),
+        ...(artifact.path ? { path: path.join(paths.projectRoot, artifact.path) } : {}),
       });
     }
   }
@@ -517,6 +527,62 @@ async function inspectTransitionJournals(
   return findings;
 }
 
+async function inspectCheckpointJournals(
+  paths: NativeProjectPaths,
+  options: { name?: string; repair: boolean },
+): Promise<NativeDoctorFinding[]> {
+  const findings: NativeDoctorFinding[] = [];
+  const names = options.name
+    ? [options.name]
+    : (await directoryEntries(paths.changesDir))
+        .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+        .map((entry) => entry.name)
+        .sort();
+  for (const name of names) {
+    const file = nativeCheckpointJournalFile(paths, name);
+    let journal;
+    try {
+      journal = await readNativeCheckpointJournal(paths, name);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      findings.push({
+        severity: 'error',
+        code: 'checkpoint-progress-invalid',
+        message: `Native progress checkpoint journal is invalid: ${(error as Error).message}`,
+        path: file,
+      });
+      continue;
+    }
+    if (!journal) continue;
+    if (!options.repair) {
+      findings.push({
+        severity: 'error',
+        code: 'checkpoint-progress-incomplete',
+        message: `Native progress checkpoint ${journal.id} is incomplete for ${name}`,
+        path: file,
+      });
+      continue;
+    }
+    try {
+      await continueNativeCheckpoint(paths, name);
+      findings.push({
+        severity: 'info',
+        code: 'checkpoint-progress-recovered',
+        message: `Continued Native progress checkpoint ${journal.id} for ${name}`,
+        path: file,
+      });
+    } catch (error) {
+      findings.push({
+        severity: 'error',
+        code: 'checkpoint-progress-recovery-failed',
+        message: `Native progress checkpoint recovery failed: ${(error as Error).message}`,
+        path: file,
+      });
+    }
+  }
+  return findings;
+}
+
 export async function doctorNativeProject(options: {
   paths: NativeProjectPaths;
   name?: string;
@@ -606,6 +672,7 @@ export async function doctorNativeProject(options: {
       recoveryStrategy: options.recoveryStrategy,
     })),
   );
+  findings.push(...(await inspectCheckpointJournals(paths, { name: options.name, repair })));
   findings.push(...(await inspectLocks(paths, repair, transactions.unfinished)));
   findings.push(...(await inspectSelection(paths, repair)));
   findings.push(...(await inspectChanges(paths, options.name)));

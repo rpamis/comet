@@ -18,6 +18,7 @@ import {
   readNativeChangeFile,
   writeNativeChangeFile,
 } from './native-change.js';
+import { settleNativeChangeJournalsLocked } from './native-change-recovery.js';
 import { sha256File, sha256Text } from './native-hash.js';
 import { acquireNativeLock, releaseNativeLock } from './native-lock.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
@@ -35,10 +36,7 @@ import {
   rollbackNativeTransaction,
 } from './native-transaction.js';
 import { appendNativeTrajectoryEvent, writeNativeCheckpoint } from './native-trajectory.js';
-import {
-  continueNativeTransitionLocked,
-  withNativeTransitionLock,
-} from './native-transition-journal.js';
+import { withNativeTransitionLock } from './native-transition-journal.js';
 import type {
   NativeChangeState,
   NativeProjectPaths,
@@ -300,7 +298,7 @@ export async function archiveNativeChange(options: {
 }): Promise<{ archiveDir: string; transactionId: string }> {
   return withNativeMutationLock(options.paths, `archive ${options.name}`, () =>
     withNativeTransitionLock(options.paths, options.name, `archive ${options.name}`, async () => {
-      await continueNativeTransitionLocked(options.paths, options.name);
+      await settleNativeChangeJournalsLocked(options.paths, options.name);
       const lock = await acquireNativeLock(options.paths, 'archive', `archive ${options.name}`);
       try {
         const state = await readNativeChange(options.paths, options.name);

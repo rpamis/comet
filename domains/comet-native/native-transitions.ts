@@ -7,6 +7,9 @@ import { readRunStateAt, startRunWithStorage } from '../engine/storage-run.js';
 import { inspectNativeGuard } from './native-guards.js';
 import { nativeChangeDir, readNativeChange } from './native-change.js';
 import { sha256Text } from './native-hash.js';
+import { nativeContinuation } from './native-continuation.js';
+import { structureNativeFindings } from './native-findings.js';
+import { settleNativeChangeJournalsLocked } from './native-change-recovery.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import {
   NATIVE_RUNTIME_HASH,
@@ -63,7 +66,7 @@ export async function advanceNativeChange(
 async function advanceNativeChangeLocked(
   options: AdvanceNativeChangeOptions,
 ): Promise<NativeAdvanceResult> {
-  await continueNativeTransitionLocked(options.paths, options.name);
+  await settleNativeChangeJournalsLocked(options.paths, options.name);
   const state = await readNativeChange(options.paths, options.name);
   const previousPhase = state.phase;
   const changeDir = nativeChangeDir(options.paths, options.name);
@@ -83,6 +86,10 @@ async function advanceNativeChangeLocked(
         next: 'auto',
         nextCommand: state.phase === 'archive' ? `comet native archive ${state.name}` : null,
         findings: [],
+        continuation: nativeContinuation({
+          state,
+          archiveReady: state.phase === 'archive' && state.verification_result === 'pass',
+        }),
       };
     }
   }
@@ -98,12 +105,18 @@ async function advanceNativeChangeLocked(
     evidence: options.evidence,
   });
   if (!guard.valid) {
+    const findings = structureNativeFindings({
+      paths: options.paths,
+      state,
+      findings: guard.findings,
+    });
     return {
       change: state,
       previousPhase,
       next: 'manual',
       nextCommand: null,
-      findings: guard.findings,
+      findings,
+      continuation: nativeContinuation({ state, findings }),
     };
   }
 
@@ -197,5 +210,9 @@ async function advanceNativeChangeLocked(
     next: 'auto',
     nextCommand: persisted.phase === 'archive' ? `comet native archive ${persisted.name}` : null,
     findings: [],
+    continuation: nativeContinuation({
+      state: persisted,
+      archiveReady: persisted.phase === 'archive' && persisted.verification_result === 'pass',
+    }),
   };
 }

@@ -4,6 +4,7 @@ import path from 'path';
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
 import { readRunStateAt } from '../engine/storage-run.js';
 import { canonicalSpecPath } from './native-artifacts.js';
+import { settleNativeChangeJournalsLocked } from './native-change-recovery.js';
 import {
   assertNativeName,
   compareAndSwapNativeChangeLocked,
@@ -147,7 +148,7 @@ export async function rebaseNativeSpecChanges(options: {
       options.name,
       `rebase specs for ${options.name}`,
       async () => {
-        await continueNativeTransitionLocked(options.paths, options.name);
+        await settleNativeChangeJournalsLocked(options.paths, options.name);
         const state = await readNativeChange(options.paths, options.name);
         if (state.phase === 'shape') {
           throw new Error('Shape spec metadata is refreshed by the next command');
@@ -209,7 +210,7 @@ export async function markNativeSpecRemoval(
   assertNativeName(capability);
   return withNativeMutationLock(paths, `remove spec ${capability} from ${name}`, () =>
     withNativeTransitionLock(paths, name, `remove spec ${capability} from ${name}`, async () => {
-      await continueNativeTransitionLocked(paths, name);
+      await settleNativeChangeJournalsLocked(paths, name);
       return markNativeSpecRemovalLocked(paths, name, capability);
     }),
   );

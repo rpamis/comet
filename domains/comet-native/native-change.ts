@@ -401,6 +401,21 @@ export async function hasPendingNativeSchemaMigration(
   }
 }
 
+export async function hasPendingNativeCheckpointRecovery(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<boolean> {
+  const file = path.join(nativeChangeDir(paths, name), 'runtime', 'checkpoint-journal.json');
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  try {
+    await fs.lstat(file);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 export async function createNativeChange(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -582,10 +597,19 @@ export async function compareAndSwapNativeChangeLocked(
   paths: NativeProjectPaths,
   state: NativeChangeState,
   expectedRevision: number,
+  options?: { allowPendingCheckpointRecovery?: boolean },
 ): Promise<NativeChangeState> {
   await assertNoPendingNativeRootMove(paths.projectRoot);
   if (await hasPendingNativeSchemaMigration(paths, state.name)) {
     throw new NativeSchemaMigrationRequiredError(state.name, state.schema);
+  }
+  if (
+    !options?.allowPendingCheckpointRecovery &&
+    (await hasPendingNativeCheckpointRecovery(paths, state.name))
+  ) {
+    throw new Error(
+      `Native progress checkpoint recovery is required for ${state.name} before another state write`,
+    );
   }
   await assertNativeTrajectoryHealthy(paths, state.name);
   const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');

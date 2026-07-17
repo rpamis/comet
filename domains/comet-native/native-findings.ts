@@ -1,0 +1,190 @@
+import path from 'path';
+
+import { nativeChangeDir } from './native-change.js';
+import { isInsidePath } from './native-paths.js';
+import type {
+  NativeChangeState,
+  NativeFinding,
+  NativeFindingSeverity,
+  NativeFindingSummary,
+  NativeProjectPaths,
+  NativeStructuredFinding,
+} from './native-types.js';
+
+const FINDING_SUMMARY_CODE_BUDGET = 8;
+
+interface FindingMetadata {
+  severity: NativeFindingSeverity;
+  requiredAction: string;
+  retry: 'next' | 'status' | 'none';
+  repair: 'doctor' | 'none';
+}
+
+const EXACT_METADATA: Record<string, FindingMetadata> = {
+  'brief-blocking-question': {
+    severity: 'error',
+    requiredAction: 'answer-blocking-question',
+    retry: 'next',
+    repair: 'none',
+  },
+  'transition-incomplete': {
+    severity: 'error',
+    requiredAction: 'recover-transition',
+    retry: 'status',
+    repair: 'doctor',
+  },
+  'trajectory-tail-incomplete': {
+    severity: 'error',
+    requiredAction: 'repair-trajectory-tail',
+    retry: 'status',
+    repair: 'doctor',
+  },
+  'checkpoint-progress-invalid': {
+    severity: 'error',
+    requiredAction: 'manually-isolate-invalid-checkpoint',
+    retry: 'none',
+    repair: 'none',
+  },
+  'checkpoint-progress-incomplete': {
+    severity: 'error',
+    requiredAction: 'recover-progress-checkpoint',
+    retry: 'status',
+    repair: 'doctor',
+  },
+  'checkpoint-manifest-invalid': {
+    severity: 'error',
+    requiredAction: 'record-checkpoint-again',
+    retry: 'status',
+    repair: 'none',
+  },
+};
+
+function inferredMetadata(code: string): FindingMetadata {
+  const exact = EXACT_METADATA[code];
+  if (exact) return exact;
+  if (
+    /^(?:run-|trajectory-|checkpoint-(?:missing|mismatch|invalid)|transition-invalid)/u.test(code)
+  ) {
+    return {
+      severity: 'error',
+      requiredAction: 'repair-native-runtime',
+      retry: 'status',
+      repair: 'doctor',
+    };
+  }
+  if (code.startsWith('brief-')) {
+    return {
+      severity: 'error',
+      requiredAction: 'complete-brief',
+      retry: 'next',
+      repair: 'none',
+    };
+  }
+  if (code.startsWith('spec-')) {
+    return {
+      severity: 'error',
+      requiredAction: 'resolve-spec-state',
+      retry: 'next',
+      repair: 'none',
+    };
+  }
+  if (code.startsWith('verification-')) {
+    return {
+      severity: 'error',
+      requiredAction: 'complete-verification-evidence',
+      retry: 'next',
+      repair: 'none',
+    };
+  }
+  if (code.startsWith('build-')) {
+    return {
+      severity: 'error',
+      requiredAction: 'record-build-evidence',
+      retry: 'next',
+      repair: 'none',
+    };
+  }
+  return {
+    severity: 'error',
+    requiredAction: 'resolve-finding',
+    retry: 'status',
+    repair: 'none',
+  };
+}
+
+function projectRelativePath(
+  paths: NativeProjectPaths,
+  state: NativeChangeState,
+  finding: NativeFinding,
+): string | null {
+  if (!finding.path) return null;
+  let target: string;
+  if (path.isAbsolute(finding.path)) {
+    target = path.resolve(finding.path);
+  } else if (/^(?:brief-|verification-|spec-source)/u.test(finding.code)) {
+    target = path.resolve(nativeChangeDir(paths, state.name), ...finding.path.split(/[\\/]/u));
+  } else {
+    target = path.resolve(paths.projectRoot, ...finding.path.split(/[\\/]/u));
+  }
+  if (!isInsidePath(paths.projectRoot, target)) return null;
+  const relative = path.relative(paths.projectRoot, target).replaceAll('\\', '/');
+  return relative === '' ? '.' : relative;
+}
+
+function retryCommand(retry: FindingMetadata['retry'], state: NativeChangeState): string | null {
+  if (retry === 'next') return `comet native next ${state.name} --summary "<summary>"`;
+  if (retry === 'status') return `comet native status ${state.name} --details`;
+  return null;
+}
+
+export function structureNativeFindings(options: {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+  findings: readonly NativeFinding[];
+}): NativeStructuredFinding[] {
+  return options.findings
+    .map((finding): NativeStructuredFinding => {
+      const metadata = inferredMetadata(finding.code);
+      return {
+        code: finding.code,
+        message: finding.message,
+        severity: metadata.severity,
+        path: projectRelativePath(options.paths, options.state, finding),
+        requiredAction: metadata.requiredAction,
+        retryCommand: retryCommand(metadata.retry, options.state),
+        repairCommand:
+          metadata.repair === 'doctor'
+            ? `comet native doctor ${options.state.name} --repair${
+                finding.code.startsWith('transition-') ? ' --strategy continue' : ''
+              }`
+            : null,
+        // This is intentionally code-based, not severity-based. Model-actionable
+        // missing data must never be presented as a user decision.
+        requiresUserDecision: finding.code === 'brief-blocking-question',
+      };
+    })
+    .sort((left, right) => {
+      const severityRank = { error: 0, warning: 1, info: 2 } as const;
+      return (
+        severityRank[left.severity] - severityRank[right.severity] ||
+        left.code.localeCompare(right.code) ||
+        (left.path ?? '').localeCompare(right.path ?? '') ||
+        left.message.localeCompare(right.message)
+      );
+    });
+}
+
+export function summarizeNativeFindings(
+  findings: readonly NativeStructuredFinding[],
+): NativeFindingSummary {
+  const codes = [...new Set(findings.map((finding) => finding.code))];
+  return {
+    total: findings.length,
+    errors: findings.filter((finding) => finding.severity === 'error').length,
+    warnings: findings.filter((finding) => finding.severity === 'warning').length,
+    info: findings.filter((finding) => finding.severity === 'info').length,
+    requiresUserDecision: findings.some((finding) => finding.requiresUserDecision),
+    codes: codes.slice(0, FINDING_SUMMARY_CODE_BUDGET),
+    truncated: codes.length > FINDING_SUMMARY_CODE_BUDGET,
+  };
+}

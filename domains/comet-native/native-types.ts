@@ -129,6 +129,138 @@ export interface NativeFinding {
   path?: string;
 }
 
+export type NativeFindingSeverity = 'info' | 'warning' | 'error';
+
+/** Stable, machine-readable finding emitted by Native command projections. */
+export interface NativeStructuredFinding {
+  code: string;
+  message: string;
+  severity: NativeFindingSeverity;
+  path: string | null;
+  requiredAction: string;
+  retryCommand: string | null;
+  repairCommand: string | null;
+  requiresUserDecision: boolean;
+}
+
+export interface NativeFindingSummary {
+  total: number;
+  errors: number;
+  warnings: number;
+  info: number;
+  requiresUserDecision: boolean;
+  codes: string[];
+  truncated: boolean;
+}
+
+export type NativeContinuationDisposition = 'continue' | 'await-user' | 'blocked' | 'done';
+export type NativeContinuationAction =
+  | 'work-phase'
+  | 'advance-phase'
+  | 'repair'
+  | 'archive'
+  | 'none';
+
+export interface NativeContinuation {
+  schema: 'comet.native.continuation.v1';
+  skill: 'comet-native';
+  change: string;
+  phase: NativePhase;
+  revision: number;
+  disposition: NativeContinuationDisposition;
+  action: NativeContinuationAction;
+  command: string | null;
+  requiresUserDecision: boolean;
+  requiredInputs: string[];
+}
+
+export interface NativeCheckpointArtifact {
+  path: string;
+  hash: string;
+  size: number;
+}
+
+export interface NativeCheckpointManifest {
+  schema: 'comet.native.checkpoint-manifest.v1';
+  change: string;
+  artifacts: NativeCheckpointArtifact[];
+  totalBytes: number;
+}
+
+export interface NativeProgressCheckpoint {
+  schema: 'comet.native.progress-checkpoint.v1';
+  id: string;
+  change: string;
+  phase: NativePhase;
+  previousRevision: number;
+  stateRevision: number;
+  summary: string;
+  nextAction: string;
+  inputHash: string;
+  manifestHash: string;
+  manifestRef: string;
+  artifactCount: number;
+  createdAt: string;
+}
+
+export interface NativeCheckpointJournal {
+  schema: 'comet.native.checkpoint-journal.v1';
+  id: string;
+  change: string;
+  inputHash: string;
+  createdAt: string;
+  previousState: NativeChangeState;
+  nextState: NativeChangeState;
+  checkpoint: NativeProgressCheckpoint;
+  manifest: NativeCheckpointManifest;
+}
+
+export interface NativeCheckpointHooks {
+  afterPrepared?: (journal: NativeCheckpointJournal) => void | Promise<void>;
+  afterStateWritten?: (journal: NativeCheckpointJournal) => void | Promise<void>;
+  afterProgressWritten?: (journal: NativeCheckpointJournal) => void | Promise<void>;
+}
+
+export interface NativeCheckpointResult {
+  change: NativeChangeState;
+  checkpoint: NativeProgressCheckpoint;
+  idempotent: boolean;
+  expectedRevision: number;
+  previousRevision: number;
+  revision: number;
+  outcome: 'recorded' | 'idempotent';
+  continuation: NativeContinuation;
+}
+
+export interface NativeCheckpointCompactView {
+  id: string;
+  createdAt: string;
+  phase: NativePhase;
+  stateRevision: number;
+  summary: string;
+  nextAction: string;
+  artifactCount: number;
+}
+
+export interface NativeCheckpointDetailView extends NativeCheckpointCompactView {
+  manifestHash: string;
+  manifestRef: string;
+  artifacts: NativeCheckpointArtifact[];
+  totalBytes: number;
+}
+
+export interface NativeInspectionView {
+  freshness: 'fresh' | 'stale';
+  codes: string[];
+  reasonCount: number;
+  codesTruncated: boolean;
+}
+
+export interface NativeInspectionDetailView extends NativeInspectionView {
+  reasons: string[];
+  reasonsTruncated: boolean;
+}
+
 export interface NativeArtifactValidation {
   valid: boolean;
   findings: NativeFinding[];
@@ -148,7 +280,8 @@ export interface NativeAdvanceResult {
   previousPhase: NativePhase;
   next: 'auto' | 'manual' | 'done';
   nextCommand: string | null;
-  findings: NativeFinding[];
+  findings: NativeStructuredFinding[];
+  continuation: NativeContinuation;
 }
 
 interface NativeTransitionJournalFields<TState extends NativeReadableChangeState> {
@@ -186,12 +319,29 @@ export interface NativeTransitionHooks {
 export interface NativeStatusProjection {
   name: string;
   phase: NativePhase | 'invalid';
+  revision: number | null;
   approval: NativeApproval;
   verificationResult: NativeVerificationResult;
   specChanges: number;
   selected: boolean;
   nextCommand: string | null;
   archiveReady: boolean;
+  inspection: NativeInspectionView;
+  findingSummary: NativeFindingSummary;
+  detailsCommand: string | null;
+  checkpoint: NativeCheckpointCompactView | null;
+  continuation: NativeContinuation | null;
+  findings?: NativeStructuredFinding[];
+  inspectionDetails?: NativeInspectionDetailView;
+  checkpointDetails?: NativeCheckpointDetailView | null;
+  budgets?: {
+    maxFindings: number;
+    maxInspectionReasons: number;
+    maxCheckpointArtifacts: number;
+    findingsTruncated: boolean;
+    inspectionReasonsTruncated: boolean;
+    checkpointArtifactsTruncated: boolean;
+  };
   schema?: string;
   migrationRequired?: boolean;
   minimumRuntimeVersion?: number | null;

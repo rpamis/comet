@@ -6,8 +6,10 @@ import {
   createNativeChange,
   inspectNativeChange,
   listNativeChanges,
+  NativeChangeRevisionConflictError,
   NativeRuntimeCompatibilityError,
   nativeChangeDir,
+  readNativeChange,
 } from './native-change.js';
 import {
   defaultProjectConfig,
@@ -17,6 +19,8 @@ import {
 } from './native-config.js';
 import { inspectNativeStatus, listNativeStatus } from './native-diagnostics.js';
 import { doctorNativeProject } from './native-doctor.js';
+import { checkpointNativeChange } from './native-progress-checkpoint.js';
+import { nativeContinuation } from './native-continuation.js';
 import {
   discoverNativeProject,
   ensureNativeDirectories,
@@ -71,6 +75,7 @@ Commands:
   show <change-name>
   status [<change-name>]
   select <change-name>
+  checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--result pass|fail] [--report <path>]
   archive <change-name>
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
@@ -130,6 +135,15 @@ function languageOption(args: string[]): 'en' | 'zh-CN' {
     throw new NativeUsageError('--language must be en or zh-CN');
   }
   return language;
+}
+
+function revisionOption(args: string[]): number | undefined {
+  const value = takeOption(args, '--expect-revision');
+  if (value === undefined) return undefined;
+  if (!/^[1-9]\d*$/u.test(value) || !Number.isSafeInteger(Number(value))) {
+    throw new NativeUsageError('--expect-revision must be a positive integer');
+  }
+  return Number(value);
 }
 
 async function projectRootFrom(explicit: string | undefined): Promise<string> {
@@ -234,7 +248,12 @@ async function dispatch(
     await ensureNativeDirectories(paths);
     const state = await createNativeChange({ paths, name, language });
     if (shouldWriteConfig) await writeProjectConfig(projectRoot, config);
-    return success('new', state, `Created Native change ${state.name}\n`);
+    const status = await inspectNativeStatus(paths, state.name);
+    return success(
+      'new',
+      { ...state, continuation: status.continuation },
+      `Created Native change ${state.name}\n`,
+    );
   }
   if (command === 'spec') {
     const subcommand = requiredPositional(rawArgs, 'spec subcommand');
@@ -244,9 +263,10 @@ async function dispatch(
       assertNoArguments(rawArgs);
       const { paths } = await configuredPaths(projectRoot);
       const state = await markNativeSpecRemoval(paths, name, capability);
+      const status = await inspectNativeStatus(paths, state.name);
       return success(
         'spec remove',
-        state,
+        { ...state, continuation: status.continuation },
         `Marked Native capability ${capability} for removal in ${name}\n`,
       );
     }
@@ -257,7 +277,12 @@ async function dispatch(
       assertNoArguments(rawArgs);
       const { paths } = await configuredPaths(projectRoot);
       const state = await rebaseNativeSpecChanges({ paths, name, summary });
-      return success('spec rebase', state, `Rebased Native specs for ${name}\n`);
+      const status = await inspectNativeStatus(paths, state.name);
+      return success(
+        'spec rebase',
+        { ...state, continuation: status.continuation },
+        `Rebased Native specs for ${name}\n`,
+      );
     }
     throw new NativeUsageError(`Unknown spec command: ${subcommand}`);
   }
@@ -297,10 +322,14 @@ async function dispatch(
     });
   }
   if (command === 'status') {
+    const details = takeFlag(rawArgs, '--details');
     const name = rawArgs[0]?.startsWith('--') ? undefined : rawArgs.shift();
+    if (details && !name) throw new NativeUsageError('status --details requires a change name');
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
-    const data = name ? await inspectNativeStatus(paths, name) : await listNativeStatus(paths);
+    const data = name
+      ? await inspectNativeStatus(paths, name, { details })
+      : await listNativeStatus(paths);
     return success('status', data);
   }
   if (command === 'select') {
@@ -308,7 +337,43 @@ async function dispatch(
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
     await selectNativeChange(paths, name);
-    return success('select', { selected: name }, `Selected Native change ${name}\n`);
+    const status = await inspectNativeStatus(paths, name);
+    return success(
+      'select',
+      { selected: name, continuation: status.continuation },
+      `Selected Native change ${name}\n`,
+    );
+  }
+  if (command === 'checkpoint') {
+    const name = requiredPositional(rawArgs, 'change name');
+    const summary = takeOption(rawArgs, '--summary');
+    if (!summary) throw new NativeUsageError('--summary is required');
+    const nextAction = takeOption(rawArgs, '--next-action');
+    if (!nextAction) throw new NativeUsageError('--next-action is required');
+    const artifacts = takeMany(rawArgs, '--artifact');
+    const expectedRevision = revisionOption(rawArgs);
+    assertNoArguments(rawArgs);
+    const { paths } = await configuredPaths(projectRoot);
+    const result = await checkpointNativeChange({
+      paths,
+      name,
+      summary,
+      nextAction,
+      artifacts,
+      expectedRevision,
+    });
+    const status = await inspectNativeStatus(paths, name);
+    const manifestRef = path
+      .relative(
+        paths.projectRoot,
+        path.join(nativeChangeDir(paths, name), ...result.checkpoint.manifestRef.split('/')),
+      )
+      .replaceAll('\\', '/');
+    return success('checkpoint', {
+      ...result,
+      checkpoint: { ...result.checkpoint, manifestRef },
+      continuation: status.continuation,
+    });
   }
   if (command === 'next') {
     const name = requiredPositional(rawArgs, 'change name');
@@ -348,14 +413,20 @@ async function dispatch(
         },
       };
     }
-    return success('next', result);
+    const status = await inspectNativeStatus(paths, name);
+    return success('next', { ...result, continuation: status.continuation });
   }
   if (command === 'archive') {
     const name = requiredPositional(rawArgs, 'change name');
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
+    const state = await readNativeChange(paths, name);
     const result = await archiveNativeChange({ paths, name });
-    return success('archive', result, `Archived Native change ${name} to ${result.archiveDir}\n`);
+    return success(
+      'archive',
+      { ...result, continuation: nativeContinuation({ state, done: true }) },
+      `Archived Native change ${name} to ${result.archiveDir}\n`,
+    );
   }
   if (command === 'doctor') {
     const repair = takeFlag(rawArgs, '--repair');
@@ -405,6 +476,19 @@ function errorResult(command: string | null, error: unknown): DispatchResult {
         expectedHash: error.expectedHash,
         actualHash: error.actualHash,
         canonicalPath: error.canonicalPath,
+      },
+      error: { code: 'conflict', message: error.message },
+    };
+  }
+  if (error instanceof NativeChangeRevisionConflictError) {
+    return {
+      command,
+      exitCode: 73,
+      data: {
+        change: error.change,
+        expectedRevision: error.expectedRevision,
+        actualRevision: error.actualRevision,
+        outcome: 'revision-conflict',
       },
       error: { code: 'conflict', message: error.message },
     };

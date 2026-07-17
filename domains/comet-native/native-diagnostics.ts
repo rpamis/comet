@@ -9,6 +9,12 @@ import { inspectNativeChange, nativeChangeDir } from './native-change.js';
 import { nativeSelectionFile } from './native-selection.js';
 import { inspectNativeRunConsistency } from './native-run-consistency.js';
 import { inspectPendingNativeTransition } from './native-transition-journal.js';
+import { nativeContinuation } from './native-continuation.js';
+import { structureNativeFindings, summarizeNativeFindings } from './native-findings.js';
+import {
+  buildNativeResumeView,
+  NATIVE_INSPECTION_REASON_DETAIL_BUDGET,
+} from './native-resume-view.js';
 import type {
   NativeChangeState,
   NativeFinding,
@@ -81,6 +87,7 @@ async function statusFindings(
 export async function inspectNativeStatus(
   paths: NativeProjectPaths,
   name: string,
+  options?: { details?: boolean },
 ): Promise<NativeStatusProjection> {
   const selected = (await selectedName(paths)) === name;
   let state: NativeChangeState;
@@ -90,12 +97,31 @@ export async function inspectNativeStatus(
       return {
         name,
         phase: inspection.state.phase,
+        revision: 'revision' in inspection.state ? inspection.state.revision : null,
         approval: inspection.state.approval,
         verificationResult: inspection.state.verification_result,
         specChanges: inspection.state.spec_changes.length,
         selected,
         nextCommand: null,
         archiveReady: false,
+        inspection: {
+          freshness: 'stale',
+          codes: ['migration-required'],
+          reasonCount: 1,
+          codesTruncated: false,
+        },
+        findingSummary: {
+          total: 0,
+          errors: 0,
+          warnings: 0,
+          info: 0,
+          requiresUserDecision: false,
+          codes: [],
+          truncated: false,
+        },
+        detailsCommand: `comet native status ${name} --details`,
+        checkpoint: null,
+        continuation: null,
         schema: inspection.schema,
         migrationRequired: true,
         minimumRuntimeVersion: inspection.minimumRuntimeVersion,
@@ -106,12 +132,31 @@ export async function inspectNativeStatus(
       return {
         name,
         phase: 'invalid',
+        revision: null,
         approval: null,
         verificationResult: 'pending',
         specChanges: 0,
         selected,
         nextCommand: null,
         archiveReady: false,
+        inspection: {
+          freshness: 'stale',
+          codes: ['runtime-incompatible'],
+          reasonCount: 1,
+          codesTruncated: false,
+        },
+        findingSummary: {
+          total: 0,
+          errors: 0,
+          warnings: 0,
+          info: 0,
+          requiresUserDecision: false,
+          codes: [],
+          truncated: false,
+        },
+        detailsCommand: `comet native status ${name} --details`,
+        checkpoint: null,
+        continuation: null,
         schema: inspection.schema,
         minimumRuntimeVersion: inspection.minimumRuntimeVersion,
         error: inspection.message ?? `Native change ${name} is incompatible`,
@@ -122,16 +167,37 @@ export async function inspectNativeStatus(
     return {
       name,
       phase: 'invalid',
+      revision: null,
       approval: null,
       verificationResult: 'pending',
       specChanges: 0,
       selected,
       nextCommand: null,
       archiveReady: false,
+      inspection: {
+        freshness: 'stale',
+        codes: ['change-invalid'],
+        reasonCount: 1,
+        codesTruncated: false,
+      },
+      findingSummary: {
+        total: 0,
+        errors: 0,
+        warnings: 0,
+        info: 0,
+        requiresUserDecision: false,
+        codes: [],
+        truncated: false,
+      },
+      detailsCommand: `comet native status ${name} --details`,
+      checkpoint: null,
+      continuation: null,
       error: (error as Error).message,
     };
   }
-  const findings = await statusFindings(paths, state);
+  const resume = await buildNativeResumeView({ paths, state });
+  const rawFindings = [...(await statusFindings(paths, state)), ...resume.findings];
+  const findings = structureNativeFindings({ paths, state, findings: rawFindings });
   const archiveReady =
     state.phase === 'archive' && state.verification_result === 'pass' && findings.length === 0;
   const mutationBlocked = findings.some(
@@ -141,12 +207,33 @@ export async function inspectNativeStatus(
   return {
     name: state.name,
     phase: state.phase,
+    revision: state.revision,
     approval: state.approval,
     verificationResult: state.verification_result,
     specChanges: state.spec_changes.length,
     selected,
     nextCommand: mutationBlocked ? null : nativeNextCommand(state, archiveReady),
     archiveReady,
+    inspection: resume.inspection,
+    findingSummary: summarizeNativeFindings(findings),
+    detailsCommand: `comet native status ${state.name} --details`,
+    checkpoint: resume.checkpoint,
+    continuation: nativeContinuation({ state, findings, archiveReady }),
+    ...(options?.details
+      ? {
+          findings: findings.slice(0, 50),
+          inspectionDetails: resume.inspectionDetails,
+          checkpointDetails: resume.checkpointDetails,
+          budgets: {
+            maxFindings: 50,
+            maxInspectionReasons: NATIVE_INSPECTION_REASON_DETAIL_BUDGET,
+            maxCheckpointArtifacts: resume.maxCheckpointArtifacts,
+            findingsTruncated: findings.length > 50,
+            inspectionReasonsTruncated: resume.inspectionDetails.reasonsTruncated,
+            checkpointArtifactsTruncated: false,
+          },
+        }
+      : {}),
     schema: state.schema,
     minimumRuntimeVersion: state.minimum_runtime_version,
     ...(findings[0] ? { error: findings[0].message } : {}),
