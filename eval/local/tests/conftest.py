@@ -12,6 +12,7 @@ Supports pytest-xdist parallel execution via worker coordination.
 """
 
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -25,7 +26,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from dotenv import load_dotenv
 
 from scaffold import run_claude_in_docker, run_python_in_docker, run_shell
 from scaffold.python import (
@@ -42,6 +42,12 @@ from scaffold.python import (
 )
 from scaffold.python.sample_quality import infer_sample_quality
 from scaffold.python.skill_parser import SCRIPT_EXTENSIONS
+from scaffold.python.aligned_comparison import (
+    EXPECTED_CASE_MATRIX_FILENAME,
+    build_execution_identity,
+    expected_case_matrix_payload,
+    parse_expected_case_matrix,
+)
 
 
 def _extract_loop_turns(stderr: str | None) -> int | None:
@@ -56,7 +62,9 @@ def _extract_loop_interaction(stderr: str | None) -> dict[str, int | None]:
         "decision_points": source.count("[loop] decision point detected"),
         "deterministic_replies": source.count("[loop] deterministic decision reply applied"),
         "completion_signals": source.count("[loop] workflow completion detected"),
+        "fresh_resume_boundaries": source.count("[loop] fresh resume boundary detected"),
     }
+
 
 # =============================================================================
 # CONSTANTS
@@ -64,6 +72,7 @@ def _extract_loop_interaction(stderr: str | None) -> dict[str, int | None]:
 
 PROJECT_ROOT = Path(__file__).parent.parent
 EVAL_ROOT = PROJECT_ROOT.parent
+REPOSITORY_ROOT = EVAL_ROOT.parent
 
 # Shared files for xdist worker coordination
 XDIST_EXPERIMENT_FILE = PROJECT_ROOT / ".pytest_experiment_id"
@@ -84,6 +93,239 @@ COMET_WORKFLOW_CLAUDE_MD_PATH = (
     / "comet-workflow"
     / "CLAUDE.md"
 )
+
+CURRENT_COMET_CLI_MARKER = ".include-current-comet-cli"
+CURRENT_COMET_BUILD_SCHEMA = "comet.eval.current-comet-build.v1"
+TRUSTED_NATIVE_RUNTIME_MARKER = ".include-trusted-native-runtime"
+TRUSTED_NATIVE_RUNTIME_SCHEMA = "comet.eval.trusted-native-runtime.v1"
+MODEL_EXECUTION_ENV_KEYS = (
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+    "CLAUDE_CODE_SUBAGENT_MODEL",
+)
+
+
+def _selected_claude_model() -> str | None:
+    """Resolve the exact model selector passed to Claude without persisting it."""
+    return os.environ.get("BENCH_CC_MODEL") or os.environ.get("ANTHROPIC_MODEL")
+
+
+def _model_execution_config() -> dict[str, str | None]:
+    """Return only model-routing values; credentials are deliberately excluded."""
+    return {key: os.environ.get(key) for key in MODEL_EXECUTION_ENV_KEYS}
+
+
+def _capture_execution_identity(test_dir: Path, *, model: str | None, interaction):
+    """Capture an immutable image/tool identity and a safe report payload."""
+    result = run_shell(
+        "docker.sh",
+        "execution-identity",
+        str(test_dir),
+        timeout=300,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("Could not verify eval Docker/Claude execution identity")
+    try:
+        raw = json.loads(result.stdout)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise RuntimeError("Eval execution identity output is not valid JSON") from error
+    report_identity = build_execution_identity(
+        raw,
+        model=model,
+        model_config=_model_execution_config(),
+        interaction=interaction,
+    )
+    return SimpleNamespace(
+        runtime_image_id=raw["runtime_image_id"],
+        report_identity=report_identity,
+    )
+
+
+def _regular_tree_files(root: Path) -> list[Path]:
+    files: list[Path] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise ValueError(f"Current Comet snapshot source contains a symbolic link: {path}")
+        if path.is_file():
+            files.append(path)
+    return files
+
+
+def _tree_digest(root: Path, files: list[Path] | None = None) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    selected = files if files is not None else _regular_tree_files(root)
+    for path in selected:
+        relative = path.relative_to(root).as_posix()
+        payload = path.read_bytes()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(len(payload)).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(payload).hexdigest().encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest(), len(selected)
+
+
+def _build_current_comet_dist(checkout: Path, output: Path) -> str:
+    """Compile the checkout's TypeScript into an isolated, timestamp-free dist tree."""
+    node = shutil.which("node")
+    tsc = checkout / "node_modules/typescript/bin/tsc"
+    compiler_package = checkout / "node_modules/typescript/package.json"
+    if not node or not tsc.is_file() or not compiler_package.is_file():
+        raise FileNotFoundError("Current Comet source build requires local Node.js and TypeScript")
+    compiler = json.loads(compiler_package.read_text(encoding="utf-8"))
+    version = compiler.get("version")
+    if not isinstance(version, str) or not version:
+        raise ValueError("Current Comet TypeScript compiler version is invalid")
+    result = subprocess.run(
+        [
+            node,
+            str(tsc),
+            "--pretty",
+            "false",
+            "--outDir",
+            str(output),
+            "--declaration",
+            "false",
+            "--declarationMap",
+            "false",
+            "--sourceMap",
+            "false",
+            "--incremental",
+            "false",
+        ],
+        cwd=checkout,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stdout + "\n" + result.stderr).strip()
+        raise RuntimeError(f"Current Comet source build failed: {detail[-4000:]}")
+    required = [output / "app/cli/index.js", output / "domains/dashboard/native-adapter.js"]
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Current Comet source build omitted required output: {missing}")
+    return version
+
+
+def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> None:
+    """Expose the current checkout's built CLI to task containers on request.
+
+    The task workspace is the only host directory mounted into Docker.  A task
+    carrying ``CURRENT_COMET_CLI_MARKER`` therefore needs an explicit snapshot
+    of this checkout's bin/dist package rather than a published npm version.
+    """
+    if not (environment_dir / CURRENT_COMET_CLI_MARKER).is_file():
+        return
+
+    target = test_dir / "_eval_current_comet"
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
+    package_file = REPOSITORY_ROOT / "package.json"
+    bin_dir = REPOSITORY_ROOT / "bin"
+    source_roots = [
+        REPOSITORY_ROOT / "app",
+        REPOSITORY_ROOT / "domains",
+        REPOSITORY_ROOT / "platform",
+    ]
+    source_files = [
+        path
+        for root in source_roots
+        for path in _regular_tree_files(root)
+        if path.suffix in {".ts", ".tsx", ".json"}
+    ]
+    source_files.extend(
+        path
+        for path in (
+            REPOSITORY_ROOT / "tsconfig.json",
+            package_file,
+            REPOSITORY_ROOT / "bin/comet.js",
+        )
+        if path.is_file()
+    )
+    if not package_file.is_file() or not bin_dir.is_dir() or not source_files:
+        raise FileNotFoundError("Current Comet source snapshot is incomplete")
+    source_hash, source_count = _tree_digest(REPOSITORY_ROOT, sorted(set(source_files)))
+    with tempfile.TemporaryDirectory(prefix="comet-eval-source-build-") as temporary:
+        built_dist = Path(temporary) / "dist"
+        compiler_version = _build_current_comet_dist(REPOSITORY_ROOT, built_dist)
+        shutil.copytree(built_dist, target / "dist")
+    shutil.copytree(bin_dir, target / "bin")
+    shutil.copy2(package_file, target / "package.json")
+    snapshot_files = [
+        path for relative in ("bin", "dist") for path in _regular_tree_files(target / relative)
+    ] + [target / "package.json"]
+    snapshot_hash, snapshot_count = _tree_digest(target, sorted(snapshot_files))
+    identity = {
+        "schema": CURRENT_COMET_BUILD_SCHEMA,
+        "sourceHash": source_hash,
+        "sourceFileCount": source_count,
+        "snapshotHash": snapshot_hash,
+        "snapshotFileCount": snapshot_count,
+        "packageHash": hashlib.sha256((target / "package.json").read_bytes()).hexdigest(),
+        "entryHash": hashlib.sha256((target / "dist/app/cli/index.js").read_bytes()).hexdigest(),
+        "nativeAdapterHash": hashlib.sha256(
+            (target / "dist/domains/dashboard/native-adapter.js").read_bytes()
+        ).hexdigest(),
+        "compilerVersion": compiler_version,
+    }
+    (target / "build-identity.json").write_text(
+        json.dumps(identity, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _copy_trusted_native_runtime_snapshot(
+    environment_dir: Path,
+    test_dir: Path,
+    skills: dict[str, Any] | None,
+) -> None:
+    """Snapshot the controller-selected Native runtime before the Agent starts."""
+    if not (environment_dir / TRUSTED_NATIVE_RUNTIME_MARKER).is_file():
+        return
+    config = (skills or {}).get("comet-native")
+    if not isinstance(config, dict):
+        raise ValueError("Trusted Native oracle requires the comet-native Skill source")
+    source_dir = config.get("source_dir")
+    scripts_dir = config.get("scripts_dir")
+    candidates = []
+    if source_dir:
+        candidates.append(Path(source_dir) / "scripts/comet-native-runtime.mjs")
+    if scripts_dir:
+        candidates.append(Path(scripts_dir) / "comet-native-runtime.mjs")
+    source = next(
+        (
+            candidate
+            for candidate in candidates
+            if candidate.is_file() and not candidate.is_symlink()
+        ),
+        None,
+    )
+    if source is None:
+        raise FileNotFoundError("Controller-selected Comet Native runtime is unavailable")
+
+    target_root = test_dir / "_eval_trusted_oracles"
+    if target_root.exists():
+        shutil.rmtree(target_root)
+    target_root.mkdir(parents=True)
+    target = target_root / "comet-native-runtime.mjs"
+    shutil.copyfile(source, target)
+    identity = {
+        "schema": TRUSTED_NATIVE_RUNTIME_SCHEMA,
+        "runtimeFile": target.name,
+        "runtimeHash": hashlib.sha256(target.read_bytes()).hexdigest(),
+    }
+    (target_root / "native-runtime-identity.json").write_text(
+        json.dumps(identity, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 # =============================================================================
@@ -164,6 +406,10 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Register experiment plugin (decision deferred to sessionstart)."""
+    config.addinivalue_line(
+        "markers",
+        "eval_case(repetition): controller-owned task/treatment/repetition identity",
+    )
     global _plugin
     _plugin = ExperimentPlugin(config)
     config.pluginmanager.register(_plugin, "experiment_plugin")
@@ -213,6 +459,22 @@ class ExperimentPlugin:
         print(f"Logging to: {self.logger.base_dir}")
         print(f"{'=' * 60}\n")
 
+    def pytest_collection_finish(self, session):
+        """Persist the full collected case matrix before any model run starts."""
+        if not self.logger:
+            return
+        cases = _expected_cases_from_items(session.items)
+        if not cases:
+            return
+        payload = expected_case_matrix_payload(cases)
+        _persist_expected_case_matrix(self.logger.base_dir, payload)
+        self.logger.metadata["expected_case_matrix"] = {
+            "schema": payload["schema"],
+            "matrix_hash": payload["matrix_hash"],
+            "case_count": len(payload["cases"]),
+            "path": EXPECTED_CASE_MATRIX_FILENAME,
+        }
+
     def pytest_sessionfinish(self, session, exitstatus):
         """Generate and save summary at session end."""
         if not self.logger:
@@ -224,6 +486,7 @@ class ExperimentPlugin:
         if self.is_xdist_master:
             time.sleep(1)
 
+        self._reload_expected_case_matrix_metadata()
         self._reload_results_from_reports()
 
         if self.logger.results:
@@ -231,6 +494,23 @@ class ExperimentPlugin:
             self._print_summary()
 
         _cleanup_experiment_coordination()
+
+    def _reload_expected_case_matrix_metadata(self):
+        """Attach the worker-written matrix to controller-finalized metadata."""
+        path = self.logger.base_dir / EXPECTED_CASE_MATRIX_FILENAME
+        if not path.is_file():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            matrix = parse_expected_case_matrix(payload)
+        except (OSError, json.JSONDecodeError, ValueError) as error:
+            raise RuntimeError("Expected case matrix became invalid before finalize") from error
+        self.logger.metadata["expected_case_matrix"] = {
+            "schema": payload["schema"],
+            "matrix_hash": matrix.matrix_hash,
+            "case_count": len(matrix.cases),
+            "path": EXPECTED_CASE_MATRIX_FILENAME,
+        }
 
     def get_rep_number(self, treatment_name: str) -> int:
         """Get the next repetition number for a treatment."""
@@ -410,9 +690,12 @@ def _resolve_interaction_config(task, profile_name: str, config):
     mode = task_interaction.mode or profile_default.mode
     max_turns = task_interaction.max_turns or profile_default.max_turns
     simulator_prompt = task_interaction.simulator_prompt or profile_default.simulator_prompt
-    decision_patterns = list(task_interaction.decision_patterns or profile_default.decision_patterns)
+    decision_patterns = list(
+        task_interaction.decision_patterns or profile_default.decision_patterns
+    )
     decision_reply = task_interaction.decision_reply or profile_default.decision_reply
     continue_prompt = task_interaction.continue_prompt or profile_default.continue_prompt
+    fresh_resume_marker = task_interaction.fresh_resume_marker
 
     mode_override = config.getoption("--interaction-mode")
     if mode_override:
@@ -441,6 +724,7 @@ def _resolve_interaction_config(task, profile_name: str, config):
         decision_patterns=decision_patterns,
         decision_reply=decision_reply,
         continue_prompt=continue_prompt,
+        fresh_resume_marker=fresh_resume_marker,
     )
 
 
@@ -516,6 +800,48 @@ def _get_or_create_experiment_id(name: str, use_coordination: bool) -> str:
         return experiment_id
 
 
+def _expected_cases_from_items(items) -> list[tuple[str, str, int]]:
+    """Read explicit eval-case marks from the complete pytest collection."""
+    cases: list[tuple[str, str, int]] = []
+    for item in items:
+        callspec = getattr(item, "callspec", None)
+        marker = item.get_closest_marker("eval_case")
+        if callspec is None or marker is None:
+            continue
+        task = callspec.params.get("task_name")
+        treatment = callspec.params.get("treatment_name")
+        repetition = marker.kwargs.get("repetition")
+        if not isinstance(task, str) or not isinstance(treatment, str):
+            raise pytest.UsageError("eval_case is missing task/treatment parameters")
+        if isinstance(repetition, bool) or not isinstance(repetition, int) or repetition < 1:
+            raise pytest.UsageError("eval_case repetition must be a positive integer")
+        cases.append((task, treatment, repetition))
+    return cases
+
+
+def _persist_expected_case_matrix(base_dir: Path, payload: dict[str, Any]) -> None:
+    """Write one xdist-shared matrix; workers must agree byte-for-byte."""
+    canonical = parse_expected_case_matrix(payload)
+    path = base_dir / EXPECTED_CASE_MATRIX_FILENAME
+    lock_path = base_dir / f".{EXPECTED_CASE_MATRIX_FILENAME}.lock"
+    serialized = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    with file_lock(lock_path):
+        if path.exists():
+            try:
+                existing = parse_expected_case_matrix(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, json.JSONDecodeError, ValueError) as error:
+                raise RuntimeError("Existing expected case matrix is invalid") from error
+            if existing != canonical:
+                raise RuntimeError("pytest workers collected different expected case matrices")
+            return
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+        try:
+            temporary.write_text(serialized, encoding="utf-8")
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
 def _snapshot_dynamic_skill_package(test_dir: Path, skill_hints: dict[str, Any]) -> str | None:
     """Copy a manifest target package and generated Node Skills into the workspace.
 
@@ -581,8 +907,9 @@ def verify_environment(project_root, request):
     if _is_unit_tests_only(request.config):
         return
 
-    load_dotenv(EVAL_ROOT / ".env")
-    load_dotenv(project_root / ".env")
+    from scaffold.python.utils import load_eval_environment
+
+    load_eval_environment()
 
     # Check uv (Python package manager)
     if shutil.which("uv") is None:
@@ -597,9 +924,7 @@ def verify_environment(project_root, request):
     if os.name == "nt" and BASH_EXEC == "bash":
         # _resolve_bash() fell back to bare "bash" — verify it actually works
         try:
-            bash_check = subprocess.run(
-                ["bash", "--version"], capture_output=True, timeout=5
-            )
+            bash_check = subprocess.run(["bash", "--version"], capture_output=True, timeout=5)
             if bash_check.returncode != 0:
                 raise FileNotFoundError
         except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -686,6 +1011,8 @@ def setup_test_context(test_dir):
 
     def _copy_environment(environment_dir: Path) -> None:
         for item in environment_dir.iterdir():
+            if item.name in {CURRENT_COMET_CLI_MARKER, TRUSTED_NATIVE_RUNTIME_MARKER}:
+                continue
             dest = test_dir / item.name
             if item.is_dir():
                 if dest.exists() and dest.is_dir():
@@ -695,6 +1022,7 @@ def setup_test_context(test_dir):
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, dest)
+        _copy_current_comet_cli_snapshot(environment_dir, test_dir)
 
     def _write_claude_md(content_file: str) -> None:
         claude_dir = test_dir / ".claude"
@@ -737,6 +1065,7 @@ def setup_test_context(test_dir):
 
         if environment_dir and environment_dir.exists():
             _copy_environment(environment_dir)
+            _copy_trusted_native_runtime_snapshot(environment_dir, test_dir, skills)
 
         if claude_md:
             with tempfile.NamedTemporaryFile(
@@ -764,18 +1093,29 @@ def run_claude(test_dir, experiment_logger, request):
     is replaced by the multi-turn ``run-claude-loop`` driver, which simulates a
     user replying at the workflow's decision points.
     """
-    default_model = os.environ.get("BENCH_CC_MODEL")
+    default_model = _selected_claude_model()
 
-    def _run(prompt: str, timeout: int = 600, model: str = None, interaction=None):
+    def _run(
+        prompt: str,
+        timeout: int = 600,
+        model: str = None,
+        interaction=None,
+        image_id: str | None = None,
+    ):
         mdl = model or default_model
-        if (
-            os.environ.get("TRACE_TO_LANGSMITH", "").lower() == "true"
-            and not os.environ.get("CC_LANGSMITH_LOG_FILE")
+        if os.environ.get("TRACE_TO_LANGSMITH", "").lower() == "true" and not os.environ.get(
+            "CC_LANGSMITH_LOG_FILE"
         ):
             os.environ["CC_LANGSMITH_LOG_FILE"] = "/workspace/langsmith-hook.log"
         use_loop = interaction is not None and interaction.mode == "auto_user"
         if not use_loop:
-            result = run_claude_in_docker(test_dir, prompt, timeout=timeout, model=mdl)
+            result = run_claude_in_docker(
+                test_dir,
+                prompt,
+                timeout=timeout,
+                model=mdl,
+                image_id=image_id,
+            )
         else:
             task_prompt_file = test_dir / ".eval-task-prompt.txt"
             task_prompt_file.write_text(prompt, encoding="utf-8")
@@ -788,19 +1128,26 @@ def run_claude(test_dir, experiment_logger, request):
             ]
             if mdl:
                 loop_args += ["--model", mdl]
+            if image_id:
+                loop_args += ["--image-id", image_id]
             if interaction.continue_prompt:
                 loop_args += ["--continue-prompt", interaction.continue_prompt]
             for pattern in interaction.decision_patterns:
                 loop_args += ["--decision-pattern", pattern]
             if interaction.decision_reply:
                 loop_args += ["--decision-reply", interaction.decision_reply]
+            if interaction.fresh_resume_marker:
+                loop_args += ["--fresh-resume-marker", interaction.fresh_resume_marker]
 
             prompt_file = None
             try:
-                if interaction.simulator_prompt:
+                if interaction.simulator_prompt and not interaction.decision_reply:
                     prompt_file = test_dir / ".eval-simulator-prompt.txt"
                     prompt_file.write_text(interaction.simulator_prompt, encoding="utf-8")
-                    loop_args += ["--simulator-prompt-file", "//workspace/.eval-simulator-prompt.txt"]
+                    loop_args += [
+                        "--simulator-prompt-file",
+                        "//workspace/.eval-simulator-prompt.txt",
+                    ]
                 result = run_shell("docker.sh", *loop_args, timeout=timeout + 60, check=False)
             finally:
                 task_prompt_file.unlink(missing_ok=True)
@@ -893,6 +1240,7 @@ def record_result(test_dir, experiment_logger, request):
                     "profile": events.get("profile"),
                     "skill_sources": events.get("skill_sources", []),
                     "eval_manifest": events.get("eval_manifest"),
+                    "case_manifest": events.get("case_manifest"),
                     "interaction": events.get("interaction", {}),
                     "artifact_references": artifact_references,
                     "failure_attribution": failure_attribution,
@@ -953,6 +1301,7 @@ def _build_report_payload(
             "profile": events.get("profile"),
             "skill_sources": events.get("skill_sources", []),
             "eval_manifest": events.get("eval_manifest"),
+            "case_manifest": events.get("case_manifest"),
             "interaction": events.get("interaction", {}),
             "artifact_references": artifact_references,
             "failure_attribution": failure_attribution,
@@ -1128,6 +1477,7 @@ def _save_artifacts(base_dir: Path, treatment_name: str, rep: int, test_dir: Pat
     exclude_dirs = {
         ".claude",
         ".git",
+        "_eval_current_comet",
         "node_modules",
         "__pycache__",
         "scaffold",

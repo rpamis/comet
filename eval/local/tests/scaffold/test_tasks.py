@@ -86,6 +86,7 @@ simulator_prompt = "Answer as a concise developer user."
 decision_patterns = ["confirm", "choose"]
 decision_reply = "Use the recommended option."
 continue_prompt = "Please continue."
+fresh_resume_marker = "COLD_RESUME_READY"
 """
     )
 
@@ -101,6 +102,7 @@ continue_prompt = "Please continue."
     assert task.config.interaction.decision_patterns == ["confirm", "choose"]
     assert task.config.interaction.decision_reply == "Use the recommended option."
     assert task.config.interaction.continue_prompt == "Please continue."
+    assert task.config.interaction.fresh_resume_marker == "COLD_RESUME_READY"
 
 
 def test_comet_tasks_default_to_comet_workflow_profile():
@@ -147,7 +149,7 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
-    assert len(names) == 24
+    assert len(names) == 29
     assert set(names) == {
         "authoring-skill-smoke",
         "comet-agent-memory-routing",
@@ -169,6 +171,11 @@ def test_comet_task_index_lists_real_tasks():
         "comet-native-clarification",
         "comet-native-repository-fact",
         "comet-native-interrupted-transition",
+        "comet-native-wave-b-decision-resume",
+        "comet-native-wave-c-verification-integrity",
+        "comet-native-wave-d-stagnation-stop",
+        "comet-native-wave-e-parallel-safety",
+        "comet-native-wave-f-dashboard-readonly",
         "comet-observability-env-template",
         "generic-skill-smoke",
         "workflow-overlay-contract",

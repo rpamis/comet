@@ -23,6 +23,36 @@ tasks:
       - COMET_NATIVE_PHASE1
     description: Native workflow that must recover a prepared phase transition before implementing and archiving.
 
+  - name: comet-native-wave-b-decision-resume
+    category: comet-native
+    default_treatments:
+      - COMET_NATIVE_PHASE1
+    description: Native wave B task for one hidden product decision and a context-cleared resume from disk.
+
+  - name: comet-native-wave-c-verification-integrity
+    category: comet-native
+    default_treatments:
+      - COMET_NATIVE_PHASE1
+    description: Native wave C task for confirmed partial scope, stale-evidence retreat, and content-bound Archive.
+
+  - name: comet-native-wave-d-stagnation-stop
+    category: comet-native
+    default_treatments:
+      - COMET_NATIVE_PHASE1
+    description: Native wave D task for third-signature stop, one override, and the twelfth-failure ceiling.
+
+  - name: comet-native-wave-e-parallel-safety
+    category: comet-native
+    default_treatments:
+      - COMET_NATIVE_PHASE1
+    description: Native wave E task for early conflict/workspace status and single-winner compare-and-swap.
+
+  - name: comet-native-wave-f-dashboard-readonly
+    category: comet-native
+    default_treatments:
+      - COMET_NATIVE_PHASE1
+    description: Native wave F task for Dashboard projection parity and read-only collection.
+
   # ── Default / canonical full-workflow task ──────────────────────────────
   - name: comet-full-workflow
     category: comet

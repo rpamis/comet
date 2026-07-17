@@ -148,6 +148,65 @@ image_exists() {
     docker images -q "$image_name" 2>/dev/null | grep -q .
 }
 
+sha256_text() {
+    if command -v sha256sum &> /dev/null; then
+        printf '%s' "$1" | sha256sum | cut -d' ' -f1
+    elif command -v shasum &> /dev/null; then
+        printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1
+    else
+        echo "ERROR: sha256sum or shasum is required for execution identity" >&2
+        return 1
+    fi
+}
+
+resolve_runtime_image() {
+    local dir="$1"
+    local expected_image_id="${2:-}"
+    if [[ -n "$expected_image_id" ]]; then
+        if [[ ! "$expected_image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "ERROR: Invalid immutable Docker image ID" >&2
+            return 1
+        fi
+        if ! docker image inspect "$expected_image_id" &> /dev/null; then
+            echo "ERROR: Expected Docker image is no longer available" >&2
+            return 1
+        fi
+        printf '%s' "$expected_image_id"
+        return 0
+    fi
+
+    local image_name image_id
+    image_name=$(docker_build "$dir") || return 1
+    image_id=$(docker image inspect --format '{{.Id}}' "$image_name") || return 1
+    if [[ ! "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "ERROR: Docker returned an invalid immutable image ID" >&2
+        return 1
+    fi
+    printf '%s' "$image_id"
+}
+
+docker_execution_identity() {
+    local dir="$1"
+    local image_name image_id repo_digests claude_version
+    image_name=$(docker_build "$dir") || return 1
+    image_id=$(docker image inspect --format '{{.Id}}' "$image_name") || return 1
+    if [[ ! "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "ERROR: Docker returned an invalid immutable image ID" >&2
+        return 1
+    fi
+    repo_digests=$(docker image inspect --format '{{json .RepoDigests}}' "$image_id") || return 1
+    claude_version=$(docker run --rm "$image_id" claude --version 2>/dev/null) || {
+        echo "ERROR: Cannot verify Claude CLI version in benchmark image" >&2
+        return 1
+    }
+    printf '{"schema":"comet.eval.execution-identity.v1","runtime_image_id":"%s","image_id_hash":"sha256:%s","image_repo_digests_hash":"sha256:%s","image_ref_hash":"sha256:%s","claude_tool_version_hash":"sha256:%s"}\n' \
+        "$image_id" \
+        "$(sha256_text "$image_id")" \
+        "$(sha256_text "$repo_digests")" \
+        "$(sha256_text "$image_name")" \
+        "$(sha256_text "$claude_version")"
+}
+
 # =============================================================================
 # DOCKER BUILD
 # =============================================================================
@@ -233,6 +292,27 @@ build_plugin_args() {
     PLUGIN_CLI_ARGS=("--plugin-dir" "//opt/langsmith-cc-plugin")
 }
 
+# Keep controller-built oracle snapshots immutable inside both agent and validator containers.
+# Nested read-only binds override the writable /workspace parent mount when present.
+build_trusted_oracle_mount_args() {
+    local dir="$1"
+    TRUSTED_ORACLE_MOUNT_ARGS=()
+    if [[ -d "$dir/_eval_current_comet" ]]; then
+        local current_comet_host
+        current_comet_host=$(_winpath "$dir/_eval_current_comet")
+        TRUSTED_ORACLE_MOUNT_ARGS+=(
+            "-v" "$current_comet_host://workspace/_eval_current_comet:ro"
+        )
+    fi
+    if [[ -d "$dir/_eval_trusted_oracles" ]]; then
+        local native_oracles_host
+        native_oracles_host=$(_winpath "$dir/_eval_trusted_oracles")
+        TRUSTED_ORACLE_MOUNT_ARGS+=(
+            "-v" "$native_oracles_host://workspace/_eval_trusted_oracles:ro"
+        )
+    fi
+}
+
 # Run command in Docker container
 # Usage: docker_run <directory> <command...>
 docker_run() {
@@ -244,12 +324,14 @@ docker_run() {
     image_name=$(docker_build "$dir") || return 1
 
     build_env_args
+    build_trusted_oracle_mount_args "$dir"
 
     local windir
     windir=$(_winpath "$dir")
 
     docker run --rm \
         -v "$windir://workspace" \
+        ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
         -w //workspace \
         "${ENV_ARGS[@]}" \
         "$image_name" \
@@ -290,6 +372,7 @@ docker_run_claude() {
 
     local model=""
     local timeout="300"
+    local expected_image_id=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -301,17 +384,22 @@ docker_run_claude() {
                 timeout="$2"
                 shift 2
                 ;;
+            --image-id)
+                expected_image_id="$2"
+                shift 2
+                ;;
             *)
                 shift
                 ;;
         esac
     done
 
-    local image_name
-    image_name=$(docker_build "$dir") || return 1
+    local image_id
+    image_id=$(resolve_runtime_image "$dir" "$expected_image_id") || return 1
 
     build_env_args
     build_plugin_args
+    build_trusted_oracle_mount_args "$dir"
 
     local cmd=(
         claude -p "$prompt"
@@ -334,18 +422,20 @@ docker_run_claude() {
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD "$timeout" docker run --rm \
             -v "$windir://workspace" \
+            ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             -w //workspace \
             "${ENV_ARGS[@]}" \
-            "$image_name" \
+            "$image_id" \
             "${cmd[@]}"
     else
         docker run --rm \
             -v "$windir://workspace" \
+            ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             -w //workspace \
             "${ENV_ARGS[@]}" \
-            "$image_name" \
+            "$image_id" \
             "${cmd[@]}"
     fi
 }
@@ -358,11 +448,31 @@ docker_run_claude_loop() {
     local prompt="$2"
     shift 2
 
-    local image_name
-    image_name=$(docker_build "$dir") || return 1
+    local expected_image_id=""
+    local loop_args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --image-id)
+                expected_image_id="$2"
+                shift 2
+                ;;
+            --max-turns|--model|--simulator-prompt-file|--decision-reply|--continue-prompt|--decision-pattern|--fresh-resume-marker)
+                loop_args+=("$1" "$2")
+                shift 2
+                ;;
+            *)
+                loop_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    local image_id
+    image_id=$(resolve_runtime_image "$dir" "$expected_image_id") || return 1
 
     build_env_args
     build_plugin_args
+    build_trusted_oracle_mount_args "$dir"
 
     local windir shell_dir
     windir=$(_winpath "$dir")
@@ -372,14 +482,15 @@ docker_run_claude_loop() {
     # at /opt/scaffold-shell/ inside the container.
     docker run --rm \
         -v "$windir://workspace" \
+        ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
         -v "$shell_dir://opt/scaffold-shell:ro" \
         ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
         -w //workspace \
         "${ENV_ARGS[@]}" \
-        "$image_name" \
+        "$image_id" \
         bash //opt/scaffold-shell/run-claude-loop.sh "$prompt" \
             ${PLUGIN_CLI_ARGS[@]+"${PLUGIN_CLI_ARGS[@]}"} \
-            "$@"
+            "${loop_args[@]}"
 }
 
 # =============================================================================
@@ -405,6 +516,13 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             die "Usage: $0 build <directory> [--force]"
         fi
         docker_build "$(realpath "$dir")" "$force"
+        ;;
+    execution-identity)
+        dir="${1:-}"
+        if [[ -z "$dir" ]]; then
+            die "Usage: $0 execution-identity <directory>"
+        fi
+        docker_execution_identity "$(realpath "$dir")"
         ;;
     run)
         dir="${1:-}"
@@ -459,6 +577,7 @@ Usage: $0 <command> [args...]
 Commands:
   check                              Check if Docker is available
   build <dir> [--force]              Build image (cached by Dockerfile hash)
+  execution-identity <dir>           Hash the immutable image and Claude CLI version
   run <dir> <cmd...>                 Run command in container
   run-python <dir> <script> [args]   Run Python script in container
   run-node <dir> <script> [args]     Run Node.js/TypeScript in container
@@ -467,6 +586,7 @@ Commands:
 Options for run-claude:
   --model MODEL      Model to use
   --timeout SECONDS  Timeout (default: 300)
+  --image-id SHA256  Run the controller-verified immutable image
 
 Environment variables passed to containers:
   OPENAI_API_KEY, ANTHROPIC_API_KEY, LANGSMITH_API_KEY,

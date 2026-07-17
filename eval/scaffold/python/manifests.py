@@ -125,5 +125,7 @@ def load_eval_manifest(path: Path | str) -> SkillEvalManifest:
             max_turns=int(interaction_data.get("maxTurns", interaction_data.get("max_turns", 12))),
             simulator_prompt=interaction_data.get("simulatorPrompt")
             or interaction_data.get("simulator_prompt"),
+            fresh_resume_marker=interaction_data.get("freshResumeMarker")
+            or interaction_data.get("fresh_resume_marker"),
         ),
     )

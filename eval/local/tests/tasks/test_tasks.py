@@ -23,6 +23,7 @@ from conftest import get_fixtures
 
 from scaffold import Treatment
 from scaffold.python import extract_events, parse_output
+from scaffold.python.aligned_comparison import build_case_manifest, case_manifest_payload
 from scaffold.python.native_eval import (
     adapt_checks_for_native,
     adapt_prompt_for_native,
@@ -97,9 +98,7 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
         treatment_list = expand_treatment_patterns(patterns, all_treatments)
     elif dynamic and manifest_tasks:
         treatment_list = [
-            treatment
-            for treatment in manifest_baseline_treatments
-            if treatment in all_treatments
+            treatment for treatment in manifest_baseline_treatments if treatment in all_treatments
         ]
         if dynamic.name not in treatment_list:
             treatment_list.append(dynamic.name)
@@ -168,7 +167,9 @@ interaction:
         "load_treatments",
         lambda: {
             "CONTROL": TreatmentConfig(name="CONTROL", description="Control"),
-            "COMET_FULL_040_BETA": TreatmentConfig(name="COMET_FULL_040_BETA", description="Comet full"),
+            "COMET_FULL_040_BETA": TreatmentConfig(
+                name="COMET_FULL_040_BETA", description="Comet full"
+            ),
         },
     )
 
@@ -283,13 +284,19 @@ def pytest_generate_tests(metafunc):
         treatment_filter = metafunc.config.getoption("--treatment")
         count = int(metafunc.config.getoption("--count") or 1)
         base_params = generate_test_params(task_filter, treatment_filter, metafunc.config)
-        # pytest ids stay (task, treatment); the rep number is tracked separately
-        # by the experiment plugin's get_rep_number per treatment. To force N
-        # distinct test invocations we append a rep suffix to the param id.
+        # The explicit marker is the controller-owned repetition identity used
+        # to persist a complete matrix before any model run begins.
         params = []
         for rep in range(count):
             for task_name, treatment_name in base_params:
-                params.append(pytest.param(task_name, treatment_name, id=f"{task_name}-{treatment_name}-r{rep+1}"))
+                params.append(
+                    pytest.param(
+                        task_name,
+                        treatment_name,
+                        id=f"{task_name}-{treatment_name}-r{rep + 1}",
+                        marks=pytest.mark.eval_case(repetition=rep + 1),
+                    )
+                )
         metafunc.parametrize("task_name,treatment_name", params)
 
 
@@ -347,18 +354,36 @@ def test_task_treatment(task_name, treatment_name):
         override=fixtures.request_config.getoption("--profile"),
         target_profile=target_profile,
     )
+    interaction = conftest._resolve_interaction_config(task, profile_name, fixtures.request_config)
     fixtures.setup_test_context(
         skills=treatment.skills,
         claude_md=conftest._build_eval_claude_md(profile_name, treatment.claude_md),
         environment_dir=task.environment_dir,
     )
-    interaction = conftest._resolve_interaction_config(task, profile_name, fixtures.request_config)
-    skill_package_path = (
-        conftest._snapshot_dynamic_skill_package(fixtures.test_dir, skill_hints)
-        or skill_hints.get("path")
+    selected_model = conftest._selected_claude_model()
+    captured_execution = conftest._capture_execution_identity(
+        fixtures.test_dir,
+        model=selected_model,
+        interaction=interaction,
     )
+    case_manifest = case_manifest_payload(
+        build_case_manifest(
+            task.name,
+            task.path.parent,
+            execution_identity=captured_execution.report_identity,
+        )
+    )
+    skill_package_path = conftest._snapshot_dynamic_skill_package(
+        fixtures.test_dir, skill_hints
+    ) or skill_hints.get("path")
 
-    result = fixtures.run_claude(prompt, timeout=CLAUDE_TIMEOUT, interaction=interaction)
+    result = fixtures.run_claude(
+        prompt,
+        timeout=CLAUDE_TIMEOUT,
+        model=selected_model,
+        interaction=interaction,
+        image_id=captured_execution.runtime_image_id,
+    )
 
     events = extract_events(parse_output(result.stdout))
     loop_interaction = conftest._extract_loop_interaction(result.stderr)
@@ -392,11 +417,13 @@ def test_task_treatment(task_name, treatment_name):
             "max_turns": interaction.max_turns,
             **loop_interaction,
         },
+        "case_manifest": case_manifest,
     }
     events["profile"] = outputs["profile"]
     events["skill_sources"] = outputs["skill_sources"]
     events["eval_manifest"] = outputs["eval_manifest"]
     events["interaction"] = outputs["interaction"]
+    events["case_manifest"] = case_manifest
 
     passed, failed = run_validators(validators, fixtures.test_dir, outputs)
     passed, failed = adapt_checks_for_native(
@@ -422,7 +449,9 @@ def test_task_treatment(task_name, treatment_name):
         rubric_outputs.update(completion_slices)
         if _is_control_business_only_run(profile_name, treatment_name):
             rubric_outputs["workflow_completion"] = {"passed": [], "failed": []}
-    rubric_passed, rubric_failed = run_profile_rubric(profile_name, fixtures.test_dir, rubric_outputs)
+    rubric_passed, rubric_failed = run_profile_rubric(
+        profile_name, fixtures.test_dir, rubric_outputs
+    )
     passed = passed + rubric_passed
     failed = failed + rubric_failed
 

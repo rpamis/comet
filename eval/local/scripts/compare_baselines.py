@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Compare comet baseline treatments across the rubric dimensions.
 
 Reads experiment reports from ``local/logs/experiments/<id>/reports/*.json`` and
@@ -31,6 +32,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
+from scaffold.python.aligned_comparison import build_aligned_report
 from scaffold.python.paths import get_logs_dir
 from scaffold.python.report_outputs import (
     load_report_output_config,
@@ -59,6 +61,7 @@ RUBRIC_DIMENSION_GUIDE = {
 # Treatments we compare. CONTROL is included for context but not used in the
 # pass/fail decision.
 TREATMENTS = ("CONTROL", "COMET_FULL_040_BETA", "COMET_FULL_039")
+KNOWN_TREATMENTS = (*TREATMENTS, "COMET_NATIVE_PHASE1")
 WORKFLOW = "COMET_FULL_040_BETA"
 BASELINE = "COMET_FULL_039"
 
@@ -72,7 +75,7 @@ class ReportPartitions:
 
 
 def _treatment_from_report_name(raw_name: str) -> str:
-    for treatment in sorted(TREATMENTS, key=len, reverse=True):
+    for treatment in sorted(KNOWN_TREATMENTS, key=len, reverse=True):
         if re.search(rf"(?:^|-){re.escape(treatment)}(?:-r\d+)?$", raw_name):
             return treatment
     return raw_name
@@ -84,6 +87,35 @@ def _latest_experiment(logs: Path) -> Path | None:
         return None
     dirs = sorted([d for d in exp_root.iterdir() if d.is_dir()], key=lambda p: p.stat().st_mtime)
     return dirs[-1] if dirs else None
+
+
+def _resolve_experiment(value: str, logs: Path) -> Path:
+    """Resolve an experiment id or an explicit local/langsmith experiment path."""
+    supplied = Path(value).expanduser()
+    candidates = [
+        supplied,
+        EVAL_ROOT / supplied,
+        logs / "experiments" / value,
+        EVAL_ROOT / "local" / "logs" / "experiments" / value,
+        EVAL_ROOT / "langsmith" / "logs" / "experiments" / value,
+    ]
+    matches: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if resolved in seen or not (resolved / "reports").is_dir():
+            continue
+        seen.add(resolved)
+        matches.append(resolved)
+    if not matches:
+        raise FileNotFoundError(f"Experiment not found: {value}")
+    if len(matches) > 1:
+        rendered = ", ".join(str(path) for path in matches)
+        raise ValueError(f"Experiment id is ambiguous; pass an explicit path: {rendered}")
+    return matches[0]
 
 
 def _run_passed(report: dict) -> bool:
@@ -984,9 +1016,92 @@ def main(argv: list[str] | None = None) -> int:
         help="Output path (defaults to <experiment>/comparison_report.md)",
     )
     parser.add_argument("--report-config", default=None, help="JSON/YAML config for report outputs")
+    parser.add_argument(
+        "--candidate-experiment",
+        default=None,
+        help="Candidate experiment id or path for strict two-experiment alignment",
+    )
+    parser.add_argument(
+        "--baseline-experiment",
+        default=None,
+        help="Baseline experiment id or path for strict two-experiment alignment",
+    )
+    parser.add_argument(
+        "--candidate-treatment",
+        default="COMET_NATIVE_PHASE1",
+        help="Treatment selected from the candidate experiment",
+    )
+    parser.add_argument(
+        "--baseline-treatment",
+        default="COMET_FULL_040_BETA",
+        help="Treatment selected from the baseline experiment",
+    )
+    parser.add_argument(
+        "--ks",
+        default="1,2,3",
+        help="Comma-separated k values for strict task-macro pass metrics",
+    )
     args = parser.parse_args(argv)
 
     logs = get_logs_dir()
+    aligned_mode = bool(args.candidate_experiment or args.baseline_experiment)
+    if aligned_mode:
+        if not args.candidate_experiment or not args.baseline_experiment:
+            print(
+                "--candidate-experiment and --baseline-experiment must be provided together",
+                file=sys.stderr,
+            )
+            return 2
+        if args.experiment:
+            print(
+                "--experiment cannot be combined with two-experiment alignment",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            ks = tuple(int(item.strip()) for item in args.ks.split(",") if item.strip())
+        except ValueError:
+            print("--ks must be a comma-separated list of integers", file=sys.stderr)
+            return 2
+        if not ks or any(k < 1 for k in ks):
+            print("--ks must contain positive integers", file=sys.stderr)
+            return 2
+        try:
+            candidate_dir = _resolve_experiment(args.candidate_experiment, logs)
+            baseline_dir = _resolve_experiment(args.baseline_experiment, logs)
+        except (FileNotFoundError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        try:
+            report = build_aligned_report(
+                candidate_dir,
+                baseline_dir,
+                candidate_treatment=args.candidate_treatment,
+                baseline_treatment=args.baseline_treatment,
+                tasks_dir=EVAL_ROOT / "local" / "tasks",
+                ks=ks,
+            )
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        out_path = (
+            Path(args.out)
+            if args.out
+            else candidate_dir / "aligned_comparison_report.md"
+        )
+        outputs = write_report_outputs(
+            report,
+            out_path,
+            load_report_output_config(args.report_config),
+            title="Comet Aligned Experiment Comparison Report",
+        )
+        print(report)
+        if outputs:
+            print("\nWrote: " + ", ".join(str(path) for path in outputs.values()))
+        else:
+            print("\nReport outputs disabled by report config")
+        return 0
+
     if args.experiment:
         experiment_dir = logs / "experiments" / args.experiment
         if not experiment_dir.exists():

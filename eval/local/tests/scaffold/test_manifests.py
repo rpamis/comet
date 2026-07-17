@@ -54,6 +54,7 @@ interaction:
   mode: auto_user
   maxTurns: 8
   simulatorPrompt: Answer concisely.
+  freshResumeMarker: COLD_RESUME_READY
 """,
         encoding="utf-8",
     )
@@ -79,6 +80,7 @@ interaction:
     assert manifest.interaction.mode == "auto_user"
     assert manifest.interaction.max_turns == 8
     assert manifest.interaction.simulator_prompt == "Answer concisely."
+    assert manifest.interaction.fresh_resume_marker == "COLD_RESUME_READY"
 
 
 def test_load_eval_manifest_rejects_wrong_kind(tmp_path: Path):

@@ -91,6 +91,31 @@ uv run pytest local/tests/tasks/test_tasks.py --report-config report-config.json
 uv run python local/scripts/compare_baselines.py --report-config report-config.json
 ```
 
+Native 与 0.4.0 的 pass@3 来自两个独立 experiment 时，使用严格对齐模式：
+
+```bash
+uv run python local/scripts/compare_baselines.py \
+  --candidate-experiment local/logs/experiments/experiment_NATIVE \
+  --candidate-treatment COMET_NATIVE_PHASE1 \
+  --baseline-experiment langsmith/logs/experiments/experiment_040_PASS3 \
+  --baseline-treatment COMET_FULL_040_BETA \
+  --ks 1,2,3
+```
+
+pytest 会在模型运行前把收集到的 `task + treatment + repetition` 写入 experiment 的
+expected case matrix；严格比较按两侧目标 treatment 的矩阵检查 coverage，因此即使某个
+样本在两侧都没有留下 report，也会被列为缺失，而不是从报告并集中无声消失。对 v2
+报告，只有 `task + repetition + case_hash` 全部一致才会配对；`case_hash` 同时绑定任务、
+验证器、runner/controller 源码、不可变 Docker image、Claude 工具版本以及 model /
+interaction 配置。某个 task 缺少 repetition 时，报告会降低该 k 的 coverage 并列出
+缺失项，不会把 pass@3 偷换成 pass@2。
+
+历史耗时会从 raw stdout 按当前的累加 parser 重算；缺少 raw duration 的运行只计入
+缺失 coverage，不会和已有耗时混合平均。没有 expected matrix 的旧 experiment 会明确
+标为 observed-report fallback；v1 或缺失 case manifest 的运行最多只能按任务核心 hash
+兼容比较，并明确标注无法证明当时的 runner、image、tool、model 或 interaction 身份，
+不会把比较时一致误写成历史 checkout 与执行环境已被精确证明一致。
+
 也可以设置 `COMET_EVAL_REPORT_CONFIG=/path/to/report-config.json`。
 
 每次运行的报告都会包含 profile、Skill 来源元数据、run id、产物引用，以及结构化失败归因。归因桶包括 `harness`、`workflow`、`task` 和 `model`。

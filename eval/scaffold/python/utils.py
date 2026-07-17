@@ -1,16 +1,28 @@
 """Python utilities - thin wrappers around shell scripts."""
-import json, os, random, shutil, subprocess, time
+
+import json
+import os
+import random
+import shutil
+import subprocess
+import time
 from pathlib import Path
+
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+
 from scaffold.python.paths import EVAL_ROOT, get_suite_root
 
 TEST_CONTEXT_FILE = os.environ.get("BENCH_TEST_CONTEXT", "_test_context.json")
 TEST_RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
-load_dotenv(EVAL_ROOT / ".env")
-load_dotenv(get_suite_root() / ".env", override=True)
 SHELL_DIR = Path(__file__).parent.parent / "shell"
 SCAFFOLD_PYTHON_DIR = Path(__file__).parent
+
+
+def load_eval_environment() -> None:
+    """Load eval credentials only at an explicit execution boundary, never on import."""
+    load_dotenv(EVAL_ROOT / ".env")
+    load_dotenv(get_suite_root() / ".env", override=True)
+
 
 def _uses_wsl_bash(bash_exec: str) -> bool:
     normalized = bash_exec.replace("\\", "/").lower()
@@ -128,11 +140,13 @@ def run_shell(script, *args, timeout=None, check=True):
         env=_bash_env(),
     )
 
+
 def check_docker_available():
     try:
         return run_shell("docker.sh", "check", check=False, timeout=10).returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False
+
 
 def build_docker_image(test_dir, force=False, verbose=False):
     try:
@@ -141,6 +155,7 @@ def build_docker_image(test_dir, force=False, verbose=False):
         return result.stdout.strip() if result.returncode == 0 else None
     except subprocess.TimeoutExpired:
         return None
+
 
 def _docker_run_script(mode, test_dir, script_name, timeout=120, args=None):
     if not check_docker_available():
@@ -154,25 +169,30 @@ def _docker_run_script(mode, test_dir, script_name, timeout=120, args=None):
     except Exception as e:
         return False, str(e)
 
+
 def run_python_in_docker(test_dir, script_name, timeout=120, args=None):
     return _docker_run_script("run-python", test_dir, script_name, timeout, args)
+
 
 def run_node_in_docker(test_dir, script_name, timeout=120, args=None):
     return _docker_run_script("run-node", test_dir, script_name, timeout, args)
 
-def run_claude_in_docker(test_dir, prompt, timeout=300, model=None):
+
+def run_claude_in_docker(test_dir, prompt, timeout=300, model=None, image_id=None):
     if not check_docker_available():
         raise RuntimeError("Docker not available")
     cmd = ["run-claude", str(test_dir), prompt, "--timeout", str(timeout)]
     if model:
         cmd.extend(["--model", model])
+    if image_id:
+        cmd.extend(["--image-id", image_id])
     try:
         return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False)
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
 
+
 def _copy_scaffold_to_docker(test_dir):
-    scaffold_root = SCAFFOLD_PYTHON_DIR.parent
     scaffold_dir = test_dir / "scaffold"
     scaffold_dir.mkdir(parents=True, exist_ok=True)
     (scaffold_dir / "__init__.py").touch()
@@ -192,6 +212,7 @@ def _copy_scaffold_to_docker(test_dir):
     if comet_checks_src.exists():
         shutil.copy(comet_checks_src, test_dir / "comet_checks.py")
 
+
 def _parse_json_output(output):
     stripped = output.strip()
     try:
@@ -208,6 +229,7 @@ def _parse_json_output(output):
         except (json.JSONDecodeError, ValueError):
             continue
     return None
+
 
 def run_eval_in_docker(test_dir, validation_dir, test_script, timeout=120, data_dir=None):
     val_dir = test_dir / "validation"
@@ -262,7 +284,10 @@ def _normalise_validation_results(results):
 
     return passed, failed
 
-def make_execution_validator(validation_dir, test_scripts, target_artifacts, timeout=120, data_dir=None):
+
+def make_execution_validator(
+    validation_dir, test_scripts, target_artifacts, timeout=120, data_dir=None
+):
     test_scripts = [test_scripts] if isinstance(test_scripts, str) else test_scripts
     artifacts = [target_artifacts] if isinstance(target_artifacts, str) else target_artifacts
 
@@ -280,7 +305,9 @@ def make_execution_validator(validation_dir, test_scripts, target_artifacts, tim
         context["target_artifacts"] = artifacts
         (test_dir / TEST_CONTEXT_FILE).write_text(json.dumps(context, default=str))
         for script in test_scripts:
-            results = run_eval_in_docker(test_dir, validation_dir, script, timeout=timeout, data_dir=data_dir)
+            results = run_eval_in_docker(
+                test_dir, validation_dir, script, timeout=timeout, data_dir=data_dir
+            )
             script_passed, script_failed = _normalise_validation_results(results)
             passed.extend(script_passed)
             failed.extend(script_failed)
@@ -290,11 +317,15 @@ def make_execution_validator(validation_dir, test_scripts, target_artifacts, tim
 
     return validate_execution
 
+
 def check_claude_available():
     try:
-        return subprocess.run(["claude", "--version"], capture_output=True, timeout=10).returncode == 0
+        return (
+            subprocess.run(["claude", "--version"], capture_output=True, timeout=10).returncode == 0
+        )
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False
+
 
 def retry_with_backoff(func, max_retries=3, base_delay=1.0, max_delay=10.0, retry_on=None):
     retry_on = retry_on or (lambda e: "429" in str(e) or "rate limit" in str(e).lower())
@@ -305,6 +336,7 @@ def retry_with_backoff(func, max_retries=3, base_delay=1.0, max_delay=10.0, retr
             if not retry_on(e) or attempt == max_retries:
                 raise
             time.sleep(min(base_delay * (2**attempt) + random.uniform(0, 1), max_delay))
+
 
 def read_json_file(path):
     if not path.exists():
@@ -353,6 +385,7 @@ def safe_api_call(func, *args, **kwargs):
     except Exception as e:
         return None, f"API error: {e}"
 
+
 def get_field(obj, *keys, default=None):
     if not isinstance(obj, dict):
         return default
@@ -361,9 +394,11 @@ def get_field(obj, *keys, default=None):
             return obj[key]
     return default
 
+
 def get_nested_field(obj, outer_keys, inner_keys, default=None):
     outer = get_field(obj, *outer_keys) or {}
     return get_field(outer, *inner_keys, default=default) if isinstance(outer, dict) else default
+
 
 def normalize_score(score):
     if isinstance(score, bool):

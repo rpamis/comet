@@ -33,6 +33,23 @@ def test_save_artifacts_excludes_nested_git_metadata(tmp_path: Path):
     assert not (snapshot / ".git").exists()
 
 
+def test_save_artifacts_excludes_controller_cli_snapshot(tmp_path: Path):
+    from conftest import _save_artifacts
+
+    workspace = tmp_path / "workspace"
+    (workspace / "_eval_current_comet/dist").mkdir(parents=True)
+    (workspace / "_eval_current_comet/dist/index.js").write_text(
+        "export {};\n", encoding="utf-8"
+    )
+    (workspace / "result.md").write_text("ok", encoding="utf-8")
+
+    _save_artifacts(tmp_path, "COMET_NATIVE_PHASE1", 1, workspace)
+
+    snapshot = tmp_path / "artifacts/comet_native_phase1_rep1/claude"
+    assert (snapshot / "result.md").is_file()
+    assert not (snapshot / "_eval_current_comet").exists()
+
+
 def test_extract_events_captures_token_usage_and_cost():
     stdout = "\n".join(
         [

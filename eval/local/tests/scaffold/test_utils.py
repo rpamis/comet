@@ -1,9 +1,25 @@
 """Unit tests for eval scaffold utilities."""
 
+import importlib
 from pathlib import Path
+
+import dotenv
 
 from scaffold.python import utils
 from scaffold.python.skill_parser import load_skill_content, parse_skill_md
+
+
+def test_import_does_not_read_dotenv(monkeypatch):
+    calls = []
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    importlib.reload(utils)
+
+    assert calls == []
+    utils.load_eval_environment()
+    assert len(calls) == 2
+    monkeypatch.undo()
+    importlib.reload(utils)
 
 
 def test_execution_validator_converts_structured_checks(monkeypatch, tmp_path: Path):
@@ -61,7 +77,9 @@ def test_resolve_bash_prefers_git_bash_when_path_bash_is_wsl(monkeypatch):
     monkeypatch.setattr(
         utils.shutil,
         "which",
-        lambda name: {"bash": r"C:\Windows\System32\bash.exe", "git": r"D:\Git\cmd\git.exe"}.get(name),
+        lambda name: {"bash": r"C:\Windows\System32\bash.exe", "git": r"D:\Git\cmd\git.exe"}.get(
+            name
+        ),
     )
     monkeypatch.setattr(
         utils.os.path,
@@ -139,10 +157,18 @@ def test_docker_loop_passes_langsmith_plugin_args_to_loop_driver():
     assert "CC_LANGSMITH_LOG_FILE" in docker_sh
 
 
+def test_docker_subject_run_uses_controller_verified_immutable_image_identity():
+    docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+
+    assert "docker_execution_identity" in docker_sh
+    assert "claude --version" in docker_sh
+    assert "runtime_image_id" in docker_sh
+    assert 'image_id=$(resolve_runtime_image "$dir" "$expected_image_id")' in docker_sh
+    assert '"$image_id"' in docker_sh
+
+
 def test_run_claude_fixture_defaults_langsmith_hook_log_path():
-    conftest_py = (Path(__file__).resolve().parents[1] / "conftest.py").read_text(
-        encoding="utf-8"
-    )
+    conftest_py = (Path(__file__).resolve().parents[1] / "conftest.py").read_text(encoding="utf-8")
 
     assert 'os.environ["CC_LANGSMITH_LOG_FILE"] = "/workspace/langsmith-hook.log"' in conftest_py
 
@@ -159,8 +185,10 @@ def test_claude_loop_applies_plugin_args_to_subject_turns_only():
     assert loop_sh.index("workflow completion detected") < loop_sh.index(
         'bash "$SCRIPT_DIR/decision-point.sh" "$RESULT_TEXT"'
     )
-    assert 'claude -p "$PROMPT" "${PLUGIN_ARGS[@]}"' in loop_sh
+    assert 'SUBJECT_PROMPT="${FRESH_PROMPT:-$PROMPT}"' in loop_sh
+    assert 'claude -p "$SUBJECT_PROMPT" "${PLUGIN_ARGS[@]}"' in loop_sh
     assert 'claude -p "$USER_REPLY" "${PLUGIN_ARGS[@]}"' in loop_sh
+    assert "fresh resume boundary detected" in loop_sh
     assert 'claude -p "$sim_prompt" "${PLUGIN_ARGS[@]}"' not in loop_sh
 
 

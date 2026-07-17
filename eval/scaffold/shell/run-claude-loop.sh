@@ -13,6 +13,7 @@
 #   --decision-reply TEXT     Deterministic reply for each detected decision point
 #   --continue-prompt TEXT    Nudge used when the workflow should continue
 #   --decision-pattern TEXT   Extra case-insensitive substring to treat as a decision point
+#   --fresh-resume-marker TEXT  Start the following turn in a new subject session
 #
 # Env: ANTHROPIC_AUTH_TOKEN / ANTHROPIC_BASE_URL / ANTHROPIC_MODEL for the proxy.
 # Stdout: concatenated stream-json from every subject turn (for event extraction).
@@ -37,6 +38,7 @@ MODEL="${ANTHROPIC_MODEL:-}"
 SIMULATOR_PROMPT=""
 DECISION_REPLY=""
 CONTINUE_PROMPT="Please continue with the next phase of the comet workflow."
+FRESH_RESUME_MARKER=""
 DECISION_PATTERNS=()
 PLUGIN_ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -53,6 +55,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --decision-reply) DECISION_REPLY="$2"; shift 2 ;;
         --continue-prompt) CONTINUE_PROMPT="$2"; shift 2 ;;
+        --fresh-resume-marker) FRESH_RESUME_MARKER="$2"; shift 2 ;;
         --decision-pattern)
             DECISION_PATTERNS+=("$2")
             shift 2
@@ -101,6 +104,7 @@ EOF
 }
 
 SESSION_ID=""
+FRESH_PROMPT=""
 COMBINED_OUT=""
 TURN=0
 
@@ -109,8 +113,11 @@ while [[ $TURN -lt $MAX_TURNS ]]; do
     echo "[loop] turn $TURN/$MAX_TURNS" >&2
 
     if [[ -z "$SESSION_ID" ]]; then
-        # First turn: start fresh with the task prompt.
-        RAW=$(claude -p "$PROMPT" "${PLUGIN_ARGS[@]}" "${MODEL_FLAG[@]}" \
+        # The first turn uses the task prompt. A requested cold-resume boundary
+        # starts another session with only the continuation prompt.
+        SUBJECT_PROMPT="${FRESH_PROMPT:-$PROMPT}"
+        FRESH_PROMPT=""
+        RAW=$(claude -p "$SUBJECT_PROMPT" "${PLUGIN_ARGS[@]}" "${MODEL_FLAG[@]}" \
             --output-format stream-json --verbose \
             --dangerously-skip-permissions 2>/dev/null) || RAW=""
     else
@@ -143,6 +150,13 @@ except: print('')
     if [[ -z "$RESULT_TEXT" ]]; then
         echo "[loop] no result text; ending" >&2
         break
+    fi
+
+    if [[ -n "$FRESH_RESUME_MARKER" && "$RESULT_TEXT" == *"$FRESH_RESUME_MARKER"* ]]; then
+        echo "[loop] fresh resume boundary detected; starting a new subject session" >&2
+        SESSION_ID=""
+        FRESH_PROMPT="$CONTINUE_PROMPT"
+        continue
     fi
 
     # Completion is task-validated from exported artifacts after the loop. Stop

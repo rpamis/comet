@@ -1,0 +1,9 @@
+You are working on a Python project named `wordcount-cli` and evaluating Native's same-root parallel-safety contract. Do not implement a product feature.
+
+Begin by invoking the `/comet-native` Skill. Initialize Native under `docs/comet/`, establish one canonical baseline specification for `word-normalization`, and create two distinct active changes named `normalize-case` and `preserve-acronyms`. Give each a real brief and a target specification replacement for that same canonical capability so they are a definite same-artifact conflict with the same base hash. Native must remain self-contained and process-free: do not initialize Git or depend on VCS metadata.
+
+Run the bundled runtime's read-only status inspection for `normalize-case` and save its exact JSON envelope to `.cache/comet-native-eval/conflict-status.json`. The status must expose the definite Native change conflict before Archive without exposing workspace identity hashes.
+
+Read the current revision of `normalize-case`, then launch two real concurrent `checkpoint` commands against that same `--expect-revision` with different summaries and next actions. Save each command's exact JSON envelope separately as `.cache/comet-native-eval/checkpoint-attempt-a.json` and `.cache/comet-native-eval/checkpoint-attempt-b.json`. Exactly one write must succeed and the other must be rejected with exit code 73 as a revision conflict. The validator will independently repeat this race with its own two-process barrier; saved sequential envelopes are not concurrency proof.
+
+Keep both changes active and do not archive either one. Do not combine or rewrite the runtime envelopes, serialize the writes to avoid the race, retry away the conflict, or hand-edit revisions or workspace metadata. Do not fabricate or hand-author evidence. Use only the Comet Native Skill and bundled runtime; do not create OpenSpec, Classic, `.comet`, or external workflow artifacts.

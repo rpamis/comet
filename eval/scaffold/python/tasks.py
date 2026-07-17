@@ -100,6 +100,7 @@ class InteractionConfig:
     decision_patterns: list[str] = field(default_factory=list)
     decision_reply: str | None = None
     continue_prompt: str = "Please continue with the next phase of the workflow."
+    fresh_resume_marker: str | None = None
 
 
 @dataclass
@@ -283,6 +284,7 @@ def load_task(name: str, tasks_dir: Path | None = None) -> Task:
             "continue_prompt",
             "Please continue with the next phase of the workflow.",
         ),
+        fresh_resume_marker=interaction.get("fresh_resume_marker"),
     )
 
     config = TaskConfig(

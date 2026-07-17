@@ -1,0 +1,11 @@
+You are working on a Python project named `wordcount-cli` and evaluating Native's repeated-failure stop behavior, not completing a feature.
+
+Begin by invoking the `/comet-native` Skill. Initialize Native under `docs/comet/`, create one change named `stalled-average`, and author a brief plus complete target specification for capability `average-word-length` and an `--average-word-length` flag. Move the change to Verify without modifying `wordcount.py` or `test_wordcount.py`; the missing flag is the intentional, deterministic acceptance failure for this task.
+
+Exercise the bounded repair protocol using real failed verification reports while keeping `wordcount.py`, `test_wordcount.py`, the brief, and the specification unchanged:
+
+1. Run the same failing CLI acceptance command three times against the same contract and implementation scope. Use the same failure category and failed-check identifier. Return from Build to Verify with an explicit no-code reason between failures. Save the third failed `next` command's exact exit-75 JSON envelope as `.cache/comet-native-eval/manual-stop.json`; it must report the third consecutive identical signature as `manual-stop`.
+2. Read the signature from that runtime envelope. Use it once with `--override-repair` and a concrete `--override-summary` while returning from Build to Verify, and save that exact successful command envelope as `.cache/comet-native-eval/override.json`. Do not use a second override.
+3. Continue real failing verification attempts 4 through 12. Alternate two explicit failure-category tokens after the override so no signature reaches three consecutive failures again. Save the twelfth failed `next` envelope as `.cache/comet-native-eval/hard-stop.json`, then save the exact Native status as `.cache/comet-native-eval/hard-stop-status.json`. The total repair ceiling must produce `hard-stop` with zero remaining iterations.
+
+Leave `stalled-average` active at the hard stop. Do not archive, claim a pass, suppress the command error, weaken tests, or implement the missing feature. Do not fabricate, combine, paraphrase, or hand-author runtime JSON evidence. Use only the Comet Native Skill and bundled runtime; do not create OpenSpec, Classic, `.comet`, or external workflow artifacts.

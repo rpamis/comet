@@ -1,0 +1,36 @@
+[metadata]
+name = "comet-native-wave-d-stagnation-stop"
+description = "Test third-signature stop, one explicit override, and the twelfth-failure hard ceiling"
+difficulty = "hard"
+category = "comet-native"
+tags = ["comet-native", "verification", "stagnation", "manual-stop", "hard-stop", "wave-d"]
+default_treatments = ["COMET_NATIVE_PHASE1"]
+
+[template]
+required = []
+
+[environment]
+description = "Passing baseline Python workspace with one deliberately unresolved acceptance command."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_native_wave_d_stagnation_stop.py"
+target_artifacts = [".cache/comet-native-eval/manual-stop.json", ".cache/comet-native-eval/override.json", ".cache/comet-native-eval/hard-stop.json", ".cache/comet-native-eval/hard-stop-status.json", "docs/comet/changes"]
+timeout = 120
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet-native"]
+expected_artifacts = [".cache/comet-native-eval/manual-stop.json", ".cache/comet-native-eval/override.json", ".cache/comet-native-eval/hard-stop.json", ".cache/comet-native-eval/hard-stop-status.json", "docs/comet/changes"]
+require_skill_invocation = true
+rubric_criteria = [
+  "Stops on the third consecutive identical failure signature without changing code or contract",
+  "Accepts exactly one explicit signature-bound repair override",
+  "Hard-stops the twelfth total repair failure even when later signatures alternate",
+  "Leaves the unresolved change active with passing baseline tests and unchanged acceptance",
+]
+
+[interaction]
+mode = "none"
+max_turns = 1

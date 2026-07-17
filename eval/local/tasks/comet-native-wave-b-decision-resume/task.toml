@@ -1,0 +1,40 @@
+[metadata]
+name = "comet-native-wave-b-decision-resume"
+description = "Test one hidden product decision and a context-cleared Native resume from disk"
+difficulty = "hard"
+category = "comet-native"
+tags = ["comet-native", "decision", "cold-resume", "multi-turn", "wave-b"]
+default_treatments = ["COMET_NATIVE_PHASE1"]
+
+[template]
+required = []
+
+[environment]
+description = "Python word-count workspace with only the self-contained Comet Native Skill available."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_native_wave_b_decision_resume.py"
+target_artifacts = [".cache/comet-native-eval/resume-status.json", ".cache/comet-native-eval/archive-preview.json", ".cache/comet-native-eval/archive-commit.json", "docs/comet/archive", "docs/comet/specs/unique-word-counting/spec.md"]
+timeout = 120
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet-native"]
+expected_artifacts = [".cache/comet-native-eval/resume-status.json", ".cache/comet-native-eval/archive-preview.json", ".cache/comet-native-eval/archive-commit.json", "docs/comet/archive", "docs/comet/specs/unique-word-counting/spec.md"]
+require_skill_invocation = true
+rubric_criteria = [
+  "Surfaces exactly one user-visible token-normalization decision before Build",
+  "Records the deterministic answer in the brief and complete target specification",
+  "Resumes the same change from disk after context is cleared instead of relying on chat memory",
+  "Implements, verifies, and commits the exact ready Archive preflight with real evidence",
+]
+
+[interaction]
+mode = "auto_user"
+max_turns = 4
+decision_patterns = ["normalization", "punctuation", "apostrophe", "unique word"]
+decision_reply = "Treat words case-insensitively, strip surrounding punctuation, and preserve internal apostrophes."
+continue_prompt = "This is a context-cleared continuation. Re-read Native status and the confirmed artifacts from disk, save the exact status JSON as .cache/comet-native-eval/resume-status.json, and continue the same change through Verify and Archive."
+fresh_resume_marker = "COMET_NATIVE_COLD_RESUME_READY"
