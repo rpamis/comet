@@ -7,6 +7,7 @@ import {
   renderYamlTable,
   runMermaid,
 } from './markdown-preview.js';
+import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
 import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
@@ -324,6 +325,7 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
         hint={`生成于 ${formatTimestamp(snapshot.project.generatedAt)}`}
       />
       <SummaryCards snapshot={snapshot} />
+      <NativeWorkflowPanel native={snapshot.native} />
       <SectionHead title="变更工作区" hint="查看文件产物与项目进度" />
       {isEmpty ? (
         <EmptyState />

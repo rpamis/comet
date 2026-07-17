@@ -425,6 +425,26 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 - 可公开的设计故事：本轮复审从四个看似独立的漏洞得到同一结论——hash 只在输入来源可信、写入顺序安全、读取时可重建时才有意义。Native 因此选择内容寻址 projection + 派生 scope + 锁内 preflight，而不是再增加人工表单。
 - 暂不可公开为已交付事实：确定性 Runtime 主链已经通过回归，但生成资产、可选 receipt 接缝、双语 Skill 和专项真实模型效果尚未一起收口；正式 Website 只能在这些交付面完成后改写为当前能力。
 
+## 2026-07-17：波次 F 开发切片——Dashboard 只读展示，不成为第二套 Runtime
+
+### 当时假设与边界
+
+- 团队需要看到 Native change 的阶段、证据新鲜度、归档就绪和并行冲突，但 Dashboard 如果重新推导阶段、缓存证据或提供写入口，就会与 CLI/Runtime 形成两套事实来源。
+- Dashboard adapter 因此只消费 status、Archive preflight 与 conflict radar 的白名单投影；采集失败只返回稳定的 `native-dashboard-unavailable`，不能把路径、报告、证据、原始异常或命令输出带进页面。
+- Native 未配置时不显示占位区域，也不改变已有 Classic Dashboard；Native 已配置但没有 change 时才显示独立空态。
+
+### 实施过程
+
+- 第一版展示候选字段时主动删除了 `nextCommand`、revision、verification result、preflight hash、required inputs、workspace relationship 和 signal count。它们有些是 agent-facing 控制信息，有些会放大内部实现；团队视图只保留 change、phase、freshness、archive readiness、continuation 摘要、finding code 与冲突对象。
+- Collector 与现有 Classic 采集并行运行；Native 读取失败被隔离并脱敏，不能让 Classic Dashboard 整体不可用。前端没有新增按钮或写 API，响应式卡片只是既有 snapshot 的只读函数。
+- 聚焦验证为 4 个测试文件、17 项通过，Dashboard 生产构建通过。此数字只证明 adapter/collector/UI 契约，不代表真实模型效果或整个分支已经发布。
+
+### Website 可用叙事草稿
+
+- 用户问题：Native 的价值不应只存在于模型会话里；团队也需要快速判断哪些 change 能归档、哪些证据过期、哪些工作互相冲突。
+- 关键取舍：Dashboard 是 Runtime 的窗口，不是新的工作流控制器。相同事实由 CLI、JSON 和页面共享，页面不能反向推进 phase。
+- 暂不可公开为已交付事实：在 Wave D、生成 Runtime、双语 Skill 与最终 eval 一起收口前，只能把本节保留为开发过程，不能单独宣称 Native Dashboard 已发布。
+
 ## 附录 A：原始 58 个检查点及收敛去向
 
 这份原始清单保留探索覆盖面。它不代表 58 个待发布功能；“收敛去向”才是当前设计决定。

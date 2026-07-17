@@ -7,6 +7,8 @@
  * reference the JSON payload.
  */
 
+import type { NativeDashboardProjection } from './native-adapter.js';
+
 export type ChangeStatus = 'active' | 'archived';
 
 export type ChangePhase = 'open' | 'design' | 'build' | 'verify' | 'archive' | 'unknown';
@@ -138,4 +140,6 @@ export interface DashboardSnapshot {
   };
   git: GitSnapshot;
   risks: DashboardRisk[];
+  native?: NativeDashboardProjection;
+  nativeError?: { code: 'native-dashboard-unavailable' };
 }

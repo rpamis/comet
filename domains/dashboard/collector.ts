@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileExists, readDir } from '../../platform/fs/file-system.js';
 import { collectGitSnapshot } from './git.js';
+import { collectNativeDashboardProjection } from './native-collector.js';
 import { recommendNextAction } from './next-action.js';
 import { buildChangeRisks, buildProjectRisks } from './risk.js';
 import { parseTasksMarkdown } from './task-parser.js';
@@ -46,10 +47,13 @@ export async function collectDashboardSnapshot(
   const resolvedRoot = path.resolve(projectPath);
   const changesRoot = path.join(resolvedRoot, CHANGES_DIR);
 
-  const [activeChanges, archivedChanges, git] = await Promise.all([
+  const [activeChanges, archivedChanges, git, nativeResult] = await Promise.all([
     collectActiveChanges(changesRoot),
     collectArchivedChanges(changesRoot),
     collectGitSnapshot(resolvedRoot),
+    collectNativeDashboardProjection(resolvedRoot, { now: options.now })
+      .then((projection) => ({ projection, failed: false as const }))
+      .catch(() => ({ projection: null, failed: true as const })),
   ]);
 
   const sortedActive = sortActive(activeChanges);
@@ -83,6 +87,10 @@ export async function collectDashboardSnapshot(
     },
     git,
     risks,
+    ...(nativeResult.projection ? { native: nativeResult.projection } : {}),
+    ...(nativeResult.failed
+      ? { nativeError: { code: 'native-dashboard-unavailable' as const } }
+      : {}),
   };
 }
 
