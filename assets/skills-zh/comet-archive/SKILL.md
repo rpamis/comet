@@ -1,6 +1,6 @@
 ---
 name: comet-archive
-description: "Use when Comet change 验证已通过，需要用户确认归档、合并 delta spec，或恢复 archive 阶段。"
+description: "仅在用户明确调用 /comet-archive，或由 Comet 根 Skill/runtime 路由到 archive 阶段时使用；确认归档、合并 delta spec 并完成分支收尾。"
 ---
 
 # Comet 阶段 5：归档（Archive）
@@ -8,7 +8,7 @@ description: "Use when Comet change 验证已通过，需要用户确认归档�
 ## 前置条件
 
 - 验证已通过（阶段 4 完成）
-- 分支已处理
+- 归档提交和分支处理尚未完成（`branch_status: pending`）
 - `openspec/changes/<name>/.comet.yaml` 中 `verify_result: pass`
 
 ## 步骤
@@ -37,7 +37,7 @@ comet state check <name> archive
 确认前必须向用户展示简短摘要：
 - change 名称
 - 验证报告路径和结论
-- 分支处理状态
+- 当前分支/工作区和未提交改动归因摘要
 - 本次归档将执行的不可逆动作：按 OpenSpec delta 语义合并主 spec、标注 design doc / plan、移动 change 到 archive 目录
 
 用户确认问题必须以单选题形式呈现，包含以下选项：
@@ -72,11 +72,6 @@ comet archive "<change-name>"
 如脚本返回非零退出码，报告错误并停止。
 如脚本返回零退出码，归档完成。
 
-归档成功后清理当前执行上下文；该命令幂等：
-
-```bash
-comet state clear-selection
-```
 脚本摘要中的 `X/Y steps succeeded` 以真实执行步骤计数，不会因 delta spec 同步或文档标注重复累计。
 
 脚本会调用 OpenSpec 归档能力按 `ADDED/MODIFIED/REMOVED/RENAMED` 语义合并主 spec，并在归档后校验主 spec 中没有残留 delta-only section 标题。
@@ -90,39 +85,63 @@ Spec 生命周期在此完成：
 brainstorming → delta spec → 实施 → 验证 → 主 spec 合并 → design doc 标注 → 归档
 ```
 
-### 4. 提交归档改动
+### 4. 精确提交归档改动
 
 归档脚本只移动文件和合并 spec，不会自动提交。归档完成后工作区会有以下未提交改动：
 - change 目录从 `openspec/changes/<name>/` 移动到 `openspec/changes/archive/YYYY-MM-DD-<name>/`
 - 主 spec 按 delta 语义合并的内容
 - design doc / plan 的归档元数据标注
 
-**必须提示用户提交这些归档改动**，否则归档成果会停留在工作区。展示待提交文件后建议执行：
+归档后先读取 `git status --short`，并以归档前的 dirty-worktree 归因记录为基线。只允许暂存可归因于当前 change 的路径：原 active change 路径、脚本输出的实际 archive 路径、被本次 delta 更新的 main specs，以及当前 Design Doc/Plan 的归档元数据。存在无法归因的路径时停止并请求用户处理。
+
+使用显式 pathspec 暂存核对后的路径，再检查 staged diff；不得使用全仓库暂存，也不得把用户已有改动混入归档提交：
 
 ```bash
-git add -A
+git add -- <逐项核对后的归档路径...>
+git diff --cached --stat
 git commit -m "chore: archive <change-name>"
 ```
 
-提交归档 commit 后，读取 `isolation` 与 `branch_action`，按下列场景处理这个新 commit 是否需要推送：
+提交失败或 staged diff 含无关路径时停止，不得继续分支处理。
 
-- **场景 A — `branch_action: push`**（`current` 模式，验证阶段已 push 过当前分支）：验证阶段已授权 push 这条分支，archive commit 落在同一分支上，**直接执行 `git push`**（无需 `-u`，tracking 已存在），并告知用户"archive commit 已随之前的 push 一起同步到远端"。这是延续同一个已授权动作，不再二次确认。
-- **场景 B — `branch_action: pushed-pr`**（`branch`/`worktree` 模式，之前选了"推送并创建 PR"）：PR 分支已 `push -u` 且有 tracking，archive commit 落在同一条分支上，性质同场景 A，**直接执行 `git push`**（无需 `-u`），告知用户"archive commit 已追加推送到 PR 分支 `<branch>`"。
-- **场景 C — `branch_action: merged-locally`**（`branch`/`worktree` 模式，之前选了"本地合并到主分支"）：合并动作从未 push 过 base 分支，base 本地领先 `origin/<base>`（含合并内容与本次 archive commit）。**不自动 push**：按 `comet/reference/decision-point.md` 协议暂停，询问用户"base 分支本地已领先远端，是否现在一起 push"，由用户现场决定。不持久化这次决策。
-- **场景 D — `branch_action: keep-local`**（`current` 或 `branch`/`worktree` 均可能）：不执行 push，只在回复里明确提示"archive commit 目前只在本地，尚未推送"，尊重用户"稍后自己处理"的原始选择。
-- **兜底 — `branch_action` 为空**（升级前创建、未走过新版 verify 流程的存量 change）：退回散文提示，询问用户要不要 push；不因字段缺失报错或阻塞。
+### 5. 归档提交后的分支处理
 
-不要假设一定存在独立开发分支、合并动作或 PR 收尾——以 `isolation` 与 `branch_action` 的实际取值为准。
+归档提交成功后，读取 `isolation` 字段：
+
+- 若 `isolation: branch` 或 `worktree`：**立即执行：** 使用 Skill 工具加载 Superpowers `finishing-a-development-branch` 技能。该步骤必须位于归档与归档提交之后，确保最终分支/PR 包含 spec 合并和归档元数据。如该技能不可用，停止流程并提示安装或启用；不得把 `branch_status` 标记为完成。技能加载后，按 `comet/reference/decision-point.md` 暂停让用户选择，并写入对应 `branch_action`：
+  1. 本地合并到主分支 → `branch_action: merged-locally`
+  2. 推送并创建 PR → `branch_action: pushed-pr`
+  3. 保持当前分支稍后处理 → `branch_action: keep-local`
+
+  归档已经完成，因此这里不提供“丢弃工作”选项。
+
+- 若 `isolation: current`：没有独立开发分支要收尾。这是用户决策点，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户明确选择**，并写入对应 `branch_action`：
+  1. 立即 push 当前分支 → `branch_action: push`
+  2. 暂不 push，保留本地分支状态 → `branch_action: keep-local`
+
+只有用户选择的操作成功完成（或明确选择保持分支）后，才运行：
+
+```bash
+comet state set <change-name> branch_status handled
+comet state set <change-name> branch_action <value>
+comet guard <change-name> archive
+comet state clear-selection
+```
+
+archive guard 必须同时确认归档产物完整且 `branch_status: handled`；失败时流程仍未完成。
 
 ## 退出条件
 
 - 归档脚本执行成功（退出码 0）
 - 归档目录 `openspec/changes/archive/YYYY-MM-DD-<change-name>/` 存在
 - 归档后的 `.comet.yaml` 中 `archived: true`
+- 归档改动已通过精确 pathspec 提交
+- 用户选择的分支处理已完成，归档状态中的 `branch_status: handled`
+- `comet guard <change-name> archive` 通过
 
 归档脚本会把 `openspec/changes/<name>/` 移动到 `openspec/changes/archive/YYYY-MM-DD-<name>/`。
 
-> **WARNING**: 归档成功后**不要再对原 change 名运行** `comet guard <change-name> archive`，因为原活跃目录已经不存在。误调会导致 guard 报错"change directory not found"。归档完整性以脚本退出码和归档目录状态为准。
+`comet guard <change-name> archive` 会按原 change 名解析实际归档目录；不要手工拼接日期目录名。
 
 ## 完成
 

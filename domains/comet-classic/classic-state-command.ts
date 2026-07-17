@@ -51,6 +51,7 @@ const EVENTS = CLASSIC_TRANSITION_EVENTS;
 const MACHINE_OWNED_FIELDS = new Set<string>([
   ...RUN_WIRE_KEYS,
   'archive_confirmation',
+  'verify_failures',
   'classic_profile',
   'classic_migration',
   'bound_branch',
@@ -94,6 +95,7 @@ const CLASSIC_FIELD_WIRE_NAMES: Partial<Record<keyof ClassicState, string>> = {
   verifiedAt: 'verified_at',
   archiveConfirmation: 'archive_confirmation',
   verifyResult: 'verify_result',
+  verifyFailures: 'verify_failures',
   workflow: 'workflow',
 };
 
@@ -257,6 +259,15 @@ function nullableRecordBoolean(record: Record<string, unknown>, field: string): 
   return null;
 }
 
+function nonNegativeRecordInteger(
+  record: Record<string, unknown>,
+  field: string,
+  fallback = 0,
+): number {
+  const value = record[field];
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
 function sparseClassicState(record: Record<string, unknown>): ClassicState {
   const workflow = enumRecordValue(record, 'workflow', PROFILES, 'full')!;
   return {
@@ -297,6 +308,7 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
       ['pending', 'pass', 'fail'] as const,
       'pending',
     )!,
+    verifyFailures: nonNegativeRecordInteger(record, 'verify_failures'),
     verificationReport: nullableRecordString(record, 'verification_report'),
     branchStatus: enumRecordValue(record, 'branch_status', ['pending', 'handled'] as const, null),
     branchAction: enumRecordValue(
@@ -535,6 +547,7 @@ async function init(output: CommandOutput, name: string, workflow: string): Prom
     design_doc: null,
     plan: null,
     verify_result: 'pending',
+    verify_failures: 0,
     verification_report: null,
     branch_status: 'pending',
     created_at: new Date().toISOString().slice(0, 10),
@@ -709,9 +722,6 @@ async function transition(output: CommandOutput, name: string, event: string): P
       fail(
         `ERROR: Cannot transition '${name}': verification_report must point to an existing report file`,
       );
-    }
-    if ((await readField(name, 'branch_status')) !== 'handled') {
-      fail(`ERROR: Cannot transition '${name}': branch_status must be handled`);
     }
   } else if (event === 'verify-fail') {
     await requirePhase(name, 'verify');
@@ -1064,7 +1074,7 @@ function resolveBuildRecoveryAction(
     if (buildMode === 'subagent-driven-development' && (pending > 0 || planPending > 0)) {
       return subagentDispatch === 'confirmed'
         ? 'Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window.'
-        : 'Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing.';
+        : 'Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.';
     }
     if (pending > 0 || planPending > 0) {
       return 'Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task.';
@@ -1087,7 +1097,7 @@ function resolveBuildRecoveryAction(
     if (buildMode === 'subagent-driven-development') {
       return subagentDispatch === 'confirmed'
         ? 'Recovery action: Read tasks.md and the Superpowers plan (which may include additions beyond OpenSpec), then inspect the first unchecked task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window.'
-        : 'Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing.';
+        : 'Recovery action: Subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.';
     }
     return 'Recovery action: Read tasks.md and continue from first unchecked task.';
   }
@@ -1095,7 +1105,7 @@ function resolveBuildRecoveryAction(
     if (buildMode === 'subagent-driven-development') {
       return subagentDispatch === 'confirmed'
         ? 'Recovery action: Read the Superpowers plan, then inspect the first unchecked Superpowers plan task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window.'
-        : 'Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing.';
+        : 'Recovery action: Subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.';
     }
     return 'Recovery action: Read the Superpowers plan and continue from the first unchecked plan task.';
   }
@@ -1104,18 +1114,22 @@ function resolveBuildRecoveryAction(
 
 async function recoverVerify(output: CommandOutput, name: string): Promise<void> {
   const result = await readField(name, 'verify_result');
+  const failures = await readField(name, 'verify_failures');
   const mode = await readField(name, 'verify_mode');
   const report = await readField(name, 'verification_report');
   const branch = await readField(name, 'branch_status');
   output.stdout.push(
     '  Verification:',
     fieldStatus('verify_result', result),
+    `  - verify_failures: ${failures || '0'}`,
     fieldStatus('verify_mode', mode),
     fieldStatus('verification_report', report, report),
-    fieldStatus('branch_status', branch),
+    branch === 'handled'
+      ? '  - branch_status: LEGACY (handled before archive; archive still owns final closure)'
+      : '  - branch_status: DEFERRED (handled after the archive commit)',
     '',
-    result === 'pass' && branch === 'handled'
-      ? 'Recovery action: Verification complete. Run guard to transition to archive.'
+    result === 'pass'
+      ? 'Recovery action: Verification complete. Continue to archive; branch handling happens after archive changes are committed.'
       : result === 'fail'
         ? 'Recovery action: Verification failed and rolled back to build. Resume from /comet-build.'
         : 'Recovery action: Verification not yet started or in progress. Run scale assessment then verify.',

@@ -132,6 +132,12 @@ export const classicValidateCommand: ClassicCommandHandler = async (args) => {
       fail(`${field}='${value}' is not valid. Expected: ${values.join(' ')}`);
     }
   }
+  if (Object.prototype.hasOwnProperty.call(record, 'verify_failures')) {
+    const value = record.verify_failures;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+      fail(`verify_failures='${text(value)}' is not a non-negative integer`);
+    }
+  }
   for (const field of ['design_doc', 'plan', 'handoff_context'] as const) {
     const value = text(record[field]);
     if (value && !(await exists(path.resolve(value)))) {

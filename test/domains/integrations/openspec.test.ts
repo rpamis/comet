@@ -38,6 +38,36 @@ describe('openspec', () => {
     });
   });
 
+  describe('OpenSpec CLI compatibility', () => {
+    it.each([
+      ['1.5.0', true],
+      ['OpenSpec 1.5.1', true],
+      ['v2.0.0', true],
+      ['1.4.9', false],
+      ['1.5.0-beta.1', false],
+      ['unknown', false],
+    ])('evaluates %s against the minimum supported version', async (version, compatible) => {
+      const { isOpenSpecVersionCompatible } =
+        await import('../../../domains/integrations/openspec.js');
+
+      expect(isOpenSpecVersionCompatible(version)).toBe(compatible);
+    });
+
+    it('rejects a stale existing CLI when upgrade fails', async () => {
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
+      mockedExecFileSync.mockImplementationOnce(() => {
+        throw new Error('npm upgrade failed');
+      });
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('1.3.1'));
+
+      const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+      const result = await installOpenSpec('/tmp/test', ['claude'], 'project');
+
+      expect(result).toBe('failed');
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(3);
+    });
+  });
+
   describe('installOpenSpec', () => {
     it('accepts the Kimi OpenSpec tool id from platform definitions', async () => {
       mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
@@ -422,7 +452,9 @@ describe('openspec', () => {
       mockedExecFileSync.mockImplementationOnce(() => {
         throw new Error('npm upgrade failed');
       });
-      // Third call: openspec init fails with stderr
+      // Third call: existing OpenSpec version is compatible
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('1.5.0'));
+      // Fourth call: openspec init fails with stderr
       const error = new Error('Command failed: openspec init ...') as Error & { stderr?: Buffer };
       error.stderr = Buffer.from('network timeout while fetching OpenSpec skills');
       mockedExecFileSync.mockImplementationOnce(() => {
@@ -447,7 +479,9 @@ describe('openspec', () => {
       mockedExecFileSync.mockImplementationOnce(() => {
         throw new Error('npm upgrade failed');
       });
-      // Third call: openspec init fails with timeout
+      // Third call: existing OpenSpec version is compatible
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('1.5.0'));
+      // Fourth call: openspec init fails with timeout
       const error = new Error('Command failed: openspec init ...') as Error & {
         stderr?: Buffer;
         code?: string;

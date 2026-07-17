@@ -61,6 +61,8 @@ prompt:
 - 阶段推进没有通过脚本输出 `NEXT:` 和 `SKILL:` 表达。
 - workflow protocol 声明的 `requiredSkillCalls` 没有在对应Node Skill 中明确要求加载，或 subagent 槽位没有要求子代理任务提示加载该 Skill。
 - 用户停顿点缺失，或停顿点可被默认值绕过。
+- 把确定性修复、guard 失败、状态对账、能力缺口、单一合法动作或 `NEXT: manual` 默认写成用户停顿点；或把可同时回答的相邻选择拆成连续确认。
+- entry Skill 的 frontmatter description 没有说明它是托管 workflow 的入口/恢复路由，或 internal Node Skill 的 description 允许普通任务直接触发而未限定为显式调用或 entry/runtime 路由。
 - 中文 Skill 混入英文流程句。
 - 嵌套 Skill 调用使用 provider 前缀。
 - 用户可见 `SKILL.md` 泄漏生成审计章节、source hash 或内部 metadata。

@@ -13,7 +13,7 @@ This protocol is shared by all comet sub-skills. It defines the automatic handof
 After exit conditions are met and the phase guard has advanced phase, run:
 
 ```bash
-node "$COMET_STATE" next <change-name>
+comet state next <change-name>
 ```
 
 The script outputs a deterministic next step based on `phase`, `workflow`, and `auto_transition`:

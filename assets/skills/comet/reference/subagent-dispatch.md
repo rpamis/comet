@@ -11,8 +11,9 @@ This document provides Comet-specific extensions applied **on top of** the Super
 > Only stop and wait for user input when:
 > - A task is **BLOCKED** (review-fix rounds exhausted: `review_mode: standard` — 1 round of risk-task review-fix or final lightweight review not passed; `review_mode: thorough` — 2 rounds of task-level/final review-fix not passed)
 > - There is irreducible ambiguity that cannot be resolved from the repository, plan, or existing context
-> - The platform lacks real background agent dispatch capability and the user must choose `executing-plans`
 > - The user **explicitly** asks to pause
+>
+> Background dispatch capability disappearing during execution is a runtime stop condition, not automatically a new user decision point. Exit the dispatch loop and return to the same `/comet-build` Step 2 joint decision with `subagent-driven-development` removed. If only one execution method remains, explain why and apply it directly; wait for the user only when multiple valid methods remain.
 >
 > This rule applies to the ENTIRE dispatch loop, not just individual tasks.
 
@@ -34,14 +35,14 @@ The main session is the **coordinator only** and must NOT execute tasks directly
 - **Claude Code**: Use the `Agent` tool with `run_in_background: true` for each implementer, task reviewer, fix agent, and final reviewer. Never execute tasks inline and do not accidentally enter team mode, which requires a pre-created team.
 - **Other platforms**: Use the platform's equivalent background agent / Task / multi-agent dispatch mechanism.
 - **Never** reuse implementers, reviewers, or fix agents across tasks or roles. Each agent gets a fresh, isolated context containing only the single task and role-specific context it needs.
-- If the platform has no real background dispatch capability, do not proceed; pause and wait for the user to choose `build_mode: executing-plans`.
+- If real background dispatch capability disappears during execution, stop dispatching and do not let the main session implement the task. Return to the same `/comet-build` Step 2 joint decision with the unavailable mode removed. Do not create a separate "switch to executing-plans" pause; apply the only valid mode directly when just one remains.
 
 ### 1. Dispatch Prompt and Return Contract
 
 Every implementer or fix-agent prompt must include:
 
 - The full text of the single current task, architecture background, and dependency context
-- `Language: Use the configured Comet artifact language from "$COMET_BASH" "$COMET_STATE" get <name> language`
+- `Language: Use the configured Comet artifact language from comet state get <name> language`
 - The allowed file scope and prohibited modification scope
 - The required test commands and commit requirements
 - For a fix agent, the corresponding reviewer's complete feedback
@@ -142,8 +143,8 @@ When a reviewer returns an item that cannot be verified from review material alo
 4. Runs targeted verification:
 
 ```bash
-node "$COMET_STATE" task-checkoff "$PLAN_FILE" "$PLAN_TASK_TEXT"
-node "$COMET_STATE" task-checkoff "openspec/changes/<name>/tasks.md" "$OPENSPEC_TASK_TEXT"
+comet state task-checkoff <plan-file> <plan-task-text>
+comet state task-checkoff openspec/changes/<name>/tasks.md <openspec-task-text>
 ```
 
 Run the second command only when the corresponding mapping exists. The script requires the task text to appear exactly once and be checked; verification failure blocks moving to the next task.

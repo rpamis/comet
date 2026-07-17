@@ -54,6 +54,7 @@ describe('Classic evidence collection', () => {
         designDoc: 'docs/superpowers/specs/demo-design.md',
         plan: 'docs/superpowers/plans/demo-plan.md',
         verifyResult: 'pass',
+        verifyFailures: 0,
         verificationReport: 'docs/superpowers/verification/demo.md',
         branchStatus: 'handled',
         createdAt: '2026-06-14',

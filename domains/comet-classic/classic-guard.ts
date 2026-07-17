@@ -542,7 +542,7 @@ async function buildModeSelected(changeDir: string, change: string): Promise<Che
   if (['subagent-driven-development', 'executing-plans', 'direct'].includes(buildMode))
     return pass();
   return fail(
-    `build_mode must be selected before leaving build, got '${buildMode || 'null'}'\nNext: ask the user to choose an execution mode, then run:\n  node "$COMET_STATE" set ${change} build_mode <subagent-driven-development|executing-plans>`,
+    `build_mode must be selected before leaving build, got '${buildMode || 'null'}'\nNext: ask the user to choose an execution mode, then run:\n  comet state set ${change} build_mode <subagent-driven-development|executing-plans>`,
   );
 }
 
@@ -564,7 +564,7 @@ async function subagentDispatchConfirmed(changeDir: string, change: string): Pro
   if (buildMode !== 'subagent-driven-development') return pass();
   if (subagentDispatch === 'confirmed') return pass();
   return fail(
-    `subagent_dispatch must be confirmed before using build_mode=subagent-driven-development\nNext: confirm the current platform has a real background subagent/Task/multi-agent dispatcher, then run:\n  node "$COMET_STATE" set ${change} subagent_dispatch confirmed\nOr ask the user to switch to executing-plans and run:\n  node "$COMET_STATE" set ${change} build_mode executing-plans`,
+    `subagent_dispatch must be confirmed before using build_mode=subagent-driven-development\nNext: confirm the current platform has a real background subagent/Task/multi-agent dispatcher, then run:\n  comet state set ${change} subagent_dispatch confirmed\nIf dispatch is unavailable, return to /comet-build Step 2 with subagent-driven-development removed. When executing-plans is the only valid mode, run:\n  comet state set ${change} build_mode executing-plans`,
   );
 }
 
@@ -574,7 +574,7 @@ async function tddModeSelected(changeDir: string, change: string): Promise<Check
   const tddMode = await readField(changeDir, 'tdd_mode');
   if (tddMode === 'tdd' || tddMode === 'direct') return pass();
   return fail(
-    `tdd_mode must be tdd or direct for full workflow, got '${tddMode || 'null'}'\nNext: ask the user to choose TDD enforcement level, then run:\n  node "$COMET_STATE" set ${change} tdd_mode <tdd|direct>`,
+    `tdd_mode must be tdd or direct for full workflow, got '${tddMode || 'null'}'\nNext: ask the user to choose TDD enforcement level, then run:\n  comet state set ${change} tdd_mode <tdd|direct>`,
   );
 }
 
@@ -586,7 +586,7 @@ async function reviewModeSelected(changeDir: string, change: string): Promise<Ch
     return pass();
   }
   return fail(
-    `review_mode must be off, standard, or thorough before leaving build, got '${reviewMode || 'null'}'\nNext: ask the user to choose review strength, then run:\n  node "$COMET_STATE" set ${change} review_mode <off|standard|thorough>`,
+    `review_mode must be off, standard, or thorough before leaving build, got '${reviewMode || 'null'}'\nNext: ask the user to choose review strength, then run:\n  comet state set ${change} review_mode <off|standard|thorough>`,
   );
 }
 
@@ -625,7 +625,7 @@ async function designDocRecorded(changeDir: string, change: string): Promise<Che
   const designDoc = await readField(changeDir, 'design_doc');
   if (designDoc && designDoc !== 'null' && existsSync(designDoc)) return pass();
   return fail(
-    `design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design.\nNext: create the Design Doc and run: node "$COMET_STATE" set ${change} design_doc <path>`,
+    `design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design.\nNext: create the Design Doc and run: comet state set ${change} design_doc <path>`,
   );
 }
 
@@ -639,24 +639,24 @@ async function designHandoffContextValid(changeDir: string, change: string): Pro
   }
   if (!(await nonempty(context))) {
     return fail(
-      `handoff_context does not point to a non-empty file: ${context}\nNext: regenerate the design handoff with comet-handoff.mjs.`,
+      `handoff_context does not point to a non-empty file: ${context}\nNext: regenerate the design handoff with comet handoff ${change} design --write.`,
     );
   }
   if (!/^[a-f0-9]{64}$/u.test(recordedHash)) {
     return fail(
-      `handoff_hash is missing or invalid: ${recordedHash || 'null'}\nNext: regenerate the design handoff with comet-handoff.mjs.`,
+      `handoff_hash is missing or invalid: ${recordedHash || 'null'}\nNext: regenerate the design handoff with comet handoff ${change} design --write.`,
     );
   }
   const actualHash = await computeHandoffHash(changeDir);
   if (actualHash !== recordedHash) {
     return fail(
-      `OpenSpec artifacts changed after handoff was generated.\nExpected handoff_hash: ${recordedHash}\nActual handoff_hash:   ${actualHash}\nNext: rerun comet-handoff.mjs so Superpowers receives the current OpenSpec context.`,
+      `OpenSpec artifacts changed after handoff was generated.\nExpected handoff_hash: ${recordedHash}\nActual handoff_hash:   ${actualHash}\nNext: run comet handoff ${change} design --write so Superpowers receives the current OpenSpec context.`,
     );
   }
   const markdown = `${context.replace(/\.json$/u, '')}.md`;
   if (!(await nonempty(markdown))) {
     return fail(
-      `design handoff markdown is missing or empty: ${markdown}\nNext: regenerate the design handoff with comet-handoff.mjs.`,
+      `design handoff markdown is missing or empty: ${markdown}\nNext: regenerate the design handoff with comet handoff ${change} design --write.`,
     );
   }
   return pass();
@@ -905,9 +905,6 @@ async function guardVerifyChecks(
       if (!report || report === 'null' || !(await exists(report))) return pass();
       return documentLanguageMatchesConfigured(changeDir, report);
     }),
-    check('branch_status=handled', async () =>
-      (await branchStatusHandled(changeDir)) ? pass() : fail(''),
-    ),
   ]);
 }
 
@@ -926,6 +923,9 @@ async function guardArchiveChecks(
       (await nonempty(path.join(changeDir, 'design.md'))) ? pass() : fail(''),
     ),
     check('tasks.md all tasks checked', () => tasksAllDone(changeDir)),
+    check('branch_status=handled', async () =>
+      (await branchStatusHandled(changeDir)) ? pass() : fail(''),
+    ),
   ]);
 }
 

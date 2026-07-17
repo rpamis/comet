@@ -3,6 +3,14 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
+const { writeFileMock } = vi.hoisted(() => ({ writeFileMock: vi.fn() }));
+
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  writeFileMock.mockImplementation(actual.writeFile);
+  return { ...actual, writeFile: writeFileMock };
+});
+
 import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
 import {
   removeLegacyCometSkillsForPlatform,
@@ -26,6 +34,8 @@ describe('uninstall', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
+    writeFileMock.mockReset();
+    writeFileMock.mockImplementation(fs.writeFile);
     tmpDir = path.join(
       os.tmpdir(),
       `comet-uninstall-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -168,6 +178,116 @@ describe('uninstall', () => {
     },
   );
 
+  it('counts a Skill removal failure and continues removing independent managed Skills', async () => {
+    const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
+    await copyCometSkillsForPlatform(tmpDir, codexPlatform, true, 'skills', 'project');
+    const blockedSkill = path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md');
+    const removableSkill = path.join(tmpDir, '.agents', 'skills', 'comet-open', 'SKILL.md');
+    const userSkill = path.join(tmpDir, '.agents', 'skills', 'personal', 'SKILL.md');
+    await fs.mkdir(path.dirname(userSkill), { recursive: true });
+    await fs.writeFile(userSkill, '# Personal\n');
+    const unlink = fs.unlink.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (filePath) => {
+      if (path.resolve(String(filePath)) === path.resolve(blockedSkill)) throw permissionError;
+      await unlink(filePath);
+    });
+
+    try {
+      await expect(
+        removeCometSkillsForPlatform(tmpDir, codexPlatform, 'project'),
+      ).resolves.toMatchObject({ failed: 1 });
+    } finally {
+      unlinkSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(blockedSkill, 'utf8')).resolves.toContain('# Comet');
+    await expect(fs.access(removableSkill)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(userSkill, 'utf8')).resolves.toBe('# Personal\n');
+  });
+
+  it('counts a Rule removal failure and continues removing independent managed Rules', async () => {
+    const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    const rulesDir = path.join(tmpDir, '.claude', 'rules');
+    const blockedRule = path.join(rulesDir, 'comet-phase-guard.md');
+    const removableRule = path.join(rulesDir, 'comet-phase-guard.en.md');
+    const userRule = path.join(rulesDir, 'personal.md');
+    await fs.mkdir(rulesDir, { recursive: true });
+    await fs.writeFile(blockedRule, '# Blocked Rule\n');
+    await fs.writeFile(removableRule, '# Removable Rule\n');
+    await fs.writeFile(userRule, '# Personal Rule\n');
+    const unlink = fs.unlink.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (filePath) => {
+      if (path.resolve(String(filePath)) === path.resolve(blockedRule)) throw permissionError;
+      await unlink(filePath);
+    });
+
+    try {
+      await expect(removeCometRulesForPlatform(tmpDir, claudePlatform, 'project')).resolves.toEqual(
+        { removed: 1, failed: 1 },
+      );
+    } finally {
+      unlinkSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(blockedRule, 'utf8')).resolves.toBe('# Blocked Rule\n');
+    await expect(fs.access(removableRule)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(userRule, 'utf8')).resolves.toBe('# Personal Rule\n');
+  });
+
+  it('counts a Hook-file removal failure without deleting user Hook files', async () => {
+    const kiroPlatform = PLATFORMS.find((platform) => platform.id === 'kiro')!;
+    const hooksDir = path.join(tmpDir, '.kiro', 'hooks');
+    const managedHook = path.join(hooksDir, 'comet-hook-guard.kiro.hook');
+    const userHook = path.join(hooksDir, 'personal.kiro.hook');
+    await fs.mkdir(hooksDir, { recursive: true });
+    await fs.writeFile(managedHook, '{}\n');
+    await fs.writeFile(userHook, '{}\n');
+    const unlink = fs.unlink.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (filePath) => {
+      if (path.resolve(String(filePath)) === path.resolve(managedHook)) throw permissionError;
+      await unlink(filePath);
+    });
+
+    try {
+      await expect(removeCometHooksForPlatform(tmpDir, kiroPlatform, 'project')).resolves.toEqual({
+        removed: 0,
+        failed: 1,
+      });
+    } finally {
+      unlinkSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(managedHook, 'utf8')).resolves.toBe('{}\n');
+    await expect(fs.readFile(userHook, 'utf8')).resolves.toBe('{}\n');
+  });
+
+  it('counts an empty Rule-directory removal failure after removing managed Rules', async () => {
+    const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    const rulesDir = path.join(tmpDir, '.claude', 'rules');
+    await fs.mkdir(rulesDir, { recursive: true });
+    await fs.writeFile(path.join(rulesDir, 'comet-phase-guard.md'), '# Rule\n');
+    await fs.writeFile(path.join(rulesDir, 'comet-phase-guard.en.md'), '# English Rule\n');
+    const rm = fs.rm.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const rmSpy = vi.spyOn(fs, 'rm').mockImplementation(async (dirPath, options) => {
+      if (path.resolve(String(dirPath)) === path.resolve(rulesDir)) throw permissionError;
+      await rm(dirPath, options);
+    });
+
+    try {
+      await expect(removeCometRulesForPlatform(tmpDir, claudePlatform, 'project')).resolves.toEqual(
+        { removed: 2, failed: 1 },
+      );
+    } finally {
+      rmSpy.mockRestore();
+    }
+
+    await expect(fs.readdir(rulesDir)).resolves.toEqual([]);
+  });
+
   describe('file-system utilities', () => {
     describe('removeFile', () => {
       it('removes an existing file and returns true', async () => {
@@ -197,10 +317,9 @@ describe('uninstall', () => {
         expect(await fileExists(dirPath)).toBe(false);
       });
 
-      it('returns true for non-existent directory (force mode)', async () => {
-        // fs.rm with { force: true } succeeds even if path doesn't exist
+      it('returns false for non-existent directory', async () => {
         const result = await removeDir(path.join(tmpDir, 'nope'));
-        expect(result).toBe(true);
+        expect(result).toBe(false);
       });
 
       it('removes a symlinked directory without deleting its target', async () => {
@@ -374,23 +493,149 @@ describe('uninstall', () => {
       const result = await removeCometRulesForPlatform(tmpDir, geminiPlatform, 'project');
       expect(result.removed).toBe(0);
     });
+
+    it('counts a Rule-directory inspection permission failure without deleting user Rules', async () => {
+      const claudePlatform: Platform = PLATFORMS.find((p) => p.id === 'claude')!;
+      const rulesDir = path.join(tmpDir, '.claude', 'rules');
+      const userRule = path.join(rulesDir, 'personal.md');
+      await fs.mkdir(rulesDir, { recursive: true });
+      await fs.writeFile(userRule, '# Personal Rule\n');
+      const readdir = fs.readdir.bind(fs);
+      const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const readdirSpy = vi.spyOn(fs, 'readdir').mockImplementation(async (dirPath, options) => {
+        if (path.resolve(String(dirPath)) === path.resolve(rulesDir)) throw permissionError;
+        return readdir(dirPath, options as never);
+      });
+
+      try {
+        await expect(
+          removeCometRulesForPlatform(tmpDir, claudePlatform, 'project'),
+        ).resolves.toEqual({ removed: 0, failed: 1 });
+      } finally {
+        readdirSpy.mockRestore();
+      }
+
+      await expect(fs.readFile(userRule, 'utf8')).resolves.toBe('# Personal Rule\n');
+    });
   });
 
   describe('removeCometHooksForPlatform', () => {
-    it('removes Codex hooks from .codex without creating .agents settings', async () => {
-      const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
-      await installCometHooksForPlatform(tmpDir, codexPlatform, 'project');
+    it('removes Codex hooks from canonical and historical files while preserving user config', async () => {
+      const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const userHandler = { type: 'command', command: 'node my-user-hook.mjs' };
 
-      const settingsPath = path.join(tmpDir, '.codex', 'settings.local.json');
-      await expect(fs.access(settingsPath)).resolves.toBeUndefined();
-      const result = await removeCometHooksForPlatform(tmpDir, codexPlatform, 'project');
+      await installCometHooksForPlatform(tmpDir, codex, 'project');
+      const canonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      const cometHandler = canonical.hooks.PreToolUse[0].hooks[0];
+      canonical.hooks.PreToolUse[0].hooks.push(userHandler);
+      await fs.writeFile(canonicalPath, JSON.stringify(canonical, null, 2), 'utf8');
+      await fs.writeFile(
+        legacyPath,
+        JSON.stringify(
+          {
+            model: 'gpt-5',
+            hooks: {
+              PreToolUse: [{ matcher: 'Write|Edit', hooks: [cometHandler, userHandler] }],
+            },
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
 
-      expect(result.removed).toBeGreaterThan(0);
-      const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
-      expect(settings.hooks).toBeUndefined();
-      await expect(
-        fs.access(path.join(tmpDir, '.agents', 'settings.local.json')),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+      const result = await removeCometHooksForPlatform(tmpDir, codex, 'project');
+
+      expect(result).toEqual({ removed: 2, failed: 0 });
+      const cleanedCanonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      expect(cleanedCanonical.hooks.PreToolUse[0].hooks).toEqual([userHandler]);
+      const cleanedLegacy = JSON.parse(await fs.readFile(legacyPath, 'utf8'));
+      expect(cleanedLegacy.model).toBe('gpt-5');
+      expect(cleanedLegacy.hooks.PreToolUse[0].hooks).toEqual([userHandler]);
+    });
+
+    it('removes quoted Codex hook commands whose script path contains spaces', async () => {
+      const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const managedPath = 'C:/Users/Jane Doe/.agents/skills/comet/scripts/comet-hook-guard.mjs';
+      await fs.mkdir(path.dirname(canonicalPath), { recursive: true });
+      await fs.writeFile(
+        canonicalPath,
+        JSON.stringify(
+          {
+            hooks: {
+              PreToolUse: [
+                {
+                  matcher: 'Write|Edit',
+                  hooks: [
+                    {
+                      type: 'command',
+                      command: `node "${managedPath}" --project-root "C:/Users/Jane Doe"`,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+
+      await expect(removeCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+      const cleaned = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      expect(cleaned.hooks.PreToolUse[0].hooks).toEqual([]);
+    });
+
+    it('continues Codex cleanup across files and counts only canonical write failures', async () => {
+      const codex = {
+        ...PLATFORMS.find((platform) => platform.id === 'codex')!,
+        legacyHookConfigFiles: ['settings.local.json', 'settings.backup.json'],
+      };
+      const canonicalPath = path.join(tmpDir, '.codex', 'hooks.json');
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      const backupPath = path.join(tmpDir, '.codex', 'settings.backup.json');
+      const userHandler = { type: 'command', command: 'node my-user-hook.mjs' };
+
+      await installCometHooksForPlatform(tmpDir, codex, 'project');
+      const canonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      const cometHandler = canonical.hooks.PreToolUse[0].hooks[0];
+      canonical.hooks.PreToolUse[0].hooks.push(userHandler);
+      await fs.writeFile(canonicalPath, JSON.stringify(canonical, null, 2), 'utf8');
+      await fs.writeFile(
+        legacyPath,
+        JSON.stringify(
+          {
+            hooks: {
+              PreToolUse: [{ matcher: 'Write|Edit', hooks: [cometHandler, userHandler] }],
+            },
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+      await fs.copyFile(legacyPath, backupPath);
+      writeFileMock
+        .mockRejectedValueOnce(new Error('simulated canonical write failure'))
+        .mockImplementationOnce(fs.writeFile)
+        .mockRejectedValueOnce(new Error('simulated backup write failure'));
+
+      const result = await removeCometHooksForPlatform(tmpDir, codex, 'project');
+
+      expect(result).toEqual({ removed: 1, failed: 1 });
+      const unchangedCanonical = JSON.parse(await fs.readFile(canonicalPath, 'utf8'));
+      expect(unchangedCanonical.hooks.PreToolUse[0].hooks).toEqual([cometHandler, userHandler]);
+      const cleanedLegacy = JSON.parse(await fs.readFile(legacyPath, 'utf8'));
+      expect(cleanedLegacy.hooks.PreToolUse[0].hooks).toEqual([userHandler]);
+      const unchangedBackup = JSON.parse(await fs.readFile(backupPath, 'utf8'));
+      expect(unchangedBackup.hooks.PreToolUse[0].hooks).toEqual([cometHandler, userHandler]);
     });
 
     it('removes Claude Code hooks while preserving non-Comet hooks', async () => {
@@ -497,7 +742,7 @@ describe('uninstall', () => {
       expect(result.removed).toBe(0);
     });
 
-    it('cleans up empty hooks section after removal', async () => {
+    it('preserves empty hook groups after removal', async () => {
       const claudePlatform: Platform = PLATFORMS.find((p) => p.id === 'claude')!;
       const settingsDir = path.join(tmpDir, '.claude');
       await fs.mkdir(settingsDir, { recursive: true });
@@ -525,7 +770,7 @@ describe('uninstall', () => {
 
       const updatedContent = await fs.readFile(settingsPath, 'utf-8');
       const updated = JSON.parse(updatedContent);
-      expect(updated.hooks).toBeUndefined();
+      expect(updated.hooks.PreToolUse).toEqual([{ matcher: 'Write|Edit', hooks: [] }]);
     });
   });
 
@@ -658,6 +903,34 @@ describe('uninstallCommand interactive selection', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('does not apply project registry recovery targets to an explicit global uninstall', async () => {
+    const fakeHome = path.join(tmpDir, 'global-scope-recovery-home');
+    const opencode = PLATFORMS.find((platform) => platform.id === 'opencode')!;
+    const commandPath = path.join(tmpDir, '.opencode', 'commands', 'comet.md');
+    await copyCometSkillsForPlatform(tmpDir, opencode, true, 'skills', 'project');
+    await fs.rm(path.join(tmpDir, '.opencode', 'skills'), { recursive: true, force: true });
+    await upsertProjectInstallation(tmpDir, [{ platform: 'opencode', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(tmpDir, { scope: 'global', force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.targets).toEqual([]);
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.access(commandPath)).resolves.toBeUndefined();
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toHaveLength(1);
+  });
+
   it('does not auto-detect Codex from a shared canonical global Skill root', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     const codexPlatform = PLATFORMS.find((platform) => platform.id === 'codex')!;
@@ -718,6 +991,443 @@ describe('uninstallCommand interactive selection', () => {
     expect(registry.projects).toEqual([]);
   });
 
+  it('removes Hook then Rule but keeps the Skill retry anchor when canonical Hook cleanup fails', async () => {
+    const fakeHome = path.join(tmpDir, 'hook-failure-home');
+    const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    await copyCometSkillsForPlatform(tmpDir, codex, true, 'skills', 'project');
+    await copyCometRulesForPlatform(tmpDir, codex, true, 'en', 'project');
+    await fs.writeFile(path.join(tmpDir, '.codex', 'hooks.json'), '[]\n', 'utf8');
+    await upsertProjectInstallation(tmpDir, [{ platform: 'codex', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir, { force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.targets[0]).toMatchObject({
+        platform: 'codex',
+        hooksFailed: 1,
+        rulesRemoved: 1,
+        skillsRemoved: 0,
+      });
+      expect(result.summary.totalFailures).toBeGreaterThan(0);
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(
+      fs.access(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+  });
+
+  it('keeps the Skill retry anchor when canonical Rule cleanup fails after Hook removal', async () => {
+    const fakeHome = path.join(tmpDir, 'rule-failure-home');
+    const codex = PLATFORMS.find((platform) => platform.id === 'codex')!;
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    await copyCometSkillsForPlatform(tmpDir, codex, true, 'skills', 'project');
+    await copyCometRulesForPlatform(tmpDir, codex, true, 'en', 'project');
+    await installCometHooksForPlatform(tmpDir, codex, 'project');
+    const rulePath = path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md');
+    const unlink = fs.unlink.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (filePath) => {
+      if (path.resolve(String(filePath)) === path.resolve(rulePath)) throw permissionError;
+      await unlink(filePath);
+    });
+    await upsertProjectInstallation(tmpDir, [{ platform: 'codex', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir, { force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.targets[0]).toMatchObject({
+        platform: 'codex',
+        hooksRemoved: 1,
+        rulesFailed: 1,
+        skillsRemoved: 0,
+      });
+    } finally {
+      unlinkSpy.mockRestore();
+      log.mockRestore();
+    }
+
+    await expect(
+      fs.access(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+  });
+
+  it('counts working-directory cleanup failure and keeps the project registry entry', async () => {
+    const fakeHome = path.join(tmpDir, 'working-dir-failure-home');
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    await copyCometSkillsForPlatform(tmpDir, claude, true, 'skills', 'project');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.comet', 'state'), 'keep\n', 'utf8');
+    await upsertProjectInstallation(tmpDir, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const rm = fs.rm.bind(fs);
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const rmSpy = vi.spyOn(fs, 'rm').mockImplementation(async (targetPath, options) => {
+      if (path.resolve(String(targetPath)) === path.resolve(path.join(tmpDir, '.comet'))) {
+        throw permissionError;
+      }
+      await rm(targetPath, options);
+    });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir, { force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.summary.totalFailures).toBe(1);
+    } finally {
+      rmSpy.mockRestore();
+      log.mockRestore();
+    }
+
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toHaveLength(1);
+    await expect(fs.readFile(path.join(tmpDir, '.comet', 'state'), 'utf8')).resolves.toBe('keep\n');
+  });
+
+  it('retries registered project cleanup after the Skill target was removed on the first attempt', async () => {
+    const fakeHome = path.join(tmpDir, 'working-dir-retry-home');
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    await copyCometSkillsForPlatform(tmpDir, claude, true, 'skills', 'project');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.comet', 'state'), 'retry\n', 'utf8');
+    await upsertProjectInstallation(tmpDir, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const rm = fs.rm.bind(fs);
+    let cometRemovalAttempts = 0;
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const rmSpy = vi.spyOn(fs, 'rm').mockImplementation(async (targetPath, options) => {
+      if (path.resolve(String(targetPath)) === path.resolve(path.join(tmpDir, '.comet'))) {
+        cometRemovalAttempts++;
+        if (cometRemovalAttempts === 1) throw permissionError;
+      }
+      await rm(targetPath, options);
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(tmpDir, { force: true, json: true });
+      const firstResult = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(firstResult.summary.totalFailures).toBe(1);
+      const retainedRegistry = JSON.parse(
+        await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8'),
+      ) as { projects: unknown[] };
+      expect(retainedRegistry.projects).toHaveLength(1);
+      log.mockClear();
+      await uninstallCommand(tmpDir, { force: true, json: true });
+      const retryResult = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(retryResult.summary).toMatchObject({ targetsProcessed: 1, totalFailures: 0 });
+      expect(retryResult.workingDirsRemoved).toBe(1);
+    } finally {
+      log.mockRestore();
+      rmSpy.mockRestore();
+    }
+
+    expect(cometRemovalAttempts).toBe(2);
+    await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('matches a registered current project through its canonical symlink identity', async () => {
+    const fakeHome = path.join(tmpDir, 'canonical-recovery-home');
+    const realProject = path.join(tmpDir, 'canonical-real-project');
+    const projectAlias = path.join(tmpDir, 'canonical-project-alias');
+    await fs.mkdir(path.join(realProject, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(realProject, '.comet', 'state'), 'recover\n', 'utf8');
+    await fs.symlink(realProject, projectAlias, process.platform === 'win32' ? 'junction' : 'dir');
+    await upsertProjectInstallation(realProject, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(projectAlias, { currentProject: true, force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.summary).toMatchObject({ targetsProcessed: 1, totalFailures: 0 });
+      expect(result.workingDirsRemoved).toBe(1);
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.access(path.join(realProject, '.comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('uses registry lastTargets to retry an OpenCode command cleanup for current-project', async () => {
+    const fakeHome = path.join(tmpDir, 'opencode-recovery-home');
+    const opencode = PLATFORMS.find((platform) => platform.id === 'opencode')!;
+    const commandPath = path.join(tmpDir, '.opencode', 'commands', 'comet.md');
+    await copyCometSkillsForPlatform(tmpDir, opencode, true, 'skills', 'project');
+    await upsertProjectInstallation(tmpDir, [{ platform: 'opencode', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const unlink = fs.unlink.bind(fs);
+    let commandAttempts = 0;
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (targetPath) => {
+      if (path.resolve(String(targetPath)) === path.resolve(commandPath)) {
+        commandAttempts++;
+        if (commandAttempts === 1) throw permissionError;
+      }
+      await unlink(targetPath);
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(tmpDir, { currentProject: true, force: true, json: true });
+      const first = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(first.summary.totalFailures).toBe(1);
+      await expect(fs.access(commandPath)).resolves.toBeUndefined();
+      log.mockClear();
+
+      await uninstallCommand(tmpDir, { currentProject: true, force: true, json: true });
+      const second = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(second.summary).toMatchObject({ targetsProcessed: 1, totalFailures: 0 });
+    } finally {
+      log.mockRestore();
+      unlinkSpy.mockRestore();
+    }
+
+    expect(commandAttempts).toBe(2);
+    await expect(fs.access(commandPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('merges detected targets with registry recovery targets before retrying cleanup', async () => {
+    const fakeHome = path.join(tmpDir, 'detected-recovery-union-home');
+    const opencode = PLATFORMS.find((platform) => platform.id === 'opencode')!;
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    const commandPath = path.join(tmpDir, '.opencode', 'commands', 'comet.md');
+    const claudeSkillPath = path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md');
+    await copyCometSkillsForPlatform(tmpDir, opencode, true, 'skills', 'project');
+    await copyCometSkillsForPlatform(tmpDir, claude, true, 'skills', 'project');
+    await upsertProjectInstallation(
+      tmpDir,
+      [
+        { platform: 'opencode', language: 'en' },
+        { platform: 'claude', language: 'en' },
+      ],
+      'init',
+      { homeDir: fakeHome },
+    );
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    mockedCheckbox.mockResolvedValue(['opencode:project'] as never);
+    const unlink = fs.unlink.bind(fs);
+    let commandAttempts = 0;
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (targetPath) => {
+      if (path.resolve(String(targetPath)) === path.resolve(commandPath)) {
+        commandAttempts++;
+        if (commandAttempts === 1) throw permissionError;
+      }
+      await unlink(targetPath);
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(tmpDir);
+      expect(commandAttempts).toBe(1);
+      await expect(fs.access(commandPath)).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.opencode', 'skills', 'comet')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(fs.access(claudeSkillPath)).resolves.toBeUndefined();
+      const retainedRegistry = JSON.parse(
+        await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8'),
+      ) as { projects: unknown[] };
+      expect(retainedRegistry.projects).toHaveLength(1);
+      log.mockClear();
+
+      await uninstallCommand(tmpDir, { currentProject: true, force: true, json: true });
+      const retry = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(retry.summary).toMatchObject({ targetsProcessed: 2, totalFailures: 0 });
+      expect(
+        retry.targets.map((target: { scope: string; platform: string }) => ({
+          scope: target.scope,
+          platform: target.platform,
+        })),
+      ).toEqual([
+        { scope: 'project', platform: 'claude' },
+        { scope: 'project', platform: 'opencode' },
+      ]);
+    } finally {
+      log.mockRestore();
+      unlinkSpy.mockRestore();
+    }
+
+    expect(commandAttempts).toBe(2);
+    await expect(fs.access(commandPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('keeps detected global and recovered project targets separate for the same platform', async () => {
+    const fakeHome = path.join(tmpDir, 'detected-global-recovery-project-home');
+    const opencode = PLATFORMS.find((platform) => platform.id === 'opencode')!;
+    const projectCommandPath = path.join(tmpDir, '.opencode', 'commands', 'comet.md');
+    await copyCometSkillsForPlatform(tmpDir, opencode, true, 'skills', 'project');
+    await fs.rm(path.join(tmpDir, '.opencode', 'skills'), { recursive: true, force: true });
+    await copyCometSkillsForPlatform(fakeHome, opencode, true, 'skills', 'global');
+    await upsertProjectInstallation(tmpDir, [{ platform: 'opencode', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(tmpDir, { currentProject: true, force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.summary).toMatchObject({ targetsProcessed: 2, totalFailures: 0 });
+      expect(
+        result.targets.map((target: { scope: string; platform: string }) => ({
+          scope: target.scope,
+          platform: target.platform,
+        })),
+      ).toEqual([
+        { scope: 'global', platform: 'opencode' },
+        { scope: 'project', platform: 'opencode' },
+      ]);
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.access(projectCommandPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(
+      fs.access(path.join(fakeHome, '.opencode', 'skills', 'comet')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('runs follow-on cleanup for an all-projects registry entry with no remaining Skill target', async () => {
+    const fakeHome = path.join(tmpDir, 'all-projects-stale-home');
+    const project = path.join(tmpDir, 'all-projects-stale-project');
+    await fs.mkdir(path.join(project, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(project, '.comet', 'state'), 'stale\n', 'utf8');
+    await fs.writeFile(
+      path.join(project, 'AGENTS.md'),
+      '<comet-ambient-resume>\nmanaged\n</comet-ambient-resume>\n',
+      'utf8',
+    );
+    await upsertProjectInstallation(project, [{ platform: 'claude', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(project, { allProjects: true, force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.projects[0]).toMatchObject({
+        projectPath: path.resolve(project),
+        status: 'uninstalled',
+        workingDirsRemoved: 1,
+        projectInstructionsRemoved: 1,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.access(path.join(project, '.comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(path.join(project, 'AGENTS.md'), 'utf8')).resolves.not.toContain(
+      'comet-ambient-resume',
+    );
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
+  it('uses registry lastTargets to retry a Pi extension cleanup for all-projects', async () => {
+    const fakeHome = path.join(tmpDir, 'pi-all-projects-recovery-home');
+    const project = path.join(tmpDir, 'pi-all-projects-recovery-project');
+    const pi = PLATFORMS.find((platform) => platform.id === 'pi')!;
+    const extensionPath = path.join(project, '.pi', 'extensions', 'comet-commands.ts');
+    await copyCometSkillsForPlatform(project, pi, true, 'skills', 'project');
+    await upsertProjectInstallation(project, [{ platform: 'pi', language: 'en' }], 'init', {
+      homeDir: fakeHome,
+    });
+    homedirSpy.mockRestore();
+    homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const unlink = fs.unlink.bind(fs);
+    let extensionAttempts = 0;
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockImplementation(async (targetPath) => {
+      if (path.resolve(String(targetPath)) === path.resolve(extensionPath)) {
+        extensionAttempts++;
+        if (extensionAttempts === 1) throw permissionError;
+      }
+      await unlink(targetPath);
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await uninstallCommand(project, { allProjects: true, force: true, json: true });
+      const first = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(first.projects[0].status).toBe('failed');
+      await expect(fs.access(extensionPath)).resolves.toBeUndefined();
+      log.mockClear();
+
+      await uninstallCommand(project, { allProjects: true, force: true, json: true });
+      const second = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(second.projects[0]).toMatchObject({
+        status: 'uninstalled',
+        summary: { targetsProcessed: 1, totalFailures: 0 },
+      });
+    } finally {
+      log.mockRestore();
+      unlinkSpy.mockRestore();
+    }
+
+    expect(extensionAttempts).toBe(2);
+    await expect(fs.access(extensionPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
+      projects: unknown[];
+    };
+    expect(registry.projects).toEqual([]);
+  });
+
   it.each([true, false])(
     'reports canonical Codex cleanup refusal and preserves project state in %s output',
     async (json) => {
@@ -762,7 +1472,7 @@ describe('uninstallCommand interactive selection', () => {
 
       await expect(
         fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md')),
-      ).resolves.toBeUndefined();
+      ).rejects.toMatchObject({ code: 'ENOENT' });
       await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain(
         'comet-ambient-resume',
       );
@@ -774,7 +1484,7 @@ describe('uninstallCommand interactive selection', () => {
     },
   );
 
-  it('stops follow-on cleanup when a legacy-only Codex root refuses removal', async () => {
+  it('removes Rules before preserving a legacy-only Codex Skill root that refuses removal', async () => {
     const sharedSkills = path.join(tmpDir, 'legacy-only-shared-skills');
     await fs.mkdir(path.join(sharedSkills, 'comet'), { recursive: true });
     await fs.writeFile(path.join(sharedSkills, 'comet', 'SKILL.md'), '# Legacy Comet\n');
@@ -798,8 +1508,8 @@ describe('uninstallCommand interactive selection', () => {
       log.mockRestore();
     }
     await expect(
-      fs.readFile(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md'), 'utf8'),
-    ).resolves.toBe('# Keep Rule\n');
+      fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(fs.lstat(path.join(tmpDir, '.codex', 'skills'))).resolves.toMatchObject({});
   });
 

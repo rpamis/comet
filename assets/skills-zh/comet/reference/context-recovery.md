@@ -9,7 +9,7 @@
 用户可能直接从 `/comet-open`、`/comet-design`、`/comet-build`、`/comet-verify`、`/comet-archive`、`/comet-hotfix` 或 `/comet-tweak` 回到流程。进入任意子 Skill 时，都先按 `comet/reference/scripts.md` 定位脚本，再用当前子 Skill 对应 phase 运行入口检查或恢复检查。不得依赖对话历史判断阶段。
 
 ```bash
-node "$COMET_STATE" check <change-name> <phase> --recover
+comet state check <change-name> <phase> --recover
 ```
 
 若检查结果显示实际 phase、workflow 或 evidence 应由其他 Skill 处理，按脚本输出和 `/comet` 路由规则切换；不要在错误阶段继续补写状态。若存在未提交改动，先按 `comet/reference/dirty-worktree.md` 归因。
@@ -27,7 +27,7 @@ node "$COMET_RESUME_PROBE" probe --stdin
 ## 恢复步骤
 
 ```bash
-node "$COMET_STATE" check <change-name> <phase> --recover
+comet state check <change-name> <phase> --recover
 ```
 
 脚本输出结构化恢复上下文（phase、已完成字段、待完成字段、恢复动作）。按 **Recovery action** 决定下一步。

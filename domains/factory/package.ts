@@ -15,8 +15,33 @@ import {
 } from './artifacts.js';
 import type { WorkflowNodeProtocol, WorkflowProtocol } from '../workflow-contract/index.js';
 
+function compactDescription(value: string, maxLength = 240): string {
+  const normalized = value
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .replace(/[.!?。！？]+$/u, '');
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
 function factoryEntryDescription(plan: FactorySkillPackagePlan): string {
-  return plan.description || `Use when running the generated ${plan.name} workflow.`;
+  const purpose = compactDescription(
+    plan.description || plan.goal || `run the generated ${plan.name} workflow`,
+  );
+  return `Use when the user wants the ${plan.name} managed workflow for ${purpose}, explicitly invokes /${plan.name}, or persisted workflow state identifies one unambiguous active run. Route through this entry Skill; do not invoke its internal Node Skills directly.`;
+}
+
+function factoryNodeDescription(
+  plan: FactorySkillPackagePlan,
+  protocol: WorkflowProtocol,
+  node: WorkflowNodeProtocol,
+  skillName: string,
+): string {
+  return `Use only when explicitly invoked as /${skillName} or routed by the ${plan.name} entry/runtime to the ${node.id} Node; complete ${node.label} for ${protocol.name}. Do not use for ordinary standalone tasks or as the workflow entry.`;
+}
+
+function yamlString(value: string): string {
+  return JSON.stringify(value);
 }
 
 function runtimeEvals(): Record<string, unknown> {
@@ -213,7 +238,7 @@ function workflowContractEntryMarkdown(
 3. Run \`node ${plan.name}/scripts/workflow-state.mjs next\` and load **only** the returned Skill. Do not load multiple Skills at once.`;
   return `---
 name: ${plan.name}
-description: ${factoryEntryDescription(plan)}
+description: ${yamlString(factoryEntryDescription(plan))}
 ---
 
 # ${protocol.name}
@@ -333,7 +358,7 @@ function workflowContractNodeMarkdown(
           .join('\n');
   return `---
 name: ${skillName}
-description: Run the ${node.label} Node for ${protocol.name}.
+description: ${yamlString(factoryNodeDescription(plan, protocol, node, skillName))}
 ---
 
 # ${node.label}
@@ -1520,12 +1545,7 @@ function workflowContractArtifacts(plan: FactorySkillPackagePlan): FactoryPackag
       'reference/decision-points.md',
       'reference',
       plan.contentDrafts?.['reference/decision-points.md'] ??
-        `# Workflow Decision Points\n\n${workflowContractRoute(protocol)
-          .map(
-            (node) =>
-              `- \`${node.id}\`: confirm Output Schemas ${node.outputSchemas.join(', ') || 'none'}.`,
-          )
-          .join('\n')}\n`,
+        `# Workflow Decision Classification\n\nNo decision points have been authored. Do not infer that every Node or Output Schema requires confirmation. Classify each candidate as a genuine user decision, automatic handling, a stop condition, or a manual handoff; pause only when at least two valid choices change scope, behavior, accepted risk, or an irreversible outcome.\n`,
     ),
     artifact(
       'reference/recovery.md',

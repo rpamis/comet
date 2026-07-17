@@ -1,6 +1,6 @@
 ---
 name: comet-hotfix
-description: "Use when 用户要修复已有行为 bug，且不新增 capability、不需要完整设计；也用于恢复 hotfix workflow。"
+description: "仅在用户明确调用 /comet-hotfix，或由 Comet 根 Skill/runtime 路由到 hotfix preset 时使用；修复已有行为 bug，不用于普通的未托管 bugfix。"
 ---
 
 # Comet 预设路径：Hotfix
@@ -20,7 +20,7 @@ description: "Use when 用户要修复已有行为 bug，且不新增 capability
 
 ### 0. 输出语言约束
 
-精简版 OpenSpec 产物必须使用 Comet 配置产物语言。`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `language`，初始化后使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取。
+精简版 OpenSpec 产物必须使用 Comet 配置产物语言。`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `language`，初始化后使用 `comet state get <name> language` 读取。
 
 执行链路：open → build → verify → archive。Hotfix 为每个阶段提供默认决策：精简开启、直接构建、按规模验证、验证通过后进入归档前最终确认。
 
@@ -36,38 +36,34 @@ description: "Use when 用户要修复已有行为 bug，且不新增 capability
 
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
 
-技能加载后，按其指引创建精简版产物：
+技能加载后先创建 change 骨架，立即初始化可恢复状态并绑定当前 change：
+
+```bash
+comet state init <name> hotfix
+comet state select <name>
+comet state check <name> open
+```
+
+hotfix 默认 `isolation: current`，表示在当前工作区执行；只有用户实际创建/选择了分支或 worktree 后，才能把它改为 `branch` 或 `worktree`。随后按指引创建精简版产物：
   - `proposal.md` — 问题描述 + 根因分析 + 修复目标（无需方案对比）
   - `design.md` — 修复方案（1 个即可，无需多方案对比）
   - `tasks.md` — 修复任务清单
 - **无需 delta spec**（除非修复改变了已有 spec 的验收场景）
 
-初始化 Comet 状态文件：
-
-```bash
-node "$COMET_STATE" init <name> hotfix
-```
-
-初始化后验证状态：
-
-```bash
-node "$COMET_STATE" check <name> open
-```
-
 阶段守卫完成 open → build 过渡：
 
 ```bash
-node "$COMET_GUARD" <change-name> open --apply
+comet guard <change-name> open --apply
 ```
 
 检查 `auto_transition` 决定是否继续：
 
 ```bash
-node "$COMET_STATE" next <name>
+comet state next <name>
 ```
 
 - `NEXT: auto` → 继续 Step 2
-- `NEXT: manual` → 暂停，按 `HINT` 提示用户手动运行 `/<SKILL>`
+- `NEXT: manual` → 按 `HINT` 交还控制权并结束当前调用；不要再询问用户是否继续
 
 ### 2. 直接构建（预设 build）
 
@@ -84,17 +80,23 @@ comet state set <name> isolation <branch|current>
 
 若选择 `branch`，按 `/comet-build` 中的 branch 规则确认分支名并创建分支，然后重新执行 `comet state select <change-name>` 绑定当前 change；若选择 `current`，不创建新分支，也不要因为没有切换工作区而额外重新选择。
 
-使用 hotfix 默认值：`build_mode: direct`，`review_mode: off`（hotfix/tweak 跳过 review_mode 选择——guard 不要求预设工作流选择此项）。跳过 Superpowers `brainstorming` 和 `writing-plans`（除非任务 > 3 个；若超过 3 个任务，转入 `/comet-build` 的计划与执行方式选择——注意这不触发 full workflow 升级，仅切换执行方式；预设路径下可选隔离仍只允许 `branch` 或 `current`）。
+使用 hotfix 默认值：`build_mode: direct`、`tdd_mode: direct`、`review_mode: off`。`direct` 表示不进入完整规划/TDD 编排，不表示可以跳过复现、回归测试或验证。跳过 Superpowers `brainstorming` 和 `writing-plans`；**任务数量本身不触发 `/comet-build`**，任务较多时仍在当前 hotfix 的 tasks.md 中按顺序执行，只有命中后文质变信号或范围 tripwire 才交给用户决定是否升级 full。
 
 继续或开始修改前，按 `comet/reference/dirty-worktree.md` 协议处理未提交改动。若归因后发现修复命中质变信号或文件数 tripwire，按本文件「升级判定」处理。
 
-**立即执行：** 按 tasks.md 逐个执行任务：
+修改实现前，必须**先复现问题并记录失败证据**：
+
+1. 用最小可重复步骤确认用户报告的旧行为确实失败，并记录命令、输入和实际结果
+2. 能自动化时先新增一个会失败的回归测试并实际运行，确认失败原因对应本 bug，而不是环境或测试本身错误
+3. 暂时无法自动化时，在 proposal/验证报告中记录不可自动化原因和可重复的手工失败证据；不得无证据直接改代码
+
+完成 RED 证据后，按 tasks.md 逐个执行任务：
 
 1. 读取 `openspec/changes/<name>/tasks.md`，获取未完成任务列表
 2. 对每个未完成任务：
    - 根据任务描述修改代码
    - 运行项目格式化命令（如 `mvn spotless:apply`、`npm run format` 等）
-   - 运行相关测试确认通过
+   - 先运行新增的失败回归测试确认转绿，再运行相关测试确认通过
    - 将 tasks.md 中对应 `- [ ]` 勾选为 `- [x]`
    - 提交代码，commit message 格式：`fix: <简述修复>`
 3. 全部任务完成后，显式运行项目相关测试和构建命令
@@ -122,7 +124,7 @@ comet state set <name> isolation <branch|current>
 根因确认消除后，运行阶段守卫完成 build → verify 过渡：
 
 ```bash
-node "$COMET_GUARD" <change-name> build --apply
+comet guard <change-name> build --apply
 ```
 
 状态文件自动更新为 `phase: verify`、`verify_result: pending`，然后进入验证。
@@ -133,7 +135,7 @@ node "$COMET_GUARD" <change-name> build --apply
 
 **立即执行：** 使用 Skill 工具加载 `comet-verify` 技能。禁止跳过此步骤。
 
-无 delta spec 的小范围 hotfix 通常满足轻量验证条件（≤ 3 tasks、改动文件数低于 scale 阈值），comet-verify 的规模评估会选择轻量验证路径（6 项快速检查；默认 `review_mode: off` 时不自动派发代码审查）。若用户希望增加审查，可在验证前运行 `node "$COMET_STATE" set <name> review_mode standard` 或 `thorough`。若 hotfix 创建了 delta spec，则根据 comet-verify 的规模评估规则进入完整验证路径。
+无 delta spec 的小范围 hotfix 通常满足轻量验证条件（≤ 3 tasks、改动文件数低于 scale 阈值），comet-verify 的规模评估会选择轻量验证路径（6 项快速检查；默认 `review_mode: off` 时不自动派发代码审查）。若用户希望增加审查，可在验证前运行 `comet state set <name> review_mode standard` 或 `thorough`。若 hotfix 创建了 delta spec，则根据 comet-verify 的规模评估规则进入完整验证路径。
 
 验证通过后，按 `/comet-verify` 的规则将 `.comet.yaml` 的 `verify_result` 记录为 `pass`，归档前不得跳过该状态。验证通过后仍必须进入 `/comet-archive` 的归档前最终确认，不得自动运行归档脚本。
 
@@ -149,12 +151,12 @@ node "$COMET_GUARD" <change-name> build --apply
 ## 连续执行模式
 
 <IMPORTANT>
-Hotfix 流程默认 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 在 hotfix 自有步骤间自动推进，不主动停顿。**例外**：若 `auto_transition: false`，则在每个 phase 边界（build/verify/archive 之间）停下，由用户手动运行下一阶段命令——此时连续执行降级为逐阶段手动推进，详见下方「自动衔接下一阶段」。但无论 `auto_transition` 取何值，以下情况都必须暂停等待用户确认：
+Hotfix 流程默认 **一次性连续执行**。调用 `/comet-hotfix` 后，agent 在 hotfix 自有步骤间自动推进，不主动停顿。**例外**：若 `auto_transition: false`，则在每个 phase 边界（build/verify/archive 之间）结束当前调用并按 `HINT` 交还控制权，由用户稍后手动运行下一阶段命令；这是手动衔接，不是新的确认点。无论 `auto_transition` 取何值，以下真正的用户决策仍需暂停：
 
 1. 遇到升级判定信号（见「升级判定」章节），**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择**：继续 hotfix 流程，还是升级为完整 `/comet` 流程
-2. 初始隔离选择（`branch` / `current`），以及任务超过 3 个转入 `/comet-build` 时的执行方式选择
-3. 验证阶段（comet-verify）的验证失败决策和分支处理决策
-4. 归档前最终确认（comet-archive 执行归档脚本前）
+2. 初始隔离选择（`branch` / `current`）
+3. 验证阶段（comet-verify）接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移或超过自动修复上限后的策略决策；前 3 次明确可修复失败自动闭环
+4. 归档前最终确认，以及归档提交后的分支处理决策
 
 执行顺序：快速开启 → 直接构建 → 根因消除检查 → 验证 → 归档 → 完成
 
@@ -165,7 +167,7 @@ Hotfix 流程默认 **一次性连续执行**。调用 `/comet-hotfix` 后，age
 
 ## 升级判定
 
-hotfix 的升级判定只决定是否从预设流程转为 full；文件数不自动升级，`comet-state scale` 只决定验证轻重。
+hotfix 的升级判定只决定是否从预设流程转为 full；文件数不自动升级，`comet state scale` 只决定验证轻重。
 
 若由 `/comet` 入口传入 intent frame，hotfix 在 build 前只复核 `risk_signal` 和升级信号：新增 capability、public API、schema 变更、跨模块协调或深层架构问题。命中时进入现有升级决策点；不得重新实现入口意图识别。
 
@@ -178,10 +180,10 @@ hotfix 的升级判定只决定是否从预设流程转为 full；文件数不�
 用户选择升级（选项 B）后，使用状态机合法的升级通道，单条命令完成预设流程 → full 转换并回退到 design 阶段：
 
 ```bash
-node "$COMET_STATE" transition <name> preset-escalate
+comet state transition <name> preset-escalate
 ```
 
-该命令原子地把 `workflow`/`classic_profile` 置为 `full`、`phase` 回退到 `design`、清空 `design_doc`（满足 comet-design 入口要求）。然后在当前 change 基础上补充 Design Doc：**立即使用 Skill 工具加载 `comet-design` skill**，后续正常走完整流程。
+该命令原子地把 `workflow`/`classic_profile` 置为 `full`、`phase` 回退到 `design`、清空 `design_doc`，并清除预设专属的 `build_mode`、`tdd_mode`、`review_mode`、`isolation` 和 `verify_mode`。然后在当前 change 基础上补充 Design Doc：**立即使用 Skill 工具加载 `comet-design` skill**；进入 build 后必须重新进行一次完整的联合工作方式选择。
 
 用户选择继续（选项 A）时，继续 hotfix 流程，并记录用户确认继续的原因。
 
@@ -192,16 +194,16 @@ node "$COMET_STATE" transition <name> preset-escalate
 - Bug 已修复，测试通过
 - change 已归档
 - 如有 spec 变更，已同步到 main spec
-- **阶段守卫**：build → verify 前运行 `node "$COMET_GUARD" <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `node "$COMET_GUARD" <change-name> verify --apply`
+- **阶段守卫**：build → verify 前运行 `comet guard <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `comet guard <change-name> verify --apply`
 
 ## 自动衔接下一阶段
 
 按 `comet/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
-node "$COMET_STATE" next <name>
+comet state next <name>
 ```
 
 - `NEXT: auto` → 调用 `SKILL` 指向的 skill 继续 hotfix 流程（`phase: build` 返回 `comet-hotfix`，`verify` 返回 `comet-verify`，`archive` 返回 `comet-archive`）
-- `NEXT: manual` → 不要调用下一 skill，按 `HINT` 提示用户手动运行 `/<SKILL>`
+- `NEXT: manual` → 不调用下一 skill，按 `HINT` 交还控制权并结束当前调用；不再创建确认点
 - `NEXT: done` → 流程已完成，无需继续

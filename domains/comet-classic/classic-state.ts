@@ -50,6 +50,7 @@ export interface ClassicState {
   designDoc: string | null;
   plan: string | null;
   verifyResult: (typeof VERIFY_RESULTS)[number];
+  verifyFailures: number;
   verificationReport: string | null;
   branchStatus: (typeof BRANCH_STATUSES)[number] | null;
   branchAction: (typeof BRANCH_ACTIONS)[number] | null;
@@ -88,6 +89,7 @@ export const CLASSIC_WIRE_KEYS = [
   'design_doc',
   'plan',
   'verify_result',
+  'verify_failures',
   'verification_report',
   'branch_status',
   'branch_action',
@@ -167,6 +169,15 @@ function booleanValue(doc: StateDocument, key: string, nullable = true): boolean
   return value;
 }
 
+function nonNegativeInteger(doc: StateDocument, key: string, fallback = 0): number {
+  const value = doc[key];
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid Classic state: ${key} must be a non-negative integer`);
+  }
+  return value;
+}
+
 function relativePath(doc: StateDocument, key: string): string | null {
   const value = nullableString(doc, key);
   if (value === null) return null;
@@ -221,6 +232,7 @@ function classicStateFromDocument(doc: StateDocument): ClassicState | null {
     designDoc: relativePath(doc, 'design_doc'),
     plan: relativePath(doc, 'plan'),
     verifyResult: enumValue(doc, 'verify_result', VERIFY_RESULTS, false)!,
+    verifyFailures: nonNegativeInteger(doc, 'verify_failures'),
     verificationReport: relativePath(doc, 'verification_report'),
     branchStatus: enumValue(doc, 'branch_status', BRANCH_STATUSES),
     branchAction: enumValue(doc, 'branch_action', BRANCH_ACTIONS),
@@ -311,6 +323,7 @@ export function classicStateToDocument(state: ClassicState): StateDocument {
     design_doc: state.designDoc,
     plan: state.plan,
     verify_result: state.verifyResult,
+    verify_failures: state.verifyFailures,
     verification_report: state.verificationReport,
     branch_status: state.branchStatus,
     branch_action: state.branchAction,

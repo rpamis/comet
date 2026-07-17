@@ -16,6 +16,14 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+function frontmatterDescription(source: string): string {
+  const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---/u);
+  expect(match).not.toBeNull();
+  const document = parse(match![1]!) as { description?: unknown };
+  expect(typeof document.description).toBe('string');
+  return document.description as string;
+}
+
 function packagePlan(options: {
   root: string;
   name: string;
@@ -109,9 +117,16 @@ describe('Factory skill package generation', () => {
       path.join(output.packageRoot, 'reference', 'composition-report.md'),
       'utf8',
     );
+    const decisionPoints = await fs.readFile(
+      path.join(output.packageRoot, 'reference', 'decision-points.md'),
+      'utf8',
+    );
 
     expect(output.wrapperClassification).toBe('scaffold-blocked');
     expect(compositionReport).toContain('Wrapper classification: scaffold-blocked');
+    expect(decisionPoints).toContain('No decision points have been authored');
+    expect(decisionPoints).toContain('pause only when at least two valid choices');
+    expect(decisionPoints).not.toContain('confirm Output Schemas');
   });
 
   it('generates Claude Code custom agent definitions separately from portable role briefs', async () => {
@@ -199,6 +214,18 @@ describe('Factory skill package generation', () => {
     expect(entry).toContain('Output Schemas');
     expect(entry).not.toContain('workflow-state.mjs init');
     expect(entry).toContain('/comet-open');
+    expect(frontmatterDescription(entry)).toContain('team-comet managed workflow');
+    expect(frontmatterDescription(entry)).toContain('Route through this entry Skill');
+    const openNode = await fs.readFile(
+      path.join(output.packageRoot, '..', 'team-comet-open', 'SKILL.md'),
+      'utf8',
+    );
+    expect(frontmatterDescription(openNode)).toContain(
+      'Use only when explicitly invoked as /team-comet-open or routed by the team-comet entry/runtime',
+    );
+    expect(frontmatterDescription(openNode)).toContain(
+      'Do not use for ordinary standalone tasks or as the workflow entry',
+    );
     expect(skillYaml.orchestration?.steps?.[0]?.action?.ref).toBe('team-comet-open');
 
     const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-workflow-contract-run-'));

@@ -1,6 +1,6 @@
 ---
 name: comet-design
-description: "Use when full Comet change 已完成 open 阶段但缺少 Superpowers Design Doc，或 design 阶段需要从 OpenSpec 交接包恢复。"
+description: "仅在用户明确调用 /comet-design，或由 Comet 根 Skill/runtime 路由到 full workflow 的 design 阶段时使用；创建或恢复深度技术 Design Doc。"
 ---
 
 # Comet 阶段 2：深度设计（Design）
@@ -20,7 +20,7 @@ description: "Use when full Comet change 已完成 open 阶段但缺少 Superpow
 
 ```bash
 comet state select <change-name>
-node "$COMET_STATE" check <name> design
+comet state check <name> design
 ```
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
@@ -32,7 +32,7 @@ node "$COMET_STATE" check <name> design
 **必须由脚本生成，不允许 agent 临场手写 summary 代替。**
 
 ```bash
-node "$COMET_HANDOFF" <change-name> design --write
+comet handoff <change-name> design --write
 ```
 
 脚本会根据 change `.comet.yaml` 的 `context_compression` 快照生成并记录交接包。
@@ -71,7 +71,7 @@ beta 交接包是 **结构化 spec projection**，用于减少 OpenSpec 原文 t
 如确实需要全文上下文，可显式运行：
 
 ```bash
-node "$COMET_HANDOFF" <change-name> design --write --full
+comet handoff <change-name> design --write --full
 ```
 
 交接包来源来自 OpenSpec open 阶段产物：
@@ -87,7 +87,7 @@ node "$COMET_HANDOFF" <change-name> design --write --full
 技能加载时，ARGUMENTS 必须包含：
 
 ```text
-Language: 使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取到的 Comet 配置产物语言输出
+Language: 使用 `comet state get <name> language` 读取到的 Comet 配置产物语言输出
 ```
 
 技能加载后，按其指引使用以下上下文：
@@ -147,9 +147,7 @@ brainstorming 产出设计方案后，**必须按 `comet/reference/decision-poin
 
 用户确认设计方案后，在创建 Design Doc 前，创建或更新已增量维护的检查点文件，将其定稿为确认后的设计方案摘要：
 
-```bash
-mkdir -p openspec/changes/<name>/.comet/handoff
-```
+使用当前平台的文件能力确保 `openspec/changes/<name>/.comet/handoff/` 存在；不要依赖 POSIX 专用目录命令。
 
 `openspec/changes/<name>/.comet/handoff/brainstorm-summary.md` 结构：
 
@@ -181,14 +179,9 @@ mkdir -p openspec/changes/<name>/.comet/handoff
 - `openspec/changes/<name>/.comet/handoff/design-context.md`（或 beta 模式的 `spec-context.md`）
 - `openspec/changes/<name>/.comet/handoff/design-context.json`（或 beta 模式的 `spec-context.json`）
 
-### 1e. 主动式上下文压缩
+### 1e. 压缩策略（此处不阻塞）
 
-完成 Step 1d 并确认 `brainstorm-summary.md` 已写入后，进入 Design Doc 创建前的主动式上下文压缩。此时 OpenSpec 交接包、brainstorming 决策和待确认项都已落盘，应主动释放前面读取 Spec 和 brainstorming 消耗的上下文，为 Step 2 及后续 Build 阶段保留窗口。
-
-执行规则：
-- 如果当前平台提供原生上下文压缩/清理机制（例如宿主 Agent 的 compact/compaction 命令、工具或 UI 操作），必须在这里触发一次主动压缩；不要尝试用 shell 脚本伪造压缩命令。
-- 压缩恢复提示必须包含 change 名称、当前步骤（Design Step 2）、以及上方三类需重新加载的 handoff 文件。
-- 如果当前平台无法由 agent 程序化触发压缩，必须暂停并提示用户在宿主平台执行手动压缩；用户确认无法压缩或要求继续时，才继续 Step 2。
+`brainstorm-summary.md` 是恢复检查点，但 Design Doc 尚未落盘时不得主动丢弃当前设计上下文。直接进入 Step 2；上下文压缩移到 Design Doc、状态和最新 handoff 全部持久化之后执行。
 
 ### 2. 创建 Design Doc
 
@@ -215,16 +208,24 @@ canonical_spec: openspec
 
 ```bash
 # 记录 design_doc 路径
-node "$COMET_STATE" set <name> design_doc docs/superpowers/specs/YYYY-MM-DD-topic-design.md
+comet state set <name> design_doc docs/superpowers/specs/YYYY-MM-DD-topic-design.md
 
 # 如有 delta spec 变更，重新生成 handoff（更新 hash）
-node "$COMET_HANDOFF" <change-name> design --write
+comet handoff <change-name> design --write
 
 # 阶段守卫推进 phase 到下一阶段
-node "$COMET_GUARD" <change-name> design --apply
+comet guard <change-name> design --apply
 ```
 
 如果没有 delta spec 变更，跳过 handoff 重新生成步骤。状态文件自动更新，无需手动编辑其他字段。
+
+### 3a. 可选主动式上下文压缩
+
+只在 **Design Doc 和状态证据落盘后**、进入 Build 前考虑主动式压缩。先确认 `design_doc`、最新 handoff、`handoff_hash` 和 design guard 均已成功持久化；这样压缩后可从文件恢复，不会丢失尚未写入的设计判断。
+
+- 当前平台提供可由 agent 调用的原生压缩机制，且上下文窗口确有压力时，可以触发一次，并在恢复提示中列出 change、下一步和需重新加载的 Design Doc/handoff 文件
+- 当前平台只能由用户手动压缩时，给出一次非阻塞建议并继续；**无法程序化触发时不得阻塞**、不得额外制造确认点
+- 不得用 shell 命令或摘要替代宿主平台的真实压缩机制
 
 ## 退出条件
 
@@ -236,12 +237,12 @@ node "$COMET_GUARD" <change-name> design --apply
 - beta 模式下，`spec-context.json` 必须结构合法且引用当前源文件（由 guard 强制校验）
 - 如有新能力或补充验收场景，OpenSpec delta spec 已创建/更新
 - `design_doc` 已写入 `.comet.yaml`
-- **阶段守卫**：运行 `node "$COMET_GUARD" <change-name> design --apply`，全部 PASS 后由守卫推进到 `phase: build`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
+- **阶段守卫**：运行 `comet guard <change-name> design --apply`，全部 PASS 后由守卫推进到 `phase: build`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
 退出前必须使用 `--apply`：
 
 ```bash
-node "$COMET_GUARD" <change-name> design --apply
+comet guard <change-name> design --apply
 ```
 
 ## 上下文压缩恢复
@@ -253,9 +254,9 @@ node "$COMET_GUARD" <change-name> design --apply
 按 `comet/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
-node "$COMET_STATE" next <change-name>
+comet state next <change-name>
 ```
 
 - `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段
-- `NEXT: manual` → 不要调用下一 skill，按 `HINT` 提示用户手动运行 `/<SKILL>`
+- `NEXT: manual` → 不调用下一 skill，按 `HINT` 交还控制权并结束当前调用；不再创建确认点
 - `NEXT: done` → 流程已完成，无需继续

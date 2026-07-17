@@ -1,6 +1,6 @@
 ---
 name: comet-tweak
-description: "Use when 用户要进行可收敛为单一 OpenSpec change 的轻量或中等变更，且不需要完整设计；也用于恢复 tweak workflow。"
+description: "仅在用户明确调用 /comet-tweak，或由 Comet 根 Skill/runtime 路由到 tweak preset 时使用；处理可收敛为单一 OpenSpec change 的轻量或中等变更。"
 ---
 
 # Comet 预设路径：Tweak
@@ -23,7 +23,7 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 
 ### 0. 输出语言约束
 
-精简版 OpenSpec 产物必须使用 Comet 配置产物语言。`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `language`，初始化后使用 `"$COMET_BASH" "$COMET_STATE" get <name> language` 读取。
+精简版 OpenSpec 产物必须使用 Comet 配置产物语言。`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `language`，初始化后使用 `comet state get <name> language` 读取。
 
 执行链路：open → OpenSpec apply → verify → archive。Tweak 为每个阶段提供默认决策：精简开启、通过 OpenSpec apply 直接构建、按规模与 delta spec 判定验证轻重、验证通过后进入归档前最终确认。
 
@@ -48,19 +48,22 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 初始化 Comet 状态文件：
 
 ```bash
-node "$COMET_STATE" init <name> tweak
+comet state init <name> tweak
+comet state select <name>
 ```
+
+tweak 默认 `isolation: current`，表示在当前工作区执行；只有用户实际创建/选择了分支或 worktree 后，才能改为 `branch` 或 `worktree`。
 
 初始化后验证状态：
 
 ```bash
-node "$COMET_STATE" check <name> open
+comet state check <name> open
 ```
 
 阶段守卫完成 open → build 过渡：
 
 ```bash
-node "$COMET_GUARD" <change-name> open --apply
+comet guard <change-name> open --apply
 ```
 
 ### 2. OpenSpec apply 构建（tweak 专用预设 build）
@@ -111,7 +114,7 @@ comet state set <name> isolation <branch|current>
 运行阶段守卫完成 build → verify 过渡：
 
 ```bash
-node "$COMET_GUARD" <change-name> build --apply
+comet guard <change-name> build --apply
 ```
 
 状态文件自动更新为 `phase: verify`、`verify_result: pending`，然后进入验证。
@@ -125,10 +128,10 @@ node "$COMET_GUARD" <change-name> build --apply
 **带 delta spec 的验证分流**：tweak 接受 delta spec 作为正常产物。若本次 change 创建了 delta spec，进入 comet-verify 前显式设置完整验证模式，走 OpenSpec 原生验证（`openspec-verify-change`）以覆盖 delta spec 一致性：
 
 ```bash
-node "$COMET_STATE" set <change-name> verify_mode full
+comet state set <change-name> verify_mode full
 ```
 
-无 delta spec 的 tweak 通常满足轻量验证条件（≤ 3 tasks、改动文件数低于 scale 阈值），由 comet-verify 的规模评估选择轻量验证路径（6 项快速检查）。若用户希望增加审查，可在验证前运行 `node "$COMET_STATE" set <name> review_mode standard` 或 `thorough`。
+无 delta spec 的 tweak 通常满足轻量验证条件（≤ 3 tasks、改动文件数低于 scale 阈值），由 comet-verify 的规模评估选择轻量验证路径（6 项快速检查）。若用户希望增加审查，可在验证前运行 `comet state set <name> review_mode standard` 或 `thorough`。
 
 验证通过后，按 `/comet-verify` 的规则将 `.comet.yaml` 的 `verify_result` 记录为 `pass`，归档前不得跳过该状态。验证通过后仍必须进入 `/comet-archive` 的归档前最终确认，不得自动运行归档脚本。
 
@@ -143,12 +146,12 @@ node "$COMET_STATE" set <change-name> verify_mode full
 ## 连续执行模式
 
 <IMPORTANT>
-Tweak 流程默认 **一次性连续执行**。调用 `/comet-tweak` 后，agent 在 tweak 自有步骤间自动推进，不主动停顿。**例外**：若 `auto_transition: false`，则在每个 phase 边界（build/verify/archive 之间）停下，由用户手动运行下一阶段命令——此时连续执行降级为逐阶段手动推进，详见下方「自动衔接下一阶段」。但无论 `auto_transition` 取何值，以下情况都必须暂停等待用户确认：
+Tweak 流程默认 **一次性连续执行**。调用 `/comet-tweak` 后，agent 在 tweak 自有步骤间自动推进，不主动停顿。**例外**：若 `auto_transition: false`，则在每个 phase 边界（build/verify/archive 之间）结束当前调用并按 `HINT` 交还控制权，由用户稍后手动运行下一阶段命令；这是手动衔接，不是新的确认点。无论 `auto_transition` 取何值，以下真正的用户决策仍需暂停：
 
 1. 遇到升级判定信号（见「升级判定」章节），**必须使用当前平台可用的用户输入/确认机制暂停并等待用户明确选择**：继续 tweak 轻量流程，还是升级为完整 `/comet` 流程
 2. 初始隔离选择（`branch` / `current`）
-3. 验证阶段（comet-verify）的验证失败决策和分支处理决策
-4. 归档前最终确认（comet-archive 执行归档脚本前）
+3. 验证阶段（comet-verify）接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移或超过自动修复上限后的策略决策；前 3 次明确可修复失败自动闭环
+4. 归档前最终确认，以及归档提交后的分支处理决策
 
 执行顺序：快速开启 → 构建（含升级判定检查）→ 验证 → 归档 → 完成
 
@@ -159,7 +162,7 @@ Tweak 流程默认 **一次性连续执行**。调用 `/comet-tweak` 后，agent
 
 ## 升级判定
 
-tweak 的升级判定只决定是否从轻量预设转为 full；delta spec 本身不是升级理由，文件数不自动升级，`comet-state scale` 只决定验证轻重。
+tweak 的升级判定只决定是否从轻量预设转为 full；delta spec 本身不是升级理由，文件数不自动升级，`comet state scale` 只决定验证轻重。
 
 若由 `/comet` 入口传入 intent frame，tweak 在 build 前只复核 `risk_signal` 和升级信号：新增 capability、public API、schema 变更、跨模块协调或深层架构问题。命中时进入现有升级决策点；delta spec 仍是 tweak 的正常产物，不因存在 delta spec 自动升级；不得重新实现入口意图识别。
 
@@ -172,10 +175,10 @@ tweak 的升级判定只决定是否从轻量预设转为 full；delta spec 本�
 用户选择升级（选项 B）后，使用状态机合法的升级通道，单条命令完成预设流程 → full 转换并回退到 design 阶段：
 
 ```bash
-node "$COMET_STATE" transition <name> preset-escalate
+comet state transition <name> preset-escalate
 ```
 
-该命令原子地把 `workflow`/`classic_profile` 置为 `full`、`phase` 回退到 `design`、清空 `design_doc`（满足 comet-design 入口要求）。然后在当前 change 基础上补充 Design Doc：**立即使用 Skill 工具加载 `comet-design` skill**，后续正常走完整流程。
+该命令原子地把 `workflow`/`classic_profile` 置为 `full`、`phase` 回退到 `design`、清空 `design_doc`，并清除预设专属的 `build_mode`、`tdd_mode`、`review_mode`、`isolation` 和 `verify_mode`。然后在当前 change 基础上补充 Design Doc：**立即使用 Skill 工具加载 `comet-design` skill**；进入 build 后必须重新进行一次完整的联合工作方式选择。
 
 用户选择继续（选项 A）时，继续 tweak 流程，并记录用户确认继续的原因。
 
@@ -186,16 +189,16 @@ node "$COMET_STATE" transition <name> preset-escalate
 - 变更已完成，测试通过
 - change 已归档
 - 如有 spec 变更，已同步到 main spec
-- **阶段守卫**：build → verify 前运行 `node "$COMET_GUARD" <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `node "$COMET_GUARD" <change-name> verify --apply`
+- **阶段守卫**：build → verify 前运行 `comet guard <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `comet guard <change-name> verify --apply`
 
 ## 自动衔接下一阶段
 
 按 `comet/reference/auto-transition.md` 执行。关键命令：
 
 ```bash
-node "$COMET_STATE" next <name>
+comet state next <name>
 ```
 
 - `NEXT: auto` → 调用 `SKILL` 指向的 skill 继续 tweak 流程（`phase: build` 返回 `comet-tweak`，`verify` 返回 `comet-verify`，`archive` 返回 `comet-archive`）
-- `NEXT: manual` → 不要调用下一 skill，按 `HINT` 提示用户手动运行 `/<SKILL>`
+- `NEXT: manual` → 不调用下一 skill，按 `HINT` 交还控制权并结束当前调用；不再创建确认点
 - `NEXT: done` → 流程已完成，无需继续

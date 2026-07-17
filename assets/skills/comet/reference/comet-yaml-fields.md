@@ -23,6 +23,7 @@ auto_transition: true
 isolation: branch
 verify_mode: light
 verify_result: pending
+verify_failures: 0
 verification_report: null
 branch_status: pending
 created_at: 2026-05-26
@@ -44,14 +45,16 @@ archived: false
 | `build_mode` | Selected execution mode; may be empty. Values: `subagent-driven-development` (isolated background subagents implement and review each task), `executing-plans` (main session executes sequentially by plan), `direct` (main session codes directly; allowed by default only for hotfix/tweak, full workflow requires `direct_override: true`) |
 | `build_pause` | Build phase internal pause point. `null` = no pause, `plan-ready` = plan generated, paused for user model switch |
 | `subagent_dispatch` | `null` or `confirmed`. Only when the platform's real background subagent/Task/multi-agent dispatch capability is confirmed may `build_mode: subagent-driven-development` be written and used to leave the build phase |
-| `tdd_mode` | `tdd` or `direct`. Full workflow must select before leaving build. `tdd` forces write-failing-test-first per task; `direct` skips TDD enforcement. hotfix/tweak default to `direct` |
+| `tdd_mode` | `tdd` or `direct`. Full workflow must select before leaving build. `tdd` forces write-failing-test-first per task; `direct` skips per-task TDD but still requires relevant tests and bug-regression evidence. hotfix/tweak default to `direct` |
 | `review_mode` | `off`, `standard`, or `thorough`. Full workflow must select before leaving build; hotfix/tweak default to `off` |
 | `isolation` | `branch`, `worktree`, or `current`, workspace isolation mode. Full init may be `null` but only until `/comet-build` Step 3; hotfix/tweak must explicitly choose `branch` or `current` and no longer default it |
 | `verify_mode` | `light` or `full`; may be empty |
 | `auto_transition` | `true` or `false`. Only controls whether to automatically invoke the next skill after phase guard advances phase; `false` outputs `manual` from `comet-state next`, pausing next-skill invocation but not blocking phase field updates |
 | `verify_result` | `pending`, `pass`, or `fail` |
+| `verify_failures` | Machine-owned consecutive verification failure count. `verify-fail` increments it; `verify-pass` or `archive-reopen` resets it to `0`. At `3`, the next failure requires the retry-limit strategy decision |
 | `verification_report` | Verification report file path; must point to an existing file before verify passes |
-| `branch_status` | `pending` or `handled`; set to `handled` after branch handling completes |
+| `branch_status` | `pending` or `handled`; set to `handled` once the user completes branch handling in verify (see `branch_action`) |
+| `branch_action` | `null`, `push`, `keep-local`, `merged-locally`, or `pushed-pr`. Records the branch handling method the user actually chose during verify, used by archive to decide whether to push the archive commit |
 | `created_at` | Change creation date (auto-written at init), format `YYYY-MM-DD` |
 | `verified_at` | Verification pass timestamp; may be empty |
 | `archive_confirmation` | `null`, `pending`, or `confirmed`. `verify-pass` writes `pending` when entering the archive phase; after the user selects "Confirm archive" in `/comet-archive`, the `archive-confirm` transition writes `confirmed`; `archive-reopen` clears the field so an earlier confirmation cannot be reused |

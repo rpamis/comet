@@ -64,6 +64,8 @@ describe('detect', () => {
       expect(codex?.legacySkillsDirs).toEqual(['.codex']);
       expect(codex?.detectionPaths).toEqual(['.codex']);
       expect(codex?.rulesBaseDir).toBe('.codex');
+      expect(codex?.hookConfigFile).toBe('hooks.json');
+      expect(codex?.legacyHookConfigFiles).toEqual(['settings.local.json']);
       expect(getPlatformSkillsDir(codex!, 'project')).toBe('.agents');
       expect(getPlatformSkillsDir(codex!, 'global')).toBe('.agents');
       expect(getPlatformSkillsDirs(codex!, 'project')).toEqual(['.agents', '.codex']);

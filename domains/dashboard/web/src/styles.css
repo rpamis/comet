@@ -116,102 +116,324 @@ input {
   max-width: var(--spacing-dashboard);
 }
 
-.artifact-markdown {
-  color: var(--color-fg-2);
-  font-size: 14px;
-  line-height: 1.65;
+.artifact-markdown,
+.md-github {
+  font-size: 16px;
+  line-height: 1.75;
+  color: #24292f;
+  overflow-wrap: anywhere;
 }
 
-.artifact-markdown h1,
-.artifact-markdown h2,
-.artifact-markdown h3,
-.artifact-markdown h4 {
-  color: var(--color-fg);
-  font-weight: 700;
-  line-height: 1.2;
-  margin: 1.25rem 0 0.5rem;
+.md-github h1,
+.md-github h2,
+.md-github h3,
+.md-github h4,
+.md-github h5,
+.md-github h6 {
+  font-weight: 600;
+  line-height: 1.35;
+  margin-top: 28px;
+  margin-bottom: 10px;
 }
 
-.artifact-markdown h1 {
-  font-size: 1.75rem;
+.md-github h1 {
+  font-size: 1.65em;
+  color: #0d1117;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #d0d7de;
 }
 
-.artifact-markdown h2 {
-  font-size: 1.35rem;
+.md-github h2 {
+  font-size: 1.35em;
+  color: #1f2328;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #d0d7de;
 }
 
-.artifact-markdown h3,
-.artifact-markdown h4 {
-  font-size: 1rem;
+.md-github h3 {
+  font-size: 1.1em;
+  color: #32383f;
 }
 
-.artifact-markdown p {
-  margin: 0.65rem 0;
+.md-github h4 {
+  font-size: 1em;
+  color: #57606a;
 }
 
-.artifact-markdown ul {
-  margin: 0.65rem 0;
-  padding-left: 1.25rem;
-  list-style: disc;
+.md-github h5,
+.md-github h6 {
+  font-size: 0.9em;
+  color: #6e7781;
 }
 
-.artifact-markdown li {
-  margin: 0.35rem 0;
+.md-github p {
+  margin: 12px 0;
+  color: #24292f;
 }
 
-.artifact-markdown code {
+.md-github ul,
+.md-github ol {
+  padding-left: 1.6em;
+  margin: 10px 0;
+}
+
+.md-github li {
+  margin: 5px 0;
+  color: #32383f;
+}
+
+.md-github li > ul,
+.md-github li > ol {
+  margin: 4px 0;
+}
+
+.md-github li li {
+  color: #57606a;
+}
+
+.md-github :not(pre) > code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: #f0f2f4;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #cf222e;
+}
+
+.md-github pre {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
   border-radius: 6px;
-  background: var(--color-surface);
-  padding: 0.12rem 0.35rem;
-  font-family: Inter, 'Inter var', sans-serif;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 14px 0;
+  color: #1f2328;
+}
+
+.md-github pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1f2328;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.8;
+}
+
+.md-github blockquote {
+  border-left: 4px solid #d0d7de;
+  background: #f6f8fa;
+  color: #57606a;
+  padding: 8px 16px;
+  margin: 14px 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.md-github blockquote p {
+  color: #57606a;
+  margin: 4px 0;
+}
+
+.md-github strong {
+  font-weight: 600;
+  color: #0969da;
+}
+
+.md-github em {
+  font-style: italic;
+  color: #6639ba;
+}
+
+.md-github hr {
+  border: none;
+  border-top: 1px solid #d0d7de;
+  margin: 28px 0;
+}
+
+.md-github a {
+  color: #0969da;
+  text-decoration: none;
+}
+
+.md-github a:hover {
+  text-decoration: underline;
+}
+
+.md-github table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 14px 0;
+  font-size: 0.9em;
+}
+
+.md-github th,
+.md-github td {
+  border: 1px solid #d0d7de;
+  padding: 8px 13px;
+  text-align: left;
+}
+
+.md-github th {
+  background: #f6f8fa;
+  font-weight: 600;
+  color: #1f2328;
+}
+
+.md-github td {
+  color: #32383f;
+}
+
+.md-github tr:nth-child(even) td {
+  background: #f6f8fa;
+}
+
+.md-github .yaml-kv-table th[scope='row'] {
+  width: 28%;
+  max-width: 220px;
+  white-space: nowrap;
+  vertical-align: top;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.92em;
 }
 
-.artifact-markdown pre {
-  margin: 0.9rem 0;
-  overflow: auto;
-  border-radius: 12px;
-  background: #1d1d1f;
-  padding: 1rem;
-  color: #f5f5f7;
+.md-github .yaml-kv-table td {
+  vertical-align: top;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  line-height: 1.55;
 }
 
-:root[data-theme='dark'] .artifact-markdown pre,
-:host[data-theme='dark'] .artifact-markdown pre {
+.md-github .json-array-table td {
+  vertical-align: top;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  line-height: 1.55;
+}
+
+.md-github input[type='checkbox'] {
+  margin-right: 6px;
+  accent-color: #0969da;
+}
+
+:root[data-theme='dark'] .md-github,
+:host[data-theme='dark'] .md-github {
+  color: var(--color-fg-2);
+}
+
+:root[data-theme='dark'] .md-github h1,
+:root[data-theme='dark'] .md-github h2,
+:root[data-theme='dark'] .md-github h3,
+:root[data-theme='dark'] .md-github h4,
+:root[data-theme='dark'] .md-github h5,
+:root[data-theme='dark'] .md-github h6,
+:host[data-theme='dark'] .md-github h1,
+:host[data-theme='dark'] .md-github h2,
+:host[data-theme='dark'] .md-github h3,
+:host[data-theme='dark'] .md-github h4,
+:host[data-theme='dark'] .md-github h5,
+:host[data-theme='dark'] .md-github h6 {
+  color: var(--color-fg);
+}
+
+:root[data-theme='dark'] .md-github h1,
+:root[data-theme='dark'] .md-github h2,
+:host[data-theme='dark'] .md-github h1,
+:host[data-theme='dark'] .md-github h2 {
+  border-bottom-color: var(--color-border);
+}
+
+:root[data-theme='dark'] .md-github p,
+:root[data-theme='dark'] .md-github li,
+:host[data-theme='dark'] .md-github p,
+:host[data-theme='dark'] .md-github li {
+  color: var(--color-fg-2);
+}
+
+:root[data-theme='dark'] .md-github li li,
+:host[data-theme='dark'] .md-github li li {
+  color: var(--color-muted);
+}
+
+:root[data-theme='dark'] .md-github :not(pre) > code,
+:host[data-theme='dark'] .md-github :not(pre) > code {
+  background: var(--color-surface-warm);
+  border-color: var(--color-border);
+  color: #f85149;
+}
+
+:root[data-theme='dark'] .md-github pre,
+:host[data-theme='dark'] .md-github pre {
   background: #14171c;
-  color: #d8dee9;
+  border-color: var(--color-border);
+  color: var(--color-fg);
 }
 
-:root[data-theme='dark'] .artifact-markdown code,
-:host[data-theme='dark'] .artifact-markdown code {
-  background: #282b33;
+:root[data-theme='dark'] .md-github pre code,
+:host[data-theme='dark'] .md-github pre code {
+  color: var(--color-fg);
 }
 
-:root[data-theme='dark'] .artifact-markdown h1,
-:root[data-theme='dark'] .artifact-markdown h2,
-:root[data-theme='dark'] .artifact-markdown h3,
-:root[data-theme='dark'] .artifact-markdown h4,
-:host[data-theme='dark'] .artifact-markdown h1,
-:host[data-theme='dark'] .artifact-markdown h2,
-:host[data-theme='dark'] .artifact-markdown h3,
-:host[data-theme='dark'] .artifact-markdown h4 {
-  color: #e8ecf2;
+:root[data-theme='dark'] .md-github blockquote,
+:host[data-theme='dark'] .md-github blockquote {
+  border-left-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
 }
 
-:root[data-theme='dark'] .artifact-markdown a,
-:host[data-theme='dark'] .artifact-markdown a {
-  color: #6e9fff;
+:root[data-theme='dark'] .md-github blockquote p,
+:host[data-theme='dark'] .md-github blockquote p {
+  color: var(--color-muted);
 }
 
-:root[data-theme='dark'] .artifact-markdown blockquote,
-:host[data-theme='dark'] .artifact-markdown blockquote {
-  border-left-color: #343740;
-  color: #7b818a;
+:root[data-theme='dark'] .md-github strong,
+:host[data-theme='dark'] .md-github strong {
+  color: var(--color-accent);
 }
 
-:root[data-theme='dark'] .artifact-markdown hr,
-:host[data-theme='dark'] .artifact-markdown hr {
-  border-color: #343740;
+:root[data-theme='dark'] .md-github em,
+:host[data-theme='dark'] .md-github em {
+  color: #d2a8ff;
+}
+
+:root[data-theme='dark'] .md-github hr,
+:host[data-theme='dark'] .md-github hr {
+  border-top-color: var(--color-border);
+}
+
+:root[data-theme='dark'] .md-github a,
+:host[data-theme='dark'] .md-github a {
+  color: var(--color-accent);
+}
+
+:root[data-theme='dark'] .md-github th,
+:root[data-theme='dark'] .md-github td,
+:host[data-theme='dark'] .md-github th,
+:host[data-theme='dark'] .md-github td {
+  border-color: var(--color-border);
+}
+
+:root[data-theme='dark'] .md-github th,
+:host[data-theme='dark'] .md-github th {
+  background: var(--color-surface);
+  color: var(--color-fg);
+}
+
+:root[data-theme='dark'] .md-github td,
+:host[data-theme='dark'] .md-github td {
+  color: var(--color-fg-2);
+}
+
+:root[data-theme='dark'] .md-github tr:nth-child(even) td,
+:host[data-theme='dark'] .md-github tr:nth-child(even) td {
+  background: var(--color-surface);
+}
+
+:root[data-theme='dark'] .md-github input[type='checkbox'],
+:host[data-theme='dark'] .md-github input[type='checkbox'] {
+  accent-color: var(--color-accent);
 }
 
 :root[data-theme='dark'] ::-webkit-scrollbar,
@@ -244,12 +466,6 @@ input {
 :root[data-theme='dark'] .accent-glow,
 :host[data-theme='dark'] .accent-glow {
   box-shadow: 0 0 12px rgba(108, 182, 255, 0.15);
-}
-
-.artifact-markdown pre code {
-  background: transparent;
-  padding: 0;
-  color: inherit;
 }
 
 .toast {

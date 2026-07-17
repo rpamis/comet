@@ -213,9 +213,9 @@ var init_state = __esm({
   }
 });
 
-// node_modules/yaml/dist/nodes/identity.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS({
-  "node_modules/yaml/dist/nodes/identity.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/identity.js"(exports) {
     "use strict";
     var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
     var DOC = /* @__PURE__ */ Symbol.for("yaml.document");
@@ -270,9 +270,9 @@ var require_identity = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/visit.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/visit.js
 var require_visit = __commonJS({
-  "node_modules/yaml/dist/visit.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/visit.js"(exports) {
     "use strict";
     var identity = require_identity();
     var BREAK = /* @__PURE__ */ Symbol("break visit");
@@ -428,9 +428,9 @@ var require_visit = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/directives.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/directives.js
 var require_directives = __commonJS({
-  "node_modules/yaml/dist/doc/directives.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/directives.js"(exports) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -599,9 +599,9 @@ var require_directives = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/anchors.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/anchors.js
 var require_anchors = __commonJS({
-  "node_modules/yaml/dist/doc/anchors.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/anchors.js"(exports) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -669,9 +669,9 @@ var require_anchors = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/applyReviver.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/applyReviver.js
 var require_applyReviver = __commonJS({
-  "node_modules/yaml/dist/doc/applyReviver.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/applyReviver.js"(exports) {
     "use strict";
     function applyReviver(reviver, obj, key, val) {
       if (val && typeof val === "object") {
@@ -719,9 +719,9 @@ var require_applyReviver = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/toJS.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/toJS.js
 var require_toJS = __commonJS({
-  "node_modules/yaml/dist/nodes/toJS.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/toJS.js"(exports) {
     "use strict";
     var identity = require_identity();
     function toJS(value, arg, ctx) {
@@ -749,9 +749,9 @@ var require_toJS = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Node.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Node.js
 var require_Node = __commonJS({
-  "node_modules/yaml/dist/nodes/Node.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Node.js"(exports) {
     "use strict";
     var applyReviver = require_applyReviver();
     var identity = require_identity();
@@ -790,9 +790,9 @@ var require_Node = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Alias.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Alias.js
 var require_Alias = __commonJS({
-  "node_modules/yaml/dist/nodes/Alias.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Alias.js"(exports) {
     "use strict";
     var anchors = require_anchors();
     var visit = require_visit();
@@ -906,9 +906,9 @@ var require_Alias = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Scalar.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Scalar.js
 var require_Scalar = __commonJS({
-  "node_modules/yaml/dist/nodes/Scalar.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Scalar.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Node = require_Node();
@@ -936,9 +936,9 @@ var require_Scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/createNode.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/createNode.js
 var require_createNode = __commonJS({
-  "node_modules/yaml/dist/doc/createNode.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/createNode.js"(exports) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -1011,9 +1011,9 @@ var require_createNode = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Collection.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Collection.js
 var require_Collection = __commonJS({
-  "node_modules/yaml/dist/nodes/Collection.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Collection.js"(exports) {
     "use strict";
     var createNode = require_createNode();
     var identity = require_identity();
@@ -1154,9 +1154,9 @@ var require_Collection = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyComment.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyComment.js
 var require_stringifyComment = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyComment.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyComment.js"(exports) {
     "use strict";
     var stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
@@ -1171,9 +1171,9 @@ var require_stringifyComment = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/foldFlowLines.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/foldFlowLines.js
 var require_foldFlowLines = __commonJS({
-  "node_modules/yaml/dist/stringify/foldFlowLines.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/foldFlowLines.js"(exports) {
     "use strict";
     var FOLD_FLOW = "flow";
     var FOLD_BLOCK = "block";
@@ -1307,9 +1307,9 @@ ${indent}${text2.slice(fold + 1, end2)}`;
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyString.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyString.js
 var require_stringifyString = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyString.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyString.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var foldFlowLines = require_foldFlowLines();
@@ -1590,9 +1590,9 @@ ${indent}`);
   }
 });
 
-// node_modules/yaml/dist/stringify/stringify.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringify.js
 var require_stringify = __commonJS({
-  "node_modules/yaml/dist/stringify/stringify.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringify.js"(exports) {
     "use strict";
     var anchors = require_anchors();
     var identity = require_identity();
@@ -1714,9 +1714,9 @@ ${ctx.indent}${str}`;
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyPair.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyPair.js
 var require_stringifyPair = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyPair.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyPair.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -1847,9 +1847,9 @@ ${ctx.indent}`;
   }
 });
 
-// node_modules/yaml/dist/log.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/log.js
 var require_log = __commonJS({
-  "node_modules/yaml/dist/log.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/log.js"(exports) {
     "use strict";
     var node_process = __require("process");
     function debug(logLevel, ...messages) {
@@ -1869,9 +1869,9 @@ var require_log = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/merge.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/merge.js
 var require_merge = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -1929,9 +1929,9 @@ var require_merge = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/addPairToJSMap.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/addPairToJSMap.js
 var require_addPairToJSMap = __commonJS({
-  "node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports) {
     "use strict";
     var log = require_log();
     var merge = require_merge();
@@ -1993,9 +1993,9 @@ var require_addPairToJSMap = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Pair.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Pair.js
 var require_Pair = __commonJS({
-  "node_modules/yaml/dist/nodes/Pair.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/Pair.js"(exports) {
     "use strict";
     var createNode = require_createNode();
     var stringifyPair = require_stringifyPair();
@@ -2033,9 +2033,9 @@ var require_Pair = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyCollection.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyCollection.js
 var require_stringifyCollection = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -2184,9 +2184,9 @@ ${indent}${end}`;
   }
 });
 
-// node_modules/yaml/dist/nodes/YAMLMap.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLMap.js
 var require_YAMLMap = __commonJS({
-  "node_modules/yaml/dist/nodes/YAMLMap.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLMap.js"(exports) {
     "use strict";
     var stringifyCollection = require_stringifyCollection();
     var addPairToJSMap = require_addPairToJSMap();
@@ -2328,9 +2328,9 @@ var require_YAMLMap = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/map.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/map.js
 var require_map = __commonJS({
-  "node_modules/yaml/dist/schema/common/map.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/map.js"(exports) {
     "use strict";
     var identity = require_identity();
     var YAMLMap = require_YAMLMap();
@@ -2350,9 +2350,9 @@ var require_map = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/YAMLSeq.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLSeq.js
 var require_YAMLSeq = __commonJS({
-  "node_modules/yaml/dist/nodes/YAMLSeq.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/nodes/YAMLSeq.js"(exports) {
     "use strict";
     var createNode = require_createNode();
     var stringifyCollection = require_stringifyCollection();
@@ -2466,9 +2466,9 @@ var require_YAMLSeq = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/seq.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/seq.js
 var require_seq = __commonJS({
-  "node_modules/yaml/dist/schema/common/seq.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/seq.js"(exports) {
     "use strict";
     var identity = require_identity();
     var YAMLSeq = require_YAMLSeq();
@@ -2488,9 +2488,9 @@ var require_seq = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/string.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/string.js
 var require_string = __commonJS({
-  "node_modules/yaml/dist/schema/common/string.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/string.js"(exports) {
     "use strict";
     var stringifyString = require_stringifyString();
     var string = {
@@ -2507,9 +2507,9 @@ var require_string = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/null.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/null.js
 var require_null = __commonJS({
-  "node_modules/yaml/dist/schema/common/null.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/common/null.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var nullTag = {
@@ -2525,9 +2525,9 @@ var require_null = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/bool.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/bool.js
 var require_bool = __commonJS({
-  "node_modules/yaml/dist/schema/core/bool.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/bool.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var boolTag = {
@@ -2549,9 +2549,9 @@ var require_bool = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyNumber.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyNumber.js
 var require_stringifyNumber = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyNumber.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyNumber.js"(exports) {
     "use strict";
     function stringifyNumber({ format, minFractionDigits, tag, value }) {
       if (typeof value === "bigint")
@@ -2576,9 +2576,9 @@ var require_stringifyNumber = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/float.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/float.js
 var require_float = __commonJS({
-  "node_modules/yaml/dist/schema/core/float.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/float.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -2622,9 +2622,9 @@ var require_float = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/int.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/int.js
 var require_int = __commonJS({
-  "node_modules/yaml/dist/schema/core/int.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/int.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2667,9 +2667,9 @@ var require_int = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/schema.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/schema.js
 var require_schema = __commonJS({
-  "node_modules/yaml/dist/schema/core/schema.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/core/schema.js"(exports) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -2695,9 +2695,9 @@ var require_schema = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/json/schema.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/json/schema.js
 var require_schema2 = __commonJS({
-  "node_modules/yaml/dist/schema/json/schema.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/json/schema.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var map = require_map();
@@ -2762,9 +2762,9 @@ var require_schema2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/binary.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/binary.js
 var require_binary = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports) {
     "use strict";
     var node_buffer = __require("buffer");
     var Scalar = require_Scalar();
@@ -2828,9 +2828,9 @@ var require_binary = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/pairs.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/pairs.js
 var require_pairs = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -2906,9 +2906,9 @@ ${cn.comment}` : item.comment;
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/omap.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/omap.js
 var require_omap = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports) {
     "use strict";
     var identity = require_identity();
     var toJS = require_toJS();
@@ -2984,9 +2984,9 @@ var require_omap = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/bool.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/bool.js
 var require_bool2 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     function boolStringify({ value, source }, ctx) {
@@ -3016,9 +3016,9 @@ var require_bool2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/float.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/float.js
 var require_float2 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -3065,9 +3065,9 @@ var require_float2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/int.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/int.js
 var require_int2 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -3144,9 +3144,9 @@ var require_int2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/set.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/set.js
 var require_set = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -3233,9 +3233,9 @@ var require_set = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
 var require_timestamp = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     function parseSexagesimal(str, asBigInt) {
@@ -3321,9 +3321,9 @@ var require_timestamp = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/schema.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/schema.js
 var require_schema3 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -3365,9 +3365,9 @@ var require_schema3 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/tags.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/tags.js
 var require_tags = __commonJS({
-  "node_modules/yaml/dist/schema/tags.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/tags.js"(exports) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -3459,9 +3459,9 @@ var require_tags = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/Schema.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/Schema.js
 var require_Schema = __commonJS({
-  "node_modules/yaml/dist/schema/Schema.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/schema/Schema.js"(exports) {
     "use strict";
     var identity = require_identity();
     var map = require_map();
@@ -3491,9 +3491,9 @@ var require_Schema = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyDocument.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyDocument.js
 var require_stringifyDocument = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -3571,9 +3571,9 @@ var require_stringifyDocument = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/Document.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/Document.js
 var require_Document = __commonJS({
-  "node_modules/yaml/dist/doc/Document.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/doc/Document.js"(exports) {
     "use strict";
     var Alias = require_Alias();
     var Collection = require_Collection();
@@ -3880,9 +3880,9 @@ var require_Document = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/errors.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/errors.js
 var require_errors = __commonJS({
-  "node_modules/yaml/dist/errors.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/errors.js"(exports) {
     "use strict";
     var YAMLError = class extends Error {
       constructor(name, pos, code, message) {
@@ -3945,9 +3945,9 @@ ${pointer}
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-props.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-props.js
 var require_resolve_props = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-props.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-props.js"(exports) {
     "use strict";
     function resolveProps(tokens, { flow, indicator, next: next2, offset, onError, parentIndent, startOnNewline }) {
       let spaceBefore = false;
@@ -4079,9 +4079,9 @@ var require_resolve_props = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-contains-newline.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-contains-newline.js
 var require_util_contains_newline = __commonJS({
-  "node_modules/yaml/dist/compose/util-contains-newline.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-contains-newline.js"(exports) {
     "use strict";
     function containsNewline(key) {
       if (!key)
@@ -4121,9 +4121,9 @@ var require_util_contains_newline = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-flow-indent-check.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-flow-indent-check.js
 var require_util_flow_indent_check = __commonJS({
-  "node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports) {
     "use strict";
     var utilContainsNewline = require_util_contains_newline();
     function flowIndentCheck(indent, fc, onError) {
@@ -4139,9 +4139,9 @@ var require_util_flow_indent_check = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-map-includes.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-map-includes.js
 var require_util_map_includes = __commonJS({
-  "node_modules/yaml/dist/compose/util-map-includes.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-map-includes.js"(exports) {
     "use strict";
     var identity = require_identity();
     function mapIncludes(ctx, items, search) {
@@ -4155,9 +4155,9 @@ var require_util_map_includes = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-block-map.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-map.js
 var require_resolve_block_map = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-block-map.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-map.js"(exports) {
     "use strict";
     var Pair = require_Pair();
     var YAMLMap = require_YAMLMap();
@@ -4263,9 +4263,9 @@ var require_resolve_block_map = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-block-seq.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-seq.js
 var require_resolve_block_seq = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-block-seq.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-seq.js"(exports) {
     "use strict";
     var YAMLSeq = require_YAMLSeq();
     var resolveProps = require_resolve_props();
@@ -4314,9 +4314,9 @@ var require_resolve_block_seq = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-end.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-end.js
 var require_resolve_end = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-end.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-end.js"(exports) {
     "use strict";
     function resolveEnd(end, offset, reqSpace, onError) {
       let comment = "";
@@ -4357,9 +4357,9 @@ var require_resolve_end = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-flow-collection.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-collection.js
 var require_resolve_flow_collection = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -4551,9 +4551,9 @@ var require_resolve_flow_collection = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-collection.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-collection.js
 var require_compose_collection = __commonJS({
-  "node_modules/yaml/dist/compose/compose-collection.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-collection.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -4616,9 +4616,9 @@ var require_compose_collection = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-block-scalar.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-scalar.js
 var require_resolve_block_scalar = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar2, onError) {
@@ -4799,9 +4799,9 @@ var require_resolve_block_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-flow-scalar.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-scalar.js
 var require_resolve_flow_scalar = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
     var resolveEnd = require_resolve_end();
@@ -5019,9 +5019,9 @@ var require_resolve_flow_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-scalar.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-scalar.js
 var require_compose_scalar = __commonJS({
-  "node_modules/yaml/dist/compose/compose-scalar.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-scalar.js"(exports) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -5100,9 +5100,9 @@ var require_compose_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-empty-scalar-position.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-empty-scalar-position.js
 var require_util_empty_scalar_position = __commonJS({
-  "node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports) {
     "use strict";
     function emptyScalarPosition(offset, before, pos) {
       if (before) {
@@ -5130,9 +5130,9 @@ var require_util_empty_scalar_position = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-node.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-node.js
 var require_compose_node = __commonJS({
-  "node_modules/yaml/dist/compose/compose-node.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-node.js"(exports) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -5236,9 +5236,9 @@ var require_compose_node = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-doc.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-doc.js
 var require_compose_doc = __commonJS({
-  "node_modules/yaml/dist/compose/compose-doc.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-doc.js"(exports) {
     "use strict";
     var Document3 = require_Document();
     var composeNode = require_compose_node();
@@ -5279,9 +5279,9 @@ var require_compose_doc = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/composer.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/composer.js
 var require_composer = __commonJS({
-  "node_modules/yaml/dist/compose/composer.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/composer.js"(exports) {
     "use strict";
     var node_process = __require("process");
     var directives = require_directives();
@@ -5487,9 +5487,9 @@ ${end.comment}` : end.comment;
   }
 });
 
-// node_modules/yaml/dist/parse/cst-scalar.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-scalar.js
 var require_cst_scalar = __commonJS({
-  "node_modules/yaml/dist/parse/cst-scalar.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-scalar.js"(exports) {
     "use strict";
     var resolveBlockScalar = require_resolve_block_scalar();
     var resolveFlowScalar = require_resolve_flow_scalar();
@@ -5672,9 +5672,9 @@ var require_cst_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/cst-stringify.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-stringify.js
 var require_cst_stringify = __commonJS({
-  "node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
     var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
@@ -5733,9 +5733,9 @@ var require_cst_stringify = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/cst-visit.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-visit.js
 var require_cst_visit = __commonJS({
-  "node_modules/yaml/dist/parse/cst-visit.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-visit.js"(exports) {
     "use strict";
     var BREAK = /* @__PURE__ */ Symbol("break visit");
     var SKIP = /* @__PURE__ */ Symbol("skip children");
@@ -5795,9 +5795,9 @@ var require_cst_visit = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/cst.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst.js
 var require_cst = __commonJS({
-  "node_modules/yaml/dist/parse/cst.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst.js"(exports) {
     "use strict";
     var cstScalar = require_cst_scalar();
     var cstStringify = require_cst_stringify();
@@ -5897,9 +5897,9 @@ var require_cst = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/lexer.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/lexer.js
 var require_lexer = __commonJS({
-  "node_modules/yaml/dist/parse/lexer.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/lexer.js"(exports) {
     "use strict";
     var cst = require_cst();
     function isEmpty(ch) {
@@ -6486,9 +6486,9 @@ var require_lexer = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/line-counter.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/line-counter.js
 var require_line_counter = __commonJS({
-  "node_modules/yaml/dist/parse/line-counter.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/line-counter.js"(exports) {
     "use strict";
     var LineCounter = class {
       constructor() {
@@ -6517,9 +6517,9 @@ var require_line_counter = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/parser.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/parser.js
 var require_parser = __commonJS({
-  "node_modules/yaml/dist/parse/parser.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/parser.js"(exports) {
     "use strict";
     var node_process = __require("process");
     var cst = require_cst();
@@ -7391,9 +7391,9 @@ var require_parser = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/public-api.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/public-api.js
 var require_public_api = __commonJS({
-  "node_modules/yaml/dist/public-api.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/public-api.js"(exports) {
     "use strict";
     var composer = require_composer();
     var Document3 = require_Document();
@@ -7488,9 +7488,9 @@ var require_public_api = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/index.js
+// node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/index.js
 var require_dist = __commonJS({
-  "node_modules/yaml/dist/index.js"(exports) {
+  "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/index.js"(exports) {
     "use strict";
     var composer = require_composer();
     var Document3 = require_Document();
@@ -7767,6 +7767,7 @@ var CLASSIC_WIRE_KEYS = [
   "design_doc",
   "plan",
   "verify_result",
+  "verify_failures",
   "verification_report",
   "branch_status",
   "branch_action",
@@ -7829,6 +7830,14 @@ function booleanValue(doc, key, nullable = true) {
   }
   return value;
 }
+function nonNegativeInteger(doc, key, fallback = 0) {
+  const value = doc[key];
+  if (value === null || value === void 0 || value === "") return fallback;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid Classic state: ${key} must be a non-negative integer`);
+  }
+  return value;
+}
 function relativePath(doc, key) {
   const value = nullableString(doc, key);
   if (value === null) return null;
@@ -7878,6 +7887,7 @@ function classicStateFromDocument(doc) {
     designDoc: relativePath(doc, "design_doc"),
     plan: relativePath(doc, "plan"),
     verifyResult: enumValue(doc, "verify_result", VERIFY_RESULTS, false),
+    verifyFailures: nonNegativeInteger(doc, "verify_failures"),
     verificationReport: relativePath(doc, "verification_report"),
     branchStatus: enumValue(doc, "branch_status", BRANCH_STATUSES),
     branchAction: enumValue(doc, "branch_action", BRANCH_ACTIONS),
@@ -7944,6 +7954,7 @@ function classicStateToDocument(state) {
     design_doc: state.designDoc,
     plan: state.plan,
     verify_result: state.verifyResult,
+    verify_failures: state.verifyFailures,
     verification_report: state.verificationReport,
     branch_status: state.branchStatus,
     branch_action: state.branchAction,
@@ -9403,7 +9414,7 @@ var CLASSIC_TRANSITION_TABLE = {
   "verify-pass": {
     event: "verify-pass",
     from: "verify",
-    guardRefs: ["verification-report-present", "branch-status-handled"]
+    guardRefs: ["verification-report-present"]
   },
   "verify-fail": {
     event: "verify-fail",
@@ -9463,18 +9474,22 @@ function applyClassicTransition(current, event, options = {}) {
     const preserveEvidence = classic.verifyResult === "fail";
     setField(classic, effects, "phase", "verify");
     setField(classic, effects, "verifyResult", "pending");
+    setField(classic, effects, "branchStatus", "pending");
     if (!preserveEvidence) {
       setField(classic, effects, "verificationReport", null);
-      setField(classic, effects, "branchStatus", "pending");
     }
   } else if (event === "verify-pass") {
     setField(classic, effects, "verifyResult", "pass");
+    setField(classic, effects, "verifyFailures", 0);
     setField(classic, effects, "phase", "archive");
     setField(classic, effects, "verifiedAt", dateOnly(now));
     setField(classic, effects, "archiveConfirmation", "pending");
+    setField(classic, effects, "branchStatus", "pending");
   } else if (event === "verify-fail") {
     setField(classic, effects, "verifyResult", "fail");
+    setField(classic, effects, "verifyFailures", classic.verifyFailures + 1);
     setField(classic, effects, "phase", "build");
+    setField(classic, effects, "branchStatus", "pending");
   } else if (event === "preset-escalate") {
     if (classic.workflow !== "hotfix" && classic.workflow !== "tweak") {
       throw new Error(
@@ -9485,6 +9500,14 @@ function applyClassicTransition(current, event, options = {}) {
     setField(classic, effects, "classicProfile", "full");
     setField(classic, effects, "phase", "design");
     setField(classic, effects, "designDoc", null);
+    setField(classic, effects, "buildPause", null);
+    setField(classic, effects, "buildMode", null);
+    setField(classic, effects, "subagentDispatch", null);
+    setField(classic, effects, "tddMode", null);
+    setField(classic, effects, "reviewMode", null);
+    setField(classic, effects, "isolation", null);
+    setField(classic, effects, "verifyMode", null);
+    setField(classic, effects, "directOverride", null);
   } else if (event === "archive-confirm") {
     if (classic.verifyResult !== "pass") {
       throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
@@ -9494,9 +9517,11 @@ function applyClassicTransition(current, event, options = {}) {
   } else if (event === "archive-reopen") {
     if (classic.archived) throw new Error(`Cannot apply ${event}: already archived`);
     setField(classic, effects, "verifyResult", "pending");
+    setField(classic, effects, "verifyFailures", 0);
     setField(classic, effects, "phase", "verify");
     setField(classic, effects, "verifiedAt", null);
     setField(classic, effects, "archiveConfirmation", null);
+    setField(classic, effects, "branchStatus", "pending");
   } else {
     if (classic.verifyResult !== "pass") {
       throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
@@ -10259,6 +10284,12 @@ var classicValidateCommand = async (args) => {
       fail3(`${field2}='${value}' is not valid. Expected: ${values.join(" ")}`);
     }
   }
+  if (Object.prototype.hasOwnProperty.call(record, "verify_failures")) {
+    const value = record.verify_failures;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+      fail3(`verify_failures='${text(value)}' is not a non-negative integer`);
+    }
+  }
   for (const field2 of ["design_doc", "plan", "handoff_context"]) {
     const value = text(record[field2]);
     if (value && !await exists3(path15.resolve(value))) {
@@ -10295,8 +10326,9 @@ async function fileExists3(filePath) {
   try {
     await fs14.access(filePath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 async function readDir(dirPath) {
@@ -10309,6 +10341,9 @@ async function readDir(dirPath) {
     }
     throw error;
   }
+}
+function isNotFoundError(error) {
+  return error?.code === "ENOENT";
 }
 
 // domains/comet-classic/classic-project-config.ts
@@ -10758,7 +10793,7 @@ async function buildModeSelected(changeDir, change) {
   return fail(
     `build_mode must be selected before leaving build, got '${buildMode || "null"}'
 Next: ask the user to choose an execution mode, then run:
-  node "$COMET_STATE" set ${change} build_mode <subagent-driven-development|executing-plans>`
+  comet state set ${change} build_mode <subagent-driven-development|executing-plans>`
   );
 }
 async function buildModeAllowedForWorkflow(changeDir) {
@@ -10780,9 +10815,9 @@ async function subagentDispatchConfirmed(changeDir, change) {
   return fail(
     `subagent_dispatch must be confirmed before using build_mode=subagent-driven-development
 Next: confirm the current platform has a real background subagent/Task/multi-agent dispatcher, then run:
-  node "$COMET_STATE" set ${change} subagent_dispatch confirmed
-Or ask the user to switch to executing-plans and run:
-  node "$COMET_STATE" set ${change} build_mode executing-plans`
+  comet state set ${change} subagent_dispatch confirmed
+If dispatch is unavailable, return to /comet-build Step 2 with subagent-driven-development removed. When executing-plans is the only valid mode, run:
+  comet state set ${change} build_mode executing-plans`
   );
 }
 async function tddModeSelected(changeDir, change) {
@@ -10793,7 +10828,7 @@ async function tddModeSelected(changeDir, change) {
   return fail(
     `tdd_mode must be tdd or direct for full workflow, got '${tddMode || "null"}'
 Next: ask the user to choose TDD enforcement level, then run:
-  node "$COMET_STATE" set ${change} tdd_mode <tdd|direct>`
+  comet state set ${change} tdd_mode <tdd|direct>`
   );
 }
 async function reviewModeSelected(changeDir, change) {
@@ -10806,7 +10841,7 @@ async function reviewModeSelected(changeDir, change) {
   return fail(
     `review_mode must be off, standard, or thorough before leaving build, got '${reviewMode || "null"}'
 Next: ask the user to choose review strength, then run:
-  node "$COMET_STATE" set ${change} review_mode <off|standard|thorough>`
+  comet state set ${change} review_mode <off|standard|thorough>`
   );
 }
 async function verificationReportExists(changeDir) {
@@ -10837,7 +10872,7 @@ async function designDocRecorded(changeDir, change) {
   if (designDoc && designDoc !== "null" && existsSync(designDoc)) return pass();
   return fail(
     `design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design.
-Next: create the Design Doc and run: node "$COMET_STATE" set ${change} design_doc <path>`
+Next: create the Design Doc and run: comet state set ${change} design_doc <path>`
   );
 }
 async function designHandoffContextValid(changeDir, change) {
@@ -10852,13 +10887,13 @@ Next: run node "$COMET_HANDOFF" ${change} design --write before invoking Superpo
   if (!await nonempty(context)) {
     return fail(
       `handoff_context does not point to a non-empty file: ${context}
-Next: regenerate the design handoff with comet-handoff.mjs.`
+Next: regenerate the design handoff with comet handoff ${change} design --write.`
     );
   }
   if (!/^[a-f0-9]{64}$/u.test(recordedHash)) {
     return fail(
       `handoff_hash is missing or invalid: ${recordedHash || "null"}
-Next: regenerate the design handoff with comet-handoff.mjs.`
+Next: regenerate the design handoff with comet handoff ${change} design --write.`
     );
   }
   const actualHash = await computeHandoffHash(changeDir);
@@ -10867,14 +10902,14 @@ Next: regenerate the design handoff with comet-handoff.mjs.`
       `OpenSpec artifacts changed after handoff was generated.
 Expected handoff_hash: ${recordedHash}
 Actual handoff_hash:   ${actualHash}
-Next: rerun comet-handoff.mjs so Superpowers receives the current OpenSpec context.`
+Next: run comet handoff ${change} design --write so Superpowers receives the current OpenSpec context.`
     );
   }
   const markdown = `${context.replace(/\.json$/u, "")}.md`;
   if (!await nonempty(markdown)) {
     return fail(
       `design handoff markdown is missing or empty: ${markdown}
-Next: regenerate the design handoff with comet-handoff.mjs.`
+Next: regenerate the design handoff with comet handoff ${change} design --write.`
     );
   }
   return pass();
@@ -11110,11 +11145,7 @@ async function guardVerifyChecks(output, changeDir, change, run) {
       const report = await readField(changeDir, "verification_report");
       if (!report || report === "null" || !await exists4(report)) return pass();
       return documentLanguageMatchesConfigured(changeDir, report);
-    }),
-    check(
-      "branch_status=handled",
-      async () => await branchStatusHandled(changeDir) ? pass() : fail("")
-    )
+    })
   ]);
 }
 async function guardArchiveChecks(output, changeDir, change) {
@@ -11129,7 +11160,11 @@ async function guardArchiveChecks(output, changeDir, change) {
       "design.md exists",
       async () => await nonempty(path17.join(changeDir, "design.md")) ? pass() : fail("")
     ),
-    check("tasks.md all tasks checked", () => tasksAllDone(changeDir))
+    check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
+    check(
+      "branch_status=handled",
+      async () => await branchStatusHandled(changeDir) ? pass() : fail("")
+    )
   ]);
 }
 async function applyStateUpdate(output, change, changeDir, phase, context) {
@@ -11846,6 +11881,10 @@ function inputTarget() {
 function normalized(value) {
   return value.replaceAll("\\", "/").replace(/\/+/gu, "/");
 }
+function comparisonKey(value) {
+  const normalizedValue = normalized(value);
+  return process.platform === "win32" ? normalizedValue.toLowerCase() : normalizedValue;
+}
 function parseProjectRoot(args) {
   const index = args.indexOf("--project-root");
   const value = index >= 0 ? args[index + 1] : void 0;
@@ -11900,12 +11939,17 @@ async function projectRelative(target, projectRoot2) {
 }
 async function loadGoverningChange(changeDir) {
   try {
-    const runtime = await ensureStrictClassicRuntimeRun(changeDir);
+    const projection = await readClassicState(changeDir, { migrate: false });
+    const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
+    if (unknownKeys.length > 0) {
+      throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(", ")}`);
+    }
+    if (!projection.classic) throw new Error("Classic state projection is unavailable");
     return {
       changeDir,
-      phase: runtime.classic.phase,
-      classic: runtime.classic,
-      archived: runtime.classic.archived
+      phase: projection.classic.phase,
+      classic: projection.classic,
+      archived: projection.classic.archived
     };
   } catch {
     const legacy = await readLegacyState(changeDir);
@@ -11935,7 +11979,41 @@ async function activeChanges(projectRoot2) {
   return governingChanges;
 }
 function isSuperpowersArtifactPath(relativePath2) {
-  return relativePath2.startsWith("docs/superpowers/");
+  return comparisonKey(relativePath2).startsWith("docs/superpowers/");
+}
+var SUPERPOWERS_ARTIFACT_SLOTS = [
+  {
+    prefix: "docs/superpowers/specs/",
+    field: "designDoc",
+    wireField: "design_doc",
+    phase: "design"
+  },
+  {
+    prefix: "docs/superpowers/plans/",
+    field: "plan",
+    wireField: "plan",
+    phase: "build"
+  },
+  {
+    prefix: "docs/superpowers/reports/",
+    field: "verificationReport",
+    wireField: "verification_report",
+    phase: "verify"
+  }
+];
+function standardSuperpowersArtifactSlot(relativePath2) {
+  const key = comparisonKey(relativePath2);
+  const slot = SUPERPOWERS_ARTIFACT_SLOTS.find((candidate) => key.startsWith(candidate.prefix));
+  if (!slot) return null;
+  const fileName = key.slice(slot.prefix.length);
+  if (!fileName || fileName.includes("/") || !fileName.endsWith(".md")) return null;
+  return slot;
+}
+function superpowersArtifactValue(governing, slot) {
+  return governing.classic?.[slot.field] ?? null;
+}
+function allowsFirstSuperpowersArtifactWrite(governing, slot) {
+  return governing.classic !== null && governing.phase === slot.phase && !superpowersArtifactValue(governing, slot);
 }
 function allowsSuperpowersArtifacts(governing) {
   return governing.phase === "design" || governing.phase === "build" || governing.phase === "verify";
@@ -11961,7 +12039,7 @@ function matchesRecordedSuperpowersArtifact(relativePath2, governing) {
     governing.classic?.verificationReport
   ];
   return artifactPaths.some(
-    (artifactPath) => artifactPath && normalized(artifactPath) === relativePath2
+    (artifactPath) => artifactPath && comparisonKey(artifactPath) === comparisonKey(relativePath2)
   );
 }
 function matchesSuperpowersArtifactName(relativePath2, changeName) {
@@ -11977,7 +12055,7 @@ async function superpowersArtifactGoverningChange(relativePath2, projectRoot2) {
   const recorded = active.find(
     (governing) => matchesRecordedSuperpowersArtifact(relativePath2, governing)
   );
-  if (recorded) return recorded;
+  if (recorded) return { governing: recorded, match: "recorded" };
   const eligible = active.filter(allowsSuperpowersArtifacts);
   const named = eligible.filter((governing) => {
     const name = governingChangeName(governing);
@@ -11985,7 +12063,7 @@ async function superpowersArtifactGoverningChange(relativePath2, projectRoot2) {
   }).sort(
     (a, b) => (governingChangeName(b)?.length ?? 0) - (governingChangeName(a)?.length ?? 0)
   )[0];
-  if (named) return named;
+  if (named) return { governing: named, match: "named" };
   return null;
 }
 async function repoSourceGoverningChange(projectRoot2, relativePath2) {
@@ -12033,7 +12111,26 @@ async function governingChange(relativePath2, projectRoot2) {
   }
   if (isSuperpowersArtifactPath(relativePath2)) {
     const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot2);
-    if (superpowers) return { ...superpowers, superpowersArtifact: "matched" };
+    if (superpowers?.match === "recorded") {
+      return { ...superpowers.governing, superpowersArtifact: "matched" };
+    }
+    const slot = standardSuperpowersArtifactSlot(relativePath2);
+    if (superpowers) {
+      return slot ? {
+        ...superpowers.governing,
+        superpowersArtifact: allowsFirstSuperpowersArtifactWrite(superpowers.governing, slot) ? "matched" : "unmatched",
+        superpowersSlot: slot
+      } : { ...superpowers.governing, superpowersArtifact: "matched" };
+    }
+    if (slot) {
+      const candidate = await repoSourceGoverningChange(projectRoot2, relativePath2);
+      if (!candidate || "blockedResult" in candidate) return candidate;
+      return {
+        ...candidate,
+        superpowersArtifact: allowsFirstSuperpowersArtifactWrite(candidate, slot) ? "matched" : "unmatched",
+        superpowersSlot: slot
+      };
+    }
     const fallback = (await activeChanges(projectRoot2))[0] ?? null;
     return fallback ? { ...fallback, superpowersArtifact: "unmatched" } : null;
   }
@@ -12081,7 +12178,7 @@ function blocked(relativePath2, phase) {
     "  BLOCKED: source writes are not allowed during design",
     "  This phase does not allow source writes",
     "  ALLOWED: run brainstorming, create the Design Doc, and run guard",
-    "  NEXT: finish the Design Doc, then run comet-guard design --apply to enter build"
+    "  NEXT: finish the Design Doc, then run comet guard <change-name> design --apply to enter build"
   ] : [
     "  BLOCKED: source writes are not allowed during archive",
     "  This phase does not allow source writes",
@@ -12122,7 +12219,25 @@ function blockedMissingDesignDoc(relativePath2) {
     ].join("\n")
   );
 }
-function blockedUnmatchedSuperpowersArtifact(relativePath2, phase) {
+function blockedUnmatchedSuperpowersArtifact(relativePath2, governing) {
+  const slot = governing.superpowersSlot;
+  const recorded = slot ? superpowersArtifactValue(governing, slot) : null;
+  const details = slot ? governing.phase !== slot.phase ? [
+    `  BLOCKED: ${slot.wireField} cannot be first-written in phase ${governing.phase}`,
+    `  Expected phase: ${slot.phase}`,
+    "  NEXT: resume the matching Comet phase or use an already recorded artifact path"
+  ] : recorded ? [
+    `  BLOCKED: ${slot.wireField} is already recorded for this change`,
+    `  Recorded path: ${recorded}`,
+    "  NEXT: write the recorded artifact or explicitly correct the state path"
+  ] : [
+    "  BLOCKED: standard Superpowers artifact state is incomplete",
+    "  NEXT: validate the active change state, then retry the matching phase"
+  ] : [
+    "  BLOCKED: unmatched Superpowers artifact",
+    "  This docs/superpowers/ path does not match any active change artifact",
+    "  NEXT: use a recorded artifact path or a standard phase artifact directory"
+  ];
   return result(
     2,
     [
@@ -12131,12 +12246,10 @@ function blockedUnmatchedSuperpowersArtifact(relativePath2, phase) {
       "║     COMET PHASE GUARD — WRITE BLOCKED    ║",
       "╚══════════════════════════════════════════╝",
       "",
-      `  Current phase: ${phase}`,
+      `  Current phase: ${governing.phase}`,
       `  Target file: ${relativePath2}`,
       "",
-      "  BLOCKED: unmatched Superpowers artifact",
-      "  This docs/superpowers/ path does not match any active change artifact",
-      "  NEXT: record the artifact path in .comet.yaml or include the change name in the artifact filename",
+      ...details,
       ""
     ].join("\n")
   );
@@ -12214,7 +12327,7 @@ var classicHookGuardCommand = async (args) => {
       return allowed(`${relativePath2} (phase: ${phase}, superpowers)`);
     }
     if (governing.superpowersArtifact === "unmatched") {
-      return blockedUnmatchedSuperpowersArtifact(relativePath2, phase);
+      return blockedUnmatchedSuperpowersArtifact(relativePath2, governing);
     }
   }
   if (phase === "build" && governing.classic?.workflow === "full" && !governing.classic.designDoc) {
@@ -13038,6 +13151,7 @@ var EVENTS = CLASSIC_TRANSITION_EVENTS;
 var MACHINE_OWNED_FIELDS = /* @__PURE__ */ new Set([
   ...RUN_WIRE_KEYS,
   "archive_confirmation",
+  "verify_failures",
   "classic_profile",
   "classic_migration",
   "bound_branch"
@@ -13079,6 +13193,7 @@ var CLASSIC_FIELD_WIRE_NAMES2 = {
   verifiedAt: "verified_at",
   archiveConfirmation: "archive_confirmation",
   verifyResult: "verify_result",
+  verifyFailures: "verify_failures",
   workflow: "workflow"
 };
 var CommandFailure = class extends Error {
@@ -13213,6 +13328,10 @@ function nullableRecordBoolean(record, field2) {
   if (value === "false") return false;
   return null;
 }
+function nonNegativeRecordInteger(record, field2, fallback = 0) {
+  const value = record[field2];
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback;
+}
 function sparseClassicState(record) {
   const workflow = enumRecordValue(record, "workflow", PROFILES, "full");
   return {
@@ -13253,6 +13372,7 @@ function sparseClassicState(record) {
       ["pending", "pass", "fail"],
       "pending"
     ),
+    verifyFailures: nonNegativeRecordInteger(record, "verify_failures"),
     verificationReport: nullableRecordString(record, "verification_report"),
     branchStatus: enumRecordValue(record, "branch_status", ["pending", "handled"], null),
     branchAction: enumRecordValue(
@@ -13460,6 +13580,7 @@ async function init(output, name, workflow) {
     design_doc: null,
     plan: null,
     verify_result: "pending",
+    verify_failures: 0,
     verification_report: null,
     branch_status: "pending",
     created_at: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
@@ -13611,9 +13732,6 @@ async function transition(output, name, event) {
       fail2(
         `ERROR: Cannot transition '${name}': verification_report must point to an existing report file`
       );
-    }
-    if (await readField3(name, "branch_status") !== "handled") {
-      fail2(`ERROR: Cannot transition '${name}': branch_status must be handled`);
     }
   } else if (event === "verify-fail") {
     await requirePhase(name, "verify");
@@ -13893,7 +14011,7 @@ function resolveBuildRecoveryAction(workflow, isolation, buildMode, pause, subag
   }
   if (pause === "plan-ready") {
     if (buildMode === "subagent-driven-development" && (pending > 0 || planPending > 0)) {
-      return subagentDispatch === "confirmed" ? "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing.";
+      return subagentDispatch === "confirmed" ? "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.";
     }
     if (pending > 0 || planPending > 0) {
       return "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task.";
@@ -13914,13 +14032,13 @@ function resolveBuildRecoveryAction(workflow, isolation, buildMode, pause, subag
   }
   if (pending > 0) {
     if (buildMode === "subagent-driven-development") {
-      return subagentDispatch === "confirmed" ? "Recovery action: Read tasks.md and the Superpowers plan (which may include additions beyond OpenSpec), then inspect the first unchecked task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing.";
+      return subagentDispatch === "confirmed" ? "Recovery action: Read tasks.md and the Superpowers plan (which may include additions beyond OpenSpec), then inspect the first unchecked task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.";
     }
     return "Recovery action: Read tasks.md and continue from first unchecked task.";
   }
   if (planPending > 0) {
     if (buildMode === "subagent-driven-development") {
-      return subagentDispatch === "confirmed" ? "Recovery action: Read the Superpowers plan, then inspect the first unchecked Superpowers plan task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or set build_mode to executing-plans before continuing.";
+      return subagentDispatch === "confirmed" ? "Recovery action: Read the Superpowers plan, then inspect the first unchecked Superpowers plan task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.";
     }
     return "Recovery action: Read the Superpowers plan and continue from the first unchecked plan task.";
   }
@@ -13928,17 +14046,19 @@ function resolveBuildRecoveryAction(workflow, isolation, buildMode, pause, subag
 }
 async function recoverVerify(output, name) {
   const result5 = await readField3(name, "verify_result");
+  const failures = await readField3(name, "verify_failures");
   const mode = await readField3(name, "verify_mode");
   const report = await readField3(name, "verification_report");
   const branch = await readField3(name, "branch_status");
   output.stdout.push(
     "  Verification:",
     fieldStatus("verify_result", result5),
+    `  - verify_failures: ${failures || "0"}`,
     fieldStatus("verify_mode", mode),
     fieldStatus("verification_report", report, report),
-    fieldStatus("branch_status", branch),
+    branch === "handled" ? "  - branch_status: LEGACY (handled before archive; archive still owns final closure)" : "  - branch_status: DEFERRED (handled after the archive commit)",
     "",
-    result5 === "pass" && branch === "handled" ? "Recovery action: Verification complete. Run guard to transition to archive." : result5 === "fail" ? "Recovery action: Verification failed and rolled back to build. Resume from /comet-build." : "Recovery action: Verification not yet started or in progress. Run scale assessment then verify."
+    result5 === "pass" ? "Recovery action: Verification complete. Continue to archive; branch handling happens after archive changes are committed." : result5 === "fail" ? "Recovery action: Verification failed and rolled back to build. Resume from /comet-build." : "Recovery action: Verification not yet started or in progress. Run scale assessment then verify."
   );
 }
 async function recoverArchive(output, name) {

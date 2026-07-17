@@ -89,7 +89,7 @@ skills-lock.json
 .agents/
 
 # Superpowers docs (local only)
-#docs/superpowers/
+docs/superpowers/
 
 .codegraph/
 
