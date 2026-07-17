@@ -168,7 +168,7 @@ Phase 1.5 没有增加新阶段，而是修正初版跨文件状态可能不一�
 
 ## 7. 2026-07-16：从“流程足够轻”转向“强模型增量价值”
 
-> 本节记录已确认的后续演进设计，不是当前已交付能力。当前已经有基础 decision frontier、phase-transition checkpoint 和 `next: auto` 协议；尚未实现的是隐藏决策主动发现增强、in-phase checkpoint、机器可读 same-skill continuation、验证新鲜度、evidence trace、无进展控制、冲突雷达和 Dashboard，也尚未完成对应专项真实模型评估。
+> 本节记录已确认的后续演进设计。Wave A 与 Wave B Runtime 切片现已在功能分支实现 schema/CAS/snapshot、in-phase checkpoint、结构化 finding、机器可读 same-skill continuation 与紧凑恢复投影；中文 Shape 行为稿仍待确认，验证新鲜度、acceptance trace、无进展控制、冲突雷达和 Dashboard 仍在后续波次，也尚未完成对应专项真实模型评估。
 
 ### 7.1 对 grilling 效果的重新判断
 
@@ -212,15 +212,15 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 
 ## 8. 截至当前的事实状态
 
-快照时间为 2026-07-16，代码位于 `codex/feat-comet-native-workflow`，Runtime 基线为 `633a590c`；release status：unreleased。这里的“已实现”只表示功能分支中存在，不表示 npm 或稳定 Website 已发布。
+快照时间为 2026-07-17，代码位于 `codex/feat-comet-native-workflow`，Runtime 基线为 `17d772c5`；release status：unreleased。这里的“已实现”只表示功能分支中存在，不表示 npm 或稳定 Website 已发布。
 
-| 状态                    | 内容                                                                                                                                                                                                          | 证据边界                                                                                                                                  |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 功能分支已实现          | 自定义 artifact root、`comet/` change/spec/archive、四阶段状态、守卫、transition/archive/root-move 恢复、status/doctor、双语单 Skill 和独立入口路由。                                                         | 当前 feature branch 代码、单元测试、生成 runtime 和 2026-07-14 至 15 的 commits；尚未发布。                                               |
-| 已有静态与 harness 覆盖 | clarification、repository fact、完整 workflow、interrupted transition 四个专项任务及确定性 validator。                                                                                                        | 证明任务与检查器存在且可执行；没有专项真实模型实验 artifact 时，不证明模型行为稳定。                                                      |
-| 有方向性真实模型证据    | 16 个共同业务任务 × 3 次的 Native/Classic 对齐结果。                                                                                                                                                          | 只覆盖 Mimo 2.5 Pro，且运行窗口不一致；不包含四个 Native 专项任务，也没有裸强模型 Control。                                               |
-| 已确认但尚未实现        | 主设计第 19 节的隐藏决策主动发现增强、机器可读 same-skill continuation、in-phase checkpoint、内容快照、evidence freshness、acceptance trace、无进展控制、preflight、统一 revision/CAS、冲突雷达和 Dashboard。 | 当前已有较基础的 decision frontier、`next: auto` 和 transition checkpoint；表中是增强目标，只有对应专项 eval 通过后才能写成当前产品能力。 |
-| 当前明确非目标          | 多阶段 Skill、外部 Skill 依赖、Native/Classic 转换、固定方法流程、项目管理系统、Runtime LLM、后台 daemon 和可写 Dashboard。                                                                                   | 产品边界；重新打开必须先进行设计审查。                                                                                                    |
+| 状态                    | 内容                                                                                                                                                                                                                                         | 证据边界                                                                                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 功能分支已实现          | 自定义 artifact root、`comet/` change/spec/archive、四阶段状态、守卫、transition/archive/root-move 恢复、schema migration、snapshot/CAS、结构化 finding/continuation、in-phase checkpoint、紧凑 status/doctor、双语单 Skill 和独立入口路由。 | 当前 feature branch 代码、单元测试、生成 runtime 和 2026-07-14 至 17 的 commits；尚未发布。                                                                |
+| 已有静态与 harness 覆盖 | clarification、repository fact、完整 workflow、interrupted transition 四个专项任务及确定性 validator。                                                                                                                                       | 证明任务与检查器存在且可执行；没有专项真实模型实验 artifact 时，不证明模型行为稳定。                                                                       |
+| 有方向性真实模型证据    | 16 个共同业务任务 × 3 次的 Native/Classic 对齐结果。                                                                                                                                                                                         | 只覆盖 Mimo 2.5 Pro，且运行窗口不一致；不包含四个 Native 专项任务，也没有裸强模型 Control。                                                                |
+| 已确认但尚未实现        | 主设计第 19 节的中文隐藏决策主动发现稿确认与英文同步、verification evidence freshness、acceptance trace、无进展控制、archive preflight、workspace/冲突雷达和 Dashboard。                                                                     | continuation、checkpoint 与 compact resume 已有 Runtime 实现，但模型行为仍需 Skill 同步和专项 eval；其余能力只有对应切片与证据完成后才能写成当前产品能力。 |
+| 当前明确非目标          | 多阶段 Skill、外部 Skill 依赖、Native/Classic 转换、固定方法流程、项目管理系统、Runtime LLM、后台 daemon 和可写 Dashboard。                                                                                                                  | 产品边界；重新打开必须先进行设计审查。                                                                                                                     |
 
 ## 9. 仍未回答的问题
 
@@ -280,6 +280,104 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 ```
 
 模板的目的不是制造开发文档负担，而是防止长跑过程中只保留成功结果、丢失关键取舍。只有原假设、用户结果、产品边界、eval 结论或 capability 取舍发生变化时才追加；普通内部修补继续留在 Git 历史。
+
+## 2026-07-17：波次 A——基础安全与指标可信
+
+### 当时假设
+
+- 期望改善的强模型失败模式：强模型可以自主决定实现方法，但长任务仍可能被进程中断、旧状态、并发写入和不完整文件拖入错误恢复；如果 Runtime 不能区分“可继续”“必须迁移”和“已损坏”，模型能力越强，错误推进也可能越快。
+- 为什么现有 Native 不足：首版只有单一 `comet.native.v1` 状态和 transition journal，没有统一 revision、内容基线或 schema 迁移协议；eval 又把 Native 模式检查混入业务完成率，并只保留一个样本最后一次模型调用的 duration，导致安全结论与效率结论都可能失真。
+- 为什么 Runtime/Skill 的这个 seam 最小：schema、snapshot、CAS 和恢复都属于机械事实；模型不需要理解或手写这些字段，Skill 也不需要增加阶段、计划、TDD 或调试清单。
+
+### 设计与边界
+
+- 用户可见结果：旧 Native change 可以显式检查和迁移；中断写入不会被误报为当前状态；同一状态 revision 的竞争写入不能静默覆盖；创建 change 时保存不含文件内容的项目基线。
+- Skill 行为变化：本波不增加新的 Skill 阶段；中文 Skill 的隐藏决策与 continuation 增强留在波次 B 单独确认。
+- Runtime 机械事实变化：change 和 transition 升级到 v2，记录最低 Runtime protocol 与 revision；`doctor --repair` 使用 migration journal 收口旧状态；快照只保存项目相对路径、hash、大小和类型，并采用文件数、单文件、总读取、遗漏与序列化字节预算；所有现有 change mutation 统一使用 CAS。
+- 明确不做：不保存源码内容、绝对路径、环境变量或密钥；不跟随 symlink/junction；不把 Git 设为必需依赖；不让旧 Runtime 猜测更高 schema；不把迁移塞进 `status`、`show` 或普通写命令。
+
+### 证伪方法
+
+- Current Native 对照：以 `633a590c` 的 v1 change、transition 和原始 eval 聚合语义为基线。
+- 增强版 treatment：v2 schema、VCS 无关 snapshot、统一 revision/CAS、journal 化 migration，以及修正后的 Native 指标分层和 duration 累加。
+- 任务与重复次数：本波先执行确定性迁移/中断/快照/CAS 回归；Native 对齐实验的任务已准备为同任务、同模型、同窗口的配对方法，但本轮没有启动新的真实模型或 Docker 重复运行。
+- 硬通过标准：旧 v1 与旧 pending transition 可以 exactly-once 收敛；迁移任一写入点中断后普通 mutation fail closed；敏感路径不进入 manifest；相同 expected revision 只能成功一次；原始 result duration 在样本内累加。
+- 最可能的假阳性：只验证 happy path 会遗漏“change 已写成 v2、migration journal 尚未清除”的中间窗口；只构造完整 JSONL 会遗漏 append 被终止后的坏尾；只在普通 Git 仓库测试会遗漏 worktree 的 `.git` 普通文件。
+
+### 实施过程
+
+- 关键 commit：`ebfeb0c3` 修正 Native eval 指标与 duration；`7a6a5bb1` 提供后续 workspace advisory 使用的只读 Git adapter；`e46701d3` 完成 Wave A Runtime 的 schema migration、revision/CAS、baseline snapshot 与恢复协议。
+- 首次失败或设计偏差：最初的新 parser 直接要求 transition 内嵌 v2 state，使已有 v1 pending transition 无法继续、又因 pending transition 无法迁移，形成恢复死锁；只检查 change schema 还会把“change.yaml 已写 v2、migration journal 未收口”误认为当前状态。
+- 修正：transition schema 独立升级，migration journal 同时冻结 change 与 transition 的目标内容；任何 migration marker 都使 status/show 投影为 `migrationRequired`，并让普通 mutation 在首次写入前停止；doctor 按确定顺序补齐 baseline、transition 与 state。
+- 首次失败或设计偏差：快照最初只排除 `.git` 目录，没有覆盖 worktree 的 `.git` 普通文件；权限错误、超预算遗漏、扫描期间文件消失或增长会分别导致创建失败、遗漏事实丢失或无界读取；创建失败还会留下同名不可重试的孤儿目录。
+- 修正：统一排除 `.git` 文件和目录；不可读项与并发变化变成带原因的 omission；溢出尾部保留确定性 hash/ref/count；读取与最终 manifest 都有字节上限；本次创建失败只清理本次目录并允许同名重试。
+- 首次失败或设计偏差：trajectory 使用 append 写入，进程被终止时可能留下唯一的无换行坏尾，导致 transition journal 永久无法继续。
+- 修正：Native 层只把唯一坏尾标记为可修复，普通 transition/CAS 停止，`doctor --repair` 在锁内原子截断；任何中间行损坏仍 fail closed，不能借恢复吞掉历史。
+- 是否改变原设计：没有改变“轻 Skill、机械 Runtime”的边界；实现过程反而确认 schema migration、快照预算和中断恢复必须先于 checkpoint/evidence，否则后续长跑能力会建立在不可恢复状态上。
+
+### 结果与决定
+
+- 业务结果：主线程验证 Native 全量 24 个测试文件、150 项通过；v1/v2 migration、旧 transition、CAS、snapshot 预算、创建回滚和 trajectory 尾部恢复均有回归覆盖。
+- 模式契约结果：Native validator 现在归入 workflow completion，Control 不再被 Native 模式检查污染；一个样本的多次顶层 result duration 会累加。聚焦 eval 单元测试与脚手架测试通过，但尚无新的真实模型对照结论。
+- 效率与成本：本波只修正计量口径，不用修正后的数字宣称 Native 比 Classic 或 Control 更快。
+- 限制：真实模型三臂、同窗口重复运行尚未执行；snapshot 表示可观测机械范围，不证明语义归属；跨 worktree 仍没有分布式锁。
+- 保留、修改或删除该能力：保留 v2 schema、VCS 无关 snapshot、统一 revision/CAS 和显式 migration；删除“旧状态可在普通写命令中被隐式升级”的方向。
+
+### Website 可用叙事
+
+- 用户问题：强模型不需要更重的方法清单，但仍需要一个不会把旧证据、中断文件或并发写入当成成功事实的 Harness。
+- 关键取舍：把恢复、hash、revision 和敏感信息边界放进 Runtime，把实现策略继续交给模型；`status` 只报告，只有 `doctor --repair` 才改变恢复状态。
+- 可公开证据：150 项 Native 回归、exactly-once migration/transition、单 revision 竞争写、受预算且排除敏感文件的 snapshot，以及修正后的 eval 聚合语义。
+- 不应公开的内部过程或不确定结论：不列本地路径、临时测试名或 review 往返；在真实三臂实验前不宣称成功率、token 或耗时优于其他模式。
+
+## 2026-07-17：波次 B Runtime 切片——判断结果可续跑，进度可恢复
+
+### 当时假设
+
+- 期望改善的强模型失败模式：模型能够自主实现，但宿主在一次调用结束、上下文被压缩或会话更换后，不一定知道“继续同一个 Skill”“等待用户决定”还是“先修复 Runtime”；长任务的阶段内进度也只能留在对话里。
+- 为什么现有 Native 不足：`next: auto` 只是人类可读提示，不能表达 continuation disposition、所需输入或真正的用户决定；原 transition checkpoint 只证明阶段边界完成，不能保存同阶段摘要、下一动作和产物内容身份；默认 status 也没有受预算的恢复视图。
+- 为什么 Runtime/Skill 的这个 seam 最小：模型继续决定怎么调查、实现和验证；Runtime 只把 findings、continuation、checkpoint、artifact hash 与恢复结果变成确定性事实，不增加 Plan、TDD、Debug、Review 阶段，也不增加 `resume` 命令。
+
+### 设计与边界
+
+- 用户可见结果：`status` 默认给出紧凑的当前 phase、revision、finding 摘要、最近 checkpoint 和下一动作；`--details` 才展开有界详情。`checkpoint` 在不改变 phase 的情况下保存摘要、下一动作和显式项目产物的 hash/size，下一次调用可从磁盘恢复。
+- Skill 行为变化：中文稿加入隐藏决策扫描、事实/实现选择/用户选择分离、依赖顺序单问题和冷启动可执行标准；该稿仍待用户确认，未同步英文，因此本节不把模型澄清行为写成已交付双语能力。
+- Runtime 机械事实变化：finding 统一为 code、severity、required action、retry/repair command 与 `requiresUserDecision`；continuation 明确 `continue`、`await-user`、`blocked` 或 `done`。Checkpoint 使用独立 WAL、统一 revision/CAS、内容寻址 manifest 和 exactly-once 恢复。
+- 明确不做：`next:auto` 不表示 daemon 或后台 self-run；Runtime 不调用模型、不自动回答产品问题；checkpoint 不替用户或模型创建项目管理日志；没有新增 resume/context/handoff 命令，也没有把同阶段进度塞回 phase transition。
+
+### 证伪方法
+
+- Current Native 对照：以 Wave A 后仍只有 phase transition 与基础 status 的 Runtime 为基线。
+- 增强版 treatment：结构化 finding/continuation、独立 checkpoint、紧凑恢复投影和冷会话专项任务。
+- 任务与重复次数：确定性测试覆盖 WAL 各写入点、跨命令 mutation、revision 冲突、敏感路径、凭据脱敏、128 个产物的输出预算和生成 Runtime；Wave B 的 decision/resume eval fixture 与 validator 已通过脚手架测试，但按当前安排没有启动新的 Docker/真实模型运行。
+- 硬通过标准：同一 checkpoint 重试不重复递增 revision；任何后续 mutation 必须先收口 pending WAL；默认 status 不随产物路径数量无界增长；无法证明安全修复的坏 journal 不得返回虚假的自动 repair 命令；checkpoint 新写路径不得通过内部 symlink/junction 改写其他 Native 区域。
+- 最可能的假阳性：只再次调用 checkpoint 会漏掉 checkpoint 中断后立即执行 `next`、spec mutation 或 archive；只测少量产物会漏掉默认 status 的路径放大；只测最终目标 symlink 会漏掉父目录 junction 和 rename 前替换。
+
+### 实施过程
+
+- 关键 commit：`17d772c5` 交付 Wave B Runtime、生成的自包含 Runtime 与专项回归。
+- 首次失败或设计偏差：最初 pending checkpoint 只在下一次 checkpoint 或 doctor 中恢复；`next`、spec mutation 和 archive 可以先推进 revision，使旧 WAL 永久冲突。
+- 修正：所有 change-local mutation 在持有统一 mutation/transition lock 后，按 transition WAL → progress checkpoint WAL 的顺序收口，再读取准备修改的 revision；低层 CAS 默认检测 pending checkpoint 并 fail closed，只有该 WAL 自身重放可显式放行。
+- 首次失败或设计偏差：默认 status 曾逐项返回 `artifact-changed:<path>`，128 个产物会放大为大量路径；损坏 checkpoint journal 又曾得到 `doctor --repair` 建议，但 doctor 无法安全修它，形成自动修复循环。
+- 修正：默认投影只保存有界 code/count，完整原因只在 details 中最多返回 50 项；不可自动修复的 journal 明确要求人工检查和隔离，retry/repair command 都为 null。
+- 首次失败或设计偏差：manifest 的最终路径在 Native root 内并不等于写入安全；内部 junction 可以把 checkpoint 文件重定向到 canonical spec 区域。常见凭据格式虽然被脱敏，带转义引号的 JSON credential 仍可能泄漏后缀。
+- 修正：manifest、progress 与 journal 三类 checkpoint-owned 写入逐级拒绝 symlink/junction，捕获父目录和临时文件身份并在 rename 前复核；统一补齐 Bearer、Basic、URI、已知 token、private key、JSON 与 escaped JSON credential 脱敏。
+- 是否改变原设计：没有增加流程或公开阶段；实现反而把“自动推进”收紧为可消费的 same-skill continuation，把“自动修复”限制为 Runtime 能证明安全的操作。
+
+### 结果与决定
+
+- 业务结果：Native 全量 32 个测试文件、252 项通过；生成 Runtime 资产、仓库边界与布局 8 项通过；TypeScript、Native ESLint、Prettier 和 diff check 通过。
+- 模式契约结果：独立复审对 pending WAL、128 产物 status、坏 journal、junction/parent replacement 与凭据投影做真实复现后给出 GO。Runtime 契约已交付；中文 Skill 尚未确认，真实模型 clarification/continuation 效果尚未形成新结论。
+- 效率与成本：默认 status 与 resume payload 现在有确定性上限，但没有真实模型数据证明 token、时间或文件读取量改善。
+- 限制：checkpoint 只覆盖模型显式声明的产物，不证明 verification scope 完整；continuation 能否被不同宿主自动消费仍需真实运行；跨会话任务存在不等于模型行为已通过。
+- 保留、修改或删除该能力：保留一个 Skill、独立 checkpoint、结构化 continuation 与紧凑 status；删除“`next:auto` 等同后台自动运行”“坏状态总能给自动 repair 命令”和“所有详情默认展开”的方向。
+
+### Website 可用叙事
+
+- 用户问题：强模型不需要被重新教一套实现方法，但它需要在中断后准确知道做到哪里、还缺什么，以及当前是否真的需要用户。
+- 关键取舍：自动推进不是后台 agent，而是一份明确的同 Skill continuation；checkpoint 是 Runtime 生成的恢复事实，不是用户维护的项目管理表。
+- 可公开证据：252 项 Native 回归、跨命令 exactly-once WAL、默认 status 的硬预算、内容寻址 checkpoint 与内部 junction 防护。
+- 不应公开的内部过程或不确定结论：Website 不展开临时模块名和 review 往返；在中文/英文 Skill 同步与真实模型专项 eval 前，不宣称澄清质量已达到 grilling，也不宣称所有宿主都会后台续跑。
 
 ## 附录 A：原始 58 个检查点及收敛去向
 
