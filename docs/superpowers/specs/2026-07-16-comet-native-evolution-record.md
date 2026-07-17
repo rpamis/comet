@@ -120,9 +120,9 @@ Phase 1.5 没有增加新阶段，而是修正初版跨文件状态可能不一�
 
 ### 6.1 为什么重新对齐样本
 
-早期 Native 与 0.4.0 Classic 的样本数、执行窗口和耗时口径不一致，不能直接把原始 duration 当作性能结论。随后把 Native 对齐到 Classic 曾运行的 16 个业务任务，每任务 3 次，共比较 96 次运行。本次 Website 报告离线读取原始顶层 result 并累加一个样本的全部模型调用耗时；当前 eval harness 的 `extract_events()` 仍会逐次覆盖 `duration_seconds`、只留下最后一个 result，后续必须单独修正。
+早期 Native 与 0.4.0 Classic 的样本数、执行窗口和耗时口径不一致，不能直接把原始 duration 当作性能结论。随后把 Native 对齐到 Classic 曾运行的 16 个业务任务，每任务 3 次；当前比较器按 `task_id + repetition` 得到严格 48 对。对齐时的 fallback case manifest 只能证明两侧比较的是同一 task tree，不能证明运行窗口、服务状态、模型采样或宿主负载受控。
 
-**判断变化：**早期比较默认最后一个 `result.duration_ms` 代表整次样本，复核事件后发现多轮调用的前序耗时被漏掉；样本数也不一致。因此本次报告离线改为累加全部顶层 result，并把 Native 补齐到相同的 16 × 3。这个修正尚未进入通用 harness；即使按离线口径重算，运行窗口仍不同，所以延迟结论只能是方向性证据。
+**判断变化：**早期比较默认最后一个 `result.duration_ms` 代表整次样本，复核事件后发现多轮调用的前序耗时被漏掉；样本数也不一致。因此离线分析和当前功能分支比较器都改为累加样本内全部顶层 result，并把 Native 补齐到相同的 16 × 3。即使按这个口径重算，运行窗口仍不同，所以延迟结论只能是方向性证据。
 
 代表提交：
 
@@ -134,12 +134,15 @@ Phase 1.5 没有增加新阶段，而是修正初版跨文件状态可能不一�
 
 当前对齐结果为：
 
-| 指标          | Native | 0.4.0 Classic |
-| ------------- | -----: | ------------: |
-| strict pass@1 |  46/48 |         43/48 |
-| pass@3        |  16/16 |         16/16 |
-| pass³         |  14/16 |         12/16 |
-| 业务验证通过  |  48/48 |         47/48 |
+| 指标                        | Native | 0.4.0 Classic |
+| --------------------------- | -----: | ------------: |
+| strict pass（样本）         |  46/48 |         43/48 |
+| pass@1                      |   0.96 |          0.90 |
+| pass@2                      |   1.00 |          0.98 |
+| pass@3                      |   1.00 |          1.00 |
+| pass³（3 次都 strict pass） |   0.88 |          0.75 |
+| 累加模型 duration           | 8,831s |       16,562s |
+| 可累加 duration 的样本      |  48/48 |         47/48 |
 
 评估快照截至 2026-07-16：
 
@@ -150,9 +153,9 @@ Phase 1.5 没有增加新阶段，而是修正初版跨文件状态可能不一�
 | 运行窗口      | 2026-07-16 当前本地并发运行     | 2026-07-04 至 05 历史运行                                  |
 | Analysis set  | 48/48 included，high confidence | 48/48 included，全部 flagged、medium confidence            |
 
-持久化报告快照见 [对齐实验 HTML report](../../../website/assets/eval-reports/comet-native-vs-040-20260716/report.html)，对应 website 文件提交为 `f4d22c77`；解释材料见 [Native 与 0.4.0 Classic 评估文章](../../../website/zh/eval/comet-native-vs-040-experiment.mdx)。Experiment ID 标识原始运行；父仓库的 `0f13d027` 记录 Native 样本/validator 对齐，`c64fc1c1` 记录后续 Judge 输入修正。本次 duration 累加属于报告离线分析，尚无通用 harness 修复 commit。原始本地日志没有纳入 Git，因此本文只把持久化 report、实验标识和已提交分析边界作为可追溯证据，不宣称保存了完整可复算原始数据。
+持久化报告快照见 [对齐实验 HTML report](../../../website/assets/eval-reports/comet-native-vs-040-20260716/report.html)，对应 website 文件提交为 `f4d22c77`；解释材料见 [Native 与 0.4.0 Classic 评估文章](../../../website/zh/eval/comet-native-vs-040-experiment.mdx)。Experiment ID 标识原始运行；父仓库的 `0f13d027` 记录 Native 样本/validator 对齐，`c64fc1c1` 记录后续 Judge 输入修正。当前 CLI 对指定 experiment 的复算得到上表数字；0.4.0 的 duration 缺少 `comet-graph-execution-review#r2`，因此 16,562 秒只覆盖 47 个样本，不能拿总量直接计算严格加速比。原始本地日志没有纳入 Git，本文只把持久化 report、实验标识和比较器输出边界作为可追溯证据，不宣称保存了完整可复算原始数据。
 
-这些数据支持“Native 的轻执行没有明显牺牲这组任务的业务覆盖”，但不证明 Classic 已经没有必要，也不能证明 Native 比裸强模型更有价值。`pass@3 = 100%` 会掩盖单次失败，因此必须与 strict pass@1、pass³ 和失败归因一起阅读。
+这些数据支持“Native 的轻执行没有明显牺牲这组任务的 strict 覆盖”，但不证明 Classic 已经没有必要，也不能证明 Native 比裸强模型更有价值。`pass@3 = 1.00` 会掩盖单次失败，因此必须与 pass@1、pass³ 和失败归因一起阅读。8,831 秒与 16,562 秒来自不同运行窗口，且后者缺一个样本，只能作为值得在同窗口复验的方向性信号。
 
 后续引用必须同时保留这些限制：
 
@@ -164,17 +167,17 @@ Phase 1.5 没有增加新阶段，而是修正初版跨文件状态可能不一�
 - 旧 Native Judge 定性文本受 transport 污染，没有用于当前结论。
 - 16 个 canonical 任务运行在隔离 eval fixture 中，不能外推为大型真实仓库、长程开发或真实多 agent 协作表现。
 
-评估审查还发现：Native 的 `native_state`、`native_trajectory` 和 `native_isolation` 等检查尚未被 workflow/business completion 分层逻辑识别，会污染 rubric 的 business/workflow 分解。这个缺陷不改变 `checks_failed == []` 的 strict pass，也不改变原 task validator 的 48/48 与 47/48 业务结果，但应在下一轮正式比较前修正。
+评估审查当时还发现：Native 的 `native_state`、`native_trajectory` 和 `native_isolation` 等检查没有被 workflow/business completion 分层逻辑识别，会污染 rubric 的业务/模式分解。Wave A 随后修复了分类与 duration 聚合；这个历史缺陷不改变 `checks_failed == []` 的 strict 结果，但解释旧报告时仍须保留口径边界。
 
 ## 7. 2026-07-16：从“流程足够轻”转向“强模型增量价值”
 
-> 本节记录已确认的后续演进设计。Wave A 与 Wave B Runtime 切片现已在功能分支实现 schema/CAS/snapshot、in-phase checkpoint、结构化 finding、机器可读 same-skill continuation 与紧凑恢复投影；中文 Shape 行为稿仍待确认，验证新鲜度、acceptance trace、无进展控制、冲突雷达和 Dashboard 仍在后续波次，也尚未完成对应专项真实模型评估。
+> 本节记录已确认的演进设计。Wave A–F 的 Runtime、中文单 Skill 与只读 Dashboard 切片现已进入功能分支，包含 schema v3、Protected Run/File I/O、snapshot/CAS、checkpoint/continuation、验收与验证证据、repair episode、process-free workspace/conflict radar、可恢复 quarantine 和 Archive preflight。生成 Runtime、Native/入口域回归、lint 与真实 CLI 构建已经通过；功能仍未发布，英文 Skill、Website 双语、发布 Changelog 与最终全仓验证尚待统一收口。专项 eval 目前只有 fixture/validator，没有启动 Docker 或新的真实模型运行。
 
 ### 7.1 对 grilling 效果的重新判断
 
 Native 已吸收 grilling 的单问题、推荐答案、事实与决策分离和依赖顺序，但当前 clarification eval 直接告诉模型存在 abbreviation 歧义，也明确要求询问。该任务被设计为检查提示后的协议遵守，不能检查自然请求中的主动发现；在没有专项真实模型 artifact 前，连前一种行为也不能写成已经得到证明。
 
-因此冷启动可执行性被确认为下一阶段的 Shape 设计目标：另一个没有原对话的强模型，只读 brief、完整目标 spec 和仓库事实，就能实现并验收，不必猜测用户可见行为。当前 Skill 尚未交付这一检查。明确任务仍应允许 implicit approval，不能引入固定问卷或通用确认题。
+因此冷启动可执行性被确认为下一阶段的 Shape 设计目标：另一个没有原对话的强模型，只读 brief、完整目标 spec 和仓库事实，就能实现并验收，不必猜测用户可见行为。当时 Skill 尚未交付这一检查；当前中文单 Skill 已加入该完成标准并进入待确认稿，尚未形成真实模型效果结论。明确任务仍应允许 implicit approval，不能引入固定问卷或通用确认题。
 
 ### 7.2 为什么继续保留一个 Skill
 
@@ -194,7 +197,7 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 - Skill、Inspection、Progress/Evidence、Recovery/Finalize 四类稳定职责；
 - 六个纵向演进波次，每个波次同时完成 Skill、Runtime、测试、eval 和文档。
 
-审查还补出了最初清单遗漏的基础：schema 迁移、敏感信息排除与输出预算、VCS 无关快照、统一 revision/CAS、历史保留，以及安全的可选命令 receipt。Runtime 可实现性复审又进一步收紧了 checkpoint、verification scope、preflight hash、跨 worktree 保证和 receipt 执行边界。完整依赖和波次只以主设计文档第 19 节为准；附录 A 保留原始 58 项和收敛去向。
+审查还补出了最初清单遗漏的基础：schema 迁移、敏感信息排除与输出预算、VCS 无关快照、统一 revision/CAS、历史保留，以及当时仍被认为可行的“安全可选命令 receipt”。后续安全复审整体否决了外部命令方案，最终只保留 process-free 内置 `check` receipt；跨 worktree 也被降为不可观测边界。完整依赖和最终边界只以主设计文档第 19 节为准；附录 A 保留原始 58 项和收敛去向。
 
 ### 7.4 当前明确的非目标
 
@@ -212,15 +215,15 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 
 ## 8. 截至当前的事实状态
 
-快照时间为 2026-07-17，代码位于 `codex/feat-comet-native-workflow`，Runtime 基线为 `17d772c5`；release status：unreleased。这里的“已实现”只表示功能分支中存在，不表示 npm 或稳定 Website 已发布。
+快照时间为 2026-07-17，代码位于 `codex/feat-comet-native-workflow`；release status：unreleased。这里的“已实现”只表示功能分支工作树中存在，不表示 npm 或稳定 Website 已发布；Runtime 仍在本分支继续收口，不能用早期 commit 当作最终生成资产基线。
 
-| 状态                    | 内容                                                                                                                                                                                                                                         | 证据边界                                                                                                                                                   |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 功能分支已实现          | 自定义 artifact root、`comet/` change/spec/archive、四阶段状态、守卫、transition/archive/root-move 恢复、schema migration、snapshot/CAS、结构化 finding/continuation、in-phase checkpoint、紧凑 status/doctor、双语单 Skill 和独立入口路由。 | 当前 feature branch 代码、单元测试、生成 runtime 和 2026-07-14 至 17 的 commits；尚未发布。                                                                |
-| 已有静态与 harness 覆盖 | clarification、repository fact、完整 workflow、interrupted transition 四个专项任务及确定性 validator。                                                                                                                                       | 证明任务与检查器存在且可执行；没有专项真实模型实验 artifact 时，不证明模型行为稳定。                                                                       |
-| 有方向性真实模型证据    | 16 个共同业务任务 × 3 次的 Native/Classic 对齐结果。                                                                                                                                                                                         | 只覆盖 Mimo 2.5 Pro，且运行窗口不一致；不包含四个 Native 专项任务，也没有裸强模型 Control。                                                                |
-| 已确认但尚未实现        | 主设计第 19 节的中文隐藏决策主动发现稿确认与英文同步、verification evidence freshness、acceptance trace、无进展控制、archive preflight、workspace/冲突雷达和 Dashboard。                                                                     | continuation、checkpoint 与 compact resume 已有 Runtime 实现，但模型行为仍需 Skill 同步和专项 eval；其余能力只有对应切片与证据完成后才能写成当前产品能力。 |
-| 当前明确非目标          | 多阶段 Skill、外部 Skill 依赖、Native/Classic 转换、固定方法流程、项目管理系统、Runtime LLM、后台 daemon 和可写 Dashboard。                                                                                                                  | 产品边界；重新打开必须先进行设计审查。                                                                                                                     |
+| 状态                    | 内容                                                                                                                                                                                                                                                                                                                                                            | 证据边界                                                                                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 功能分支已实现          | 自定义 artifact root 与默认语言、`comet/` change/spec/archive、四阶段状态、schema v3 migration、Protected Run/File I/O、snapshot/CAS、structured finding/continuation、checkpoint、acceptance 分页与证据、Build/Verify inspect-then-persist、repair episode、内置 check receipt、process-free workspace/conflict radar、可恢复 quarantine、两步 Archive 与只读 Dashboard。 | 当前 feature branch、生成 Runtime、真实 CLI build、Native/入口域 608 个通过测试及 lint/架构检查；尚未发布，英文 Skill、Website 双语和最终全仓验证仍待收口。 |
+| 已有静态与 harness 覆盖 | Wave A–F 的 fixture、validator、adversarial artifact 和确定性 Runtime 测试；包括 clarification、repository fact、完整 workflow、interrupted transition、证据 stale、repair、并行冲突和 Dashboard projection。                                                                                                                                                   | 证明任务、检查器和机械契约可执行；没有专项真实模型实验 artifact 时，不证明模型行为或效率稳定。                                                             |
+| 有方向性真实模型证据    | 指定两个历史 experiment 严格配对 48 组：Native 46/48，0.4.0 为 43/48；pass@1/2/3/pass³ 分别为 Native 0.96/1/1/0.88、0.4.0 0.90/0.98/1/0.75。累加 duration 为 8,831 秒（48）与 16,562 秒（47）。                                                                                                                                                                 | 只覆盖 Mimo 2.5 Pro 且运行窗口不一致；0.4.0 缺 `comet-graph-execution-review#r2` duration；fallback manifest 只证明 task tree parity，不证明受控性能对比。 |
+| 尚待收口                | 英文 Skill 同步、Website 双语确认、发布 Changelog、npm pack 与全量 CI 级验证，以及 Control/Native/Classic 同模型同窗口真实实验。                                                                                                                                                                                                                              | 按用户安排没有启动 Docker 或新的真实模型运行；专项 eval 仍只能写成 fixture/validator 结果。                                                                |
+| 当前明确非目标          | 多阶段 Skill、外部 Skill 依赖、Native/Classic 转换、固定方法流程、项目管理系统、Runtime LLM、后台 daemon、Git/worktree 监控、通用命令执行器和可写 Dashboard。                                                                                                                                                                                                   | 产品边界；重新打开必须先进行设计审查。                                                                                                                     |
 
 ## 9. 仍未回答的问题
 
@@ -228,7 +231,7 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 - 自然请求没有显式提示歧义时，隐藏高影响决定的召回率和不必要提问率是多少？
 - Runtime 发出 continuation 后，不同宿主实际续跑同一 Skill 的可靠性如何？
 - Stale verification、长程修复与无进展停止是否真正提高成功率，而不只是增加产物？
-- 同一 Native root 的 CAS 与跨 worktree advisory 是否足以保护真实多 agent 并行？
+- 同一 Native root 的 CAS、conflict radar 与 process-free root identity 是否足以保护真实多 agent 并行？
 - 当前效率优势能否在同模型、同服务窗口和相同并发条件下复现？
 - 冷启动 brief/spec 是否真的让第二个模型减少重新调查且不增加需求猜测？
 
@@ -367,7 +370,7 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 ### 结果与决定
 
 - 业务结果：Native 全量 32 个测试文件、252 项通过；生成 Runtime 资产、仓库边界与布局 8 项通过；TypeScript、Native ESLint、Prettier 和 diff check 通过。
-- 模式契约结果：独立复审对 pending WAL、128 产物 status、坏 journal、junction/parent replacement 与凭据投影做真实复现后给出 GO。Runtime 契约已交付；中文 Skill 尚未确认，真实模型 clarification/continuation 效果尚未形成新结论。
+- 模式契约结果：独立复审对 pending WAL、128 产物 status、坏 journal、junction/parent replacement 与凭据投影做真实复现后给出 GO。Runtime 契约已在功能分支落地；中文 Skill 尚未确认，真实模型 clarification/continuation 效果尚未形成新结论。
 - 效率与成本：默认 status 与 resume payload 现在有确定性上限，但没有真实模型数据证明 token、时间或文件读取量改善。
 - 限制：checkpoint 只覆盖模型显式声明的产物，不证明 verification scope 完整；continuation 能否被不同宿主自动消费仍需真实运行；跨会话任务存在不等于模型行为已通过。
 - 保留、修改或删除该能力：保留一个 Skill、独立 checkpoint、结构化 continuation 与紧凑 status；删除“`next:auto` 等同后台自动运行”“坏状态总能给自动 repair 命令”和“所有详情默认展开”的方向。
@@ -416,7 +419,7 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 - **事务日志不能靠绝对路径证明属于当前项目。** Archive transaction v2 只保存 Native 相对 ref、每步前后内容 hash 和完整 change tree hash；第一步前再次重算 preflight，恢复与回滚都会复验已完成操作。v1 日志只作为旧事务恢复兼容保留，新的归档不再把本机路径写入持久状态。
 - **并行 change 冲突必须在 canonical 写入前暴露。** 同一 Native root 内可见 change 会按 capability、operation、base hash 和声明产物形成确定冲突或可能重叠；两个竞争 change 都会得到 blocked preflight，不再允许“先归档者静默获胜”。workspace identity 只作为提示，不能改变冲突分类。
 
-截至本次补记，scope/evidence 的独立构造与存储、真实 Build→Verify→Archive/Build 接线、stale evidence 自动退回 Build、partial 确认、v1/v2 transition supersede、Archive transaction v2 和冲突阻塞已经进入同一主链；Native 全域 48 个测试文件、428 项通过。可选安全命令 receipt 已完成独立安全实现，但尚未接入公开 `check` seam；生成资产、专项 eval 和双语 Skill 也尚未最终收口，因此本节继续保持“开发中”，不提前作为发布结论。
+截至当时补记，scope/evidence 的独立构造与存储、真实 Build→Verify→Archive/Build 接线、stale evidence 自动退回 Build、partial 确认、v1/v2 transition supersede、Archive transaction v2 和冲突阻塞已经进入同一主链；Native 全域 48 个测试文件、428 项通过。当时还存在一套未接入公开 seam 的外部命令 receipt 实现，随后已在安全复审中删除并由内置 `check` 替代；生成资产、专项 eval 和双语 Skill 当时也尚未最终收口，因此本节只保留为开发中快照。
 
 ### Website 可用叙事草稿
 
@@ -424,6 +427,55 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 - 关键取舍：Comet 不规定强模型怎样测试；它只记录“当时验证了哪份需求、哪一组实现文件、哪些验收场景”，并在这些事实变化时把旧结论标为 stale。
 - 可公开的设计故事：本轮复审从四个看似独立的漏洞得到同一结论——hash 只在输入来源可信、写入顺序安全、读取时可重建时才有意义。Native 因此选择内容寻址 projection + 派生 scope + 锁内 preflight，而不是再增加人工表单。
 - 暂不可公开为已交付事实：确定性 Runtime 主链已经通过回归，但生成资产、可选 receipt 接缝、双语 Skill 和专项真实模型效果尚未一起收口；正式 Website 只能在这些交付面完成后改写为当前能力。
+
+## 2026-07-17：波次 D 开发切片——允许自主修复，也能跨会话停下来
+
+### 当时假设与边界（累计上限方案后来被修正）
+
+- 强模型遇到一次 Verify fail 应继续修复，而不是进入一套重型 Debug/TDD 流程；但相同 failure、相同 contract 和相同 implementation snapshot 反复出现时，继续自动循环不再代表自主性。
+- Runtime 只把失败类别、失败检查 ID、contract hash 和 implementation snapshot 规范化成签名。它不读取思维链、不决定测试策略，也不允许模型通过删除检查、改写 pass 或清空历史继续归档。
+- 当时的第一版规则是：第一次同签名失败继续，第二次告警，第三次 manual-stop，并把 change 历史上的所有 failure 累计到 12 次 hard-stop。后续复审否决了永久累计语义；当前规则是单个 repair episode 12 次，真实 scope 进展或 pass 会结束旧 episode。一次显式 override 仍只能作用于最近的 manual-stop。
+
+### 实施过程
+
+- 初版 helper 计划让第三次失败停留在 Verify，只把 stop 返回给当前命令。复审后否决：没有合法 phase transition 就没有现成的 exactly-once journal，stop 会在新会话丢失；强行写 Verify→Verify 又会污染状态机语义。
+- journal 结构最终让失败仍完成真实的 Verify→Build，并在同一个 `state_transitioned` 事件里只保存 `{signatureHash, disposition, overrideSummaryHash}`。第三次与单 episode 第十二次因此是可恢复的持久事实；原始失败文本、categories、check IDs 和 override 摘要都不落 trajectory。
+- 后续 Build→Verify 若 scope hash 已变化，Runtime 把它视为真实进展并自动解除 manual-stop；scope 未变时必须携带匹配 signature 的显式 override。override 与这次 Build→Verify 同一事件提交，只增加 override 记录，不重复计算一次 failure。
+- 已使用 override 后再次得到相同失败，状态仍会诚实回到 Build，但 continuation 要求人工复核；中断在 Run 写入后重试时，transition journal 会收口成同一个 stop，不会多记一次 failure。
+- 第十二次 hard-stop 的主链测试最初无法到达：通用 Engine 仍限制 16 次 transition，而一次 repair 要消耗 Verify→Build 与 Build→Verify 两次，Engine 会先于 repair 协议终止。阶段性修正曾把 Native iteration budget 提升到 32；后续跨波次收口确认固定 32 仍会锁死长期 change，最终改为本节后文记录的 semantic repair budget。
+
+### Website 可用叙事草稿
+
+- 用户问题：强模型应该自己修，但“自己修”不能等于同一个错误无限循环。
+- 关键取舍：Comet 不教模型如何 debug，只比较机械上是否真的有进展；实现 scope 变化会自然解锁，没有进展才停止。
+- 当时暂不可公开为已交付事实：生成 Runtime、双语 Skill、receipt 边界与 Wave D 专项 eval 尚未一起收口；receipt 后来收敛为内置 process-free `check`，不是外部命令执行。
+
+## 2026-07-17：波次 E 开发切片——只承诺当前 Native root 内可证明的并行安全
+
+### 当时假设与边界
+
+- Comet 可以可靠比较同一物理 Native root 当前可见的 change，却不能发现另一个尚未集成的 worktree、远端分支或其他机器上的隐藏状态；把本地 advisory 包装成分布式锁会制造错误安全感。
+- 冲突分类只由 capability、operation、base hash 和已声明产物决定。workspace/worktree identity 只解释“这些事实来自哪里”，不能把确定冲突降级，也不能把未知关系升级为安全。
+
+### 第一版实施过程（随后由 process-free v2 推翻）
+
+- Conflict collector 对当前 root 的可见 change 统一读取 state、spec 与内容寻址 scope；任一竞争 change 的确定性事实损坏时整体 fail closed，只有 workspace identity 作为 advisory 可以降级为 unknown。
+- Archive preflight 已把确定冲突与可能重叠纳入 hash 和 blocked findings；status 也在 Shape/Build/Verify 提前投影同一 code，使模型不必等到归档才发现共享 capability 或产物。
+- 第一版仍调用 Git：change 创建时只有能得到 worktree/common-dir identity 才写本地 metadata，status 重新检查 branch、HEAD、worktree 和未归属变化，并把结果降为 warning/info。后续安全复审确认“只作提示”仍不能消除外部进程副作用，因此整条 probe 被删除，不能视为当前行为。
+- Native 自身目录按前缀归属给 Runtime，避免把 checkpoint/evidence 写入误报为用户的未归属修改；声明 artifact 也按目录所有权匹配，不只做字符串精确相等。
+
+### 后续安全复审：删除默认 Git probe
+
+- 上述第一版虽把 Git 结果定义为 advisory，却仍在 `new`、离开 Build 和几乎每次 status 时执行 `git status`。复审确认：Git 为判断 worktree 内容可能调用仓库控制的 clean/process filter 或 fsmonitor，ambient PATH 也存在可执行文件劫持面；`GIT_OPTIONAL_LOCKS=0` 只能减少锁写入，不能把这个过程证明为无副作用。
+- 最终默认路径彻底删除 Git inspector 及其 platform API。Build scope 只由创建时 baseline、当前有界 snapshot、声明 artifact 和 contract 推导；这本来就是完整性 authority，Git changed paths 从未被允许改变结论。
+- workspace metadata 升级为 process-free v2，只保存 project root/native root 的物理身份 hash、相对 Native root ref、revision 与可选 session hash，不落原始路径，也不再声称知道 branch、HEAD、未归属 worktree 修改或跨机器状态。status 只用文件系统重算 root identity；旧 Git-backed v1 metadata 作为 advisory legacy 被只读路径忽略，后续收口再由 doctor 提供显式迁移，而不是在 status 中隐式改写。
+- 这次修正也改变 Website 边界：可公开的是“当前物理 Native root 内的 change 冲突与 root identity 提示”，不是 Git 工作区监控。`new`、`next`、`status` 和内置 `check` 的默认 Native 主链均不启动外部进程。
+
+### Website 可用叙事草稿
+
+- 用户问题：多个 change 同时推进时，最危险的不是“有人在工作”，而是两个看似独立的修改最后覆盖同一份长期规格或实现文件。
+- 关键取舍：Comet 提前暴露当前 Native root 内能证明的冲突，同时用 process-free root identity 说明事实来源；它不读取 Git branch/HEAD，也不承诺跨机器、跨未集成 worktree 的全局协调。
+- 暂不可公开为已交付事实：最终生成资产、全量测试与 Wave E eval 仍待统一收口；Website 不能把 workspace advisory 写成自动 worktree 管理或分布式锁。
 
 ## 2026-07-17：波次 F 开发切片——Dashboard 只读展示，不成为第二套 Runtime
 
@@ -444,6 +496,85 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 - 用户问题：Native 的价值不应只存在于模型会话里；团队也需要快速判断哪些 change 能归档、哪些证据过期、哪些工作互相冲突。
 - 关键取舍：Dashboard 是 Runtime 的窗口，不是新的工作流控制器。相同事实由 CLI、JSON 和页面共享，页面不能反向推进 phase。
 - 暂不可公开为已交付事实：在 Wave D、生成 Runtime、双语 Skill 与最终 eval 一起收口前，只能把本节保留为开发过程，不能单独宣称 Native Dashboard 已发布。
+
+## 2026-07-17：跨波次开发切片——可信检查从外部命令收敛为内置策略
+
+### 当时假设与第一版方案
+
+- 强模型能够自行选择测试和实现方法，Comet 不应监控全部 shell 活动，也不应把 package script 视为天然安全。`npm`、`pnpm` 或任意项目脚本都会执行项目控制的代码，因此第一版先把 seam 收窄为固定 Git whitespace check。
+- receipt 被定义成独立证据而不是阶段结论：它不改变 phase、revision、Run 或 trajectory；Verify envelope 的消费者仍须重新校验 receipt 与当前 contract、implementation scope。
+- 第一版公开草案曾是 `comet native check <change> [--staged] [--timeout <ms>]`，随后删掉 `--staged`，并把 Git 调用固定为相对某个解析后的 HEAD。实现还解析项目外的 Git 可执行文件、计算二进制身份 hash，禁用 fsmonitor、pager、external diff、textconv 和 submodule traversal，以 `shell: false`、最小环境、超时、取消和进程树终止运行。
+- 为避免 receipt 自身被路径替换，读取侧捕获 Native root 到 receipt 目录的完整目录身份链，再复核打开句柄、路径项和 realpath；写入侧复用 contained root 下的原子写协议。stdout/stderr、argv、绝对可执行路径和环境不直接落盘，只保存脱敏有界输出的 hash 与字节计数。
+
+### 安全复审为什么否决外部 Git
+
+- “固定 argv”并不等于“只读”。Git diff 可能自动刷新 index；worktree diff 可以触发仓库控制的 clean/process filter；promisor repository 还可能 lazy fetch、联网并写 object。即使禁用 external diff 和 textconv，这些副作用仍然存在。
+- HEAD 最初只被折进 opaque argv hash，没有结构化写入 receipt，也没有在 Verify/Archive 重算；切换 ref 而保持同一 worktree 时，旧 receipt 可能继续被接受。并且没有项目 pathspec 时，大仓子目录会扫描 project root 之外的 worktree 内容。
+- 继续叠加 Git 配置开关无法证明所有宿主版本、仓库配置和 filter 行为都被封闭。这个方向因此在合入前整体删除，不把“安全命令执行器”变成 Native 的隐性第二产品。
+
+### 最终收敛方向
+
+- 公开 seam 只保留 `comet native check <change>`。Runtime 不启动 child process、不解析 Git、不读取 PATH、不联网，也没有 executable、argv、timeout、signal 或 stdout/stderr receipt 字段。
+- checker 只读取当前 implementation scope/current snapshot 中列出的项目内普通文件，按文件数、单文件字节、总字节和 issue 数显式设限；对 symlink、junction、越界路径、身份变化、hash/size 不匹配和 TOCTOU 一律 fail closed。
+- 内置策略只检查少量确定性文本事实，例如 conflict marker、行尾空白和 space-before-tab。receipt 绑定 checker policy/version、contract、scope 和执行前后 snapshot，并只保存有界的项目相对 issue、计数、stale 原因与内容 hash；它不声称替代测试、需求覆盖或模型选择的验证策略。
+- `check` 仍在 mutation/transition 锁内先收口遗留 journal，再读取 Verify 状态和 implementation scope。fresh passed receipt 可作为 Verify evidence；failed receipt 可诚实附到失败报告；检查本身永不推进工作流。
+
+### Website 可用叙事草稿
+
+- 用户问题：既要让强模型自由选择怎样验证，又要避免最终只剩一句无法复核的“测试通过”。
+- 关键取舍：Comet 不执行项目脚本，只用内置、窄范围、可重建的策略保存防篡改 check receipt；验证策略仍由模型决定，Runtime 只封印事实、新鲜度和范围。
+- 对外边界：`check` 不是通用命令执行器，不读取 Git 状态，不保存文件内容，也不推进工作流。第一版外部 Git 方案是安全复审中被明确淘汰的开发过程，Website 只描述最终内置边界。
+- 截至本节记录时，专项 eval 只验证夹具与 validator；按用户安排未启动 Docker 或真实模型运行，因此还不能声称模型行为或效率已经得到实验验证。
+
+## 2026-07-17：跨波次收口复审——先证明输入可信，再允许状态留下痕迹
+
+### 为什么再次收口
+
+Wave A–F 已经覆盖状态、续跑、证据、修复、并行和展示，但安全复审发现一个共同问题：即使最终 transition 会被 guard 拒绝，候选输入、证据文件或不可逆 marker 仍可能过早落盘。对强模型而言，失败本身可以修复；更危险的是失败尝试留下“看起来像已提交”的新事实，导致恢复会话误判当前状态。
+
+这轮没有新增阶段、方法 Skill 或用户表单，而是把既有 Runtime 边界进一步收紧。
+
+### 实施偏差与最终修正
+
+- **Acceptance 不能先无界解析再分页。** 初版分页限制了输出，却仍可能先把接近文件上限的 Markdown 展开成大量中间对象。最终解析改为流式扫描，brief 与拟议规格共享最多 1024 项的总预算；`acceptancePage` 每页最多 16 项，文字、context 与序列化结果分别有硬上限，cursor 绑定 acceptance hash。超过总预算直接拒绝，不用截断掩盖遗漏。
+- **Failure facts 必须先于任何 evidence write 校验。** `summary`、`noCodeReason`、failure category、failed check 与 override token 统一执行字符、数量和格式预算。无效 token、超过 16 个 category、超过 128 个 failed check 或过长文本会在 mutation lock 与证据写入前失败，不能靠反复无效调用制造孤儿 evidence。
+- **Build/Verify 从 prepare-and-write 拆成 inspect-then-persist。** Runtime 先纯计算并校验 contract、scope、acceptance、freshness、repair guard、Run outcome 与 trajectory，再在准备 transition 前持久化最终 evidence。Partial Build 为了把同一候选交给用户确认，可以先保存内容寻址 scope 并返回稳定 hash；没有匹配确认时不会写 allowance 或推进。Verify 若被 Run/trajectory/freshness 阻塞，不留下可被误认为新结论的 verification envelope。
+- **Archive 的不可逆 marker 曾写得太早。** 旧顺序在验证最终 Run 或 trajectory 之前写 `archive-finalization-started`，一旦后续发现 moved tree 已损坏，就失去了 rollback 路径。最终顺序先校验移动后的 archive tree、state、Protected Run、完成决定、trajectory collision 与最终事件，再写 marker；marker 前可以 rollback，marker 后只能 exactly-once continue。
+- **通用 Engine Run store 不是 Native 的安全边界。** 所有 Native Run state、trajectory、checkpoint、pending action、context 与 artifact refs 改走 Protected Run I/O：拒绝 symlink/junction/FIFO 和父目录替换，打开前后复核 realpath/stat/identity，写入前复核目标与父链，并限制 Run state 256 KiB、trajectory 8 MiB/4096 事件/单事件 256 KiB、checkpoint/pending action 各 256 KiB、context/artifact refs 各 1 MiB。Engine 继续提供 parser、类型与 resolver 语义，但通用文件函数不再成为 Native 调用面。
+- **稳定的 v2 Verify/Archive 也必须退回 Build。** 早期迁移只 supersede pending evidence transition；复审发现没有 pending journal 的 v2 Verify/Archive 同样缺 v3 scope/envelope。现在 migration journal 会同步 change、Run、trajectory 与 checkpoint 退回 Build，清空旧 result/report/ref 后重新采证，不能让旧 pass 跨 schema 继承权威。
+- **通用 iteration budget 不应锁死长期 change。** Wave D 曾把 Engine 上限从 16 提到 32，只是让第 12 次 failure hard stop 能先发生；这仍把机械 transition 数误当产品语义。最终 Runtime 的通用 counter 只保留安全整数范围内的动作序号，真正的停止条件改为 evidence-bound semantic repair budget：第三次同签名且 scope 无进展时 manual stop，单 episode 12 次 failure 时 hard stop；真实 scope 进展或 pass 结束旧 episode，历史 trajectory 仍保留。
+- **旧 workspace v1 不能永远静默忽略。** 普通 status 仍不信任 Git-backed v1，但 doctor 会明确报告 `workspace-identity-migration-required`；只有 `doctor --repair` 才用当前物理目录重建 process-free v2 root identity。迁移不会重新探测 branch、HEAD 或 worktree changed paths。
+- **保留策略不能变成后台垃圾回收。** 默认 doctor 只读报告候选；显式 `--repair` 才在 mutation lock 内重算，只删除 active change 中至少 30 天、每种 evidence kind 最新 32 份之外、且从当前 state refs 与依赖闭包证明未引用的派生 evidence/receipt。归档证据从不清理；pending journal、缺失依赖、损坏文档、未知目录项、symlink 或其他特殊文件一律 fail closed，删除前后还要复核目录链和文件身份。
+- **路径已经过包含校验，不代表复制和递归删除期间仍然安全。** Archive 与 root move 初版在事前校验路径后仍使用路径型 `copyFile`/`rm`；复审证明父目录可在校验后被 junction 或目录替换，源文件也可能在打开与提交之间变化，直接递归删除更缺少可恢复边界。最终抽出 Native Protected File/Directory I/O：复制从受保护句柄有界读取，打开前后复核源文件、realpath、父目录身份与预期 hash，目标用受包含约束的原子写入并在提交前复核；目录清理先验证整棵树等价性和目录 guard，再原子改名到事务 ID 绑定的 sibling quarantine，最后复核身份后删除。root move 的 continue/rollback 都能识别已存在的 quarantine 并从事务日志收口，不再按未经复核的旧路径直接删除。Website 可把它写成“迁移和归档可从中断恢复且拒绝路径替换”，不能写成整个多文件事务一次原子完成。
+- **Evidence retention 的删除顺序和崩溃窗口不能靠‘未引用’三个字带过。** 第一版候选集合虽然排除了当前引用，却没有表达 candidate 之间的依赖顺序；若先删被其他候选引用的底层 snapshot，崩溃会留下结构损坏的上层 evidence。直接 unlink 也无法区分“已选中待删”与“意外消失”。最终先对候选依赖图做拓扑排序，严格按 dependents-before-dependencies 清理；每个文件在父链与身份复核后改名为同目录唯一 `.gc` quarantine，再复核并删除。中断留下的 quarantine 会被后续 doctor 确定性发现：只读 doctor 报告 `evidence-retention-recovery-required`，显式 `--repair` 仅在原路径仍不存在、quarantine 内容与身份有效时用无覆盖方式恢复，原文件与 quarantine 同时存在、多 quarantine、损坏依赖或特殊文件都 fail closed。这个过程保留了“显式 maintenance、默认只读”的产品边界，也为 Website 提供了为什么 Native 不做后台 GC 的完整理由。
+- **“hash 没变”不能证明 canonical 还是同一个对象。** Archive v2 早期只比较内容 hash；并发进程可以用同内容的新文件替换 canonical，使事务误以为目标未变。最终 write/remove 先持久化 original 的内容与文件身份，原子改名到同目录 quarantine 后再次复验；write 从事务私有 candidate 无覆盖安装，rollback 同样先隔离并验证 post 对象，再无覆盖恢复 original。相同内容但不同对象也会冲突并保留现场，continue/rollback 能从隔离或安装后的崩溃点收口。
+- **事件日志的坏尾只能修“可证明没写完”的一类。** 直接忽略最后一行会误删完整但无尾换行的事件，也可能吞掉完整非法 JSON。最终 v1/v2 transaction 共用有界 append：只承认 next-sequence canonical JSON 的未完成前缀，append 前对原 bytes 做 hash/size CAS，再原子重写整个事件文件；中间坏行、非规范尾、完整非法尾和并发改写都 fail closed。重复事件以 `type + operationId` exactly-once 收敛。
+- **陈旧锁恢复不能发生在普通写路径。** 仅凭 owner 时间或一次进程检查自动删锁，会让旧 owner 在新 owner 获锁后误删新锁，形成 split-brain。最终锁绑定 owner、锁文件身份与进程内 FIFO；普通 mutation 只报告冲突，只有显式 `doctor --repair` 能在证明本机 owner 消失、身份未变且恢复事务兼容时 takeover。
+- **限制输出不够，所有项目可控输入也要先有预算。** 收口扫描把 config、selection、change YAML、brief/spec、show、status、migration/baseline journal、Run、trajectory、transaction journal/events 与目录枚举分别放进受保护读取和硬预算；status/list 使用 hash-bound cursor 分页，show 超限直接拒绝而不是截断需求。持久化摘要、理由与跳过说明还会先做文本上限和 credential-shaped redaction，普通非敏感文字保持原样。
+- **“两侧现有 report 的并集”不是 expected sample matrix。** 对齐比较器最初从 candidate/baseline 的 report 并集推导应有 `task + repetition`；这能看到单侧缺样本，却看不到两侧同时没有留下 report 的整项缺失。最终让 pytest controller 在任何模型运行前，把完整 collection 中的 `task + treatment + repetition` 规范化、哈希并原子写入 experiment；xdist worker 必须对同一矩阵逐字节达成一致。比较器分别按两侧目标 treatment 校验矩阵，矩阵损坏时 fail closed，只有真正没有该文件的历史 experiment 才允许 observed-report fallback。这个修正适合 Website 解释“为什么 pass@3 的分母也必须有证据”，但当前历史实验没有矩阵，不能事后声称已检测到当时两侧同时缺失的样本。
+- **同一 task tree 不等于同一次执行。** v1 case manifest 只绑定 task、instruction、validator、environment、data 与 prompt，最终审查指出 runner/controller 源码、Docker image、Claude 工具版本、model 和 interaction 改变时仍可能得到同一 case hash。v2 在报告中只持久化安全 hash 与有限枚举：静态绑定 `run-claude-loop.sh`、`docker.sh`、`common.sh`、`test_tasks.py`、`conftest.py` 等控制面源码；运行前从实际 image 取得不可变 ID、在该 image 内执行 `claude --version` 并哈希，然后主体运行强制复用刚验证的 image ID；model selector 与完整 interaction 配置只做 controller-side hash，不写原文或环境。v1/v2 仍可按共同 task-core hash 做历史兼容比较，但报告必须明确它没有证明旧 run 的执行身份，不能把 fallback 包装成精确复现。
+- **Archive 树的 hash 也必须有输入预算与目录快照。** 最终审查发现单文件事务已经受保护，但移动后的完整 change 树仍用无界递归目录读取和路径型文件 hash。收口后每个文件、总字节、条目数、目录深度、ref 与 manifest 都有硬上限；文件通过受保护句柄读取，目录遍历前后比较同一有界条目快照并复核父链。旧 v1 transaction 的兼容恢复也改为有界二进制复制、内容 CAS、身份绑定的目录移动和受保护删除，不再用 UTF-8 转换损坏历史二进制内容。
+- **公开选项必须形成持久语义，不能只回显。** `native init --language` 初版只把值返回给调用方，后续 `new` 仍默认英文。最终把项目默认语言写入 `comet.config.yaml`，旧配置缺字段时兼容为英文；`new --language` 只覆盖当前 change，root move 保留该设置。同时删除已经没有调用方的通用 `safe-command` 实现，使“Native 不提供任意命令执行器”同时成为文档边界和实际代码边界。
+
+### 波次 A–F 的当前事实状态
+
+| 波次 | 功能分支当前事实                                                                                                                              | 尚未得到的证据                                                              |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| A    | schema v3、journal migration、snapshot/CAS、敏感路径排除、Protected Run/File I/O、可恢复 quarantine、显式 doctor retention 与指标聚合已接线。 | 没有新的同窗口真实模型安全/效率对照。                                       |
+| B    | 单 Skill 决策前沿、仓库事实优先、冷启动可执行标准、structured continuation、checkpoint 与紧凑恢复视图已接线。                                 | 没有证明不同宿主都会实际 same-skill 续跑，也没有证明澄清质量等同 grilling。 |
+| C    | scope/allowance/verification/check receipt 内容寻址、acceptance trace、stale retreat、两步 Archive 与 transaction v2 已接线。                 | 没有大型真实仓库上的模型行为实验。                                          |
+| D    | semantic repair episode、无进展停止、单次 override 与真实 scope 进展解锁已接线。                                                              | 没有真实模型长程修复成功率、token 或耗时结论。                              |
+| E    | process-free root identity、同一 Native root conflict radar 与 Archive 阻塞已接线。                                                           | 不承诺未集成 worktree、远端或其他机器的分布式协调。                         |
+| F    | 只读 Dashboard adapter 复用 Runtime projection，不提供写入口。                                                                                | 没有真实团队使用或协作效率结论。                                            |
+
+以上都只表示 `codex/feat-comet-native-workflow` 功能分支的开发事实，尚未发布。生成 Runtime、真实构建、Native/入口域 62 个测试文件共 608 个通过测试、9 个平台条件跳过，以及中文 Skill 校验已经完成；中文 Website 用户页和演进文章已形成待确认稿。专项 eval 当前完成的是 fixture、validator、artifact binding 与对抗性确定性测试；按用户安排没有启动 Docker 或新的真实模型运行。历史 Native/0.4.0 对齐只提供第 6 节所述方向性证据，不能替代 Wave A–F 的专项实验。
+
+### Website 可用叙事草稿
+
+- 用户问题：轻流程不是少写几个文件，而是让模型只在真正需要人决定时停下，同时保证失败调用不会留下假证据、旧 pass 不会跨需求或 schema 继续生效。
+- 关键取舍：Comet 把“怎么实现”继续交给强模型，把输入预算、事实校验、证据封印、停止语义和不可逆边界放进 Runtime；新增的复杂度不变成用户阶段。
+- 可公开的开发故事：外部 Git receipt、Git workspace probe、通用 Run store、固定 Engine iteration 上限、过早 Archive marker、内容 hash 单独作 CAS、路径型 copy/delete、无界事件尾恢复和无恢复语义的 retention 删除都曾在开发中暴露边界问题，最终被更窄的 process-free、inspect-first、对象身份 CAS、protected I/O 与可恢复 quarantine 替换。
+- 发布前限制：Website 可以保留这段演进过程，但不能把功能分支事实写成稳定版能力，也不能用不同窗口的离线 duration 宣称性能倍数。
 
 ## 附录 A：原始 58 个检查点及收敛去向
 
@@ -477,18 +608,18 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 
 ### A.3 可信验证与自主修复
 
-|   # | 原始检查点         | 收敛去向                                                           |
-| --: | ------------------ | ------------------------------------------------------------------ |
-|  17 | 验证新鲜度封印     | `verification-evidence-envelope`。                                 |
-|  18 | 产物 manifest      | `content-snapshot-manifest` 与 evidence envelope 共用。            |
-|  19 | 结构化证据采集     | 降级为显式、可选、安全受限的命令 receipt；不监控所有 shell。       |
-|  20 | 验收—证据覆盖视图  | `acceptance-evidence-trace`。                                      |
-|  21 | 跳过检查的诚实表达 | 合并进 evidence trace 和现有 verification report。                 |
-|  22 | 验证建议           | Skill 根据风险自主决定；Runtime 只提供确定性事实，不形成独立功能。 |
-|  23 | 连续修复闭环       | 复用现有 Verify fail → Build，加深 continuation 和停止条件。       |
-|  24 | 无进展检测         | `repair-stagnation-control`。                                      |
-|  25 | 失败历史保留       | `repair-stagnation-control` 与保留策略。                           |
-|  26 | Archive 预演       | `spec-archive-preview`。                                           |
+|   # | 原始检查点         | 收敛去向                                                                  |
+| --: | ------------------ | ------------------------------------------------------------------------- |
+|  17 | 验证新鲜度封印     | `verification-evidence-envelope`。                                        |
+|  18 | 产物 manifest      | `content-snapshot-manifest` 与 evidence envelope 共用。                   |
+|  19 | 结构化证据采集     | 收敛为显式、可选、process-free 的内置 check receipt；不执行或监控 shell。 |
+|  20 | 验收—证据覆盖视图  | `acceptance-evidence-trace`。                                             |
+|  21 | 跳过检查的诚实表达 | 合并进 evidence trace 和现有 verification report。                        |
+|  22 | 验证建议           | Skill 根据风险自主决定；Runtime 只提供确定性事实，不形成独立功能。        |
+|  23 | 连续修复闭环       | 复用现有 Verify fail → Build，加深 continuation 和停止条件。              |
+|  24 | 无进展检测         | `repair-stagnation-control`。                                             |
+|  25 | 失败历史保留       | `repair-stagnation-control` 与保留策略。                                  |
+|  26 | Archive 预演       | `spec-archive-preview`。                                                  |
 
 ### A.4 日常速度
 
@@ -504,18 +635,18 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 
 ### A.5 团队并行与多 change
 
-|   # | 原始检查点                 | 收敛去向                                                              |
-| --: | -------------------------- | --------------------------------------------------------------------- |
-|  34 | Worktree/会话级 selection  | `workspace-identity-advisory`；不自动创建或切换 worktree。            |
-|  35 | 工作区身份与基线           | `workspace-identity-advisory`。                                       |
-|  36 | 无关修改归属保护           | snapshot + workspace advisory，只告警和防止错误认领，不推断用户意图。 |
-|  37 | Active change revision/CAS | `runtime-revision-cas`，扩展到所有 Runtime mutation。                 |
-|  38 | 非阻塞活动标记             | 删除；heartbeat/TTL 容易演变为 daemon 或在线协作系统。                |
-|  39 | 跨 change 冲突雷达         | `multi-change-conflict-radar`。                                       |
-|  40 | 安全归档顺序建议           | conflict radar 的只读推导，不增加 queue。                             |
-|  41 | 可移交快照                 | 复用 checkpoint + compact resume view，不新增 handoff 协议。          |
-|  42 | 轻量 prerequisite          | 暂不增加字段；先从 capability、artifact 和 base hash 推导。           |
-|  43 | 可选交付引用               | 作为 snapshot 的可选引用，不成为阶段、依赖或独立 capability。         |
+|   # | 原始检查点                 | 收敛去向                                                                      |
+| --: | -------------------------- | ----------------------------------------------------------------------------- |
+|  34 | Worktree/会话级 selection  | 降级为 Native selection + process-free root identity；不识别或切换 worktree。 |
+|  35 | 工作区身份与基线           | `workspace-identity-advisory` 只保存物理 root hash 与 revision。              |
+|  36 | 无关修改归属保护           | baseline/current snapshot + root advisory，只告警和防止错误认领。             |
+|  37 | Active change revision/CAS | `runtime-revision-cas`，扩展到所有 Runtime mutation。                         |
+|  38 | 非阻塞活动标记             | 删除；heartbeat/TTL 容易演变为 daemon 或在线协作系统。                        |
+|  39 | 跨 change 冲突雷达         | `multi-change-conflict-radar`。                                               |
+|  40 | 安全归档顺序建议           | conflict radar 的只读推导，不增加 queue。                                     |
+|  41 | 可移交快照                 | 复用 checkpoint + compact resume view，不新增 handoff 协议。                  |
+|  42 | 轻量 prerequisite          | 暂不增加字段；先从 capability、artifact 和 base hash 推导。                   |
+|  43 | 可选交付引用               | 作为 snapshot 的可选引用，不成为阶段、依赖或独立 capability。                 |
 
 ### A.6 产品展示
 

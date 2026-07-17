@@ -1,6 +1,6 @@
 # Comet Native Workflow 设计
 
-> 状态：已确认
+> 状态：产品设计已确认；实现位于功能分支，尚未发布
 >
 > 日期：2026-07-14
 >
@@ -64,7 +64,7 @@ Classic 不作为 Native 的升级目标，也不由 Native 自动建议。用�
 
 1. Native runtime、Skill、Prompt、状态和规格操作全部由 Comet 仓库维护。
 2. Native Skill 缺少任何外部 Skill 时仍能完整运行。
-3. 复用 Comet 内部 `domains/engine` 的 Run state、trajectory、checkpoint 和 deterministic resolver 能力。
+3. 复用 Comet 内部 `domains/engine` 的状态语义和 deterministic resolver，但所有 Native Run 文件必须经过 Native Protected Run I/O，不直接暴露通用存储函数。
 4. Native 使用独立 state schema、transition table、guard 和 archive 实现。
 5. Native 规格归档使用确定性 hash、日志化可恢复事务与单文件原子交换，避免静默覆盖并发变化。
 6. `status`、`doctor` 和恢复命令能够独立检查 Native，不借用 Classic diagnostics。
@@ -125,12 +125,14 @@ Comet 确定性约束：
 
 ### 5.4 证据优先于仪式
 
-Native 不验证模型是否执行了 TDD、planning 或 review Skill，而验证：
+Native 不验证模型是否执行了 TDD、planning 或 review Skill。模型负责实际复现问题、运行检查、判断风险和核对 brief/spec；Runtime 不独立判断这些语义结论真假，而是确定性校验并封印报告结构、验收映射、内容 hash、implementation scope、新鲜度和可选内置 check receipt。
+
+端到端流程要求模型提供：
 
 - bug 是否真实复现。
 - 关键行为是否有测试或等价证据。
 - 必需构建、类型、lint 或真实运行是否通过。
-- 验收场景是否逐项得到证明。
+- 验收场景是否逐项给出证据或诚实的跳过原因。
 - 实现是否偏离 change brief 或 proposed spec。
 
 ### 5.5 渐进披露
@@ -175,6 +177,7 @@ schema: comet.project.v1
 default_workflow: native
 native:
   artifact_root: docs
+  language: zh-CN
 ```
 
 例子对应的 Native 根为 `docs/comet/`。
@@ -182,6 +185,7 @@ native:
 配置规则：
 
 - `artifact_root` 必须是项目根下的相对路径。
+- `language` 是以后新建 Native change 的默认语言；`new --language` 只覆盖当前 change。
 - 拒绝绝对路径、`..`、驱动器前缀、`~` 和解析后逃逸项目根的 symlink。
 - 路径使用 `/` 持久化，运行时按平台解析。
 - `artifact_root: .` 表示 `<project-root>/comet/`。
@@ -220,11 +224,27 @@ docs/comet/
 │       │   └── <capability>/
 │       │       └── spec.md
 │       ├── verification.md
-│       ├── plan.md                 # 可选
 │       └── runtime/
+│           ├── baseline-manifest.json
+│           ├── workspace.json
 │           ├── run-state.json
 │           ├── trajectory.jsonl
-│           └── checkpoints/
+│           ├── pending-action.json       # 可选 Run 待处理动作
+│           ├── context.md                # 可选 Run context ref
+│           ├── artifacts.json            # 可选 Run artifact refs
+│           ├── transition.json           # 可选未完成阶段推进日志
+│           ├── schema-migration.json     # 可选未完成 schema 迁移日志
+│           ├── checkpoint-journal.json   # 可选未完成 checkpoint 日志
+│           ├── checkpoints/
+│           │   ├── latest.json
+│           │   ├── progress.json
+│           │   └── manifests/
+│           └── evidence/
+│               ├── snapshots/
+│               ├── scopes/
+│               ├── allowances/
+│               ├── verifications/
+│               └── check-receipts/
 ├── archive/
 │   └── YYYY-MM-DD-<change-name>/
 │       └── ...                     # 完整冻结的 change 目录
@@ -233,7 +253,7 @@ docs/comet/
     └── transactions/               # root move/archive 恢复日志与 staged tree
 ```
 
-所有 Native 文件都位于解析后的 `comet/` 树中。运行态使用可见的 `runtime/` 子目录，不创建嵌套 `.comet/`。
+所有持久 Native change/spec/archive/Runtime 产物都位于解析后的 `comet/` 树中，运行态使用可见的 `runtime/` 子目录，不创建嵌套 `.comet/`。项目根的 `comet.config.yaml` 是配置例外；`root move` 恢复期间还可能短暂存在 Runtime 管理的 staging 或 quarantine。它们必须受同一事务约束并在收口后清除，不构成第二个可写 Native root。
 
 ### 7.2 三层事实
 
@@ -280,19 +300,24 @@ spec_changes:
 Native 第一版提供 Comet 自有命令：
 
 ```text
-comet native init [--root <artifact-root>]
+comet native init [--root <artifact-root>] [--language en|zh-CN]
 comet native root show
 comet native root move <artifact-root>
-comet native new <change-name>
+comet native new <change-name> [--language en|zh-CN]
 comet native spec remove <change-name> <capability>
 comet native spec rebase <change-name> --summary <text>
 comet native list
 comet native show <change-name>
-comet native status [<change-name>]
+comet native status [<change-name>] [--details [--acceptance-cursor <token>]]
 comet native select <change-name>
-comet native next <change-name>
-comet native archive <change-name>
+comet native checkpoint <change-name> --summary <text> --next-action <text> [--artifact <path>]...
+comet native check <change-name>
+comet native next <change-name> --summary <text> [阶段所需证据参数]
+comet native archive <change-name> --dry-run
+comet native archive <change-name> --expect-preflight <sha256>
 comet native doctor [<change-name>]
+comet native doctor [<change-name>] --repair
+comet native doctor [<change-name>] --repair [--strategy continue|rollback]
 ```
 
 能力要求：
@@ -304,8 +329,9 @@ comet native doctor [<change-name>]
 - `select` 只影响 Native 当前选择，不写 Classic selection。
 - archive 目录使用日期前缀，输入 change name 仍保持无日期形式。
 - archive 后原 active 目录不再存在。
+- `doctor --repair` 的 `--strategy` 只在事务恢复需要明确 continue/rollback 时使用，普通安全修复不要求提供。
 
-`root move` 必须持有 Native root 全局锁，先把完整 `comet/` 树复制到目标根的临时目录并验证，再使用事务日志切换 `comet.config.yaml`。迁移阶段同时写入 `comet.config.yaml` 的 `native.pending_root_move`，确保即使旧 root 已移动，doctor 仍能从项目根发现恢复信息。失败或进程中断时，doctor 根据配置中的 pending 状态和两端事务日志恢复到唯一有效 root；不得留下两个都可写的 Native root。
+`root move` 必须持有 Native root 全局锁，先通过受保护文件读取与原子目标写入把完整 `comet/` 树复制到目标根的临时目录，逐级复核父目录身份、文件身份、内容 hash 与两棵树等价性，再使用事务日志切换 `comet.config.yaml`。迁移阶段同时写入 `comet.config.yaml` 的 `native.pending_root_move`，确保即使旧 root 已移动，doctor 仍能从项目根发现恢复信息。删除源树前先复核目标树，再把源树原子改名到事务绑定的 sibling quarantine；删除前再次验证目录身份。失败或进程中断时，doctor 根据配置中的 pending 状态、两端事务日志及可发现 quarantine 确定性继续或回滚到唯一有效 root；不得留下两个都可写的 Native root，也不得直接按未经复核的路径递归删除。
 
 ### 7.5 并发 change 冲突
 
@@ -325,7 +351,9 @@ comet native doctor [<change-name>]
 ### 8.1 `change.yaml`
 
 ```yaml
-schema: comet.native.v1
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 1
 name: add-example-capability
 language: zh-CN
 phase: shape
@@ -334,6 +362,9 @@ approval: null
 spec_changes: []
 verification_result: pending
 verification_report: null
+implementation_scope: null
+verification_evidence: null
+partial_allowance: null
 archived: false
 created_at: 2026-07-14
 run_id: null
@@ -342,13 +373,17 @@ run_id: null
 字段约束：
 
 - `phase`: `shape | build | verify | archive`
+- `minimum_runtime_version` 与 `revision`：拒绝旧 Runtime 写新状态，并为所有 mutation 提供 CAS
 - `approval`: `null | implicit | confirmed`
 - `spec_changes`: runtime 根据完整目标规格和显式 remove 命令维护的 create/replace/remove 操作与 base hash
 - `verification_result`: `pending | pass | fail`
 - `verification_report`: change 内相对路径或 `null`
 - `run_id`: 链接 `runtime/run-state.json`
+- `implementation_scope`、`verification_evidence`、`partial_allowance`：Runtime 管理的内容寻址引用；任何绑定事实变化都必须重新验证
 
 Native 不持久化 `build_mode`、`tdd_mode`、`review_mode`、`isolation`、`direct_override` 或任何 Classic 字段。实现偏好属于当前模型执行上下文，不是 change 长期状态。
+
+v1/v2 只能由 `doctor --repair` 通过 migration journal 升级。v2 Verify/Archive 没有 v3 所需的 scope/evidence 绑定，迁移必须连同 Run、trajectory 与 checkpoint 受控退回 Build；不能用空 ref 延续旧 pass。
 
 ### 8.2 `brief.md`
 
@@ -425,7 +460,7 @@ Build 读取 brief、proposed specs、canonical specs、仓库规则和当前 Ru
 - 选择测试与审查强度。
 - 在发现需求或 spec 漂移时更新 Native 产物。
 
-只有跨 session 或多个依赖任务需要持久恢复时才创建 `plan.md`。短任务的完整计划不要求落盘，恢复所需当前步骤和 checkpoint 写入 `runtime/`。
+跨 session 需要持久恢复时使用 Runtime checkpoint 保存摘要、下一动作和真实产物引用。Native 不要求创建 `plan.md`、tasks 或 handoff；模型若临时规划，也不把它变成新的流程产物。
 
 若实现中发现新的高影响决定，模型把它记录为一个 `[blocking]` 问题并只询问最重要的一个。用户回答后，模型更新 Decisions、移除 blocking 项，并在离开 Build 时传入 `--confirmed`。Build 守卫会重新读取 brief 与 proposed specs，不能用已有产物绕过新发现的阻塞项。
 
@@ -439,7 +474,11 @@ Verify 从 brief 与 proposed specs 出发：
 - 记录未执行检查与理由。
 - 生成 verification report。
 
-失败通过 `verify-fail` 返回 Build，并保留失败证据。
+Runtime 从 brief 与完整拟议规格流式派生最多 1024 个 acceptance ID，并通过 hash 绑定、每页最多 16 项的 `acceptancePage` 渐进披露。`verification.md` 必须对每个 ID 提供项目相对证据或诚实跳过原因；页内文字可以按预算显式截断，ID 不能静默丢失。
+
+失败通过 `verify-fail` 返回 Build，并保留失败事实。失败类别、检查 ID、摘要与 override 输入必须先通过数量、token 和文本预算校验，再计算证据或写 transition。相同 failure/contract/scope 形成 repair episode：第二次告警，第三次无 scope 进展时停止；真实 scope 变化或一次 pass 结束旧 episode。通用 Engine iteration 只提供动作序号，不承担永久停止语义。
+
+可选 `comet native check <change>` 只运行 Comet 内置、process-free 的有界文本策略。它不调用 Git、shell、项目脚本或外部 Skill，只检查 implementation scope/current snapshot 内的普通文本文件。扫描本身不修改项目文件、change phase、Run 或 trajectory，但会写入独立的内容寻址 receipt；receipt 不替代模型按风险选择的测试。
 
 ### 9.4 Archive
 
@@ -451,7 +490,8 @@ Archive 是 Native change management 的确定性收口：
 4. 在持有 archive 锁的情况下按事务日志交换 canonical spec 文件；每次文件替换使用原子 rename，整个多文件事务允许 doctor 在崩溃后继续或回滚。
 5. 冻结最终 brief、proposed specs、verification 和 runtime 摘要。
 6. 将 active change 移动到 `comet/archive/YYYY-MM-DD-<name>/`。
-7. 追加最终状态事件。
+7. 验证移动后的 archive tree、最终 state、Protected Run、trajectory 事件与完成决定，再写 `archive-finalization-started`。
+8. 标记前中断仍可 rollback；标记后跨越不可回滚边界，只能 continue，并最终追加完成事件。
 
 archive 不调用 OpenSpec，不写 `openspec/`，也不更新 Classic 状态。
 
@@ -491,7 +531,8 @@ Native Skill 不得：
 测试用于提供行为证据，不是固定仪式。发现漂移时先更新 Native change 产物，
 再判断是否需要用户决策。
 
-每个阶段结束时提交可验证证据，并运行 comet native next <change-name>；用户刚确认高影响 Shape 或 Build 决策时追加 --confirmed。
+Shape、Build 或 Verify 阶段结束时提交可验证证据，并运行 comet native next <change-name> --summary <text>；用户刚确认高影响 Shape 或 Build 决策时追加 --confirmed。Archive 使用独立的两步 archive 命令，不用 next 代替。
+Runtime 返回 auto 且没有用户决定或 finding 阻塞时，在同一个 Skill 中重读磁盘 phase 并继续；auto 不是后台 daemon。
 不要直接修改 phase，不要跳过失败的守卫，不要调用任何外部 Skill。
 ```
 
@@ -518,17 +559,20 @@ Native Skill 不得：
 - 当前 Run 没有未处理 blocker。
 - brief 必需章节与 proposed specs 仍然完整，且没有 `[blocking]` 问题。
 - 实现或明确的无代码结果存在。
-- 实现范围与 brief/proposed specs 一致。
+- implementation scope 由 baseline、当前有界 snapshot、声明产物和 contract 派生；无法证明完整时只能返回 partial 候选 hash，取得匹配确认后才写 allowance。
 - 验证期望可执行；例外已有理由。
 - 长任务存在 checkpoint；短任务不强制 plan。
 
 ### 11.3 Verify 守卫
 
-- verification report 存在且结构有效。
-- 每个验收场景都有证据或明确接受的例外。
-- 必需命令成功。
-- 没有未解决高风险问题。
-- 实现与 proposed specs 一致。
+模型负责实际运行并判断相关命令、核对高风险问题，以及判断实现是否满足 brief/proposed specs；这些是验证报告中的语义结论，不由 Runtime 独立证明真假。
+
+Runtime 只对可机械验证的边界负责：
+
+- verification report 存在，六个固定章节非空且结构有效。
+- 所有由 Runtime 派生的 acceptance ID 都有项目相对证据或明确跳过原因；总数与分页预算有效。
+- verification envelope 与当前 contract、scope、报告 hash 和可选内置 check receipt 一致且 fresh。
+- 使用内置 receipt 时，receipt 必须绑定当前 change、revision、contract、scope 和前后 snapshot；Runtime 不把 receipt 扩大解释为测试完整性。
 
 ### 11.4 Archive 守卫
 
@@ -537,24 +581,26 @@ Native Skill 不得：
 - 所有 replace/remove base hash 与 canonical specs 一致。
 - create 目标尚不存在。
 - 归档目标不存在，active change 尚未归档。
+- dry-run 返回的 preflight hash 在实际 Archive 锁内重算后仍一致，当前 Native root 无确定冲突或可能重叠。
 
-### 11.5 单一推进入口
+### 11.5 Shape、Build、Verify 的单一推进入口
 
 ```bash
-comet native next <change-name>
+comet native next <change-name> --summary <text>
 ```
 
 运行时负责：
 
 1. 从 `comet.config.yaml` 解析 Native root。
 2. 定位明确 Native change。
-3. 运行当前 phase 守卫。
-4. 应用 Native transition table。
-5. 更新 Run state/checkpoint。
-6. 追加 Native state event。
-7. 返回 `NEXT: auto | manual | done` 与下一 Native 命令。
+3. 在内存中校验输入、failure facts、contract、scope/evidence、repair guard、Run 与 trajectory。
+4. 只有所有后续守卫都通过后才持久化最终 Build/Verify evidence；partial 候选 scope 例外只用于返回稳定确认 hash，不推进状态。
+5. 写 prepared transition journal，再应用 Native transition table。
+6. 通过 Protected Run I/O 更新 Run state/checkpoint 与 trajectory。
+7. 更新 change state 并收口 journal。
+8. 实际阶段 transition 的 `next` 字段只返回 `auto | manual`；同时返回结构化 `continuation.disposition`（`continue | await-user | blocked | done`）、所需输入与下一 Native 动作。
 
-Prompt、Rule 和 Hook 不得硬编码下一 Skill，也不得返回 Classic 命令。
+Archive 不使用 `next`。它先运行 `archive --dry-run`，再把同一次预演的 `preflightHash` 传给 `archive --expect-preflight <sha256>`；归档成功才返回 `disposition: done`。Prompt、Rule 和 Hook 不得硬编码下一 Skill，也不得返回 Classic 命令。
 
 ## 12. 组件架构
 
@@ -575,7 +621,7 @@ Prompt、Rule 和 Hook 不得硬编码下一 Skill，也不得返回 Classic 命
 
 ### 12.2 `domains/engine/`
 
-继续提供 Comet 内部通用能力：
+继续提供 Comet 内部通用语义：
 
 - Run state。
 - trajectory、artifact refs 和 checkpoints。
@@ -583,7 +629,7 @@ Prompt、Rule 和 Hook 不得硬编码下一 Skill，也不得返回 Classic 命
 - deterministic resolver loop。
 - runtime eval。
 
-Native 为 Engine 提供自己的 storage adapter，把 Engine 文件写到 change 的 `runtime/`，不复用 Classic 的 `<changeDir>/.comet/` store。
+Native 不直接使用 Engine 的通用文件存储入口。`domains/comet-native/native-run-store` 是唯一 Native Run I/O 边界：它把文件写到 change 的 `runtime/`，执行父链与真实路径包含校验，拒绝 symlink/junction/FIFO 等非普通文件，在打开前后和原子提交前复核身份，并限制 Run state 256 KiB、trajectory 8 MiB/4096 事件、单事件 256 KiB、checkpoint/pending action 各 256 KiB、context/artifact refs 各 1 MiB。它仍复用 Engine parser、类型与 resolver 语义，但不复用 Classic 的 `<changeDir>/.comet/` store。
 
 ### 12.3 `domains/workflow-contract/`
 
@@ -655,7 +701,7 @@ default_workflow: native
 
 ### 14.2 状态错误
 
-change state、Run state 或事件日志畸形时 fail closed。doctor 输出字段、期望值、文件路径和安全恢复命令，不自动覆盖用户文件。
+change state、Run state 或事件日志畸形时 fail closed。所有 Native Run 文件读取都经过 Protected Run I/O 的类型、包含关系、身份与预算校验；doctor 只为确实存在确定性修复器的 finding 输出 repair 命令，不为任意损坏伪造可执行恢复路径，也不自动覆盖用户文件。
 
 ### 14.3 Brief/spec 漂移
 
@@ -672,8 +718,8 @@ change state、Run state 或事件日志畸形时 fail closed。doctor 输出字
 2. `change.yaml`
 3. `brief.md`
 4. change 的 proposed specs
-5. `runtime/run-state.json` 与最近 checkpoint/events
-6. 当前 diff 与验证失败证据
+5. 通过 Protected Run I/O 读取的 `runtime/run-state.json`、trajectory 与最近 checkpoint
+6. baseline/current 有界项目快照、声明产物与验证失败证据
 
 不依赖原始对话，也不读取 Classic/OpenSpec 产物补齐信息。
 
@@ -684,9 +730,11 @@ change state、Run state 或事件日志畸形时 fail closed。doctor 输出字
 - state 与单个 spec 写入使用同目录临时文件 + 原子 rename。
 - 普通 phase transition 先写 `runtime/transition.json`，再记录 `run_started` 并幂等更新 Run state、change state、trajectory 与 checkpoint；`next`、archive 和 doctor 可确定性续做。
 - 所有 mutation 使用 Native root mutation lock 和 change lock；同时需要两者时固定按 root → change 获取，未完成事务阻塞新的 mutation。
-- `status/doctor` 交叉检查 change state、Run state、trajectory 与 checkpoint；只有不存在 pending 事务时才能清理可证明陈旧的锁。
-- root move 和 archive 使用全局锁、staged tree 与 append-only 事务日志；它们是可恢复事务，不宣称整个多文件操作具有单次文件系统原子性。
-- archive 任一步失败时，doctor 必须能根据事务日志继续或回滚到一个一致状态；不得同时开放旧、新两套 canonical specs 写入。
+- `status/doctor` 交叉检查 change state、Run state、trajectory 与 checkpoint。普通 mutation 不自动恢复陈旧锁；只有显式 `doctor --repair` 能在 owner、锁文件身份和恢复事务都可证明兼容时 takeover，避免旧 owner 删除新锁形成 split-brain。
+- root move 和 archive 使用全局锁、staged tree 与 append-only 事务日志；文件复制通过受保护句柄读取、hash/身份复核和原子目标写入，目录删除先改名到事务绑定的 sibling quarantine，再复核父链与目录身份后清理。Archive write/remove 还绑定 canonical 原对象与 post 对象身份，使用同目录隔离和无覆盖安装/恢复；相同内容但不同对象也视为 CAS 冲突。它们是可恢复事务，不宣称整个多文件操作具有单次文件系统原子性，也不直接按未经复核的路径复制或递归删除。
+- transaction event log 只有最后一个 next-sequence canonical JSON 的未完成前缀可被恢复；完整无尾换行事件保留，中间坏行、完整非法尾、非规范尾和并发改写 fail closed。append 在原始 bytes hash/size CAS 后原子重写，并按 `type + operationId` exactly-once 收敛。
+- Archive 在验证移动后的 tree/state/Run/trajectory 后才写 finalization marker；标记前失败可继续或回滚，标记后只能继续到完成，不得把已完成证据恢复为 active。
+- `comet.native.workspace.v1` 只作为不可信 legacy advisory 被普通读取忽略；doctor 显式报告并在 `--repair` 下重建 process-free v2 root identity。
 
 ## 15. Eval 与成功指标
 
@@ -764,8 +812,10 @@ Native 与 Classic 可以在相同任务集上对比，但 eval 只比较结果�
 11. TDD、planning 和 review 是模型可自主选择的方法，不是外部 Skill 依赖或状态字段。
 12. 守卫验证产物、证据、hash 和状态，不验证执行仪式。
 13. 自动推进只返回 Native 命令，不感知 Classic transition。
-14. Native Engine 文件写在 change 的 `runtime/`，不复用 Classic `.comet/` store。
+14. Native Run 文件写在 change 的 `runtime/`，只经过有类型与字节预算的 Protected Run I/O，不直接使用通用 Engine 或 Classic `.comet/` store。
 15. `/comet` 只按项目配置映射默认工作流，不根据任务动态路由。
+16. workspace 身份只使用 process-free 物理 root identity；默认主链不读取 Git、PATH、branch、HEAD 或 worktree changed paths。
+17. 可选 check receipt 只来自 Comet 内置有界文本策略，不执行 shell、Git、项目脚本、外部进程或外部 Skill。
 
 ## 18. 设计依据
 
@@ -806,7 +856,7 @@ Native 已复用 `grilling` 的单问题、推荐答案、事实与决策分离�
 1. 主动发现会改变最终结果的隐藏决定，只询问真正属于用户的选择。
 2. 先调查代码、规则和测试，不把可查事实或纯实现选择抛给用户。
 3. 只有出现用户决定时暂停；其余阶段返回明确 continuation，支持该契约的宿主连续推进，其他宿主下次调用时从同一状态继续。
-4. 即使更换会话，也能恢复唯一或已经选择的 change，并一次看到 Runtime 已知的全部阻塞项和下一步；存在多个合理候选时只询问一次选择。
+4. 即使更换会话，也能恢复唯一或已经选择的 change，并先看到 Runtime 已知阻塞项的有界摘要、总数、是否截断和下一步；需要时通过 details 反复读取剩余项。存在多个合理候选时只询问一次选择。
 5. 验证只对当时明确覆盖的需求和实现范围有效；scope 内相关内容变化后旧结论失效，覆盖无法证明完整时明确标记 partial。
 6. 完成前能够追溯每项结构化验收场景的证据、跳过原因和剩余风险。
 7. 验证失败后继续修复；重复同类失败且没有有效进展时停止并说明原因。
@@ -818,12 +868,12 @@ Native 已复用 `grilling` 的单问题、推荐答案、事实与决策分离�
 
 后续能力优先加深现有职责面。命令数量不是目标；语义单一比机械地维持“四个命令”更重要：
 
-| 职责面                                             | 长期责任                                                                                                                                                                                                                                                                                                     |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Skill：`/comet-native`                             | 决策前沿、仓库调查、单问题澄清、冷启动可执行性判断，以及无阻塞时的持续推进。                                                                                                                                                                                                                                 |
-| Inspection：`comet native status [change]`         | 紧凑恢复投影、证据新鲜度、workspace 提示、跨 change 重叠、Archive 预演摘要和精确下一动作。默认只返回当前 revision 已计算的 findings 摘要；检测到 revision/snapshot 不匹配时返回 `inspection: stale` 和 details 引用，不把旧结果展示为当前事实。完整 findings、manifest、diff 与冲突详情由显式 details 重算。 |
-| Progress/Evidence：`next` 与候选 agent-facing seam | `next` 只执行 phase transition。同阶段进度写入和可信命令 receipt 若进入实施，必须使用语义独立的 seam；`checkpoint`、`check` 只是当前候选名称，公开 CLI 语法尚未确认。                                                                                                                                        |
-| Recovery/Finalize：`doctor`、`archive`             | 统一诊断、安全恢复建议、canonical preflight、冲突检查和事务收口。只有异常恢复时才暴露事务内部阶段。                                                                                                                                                                                                          |
+| 职责面                                           | 长期责任                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Skill：`/comet-native`                           | 决策前沿、仓库调查、单问题澄清、冷启动可执行性判断，以及无阻塞时的持续推进。                                                                                                                                                                                                                                                                                                                             |
+| Inspection：`comet native status [change]`       | 紧凑恢复投影、证据新鲜度、workspace 提示、跨 change 重叠、Archive 预演摘要和精确下一动作。默认只返回当前 revision 已计算的 findings 摘要；检测到 revision/snapshot 不匹配时返回 `inspection: stale` 和 details 引用，不把旧结果展示为当前事实。显式 details 每次最多返回 50 条 findings，并用 `findingsTruncated` 明示仍有未展示项；manifest、diff、冲突详情和 acceptance 各自按预算或 cursor 渐进披露。 |
+| Progress/Evidence：`next`、`checkpoint`、`check` | `next` 只执行 phase transition；`checkpoint` 保存同阶段进度；`check` 只运行内置 process-free 有界策略并生成独立 receipt。三者公开语义已经分离，receipt 不推进状态，也不是通用命令执行器。                                                                                                                                                                                                                |
+| Recovery/Finalize：`doctor`、`archive`           | 统一诊断、安全恢复建议、canonical preflight、冲突检查和事务收口。只有异常恢复时才暴露事务内部阶段。                                                                                                                                                                                                                                                                                                      |
 
 所有职责面调用同一个只读 inspection/preflight 模块：status 只投影 findings，doctor 在同一 finding 上附加 repair，archive 在锁内重新运行同一 preflight。接口不得各自实现一套检查逻辑。Dashboard 只是这些投影的只读 adapter，不得写 Native 状态、缓存出一套独立 phase 或反向决定 Runtime schema。
 
@@ -831,67 +881,76 @@ Native 已复用 `grilling` 的单问题、推荐答案、事实与决策分离�
 
 下表中的 capability 是路线能力，不等同于单个代码模块。实现时应拆成小型内部模块，再由 19.3 的少量职责面统一投影，不能形成巨型 Runtime 文件。
 
-| 顺序 | Capability                        | 责任                                                                                                                                                                                                                        | 依赖              |
-| ---: | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-|    1 | `runtime-schema-safety`           | 为 change、transition、transaction、checkpoint 和后续字段定义版本兼容、确定性迁移、敏感信息排除、输出预算与保留策略。                                                                                                       | 无                |
-|    2 | `content-snapshot-manifest`       | 以规范化项目相对路径和内容 hash 形成 VCS 无关快照；Git revision 只是可选补充。                                                                                                                                              | 1                 |
-|    3 | `runtime-revision-cas`            | 为状态、checkpoint、证据、rebase 和 archive 操作提供统一 revision/CAS，并复用现有 mutation lock 与事务协议。                                                                                                                | 1                 |
-|    4 | `shape-decision-frontier`         | 落实 19.1 的隐藏决策发现；语义判断留在 Skill，Runtime 只保存显式事实并阻塞 `[blocking]`。                                                                                                                                   | 无 Runtime 依赖   |
-|    5 | `structured-diagnostics-recovery` | 统一 finding code、路径、严重度、所需动作、可重试命令与安全恢复建议；只读投影依赖 schema，repair mutation 才依赖 CAS。                                                                                                      | 1；repair 依赖 3  |
-|    6 | `same-skill-continuation`         | 返回机器可读 continuation、当前 phase、下一动作、所需输入和是否需要用户决定；支持该契约的宿主可自动续跑，其他宿主由 Skill 根据同一结果继续。                                                                                | 1、finding schema |
-|    7 | `in-phase-checkpoint`             | 通过语义独立的 checkpoint 写入，在不改变 phase 的情况下保存摘要、下一动作和产物快照。                                                                                                                                       | 2、3              |
-|    8 | `compact-resume-view`             | 合并恢复包、增量视图和按变化读取；默认有确定性输出上限，详细内容按引用渐进披露。                                                                                                                                            | 5、7              |
-|    9 | `verification-evidence-envelope`  | 绑定 contract、implementation snapshot、report hash 和可选真实命令 receipt，并标记 freshness 为 complete、partial 或 stale。Receipt 前后只比较 contract + implementation hash，最终 envelope 再绑定 report + receipt hash。 | 2、3、5           |
-|   10 | `acceptance-evidence-trace`       | 只追踪 Acceptance examples 中的列表项或明确 Scenario；用规范化文本 hash 派生与顺序无关的 ID，在 verification report 的固定结构化块中映射证据或跳过原因。                                                                    | 4、9              |
-|   11 | `repair-stagnation-control`       | 以规范化失败类别、失败测试 ID、contract hash 和 artifact snapshot 形成签名；重复先告警，达到阈值才手动停止。                                                                                                                | 7、9              |
-|   12 | `spec-archive-preview`            | 使用同一差异引擎提供 diff、rebase preview 和 archive dry-run；preflight hash 绑定 revision、canonical base、proposed spec 与 evidence envelope，Archive 通过 `--expect-preflight <hash>` 在锁内重算并拒绝漂移。             | 2、3、9           |
-|   13 | `workspace-identity-advisory`     | 可选记录 VCS、base revision、branch、worktree 或宿主 session 身份；只告警漂移，不自动创建、切换或调度工作区。                                                                                                               | 2、7              |
-|   14 | `multi-change-conflict-radar`     | 提前比较 capability、operation、base hash 和已声明产物，区分确定冲突、可能重叠与互不相交；workspace identity 只是可选补充。                                                                                                 | 2、3、9；13 可选  |
+| 顺序 | Capability                        | 责任                                                                                                                                                                                                                           | 依赖              |
+| ---: | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
+|    1 | `runtime-schema-safety`           | 为 change、transition、transaction、checkpoint 和后续字段定义版本兼容、确定性迁移、敏感信息排除、输出预算与保留策略。                                                                                                          | 无                |
+|    2 | `content-snapshot-manifest`       | 以规范化项目相对路径和内容 hash 形成 process-free 基线与当前快照；默认主链不读取 Git revision、PATH 或仓库命令。                                                                                                               | 1                 |
+|    3 | `runtime-revision-cas`            | 为状态、checkpoint、证据、rebase 和 archive 操作提供统一 revision/CAS，并复用现有 mutation lock 与事务协议。                                                                                                                   | 1                 |
+|    4 | `shape-decision-frontier`         | 落实 19.1 的隐藏决策发现；语义判断留在 Skill，Runtime 只保存显式事实并阻塞 `[blocking]`。                                                                                                                                      | 无 Runtime 依赖   |
+|    5 | `structured-diagnostics-recovery` | 统一 finding code、路径、严重度、所需动作、可重试命令与安全恢复建议；只读投影依赖 schema，repair mutation 才依赖 CAS。                                                                                                         | 1；repair 依赖 3  |
+|    6 | `same-skill-continuation`         | 返回机器可读 continuation、当前 phase、下一动作、所需输入和是否需要用户决定；支持该契约的宿主可自动续跑，其他宿主由 Skill 根据同一结果继续。                                                                                   | 1、finding schema |
+|    7 | `in-phase-checkpoint`             | 通过语义独立的 checkpoint 写入，在不改变 phase 的情况下保存摘要、下一动作和产物快照。                                                                                                                                          | 2、3              |
+|    8 | `compact-resume-view`             | 合并恢复包、增量视图和按变化读取；默认有确定性输出上限，详细内容按引用渐进披露。                                                                                                                                               | 5、7              |
+|    9 | `verification-evidence-envelope`  | 绑定 contract、implementation snapshot、report hash 和可选内置 check receipt，并标记 freshness 为 complete、partial 或 stale。Receipt 绑定 checker policy、scope 与前后 snapshot，最终 envelope 再绑定 report + receipt hash。 | 2、3、5           |
+|   10 | `acceptance-evidence-trace`       | 只追踪 Acceptance examples 中的列表项或明确 Scenario；用规范化文本 hash 派生与顺序无关的 ID，在 verification report 的固定结构化块中映射证据或跳过原因。                                                                       | 4、9              |
+|   11 | `repair-stagnation-control`       | 以规范化失败类别、失败测试 ID、contract hash 和 artifact snapshot 形成签名；重复先告警，达到阈值才手动停止。                                                                                                                   | 7、9              |
+|   12 | `spec-archive-preview`            | 使用同一差异引擎提供 diff、rebase preview 和 archive dry-run；preflight hash 绑定 revision、canonical base、proposed spec 与 evidence envelope，Archive 通过 `--expect-preflight <hash>` 在锁内重算并拒绝漂移。                | 2、3、9           |
+|   13 | `workspace-identity-advisory`     | 只记录 process-free 的 project/native 物理 root identity、相对 Native root ref、revision 与可选 hash 化 session；只提示 root 漂移，不声称知道 branch、HEAD 或 worktree 修改。                                                  | 2、7              |
+|   14 | `multi-change-conflict-radar`     | 提前比较同一物理 Native root 内可见 change 的 capability、operation、base hash 和声明产物，区分确定冲突、可能重叠与互不相交；root identity 只说明事实来源。                                                                    | 2、3、9；13 可选  |
 
 `native-eval-matrix` 是横切验证计划，不是 Runtime capability。它必须验证 1–14，并维护共同业务、持久工作价值和模式契约三层指标。
 
-无进展控制首次命中只告警；达到明确阈值后返回 manual stop。模型可以提交带摘要的显式 override 再尝试一次，但不能绕过 Runtime 总 iteration 上限。
+无进展控制首次命中继续、第二次告警、第三次相同签名且 scope 无变化时返回 manual stop。模型可以提交带摘要的显式 override 再尝试一次；单个 repair episode 的 12 次 failure 是语义 hard stop，真实 scope 进展或 pass 会结束旧 episode。通用 Run iteration 只提供动作序号，不能把长期 change 永久锁死。
 
-Schema 演进遵守以下规则：只有旧 Runtime 可安全忽略的可选字段才能留在原 schema；新增不变量或必填字段必须升级 schema，并通过 journal 化迁移完成。旧 Runtime 遇到更高 schema 必须 fail closed；状态同时记录最低兼容 Runtime 版本，防止旧 launcher 写坏新状态。status/show 对旧 schema 只报告 `migration_required`；迁移只能由 `doctor --repair` 在独立 migration journal 与 mutation lock 下执行。迁移完成前，transition、checkpoint、check、rebase 和 archive 全部 fail closed。
+Schema 演进遵守以下规则：只有旧 Runtime 可安全忽略的可选字段才能留在原 schema；新增不变量或必填字段必须升级 schema，并通过 journal 化迁移完成。旧 Runtime 遇到更高 schema 必须 fail closed；状态同时记录最低兼容 Runtime 版本，防止旧 launcher 写坏新状态。status/show 对旧 schema 只报告 `migration_required`；迁移只能由 `doctor --repair` 在独立 migration journal 与 mutation lock 下执行。迁移完成前，transition、checkpoint、check、rebase 和 archive 全部 fail closed。v2 的 Verify/Archive 与 pending evidence transition 缺少 v3 scope/envelope，迁移必须同步 Run、trajectory 与 checkpoint 退回 Build，不能伪造兼容证据。
 
-Verification scope 固定由以下事实组成：brief、proposed specs 与 verification report 分别进入 contract/evidence hash；implementation snapshot 包含所有声明 artifact，以及相对 change 创建时工作树基线 manifest 新增或变化、且可由 VCS adapter 发现的项目文件。Native root 必须排除在 implementation snapshot 外。无法归属给当前 change 的变化标记为 `unattributed`，不能自动算作覆盖范围。没有 VCS adapter 时，模型必须声明完整 artifact 集；Runtime 无法证明覆盖完整时只能给出 `freshness: partial`，不能宣称整个实现已封印。
+Verification scope 固定由以下事实组成：brief 与 proposed specs 进入 contract hash，verification report 进入最终 evidence hash；implementation snapshot 包含所有声明 artifact，以及相对 change 创建时有界 baseline manifest 新增或变化的项目普通文件。Native root 必须排除在 implementation snapshot 外。无法归属给当前 change 的变化标记为 `unattributed`，不能自动算作覆盖范围。Runtime 无法证明覆盖完整时只能给出 `freshness: partial`，不能宣称整个实现已封印；Git 或其他 VCS 状态不参与 authority。
 
-Partial verification 默认禁止 Archive。Verify 发现只能达到 partial 时先返回 Build，并把需要用户接受的具体 scope 标为 blocking。用户确认后，模型在离开 Build 时通过结构化 `next --allow-partial <scope> --confirmed` 记录 scope、理由和确认摘要；Verify 与 Archive 只消费这份 allowance，不接收新的 `--confirmed`。Runtime 不从自由 Markdown 的 Verification expectations 推断授权，也不得把 partial 静默升级为 complete。
+Partial verification 默认禁止 Archive。模型离开 Build 时若 Runtime 只能派生 partial scope，第一次 `next` 保持在 Build，返回候选 scope hash 与需要用户接受的具体未归属项。用户确认后，模型仍在 Build 通过结构化 `next --allow-partial-scope <sha256> --partial-reason <text> --confirmed` 记录完全匹配的 scope、理由与确认；成功后才进入 Verify。Verify 与 Archive 只消费这份 allowance，不接收新的 `--confirmed`。Runtime 不从自由 Markdown 的 Verification expectations 推断授权，也不得把 partial 静默升级为 complete。
 
-Acceptance evidence 写在 `verification.md` 的单个固定、机器可解析块中，字段只包含 Runtime 派生的 `acceptance_id`、evidence refs 和可选 `skipped_reason`。模型维护映射内容，但不要求用户生成 ID；Runtime 负责校验完整性并投影到 status，不新增 coverage 命令。
+Acceptance evidence 写在 `verification.md` 的单个固定、机器可解析块中，字段只包含 Runtime 派生的 `acceptance_id`、evidence refs 和可选 `skipped_reason`。模型维护映射内容，但不要求用户生成 ID；Runtime 最多流式派生 1024 项，status/details 以 hash 绑定 cursor、每页最多 16 项渐进披露，负责校验完整性而不新增 coverage 命令。
 
 `runtime-schema-safety` 必须遵守以下安全底线：
 
 - 排除任意深度的 `.env*`、`.git`、Native runtime/transaction 目录、依赖缓存和配置 denylist；不保存 API key、token、完整环境变量或疑似密钥内容。
 - Manifest 不跟随 symlink/junction，只读取项目内普通文件；读取前后校验 realpath/stat，先执行文件大小上限，只保存项目相对路径、hash、大小和类型，不保存文件内容或绝对路径。
 - resume、manifest、receipt 和历史输出都有确定性的文件数、字节数和事件数上限；截断后保留引用和 hash，而不是静默丢失。
-- 保留策略只能清理未引用 staged 文件和过期派生快照；活跃 Run 不删除 checkpoint 引用的事件，历史压缩写入带前序 hash 的 compaction 事件，已归档核心证据默认不可变。
-- 可选 `check` receipt 只在宿主已经授权对应命令后执行，使用项目内 cwd、结构化 argv、平台可执行解析 adapter、`spawn(..., { shell: false })`、默认最小环境、超时与取消、stdout/stderr 上限和脱敏。Windows 不拼接 `cmd /c` 字符串；无法安全解析时明确降级为“命令未记录”，不偷偷回退到 shell。Receipt 记录执行前后的 contract hash 与 implementation snapshot hash、signal/exit code；report、receipt 和其他 Native evidence 文件不参与这次前后比较。两组 hash 变化时 receipt 直接 stale。第一版只为不修改受验证文件的只读检查生成 fresh receipt。
-- Session/worktree 身份只保存在本地 runtime metadata；session ID 默认 hash 化，路径使用项目相对表示，不写入 canonical spec、公开交付引用或 Dashboard 导出。
+- 保留策略只由 doctor 投影：默认只读报告；`doctor --repair` 在 mutation lock 内重算，仅清理 active change 中至少 30 天、每种 evidence kind 最新 32 份之外、且从当前 state refs 依赖闭包证明未引用的派生 snapshot/scope/allowance/verification/check receipt。删除按 dependents-before-dependencies 排序，每个文件先经父链/身份复核并改名到同目录唯一 quarantine，再复核后删除；中断留下的 quarantine 会被后续 doctor 发现，只读模式报告 recovery required，显式 repair 在原路径仍缺失且身份匹配时无覆盖恢复。归档证据不清理；pending journal、缺失依赖、损坏文档、未知目录项或特殊文件一律 fail closed。
+- 可选 `check` receipt 只由 Comet 内置有界文本策略生成。Runtime 不启动外部进程、不解析 Git、不读取 PATH、不联网，也不接受 executable、argv、环境或 timeout；checker 只在当前 scope/snapshot 的普通文本文件上检查 conflict marker、行尾空白和 space-before-tab。扫描不修改项目文件、change、Run 或 trajectory，但会写独立 receipt。Receipt 记录 policy/version、contract、scope、前后 snapshot、有界 issue 与计数；任何身份、hash、size、TOCTOU 或预算异常都 fail closed。
+- Workspace identity 只保存 process-free 的物理 root hash、相对 Native root ref、revision 与可选 session hash，不保存原始路径、branch、HEAD、worktree changed paths，不写入 canonical spec、公开交付引用或 Dashboard 导出。旧 Git-backed v1 只由 doctor 显式迁移。
+- Run state、trajectory、checkpoint、pending action、context 与 artifact refs 使用唯一 Protected Run I/O 边界，拒绝路径替换和非普通文件，并分别执行文件、事件与总字节预算。
+- 项目配置、selection、change YAML、brief/spec、show、status/list、migration/baseline journal 与 transaction journal/events 都有独立的文件、目录条目、累计读取或序列化预算。status/list 使用名称集合 hash 绑定的 cursor 分页；show 超限失败关闭，不以截断需求正文换取成功。
+- 会进入 trajectory、transition 或 evidence 的摘要、无代码理由、partial 理由、repair override 摘要和跳过说明先执行文本预算与 credential-shaped redaction；非敏感普通文字保持原样，Runtime 不把脱敏当作允许保存凭据。
+- Build/Verify 遵循 inspect-then-persist：failure facts 和所有后续 guard 先校验，最终 evidence 后落盘；partial 候选 scope 只为返回稳定确认 hash，未确认不写 allowance、不推进。
 
 ### 19.5 演进波次
 
-后续不采用“Runtime 全做完再补 Skill/eval”或“先做 Dashboard”的横向建设方式。每个波次都以一个可证伪的用户结果为中心，同时交付 Skill、Runtime、测试、eval、文档和演进记录。
+建设不采用“Runtime 全做完再补 Skill/eval”或“先做 Dashboard”的横向方式。每个波次都以一个可证伪的用户结果为中心，同时维护 Skill、Runtime、测试、eval、文档和演进记录。
 
 真实假设、实现偏差、评估限制和被否决方向持续追加到 [Comet Native 演进记录](2026-07-16-comet-native-evolution-record.md)，不把开发过程塞入 Changelog。
+
+截至 2026-07-17，A–F 的 Runtime/Skill/只读 Dashboard 切片均已进入 `codex/feat-comet-native-workflow` 功能分支，但整体仍未发布，生成资产、全量验证与中英文最终同步尚待统一收口。专项 eval 当前只运行 fixture、validator 与离线 artifact 对齐；按用户安排没有启动 Docker 或新的真实模型运行，因此以下“证明”仍是发布前 eval 目标，不能当作模型效果结论。
 
 #### 波次 A：基础安全与指标可信
 
 - `runtime-schema-safety`、`content-snapshot-manifest`、`runtime-revision-cas`。
 - 修正 Native validator 被错误归入 business completion 的指标分层，并让通用 harness 累加样本内全部顶层 result duration，而不是只保留最后一次调用。
 - 建立当前 Native 与增强版的同模型、同任务、同窗口配对方法。
+- 功能分支事实：change/transition 已到 schema v3，包含 journal migration、baseline/current 有界快照、revision/CAS、Protected Run I/O 与预算、显式 doctor retention；v2 evidence phase 会退回 Build。
 
 #### 波次 B：判断与续跑
 
 - `shape-decision-frontier`、`structured-diagnostics-recovery`、`same-skill-continuation`、`in-phase-checkpoint`、`compact-resume-view`。
 - 先证明模型会发现未被提示的真实产品决定，同时不会询问仓库事实或制造确认题。
 - 先分别证明 Runtime 会发出正确 continuation，以及支持该契约的宿主会实际续跑；清空上下文后只给“继续”，新会话仍能恢复唯一或已有有效 selection 的 change 并 exactly-once 推进。多个合理候选场景单独验证一次性选择。
+- 功能分支事实：单 Skill 决策前沿、结构化 finding/continuation、checkpoint、紧凑 status/details 与 acceptance 分页已接线；宿主真实自动续跑效果尚未跑新模型。
 
 #### 波次 C：可信证据与安全归档
 
 - `verification-evidence-envelope`、`acceptance-evidence-trace`、`spec-archive-preview`。
 - 先证明 Verify 后修改已覆盖的实现范围或验收契约会使旧证据失效；覆盖范围无法证明完整时必须显示 partial。
 - 先证明 Archive 预演会返回 preflight hash；`archive --expect-preflight <hash>` 在锁内重算，落盘前任何相关事实变化都会使 Archive 拒绝，而未变化时预演与最终 canonical 结果一致。
+- 功能分支事实：Build/Verify 已采用 inspect-then-persist，scope/allowance/verification/check receipt 内容寻址，Archive 两步 preflight 与 marker 后不可回滚边界已经接线。
 
 #### 波次 D：自主修复与长程效率
 
@@ -899,18 +958,21 @@ Acceptance evidence 写在 `verification.md` 的单个固定、机器可解析�
 - 证明确定性隐藏回归能够形成 `Verify fail → Build → Verify pass`，且不会删除或弱化测试。
 - 证明不可解决或重复失败时能够停止，不伪造 pass、不归档。
 - 在大 fixture 上以不降低 strict pass 和证据覆盖为前提，再衡量文件读取量、输入 token 和恢复成本。
+- 功能分支事实：repair episode 以 failure/contract/scope 签名控制；真实 scope 进展或 pass 解锁，通用 Engine budget 已降为动作序号，语义 hard stop 留在单个 episode。
 
 #### 波次 E：并行安全
 
 - `workspace-identity-advisory`、`multi-change-conflict-radar`。
-- 证明同一物理 Native root 内相同 revision 的竞争写入只能有一个 CAS 成功。不同 worktree 只记录身份与基线；只有 change/spec 被带入同一物理 Native root 或同一集成分支后才能比较，不承诺跨 worktree 分布式锁定。
+- 证明同一物理 Native root 内相同 revision 的竞争写入只能有一个 CAS 成功。Native 只记录 process-free 物理 root identity；只有 change/spec 被带入同一物理 Native root 后才能比较，不读取 branch/HEAD，也不承诺跨 worktree 分布式锁定。
 - 证明同一 Native root 内可见 change 的共享 capability 或产物在 Archive 之前就能暴露重叠。Archive 只能检查当前 worktree 可见的 canonical 与记录基线，不能发现尚未集成的其他 worktree。
+- 功能分支事实：root identity v2 与 conflict radar 已接线；Git-backed workspace v1 只由 doctor 显式迁移，默认 Native 主链不启动外部进程。
 
 #### 波次 F：团队展示
 
 - 在 CLI/JSON 投影稳定后增加只读 Native Dashboard。
-- Dashboard 与按需 handoff 视图复用 `status` snapshot，只展示目标、phase、证据、新鲜度、冲突和下一步。
+- Dashboard 复用 `status` snapshot，只展示目标、phase、证据、新鲜度、冲突和下一步；不新增 handoff 协议。
 - commit、PR 或外部工单只能作为可选交付引用，不成为新阶段或外部服务依赖。
+- 功能分支事实：只读 Dashboard adapter 已接线且不能推进 phase；专项真实模型或团队协作效果仍未验证。
 
 ### 19.6 Eval 的证伪顺序
 
@@ -922,7 +984,7 @@ Acceptance evidence 写在 `verification.md` 的单个固定、机器可解析�
 2. stale verification 与验收证据覆盖。
 3. Verify 失败修复与无进展停止。
 4. delta context、spec diff 与 rebase 恢复。
-5. 同一 Native root 的 CAS 竞争、跨 worktree 基线漂移与变更归属。
+5. 同一物理 Native root 的 CAS 竞争、root identity 漂移与可见 change 重叠；未集成 worktree 明确作为不可观测边界。
 6. 多角色 handoff 和只读 Dashboard 新鲜度。
 
 正式比较使用同窗口三臂：裸强模型 Control、Native、Classic。三组共享完全相同的业务 validator；持久交接与恢复价值单独衡量；Native 与 Classic 的模式契约分别报告，不能比较检查数量。效率使用每次 strict success 的 token、时间、成本和工具调用，不单独用 `pass@3`、原始耗时、文件数量、Skill invocation、检查通过比例或单个 LLM Judge 分数下结论。
@@ -931,9 +993,9 @@ Acceptance evidence 写在 `verification.md` 的单个固定、机器可解析�
 
 - 不要求用户维护 acceptance ID、coverage matrix、manifest、checkpoint、handoff 或依赖图；能派生的全部由 Runtime 派生。
 - 不增加 claim、owner、lease、heartbeat、archive queue、Sprint、RBAC 或调度器。
-- 不为 context、resume、overlap、handoff 等内部机制逐一增加命令。同阶段 checkpoint 与可选命令 receipt 若进入实施，必须使用区别于 `next` 的 agent-facing seam；候选命令名和公开程度在实施设计中决定，不构成新阶段。
+- 不为 context、resume、overlap、handoff 等内部机制逐一增加命令。已收敛的 `checkpoint` 与内置 `check` 使用区别于 `next` 的 agent-facing seam，但不构成新阶段；`check` 不接受任意命令。
 - 不让 Runtime 评价需求语义、生成产品决定、自动接受冲突或进行语义合并。
-- 不自动采集所有 shell 活动；命令 receipt 是显式、可选和安全受限的证据 seam。
+- 不采集 shell 活动，也不启动 Git、项目脚本或其他外部进程；receipt 只来自显式、可选、process-free 的 Comet 内置 `check` 策略。
 - 不把 Verify fail → Build 包装成新的 Debug 阶段；只增强证据、恢复和停止条件。
 - 不让 Dashboard 写状态、执行修复或持有缓存事实源。
 - 不做 Native/Classic 升级、转换、基于任务复杂度的动态路由或混合 change。

@@ -2,13 +2,15 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.6] - 2026-07-15
+## What's Changed [0.4.0-beta.6] - 2026-07-17
 
 ### Added
 
-- **Comet Native workflow**: Adds a self-contained workflow for strong coding models with one-question requirement clarification in Shape or Build, active-change continuation after clarification, runtime-owned confirmations and spec baselines, configurable `comet/` artifact roots, Native change/spec/archive management, conflict rebase back to Build, crash-recoverable automatic progression, verification evidence, and recoverable root moves—without requiring OpenSpec, Superpowers, or other external Skills.
+- **Comet Native workflow**: Adds a self-contained strong-model workflow with one-question decision clarification, one continuously advancing Skill, configurable Comet-owned artifact roots and default change language, complete target specifications, checkpoints, bounded paginated status, and independent Native change/spec/archive management—without requiring OpenSpec, Superpowers, or any external Skill.
+- **Evidence-bound autonomous execution**: Adds content-addressed implementation scopes, Acceptance IDs, verification envelopes, optional built-in read-only check receipts, stale-evidence fallback, partial-scope authorization, and repair episodes that stop repeated no-progress failures while allowing genuine implementation progress to continue.
+- **Recoverable Native safety boundary**: Adds schema migration, revision/CAS protection, protected Run and file I/O, process-free workspace identity, current-root conflict inspection, two-step archive preflight, exactly-once transaction recovery, safe artifact-root moves, explicit stale-lock takeover, bounded evidence retention, and a read-only Dashboard projection backed by the same Runtime facts.
 - **Stable workflow entries**: Adds permanent `/comet-native` and `/comet-classic` entry points plus `comet workflow resolve`; `/comet` is now a configuration-only alias that selects exactly one workflow without converting or combining their changes, state, or artifacts, and remains available in Skill-only installs through a bundled self-contained resolver when the CLI is not on PATH.
-- **Native baseline evaluation**: Adds a repeatable Native treatment for the same 16 canonical Comet tasks used by the 0.4.0 baseline, preserving identical business validators while enforcing Native-only Skill routing, terminal change/archive evidence, and pass@k-compatible repeated runs.
+- **Native baseline evaluation**: Adds a repeatable Native treatment for the same 16 canonical Comet tasks used by the 0.4.0 baseline, aligned `task_id + repetition` pairing and corrected multi-turn duration totals, plus Wave A–F workflow fixtures and validators that keep mechanical contract coverage distinct from real-model performance claims.
 
 ### Changed
 
@@ -19,6 +21,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Windows interactive evals**: Interactive Docker evals now prefer Git Bash over WSL, preserve container prompt-file paths through MSYS argument conversion, count real driver turns for interaction limits, support deterministic task-supplied decision replies, distinguish user decisions from completion before ending a workflow, and avoid false environment-failure flags from successful result text.
 - **Parallel eval coordination**: Windows xdist workers now wait for shared Docker build locks instead of failing concurrent samples with a resource-deadlock error.
+- **npm publish cache pruning**: Package preflight now excludes nested and platform-specific pytest caches before filesystem inspection, so inaccessible local Eval byproducts cannot block publishing and cannot enter the npm package.
 
 ## What's Changed [0.4.0-beta.5] - 2026-07-14
 
