@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readCheckpoint, readTrajectory } from '../../../domains/engine/run-store.js';
 import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
 import { readRunStateAt } from '../../../domains/engine/storage-run.js';
+import { archiveNativeChange } from '../../../domains/comet-native/native-archive.js';
+import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
 import {
   compareAndSwapNativeChange,
   createNativeChange,
@@ -14,6 +16,7 @@ import {
   NativeSchemaMigrationRequiredError,
   nativeChangeDir,
   readNativeChange,
+  readNativeChangeFile,
 } from '../../../domains/comet-native/native-change.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
@@ -249,7 +252,7 @@ describe('Native schema compatibility and journalized migration', () => {
     expect(await fs.readFile(file, 'utf8')).toBe(before);
   });
 
-  it.each<NativePhase>(['shape', 'build', 'verify'])(
+  it.each<NativePhase>(['shape', 'build'])(
     'migrates a stable v2 %s state to v3 without changing its phase or revision',
     async (phase) => {
       const name = `v2-${phase}`;
@@ -299,15 +302,16 @@ describe('Native schema compatibility and journalized migration', () => {
         now: new Date('2026-07-17T01:30:00.000Z'),
         id: () => `migration-v1-${phase}`,
       });
+      const evidencePhase = phase === 'verify' || phase === 'archive';
       expect(migrated).toMatchObject({
         schema: NATIVE_CHANGE_SCHEMA,
-        phase: phase === 'archive' ? 'verify' : phase,
-        revision: phase === 'archive' ? 2 : 1,
+        phase: evidencePhase ? 'build' : phase,
+        revision: evidencePhase ? 2 : 1,
         implementation_scope: null,
         verification_evidence: null,
         partial_allowance: null,
       });
-      if (phase === 'archive') {
+      if (evidencePhase) {
         expect(migrated).toMatchObject({
           verification_result: 'pending',
           verification_report: null,
@@ -315,7 +319,7 @@ describe('Native schema compatibility and journalized migration', () => {
       }
       expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toMatchObject({
         runId: state.run_id,
-        currentStep: phase === 'archive' ? 'verify' : phase,
+        currentStep: evidencePhase ? 'build' : phase,
       });
       const status = await inspectNativeStatus(paths, name, { details: true });
       expect((status.findings ?? []).map((finding) => finding.code)).not.toEqual(
@@ -324,7 +328,7 @@ describe('Native schema compatibility and journalized migration', () => {
     },
   );
 
-  it('retreats a stable v2 Archive state to Verify and synchronizes Run history exactly once', async () => {
+  it('retreats a stable v2 Archive state to Build and synchronizes Run history exactly once', async () => {
     const name = 'v2-archive';
     const { changeDir, state } = await seedCurrentPhase(name, 'archive');
     await downgradeToV2(state);
@@ -337,7 +341,7 @@ describe('Native schema compatibility and journalized migration', () => {
     });
     expect(migrated).toMatchObject({
       schema: NATIVE_CHANGE_SCHEMA,
-      phase: 'verify',
+      phase: 'build',
       revision: state.revision + 1,
       verification_result: 'pending',
       verification_report: null,
@@ -349,7 +353,7 @@ describe('Native schema compatibility and journalized migration', () => {
     const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
     expect(run).toMatchObject({
       runId: state.run_id,
-      currentStep: 'verify',
+      currentStep: 'build',
       pending: null,
       status: 'running',
     });
@@ -367,13 +371,94 @@ describe('Native schema compatibility and journalized migration', () => {
     });
 
     const status = await inspectNativeStatus(paths, name, { details: true });
-    expect(status).toMatchObject({ phase: 'verify', archiveReady: false });
+    expect(status).toMatchObject({ phase: 'build', archiveReady: false });
     expect((status.findings ?? []).map((finding) => finding.code)).not.toEqual(
       expect.arrayContaining(['run-phase-mismatch', 'checkpoint-mismatch', 'trajectory-invalid']),
     );
     await migrateNativeChange({ paths, name });
     expect(await readTrajectory(changeDir, run.trajectoryRef)).toEqual(trajectory);
   });
+
+  it.each<NativePhase>(['verify', 'archive'])(
+    'retreats a stable v2 %s change to Build and lets the current runtime complete a fresh verified archive',
+    async (phase) => {
+      const name = `v2-${phase}-full-lifecycle`;
+      const { state } = await seedCurrentPhase(name, phase);
+      await downgradeToV2(state);
+
+      const migrated = await migrateNativeChange({
+        paths,
+        name,
+        now: new Date('2026-07-17T02:30:00.000Z'),
+        id: () => `migration-${phase}-full-lifecycle`,
+      });
+      expect(migrated).toMatchObject({
+        phase: 'build',
+        revision: state.revision + 1,
+        verification_result: 'pending',
+        verification_report: null,
+        implementation_scope: null,
+        verification_evidence: null,
+        archived: false,
+      });
+
+      const rebuilt = await advanceNativeChange({
+        paths,
+        name,
+        evidence: {
+          summary: 'implementation scope was re-established under the current runtime',
+          artifacts: [`${name}.ts`],
+        },
+        now: new Date('2026-07-17T02:31:00.000Z'),
+      });
+      expect(rebuilt.change).toMatchObject({
+        phase: 'verify',
+        implementation_scope: expect.stringMatching(
+          /^runtime\/evidence\/scopes\/[a-f0-9]{64}\.json$/u,
+        ),
+      });
+
+      await fs.writeFile(
+        path.join(nativeChangeDir(paths, name), 'verification.md'),
+        await nativeVerificationFixtureReport({ paths, name, evidenceRefs: [`${name}.ts`] }),
+      );
+      const verified = await advanceNativeChange({
+        paths,
+        name,
+        evidence: {
+          summary: 'fresh verification passed under the current runtime',
+          verificationResult: 'pass',
+          verificationReport: 'verification.md',
+        },
+        now: new Date('2026-07-17T02:32:00.000Z'),
+      });
+      expect(verified.change).toMatchObject({
+        phase: 'archive',
+        verification_result: 'pass',
+        verification_evidence: expect.stringMatching(
+          /^runtime\/evidence\/verifications\/[a-f0-9]{64}\.json$/u,
+        ),
+      });
+
+      const preflight = await inspectNativeArchivePreflight({
+        paths,
+        name,
+        now: new Date('2026-07-17T02:33:00.000Z'),
+      });
+      expect(preflight).toMatchObject({ ready: true, findingCodes: [] });
+      const archived = await archiveNativeChange({
+        paths,
+        name,
+        expectedPreflightHash: preflight.preflightHash,
+        now: new Date('2026-07-17T02:33:00.000Z'),
+      });
+      expect(await readNativeChangeFile(path.join(archived.archiveDir, 'change.yaml'))).toMatchObject({
+        phase: 'archive',
+        archived: true,
+      });
+      expect(archived.archiveDir).toContain(name);
+    },
+  );
 
   it.each<{
     label: string;
@@ -409,7 +494,7 @@ describe('Native schema compatibility and journalized migration', () => {
 
       const recovered = await migrateNativeChange({ paths, name });
       expect(recovered).toMatchObject({
-        phase: 'verify',
+        phase: 'build',
         verification_result: 'pending',
         verification_report: null,
         verification_evidence: null,

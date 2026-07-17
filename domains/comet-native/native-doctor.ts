@@ -5,15 +5,21 @@ import { recoverArchiveTransaction } from './native-archive.js';
 import { inspectNativeChange, readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import { inspectNativeStatus, listNativeStatus } from './native-diagnostics.js';
-import { diagnoseNativeLock } from './native-lock.js';
+import { inspectNativeEvidenceRetention } from './native-evidence-retention.js';
+import {
+  diagnoseNativeLock,
+  takeOverNativeStaleLock,
+  withNativeLockRecovery,
+} from './native-lock.js';
 import { nativeProjectPaths, resolveContainedNativePath } from './native-paths.js';
+import { readNativeProtectedDirectory } from './native-protected-file.js';
 import { recoverNativeRootMove } from './native-root-move.js';
 import { continueNativeCheckpoint } from './native-checkpoint-journal.js';
 import {
   nativeCheckpointJournalFile,
   readNativeCheckpointJournal,
 } from './native-checkpoint-storage.js';
-import { nativeSelectionFile } from './native-selection.js';
+import { nativeSelectionFile, readNativeSelectionRecord } from './native-selection.js';
 import {
   inspectPendingNativeSchemaMigration,
   migrateNativeChange,
@@ -30,15 +36,35 @@ import {
   inspectNativeTrajectoryTail,
   repairNativeTrajectoryTail,
 } from './native-trajectory-recovery.js';
+import {
+  inspectNativeWorkspaceSchema,
+  migrateLegacyNativeWorkspaceIdentity,
+  nativeWorkspaceFile,
+} from './native-workspace.js';
 import type {
   NativeDoctorFinding,
   NativeProjectPaths,
   NativeTransactionJournal,
 } from './native-types.js';
 
-async function directoryEntries(directory: string): Promise<Dirent[]> {
+const NATIVE_DOCTOR_MAX_CHANGE_ENTRIES = 4_096;
+const NATIVE_DOCTOR_MAX_TRANSACTION_ENTRIES = 4_096;
+const NATIVE_DOCTOR_MAX_LOCK_ENTRIES = 1_024;
+
+async function directoryEntries(
+  paths: NativeProjectPaths,
+  directory: string,
+  maxEntries: number,
+): Promise<Dirent[]> {
   try {
-    return await fs.readdir(directory, { withFileTypes: true });
+    const protectedDirectory = await readNativeProtectedDirectory({
+      root: paths.nativeRoot,
+      directory,
+      label: 'Native doctor directory',
+      maxEntries,
+    });
+    await protectedDirectory.verify();
+    return protectedDirectory.entries;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
@@ -46,10 +72,16 @@ async function directoryEntries(directory: string): Promise<Dirent[]> {
 }
 
 async function clearStaleRecoveryLocks(
-  files: string[],
+  targets: Array<{ paths: NativeProjectPaths; file: string }>,
   findings: NativeDoctorFinding[],
 ): Promise<boolean> {
-  for (const file of [...new Set(files.map((entry) => path.resolve(entry)))]) {
+  const unique = new Map(
+    targets.map((target) => [
+      path.resolve(target.file),
+      { ...target, file: path.resolve(target.file) },
+    ]),
+  );
+  for (const { paths, file } of unique.values()) {
     let diagnosis;
     try {
       diagnosis = await diagnoseNativeLock(file);
@@ -64,14 +96,27 @@ async function clearStaleRecoveryLocks(
     }
     if (diagnosis.status === 'missing') continue;
     if (diagnosis.status === 'stale') {
-      await fs.rm(file, { force: true });
+      const takeover = await takeOverNativeStaleLock(paths, file, diagnosis);
+      if (takeover.status === 'removed') {
+        findings.push({
+          severity: 'info',
+          code: 'stale-recovery-lock-removed',
+          message: `Removed stale lock before explicit transaction recovery`,
+          path: file,
+        });
+        continue;
+      }
+      if (takeover.status === 'missing') continue;
+      diagnosis = takeover.diagnosis;
+    }
+    if (diagnosis.status === 'stale') {
       findings.push({
-        severity: 'info',
-        code: 'stale-recovery-lock-removed',
-        message: `Removed stale lock before explicit transaction recovery`,
+        severity: 'error',
+        code: 'lock-takeover-raced',
+        message: 'Native recovery lock changed while doctor was preparing stale takeover',
         path: file,
       });
-      continue;
+      return false;
     }
     findings.push({
       severity: 'error',
@@ -95,7 +140,9 @@ async function inspectSelection(
   let value: { schema?: unknown; change?: unknown };
   try {
     await resolveContainedNativePath(paths.nativeRoot, file);
-    value = JSON.parse(await fs.readFile(file, 'utf8')) as typeof value;
+    const selection = await readNativeSelectionRecord(paths);
+    if (!selection) return [];
+    value = selection;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     return [
@@ -187,7 +234,11 @@ async function inspectTransactions(
 ): Promise<{ findings: NativeDoctorFinding[]; unfinished: NativeTransactionJournal[] }> {
   const findings: NativeDoctorFinding[] = [];
   const unfinished: NativeTransactionJournal[] = [];
-  for (const entry of await directoryEntries(paths.transactionsDir)) {
+  for (const entry of await directoryEntries(
+    paths,
+    paths.transactionsDir,
+    NATIVE_DOCTOR_MAX_TRANSACTION_ENTRIES,
+  )) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     let journal: NativeTransactionJournal;
     try {
@@ -214,19 +265,30 @@ async function inspectTransactions(
     }
     if (options.repair && options.recoveryStrategy) {
       try {
-        const locksReady = await clearStaleRecoveryLocks(
-          [path.join(paths.locksDir, 'root-move.lock'), path.join(paths.locksDir, 'archive.lock')],
-          findings,
+        const locksReady = await withNativeLockRecovery(
+          [paths],
+          `doctor archive recovery ${journal.id}`,
+          async () => {
+            const ready = await clearStaleRecoveryLocks(
+              [
+                { paths, file: path.join(paths.locksDir, 'root-move.lock') },
+                { paths, file: path.join(paths.locksDir, 'archive.lock') },
+              ],
+              findings,
+            );
+            if (!ready) return false;
+            await recoverArchiveTransaction({
+              paths,
+              transactionId: journal.id,
+              strategy: options.recoveryStrategy!,
+            });
+            return true;
+          },
         );
         if (!locksReady) {
           unfinished.push(journal);
           continue;
         }
-        await recoverArchiveTransaction({
-          paths,
-          transactionId: journal.id,
-          strategy: options.recoveryStrategy,
-        });
         findings.push({
           severity: 'info',
           code: 'archive-transaction-recovered',
@@ -261,7 +323,11 @@ async function inspectLocks(
   unfinished: NativeTransactionJournal[],
 ): Promise<NativeDoctorFinding[]> {
   const findings: NativeDoctorFinding[] = [];
-  for (const entry of await directoryEntries(paths.locksDir)) {
+  for (const entry of await directoryEntries(
+    paths,
+    paths.locksDir,
+    NATIVE_DOCTOR_MAX_LOCK_ENTRIES,
+  )) {
     if (!entry.isFile() || entry.isSymbolicLink() || !entry.name.endsWith('.lock')) continue;
     const file = path.join(paths.locksDir, entry.name);
     try {
@@ -282,13 +348,22 @@ async function inspectLocks(
         });
       } else if (diagnosis.status === 'stale') {
         if (repair && unfinished.length === 0) {
-          await fs.rm(file, { force: true });
-          findings.push({
-            severity: 'info',
-            code: 'stale-lock-removed',
-            message: 'Removed a Native lock whose local owner process is absent',
-            path: file,
-          });
+          const takeover = await takeOverNativeStaleLock(paths, file, diagnosis);
+          if (takeover.status === 'removed') {
+            findings.push({
+              severity: 'info',
+              code: 'stale-lock-removed',
+              message: 'Removed a Native lock whose local owner process is absent',
+              path: file,
+            });
+          } else if (takeover.status === 'changed') {
+            findings.push({
+              severity: takeover.diagnosis.status === 'active' ? 'warning' : 'error',
+              code: 'lock-takeover-raced',
+              message: 'Native lock changed while doctor was preparing stale takeover',
+              path: file,
+            });
+          }
         } else {
           findings.push({
             severity: unfinished.length > 0 ? 'error' : 'warning',
@@ -367,7 +442,7 @@ async function inspectTrajectoryTailRepairs(
   const findings: NativeDoctorFinding[] = [];
   const names = options.name
     ? [options.name]
-    : (await directoryEntries(paths.changesDir))
+    : (await directoryEntries(paths, paths.changesDir, NATIVE_DOCTOR_MAX_CHANGE_ENTRIES))
         .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
         .map((entry) => entry.name)
         .sort();
@@ -406,6 +481,58 @@ async function inspectTrajectoryTailRepairs(
   return findings;
 }
 
+async function inspectWorkspaceIdentityMigrations(
+  paths: NativeProjectPaths,
+  options: { name?: string; repair: boolean },
+): Promise<NativeDoctorFinding[]> {
+  const findings: NativeDoctorFinding[] = [];
+  const names = options.name
+    ? [options.name]
+    : (await directoryEntries(paths, paths.changesDir, NATIVE_DOCTOR_MAX_CHANGE_ENTRIES))
+        .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+        .map((entry) => entry.name)
+        .sort();
+  for (const name of names) {
+    try {
+      if ((await inspectNativeWorkspaceSchema(paths, name)) !== 'comet.native.workspace.v1') {
+        continue;
+      }
+      if (!options.repair) {
+        findings.push({
+          severity: 'warning',
+          code: 'workspace-identity-migration-required',
+          message: `Native workspace identity for ${name} uses legacy external-probe metadata`,
+          path: nativeWorkspaceFile(paths, name),
+          repair: 'migrate',
+        });
+        continue;
+      }
+      const state = await readNativeChange(paths, name);
+      const migrated = await migrateLegacyNativeWorkspaceIdentity({
+        paths,
+        name,
+        revision: state.revision,
+      });
+      if (migrated) {
+        findings.push({
+          severity: 'info',
+          code: 'workspace-identity-migrated',
+          message: `Replaced legacy workspace metadata for ${name} with process-free root identities`,
+          path: nativeWorkspaceFile(paths, name),
+        });
+      }
+    } catch (error) {
+      findings.push({
+        severity: 'error',
+        code: 'workspace-identity-migration-failed',
+        message: `Native workspace identity migration failed for ${name}: ${(error as Error).message}`,
+        path: nativeWorkspaceFile(paths, name),
+      });
+    }
+  }
+  return findings;
+}
+
 async function inspectSchemaMigrations(
   paths: NativeProjectPaths,
   options: { name?: string; repair: boolean },
@@ -413,7 +540,7 @@ async function inspectSchemaMigrations(
   const findings: NativeDoctorFinding[] = [];
   const names = options.name
     ? [options.name]
-    : (await directoryEntries(paths.changesDir))
+    : (await directoryEntries(paths, paths.changesDir, NATIVE_DOCTOR_MAX_CHANGE_ENTRIES))
         .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
         .map((entry) => entry.name)
         .sort();
@@ -475,7 +602,7 @@ async function inspectTransitionJournals(
   const findings: NativeDoctorFinding[] = [];
   const names = options.name
     ? [options.name]
-    : (await directoryEntries(paths.changesDir))
+    : (await directoryEntries(paths, paths.changesDir, NATIVE_DOCTOR_MAX_CHANGE_ENTRIES))
         .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
         .map((entry) => entry.name)
         .sort();
@@ -496,7 +623,23 @@ async function inspectTransitionJournals(
     if (!journal) continue;
     if (options.repair && options.recoveryStrategy === 'continue') {
       try {
-        await continueNativeTransition(paths, name);
+        const recovered = await withNativeLockRecovery(
+          [paths],
+          `doctor transition recovery ${name}`,
+          async () => {
+            const locksReady = await clearStaleRecoveryLocks(
+              [
+                { paths, file: path.join(paths.locksDir, 'root-move.lock') },
+                { paths, file: path.join(paths.locksDir, `transition-${name}.lock`) },
+              ],
+              findings,
+            );
+            if (!locksReady) return false;
+            await continueNativeTransition(paths, name);
+            return true;
+          },
+        );
+        if (!recovered) continue;
         findings.push({
           severity: 'info',
           code: 'transition-recovered',
@@ -534,7 +677,7 @@ async function inspectCheckpointJournals(
   const findings: NativeDoctorFinding[] = [];
   const names = options.name
     ? [options.name]
-    : (await directoryEntries(paths.changesDir))
+    : (await directoryEntries(paths, paths.changesDir, NATIVE_DOCTOR_MAX_CHANGE_ENTRIES))
         .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
         .map((entry) => entry.name)
         .sort();
@@ -564,7 +707,23 @@ async function inspectCheckpointJournals(
       continue;
     }
     try {
-      await continueNativeCheckpoint(paths, name);
+      const recovered = await withNativeLockRecovery(
+        [paths],
+        `doctor checkpoint recovery ${name}`,
+        async () => {
+          const locksReady = await clearStaleRecoveryLocks(
+            [
+              { paths, file: path.join(paths.locksDir, 'root-move.lock') },
+              { paths, file: path.join(paths.locksDir, `transition-${name}.lock`) },
+            ],
+            findings,
+          );
+          if (!locksReady) return false;
+          await continueNativeCheckpoint(paths, name);
+          return true;
+        },
+      );
+      if (!recovered) continue;
       findings.push({
         severity: 'info',
         code: 'checkpoint-progress-recovered',
@@ -588,6 +747,7 @@ export async function doctorNativeProject(options: {
   name?: string;
   repair?: boolean;
   recoveryStrategy?: 'continue' | 'rollback';
+  now?: Date;
 }): Promise<{ healthy: boolean; findings: NativeDoctorFinding[] }> {
   const repair = options.repair ?? false;
   const findings: NativeDoctorFinding[] = [];
@@ -609,6 +769,7 @@ export async function doctorNativeProject(options: {
     };
     return result;
   }
+  let relocationRecoveryPending = Boolean(config?.native.pending_root_move);
   if (config?.native.pending_root_move) {
     const pending = config.native.pending_root_move;
     const [fromPaths, toPaths] = await Promise.all([
@@ -619,8 +780,8 @@ export async function doctorNativeProject(options: {
       try {
         const locksReady = await clearStaleRecoveryLocks(
           [
-            path.join(fromPaths.locksDir, 'root-move.lock'),
-            path.join(toPaths.locksDir, 'root-move.lock'),
+            { paths: fromPaths, file: path.join(fromPaths.locksDir, 'root-move.lock') },
+            { paths: toPaths, file: path.join(toPaths.locksDir, 'root-move.lock') },
           ],
           findings,
         );
@@ -630,6 +791,7 @@ export async function doctorNativeProject(options: {
           strategy: options.recoveryStrategy,
         });
         paths = await nativeProjectPaths(paths.projectRoot, recovered.config.native.artifact_root);
+        relocationRecoveryPending = false;
         findings.push({
           severity: 'info',
           code: 'root-move-recovered',
@@ -664,6 +826,9 @@ export async function doctorNativeProject(options: {
   });
   findings.push(...transactions.findings);
   findings.push(...(await inspectSchemaMigrations(paths, { name: options.name, repair })));
+  findings.push(
+    ...(await inspectWorkspaceIdentityMigrations(paths, { name: options.name, repair })),
+  );
   findings.push(...(await inspectTrajectoryTailRepairs(paths, { name: options.name, repair })));
   findings.push(
     ...(await inspectTransitionJournals(paths, {
@@ -673,6 +838,15 @@ export async function doctorNativeProject(options: {
     })),
   );
   findings.push(...(await inspectCheckpointJournals(paths, { name: options.name, repair })));
+  findings.push(
+    ...(await inspectNativeEvidenceRetention({
+      paths,
+      name: options.name,
+      repair,
+      now: options.now,
+      deferAll: relocationRecoveryPending || transactions.unfinished.length > 0,
+    })),
+  );
   findings.push(...(await inspectLocks(paths, repair, transactions.unfinished)));
   findings.push(...(await inspectSelection(paths, repair)));
   findings.push(...(await inspectChanges(paths, options.name)));

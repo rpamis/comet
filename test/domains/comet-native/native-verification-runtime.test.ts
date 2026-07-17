@@ -10,6 +10,9 @@ import {
   nativeChangeDir,
 } from '../../../domains/comet-native/native-change.js';
 import { collectNativeContractFiles } from '../../../domains/comet-native/native-contract-files.js';
+import { buildNativeCheckReceipt } from '../../../domains/comet-native/native-check-receipt-model.js';
+import { writeNativeCheckReceipt } from '../../../domains/comet-native/native-check-receipt-storage.js';
+import { readNativeImplementationScopeBundle } from '../../../domains/comet-native/native-evidence-storage.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import type {
   NativeChangeState,
@@ -19,7 +22,6 @@ import {
   inspectNativeVerificationFreshness,
   prepareNativeVerificationEvidence,
 } from '../../../domains/comet-native/native-verification-runtime.js';
-import type { GitRepositoryInspection } from '../../../platform/process/git-repository.js';
 
 const brief = `# Outcome
 Ship the focused behavior.
@@ -38,16 +40,6 @@ None.
 # Verification expectations
 Run the focused check.
 `;
-
-const unavailableRepository: GitRepositoryInspection = {
-  available: false,
-  head: null,
-  branch: null,
-  worktreeRoot: null,
-  commonDir: null,
-  changedPaths: null,
-  failure: { kind: 'not-repository', operation: 'discovery' },
-};
 
 describe('Native verification evidence runtime', () => {
   let projectRoot: string;
@@ -79,7 +71,6 @@ describe('Native verification evidence runtime', () => {
       paths,
       state: buildState,
       artifactRefs: ['src/feature.ts'],
-      inspectRepository: async () => unavailableRepository,
       now: new Date('2026-07-17T01:00:00.000Z'),
     });
     verifyState = {
@@ -120,7 +111,58 @@ Pass.
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  async function archiveState(): Promise<{
+  async function writeCheckReceipt(options?: {
+    stale?: boolean;
+    status?: 'passed' | 'failed';
+  }): Promise<string> {
+    const scope = await readNativeImplementationScopeBundle(
+      paths,
+      verifyState.name,
+      verifyState.implementation_scope!,
+    );
+    const contract = await collectNativeContractFiles({
+      changeDir,
+      briefRef: verifyState.brief,
+      specChanges: verifyState.spec_changes,
+    });
+    const stale = options?.stale ?? false;
+    const status = options?.status ?? 'passed';
+    const snapshotHash = scope.scope.currentProjectionHash;
+    const failed = status === 'failed';
+    const receipt = buildNativeCheckReceipt({
+      change: verifyState.name,
+      sourceRevision: verifyState.revision,
+      status,
+      startedAt: '2026-07-17T01:30:00.000Z',
+      endedAt: '2026-07-17T01:30:01.000Z',
+      contract: {
+        expectedHash: contract.contract.contractHash,
+        beforeHash: contract.contract.contractHash,
+        afterHash: contract.contract.contractHash,
+      },
+      implementation: {
+        scopeHash: scope.scope.scopeHash,
+        expectedSnapshotHash: snapshotHash,
+        beforeSnapshotHash: stale ? '3'.repeat(64) : snapshotHash,
+        afterSnapshotHash: snapshotHash,
+      },
+      counts: {
+        filesSelected: 1,
+        filesScanned: 1,
+        binaryFilesSkipped: 0,
+        bytesScanned: 24,
+        issueCount: failed ? 1 : 0,
+        recordedIssueCount: failed ? 1 : 0,
+      },
+      issues: failed ? [{ path: 'src/feature.ts', line: 1, kind: 'trailing-whitespace' }] : [],
+      issuesTruncated: false,
+      stale,
+      staleReasons: stale ? ['implementation-before-does-not-match-scope'] : [],
+    });
+    return writeNativeCheckReceipt({ paths, name: verifyState.name, receipt });
+  }
+
+  async function archiveState(receiptRef?: string): Promise<{
     state: NativeChangeState;
     evidenceRef: string;
   }> {
@@ -129,6 +171,7 @@ Pass.
       state: verifyState,
       result: 'pass',
       reportRef: 'verification.md',
+      receiptRef: receiptRef ?? null,
       now: new Date('2026-07-17T02:00:00.000Z'),
     });
     expect(prepared.ready).toBe(true);
@@ -158,6 +201,86 @@ Pass.
       },
     });
     expect(inspection.evidence.envelopeHash).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it('binds a fresh Native check receipt and revalidates its policy during freshness inspection', async () => {
+    const receiptRef = await writeCheckReceipt();
+    const { state } = await archiveState(receiptRef);
+
+    const fresh = await inspectNativeVerificationFreshness({ paths, state });
+    expect(fresh).toMatchObject({
+      freshness: 'complete',
+      findingCodes: [],
+      envelope: { receiptRef },
+    });
+
+    const receiptFile = path.join(changeDir, ...receiptRef.split('/'));
+    const persisted = JSON.parse(await fs.readFile(receiptFile, 'utf8')) as {
+      checker: { version: number };
+    };
+    persisted.checker.version = 0;
+    await fs.writeFile(receiptFile, JSON.stringify(persisted));
+    const invalidPolicy = await inspectNativeVerificationFreshness({ paths, state });
+    expect(invalidPolicy).toMatchObject({
+      freshness: 'stale',
+      findingCodes: ['verification-receipt-invalid'],
+    });
+  });
+
+  it('rejects an unsupported check policy before binding Verify evidence', async () => {
+    const receiptRef = await writeCheckReceipt();
+    const receiptFile = path.join(changeDir, ...receiptRef.split('/'));
+    const persisted = JSON.parse(await fs.readFile(receiptFile, 'utf8')) as {
+      checker: { version: number };
+    };
+    persisted.checker.version = 0;
+    await fs.writeFile(receiptFile, JSON.stringify(persisted));
+
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: verifyState,
+        result: 'pass',
+        reportRef: 'verification.md',
+        receiptRef,
+      }),
+    ).rejects.toThrow('checker policy is unsupported');
+  });
+
+  it('refuses to bind a stale Native check receipt', async () => {
+    const receiptRef = await writeCheckReceipt({ stale: true, status: 'failed' });
+
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: verifyState,
+        result: 'pass',
+        reportRef: 'verification.md',
+        receiptRef,
+      }),
+    ).rejects.toThrow('verification receipt is not admissible');
+  });
+
+  it('rejects a failed receipt for pass while allowing it to explain a failed outcome', async () => {
+    const failedRef = await writeCheckReceipt({ status: 'failed' });
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: verifyState,
+        result: 'pass',
+        reportRef: 'verification.md',
+        receiptRef: failedRef,
+      }),
+    ).rejects.toThrow('verification receipt is not admissible');
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: verifyState,
+        result: 'fail',
+        reportRef: 'verification.md',
+        receiptRef: failedRef,
+      }),
+    ).resolves.toMatchObject({ ready: true });
   });
 
   it('refuses to create evidence when implementation changed after Build capture', async () => {

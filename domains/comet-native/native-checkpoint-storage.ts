@@ -1,11 +1,10 @@
-import { createHash } from 'crypto';
-import { promises as fs } from 'fs';
 import path from 'path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
 import { nativeChangeDir, parseNativeChangeValue } from './native-change.js';
 import { sha256Text } from './native-hash.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import { readNativeProtectedFile } from './native-protected-file.js';
 import {
   nativeSensitiveArtifactReason,
   nativeSensitiveRelativePathReason,
@@ -30,6 +29,7 @@ export const NATIVE_CHECKPOINT_LIMITS = {
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 
 export interface NativeCheckpointArtifactReadHooks {
+  afterParentChainCaptured?: (artifactRef: string) => void | Promise<void>;
   afterOpen?: (artifactRef: string) => void | Promise<void>;
   beforeRead?: (artifactRef: string) => void | Promise<void>;
 }
@@ -119,52 +119,14 @@ export function nativeCheckpointManifestRef(hash: string): string {
   return `runtime/checkpoints/manifests/${hash}.json`;
 }
 
-async function readBoundedJson(file: string, label: string): Promise<unknown> {
-  const beforeLexical = await fs.lstat(file);
-  if (!beforeLexical.isFile() || beforeLexical.isSymbolicLink()) {
-    throw new Error(`${label} must be a regular file`);
-  }
-  const beforeRealPath = await fs.realpath(file);
-  const handle = await fs.open(file, 'r');
-  try {
-    const [opened, pathBefore, openedRealPath] = await Promise.all([
-      handle.stat(),
-      fs.lstat(file),
-      fs.realpath(file),
-    ]);
-    if (
-      !opened.isFile() ||
-      !pathBefore.isFile() ||
-      pathBefore.isSymbolicLink() ||
-      openedRealPath !== beforeRealPath ||
-      !sameFileIdentity(opened, pathBefore) ||
-      !sameFileIdentity(opened, beforeLexical)
-    ) {
-      throw new Error(`${label} changed while opening`);
-    }
-    const bytes = await readFileHandleBounded(
-      handle,
-      NATIVE_CHECKPOINT_LIMITS.maxDocumentBytes,
-      label,
-    );
-    const [afterHandle, afterPath, afterRealPath] = await Promise.all([
-      handle.stat(),
-      fs.lstat(file),
-      fs.realpath(file),
-    ]);
-    if (
-      !afterPath.isFile() ||
-      afterPath.isSymbolicLink() ||
-      afterRealPath !== beforeRealPath ||
-      !sameFileIdentity(opened, afterHandle) ||
-      !sameFileIdentity(opened, afterPath)
-    ) {
-      throw new Error(`${label} changed while reading`);
-    }
-    return JSON.parse(bytes.toString('utf8')) as unknown;
-  } finally {
-    await handle.close();
-  }
+async function readBoundedJson(root: string, file: string, label: string): Promise<unknown> {
+  const snapshot = await readNativeProtectedFile({
+    root,
+    file,
+    maxBytes: NATIVE_CHECKPOINT_LIMITS.maxDocumentBytes,
+    label,
+  });
+  return JSON.parse(snapshot.bytes.toString('utf8')) as unknown;
 }
 
 function parseArtifact(value: unknown, index: number): NativeCheckpointArtifact {
@@ -394,36 +356,6 @@ export function parseNativeCheckpointJournalValue(
   };
 }
 
-function sameFileIdentity(left: import('fs').Stats, right: import('fs').Stats): boolean {
-  const objectIdentity =
-    left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0
-      ? left.dev === right.dev && left.ino === right.ino
-      : left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs;
-  return (
-    objectIdentity &&
-    left.size === right.size &&
-    left.mtimeMs === right.mtimeMs &&
-    left.ctimeMs === right.ctimeMs
-  );
-}
-
-async function readFileHandleBounded(
-  handle: Awaited<ReturnType<typeof fs.open>>,
-  maxBytes: number,
-  label: string,
-): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
-  let total = 0;
-  while (true) {
-    const read = await handle.read(buffer, 0, Math.min(buffer.length, maxBytes + 1 - total), null);
-    if (read.bytesRead === 0) return Buffer.concat(chunks, total);
-    total += read.bytesRead;
-    if (total > maxBytes) throw new Error(`${label} exceeds ${maxBytes} bytes`);
-    chunks.push(Buffer.from(buffer.subarray(0, read.bytesRead)));
-  }
-}
-
 async function hashProjectArtifact(
   paths: NativeProjectPaths,
   artifactRef: string,
@@ -439,69 +371,19 @@ async function hashProjectArtifact(
       `Checkpoint artifact is excluded as sensitive (${sensitiveReason}): ${artifactRef}`,
     );
   }
-  const lexical = await fs.lstat(target);
-  if (!lexical.isFile() || lexical.isSymbolicLink()) {
-    throw new Error(`Checkpoint artifact must be a regular file: ${artifactRef}`);
-  }
-  const [realProjectRoot, realNativeRoot, realTarget] = await Promise.all([
-    fs.realpath(paths.projectRoot),
-    fs.realpath(paths.nativeRoot),
-    fs.realpath(target),
-  ]);
-  if (!isInsidePath(realProjectRoot, realTarget) || isInsidePath(realNativeRoot, realTarget)) {
-    throw new Error(`Checkpoint artifact resolves outside project content: ${artifactRef}`);
-  }
-  const handle = await fs.open(target, 'r');
-  try {
-    const opened = await handle.stat();
-    await hooks?.afterOpen?.(artifactRef);
-    const [pathBefore, openedRealTarget, lexicalBefore] = await Promise.all([
-      fs.stat(target),
-      fs.realpath(target),
-      fs.lstat(target),
-    ]);
-    if (
-      !opened.isFile() ||
-      !lexicalBefore.isFile() ||
-      lexicalBefore.isSymbolicLink() ||
-      openedRealTarget !== realTarget ||
-      !sameFileIdentity(opened, pathBefore) ||
-      !sameFileIdentity(opened, lexical)
-    ) {
-      throw new Error(`Checkpoint artifact changed while opening: ${artifactRef}`);
-    }
-    if (opened.size > NATIVE_CHECKPOINT_LIMITS.maxFileBytes) {
-      throw new Error(`Checkpoint artifact exceeds file budget: ${artifactRef}`);
-    }
-    await hooks?.beforeRead?.(artifactRef);
-    const content = await readFileHandleBounded(
-      handle,
-      NATIVE_CHECKPOINT_LIMITS.maxFileBytes,
-      `Checkpoint artifact ${artifactRef}`,
-    );
-    const [afterHandle, afterPath, afterRealTarget, afterLexical] = await Promise.all([
-      handle.stat(),
-      fs.stat(target),
-      fs.realpath(target),
-      fs.lstat(target),
-    ]);
-    if (
-      !afterLexical.isFile() ||
-      afterLexical.isSymbolicLink() ||
-      afterRealTarget !== realTarget ||
-      !sameFileIdentity(opened, afterHandle) ||
-      !sameFileIdentity(opened, afterPath)
-    ) {
-      throw new Error(`Checkpoint artifact changed while reading: ${artifactRef}`);
-    }
-    return {
-      path: artifactRef,
-      hash: createHash('sha256').update(content).digest('hex'),
-      size: content.length,
-    };
-  } finally {
-    await handle.close();
-  }
+  const snapshot = await readNativeProtectedFile({
+    root: paths.projectRoot,
+    file: target,
+    maxBytes: NATIVE_CHECKPOINT_LIMITS.maxFileBytes,
+    label: `Checkpoint artifact ${artifactRef}`,
+    forbiddenRoots: [paths.nativeRoot],
+    hooks: {
+      afterParentChainCaptured: () => hooks?.afterParentChainCaptured?.(artifactRef),
+      afterOpen: () => hooks?.afterOpen?.(artifactRef),
+      beforeRead: () => hooks?.beforeRead?.(artifactRef),
+    },
+  });
+  return { path: artifactRef, hash: snapshot.hash, size: snapshot.size };
 }
 
 export async function createNativeCheckpointManifest(
@@ -545,7 +427,7 @@ export async function readNativeProgressCheckpoint(
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
     return parseNativeProgressCheckpointValue(
-      await readBoundedJson(file, 'Native progress checkpoint'),
+      await readBoundedJson(paths.nativeRoot, file, 'Native progress checkpoint'),
       name,
     );
   } catch (error) {
@@ -561,7 +443,7 @@ export async function readNativeCheckpointManifest(
 ): Promise<NativeCheckpointManifest> {
   const file = nativeCheckpointManifestFile(paths, name, hash);
   await resolveContainedNativePath(paths.nativeRoot, file);
-  const value = await readBoundedJson(file, 'Native checkpoint manifest');
+  const value = await readBoundedJson(paths.nativeRoot, file, 'Native checkpoint manifest');
   const manifest = parseNativeCheckpointManifestValue(value, name);
   assertCheckpointManifestSafeForPaths(paths, manifest);
   if (hashNativeCheckpointManifest(manifest) !== hash) {
@@ -578,7 +460,7 @@ export async function readNativeCheckpointJournal(
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
     const journal = parseNativeCheckpointJournalValue(
-      await readBoundedJson(file, 'Native checkpoint journal'),
+      await readBoundedJson(paths.nativeRoot, file, 'Native checkpoint journal'),
       name,
     );
     assertCheckpointManifestSafeForPaths(paths, journal.manifest);

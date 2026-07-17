@@ -3,6 +3,7 @@ import path from 'path';
 import { parseDocument, stringify } from 'yaml';
 
 import { atomicWriteText } from './native-atomic-file.js';
+import { readNativeProtectedTextFile } from './native-protected-file.js';
 import {
   discoverNativeProject,
   nativeProjectPaths,
@@ -16,8 +17,10 @@ import type {
 } from './native-types.js';
 
 const ROOT_KEYS = new Set(['schema', 'default_workflow', 'native']);
-const NATIVE_KEYS = new Set(['artifact_root', 'pending_root_move']);
-const PENDING_KEYS = new Set(['id', 'from_artifact_root', 'to_artifact_root', 'stage']);
+const NATIVE_KEYS = new Set(['artifact_root', 'language', 'pending_root_move']);
+const PENDING_KEYS = new Set(['id', 'from_artifact_root', 'to_artifact_root', 'stage', 'cleanup']);
+const NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
+const CLEANUP_KEYS = new Set(['kind', 'state', 'manifest_hash']);
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -48,11 +51,35 @@ function parsePending(value: unknown): NativePendingRootMove | undefined {
   if (stage !== 'copying' && stage !== 'ready' && stage !== 'switched') {
     throw new Error('native.pending_root_move.stage is invalid');
   }
+  let cleanup: NativePendingRootMove['cleanup'];
+  if (pending.cleanup !== undefined) {
+    const value = record(pending.cleanup, 'native.pending_root_move.cleanup');
+    rejectUnknown(value, CLEANUP_KEYS, 'native.pending_root_move.cleanup');
+    const kind = value.kind;
+    const state = value.state;
+    const manifestHash = value.manifest_hash;
+    if (
+      kind !== 'forward-source' &&
+      kind !== 'restart-staging' &&
+      kind !== 'rollback-destination' &&
+      kind !== 'rollback-staging'
+    ) {
+      throw new Error('native.pending_root_move.cleanup.kind is invalid');
+    }
+    if (state !== 'prepared' && state !== 'quarantined' && state !== 'deleting') {
+      throw new Error('native.pending_root_move.cleanup.state is invalid');
+    }
+    if (typeof manifestHash !== 'string' || !/^[a-f0-9]{64}$/u.test(manifestHash)) {
+      throw new Error('native.pending_root_move.cleanup.manifest_hash is invalid');
+    }
+    cleanup = { kind, state, manifestHash };
+  }
   return {
     id,
     fromArtifactRoot: normalizeArtifactRootRef(from),
     toArtifactRoot: normalizeArtifactRootRef(to),
     stage,
+    ...(cleanup ? { cleanup } : {}),
   };
 }
 
@@ -68,30 +95,51 @@ function parseConfig(value: unknown): CometProjectConfig {
   if (typeof native.artifact_root !== 'string') {
     throw new Error('native.artifact_root must be a string');
   }
+  const language = native.language ?? 'en';
+  if (language !== 'en' && language !== 'zh-CN') {
+    throw new Error('native.language must be en or zh-CN');
+  }
   const pending = parsePending(native.pending_root_move);
   return {
     schema: 'comet.project.v1',
     default_workflow: root.default_workflow,
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
+      language,
       ...(pending ? { pending_root_move: pending } : {}),
     },
   };
 }
 
-export function defaultProjectConfig(artifactRoot = '.'): CometProjectConfig {
+export function defaultProjectConfig(
+  artifactRoot = '.',
+  language: 'en' | 'zh-CN' = 'en',
+): CometProjectConfig {
   return {
     schema: 'comet.project.v1',
     default_workflow: 'native',
-    native: { artifact_root: normalizeArtifactRootRef(artifactRoot) },
+    native: { artifact_root: normalizeArtifactRootRef(artifactRoot), language },
   };
 }
 
 export async function readProjectConfig(projectRoot: string): Promise<CometProjectConfig | null> {
   const file = path.join(projectRoot, PROJECT_CONFIG_FILE);
+  try {
+    await fs.lstat(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
   let source: string;
   try {
-    source = await fs.readFile(file, 'utf8');
+    source = (
+      await readNativeProtectedTextFile({
+        root: projectRoot,
+        file,
+        maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
+        label: PROJECT_CONFIG_FILE,
+      })
+    ).text;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
@@ -121,6 +169,7 @@ export async function writeProjectConfig(
     default_workflow: config.default_workflow,
     native: {
       artifact_root: config.native.artifact_root,
+      language: config.native.language,
       ...(config.native.pending_root_move
         ? {
             pending_root_move: {
@@ -128,6 +177,15 @@ export async function writeProjectConfig(
               from_artifact_root: config.native.pending_root_move.fromArtifactRoot,
               to_artifact_root: config.native.pending_root_move.toArtifactRoot,
               stage: config.native.pending_root_move.stage,
+              ...(config.native.pending_root_move.cleanup
+                ? {
+                    cleanup: {
+                      kind: config.native.pending_root_move.cleanup.kind,
+                      state: config.native.pending_root_move.cleanup.state,
+                      manifest_hash: config.native.pending_root_move.cleanup.manifestHash,
+                    },
+                  }
+                : {}),
             },
           }
         : {}),
@@ -138,6 +196,7 @@ export async function writeProjectConfig(
     default_workflow: validated.default_workflow,
     native: {
       artifact_root: validated.native.artifact_root,
+      language: validated.native.language,
       ...(validated.native.pending_root_move
         ? {
             pending_root_move: {
@@ -145,6 +204,15 @@ export async function writeProjectConfig(
               from_artifact_root: validated.native.pending_root_move.fromArtifactRoot,
               to_artifact_root: validated.native.pending_root_move.toArtifactRoot,
               stage: validated.native.pending_root_move.stage,
+              ...(validated.native.pending_root_move.cleanup
+                ? {
+                    cleanup: {
+                      kind: validated.native.pending_root_move.cleanup.kind,
+                      state: validated.native.pending_root_move.cleanup.state,
+                      manifest_hash: validated.native.pending_root_move.cleanup.manifestHash,
+                    },
+                  }
+                : {}),
             },
           }
         : {}),

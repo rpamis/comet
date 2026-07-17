@@ -1,10 +1,10 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
-import { readRunStateAt } from '../engine/storage-run.js';
 import { canonicalSpecPath } from './native-artifacts.js';
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { settleNativeChangeJournalsLocked } from './native-change-recovery.js';
+import { readNativeRunState } from './native-run-store.js';
 import {
   assertNativeName,
   compareAndSwapNativeChangeLocked,
@@ -13,13 +13,19 @@ import {
 } from './native-change.js';
 import { sha256File, sha256Text } from './native-hash.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import { captureNativeProtectedDirectoryGuard } from './native-protected-file.js';
+import { redactNativeCredentialText } from './native-redaction.js';
 import { resolveContainedNativePath } from './native-paths.js';
 import {
   continueNativeTransitionLocked,
   prepareNativeTransition,
   withNativeTransitionLock,
 } from './native-transition-journal.js';
+import { assertNativeTrajectoryText } from './native-trajectory-limits.js';
+import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import type { NativeChangeState, NativeProjectPaths, NativeSpecChange } from './native-types.js';
+
+const MAX_NATIVE_PROPOSED_SPEC_DIRECTORY_ENTRIES = NATIVE_CONTRACT_FILE_LIMITS.maxSpecs * 4;
 
 async function optionalHash(file: string): Promise<string | null> {
   try {
@@ -32,34 +38,56 @@ async function optionalHash(file: string): Promise<string | null> {
 
 async function proposedCapabilities(paths: NativeProjectPaths, name: string): Promise<string[]> {
   const specsDir = path.join(nativeChangeDir(paths, name), 'specs');
-  let entries;
+  let guard: Awaited<ReturnType<typeof captureNativeProtectedDirectoryGuard>>;
   try {
-    entries = await fs.readdir(specsDir, { withFileTypes: true });
+    guard = await captureNativeProtectedDirectoryGuard({
+      root: paths.nativeRoot,
+      directory: specsDir,
+      label: 'Native proposed specs directory',
+    });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
   const capabilities: string[] = [];
-  for (const entry of entries) {
-    if (entry.isSymbolicLink()) {
-      throw new Error(`Proposed spec capability must not be a symbolic link: ${entry.name}`);
+  let entryCount = 0;
+  const directory = await fs.opendir(specsDir);
+  try {
+    for await (const entry of directory) {
+      entryCount += 1;
+      if (entryCount > MAX_NATIVE_PROPOSED_SPEC_DIRECTORY_ENTRIES) {
+        throw new Error(
+          `Native proposed specs directory exceeds ${MAX_NATIVE_PROPOSED_SPEC_DIRECTORY_ENTRIES} entries`,
+        );
+      }
+      if (entry.isSymbolicLink()) {
+        throw new Error(`Proposed spec capability must not be a symbolic link: ${entry.name}`);
+      }
+      if (!entry.isDirectory()) continue;
+      assertNativeName(entry.name);
+      const source = path.join(specsDir, entry.name, 'spec.md');
+      await resolveContainedNativePath(paths.nativeRoot, source);
+      let stat;
+      try {
+        stat = await fs.lstat(source);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw error;
+      }
+      if (stat.isSymbolicLink() || !stat.isFile()) {
+        throw new Error(`Proposed spec must be a regular file: ${entry.name}`);
+      }
+      capabilities.push(entry.name);
+      if (capabilities.length > NATIVE_CONTRACT_FILE_LIMITS.maxSpecs) {
+        throw new Error('Native proposed specs exceed the spec-count budget');
+      }
     }
-    if (!entry.isDirectory()) continue;
-    assertNativeName(entry.name);
-    const source = path.join(specsDir, entry.name, 'spec.md');
-    await resolveContainedNativePath(paths.nativeRoot, source);
-    let stat;
-    try {
-      stat = await fs.lstat(source);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
-      throw error;
-    }
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw new Error(`Proposed spec must be a regular file: ${entry.name}`);
-    }
-    capabilities.push(entry.name);
+  } finally {
+    await directory.close().catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== 'ERR_DIR_CLOSED') throw error;
+    });
   }
+  await guard.verify();
   return capabilities.sort();
 }
 
@@ -141,7 +169,8 @@ export async function rebaseNativeSpecChanges(options: {
   transitionId?: () => string;
 }): Promise<NativeChangeState> {
   assertNativeName(options.name);
-  if (options.summary.trim().length === 0) throw new Error('Spec rebase requires a summary');
+  const summary = redactNativeCredentialText(options.summary);
+  assertNativeTrajectoryText(summary, 'Spec rebase summary');
   return withNativeMutationLock(options.paths, `rebase specs for ${options.name}`, () =>
     withNativeTransitionLock(
       options.paths,
@@ -155,7 +184,7 @@ export async function rebaseNativeSpecChanges(options: {
         }
         if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
         const changeDir = nativeChangeDir(options.paths, options.name);
-        const run = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
+        const run = await readNativeRunState(changeDir);
         if (!run || run.runId !== state.run_id || run.currentStep !== state.phase || run.pending) {
           throw new Error(`Native Run state is missing or inconsistent for ${state.name}`);
         }
@@ -182,7 +211,7 @@ export async function rebaseNativeSpecChanges(options: {
           JSON.stringify({
             operation: 'spec-rebase',
             change: state.name,
-            summary: options.summary,
+            summary,
             specChanges,
           }),
         );
@@ -197,7 +226,7 @@ export async function rebaseNativeSpecChanges(options: {
             previousPhase: state.phase,
             nextPhase: 'build',
             evidenceHash,
-            summary: options.summary,
+            summary,
             artifacts: [],
             noCodeReason: null,
             verificationResult: null,
@@ -265,11 +294,18 @@ export async function readNativeProposedSpecs(
 ): Promise<Record<string, string>> {
   const changeDir = nativeChangeDir(paths, name);
   const result: Record<string, string> = {};
+  let totalBytes = 0;
   for (const capability of await proposedCapabilities(paths, name)) {
-    result[capability] = await fs.readFile(
-      path.join(changeDir, 'specs', capability, 'spec.md'),
-      'utf8',
-    );
+    const source = await readNativeBoundedTextFile({
+      root: changeDir,
+      ref: `specs/${capability}/spec.md`,
+      maxBytes: NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes,
+    });
+    totalBytes += source.size;
+    if (totalBytes > NATIVE_CONTRACT_FILE_LIMITS.maxTotalBytes) {
+      throw new Error('Native proposed specs exceed the total byte budget');
+    }
+    result[capability] = source.text;
   }
   return result;
 }

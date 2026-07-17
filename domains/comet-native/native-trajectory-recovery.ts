@@ -1,10 +1,10 @@
 import { createHash } from 'crypto';
-import { promises as fs } from 'fs';
 import path from 'path';
 
-import { atomicWriteText } from './native-atomic-file.js';
+import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import { readNativeTrajectoryText, replaceNativeTrajectoryText } from './native-run-store.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 const CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
@@ -44,6 +44,10 @@ export class NativeTrajectoryRepairRequiredError extends Error {
     );
     this.name = 'NativeTrajectoryRepairRequiredError';
   }
+}
+
+export interface NativeTrajectoryRepairHooks {
+  beforeCommit?: () => void | Promise<void>;
 }
 
 function sha256Buffer(value: Buffer): string {
@@ -128,12 +132,11 @@ async function inspectFile(
 ): Promise<NativeTrajectoryTailInspection | RepairableAnalysis> {
   const file = trajectoryFile(paths, name);
   await resolveContainedNativePath(paths.nativeRoot, file);
-  try {
-    return analyzeTrajectory(file, await fs.readFile(file));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { status: 'clean', file };
-    throw error;
-  }
+  const changeDir = path.join(paths.changesDir, name);
+  const content = await readNativeTrajectoryText(changeDir, NATIVE_RUN_STORAGE.trajectoryRef);
+  return content === null
+    ? { status: 'clean', file }
+    : analyzeTrajectory(file, Buffer.from(content));
 }
 
 export async function inspectNativeTrajectoryTail(
@@ -155,6 +158,7 @@ export async function assertNativeTrajectoryHealthy(
 export async function repairNativeTrajectoryTail(
   paths: NativeProjectPaths,
   name: string,
+  hooks?: NativeTrajectoryRepairHooks,
 ): Promise<Extract<NativeTrajectoryTailInspection, { status: 'repairable' }> | null> {
   return withNativeMutationLock(paths, `repair trajectory tail for ${name}`, async () => {
     const result = await inspectFile(paths, name);
@@ -162,13 +166,23 @@ export async function repairNativeTrajectoryTail(
       if (result.status === 'clean') return null;
       throw new NativeTrajectoryRepairRequiredError(result);
     }
-    const current = await fs.readFile(result.inspection.file);
-    if (sha256Buffer(current) !== result.inspection.originalHash) {
-      throw new Error(
-        `Native trajectory changed while preparing tail repair for ${name}; inspect it again before retrying`,
+    try {
+      await replaceNativeTrajectoryText(
+        path.join(paths.changesDir, name),
+        NATIVE_RUN_STORAGE.trajectoryRef,
+        result.targetContent,
+        result.inspection.originalHash,
+        { beforeCommit: hooks?.beforeCommit },
       );
+    } catch (error) {
+      if (/changed (?:before|while)/iu.test((error as Error).message)) {
+        throw new Error(
+          `Native trajectory changed while preparing tail repair for ${name}; inspect it again before retrying`,
+          { cause: error },
+        );
+      }
+      throw error;
     }
-    await atomicWriteText(result.inspection.file, result.targetContent);
     const repaired = await inspectNativeTrajectoryTail(paths, name);
     if (repaired.status !== 'clean') {
       throw new Error(`Native trajectory tail repair did not produce a clean file for ${name}`);

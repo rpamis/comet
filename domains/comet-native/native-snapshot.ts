@@ -5,6 +5,7 @@ import path from 'path';
 import { atomicWriteJson } from './native-atomic-file.js';
 import { sha256Text } from './native-hash.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import { readNativeProtectedTextFile } from './native-protected-file.js';
 import { isNativeEnvFileName, NATIVE_EXCLUDED_DIRECTORY_NAMES } from './native-sensitive-paths.js';
 import type {
   NativeContentSnapshotManifest,
@@ -22,6 +23,7 @@ export const DEFAULT_NATIVE_SNAPSHOT_LIMITS = {
 } as const;
 
 const MAX_RECORDED_OMISSIONS = 1_000;
+const NATIVE_SNAPSHOT_MANIFEST_HARD_MAX_BYTES = 8 * 1024 * 1024;
 const CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const MANIFEST_KEYS = new Set([
   'schema',
@@ -585,7 +587,13 @@ export async function readNativeBaselineManifest(
   const file = nativeBaselineManifestFile(paths, name);
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
-    return parseNativeContentSnapshotManifest(JSON.parse(await fs.readFile(file, 'utf8')));
+    const source = await readNativeProtectedTextFile({
+      root: paths.nativeRoot,
+      file,
+      maxBytes: NATIVE_SNAPSHOT_MANIFEST_HARD_MAX_BYTES,
+      label: 'Native baseline snapshot manifest',
+    });
+    return parseNativeContentSnapshotManifest(JSON.parse(source.text));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;

@@ -100,8 +100,17 @@ async function makeMinimalRepository(): Promise<string> {
 describe('architecture lint', () => {
   it('ignores nested local cache directories listed in .gitignore', async () => {
     const root = await makeMinimalRepository();
-    await writeFile(root, '.gitignore', 'eval/.cache/\n');
-    await writeFile(root, 'eval/.cache/langsmith-cc-plugin/src/index.ts', 'export {};\n');
+    await writeFile(
+      root,
+      '.gitignore',
+      'eval/.cache/\neval/**/.cache/\neval/**/.pytest*/\n',
+    );
+    await Promise.all([
+      writeFile(root, 'eval/.cache/langsmith-cc-plugin/src/index.ts', 'export {};\n'),
+      writeFile(root, 'eval/eval/.cache/native-oracle/src/index.ts', 'export {};\n'),
+      writeFile(root, 'eval/eval/.pytest-cache-controller/src/index.ts', 'export {};\n'),
+      writeFile(root, 'eval/eval/.pytest_cache/src/index.ts', 'export {};\n'),
+    ]);
 
     const result = spawnSync(
       process.execPath,

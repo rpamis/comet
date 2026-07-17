@@ -17,6 +17,7 @@ import {
   createNativeTransaction,
   nativeRootRef,
   readNativeTransaction,
+  readNativeTransactionEvents,
 } from '../../../domains/comet-native/native-transaction.js';
 import {
   nativeArchiveTransactionPaths,
@@ -73,6 +74,14 @@ describe('Native archive recovery', () => {
     return { changeDir, canonical, specChanges };
   }
 
+  async function truncateLastTransactionEvent(transactionId: string): Promise<void> {
+    const eventsFile = nativeArchiveTransactionPaths(paths, transactionId).events;
+    const lines = (await fs.readFile(eventsFile, 'utf8')).trimEnd().split('\n');
+    const last = lines.pop();
+    if (!last || last.length < 3) throw new Error('Expected a complete transaction event');
+    await fs.writeFile(eventsFile, `${lines.join('\n')}\n${last.slice(0, -2)}`);
+  }
+
   it('continues after all staged specs were prepared', async () => {
     const { changeDir, canonical } = await preparedChange('prepared-crash');
     const now = new Date('2026-07-17T00:00:00.000Z');
@@ -110,6 +119,143 @@ describe('Native archive recovery', () => {
     });
     expect(recovered.status).toBe('committed');
     expect(await fs.readFile(canonical, 'utf8')).toBe('new auth\n');
+  });
+
+  it('continues after a legacy append crash truncated operation-started', async () => {
+    const { canonical } = await preparedChange('partial-start-continue');
+    const now = new Date('2026-07-17T00:00:00.000Z');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'partial-start-continue',
+      now,
+    });
+    let transactionId = '';
+    let firstOperationId = '';
+    await expect(
+      archiveNativeChange({
+        paths,
+        name: 'partial-start-continue',
+        expectedPreflightHash,
+        now,
+        hooks: {
+          afterPrepared(journal) {
+            transactionId = journal.id;
+            firstOperationId = journal.operations[0].id;
+            throw new Error('crash after prepared');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash after prepared');
+    const partial = JSON.stringify({
+      sequence: 2,
+      timestamp: '2026-07-17T00:00:01.000Z',
+      type: 'operation-started',
+      operationId: firstOperationId,
+    });
+    await fs.appendFile(
+      nativeArchiveTransactionPaths(paths, transactionId).events,
+      partial.slice(0, -2),
+    );
+
+    const recovered = await recoverArchiveTransaction({
+      paths,
+      transactionId,
+      strategy: 'continue',
+    });
+
+    expect(recovered.status).toBe('committed');
+    expect(await fs.readFile(canonical, 'utf8')).toBe('new auth\n');
+    const events = await readNativeTransactionEvents(paths, transactionId);
+    expect(events.map((event) => event.sequence)).toEqual(
+      Array.from({ length: events.length }, (_value, index) => index + 1),
+    );
+    expect(
+      events.filter(
+        (event) => event.type === 'operation-started' && event.operationId === firstOperationId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('fails closed when a proposed-spec parent is replaced during staging', async () => {
+    const { changeDir, canonical } = await preparedChange('stage-parent-race');
+    const sourceParent = path.join(changeDir, 'specs');
+    const displaced = path.join(changeDir, 'specs-original');
+    const now = new Date('2026-07-17T00:00:00.000Z');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'stage-parent-race',
+      now,
+    });
+    let injected = false;
+
+    await expect(
+      archiveNativeChange({
+        paths,
+        name: 'stage-parent-race',
+        expectedPreflightHash,
+        now,
+        hooks: {
+          async afterProtectedCopySourceParentCaptured(kind) {
+            if (kind !== 'stage' || injected) return;
+            injected = true;
+            await fs.rename(sourceParent, displaced);
+            await fs.mkdir(sourceParent);
+            await fs.writeFile(path.join(sourceParent, 'authentication.md'), 'replacement auth\n');
+          },
+        },
+      }),
+    ).rejects.toThrow(/parent changed during I\/O/u);
+
+    expect(await fs.readFile(path.join(displaced, 'authentication.md'), 'utf8')).toBe('new auth\n');
+    expect(await fs.readFile(path.join(sourceParent, 'authentication.md'), 'utf8')).toBe(
+      'replacement auth\n',
+    );
+    expect(await fs.readFile(canonical, 'utf8')).toBe('old auth\n');
+  });
+
+  it('fails closed when a canonical parent is replaced during backup', async () => {
+    const { canonical } = await preparedChange('backup-parent-race');
+    const canonicalParent = path.dirname(canonical);
+    const displaced = path.join(paths.specsDir, 'authentication-original');
+    const now = new Date('2026-07-17T00:00:00.000Z');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'backup-parent-race',
+      now,
+    });
+    let transactionId = '';
+    let injected = false;
+
+    await expect(
+      archiveNativeChange({
+        paths,
+        name: 'backup-parent-race',
+        expectedPreflightHash,
+        now,
+        hooks: {
+          afterPrepared(journal) {
+            transactionId = journal.id;
+          },
+          async afterProtectedCopySourceParentCaptured(kind) {
+            if (kind !== 'backup' || injected) return;
+            injected = true;
+            await fs.rename(canonicalParent, displaced);
+            await fs.mkdir(canonicalParent);
+            await fs.writeFile(canonical, 'replacement canonical\n');
+          },
+        },
+      }),
+    ).rejects.toThrow(/parent changed during I\/O/u);
+
+    expect(await fs.readFile(path.join(displaced, 'spec.md'), 'utf8')).toBe('old auth\n');
+    expect(await fs.readFile(canonical, 'utf8')).toBe('replacement canonical\n');
+    const backup = path.join(
+      nativeArchiveTransactionPaths(paths, transactionId).backups,
+      'specs',
+      'authentication',
+      'spec.md',
+    );
+    await expect(fs.access(backup)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('rolls back after one canonical spec was replaced', async () => {
@@ -150,6 +296,52 @@ describe('Native archive recovery', () => {
       { code: 'ENOENT' },
     );
     expect(await fs.stat(changeDir)).toBeTruthy();
+  });
+
+  it('rolls back after operation-completed was truncated after the operation applied', async () => {
+    const { changeDir, canonical } = await preparedChange('partial-completed-rollback');
+    const now = new Date('2026-07-17T00:00:00.000Z');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'partial-completed-rollback',
+      now,
+    });
+    let transactionId = '';
+    await expect(
+      archiveNativeChange({
+        paths,
+        name: 'partial-completed-rollback',
+        expectedPreflightHash,
+        now,
+        hooks: {
+          afterPrepared(journal) {
+            transactionId = journal.id;
+          },
+          afterOperation(_operation, completed) {
+            if (completed === 1) throw new Error('crash after first operation');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash after first operation');
+    expect(await fs.readFile(canonical, 'utf8')).toBe('new auth\n');
+    await truncateLastTransactionEvent(transactionId);
+    expect((await readNativeTransactionEvents(paths, transactionId)).at(-1)?.type).toBe(
+      'operation-started',
+    );
+
+    const recovered = await recoverArchiveTransaction({
+      paths,
+      transactionId,
+      strategy: 'rollback',
+    });
+
+    expect(recovered.status).toBe('rolled-back');
+    expect(await fs.readFile(canonical, 'utf8')).toBe('old auth\n');
+    expect(await fs.stat(changeDir)).toBeTruthy();
+    const events = await readNativeTransactionEvents(paths, transactionId);
+    expect(events.map((event) => event.sequence)).toEqual(
+      Array.from({ length: events.length }, (_value, index) => index + 1),
+    );
   });
 
   it('continues when canonical specs are complete but the active change still exists', async () => {
@@ -225,6 +417,145 @@ describe('Native archive recovery', () => {
     });
     expect(recovered.status).toBe('committed');
     expect((await readNativeChangeFile(path.join(archiveDir, 'change.yaml'))).archived).toBe(true);
+  });
+
+  it('validates moved Run content before crossing the no-rollback marker', async () => {
+    const { changeDir } = await preparedChange('invalid-before-finalize');
+    const now = new Date('2026-07-19T12:00:00.000Z');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'invalid-before-finalize',
+      now,
+    });
+    let transactionId = '';
+    await expect(
+      archiveNativeChange({
+        paths,
+        name: 'invalid-before-finalize',
+        expectedPreflightHash,
+        now,
+        hooks: {
+          afterPrepared(journal) {
+            transactionId = journal.id;
+          },
+          afterOperation(operation) {
+            if (operation.id === 'archive-change') throw new Error('crash after move');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash after move');
+    const archiveDir = path.join(paths.archiveDir, '2026-07-19-invalid-before-finalize');
+    const runFile = path.join(archiveDir, 'runtime', 'run-state.json');
+    const originalRun = await fs.readFile(runFile);
+    await fs.writeFile(runFile, '{"broken":true}\n');
+
+    await expect(
+      recoverArchiveTransaction({ paths, transactionId, strategy: 'continue' }),
+    ).rejects.toThrow(/content changed|changed before finalization/u);
+    expect(
+      (await readNativeTransactionEvents(paths, transactionId)).some(
+        (event) => event.type === 'archive-finalization-started',
+      ),
+    ).toBe(false);
+
+    await fs.writeFile(runFile, originalRun);
+    const rolledBack = await recoverArchiveTransaction({
+      paths,
+      transactionId,
+      strategy: 'rollback',
+    });
+    expect(rolledBack.status).toBe('rolled-back');
+    await expect(fs.stat(changeDir)).resolves.toBeTruthy();
+  });
+
+  it('continues idempotently after the irreversible marker is durable', async () => {
+    await preparedChange('finalization-marker-crash');
+    const now = new Date('2026-07-19T13:00:00.000Z');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'finalization-marker-crash',
+      now,
+    });
+    let transactionId = '';
+    await expect(
+      archiveNativeChange({
+        paths,
+        name: 'finalization-marker-crash',
+        expectedPreflightHash,
+        now,
+        hooks: {
+          afterPrepared(journal) {
+            transactionId = journal.id;
+          },
+          afterFinalizationStarted() {
+            throw new Error('crash after finalization marker');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash after finalization marker');
+    expect(
+      (await readNativeTransactionEvents(paths, transactionId)).filter(
+        (event) => event.type === 'archive-finalization-started',
+      ),
+    ).toHaveLength(1);
+
+    const recovered = await recoverArchiveTransaction({
+      paths,
+      transactionId,
+      strategy: 'continue',
+    });
+    expect(recovered.status).toBe('committed');
+    expect(
+      (await readNativeTransactionEvents(paths, transactionId)).filter(
+        (event) => event.type === 'archive-finalization-started',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('restarts continuation when the irreversible marker append was truncated', async () => {
+    await preparedChange('partial-finalization-restart');
+    const now = new Date('2026-07-19T14:00:00.000Z');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'partial-finalization-restart',
+      now,
+    });
+    let transactionId = '';
+    await expect(
+      archiveNativeChange({
+        paths,
+        name: 'partial-finalization-restart',
+        expectedPreflightHash,
+        now,
+        hooks: {
+          afterPrepared(journal) {
+            transactionId = journal.id;
+          },
+          afterFinalizationStarted() {
+            throw new Error('crash after finalization marker');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash after finalization marker');
+    await truncateLastTransactionEvent(transactionId);
+    expect(
+      (await readNativeTransactionEvents(paths, transactionId)).some(
+        (event) => event.type === 'archive-finalization-started',
+      ),
+    ).toBe(false);
+
+    const recovered = await recoverArchiveTransaction({
+      paths,
+      transactionId,
+      strategy: 'continue',
+    });
+
+    expect(recovered.status).toBe('committed');
+    const events = await readNativeTransactionEvents(paths, transactionId);
+    expect(events.filter((event) => event.type === 'archive-finalization-started')).toHaveLength(1);
+    expect(events.map((event) => event.sequence)).toEqual(
+      Array.from({ length: events.length }, (_value, index) => index + 1),
+    );
   });
 
   it('fails closed when staged content changes before the first operation', async () => {

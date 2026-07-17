@@ -1,9 +1,12 @@
 import path from 'path';
 
-import { readCheckpoint, readTrajectory } from '../engine/run-store.js';
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
-import { readRunStateAt } from '../engine/storage-run.js';
 import { nativeChangeDir } from './native-change.js';
+import {
+  readNativeCheckpoint,
+  readNativeRunState,
+  readNativeTrajectory,
+} from './native-run-store.js';
 import { inspectNativeTrajectoryTail } from './native-trajectory-recovery.js';
 import type { NativeChangeState, NativeFinding, NativeProjectPaths } from './native-types.js';
 
@@ -20,7 +23,7 @@ export async function inspectNativeRunConsistency(
   const stateFile = runPath(changeDir, NATIVE_RUN_STORAGE.stateRef);
   let run;
   try {
-    run = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
+    run = await readNativeRunState(changeDir);
   } catch (error) {
     return [
       {
@@ -91,7 +94,7 @@ export async function inspectNativeRunConsistency(
   }
   let trajectory;
   try {
-    trajectory = await readTrajectory(changeDir, run.trajectoryRef);
+    trajectory = await readNativeTrajectory(changeDir, run.trajectoryRef);
     if (
       trajectory.length === 0 ||
       trajectory.some(
@@ -119,7 +122,7 @@ export async function inspectNativeRunConsistency(
 
   const checkpointFile = runPath(changeDir, run.checkpointRef);
   try {
-    const checkpoint = await readCheckpoint(changeDir, run.checkpointRef);
+    const checkpoint = await readNativeCheckpoint(changeDir, run.checkpointRef);
     if (!checkpoint) {
       findings.push({
         code: 'checkpoint-missing',

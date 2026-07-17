@@ -15,7 +15,6 @@ import type {
   NativeChangeState,
   NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
-import type { GitRepositoryInspection } from '../../../platform/process/git-repository.js';
 
 const brief = `# Outcome
 Ship the focused behavior.
@@ -34,28 +33,6 @@ None.
 # Verification expectations
 Run the focused tests.
 `;
-
-const unavailableRepository: GitRepositoryInspection = {
-  available: false,
-  head: null,
-  branch: null,
-  worktreeRoot: null,
-  commonDir: null,
-  changedPaths: null,
-  failure: { kind: 'not-repository', operation: 'discovery' },
-};
-
-function availableRepository(projectRoot: string, changedPaths: string[]): GitRepositoryInspection {
-  return {
-    available: true,
-    head: 'a'.repeat(40),
-    branch: 'feature/native',
-    worktreeRoot: projectRoot,
-    commonDir: path.join(projectRoot, '.git'),
-    changedPaths,
-    failure: null,
-  };
-}
 
 describe('Native Build evidence preparation', () => {
   let projectRoot: string;
@@ -89,7 +66,6 @@ describe('Native Build evidence preparation', () => {
       paths,
       state,
       artifactRefs: ['src/feature.ts'],
-      inspectRepository: async () => availableRepository(projectRoot, ['src/feature.ts']),
       now: new Date('2026-07-17T01:00:00.000Z'),
     });
 
@@ -99,6 +75,8 @@ describe('Native Build evidence preparation', () => {
       declaredArtifacts: [{ path: 'src/feature.ts', kind: 'file' }],
       unattributed: [],
     });
+    expect(result.bundle.authority).not.toHaveProperty('gitChangedPaths');
+    expect(result.bundle.scope).not.toHaveProperty('gitAdvisory');
     await expect(
       readNativeImplementationScope(paths, state.name, result.scopeRef),
     ).resolves.toEqual(result.bundle.scope);
@@ -107,14 +85,10 @@ describe('Native Build evidence preparation', () => {
   it('persists deterministic partial scope IDs and only allows their exact confirmed set', async () => {
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
     await fs.writeFile(path.join(projectRoot, 'src', 'unrelated.ts'), 'export const extra = 1;\n');
-    const inspectRepository = async () =>
-      availableRepository(projectRoot, ['src/feature.ts', 'src/unrelated.ts']);
-
     const partial = await prepareNativeBuildEvidence({
       paths,
       state,
       artifactRefs: ['src/feature.ts'],
-      inspectRepository,
     });
     const scopeIds = partial.unresolvedScopes.map((scope) => scope.id);
     expect(partial.findings).toHaveLength(scopeIds.length);
@@ -130,7 +104,6 @@ describe('Native Build evidence preparation', () => {
         partialReason: 'The unrelated file belongs to the user.',
         confirmedSummary: 'The user accepted this exact boundary.',
         confirmed: true,
-        inspectRepository,
       }),
     ).rejects.toThrow('does not match the current implementation scope');
 
@@ -142,7 +115,6 @@ describe('Native Build evidence preparation', () => {
       partialReason: 'The unrelated file belongs to the user.',
       confirmedSummary: 'The user accepted this exact boundary.',
       confirmed: true,
-      inspectRepository,
       now: new Date('2026-07-17T02:00:00.000Z'),
     });
     expect(confirmed.findings).toEqual([]);
@@ -157,7 +129,6 @@ describe('Native Build evidence preparation', () => {
       paths,
       state,
       artifactRefs: ['src/feature.ts'],
-      inspectRepository: async () => unavailableRepository,
     });
 
     expect(result.bundle.scope).toMatchObject({
@@ -175,7 +146,6 @@ describe('Native Build evidence preparation', () => {
           paths,
           state,
           artifactRefs: [artifact],
-          inspectRepository: async () => unavailableRepository,
         }),
       ).rejects.toThrow(/excluded|does not exist/iu);
     },
@@ -192,7 +162,6 @@ describe('Native Build evidence preparation', () => {
         partialReason: 'No partial boundary exists.',
         confirmedSummary: 'Should not be accepted.',
         confirmed: true,
-        inspectRepository: async () => unavailableRepository,
       }),
     ).rejects.toThrow('must not include a partial allowance');
   });

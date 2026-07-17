@@ -1,18 +1,25 @@
-import { promises as fs, type Dirent } from 'node:fs';
-
 import { readNativeChange } from './native-change.js';
 import {
   buildNativeConflictRadar,
+  NATIVE_CONFLICT_RADAR_LIMITS,
   type NativeConflictRadarChangeInput,
   type NativeConflictRadarSnapshot,
 } from './native-conflict-radar.js';
 import { readNativeImplementationScope } from './native-evidence-storage.js';
+import { readNativeProtectedDirectory } from './native-protected-file.js';
 import type { NativeProjectPaths } from './native-types.js';
 import { readNativeWorkspaceIdentity } from './native-workspace.js';
 
-async function visibleChangeEntries(paths: NativeProjectPaths): Promise<Dirent[]> {
+async function visibleChangeEntries(paths: NativeProjectPaths) {
   try {
-    return await fs.readdir(paths.changesDir, { withFileTypes: true });
+    const directory = await readNativeProtectedDirectory({
+      root: paths.nativeRoot,
+      directory: paths.changesDir,
+      label: 'Native conflict changes directory',
+      maxEntries: NATIVE_CONFLICT_RADAR_LIMITS.maxChanges,
+    });
+    await directory.verify();
+    return directory.entries;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
@@ -41,7 +48,7 @@ async function collectConflictInput(
       baseHash: spec.base_hash,
     })),
     declaredArtifacts: scope?.declaredArtifacts ?? [],
-    workspaceIdentityHash: workspace?.vcs.kind === 'git' ? workspace.vcs.worktreeId : null,
+    workspaceIdentityHash: workspace?.nativeRootId ?? null,
   };
 }
 

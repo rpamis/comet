@@ -1,10 +1,29 @@
 import path from 'node:path';
 
 import { canonicalHash } from './native-canonical-hash.js';
+import type {
+  NativeAcceptanceCriterionProjection,
+  NativeAcceptancePageProjection,
+} from './native-types.js';
 
 const ACCEPTANCE_HASH_TAG = 'comet.native.acceptance.v1';
 const ACCEPTANCE_ID_PATTERN = /^acceptance-[a-f0-9]{64}$/u;
 const EVIDENCE_ENTRY_KEYS = new Set(['acceptance_id', 'evidence_refs', 'skipped_reason']);
+const ACCEPTANCE_HASH_PATTERN = /^[a-f0-9]{64}$/u;
+const ACCEPTANCE_CURSOR_PATTERN =
+  /^native-acceptance-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
+
+export const NATIVE_ACCEPTANCE_PAGE_LIMITS = Object.freeze({
+  maxItems: 16,
+  maxTextBytes: 512,
+  maxContextItems: 4,
+  maxContextItemBytes: 256,
+  maxSerializedBytes: 32 * 1024,
+});
+
+export const NATIVE_ACCEPTANCE_LIMITS = Object.freeze({
+  maxCriteria: 1_024,
+});
 
 export const NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER =
   '<!-- comet-native:acceptance-evidence:start -->';
@@ -27,6 +46,147 @@ export interface NativeAcceptanceEvidenceEntry {
   skipped_reason?: string;
 }
 
+function truncateUtf8(value: string, maxBytes: number): { value: string; truncated: boolean } {
+  if (Buffer.byteLength(value, 'utf8') <= maxBytes) return { value, truncated: false };
+  let result = '';
+  let bytes = 0;
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character, 'utf8');
+    if (bytes + characterBytes > maxBytes) break;
+    result += character;
+    bytes += characterBytes;
+  }
+  return { value: result, truncated: true };
+}
+
+function acceptanceCursor(acceptanceHash: string, offset: number): string {
+  const encodedOffset = offset.toString(36);
+  const cursorHash = canonicalHash('comet.native.acceptance-cursor.v1', {
+    acceptanceHash,
+    offset,
+  });
+  return `native-acceptance-v1.${acceptanceHash}.${encodedOffset}.${cursorHash}`;
+}
+
+function acceptanceOffset(options: {
+  acceptanceHash: string;
+  total: number;
+  cursor?: string | null;
+}): number {
+  if (!ACCEPTANCE_HASH_PATTERN.test(options.acceptanceHash)) {
+    throw new Error('Native acceptance page hash is invalid');
+  }
+  if (options.cursor === undefined || options.cursor === null) return 0;
+  const match = ACCEPTANCE_CURSOR_PATTERN.exec(options.cursor);
+  if (!match) throw new Error('Native acceptance cursor is invalid');
+  if (match[1] !== options.acceptanceHash) {
+    throw new Error('Native acceptance cursor is stale');
+  }
+  const offset = Number.parseInt(match[2], 36);
+  if (
+    !Number.isSafeInteger(offset) ||
+    offset <= 0 ||
+    offset >= options.total ||
+    offset.toString(36) !== match[2]
+  ) {
+    throw new Error('Native acceptance cursor offset is invalid');
+  }
+  if (
+    match[3] !==
+    canonicalHash('comet.native.acceptance-cursor.v1', {
+      acceptanceHash: options.acceptanceHash,
+      offset,
+    })
+  ) {
+    throw new Error('Native acceptance cursor integrity check failed');
+  }
+  return offset;
+}
+
+function acceptanceProjection(
+  criterion: NativeAcceptanceCriterion,
+): NativeAcceptanceCriterionProjection {
+  const text = truncateUtf8(criterion.text, NATIVE_ACCEPTANCE_PAGE_LIMITS.maxTextBytes);
+  const projectedContext = criterion.context
+    .slice(0, NATIVE_ACCEPTANCE_PAGE_LIMITS.maxContextItems)
+    .map((entry) => truncateUtf8(entry, NATIVE_ACCEPTANCE_PAGE_LIMITS.maxContextItemBytes));
+  return {
+    id: criterion.id,
+    kind: criterion.kind,
+    source: criterion.source,
+    context: projectedContext.map((entry) => entry.value),
+    text: text.value,
+    contextTruncated:
+      criterion.context.length > projectedContext.length ||
+      projectedContext.some((entry) => entry.truncated),
+    textTruncated: text.truncated,
+  };
+}
+
+/** Project a bounded, resumable page without hiding any acceptance ID. */
+export function projectNativeAcceptancePage(options: {
+  criteria: readonly NativeAcceptanceCriterion[];
+  acceptanceHash: string;
+  cursor?: string | null;
+}): NativeAcceptancePageProjection {
+  const offset = acceptanceOffset({
+    acceptanceHash: options.acceptanceHash,
+    total: options.criteria.length,
+    cursor: options.cursor,
+  });
+  const items: NativeAcceptanceCriterionProjection[] = [];
+  const remaining = options.criteria.slice(offset, offset + NATIVE_ACCEPTANCE_PAGE_LIMITS.maxItems);
+  for (const criterion of remaining) {
+    const candidate = [...items, acceptanceProjection(criterion)];
+    const nextOffset = offset + candidate.length;
+    const trial: NativeAcceptancePageProjection = {
+      schema: 'comet.native.acceptance-page.v1',
+      acceptanceHash: options.acceptanceHash,
+      total: options.criteria.length,
+      offset,
+      items: candidate,
+      nextCursor:
+        nextOffset < options.criteria.length
+          ? acceptanceCursor(options.acceptanceHash, nextOffset)
+          : null,
+      limits: { ...NATIVE_ACCEPTANCE_PAGE_LIMITS },
+    };
+    if (
+      Buffer.byteLength(JSON.stringify(trial), 'utf8') >
+      NATIVE_ACCEPTANCE_PAGE_LIMITS.maxSerializedBytes
+    ) {
+      if (items.length === 0) {
+        throw new Error('Native acceptance criterion exceeds the page serialization budget');
+      }
+      break;
+    }
+    items.push(candidate.at(-1)!);
+  }
+  if (options.criteria.length > 0 && items.length === 0) {
+    throw new Error('Native acceptance page could not project its next criterion');
+  }
+  const nextOffset = offset + items.length;
+  const page: NativeAcceptancePageProjection = {
+    schema: 'comet.native.acceptance-page.v1',
+    acceptanceHash: options.acceptanceHash,
+    total: options.criteria.length,
+    offset,
+    items,
+    nextCursor:
+      nextOffset < options.criteria.length
+        ? acceptanceCursor(options.acceptanceHash, nextOffset)
+        : null,
+    limits: { ...NATIVE_ACCEPTANCE_PAGE_LIMITS },
+  };
+  if (
+    Buffer.byteLength(JSON.stringify(page), 'utf8') >
+    NATIVE_ACCEPTANCE_PAGE_LIMITS.maxSerializedBytes
+  ) {
+    throw new Error('Native acceptance page exceeds its serialization budget');
+  }
+  return page;
+}
+
 interface MarkdownHeading {
   level: number;
   text: string;
@@ -40,6 +200,10 @@ interface FenceState {
 interface ScannedMarkdownLine {
   line: string;
   body: boolean;
+}
+
+interface IndexedScannedMarkdownLine extends ScannedMarkdownLine {
+  index: number;
 }
 
 function markdownHeading(line: string): MarkdownHeading | null {
@@ -66,50 +230,54 @@ function nextFenceState(line: string, current: FenceState | null): FenceState | 
   return current;
 }
 
-function scanMarkdown(markdown: string): ScannedMarkdownLine[] {
-  const scanned: ScannedMarkdownLine[] = [];
+function* iterateScannedMarkdown(markdown: string): Generator<IndexedScannedMarkdownLine> {
   let fence: FenceState | null = null;
   let htmlComment = false;
   let htmlTag: string | null = null;
-
-  for (const line of markdown.replace(/\r\n?/gu, '\n').split('\n')) {
+  const normalized = markdown.replace(/\r\n?/gu, '\n');
+  let start = 0;
+  let index = 0;
+  while (start <= normalized.length) {
+    const end = normalized.indexOf('\n', start);
+    const line = end === -1 ? normalized.slice(start) : normalized.slice(start, end);
     const body = fence === null && !htmlComment && htmlTag === null;
-    scanned.push({ line, body });
+    yield { line, body, index };
+    index += 1;
 
     if (fence !== null) {
       fence = nextFenceState(line, fence);
-      continue;
-    }
-    if (htmlComment) {
+    } else if (htmlComment) {
       if (line.includes('-->')) htmlComment = false;
-      continue;
-    }
-    if (htmlTag !== null) {
+    } else if (htmlTag !== null) {
       if (new RegExp(`</${htmlTag}\\s*>`, 'iu').test(line)) htmlTag = null;
-      continue;
+    } else {
+      const nextFence = nextFenceState(line, null);
+      if (nextFence !== null) {
+        fence = nextFence;
+      } else {
+        const trimmed = line.trimStart();
+        if (trimmed.startsWith('<!--') && !trimmed.includes('-->')) {
+          htmlComment = true;
+        } else {
+          const htmlStart = /^<([A-Za-z][A-Za-z0-9-]*)\b[^>]*>/u.exec(trimmed);
+          if (
+            htmlStart &&
+            !trimmed.startsWith('</') &&
+            !trimmed.endsWith('/>') &&
+            !new RegExp(`</${htmlStart[1]}\\s*>`, 'iu').test(trimmed)
+          ) {
+            htmlTag = htmlStart[1];
+          }
+        }
+      }
     }
-
-    const nextFence = nextFenceState(line, null);
-    if (nextFence !== null) {
-      fence = nextFence;
-      continue;
-    }
-    const trimmed = line.trimStart();
-    if (trimmed.startsWith('<!--') && !trimmed.includes('-->')) {
-      htmlComment = true;
-      continue;
-    }
-    const htmlStart = /^<([A-Za-z][A-Za-z0-9-]*)\b[^>]*>/u.exec(trimmed);
-    if (
-      htmlStart &&
-      !trimmed.startsWith('</') &&
-      !trimmed.endsWith('/>') &&
-      !new RegExp(`</${htmlStart[1]}\\s*>`, 'iu').test(trimmed)
-    ) {
-      htmlTag = htmlStart[1];
-    }
+    if (end === -1) break;
+    start = end + 1;
   }
-  return scanned;
+}
+
+function scanMarkdown(markdown: string): ScannedMarkdownLine[] {
+  return [...iterateScannedMarkdown(markdown)].map(({ line, body }) => ({ line, body }));
 }
 
 export function normalizeNativeAcceptanceText(value: string): string {
@@ -162,68 +330,70 @@ function uniqueCriteria(
   return criteria;
 }
 
-function acceptanceSection(lines: ScannedMarkdownLine[]): ScannedMarkdownLine[] | null {
-  const starts: number[] = [];
-  let fence: FenceState | null = null;
-  for (let index = 0; index < lines.length; index += 1) {
-    const { line, body } = lines[index];
-    if (fence === null && body) {
-      const heading = markdownHeading(line);
-      if (
-        heading?.level === 1 &&
-        heading.text.toLocaleLowerCase('en-US') === 'acceptance examples'
-      ) {
-        starts.push(index);
-      }
+function acceptanceSectionBounds(markdown: string): { start: number; end: number } | null {
+  let sectionStart: number | null = null;
+  let sectionEnd: number | null = null;
+  let matches = 0;
+  let lineCount = 0;
+  for (const { line, body, index } of iterateScannedMarkdown(markdown)) {
+    lineCount = index + 1;
+    const heading = body ? markdownHeading(line) : null;
+    if (heading?.level !== 1) continue;
+    if (heading.text.toLocaleLowerCase('en-US') === 'acceptance examples') {
+      matches += 1;
+      if (matches === 1) sectionStart = index + 1;
+    } else if (sectionStart !== null && sectionEnd === null) {
+      sectionEnd = index;
     }
-    fence = nextFenceState(line, fence);
   }
-  if (starts.length === 0) return null;
-  if (starts.length !== 1) {
+  if (matches === 0 || sectionStart === null) return null;
+  if (matches !== 1) {
     throw new Error('Brief must contain exactly one Acceptance examples section');
   }
-
-  const start = starts[0] + 1;
-  fence = null;
-  let end = lines.length;
-  for (let index = start; index < lines.length; index += 1) {
-    const { line, body } = lines[index];
-    if (fence === null && body && markdownHeading(line)?.level === 1) {
-      end = index;
-      break;
-    }
-    fence = nextFenceState(line, fence);
-  }
-  return lines.slice(start, end);
+  return { start: sectionStart, end: sectionEnd ?? lineCount };
 }
 
 /** Derive criteria from top-level list items in the brief's Acceptance examples section. */
 export function deriveBriefAcceptanceCriteria(
   markdown: string,
   source = 'brief.md',
+  maxCriteria: number = NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
 ): NativeAcceptanceCriterion[] {
-  const section = acceptanceSection(scanMarkdown(markdown));
+  if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
+    throw new Error('Native brief acceptance budget is invalid');
+  }
+  const section = acceptanceSectionBounds(markdown);
   if (section === null) return [];
 
-  const topLevelIndent = section.reduce<number | null>((minimum, { line, body }) => {
+  let topLevelIndent: number | null = null;
+  for (const { line, body, index } of iterateScannedMarkdown(markdown)) {
+    if (index < section.start || index >= section.end) continue;
     const listItem = body ? /^( {0,3})[-*+][ \t]+/u.exec(line) : null;
-    if (listItem === null) return minimum;
+    if (listItem === null) continue;
     const indent = listItem[1].length;
-    return minimum === null ? indent : Math.min(minimum, indent);
-  }, null);
+    topLevelIndent = topLevelIndent === null ? indent : Math.min(topLevelIndent, indent);
+  }
 
   const items: string[][] = [];
   let active: string[] | null = null;
-  for (const { line, body } of section) {
+  const pushActive = () => {
+    if (active === null) return;
+    if (items.length >= maxCriteria) {
+      throw new Error(`Native acceptance exceeds its ${maxCriteria}-criterion acceptance budget`);
+    }
+    items.push(active);
+  };
+  for (const { line, body, index } of iterateScannedMarkdown(markdown)) {
+    if (index < section.start || index >= section.end) continue;
     const listItem = body ? /^( {0,3})[-*+][ \t]+(.*)$/u.exec(line) : null;
     if (listItem && listItem[1].length === topLevelIndent) {
-      if (active !== null) items.push(active);
+      pushActive();
       active = [listItem[2]];
     } else if (active !== null) {
       active.push(line);
     }
   }
-  if (active !== null) items.push(active);
+  pushActive();
 
   return uniqueCriteria(
     items.map((lines) => criterion('brief-example', source, lines.join('\n'))),
@@ -235,20 +405,27 @@ export function deriveBriefAcceptanceCriteria(
 export function deriveSpecAcceptanceCriteria(
   markdown: string,
   source = 'spec.md',
+  maxCriteria: number = NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
 ): NativeAcceptanceCriterion[] {
+  if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
+    throw new Error('Native specification acceptance budget is invalid');
+  }
   const criteria: NativeAcceptanceCriterion[] = [];
   const ancestry: MarkdownHeading[] = [];
   let active: { level: number; title: string; body: string[]; context: string[] } | null = null;
 
   const flush = () => {
     if (active === null) return;
+    if (criteria.length >= maxCriteria) {
+      throw new Error(`Native acceptance exceeds its ${maxCriteria}-criterion acceptance budget`);
+    }
     criteria.push(
       criterion('spec-scenario', source, [active.title, ...active.body].join('\n'), active.context),
     );
     active = null;
   };
 
-  for (const { line, body } of scanMarkdown(markdown)) {
+  for (const { line, body } of iterateScannedMarkdown(markdown)) {
     const heading = body ? markdownHeading(line) : null;
     const scenario = heading ? /^Scenario\s*:\s*(.*)$/iu.exec(heading.text) : null;
     if (scenario) {

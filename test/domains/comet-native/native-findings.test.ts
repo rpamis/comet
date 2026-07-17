@@ -99,4 +99,38 @@ describe('Native structured findings', () => {
       requiresUserDecision: false,
     });
   });
+
+  it('advertises doctor only for findings with a real automatic repair path', () => {
+    const repairable = structureNativeFindings({
+      paths,
+      state,
+      findings: [
+        { code: 'transition-incomplete', message: 'valid journal is pending' },
+        { code: 'trajectory-tail-incomplete', message: 'partial final line' },
+        { code: 'checkpoint-progress-incomplete', message: 'valid checkpoint journal is pending' },
+      ],
+    });
+    expect(repairable.every((finding) => finding.repairCommand?.includes('doctor'))).toBe(true);
+
+    const notAutomaticallyRepairable = structureNativeFindings({
+      paths,
+      state,
+      findings: [
+        { code: 'run-state-missing', message: 'missing Run state' },
+        { code: 'run-id-mismatch', message: 'mismatched Run ID' },
+        { code: 'trajectory-invalid', message: 'complete but invalid trajectory' },
+        { code: 'checkpoint-missing', message: 'missing checkpoint' },
+        { code: 'checkpoint-mismatch', message: 'mismatched checkpoint' },
+        { code: 'checkpoint-invalid', message: 'invalid checkpoint' },
+        { code: 'transition-invalid', message: 'invalid transition journal' },
+      ],
+    });
+    for (const finding of notAutomaticallyRepairable) {
+      expect(finding).toMatchObject({
+        requiredAction: 'isolate-or-restore-native-runtime-from-a-trusted-copy',
+        retryCommand: null,
+        repairCommand: null,
+      });
+    }
+  });
 });

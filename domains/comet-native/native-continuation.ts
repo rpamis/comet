@@ -3,6 +3,7 @@ import type {
   NativeContinuation,
   NativeStructuredFinding,
 } from './native-types.js';
+import { isNativeWorkspaceAdvisoryCode } from './native-workspace.js';
 
 const REPAIR_CODES =
   /^(?:run-|trajectory-|checkpoint-(?:missing|mismatch|invalid|progress-invalid)|transition-(?:incomplete|invalid))/u;
@@ -22,11 +23,19 @@ export function nativeContinuation(options: {
   done?: boolean;
 }): NativeContinuation {
   const findings = options.findings ?? [];
-  const decision = findings.find((finding) => finding.requiresUserDecision);
-  const repair = findings.find(
+  const actionableFindings = findings.filter(
+    (finding) => !isNativeWorkspaceAdvisoryCode(finding.code),
+  );
+  const decision = actionableFindings.find((finding) => finding.requiresUserDecision);
+  const repair = actionableFindings.find(
     (finding) => finding.repairCommand !== null || REPAIR_CODES.test(finding.code),
   );
-  const requiredInputs = [...new Set(findings.map((finding) => finding.requiredAction))].sort();
+  const stagnationStop = actionableFindings.find(
+    (finding) => finding.code === 'repair-stagnation-stop',
+  );
+  const requiredInputs = [
+    ...new Set(actionableFindings.map((finding) => finding.requiredAction)),
+  ].sort();
 
   if (options.done) {
     return {
@@ -54,6 +63,20 @@ export function nativeContinuation(options: {
       command: null,
       requiresUserDecision: true,
       requiredInputs,
+    };
+  }
+  if (stagnationStop) {
+    return {
+      schema: 'comet.native.continuation.v1',
+      skill: 'comet-native',
+      change: options.state.name,
+      phase: options.state.phase,
+      revision: options.state.revision,
+      disposition: 'blocked',
+      action: 'work-phase',
+      command: null,
+      requiresUserDecision: false,
+      requiredInputs: ['implementation-progress-or-repair-override'],
     };
   }
   if (repair) {
@@ -84,7 +107,7 @@ export function nativeContinuation(options: {
       requiredInputs: ['summary'],
     };
   }
-  if (findings.length > 0) {
+  if (actionableFindings.length > 0) {
     if (options.state.phase === 'archive') {
       return {
         schema: 'comet.native.continuation.v1',

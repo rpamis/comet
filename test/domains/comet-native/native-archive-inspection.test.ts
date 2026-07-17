@@ -20,7 +20,6 @@ import type {
   NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
 import { prepareNativeVerificationEvidence } from '../../../domains/comet-native/native-verification-runtime.js';
-import type { GitRepositoryInspection } from '../../../platform/process/git-repository.js';
 
 const brief = `# Outcome
 Ship one focused behavior.
@@ -39,16 +38,6 @@ None.
 # Verification expectations
 Run the focused check.
 `;
-
-const unavailableRepository: GitRepositoryInspection = {
-  available: false,
-  head: null,
-  branch: null,
-  worktreeRoot: null,
-  commonDir: null,
-  changedPaths: null,
-  failure: { kind: 'not-repository', operation: 'discovery' },
-};
 
 describe('Native Archive inspection', () => {
   let projectRoot: string;
@@ -78,7 +67,6 @@ describe('Native Archive inspection', () => {
       paths,
       state: buildState,
       artifactRefs: ['src/feature.ts'],
-      inspectRepository: async () => unavailableRepository,
       now: new Date('2026-07-17T01:00:00.000Z'),
     });
     const verifyCandidate: NativeChangeState = {

@@ -10,7 +10,15 @@ import {
 } from '../../../domains/comet-native/native-change.js';
 import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
+import { sha256Text } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  readNativeRunState,
+  readNativeTrajectoryText,
+  replaceNativeTrajectoryText,
+  writeNativeRunState,
+} from '../../../domains/comet-native/native-run-store.js';
+import { NATIVE_LEGACY_RUNTIME_IDENTITIES } from '../../../domains/comet-native/native-runtime-package.js';
 import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { inspectNativeVerificationFreshness } from '../../../domains/comet-native/native-verification-runtime.js';
@@ -71,6 +79,17 @@ describe('Native evidence-bound phase transitions', () => {
     );
   }
 
+  async function readTreeText(root: string): Promise<string> {
+    const entries = await fs.readdir(root, { withFileTypes: true });
+    const content: string[] = [];
+    for (const entry of entries) {
+      const target = path.join(root, entry.name);
+      if (entry.isDirectory()) content.push(await readTreeText(target));
+      else if (entry.isFile()) content.push(await fs.readFile(target, 'utf8'));
+    }
+    return content.join('\n');
+  }
+
   it('binds Build scope and Verify evidence, then marks implementation drift stale', async () => {
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
     const built = await advanceNativeChange({
@@ -89,6 +108,19 @@ describe('Native evidence-bound phase transitions', () => {
       /^runtime\/evidence\/scopes\/[a-f0-9]{64}\.json$/u,
     );
     expect(built.preparedScope).toMatchObject({ complete: true, unresolvedScopeCount: 0 });
+    expect(built.preparedScope?.acceptancePage.items).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^acceptance-[a-f0-9]{64}$/u),
+        kind: 'brief-example',
+        source: 'brief.md',
+        text: 'The evidence-bound behavior works.',
+      }),
+    ]);
+    await expect(inspectNativeStatus(paths, 'evidence-change', { details: true })).resolves.toEqual(
+      expect.objectContaining({
+        acceptancePage: built.preparedScope?.acceptancePage,
+      }),
+    );
 
     await writeVerification();
     const verified = await advanceNativeChange({
@@ -143,6 +175,121 @@ describe('Native evidence-bound phase transitions', () => {
       implementation_scope: null,
       verification_evidence: null,
       partial_allowance: null,
+    });
+  });
+
+  it('continues an active v1 Run through the compatible v2 iteration-budget upgrade', async () => {
+    const run = await readNativeRunState(changeDir);
+    expect(run).not.toBeNull();
+    await writeNativeRunState(changeDir, {
+      ...run!,
+      ...NATIVE_LEGACY_RUNTIME_IDENTITIES[0],
+    });
+    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
+
+    const built = await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: { summary: 'Continue the active v1 Run.', artifacts: ['src/feature.ts'] },
+    });
+
+    expect(built.change.phase).toBe('verify');
+    await expect(readNativeRunState(changeDir)).resolves.toMatchObject(
+      NATIVE_LEGACY_RUNTIME_IDENTITIES[0],
+    );
+  });
+
+  it('does not persist verification evidence before Run consistency accepts the transition', async () => {
+    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
+    await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: { summary: 'Implemented the behavior.', artifacts: ['src/feature.ts'] },
+    });
+    await writeVerification();
+    const evidenceDir = path.join(changeDir, 'runtime', 'evidence', 'verifications');
+    const evidenceCount = async (): Promise<number> => {
+      try {
+        return (await fs.readdir(evidenceDir)).length;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+        throw error;
+      }
+    };
+    const beforeCount = await evidenceCount();
+    const beforeState = await readNativeChange(paths, 'evidence-change');
+    const run = await readNativeRunState(changeDir);
+    expect(run).not.toBeNull();
+    await writeNativeRunState(changeDir, { ...run!, currentStep: 'build' });
+
+    const blocked = await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: {
+        summary: 'This transition must fail before evidence persistence.',
+        verificationResult: 'pass',
+        verificationReport: 'verification.md',
+      },
+    });
+    expect(blocked).toMatchObject({
+      next: 'manual',
+      change: { phase: 'verify', verification_evidence: null },
+      findings: [expect.objectContaining({ code: 'run-phase-mismatch' })],
+    });
+    await expect(evidenceCount()).resolves.toBe(beforeCount);
+    await expect(readNativeChange(paths, 'evidence-change')).resolves.toMatchObject({
+      phase: beforeState.phase,
+      revision: beforeState.revision,
+      verification_evidence: null,
+    });
+  });
+
+  it('does not persist verification evidence when the protected trajectory is invalid', async () => {
+    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
+    await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: { summary: 'Implemented the behavior.', artifacts: ['src/feature.ts'] },
+    });
+    await writeVerification();
+    const evidenceDir = path.join(changeDir, 'runtime', 'evidence', 'verifications');
+    const evidenceCount = async (): Promise<number> => {
+      try {
+        return (await fs.readdir(evidenceDir)).length;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+        throw error;
+      }
+    };
+    const beforeCount = await evidenceCount();
+    const beforeState = await readNativeChange(paths, 'evidence-change');
+    const run = await readNativeRunState(changeDir);
+    expect(run).not.toBeNull();
+    const trajectory = await readNativeTrajectoryText(changeDir, run!.trajectoryRef);
+    expect(trajectory).not.toBeNull();
+    await replaceNativeTrajectoryText(
+      changeDir,
+      run!.trajectoryRef,
+      '{invalid trajectory tail\n',
+      sha256Text(trajectory!),
+    );
+
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'evidence-change',
+        evidence: {
+          summary: 'This transition must stop on the invalid trajectory.',
+          verificationResult: 'pass',
+          verificationReport: 'verification.md',
+        },
+      }),
+    ).rejects.toThrow('Native trajectory is invalid');
+    await expect(evidenceCount()).resolves.toBe(beforeCount);
+    await expect(readNativeChange(paths, 'evidence-change')).resolves.toMatchObject({
+      phase: beforeState.phase,
+      revision: beforeState.revision,
+      verification_evidence: null,
     });
   });
 
@@ -223,7 +370,10 @@ describe('Native evidence-bound phase transitions', () => {
 
   it('requires one exact user confirmation before attaching a partial scope', async () => {
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
-    await fs.writeFile(path.join(projectRoot, 'src', 'user-work.ts'), 'export const user = true;\n');
+    await fs.writeFile(
+      path.join(projectRoot, 'src', 'user-work.ts'),
+      'export const user = true;\n',
+    );
     const partial = await advanceNativeChange({
       paths,
       name: 'evidence-change',
@@ -275,5 +425,61 @@ describe('Native evidence-bound phase transitions', () => {
     await expect(
       inspectNativeVerificationFreshness({ paths, state: verified.change }),
     ).resolves.toMatchObject({ freshness: 'partial', findingCodes: [] });
+  });
+
+  it('redacts credential-shaped transition and partial-allowance text before hashing or persistence', async () => {
+    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
+    await fs.writeFile(path.join(projectRoot, 'src', 'user-work.ts'), 'export const user = true;\n');
+    const partial = await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: {
+        summary: 'Valid credentials remain ordinary prose.',
+        artifacts: ['src/feature.ts'],
+      },
+    });
+
+    const confirmed = await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: {
+        summary: 'Valid credentials remain ordinary prose; Bearer transition-secret-value',
+        artifacts: ['src/feature.ts'],
+        allowPartialScopeHash: partial.preparedScope!.scopeHash,
+        partialReason: 'Exclude unrelated work with api_key=partial-secret-value',
+        confirmed: true,
+      },
+    });
+
+    expect(confirmed.change.phase).toBe('verify');
+    const persisted = await readTreeText(changeDir);
+    expect(persisted).toContain('Valid credentials remain ordinary prose');
+    expect(persisted).toContain('Bearer [REDACTED]');
+    expect(persisted).toContain('api_key=[REDACTED]');
+    expect(persisted).not.toContain('transition-secret-value');
+    expect(persisted).not.toContain('partial-secret-value');
+    expect(JSON.stringify(confirmed)).not.toContain('transition-secret-value');
+    expect(JSON.stringify(confirmed)).not.toContain('partial-secret-value');
+  });
+
+  it('redacts credential-shaped no-code text from transition output and the entire change tree', async () => {
+    const result = await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: {
+        summary: 'Documented credentials semantics with password=summary-secret-value',
+        noCodeReason: 'No project edit is required; access_token=no-code-secret-value',
+      },
+    });
+
+    expect(result.change.phase).toBe('verify');
+    const persisted = await readTreeText(changeDir);
+    expect(persisted).toContain('Documented credentials semantics');
+    expect(persisted).toContain('password=[REDACTED]');
+    expect(persisted).toContain('access_token=[REDACTED]');
+    expect(persisted).not.toContain('summary-secret-value');
+    expect(persisted).not.toContain('no-code-secret-value');
+    expect(JSON.stringify(result)).not.toContain('summary-secret-value');
+    expect(JSON.stringify(result)).not.toContain('no-code-secret-value');
   });
 });

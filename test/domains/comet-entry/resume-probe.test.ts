@@ -22,6 +22,7 @@ import {
   selectNativeChange,
 } from '../../../domains/comet-native/native-selection.js';
 import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
+import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 const VALID_BRIEF = `# Outcome
 Ship cache controls.
@@ -338,21 +339,7 @@ describe('Comet entry resume probe v2', () => {
       } else if (phase === 'verify') {
         await fs.writeFile(
           path.join(changeDir, 'verification.md'),
-          [
-            '# Acceptance evidence',
-            'Phase routing is covered.',
-            '# Commands and results',
-            'Focused tests passed.',
-            '# Skipped checks',
-            'None.',
-            '# Spec consistency',
-            'No specification change.',
-            '# Known limitations and risks',
-            'None.',
-            '# Conclusion',
-            'Pass.',
-            '',
-          ].join('\n'),
+          await nativeVerificationFixtureReport({ paths, name: 'phase-routing' }),
           'utf8',
         );
         const advanced = await advanceNativeChange({

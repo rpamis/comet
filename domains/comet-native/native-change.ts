@@ -1,14 +1,18 @@
-import { promises as fs, type Dirent } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument, stringify } from 'yaml';
+
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import { readNativeProtectedDirectory } from './native-protected-file.js';
 import { compareAndSwapNativeRevision } from './native-revision.js';
 import { createNativeContentSnapshot, writeNativeBaselineManifest } from './native-snapshot.js';
 import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
+import { writeNativeWorkspaceIdentity } from './native-workspace.js';
 import type {
   NativeApproval,
   NativeChangeSchemaInspection,
@@ -589,6 +593,12 @@ async function createNativeChangeLocked(options: {
     });
     await writeNativeBaselineManifest(options.paths, state.name, baseline);
     await createNativeChangeFile(options.paths, state);
+    await writeNativeWorkspaceIdentity({
+      paths: options.paths,
+      name: state.name,
+      revision: state.revision,
+      now: options.now,
+    });
     return state;
   } catch (error) {
     if (createdChangeDir) await fs.rm(changeDir, { recursive: true, force: true });
@@ -596,8 +606,16 @@ async function createNativeChangeLocked(options: {
   }
 }
 
-async function readChangeDocumentFile(file: string): Promise<unknown> {
-  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: true });
+export const NATIVE_CHANGE_DOCUMENT_MAX_BYTES = 256 * 1024;
+
+async function readChangeDocumentFile(file: string, root = path.dirname(file)): Promise<unknown> {
+  const ref = path.relative(root, file).split(path.sep).join('/');
+  const source = await readNativeBoundedTextFile({
+    root,
+    ref,
+    maxBytes: NATIVE_CHANGE_DOCUMENT_MAX_BYTES,
+  });
+  const document = parseDocument(source.text, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
   }
@@ -610,7 +628,7 @@ export async function inspectNativeChange(
 ): Promise<NativeChangeSchemaInspection> {
   const file = path.join(nativeChangeDir(paths, name), 'change.yaml');
   await resolveContainedNativePath(paths.nativeRoot, file);
-  const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file));
+  const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file, paths.nativeRoot));
   if (inspection.state && inspection.state.name !== name) {
     throw new Error(`Native change directory/name mismatch: ${name}`);
   }
@@ -740,9 +758,16 @@ export async function readNativeChangeFile(file: string): Promise<NativeChangeSt
 }
 
 export async function listNativeChanges(paths: NativeProjectPaths): Promise<NativeChangeState[]> {
-  let entries: Dirent[];
+  let entries;
   try {
-    entries = await fs.readdir(paths.changesDir, { withFileTypes: true });
+    const directory = await readNativeProtectedDirectory({
+      root: paths.nativeRoot,
+      directory: paths.changesDir,
+      label: 'Native changes directory',
+      maxEntries: 4_096,
+    });
+    await directory.verify();
+    entries = directory.entries;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;

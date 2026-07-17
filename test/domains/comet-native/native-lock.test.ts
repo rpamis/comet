@@ -9,7 +9,9 @@ import {
   readNativeLock,
   releaseNativeLock,
 } from '../../../domains/comet-native/native-lock.js';
+import { withNativeMutationLock } from '../../../domains/comet-native/native-mutation-lock.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { withNativeTransitionLock } from '../../../domains/comet-native/native-transition-journal.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
 describe('Native operation locks', () => {
@@ -45,6 +47,50 @@ describe('Native operation locks', () => {
     await fs.writeFile(lock.file, JSON.stringify({ ...lock.owner, id: 'another-owner' }));
     await expect(releaseNativeLock(lock)).rejects.toThrow(/ownership changed/u);
     expect(await readNativeLock(lock.file)).toMatchObject({ id: 'another-owner' });
+  });
+
+  it('does not release a replacement file that reuses the same owner metadata', async () => {
+    const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+    const displaced = `${lock.file}.displaced`;
+    await fs.rename(lock.file, displaced);
+    await fs.writeFile(lock.file, JSON.stringify(lock.owner, null, 2) + '\n');
+
+    await expect(releaseNativeLock(lock)).rejects.toThrow(/identity changed/u);
+    expect(await readNativeLock(lock.file)).toMatchObject({ id: lock.owner.id });
+    await fs.rm(displaced, { force: true });
+  });
+
+  it.each([
+    {
+      fileName: 'root-move.lock',
+      run: (work: () => Promise<void>) =>
+        withNativeMutationLock(paths, 'mutate after stale owner', work),
+    },
+    {
+      fileName: 'transition-example.lock',
+      run: (work: () => Promise<void>) =>
+        withNativeTransitionLock(paths, 'example', 'transition after stale owner', work),
+    },
+  ])('requires doctor takeover for a stale $fileName', async ({ fileName, run }) => {
+    await fs.mkdir(paths.locksDir, { recursive: true });
+    const file = path.join(paths.locksDir, fileName);
+    const stale = {
+      id: `stale-${fileName}`,
+      pid: 2_147_483_647,
+      hostname: os.hostname(),
+      createdAt: '2026-07-17T00:00:00.000Z',
+      operation: 'interrupted operation',
+    };
+    await fs.writeFile(file, JSON.stringify(stale));
+    let entered = false;
+
+    await expect(
+      run(async () => {
+        entered = true;
+      }),
+    ).rejects.toThrow(/already held/u);
+    expect(entered).toBe(false);
+    expect(await readNativeLock(file)).toEqual(stale);
   });
 
   it('diagnoses stale local and unknown remote locks without breaking them', async () => {

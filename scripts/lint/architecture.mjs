@@ -71,9 +71,8 @@ function walkFiles(relativePath, ignoredNames = new Set(), ignoredRelativePaths 
 
     for (const entry of entries) {
       if (ignoredNames.has(entry)) continue;
-      if (entry.startsWith('.pytest-tmp-')) continue;
-      if (entry.startsWith('.pytest-basetemp-')) continue;
-      if (entry.startsWith('.pytest_cache')) continue;
+      if (entry.startsWith('.pytest')) continue;
+      if (entry === '.cache') continue;
       const entryAbsolutePath = path.join(currentAbsolutePath, entry);
       const entryRelativePath = path.join(currentRelativePath, entry).replaceAll(path.sep, '/');
       if (ignoredRelativePaths.has(entryRelativePath)) continue;

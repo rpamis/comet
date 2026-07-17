@@ -8,6 +8,7 @@ import {
   compareAndSwapNativeChange,
   createNativeChange,
   listNativeChanges,
+  NATIVE_CHANGE_DOCUMENT_MAX_BYTES,
   NativeChangeRevisionConflictError,
   readNativeChange,
   writeNativeChange,
@@ -84,6 +85,18 @@ describe('Native change store', () => {
     await writeNativeChange(paths, state);
     expect(state.revision).toBe(2);
     expect(await readNativeChange(paths, state.name)).toEqual(state);
+  });
+
+  it('fails closed before parsing an oversized change document', async () => {
+    const state = await createNativeChange({ paths, name: 'oversized-change', language: 'en' });
+    await fs.writeFile(
+      path.join(paths.changesDir, state.name, 'change.yaml'),
+      'x'.repeat(NATIVE_CHANGE_DOCUMENT_MAX_BYTES + 1),
+    );
+
+    await expect(readNativeChange(paths, state.name)).rejects.toThrow(
+      `exceeds ${NATIVE_CHANGE_DOCUMENT_MAX_BYTES} bytes`,
+    );
   });
 
   it('rejects a stale change write instead of silently overwriting a newer revision', async () => {

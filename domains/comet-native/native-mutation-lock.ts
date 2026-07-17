@@ -1,13 +1,7 @@
 import { promises as fs } from 'fs';
-import path from 'path';
 
 import { assertNoPendingNativeRootMove } from './native-config.js';
-import {
-  acquireNativeLock,
-  diagnoseNativeLock,
-  releaseNativeLock,
-  type NativeLock,
-} from './native-lock.js';
+import { acquireNativeLock, releaseNativeLock, type NativeLock } from './native-lock.js';
 import { readNativeTransaction } from './native-transaction.js';
 import type { NativeProjectPaths } from './native-types.js';
 
@@ -43,19 +37,8 @@ async function hasUnfinishedTransaction(
 async function acquireNativeMutationLock(
   paths: NativeProjectPaths,
   operation: string,
-  allowedTransactionId?: string,
 ): Promise<NativeLock> {
-  try {
-    return await acquireNativeLock(paths, 'root-move', operation);
-  } catch (error) {
-    const file = path.join(paths.locksDir, 'root-move.lock');
-    const diagnosis = await diagnoseNativeLock(file);
-    if (diagnosis.status !== 'stale') throw error;
-    await assertNoPendingNativeRootMove(paths.projectRoot);
-    if (await hasUnfinishedTransaction(paths, allowedTransactionId)) throw error;
-    await fs.rm(file, { force: true });
-    return acquireNativeLock(paths, 'root-move', operation);
-  }
+  return acquireNativeLock(paths, 'root-move', operation);
 }
 
 export async function withNativeMutationLock<T>(
@@ -64,7 +47,7 @@ export async function withNativeMutationLock<T>(
   work: () => Promise<T>,
   options?: { allowedTransactionId?: string },
 ): Promise<T> {
-  const lock = await acquireNativeMutationLock(paths, operation, options?.allowedTransactionId);
+  const lock = await acquireNativeMutationLock(paths, operation);
   try {
     await assertNoPendingNativeRootMove(paths.projectRoot);
     if (await hasUnfinishedTransaction(paths, options?.allowedTransactionId)) {

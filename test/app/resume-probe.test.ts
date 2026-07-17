@@ -98,38 +98,11 @@ describe('resumeProbe command', () => {
   });
 
   it('routes a configured Native project without considering Classic changes', async () => {
-    await fs.writeFile(
-      path.join(tmpDir, 'comet.config.yaml'),
-      [
-        'schema: comet.project.v1',
-        'default_workflow: native',
-        'native:',
-        '  artifact_root: .',
-        '',
-      ].join('\n'),
-      'utf8',
-    );
+    const initialized = runCli(tmpDir, ['native', 'init', '--language', 'en']);
+    expect(initialized.status, initialized.stderr).toBe(0);
+    const created = runCli(tmpDir, ['native', 'new', 'native-resume']);
+    expect(created.status, created.stderr).toBe(0);
     const changeDir = path.join(tmpDir, 'comet', 'changes', 'native-resume');
-    await fs.mkdir(changeDir, { recursive: true });
-    await fs.writeFile(
-      path.join(changeDir, 'change.yaml'),
-      [
-        'schema: comet.native.v1',
-        'name: native-resume',
-        'language: en',
-        'phase: shape',
-        'brief: brief.md',
-        'approval: null',
-        'spec_changes: []',
-        'verification_result: pending',
-        'verification_report: null',
-        'archived: false',
-        'created_at: 2026-07-15',
-        'run_id: null',
-        '',
-      ].join('\n'),
-      'utf8',
-    );
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
       [

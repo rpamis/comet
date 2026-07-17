@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { GitRepositoryInspection } from '../../../platform/process/git-repository.js';
+
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
   inspectNativeWorkspaceAdvisory,
@@ -11,26 +11,12 @@ import {
   writeNativeWorkspaceIdentity,
 } from '../../../domains/comet-native/native-workspace.js';
 
-function availableInspection(root: string, overrides = {}): GitRepositoryInspection {
-  return {
-    available: true,
-    head: 'a'.repeat(40),
-    branch: 'feature/native',
-    worktreeRoot: root,
-    commonDir: path.join(root, '.git'),
-    changedPaths: [],
-    failure: null,
-    ...overrides,
-  };
-}
-
 describe('Native workspace identity', () => {
   let projectRoot: string;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-workspace-'));
-    await fs.mkdir(path.join(projectRoot, '.git'));
-    await fs.mkdir(path.join(projectRoot, 'docs', 'comet', 'changes', 'example'), {
+    await fs.mkdir(path.join(projectRoot, 'docs', 'comet', 'changes', 'example', 'runtime'), {
       recursive: true,
     });
   });
@@ -39,7 +25,7 @@ describe('Native workspace identity', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('stores hashes and project-relative refs without raw paths or session ids', async () => {
+  it('stores only process-free hashes and project-relative refs', async () => {
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const identity = await inspectNativeWorkspaceIdentity({
       paths,
@@ -47,36 +33,66 @@ describe('Native workspace identity', () => {
       revision: 7,
       sessionId: 'raw-session-secret',
       now: new Date('2026-07-17T00:00:00.000Z'),
-      inspectRepository: async () => availableInspection(projectRoot),
     });
     const serialized = JSON.stringify(identity);
 
-    expect(identity.nativeRootRef).toBe('docs/comet');
-    expect(identity.vcs.kind).toBe('git');
-    expect(identity.sessionHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(identity).toMatchObject({
+      schema: 'comet.native.workspace.v2',
+      nativeRootRef: 'docs/comet',
+      capturedRevision: 7,
+      capturedAt: '2026-07-17T00:00:00.000Z',
+      projectRootId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      nativeRootId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      sessionHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
     expect(serialized).not.toContain(projectRoot);
     expect(serialized).not.toContain('raw-session-secret');
+    expect(serialized).not.toMatch(/\b(?:git|head|branch|worktree|commonDir)\b/iu);
   });
 
-  it('writes and reads local workspace metadata atomically', async () => {
+  it('writes and reads bounded local workspace metadata atomically', async () => {
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const written = await writeNativeWorkspaceIdentity({
       paths,
       name: 'example',
       revision: 1,
-      inspectRepository: async () => availableInspection(projectRoot),
     });
 
     await expect(readNativeWorkspaceIdentity(paths, 'example')).resolves.toEqual(written);
+    await expect(inspectNativeWorkspaceAdvisory({ paths, identity: written })).resolves.toEqual({
+      state: 'aligned',
+      findingCodes: [],
+    });
   });
 
-  it('rejects copied metadata with non-portable root or prefix refs', async () => {
+  it('reports a copied identity as root drift without executing VCS commands', async () => {
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const identity = await inspectNativeWorkspaceIdentity({
+      paths,
+      name: 'example',
+      revision: 1,
+    });
+    const otherRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-workspace-copy-'));
+    try {
+      await fs.mkdir(path.join(otherRoot, 'docs', 'comet'), { recursive: true });
+      const copiedPaths = await nativeProjectPaths(otherRoot, 'docs');
+      await expect(
+        inspectNativeWorkspaceAdvisory({ paths: copiedPaths, identity }),
+      ).resolves.toEqual({
+        state: 'drifted',
+        findingCodes: ['workspace-root-changed'],
+      });
+    } finally {
+      await fs.rm(otherRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects non-portable refs and unknown fields', async () => {
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const written = await writeNativeWorkspaceIdentity({
       paths,
       name: 'example',
       revision: 1,
-      inspectRepository: async () => availableInspection(projectRoot),
     });
     const file = path.join(projectRoot, 'docs/comet/changes/example/runtime/workspace.json');
 
@@ -84,139 +100,36 @@ describe('Native workspace identity', () => {
     await expect(readNativeWorkspaceIdentity(paths, 'example')).rejects.toThrow(
       'project-relative path',
     );
+
+    await fs.writeFile(file, JSON.stringify({ ...written, rawPath: projectRoot }));
+    await expect(readNativeWorkspaceIdentity(paths, 'example')).rejects.toThrow('unknown field');
   });
 
-  it('represents unavailable inspection without inventing clean Git facts', async () => {
+  it('ignores legacy Git-backed v1 metadata as a non-blocking advisory', async () => {
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const identity = await inspectNativeWorkspaceIdentity({
-      paths,
-      name: 'example',
-      revision: 1,
-      inspectRepository: async () => ({
-        available: false,
-        head: null,
-        branch: null,
-        worktreeRoot: null,
-        commonDir: null,
-        changedPaths: null,
-        failure: { kind: 'git-unavailable', operation: 'discovery' },
+    const file = path.join(projectRoot, 'docs/comet/changes/example/runtime/workspace.json');
+    await fs.writeFile(
+      file,
+      JSON.stringify({
+        schema: 'comet.native.workspace.v1',
+        capturedAt: '2026-07-17T00:00:00.000Z',
+        capturedRevision: 1,
+        nativeRootRef: 'docs/comet',
+        vcs: { kind: 'git', head: 'legacy' },
       }),
-    });
+    );
 
-    expect(identity.vcs).toEqual({
-      kind: 'unavailable',
-      head: null,
-      branch: null,
-      worktreeId: null,
-      commonDirId: null,
-      projectPrefix: null,
-      failureKind: 'git-unavailable',
-    });
+    await expect(readNativeWorkspaceIdentity(paths, 'example')).resolves.toBeNull();
   });
 
-  it('degrades when reported Git identity paths cannot be resolved', async () => {
+  it('rejects symlinked identity files instead of following them', async () => {
+    if (process.platform === 'win32') return;
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const identity = await inspectNativeWorkspaceIdentity({
-      paths,
-      name: 'example',
-      revision: 1,
-      inspectRepository: async () =>
-        availableInspection(projectRoot, {
-          commonDir: path.join(projectRoot, 'missing-git-directory'),
-        }),
-    });
+    const file = path.join(projectRoot, 'docs/comet/changes/example/runtime/workspace.json');
+    const outside = path.join(projectRoot, 'outside.json');
+    await fs.writeFile(outside, '{}');
+    await fs.symlink(outside, file);
 
-    expect(identity.vcs).toMatchObject({
-      kind: 'unavailable',
-      failureKind: 'identity-unavailable',
-    });
-  });
-
-  it('reports stable drift codes and ignores attributed paths', async () => {
-    const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const identity = await inspectNativeWorkspaceIdentity({
-      paths,
-      name: 'example',
-      revision: 1,
-      inspectRepository: async () => availableInspection(projectRoot),
-    });
-    const advisory = await inspectNativeWorkspaceAdvisory({
-      paths,
-      identity,
-      attributedPaths: ['owned.ts'],
-      inspectRepository: async () =>
-        availableInspection(projectRoot, {
-          head: 'b'.repeat(40),
-          branch: 'other',
-          changedPaths: ['owned.ts', 'unowned.ts'],
-        }),
-    });
-
-    expect(advisory).toEqual({
-      state: 'drifted',
-      findingCodes: [
-        'workspace-branch-changed',
-        'workspace-head-changed',
-        'workspace-unattributed-changes',
-      ],
-    });
-  });
-
-  it('does not align metadata copied from another Native root or project prefix', async () => {
-    const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const identity = await inspectNativeWorkspaceIdentity({
-      paths,
-      name: 'example',
-      revision: 1,
-      inspectRepository: async () => availableInspection(projectRoot),
-    });
-    const copied = {
-      ...identity,
-      nativeRootRef: 'other/comet',
-      vcs:
-        identity.vcs.kind === 'git'
-          ? { ...identity.vcs, projectPrefix: 'packages/other' }
-          : identity.vcs,
-    };
-
-    await expect(
-      inspectNativeWorkspaceAdvisory({
-        paths,
-        identity: copied,
-        inspectRepository: async () => availableInspection(projectRoot),
-      }),
-    ).resolves.toEqual({
-      state: 'drifted',
-      findingCodes: ['workspace-worktree-changed'],
-    });
-  });
-
-  it('returns unknown when either inspection is unavailable', async () => {
-    const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const identity = await inspectNativeWorkspaceIdentity({
-      paths,
-      name: 'example',
-      revision: 1,
-      inspectRepository: async () => availableInspection(projectRoot),
-    });
-
-    await expect(
-      inspectNativeWorkspaceAdvisory({
-        paths,
-        identity,
-        inspectRepository: async () => ({
-          available: false,
-          head: null,
-          branch: null,
-          worktreeRoot: null,
-          commonDir: null,
-          changedPaths: null,
-          failure: { kind: 'timeout', operation: 'status' },
-        }),
-      }),
-    ).resolves.toEqual({
-      state: 'unknown',
-      findingCodes: ['workspace-inspection-unavailable'],
-    });
+    await expect(readNativeWorkspaceIdentity(paths, 'example')).rejects.toThrow('regular file');
   });
 });

@@ -78,7 +78,7 @@ describe('Native acceptance evidence trace', () => {
 
   it('rejects missing, unknown, duplicate, or ambiguous entries', () => {
     const [first] = evidenceForAll();
-    expect(() => buildTrace([first])).toThrow('missing acceptance evidence');
+    expect(() => buildTrace([first])).toThrow('missing 1 acceptance evidence entry');
     expect(() =>
       buildTrace([
         ...evidenceForAll(),
@@ -89,6 +89,27 @@ describe('Native acceptance evidence trace', () => {
     expect(() =>
       buildTrace([{ ...first, skipped_reason: 'not run' }, evidenceForAll()[1]]),
     ).toThrow('exactly one');
+  });
+
+  it('bounds missing-coverage diagnostics instead of echoing every acceptance ID', () => {
+    const criteria = Array.from({ length: 100 }, (_, index) => ({
+      id: `acceptance-${index.toString(16).padStart(64, '0')}`,
+      kind: 'brief-example' as const,
+      source: 'brief.md',
+      context: [],
+      text: `Criterion ${index}.`,
+    }));
+    let message = '';
+    try {
+      buildNativeAcceptanceEvidenceTrace(criteria, [], { nativeRootRef: 'comet' });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain('missing 100 acceptance evidence entries');
+    expect(message).toContain('(92 more)');
+    expect(Buffer.byteLength(message, 'utf8')).toBeLessThan(1_024);
+    expect(message).not.toContain(criteria[8].id);
   });
 
   it('preserves an explicit skipped reason without calling it evidence', () => {

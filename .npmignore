@@ -6,6 +6,8 @@ tsconfig.json
 # Secrets / env
 .env
 .env.*
+.env*
+**/.env*
 *.pem
 *.key
 *.p12
@@ -39,6 +41,14 @@ coverage/
 *.test.ts
 *.spec.ts
 __tests__/
+eval/**/.pytest*/
+eval/**/.pytest-*/
+eval/**/.pytest_*/
+eval/**/.tmp/
+eval/**/.cache/
+eval/**/.ruff_cache/
+eval/**/__pycache__/
+eval/**/logs/
 
 # Lock files
 pnpm-lock.yaml

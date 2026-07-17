@@ -10,6 +10,7 @@ import type {
   NativeProjectPaths,
   NativeStructuredFinding,
 } from './native-types.js';
+import { isNativeWorkspaceAdvisoryCode } from './native-workspace.js';
 
 const FINDING_SUMMARY_CODE_BUDGET = 8;
 
@@ -75,6 +76,30 @@ const EXACT_METADATA: Record<string, FindingMetadata> = {
     retry: 'status',
     repair: 'none',
   },
+  'repair-stagnation-warning': {
+    severity: 'warning',
+    requiredAction: 'change-repair-approach',
+    retry: 'next',
+    repair: 'none',
+  },
+  'repair-stagnation-stop': {
+    severity: 'error',
+    requiredAction: 'make-progress-or-explicitly-override-repair',
+    retry: 'none',
+    repair: 'none',
+  },
+  'repair-iteration-limit': {
+    severity: 'error',
+    requiredAction: 'change-implementation-before-starting-a-new-repair-episode',
+    retry: 'next',
+    repair: 'none',
+  },
+  'repair-override-exhausted': {
+    severity: 'error',
+    requiredAction: 'review-repeated-failure-after-override',
+    retry: 'none',
+    repair: 'none',
+  },
 };
 
 function inferredMetadata(code: string): FindingMetadata {
@@ -85,9 +110,9 @@ function inferredMetadata(code: string): FindingMetadata {
   ) {
     return {
       severity: 'error',
-      requiredAction: 'repair-native-runtime',
-      retry: 'status',
-      repair: 'doctor',
+      requiredAction: 'isolate-or-restore-native-runtime-from-a-trusted-copy',
+      retry: 'none',
+      repair: 'none',
     };
   }
   if (code.startsWith('brief-')) {
@@ -119,6 +144,14 @@ function inferredMetadata(code: string): FindingMetadata {
       severity: 'error',
       requiredAction: 'record-build-evidence',
       retry: 'next',
+      repair: 'none',
+    };
+  }
+  if (isNativeWorkspaceAdvisoryCode(code)) {
+    return {
+      severity: code === 'workspace-inspection-unavailable' ? 'info' : 'warning',
+      requiredAction: 'inspect-workspace-advisory',
+      retry: 'status',
       repair: 'none',
     };
   }
@@ -180,7 +213,9 @@ export function structureNativeFindings(options: {
         // missing data must never be presented as a user decision.
         requiresUserDecision:
           finding.code === 'brief-blocking-question' ||
-          finding.code === 'verification-scope-partial',
+          finding.code === 'verification-scope-partial' ||
+          finding.code === 'repair-iteration-limit' ||
+          finding.code === 'repair-override-exhausted',
       };
     })
     .sort((left, right) => {

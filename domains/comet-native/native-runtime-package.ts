@@ -1,4 +1,5 @@
 import type { DeterministicResolver } from '../engine/resolver.js';
+import type { RunState } from '../engine/types.js';
 import type { SkillPackage } from '../skill/types.js';
 import { sha256Text } from './native-hash.js';
 
@@ -10,7 +11,7 @@ export const NATIVE_RUNTIME_PACKAGE: SkillPackage = {
     kind: 'Skill',
     metadata: {
       name: 'comet-native-runtime',
-      version: '1',
+      version: '3',
       description: 'Comet-owned state runtime for the Native workflow.',
     },
     goal: {
@@ -37,14 +38,40 @@ export const NATIVE_RUNTIME_PACKAGE: SkillPackage = {
     allowedSkills: [],
     allowedAgents: [],
     allowedTools: [],
-    maxIterations: 16,
+    // Native uses the evidence-bound repair episode budget below the engine seam. The generic
+    // counter remains an action ID source, not a user-visible permanent stop for long-lived changes.
+    maxIterations: Number.MAX_SAFE_INTEGER,
     maxRetriesPerAction: 2,
     confirmationRequiredFor: [],
   },
   evals: [],
 };
 
-export const NATIVE_RUNTIME_HASH = sha256Text('comet-native-runtime:v1');
+export const NATIVE_RUNTIME_HASH = sha256Text('comet-native-runtime:v3:semantic-repair-budget');
+export const NATIVE_LEGACY_RUNTIME_IDENTITIES = [
+  {
+    skillVersion: '2',
+    skillHash: sha256Text('comet-native-runtime:v2:max-iterations-32'),
+  },
+  {
+    skillVersion: '1',
+    skillHash: sha256Text('comet-native-runtime:v1'),
+  },
+] as const;
+
+/** Older active Native Runs may continue when only the compatible iteration budget changed. */
+export function isCompatibleNativeRuntimeIdentity(
+  run: Pick<RunState, 'skillVersion' | 'skillHash'>,
+): boolean {
+  return (
+    (run.skillVersion === NATIVE_RUNTIME_PACKAGE.definition.metadata.version &&
+      run.skillHash === NATIVE_RUNTIME_HASH) ||
+    NATIVE_LEGACY_RUNTIME_IDENTITIES.some(
+      (identity) =>
+        identity.skillVersion === run.skillVersion && identity.skillHash === run.skillHash,
+    )
+  );
+}
 
 export const nativePhaseResolver: DeterministicResolver<undefined> = {
   resolveStep({ pkg, state }) {

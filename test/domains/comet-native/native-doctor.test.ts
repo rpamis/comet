@@ -20,6 +20,10 @@ import { nativeSelectionFile } from '../../../domains/comet-native/native-select
 import { createNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
 import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import {
+  nativeWorkspaceFile,
+  readNativeWorkspaceIdentity,
+} from '../../../domains/comet-native/native-workspace.js';
 
 const validBrief = `# Outcome
 Ship the feature.
@@ -76,6 +80,23 @@ describe('Native doctor', () => {
     await expect(fs.access(selection)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('reports an oversized selection without reading it unboundedly', async () => {
+    await fs.mkdir(paths.runtimeDir, { recursive: true });
+    const selection = nativeSelectionFile(paths);
+    await fs.writeFile(selection, Buffer.alloc(16 * 1024 + 1, 0x61));
+
+    const result = await doctorNativeProject({ paths });
+
+    expect(result.healthy).toBe(false);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({
+        code: 'selection-invalid',
+        message: expect.stringContaining('exceeds 16384 bytes'),
+      }),
+    );
+    await expect(fs.stat(selection)).resolves.toMatchObject({ size: 16 * 1024 + 1 });
+  });
+
   it('reports malformed user-authored state and artifacts without modifying them', async () => {
     const state = await createNativeChange({ paths, name: 'incomplete-change', language: 'en' });
     const briefFile = path.join(nativeChangeDir(paths, state.name), 'brief.md');
@@ -87,6 +108,44 @@ describe('Native doctor', () => {
       expect.objectContaining({ code: 'brief-section-empty', severity: 'error' }),
     );
     expect(await fs.readFile(briefFile, 'utf8')).toBe(briefBefore);
+  });
+
+  it('migrates legacy Git-backed workspace metadata to process-free v2 identities', async () => {
+    const state = await createNativeChange({ paths, name: 'legacy-workspace', language: 'en' });
+    const file = nativeWorkspaceFile(paths, state.name);
+    await fs.writeFile(
+      file,
+      JSON.stringify({
+        schema: 'comet.native.workspace.v1',
+        capturedAt: '2026-07-17T00:00:00.000Z',
+        capturedRevision: state.revision,
+        nativeRootRef: 'comet',
+        vcs: { kind: 'git', head: 'legacy' },
+      }),
+    );
+
+    const inspected = await doctorNativeProject({ paths, name: state.name });
+    expect(inspected.findings).toContainEqual(
+      expect.objectContaining({
+        code: 'workspace-identity-migration-required',
+        severity: 'warning',
+      }),
+    );
+    await expect(readNativeWorkspaceIdentity(paths, state.name)).resolves.toBeNull();
+
+    const repaired = await doctorNativeProject({ paths, name: state.name, repair: true });
+    expect(repaired.findings).toContainEqual(
+      expect.objectContaining({ code: 'workspace-identity-migrated', severity: 'info' }),
+    );
+    await expect(readNativeWorkspaceIdentity(paths, state.name)).resolves.toMatchObject({
+      schema: 'comet.native.workspace.v2',
+      capturedRevision: state.revision,
+    });
+    expect(
+      (await doctorNativeProject({ paths, name: state.name })).findings.some(
+        (finding) => finding.code === 'workspace-identity-migration-required',
+      ),
+    ).toBe(false);
   });
 
   it('reports an interrupted phase transition and only continues it explicitly', async () => {

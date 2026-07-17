@@ -1,12 +1,15 @@
-import { promises as fs, type Dirent } from 'fs';
+import { promises as fs } from 'fs';
 
 import {
   validateNativeBrief,
   validateNativeSpecChanges,
   validateNativeVerification,
 } from './native-artifacts.js';
+import { projectNativeAcceptancePage } from './native-acceptance.js';
+import { canonicalHash } from './native-canonical-hash.js';
 import { inspectNativeChange, nativeChangeDir } from './native-change.js';
-import { nativeSelectionFile } from './native-selection.js';
+import { collectNativeContractFiles } from './native-contract-files.js';
+import { readNativeSelectionRecord } from './native-selection.js';
 import { inspectNativeRunConsistency } from './native-run-consistency.js';
 import { inspectPendingNativeTransition } from './native-transition-journal.js';
 import { nativeContinuation } from './native-continuation.js';
@@ -16,24 +19,35 @@ import {
   NATIVE_INSPECTION_REASON_DETAIL_BUDGET,
 } from './native-resume-view.js';
 import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
+import { inspectNativeChangeConflicts } from './native-conflict-inspection.js';
+import { inspectNativeRepairStatus } from './native-repair-integration.js';
+import {
+  inspectNativeWorkspaceAdvisory,
+  isNativeWorkspaceAdvisoryCode,
+  readNativeWorkspaceIdentity,
+} from './native-workspace.js';
+import { captureNativeProtectedDirectoryGuard } from './native-protected-file.js';
 import type {
   NativeChangeState,
   NativeFinding,
   NativeProjectPaths,
+  NativeStatusPageProjection,
   NativeStatusProjection,
 } from './native-types.js';
 
+const NATIVE_STATUS_CURSOR_PATTERN =
+  /^native-status-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
+
+export const NATIVE_STATUS_PAGE_LIMITS = Object.freeze({
+  maxItems: 24,
+  maxChanges: 4_096,
+  maxSerializedBytes: 512 * 1024,
+});
+
 async function selectedName(paths: NativeProjectPaths): Promise<string | null> {
   try {
-    const value = JSON.parse(await fs.readFile(nativeSelectionFile(paths), 'utf8')) as {
-      schema?: unknown;
-      change?: unknown;
-    };
-    return value.schema === 'comet.native.selection.v1' && typeof value.change === 'string'
-      ? value.change
-      : null;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    return (await readNativeSelectionRecord(paths))?.change ?? null;
+  } catch {
     return null;
   }
 }
@@ -96,7 +110,7 @@ async function statusFindings(
 export async function inspectNativeStatus(
   paths: NativeProjectPaths,
   name: string,
-  options?: { details?: boolean },
+  options?: { details?: boolean; acceptanceCursor?: string },
 ): Promise<NativeStatusProjection> {
   const selected = (await selectedName(paths)) === name;
   let state: NativeChangeState;
@@ -205,6 +219,84 @@ export async function inspectNativeStatus(
     };
   }
   const resume = await buildNativeResumeView({ paths, state });
+  let acceptancePage: NativeStatusProjection['acceptancePage'];
+  if (options?.details && (state.phase === 'verify' || state.phase === 'archive')) {
+    try {
+      const contract = await collectNativeContractFiles({
+        changeDir: nativeChangeDir(paths, state.name),
+        briefRef: state.brief,
+        specChanges: state.spec_changes,
+      });
+      acceptancePage = projectNativeAcceptancePage({
+        criteria: contract.contract.acceptance,
+        acceptanceHash: contract.contract.acceptanceHash,
+        ...(options.acceptanceCursor ? { cursor: options.acceptanceCursor } : {}),
+      });
+    } catch (error) {
+      if (options.acceptanceCursor) throw error;
+      acceptancePage = undefined;
+    }
+  }
+  const conflictFindings: NativeFinding[] = [];
+  try {
+    const conflicts = await inspectNativeChangeConflicts(paths, state.name);
+    conflictFindings.push(
+      ...conflicts.findingCodes.map((code) => ({
+        code,
+        message: `Native change overlap is visible in the current root: ${code}`,
+      })),
+    );
+  } catch {
+    conflictFindings.push({
+      code: 'native-conflict-inspection-invalid',
+      message: 'Native change overlap could not be recomputed safely',
+    });
+  }
+  const workspaceFindings: NativeFinding[] = [];
+  try {
+    const identity = await readNativeWorkspaceIdentity(paths, state.name);
+    if (identity) {
+      const workspace = await inspectNativeWorkspaceAdvisory({
+        paths,
+        identity,
+      });
+      workspaceFindings.push(
+        ...workspace.findingCodes.map((code) => ({
+          code,
+          message: `Native workspace advisory changed: ${code}`,
+        })),
+      );
+    }
+  } catch {
+    workspaceFindings.push({
+      code: 'workspace-inspection-unavailable',
+      message: 'Native workspace advisory could not be recomputed safely',
+    });
+  }
+  let repair: Awaited<ReturnType<typeof inspectNativeRepairStatus>> = null;
+  const repairFindings: NativeFinding[] = [];
+  if (state.phase === 'build' && state.verification_result === 'fail') {
+    try {
+      repair = await inspectNativeRepairStatus(paths, state);
+      if (repair) {
+        const code =
+          repair.disposition === 'hard-stop'
+            ? 'repair-iteration-limit'
+            : repair.overrideRecorded
+              ? 'repair-override-exhausted'
+              : 'repair-stagnation-stop';
+        repairFindings.push({
+          code,
+          message: `Native repair is stopped at failure signature: ${repair.signatureHash}`,
+        });
+      }
+    } catch {
+      repairFindings.push({
+        code: 'trajectory-invalid',
+        message: 'Native repair history could not be reconstructed safely',
+      });
+    }
+  }
   let archivePreflight: Awaited<ReturnType<typeof inspectNativeArchivePreflight>> | null = null;
   const archiveFindings: NativeFinding[] = [];
   if (state.phase === 'archive') {
@@ -226,6 +318,9 @@ export async function inspectNativeStatus(
   const rawFindings = [
     ...(await statusFindings(paths, state)),
     ...resume.findings,
+    ...conflictFindings,
+    ...workspaceFindings,
+    ...repairFindings,
     ...archiveFindings,
   ].filter(
     (finding, index, values) =>
@@ -234,8 +329,13 @@ export async function inspectNativeStatus(
       ) === index,
   );
   const findings = structureNativeFindings({ paths, state, findings: rawFindings });
+  const archiveBlockingFindings = findings.filter(
+    (finding) => !isNativeWorkspaceAdvisoryCode(finding.code),
+  );
   const archiveReady =
-    state.phase === 'archive' && archivePreflight?.ready === true && findings.length === 0;
+    state.phase === 'archive' &&
+    archivePreflight?.ready === true &&
+    archiveBlockingFindings.length === 0;
   const evidenceRetreat =
     state.phase === 'archive' &&
     (archivePreflight?.findingCodes ?? []).some((code) =>
@@ -253,6 +353,8 @@ export async function inspectNativeStatus(
     (finding) =>
       finding.code === 'trajectory-tail-incomplete' || finding.code === 'trajectory-invalid',
   );
+  const repairBlocked = repair !== null;
+  const firstErrorFinding = findings.find((finding) => finding.severity === 'error');
   return {
     name: state.name,
     phase: state.phase,
@@ -261,15 +363,20 @@ export async function inspectNativeStatus(
     verificationResult: state.verification_result,
     specChanges: state.spec_changes.length,
     selected,
-    nextCommand: mutationBlocked ? null : nativeNextCommand(state, archiveReady, evidenceRetreat),
+    nextCommand:
+      mutationBlocked || repairBlocked
+        ? null
+        : nativeNextCommand(state, archiveReady, evidenceRetreat),
     archiveReady,
     inspection: resume.inspection,
     findingSummary: summarizeNativeFindings(findings),
     detailsCommand: `comet native status ${state.name} --details`,
     checkpoint: resume.checkpoint,
     continuation: nativeContinuation({ state, findings, archiveReady, evidenceRetreat }),
+    repair,
     ...(options?.details
       ? {
+          ...(acceptancePage ? { acceptancePage } : {}),
           findings: findings.slice(0, 50),
           inspectionDetails: resume.inspectionDetails,
           checkpointDetails: resume.checkpointDetails,
@@ -285,25 +392,130 @@ export async function inspectNativeStatus(
       : {}),
     schema: state.schema,
     minimumRuntimeVersion: state.minimum_runtime_version,
-    ...(findings[0] ? { error: findings[0].message } : {}),
+    ...(firstErrorFinding ? { error: firstErrorFinding.message } : {}),
   };
 }
 
-export async function listNativeStatus(
-  paths: NativeProjectPaths,
-): Promise<NativeStatusProjection[]> {
-  let entries: Dirent[];
+async function boundedNativeChangeNames(paths: NativeProjectPaths): Promise<string[]> {
+  let guard: Awaited<ReturnType<typeof captureNativeProtectedDirectoryGuard>>;
   try {
-    entries = await fs.readdir(paths.changesDir, { withFileTypes: true });
+    guard = await captureNativeProtectedDirectoryGuard({
+      root: paths.nativeRoot,
+      directory: paths.changesDir,
+      label: 'Native status changes directory',
+    });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
-  const names = entries
-    .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
-    .map((entry) => entry.name)
-    .sort();
-  return Promise.all(names.map((name) => inspectNativeStatus(paths, name)));
+  const names: string[] = [];
+  const directory = await fs.opendir(paths.changesDir);
+  try {
+    for await (const entry of directory) {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      names.push(entry.name);
+      if (names.length > NATIVE_STATUS_PAGE_LIMITS.maxChanges) {
+        throw new Error(
+          `Native status exceeds ${NATIVE_STATUS_PAGE_LIMITS.maxChanges} visible changes`,
+        );
+      }
+    }
+  } finally {
+    await directory.close().catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== 'ERR_DIR_CLOSED') throw error;
+    });
+  }
+  await guard.verify();
+  return names.sort();
+}
+
+function nativeStatusCursor(namesHash: string, offset: number): string {
+  const encodedOffset = offset.toString(36);
+  const integrity = canonicalHash('comet.native.status-cursor.v1', { namesHash, offset });
+  return `native-status-v1.${namesHash}.${encodedOffset}.${integrity}`;
+}
+
+function nativeStatusOffset(options: {
+  namesHash: string;
+  total: number;
+  cursor?: string | null;
+}): number {
+  if (options.cursor === undefined || options.cursor === null) return 0;
+  const match = NATIVE_STATUS_CURSOR_PATTERN.exec(options.cursor);
+  if (!match) throw new Error('Native status cursor is invalid');
+  if (match[1] !== options.namesHash) throw new Error('Native status cursor is stale');
+  const offset = Number.parseInt(match[2], 36);
+  if (
+    !Number.isSafeInteger(offset) ||
+    offset <= 0 ||
+    offset >= options.total ||
+    offset.toString(36) !== match[2]
+  ) {
+    throw new Error('Native status cursor offset is invalid');
+  }
+  const expected = canonicalHash('comet.native.status-cursor.v1', {
+    namesHash: options.namesHash,
+    offset,
+  });
+  if (match[3] !== expected) throw new Error('Native status cursor integrity check failed');
+  return offset;
+}
+
+export async function listNativeStatusPage(
+  paths: NativeProjectPaths,
+  options?: { cursor?: string | null },
+): Promise<NativeStatusPageProjection> {
+  const names = await boundedNativeChangeNames(paths);
+  const namesHash = canonicalHash('comet.native.status-names.v1', names);
+  const offset = nativeStatusOffset({
+    namesHash,
+    total: names.length,
+    cursor: options?.cursor,
+  });
+  const candidates = await Promise.all(
+    names
+      .slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems)
+      .map((name) => inspectNativeStatus(paths, name)),
+  );
+  const items: NativeStatusProjection[] = [];
+  for (const candidate of candidates) {
+    const trialItems = [...items, candidate];
+    const nextOffset = offset + trialItems.length;
+    const trial: NativeStatusPageProjection = {
+      schema: 'comet.native.status-page.v1',
+      total: names.length,
+      offset,
+      items: trialItems,
+      nextCursor: nextOffset < names.length ? nativeStatusCursor(namesHash, nextOffset) : null,
+      limits: { ...NATIVE_STATUS_PAGE_LIMITS },
+    };
+    if (
+      Buffer.byteLength(JSON.stringify(trial), 'utf8') >
+      NATIVE_STATUS_PAGE_LIMITS.maxSerializedBytes
+    ) {
+      if (items.length === 0) {
+        throw new Error('Native status item exceeds its page serialization budget');
+      }
+      break;
+    }
+    items.push(candidate);
+  }
+  const nextOffset = offset + items.length;
+  return {
+    schema: 'comet.native.status-page.v1',
+    total: names.length,
+    offset,
+    items,
+    nextCursor: nextOffset < names.length ? nativeStatusCursor(namesHash, nextOffset) : null,
+    limits: { ...NATIVE_STATUS_PAGE_LIMITS },
+  };
+}
+
+/** Compatibility projection for in-process callers; CLI consumers receive the resumable page. */
+export async function listNativeStatus(
+  paths: NativeProjectPaths,
+): Promise<NativeStatusProjection[]> {
+  return (await listNativeStatusPage(paths)).items;
 }
 
 export async function inspectNativeArtifactFindings(

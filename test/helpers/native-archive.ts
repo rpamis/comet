@@ -22,7 +22,6 @@ import type {
 import { prepareNativeVerificationEvidence } from '../../domains/comet-native/native-verification-runtime.js';
 import { NATIVE_RUN_STORAGE } from '../../domains/engine/storage-layout.js';
 import { startRunWithStorage, writeRunStateAt } from '../../domains/engine/storage-run.js';
-import type { GitRepositoryInspection } from '../../platform/process/git-repository.js';
 
 const brief = `# Outcome
 Ship the capability.
@@ -41,16 +40,6 @@ None.
 # Verification expectations
 Run focused tests.
 `;
-
-const unavailableRepository: GitRepositoryInspection = {
-  available: false,
-  head: null,
-  branch: null,
-  worktreeRoot: null,
-  commonDir: null,
-  changedPaths: null,
-  failure: { kind: 'not-repository', operation: 'discovery' },
-};
 
 /** Build a real, content-bound Archive fixture without production test bypasses. */
 export async function prepareNativeArchiveFixture(options: {
@@ -90,7 +79,6 @@ export async function prepareNativeArchiveFixture(options: {
     state: buildState,
     artifactRefs: [],
     noCodeReason: 'The archive fixture changes only Native specifications.',
-    inspectRepository: async () => unavailableRepository,
   });
   const stateFile = path.join(changeDir, 'change.yaml');
   const verifyState = await compareAndSwapNativeChangeFile(

@@ -11,11 +11,24 @@ export const NATIVE_TRANSITION_SCHEMA = 'comet.native.transition.v3' as const;
 export const NATIVE_V2_TRANSITION_SCHEMA = 'comet.native.transition.v2' as const;
 export const NATIVE_LEGACY_TRANSITION_SCHEMA = 'comet.native.transition.v1' as const;
 
+export type NativeRootMoveCleanupKind =
+  | 'forward-source'
+  | 'restart-staging'
+  | 'rollback-destination'
+  | 'rollback-staging';
+
+export interface NativeRootMoveCleanup {
+  kind: NativeRootMoveCleanupKind;
+  state: 'prepared' | 'quarantined' | 'deleting';
+  manifestHash: string;
+}
+
 export interface NativePendingRootMove {
   id: string;
   fromArtifactRoot: string;
   toArtifactRoot: string;
   stage: 'copying' | 'ready' | 'switched';
+  cleanup?: NativeRootMoveCleanup;
 }
 
 export interface CometProjectConfig {
@@ -23,6 +36,7 @@ export interface CometProjectConfig {
   default_workflow: 'native' | 'classic';
   native: {
     artifact_root: string;
+    language: 'en' | 'zh-CN';
     pending_root_move?: NativePendingRootMove;
   };
 }
@@ -292,6 +306,59 @@ export interface NativeAdvanceEvidence {
   partialReason?: string;
   verificationResult?: 'pass' | 'fail';
   verificationReport?: string;
+  verificationReceipt?: string;
+  repairFailureCategories?: string[];
+  repairFailedCheckIds?: string[];
+  repairOverrideSignature?: string;
+  repairOverrideSummary?: string;
+}
+
+export interface NativeAcceptanceCriterionProjection {
+  id: string;
+  kind: 'brief-example' | 'spec-scenario';
+  source: string;
+  context: string[];
+  text: string;
+  contextTruncated: boolean;
+  textTruncated: boolean;
+}
+
+export interface NativeAcceptancePageProjection {
+  schema: 'comet.native.acceptance-page.v1';
+  acceptanceHash: string;
+  total: number;
+  offset: number;
+  items: NativeAcceptanceCriterionProjection[];
+  nextCursor: string | null;
+  limits: {
+    maxItems: number;
+    maxTextBytes: number;
+    maxContextItems: number;
+    maxContextItemBytes: number;
+    maxSerializedBytes: number;
+  };
+}
+
+export interface NativeRepairDecisionProjection {
+  disposition: 'continue' | 'warn' | 'manual-stop' | 'hard-stop';
+  reasonCode:
+    | 'new-failure-signature'
+    | 'repeated-failure-warning'
+    | 'repeated-failure-stop'
+    | 'override-accepted'
+    | 'override-already-used'
+    | 'repair-iteration-limit';
+  signatureHash: string;
+  consecutiveFailures: number;
+  totalRepairFailures: number;
+  remainingIterations: number;
+  overrideAccepted: boolean;
+}
+
+export interface NativeRepairStatusProjection {
+  disposition: NativeRepairDecisionProjection['disposition'];
+  signatureHash: string;
+  overrideRecorded: boolean;
 }
 
 export interface NativePreparedScopeProjection {
@@ -300,6 +367,7 @@ export interface NativePreparedScopeProjection {
   complete: boolean;
   unresolvedScopeCount: number;
   partialAllowanceRef: NativeContentAddressedRef | null;
+  acceptancePage: NativeAcceptancePageProjection;
 }
 
 export interface NativeAdvanceResult {
@@ -310,6 +378,7 @@ export interface NativeAdvanceResult {
   findings: NativeStructuredFinding[];
   continuation: NativeContinuation;
   preparedScope?: NativePreparedScopeProjection;
+  repair?: NativeRepairDecisionProjection;
 }
 
 interface NativeTransitionJournalFields<TState extends NativeReadableChangeState> {
@@ -371,6 +440,8 @@ export interface NativeStatusProjection {
   detailsCommand: string | null;
   checkpoint: NativeCheckpointCompactView | null;
   continuation: NativeContinuation | null;
+  repair?: NativeRepairStatusProjection | null;
+  acceptancePage?: NativeAcceptancePageProjection;
   findings?: NativeStructuredFinding[];
   inspectionDetails?: NativeInspectionDetailView;
   checkpointDetails?: NativeCheckpointDetailView | null;
@@ -386,6 +457,19 @@ export interface NativeStatusProjection {
   migrationRequired?: boolean;
   minimumRuntimeVersion?: number | null;
   error?: string;
+}
+
+export interface NativeStatusPageProjection {
+  schema: 'comet.native.status-page.v1';
+  total: number;
+  offset: number;
+  items: NativeStatusProjection[];
+  nextCursor: string | null;
+  limits: {
+    maxItems: number;
+    maxChanges: number;
+    maxSerializedBytes: number;
+  };
 }
 
 export interface NativeDoctorFinding {
@@ -490,6 +574,13 @@ export interface NativeTransactionHooks {
   afterRootMoveStage?: (
     stage: NativePendingRootMove['stage'],
     journal: NativeTransactionJournal,
+  ) => void | Promise<void>;
+  beforeRootMoveSourceRemove?: (sourceRoot: string) => void | Promise<void>;
+  afterRootMoveSourceQuarantined?: (quarantine: string) => void | Promise<void>;
+  afterRootMoveCleanupEntryRemoved?: (
+    kind: NativeRootMoveCleanupKind,
+    ref: string,
+    removedCount: number,
   ) => void | Promise<void>;
 }
 import type { RunState } from '../engine/types.js';

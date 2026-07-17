@@ -10,11 +10,17 @@ import {
 import {
   inspectNativeStatus,
   listNativeStatus,
+  listNativeStatusPage,
+  NATIVE_STATUS_PAGE_LIMITS,
 } from '../../../domains/comet-native/native-diagnostics.js';
+import { nativeContinuation } from '../../../domains/comet-native/native-continuation.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
 import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
-import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import type {
+  NativeChangeState,
+  NativeProjectPaths,
+} from '../../../domains/comet-native/native-types.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 const brief = `# Outcome
@@ -44,6 +50,60 @@ describe('Native status diagnostics', () => {
     paths = await nativeProjectPaths(projectRoot, '.');
   });
 
+  it('keeps workspace advisories visible without blocking an otherwise ready Archive', () => {
+    const continuation = nativeContinuation({
+      state: {
+        name: 'ready-change',
+        phase: 'archive',
+        revision: 4,
+      } as NativeChangeState,
+      archiveReady: true,
+      findings: [
+        {
+          code: 'workspace-root-changed',
+          message: 'The physical workspace root changed after implementation.',
+          severity: 'warning',
+          path: null,
+          requiredAction: 'inspect-workspace-advisory',
+          retryCommand: 'comet native status ready-change',
+          repairCommand: null,
+          requiresUserDecision: false,
+        },
+      ],
+    });
+
+    expect(continuation).toMatchObject({
+      disposition: 'continue',
+      action: 'archive',
+      command: 'comet native archive ready-change --dry-run',
+    });
+
+    const unknownWorkspaceIntegrityFinding = nativeContinuation({
+      state: {
+        name: 'ready-change',
+        phase: 'archive',
+        revision: 4,
+      } as NativeChangeState,
+      archiveReady: true,
+      findings: [
+        {
+          code: 'workspace-integrity-failed',
+          message: 'The workspace integrity check failed.',
+          severity: 'error',
+          path: null,
+          requiredAction: 'resolve-finding',
+          retryCommand: 'comet native status ready-change',
+          repairCommand: null,
+          requiresUserDecision: false,
+        },
+      ],
+    });
+    expect(unknownWorkspaceIntegrityFinding).toMatchObject({
+      disposition: 'blocked',
+      action: 'none',
+    });
+  });
+
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
@@ -71,6 +131,40 @@ describe('Native status diagnostics', () => {
     });
     expect(statuses[1]).toMatchObject({ selected: true });
     expect(JSON.stringify(statuses)).not.toMatch(/openspec|superpowers|comet classic/iu);
+  });
+
+  it('pages a bounded status list and rejects stale or tampered cursors', async () => {
+    for (let index = 0; index < NATIVE_STATUS_PAGE_LIMITS.maxItems + 2; index += 1) {
+      const name = `page-change-${String(index).padStart(2, '0')}`;
+      const directory = path.join(paths.changesDir, name);
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, 'change.yaml'), 'schema: [invalid\n');
+    }
+
+    const first = await listNativeStatusPage(paths);
+    expect(first).toMatchObject({
+      schema: 'comet.native.status-page.v1',
+      total: NATIVE_STATUS_PAGE_LIMITS.maxItems + 2,
+      offset: 0,
+    });
+    expect(first.items).toHaveLength(NATIVE_STATUS_PAGE_LIMITS.maxItems);
+    expect(first.nextCursor).not.toBeNull();
+    expect(Buffer.byteLength(JSON.stringify(first), 'utf8')).toBeLessThanOrEqual(
+      NATIVE_STATUS_PAGE_LIMITS.maxSerializedBytes,
+    );
+
+    const second = await listNativeStatusPage(paths, { cursor: first.nextCursor });
+    expect(second.offset).toBe(NATIVE_STATUS_PAGE_LIMITS.maxItems);
+    expect(second.items).toHaveLength(2);
+    expect(second.nextCursor).toBeNull();
+
+    await fs.mkdir(path.join(paths.changesDir, 'page-change-new'));
+    await expect(
+      listNativeStatusPage(paths, { cursor: first.nextCursor }),
+    ).rejects.toThrow('cursor is stale');
+    await expect(
+      listNativeStatusPage(paths, { cursor: `${first.nextCursor!.slice(0, -1)}0` }),
+    ).rejects.toThrow(/cursor (?:is stale|integrity check failed)/u);
   });
 
   it('reports malformed change YAML without hiding the other changes', async () => {
@@ -120,10 +214,12 @@ describe('Native status diagnostics', () => {
       },
     });
 
-    expect(await inspectNativeStatus(paths, 'ready-change')).toMatchObject({
+    const readyStatus = await inspectNativeStatus(paths, 'ready-change');
+    expect(readyStatus).toMatchObject({
       archiveReady: true,
       nextCommand: 'comet native archive ready-change --dry-run',
     });
+    expect(readyStatus).not.toHaveProperty('error');
     await fs.rm(path.join(changeDir, 'verification.md'));
     expect(await inspectNativeStatus(paths, 'ready-change')).toMatchObject({
       archiveReady: false,

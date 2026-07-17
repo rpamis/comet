@@ -13,6 +13,7 @@ import {
   inspectNativeChangeConflicts,
   inspectNativeConflictRadar,
 } from '../../../domains/comet-native/native-conflict-inspection.js';
+import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import type {
   NativeChangeState,
@@ -113,6 +114,10 @@ describe('Native conflict radar collection', () => {
       possibleOverlapCount: 0,
       findingCodes: ['native-change-conflict'],
     });
+    const status = await inspectNativeStatus(paths, 'alpha-change', { details: true });
+    expect(status.findings).toContainEqual(
+      expect.objectContaining({ code: 'native-change-conflict' }),
+    );
   });
 
   it('fails closed when a visible change points at invalid scope evidence', async () => {

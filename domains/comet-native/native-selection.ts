@@ -6,11 +6,40 @@ import { assertNativeName, readNativeChange } from './native-change.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { resolveContainedNativePath } from './native-paths.js';
+import { readNativeProtectedTextFile } from './native-protected-file.js';
 import type { NativeProjectPaths } from './native-types.js';
 
-interface NativeSelection {
+export interface NativeSelection {
   schema: 'comet.native.selection.v1';
   change: string;
+}
+
+export const NATIVE_SELECTION_MAX_BYTES = 16 * 1024;
+
+export async function readNativeSelectionRecord(
+  paths: NativeProjectPaths,
+): Promise<NativeSelection | null> {
+  const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
+  let source: string;
+  try {
+    source = (
+      await readNativeProtectedTextFile({
+        root: paths.nativeRoot,
+        file,
+        maxBytes: NATIVE_SELECTION_MAX_BYTES,
+        label: 'Native current-change selection',
+      })
+    ).text;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  const value = JSON.parse(source) as Partial<NativeSelection>;
+  if (value.schema !== 'comet.native.selection.v1' || typeof value.change !== 'string') {
+    throw new Error('Invalid Native current-change selection');
+  }
+  assertNativeName(value.change);
+  return value as NativeSelection;
 }
 
 export function nativeSelectionFile(paths: NativeProjectPaths): string {
@@ -30,21 +59,8 @@ export async function selectNativeChange(paths: NativeProjectPaths, name: string
 export async function resolveSelectedNativeChange(
   paths: NativeProjectPaths,
 ): Promise<string | null> {
-  let source: string;
-  try {
-    source = await fs.readFile(
-      await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)),
-      'utf8',
-    );
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
-  }
-  const value = JSON.parse(source) as Partial<NativeSelection>;
-  if (value.schema !== 'comet.native.selection.v1' || typeof value.change !== 'string') {
-    throw new Error('Invalid Native current-change selection');
-  }
-  assertNativeName(value.change);
+  const value = await readNativeSelectionRecord(paths);
+  if (!value) return null;
   await readNativeChange(paths, value.change);
   return value.change;
 }
@@ -75,18 +91,8 @@ export async function clearNativeSelectionIfLocked(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<boolean> {
-  let source: string;
-  try {
-    source = await fs.readFile(
-      await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)),
-      'utf8',
-    );
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
-  const value = JSON.parse(source) as Partial<NativeSelection>;
-  if (value.schema !== 'comet.native.selection.v1' || value.change !== name) return false;
+  const value = await readNativeSelectionRecord(paths);
+  if (!value || value.change !== name) return false;
   await clearNativeSelectionLocked(paths);
   return true;
 }

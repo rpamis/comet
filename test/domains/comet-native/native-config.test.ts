@@ -28,10 +28,41 @@ describe('Native project configuration', () => {
     expect(await readProjectConfig(projectRoot)).toEqual({
       schema: 'comet.project.v1',
       default_workflow: 'native',
-      native: { artifact_root: 'docs' },
+      native: { artifact_root: 'docs', language: 'en' },
     });
     expect(await fs.readFile(path.join(projectRoot, 'comet.config.yaml'), 'utf8')).toBe(
-      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n',
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n  language: en\n',
+    );
+  });
+
+  it('reads an older project config without a language as English', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, 'comet.config.yaml'),
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: .\n',
+    );
+
+    expect((await readProjectConfig(projectRoot))?.native.language).toBe('en');
+  });
+
+  it('round-trips a transaction-bound root-move cleanup marker', async () => {
+    const config = defaultProjectConfig('docs');
+    config.native.pending_root_move = {
+      id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      fromArtifactRoot: '.',
+      toArtifactRoot: 'docs',
+      stage: 'switched',
+      cleanup: {
+        kind: 'forward-source',
+        state: 'deleting',
+        manifestHash: 'a'.repeat(64),
+      },
+    };
+
+    await writeProjectConfig(projectRoot, config);
+
+    expect(await readProjectConfig(projectRoot)).toEqual(config);
+    expect(await fs.readFile(path.join(projectRoot, 'comet.config.yaml'), 'utf8')).toContain(
+      'manifest_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     );
   });
 
@@ -83,5 +114,11 @@ describe('Native project configuration', () => {
   ])('fails closed for %s', async (_label, source) => {
     await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), source);
     await expect(readProjectConfig(projectRoot)).rejects.toBeInstanceOf(Error);
+  });
+
+  it('rejects an oversized project config before parsing it', async () => {
+    await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), Buffer.alloc(64 * 1024 + 1));
+
+    await expect(readProjectConfig(projectRoot)).rejects.toThrow('exceeds 65536 bytes');
   });
 });

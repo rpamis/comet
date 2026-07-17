@@ -1,8 +1,19 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { TextDecoder } from 'util';
 
 import { atomicWriteJson, atomicWriteText } from './native-atomic-file.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
+import {
+  copyNativeProtectedFile,
+  ensureNativeProtectedDirectory,
+  moveNativeProtectedDirectory,
+  readNativeProtectedDirectory,
+  readNativeProtectedFile,
+  removeNativeProtectedFile,
+  type NativeProtectedFile,
+  type NativeProtectedFileHooks,
+} from './native-protected-file.js';
 import type {
   NativeProjectPaths,
   NativeTransactionEvent,
@@ -63,6 +74,26 @@ const EVENT_TYPES = new Set<NativeTransactionEvent['type']>([
   'rollback-started',
   'rollback-completed',
 ]);
+const NATIVE_TRANSACTION_JOURNAL_MAX_BYTES = 256 * 1024;
+const NATIVE_TRANSACTION_EVENTS_MAX_BYTES = 1024 * 1024;
+const NATIVE_TRANSACTION_EVENT_MAX_BYTES = 16 * 1024;
+const NATIVE_TRANSACTION_EVENT_MAX_COUNT = 1024;
+const NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES = 64 * 1024 * 1024;
+const NATIVE_LEGACY_TRANSACTION_DIRECTORY_MAX_ENTRIES = 20_000;
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
+
+export interface NativeTransactionReadOptions {
+  hooks?: NativeProtectedFileHooks;
+}
+
+interface NativeTransactionEventLogSnapshot {
+  exists: boolean;
+  hash: string | null;
+  size: number;
+  events: NativeTransactionEvent[];
+  canonicalSource: string;
+  needsRepair: boolean;
+}
 
 export interface NativeArchiveTransactionOperationV2 {
   id: string;
@@ -402,7 +433,10 @@ function parseEvent(value: unknown, line: number): NativeTransactionEvent {
   }
   const operationEvent = event.type === 'operation-started' || event.type === 'operation-completed';
   if (
-    (operationEvent && typeof event.operationId !== 'string') ||
+    (operationEvent &&
+      (typeof event.operationId !== 'string' ||
+        !/^[a-z0-9][a-z0-9-]*$/u.test(event.operationId) ||
+        Buffer.byteLength(event.operationId, 'utf8') > 256)) ||
     (!operationEvent && event.operationId !== undefined)
   ) {
     throw new Error(`Native transaction event operationId at line ${line} is invalid`);
@@ -413,6 +447,148 @@ function parseEvent(value: unknown, line: number): NativeTransactionEvent {
     type: event.type as NativeTransactionEvent['type'],
     ...(typeof event.operationId === 'string' ? { operationId: event.operationId } : {}),
   };
+}
+
+function matchesIsoTimestampPrefix(value: string): boolean {
+  if (value.length > 24) return false;
+  const shape = '0000-00-00T00:00:00.000Z';
+  for (let index = 0; index < value.length; index += 1) {
+    const expected = shape[index];
+    const actual = value[index];
+    if (expected === '0') {
+      if (!/[0-9]/u.test(actual)) return false;
+    } else if (actual !== expected) {
+      return false;
+    }
+  }
+  const numericRanges: ReadonlyArray<readonly [number, number, number, number]> = [
+    [5, 2, 1, 12],
+    [8, 2, 1, 31],
+    [11, 2, 0, 23],
+    [14, 2, 0, 59],
+    [17, 2, 0, 59],
+    [20, 3, 0, 999],
+  ];
+  for (const [offset, width, minimum, maximum] of numericRanges) {
+    if (value.length <= offset) continue;
+    const partial = value.slice(offset, Math.min(offset + width, value.length));
+    const completable = Array.from({ length: maximum - minimum + 1 }, (_entry, index) =>
+      String(minimum + index).padStart(width, '0'),
+    ).some((candidate) => candidate.startsWith(partial));
+    if (!completable) return false;
+  }
+  if (value.length >= 10 && !validTimestamp(`${value.slice(0, 10)}T00:00:00.000Z`)) {
+    return false;
+  }
+  return value.length < 24 || validTimestamp(value);
+}
+
+function isStrictLiteralPrefix(value: string, expected: string): boolean {
+  return value.length < expected.length && expected.startsWith(value);
+}
+
+function couldCompleteOperationEventSuffix(value: string): boolean {
+  const operationPrefix = '","operationId":"';
+  if (isStrictLiteralPrefix(value, operationPrefix)) return true;
+  if (!value.startsWith(operationPrefix)) return false;
+  const remainder = value.slice(operationPrefix.length);
+  const closingQuote = remainder.indexOf('"');
+  if (closingQuote === -1) {
+    return remainder.length === 0 || /^[a-z0-9][a-z0-9-]*$/u.test(remainder);
+  }
+  const operationId = remainder.slice(0, closingQuote);
+  if (!/^[a-z0-9][a-z0-9-]*$/u.test(operationId)) return false;
+  return isStrictLiteralPrefix(remainder.slice(closingQuote), '"}');
+}
+
+/**
+ * Legacy writers appended JSON and the trailing newline in one write. A crash
+ * could therefore leave only a prefix of the canonical event serialization.
+ * Do not treat arbitrary invalid JSON as recoverable: the final bytes must be a
+ * strict prefix of an event this runtime could have generated for the next
+ * sequence number.
+ */
+function isRecognizedIncompleteEventTail(source: string, sequence: number): boolean {
+  if (
+    source.length === 0 ||
+    Buffer.byteLength(source, 'utf8') > NATIVE_TRANSACTION_EVENT_MAX_BYTES
+  ) {
+    return false;
+  }
+  const prefix = `{"sequence":${sequence},"timestamp":"`;
+  if (isStrictLiteralPrefix(source, prefix)) return true;
+  if (!source.startsWith(prefix)) return false;
+
+  const afterPrefix = source.slice(prefix.length);
+  const timestamp = afterPrefix.slice(0, Math.min(24, afterPrefix.length));
+  if (!matchesIsoTimestampPrefix(timestamp)) return false;
+  if (afterPrefix.length < 24) return true;
+  if (!validTimestamp(timestamp)) return false;
+
+  const typePrefix = '","type":"';
+  const afterTimestamp = afterPrefix.slice(24);
+  if (isStrictLiteralPrefix(afterTimestamp, typePrefix)) return true;
+  if (!afterTimestamp.startsWith(typePrefix)) return false;
+  const typeAndSuffix = afterTimestamp.slice(typePrefix.length);
+
+  for (const type of EVENT_TYPES) {
+    if (isStrictLiteralPrefix(typeAndSuffix, type)) return true;
+    if (!typeAndSuffix.startsWith(type)) continue;
+    const suffix = typeAndSuffix.slice(type.length);
+    if (type === 'operation-started' || type === 'operation-completed') {
+      if (couldCompleteOperationEventSuffix(suffix)) return true;
+    } else if (isStrictLiteralPrefix(suffix, '"}')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function parseEventLine(source: string, line: number): NativeTransactionEvent {
+  if (source.length === 0) throw new Error('Blank transaction event line');
+  if (Buffer.byteLength(source, 'utf8') > NATIVE_TRANSACTION_EVENT_MAX_BYTES) {
+    throw new Error(`Native transaction event at line ${line} is too large`);
+  }
+  return parseEvent(JSON.parse(source) as unknown, line);
+}
+
+function parseEventLogSource(source: string): NativeTransactionEvent[] {
+  const entries = source.split('\n');
+  const terminated = entries.at(-1) === '';
+  if (terminated) entries.pop();
+  if (entries.length > NATIVE_TRANSACTION_EVENT_MAX_COUNT) {
+    throw new Error(
+      `Native transaction event log exceeds ${NATIVE_TRANSACTION_EVENT_MAX_COUNT} events`,
+    );
+  }
+
+  const events: NativeTransactionEvent[] = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const line = index + 1;
+    const raw = entries[index];
+    const entry = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    const finalUnterminated = !terminated && index === entries.length - 1;
+    try {
+      events.push(parseEventLine(entry, line));
+    } catch (error) {
+      if (finalUnterminated) {
+        let syntacticallyComplete = false;
+        try {
+          JSON.parse(entry);
+          syntacticallyComplete = true;
+        } catch {
+          // Only a canonical event prefix is a recoverable crash tail.
+        }
+        if (!syntacticallyComplete && isRecognizedIncompleteEventTail(entry, line)) break;
+      }
+      throw new Error(`Invalid Native transaction event at line ${line}`, { cause: error });
+    }
+  }
+  return events;
+}
+
+function canonicalEventLogSource(events: readonly NativeTransactionEvent[]): string {
+  return events.length === 0 ? '' : `${events.map((event) => JSON.stringify(event)).join('\n')}\n`;
 }
 
 function transactionDir(paths: NativeProjectPaths, id: string): string {
@@ -482,28 +658,113 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-async function appendEvent(
+async function readEventLogSnapshot(
   paths: NativeProjectPaths,
-  journal: NativeTransactionJournal,
+  id: string,
+  options: NativeTransactionReadOptions = {},
+): Promise<NativeTransactionEventLogSnapshot> {
+  const tx = await resolveNativeTransactionPaths(paths, id);
+  try {
+    await fs.lstat(tx.events);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return {
+        exists: false,
+        hash: null,
+        size: 0,
+        events: [],
+        canonicalSource: '',
+        needsRepair: false,
+      };
+    }
+    throw error;
+  }
+  try {
+    const snapshot = await readNativeProtectedFile({
+      root: paths.nativeRoot,
+      file: tx.events,
+      maxBytes: NATIVE_TRANSACTION_EVENTS_MAX_BYTES,
+      label: `Native transaction event log ${id}`,
+      hooks: options.hooks,
+    });
+    let source: string;
+    try {
+      source = UTF8_DECODER.decode(snapshot.bytes);
+    } catch (error) {
+      throw new Error(`Native transaction event log ${id} is not valid UTF-8`, { cause: error });
+    }
+    const events = parseEventLogSource(source);
+    const canonicalSource = canonicalEventLogSource(events);
+    return {
+      exists: true,
+      hash: snapshot.hash,
+      size: snapshot.size,
+      events,
+      canonicalSource,
+      needsRepair: source !== canonicalSource,
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`Native transaction event log ${id} changed while reading`, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
+
+async function assertEventLogSnapshotUnchanged(
+  paths: NativeProjectPaths,
+  id: string,
+  expected: NativeTransactionEventLogSnapshot,
+): Promise<void> {
+  const actual = await readEventLogSnapshot(paths, id);
+  if (
+    actual.exists !== expected.exists ||
+    actual.hash !== expected.hash ||
+    actual.size !== expected.size
+  ) {
+    throw new Error(`Native transaction event log ${id} changed before append`);
+  }
+}
+
+export async function appendNativeTransactionEvent(
+  paths: NativeProjectPaths,
+  id: string,
   type: NativeTransactionEvent['type'],
   operationId?: string,
 ): Promise<NativeTransactionEvent> {
-  const tx = await resolveNativeTransactionPaths(paths, journal.id);
-  const events = await readNativeTransactionEvents(paths, journal.id);
+  const tx = await resolveNativeTransactionPaths(paths, id);
+  const snapshot = await readEventLogSnapshot(paths, id);
+  const existing = snapshot.events.find(
+    (event) => event.type === type && event.operationId === operationId,
+  );
+  if (existing) {
+    if (snapshot.needsRepair) {
+      await atomicWriteText(tx.events, snapshot.canonicalSource, {
+        containedRoot: paths.nativeRoot,
+        beforeCommit: () => assertEventLogSnapshotUnchanged(paths, id, snapshot),
+      });
+    }
+    return existing;
+  }
+  if (snapshot.events.length >= NATIVE_TRANSACTION_EVENT_MAX_COUNT) {
+    throw new Error(
+      `Native transaction event log ${id} exceeds ${NATIVE_TRANSACTION_EVENT_MAX_COUNT} events`,
+    );
+  }
   const event: NativeTransactionEvent = {
-    sequence: events.length + 1,
+    sequence: snapshot.events.length + 1,
     timestamp: new Date().toISOString(),
     type,
     ...(operationId ? { operationId } : {}),
   };
+  parseEvent(event, event.sequence);
   await fs.mkdir(tx.directory, { recursive: true });
-  const handle = await fs.open(tx.events, 'a');
-  try {
-    await handle.writeFile(JSON.stringify(event) + '\n', 'utf8');
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
+  await atomicWriteText(tx.events, canonicalEventLogSource([...snapshot.events, event]), {
+    containedRoot: paths.nativeRoot,
+    beforeCommit: () => assertEventLogSnapshotUnchanged(paths, id, snapshot),
+  });
   return event;
 }
 
@@ -519,16 +780,23 @@ export async function createNativeTransaction(
   await fs.mkdir(tx.staged, { recursive: true });
   await fs.mkdir(tx.backups, { recursive: true });
   await atomicWriteJson(tx.journal, journal);
-  await appendEvent(paths, journal, 'prepared');
+  await appendNativeTransactionEvent(paths, journal.id, 'prepared');
 }
 
 export async function readNativeTransaction(
   paths: NativeProjectPaths,
   id: string,
+  options: NativeTransactionReadOptions = {},
 ): Promise<NativeTransactionJournal> {
-  const value = JSON.parse(
-    await fs.readFile((await resolveNativeTransactionPaths(paths, id)).journal, 'utf8'),
-  ) as unknown;
+  const tx = await resolveNativeTransactionPaths(paths, id);
+  const snapshot = await readNativeProtectedFile({
+    root: paths.nativeRoot,
+    file: tx.journal,
+    maxBytes: NATIVE_TRANSACTION_JOURNAL_MAX_BYTES,
+    label: `Native transaction journal ${id}`,
+    hooks: options.hooks,
+  });
+  const value = JSON.parse(UTF8_DECODER.decode(snapshot.bytes)) as unknown;
   const journal = parseJournal(value);
   if (journal.id !== id) {
     throw new Error(`Invalid Native transaction journal: ${id}`);
@@ -539,25 +807,9 @@ export async function readNativeTransaction(
 export async function readNativeTransactionEvents(
   paths: NativeProjectPaths,
   id: string,
+  options: NativeTransactionReadOptions = {},
 ): Promise<NativeTransactionEvent[]> {
-  let source: string;
-  try {
-    source = await fs.readFile((await resolveNativeTransactionPaths(paths, id)).events, 'utf8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw error;
-  }
-  const entries = source.split(/\r?\n/u);
-  if (entries.at(-1) === '') entries.pop();
-  return entries.map((entry, index) => {
-    const line = index + 1;
-    try {
-      if (entry.length === 0) throw new Error('Blank transaction event line');
-      return parseEvent(JSON.parse(entry) as unknown, line);
-    } catch (error) {
-      throw new Error(`Invalid Native transaction event at line ${line}`, { cause: error });
-    }
-  });
+  return (await readEventLogSnapshot(paths, id, options)).events;
 }
 
 export async function setNativeTransactionStatus(
@@ -573,9 +825,66 @@ export async function setNativeTransactionStatus(
   return updated;
 }
 
-async function copyAtomic(source: string, target: string): Promise<void> {
-  const content = await fs.readFile(source);
-  await atomicWriteText(target, content.toString('utf8'));
+async function readLegacyTransactionFile(
+  paths: NativeProjectPaths,
+  file: string,
+  label: string,
+): Promise<NativeProtectedFile | null> {
+  try {
+    return await readNativeProtectedFile({
+      root: paths.nativeRoot,
+      file,
+      maxBytes: NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES,
+      label,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function copyAtomic(
+  paths: NativeProjectPaths,
+  source: string,
+  target: string,
+  label: string,
+): Promise<void> {
+  const sourceSnapshot = await readLegacyTransactionFile(paths, source, `${label} source`);
+  if (!sourceSnapshot) throw new Error(`${label} source does not exist`);
+  const targetSnapshot = await readLegacyTransactionFile(paths, target, `${label} target`);
+  await ensureNativeProtectedDirectory({
+    root: paths.nativeRoot,
+    directory: path.dirname(target),
+    label: `${label} target parent`,
+  });
+  await copyNativeProtectedFile({
+    sourceRoot: paths.nativeRoot,
+    source,
+    targetRoot: paths.nativeRoot,
+    target,
+    maxBytes: NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES,
+    label,
+    expectedHash: sourceSnapshot.hash,
+    expectedTargetHash: targetSnapshot?.hash ?? null,
+    exclusive: targetSnapshot === null,
+  });
+}
+
+async function removeLegacyTransactionFile(
+  paths: NativeProjectPaths,
+  file: string,
+  label: string,
+): Promise<void> {
+  const snapshot = await readLegacyTransactionFile(paths, file, label);
+  if (!snapshot) return;
+  await removeNativeProtectedFile({
+    root: paths.nativeRoot,
+    file,
+    maxBytes: NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES,
+    expectedHash: snapshot.hash,
+    expectedSize: snapshot.size,
+    label,
+  });
 }
 
 async function backupTarget(
@@ -586,8 +895,7 @@ async function backupTarget(
   const target = await resolveRef(paths, operation.target);
   const backup = await resolveRef(paths, operation.backup);
   if (!(await exists(target)) || (await exists(backup))) return;
-  await fs.mkdir(path.dirname(backup), { recursive: true });
-  await fs.copyFile(target, backup);
+  await copyAtomic(paths, target, backup, `Legacy Native transaction backup ${operation.id}`);
 }
 
 async function applyOperation(
@@ -598,22 +906,44 @@ async function applyOperation(
   if (operation.type === 'write') {
     if (!operation.staged) throw new Error(`Write operation ${operation.id} has no staged ref`);
     await backupTarget(paths, operation);
-    await copyAtomic(await resolveRef(paths, operation.staged), target);
+    await copyAtomic(
+      paths,
+      await resolveRef(paths, operation.staged),
+      target,
+      `Legacy Native transaction write ${operation.id}`,
+    );
     return;
   }
   if (operation.type === 'remove') {
     await backupTarget(paths, operation);
-    await fs.rm(target, { force: true });
+    await removeLegacyTransactionFile(
+      paths,
+      target,
+      `Legacy Native transaction remove ${operation.id}`,
+    );
     return;
   }
   if (!operation.source) throw new Error(`Move operation ${operation.id} has no source ref`);
   const source = await resolveRef(paths, operation.source);
   const [sourceExists, targetExists] = await Promise.all([exists(source), exists(target)]);
-  if (!sourceExists && targetExists) return;
+  if (!sourceExists && targetExists) {
+    const targetDirectory = await readNativeProtectedDirectory({
+      root: paths.nativeRoot,
+      directory: target,
+      label: `Legacy Native transaction move target ${operation.id}`,
+      maxEntries: NATIVE_LEGACY_TRANSACTION_DIRECTORY_MAX_ENTRIES,
+    });
+    await targetDirectory.verify();
+    return;
+  }
   if (targetExists) throw new Error(`Move target already exists: ${operation.target}`);
   if (!sourceExists) throw new Error(`Move source does not exist: ${operation.source}`);
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.rename(source, target);
+  await moveNativeProtectedDirectory({
+    root: paths.nativeRoot,
+    source,
+    target,
+    label: `Legacy Native transaction move ${operation.id}`,
+  });
 }
 
 export async function applyNativeTransaction(
@@ -637,9 +967,9 @@ export async function applyNativeTransaction(
   let completedCount = completed.size;
   for (const operation of current.operations) {
     if (completed.has(operation.id)) continue;
-    await appendEvent(paths, current, 'operation-started', operation.id);
+    await appendNativeTransactionEvent(paths, current.id, 'operation-started', operation.id);
     await applyOperation(paths, operation);
-    await appendEvent(paths, current, 'operation-completed', operation.id);
+    await appendNativeTransactionEvent(paths, current.id, 'operation-completed', operation.id);
     completedCount += 1;
     await hooks?.afterOperation?.(operation, completedCount);
   }
@@ -657,15 +987,31 @@ async function rollbackOperation(
     if (!operation.source) throw new Error(`Move operation ${operation.id} has no source ref`);
     const source = await resolveRef(paths, operation.source);
     if (await exists(target)) {
-      await fs.mkdir(path.dirname(source), { recursive: true });
-      await fs.rename(target, source);
+      if (await exists(source)) {
+        throw new Error(`Legacy Native rollback source already exists: ${operation.source}`);
+      }
+      await moveNativeProtectedDirectory({
+        root: paths.nativeRoot,
+        source: target,
+        target: source,
+        label: `Legacy Native transaction rollback move ${operation.id}`,
+      });
     }
     return;
   }
   if (backup && (await exists(backup))) {
-    await copyAtomic(backup, target);
+    await copyAtomic(
+      paths,
+      backup,
+      target,
+      `Legacy Native transaction rollback restore ${operation.id}`,
+    );
   } else {
-    await fs.rm(target, { force: true });
+    await removeLegacyTransactionFile(
+      paths,
+      target,
+      `Legacy Native transaction rollback remove ${operation.id}`,
+    );
   }
 }
 
@@ -686,7 +1032,7 @@ export async function rollbackNativeTransaction(
     throw new Error('An archive whose finalization started can only be recovered by continuing it');
   }
   let current = await setNativeTransactionStatus(paths, journal, 'rolling-back');
-  await appendEvent(paths, current, 'rollback-started');
+  await appendNativeTransactionEvent(paths, current.id, 'rollback-started');
   const started = new Set(
     events
       .filter((event) => event.type === 'operation-started' || event.type === 'operation-completed')
@@ -695,7 +1041,7 @@ export async function rollbackNativeTransaction(
   for (const operation of [...current.operations].reverse()) {
     if (started.has(operation.id)) await rollbackOperation(paths, operation);
   }
-  await appendEvent(paths, current, 'rollback-completed');
+  await appendNativeTransactionEvent(paths, current.id, 'rollback-completed');
   current = await setNativeTransactionStatus(paths, current, 'rolled-back');
   return current;
 }
@@ -708,7 +1054,7 @@ export async function finalizeNativeTransaction(
   if ((journal as unknown as { schema: string }).schema !== 'comet.native.transaction.v1') {
     throw new Error('Native Archive v2 transactions require the content-bound transaction API');
   }
-  await appendEvent(paths, journal, event);
+  await appendNativeTransactionEvent(paths, journal.id, event);
   return event === 'commit' ? setNativeTransactionStatus(paths, journal, 'committed') : journal;
 }
 

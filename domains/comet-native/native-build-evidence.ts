@@ -1,16 +1,13 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import {
-  inspectGitRepository,
-  type GitRepositoryInspection,
-} from '../../platform/process/git-repository.js';
 import { nativeChangeDir } from './native-change.js';
 import {
   collectNativeContractFiles,
   type NativeCollectedContract,
 } from './native-contract-files.js';
 import {
+  nativeEvidenceRef,
   writeNativeImplementationScope,
   writeNativePartialAllowance,
 } from './native-evidence-storage.js';
@@ -47,6 +44,18 @@ export interface NativeBuildEvidencePreparation {
   allowanceRef: string | null;
   findings: NativeFinding[];
   unresolvedScopes: NativeUnresolvedScope[];
+}
+
+export interface NativeBuildEvidenceOptions {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+  artifactRefs: readonly string[];
+  noCodeReason?: string | null;
+  allowPartialScopeHash?: string | null;
+  partialReason?: string | null;
+  confirmedSummary?: string | null;
+  confirmed?: boolean;
+  now?: Date;
 }
 
 function normalizeProjectRef(value: string, label: string): string {
@@ -163,18 +172,9 @@ function partialScopeHash(value: string): string {
  * A partial scope is persisted so its deterministic IDs can be shown and confirmed on a later
  * invocation, but it is not attached to change state until the caller commits a phase transition.
  */
-export async function prepareNativeBuildEvidence(options: {
-  paths: NativeProjectPaths;
-  state: NativeChangeState;
-  artifactRefs: readonly string[];
-  noCodeReason?: string | null;
-  allowPartialScopeHash?: string | null;
-  partialReason?: string | null;
-  confirmedSummary?: string | null;
-  confirmed?: boolean;
-  now?: Date;
-  inspectRepository?: (projectRoot: string) => Promise<GitRepositoryInspection>;
-}): Promise<NativeBuildEvidencePreparation> {
+export async function inspectNativeBuildEvidence(
+  options: NativeBuildEvidenceOptions,
+): Promise<NativeBuildEvidencePreparation> {
   if (options.state.phase !== 'build') {
     throw new Error(`Native build evidence requires Build, got ${options.state.phase}`);
   }
@@ -193,23 +193,18 @@ export async function prepareNativeBuildEvidence(options: {
     baseline,
     refs: options.artifactRefs,
   });
-  const [current, repository] = await Promise.all([
-    createNativeContentSnapshot(options.paths, { origin: 'explicit', now: options.now }),
-    (options.inspectRepository ?? inspectGitRepository)(options.paths.projectRoot),
-  ]);
+  const current = await createNativeContentSnapshot(options.paths, {
+    origin: 'explicit',
+    now: options.now,
+  });
   const bundle = buildNativeImplementationScopeBundle({
     baseline,
     current,
     contractHash: contract.contract.contractHash,
     declaredArtifacts,
     noCodeReason: options.noCodeReason ?? null,
-    ...(repository.available ? { gitChangedPaths: repository.changedPaths } : {}),
   });
-  const scopeRef = await writeNativeImplementationScope({
-    paths: options.paths,
-    name: options.state.name,
-    bundle,
-  });
+  const scopeRef = nativeEvidenceRef('scopes', bundle.scope.scopeHash);
   if (bundle.scope.complete) {
     if (
       (options.allowPartialScopeHash !== undefined && options.allowPartialScopeHash !== null) ||
@@ -254,11 +249,7 @@ export async function prepareNativeBuildEvidence(options: {
     sourceRevision: options.state.revision,
     now: options.now,
   });
-  const allowanceRef = await writeNativePartialAllowance({
-    paths: options.paths,
-    name: options.state.name,
-    allowance,
-  });
+  const allowanceRef = nativeEvidenceRef('allowances', allowance.allowanceHash);
   return {
     contract,
     bundle,
@@ -268,4 +259,38 @@ export async function prepareNativeBuildEvidence(options: {
     findings: [],
     unresolvedScopes: bundle.scope.unresolvedScopes,
   };
+}
+
+export async function persistNativeBuildEvidence(
+  options: Pick<NativeBuildEvidenceOptions, 'paths' | 'state'> & {
+    preparation: NativeBuildEvidencePreparation;
+    includeAllowance?: boolean;
+  },
+): Promise<void> {
+  const scopeRef = await writeNativeImplementationScope({
+    paths: options.paths,
+    name: options.state.name,
+    bundle: options.preparation.bundle,
+  });
+  if (scopeRef !== options.preparation.scopeRef) {
+    throw new Error('Native implementation scope persistence ref changed');
+  }
+  if (options.includeAllowance === false || options.preparation.allowance === null) return;
+  const allowanceRef = await writeNativePartialAllowance({
+    paths: options.paths,
+    name: options.state.name,
+    allowance: options.preparation.allowance,
+  });
+  if (allowanceRef !== options.preparation.allowanceRef) {
+    throw new Error('Native partial allowance persistence ref changed');
+  }
+}
+
+/** Backwards-compatible one-shot API for callers that intentionally persist a prepared scope. */
+export async function prepareNativeBuildEvidence(
+  options: NativeBuildEvidenceOptions,
+): Promise<NativeBuildEvidencePreparation> {
+  const preparation = await inspectNativeBuildEvidence(options);
+  await persistNativeBuildEvidence({ paths: options.paths, state: options.state, preparation });
+  return preparation;
 }

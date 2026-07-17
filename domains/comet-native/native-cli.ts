@@ -1,4 +1,3 @@
-import { promises as fs } from 'fs';
 import path from 'path';
 
 import {
@@ -10,7 +9,6 @@ import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
 import {
   createNativeChange,
   inspectNativeChange,
-  listNativeChanges,
   NativeChangeRevisionConflictError,
   NativeRuntimeCompatibilityError,
   nativeChangeDir,
@@ -22,8 +20,9 @@ import {
   resolveNativeProject,
   writeProjectConfig,
 } from './native-config.js';
-import { inspectNativeStatus, listNativeStatus } from './native-diagnostics.js';
+import { inspectNativeStatus, listNativeStatusPage } from './native-diagnostics.js';
 import { doctorNativeProject } from './native-doctor.js';
+import { checkNativeChange } from './native-check.js';
 import { checkpointNativeChange } from './native-progress-checkpoint.js';
 import { nativeContinuation } from './native-continuation.js';
 import {
@@ -39,6 +38,8 @@ import {
   readNativeProposedSpecs,
   rebaseNativeSpecChanges,
 } from './native-specs.js';
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import { advanceNativeChange } from './native-transitions.js';
 import type {
   CometProjectConfig,
@@ -53,7 +54,7 @@ export interface NativeCommandResult {
 }
 
 interface NativeCliErrorShape {
-  code: 'usage' | 'invalid-data' | 'conflict' | 'internal';
+  code: 'usage' | 'invalid-data' | 'blocked' | 'conflict' | 'internal';
   message: string;
 }
 
@@ -64,6 +65,8 @@ interface DispatchResult {
   text?: string;
   error?: NativeCliErrorShape;
 }
+
+const NATIVE_SHOW_MAX_SERIALIZED_BYTES = 10 * 1024 * 1024;
 
 class NativeUsageError extends Error {}
 
@@ -76,12 +79,13 @@ Commands:
   new <change-name> [--language en|zh-CN]
   spec remove <change-name> <capability>
   spec rebase <change-name> --summary <text>
-  list
+  list [--cursor <token>]
   show <change-name>
-  status [<change-name>]
+  status [<change-name>] [--cursor <token>] [--details [--acceptance-cursor <token>]]
   select <change-name>
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
-  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>]
+  check <change-name>
+  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <change-relative-ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
   archive <change-name> --expect-preflight <sha256>
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
@@ -135,8 +139,8 @@ function requiredPositional(args: string[], label: string): string {
   return value;
 }
 
-function languageOption(args: string[]): 'en' | 'zh-CN' {
-  const language = takeOption(args, '--language') ?? 'en';
+function languageOption(args: string[], fallback: 'en' | 'zh-CN' = 'en'): 'en' | 'zh-CN' {
+  const language = takeOption(args, '--language') ?? fallback;
   if (language !== 'en' && language !== 'zh-CN') {
     throw new NativeUsageError('--language must be en or zh-CN');
   }
@@ -187,9 +191,9 @@ async function dispatch(
   const projectRoot = await projectRootFrom(explicitProjectRoot);
   if (command === 'init') {
     const requestedRoot = takeOption(rawArgs, '--root');
-    const language = languageOption(rawArgs);
-    assertNoArguments(rawArgs);
     const existing = await readProjectConfig(projectRoot);
+    const language = languageOption(rawArgs, existing?.native.language ?? 'en');
+    assertNoArguments(rawArgs);
     if (existing?.native.pending_root_move) {
       throw new Error(`Native root move ${existing.native.pending_root_move.id} is incomplete`);
     }
@@ -201,10 +205,12 @@ async function dispatch(
         `Configured Native artifact root is ${existing.native.artifact_root}; refusing conflicting root ${artifactRoot}`,
       );
     }
-    const config = existing ?? defaultProjectConfig(artifactRoot);
+    const config = existing
+      ? { ...existing, native: { ...existing.native, language } }
+      : defaultProjectConfig(artifactRoot, language);
     const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
     await ensureNativeDirectories(paths);
-    if (!existing) await writeProjectConfig(projectRoot, config);
+    await writeProjectConfig(projectRoot, config);
     return success(
       'init',
       {
@@ -226,6 +232,7 @@ async function dispatch(
       return success('root show', {
         projectRoot,
         artifactRoot: config.native.artifact_root,
+        language: config.native.language,
         nativeRoot: paths.nativeRoot,
         pendingRootMove: config.native.pending_root_move ?? null,
       });
@@ -240,20 +247,20 @@ async function dispatch(
   }
   if (command === 'new') {
     const name = requiredPositional(rawArgs, 'change name');
-    const language = languageOption(rawArgs);
-    assertNoArguments(rawArgs);
     let config = await readProjectConfig(projectRoot);
+    const language = languageOption(rawArgs, config?.native.language ?? 'en');
+    assertNoArguments(rawArgs);
     const shouldWriteConfig = config === null;
     if (!config) {
-      config = defaultProjectConfig('.');
+      config = defaultProjectConfig('.', language);
     }
     if (config.native.pending_root_move) {
       throw new Error(`Native root move ${config.native.pending_root_move.id} is incomplete`);
     }
+    if (shouldWriteConfig) await writeProjectConfig(projectRoot, config);
     const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
     await ensureNativeDirectories(paths);
     const state = await createNativeChange({ paths, name, language });
-    if (shouldWriteConfig) await writeProjectConfig(projectRoot, config);
     const status = await inspectNativeStatus(paths, state.name);
     return success(
       'new',
@@ -293,10 +300,11 @@ async function dispatch(
     throw new NativeUsageError(`Unknown spec command: ${subcommand}`);
   }
   if (command === 'list') {
+    const cursor = takeOption(rawArgs, '--cursor');
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
-    const changes = await listNativeChanges(paths);
-    return success('list', changes);
+    const page = await listNativeStatusPage(paths, cursor ? { cursor } : undefined);
+    return success('list', page);
   }
   if (command === 'show') {
     const name = requiredPositional(rawArgs, 'change name');
@@ -321,21 +329,43 @@ async function dispatch(
     const state = inspection.state;
     const changeDir = nativeChangeDir(paths, name);
     const proposedSpecs = await readNativeProposedSpecs(paths, name);
-    return success('show', {
-      state,
-      brief: await fs.readFile(path.join(changeDir, state.brief), 'utf8'),
-      proposedSpecs,
+    const brief = await readNativeBoundedTextFile({
+      root: changeDir,
+      ref: state.brief,
+      maxBytes: NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes,
     });
+    const payload = {
+      state,
+      brief: brief.text,
+      proposedSpecs,
+    };
+    if (Buffer.byteLength(JSON.stringify(payload), 'utf8') > NATIVE_SHOW_MAX_SERIALIZED_BYTES) {
+      throw new Error('Native show output exceeds its serialized byte budget');
+    }
+    return success('show', payload);
   }
   if (command === 'status') {
     const details = takeFlag(rawArgs, '--details');
+    const cursor = takeOption(rawArgs, '--cursor');
+    const acceptanceCursor = takeOption(rawArgs, '--acceptance-cursor');
     const name = rawArgs[0]?.startsWith('--') ? undefined : rawArgs.shift();
     if (details && !name) throw new NativeUsageError('status --details requires a change name');
+    if (cursor && name) throw new NativeUsageError('--cursor is only valid for status lists');
+    if (cursor && details) throw new NativeUsageError('--cursor cannot be combined with --details');
+    if (acceptanceCursor && !details) {
+      throw new NativeUsageError('--acceptance-cursor requires status --details');
+    }
+    if (acceptanceCursor && !name) {
+      throw new NativeUsageError('--acceptance-cursor requires a change name');
+    }
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
     const data = name
-      ? await inspectNativeStatus(paths, name, { details })
-      : await listNativeStatus(paths);
+      ? await inspectNativeStatus(paths, name, {
+          details,
+          ...(acceptanceCursor ? { acceptanceCursor } : {}),
+        })
+      : await listNativeStatusPage(paths, cursor ? { cursor } : undefined);
     return success('status', data);
   }
   if (command === 'select') {
@@ -381,6 +411,33 @@ async function dispatch(
       continuation: status.continuation,
     });
   }
+  if (command === 'check') {
+    const name = requiredPositional(rawArgs, 'change name');
+    assertNoArguments(rawArgs);
+    const { paths } = await configuredPaths(projectRoot);
+    const checked = await checkNativeChange({ paths, name });
+    const data = {
+      ref: checked.ref,
+      hash: checked.receipt.receiptHash,
+      status: checked.receipt.status,
+      checker: checked.receipt.checker,
+      counts: checked.receipt.counts,
+      issues: checked.receipt.issues,
+      issuesTruncated: checked.receipt.issuesTruncated,
+      stale: checked.receipt.stale,
+      staleReasons: checked.receipt.staleReasons,
+      startedAt: checked.receipt.startedAt,
+      endedAt: checked.receipt.endedAt,
+      sourceRevision: checked.receipt.sourceRevision,
+    };
+    const passed = checked.receipt.status === 'passed' && !checked.receipt.stale;
+    return {
+      command: 'check',
+      exitCode: passed ? 0 : 1,
+      data,
+      text: `Native check ${passed ? 'passed' : 'failed'}: ${checked.ref}\n`,
+    };
+  }
   if (command === 'next') {
     const name = requiredPositional(rawArgs, 'change name');
     const summary = takeOption(rawArgs, '--summary');
@@ -392,6 +449,11 @@ async function dispatch(
     const partialReason = takeOption(rawArgs, '--partial-reason');
     const verificationResult = takeOption(rawArgs, '--result');
     const verificationReport = takeOption(rawArgs, '--report');
+    const verificationReceipt = takeOption(rawArgs, '--receipt');
+    const repairFailureCategories = takeMany(rawArgs, '--failure-category');
+    const repairFailedCheckIds = takeMany(rawArgs, '--failed-check');
+    const repairOverrideSignature = takeOption(rawArgs, '--override-repair');
+    const repairOverrideSummary = takeOption(rawArgs, '--override-summary');
     if (
       verificationResult !== undefined &&
       verificationResult !== 'pass' &&
@@ -410,6 +472,26 @@ async function dispatch(
     if (allowPartialScopeHash && !confirmed) {
       throw new NativeUsageError('--allow-partial-scope requires --confirmed');
     }
+    if (
+      (repairFailureCategories.length > 0 || repairFailedCheckIds.length > 0) &&
+      verificationResult !== 'fail'
+    ) {
+      throw new NativeUsageError('--failure-category and --failed-check require --result fail');
+    }
+    if (verificationReceipt && verificationResult === undefined) {
+      throw new NativeUsageError('--receipt requires --result');
+    }
+    if ((repairOverrideSignature === undefined) !== (repairOverrideSummary === undefined)) {
+      throw new NativeUsageError(
+        '--override-repair and --override-summary must be provided together',
+      );
+    }
+    if (repairOverrideSignature && !/^[a-f0-9]{64}$/u.test(repairOverrideSignature)) {
+      throw new NativeUsageError('--override-repair must be a SHA-256 hash');
+    }
+    if (repairOverrideSignature && verificationResult !== undefined) {
+      throw new NativeUsageError('--override-repair cannot be combined with --result');
+    }
     assertNoArguments(rawArgs);
     const { paths } = await configuredPaths(projectRoot);
     const evidence: NativeAdvanceEvidence = {
@@ -421,15 +503,30 @@ async function dispatch(
       ...(partialReason ? { partialReason } : {}),
       ...(verificationResult ? { verificationResult } : {}),
       ...(verificationReport ? { verificationReport } : {}),
+      ...(verificationReceipt ? { verificationReceipt } : {}),
+      ...(repairFailureCategories.length > 0 ? { repairFailureCategories } : {}),
+      ...(repairFailedCheckIds.length > 0 ? { repairFailedCheckIds } : {}),
+      ...(repairOverrideSignature ? { repairOverrideSignature } : {}),
+      ...(repairOverrideSummary ? { repairOverrideSummary } : {}),
     };
     const result = await advanceNativeChange({ paths, name, evidence });
     if (result.next === 'manual') {
+      const repairBlocked =
+        result.repair?.disposition === 'manual-stop' ||
+        result.repair?.disposition === 'hard-stop' ||
+        result.findings.some((finding) =>
+          [
+            'repair-stagnation-stop',
+            'repair-iteration-limit',
+            'repair-override-exhausted',
+          ].includes(finding.code),
+        );
       return {
         command: 'next',
-        exitCode: 65,
+        exitCode: repairBlocked ? 75 : 65,
         data: result,
         error: {
-          code: 'invalid-data',
+          code: repairBlocked ? 'blocked' : 'invalid-data',
           message: result.findings[0]?.message ?? 'Native phase guard failed',
         },
       };

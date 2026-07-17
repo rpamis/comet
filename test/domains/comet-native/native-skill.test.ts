@@ -36,6 +36,29 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('自然语言显示名称');
   });
 
+  it('discovers hidden decisions without manufacturing unnecessary questions', async () => {
+    const source = await read('zh', 'SKILL.md');
+
+    expect(source).toContain('主要分支、默认行为、边界条件、失败路径、兼容性约束和不可逆操作');
+    expect(source).toContain('仓库事实');
+    expect(source).toContain('实现选择');
+    expect(source).toContain('用户决定');
+    expect(source).toContain('回答后重新计算决策前沿');
+    expect(source).toContain('不存在高影响未知项时，不提确认题');
+    expect(source).toContain('另一个没有当前对话上下文的强模型');
+    expect(source).toContain('不猜测用户可见行为');
+  });
+
+  it('keeps Runtime continuation inside the same Skill without claiming background execution', async () => {
+    const source = await read('zh', 'SKILL.md');
+
+    expect(source).toContain('机器可读 continuation 契约');
+    expect(source).toContain('不代表宿主会在后台自动执行');
+    expect(source).toContain('同一个 `/comet-native` Skill');
+    expect(source).toContain('不要把四个阶段拆成多个 Skill');
+    expect(source).toContain('没有用户决定或 Runtime 阻塞时持续推进');
+  });
+
   it('references only Comet-owned Native documentation and runtime', async () => {
     const source = await read('zh', 'SKILL.md');
     const links = [...source.matchAll(/\]\(([^)]+)\)/gu)].map((match) => match[1]).sort();
@@ -86,6 +109,8 @@ describe('Chinese Comet Native Skill', () => {
       'show',
       'status',
       'select',
+      'checkpoint',
+      'check',
       'next',
       'archive',
       'doctor',
@@ -95,9 +120,15 @@ describe('Chinese Comet Native Skill', () => {
     expect(artifacts).toContain('<artifact-root>/comet/');
     expect(artifacts).toContain('specs/<capability>/spec.md');
     expect(artifacts).toContain('base_hash');
+    expect(artifacts).toContain('schema: comet.native.v3');
+    expect(artifacts).toContain('check-receipts/<sha256>.json');
+    expect(artifacts).toContain('acceptance_id');
     expect(source).toContain('--confirmed');
+    expect(source).toContain('acceptancePage');
+    expect(source).toContain('nextCursor');
+    expect(source).toContain('不调用 Git、shell、项目脚本或任何外部进程');
     expect(source).not.toContain('记录正确的 canonical base hash');
-    expect(artifacts).toContain('`spec_changes`、operation 和 `base_hash` 由 runtime 管理');
+    expect(artifacts).toContain('`phase`、`revision`、`approval`、`spec_changes`、operation、`base_hash`');
     expect(commands).toContain('comet native spec remove <change-name> <capability>');
     expect(commands).toContain('comet native spec rebase <change-name> --summary <text>');
     expect(source).toContain('离开 Build 时传 `--confirmed`');
@@ -106,6 +137,12 @@ describe('Chinese Comet Native Skill', () => {
     expect(recovery).toContain('copying');
     expect(recovery).toContain('ready');
     expect(recovery).toContain('switched');
+    expect(recovery).toContain('workspace-root-changed');
+    expect(recovery).toContain('第三次且 scope 无进展时 manual stop');
+    expect(commands).toContain('--acceptance-cursor <token>');
+    expect(commands).toContain('runtime/evidence/check-receipts');
+    expect(commands).not.toContain('command-receipts');
+    expect(commands).not.toContain('--timeout <ms>');
   });
 
   it('ships an English Skill with the same Native protocol surfaces', async () => {

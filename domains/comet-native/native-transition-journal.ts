@@ -3,13 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { isDeepStrictEqual } from 'util';
 
-import { readTrajectory } from '../engine/run-store.js';
 import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
-import {
-  parseStoredRunStateValue,
-  readRunStateAt,
-  writeRunStateAt,
-} from '../engine/storage-run.js';
 import { atomicWriteJson } from './native-atomic-file.js';
 import {
   hasPendingNativeSchemaMigration,
@@ -21,15 +15,27 @@ import {
   readNativeChange,
 } from './native-change.js';
 import { sha256Text } from './native-hash.js';
-import {
-  acquireNativeLock,
-  diagnoseNativeLock,
-  releaseNativeLock,
-  type NativeLock,
-} from './native-lock.js';
+import { acquireNativeLock, releaseNativeLock, type NativeLock } from './native-lock.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { resolveContainedNativePath } from './native-paths.js';
-import { NATIVE_RUNTIME_HASH, NATIVE_RUNTIME_PACKAGE } from './native-runtime-package.js';
+import { readNativeProtectedFile } from './native-protected-file.js';
+import { redactNativeCredentialText } from './native-redaction.js';
+import {
+  parseNativeRepairTrajectoryProjection,
+  type NativeRepairTrajectoryProjection,
+} from './native-repair-runtime.js';
+import { assertNativeTrajectoryText } from './native-trajectory-limits.js';
+import {
+  isCompatibleNativeRuntimeIdentity,
+  NATIVE_RUNTIME_HASH,
+  NATIVE_RUNTIME_PACKAGE,
+} from './native-runtime-package.js';
+import {
+  parseNativeStoredRunStateValue,
+  readNativeRunState,
+  readNativeTrajectory,
+  writeNativeRunState,
+} from './native-run-store.js';
 import { appendNativeTrajectoryEvent, writeNativeCheckpoint } from './native-trajectory.js';
 import { nativeAdvanceEvidenceHash } from './native-transition-evidence.js';
 import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
@@ -70,7 +76,8 @@ const V2_JOURNAL_KEYS = new Set<string>([
   'revision',
 ]);
 const CURRENT_JOURNAL_KEYS = new Set<string>([...V2_JOURNAL_KEYS, 'operation']);
-const TRANSITION_EVENT_DATA_KEYS = new Set([
+export const NATIVE_TRANSITION_JOURNAL_MAX_BYTES = 512 * 1024;
+const REQUIRED_TRANSITION_EVENT_DATA_KEYS = new Set([
   'previousPhase',
   'nextPhase',
   'evidenceHash',
@@ -78,6 +85,11 @@ const TRANSITION_EVENT_DATA_KEYS = new Set([
   'artifacts',
   'noCodeReason',
   'verificationResult',
+]);
+const TRANSITION_EVENT_DATA_KEYS = new Set([
+  ...REQUIRED_TRANSITION_EVENT_DATA_KEYS,
+  'implementationScopeHash',
+  'repairStagnation',
 ]);
 
 interface NativeTransitionEventData extends Record<string, unknown> {
@@ -88,6 +100,8 @@ interface NativeTransitionEventData extends Record<string, unknown> {
   artifacts: string[];
   noCodeReason: string | null;
   verificationResult: 'pass' | 'fail' | null;
+  implementationScopeHash?: string;
+  repairStagnation?: NativeRepairTrajectoryProjection;
 }
 
 export class NativeTransitionMigrationRequiredError extends Error {
@@ -113,15 +127,7 @@ async function acquireNativeTransitionLock(
   operation: string,
 ): Promise<NativeLock> {
   const lockName = nativeTransitionLockName(name);
-  try {
-    return await acquireNativeLock(paths, lockName, operation);
-  } catch (error) {
-    const file = path.join(paths.locksDir, `${lockName}.lock`);
-    const diagnosis = await diagnoseNativeLock(file);
-    if (diagnosis.status !== 'stale') throw error;
-    await fs.rm(file, { force: true });
-    return acquireNativeLock(paths, lockName, operation);
-  }
+  return acquireNativeLock(paths, lockName, operation);
 }
 
 export async function withNativeTransitionLock<T>(
@@ -168,8 +174,14 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
   const unknown = keys.find((key) => !TRANSITION_EVENT_DATA_KEYS.has(key));
-  const missing = [...TRANSITION_EVENT_DATA_KEYS].find((key) => !Object.hasOwn(record, key));
-  if (unknown || missing || keys.length !== TRANSITION_EVENT_DATA_KEYS.size) {
+  const missing = [...REQUIRED_TRANSITION_EVENT_DATA_KEYS].find(
+    (key) => !Object.hasOwn(record, key),
+  );
+  const expectedSize =
+    REQUIRED_TRANSITION_EVENT_DATA_KEYS.size +
+    (Object.hasOwn(record, 'implementationScopeHash') ? 1 : 0) +
+    (Object.hasOwn(record, 'repairStagnation') ? 1 : 0);
+  if (unknown || missing || keys.length !== expectedSize) {
     throw new Error(
       `Native transition journal event data keys are invalid${unknown ? `: ${unknown}` : missing ? `: missing ${missing}` : ''}`,
     );
@@ -183,20 +195,32 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
   if (record.evidenceHash !== evidenceHash) {
     throw new Error('Native transition journal event evidence hash mismatch');
   }
-  if (typeof record.summary !== 'string' || record.summary.trim().length === 0) {
-    throw new Error('Native transition journal event summary is invalid');
+  assertNativeTrajectoryText(record.summary, 'Native transition journal event summary');
+  if (redactNativeCredentialText(record.summary) !== record.summary) {
+    throw new Error('Native transition journal event summary contains unredacted credentials');
   }
   if (
     !Array.isArray(record.artifacts) ||
-    record.artifacts.some((artifact) => typeof artifact !== 'string' || artifact.length === 0)
+    record.artifacts.length > 128 ||
+    record.artifacts.some(
+      (artifact) =>
+        typeof artifact !== 'string' ||
+        artifact.length === 0 ||
+        Buffer.byteLength(artifact, 'utf8') > 512,
+    )
   ) {
     throw new Error('Native transition journal event artifacts are invalid');
   }
-  if (
-    record.noCodeReason !== null &&
-    (typeof record.noCodeReason !== 'string' || record.noCodeReason.trim().length === 0)
-  ) {
-    throw new Error('Native transition journal event no-code reason is invalid');
+  if (record.noCodeReason !== null) {
+    assertNativeTrajectoryText(
+      record.noCodeReason,
+      'Native transition journal event no-code reason',
+    );
+    if (redactNativeCredentialText(record.noCodeReason) !== record.noCodeReason) {
+      throw new Error(
+        'Native transition journal event no-code reason contains unredacted credentials',
+      );
+    }
   }
   if (
     record.verificationResult !== null &&
@@ -204,6 +228,35 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
     record.verificationResult !== 'fail'
   ) {
     throw new Error('Native transition journal event verification result is invalid');
+  }
+  const implementationScopeHash = Object.hasOwn(record, 'implementationScopeHash')
+    ? record.implementationScopeHash
+    : null;
+  if (
+    implementationScopeHash !== null &&
+    (typeof implementationScopeHash !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(implementationScopeHash) ||
+      (record.previousPhase !== 'build' && record.previousPhase !== 'verify'))
+  ) {
+    throw new Error('Native transition journal implementation scope hash is invalid');
+  }
+  const repairStagnation = Object.hasOwn(record, 'repairStagnation')
+    ? parseNativeRepairTrajectoryProjection(record.repairStagnation)
+    : null;
+  if (repairStagnation) {
+    const failureProjection = repairStagnation.overrideSummaryHash === null;
+    if (
+      (failureProjection &&
+        (record.previousPhase !== 'verify' ||
+          record.nextPhase !== 'build' ||
+          record.verificationResult !== 'fail')) ||
+      (!failureProjection &&
+        (record.previousPhase !== 'build' ||
+          record.nextPhase !== 'verify' ||
+          record.verificationResult !== null))
+    ) {
+      throw new Error('Native transition journal repair projection does not match its phase');
+    }
   }
   return {
     previousPhase: record.previousPhase as NativeTransitionEventData['previousPhase'],
@@ -213,6 +266,8 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
     artifacts: [...record.artifacts] as string[],
     noCodeReason: record.noCodeReason as string | null,
     verificationResult: record.verificationResult as 'pass' | 'fail' | null,
+    ...(implementationScopeHash ? { implementationScopeHash } : {}),
+    ...(repairStagnation ? { repairStagnation } : {}),
   };
 }
 
@@ -277,9 +332,9 @@ function validateJournalEnvelope(
   const eventData = legacyEventData
     ? parseLegacyTransitionEventData(journal.eventData, journal.evidenceHash)
     : parseTransitionEventData(journal.eventData, journal.evidenceHash);
-  const nextRun = parseStoredRunStateValue(journal.nextRun);
+  const nextRun = parseNativeStoredRunStateValue(journal.nextRun);
   const previousRun =
-    journal.previousRun === null ? null : parseStoredRunStateValue(journal.previousRun);
+    journal.previousRun === null ? null : parseNativeStoredRunStateValue(journal.previousRun);
   return {
     id: journal.id,
     evidenceHash: journal.evidenceHash,
@@ -290,11 +345,17 @@ function validateJournalEnvelope(
   };
 }
 
-function assertNativeRunMetadata(run: NativeTransitionJournal['nextRun'], label: string): void {
+function assertNativeRunMetadata(
+  run: NativeTransitionJournal['nextRun'],
+  label: string,
+  allowCompatibleLegacyIdentity = false,
+): void {
   if (
     run.skill !== NATIVE_RUNTIME_PACKAGE.definition.metadata.name ||
-    run.skillVersion !== NATIVE_RUNTIME_PACKAGE.definition.metadata.version ||
-    run.skillHash !== NATIVE_RUNTIME_HASH ||
+    (allowCompatibleLegacyIdentity
+      ? !isCompatibleNativeRuntimeIdentity(run)
+      : run.skillVersion !== NATIVE_RUNTIME_PACKAGE.definition.metadata.version ||
+        run.skillHash !== NATIVE_RUNTIME_HASH) ||
     run.orchestration !== NATIVE_RUNTIME_PACKAGE.definition.orchestration.mode ||
     run.pendingRef !== NATIVE_RUN_STORAGE.pendingRef ||
     run.trajectoryRef !== NATIVE_RUN_STORAGE.trajectoryRef ||
@@ -337,7 +398,7 @@ function validateTransitionRunSemantics(
   envelope: ReturnType<typeof validateJournalEnvelope>,
 ): void {
   const { previousRun, nextRun } = envelope;
-  assertNativeRunMetadata(nextRun, 'next Run');
+  assertNativeRunMetadata(nextRun, 'next Run', previousRun !== null);
   assertCommittableRun(nextRun, 'next Run');
   if (nextRun.runId !== nextState.run_id || nextRun.currentStep !== nextState.phase) {
     throw new Error('Native transition journal next Run does not match the next change state');
@@ -355,7 +416,7 @@ function validateTransitionRunSemantics(
     return;
   }
 
-  assertNativeRunMetadata(previousRun, 'previous Run');
+  assertNativeRunMetadata(previousRun, 'previous Run', true);
   assertCommittableRun(previousRun, 'previous Run');
   if (
     previousState.run_id !== previousRun.runId ||
@@ -741,7 +802,13 @@ export async function inspectPendingNativeTransitionSchema(
   const file = nativeTransitionJournalFile(paths, name);
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
-    return inspectNativeTransitionJournalValue(JSON.parse(await fs.readFile(file, 'utf8')), name);
+    const snapshot = await readNativeProtectedFile({
+      root: paths.nativeRoot,
+      file,
+      maxBytes: NATIVE_TRANSITION_JOURNAL_MAX_BYTES,
+      label: `Native transition journal ${name}`,
+    });
+    return inspectNativeTransitionJournalValue(JSON.parse(snapshot.bytes.toString('utf8')), name);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
@@ -804,7 +871,7 @@ export async function prepareNativeTransition(options: {
 }
 
 function assertRunRecoverySource(
-  actual: Awaited<ReturnType<typeof readRunStateAt>>,
+  actual: Awaited<ReturnType<typeof readNativeRunState>>,
   journal: NativeTransitionJournal,
 ): 'previous' | 'next' {
   if (sameValue(actual, journal.nextRun)) return 'next';
@@ -874,7 +941,7 @@ function trajectoryEventForComparison(event: {
 }
 
 function inspectExistingTransitionEvents(
-  trajectory: Awaited<ReturnType<typeof readTrajectory>>,
+  trajectory: Awaited<ReturnType<typeof readNativeTrajectory>>,
   journal: NativeTransitionJournal,
 ): {
   started: (typeof trajectory)[number] | null;
@@ -928,11 +995,11 @@ export async function continueNativeTransitionLocked(
   if (!journal) return null;
   const changeDir = nativeChangeDir(paths, name);
   const initialEvents = inspectExistingTransitionEvents(
-    await readTrajectory(changeDir, journal.nextRun.trajectoryRef),
+    await readNativeTrajectory(changeDir, journal.nextRun.trajectoryRef),
     journal,
   );
   const [actualRun, actualChange] = await Promise.all([
-    readRunStateAt(changeDir, NATIVE_RUN_STORAGE),
+    readNativeRunState(changeDir),
     readNativeChange(paths, name),
   ]);
   const runSource = assertRunRecoverySource(actualRun, journal);
@@ -947,10 +1014,10 @@ export async function continueNativeTransitionLocked(
   }
 
   if (runSource === 'previous') {
-    await writeRunStateAt(changeDir, journal.nextRun, NATIVE_RUN_STORAGE);
+    await writeNativeRunState(changeDir, journal.nextRun);
     await hooks?.afterRunStateWritten?.(journal);
   }
-  if (!sameValue(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE), journal.nextRun)) {
+  if (!sameValue(await readNativeRunState(changeDir), journal.nextRun)) {
     throw new Error(
       `Native transition Run content changed while continuing ${journal.change}; recovery journal was preserved`,
     );
@@ -981,7 +1048,7 @@ export async function continueNativeTransitionLocked(
   }
 
   const existingEvents = inspectExistingTransitionEvents(
-    await readTrajectory(changeDir, journal.nextRun.trajectoryRef),
+    await readNativeTrajectory(changeDir, journal.nextRun.trajectoryRef),
     journal,
   );
   if (journal.previousRun === null) {
@@ -1017,7 +1084,7 @@ export async function continueNativeTransitionLocked(
     now: new Date(journal.createdAt),
   });
   const [finalRun, finalChange] = await Promise.all([
-    readRunStateAt(changeDir, NATIVE_RUN_STORAGE),
+    readNativeRunState(changeDir),
     readNativeChange(paths, name),
   ]);
   assertRunRecoverySource(finalRun, { ...journal, previousRun: journal.nextRun });

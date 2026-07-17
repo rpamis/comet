@@ -2,47 +2,36 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import {
-  inspectGitRepository,
-  type GitRepositoryInspection,
-} from '../../platform/process/git-repository.js';
 import { atomicWriteJson } from './native-atomic-file.js';
-import { nativeChangeDir } from './native-change.js';
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { resolveContainedNativePath } from './native-paths.js';
 import type { NativeProjectPaths } from './native-types.js';
 
+const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+const MAX_WORKSPACE_IDENTITY_BYTES = 16 * 1024;
+
 export interface NativeWorkspaceIdentity {
-  schema: 'comet.native.workspace.v1';
+  schema: 'comet.native.workspace.v2';
   capturedAt: string;
   capturedRevision: number;
   nativeRootRef: string;
-  vcs:
-    | {
-        kind: 'git';
-        head: string | null;
-        branch: string | null;
-        worktreeId: string;
-        commonDirId: string;
-        projectPrefix: string;
-      }
-    | {
-        kind: 'unavailable';
-        head: null;
-        branch: null;
-        worktreeId: null;
-        commonDirId: null;
-        projectPrefix: null;
-        failureKind: string;
-      };
+  projectRootId: string;
+  nativeRootId: string;
   sessionHash?: string;
 }
 
 export type NativeWorkspaceFindingCode =
-  | 'workspace-worktree-changed'
-  | 'workspace-branch-changed'
-  | 'workspace-head-changed'
-  | 'workspace-inspection-unavailable'
-  | 'workspace-unattributed-changes';
+  | 'workspace-root-changed'
+  | 'workspace-inspection-unavailable';
+
+export const NATIVE_WORKSPACE_ADVISORY_CODES: ReadonlySet<NativeWorkspaceFindingCode> = new Set([
+  'workspace-root-changed',
+  'workspace-inspection-unavailable',
+]);
+
+export function isNativeWorkspaceAdvisoryCode(code: string): code is NativeWorkspaceFindingCode {
+  return NATIVE_WORKSPACE_ADVISORY_CODES.has(code as NativeWorkspaceFindingCode);
+}
 
 export interface NativeWorkspaceAdvisory {
   state: 'aligned' | 'drifted' | 'unknown';
@@ -55,7 +44,6 @@ export interface CaptureNativeWorkspaceOptions {
   revision: number;
   now?: Date;
   sessionId?: string;
-  inspectRepository?: (projectRoot: string) => Promise<GitRepositoryInspection>;
 }
 
 function portableRelative(parent: string, target: string): string | null {
@@ -92,80 +80,108 @@ function normalizedPortableRef(value: string, label: string): string {
 }
 
 function identityHash(tag: string, value: string): string {
-  const normalized = process.platform === 'win32' ? path.normalize(value).toLowerCase() : value;
-  return createHash('sha256').update(`${tag}\n${normalized}`).digest('hex');
+  return createHash('sha256').update(`${tag}\n${value}`).digest('hex');
 }
 
-async function physicalIdentity(tag: string, value: string): Promise<string> {
-  return identityHash(tag, await fs.realpath(value));
-}
-
-async function physicalGitIdentities(inspection: {
-  worktreeRoot: string;
-  commonDir: string;
-}): Promise<{ worktreeId: string; commonDirId: string } | null> {
-  try {
-    const [worktreeId, commonDirId] = await Promise.all([
-      physicalIdentity('comet.native.workspace-worktree.v1', inspection.worktreeRoot),
-      physicalIdentity('comet.native.workspace-common-dir.v1', inspection.commonDir),
-    ]);
-    return { worktreeId, commonDirId };
-  } catch {
-    return null;
+async function physicalDirectoryIdentity(tag: string, value: string): Promise<string> {
+  const realPath = await fs.realpath(value);
+  const stat = await fs.lstat(realPath);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error('Native workspace identity requires a real directory');
   }
+  const normalizedPath =
+    process.platform === 'win32' ? path.normalize(realPath).toLowerCase() : realPath;
+  return identityHash(tag, `${normalizedPath}\n${stat.dev}\n${stat.ino}\n${stat.birthtimeMs}`);
+}
+
+function isoTimestamp(value: unknown): string {
+  if (typeof value !== 'string') throw new Error('Native workspace capturedAt is invalid');
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new Error('Native workspace capturedAt is invalid');
+  }
+  return value;
 }
 
 function assertIdentity(value: unknown): asserts value is NativeWorkspaceIdentity {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Native workspace identity must be an object');
   }
-  const identity = value as Partial<NativeWorkspaceIdentity>;
-  if (identity.schema !== 'comet.native.workspace.v1') {
+  const root = value as Record<string, unknown>;
+  const allowed = new Set([
+    'schema',
+    'capturedAt',
+    'capturedRevision',
+    'nativeRootRef',
+    'projectRootId',
+    'nativeRootId',
+    'sessionHash',
+  ]);
+  const unknown = Object.keys(root).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`Native workspace identity has unknown field(s): ${unknown.join(', ')}`);
+  }
+  if (root.schema !== 'comet.native.workspace.v2') {
     throw new Error('Unsupported Native workspace identity');
   }
   if (
-    typeof identity.capturedAt !== 'string' ||
-    Number.isNaN(Date.parse(identity.capturedAt)) ||
-    !Number.isSafeInteger(identity.capturedRevision) ||
-    (identity.capturedRevision ?? -1) < 1 ||
-    typeof identity.nativeRootRef !== 'string' ||
-    identity.nativeRootRef.length === 0 ||
-    !identity.vcs ||
-    typeof identity.vcs !== 'object'
+    !Number.isSafeInteger(root.capturedRevision) ||
+    (root.capturedRevision as number) < 1 ||
+    typeof root.nativeRootRef !== 'string' ||
+    !HASH_PATTERN.test(String(root.projectRootId)) ||
+    !HASH_PATTERN.test(String(root.nativeRootId))
   ) {
     throw new Error('Native workspace identity is invalid');
   }
-  normalizedPortableRef(identity.nativeRootRef, 'Native workspace root ref');
-  if (identity.sessionHash !== undefined && !/^[a-f0-9]{64}$/u.test(identity.sessionHash)) {
+  isoTimestamp(root.capturedAt);
+  normalizedPortableRef(root.nativeRootRef, 'Native workspace root ref');
+  if (root.sessionHash !== undefined && !HASH_PATTERN.test(String(root.sessionHash))) {
     throw new Error('Native workspace session hash is invalid');
-  }
-  if (identity.vcs.kind === 'git') {
-    if (
-      !/^[a-f0-9]{64}$/u.test(identity.vcs.worktreeId) ||
-      !/^[a-f0-9]{64}$/u.test(identity.vcs.commonDirId) ||
-      typeof identity.vcs.projectPrefix !== 'string' ||
-      (identity.vcs.head !== null && typeof identity.vcs.head !== 'string') ||
-      (identity.vcs.branch !== null && typeof identity.vcs.branch !== 'string')
-    ) {
-      throw new Error('Native Git workspace identity is invalid');
-    }
-    normalizedPortableRef(identity.vcs.projectPrefix, 'Native workspace project prefix');
-  } else if (
-    identity.vcs.kind !== 'unavailable' ||
-    identity.vcs.head !== null ||
-    identity.vcs.branch !== null ||
-    identity.vcs.worktreeId !== null ||
-    identity.vcs.commonDirId !== null ||
-    identity.vcs.projectPrefix !== null ||
-    typeof identity.vcs.failureKind !== 'string' ||
-    identity.vcs.failureKind.length === 0
-  ) {
-    throw new Error('Native unavailable workspace identity is invalid');
   }
 }
 
 export function nativeWorkspaceFile(paths: NativeProjectPaths, name: string): string {
-  return path.join(nativeChangeDir(paths, name), 'runtime', 'workspace.json');
+  return path.join(paths.changesDir, name, 'runtime', 'workspace.json');
+}
+
+function nativeWorkspaceRef(paths: NativeProjectPaths, name: string): string {
+  const relative = portableRelative(paths.nativeRoot, nativeWorkspaceFile(paths, name));
+  if (!relative || relative === '.') throw new Error('Native workspace file escaped its root');
+  return normalizedPortableRef(relative, 'Native workspace file ref');
+}
+
+async function readNativeWorkspaceValue(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<unknown | null> {
+  try {
+    const artifact = await readNativeBoundedTextFile({
+      root: paths.nativeRoot,
+      ref: nativeWorkspaceRef(paths, name),
+      maxBytes: MAX_WORKSPACE_IDENTITY_BYTES,
+    });
+    return JSON.parse(artifact.text) as unknown;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+export async function inspectNativeWorkspaceSchema(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<'comet.native.workspace.v1' | 'comet.native.workspace.v2' | null> {
+  const value = await readNativeWorkspaceValue(paths, name);
+  if (value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Native workspace identity must be an object');
+  }
+  const schema = (value as { schema?: unknown }).schema;
+  if (schema === 'comet.native.workspace.v1' || schema === 'comet.native.workspace.v2') {
+    if (schema === 'comet.native.workspace.v2') assertIdentity(value);
+    return schema;
+  }
+  throw new Error('Unsupported Native workspace identity');
 }
 
 export async function inspectNativeWorkspaceIdentity(
@@ -174,87 +190,31 @@ export async function inspectNativeWorkspaceIdentity(
   if (!Number.isSafeInteger(options.revision) || options.revision < 1) {
     throw new Error('Native workspace revision must be a positive integer');
   }
-  const inspect = options.inspectRepository ?? inspectGitRepository;
-  const inspection = await inspect(options.paths.projectRoot);
   const nativeRootRef = portableRelative(options.paths.projectRoot, options.paths.nativeRoot);
   if (!nativeRootRef) throw new Error('Native root is outside the project root');
-  const projectId = options.sessionId
-    ? await physicalIdentity('comet.native.workspace-project.v1', options.paths.projectRoot)
-    : null;
-
-  const base = {
-    schema: 'comet.native.workspace.v1' as const,
-    capturedAt: (options.now ?? new Date()).toISOString(),
+  const [projectRootId, nativeRootId] = await Promise.all([
+    physicalDirectoryIdentity('comet.native.workspace-project-root.v2', options.paths.projectRoot),
+    physicalDirectoryIdentity('comet.native.workspace-native-root.v2', options.paths.nativeRoot),
+  ]);
+  const capturedAt = (options.now ?? new Date()).toISOString();
+  const identity: NativeWorkspaceIdentity = {
+    schema: 'comet.native.workspace.v2',
+    capturedAt,
     capturedRevision: options.revision,
     nativeRootRef,
+    projectRootId,
+    nativeRootId,
     ...(options.sessionId
       ? {
           sessionHash: identityHash(
-            'comet.native.workspace-session.v1',
-            `${projectId}\n${nativeRootRef}\n${options.sessionId}`,
+            'comet.native.workspace-session.v2',
+            `${projectRootId}\n${nativeRootId}\n${options.sessionId}`,
           ),
         }
       : {}),
   };
-
-  if (!inspection.available) {
-    return {
-      ...base,
-      vcs: {
-        kind: 'unavailable',
-        head: null,
-        branch: null,
-        worktreeId: null,
-        commonDirId: null,
-        projectPrefix: null,
-        failureKind: inspection.failure.kind,
-      },
-    };
-  }
-
-  const projectPrefix = portableRelative(inspection.worktreeRoot, options.paths.projectRoot);
-  if (projectPrefix === null) {
-    return {
-      ...base,
-      vcs: {
-        kind: 'unavailable',
-        head: null,
-        branch: null,
-        worktreeId: null,
-        commonDirId: null,
-        projectPrefix: null,
-        failureKind: 'project-outside-worktree',
-      },
-    };
-  }
-
-  const identities = await physicalGitIdentities(inspection);
-  if (!identities) {
-    return {
-      ...base,
-      vcs: {
-        kind: 'unavailable',
-        head: null,
-        branch: null,
-        worktreeId: null,
-        commonDirId: null,
-        projectPrefix: null,
-        failureKind: 'identity-unavailable',
-      },
-    };
-  }
-
-  return {
-    ...base,
-    vcs: {
-      kind: 'git',
-      head: inspection.head,
-      branch: inspection.branch,
-      worktreeId: identities.worktreeId,
-      commonDirId: identities.commonDirId,
-      projectPrefix,
-    },
-  };
+  assertIdentity(identity);
+  return identity;
 }
 
 export async function writeNativeWorkspaceIdentity(
@@ -263,7 +223,7 @@ export async function writeNativeWorkspaceIdentity(
   const identity = await inspectNativeWorkspaceIdentity(options);
   const file = nativeWorkspaceFile(options.paths, options.name);
   await resolveContainedNativePath(options.paths.nativeRoot, file);
-  await atomicWriteJson(file, identity);
+  await atomicWriteJson(file, identity, { containedRoot: options.paths.nativeRoot });
   return identity;
 }
 
@@ -271,66 +231,53 @@ export async function readNativeWorkspaceIdentity(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<NativeWorkspaceIdentity | null> {
-  const file = nativeWorkspaceFile(paths, name);
-  await resolveContainedNativePath(paths.nativeRoot, file);
-  try {
-    const value: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
-    assertIdentity(value);
-    return value;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
+  const value = await readNativeWorkspaceValue(paths, name);
+  if (value === null) return null;
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    (value as { schema?: unknown }).schema === 'comet.native.workspace.v1'
+  ) {
+    // v1 depended on an external Git probe. It is ignored as advisory-only legacy data.
+    return null;
   }
+  assertIdentity(value);
+  return value;
+}
+
+export async function migrateLegacyNativeWorkspaceIdentity(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  revision: number;
+  now?: Date;
+}): Promise<NativeWorkspaceIdentity | null> {
+  if (
+    (await inspectNativeWorkspaceSchema(options.paths, options.name)) !==
+    'comet.native.workspace.v1'
+  ) {
+    return null;
+  }
+  return writeNativeWorkspaceIdentity(options);
 }
 
 export async function inspectNativeWorkspaceAdvisory(options: {
   paths: NativeProjectPaths;
   identity: NativeWorkspaceIdentity;
-  attributedPaths?: string[];
-  inspectRepository?: (projectRoot: string) => Promise<GitRepositoryInspection>;
 }): Promise<NativeWorkspaceAdvisory> {
   assertIdentity(options.identity);
-  const inspect = options.inspectRepository ?? inspectGitRepository;
-  const current = await inspect(options.paths.projectRoot);
-  if (options.identity.vcs.kind !== 'git' || !current.available) {
-    return { state: 'unknown', findingCodes: ['workspace-inspection-unavailable'] };
-  }
-
-  const codes = new Set<NativeWorkspaceFindingCode>();
-  const identities = await physicalGitIdentities(current);
-  if (!identities) {
-    return { state: 'unknown', findingCodes: ['workspace-inspection-unavailable'] };
-  }
+  const current = await inspectNativeWorkspaceIdentity({
+    paths: options.paths,
+    name: 'workspace-advisory',
+    revision: options.identity.capturedRevision,
+  });
+  const codes: NativeWorkspaceFindingCode[] = [];
   if (
-    identities.worktreeId !== options.identity.vcs.worktreeId ||
-    identities.commonDirId !== options.identity.vcs.commonDirId
+    current.nativeRootRef !== options.identity.nativeRootRef ||
+    current.projectRootId !== options.identity.projectRootId ||
+    current.nativeRootId !== options.identity.nativeRootId
   ) {
-    codes.add('workspace-worktree-changed');
+    codes.push('workspace-root-changed');
   }
-  const [currentProjectPrefix, currentNativeRootRef] = [
-    portableRelative(current.worktreeRoot, options.paths.projectRoot),
-    portableRelative(options.paths.projectRoot, options.paths.nativeRoot),
-  ];
-  if (currentProjectPrefix === null || currentNativeRootRef === null) {
-    return { state: 'unknown', findingCodes: ['workspace-inspection-unavailable'] };
-  }
-  if (
-    currentProjectPrefix !== options.identity.vcs.projectPrefix ||
-    currentNativeRootRef !== options.identity.nativeRootRef
-  ) {
-    codes.add('workspace-worktree-changed');
-  }
-  if (current.branch !== options.identity.vcs.branch) codes.add('workspace-branch-changed');
-  if (current.head !== options.identity.vcs.head) codes.add('workspace-head-changed');
-
-  const attributed = new Set(
-    (options.attributedPaths ?? []).map((item) => item.replaceAll('\\', '/')),
-  );
-  if (current.changedPaths.some((item) => !attributed.has(item))) {
-    codes.add('workspace-unattributed-changes');
-  }
-  return {
-    state: codes.size > 0 ? 'drifted' : 'aligned',
-    findingCodes: [...codes].sort(),
-  };
+  return { state: codes.length > 0 ? 'drifted' : 'aligned', findingCodes: codes };
 }

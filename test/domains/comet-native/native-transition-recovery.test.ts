@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { stringify } from 'yaml';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { readCheckpoint, readTrajectory } from '../../../domains/engine/run-store.js';
 import { NATIVE_RUN_STORAGE } from '../../../domains/engine/storage-layout.js';
@@ -32,6 +32,7 @@ import {
   inspectPendingNativeTransition,
   inspectPendingNativeTransitionSchema,
   inspectNativeTransitionJournalValue,
+  NATIVE_TRANSITION_JOURNAL_MAX_BYTES,
   nativeTransitionJournalFile,
 } from '../../../domains/comet-native/native-transition-journal.js';
 import { appendNativeTrajectoryEvent } from '../../../domains/comet-native/native-trajectory.js';
@@ -150,6 +151,29 @@ describe('Native transition recovery', () => {
 
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('bounds the protected transition journal before JSON parsing', async () => {
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'recover-transition',
+        evidence: { summary: 'prepare an oversized journal fixture' },
+        hooks: {
+          afterPrepared: () => {
+            throw new Error('seed oversized transition');
+          },
+        },
+      }),
+    ).rejects.toThrow('seed oversized transition');
+    await fs.writeFile(
+      nativeTransitionJournalFile(paths, 'recover-transition'),
+      'x'.repeat(NATIVE_TRANSITION_JOURNAL_MAX_BYTES + 1),
+    );
+
+    await expect(
+      inspectPendingNativeTransitionSchema(paths, 'recover-transition'),
+    ).rejects.toThrow(`exceeds ${NATIVE_TRANSITION_JOURNAL_MAX_BYTES} bytes`);
   });
 
   it.each<{
@@ -507,6 +531,19 @@ describe('Native transition recovery', () => {
           label: 'event omits a canonical key',
           apply: (journal) => {
             delete (journal.eventData as Record<string, unknown>).summary;
+          },
+        },
+        {
+          label: 'event contains unredacted credentials',
+          apply: (journal) => {
+            (journal.eventData as Record<string, unknown>).summary =
+              'Transition used api_key=raw-transition-secret';
+          },
+        },
+        {
+          label: 'event exceeds its text budget',
+          apply: (journal) => {
+            (journal.eventData as Record<string, unknown>).summary = 'x'.repeat(4_097);
           },
         },
         {
@@ -1520,30 +1557,15 @@ describe('Native transition recovery', () => {
         data: { source: 'concurrent-writer' },
       }) +
       '\n';
-    const originalReadFile = fs.readFile.bind(fs);
-    let trajectoryReads = 0;
-    const readSpy = vi.spyOn(fs, 'readFile').mockImplementation(async (file, options) => {
-      const value = await originalReadFile(file, options);
-      if (path.resolve(String(file)) === path.resolve(trajectoryFile)) {
-        trajectoryReads += 1;
-        if (trajectoryReads === 2) {
-          await fs.appendFile(trajectoryFile, appended);
-          return originalReadFile(file, options);
-        }
-      }
-      return value;
-    });
-    try {
-      await expect(repairNativeTrajectoryTail(paths, 'recover-transition')).rejects.toThrow(
-        'changed while preparing tail repair',
-      );
-    } finally {
-      readSpy.mockRestore();
-    }
+    await expect(
+      repairNativeTrajectoryTail(paths, 'recover-transition', {
+        beforeCommit: () => fs.appendFile(trajectoryFile, appended),
+      }),
+    ).rejects.toThrow('changed while preparing tail repair');
     expect(await fs.readFile(trajectoryFile, 'utf8')).toBe(withoutNewline + appended);
   });
 
-  it('clears a proven stale transition lock before automatic continuation', async () => {
+  it('requires explicit doctor takeover before continuing stale transition locks', async () => {
     await expect(
       advanceNativeChange({
         paths,
@@ -1571,7 +1593,25 @@ describe('Native transition recovery', () => {
       fs.writeFile(rootLockFile, JSON.stringify({ ...staleOwner, id: 'stale-root-owner' })),
     ]);
 
-    expect((await continueNativeTransition(paths, 'recover-transition'))?.phase).toBe('build');
+    await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
+      /already held/u,
+    );
+    await expect(fs.access(lockFile)).resolves.toBeUndefined();
+    await expect(fs.access(rootLockFile)).resolves.toBeUndefined();
+
+    const repaired = await doctorNativeProject({
+      paths,
+      name: 'recover-transition',
+      repair: true,
+      recoveryStrategy: 'continue',
+    });
+    expect(repaired.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'stale-recovery-lock-removed', severity: 'info' }),
+        expect.objectContaining({ code: 'transition-recovered', severity: 'info' }),
+      ]),
+    );
+    expect((await readNativeChange(paths, 'recover-transition')).phase).toBe('build');
     await Promise.all(
       [lockFile, rootLockFile].map((file) =>
         expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' }),

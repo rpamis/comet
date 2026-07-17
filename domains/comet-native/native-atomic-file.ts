@@ -6,6 +6,7 @@ export interface NativeAtomicWriteOptions {
   containedRoot?: string;
   beforeTemporaryOpen?: () => void | Promise<void>;
   beforeCommit?: () => void | Promise<void>;
+  exclusive?: boolean;
 }
 
 interface DirectoryIdentity {
@@ -116,9 +117,9 @@ async function syncDirectory(directory: string): Promise<void> {
   }
 }
 
-export async function atomicWriteText(
+async function atomicWrite(
   file: string,
-  content: string,
+  content: string | Uint8Array,
   options: NativeAtomicWriteOptions = {},
 ): Promise<void> {
   const directory = path.dirname(file);
@@ -148,7 +149,8 @@ export async function atomicWriteText(
         throw new Error('Native atomic write temporary file opened outside its managed parent');
       }
     }
-    await handle.writeFile(content, 'utf8');
+    if (typeof content === 'string') await handle.writeFile(content, 'utf8');
+    else await handle.writeFile(content);
     await handle.sync();
     if (!sameFileIdentity(temporaryIdentity, await handle.stat())) {
       throw new Error('Native atomic write temporary file changed while writing');
@@ -168,7 +170,12 @@ export async function atomicWriteText(
         throw new Error('Native atomic write temporary file changed before commit');
       }
     }
-    await fs.rename(temporary, file);
+    if (options.exclusive) {
+      await fs.link(temporary, file);
+      await fs.unlink(temporary);
+    } else {
+      await fs.rename(temporary, file);
+    }
     await syncDirectory(directory);
   } catch (error) {
     await handle?.close();
@@ -185,6 +192,22 @@ export async function atomicWriteText(
     }
     throw error;
   }
+}
+
+export async function atomicWriteText(
+  file: string,
+  content: string,
+  options: NativeAtomicWriteOptions = {},
+): Promise<void> {
+  await atomicWrite(file, content, options);
+}
+
+export async function atomicWriteBytes(
+  file: string,
+  content: Uint8Array,
+  options: NativeAtomicWriteOptions = {},
+): Promise<void> {
+  await atomicWrite(file, content, options);
 }
 
 export async function atomicWriteJson(

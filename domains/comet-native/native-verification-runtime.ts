@@ -10,12 +10,15 @@ import type {
 } from './native-archive-preflight.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { nativeChangeDir } from './native-change.js';
+import type { NativeCheckReceipt } from './native-check-receipt.js';
+import { readNativeCheckReceipt } from './native-check-receipt-storage.js';
 import type { NativeContractSnapshot } from './native-contract.js';
 import { collectNativeContractFiles } from './native-contract-files.js';
 import {
   readNativeImplementationScopeBundle,
   readNativePartialAllowance,
   readNativeVerificationEvidence,
+  nativeEvidenceRef,
   writeNativeVerificationEvidence,
 } from './native-evidence-storage.js';
 import { createNativeContentSnapshot } from './native-snapshot.js';
@@ -39,6 +42,9 @@ export type NativeVerificationFreshnessFindingCode =
   | 'verification-contract-stale'
   | 'verification-implementation-stale'
   | 'verification-report-stale'
+  | 'verification-receipt-stale'
+  | 'verification-receipt-invalid'
+  | 'verification-receipt-outcome-mismatch'
   | 'verification-state-mismatch'
   | 'verification-evidence-missing'
   | 'verification-evidence-invalid';
@@ -162,14 +168,54 @@ async function reportEvidence(options: {
   };
 }
 
-/** Build and persist a verification envelope only when contract and implementation are current. */
-export async function prepareNativeVerificationEvidence(options: {
+function checkReceiptBindingCodes(options: {
+  receipt: NativeCheckReceipt;
+  sourceRevision: number;
+  result: 'pass' | 'fail';
+  contractHash: string;
+  implementationScope: NativeImplementationScopeBundle;
+}): NativeVerificationFreshnessFindingCode[] {
+  const { receipt, implementationScope } = options;
+  const codes: NativeVerificationFreshnessFindingCode[] = [];
+  const selectedFiles = implementationScope.scope.changes.filter((change) => change.after !== null);
+  const selectedBytes = selectedFiles.reduce((total, change) => total + change.after!.size, 0);
+  if (
+    receipt.stale ||
+    receipt.sourceRevision !== options.sourceRevision ||
+    receipt.contract.expectedHash !== options.contractHash ||
+    receipt.contract.beforeHash !== options.contractHash ||
+    receipt.contract.afterHash !== options.contractHash ||
+    receipt.implementation.scopeHash !== implementationScope.scope.scopeHash ||
+    receipt.implementation.expectedSnapshotHash !==
+      implementationScope.scope.currentProjectionHash ||
+    receipt.implementation.beforeSnapshotHash !== implementationScope.scope.currentProjectionHash ||
+    receipt.implementation.afterSnapshotHash !== implementationScope.scope.currentProjectionHash ||
+    receipt.counts.filesSelected !== selectedFiles.length ||
+    (receipt.status === 'passed' &&
+      (receipt.counts.filesScanned + receipt.counts.binaryFilesSkipped !== selectedFiles.length ||
+        receipt.counts.bytesScanned !== selectedBytes))
+  ) {
+    codes.push('verification-receipt-stale');
+  }
+  if (options.result === 'pass' && receipt.status !== 'passed') {
+    codes.push('verification-receipt-outcome-mismatch');
+  }
+  return codes;
+}
+
+export interface NativeVerificationEvidenceOptions {
   paths: NativeProjectPaths;
   state: NativeChangeState;
   result: 'pass' | 'fail';
   reportRef: string;
+  receiptRef?: string | null;
   now?: Date;
-}): Promise<NativeVerificationPreparation> {
+}
+
+/** Build and validate an envelope without mutating the Native evidence store. */
+export async function inspectNativeVerificationEvidence(
+  options: NativeVerificationEvidenceOptions,
+): Promise<NativeVerificationPreparation> {
   if (options.state.phase !== 'verify') {
     throw new Error(`Native verification evidence requires Verify, got ${options.state.phase}`);
   }
@@ -183,6 +229,25 @@ export async function prepareNativeVerificationEvidence(options: {
     };
   }
   const report = await reportEvidence(options);
+  let receiptRef: string | null = null;
+  if (options.receiptRef) {
+    const receipt = await readNativeCheckReceipt(
+      options.paths,
+      options.state.name,
+      options.receiptRef,
+    );
+    const receiptCodes = checkReceiptBindingCodes({
+      receipt,
+      sourceRevision: options.state.revision,
+      result: options.result,
+      contractHash: facts.contractHash,
+      implementationScope: facts.bundle,
+    });
+    if (receiptCodes.length > 0) {
+      throw new Error(`Native verification receipt is not admissible: ${receiptCodes.join(', ')}`);
+    }
+    receiptRef = options.receiptRef;
+  }
   const trace = buildNativeAcceptanceEvidenceTrace(facts.contract.acceptance, report.entries, {
     nativeRootRef: nativeRootRef(options.paths),
   });
@@ -205,6 +270,7 @@ export async function prepareNativeVerificationEvidence(options: {
     },
     reportRef: report.ref,
     reportHash: report.hash,
+    receiptRef,
     acceptanceTrace: trace,
     partialAllowance:
       options.state.partial_allowance && allowance
@@ -212,12 +278,45 @@ export async function prepareNativeVerificationEvidence(options: {
         : null,
     now: options.now,
   });
+  const evidenceRef = nativeEvidenceRef('verifications', envelope.envelopeHash);
+  return { ready: true, findingCodes: [], envelope, evidenceRef };
+}
+
+export async function persistNativeVerificationEvidence(options: {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+  preparation: NativeVerificationPreparation;
+}): Promise<void> {
+  if (
+    !options.preparation.ready ||
+    options.preparation.envelope === null ||
+    options.preparation.evidenceRef === null
+  ) {
+    throw new Error('Native verification evidence is not ready to persist');
+  }
   const evidenceRef = await writeNativeVerificationEvidence({
     paths: options.paths,
     name: options.state.name,
-    evidence: envelope,
+    evidence: options.preparation.envelope,
   });
-  return { ready: true, findingCodes: [], envelope, evidenceRef };
+  if (evidenceRef !== options.preparation.evidenceRef) {
+    throw new Error('Native verification evidence persistence ref changed');
+  }
+}
+
+/** Backwards-compatible one-shot API for callers that explicitly want durable evidence. */
+export async function prepareNativeVerificationEvidence(
+  options: NativeVerificationEvidenceOptions,
+): Promise<NativeVerificationPreparation> {
+  const preparation = await inspectNativeVerificationEvidence(options);
+  if (preparation.ready) {
+    await persistNativeVerificationEvidence({
+      paths: options.paths,
+      state: options.state,
+      preparation,
+    });
+  }
+  return preparation;
 }
 
 function emptyEvidence(
@@ -282,6 +381,26 @@ export async function inspectNativeVerificationFreshness(options: {
       envelope.acceptanceCriteriaHash !== facts.acceptanceHash
     ) {
       findingCodes.push('verification-state-mismatch');
+    }
+    if (envelope.receiptRef) {
+      try {
+        const receipt = await readNativeCheckReceipt(
+          options.paths,
+          options.state.name,
+          envelope.receiptRef,
+        );
+        findingCodes.push(
+          ...checkReceiptBindingCodes({
+            receipt,
+            sourceRevision: envelope.sourceRevision,
+            result: envelope.result,
+            contractHash: envelope.contractHash,
+            implementationScope: facts.bundle,
+          }),
+        );
+      } catch {
+        findingCodes.push('verification-receipt-invalid');
+      }
     }
     const uniqueCodes = [...new Set(findingCodes)].sort();
     const freshness: NativeVerificationFreshness =

@@ -53,9 +53,13 @@ async function makePublishFixture(): Promise<string> {
   await writeFile(root, 'README.md', '# Comet publish fixture\n');
   await writeFile(root, 'eval/pyproject.toml', '[project]\nname = "comet-eval-fixture"\n');
   await writeFile(root, 'eval/local/tests/tasks/test_tasks.py', 'def test_fixture(): pass\n');
+  await writeFile(root, 'eval/.env', 'API_KEY=must-not-pack\n');
+  await writeFile(root, 'eval/.envrc', 'export API_KEY=must-not-pack\n');
+  await writeFile(root, 'eval/local/.env.test', 'API_KEY=must-not-pack\n');
   await writeFile(root, 'eval/.venv/ignored.txt', 'ignored\n');
   await writeFile(root, 'eval/.uv-cache/ignored.txt', 'ignored\n');
   await writeFile(root, 'eval/local/logs/ignored.txt', 'ignored\n');
+  await writeFile(root, 'eval/eval/.pytest-cache-controller-aligned/ignored.txt', 'ignored\n');
   return root;
 }
 
@@ -89,9 +93,11 @@ describe('prepublish security check', () => {
 
     expect(published).toContain('package/eval/pyproject.toml');
     expect(published).toContain('package/eval/local/tests/tasks/test_tasks.py');
+    expect(published.some((file) => /\/(?:\.env)(?:[^/]*)$/u.test(file))).toBe(false);
     expect(published.some((file) => file.startsWith('package/eval/.venv/'))).toBe(false);
     expect(published.some((file) => file.startsWith('package/eval/.uv-cache/'))).toBe(false);
     expect(published.some((file) => file.startsWith('package/eval/local/logs/'))).toBe(false);
+    expect(published.some((file) => file.includes('/.pytest-cache-'))).toBe(false);
   });
 
   it('scans only files that npm would publish', async () => {
@@ -119,7 +125,7 @@ describe('prepublish security check', () => {
   it('does not stat excluded directories while expanding included package paths', async () => {
     const root = await makePackageFixture();
     const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf-8'));
-    packageJson.files = ['eval', '!eval/.cache', '!eval/.pytest-basetemp-*'];
+    packageJson.files = ['eval', '!eval/.cache', '!eval/.pytest-basetemp-*', '!eval/**/.pytest*'];
     await fs.writeFile(path.join(root, 'package.json'), JSON.stringify(packageJson, null, 2));
     await writeFile(root, 'eval/pyproject.toml', '[project]\nname = "fixture"\n');
 
@@ -140,6 +146,16 @@ describe('prepublish security check', () => {
       process.platform === 'win32' ? 'junction' : 'dir',
     );
     await fs.rm(missingWildcardTarget, { recursive: true });
+
+    const missingNestedTarget = path.join(root, 'removed-nested-pytest-target');
+    await fs.mkdir(missingNestedTarget);
+    await fs.mkdir(path.join(root, 'eval/eval'), { recursive: true });
+    await fs.symlink(
+      missingNestedTarget,
+      path.join(root, 'eval/eval/.pytest-cache-controller-aligned'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    await fs.rm(missingNestedTarget, { recursive: true });
 
     const result = spawnSync(process.execPath, [prepublishCheck], {
       cwd: root,

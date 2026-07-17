@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   deriveBriefAcceptanceCriteria,
   deriveSpecAcceptanceCriteria,
+  NATIVE_ACCEPTANCE_LIMITS,
   type NativeAcceptanceCriterion,
 } from './native-acceptance.js';
 import { canonicalHash } from './native-canonical-hash.js';
@@ -10,6 +11,10 @@ import { canonicalHash } from './native-canonical-hash.js';
 const CONTRACT_HASH_TAG = 'comet.native.contract.v1';
 const ACCEPTANCE_SET_HASH_TAG = 'comet.native.acceptance-set.v1';
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+
+export const NATIVE_CONTRACT_LIMITS = {
+  maxAcceptanceCriteria: NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
+} as const;
 
 export interface NativeContractSpecInput {
   capability: string;
@@ -156,16 +161,29 @@ export function buildNativeContractSnapshot(input: {
     throw new Error('Native contract contains duplicate artifact sources');
   }
 
-  const acceptance = [
-    ...deriveBriefAcceptanceCriteria(input.briefMarkdown, briefSource),
-    ...specs.flatMap(({ snapshot, markdown }) =>
-      markdown === null || snapshot.source === null
-        ? []
-        : deriveSpecAcceptanceCriteria(markdown, snapshot.source),
-    ),
-  ].sort(compareCriteria);
+  const acceptance = deriveBriefAcceptanceCriteria(
+    input.briefMarkdown,
+    briefSource,
+    NATIVE_CONTRACT_LIMITS.maxAcceptanceCriteria,
+  );
+  for (const { snapshot, markdown } of specs) {
+    if (markdown === null || snapshot.source === null) continue;
+    acceptance.push(
+      ...deriveSpecAcceptanceCriteria(
+        markdown,
+        snapshot.source,
+        NATIVE_CONTRACT_LIMITS.maxAcceptanceCriteria - acceptance.length,
+      ),
+    );
+  }
+  acceptance.sort(compareCriteria);
   if (acceptance.length === 0) {
     throw new Error('Native contract has no structured acceptance criteria');
+  }
+  if (acceptance.length > NATIVE_CONTRACT_LIMITS.maxAcceptanceCriteria) {
+    throw new Error(
+      `Native contract exceeds its ${NATIVE_CONTRACT_LIMITS.maxAcceptanceCriteria}-criterion acceptance budget`,
+    );
   }
   const acceptanceIds = acceptance.map(({ id }) => id);
   if (new Set(acceptanceIds).size !== acceptanceIds.length) {

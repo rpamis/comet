@@ -14,6 +14,10 @@ import {
   recoverNativeRootMove,
 } from '../../../domains/comet-native/native-root-move.js';
 import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
+import {
+  inspectNativeWorkspaceAdvisory,
+  readNativeWorkspaceIdentity,
+} from '../../../domains/comet-native/native-workspace.js';
 import { seedNativeRoot } from '../../helpers/native-root.js';
 
 describe('Native artifact root recovery', () => {
@@ -30,6 +34,11 @@ describe('Native artifact root recovery', () => {
 
   it('continues an interruption in the copying stage and blocks normal discovery meanwhile', async () => {
     const source = await seedNativeRoot(projectRoot, '.');
+    await createNativeChange({
+      paths: await nativeProjectPaths(projectRoot, '.'),
+      name: 'identity-change',
+      language: 'en',
+    });
     await expect(
       moveNativeRoot({
         projectRoot,
@@ -55,12 +64,19 @@ describe('Native artifact root recovery', () => {
 
     const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'continue' });
     expect(recovered.activeNativeRoot).toBe(path.join(projectRoot, 'docs', 'comet'));
-    expect(recovered.config.native).toEqual({ artifact_root: 'docs' });
+    expect(recovered.config.native).toEqual({ artifact_root: 'docs', language: 'en' });
     await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
+    const destinationPaths = await nativeProjectPaths(projectRoot, 'docs');
+    const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');
+    await expect(
+      inspectNativeWorkspaceAdvisory({ paths: destinationPaths, identity: workspace! }),
+    ).resolves.toEqual({ state: 'aligned', findingCodes: [] });
   });
 
   it('rolls back an interruption in the ready stage', async () => {
     const source = await seedNativeRoot(projectRoot, '.');
+    const sourcePaths = await nativeProjectPaths(projectRoot, '.');
+    await createNativeChange({ paths: sourcePaths, name: 'identity-change', language: 'en' });
     let transactionId = '';
     await expect(
       moveNativeRoot({
@@ -77,7 +93,7 @@ describe('Native artifact root recovery', () => {
 
     const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'rollback' });
     expect(recovered.activeNativeRoot).toBe(source);
-    expect(recovered.config.native).toEqual({ artifact_root: '.' });
+    expect(recovered.config.native).toEqual({ artifact_root: '.', language: 'en' });
     expect(
       (await readNativeTransaction(await nativeProjectPaths(projectRoot, '.'), transactionId))
         .status,
@@ -85,10 +101,19 @@ describe('Native artifact root recovery', () => {
     await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
+    const workspace = await readNativeWorkspaceIdentity(sourcePaths, 'identity-change');
+    await expect(
+      inspectNativeWorkspaceAdvisory({ paths: sourcePaths, identity: workspace! }),
+    ).resolves.toEqual({ state: 'aligned', findingCodes: [] });
   });
 
   it('continues an interruption after the config switched', async () => {
     await seedNativeRoot(projectRoot, '.');
+    await createNativeChange({
+      paths: await nativeProjectPaths(projectRoot, '.'),
+      name: 'identity-change',
+      language: 'en',
+    });
     let transactionId = '';
     await expect(
       moveNativeRoot({
@@ -110,6 +135,151 @@ describe('Native artifact root recovery', () => {
     const destinationPaths = await nativeProjectPaths(projectRoot, 'docs');
     expect(recovered.activeNativeRoot).toBe(destinationPaths.nativeRoot);
     expect((await readNativeTransaction(destinationPaths, transactionId)).status).toBe('committed');
+    const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');
+    await expect(
+      inspectNativeWorkspaceAdvisory({ paths: destinationPaths, identity: workspace! }),
+    ).resolves.toEqual({ state: 'aligned', findingCodes: [] });
+  });
+
+  it('continues a transaction-bound source quarantine after a removal crash', async () => {
+    const source = await seedNativeRoot(projectRoot, '.');
+    let quarantine = '';
+    await expect(
+      moveNativeRoot({
+        projectRoot,
+        toArtifactRoot: 'docs',
+        hooks: {
+          afterRootMoveSourceQuarantined(target) {
+            quarantine = target;
+            throw new Error('crash after source quarantine');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash after source quarantine');
+
+    expect(path.basename(quarantine)).toMatch(/^\.comet-native-source-.+\.removing$/u);
+    await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await fs.readFile(path.join(quarantine, 'specs', 'word-count', 'spec.md'), 'utf8')).toBe(
+      'count words\n',
+    );
+    expect((await readProjectConfig(projectRoot))?.native.pending_root_move?.stage).toBe(
+      'switched',
+    );
+
+    const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'continue' });
+    expect(recovered.activeNativeRoot).toBe(path.join(projectRoot, 'docs', 'comet'));
+    await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(recovered.config.native).toEqual({ artifact_root: 'docs', language: 'en' });
+  });
+
+  it('continues deletion when a quarantined source is only a valid manifest subset', async () => {
+    const source = await seedNativeRoot(projectRoot, '.');
+    await expect(
+      moveNativeRoot({
+        projectRoot,
+        toArtifactRoot: 'docs',
+        hooks: {
+          afterRootMoveCleanupEntryRemoved(kind, _ref, removedCount) {
+            if (kind === 'forward-source' && removedCount === 2) {
+              throw new Error('crash during source cleanup');
+            }
+          },
+        },
+      }),
+    ).rejects.toThrow('crash during source cleanup');
+
+    const pending = (await readProjectConfig(projectRoot))?.native.pending_root_move;
+    expect(pending?.cleanup).toMatchObject({ kind: 'forward-source', state: 'deleting' });
+    const quarantine = path.join(projectRoot, `.comet-native-source-${pending!.id}.removing`);
+    await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await fs.readdir(quarantine, { recursive: true })).length).toBeGreaterThan(0);
+
+    const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'continue' });
+    expect(recovered.config.native).toEqual({ artifact_root: 'docs', language: 'en' });
+    await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each([
+    [
+      'extra content',
+      async (quarantine: string) => {
+        await fs.writeFile(path.join(quarantine, 'unexpected.txt'), 'unexpected\n');
+      },
+    ],
+    [
+      'tampered content',
+      async (quarantine: string) => {
+        await fs.writeFile(path.join(quarantine, 'specs', 'word-count', 'spec.md'), 'tampered\n');
+      },
+    ],
+  ])('fails closed when a source quarantine has %s', async (_label, mutate) => {
+    await seedNativeRoot(projectRoot, '.');
+    let quarantine = '';
+    await expect(
+      moveNativeRoot({
+        projectRoot,
+        toArtifactRoot: 'docs',
+        hooks: {
+          afterRootMoveSourceQuarantined(target) {
+            quarantine = target;
+            throw new Error('crash before quarantine validation');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash before quarantine validation');
+    await mutate(quarantine);
+
+    await expect(recoverNativeRootMove({ projectRoot, strategy: 'continue' })).rejects.toThrow(
+      /cleanup quarantine differs from its bound manifest/u,
+    );
+    expect((await readProjectConfig(projectRoot))?.native.pending_root_move?.cleanup).toMatchObject(
+      {
+        kind: 'forward-source',
+        state: 'prepared',
+      },
+    );
+    expect(await fs.stat(quarantine)).toBeTruthy();
+  });
+
+  it('resumes a partially deleted rollback quarantine with the same manifest rules', async () => {
+    const source = await seedNativeRoot(projectRoot, '.');
+    await expect(
+      moveNativeRoot({
+        projectRoot,
+        toArtifactRoot: 'docs',
+        hooks: {
+          afterRootMoveStage(stage) {
+            if (stage === 'switched') throw new Error('crash before source cleanup');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash before source cleanup');
+
+    await expect(
+      recoverNativeRootMove({
+        projectRoot,
+        strategy: 'rollback',
+        hooks: {
+          afterRootMoveCleanupEntryRemoved(kind, _ref, removedCount) {
+            if (kind === 'rollback-destination' && removedCount === 2) {
+              throw new Error('crash during rollback cleanup');
+            }
+          },
+        },
+      }),
+    ).rejects.toThrow('crash during rollback cleanup');
+
+    const pending = (await readProjectConfig(projectRoot))?.native.pending_root_move;
+    expect(pending?.cleanup).toMatchObject({ kind: 'rollback-destination', state: 'deleting' });
+    const destination = path.join(projectRoot, 'docs', 'comet');
+    const quarantine = path.join(projectRoot, 'docs', `.comet.${pending!.id}.rollback-removing`);
+    await expect(fs.access(destination)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await fs.readdir(quarantine, { recursive: true })).length).toBeGreaterThan(0);
+
+    const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'rollback' });
+    expect(recovered.activeNativeRoot).toBe(source);
+    expect(recovered.config.native).toEqual({ artifact_root: '.', language: 'en' });
+    await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('stops without deleting either tree when staged hashes changed', async () => {
@@ -136,5 +306,88 @@ describe('Native artifact root recovery', () => {
     expect(await fs.stat(source)).toBeTruthy();
     expect(await fs.stat(staging)).toBeTruthy();
     expect((await readProjectConfig(projectRoot))?.native.pending_root_move?.stage).toBe('ready');
+  });
+
+  it('bounds the staged fallback journal before parsing it', async () => {
+    const source = await seedNativeRoot(projectRoot, '.');
+    let transactionId = '';
+    await expect(
+      moveNativeRoot({
+        projectRoot,
+        toArtifactRoot: 'docs',
+        hooks: {
+          afterRootMoveStage(stage, journal) {
+            transactionId = journal.id;
+            if (stage === 'ready') throw new Error('crash before journal fallback');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash before journal fallback');
+    const staging = path.join(projectRoot, 'docs', `.comet-native-move-${transactionId}`);
+    const sourceJournal = path.join(
+      source,
+      'runtime',
+      'transactions',
+      transactionId,
+      'transaction.json',
+    );
+    const stagedJournal = path.join(
+      staging,
+      'runtime',
+      'transactions',
+      transactionId,
+      'transaction.json',
+    );
+    await fs.rm(sourceJournal);
+    await fs.writeFile(stagedJournal, 'x'.repeat(256 * 1024 + 1));
+
+    await expect(recoverNativeRootMove({ projectRoot, strategy: 'continue' })).rejects.toThrow(
+      /exceeds 262144 bytes/u,
+    );
+    expect(await fs.stat(source)).toBeTruthy();
+    expect(await fs.stat(staging)).toBeTruthy();
+  });
+
+  it('rejects a junction in the staged fallback journal parent chain', async () => {
+    const source = await seedNativeRoot(projectRoot, '.');
+    let transactionId = '';
+    await expect(
+      moveNativeRoot({
+        projectRoot,
+        toArtifactRoot: 'docs',
+        hooks: {
+          afterRootMoveStage(stage, journal) {
+            transactionId = journal.id;
+            if (stage === 'ready') throw new Error('crash before junction fallback');
+          },
+        },
+      }),
+    ).rejects.toThrow('crash before junction fallback');
+    const staging = path.join(projectRoot, 'docs', `.comet-native-move-${transactionId}`);
+    const sourceJournal = path.join(
+      source,
+      'runtime',
+      'transactions',
+      transactionId,
+      'transaction.json',
+    );
+    const stagedTransaction = path.join(staging, 'runtime', 'transactions', transactionId);
+    const external = path.join(projectRoot, 'external-journal');
+    const journal = await fs.readFile(sourceJournal);
+    await fs.mkdir(external);
+    await fs.writeFile(path.join(external, 'transaction.json'), journal);
+    await fs.rm(sourceJournal);
+    await fs.rm(stagedTransaction, { recursive: true });
+    await fs.symlink(
+      external,
+      stagedTransaction,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    await expect(recoverNativeRootMove({ projectRoot, strategy: 'continue' })).rejects.toThrow(
+      /parent must be a real directory/u,
+    );
+    expect(await fs.readFile(path.join(external, 'transaction.json'))).toEqual(journal);
+    expect(await fs.stat(source)).toBeTruthy();
   });
 });

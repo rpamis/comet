@@ -7,10 +7,88 @@ import {
   deriveSpecAcceptanceCriteria,
   normalizeNativeAcceptanceText,
   parseNativeVerificationMachineBlock,
+  projectNativeAcceptancePage,
   serializeNativeVerificationMachineBlock,
 } from '../../../domains/comet-native/native-acceptance.js';
+import type { NativeAcceptanceCriterion } from '../../../domains/comet-native/native-acceptance.js';
 
 describe('Native acceptance criteria', () => {
+  function criterion(index: number, overrides: Partial<NativeAcceptanceCriterion> = {}) {
+    return {
+      id: `acceptance-${index.toString(16).padStart(64, '0')}`,
+      kind: 'brief-example' as const,
+      source: 'brief.md',
+      context: [],
+      text: `Criterion ${index}.`,
+      ...overrides,
+    };
+  }
+
+  it.each([0, 1, 16, 17, 41])(
+    'pages %i acceptance criteria without losing or repeating IDs',
+    (count) => {
+      const criteria = Array.from({ length: count }, (_, index) => criterion(index + 1));
+      const acceptanceHash = 'a'.repeat(64);
+      const ids: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const page = projectNativeAcceptancePage({ criteria, acceptanceHash, cursor });
+        expect(Buffer.byteLength(JSON.stringify(page), 'utf8')).toBeLessThanOrEqual(32 * 1024);
+        ids.push(...page.items.map((item) => item.id));
+        cursor = page.nextCursor;
+      } while (cursor !== null);
+
+      expect(ids).toEqual(criteria.map((item) => item.id));
+      expect(new Set(ids).size).toBe(ids.length);
+    },
+  );
+
+  it('bounds long Unicode text and context without splitting code points', () => {
+    const page = projectNativeAcceptancePage({
+      acceptanceHash: 'b'.repeat(64),
+      criteria: [
+        criterion(1, {
+          text: '鱼'.repeat(1_000),
+          context: ['章'.repeat(500), 'second', 'third', 'fourth', 'fifth'],
+        }),
+      ],
+    });
+
+    expect(Buffer.byteLength(page.items[0].text, 'utf8')).toBeLessThanOrEqual(512);
+    expect(page.items[0].text).not.toContain('\uFFFD');
+    expect(page.items[0]).toMatchObject({ textTruncated: true, contextTruncated: true });
+    expect(page.items[0].context).toHaveLength(4);
+    expect(Buffer.byteLength(page.items[0].context[0], 'utf8')).toBeLessThanOrEqual(256);
+  });
+
+  it('binds cursors to the acceptance hash and rejects malformed offsets', () => {
+    const criteria = Array.from({ length: 17 }, (_, index) => criterion(index + 1));
+    const first = projectNativeAcceptancePage({ criteria, acceptanceHash: 'c'.repeat(64) });
+    expect(first.nextCursor).not.toBeNull();
+    expect(() =>
+      projectNativeAcceptancePage({
+        criteria,
+        acceptanceHash: 'd'.repeat(64),
+        cursor: first.nextCursor,
+      }),
+    ).toThrow('stale');
+    expect(() =>
+      projectNativeAcceptancePage({
+        criteria,
+        acceptanceHash: 'c'.repeat(64),
+        cursor: `native-acceptance-v1.${'c'.repeat(64)}.00g`,
+      }),
+    ).toThrow('invalid');
+    const tamperedCursor = `${first.nextCursor!.slice(0, -1)}${first.nextCursor!.endsWith('0') ? '1' : '0'}`;
+    expect(() =>
+      projectNativeAcceptancePage({
+        criteria,
+        acceptanceHash: 'c'.repeat(64),
+        cursor: tamperedCursor,
+      }),
+    ).toThrow('integrity');
+  });
+
   it('derives stable IDs from Acceptance examples independent of list order and wrapping', () => {
     const first = `# Outcome
 Ship login.

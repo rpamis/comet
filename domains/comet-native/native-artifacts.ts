@@ -2,6 +2,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { nativeChangeDir } from './native-change.js';
+import {
+  DEFAULT_NATIVE_ARTIFACT_MAX_BYTES,
+  readNativeBoundedTextFile,
+} from './native-bounded-file.js';
 import { sha256File } from './native-hash.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import type {
@@ -27,6 +31,10 @@ const VERIFICATION_ALL = [
   'Known limitations and risks',
   'Conclusion',
 ];
+
+export const NATIVE_ARTIFACT_VALIDATION_LIMITS = {
+  maxFileBytes: DEFAULT_NATIVE_ARTIFACT_MAX_BYTES,
+} as const;
 
 function markdownSections(source: string): Map<string, string> {
   const sections = new Map<string, string>();
@@ -72,13 +80,19 @@ export async function validateNativeBrief(
   briefRef: string,
 ): Promise<NativeArtifactValidation> {
   const findings: NativeFinding[] = [];
-  let file: string;
+  let source: string;
   try {
-    file = await readContainedFile(changeDir, briefRef);
+    source = (
+      await readNativeBoundedTextFile({
+        root: changeDir,
+        ref: briefRef,
+        maxBytes: NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes,
+      })
+    ).text;
   } catch (error) {
     return result([{ code: 'brief-missing', message: (error as Error).message, path: briefRef }]);
   }
-  const sections = markdownSections(await fs.readFile(file, 'utf8'));
+  const sections = markdownSections(source);
   for (const heading of BRIEF_ALL) {
     if (!sections.has(heading)) {
       findings.push({
@@ -113,15 +127,21 @@ export async function validateNativeVerification(
   reportRef: string,
 ): Promise<NativeArtifactValidation> {
   const findings: NativeFinding[] = [];
-  let file: string;
+  let source: string;
   try {
-    file = await readContainedFile(changeDir, reportRef);
+    source = (
+      await readNativeBoundedTextFile({
+        root: changeDir,
+        ref: reportRef,
+        maxBytes: NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes,
+      })
+    ).text;
   } catch (error) {
     return result([
       { code: 'verification-missing', message: (error as Error).message, path: reportRef },
     ]);
   }
-  const sections = markdownSections(await fs.readFile(file, 'utf8'));
+  const sections = markdownSections(source);
   for (const heading of VERIFICATION_ALL) {
     if (!sections.has(heading)) {
       findings.push({

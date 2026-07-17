@@ -4,9 +4,9 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { NATIVE_CONTRACT_FILE_LIMITS } from '../../../domains/comet-native/native-contract-files.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 const brief = `# Outcome
 Add sentence counting.
@@ -71,13 +71,7 @@ describe('Comet Native CLI dispatcher', () => {
     const root = json(await runNativeCli(['root', 'show', '--json', ...projectArgs()]));
     expect(root).toMatchObject({ command: 'root show', data: { artifactRoot: 'docs' } });
 
-    const created = await runNativeCli([
-      'new',
-      'sentence-counting',
-      '--language',
-      'zh-CN',
-      ...projectArgs(),
-    ]);
+    const created = await runNativeCli(['new', 'sentence-counting', ...projectArgs()]);
     expect(created).toMatchObject({ exitCode: 0 });
     expect(created.stdout).toContain('Created Native change sentence-counting');
     const paths = await nativeProjectPaths(projectRoot, 'docs');
@@ -89,7 +83,11 @@ describe('Comet Native CLI dispatcher', () => {
       '# Sentence counting\nCount sentences by punctuation.\n',
     );
 
-    expect(json(await runNativeCli(['list', '--json', ...projectArgs()])).data).toHaveLength(1);
+    expect(json(await runNativeCli(['list', '--json', ...projectArgs()])).data).toMatchObject({
+      schema: 'comet.native.status-page.v1',
+      total: 1,
+      items: [expect.objectContaining({ name: 'sentence-counting', phase: 'shape' })],
+    });
     expect(
       json(await runNativeCli(['show', 'sentence-counting', '--json', ...projectArgs()])).data,
     ).toMatchObject({ state: { language: 'zh-CN', phase: 'shape' } });
@@ -131,24 +129,58 @@ describe('Comet Native CLI dispatcher', () => {
     });
 
     await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const count = 2;\n');
-    const built = await runNativeCli([
-      'next',
-      'sentence-counting',
-      '--summary',
-      'Implemented sentence counting',
-      '--artifact',
-      'feature.ts',
-      ...projectArgs(),
+    const built = json(
+      await runNativeCli([
+        'next',
+        'sentence-counting',
+        '--summary',
+        'Implemented sentence counting',
+        '--artifact',
+        'feature.ts',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(built.exitCode).toBe(0);
+    const builtCriteria = (
+      built.data as {
+        preparedScope: { acceptancePage: { items: Array<{ id: string }> } };
+      }
+    ).preparedScope.acceptancePage.items;
+    expect(builtCriteria).toEqual([
+      expect.objectContaining({ id: expect.stringMatching(/^acceptance-[a-f0-9]{64}$/u) }),
     ]);
-    expect(built.exitCode, built.stderr).toBe(0);
+
+    const resumed = json(
+      await runNativeCli(['status', 'sentence-counting', '--details', '--json', ...projectArgs()]),
+    );
+    const resumedCriteria = (resumed.data as { acceptancePage: { items: Array<{ id: string }> } })
+      .acceptancePage.items;
+    expect(resumedCriteria).toEqual(builtCriteria);
+    const acceptanceEntries = resumedCriteria
+      .map((criterion) => ({
+        acceptance_id: criterion.id,
+        evidence_refs: ['feature.ts'],
+      }))
+      .sort((left, right) => left.acceptance_id.localeCompare(right.acceptance_id));
 
     await fs.writeFile(
       path.join(changeDir, 'verification.md'),
-      await nativeVerificationFixtureReport({
-        paths,
-        name: 'sentence-counting',
-        evidenceRefs: ['feature.ts'],
-      }),
+      `# Acceptance evidence
+<!-- comet-native:acceptance-evidence:start -->
+${JSON.stringify(acceptanceEntries, null, 2)}
+<!-- comet-native:acceptance-evidence:end -->
+# Commands and results
+Focused checks passed.
+# Skipped checks
+None.
+# Spec consistency
+Consistent.
+# Known limitations and risks
+None.
+# Conclusion
+Pass.
+`,
     );
     const verified = json(
       await runNativeCli([
@@ -167,13 +199,7 @@ describe('Comet Native CLI dispatcher', () => {
     expect(verified).toMatchObject({ data: { change: { phase: 'archive' } } });
 
     const preview = json(
-      await runNativeCli([
-        'archive',
-        'sentence-counting',
-        '--dry-run',
-        '--json',
-        ...projectArgs(),
-      ]),
+      await runNativeCli(['archive', 'sentence-counting', '--dry-run', '--json', ...projectArgs()]),
     );
     const preflightHash = (preview.data as { preflightHash: string }).preflightHash;
     const archived = await runNativeCli([
@@ -192,6 +218,126 @@ describe('Comet Native CLI dispatcher', () => {
 
     const doctor = json(await runNativeCli(['doctor', '--json', ...projectArgs()]));
     expect(doctor).toMatchObject({ command: 'doctor', exitCode: 0, data: { healthy: true } });
+  });
+
+  it('pages every Runtime-derived acceptance ID through the public status command', async () => {
+    await runNativeCli(['new', 'paged-acceptance', ...projectArgs()]);
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const changeDir = path.join(paths.changesDir, 'paged-acceptance');
+    const acceptanceExamples = Array.from(
+      { length: 17 },
+      (_, index) => `- Acceptance outcome ${index + 1} is observable.`,
+    ).join('\n');
+    const pagedBrief = brief.replace('- Two sentences return two.', acceptanceExamples);
+    await fs.writeFile(path.join(changeDir, 'brief.md'), pagedBrief);
+    expect(
+      (
+        await runNativeCli([
+          'next',
+          'paged-acceptance',
+          '--summary',
+          'The acceptance contract is executable',
+          ...projectArgs(),
+        ])
+      ).exitCode,
+    ).toBe(0);
+    await fs.writeFile(path.join(projectRoot, 'paged.ts'), 'export const paged = true;\n');
+    const built = json(
+      await runNativeCli([
+        'next',
+        'paged-acceptance',
+        '--summary',
+        'Implemented the paged acceptance contract',
+        '--artifact',
+        'paged.ts',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    const firstPage = (
+      built.data as {
+        preparedScope: {
+          acceptancePage: {
+            items: Array<{ id: string }>;
+            nextCursor: string | null;
+            total: number;
+          };
+        };
+      }
+    ).preparedScope.acceptancePage;
+    expect(firstPage).toMatchObject({ total: 17 });
+    expect(firstPage.items).toHaveLength(16);
+    expect(firstPage.nextCursor).not.toBeNull();
+
+    const ids = [...firstPage.items.map((item) => item.id)];
+    let cursor = firstPage.nextCursor;
+    while (cursor) {
+      const pageResult = json(
+        await runNativeCli([
+          'status',
+          'paged-acceptance',
+          '--details',
+          '--acceptance-cursor',
+          cursor,
+          '--json',
+          ...projectArgs(),
+        ]),
+      );
+      expect(pageResult.exitCode).toBe(0);
+      const page = (
+        pageResult.data as {
+          acceptancePage: { items: Array<{ id: string }>; nextCursor: string | null };
+        }
+      ).acceptancePage;
+      ids.push(...page.items.map((item) => item.id));
+      cursor = page.nextCursor;
+    }
+    expect(ids).toHaveLength(17);
+    expect(new Set(ids).size).toBe(17);
+
+    const withoutDetails = json(
+      await runNativeCli([
+        'status',
+        'paged-acceptance',
+        '--acceptance-cursor',
+        firstPage.nextCursor!,
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(withoutDetails).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
+
+    const tamperedCursor = `${firstPage.nextCursor!.slice(0, -1)}${firstPage.nextCursor!.endsWith('0') ? '1' : '0'}`;
+    const tampered = json(
+      await runNativeCli([
+        'status',
+        'paged-acceptance',
+        '--details',
+        '--acceptance-cursor',
+        tamperedCursor,
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(tampered).toMatchObject({ exitCode: 65, error: { code: 'invalid-data' } });
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      pagedBrief.replace('Acceptance outcome 17', 'Changed acceptance outcome 17'),
+    );
+    const stale = json(
+      await runNativeCli([
+        'status',
+        'paged-acceptance',
+        '--details',
+        '--acceptance-cursor',
+        firstPage.nextCursor!,
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(stale).toMatchObject({ exitCode: 65, error: { code: 'invalid-data' } });
+    expect(stale.error?.message).toContain('stale');
   });
 
   it('creates the default config from new and keeps Classic paths untouched', async () => {
@@ -313,6 +459,63 @@ describe('Comet Native CLI dispatcher', () => {
     });
   });
 
+  it('rejects show when the brief exceeds its bounded-read budget', async () => {
+    await runNativeCli(['new', 'oversized-brief', ...projectArgs()]);
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await fs.writeFile(
+      path.join(paths.changesDir, 'oversized-brief', 'brief.md'),
+      Buffer.alloc(NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes + 1, 0x61),
+    );
+
+    const result = await runNativeCli(['show', 'oversized-brief', '--json', ...projectArgs()]);
+
+    expect(result.exitCode).toBe(65);
+    expect(json(result)).toMatchObject({
+      error: { code: 'invalid-data', message: expect.stringContaining('exceeds') },
+    });
+  });
+
+  it('rejects show when proposed specs exceed the count budget', async () => {
+    await runNativeCli(['new', 'too-many-specs', ...projectArgs()]);
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const specsDir = path.join(paths.changesDir, 'too-many-specs', 'specs');
+    await Promise.all(
+      Array.from({ length: NATIVE_CONTRACT_FILE_LIMITS.maxSpecs + 1 }, async (_, index) => {
+        const directory = path.join(specsDir, `capability-${index}`);
+        await fs.mkdir(directory, { recursive: true });
+        await fs.writeFile(path.join(directory, 'spec.md'), '# Capability\n');
+      }),
+    );
+
+    const result = await runNativeCli(['show', 'too-many-specs', '--json', ...projectArgs()]);
+
+    expect(result.exitCode).toBe(65);
+    expect(json(result)).toMatchObject({
+      error: { code: 'invalid-data', message: expect.stringContaining('spec-count budget') },
+    });
+  });
+
+  it('rejects show when proposed specs exceed the aggregate byte budget', async () => {
+    await runNativeCli(['new', 'oversized-spec-set', ...projectArgs()]);
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const specsDir = path.join(paths.changesDir, 'oversized-spec-set', 'specs');
+    const fileBytes = NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes - 1024;
+    await Promise.all(
+      Array.from({ length: 5 }, async (_, index) => {
+        const directory = path.join(specsDir, `capability-${index}`);
+        await fs.mkdir(directory, { recursive: true });
+        await fs.writeFile(path.join(directory, 'spec.md'), Buffer.alloc(fileBytes, 0x61));
+      }),
+    );
+
+    const result = await runNativeCli(['show', 'oversized-spec-set', '--json', ...projectArgs()]);
+
+    expect(result.exitCode).toBe(65);
+    expect(json(result)).toMatchObject({
+      error: { code: 'invalid-data', message: expect.stringContaining('total byte budget') },
+    });
+  });
+
   it('repairs a stale selection without requiring a transaction strategy', async () => {
     await runNativeCli(['init', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, '.');
@@ -327,23 +530,77 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it.each([
-    ['init', ['init']],
-    ['new', ['new', 'storage-failure']],
+    [
+      'failure facts without a failed result',
+      ['next', 'repair-change', '--summary', 'retry', '--failure-category', 'test-failed'],
+    ],
+    [
+      'an unpaired repair override',
+      ['next', 'repair-change', '--summary', 'retry', '--override-repair', 'a'.repeat(64)],
+    ],
+    [
+      'a receipt without a Verify result',
+      [
+        'next',
+        'repair-change',
+        '--summary',
+        'retry',
+        '--receipt',
+        `runtime/evidence/check-receipts/${'a'.repeat(64)}.json`,
+      ],
+    ],
+    [
+      'an override mixed with a Verify result',
+      [
+        'next',
+        'repair-change',
+        '--summary',
+        'retry',
+        '--override-repair',
+        'a'.repeat(64),
+        '--override-summary',
+        'retry once',
+        '--result',
+        'fail',
+      ],
+    ],
+  ] as const)('rejects %s before touching project state', async (_label, args) => {
+    const result = await runNativeCli([...args, '--json', ...projectArgs()]);
+
+    expect(result.exitCode).toBe(64);
+    expect(json(result)).toMatchObject({ error: { code: 'usage' } });
+    await expect(fs.access(path.join(projectRoot, 'comet.config.yaml'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it.each([
+    ['init', ['init'], false],
+    ['new', ['new', 'storage-failure'], true],
   ] as const)(
-    'returns exit 70 without activating Native when %s hits an unexpected filesystem failure',
-    async (_command, args) => {
+    'returns exit 70 with a retryable state when %s hits an unexpected filesystem failure',
+    async (_command, args, initializesConfig) => {
       const failure = Object.assign(new Error('simulated storage failure'), { code: 'EIO' });
       const realpath = vi.spyOn(fs, 'realpath').mockRejectedValueOnce(failure);
       try {
         const result = await runNativeCli([...args, '--json', ...projectArgs()]);
         expect(result.exitCode).toBe(70);
         expect(json(result)).toMatchObject({ error: { code: 'internal' } });
-        await expect(fs.access(path.join(projectRoot, 'comet.config.yaml'))).rejects.toMatchObject({
-          code: 'ENOENT',
-        });
       } finally {
         realpath.mockRestore();
       }
+      if (!initializesConfig) {
+        await expect(fs.access(path.join(projectRoot, 'comet.config.yaml'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+        return;
+      }
+      await expect(
+        fs.readFile(path.join(projectRoot, 'comet.config.yaml'), 'utf8'),
+      ).resolves.toContain('artifact_root: .');
+      const retried = await runNativeCli([...args, '--json', ...projectArgs()]);
+      expect(retried.exitCode).toBe(0);
+      expect(json(retried)).toMatchObject({ data: { name: 'storage-failure' } });
     },
   );
 });

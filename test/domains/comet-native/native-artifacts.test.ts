@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 
 import {
+  NATIVE_ARTIFACT_VALIDATION_LIMITS,
   validateNativeBrief,
   validateNativeSpecChanges,
   validateNativeVerification,
@@ -96,6 +97,26 @@ describe('Native artifact validation', () => {
       verification.replace('Pass.\n', ''),
     );
     expect((await validateNativeVerification(changeDir, 'verification.md')).valid).toBe(false);
+  });
+
+  it('bounds brief and verification reads before Markdown parsing', async () => {
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      'x'.repeat(NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes + 1),
+    );
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      'x'.repeat(NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes + 1),
+    );
+
+    expect(await validateNativeBrief(changeDir, 'brief.md')).toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ message: expect.stringContaining('exceeds') })],
+    });
+    expect(await validateNativeVerification(changeDir, 'verification.md')).toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ message: expect.stringContaining('exceeds') })],
+    });
   });
 
   it('validates complete target specs and canonical base hashes', async () => {

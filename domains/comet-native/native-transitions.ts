@@ -1,25 +1,37 @@
 import { randomUUID } from 'crypto';
 
 import { decideWithResolver, recordOutcomeWithResolver } from '../engine/loop.js';
-import { readTrajectory } from '../engine/run-store.js';
-import { NATIVE_RUN_STORAGE } from '../engine/storage-layout.js';
-import { readRunStateAt, startRunWithStorage } from '../engine/storage-run.js';
 import { inspectNativeGuard } from './native-guards.js';
+import { projectNativeAcceptancePage } from './native-acceptance.js';
 import { nativeChangeDir, readNativeChange } from './native-change.js';
-import { prepareNativeBuildEvidence } from './native-build-evidence.js';
+import { inspectNativeBuildEvidence, persistNativeBuildEvidence } from './native-build-evidence.js';
 import { nativeContinuation } from './native-continuation.js';
 import { structureNativeFindings } from './native-findings.js';
 import { settleNativeChangeJournalsLocked } from './native-change-recovery.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import { redactNativeCredentialText } from './native-redaction.js';
+import {
+  inspectLatestNativeRepairDecision,
+  inspectNativeRepairBuildGuard,
+  inspectNativeRepairFailureForTransition,
+  projectNativeRepairDecision,
+} from './native-repair-integration.js';
+import type { NativeRepairTrajectoryProjection } from './native-repair-runtime.js';
+import {
+  hashNativeRepairOverrideSummary,
+  normalizeNativeRepairFailureTokens,
+} from './native-repair-stagnation.js';
 import {
   NATIVE_RUNTIME_HASH,
   NATIVE_RUNTIME_PACKAGE,
   nativePhaseResolver,
 } from './native-runtime-package.js';
+import { readNativeRunState, readNativeTrajectory, startNativeRun } from './native-run-store.js';
 import { reconcileNativeSpecChanges } from './native-specs.js';
 import {
+  inspectNativeVerificationEvidence,
   inspectNativeVerificationFreshness,
-  prepareNativeVerificationEvidence,
+  persistNativeVerificationEvidence,
 } from './native-verification-runtime.js';
 import {
   continueNativeTransitionLocked,
@@ -27,12 +39,14 @@ import {
   withNativeTransitionLock,
 } from './native-transition-journal.js';
 import { nativeAdvanceEvidenceHash } from './native-transition-evidence.js';
+import { assertNativeTrajectoryText } from './native-trajectory-limits.js';
 import type {
   NativeAdvanceEvidence,
   NativeAdvanceResult,
   NativeChangeState,
   NativePhase,
   NativeProjectPaths,
+  NativeRepairDecisionProjection,
   NativeTransitionHooks,
 } from './native-types.js';
 
@@ -54,14 +68,103 @@ function hasEvidenceRetreatExtras(evidence: NativeAdvanceEvidence): boolean {
     evidence.allowPartialScopeHash !== undefined ||
     evidence.partialReason !== undefined ||
     evidence.verificationResult !== undefined ||
-    evidence.verificationReport !== undefined
+    evidence.verificationReport !== undefined ||
+    evidence.verificationReceipt !== undefined ||
+    evidence.repairFailureCategories !== undefined ||
+    evidence.repairFailedCheckIds !== undefined ||
+    evidence.repairOverrideSignature !== undefined ||
+    evidence.repairOverrideSummary !== undefined
   );
+}
+
+function repairFinding(
+  decision: Pick<NativeRepairDecisionProjection, 'disposition' | 'reasonCode' | 'signatureHash'>,
+): { code: string; message: string } {
+  if (decision.reasonCode === 'override-already-used') {
+    return {
+      code: 'repair-override-exhausted',
+      message: `Native repair already used its override for signature: ${decision.signatureHash}`,
+    };
+  }
+  if (decision.disposition === 'warn') {
+    return {
+      code: 'repair-stagnation-warning',
+      message: `Native repair repeated the same failure signature: ${decision.signatureHash}`,
+    };
+  }
+  if (decision.disposition === 'manual-stop') {
+    return {
+      code: 'repair-stagnation-stop',
+      message: `Native repair stopped after repeated failure signature: ${decision.signatureHash}`,
+    };
+  }
+  return {
+    code: 'repair-iteration-limit',
+    message: `Native repair reached its total iteration limit at signature: ${decision.signatureHash}`,
+  };
+}
+
+function validateNativeAdvanceEvidence(evidence: NativeAdvanceEvidence): void {
+  assertNativeTrajectoryText(evidence.summary, 'Native transition summary');
+  if (evidence.noCodeReason !== undefined) {
+    assertNativeTrajectoryText(evidence.noCodeReason, 'Native transition no-code reason');
+  }
+  if (
+    evidence.repairFailureCategories !== undefined ||
+    evidence.repairFailedCheckIds !== undefined
+  ) {
+    normalizeNativeRepairFailureTokens({
+      categories: evidence.repairFailureCategories,
+      failedCheckIds: evidence.repairFailedCheckIds,
+    });
+  }
+  if (
+    evidence.repairOverrideSignature !== undefined &&
+    !/^[a-f0-9]{64}$/u.test(evidence.repairOverrideSignature)
+  ) {
+    throw new Error('Native repair override signature must be a SHA-256 hash');
+  }
+  if (evidence.repairOverrideSummary !== undefined) {
+    hashNativeRepairOverrideSummary(evidence.repairOverrideSummary);
+  }
+}
+
+function normalizeNativeAdvanceEvidence(evidence: NativeAdvanceEvidence): NativeAdvanceEvidence {
+  return {
+    ...evidence,
+    summary: redactNativeCredentialText(evidence.summary),
+    ...(evidence.noCodeReason === undefined
+      ? {}
+      : { noCodeReason: redactNativeCredentialText(evidence.noCodeReason) }),
+    ...(evidence.partialReason === undefined
+      ? {}
+      : { partialReason: redactNativeCredentialText(evidence.partialReason) }),
+    ...(evidence.repairOverrideSummary === undefined
+      ? {}
+      : { repairOverrideSummary: redactNativeCredentialText(evidence.repairOverrideSummary) }),
+  };
+}
+
+function validateRepairEvidence(state: NativeChangeState, evidence: NativeAdvanceEvidence): void {
+  const hasFailureFacts =
+    evidence.repairFailureCategories !== undefined || evidence.repairFailedCheckIds !== undefined;
+  if (hasFailureFacts && (state.phase !== 'verify' || evidence.verificationResult !== 'fail')) {
+    throw new Error('Native repair failure facts are only valid for a failed Verify outcome');
+  }
+  const hasOverrideSignature = evidence.repairOverrideSignature !== undefined;
+  const hasOverrideSummary = evidence.repairOverrideSummary !== undefined;
+  if (hasOverrideSignature !== hasOverrideSummary) {
+    throw new Error('Native repair override signature and summary must be provided together');
+  }
+  if ((hasOverrideSignature || hasOverrideSummary) && state.phase !== 'build') {
+    throw new Error('Native repair override is only valid while leaving Build');
+  }
 }
 
 async function retreatStaleNativeEvidence(options: {
   transition: AdvanceNativeChangeOptions;
   state: NativeChangeState;
-  run: NonNullable<Awaited<ReturnType<typeof readRunStateAt>>>;
+  run: NonNullable<Awaited<ReturnType<typeof readNativeRunState>>>;
   evidenceHash: string;
 }): Promise<NativeAdvanceResult> {
   if (hasEvidenceRetreatExtras(options.transition.evidence)) {
@@ -156,9 +259,14 @@ async function retreatStaleNativeEvidence(options: {
 export async function advanceNativeChange(
   options: AdvanceNativeChangeOptions,
 ): Promise<NativeAdvanceResult> {
+  const normalizedOptions = {
+    ...options,
+    evidence: normalizeNativeAdvanceEvidence(options.evidence),
+  };
+  validateNativeAdvanceEvidence(normalizedOptions.evidence);
   return withNativeMutationLock(options.paths, `advance ${options.name}`, () =>
     withNativeTransitionLock(options.paths, options.name, `advance ${options.name}`, () =>
-      advanceNativeChangeLocked(options),
+      advanceNativeChangeLocked(normalizedOptions),
     ),
   );
 }
@@ -171,26 +279,43 @@ async function advanceNativeChangeLocked(
   const previousPhase = state.phase;
   const changeDir = nativeChangeDir(options.paths, options.name);
   const hash = nativeAdvanceEvidenceHash(options.evidence);
-  const existingRun = await readRunStateAt(changeDir, NATIVE_RUN_STORAGE);
+  const existingRun = await readNativeRunState(changeDir);
   if (existingRun) {
-    const trajectory = await readTrajectory(changeDir, existingRun.trajectoryRef);
+    const trajectory = await readNativeTrajectory(changeDir, existingRun.trajectoryRef);
     const last = trajectory.at(-1);
     if (
       last?.type === 'state_transitioned' &&
       last.data.evidenceHash === hash &&
       last.data.nextPhase === state.phase
     ) {
+      const repair = Object.hasOwn(last.data, 'repairStagnation')
+        ? await inspectLatestNativeRepairDecision(options.paths, state)
+        : null;
+      const repairFindings =
+        repair && repair.disposition !== 'continue'
+          ? structureNativeFindings({
+              paths: options.paths,
+              state,
+              findings: [repairFinding(repair)],
+            })
+          : [];
+      const stopped = repair?.disposition === 'manual-stop' || repair?.disposition === 'hard-stop';
       return {
         change: state,
         previousPhase: (last.data.previousPhase as NativePhase) ?? state.phase,
-        next: 'auto',
-        nextCommand:
-          state.phase === 'archive' ? `comet native archive ${state.name} --dry-run` : null,
-        findings: [],
+        next: stopped ? 'manual' : 'auto',
+        nextCommand: stopped
+          ? null
+          : state.phase === 'archive'
+            ? `comet native archive ${state.name} --dry-run`
+            : null,
+        findings: repairFindings,
         continuation: nativeContinuation({
           state,
+          findings: repairFindings,
           archiveReady: state.phase === 'archive' && state.verification_result === 'pass',
         }),
+        ...(repair ? { repair } : {}),
       };
     }
   }
@@ -209,6 +334,7 @@ async function advanceNativeChangeLocked(
     ...state,
     spec_changes: await reconcileNativeSpecChanges(options.paths, state),
   };
+  validateRepairEvidence(state, options.evidence);
 
   const guard = await inspectNativeGuard({
     paths: options.paths,
@@ -241,7 +367,7 @@ async function advanceNativeChangeLocked(
 
   const buildEvidence =
     state.phase === 'build'
-      ? await prepareNativeBuildEvidence({
+      ? await inspectNativeBuildEvidence({
           paths: options.paths,
           state: candidate,
           artifactRefs: options.evidence.artifacts ?? [],
@@ -260,9 +386,19 @@ async function advanceNativeChangeLocked(
         complete: buildEvidence.bundle.scope.complete,
         unresolvedScopeCount: buildEvidence.unresolvedScopes.length,
         partialAllowanceRef: buildEvidence.allowanceRef as NativeChangeState['partial_allowance'],
+        acceptancePage: projectNativeAcceptancePage({
+          criteria: buildEvidence.contract.contract.acceptance,
+          acceptanceHash: buildEvidence.contract.contract.acceptanceHash,
+        }),
       }
     : undefined;
   if (buildEvidence && buildEvidence.findings.length > 0) {
+    await persistNativeBuildEvidence({
+      paths: options.paths,
+      state,
+      preparation: buildEvidence,
+      includeAllowance: false,
+    });
     const findings = structureNativeFindings({
       paths: options.paths,
       state,
@@ -279,13 +415,70 @@ async function advanceNativeChangeLocked(
     };
   }
 
+  let repairEventProjection: NativeRepairTrajectoryProjection | null = null;
+  if (state.phase === 'build' && buildEvidence) {
+    const repairGuard = await inspectNativeRepairBuildGuard({
+      paths: options.paths,
+      state,
+      currentImplementationScope: buildEvidence.bundle,
+      ...(options.evidence.repairOverrideSignature && options.evidence.repairOverrideSummary
+        ? {
+            override: {
+              expectedSignatureHash: options.evidence.repairOverrideSignature,
+              summary: options.evidence.repairOverrideSummary,
+            },
+          }
+        : {}),
+    });
+    if (repairGuard.disposition !== 'proceed') {
+      await persistNativeBuildEvidence({
+        paths: options.paths,
+        state,
+        preparation: buildEvidence,
+        includeAllowance: false,
+      });
+      const findings = structureNativeFindings({
+        paths: options.paths,
+        state,
+        findings: [
+          repairGuard.disposition === 'hard-stop' && repairGuard.overrideRecorded
+            ? {
+                code: 'repair-override-exhausted',
+                message: `Native repair already used its override for signature: ${repairGuard.signatureHash}`,
+              }
+            : repairFinding({
+                disposition: repairGuard.disposition,
+                reasonCode:
+                  repairGuard.disposition === 'hard-stop'
+                    ? 'repair-iteration-limit'
+                    : 'repeated-failure-stop',
+                signatureHash: repairGuard.signatureHash,
+              }),
+        ],
+      });
+      return {
+        change: state,
+        previousPhase,
+        next: 'manual',
+        nextCommand: null,
+        findings,
+        continuation: nativeContinuation({ state, findings }),
+        preparedScope: preparedScope
+          ? { ...preparedScope, partialAllowanceRef: null }
+          : preparedScope,
+      };
+    }
+    repairEventProjection = repairGuard.eventProjection;
+  }
+
   const verificationEvidence =
     state.phase === 'verify'
-      ? await prepareNativeVerificationEvidence({
+      ? await inspectNativeVerificationEvidence({
           paths: options.paths,
           state: candidate,
           result: options.evidence.verificationResult!,
           reportRef: options.evidence.verificationReport!,
+          receiptRef: options.evidence.verificationReceipt ?? null,
           now: options.now,
         })
       : null;
@@ -308,16 +501,37 @@ async function advanceNativeChangeLocked(
     };
   }
 
+  let repairDecision: NativeRepairDecisionProjection | null = null;
+  if (
+    state.phase === 'verify' &&
+    options.evidence.verificationResult === 'fail' &&
+    verificationEvidence?.ready &&
+    verificationEvidence.envelope
+  ) {
+    const repairResult = await inspectNativeRepairFailureForTransition({
+      paths: options.paths,
+      state,
+      envelope: verificationEvidence.envelope,
+      ...(options.evidence.repairFailureCategories
+        ? { categories: options.evidence.repairFailureCategories }
+        : {}),
+      ...(options.evidence.repairFailedCheckIds
+        ? { failedCheckIds: options.evidence.repairFailedCheckIds }
+        : {}),
+    });
+    repairEventProjection = repairResult.eventProjection;
+    repairDecision = projectNativeRepairDecision(repairResult);
+  }
+
   let run = existingRun;
   if (!run) {
     if (state.run_id !== null || state.phase !== 'shape') {
       throw new Error('Native Run state is missing or inconsistent');
     }
-    run = startRunWithStorage(
+    run = startNativeRun(
       NATIVE_RUNTIME_PACKAGE,
       options.runId?.() ?? randomUUID(),
       NATIVE_RUNTIME_HASH,
-      NATIVE_RUN_STORAGE,
     );
   }
   if (run.currentStep !== state.phase) {
@@ -384,7 +598,33 @@ async function advanceNativeChangeLocked(
     artifacts: options.evidence.artifacts ?? [],
     noCodeReason: options.evidence.noCodeReason ?? null,
     verificationResult: options.evidence.verificationResult ?? null,
+    ...((state.phase === 'build' || state.phase === 'verify') &&
+    (state.phase === 'build'
+      ? buildEvidence!.bundle.scope.scopeHash
+      : verificationEvidence!.envelope!.implementationScopeHash)
+      ? {
+          implementationScopeHash:
+            state.phase === 'build'
+              ? buildEvidence!.bundle.scope.scopeHash
+              : verificationEvidence!.envelope!.implementationScopeHash,
+        }
+      : {}),
+    ...(repairEventProjection ? { repairStagnation: repairEventProjection } : {}),
   };
+  if (state.phase === 'build' && buildEvidence) {
+    await persistNativeBuildEvidence({
+      paths: options.paths,
+      state,
+      preparation: buildEvidence,
+    });
+  }
+  if (state.phase === 'verify' && verificationEvidence) {
+    await persistNativeVerificationEvidence({
+      paths: options.paths,
+      state,
+      preparation: verificationEvidence,
+    });
+  }
   const journal = await prepareNativeTransition({
     paths: options.paths,
     previousState: state,
@@ -403,17 +643,32 @@ async function advanceNativeChangeLocked(
     options.hooks,
   );
   if (!persisted) throw new Error('Native transition journal disappeared before completion');
+  const repairFindings =
+    repairDecision && repairDecision.disposition !== 'continue'
+      ? structureNativeFindings({
+          paths: options.paths,
+          state: persisted,
+          findings: [repairFinding(repairDecision)],
+        })
+      : [];
+  const repairStopped =
+    repairDecision?.disposition === 'manual-stop' || repairDecision?.disposition === 'hard-stop';
   return {
     change: persisted,
     previousPhase,
-    next: 'auto',
-    nextCommand:
-      persisted.phase === 'archive' ? `comet native archive ${persisted.name} --dry-run` : null,
-    findings: [],
+    next: repairStopped ? 'manual' : 'auto',
+    nextCommand: repairStopped
+      ? null
+      : persisted.phase === 'archive'
+        ? `comet native archive ${persisted.name} --dry-run`
+        : null,
+    findings: repairFindings,
     continuation: nativeContinuation({
       state: persisted,
+      findings: repairFindings,
       archiveReady: persisted.phase === 'archive' && persisted.verification_result === 'pass',
     }),
     ...(preparedScope ? { preparedScope } : {}),
+    ...(repairDecision ? { repair: repairDecision } : {}),
   };
 }

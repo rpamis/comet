@@ -5,6 +5,7 @@ import type {
   NativeAcceptanceEvidenceEntry,
 } from './native-acceptance.js';
 import { canonicalHash } from './native-canonical-hash.js';
+import { redactNativeCredentialText } from './native-redaction.js';
 import { nativeSensitiveRelativePathReason } from './native-sensitive-paths.js';
 import {
   parseNativeImplementationScopeBundle,
@@ -12,6 +13,7 @@ import {
 } from './native-verification-scope.js';
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+const MISSING_ACCEPTANCE_DETAIL_LIMIT = 8;
 const ACCEPTANCE_TRACE_HASH_TAG = 'comet.native.acceptance-trace.v1';
 const PARTIAL_ALLOWANCE_HASH_TAG = 'comet.native.partial-allowance.v1';
 const VERIFICATION_ENVELOPE_HASH_TAG = 'comet.native.verification-evidence.v1';
@@ -87,7 +89,7 @@ function changeName(value: string): string {
 }
 
 function requiredText(value: string, label: string, max = 2_000): string {
-  const normalized = value.trim();
+  const normalized = redactNativeCredentialText(value).trim();
   if (normalized.length === 0 || normalized.length > max) {
     throw new Error(`${label} must be between 1 and ${max} characters`);
   }
@@ -137,6 +139,14 @@ function portableEvidenceRef(value: string, label: string, nativeRootRef?: strin
   return reference;
 }
 
+function checkReceiptRef(value: string): string {
+  const reference = portableRef(value, 'Verification receipt ref');
+  if (!/^runtime\/evidence\/check-receipts\/[a-f0-9]{64}\.json$/u.test(reference)) {
+    throw new Error('Verification receipt ref must identify a Native check receipt');
+  }
+  return reference;
+}
+
 function timestamp(value: Date): string {
   const result = value.toISOString();
   if (Number.isNaN(Date.parse(result))) throw new Error('Native evidence timestamp is invalid');
@@ -178,7 +188,11 @@ export function buildNativeAcceptanceEvidenceTrace(
   }
   const missing = [...byId.keys()].filter((id) => !evidenceById.has(id));
   if (missing.length > 0) {
-    throw new Error(`Verification is missing acceptance evidence: ${missing.join(', ')}`);
+    const shown = missing.slice(0, MISSING_ACCEPTANCE_DETAIL_LIMIT);
+    const remainder = missing.length - shown.length;
+    throw new Error(
+      `Verification is missing ${missing.length} acceptance evidence entr${missing.length === 1 ? 'y' : 'ies'}: ${shown.join(', ')}${remainder > 0 ? `, ... (${remainder} more)` : ''}`,
+    );
   }
 
   const entries = [...byId.values()]
@@ -193,7 +207,11 @@ export function buildNativeAcceptanceEvidenceTrace(
       if (new Set(evidenceRefs).size !== evidenceRefs.length) {
         throw new Error(`Verification repeats an evidence ref for ${criterion.id}`);
       }
-      const skippedReason = entry.skipped_reason?.trim() || null;
+      const rawSkippedReason = entry.skipped_reason?.trim() || null;
+      const skippedReason =
+        rawSkippedReason === null
+          ? null
+          : requiredText(rawSkippedReason, `Skipped reason for ${criterion.id}`);
       if ((evidenceRefs.length === 0) === (skippedReason === null)) {
         throw new Error(
           `Acceptance ${criterion.id} requires exactly one of evidence refs or skipped reason`,
@@ -343,9 +361,7 @@ export function buildNativeVerificationEvidenceEnvelope(input: {
     acceptanceTrace,
     partialAllowanceRef: allowance?.ref ?? null,
     partialAllowanceHash: allowance?.allowance.allowanceHash ?? null,
-    receiptRef: input.receiptRef
-      ? portableEvidenceRef(input.receiptRef, 'Verification receipt ref')
-      : null,
+    receiptRef: input.receiptRef ? checkReceiptRef(input.receiptRef) : null,
     createdAt: timestamp(input.now ?? new Date()),
   };
   return {
@@ -458,7 +474,13 @@ export function parseNativeAcceptanceEvidenceTrace(value: unknown): NativeAccept
       kind: entry.kind,
       source: portableRef(entry.source, `Native acceptance trace entry ${index} source`),
       evidenceRefs,
-      skippedReason: entry.skippedReason as string | null,
+      skippedReason:
+        entry.skippedReason === null
+          ? null
+          : requiredText(
+              entry.skippedReason as string,
+              `Native acceptance trace entry ${index} skipped reason`,
+            ),
     };
   });
   if (
@@ -626,10 +648,7 @@ export function parseNativeVerificationEvidenceEnvelope(
         ? null
         : evidenceDocumentRef(root.partialAllowanceRef, 'allowances', partialAllowanceHash),
     partialAllowanceHash,
-    receiptRef:
-      root.receiptRef === null
-        ? null
-        : portableEvidenceRef(root.receiptRef, 'Native verification receipt ref'),
+    receiptRef: root.receiptRef === null ? null : checkReceiptRef(root.receiptRef),
     createdAt: canonicalTimestamp(root.createdAt, 'Native verification timestamp'),
   };
   const envelopeHash = hash(root.envelopeHash as string, 'Native verification envelope hash');

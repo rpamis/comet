@@ -1,6 +1,10 @@
-import { readTrajectory, appendTrajectory, writeCheckpoint } from '../engine/run-store.js';
 import type { Checkpoint, RunState, TrajectoryEvent } from '../engine/types.js';
 import { sha256Text } from './native-hash.js';
+import {
+  appendNativeTrajectory,
+  readNativeTrajectory,
+  writeNativeCheckpoint as persistNativeRunCheckpoint,
+} from './native-run-store.js';
 
 export async function appendNativeTrajectoryEvent(options: {
   changeDir: string;
@@ -9,7 +13,7 @@ export async function appendNativeTrajectoryEvent(options: {
   data: Record<string, unknown>;
   now?: Date;
 }): Promise<TrajectoryEvent> {
-  const trajectory = await readTrajectory(options.changeDir, options.run.trajectoryRef);
+  const trajectory = await readNativeTrajectory(options.changeDir, options.run.trajectoryRef);
   const event: TrajectoryEvent = {
     sequence: trajectory.length + 1,
     timestamp: (options.now ?? new Date()).toISOString(),
@@ -17,7 +21,7 @@ export async function appendNativeTrajectoryEvent(options: {
     runId: options.run.runId,
     data: options.data,
   };
-  await appendTrajectory(options.changeDir, options.run.trajectoryRef, event);
+  await appendNativeTrajectory(options.changeDir, options.run.trajectoryRef, event);
   return event;
 }
 
@@ -36,6 +40,6 @@ export async function writeNativeCheckpoint(options: {
     artifactsHash: sha256Text(options.evidenceHash),
     createdAt: (options.now ?? new Date()).toISOString(),
   };
-  await writeCheckpoint(options.changeDir, options.run.checkpointRef, checkpoint);
+  await persistNativeRunCheckpoint(options.changeDir, options.run.checkpointRef, checkpoint);
   return checkpoint;
 }

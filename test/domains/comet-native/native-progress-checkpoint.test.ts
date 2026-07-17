@@ -509,6 +509,29 @@ Run focused tests.
     ).rejects.toThrow(/changed while reading/u);
   });
 
+  it('rejects a checkpoint artifact whose captured parent is replaced', async () => {
+    const parent = path.join(projectRoot, 'checkpoint-source');
+    const displaced = path.join(projectRoot, 'checkpoint-source-original');
+    const target = path.join(parent, 'artifact.txt');
+    await fs.mkdir(parent);
+    await fs.writeFile(target, 'trusted artifact\n');
+
+    await expect(
+      createNativeCheckpointManifest(paths, 'resume-work', ['checkpoint-source/artifact.txt'], {
+        afterParentChainCaptured: async () => {
+          await fs.rename(parent, displaced);
+          await fs.mkdir(parent);
+          await fs.writeFile(target, 'replacement artifact\n');
+        },
+      }),
+    ).rejects.toThrow(/parent changed during I\/O/u);
+
+    expect(await fs.readFile(path.join(displaced, 'artifact.txt'), 'utf8')).toBe(
+      'trusted artifact\n',
+    );
+    expect(await fs.readFile(target, 'utf8')).toBe('replacement artifact\n');
+  });
+
   it('bounds and rejects untrusted progress documents before JSON parsing', async () => {
     const file = nativeProgressCheckpointFile(paths, 'resume-work');
     await fs.mkdir(path.dirname(file), { recursive: true });

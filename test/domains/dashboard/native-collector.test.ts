@@ -98,4 +98,31 @@ describe('Native Dashboard collector', () => {
       changes: [{ name: 'dashboard-change', phase: 'shape' }],
     });
   });
+
+  it('consumes bounded status pages and reports Dashboard omissions exactly', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    for (let index = 0; index < 34; index += 1) {
+      const directory = path.join(
+        paths.changesDir,
+        `dashboard-page-${String(index).padStart(2, '0')}`,
+      );
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, 'change.yaml'), 'schema: [invalid\n');
+    }
+
+    const projection = await collectNativeDashboardProjection(projectRoot, {
+      now: new Date('2026-07-17T10:00:00.000Z'),
+    });
+
+    expect(projection).toMatchObject({
+      totalChangeCount: 34,
+      visibleChangeCount: 32,
+      omittedChangeCount: 2,
+      changesTruncated: true,
+    });
+    expect(projection?.changes).toHaveLength(32);
+    expect(projection?.changes[0].name).toBe('dashboard-page-00');
+    expect(projection?.changes.at(-1)?.name).toBe('dashboard-page-31');
+  });
 });
