@@ -6071,7 +6071,9 @@ describe('comet scripts', () => {
       await createChange(
         tmpDir,
         'direct-bound-test',
-        ['workflow: full', 'phase: build', 'isolation: current', 'bound_branch: null', ''].join('\n'),
+        ['workflow: full', 'phase: build', 'isolation: current', 'bound_branch: null', ''].join(
+          '\n',
+        ),
       );
 
       const result = runNode(tmpDir, stateScript, [
@@ -6220,6 +6222,130 @@ describe('comet scripts', () => {
 
       const get = runNode(tmpDir, stateScript, ['get', 'check-gap-b', 'bound_branch']);
       expect(get.stdout.trim()).toBe('hotfix-branch');
+    }, 20_000);
+  });
+
+  describe('state rebind', () => {
+    const stateScript = path.join(scriptsDir, 'comet-state.mjs');
+
+    it('rebind updates bound_branch, passes state check, and appends a rebind audit event', async () => {
+      execFileSync('git', ['init', '-b', 'feature-A'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'rebind-success',
+        [
+          'workflow: full',
+          'phase: verify',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: current',
+          'bound_branch: feature-A',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+      const result = runNode(tmpDir, stateScript, ['rebind', 'rebind-success']);
+      expect(result.status).toBe(0);
+
+      const get = runNode(tmpDir, stateScript, ['get', 'rebind-success', 'bound_branch']);
+      expect(get.stdout.trim()).toBe('feature-B');
+
+      const check = runNode(tmpDir, stateScript, ['check', 'rebind-success', 'verify']);
+      expect(check.status).toBe(0);
+
+      const eventsLog = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', 'rebind-success', '.comet', 'state-events.jsonl'),
+        'utf8',
+      );
+      const lines = eventsLog.trim().split('\n');
+      const lastEvent = JSON.parse(lines[lines.length - 1]);
+      expect(lastEvent.event).toBe('rebind');
+      expect(lastEvent.effects).toContainEqual({
+        field: 'boundBranch',
+        from: 'feature-A',
+        to: 'feature-B',
+      });
+    }, 20_000);
+
+    it('rejects rebind when the change is not yet bound', async () => {
+      execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'rebind-unbound',
+        [
+          'workflow: full',
+          'phase: verify',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: null',
+          'bound_branch: null',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runNode(tmpDir, stateScript, ['rebind', 'rebind-unbound']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('not yet bound');
+    }, 20_000);
+
+    it('rejects rebind while HEAD is detached', async () => {
+      execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'rebind-detached',
+        [
+          'workflow: full',
+          'phase: verify',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: current',
+          'bound_branch: main',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      execFileSync('git', ['checkout', '--detach'], { cwd: tmpDir, stdio: 'ignore' });
+
+      const result = runNode(tmpDir, stateScript, ['rebind', 'rebind-detached']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('HEAD is detached');
     }, 20_000);
   });
 });

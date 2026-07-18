@@ -1292,6 +1292,34 @@ async function selectChange(output: CommandOutput, name: string): Promise<void> 
   }
 }
 
+async function rebind(output: CommandOutput, name: string): Promise<void> {
+  validateChangeName(name);
+  const { directory } = await stateFile(name);
+  const boundBranch = await readField(name, 'bound_branch');
+  if (!boundBranch || boundBranch === 'null') {
+    fail(
+      `ERROR: '${name}' is not yet bound; use 'comet state set ${name} isolation current' to establish the first binding`,
+    );
+  }
+  const branch = liveGitBranch(process.cwd());
+  if (branch === null) {
+    fail('ERROR: cannot rebind while HEAD is detached; checkout a branch first');
+  }
+  const before = await readClassicState(directory);
+  if (!before.classic) fail('ERROR: Classic state projection is missing');
+  await healBoundBranch(directory, branch);
+  const after: ClassicState = { ...before.classic, boundBranch: branch };
+  await appendClassicStateEvent(directory, {
+    change: name,
+    event: 'rebind',
+    source: 'comet-state',
+    from: before.classic,
+    to: after,
+    effects: [{ field: 'boundBranch', from: boundBranch, to: branch }],
+  });
+  output.stderr.push(green(`[REBIND] bound_branch: ${boundBranch} → ${branch}`));
+}
+
 async function currentChange(output: CommandOutput): Promise<void> {
   const resolution = await resolveCurrentChange(process.cwd());
   if (resolution.status === 'selected') {
@@ -1346,6 +1374,9 @@ export const classicStateCommand: ClassicCommandHandler = async (args) => {
     } else if (subcommand === 'task-checkoff') {
       required(rest, 2, 'Usage: comet-state.mjs task-checkoff <file> <task-text>');
       await taskCheckoff(output, rest[0], rest[1]);
+    } else if (subcommand === 'rebind') {
+      requiredExact(rest, 1, 'Usage: comet-state.mjs rebind <change-name>');
+      await rebind(output, rest[0]);
     } else if (subcommand === 'select') {
       requiredExact(rest, 1, 'Usage: comet-state.mjs select <change-name>');
       await selectChange(output, rest[0]);

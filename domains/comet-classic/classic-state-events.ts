@@ -7,7 +7,7 @@ export type ClassicStateEventSource = 'comet-state' | 'comet-guard' | 'comet-arc
 
 export interface ClassicStateEventInput {
   change: string;
-  event: ClassicTransitionEvent;
+  event: ClassicTransitionEvent | 'rebind';
   source: ClassicStateEventSource;
   from: ClassicState;
   to: ClassicState;
