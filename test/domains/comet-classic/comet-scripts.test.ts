@@ -4123,6 +4123,39 @@ describe('comet scripts', () => {
     expect(wrongPhaseResult.stderr).toContain('expected phase build');
   }, 20_000);
 
+  it('clears bound_branch when preset-escalate clears isolation', async () => {
+    const name = 'escalate-with-bound-branch';
+    await createChange(
+      tmpDir,
+      name,
+      [
+        'workflow: hotfix',
+        'phase: build',
+        'build_mode: direct',
+        'build_pause: null',
+        'tdd_mode: direct',
+        'isolation: current',
+        'bound_branch: feature-A',
+        'verify_mode: light',
+        'review_mode: off',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const transitionResult = runNode(tmpDir, stateScript, ['transition', name, 'preset-escalate']);
+    const boundBranch = runNode(tmpDir, stateScript, ['get', name, 'bound_branch']);
+    const isolation = runNode(tmpDir, stateScript, ['get', name, 'isolation']);
+
+    expect(transitionResult.status).toBe(0);
+    expect(boundBranch.stdout.trim()).toBe('null');
+    expect(isolation.stdout.trim()).toBe('null');
+  }, 20_000);
+
   it('reports error for malformed .comet.yaml on get', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'bad-yaml');
     await fs.mkdir(changeDir, { recursive: true });
