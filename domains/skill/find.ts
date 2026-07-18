@@ -177,7 +177,12 @@ async function hashSkillDirectory(root: string): Promise<string> {
 function skillDescription(skillMd: string): string {
   const match = skillMd.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
   if (!match) return '';
-  const document = parse(match[1]) as unknown;
+  let document: unknown;
+  try {
+    document = parse(match[1]) as unknown;
+  } catch {
+    return '';
+  }
   if (!document || typeof document !== 'object' || Array.isArray(document)) return '';
   const description = (document as Record<string, unknown>).description;
   return typeof description === 'string' ? description : '';
