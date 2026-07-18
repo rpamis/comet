@@ -61,7 +61,7 @@
 
 - **面向强模型的 Native 工作流** — `/comet-native` 用详细 brief、完整目标规格、状态检查和可恢复归档约束结果，同时把计划、实现、测试与审查方法交给模型自主判断；它使用可配置的 `comet/` 产物根目录，并与 Classic 完全分离。详见 [Native 工作流](website/zh/concepts/native-workflow.mdx)。
 - **长程任务稳定的核心**— Comet 的 Classic Spec 模式结合 OpenSpec 和 Superpowers，用状态机、阶段检查与脚本串联五阶段流程，适合需要明确方法和强约束的任务；永久入口是 `/comet-classic`。
-- **配置驱动的统一入口** — `/comet` 只读取项目根 `comet.config.yaml`，确定性转发到 `/comet-native` 或 `/comet-classic`。它不按任务大小猜工作流，也不混用两边的 change、状态和目录。`comet resume-probe` 使用同一配置恢复正确的永久入口。
+- **配置驱动的统一入口** — `/comet` 只读取项目的 `.comet/config.yaml`，确定性转发到 `/comet-native` 或 `/comet-classic`。它不按任务大小猜工作流，也不混用两边的 change、状态和目录。`comet resume-probe` 使用同一配置恢复正确的永久入口。
 - **Skill 平台** — Comet能够编写可复用 Skill 包，并通过 `/comet-any` 把它们整理成可分发 Bundle，你制作的Skill可以像如comet init一样一键分发到所有Coding平台。
 - **Eval 平台**— Comet基于科学的Rubric、Pass@k、Pass^k评分评估你的Skill，让Skill演进是基于科学依据，而不是依靠感觉，支持接入LangSmith评估，让评估真实走进企业级生产环境。基于双Agent架构自动化在你的生产环境完成评估工作
 
@@ -124,10 +124,11 @@ cd your-project
 comet init
 ```
 
-新的项目级初始化默认使用 Native，只安装 Comet 自有能力并创建 `comet.config.yaml` 与 `comet/`。需要 Classic 时显式选择：
+交互式初始化会介绍并提供 Native、Classic、两者三种选择。Native 面向能够自主实现和验证的强模型；Classic 面向需要完整 Spec/TDD 阶段约束的任务；两者模式会安装两套独立入口，并保持 `/comet` 默认使用 Native。非交互的新项目默认 Native，项目配置统一写入 `.comet/config.yaml`：
 
 ```bash
 comet init --workflow classic
+comet init --workflow both
 ```
 
 Native 产物也可以放在项目内指定根目录，例如 `docs/comet/`：
@@ -178,14 +179,14 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 <details>
 <summary><code>comet init [path]</code> — 初始化 Comet 工作流</summary>
 
-为选定的 AI 编码平台初始化 Comet。新的项目级初始化默认使用自包含 Native；检测到既有 Classic 状态时保持 Classic。显式 Classic 初始化才安装其 OpenSpec、Superpowers、rules 和 hooks。
+为选定的 AI 编码平台初始化 Comet。交互模式可选择 Native、Classic 或两者；新的非交互项目默认使用自包含 Native，检测到既有 Classic 状态时保持 Classic。两套工作流拥有独立入口、状态与产物；Native 和 Classic 都安装各自的 Rule 与 Hook，只有 Classic 安装 OpenSpec 和 Superpowers。
 
 | 选项                | 描述                                                 |
 | ------------------- | ---------------------------------------------------- |
 | `--yes`             | 非交互模式，自动选择已检测平台（未检测到则选择全部） |
 | `--scope <scope>`   | 安装范围：`project` 或 `global`                      |
 | `--language <lang>` | 技能语言：`en` 或 `zh`（跳过交互式语言选择）         |
-| `--workflow <mode>` | 项目默认工作流：`native` 或 `classic`                |
+| `--workflow <mode>` | 初始化工作流：`native`、`classic` 或 `both`          |
 | `--root <path>`     | Native 的项目内产物根目录，例如 `docs`               |
 | `--skip-existing`   | 跳过已安装的组件                                     |
 | `--overwrite`       | 覆盖已安装的组件                                     |

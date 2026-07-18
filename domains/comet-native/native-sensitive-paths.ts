@@ -46,7 +46,9 @@ export function nativeSensitiveRelativePathReason(relativeRef: string): string |
   if (lower.some((segment) => NATIVE_EXCLUDED_DIRECTORY_NAMES.has(segment))) {
     return 'dependency-or-cache';
   }
-  if (lower.join('/') === 'comet.config.yaml') return 'comet-config';
+  if (lower.join('/') === '.comet/config.yaml') {
+    return 'comet-config';
+  }
   return null;
 }
 

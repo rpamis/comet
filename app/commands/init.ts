@@ -26,7 +26,7 @@ import {
 import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import { LANGUAGES, type LanguageConfig } from '../../domains/skill/languages.js';
 import { resolveInitWorkflow } from '../../domains/comet-entry/init-workflow.js';
-import type { CometWorkflow } from '../../domains/comet-entry/types.js';
+import type { CometWorkflow, InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import {
   defaultProjectConfig,
   readProjectConfig,
@@ -56,9 +56,63 @@ type InitOptions = {
   scope?: InstallScope;
   language?: string;
   installMode?: InstallMode;
-  workflow?: CometWorkflow;
+  workflow?: InitWorkflowSelection;
   artifactRoot?: string;
 };
+
+function workflowChoiceNames(lang: string): Array<{
+  name: string;
+  value: InitWorkflowSelection;
+}> {
+  if (lang === 'zh') {
+    return [
+      {
+        name: 'Native — 面向强模型的轻量自主流程，自带澄清、状态、检查与自动推进，不依赖外部 Skill',
+        value: 'native',
+      },
+      {
+        name: 'Classic — 面向高约束或较弱模型的完整 Spec/TDD 阶段流程，使用 OpenSpec 与 Superpowers',
+        value: 'classic',
+      },
+      {
+        name: '两者 — 同时安装两套独立入口；/comet 默认使用 Native，也可显式进入 Classic',
+        value: 'both',
+      },
+    ];
+  }
+  return [
+    {
+      name: 'Native — lightweight autonomy for strong models, with clarification, state, checks, and auto-progression; no external skills',
+      value: 'native',
+    },
+    {
+      name: 'Classic — full Spec/TDD phases for high-control work or weaker models, using OpenSpec and Superpowers',
+      value: 'classic',
+    },
+    {
+      name: 'Both — install two independent entries; /comet defaults to Native and Classic remains explicit',
+      value: 'both',
+    },
+  ];
+}
+
+async function selectWorkflow(
+  options: InitOptions,
+  lang: string,
+  suggested: CometWorkflow,
+): Promise<InitWorkflowSelection> {
+  if (options.workflow) return options.workflow;
+  if (options.yes || options.json) return suggested;
+  return select({
+    message: lang === 'zh' ? '选择要初始化的 Comet 模式：' : 'Select Comet workflow(s):',
+    choices: workflowChoiceNames(lang),
+    default: suggested,
+  });
+}
+
+function includesWorkflow(selection: InitWorkflowSelection, workflow: CometWorkflow): boolean {
+  return selection === 'both' || selection === workflow;
+}
 
 type InstallStatus = 'installed' | 'skipped' | 'failed';
 type ComponentAction = 'overwrite' | 'skip' | 'install' | 'reuse';
@@ -305,7 +359,7 @@ function displaySummary(
   results: PlatformResult[],
   scope: InstallScope,
   lang: string,
-  workflow: CometWorkflow,
+  workflowSelection: InitWorkflowSelection,
 ): void {
   const scopeLabel = scope === 'global' ? os.homedir() : 'project';
   const componentStatuses: Array<[keyof Omit<PlatformResult, 'platform'>, string]> = [
@@ -350,7 +404,7 @@ function displaySummary(
 
   console.log(`\n  ${t(lang, 'getStarted')}`);
   console.log(`    ${t(lang, 'getStartedComet')}`);
-  if (workflow === 'classic') {
+  if (includesWorkflow(workflowSelection, 'classic')) {
     console.log(`    ${t(lang, 'getStartedHotfix')}`);
     console.log(`    ${t(lang, 'getStartedTweak')}`);
   }
@@ -379,16 +433,30 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
   ) {
     throw new Error('--workflow and --root are only valid for project-scope initialization');
   }
-  const workflowDecision =
+  const suggestedWorkflowDecision =
     scope === 'project'
       ? await resolveInitWorkflow(projectPath, {
-          workflow: options.workflow,
+          workflow: options.workflow === 'both' ? 'native' : options.workflow,
           artifactRoot: options.artifactRoot,
         })
       : null;
-  const workflow: CometWorkflow = workflowDecision?.workflow ?? 'classic';
+  const workflowSelection =
+    scope === 'project'
+      ? await selectWorkflow(options, lang, suggestedWorkflowDecision?.workflow ?? 'native')
+      : 'classic';
+  const workflow: CometWorkflow = workflowSelection === 'both' ? 'native' : workflowSelection;
+  const workflowDecision =
+    scope === 'project'
+      ? options.workflow === undefined && (options.yes || options.json)
+        ? suggestedWorkflowDecision
+        : await resolveInitWorkflow(projectPath, {
+            workflow,
+            artifactRoot: options.artifactRoot,
+          })
+      : null;
   const workflowSource = workflowDecision?.source ?? 'global-install';
-  const installMode = workflow === 'native' ? 'copy' : await selectInstallMode(options, lang);
+  const installMode =
+    workflowSelection === 'native' ? 'copy' : await selectInstallMode(options, lang);
 
   const selectedPlatformIds = await selectPlatforms(detected, options, lang);
   if (selectedPlatformIds.length === 0) {
@@ -400,6 +468,8 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
             scope,
             language: language.id,
             workflow,
+            initializedWorkflows:
+              workflowSelection === 'both' ? ['native', 'classic'] : [workflowSelection],
             workflowSource,
             projectConfigCreated: false,
             projectConfigUpdated: false,
@@ -431,24 +501,28 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
   const plans: PlatformPlan[] = [];
 
   for (const platform of selectedPlatforms) {
-    const hasOS =
-      workflow === 'classic'
-        ? await hasSkills(baseDir, platform, 'openspec', selectedPlatforms, scope)
-        : false;
-    const hasSP =
-      workflow === 'classic'
-        ? await hasSkills(baseDir, platform, 'superpowers', selectedPlatforms, scope)
-        : false;
+    const hasOS = includesWorkflow(workflowSelection, 'classic')
+      ? await hasSkills(baseDir, platform, 'openspec', selectedPlatforms, scope)
+      : false;
+    const hasSP = includesWorkflow(workflowSelection, 'classic')
+      ? await hasSkills(baseDir, platform, 'superpowers', selectedPlatforms, scope)
+      : false;
     const hasCM = await hasSkills(baseDir, platform, 'comet', selectedPlatforms, scope, {
       includeGlobalFallback: false,
     });
 
-    let osAction = workflow === 'classic' ? resolveAction(hasOS, options) : 'skip';
-    let spAction = workflow === 'classic' ? resolveAction(hasSP, options) : 'skip';
+    let osAction = includesWorkflow(workflowSelection, 'classic')
+      ? resolveAction(hasOS, options)
+      : 'skip';
+    let spAction = includesWorkflow(workflowSelection, 'classic')
+      ? resolveAction(hasSP, options)
+      : 'skip';
     let cmAction =
-      workflow === 'classic' ? resolveCometAction(hasCM, options) : resolveAction(hasCM, options);
+      workflowSelection === 'classic'
+        ? resolveCometAction(hasCM, options)
+        : resolveAction(hasCM, options);
     if (
-      workflow === 'native' &&
+      includesWorkflow(workflowSelection, 'native') &&
       hasCM &&
       options.yes &&
       !options.skipExisting &&
@@ -489,7 +563,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     plans.push({ platform, osAction, spAction, cmAction, hasOS, hasSP, hasCM });
   }
 
-  if (workflow === 'native' && scope === 'project') {
+  if (includesWorkflow(workflowSelection, 'native') && scope === 'project') {
     for (const plan of plans) {
       const action =
         plan.cmAction === 'overwrite' ? 'overwrite' : plan.cmAction === 'install' ? 'fill' : 'skip';
@@ -518,7 +592,13 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     ['zcode', 'mimocode'].includes(id),
   );
 
-  const selectedNpmDeps = await selectNpmDeps(projectPath, spPlatformIds, options, lang, workflow);
+  const selectedNpmDeps = await selectNpmDeps(
+    projectPath,
+    spPlatformIds,
+    options,
+    lang,
+    includesWorkflow(workflowSelection, 'classic') ? 'classic' : 'native',
+  );
   const shouldInstallOpenSpecCli = selectedNpmDeps.has('openspec');
   const shouldInstallSuperpowers = selectedNpmDeps.has('superpowers');
   const shouldInstallCodegraphCli = selectedNpmDeps.has('codegraph');
@@ -599,7 +679,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       log(`  Comet -> ${platform.name}: skipped (${t(lang, 'alreadyExists')})`);
     }
 
-    if (workflow === 'classic' && cmAction !== 'skip' && !skillFailed) {
+    if (cmAction !== 'skip' && !skillFailed) {
       try {
         const { copied: ruleCopied, failed: ruleFailed } = await copyCometRulesForPlatform(
           baseDir,
@@ -607,6 +687,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
           cmAction === 'overwrite',
           language.id,
           scope,
+          workflowSelection,
         );
         cometComponentInstalled ||= ruleCopied > 0;
         if (ruleCopied > 0) {
@@ -624,9 +705,14 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
       }
     }
 
-    if (workflow === 'classic' && cmAction !== 'skip' && !skillFailed) {
+    if (cmAction !== 'skip' && !skillFailed) {
       try {
-        const { status, reason } = await installCometHooksForPlatform(baseDir, platform, scope);
+        const { status, reason } = await installCometHooksForPlatform(
+          baseDir,
+          platform,
+          scope,
+          workflowSelection,
+        );
         cometComponentInstalled ||= status === 'installed';
         if (status === 'installed') {
           log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksInstalled')}`);
@@ -686,16 +772,17 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     results.length > 0 && results.every((result) => result.comet !== 'failed');
 
   if (scope === 'project' && workflowDecision && cometInstallComplete) {
-    if (workflow === 'native') {
+    if (includesWorkflow(workflowSelection, 'native')) {
       const paths = await nativeProjectPaths(projectPath, workflowDecision.artifactRoot);
       await ensureNativeDirectories(paths);
       nativeArtifactRoot = workflowDecision.artifactRoot;
-    } else {
+    }
+    if (includesWorkflow(workflowSelection, 'classic')) {
       await createWorkingDirs(projectPath, language.artifactLanguage);
     }
     workingDirsCreated = true;
 
-    if (workflow === 'native') {
+    if (includesWorkflow(workflowSelection, 'native')) {
       await installCometProjectInstructions(projectPath, language.id);
     }
 
@@ -728,10 +815,18 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     // The project config activates the selected workflow. Commit it only after
     // every required project artifact has been written successfully so a
     // partial initialization cannot route later commands into Native.
-    if (workflowDecision.writeProjectConfig) {
-      const existing = await readProjectConfig(projectPath);
+    const existing = await readProjectConfig(projectPath);
+    const selectedWorkflows =
+      workflowSelection === 'both' ? (['native', 'classic'] as const) : [workflowSelection];
+    const configuredWorkflows =
+      existing?.workflows ?? (existing ? [existing.default_workflow] : []);
+    const workflowsChanged =
+      configuredWorkflows.length !== selectedWorkflows.length ||
+      selectedWorkflows.some((selected) => !configuredWorkflows.includes(selected));
+    if (workflowDecision.writeProjectConfig || (existing !== null && workflowsChanged)) {
       const config = existing ?? defaultProjectConfig(workflowDecision.artifactRoot);
       config.default_workflow = workflowDecision.workflow;
+      config.workflows = [...selectedWorkflows];
       await writeProjectConfig(projectPath, config);
       projectConfigCreated = existing === null;
       projectConfigUpdated = existing !== null;
@@ -748,6 +843,8 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
           scope,
           language: language.id,
           workflow,
+          initializedWorkflows:
+            workflowSelection === 'both' ? ['native', 'classic'] : [workflowSelection],
           workflowSource,
           projectConfigCreated,
           projectConfigUpdated,
@@ -770,8 +867,8 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
     return;
   }
 
-  displaySummary(results, scope, lang, workflow);
+  displaySummary(results, scope, lang, workflowSelection);
 }
 
-export { applyBulkOverwriteChoice };
+export { applyBulkOverwriteChoice, workflowChoiceNames };
 export type { TranslationKey };

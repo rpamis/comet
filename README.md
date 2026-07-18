@@ -61,7 +61,7 @@ It allows you to use a toolchain to handle everything from requirements to archi
 
 - **Native workflow for strong models** — `/comet-native` uses a detailed brief, complete target specifications, phase checks, and recoverable archive to constrain outcomes while leaving planning, implementation, testing, and review methods to the model. It uses a configurable `comet/` artifact root and remains fully separate from Classic. See the [Native workflow guide](website/en/concepts/native-workflow.mdx).
 - **The stable core for long-running tasks** — Comet's Classic Spec mode combines OpenSpec and Superpowers into a five-phase flow with a state machine, phase checks, and scripts. It suits work that needs an explicit method and strong constraints; its permanent entry point is `/comet-classic`.
-- **A configuration-driven shared entry point** — `/comet` reads only the project-root `comet.config.yaml` and deterministically forwards to `/comet-native` or `/comet-classic`. It does not guess from task size or mix changes, state, or directories across workflows. `comet resume-probe` uses the same configuration to resume through the correct permanent entry point.
+- **A configuration-driven shared entry point** — `/comet` reads only the project's `.comet/config.yaml` and deterministically forwards to `/comet-native` or `/comet-classic`. It does not guess from task size or mix changes, state, or directories across workflows. `comet resume-probe` uses the same configuration to resume through the correct permanent entry point.
 - **Skill platform** — Comet can author reusable Skill packages and use `/comet-any` to organize them into distributable
   Bundles, so Skills you create can be distributed to coding platforms with one command, much like `comet init`.
 - **Eval platform** — Comet assesses your skills using scientific Rubric, Pass@k, and Pass^k scoring, ensuring skill evolution is based on scientific evidence rather than intuition. It supports integration with LangSmith assessments, bringing evaluation to real-world enterprise production environments. Its dual-agent architecture automates the assessment process in your production environment.
@@ -141,10 +141,11 @@ cd your-project
 comet init
 ```
 
-A new project-scope initialization defaults to Native, installs only Comet-owned capabilities, and creates `comet.config.yaml` plus `comet/`. Select Classic explicitly when you need it:
+Interactive setup explains and offers Native, Classic, or both. Native is for strong models that can implement and verify autonomously; Classic is for tasks that need full Spec/TDD phase constraints; Both installs two independent entries while keeping `/comet` on Native by default. Non-interactive new projects default to Native, and project configuration is unified at `.comet/config.yaml`:
 
 ```bash
 comet init --workflow classic
+comet init --workflow both
 ```
 
 Native artifacts can also live under a project-relative root such as `docs/comet/`:
@@ -196,14 +197,14 @@ Comet Eval's automated dual-agent architecture can integrate online with LangSmi
 <details>
 <summary><code>comet init [path]</code> — Initialize Comet workflow</summary>
 
-Initializes Comet for selected AI coding platforms. New project-scope installs default to self-contained Native, while projects with existing Classic state remain Classic. Only an explicit Classic initialization installs OpenSpec, Superpowers, rules, and hooks.
+Initializes Comet for selected AI coding platforms. Interactive setup selects Native, Classic, or both; new non-interactive projects default to self-contained Native, while projects with existing Classic state remain Classic. The workflows keep independent entries, state, and artifacts. Native and Classic install their own Rules and Hooks, while only Classic installs OpenSpec and Superpowers.
 
 | Option              | Description                                                                    |
 | ------------------- | ------------------------------------------------------------------------------ |
 | `--yes`             | Non-interactive mode, auto-select detected platforms (or all if none detected) |
 | `--scope <scope>`   | Install scope: `project` or `global`                                           |
 | `--language <lang>` | Skill language: `en` or `zh` (skips interactive language prompt)               |
-| `--workflow <mode>` | Project default workflow: `native` or `classic`                                |
+| `--workflow <mode>` | Workflows to initialize: `native`, `classic`, or `both`                        |
 | `--root <path>`     | Project-relative Native artifact root, such as `docs`                          |
 | `--skip-existing`   | Skip already installed components                                              |
 | `--overwrite`       | Overwrite already installed components                                         |

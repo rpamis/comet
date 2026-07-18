@@ -29,7 +29,10 @@ describe('Comet Native isolation boundaries', () => {
     expect(source).not.toMatch(/\bfrom\s+['"][^'"]*comet-classic[^'"]*['"]/u);
     expect(source).not.toMatch(/spawn(?:Sync)?\([^)]*openspec|execFile(?:Sync)?\([^)]*openspec/iu);
     expect(source).not.toMatch(/openspec[\\/]changes/iu);
-    expect(source).not.toMatch(/['"`]\.comet(?:[\\/]|['"`])/u);
+    expect(source).toContain("'.comet/config.yaml'");
+    expect(new Set(source.match(/\.comet\/[A-Za-z0-9._/-]+/gu) ?? [])).toEqual(
+      new Set(['.comet/config.yaml']),
+    );
   });
 
   it('ships a self-contained Skill and runtime with no external workflow invocation', async () => {

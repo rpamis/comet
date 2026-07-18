@@ -6,7 +6,7 @@ Prefer the installed `comet native` command. If the host exposes only Skill file
 node <comet-native-skill-root>/scripts/comet-native-runtime.mjs <command> [options]
 ```
 
-Both entry points use the same arguments, stdout, stderr, and exit codes. Normal discovery searches upward from the current directory for `comet.config.yaml` or the repository root; generated launchers may also pass the hidden `--project-root <path>` option.
+Both entry points use the same arguments, stdout, stderr, and exit codes. Normal discovery searches upward from the current directory for `.comet/config.yaml` or the repository root; generated launchers may also pass the hidden `--project-root <path>` option.
 
 ## Project and artifact root
 
@@ -16,7 +16,7 @@ comet native root show
 comet native root move <artifact-root>
 ```
 
-`artifact-root` must be a project-relative path. `.` creates `<project>/comet/`; `docs` creates `<project>/docs/comet/`. `init --language` persists the project's default Native language in `comet.config.yaml`; later `new` commands inherit it when `--language` is omitted. Running `init --language` again changes the default for future changes without rewriting existing ones. Existing configuration rejects a conflicting `--root`. Change the root only through `root move`, never by editing configuration directly.
+`artifact-root` must be a project-relative path. `.` creates `<project>/comet/`; `docs` creates `<project>/docs/comet/`. `init --language` persists the project's default Native language in `.comet/config.yaml`; later `new` commands inherit it when `--language` is omitted. Running `init --language` again changes the default for future changes without rewriting existing ones. Existing configuration rejects a conflicting `--root`. Change the root only through `root move`, never by editing configuration directly.
 
 ## Change management
 

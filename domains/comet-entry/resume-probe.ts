@@ -295,7 +295,7 @@ async function resolveNativeResumeProbe(
   entrySource: CometEntryResolutionSource,
 ): Promise<CometEntryResumeProbeResult> {
   const config = await readProjectConfig(projectRoot);
-  if (!config) throw new Error('comet.config.yaml was not found after resolving Native entry');
+  if (!config) throw new Error('.comet/config.yaml was not found after resolving Native entry');
   await assertNoPendingNativeRootMove(projectRoot);
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   const statuses = await listNativeStatus(paths);

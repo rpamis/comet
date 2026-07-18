@@ -72,7 +72,11 @@ program
   .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
   .addOption(new Option('--language <lang>', 'Language for skills').choices(['en', 'zh']))
   .addOption(
-    new Option('--workflow <workflow>', 'Project default workflow').choices(['native', 'classic']),
+    new Option('--workflow <workflow>', 'Workflows to initialize').choices([
+      'native',
+      'classic',
+      'both',
+    ]),
   )
   .option('--root <artifact-root>', 'Native artifact root relative to the project')
   .action(async (targetPath = '.', options) => {

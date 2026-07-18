@@ -39,6 +39,7 @@ describe('Native VCS-independent content snapshots', () => {
     await Promise.all([
       fs.mkdir(path.join(projectRoot, 'src'), { recursive: true }),
       fs.mkdir(path.join(projectRoot, '.git'), { recursive: true }),
+      fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true }),
       fs.mkdir(path.join(projectRoot, '.cache'), { recursive: true }),
       fs.mkdir(path.join(projectRoot, 'node_modules', 'dep'), { recursive: true }),
       fs.mkdir(path.join(projectRoot, 'private', 'nested'), { recursive: true }),

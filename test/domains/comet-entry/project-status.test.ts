@@ -149,7 +149,8 @@ describe('Comet project status', () => {
     const unmanagedDir = path.join(projectRoot, 'openspec', 'changes', 'plain-survives');
     await fs.mkdir(unmanagedDir, { recursive: true });
     await fs.writeFile(path.join(unmanagedDir, 'tasks.md'), '- [ ] todo\n');
-    await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), 'schema: [broken\n');
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(projectRoot, '.comet', 'config.yaml'), 'schema: [broken\n');
 
     const status = await inspectCometProjectStatus(projectRoot);
 

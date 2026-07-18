@@ -30,7 +30,7 @@ describe('Comet entry resolution', () => {
     });
 
     expect(await fs.readdir(projectRoot)).toEqual(before);
-    await expect(fs.access(path.join(projectRoot, 'comet.config.yaml'))).rejects.toMatchObject({
+    await expect(fs.access(path.join(projectRoot, '.comet', 'config.yaml'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
   });
@@ -42,7 +42,7 @@ describe('Comet entry resolution', () => {
     const config = defaultProjectConfig('docs');
     config.default_workflow = workflow;
     await writeProjectConfig(projectRoot, config);
-    const before = await fs.readFile(path.join(projectRoot, 'comet.config.yaml'));
+    const before = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'));
 
     await expect(resolveCometEntry(projectRoot)).resolves.toEqual({
       workflow,
@@ -50,7 +50,9 @@ describe('Comet entry resolution', () => {
       source: 'project-config',
     });
 
-    await expect(fs.readFile(path.join(projectRoot, 'comet.config.yaml'))).resolves.toEqual(before);
+    await expect(fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'))).resolves.toEqual(
+      before,
+    );
   });
 
   it('discovers the configured project when resolution starts in a nested directory', async () => {
@@ -75,12 +77,13 @@ describe('Comet entry resolution', () => {
         'default_workflow: native',
         'native:',
         '  artifact_root: .',
-        'unexpected: true',
+        '  unexpected: true',
         '',
       ].join('\n'),
     ],
   ])('fails closed for %s instead of using the Classic fallback', async (_label, source) => {
-    await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), source, 'utf8');
+    await fs.mkdir(path.join(projectRoot, '.comet'));
+    await fs.writeFile(path.join(projectRoot, '.comet', 'config.yaml'), source, 'utf8');
 
     await expect(resolveCometEntry(projectRoot)).rejects.toThrow();
   });

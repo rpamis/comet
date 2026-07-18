@@ -4,7 +4,7 @@
 
 Resume from facts on disk every time:
 
-1. Read the project's `comet.config.yaml` and confirm the single artifact root. If `pending_root_move` exists, run doctor first.
+1. Read the project's `.comet/config.yaml` and confirm the single artifact root. If `pending_root_move` exists, run doctor first.
 2. Run `comet native status`. With multiple active changes, read the Native selection or ask the user to choose explicitly.
 3. Run `show` and `status <change-name> --details` for the target change. Read `change.yaml`, the brief, proposed complete specifications, verification, bounded structured findings, the `findingsTruncated` flag, and the latest checkpoint. When findings are truncated, handle the returned items and reread details. Fetch Verify/Archive acceptance IDs separately through `acceptancePage.nextCursor`; do not depend on a missing old response.
 4. Read relevant canonical specifications, implementation, rules, tests, and current workspace state.

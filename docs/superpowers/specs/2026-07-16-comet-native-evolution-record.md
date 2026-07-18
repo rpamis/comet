@@ -644,6 +644,17 @@ Wave B 失败轨迹显示，模型并非没有发现大小写与标点分支，�
 
 因此，本轮可以限定地确认 **clarification pass@3 = 3/3**：Native 已在这个隐藏 normalization 决策 case 上稳定复现 grilling 类似的核心效果——发现未定义用户可见语义、把同级分支合并成一个高杠杆问题、给出推荐和影响、在实现前停下等待答案。不能扩张为“所有任务或所有强模型等同于 grilling”；也不能宣称完整 Native workflow pass@3，后者本轮仍为 **0/3**。后续优化应聚焦新会话中的证据捕获与执行效率，不再用 Archive 失败否定已经独立证明的澄清质量。
 
+## 2026-07-18：初始化、统一配置与阶段保护收口
+
+这一轮把 Native 从“可单独运行的实验路径”收口为可安装的项目工作流，同时保持 Native 与 Classic 概念独立：
+
+- `comet init` 交互式提供 Native、Classic、两者三种选择，并在选项中直接解释适用模型、流程重量和依赖边界；`both` 只并列安装两套永久入口，默认入口仍为 Native，不合并 change、状态或产物。
+- Native 尚未发布，因此不保留根目录 `comet.config.yaml` 兼容层，直接统一迁移到 `.comet/config.yaml`。同一 YAML 在顶层保留 Classic 配置，并增加 `schema`、`default_workflow`、`workflows` 与 `native` 映射；Native 产物仍只进入可配置的 `<artifact-root>/comet/`。
+- Native 增加自有的中英文阶段 Rule 和 Write/Edit Hook。Hook 只读取 Native 配置、selection 与 change 状态，在 Shape、Verify、Archive 阶段拦截普通实现写入，允许 Native 控制产物和平台配置写入；多 change 时遵循显式 selection，不调用 Classic 或外部 Skill。
+- Native Eval 的任务清单、Docker 夹具和验证器同步使用 `.comet/config.yaml`，隔离检查只允许该配置文件，不再把整个 `.comet/` 目录视为非法。
+
+这一决定替代本文早期章节中的根目录 `comet.config.yaml` 描述；早期文字继续保留，用于呈现设计如何从“Native 自有可见配置”演进到“Comet 统一项目配置”。
+
 ## 附录 A：原始 58 个检查点及收敛去向
 
 这份原始清单保留探索覆盖面。它不代表 58 个待发布功能；“收敛去向”才是当前设计决定。

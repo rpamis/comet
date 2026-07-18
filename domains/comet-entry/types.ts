@@ -3,6 +3,8 @@ import type { NativeStatusProjection } from '../comet-native/native-types.js';
 
 export type CometWorkflow = 'native' | 'classic';
 
+export type InitWorkflowSelection = CometWorkflow | 'both';
+
 export type CometEntrySkill = 'comet-native' | 'comet-classic';
 
 export type CometEntryResolutionSource = 'project-config' | 'legacy-fallback';

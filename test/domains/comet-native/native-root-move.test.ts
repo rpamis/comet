@@ -54,6 +54,7 @@ describe('Native artifact root moves', () => {
     expect(await readProjectConfig(projectRoot)).toEqual({
       schema: 'comet.project.v1',
       default_workflow: 'native',
+      workflows: ['native'],
       native: { artifact_root: to, language: 'en' },
     });
     const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');

@@ -6,7 +6,7 @@
 node <comet-native-skill-root>/scripts/comet-native-runtime.mjs <command> [options]
 ```
 
-两种入口的参数、stdout、stderr 和退出码相同。普通发现从当前目录向上寻找 `comet.config.yaml` 或仓库根；生成式 launcher 可附加隐藏参数 `--project-root <path>`。
+两种入口的参数、stdout、stderr 和退出码相同。普通发现从当前目录向上寻找 `.comet/config.yaml` 或仓库根；生成式 launcher 可附加隐藏参数 `--project-root <path>`。
 
 ## 项目与根目录
 
@@ -16,7 +16,7 @@ comet native root show
 comet native root move <artifact-root>
 ```
 
-`artifact-root` 必须是项目内相对路径。`.` 生成 `<project>/comet/`，`docs` 生成 `<project>/docs/comet/`。`init --language` 会把项目的 Native 默认语言持久化到 `comet.config.yaml`；后续 `new` 未显式传入 `--language` 时继承该值。再次运行 `init --language` 可以改变以后新建 change 的默认语言，不改写已有 change。已有配置拒绝冲突的 `--root`；改变根目录必须使用 `root move`，不能直接改配置。
+`artifact-root` 必须是项目内相对路径。`.` 生成 `<project>/comet/`，`docs` 生成 `<project>/docs/comet/`。`init --language` 会把项目的 Native 默认语言持久化到 `.comet/config.yaml`；后续 `new` 未显式传入 `--language` 时继承该值。再次运行 `init --language` 可以改变以后新建 change 的默认语言，不改写已有 change。已有配置拒绝冲突的 `--root`；改变根目录必须使用 `root move`，不能直接改配置。
 
 ## Change 管理
 

@@ -2120,8 +2120,16 @@ def check_cli_feature(
 
 def check_native_isolation(workspace: Path) -> dict[str, str]:
     check = "native_isolation"
-    forbidden = [workspace / "openspec", workspace / ".comet"]
-    present = [str(path.relative_to(workspace)) for path in forbidden if path.exists()]
+    comet_config_dir = workspace / ".comet"
+    hidden_entries = (
+        {path.name for path in comet_config_dir.iterdir()}
+        if comet_config_dir.is_dir()
+        else set()
+    )
+    present = []
+    if (workspace / "openspec").exists():
+        present.append("openspec")
+    present.extend(f".comet/{name}" for name in sorted(hidden_entries - {"config.yaml"}))
     if present:
         return failed(check, f"Forbidden workflow artifacts exist: {present}")
     return passed(check)

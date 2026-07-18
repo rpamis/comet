@@ -23,11 +23,13 @@ description: 使用 Comet 自有 Native change、澄清锁、状态检查与自�
 
 `/comet-native` 是 Skill 入口，不是 shell 命令。通过宿主的 Skill 机制调用它；不要在 Bash 中执行 `/comet-native`。
 
-先运行 Native `status` 和 `show`；恢复 Verify 或 Archive 时使用 `status <change-name> --details` 取得有预算的验收页、有界的详细 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；不能把未展示项当作不存在。若 `acceptancePage.nextCursor` 非空，继续按命令参考逐页取得剩余验收 ID。再读取 `comet.config.yaml`、`change.yaml`、brief、拟议完整规格、canonical 规格、仓库实现、项目规则和相关测试。磁盘与仓库事实优先于聊天记忆；能从环境得到的事实不要询问用户。
+先运行 Native `status` 和 `show`；恢复 Verify 或 Archive 时使用 `status <change-name> --details` 取得有预算的验收页、有界的详细 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；不能把未展示项当作不存在。若 `acceptancePage.nextCursor` 非空，继续按命令参考逐页取得剩余验收 ID。再读取 `.comet/config.yaml`、`change.yaml`、brief、拟议完整规格、canonical 规格、仓库实现、项目规则和相关测试。磁盘与仓库事实优先于聊天记忆；能从环境得到的事实不要询问用户。
 
 若 `status` 或 `show` 显示已有 active change，就继续该 change。用户回答澄清问题或补充约束后，重新读取它并更新原有 brief 与规格；不得为用户刚补充的答案创建第二个 change。只有磁盘事实证明没有 active change 时，才把用户目标归纳成 lowercase kebab-case 名称，再用 `comet native new <change-name> --language zh-CN` 创建 Native change。只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
 
 命令与 runtime 定位见 [命令参考](reference/commands.md)，产物格式见 [产物参考](reference/artifacts.md)，中断与恢复见 [恢复参考](reference/recovery.md)。自带 runtime 位于 [scripts/comet-native-runtime.mjs](scripts/comet-native-runtime.mjs)。
+
+初始化会安装 Native 自有 Rule 与 Write/Edit Hook：Rule 提供阶段约束，Hook 在存在 active change 时只允许 Build 阶段写实现代码。它们只读取 Native 配置与状态，不调用 Classic，也不依赖任何外部 Skill。
 
 ## 决策协议
 

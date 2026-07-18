@@ -23,11 +23,13 @@ When a user decision exists, ask one question at a timeâ€”the most upstream oneâ
 
 `/comet-native` is a Skill entry, not a shell command. Invoke it through the host's Skill mechanism; never execute `/comet-native` in Bash.
 
-Run Native `status` and `show` first. When resuming Verify or Archive, use `status <change-name> --details` to obtain a budgeted acceptance page, bounded detailed findings, the `findingsTruncated` flag, and the latest checkpoint. If findings are truncated, handle those returned and then read details again; never treat undisplayed findings as absent. If `acceptancePage.nextCursor` is non-null, follow the command reference to retrieve every remaining acceptance ID page. Then read `comet.config.yaml`, `change.yaml`, the brief, proposed complete specifications, canonical specifications, repository implementation, project rules, and relevant tests. Disk and repository facts outrank chat memory. Do not ask the user for facts available from the environment.
+Run Native `status` and `show` first. When resuming Verify or Archive, use `status <change-name> --details` to obtain a budgeted acceptance page, bounded detailed findings, the `findingsTruncated` flag, and the latest checkpoint. If findings are truncated, handle those returned and then read details again; never treat undisplayed findings as absent. If `acceptancePage.nextCursor` is non-null, follow the command reference to retrieve every remaining acceptance ID page. Then read `.comet/config.yaml`, `change.yaml`, the brief, proposed complete specifications, canonical specifications, repository implementation, project rules, and relevant tests. Disk and repository facts outrank chat memory. Do not ask the user for facts available from the environment.
 
 If `status` or `show` reports an active change, continue that change. After the user answers a clarification or adds a constraint, re-read it and update the existing brief and specifications. Do not create a second change for the user's answer. Only when disk evidence proves that no active change exists, summarize the user's goal as a lowercase kebab-case name and create it with `comet native new <change-name> --language en`. Use only the configured `<artifact-root>/comet/`; do not scan or modify directories owned by another workflow.
 
 See the [command reference](reference/commands.md) for commands and runtime discovery, the [artifact reference](reference/artifacts.md) for formats, and the [recovery reference](reference/recovery.md) for interruption handling. The bundled runtime is at [scripts/comet-native-runtime.mjs](scripts/comet-native-runtime.mjs).
+
+Initialization installs a Native-owned Rule and Write/Edit Hook. The Rule states phase constraints, while the Hook permits implementation writes for an active change only during Build. Both read only Native configuration and state; neither invokes Classic nor depends on an external skill.
 
 ## Decision protocol
 

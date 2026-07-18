@@ -186,7 +186,7 @@ async function removeCometRulesForPlatform(
   }
 
   const manifest = await readManifest();
-  const rulePaths = manifest.rules;
+  const rulePaths = [...(manifest.rules ?? []), ...(manifest.nativeRules ?? [])];
   if (!rulePaths || rulePaths.length === 0) {
     return { removed: 0, failed: 0 };
   }
@@ -239,7 +239,7 @@ async function removeCometHooksForPlatform(
   }
 
   const manifest = await readManifest();
-  const hooksConfig = manifest.hooks;
+  const hooksConfig = { ...(manifest.hooks ?? {}), ...(manifest.nativeHooks ?? {}) };
   if (!hooksConfig || Object.keys(hooksConfig).length === 0) {
     return { removed: 0, failed: 0 };
   }

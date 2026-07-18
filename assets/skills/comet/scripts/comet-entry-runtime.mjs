@@ -7536,11 +7536,21 @@ async function readNativeProtectedTextFile(options) {
 // domains/comet-native/native-paths.ts
 import { promises as fs2 } from "fs";
 import path2 from "path";
-var PROJECT_CONFIG_FILE = "comet.config.yaml";
+import os from "os";
+var PROJECT_CONFIG_FILE = ".comet/config.yaml";
 async function isFileOrDirectory(target) {
   try {
     await fs2.lstat(target);
     return true;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+async function declaresNativeProjectConfig(target) {
+  try {
+    const source = await fs2.readFile(target, "utf8");
+    return /^schema:\s*comet\.project\.v1\s*$/mu.test(source);
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -7554,8 +7564,16 @@ async function discoverNativeProject(startPath) {
     if (error.code !== "ENOENT") throw error;
   }
   const fallback = cursor;
+  const home = path2.resolve(os.homedir());
   while (true) {
-    if (await isFileOrDirectory(path2.join(cursor, PROJECT_CONFIG_FILE))) return cursor;
+    const isHomeBoundary = cursor === home && fallback !== home;
+    if (!isHomeBoundary) {
+      const configFile = path2.join(cursor, ...PROJECT_CONFIG_FILE.split("/"));
+      const configMarksProject = cursor === fallback || await declaresNativeProjectConfig(configFile);
+      if (await isFileOrDirectory(configFile) && configMarksProject) {
+        return cursor;
+      }
+    }
     if (await isFileOrDirectory(path2.join(cursor, ".git"))) return cursor;
     const parent = path2.dirname(cursor);
     if (parent === cursor) return fallback;
@@ -7579,7 +7597,6 @@ function normalizeArtifactRootRef(value) {
 }
 
 // domains/comet-native/native-config.ts
-var ROOT_KEYS = /* @__PURE__ */ new Set(["schema", "default_workflow", "native"]);
 var NATIVE_KEYS = /* @__PURE__ */ new Set(["artifact_root", "language", "pending_root_move"]);
 var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
 var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
@@ -7639,10 +7656,17 @@ function parsePending(value) {
 }
 function parseConfig(value) {
   const root = record(value, PROJECT_CONFIG_FILE);
-  rejectUnknown(root, ROOT_KEYS, PROJECT_CONFIG_FILE);
   if (root.schema !== "comet.project.v1") throw new Error("Unsupported Comet project schema");
   if (root.default_workflow !== "native" && root.default_workflow !== "classic") {
     throw new Error("default_workflow must be native or classic");
+  }
+  const configuredWorkflows = root.workflows ?? [root.default_workflow];
+  if (!Array.isArray(configuredWorkflows) || configuredWorkflows.length === 0 || configuredWorkflows.some((workflow) => workflow !== "native" && workflow !== "classic")) {
+    throw new Error("workflows must contain native and/or classic");
+  }
+  const workflows = [...new Set(configuredWorkflows)];
+  if (!workflows.includes(root.default_workflow)) {
+    throw new Error("workflows must include default_workflow");
   }
   const native = record(root.native, "native");
   rejectUnknown(native, NATIVE_KEYS, "native");
@@ -7657,6 +7681,7 @@ function parseConfig(value) {
   return {
     schema: "comet.project.v1",
     default_workflow: root.default_workflow,
+    workflows,
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
@@ -7665,30 +7690,31 @@ function parseConfig(value) {
   };
 }
 async function readProjectConfig(projectRoot) {
-  const file = path3.join(projectRoot, PROJECT_CONFIG_FILE);
+  const canonical = path3.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
+  const file = canonical;
   try {
     await fs3.lstat(file);
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
   }
-  let source;
-  try {
-    source = (await readNativeProtectedTextFile({
-      root: projectRoot,
-      file,
-      maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
-      label: PROJECT_CONFIG_FILE
-    })).text;
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
+  const source = (await readNativeProtectedTextFile({
+    root: projectRoot,
+    file,
+    maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
+    label: PROJECT_CONFIG_FILE
+  })).text;
   const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
   }
-  return parseConfig(document.toJS());
+  const value = document.toJS();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const root = value;
+  if (root.schema === void 0 && root.native === void 0 && root.default_workflow === void 0) {
+    return null;
+  }
+  return parseConfig(value);
 }
 
 // domains/comet-entry/resolve-entry.ts

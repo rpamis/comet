@@ -1,4 +1,6 @@
 schema: comet.project.v1
 default_workflow: native
+workflows:
+  - native
 native:
   artifact_root: docs

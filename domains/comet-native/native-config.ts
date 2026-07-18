@@ -16,7 +16,6 @@ import type {
   NativeProjectPaths,
 } from './native-types.js';
 
-const ROOT_KEYS = new Set(['schema', 'default_workflow', 'native']);
 const NATIVE_KEYS = new Set(['artifact_root', 'language', 'pending_root_move']);
 const PENDING_KEYS = new Set(['id', 'from_artifact_root', 'to_artifact_root', 'stage', 'cleanup']);
 const NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
@@ -85,10 +84,21 @@ function parsePending(value: unknown): NativePendingRootMove | undefined {
 
 function parseConfig(value: unknown): CometProjectConfig {
   const root = record(value, PROJECT_CONFIG_FILE);
-  rejectUnknown(root, ROOT_KEYS, PROJECT_CONFIG_FILE);
   if (root.schema !== 'comet.project.v1') throw new Error('Unsupported Comet project schema');
   if (root.default_workflow !== 'native' && root.default_workflow !== 'classic') {
     throw new Error('default_workflow must be native or classic');
+  }
+  const configuredWorkflows = root.workflows ?? [root.default_workflow];
+  if (
+    !Array.isArray(configuredWorkflows) ||
+    configuredWorkflows.length === 0 ||
+    configuredWorkflows.some((workflow) => workflow !== 'native' && workflow !== 'classic')
+  ) {
+    throw new Error('workflows must contain native and/or classic');
+  }
+  const workflows = [...new Set(configuredWorkflows)] as Array<'native' | 'classic'>;
+  if (!workflows.includes(root.default_workflow)) {
+    throw new Error('workflows must include default_workflow');
   }
   const native = record(root.native, 'native');
   rejectUnknown(native, NATIVE_KEYS, 'native');
@@ -103,6 +113,7 @@ function parseConfig(value: unknown): CometProjectConfig {
   return {
     schema: 'comet.project.v1',
     default_workflow: root.default_workflow,
+    workflows,
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
@@ -123,16 +134,43 @@ export function defaultProjectConfig(
 }
 
 export async function readProjectConfig(projectRoot: string): Promise<CometProjectConfig | null> {
-  const file = path.join(projectRoot, PROJECT_CONFIG_FILE);
+  const canonical = path.join(projectRoot, ...PROJECT_CONFIG_FILE.split('/'));
+  const file = canonical;
   try {
     await fs.lstat(file);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
-  let source: string;
+  const source = (
+    await readNativeProtectedTextFile({
+      root: projectRoot,
+      file,
+      maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
+      label: PROJECT_CONFIG_FILE,
+    })
+  ).text;
+  const document = parseDocument(source, { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
+  }
+  const value = document.toJS();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const root = value as Record<string, unknown>;
+  if (
+    root.schema === undefined &&
+    root.native === undefined &&
+    root.default_workflow === undefined
+  ) {
+    return null;
+  }
+  return parseConfig(value);
+}
+
+async function existingConfigDocument(projectRoot: string): Promise<Record<string, unknown>> {
+  const file = path.join(projectRoot, ...PROJECT_CONFIG_FILE.split('/'));
   try {
-    source = (
+    const source = (
       await readNativeProtectedTextFile({
         root: projectRoot,
         file,
@@ -140,15 +178,16 @@ export async function readProjectConfig(projectRoot: string): Promise<CometProje
         label: PROJECT_CONFIG_FILE,
       })
     ).text;
+    const document = parseDocument(source, { uniqueKeys: true });
+    if (document.errors.length > 0) throw new Error(document.errors[0].message);
+    const value = document.toJS();
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  const document = parseDocument(source, { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
-  }
-  return parseConfig(document.toJS());
+  return {};
 }
 
 export async function assertNoPendingNativeRootMove(projectRoot: string): Promise<void> {
@@ -167,6 +206,7 @@ export async function writeProjectConfig(
   const validated = parseConfig({
     schema: config.schema,
     default_workflow: config.default_workflow,
+    workflows: config.workflows ?? [config.default_workflow],
     native: {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
@@ -192,8 +232,10 @@ export async function writeProjectConfig(
     },
   });
   const document = {
+    ...(await existingConfigDocument(projectRoot)),
     schema: validated.schema,
     default_workflow: validated.default_workflow,
+    workflows: validated.workflows,
     native: {
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
@@ -218,7 +260,9 @@ export async function writeProjectConfig(
         : {}),
     },
   };
-  await atomicWriteText(path.join(projectRoot, PROJECT_CONFIG_FILE), stringify(document));
+  const canonical = path.join(projectRoot, ...PROJECT_CONFIG_FILE.split('/'));
+  await fs.mkdir(path.dirname(canonical), { recursive: true });
+  await atomicWriteText(canonical, stringify(document));
 }
 
 export async function resolveNativeProject(options: {

@@ -89,7 +89,7 @@ def validate_native_workflow(
     else:
         failed.append(_failure("native_skill_invocation", "comet-native was not invoked"))
 
-    config_file = test_dir / "comet.config.yaml"
+    config_file = test_dir / ".comet" / "config.yaml"
     config: dict[str, Any] = {}
     if config_file.is_file():
         try:
@@ -107,6 +107,7 @@ def validate_native_workflow(
     config_valid = (
         config.get("schema") == "comet.project.v1"
         and config.get("default_workflow") == "native"
+        and "native" in (config.get("workflows") or [config.get("default_workflow")])
         and isinstance(artifact_root, str)
         and artifact_root.strip()
         and artifact_root_path is not None
@@ -117,7 +118,7 @@ def validate_native_workflow(
         passed.append("native_artifacts")
         native_root = candidate_native_root
     else:
-        failed.append(_failure("native_artifacts", "valid comet.config.yaml is missing"))
+        failed.append(_failure("native_artifacts", "valid .comet/config.yaml is missing"))
         native_root = project_root / "comet"
 
     changes_root = native_root / "changes"
@@ -237,8 +238,13 @@ def validate_native_workflow(
     else:
         failed.append(_failure("native_trajectory", "complete safe phase trajectory is missing"))
 
-    forbidden = [test_dir / "openspec", test_dir / ".comet"]
-    if any(path.exists() for path in forbidden):
+    comet_config_dir = test_dir / ".comet"
+    hidden_entries = (
+        {path.name for path in comet_config_dir.iterdir()}
+        if comet_config_dir.is_dir()
+        else set()
+    )
+    if (test_dir / "openspec").exists() or hidden_entries - {"config.yaml"}:
         failed.append(_failure("native_isolation", "Classic or hidden workflow artifacts exist"))
     else:
         passed.append("native_isolation")

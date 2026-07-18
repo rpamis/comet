@@ -22,7 +22,7 @@ timeout = 120
 [evaluation]
 profile = "generic"
 required_skills = ["comet-native"]
-expected_artifacts = ["comet.config.yaml", "docs/comet/archive", "docs/comet/specs/paragraph-counting/spec.md"]
+expected_artifacts = [".comet/config.yaml", "docs/comet/archive", "docs/comet/specs/paragraph-counting/spec.md"]
 require_skill_invocation = true
 rubric_criteria = [
   "Reads PRODUCT_RULES.md and does not ask the user to restate repository facts",

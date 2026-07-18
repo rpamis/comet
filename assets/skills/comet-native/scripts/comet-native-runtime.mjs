@@ -114,17 +114,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path47) {
-      const ctrl = callVisitor(key, node, visitor, path47);
+    function visit_(key, node, visitor, path48) {
+      const ctrl = callVisitor(key, node, visitor, path48);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path47, ctrl);
-        return visit_(key, ctrl, visitor, path47);
+        replaceNode(key, path48, ctrl);
+        return visit_(key, ctrl, visitor, path48);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path47 = Object.freeze(path47.concat(node));
+          path48 = Object.freeze(path48.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path47);
+            const ci = visit_(i, node.items[i], visitor, path48);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -135,13 +135,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path47 = Object.freeze(path47.concat(node));
-          const ck = visit_("key", node.key, visitor, path47);
+          path48 = Object.freeze(path48.concat(node));
+          const ck = visit_("key", node.key, visitor, path48);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path47);
+          const cv = visit_("value", node.value, visitor, path48);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -162,17 +162,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path47) {
-      const ctrl = await callVisitor(key, node, visitor, path47);
+    async function visitAsync_(key, node, visitor, path48) {
+      const ctrl = await callVisitor(key, node, visitor, path48);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path47, ctrl);
-        return visitAsync_(key, ctrl, visitor, path47);
+        replaceNode(key, path48, ctrl);
+        return visitAsync_(key, ctrl, visitor, path48);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path47 = Object.freeze(path47.concat(node));
+          path48 = Object.freeze(path48.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path47);
+            const ci = await visitAsync_(i, node.items[i], visitor, path48);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -183,13 +183,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path47 = Object.freeze(path47.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path47);
+          path48 = Object.freeze(path48.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path48);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path47);
+          const cv = await visitAsync_("value", node.value, visitor, path48);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -216,23 +216,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path47) {
+    function callVisitor(key, node, visitor, path48) {
       if (typeof visitor === "function")
-        return visitor(key, node, path47);
+        return visitor(key, node, path48);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path47);
+        return visitor.Map?.(key, node, path48);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path47);
+        return visitor.Seq?.(key, node, path48);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path47);
+        return visitor.Pair?.(key, node, path48);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path47);
+        return visitor.Scalar?.(key, node, path48);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path47);
+        return visitor.Alias?.(key, node, path48);
       return void 0;
     }
-    function replaceNode(key, path47, node) {
-      const parent = path47[path47.length - 1];
+    function replaceNode(key, path48, node) {
+      const parent = path48[path48.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -842,10 +842,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path47, value) {
+    function collectionFromPath(schema, path48, value) {
       let v = value;
-      for (let i = path47.length - 1; i >= 0; --i) {
-        const k = path47[i];
+      for (let i = path48.length - 1; i >= 0; --i) {
+        const k = path48[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -864,7 +864,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path47) => path47 == null || typeof path47 === "object" && !!path47[Symbol.iterator]().next().done;
+    var isEmptyPath = (path48) => path48 == null || typeof path48 === "object" && !!path48[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -894,11 +894,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path47, value) {
-        if (isEmptyPath(path47))
+      addIn(path48, value) {
+        if (isEmptyPath(path48))
           this.add(value);
         else {
-          const [key, ...rest] = path47;
+          const [key, ...rest] = path48;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -912,8 +912,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path47) {
-        const [key, ...rest] = path47;
+      deleteIn(path48) {
+        const [key, ...rest] = path48;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -927,8 +927,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path47, keepScalar) {
-        const [key, ...rest] = path47;
+      getIn(path48, keepScalar) {
+        const [key, ...rest] = path48;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -946,8 +946,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path47) {
-        const [key, ...rest] = path47;
+      hasIn(path48) {
+        const [key, ...rest] = path48;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -957,8 +957,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path47, value) {
-        const [key, ...rest] = path47;
+      setIn(path48, value) {
+        const [key, ...rest] = path48;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3473,9 +3473,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path47, value) {
+      addIn(path48, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path47, value);
+          this.contents.addIn(path48, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3550,14 +3550,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path47) {
-        if (Collection.isEmptyPath(path47)) {
+      deleteIn(path48) {
+        if (Collection.isEmptyPath(path48)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path47) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path48) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3572,10 +3572,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path47, keepScalar) {
-        if (Collection.isEmptyPath(path47))
+      getIn(path48, keepScalar) {
+        if (Collection.isEmptyPath(path48))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path47, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path48, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3586,10 +3586,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path47) {
-        if (Collection.isEmptyPath(path47))
+      hasIn(path48) {
+        if (Collection.isEmptyPath(path48))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path47) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path48) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3606,13 +3606,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path47, value) {
-        if (Collection.isEmptyPath(path47)) {
+      setIn(path48, value) {
+        if (Collection.isEmptyPath(path48)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path47), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path48), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path47, value);
+          this.contents.setIn(path48, value);
         }
       }
       /**
@@ -5572,9 +5572,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path47) => {
+    visit.itemAtPath = (cst, path48) => {
       let item = cst;
-      for (const [field2, index] of path47) {
+      for (const [field2, index] of path48) {
         const tok = item?.[field2];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5583,23 +5583,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path47) => {
-      const parent = visit.itemAtPath(cst, path47.slice(0, -1));
-      const field2 = path47[path47.length - 1][0];
+    visit.parentCollection = (cst, path48) => {
+      const parent = visit.itemAtPath(cst, path48.slice(0, -1));
+      const field2 = path48[path48.length - 1][0];
       const coll = parent?.[field2];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path47, item, visitor) {
-      let ctrl = visitor(item, path47);
+    function _visit(path48, item, visitor) {
+      let ctrl = visitor(item, path48);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field2 of ["key", "value"]) {
         const token = item[field2];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path47.concat([[field2, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path48.concat([[field2, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5610,10 +5610,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field2 === "key")
-            ctrl = ctrl(item, path47);
+            ctrl = ctrl(item, path48);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path47) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path48) : ctrl;
     }
     exports.visit = visit;
   }
@@ -6915,14 +6915,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs32 = this.flowScalar(this.type);
+              const fs33 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs32, sep: [] });
+                map.items.push({ start, key: fs33, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs32);
+                this.stack.push(fs33);
               } else {
-                Object.assign(it, { key: fs32, sep: [] });
+                Object.assign(it, { key: fs33, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7050,13 +7050,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs32 = this.flowScalar(this.type);
+              const fs33 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs32, sep: [] });
+                fc.items.push({ start: [], key: fs33, sep: [] });
               else if (it.sep)
-                this.stack.push(fs32);
+                this.stack.push(fs33);
               else
-                Object.assign(it, { key: fs32, sep: [] });
+                Object.assign(it, { key: fs33, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7368,7 +7368,7 @@ var require_dist = __commonJS({
 import { pathToFileURL } from "url";
 
 // domains/comet-native/native-cli.ts
-import path46 from "path";
+import path47 from "path";
 
 // domains/comet-native/native-archive.ts
 import { randomUUID as randomUUID5 } from "crypto";
@@ -7566,7 +7566,9 @@ function nativeSensitiveRelativePathReason(relativeRef) {
   if (lower.some((segment) => NATIVE_EXCLUDED_DIRECTORY_NAMES.has(segment))) {
     return "dependency-or-cache";
   }
-  if (lower.join("/") === "comet.config.yaml") return "comet-config";
+  if (lower.join("/") === ".comet/config.yaml") {
+    return "comet-config";
+  }
   return null;
 }
 function nativeSensitiveArtifactReason(paths, relativeRef) {
@@ -8298,11 +8300,21 @@ async function copyNativeProtectedFile(options) {
 // domains/comet-native/native-paths.ts
 import { promises as fs4 } from "fs";
 import path5 from "path";
-var PROJECT_CONFIG_FILE = "comet.config.yaml";
+import os from "os";
+var PROJECT_CONFIG_FILE = ".comet/config.yaml";
 async function isFileOrDirectory(target) {
   try {
     await fs4.lstat(target);
     return true;
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+async function declaresNativeProjectConfig(target) {
+  try {
+    const source = await fs4.readFile(target, "utf8");
+    return /^schema:\s*comet\.project\.v1\s*$/mu.test(source);
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -8340,8 +8352,16 @@ async function discoverNativeProject(startPath) {
     if (error.code !== "ENOENT") throw error;
   }
   const fallback = cursor;
+  const home = path5.resolve(os.homedir());
   while (true) {
-    if (await isFileOrDirectory(path5.join(cursor, PROJECT_CONFIG_FILE))) return cursor;
+    const isHomeBoundary = cursor === home && fallback !== home;
+    if (!isHomeBoundary) {
+      const configFile = path5.join(cursor, ...PROJECT_CONFIG_FILE.split("/"));
+      const configMarksProject = cursor === fallback || await declaresNativeProjectConfig(configFile);
+      if (await isFileOrDirectory(configFile) && configMarksProject) {
+        return cursor;
+      }
+    }
     if (await isFileOrDirectory(path5.join(cursor, ".git"))) return cursor;
     const parent = path5.dirname(cursor);
     if (parent === cursor) return fallback;
@@ -8389,7 +8409,7 @@ async function nativeProjectPaths(projectRoot, artifactRootRef) {
   }
   return {
     projectRoot: path5.resolve(projectRoot),
-    configFile: path5.join(projectRoot, PROJECT_CONFIG_FILE),
+    configFile: path5.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/")),
     artifactRoot,
     artifactRootRef: normalized,
     nativeRoot,
@@ -8439,7 +8459,6 @@ async function resolveContainedNativePath(root, target) {
 }
 
 // domains/comet-native/native-config.ts
-var ROOT_KEYS = /* @__PURE__ */ new Set(["schema", "default_workflow", "native"]);
 var NATIVE_KEYS = /* @__PURE__ */ new Set(["artifact_root", "language", "pending_root_move"]);
 var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
 var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
@@ -8499,10 +8518,17 @@ function parsePending(value) {
 }
 function parseConfig(value) {
   const root = record(value, PROJECT_CONFIG_FILE);
-  rejectUnknown(root, ROOT_KEYS, PROJECT_CONFIG_FILE);
   if (root.schema !== "comet.project.v1") throw new Error("Unsupported Comet project schema");
   if (root.default_workflow !== "native" && root.default_workflow !== "classic") {
     throw new Error("default_workflow must be native or classic");
+  }
+  const configuredWorkflows = root.workflows ?? [root.default_workflow];
+  if (!Array.isArray(configuredWorkflows) || configuredWorkflows.length === 0 || configuredWorkflows.some((workflow) => workflow !== "native" && workflow !== "classic")) {
+    throw new Error("workflows must contain native and/or classic");
+  }
+  const workflows = [...new Set(configuredWorkflows)];
+  if (!workflows.includes(root.default_workflow)) {
+    throw new Error("workflows must include default_workflow");
   }
   const native = record(root.native, "native");
   rejectUnknown(native, NATIVE_KEYS, "native");
@@ -8517,6 +8543,7 @@ function parseConfig(value) {
   return {
     schema: "comet.project.v1",
     default_workflow: root.default_workflow,
+    workflows,
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
@@ -8532,30 +8559,51 @@ function defaultProjectConfig(artifactRoot = ".", language = "en") {
   };
 }
 async function readProjectConfig(projectRoot) {
-  const file = path6.join(projectRoot, PROJECT_CONFIG_FILE);
+  const canonical = path6.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
+  const file = canonical;
   try {
     await fs5.lstat(file);
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
   }
-  let source;
+  const source = (await readNativeProtectedTextFile({
+    root: projectRoot,
+    file,
+    maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
+    label: PROJECT_CONFIG_FILE
+  })).text;
+  const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
+  }
+  const value = document.toJS();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const root = value;
+  if (root.schema === void 0 && root.native === void 0 && root.default_workflow === void 0) {
+    return null;
+  }
+  return parseConfig(value);
+}
+async function existingConfigDocument(projectRoot) {
+  const file = path6.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
   try {
-    source = (await readNativeProtectedTextFile({
+    const source = (await readNativeProtectedTextFile({
       root: projectRoot,
       file,
       maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
       label: PROJECT_CONFIG_FILE
     })).text;
+    const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
+    if (document.errors.length > 0) throw new Error(document.errors[0].message);
+    const value = document.toJS();
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value;
+    }
   } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
+    if (error.code !== "ENOENT") throw error;
   }
-  const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
-  }
-  return parseConfig(document.toJS());
+  return {};
 }
 async function assertNoPendingNativeRootMove(projectRoot) {
   const config = await readProjectConfig(projectRoot);
@@ -8569,6 +8617,7 @@ async function writeProjectConfig(projectRoot, config) {
   const validated = parseConfig({
     schema: config.schema,
     default_workflow: config.default_workflow,
+    workflows: config.workflows ?? [config.default_workflow],
     native: {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
@@ -8590,8 +8639,10 @@ async function writeProjectConfig(projectRoot, config) {
     }
   });
   const document = {
+    ...await existingConfigDocument(projectRoot),
     schema: validated.schema,
     default_workflow: validated.default_workflow,
+    workflows: validated.workflows,
     native: {
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
@@ -8612,7 +8663,9 @@ async function writeProjectConfig(projectRoot, config) {
       } : {}
     }
   };
-  await atomicWriteText(path6.join(projectRoot, PROJECT_CONFIG_FILE), (0, import_yaml.stringify)(document));
+  const canonical = path6.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
+  await fs5.mkdir(path6.dirname(canonical), { recursive: true });
+  await atomicWriteText(canonical, (0, import_yaml.stringify)(document));
 }
 async function resolveNativeProject(options) {
   const projectRoot = await discoverNativeProject(options.startPath);
@@ -8644,7 +8697,7 @@ import path9 from "path";
 import { AsyncLocalStorage } from "async_hooks";
 import { randomUUID as randomUUID2 } from "crypto";
 import { promises as fs6 } from "fs";
-import os from "os";
+import os2 from "os";
 import path7 from "path";
 var NATIVE_LOCK_MAX_BYTES = 16 * 1024;
 var NATIVE_LOCK_COORDINATOR_DIR = ".coordinator";
@@ -8733,7 +8786,7 @@ async function readNativeLock(file) {
 }
 function diagnosisFromSnapshot(snapshot2) {
   if (!snapshot2) return { status: "missing", owner: null, identity: null };
-  if (snapshot2.owner.hostname !== os.hostname()) {
+  if (snapshot2.owner.hostname !== os2.hostname()) {
     return { status: "unknown", owner: snapshot2.owner, identity: snapshot2.identity };
   }
   const alive = isProcessAlive(snapshot2.owner.pid);
@@ -8788,7 +8841,7 @@ function newNativeLockOwner(operation) {
   return {
     id: randomUUID2(),
     pid: process.pid,
-    hostname: os.hostname(),
+    hostname: os2.hostname(),
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     operation
   };
@@ -19135,6 +19188,12 @@ async function selectNativeChange(paths, name) {
     await atomicWriteJson(file, selection);
   });
 }
+async function resolveSelectedNativeChange(paths) {
+  const value = await readNativeSelectionRecord(paths);
+  if (!value) return null;
+  await readNativeChange(paths, value.change);
+  return value.change;
+}
 async function clearNativeSelectionLocked(paths) {
   await assertNoPendingNativeRootMove(paths.projectRoot);
   await fs21.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
@@ -25406,6 +25465,88 @@ async function advanceNativeChangeLocked(options) {
   };
 }
 
+// domains/comet-native/native-hook-guard.ts
+import { promises as fs32, readFileSync } from "fs";
+import path46 from "path";
+function isWithin(parent, target) {
+  const relative = path46.relative(parent, target);
+  return relative === "" || !relative.startsWith("..") && !path46.isAbsolute(relative);
+}
+async function readNativeHookTarget() {
+  if (process.env.FILE_PATH) return process.env.FILE_PATH;
+  if (process.stdin.isTTY) return null;
+  try {
+    const source = readFileSync(0, "utf8");
+    if (!source.trim()) return null;
+    const input = JSON.parse(source);
+    const target = input.tool_input?.file_path ?? input.tool_input?.path ?? input.file_path;
+    return typeof target === "string" && target.length > 0 ? target : null;
+  } catch {
+    return null;
+  }
+}
+async function inspectNativeHookGuard(projectRoot, targetPath) {
+  const config = await readProjectConfig(projectRoot);
+  if (!config || !(config.workflows ?? [config.default_workflow]).includes("native")) {
+    return { allowed: true, reason: "Native workflow is not enabled" };
+  }
+  if (!targetPath) return { allowed: true, reason: "No write target was provided" };
+  const target = path46.resolve(projectRoot, targetPath);
+  if (!isWithin(projectRoot, target)) {
+    return { allowed: true, reason: "Write target is outside the guarded project" };
+  }
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  const relative = path46.relative(projectRoot, target).replaceAll("\\", "/");
+  if (relative === ".comet/config.yaml" || isWithin(paths.nativeRoot, target)) {
+    return { allowed: true, reason: "Native control artifact write" };
+  }
+  if (relative.startsWith(".")) {
+    return { allowed: true, reason: "Platform configuration write" };
+  }
+  let entries;
+  try {
+    entries = await fs32.readdir(paths.changesDir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return { allowed: true, reason: "No Native changes exist" };
+    }
+    throw error;
+  }
+  const active = [];
+  for (const entry2 of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry2.isDirectory() || entry2.isSymbolicLink()) continue;
+    const state = await readNativeChange(paths, entry2.name);
+    if (!state.archived) active.push(state);
+  }
+  if (active.length === 0) return { allowed: true, reason: "No active Native change" };
+  let change = active[0];
+  if (active.length > 1) {
+    const selectedName2 = await resolveSelectedNativeChange(paths);
+    const selected = active.find((candidate) => candidate.name === selectedName2);
+    if (!selected) {
+      return {
+        allowed: false,
+        reason: "Multiple Native changes are active; select the change to resume before writing code"
+      };
+    }
+    change = selected;
+  }
+  if (change.phase === "build") {
+    return {
+      allowed: true,
+      reason: "Native change is in Build",
+      phase: change.phase,
+      change: change.name
+    };
+  }
+  return {
+    allowed: false,
+    reason: `Native change ${change.name} is in ${change.phase}; implementation writes are only allowed in build. Resume /comet-native to continue safely`,
+    phase: change.phase,
+    change: change.name
+  };
+}
+
 // domains/comet-native/native-cli.ts
 var NATIVE_SHOW_MAX_SERIALIZED_BYTES = 10 * 1024 * 1024;
 var NativeUsageError = class extends Error {
@@ -25413,6 +25554,7 @@ var NativeUsageError = class extends Error {
 var USAGE = `Usage: comet native <command> [options]
 
 Commands:
+  hook-guard
   init [--root <artifact-root>] [--language en|zh-CN]
   root show
   root move <artifact-root>
@@ -25489,7 +25631,7 @@ function revisionOption(args) {
   return Number(value);
 }
 async function projectRootFrom(explicit) {
-  return explicit ? path46.resolve(explicit) : discoverNativeProject(process.cwd());
+  return explicit ? path47.resolve(explicit) : discoverNativeProject(process.cwd());
 }
 async function configuredPaths(projectRoot) {
   const resolved = await resolveNativeProject({
@@ -25511,6 +25653,16 @@ async function dispatch(rawArgs, explicitProjectRoot) {
   }
   const command = rawArgs.shift();
   const projectRoot = await projectRootFrom(explicitProjectRoot);
+  if (command === "hook-guard") {
+    assertNoArguments(rawArgs);
+    const result2 = await inspectNativeHookGuard(projectRoot, await readNativeHookTarget());
+    return result2.allowed ? { command, exitCode: 0, data: result2 } : {
+      command,
+      exitCode: 2,
+      data: result2,
+      error: { code: "blocked", message: result2.reason }
+    };
+  }
   if (command === "init") {
     const requestedRoot = takeOption(rawArgs, "--root");
     const existing = await readProjectConfig(projectRoot);
@@ -25548,7 +25700,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     if (subcommand === "show") {
       assertNoArguments(rawArgs);
       const config = await readProjectConfig(projectRoot);
-      if (!config) throw new Error("comet.config.yaml was not found");
+      if (!config) throw new Error(".comet/config.yaml was not found");
       const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
       return success("root show", {
         projectRoot,
@@ -25723,9 +25875,9 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       expectedRevision
     });
     const status = await inspectNativeStatus(paths, name);
-    const manifestRef = path46.relative(
+    const manifestRef = path47.relative(
       paths.projectRoot,
-      path46.join(nativeChangeDir(paths, name), ...result2.checkpoint.manifestRef.split("/"))
+      path47.join(nativeChangeDir(paths, name), ...result2.checkpoint.manifestRef.split("/"))
     ).replaceAll("\\", "/");
     return success("checkpoint", {
       ...result2,

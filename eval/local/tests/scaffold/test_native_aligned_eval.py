@@ -19,7 +19,8 @@ def _write_native_archive(root: Path) -> None:
     (archive / "specs" / "median").mkdir(parents=True)
     (root / "docs" / "comet" / "changes").mkdir(parents=True)
     (root / "docs" / "comet" / "specs" / "median").mkdir(parents=True)
-    (root / "comet.config.yaml").write_text(
+    (root / ".comet").mkdir(parents=True)
+    (root / ".comet" / "config.yaml").write_text(
         yaml.safe_dump(
             {
                 "schema": "comet.project.v1",
@@ -79,7 +80,8 @@ def _write_native_archive(root: Path) -> None:
 def _write_native_hard_stop(root: Path) -> None:
     change = root / "docs" / "comet" / "changes" / "stalled-average"
     (change / "runtime").mkdir(parents=True)
-    (root / "comet.config.yaml").write_text(
+    (root / ".comet").mkdir(parents=True)
+    (root / ".comet" / "config.yaml").write_text(
         yaml.safe_dump(
             {
                 "schema": "comet.project.v1",
@@ -292,7 +294,8 @@ def test_control_filter_removes_classic_and_native_workflow_checks():
 
 
 def test_validate_native_workflow_rejects_artifact_root_outside_workspace(tmp_path: Path):
-    (tmp_path / "comet.config.yaml").write_text(
+    (tmp_path / ".comet").mkdir()
+    (tmp_path / ".comet" / "config.yaml").write_text(
         yaml.safe_dump(
             {
                 "schema": "comet.project.v1",

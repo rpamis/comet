@@ -314,11 +314,15 @@ Run focused tests.
     expect(repaired.findings).toContainEqual(
       expect.objectContaining({ code: 'stale-recovery-lock-removed', severity: 'info' }),
     );
-    expect(await readProjectConfig(projectRoot)).toEqual(defaultProjectConfig('.'));
+    expect(await readProjectConfig(projectRoot)).toEqual({
+      ...defaultProjectConfig('.'),
+      workflows: ['native'],
+    });
   });
 
   it('fails closed on malformed config and preserves its exact bytes', async () => {
-    const configFile = path.join(projectRoot, 'comet.config.yaml');
+    const configFile = path.join(projectRoot, '.comet', 'config.yaml');
+    await fs.mkdir(path.dirname(configFile), { recursive: true });
     const malformed = 'schema: comet.project.v1\nnative: [broken\n';
     await fs.writeFile(configFile, malformed);
     const result = await doctorNativeProject({ paths, repair: true });

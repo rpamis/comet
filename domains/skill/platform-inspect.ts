@@ -9,6 +9,7 @@ import type { InstallScope } from '../../platform/install/types.js';
 import { fileExists } from '../../platform/fs/file-system.js';
 import { buildHookCommand, computeRuleDestPath, readManifest } from './platform-install.js';
 import { readJsonObjectFile } from './json-object.js';
+import type { InitWorkflowSelection } from '../comet-entry/types.js';
 
 export interface HookInspectionResult {
   present: boolean;
@@ -32,6 +33,7 @@ export async function getPlatformRuleDestinations(
   baseDir: string,
   platform: Platform,
   scope: InstallScope,
+  workflowSelection: InitWorkflowSelection = 'classic',
 ): Promise<string[]> {
   if (!platform.rulesDir || !platform.rulesFormat) return [];
 
@@ -39,7 +41,11 @@ export async function getPlatformRuleDestinations(
   const rulesDestDir = path.join(getRulesBaseDir(baseDir, platform, scope), platform.rulesDir);
   const destinations = new Set<string>();
 
-  for (const ruleRelPath of manifest.rules ?? []) {
+  const rulePaths = [
+    ...(workflowSelection === 'native' ? [] : (manifest.rules ?? [])),
+    ...(workflowSelection === 'classic' ? [] : (manifest.nativeRules ?? [])),
+  ];
+  for (const ruleRelPath of rulePaths) {
     const installedName = path.basename(ruleRelPath).replace(/\.en\.md$/u, '.md');
     destinations.add(computeRuleDestPath(rulesDestDir, installedName, platform.rulesFormat));
   }
@@ -131,11 +137,15 @@ export async function inspectCometHooksForPlatform(
   baseDir: string,
   platform: Platform,
   scope: InstallScope,
+  workflowSelection: InitWorkflowSelection = 'classic',
 ): Promise<HookInspectionResult> {
   if (!platform.supportsHooks || !platform.hookFormat) return { present: false };
 
   const manifest = await readManifest();
-  const scriptRelPaths = Object.keys(manifest.hooks ?? {});
+  const scriptRelPaths = Object.keys({
+    ...(workflowSelection === 'native' ? {} : (manifest.hooks ?? {})),
+    ...(workflowSelection === 'classic' ? {} : (manifest.nativeHooks ?? {})),
+  });
   if (scriptRelPaths.length === 0) return { present: false };
 
   const skillsDir = getPlatformSkillsDir(platform, scope);

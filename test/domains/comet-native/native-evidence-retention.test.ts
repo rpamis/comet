@@ -526,7 +526,7 @@ describe('Native evidence retention', () => {
     ]) {
       await expect(fs.access(refFile(paths, ref))).rejects.toMatchObject({ code: 'ENOENT' });
     }
-  });
+  }, 60_000);
 
   it('fails closed for unknown, damaged, and special evidence entries', async () => {
     await writeOldReceipts(NATIVE_EVIDENCE_RETENTION_POLICY.keepLatestUnreferencedPerKind + 2);

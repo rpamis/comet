@@ -22,7 +22,7 @@ timeout = 120
 [evaluation]
 profile = "generic"
 required_skills = ["comet-native"]
-expected_artifacts = ["comet.config.yaml", "docs/comet/archive", "docs/comet/specs"]
+expected_artifacts = [".comet/config.yaml", "docs/comet/archive", "docs/comet/specs"]
 require_skill_invocation = true
 rubric_criteria = [
   "Before implementation, asks exactly one highest-value question about abbreviation behavior",

@@ -131,6 +131,21 @@ describe('skills', () => {
   });
 
   describe('copyCometRulesForPlatform', () => {
+    it('installs only the Native Rule for a Native project', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
+
+      await expect(
+        copyCometRulesForPlatform(tmpDir, platform, true, 'en', 'project', 'native'),
+      ).resolves.toEqual({ copied: 1, skipped: 0, failed: 0 });
+
+      await expect(
+        fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-native-phase-guard.md')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
     it('reports a missing Rule source as failed', async () => {
       readJsonMock.mockResolvedValue({
         version: 'test',
@@ -529,6 +544,21 @@ describe('skills', () => {
     const normalized = (value: string) => value.replace(/\\/g, '/');
     const expectedHookCommand = (skillsDir: string, baseDir = tmpDir) =>
       `node "${normalized(path.join(baseDir, skillsDir, 'skills', ...currentCometScript.split('/')))}" --project-root "${normalized(baseDir)}"`;
+
+    it('installs only the Native Hook for a Native project', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+
+      await expect(
+        installCometHooksForPlatform(tmpDir, codex, 'project', 'native'),
+      ).resolves.toEqual({ status: 'installed' });
+
+      const hooks = JSON.parse(
+        await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8'),
+      ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
+      const source = JSON.stringify(hooks).replaceAll('\\', '/');
+      expect(source).toContain('comet-native/scripts/comet-native-hook-guard.mjs');
+      expect(source).not.toContain('comet/scripts/comet-hook-guard.mjs');
+    });
 
     it('returns failed when the Hook manifest cannot be read', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;

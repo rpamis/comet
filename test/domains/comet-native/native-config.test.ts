@@ -16,6 +16,7 @@ describe('Native project configuration', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-config-'));
     await fs.mkdir(path.join(projectRoot, '.git'));
+    await fs.mkdir(path.join(projectRoot, '.comet'));
   });
 
   afterEach(async () => {
@@ -28,16 +29,17 @@ describe('Native project configuration', () => {
     expect(await readProjectConfig(projectRoot)).toEqual({
       schema: 'comet.project.v1',
       default_workflow: 'native',
+      workflows: ['native'],
       native: { artifact_root: 'docs', language: 'en' },
     });
-    expect(await fs.readFile(path.join(projectRoot, 'comet.config.yaml'), 'utf8')).toBe(
-      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n  language: en\n',
+    expect(await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8')).toBe(
+      'schema: comet.project.v1\ndefault_workflow: native\nworkflows:\n  - native\nnative:\n  artifact_root: docs\n  language: en\n',
     );
   });
 
   it('reads an older project config without a language as English', async () => {
     await fs.writeFile(
-      path.join(projectRoot, 'comet.config.yaml'),
+      path.join(projectRoot, '.comet', 'config.yaml'),
       'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: .\n',
     );
 
@@ -57,11 +59,12 @@ describe('Native project configuration', () => {
         manifestHash: 'a'.repeat(64),
       },
     };
+    config.workflows = ['native'];
 
     await writeProjectConfig(projectRoot, config);
 
     expect(await readProjectConfig(projectRoot)).toEqual(config);
-    expect(await fs.readFile(path.join(projectRoot, 'comet.config.yaml'), 'utf8')).toContain(
+    expect(await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8')).toContain(
       'manifest_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     );
   });
@@ -102,22 +105,35 @@ describe('Native project configuration', () => {
       'duplicate keys',
       'schema: comet.project.v1\nschema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: .\n',
     ],
-    [
-      'unknown root field',
-      'schema: comet.project.v1\ndefault_workflow: native\nunknown: true\nnative:\n  artifact_root: .\n',
-    ],
     ['missing Native root', 'schema: comet.project.v1\ndefault_workflow: native\nnative: {}\n'],
     [
       'bad pending move',
       'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: .\n  pending_root_move:\n    id: bad\n    from_artifact_root: .\n    to_artifact_root: docs\n    stage: unknown\n',
     ],
   ])('fails closed for %s', async (_label, source) => {
-    await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), source);
+    await fs.writeFile(path.join(projectRoot, '.comet', 'config.yaml'), source);
     await expect(readProjectConfig(projectRoot)).rejects.toBeInstanceOf(Error);
   });
 
+  it('preserves Classic fields in the shared project config', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      'language: zh-CN\nreview_mode: thorough\ncustom_setting: keep\n',
+    );
+
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'zh-CN'));
+
+    const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
+    expect(source).toContain('review_mode: thorough');
+    expect(source).toContain('custom_setting: keep');
+    expect(source).toContain('artifact_root: docs');
+  });
+
   it('rejects an oversized project config before parsing it', async () => {
-    await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), Buffer.alloc(64 * 1024 + 1));
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      Buffer.alloc(64 * 1024 + 1),
+    );
 
     await expect(readProjectConfig(projectRoot)).rejects.toThrow('exceeds 65536 bytes');
   });

@@ -57,10 +57,12 @@ def archive_directory():
 
 
 def check_native_artifacts():
-    config_file = WORKSPACE / "comet.config.yaml"
+    config_file = WORKSPACE / ".comet" / "config.yaml"
     if not config_file.exists():
-        return failed("native_artifacts", "comet.config.yaml is missing")
+        return failed("native_artifacts", ".comet/config.yaml is missing")
     config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+    if "native" not in (config.get("workflows") or [config.get("default_workflow")]):
+        return failed("native_artifacts", "native workflow is not enabled")
     if config.get("native", {}).get("artifact_root") != "docs":
         return failed("native_artifacts", "native.artifact_root is not docs")
 
@@ -108,8 +110,16 @@ def check_trajectory():
 
 
 def check_isolation():
-    forbidden = [WORKSPACE / "openspec", WORKSPACE / ".comet"]
-    present = [str(path.relative_to(WORKSPACE)) for path in forbidden if path.exists()]
+    comet_config_dir = WORKSPACE / ".comet"
+    hidden_entries = (
+        {path.name for path in comet_config_dir.iterdir()}
+        if comet_config_dir.is_dir()
+        else set()
+    )
+    present = []
+    if (WORKSPACE / "openspec").exists():
+        present.append("openspec")
+    present.extend(f".comet/{name}" for name in sorted(hidden_entries - {"config.yaml"}))
     if present:
         return failed("native_isolation", f"Forbidden workflow artifacts exist: {present}")
     skills_root = WORKSPACE / ".claude" / "skills"

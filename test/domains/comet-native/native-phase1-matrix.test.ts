@@ -214,7 +214,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
       path.join(docsProject, 'docs', 'comet'),
     );
     for (const root of [defaultProject, docsProject]) {
-      await expect(fs.access(path.join(root, '.comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(fs.access(path.join(root, '.comet', 'config.yaml'))).resolves.toBeUndefined();
       await expect(fs.access(path.join(root, 'openspec'))).rejects.toMatchObject({
         code: 'ENOENT',
       });
@@ -498,7 +498,11 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     );
     vi.restoreAllMocks();
 
-    await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), 'native: [broken\n');
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      'native: [broken\n',
+    );
     const configResult = await runNativeCli(['list', '--json', '--project-root', projectRoot]);
     expect(configResult.exitCode).toBe(65);
     expect(json(configResult).error?.code).toBe('invalid-data');

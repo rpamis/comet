@@ -41,6 +41,7 @@ import {
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import { advanceNativeChange } from './native-transitions.js';
+import { inspectNativeHookGuard, readNativeHookTarget } from './native-hook-guard.js';
 import type {
   CometProjectConfig,
   NativeAdvanceEvidence,
@@ -73,6 +74,7 @@ class NativeUsageError extends Error {}
 const USAGE = `Usage: comet native <command> [options]
 
 Commands:
+  hook-guard
   init [--root <artifact-root>] [--language en|zh-CN]
   root show
   root move <artifact-root>
@@ -189,6 +191,18 @@ async function dispatch(
   }
   const command = rawArgs.shift()!;
   const projectRoot = await projectRootFrom(explicitProjectRoot);
+  if (command === 'hook-guard') {
+    assertNoArguments(rawArgs);
+    const result = await inspectNativeHookGuard(projectRoot, await readNativeHookTarget());
+    return result.allowed
+      ? { command, exitCode: 0, data: result }
+      : {
+          command,
+          exitCode: 2,
+          data: result,
+          error: { code: 'blocked', message: result.reason },
+        };
+  }
   if (command === 'init') {
     const requestedRoot = takeOption(rawArgs, '--root');
     const existing = await readProjectConfig(projectRoot);
@@ -227,7 +241,7 @@ async function dispatch(
     if (subcommand === 'show') {
       assertNoArguments(rawArgs);
       const config = await readProjectConfig(projectRoot);
-      if (!config) throw new Error('comet.config.yaml was not found');
+      if (!config) throw new Error('.comet/config.yaml was not found');
       const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
       return success('root show', {
         projectRoot,

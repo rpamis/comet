@@ -125,6 +125,16 @@ describe('comet init E2E', () => {
     await fs.rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
+  it('offers Native, Classic, and Both with concise user-facing descriptions', async () => {
+    const { workflowChoiceNames } = await import('../../app/commands/init.js');
+
+    expect(workflowChoiceNames('zh')).toEqual([
+      expect.objectContaining({ value: 'native', name: expect.stringContaining('强模型') }),
+      expect.objectContaining({ value: 'classic', name: expect.stringContaining('Spec/TDD') }),
+      expect.objectContaining({ value: 'both', name: expect.stringContaining('两套独立入口') }),
+    ]);
+  });
+
   it('enables the banner for text output and disables it for JSON output', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
@@ -205,13 +215,15 @@ describe('comet init E2E', () => {
       await expect(fs.stat(path.join(tmpDir, 'comet', 'changes'))).resolves.toBeDefined();
       await expect(fs.stat(path.join(tmpDir, 'comet', 'archive'))).resolves.toBeDefined();
       await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers'))).rejects.toThrow();
-      await expect(fs.stat(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
+      await expect(fs.stat(path.join(tmpDir, '.comet', 'config.yaml'))).resolves.toBeDefined();
       await expect(
-        fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md')),
-      ).rejects.toThrow();
-      await expect(fs.stat(path.join(tmpDir, '.claude', 'settings.local.json'))).rejects.toThrow();
+        fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-native-phase-guard.md')),
+      ).resolves.toBeDefined();
+      await expect(
+        fs.stat(path.join(tmpDir, '.claude', 'settings.local.json')),
+      ).resolves.toBeDefined();
 
-      const projectConfig = await fs.readFile(path.join(tmpDir, 'comet.config.yaml'), 'utf8');
+      const projectConfig = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
       expect(projectConfig).toContain('default_workflow: native');
       expect(projectConfig).toContain('artifact_root: .');
       expect(mockedExecFileSync.mock.calls.some((call) => String(call[0]) === 'openspec')).toBe(
@@ -277,7 +289,40 @@ describe('comet init E2E', () => {
     });
     await expect(fs.stat(path.join(tmpDir, 'docs', 'comet', 'changes'))).resolves.toBeDefined();
     await expect(fs.stat(path.join(tmpDir, 'comet'))).rejects.toThrow();
-    await expect(fs.stat(path.join(tmpDir, '.comet'))).rejects.toThrow();
+    await expect(fs.stat(path.join(tmpDir, '.comet'))).resolves.toBeDefined();
+  });
+
+  it('initializes Native and Classic independently while defaulting /comet to Native', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'both',
+        language: 'en',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      workflow: 'native',
+      initializedWorkflows: ['native', 'classic'],
+      nativeArtifactRoot: '.',
+    });
+    const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
+    expect(config).toContain('default_workflow: native');
+    expect(config).toContain('- native');
+    expect(config).toContain('- classic');
+    await expect(fs.stat(path.join(tmpDir, 'comet', 'changes'))).resolves.toBeDefined();
+    await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers', 'specs'))).resolves.toBeDefined();
+    await expect(
+      fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md')),
+    ).resolves.toBeDefined();
+    await expect(
+      fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-native-phase-guard.md')),
+    ).resolves.toBeDefined();
   });
 
   it('materializes an old symlink installation before Native copy without writing through it', async () => {
@@ -405,7 +450,7 @@ describe('comet init E2E', () => {
       }),
     ).rejects.toThrow(/required Native asset comet-native\/SKILL\.md is missing/u);
 
-    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toMatchObject({
+    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
     await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -428,7 +473,7 @@ describe('comet init E2E', () => {
     ).rejects.toThrow(/differs from the bundled routing contract.*--overwrite/iu);
 
     await expect(fs.readFile(existingSkill, 'utf8')).resolves.toBe('# User-pinned legacy Comet\n');
-    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toMatchObject({
+    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
     await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -437,19 +482,20 @@ describe('comet init E2E', () => {
   it('fails closed on malformed project config before installer writes', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
-    const configPath = path.join(tmpDir, 'comet.config.yaml');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
     const malformed = 'schema: [broken\n';
     await fs.writeFile(configPath, malformed, 'utf8');
 
     const { initCommand } = await import('../../app/commands/init.js');
     await expect(initCommand(tmpDir, { yes: true, json: true, scope: 'project' })).rejects.toThrow(
-      /Invalid comet\.config\.yaml/u,
+      /Invalid \.comet\/config\.yaml/u,
     );
 
     await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(malformed);
     await expect(fs.access(path.join(tmpDir, '.claude', 'skills'))).rejects.toThrow();
     await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toThrow();
-    await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, '.comet'))).resolves.toBeUndefined();
     expect(mockedExecFileSync).not.toHaveBeenCalled();
   });
 
@@ -474,7 +520,7 @@ describe('comet init E2E', () => {
       selectedPlatforms: [],
       results: [],
     });
-    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
     await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toThrow();
     await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toThrow();
   });
@@ -492,7 +538,7 @@ describe('comet init E2E', () => {
 
       await expect(fs.access(path.join(os.homedir(), '.comet'))).rejects.toThrow();
       await expect(fs.access(path.join(os.homedir(), '.claude'))).rejects.toThrow();
-      await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toThrow();
+      await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
       expect(mockedExecFileSync).not.toHaveBeenCalled();
     },
   );
@@ -516,7 +562,7 @@ describe('comet init E2E', () => {
     expect(result.results).toEqual([
       expect.objectContaining({ platform: 'claude', comet: 'failed' }),
     ]);
-    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
     await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toThrow();
     await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toThrow();
   });
@@ -547,7 +593,7 @@ describe('comet init E2E', () => {
         expect.objectContaining({ platform: 'codex', comet: 'installed' }),
       ]),
     });
-    await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toMatchObject({
+    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
     await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -567,8 +613,9 @@ describe('comet init E2E', () => {
         'utf8',
       );
 
-      const configPath = path.join(tmpDir, 'comet.config.yaml');
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
       if (existingWorkflow) {
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
         await fs.writeFile(
           configPath,
           [

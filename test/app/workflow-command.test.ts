@@ -46,11 +46,12 @@ describe('workflow resolve command', () => {
   });
 
   it('fails closed when project configuration is malformed', async () => {
-    await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), 'schema: [', 'utf8');
+    await fs.mkdir(path.join(projectRoot, '.comet'));
+    await fs.writeFile(path.join(projectRoot, '.comet', 'config.yaml'), 'schema: [', 'utf8');
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     await expect(workflowResolveCommand(projectRoot, { json: true })).rejects.toThrow(
-      /Invalid comet\.config\.yaml/u,
+      /Invalid \.comet\/config\.yaml/u,
     );
     expect(log).not.toHaveBeenCalled();
   });

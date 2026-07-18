@@ -3,7 +3,7 @@
 ## 目录
 
 ```text
-<project>/comet.config.yaml
+<project>/.comet/config.yaml
 <artifact-root>/comet/
   specs/<capability>/spec.md
   changes/<change-name>/
@@ -41,7 +41,7 @@
       events.jsonl
 ```
 
-`artifact-root` 由项目配置唯一指定。Native 不使用隐藏的 change 目录，也不从其他需求目录发现状态。项目根的 `comet.config.yaml` 是持久配置例外；`root move` 中断恢复期间还可能在源/目标 artifact root 旁出现 Runtime 管理的临时 staging 或 quarantine，事务收口后会清除。它们不是第二个可写 Native change 根。
+`artifact-root` 由项目配置唯一指定。Native 不使用隐藏的 change 目录，也不从其他需求目录发现状态。项目级 `.comet/config.yaml` 是持久配置例外；`root move` 中断恢复期间还可能在源/目标 artifact root 旁出现 Runtime 管理的临时 staging 或 quarantine，事务收口后会清除。它们不是第二个可写 Native change 根。
 
 ## 项目配置
 

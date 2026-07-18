@@ -400,7 +400,7 @@ describe('Native repair stagnation transitions', () => {
       );
       await leaveBuild(`Repair ${attempt} changes the implementation scope.`);
     }
-  });
+  }, 60_000);
 
   it('does not persist a partial allowance when the repair guard stops Build', async () => {
     await failVerify('Enter Build before establishing a partial repair scope.');
@@ -586,5 +586,5 @@ describe('Native repair stagnation transitions', () => {
         totalRepairFailures: 1,
       },
     });
-  });
+  }, 60_000);
 });

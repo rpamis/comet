@@ -22,7 +22,7 @@ timeout = 120
 [evaluation]
 profile = "generic"
 required_skills = ["comet-native"]
-expected_artifacts = ["comet.config.yaml", "docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
+expected_artifacts = [".comet/config.yaml", "docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
 require_skill_invocation = true
 rubric_criteria = [
   "Uses only the Comet Native Skill and bundled runtime",

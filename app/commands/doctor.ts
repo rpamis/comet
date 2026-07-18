@@ -29,6 +29,8 @@ import { resolveCanonicalSkillRootOwners } from '../../platform/install/skill-ro
 import type { InstallScope } from '../../platform/install/types.js';
 import { inspectClassicChange } from '../../domains/comet-classic/classic-diagnostics.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
+import { readProjectConfig } from '../../domains/comet-native/native-config.js';
+import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 
 interface CheckResult {
   check: string;
@@ -184,9 +186,15 @@ async function checkPlatformComponents(
   baseDir: string,
   platform: (typeof PLATFORMS)[number],
   scope: InstallScope,
+  workflowSelection: InitWorkflowSelection,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
-  const ruleDestinations = await getPlatformRuleDestinations(baseDir, platform, scope);
+  const ruleDestinations = await getPlatformRuleDestinations(
+    baseDir,
+    platform,
+    scope,
+    workflowSelection,
+  );
   if (ruleDestinations.length > 0) {
     let present = 0;
     const inspectionErrors: string[] = [];
@@ -211,7 +219,12 @@ async function checkPlatformComponents(
   }
 
   if (platform.supportsHooks && platform.hookFormat) {
-    const inspection = await inspectCometHooksForPlatform(baseDir, platform, scope);
+    const inspection = await inspectCometHooksForPlatform(
+      baseDir,
+      platform,
+      scope,
+      workflowSelection,
+    );
     results.push({
       check: `hooks: ${platform.name} (${scope})`,
       status: inspection.present ? 'pass' : 'warn',
@@ -243,6 +256,7 @@ async function checkSkillCompleteness(
   projectPath: string,
   scope: DoctorScope,
   context: DoctorContext,
+  workflowSelection: InitWorkflowSelection,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const manifest = await readManifest();
@@ -305,7 +319,14 @@ async function checkSkillCompleteness(
               },
       );
       if (inspectComponents) {
-        results.push(...(await checkPlatformComponents(base.baseDir, platform, base.scope)));
+        results.push(
+          ...(await checkPlatformComponents(
+            base.baseDir,
+            platform,
+            base.scope,
+            base.scope === 'global' ? 'classic' : workflowSelection,
+          )),
+        );
       }
     }
   }
@@ -453,6 +474,14 @@ async function collectResultsWithContext(
   context: DoctorContext,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
+  const config = scope === 'global' ? null : await readProjectConfig(projectPath);
+  const workflows = config?.workflows ?? (config ? [config.default_workflow] : ['classic']);
+  const workflowSelection: InitWorkflowSelection =
+    workflows.includes('native') && workflows.includes('classic')
+      ? 'both'
+      : workflows.includes('native')
+        ? 'native'
+        : 'classic';
   const scopeMode = checkScopeMode(projectPath, scope, context);
   if (scopeMode) results.push(scopeMode);
   results.push(checkEnvironment(projectPath, context));
@@ -462,7 +491,7 @@ async function collectResultsWithContext(
   if (scope !== 'global') {
     results.push(await checkWorkingDirs(projectPath));
   }
-  results.push(...(await checkSkillCompleteness(projectPath, scope, context)));
+  results.push(...(await checkSkillCompleteness(projectPath, scope, context, workflowSelection)));
   results.push(await checkScriptsPresent());
   results.push(await checkCodegraph(projectPath, scope));
   results.push(...(await checkCometYamlValidity(projectPath)));

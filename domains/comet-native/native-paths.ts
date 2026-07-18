@@ -1,14 +1,25 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
 
 import type { NativeProjectPaths } from './native-types.js';
 
-export const PROJECT_CONFIG_FILE = 'comet.config.yaml';
+export const PROJECT_CONFIG_FILE = '.comet/config.yaml';
 
 async function isFileOrDirectory(target: string): Promise<boolean> {
   try {
     await fs.lstat(target);
     return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function declaresNativeProjectConfig(target: string): Promise<boolean> {
+  try {
+    const source = await fs.readFile(target, 'utf8');
+    return /^schema:\s*comet\.project\.v1\s*$/mu.test(source);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
@@ -53,8 +64,17 @@ export async function discoverNativeProject(startPath: string): Promise<string> 
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   const fallback = cursor;
+  const home = path.resolve(os.homedir());
   while (true) {
-    if (await isFileOrDirectory(path.join(cursor, PROJECT_CONFIG_FILE))) return cursor;
+    const isHomeBoundary = cursor === home && fallback !== home;
+    if (!isHomeBoundary) {
+      const configFile = path.join(cursor, ...PROJECT_CONFIG_FILE.split('/'));
+      const configMarksProject =
+        cursor === fallback || (await declaresNativeProjectConfig(configFile));
+      if ((await isFileOrDirectory(configFile)) && configMarksProject) {
+        return cursor;
+      }
+    }
     if (await isFileOrDirectory(path.join(cursor, '.git'))) return cursor;
     const parent = path.dirname(cursor);
     if (parent === cursor) return fallback;
@@ -108,7 +128,7 @@ export async function nativeProjectPaths(
   }
   return {
     projectRoot: path.resolve(projectRoot),
-    configFile: path.join(projectRoot, PROJECT_CONFIG_FILE),
+    configFile: path.join(projectRoot, ...PROJECT_CONFIG_FILE.split('/')),
     artifactRoot,
     artifactRootRef: normalized,
     nativeRoot,

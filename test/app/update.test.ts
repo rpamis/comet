@@ -1076,9 +1076,12 @@ describe('update command helpers', () => {
       'default_workflow: native',
       'native:',
       '  artifact_root: docs',
+      'language: legacy',
+      'keep: true',
       '',
     ].join('\n');
-    await fs.writeFile(path.join(tmpDir, 'comet.config.yaml'), nativeConfig, 'utf8');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), nativeConfig, 'utf8');
 
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(
@@ -1095,12 +1098,6 @@ describe('update command helpers', () => {
       'utf8',
     );
 
-    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
-    await fs.writeFile(
-      path.join(tmpDir, '.comet', 'config.yaml'),
-      'language: legacy\nkeep: true\n',
-      'utf8',
-    );
     await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers'), { recursive: true });
     await fs.writeFile(
       path.join(tmpDir, 'docs', 'superpowers', 'keep.md'),
@@ -1146,7 +1143,7 @@ describe('update command helpers', () => {
       code: 'ENOENT',
     });
     await expect(fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')).resolves.toBe(
-      'language: legacy\nkeep: true\n',
+      nativeConfig,
     );
     await expect(
       fs.readFile(path.join(tmpDir, 'docs', 'superpowers', 'keep.md'), 'utf8'),
@@ -1155,8 +1152,13 @@ describe('update command helpers', () => {
       fs.readFile(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md'), 'utf8'),
     ).resolves.toBe('keep classic rule\n');
     await expect(
-      fs.readFile(path.join(tmpDir, '.claude', 'settings.local.json'), 'utf8'),
-    ).resolves.toBe('{"keep":"classic hook"}\n');
+      fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-native-phase-guard.md')),
+    ).resolves.toBeUndefined();
+    const settings = JSON.parse(
+      await fs.readFile(path.join(tmpDir, '.claude', 'settings.local.json'), 'utf8'),
+    ) as { keep: string; hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
+    expect(settings.keep).toBe('classic hook');
+    expect(JSON.stringify(settings.hooks)).toContain('comet-native-hook-guard.mjs');
     const agents = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
     const claude = await fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
     for (const content of [agents, claude]) {
@@ -1173,13 +1175,15 @@ describe('update command helpers', () => {
 
   it('migrates manifest-managed legacy Codex Skills for Native without touching unrelated state', async () => {
     const fakeHome = path.join(tmpDir, 'native-codex-migration-home');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
     await fs.writeFile(
-      path.join(tmpDir, 'comet.config.yaml'),
+      path.join(tmpDir, '.comet', 'config.yaml'),
       [
         'schema: comet.project.v1',
         'default_workflow: native',
         'native:',
         '  artifact_root: docs',
+        'keep: classic',
         '',
       ].join('\n'),
       'utf8',
@@ -1193,8 +1197,6 @@ describe('update command helpers', () => {
     await fs.writeFile(path.join(legacyComet, 'SKILL.md'), '# Legacy thick Comet\n', 'utf8');
     await fs.writeFile(path.join(legacyPersonal, 'SKILL.md'), '# Personal\n', 'utf8');
     await fs.writeFile(path.join(legacyOpenSpec, 'SKILL.md'), '# OpenSpec\n', 'utf8');
-    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
-    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'keep: classic\n', 'utf8');
     await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers'), { recursive: true });
     await fs.writeFile(
       path.join(tmpDir, 'docs', 'superpowers', 'keep.md'),
@@ -1226,9 +1228,9 @@ describe('update command helpers', () => {
     await expect(fs.readFile(path.join(legacyOpenSpec, 'SKILL.md'), 'utf8')).resolves.toBe(
       '# OpenSpec\n',
     );
-    await expect(fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')).resolves.toBe(
-      'keep: classic\n',
-    );
+    await expect(
+      fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'),
+    ).resolves.toContain('keep: classic');
     await expect(
       fs.readFile(path.join(tmpDir, 'docs', 'superpowers', 'keep.md'), 'utf8'),
     ).resolves.toBe('keep classic state\n');
@@ -1238,8 +1240,9 @@ describe('update command helpers', () => {
     'converts an old %s symlink installation to Native copies without writing through it',
     async (layout) => {
       const fakeHome = path.join(tmpDir, `native-symlink-${layout}-home`);
+      await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
       await fs.writeFile(
-        path.join(tmpDir, 'comet.config.yaml'),
+        path.join(tmpDir, '.comet', 'config.yaml'),
         [
           'schema: comet.project.v1',
           'default_workflow: native',
@@ -1314,8 +1317,9 @@ describe('update command helpers', () => {
 
   it('refuses to detach a shared Skill-root symlink that contains unmanaged Skills', async () => {
     const fakeHome = path.join(tmpDir, 'native-shared-symlink-home');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
     await fs.writeFile(
-      path.join(tmpDir, 'comet.config.yaml'),
+      path.join(tmpDir, '.comet', 'config.yaml'),
       [
         'schema: comet.project.v1',
         'default_workflow: native',
@@ -1375,8 +1379,9 @@ describe('update command helpers', () => {
     const fakeHome = path.join(tmpDir, 'nested-native-update-home');
     const nestedDir = path.join(tmpDir, 'src', 'features', 'nested');
     await fs.mkdir(nestedDir, { recursive: true });
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
     await fs.writeFile(
-      path.join(tmpDir, 'comet.config.yaml'),
+      path.join(tmpDir, '.comet', 'config.yaml'),
       [
         'schema: comet.project.v1',
         'default_workflow: native',
@@ -1431,7 +1436,8 @@ describe('update command helpers', () => {
 
   it('fails a project update before npm or file writes when entry resolution fails', async () => {
     const fakeHome = path.join(tmpDir, 'invalid-native-update-home');
-    await fs.writeFile(path.join(tmpDir, 'comet.config.yaml'), 'schema: [', 'utf8');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'schema: [', 'utf8');
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
     const staleSkill = path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md');
     await fs.writeFile(staleSkill, '# Stale Comet\n', 'utf8');
@@ -1444,7 +1450,7 @@ describe('update command helpers', () => {
           currentProject: true,
           installMode: 'copy',
         }),
-      ).rejects.toThrow(/comet\.config\.yaml/iu);
+      ).rejects.toThrow(/\.comet\/config\.yaml/iu);
     } finally {
       log.mockRestore();
       homeSpy.mockRestore();

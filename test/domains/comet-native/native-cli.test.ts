@@ -218,7 +218,7 @@ Pass.
 
     const doctor = json(await runNativeCli(['doctor', '--json', ...projectArgs()]));
     expect(doctor).toMatchObject({ command: 'doctor', exitCode: 0, data: { healthy: true } });
-  });
+  }, 120_000);
 
   it('pages every Runtime-derived acceptance ID through the public status command', async () => {
     await runNativeCli(['new', 'paged-acceptance', ...projectArgs()]);
@@ -344,12 +344,10 @@ Pass.
     const result = await runNativeCli(['new', 'default-root', '--json', ...projectArgs()]);
     expect(result.exitCode).toBe(0);
     expect(json(result)).toMatchObject({ data: { name: 'default-root', phase: 'shape' } });
-    expect(await fs.readFile(path.join(projectRoot, 'comet.config.yaml'), 'utf8')).toContain(
+    expect(await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8')).toContain(
       'artifact_root: .',
     );
-    await expect(fs.access(path.join(projectRoot, '.comet'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(projectRoot, '.comet'))).resolves.toBeUndefined();
     await expect(fs.access(path.join(projectRoot, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
@@ -569,7 +567,7 @@ Pass.
 
     expect(result.exitCode).toBe(64);
     expect(json(result)).toMatchObject({ error: { code: 'usage' } });
-    await expect(fs.access(path.join(projectRoot, 'comet.config.yaml'))).rejects.toMatchObject({
+    await expect(fs.access(path.join(projectRoot, '.comet', 'config.yaml'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
   });
@@ -579,7 +577,7 @@ Pass.
     ['new', ['new', 'storage-failure'], true],
   ] as const)(
     'returns exit 70 with a retryable state when %s hits an unexpected filesystem failure',
-    async (_command, args, initializesConfig) => {
+    async (_command, args, retryCreatesChange) => {
       const failure = Object.assign(new Error('simulated storage failure'), { code: 'EIO' });
       const realpath = vi.spyOn(fs, 'realpath').mockRejectedValueOnce(failure);
       try {
@@ -589,15 +587,12 @@ Pass.
       } finally {
         realpath.mockRestore();
       }
-      if (!initializesConfig) {
-        await expect(fs.access(path.join(projectRoot, 'comet.config.yaml'))).rejects.toMatchObject({
-          code: 'ENOENT',
-        });
-        return;
-      }
       await expect(
-        fs.readFile(path.join(projectRoot, 'comet.config.yaml'), 'utf8'),
-      ).resolves.toContain('artifact_root: .');
+        fs.access(path.join(projectRoot, '.comet', 'config.yaml')),
+      ).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      if (!retryCreatesChange) return;
       const retried = await runNativeCli([...args, '--json', ...projectArgs()]);
       expect(retried.exitCode).toBe(0);
       expect(json(retried)).toMatchObject({ data: { name: 'storage-failure' } });

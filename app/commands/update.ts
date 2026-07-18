@@ -34,7 +34,9 @@ import {
   installCodegraph,
 } from '../../domains/integrations/codegraph.js';
 import { discoverNativeProject } from '../../domains/comet-native/native-paths.js';
+import { readProjectConfig } from '../../domains/comet-native/native-config.js';
 import { resolveCometEntry } from '../../domains/comet-entry/resolve-entry.js';
+import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
 import { printVersionInfo } from '../../platform/version/version.js';
 import { t, type TranslationKey } from './i18n.js';
@@ -550,7 +552,17 @@ async function updateSingleProject(
     : options.scope !== 'global';
   const projectPath = includesProjectScope ? await discoverNativeProject(startPath) : startPath;
   const projectEntry = includesProjectScope ? await resolveCometEntry(projectPath) : null;
-  const nativeProject = projectEntry?.workflow === 'native';
+  const projectConfig = includesProjectScope ? await readProjectConfig(projectPath) : null;
+  const configuredWorkflows =
+    projectConfig?.workflows ?? (projectConfig ? [projectConfig.default_workflow] : null);
+  const nativeProject = configuredWorkflows
+    ? configuredWorkflows.includes('native')
+    : projectEntry?.workflow === 'native';
+  const classicProject = configuredWorkflows
+    ? configuredWorkflows.includes('classic')
+    : projectEntry?.workflow === 'classic';
+  const projectWorkflowSelection: InitWorkflowSelection =
+    nativeProject && classicProject ? 'both' : nativeProject ? 'native' : 'classic';
   const packageScope =
     options.scope && !options.targetScopes
       ? options.scope
@@ -606,7 +618,7 @@ async function updateSingleProject(
   }
 
   const hasClassicCompatibleTarget = targets.some(
-    (target) => target.scope === 'global' || !nativeProject,
+    (target) => target.scope === 'global' || classicProject,
   );
   const selectedInstallMode = hasClassicCompatibleTarget
     ? await selectInstallMode(options, lang)
@@ -701,32 +713,6 @@ async function updateSingleProject(
       );
     }
 
-    if (nativeProjectTarget) {
-      const reason =
-        failed > 0
-          ? 'skipped because Skill installation failed'
-          : 'Native workflow does not install Classic rules or hooks';
-      ruleTargetResults.push({
-        scope: target.scope,
-        platform: target.platform.id,
-        platformName: target.platform.name,
-        copied: 0,
-        skipped: 0,
-        failed: 0,
-        status: 'skipped',
-        reason,
-      });
-      hookTargetResults.push({
-        scope: target.scope,
-        platform: target.platform.id,
-        platformName: target.platform.name,
-        failed: 0,
-        status: 'skipped',
-        reason,
-      });
-      continue;
-    }
-
     if (failed > 0) {
       const dependencyReason = 'skipped because Skill installation failed';
       ruleTargetResults.push({
@@ -757,6 +743,7 @@ async function updateSingleProject(
         true,
         languageId,
         target.scope,
+        target.scope === 'global' ? 'classic' : projectWorkflowSelection,
       );
       totalRulesCopied += ruleResult.copied;
       totalRulesFailed += ruleResult.failed;
@@ -805,6 +792,7 @@ async function updateSingleProject(
         baseDir,
         target.platform,
         target.scope,
+        target.scope === 'global' ? 'classic' : projectWorkflowSelection,
       );
       const hookFailed = status === 'failed' ? 1 : 0;
       totalHooksFailed += hookFailed;

@@ -144,7 +144,7 @@ describe('doctor command', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let output: string;
     try {
-      await doctorCommand(tmpDir);
+      await doctorCommand(tmpDir, { homeDir: path.join(tmpDir, 'isolated-home') });
       output = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();

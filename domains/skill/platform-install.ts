@@ -15,6 +15,7 @@ import { formatSupportedArtifactLanguages, resolveArtifactLanguage } from './lan
 import type { LanguageConfig, SkillLanguageId } from './languages.js';
 import { installCometProjectInstructions } from './project-instructions.js';
 import { readJsonObjectFile } from './json-object.js';
+import type { InitWorkflowSelection } from '../comet-entry/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,7 +30,9 @@ type Manifest = {
   skills: string[];
   internalSkills?: string[];
   rules?: string[];
+  nativeRules?: string[];
   hooks?: Record<string, HookConfig>;
+  nativeHooks?: Record<string, HookConfig>;
   languages?: LanguageConfig[];
 };
 
@@ -738,19 +741,40 @@ function selectRulePathsForLanguage(rulePaths: string[], languageId: SkillLangua
   return [...selected.values()].map((entry) => entry.rulePath);
 }
 
+function managedRulesForSelection(manifest: Manifest, selection: InitWorkflowSelection): string[] {
+  return [
+    ...(selection === 'native' ? [] : (manifest.rules ?? [])),
+    ...(selection === 'classic' ? [] : (manifest.nativeRules ?? [])),
+  ];
+}
+
+function managedHooksForSelection(
+  manifest: Manifest,
+  selection: InitWorkflowSelection,
+): Record<string, HookConfig> {
+  return {
+    ...(selection === 'native' ? {} : (manifest.hooks ?? {})),
+    ...(selection === 'classic' ? {} : (manifest.nativeHooks ?? {})),
+  };
+}
+
 async function copyCometRulesForPlatform(
   baseDir: string,
   platform: Platform,
   overwrite: boolean,
   languageId: SkillLanguageId,
   scope: InstallScope = 'project',
+  workflowSelection: InitWorkflowSelection = 'classic',
 ): Promise<{ copied: number; skipped: number; failed: number }> {
   if (!platform.rulesDir || !platform.rulesFormat) {
     return { copied: 0, skipped: 0, failed: 0 };
   }
 
   const manifest = await readManifest();
-  const rulePaths = selectRulePathsForLanguage(manifest.rules ?? [], languageId);
+  const rulePaths = selectRulePathsForLanguage(
+    managedRulesForSelection(manifest, workflowSelection),
+    languageId,
+  );
   if (!rulePaths || rulePaths.length === 0) {
     return { copied: 0, skipped: 0, failed: 0 };
   }
@@ -857,6 +881,7 @@ async function installCometHooksForPlatform(
   baseDir: string,
   platform: Platform,
   scope: InstallScope = 'project',
+  workflowSelection: InitWorkflowSelection = 'classic',
 ): Promise<HookInstallResult> {
   if (!platform.supportsHooks) {
     return { status: 'skipped', reason: 'platform does not support hooks' };
@@ -870,7 +895,7 @@ async function installCometHooksForPlatform(
 
   try {
     const manifest = await readManifest();
-    const hooksConfig = manifest.hooks;
+    const hooksConfig = managedHooksForSelection(manifest, workflowSelection);
     if (!hooksConfig || Object.keys(hooksConfig).length === 0) {
       return { status: 'skipped', reason: 'no hooks defined in manifest' };
     }
@@ -1452,10 +1477,30 @@ async function mergeProjectConfig(
 ): Promise<void> {
   const configPath = path.join(projectPath, '.comet', 'config.yaml');
   let existing: Record<string, string> = {};
+  let existingSource = '';
   if (await fileExists(configPath)) {
-    existing = parseProjectConfigOverrides(await readFile(configPath, 'utf-8'));
+    existingSource = await readFile(configPath, 'utf-8');
+    existing = parseProjectConfigOverrides(existingSource);
   }
   await ensureDir(path.dirname(configPath));
+  const document = parseDocument(existingSource, { uniqueKeys: false });
+  const root = document.errors.length === 0 ? document.toJS() : null;
+  const hasStructuredFields =
+    root &&
+    typeof root === 'object' &&
+    !Array.isArray(root) &&
+    Object.values(root as Record<string, unknown>).some(
+      (value) => value !== null && typeof value === 'object',
+    );
+  if (hasStructuredFields) {
+    const resolvedLanguage = language ?? existing.language ?? 'en';
+    for (const field of getManagedConfigFields(resolvedLanguage)) {
+      const raw = field.key === 'language' ? resolvedLanguage : (existing[field.key] ?? field.def);
+      document.set(field.key, raw === 'true' ? true : raw === 'false' ? false : raw);
+    }
+    await writeFile(configPath, document.toString(), 'utf-8');
+    return;
+  }
   await writeFile(configPath, renderProjectConfig(existing, language), 'utf-8');
 }
 

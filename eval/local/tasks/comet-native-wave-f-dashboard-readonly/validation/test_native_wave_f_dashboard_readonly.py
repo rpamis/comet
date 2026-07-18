@@ -365,10 +365,11 @@ def _copy_readonly_probe(source_project: Path, destination: Path) -> None:
     _current_native_manifest(source_project)
     (destination / "docs").mkdir(parents=True)
     shutil.copytree(source_native, destination / "docs/comet")
-    config = source_project / "comet.config.yaml"
+    config = source_project / ".comet/config.yaml"
     if not config.is_file() or config.is_symlink():
         raise ValueError("Native project config is missing from the probe source")
-    shutil.copy2(config, destination / config.name)
+    (destination / ".comet").mkdir()
+    shutil.copy2(config, destination / ".comet/config.yaml")
     for path in sorted(destination.rglob("*"), reverse=True):
         if path.is_file():
             path.chmod(0o444)

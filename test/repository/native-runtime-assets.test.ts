@@ -21,6 +21,7 @@ describe('Native runtime release asset', () => {
       'comet-native/reference/commands.md',
       'comet-native/reference/recovery.md',
       'comet-native/scripts/comet-native-runtime.mjs',
+      'comet-native/scripts/comet-native-hook-guard.mjs',
     ]) {
       expect(manifest.skills).toContain(relative);
     }
@@ -32,6 +33,7 @@ describe('Native runtime release asset', () => {
     expect(source.startsWith('#!/usr/bin/env node\n')).toBe(true);
     for (const command of [
       'init',
+      'hook-guard',
       'root',
       'new',
       'list',
@@ -45,7 +47,8 @@ describe('Native runtime release asset', () => {
       expect(source).toContain(command);
     }
     expect(source).not.toMatch(/domains\/comet-classic|openspec|superpowers|requiredSkillCalls/iu);
-    expect(source).not.toMatch(/CLASSIC_RUN_STORAGE|\.comet\//u);
+    expect(source).not.toMatch(/CLASSIC_RUN_STORAGE/u);
+    expect(source).toContain('.comet/config.yaml');
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
   });
 

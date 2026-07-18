@@ -3,7 +3,7 @@
 ## Layout
 
 ```text
-<project>/comet.config.yaml
+<project>/.comet/config.yaml
 <artifact-root>/comet/
   specs/<capability>/spec.md
   changes/<change-name>/
@@ -41,7 +41,7 @@
       events.jsonl
 ```
 
-Project configuration names the single `artifact-root`. Native does not use a hidden change directory and never discovers state from other requirements directories. The root-level `comet.config.yaml` is the persistent-configuration exception. During interrupted `root move` recovery, runtime-managed staging or quarantine directories may also appear beside the source or target artifact root; the transaction removes them when it settles. They are not a second writable Native change root.
+Project configuration names the single `artifact-root`. Native does not use a hidden change directory and never discovers state from other requirements directories. The project-level `.comet/config.yaml` is the persistent-configuration exception. During interrupted `root move` recovery, runtime-managed staging or quarantine directories may also appear beside the source or target artifact root; the transaction removes them when it settles. They are not a second writable Native change root.
 
 ## Project configuration
 

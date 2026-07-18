@@ -1837,8 +1837,10 @@ def test_wave_f_live_check_never_executes_agent_mutable_wrapper(monkeypatch, tmp
     (native_change / "change.yaml").write_text(
         "name: dashboard-visible-change\nphase: shape\n", encoding="utf-8"
     )
-    (tmp_path / "comet.config.yaml").write_text(
-        "mode: native\nnativeRoot: docs/comet\n", encoding="utf-8"
+    (tmp_path / ".comet").mkdir()
+    (tmp_path / ".comet" / "config.yaml").write_text(
+        "schema: comet.project.v1\ndefault_workflow: native\nworkflows:\n  - native\nnative:\n  artifact_root: docs\n",
+        encoding="utf-8",
     )
     evidence = tmp_path / ".cache/comet-native-eval"
     write_json(

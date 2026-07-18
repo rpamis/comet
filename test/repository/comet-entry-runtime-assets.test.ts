@@ -59,8 +59,9 @@ describe('Comet entry resolver runtime release asset', () => {
   it('resolves Native from project config with only the bundled Skill runtime available', async () => {
     const projectRoot = path.join(temporaryRoot, 'native-project');
     await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
     await fs.writeFile(
-      path.join(projectRoot, 'comet.config.yaml'),
+      path.join(projectRoot, '.comet', 'config.yaml'),
       [
         'schema: comet.project.v1',
         'default_workflow: native',
@@ -100,13 +101,18 @@ describe('Comet entry resolver runtime release asset', () => {
   it('fails closed on malformed config instead of falling back to Classic', async () => {
     const projectRoot = path.join(temporaryRoot, 'invalid-project');
     await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });
-    await fs.writeFile(path.join(projectRoot, 'comet.config.yaml'), 'schema: [broken\n', 'utf8');
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      'schema: [broken\n',
+      'utf8',
+    );
 
     const result = runSkillOnly(projectRoot);
 
     expect(result.status).toBe(65);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toMatch(/Invalid comet\.config\.yaml/iu);
+    expect(result.stderr).toMatch(/Invalid \.comet\/config\.yaml/iu);
     expect(result.stderr).not.toContain('legacy-fallback');
   });
 });

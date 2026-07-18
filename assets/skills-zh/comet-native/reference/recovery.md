@@ -4,7 +4,7 @@
 
 每次恢复都从磁盘事实开始：
 
-1. 读取项目 `comet.config.yaml`，确认唯一 artifact root；若有 `pending_root_move`，先运行 doctor。
+1. 读取项目 `.comet/config.yaml`，确认唯一 artifact root；若有 `pending_root_move`，先运行 doctor。
 2. 运行 `comet native status`；多个 active change 时读取 Native selection 或让用户明确选择。
 3. 对目标 change 运行 `show` 和 `status <change-name> --details`，读取 `change.yaml`、brief、拟议完整规格、verification、有界结构化 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；Verify/Archive 的验收 ID 则按 `acceptancePage.nextCursor` 独立分页取得，不依赖丢失的旧响应。
 4. 读取相关 canonical 规格、实现、规则、测试和当前工作区状态。

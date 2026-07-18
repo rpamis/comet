@@ -160,7 +160,7 @@ describe('Comet entry resume probe v2', () => {
       nextCommand: '/comet-classic',
     });
 
-    await fs.rm(path.join(projectRoot, 'comet.config.yaml'));
+    await fs.rm(path.join(projectRoot, '.comet', 'config.yaml'));
     const legacy = await resolveCometEntryResumeProbe(projectRoot, input('继续 classic-change'));
     expect(legacy).toMatchObject({
       workflow: 'classic',
@@ -213,7 +213,8 @@ describe('Comet entry resume probe v2', () => {
 
   it('fails closed with a structured result when project config is malformed', async () => {
     await createClassic(projectRoot, 'must-not-fallback');
-    await writeFile(path.join(projectRoot, 'comet.config.yaml'), 'schema: [broken\n');
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await writeFile(path.join(projectRoot, '.comet', 'config.yaml'), 'schema: [broken\n');
 
     await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
       schema_version: 'comet.resume_probe.v2',
