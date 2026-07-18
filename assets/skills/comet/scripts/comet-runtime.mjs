@@ -13096,7 +13096,8 @@ var MACHINE_OWNED_FIELDS = /* @__PURE__ */ new Set([
   "archive_confirmation",
   "verify_failures",
   "classic_profile",
-  "classic_migration"
+  "classic_migration",
+  "bound_branch"
 ]);
 var SETTABLE_FIELDS = new Set(
   CLASSIC_WIRE_KEYS.filter((field2) => !MACHINE_OWNED_FIELDS.has(field2))
@@ -13432,6 +13433,22 @@ async function setField2(output, name, field2, value, options = {}) {
   const { file, directory } = await stateFile(name);
   const document = await readDocument2(file);
   document.set(field2, parsedValue(field2, value));
+  if (field2 === "isolation") {
+    if (value === "current") {
+      const record = document.toJS();
+      const existing = record.bound_branch;
+      const alreadyBound = typeof existing === "string" && existing !== "";
+      if (!alreadyBound) {
+        const branch = liveGitBranch(process.cwd());
+        if (branch === null) {
+          fail2("ERROR: cannot bind isolation=current while HEAD is detached; checkout a branch first");
+        }
+        document.set("bound_branch", branch);
+      }
+    } else {
+      document.set("bound_branch", null);
+    }
+  }
   const run = await readRunState(directory);
   const projection = parseClassicStateDocument(document.toJS(), run);
   if (projection.run) {

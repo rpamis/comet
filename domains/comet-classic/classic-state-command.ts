@@ -9,6 +9,7 @@ import {
   resolveCurrentChange,
   selectCurrentChange,
 } from './classic-current-change.js';
+import { liveGitBranch } from './classic-branch-binding.js';
 import { collectClassicEvidence } from './classic-evidence.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
 import { resolveClassicStepId } from './classic-resolver.js';
@@ -45,6 +46,7 @@ const MACHINE_OWNED_FIELDS = new Set<string>([
   'verify_failures',
   'classic_profile',
   'classic_migration',
+  'bound_branch',
 ]);
 const SETTABLE_FIELDS = new Set<string>(
   CLASSIC_WIRE_KEYS.filter((field) => !MACHINE_OWNED_FIELDS.has(field)),
@@ -445,6 +447,24 @@ async function setField(
   const { file, directory } = await stateFile(name);
   const document = await readDocument(file);
   document.set(field, parsedValue(field, value));
+  if (field === 'isolation') {
+    if (value === 'current') {
+      const record = document.toJS() as Record<string, unknown>;
+      const existing = record.bound_branch;
+      const alreadyBound = typeof existing === 'string' && existing !== '';
+      if (!alreadyBound) {
+        const branch = liveGitBranch(process.cwd());
+        if (branch === null) {
+          fail(
+            'ERROR: cannot bind isolation=current while HEAD is detached; checkout a branch first',
+          );
+        }
+        document.set('bound_branch', branch);
+      }
+    } else {
+      document.set('bound_branch', null);
+    }
+  }
   const run = await readRunState(directory);
   const projection = parseClassicStateDocument(document.toJS() as Record<string, unknown>, run);
   if (projection.run) {

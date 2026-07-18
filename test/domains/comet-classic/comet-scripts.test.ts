@@ -5947,4 +5947,142 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
     }, 20_000);
   });
+
+  describe('isolation=current branch binding', () => {
+    const stateScript = path.join(scriptsDir, 'comet-state.mjs');
+
+    it('first-time set isolation current writes bound_branch to current branch', async () => {
+      execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'bind-current',
+        ['workflow: full', 'phase: build', 'isolation: null', 'bound_branch: null', ''].join('\n'),
+      );
+
+      const result = runNode(tmpDir, stateScript, ['set', 'bind-current', 'isolation', 'current']);
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('[SET] isolation=current');
+      const yaml = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', 'bind-current', '.comet.yaml'),
+        'utf-8',
+      );
+      expect(yaml).toContain('isolation: current');
+      expect(yaml).toContain('bound_branch: main');
+    }, 20_000);
+
+    it('already-bound change: repeat set isolation current does not overwrite existing bound_branch', async () => {
+      execFileSync('git', ['init', '-b', 'branch-A'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['switch', '-c', 'branch-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'rebind-test',
+        ['workflow: full', 'phase: build', 'isolation: current', 'bound_branch: branch-A', ''].join(
+          '\n',
+        ),
+      );
+
+      const result = runNode(tmpDir, stateScript, ['set', 'rebind-test', 'isolation', 'current']);
+
+      expect(result.status).toBe(0);
+      const yaml = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', 'rebind-test', '.comet.yaml'),
+        'utf-8',
+      );
+      expect(yaml).toContain('isolation: current');
+      expect(yaml).toContain('bound_branch: branch-A');
+    }, 20_000);
+
+    it('set isolation branch clears bound_branch to null', async () => {
+      execFileSync('git', ['init', '-b', 'feature'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'clear-binding',
+        ['workflow: full', 'phase: build', 'isolation: current', 'bound_branch: feature', ''].join(
+          '\n',
+        ),
+      );
+
+      const result = runNode(tmpDir, stateScript, ['set', 'clear-binding', 'isolation', 'branch']);
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('[SET] isolation=branch');
+      const yaml = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', 'clear-binding', '.comet.yaml'),
+        'utf-8',
+      );
+      expect(yaml).toContain('isolation: branch');
+      expect(yaml).toContain('bound_branch: null');
+    }, 20_000);
+
+    it('detached HEAD rejects set isolation current with "HEAD is detached" error', async () => {
+      execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['checkout', '--detach'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'detached-test',
+        ['workflow: full', 'phase: build', 'isolation: null', 'bound_branch: null', ''].join('\n'),
+      );
+
+      const result = runNode(tmpDir, stateScript, ['set', 'detached-test', 'isolation', 'current']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('HEAD is detached');
+      const yaml = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', 'detached-test', '.comet.yaml'),
+        'utf-8',
+      );
+      expect(yaml).toContain('isolation: null');
+      expect(yaml).toContain('bound_branch: null');
+    }, 20_000);
+
+    it('rejects direct set bound_branch with "machine-owned" error', async () => {
+      execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'direct-bound-test',
+        ['workflow: full', 'phase: build', 'isolation: current', 'bound_branch: null', ''].join('\n'),
+      );
+
+      const result = runNode(tmpDir, stateScript, [
+        'set',
+        'direct-bound-test',
+        'bound_branch',
+        'some-branch',
+      ]);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('machine-owned');
+    }, 20_000);
+  });
 });
