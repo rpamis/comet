@@ -23,6 +23,8 @@ comet state check <name> build
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+
 **Idempotency**: All build phase operations can be safely re-executed. Read `.comet.yaml` `phase` to confirm build, read the plan header `base-ref`, then parse tasks.md checkboxes in document order and resume from the first unchecked task. Already-committed tasks must not be re-committed.
 
 ### 1. Create Plan (Subagent Offload)

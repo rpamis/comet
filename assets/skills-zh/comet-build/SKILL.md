@@ -23,6 +23,8 @@ comet state check <name> build
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
+若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
+
 **幂等性**：build 阶段所有操作可安全重复执行。读取 `.comet.yaml` 的 `phase` 字段确认仍在 build 阶段，读取 plan 文件头的 `base-ref`，再按文档顺序解析 tasks.md 的复选框，从第一个未勾选任务继续执行。已提交的任务不得重复提交。
 
 ### 1. 制定计划（Subagent Offload）

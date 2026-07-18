@@ -27,6 +27,8 @@ comet state check <change-name> verify
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
+若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
+
 **幂等性**：verify 阶段所有检查可安全重复执行。如 `verify_result` 已为 `pass`，说明验证已完成并应进入 archive；`branch_status` 在归档提交和最终分支处理完成前保持 `pending`。如 `verify_result` 为 `pending`，从头开始验证。
 
 ### 1. 改动规模评估

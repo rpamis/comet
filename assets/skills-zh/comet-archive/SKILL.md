@@ -28,6 +28,8 @@ comet state check <name> archive
 
 验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
 
+若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
+
 ### 1. 归档前最终确认（阻塞点）
 
 入口验证通过后，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认是否立即归档**。不得在用户确认前运行 `comet archive "<change-name>"`。
@@ -104,15 +106,12 @@ git commit -m "chore: archive <change-name>"
 
 ### 5. 归档提交后的分支处理
 
-归档提交成功后，**立即执行：** 使用 Skill 工具加载 Superpowers `finishing-a-development-branch` 技能。该步骤必须位于归档与归档提交之后，确保最终分支/PR 包含 spec 合并和归档元数据。
+归档提交成功后，先读取 `comet state get <change-name> isolation`，按隔离方式分流：
 
-如该技能不可用，停止流程并提示安装或启用；不得把 `branch_status` 标记为完成。技能加载后，按 `comet/reference/decision-point.md` 暂停让用户选择：
+- `isolation !== current`：**立即执行：** 使用 Skill 工具加载 Superpowers `finishing-a-development-branch` 技能。该步骤必须位于归档与归档提交之后，确保最终分支/PR 包含 spec 合并和归档元数据。如该技能不可用，停止流程并提示安装或启用；不得把 `branch_status` 标记为完成。技能加载后，按 `comet/reference/decision-point.md` 暂停让用户选择：本地合并到主分支、推送并创建 PR、保持当前分支稍后处理。
+- `isolation === current`：跳过 Superpowers `finishing-a-development-branch`。按 `comet/reference/decision-point.md` 暂停让用户二选一：推送当前分支，或暂不推送并保留本地状态。
 
-1. 本地合并到主分支
-2. 推送并创建 PR
-3. 保持当前分支稍后处理
-
-归档已经完成，因此这里不提供“丢弃工作”选项。只有用户选择的操作成功完成（或明确选择保持分支）后，才运行：
+归档已经完成，因此这里不提供“丢弃工作”选项。只有用户选择的操作成功完成、明确选择保持分支，或在 `current` 模式下明确选择暂不推送后，才运行：
 
 ```bash
 comet state set <change-name> branch_status handled

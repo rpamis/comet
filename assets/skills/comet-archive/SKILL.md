@@ -28,6 +28,8 @@ comet state check <name> archive
 
 Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
 
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+
 ### 1. Final Archive Confirmation (Blocking Point)
 
 After entry verification passes, **must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to confirm whether to archive immediately**. Must not run `comet archive "<change-name>"` before user confirmation.
@@ -104,15 +106,12 @@ Stop if the commit fails or the staged diff contains unrelated paths.
 
 ### 5. Handle the Branch After the Archive Commit
 
-After the archive commit succeeds, **immediately execute:** use the Skill tool to load Superpowers `finishing-a-development-branch`. This ordering ensures the final branch or PR contains the main-spec merge and archive metadata.
+After the archive commit succeeds, first read `comet state get <change-name> isolation` and route by isolation:
 
-If the skill is unavailable, stop and prompt the user to enable/install it; do not mark `branch_status` handled. After loading it, pause under `comet/reference/decision-point.md` and let the user choose:
+- `isolation !== current`: **immediately execute:** use the Skill tool to load Superpowers `finishing-a-development-branch`. This ordering ensures the final branch or PR contains the main-spec merge and archive metadata. If the skill is unavailable, stop and prompt the user to enable/install it; do not mark `branch_status` handled. After loading it, pause under `comet/reference/decision-point.md` and let the user choose: merge locally into the main branch, push and create a PR, or keep the current branch for later.
+- `isolation === current`: skip Superpowers `finishing-a-development-branch`. Pause under `comet/reference/decision-point.md` and let the user choose one option: push the current branch, or do not push yet and keep the local state.
 
-1. Merge locally into the main branch
-2. Push and create a PR
-3. Keep the current branch for later
-
-Archive is already complete, so do not offer "discard work". Only after the selected operation succeeds (or the user explicitly keeps the branch), run:
+Archive is already complete, so do not offer "discard work". Only after the selected operation succeeds, the user explicitly keeps the branch, or the user explicitly chooses not to push in `current` mode, run:
 
 ```bash
 comet state set <change-name> branch_status handled

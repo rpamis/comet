@@ -50,12 +50,24 @@ comet state init <name> tweak
 comet state select <name>
 ```
 
-Tweak defaults to `isolation: current`, truthfully indicating execution in the current workspace. Change it to `branch` or `worktree` only after that workspace is actually created/selected.
-
 Verify initialized state:
 
 ```bash
 comet state check <name> open
+```
+
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+
+Entry workspace isolation is a user decision point; do not use `current` as the default isolation mode. Pause under `comet/reference/decision-point.md` and let the user choose one option:
+
+- A. Work directly on the current branch: run `comet state set <name> isolation current` to truthfully bind the current branch
+- B. Create a branch: create and switch to `tweak/YYYYMMDD/<change-name>`, then run `comet state set <name> isolation branch`
+- C. Create a worktree: first use the Skill tool to load Superpowers `using-git-worktrees`; let that skill create the isolated workspace, then run `comet state set <name> isolation worktree` inside the worktree
+
+After B/C, rerun this in the actual execution branch or worktree:
+
+```bash
+comet state select <name>
 ```
 
 Run phase guard to transition open → build:
@@ -66,7 +78,7 @@ comet guard <change-name> open --apply
 
 ### 2. OpenSpec Apply Build (tweak-only preset build)
 
-Use tweak defaults: `build_mode: direct`. Skip Superpowers `brainstorming` and `writing-plans`, and let OpenSpec's apply action execute the current change's tasks.
+Use tweak defaults: `build_mode: direct`. `isolation` must keep the entry workspace isolation the user confirmed in Step 1; do not change it back to `current` on your own. Skip Superpowers `brainstorming` and `writing-plans`, and let OpenSpec's apply action execute the current change's tasks.
 
 <IMPORTANT>
 This apply path belongs only to tweak. Full `/comet` or `workflow: full` must not use tweak's `openspec-apply-change` build path; full must still generate a Design Doc through `/comet-design`, then let `/comet-build` use Superpowers `writing-plans`, execution-method selection, and the corresponding execution skill to build.
