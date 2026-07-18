@@ -11,7 +11,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Current-isolation drift detection**: `isolation: current` now persists its bound branch in the committed change state instead of a local sidecar, so switching branches mid-change is reliably detected at every build/verify/archive entry check and by the write guard, and is no longer silently reset by re-selecting the current change. Establishing `isolation: current` on a detached HEAD is now rejected.
-- **`comet status`**: Now surfaces the selected isolation mode and, for `current` isolation, the bound branch in both text and `--json` output.
+- **Branch/worktree drift detection**: `isolation: branch` and `isolation: worktree` now use the same bound-branch safety checks as current-branch isolation, so switching branches inside those workspace modes blocks entry checks and write guards until the user switches back or explicitly rebinds the change.
+- **`comet status`**: Now surfaces the selected isolation mode and bound branch for branch-bound workspace modes in both text and `--json` output.
 - **Archive branch handling for `current` isolation**: No longer offers feature-branch-oriented merge/PR/keep choices; instead asks whether to push the current branch or keep it local.
 - **Hotfix/tweak workspace isolation**: No longer defaults silently to the current branch; both presets now pause to ask the user to choose between working directly on the current branch, creating a new branch, or creating a worktree.
 - **Full workflow current-branch isolation**: Full workflows can now satisfy issue [#190](https://github.com/rpamis/comet/issues/190) by letting users explicitly keep working on the current branch instead of forcing a new branch or worktree, while preserving the same bound-branch drift checks used by hotfix and tweak.

@@ -248,7 +248,7 @@ Agents should not skip these decision points; other unambiguous phase transition
 
 ### State Machine Hard Constraints
 
-- Before `build → verify`, `isolation` must be `current`, `branch`, or `worktree`; `current` must come from explicit user selection and bind the current branch
+- Before `build → verify`, `isolation` must be `current`, `branch`, or `worktree`; all three workspace modes must come from explicit user selection and bind the current branch
 - Before `build → verify`, `build_mode` must be selected
 - `build_mode: subagent-driven-development` must also have `subagent_dispatch: confirmed`
 - Before full workflow leaves build phase, `tdd_mode` must be selected as `tdd` or `direct`

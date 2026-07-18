@@ -202,7 +202,7 @@ comet state set <name> build_mode direct
 
   示例：如果 change 名称为 `fix-login-bug`，今天是 2026-06-09，则推荐 `feature/20260609/fix-login-bug`
 
-  分支名由 Step 2 确认后，立即执行 `git checkout -b <branch-name>`，后续工作在新分支上进行。
+  分支名由 Step 2 确认后，立即执行 `git checkout -b <branch-name>`，然后运行 `comet state set <name> isolation branch`，把新分支写入 `bound_branch`。后续工作在新分支上进行。
 
 - **worktree**：必须使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能创建隔离工作区。禁止用普通 shell 命令或原生工具绕过该技能；如该技能不可用，停止流程并提示安装或启用 Superpowers 技能。
 
@@ -213,7 +213,7 @@ git add docs/superpowers/plans/YYYY-MM-DD-feature.md
 git commit -m "chore: add implementation plan"
 ```
 
-进入最终执行分支或 worktree 后，必须在该实际工作区重新绑定当前 change。branch 切换会使入口绑定失效，新 worktree 也不会继承原工作区的本地选择文件：
+进入最终执行分支或 worktree 后，必须在该实际工作区重新绑定当前 change。branch 模式已在切换后通过 `isolation branch` 绑定；worktree 模式必须在新工作区运行 `comet state set <name> isolation worktree`，把 worktree 的当前分支写入 `bound_branch`。新 worktree 不会继承原工作区的本地选择文件，因此还必须选择当前 change：
 
 ```bash
 comet state select <change-name>

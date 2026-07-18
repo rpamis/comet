@@ -202,7 +202,7 @@ Without `direct_override: true`, `build_mode=direct` in full workflow is blocked
 
   Example: if change name is `fix-login-bug` and today is 2026-06-09, recommend `feature/20260609/fix-login-bug`
 
-  Immediately after Step 2 confirms the branch name, run `git checkout -b <branch-name>` and continue on the new branch.
+  Immediately after Step 2 confirms the branch name, run `git checkout -b <branch-name>`, then run `comet state set <name> isolation branch` to write the new branch to `bound_branch`. Continue on the new branch.
 
 - **worktree**: Must use the Skill tool to load the Superpowers `using-git-worktrees` skill to create isolated workspace. Do not bypass this skill with plain shell commands or native tools; if the skill is unavailable, stop the process and prompt to install or enable Superpowers skills.
 
@@ -213,7 +213,7 @@ git add docs/superpowers/plans/YYYY-MM-DD-feature.md
 git commit -m "chore: add implementation plan"
 ```
 
-After entering the final execution branch or worktree, bind the current change again inside that actual workspace. A branch switch invalidates the entry binding, and a new worktree does not inherit the original workspace-local selection file:
+After entering the final execution branch or worktree, bind the current change again inside that actual workspace. Branch mode is bound after checkout with `isolation branch`; worktree mode must run `comet state set <name> isolation worktree` inside the new workspace to write that worktree's current branch to `bound_branch`. A new worktree does not inherit the original workspace-local selection file, so select the current change too:
 
 ```bash
 comet state select <change-name>
