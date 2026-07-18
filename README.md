@@ -537,7 +537,8 @@ build_mode: subagent-driven-development                  # Build mode: subagent-
 build_pause: null                                        # `build_pause` records an internal build-phase pause point: null none, `plan-ready` means the plan has been generated
 subagent_dispatch: null                                  # Dispatch confirmation; confirm before verify
 tdd_mode: null                                           # Full-workflow build choice: tdd | direct
-isolation: branch                                        # Isolation mode: branch | worktree
+isolation: branch                                        # Isolation mode: current | branch | worktree
+bound_branch: null                                       # Git branch bound by isolation=current; null for branch/worktree
 verify_mode: null                                        # Verification mode: light | full
 design_doc: docs/superpowers/specs/<design-doc>.md       # Design doc path
 plan: docs/superpowers/plans/YYYY-MM-DD-feature.md       # Implementation plan path
@@ -581,7 +582,8 @@ Comet ensures agent execution reliability through automated state transitions:
    - Detects unknown/typos fields
 
 4. **Build Decision Enforcement** — Guard and state transitions both block skipped build choices
-   - `isolation` must be `branch` or `worktree`
+   - `isolation` must be `current`, `branch`, or `worktree`
+   - `isolation: current` binds the current Git branch, and later entry checks block accidental branch drift
    - `build_mode` must be selected before leaving build
    - `build_pause: plan-ready` is a recoverable pause after plan generation, not a `build_mode`
    - Full workflow `build_mode: direct` requires `direct_override: true`

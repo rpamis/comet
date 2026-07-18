@@ -48,7 +48,7 @@ archived: false
 | `subagent_dispatch` | `null` or `confirmed`. Only when the platform's real background subagent/Task/multi-agent dispatch capability is confirmed may `build_mode: subagent-driven-development` be written and used to leave the build phase |
 | `tdd_mode` | `tdd` or `direct`. Full workflow must select before leaving build. `tdd` forces write-failing-test-first per task; `direct` skips per-task TDD but still requires relevant tests and bug-regression evidence. hotfix/tweak default to `direct` |
 | `review_mode` | `off`, `standard`, or `thorough`. Full workflow must select before leaving build; hotfix/tweak default to `off` |
-| `isolation` | `current`, `branch`, or `worktree`. Full init may be `null` but must use a real `branch` or `worktree` before leaving build; hotfix/tweak may truthfully use `current`, `branch`, or `worktree` after the entry user decision point, and must not claim branch isolation before creating one |
+| `isolation` | `current`, `branch`, or `worktree`. Full init may be `null`, but before leaving build the user must explicitly select `current`, create/select a real `branch`, or create/select a real `worktree`; hotfix/tweak may also truthfully use all three modes after the entry user decision point, and must not claim branch isolation before creating one |
 | `bound_branch` | Current-branch binding record; may be empty. Used only by `isolation: current`: first setting or entry check records the current Git branch, and later `comet state select` / `comet state check` must confirm the bound branch still matches the current branch. Drift returns `BLOCKED`; follow the decision-point protocol so the user chooses whether to switch back to the bound branch or explicitly confirm and run `comet state rebind <change-name>`. `isolation: branch` / `worktree` clears this field |
 | `verify_mode` | `light` or `full`; may be empty |
 | `auto_transition` | `true` or `false`. Only controls whether to automatically invoke the next skill after phase guard advances phase; `false` outputs `manual` from `comet-state next`, pausing next-skill invocation but not blocking phase field updates |
@@ -69,7 +69,7 @@ archived: false
 
 ## State Machine Hard Constraints
 
-- Before full-workflow `build → verify`, `isolation` must be `branch` or `worktree`; hotfix/tweak may use `current`
+- Before `build → verify`, `isolation` must be `current`, `branch`, or `worktree`
 - Before `build → verify`, `build_mode` must be selected
 - `build_mode: subagent-driven-development` requires `subagent_dispatch: confirmed`
 - Full workflow must select `tdd_mode` as `tdd` or `direct` before leaving build

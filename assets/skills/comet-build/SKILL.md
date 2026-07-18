@@ -118,12 +118,14 @@ The plan is on the current branch. These settings are all part of the single Ste
 
 | Option | Method | Description |
 |--------|--------|-------------|
-| A | Create branch | Create a new branch in the current repo, simple and fast |
-| B | Create Worktree | Isolated workspace, fully independent, suitable for parallel development |
+| A | Work on current branch | Do not create a new branch; truthfully bind the current Git branch |
+| B | Create branch | Create a new branch in the current repo, simple and fast |
+| C | Create Worktree | Isolated workspace, fully independent, suitable for parallel development |
 
 **Recommendation rules**:
-- Change involves ≤ 3 files → Recommend A
-- Need parallel development, current branch has uncommitted work → Recommend B
+- User explicitly wants to keep the current branch, or the current branch is already the target branch for this change → Recommend A
+- Change involves ≤ 3 files and the current branch is clean → Recommend B
+- Need parallel development, current branch has uncommitted work → Recommend C
 
 **Execution Method**:
 
@@ -137,12 +139,12 @@ The plan is on the current branch. These settings are all part of the single Ste
 - Task count ≤ 2 and no cross-module dependencies → Recommend B
 - From hotfix path → Recommend B
 
-These tables are part of the Step 2 joint decision and do not create another pause. First remove options that capability preflight found unavailable. When multiple valid options remain, do not choose `branch` or `worktree`, execution method, TDD mode, or review mode from recommendations. Recommendations explain a preference; they never replace user confirmation.
+These tables are part of the Step 2 joint decision and do not create another pause. First remove options that capability preflight found unavailable. When multiple valid options remain, do not choose `current`, `branch`, or `worktree`, execution method, TDD mode, or review mode from recommendations. Recommendations explain a preference; they never replace user confirmation.
 
 After user selection, update `isolation`, execution method, TDD mode, and code review mode fields:
 
 ```bash
-comet state set <name> isolation <branch|worktree>
+comet state set <name> isolation <current|branch|worktree>
 ```
 
 - If the user chooses `executing-plans`: run `comet state set <name> subagent_dispatch null`, then run `comet state set <name> build_mode executing-plans`
@@ -168,7 +170,7 @@ Run `comet state set <name> tdd_mode <tdd|direct>`
 
 Run `comet state set <name> review_mode <off|standard|thorough>`
 
-`isolation` is a script-enforced hard constraint. Full workflow init may temporarily leave it as `null`, but only before this step. If it remains `null`, both the `build → verify` guard and `comet state transition build-complete` will fail.
+`isolation` is a script-enforced hard constraint. Full workflow init may temporarily leave it as `null`, but only before this step. If it remains `null`, both the `build → verify` guard and `comet state transition build-complete` will fail. Full workflow allows `current`, `branch`, or `worktree`, but `current` must be written only after the user explicitly selects it in Step 2; never make it a silent default.
 
 `subagent_dispatch` is a script-enforced hard constraint. `build_mode: subagent-driven-development` requires `subagent_dispatch: confirmed` before leaving the build phase, otherwise both `comet guard build --apply` and `comet state transition build-complete` will fail.
 
@@ -186,6 +188,8 @@ comet state set <name> build_mode direct
 Without `direct_override: true`, `build_mode=direct` in full workflow is blocked by both guard and state transition.
 
 **Execute isolation**:
+
+- **current**: Do not create a new branch or worktree; execute directly on the current Git branch. Run `comet state set <name> isolation current` immediately; the command writes the current branch to `bound_branch`. If HEAD is detached, stop and ask the user to check out a real branch first, because there is no auditable branch binding.
 
 - **branch**: Use the branch name already confirmed in Step 2; do not pause again. If legacy recovery no longer has the branch name from that joint decision, re-enter the same Step 2 decision instead of creating a separate branch-naming decision.
 
@@ -290,7 +294,7 @@ Build is the longest phase and may span many tasks. To support resume after cont
 - All tasks.md checked
 - Code committed
 - Project-specific build/tests explicitly run and pass; do not rely only on guard auto-detection
-- `isolation` has been written as `branch` or `worktree`
+- `isolation` has been written as `current`, `branch`, or `worktree`
 - `build_mode` has been written as `subagent-driven-development`, `executing-plans`, or `direct` with explicit override; if `subagent-driven-development`, `subagent_dispatch` must be `confirmed`
 - `tdd_mode` has been written as `tdd` or `direct`
 - `review_mode` has been written as `off`, `standard`, or `thorough`

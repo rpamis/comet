@@ -118,12 +118,14 @@ comet state set <name> build_pause null
 
 | 选项 | 方式 | 说明 |
 |------|------|------|
-| A | 创建分支 | 在当前仓库创建新分支，简单快速 |
-| B | 创建 Worktree | 隔离工作区，完全独立，适合并行开发 |
+| A | 当前分支直接工作 | 不创建新分支，如实绑定当前 Git 分支 |
+| B | 创建分支 | 在当前仓库创建新分支，简单快速 |
+| C | 创建 Worktree | 隔离工作区，完全独立，适合并行开发 |
 
 **推荐规则**：
-- 变更涉及 ≤ 3 个文件 → 推荐 A
-- 需要并行开发、当前分支有未提交工作 → 推荐 B
+- 用户明确希望沿用当前分支，或当前分支本身就是该 change 的目标分支 → 推荐 A
+- 变更涉及 ≤ 3 个文件且当前分支干净 → 推荐 B
+- 需要并行开发、当前分支有未提交工作 → 推荐 C
 
 **执行方式**：
 
@@ -137,12 +139,12 @@ comet state set <name> build_pause null
 - 任务数 ≤ 2 且无跨模块依赖 → 推荐 B
 - 来自 hotfix 路径 → 推荐 B
 
-这些表格是 Step 2 联合决策的一部分，不再单独暂停。先移除能力预检判定为不可执行的选项；在剩余多个合法选项时，不得根据推荐规则自行选择 `branch` 或 `worktree`，也不得自行选择执行方式、TDD 模式或代码审查模式。推荐规则只能用于说明建议，不能替代用户确认。
+这些表格是 Step 2 联合决策的一部分，不再单独暂停。先移除能力预检判定为不可执行的选项；在剩余多个合法选项时，不得根据推荐规则自行选择 `current`、`branch` 或 `worktree`，也不得自行选择执行方式、TDD 模式或代码审查模式。推荐规则只能用于说明建议，不能替代用户确认。
 
 用户选择后，更新 `isolation`、执行方式、TDD 模式和代码审查模式相关字段：
 
 ```bash
-comet state set <name> isolation <branch|worktree>
+comet state set <name> isolation <current|branch|worktree>
 ```
 
 - 若用户选择 `executing-plans`：运行 `comet state set <name> subagent_dispatch null`，再运行 `comet state set <name> build_mode executing-plans`
@@ -168,7 +170,7 @@ comet state set <name> isolation <branch|worktree>
 
 运行 `comet state set <name> review_mode <off|standard|thorough>`
 
-`isolation` 是脚本级硬约束。full workflow 初始化时可以为 `null`，但只允许存在到本步骤之前。若保持 `null`，`build → verify` 的 guard 和 `comet state transition build-complete` 都会失败。
+`isolation` 是脚本级硬约束。full workflow 初始化时可以为 `null`，但只允许存在到本步骤之前。若保持 `null`，`build → verify` 的 guard 和 `comet state transition build-complete` 都会失败。full workflow 允许 `current`、`branch` 或 `worktree`，但 `current` 必须通过用户在 Step 2 显式选择后写入，不得静默默认。
 
 `subagent_dispatch` 是脚本级硬约束。`build_mode: subagent-driven-development` 离开 build 阶段前必须同时满足 `subagent_dispatch: confirmed`，否则 `comet guard build --apply` 和 `comet state transition build-complete` 都会失败。
 
@@ -186,6 +188,8 @@ comet state set <name> build_mode direct
 没有 `direct_override: true` 时，full workflow 的 `build_mode=direct` 会被 guard 和状态转换同时拦截。
 
 **执行隔离**：
+
+- **current**：不创建新分支或 worktree，直接在当前 Git 分支执行。立即运行 `comet state set <name> isolation current`；该命令会把当前分支写入 `bound_branch`。如果当前是 detached HEAD，必须停止并让用户先切回真实分支，因为没有可审计的绑定分支。
 
 - **branch**：使用 Step 2 已确认的分支名，不得再次暂停。若旧状态恢复时缺少该次联合决策中的分支名，重新进入 Step 2 的同一个联合决策；不得创建第二个独立分支命名决策点。
 
@@ -290,7 +294,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - tasks.md 全部勾选
 - 代码已提交
 - 已显式运行项目对应的构建/测试命令并通过（不要只依赖 guard 自动猜测）
-- `isolation` 已写为 `branch` 或 `worktree`
+- `isolation` 已写为 `current`、`branch` 或 `worktree`
 - `build_mode` 已写为 `subagent-driven-development`、`executing-plans` 或带显式 override 的 `direct`；若为 `subagent-driven-development`，`subagent_dispatch` 必须为 `confirmed`
 - `tdd_mode` 已写为 `tdd` 或 `direct`
 - `review_mode` 已写为 `off`、`standard` 或 `thorough`

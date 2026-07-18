@@ -1379,7 +1379,7 @@ describe('skills', () => {
         '不得用“跳过重复上下文探索”削弱 Superpowers `brainstorming` 的澄清流程',
       );
       expect(zhDesign).not.toContain('跳过重复上下文探索，直接进入设计提问');
-      expect(zhBuild).toContain('不得根据推荐规则自行选择 `branch` 或 `worktree`');
+      expect(zhBuild).toContain('不得根据推荐规则自行选择 `current`、`branch` 或 `worktree`');
       expect(zhBuild).toContain('也不得自行选择执行方式、TDD 模式或代码审查模式');
       expect(zhBuild).toContain('`comet/reference/decision-point.md`');
       expect(zhVerify).toContain('前 3 次可修复失败自动回到 build');
@@ -1763,7 +1763,7 @@ describe('skills', () => {
         'show the plan summary, pause option, and every executable Step 3 setting together',
       );
       expect(enBuild).toContain(
-        'do not choose `branch` or `worktree`, execution method, TDD mode, or review mode from recommendations',
+        'do not choose `current`, `branch`, or `worktree`, execution method, TDD mode, or review mode from recommendations',
       );
       expect(enBuild).toContain('`comet/reference/decision-point.md`');
       expect(enVerify).toContain(
