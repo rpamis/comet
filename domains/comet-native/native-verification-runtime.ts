@@ -19,6 +19,7 @@ import {
   readNativePartialAllowance,
   readNativeVerificationEvidence,
   nativeEvidenceRef,
+  writeNativeVerificationReportSnapshot,
   writeNativeVerificationEvidence,
 } from './native-evidence-storage.js';
 import { createNativeContentSnapshot } from './native-snapshot.js';
@@ -54,6 +55,7 @@ export interface NativeVerificationPreparation {
   findingCodes: NativeVerificationFreshnessFindingCode[];
   envelope: NativeVerificationEvidenceEnvelope | null;
   evidenceRef: string | null;
+  reportSnapshot: { hash: string; text: string } | null;
 }
 
 export interface NativeVerificationFreshnessInspection {
@@ -155,6 +157,7 @@ async function reportEvidence(options: {
 }): Promise<{
   ref: string;
   hash: string;
+  text: string;
   entries: NativeAcceptanceEvidenceEntry[];
 }> {
   const report = await readNativeBoundedTextFile({
@@ -164,6 +167,7 @@ async function reportEvidence(options: {
   return {
     ref: report.ref,
     hash: report.hash,
+    text: report.text,
     entries: parseNativeVerificationMachineBlock(report.text),
   };
 }
@@ -226,6 +230,7 @@ export async function inspectNativeVerificationEvidence(
       findingCodes: facts.findingCodes,
       envelope: null,
       evidenceRef: null,
+      reportSnapshot: null,
     };
   }
   const report = await reportEvidence(options);
@@ -279,7 +284,13 @@ export async function inspectNativeVerificationEvidence(
     now: options.now,
   });
   const evidenceRef = nativeEvidenceRef('verifications', envelope.envelopeHash);
-  return { ready: true, findingCodes: [], envelope, evidenceRef };
+  return {
+    ready: true,
+    findingCodes: [],
+    envelope,
+    evidenceRef,
+    reportSnapshot: { hash: report.hash, text: report.text },
+  };
 }
 
 export async function persistNativeVerificationEvidence(options: {
@@ -290,10 +301,16 @@ export async function persistNativeVerificationEvidence(options: {
   if (
     !options.preparation.ready ||
     options.preparation.envelope === null ||
-    options.preparation.evidenceRef === null
+    options.preparation.evidenceRef === null ||
+    options.preparation.reportSnapshot === null
   ) {
     throw new Error('Native verification evidence is not ready to persist');
   }
+  await writeNativeVerificationReportSnapshot({
+    paths: options.paths,
+    name: options.state.name,
+    ...options.preparation.reportSnapshot,
+  });
   const evidenceRef = await writeNativeVerificationEvidence({
     paths: options.paths,
     name: options.state.name,

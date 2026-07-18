@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -25,7 +26,12 @@ const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 export const MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES = 1024 * 1024;
 export const MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES = 3 * MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES;
 
-export type NativeEvidenceKind = 'snapshots' | 'scopes' | 'allowances' | 'verifications';
+export type NativeEvidenceKind =
+  | 'snapshots'
+  | 'scopes'
+  | 'allowances'
+  | 'verifications'
+  | 'reports';
 
 export interface NativeEvidenceReadHooks {
   afterParentChainCaptured?: () => void | Promise<void>;
@@ -204,9 +210,62 @@ export function nativeEvidenceRef(kind: NativeEvidenceKind, hash: string): strin
   return `runtime/evidence/${kind}/${hash}.json`;
 }
 
+export function nativeReportEvidenceRef(hash: string): string {
+  return nativeEvidenceRef('reports', hash);
+}
+
+export async function writeNativeVerificationReportSnapshot(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  hash: string;
+  text: string;
+}): Promise<string> {
+  const encoded = Buffer.from(options.text, 'utf8');
+  if (
+    encoded.byteLength > MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES ||
+    createHash('sha256').update(encoded).digest('hex') !== options.hash
+  ) {
+    throw new Error('Native verification report snapshot hash or size is invalid');
+  }
+  return writeEvidenceDocument({
+    paths: options.paths,
+    name: options.name,
+    kind: 'reports',
+    hash: options.hash,
+    value: {
+      schema: 'comet.native.verification-report.v1',
+      reportHash: options.hash,
+      content: options.text,
+    },
+  });
+}
+
+export async function readNativeVerificationReportSnapshot(
+  paths: NativeProjectPaths,
+  name: string,
+  hash: string,
+): Promise<string> {
+  if (!HASH_PATTERN.test(hash)) throw new Error('Native report evidence hash is invalid');
+  const value = await readEvidenceDocument({ paths, name, kind: 'reports', hash });
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Native report evidence must be an object');
+  }
+  const report = value as Record<string, unknown>;
+  if (
+    Object.keys(report).sort().join(',') !== 'content,reportHash,schema' ||
+    report.schema !== 'comet.native.verification-report.v1' ||
+    report.reportHash !== hash ||
+    typeof report.content !== 'string' ||
+    createHash('sha256').update(Buffer.from(report.content, 'utf8')).digest('hex') !== hash
+  ) {
+    throw new Error('Native report evidence does not match its hash');
+  }
+  return report.content;
+}
+
 function parseEvidenceRef(ref: string, expectedKind: NativeEvidenceKind): string {
   const match =
-    /^runtime\/evidence\/(snapshots|scopes|allowances|verifications)\/([a-f0-9]{64})\.json$/u.exec(
+    /^runtime\/evidence\/(snapshots|scopes|allowances|verifications|reports)\/([a-f0-9]{64})\.json$/u.exec(
       ref,
     );
   if (!match || match[1] !== expectedKind) {
@@ -321,8 +380,12 @@ async function assertEnvelopeDependencies(
   paths: NativeProjectPaths,
   name: string,
   evidence: NativeVerificationEvidenceEnvelope,
+  requireReportSnapshot = false,
 ): Promise<void> {
   const scope = await readNativeImplementationScope(paths, name, evidence.implementationScopeRef);
+  if (requireReportSnapshot) {
+    await readNativeVerificationReportSnapshot(paths, name, evidence.reportHash);
+  }
   if (
     scope.scopeHash !== evidence.implementationScopeHash ||
     scope.contractHash !== evidence.contractHash ||
@@ -457,7 +520,7 @@ export async function writeNativeVerificationEvidence(options: {
   evidence: NativeVerificationEvidenceEnvelope;
 }): Promise<string> {
   const evidence = parseEnvelope(options.evidence, options.name, options.evidence.envelopeHash);
-  await assertEnvelopeDependencies(options.paths, options.name, evidence);
+  await assertEnvelopeDependencies(options.paths, options.name, evidence, true);
   return writeEvidenceDocument({
     ...options,
     kind: 'verifications',

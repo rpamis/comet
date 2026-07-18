@@ -345,6 +345,7 @@ def test_task_treatment(task_name, treatment_name):
     prompt = adapt_prompt_for_native(
         task.render_prompt(**template_vars),
         treatment_name,
+        terminal_mode=task.config.evaluation.native_terminal,
     )
     target_profile = None
     if treatment_cfg.skills:
@@ -401,6 +402,7 @@ def test_task_treatment(task_name, treatment_name):
         "require_skill_invocation": skill_hints.get("require_skill_invocation")
         or task.config.evaluation.require_skill_invocation,
         "rubric_criteria": task.config.evaluation.rubric_criteria,
+        "native_terminal": task.config.evaluation.native_terminal,
         "skill_package_path": skill_package_path,
         "generated_node_skills": skill_hints.get("generated_node_skills") or [],
         "route_conformance_task": skill_hints.get("route_conformance_task"),

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,6 +16,7 @@ import {
   readNativeVerificationEvidence,
   writeNativeImplementationScope,
   writeNativePartialAllowance,
+  writeNativeVerificationReportSnapshot,
   writeNativeVerificationEvidence,
 } from '../../../domains/comet-native/native-evidence-storage.js';
 import { canonicalHash } from '../../../domains/comet-native/native-canonical-hash.js';
@@ -122,10 +124,16 @@ describe('Native evidence storage', () => {
       acceptanceHash: contract.acceptanceHash,
       implementationScope: { ref: scopeRef, bundle },
       reportRef: 'verification.md',
-      reportHash: 'd'.repeat(64),
+      reportHash: createHash('sha256').update('Verification passed.').digest('hex'),
       acceptanceTrace: trace,
       partialAllowance: { ref: allowanceRef, allowance },
       now: new Date('2026-07-17T00:00:00.000Z'),
+    });
+    await writeNativeVerificationReportSnapshot({
+      paths,
+      name: 'secure-login',
+      hash: evidence.reportHash,
+      text: 'Verification passed.',
     });
     const evidenceRef = await writeNativeVerificationEvidence({
       paths,

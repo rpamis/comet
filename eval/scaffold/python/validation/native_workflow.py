@@ -69,6 +69,7 @@ def _spec_changes_are_archived(
 def validate_native_workflow(
     test_dir: Path,
     outputs: dict[str, Any],
+    terminal_mode: str = "archive",
 ) -> tuple[list[str], list[str]]:
     """Validate Native invocation, terminal artifacts, trajectory, and isolation."""
     passed: list[str] = []
@@ -126,7 +127,53 @@ def validate_native_workflow(
         else []
     )
     archive, state = _terminal_archive(native_root / "archive")
-    if archive is None or state is None:
+    trajectory_files: list[Path] = []
+    require_hard_stop = terminal_mode == "active-blocked"
+    require_active = terminal_mode in {"active", "active-blocked"}
+    if require_hard_stop:
+        active_state: dict[str, Any] = {}
+        if len(active_changes) == 1:
+            try:
+                active_state = (
+                    yaml.safe_load(
+                        (active_changes[0] / "change.yaml").read_text(encoding="utf-8")
+                    )
+                    or {}
+                )
+            except (OSError, yaml.YAMLError):
+                active_state = {}
+        if archive is not None:
+            failed.append(_failure("native_state", "blocked Native task was unexpectedly archived"))
+        elif (
+            len(active_changes) != 1
+            or active_state.get("phase") != "build"
+            or active_state.get("verification_result") != "fail"
+            or active_state.get("archived") is not False
+        ):
+            failed.append(_failure("native_state", "expected one active failed Native change"))
+        else:
+            passed.append("native_state")
+            trajectory_files.append(active_changes[0] / "runtime" / "trajectory.jsonl")
+    elif require_active:
+        active_states: list[dict[str, Any]] = []
+        try:
+            active_states = [
+                yaml.safe_load((change / "change.yaml").read_text(encoding="utf-8")) or {}
+                for change in active_changes
+            ]
+        except (OSError, yaml.YAMLError):
+            active_states = []
+        if not active_states or any(
+            state.get("phase") == "archive" or state.get("archived") is not False
+            for state in active_states
+        ):
+            failed.append(_failure("native_state", "expected active non-archived Native changes"))
+        else:
+            passed.append("native_state")
+            trajectory_files.extend(
+                change / "runtime" / "trajectory.jsonl" for change in active_changes
+            )
+    elif archive is None or state is None:
         failed.append(_failure("native_state", "no terminal Native archive exists"))
     elif active_changes:
         failed.append(_failure("native_state", "active Native changes remain after archive"))
@@ -146,10 +193,14 @@ def validate_native_workflow(
         else:
             passed.append("native_state")
 
-    trajectory_file = archive / "runtime" / "trajectory.jsonl" if archive else None
+    if not trajectory_files and archive:
+        trajectory_files.append(archive / "runtime" / "trajectory.jsonl")
     phases: set[str] = set()
     hidden_reasoning = False
-    if trajectory_file and trajectory_file.is_file():
+    hard_stop = False
+    for trajectory_file in trajectory_files:
+        if not trajectory_file.is_file():
+            continue
         for line in trajectory_file.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
@@ -168,7 +219,20 @@ def validate_native_workflow(
                 marker in serialized
                 for marker in ("chain_of_thought", "reasoning_content", "hidden_reasoning")
             )
-    if {"shape", "build", "verify", "archive"}.issubset(phases) and not hidden_reasoning:
+            repair = data.get("repairStagnation") or {}
+            hard_stop = hard_stop or repair.get("disposition") == "hard-stop"
+    required_phases = (
+        {"shape", "build", "verify"}
+        if require_hard_stop
+        else {"shape", "build"}
+        if require_active
+        else {"shape", "build", "verify", "archive"}
+    )
+    if (
+        required_phases.issubset(phases)
+        and not hidden_reasoning
+        and (hard_stop if require_hard_stop else True)
+    ):
         passed.append("native_trajectory")
     else:
         failed.append(_failure("native_trajectory", "complete safe phase trajectory is missing"))

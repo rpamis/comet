@@ -294,7 +294,16 @@ def write_verification_bundle(
         + "\n"
     )
     (change_root / report_ref).write_text(report_text, encoding="utf-8")
-    report_hash = hashlib.sha256((change_root / report_ref).read_bytes()).hexdigest()
+    report_bytes = (change_root / report_ref).read_bytes()
+    report_hash = hashlib.sha256(report_bytes).hexdigest()
+    write_json(
+        change_root / f"runtime/evidence/reports/{report_hash}.json",
+        {
+            "schema": "comet.native.verification-report.v1",
+            "reportHash": report_hash,
+            "content": report_bytes.decode("utf-8"),
+        },
+    )
     entries = []
     evidence_files = ["test_wordcount.py", "wordcount.py"]
     for index, criterion in enumerate(contract["acceptance"]):
@@ -986,6 +995,7 @@ def test_verification_parser_rejects_forged_acceptance_ids_and_hash_corruption(t
             change_root=root,
             evidence_ref=ref,
             state=state,
+            verify_current_files=True,
         )
 
 

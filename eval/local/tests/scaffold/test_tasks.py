@@ -78,6 +78,7 @@ profile = "generic"
 required_skills = ["target-skill"]
 expected_artifacts = ["result.json"]
 require_skill_invocation = true
+native_terminal = "active-blocked"
 
 [interaction]
 mode = "auto_user"
@@ -96,6 +97,7 @@ fresh_resume_marker = "COLD_RESUME_READY"
     assert task.config.evaluation.required_skills == ["target-skill"]
     assert task.config.evaluation.expected_artifacts == ["result.json"]
     assert task.config.evaluation.require_skill_invocation is True
+    assert task.config.evaluation.native_terminal == "active-blocked"
     assert task.config.interaction.mode == "auto_user"
     assert task.config.interaction.max_turns == 7
     assert task.config.interaction.simulator_prompt == "Answer as a concise developer user."

@@ -3,12 +3,49 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 import sys
 import types
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def test_native_wave_validator_import_does_not_load_host_docker_helpers(tmp_path: Path):
+    from scaffold.python import utils
+
+    stale_package = tmp_path / "scaffold/python"
+    stale_package.mkdir(parents=True)
+    (tmp_path / "scaffold/__init__.py").write_text("", encoding="utf-8")
+    (stale_package / "__init__.py").write_text(
+        "raise RuntimeError('host scaffold package leaked into validator')\n",
+        encoding="utf-8",
+    )
+    utils._copy_scaffold_to_docker(tmp_path)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(tmp_path)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "import scaffold.python.validation.native_wave; "
+                "assert 'scaffold.python.validation.docker' not in sys.modules"
+            ),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def _load_validator(path: Path, workspace: Path):

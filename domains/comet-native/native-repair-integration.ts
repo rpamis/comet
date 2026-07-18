@@ -7,6 +7,7 @@ import {
   acceptLatestNativeRepairOverride,
   inspectLatestNativeRepairProjection,
   inspectNativeRepairFailure,
+  nativeRepairScopeHash,
   rebuildNativeRepairHistory,
   type NativeCommittedRepairTrajectory,
   type NativeRepairRuntimeResult,
@@ -206,13 +207,24 @@ export async function inspectNativeRepairBuildGuard(options: {
     return { disposition: 'proceed', eventProjection: null };
   }
   assertRepairableBuildState(options.state);
-  const previousEnvelope = await readNativeVerificationEvidence(
-    options.paths,
-    options.state.name,
-    options.state.verification_evidence!,
-  );
+  const [previousEnvelope, previousImplementationScope] = await Promise.all([
+    readNativeVerificationEvidence(
+      options.paths,
+      options.state.name,
+      options.state.verification_evidence!,
+    ),
+    readNativeImplementationScopeBundle(
+      options.paths,
+      options.state.name,
+      options.state.implementation_scope!,
+    ),
+  ]);
+  if (previousImplementationScope.scope.scopeHash !== previousEnvelope.implementationScopeHash) {
+    throw new Error('Native repair verification evidence does not match its implementation scope');
+  }
   if (
-    options.currentImplementationScope.scope.scopeHash !== previousEnvelope.implementationScopeHash
+    nativeRepairScopeHash(options.currentImplementationScope) !==
+    nativeRepairScopeHash(previousImplementationScope)
   ) {
     if (options.override) {
       throw new Error('Native repair override is not valid after implementation scope progress');

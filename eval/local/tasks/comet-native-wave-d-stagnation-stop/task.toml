@@ -24,6 +24,7 @@ profile = "generic"
 required_skills = ["comet-native"]
 expected_artifacts = [".cache/comet-native-eval/manual-stop.json", ".cache/comet-native-eval/override.json", ".cache/comet-native-eval/hard-stop.json", ".cache/comet-native-eval/hard-stop-status.json", "docs/comet/changes"]
 require_skill_invocation = true
+native_terminal = "active-blocked"
 rubric_criteria = [
   "Stops on the third consecutive identical failure signature without changing code or contract",
   "Accepts exactly one explicit signature-bound repair override",

@@ -179,4 +179,34 @@ describe('Native lock process concurrency', () => {
     await expect(workerProcess.result).resolves.toMatchObject({ code: 0, stderr: '' });
     await releaseNativeLock(replacement);
   });
+
+  it('elects one winner when two processes acquire the same free lock together', async () => {
+    const readyA = path.join(projectRoot, 'race-a.ready');
+    const readyB = path.join(projectRoot, 'race-b.ready');
+    const go = path.join(projectRoot, 'race.go');
+    const statusA = path.join(projectRoot, 'race-a.status');
+    const statusB = path.join(projectRoot, 'race-b.status');
+    const release = path.join(projectRoot, 'race.release');
+    const contenders = [
+      startWorker(['acquire-race', projectRoot, 'root-move', 'a', readyA, go, statusA, release]),
+      startWorker(['acquire-race', projectRoot, 'root-move', 'b', readyB, go, statusB, release]),
+    ];
+
+    await Promise.all([waitFor(readyA), waitFor(readyB)]);
+    await fs.writeFile(go, 'go\n');
+    await Promise.all([waitFor(statusA), waitFor(statusB)]);
+    const statuses = await Promise.all([
+      fs.readFile(statusA, 'utf8'),
+      fs.readFile(statusB, 'utf8'),
+    ]);
+    expect(statuses.filter((status) => status.startsWith('acquired:'))).toHaveLength(1);
+    expect(statuses.filter((status) => status.startsWith('blocked:'))).toHaveLength(1);
+    expect(statuses.join('\n')).not.toContain('coordinator is busy');
+
+    await fs.writeFile(release, 'release\n');
+    await expect(Promise.all(contenders.map(({ result }) => result))).resolves.toEqual([
+      expect.objectContaining({ code: 0, stderr: '' }),
+      expect.objectContaining({ code: 0, stderr: '' }),
+    ]);
+  });
 });

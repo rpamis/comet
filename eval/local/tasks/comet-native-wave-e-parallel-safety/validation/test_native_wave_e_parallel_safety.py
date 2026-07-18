@@ -82,7 +82,11 @@ def check_parallel_safety() -> dict[str, str]:
         return failed(
             check, f"Expected active changes {sorted(EXPECTED_CHANGES)}, found {sorted(active)}"
         )
-    if archive_changes(WORKSPACE):
+    archived_names = {
+        (yaml.safe_load((path / "change.yaml").read_text(encoding="utf-8")) or {}).get("name")
+        for path in archive_changes(WORKSPACE)
+    }
+    if archived_names & EXPECTED_CHANGES:
         return failed(check, "Conflicting changes must remain active")
 
     evidence = WORKSPACE / EVIDENCE

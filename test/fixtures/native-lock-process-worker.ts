@@ -73,6 +73,19 @@ if (mode === 'takeover') {
   } catch (error) {
     await fs.writeFile(statusFile, `blocked:${(error as Error).message}\n`);
   }
+} else if (mode === 'acquire-race') {
+  await fs.writeFile(readyFile, 'ready\n');
+  await waitFor(goFile);
+  let acquired: NativeLock | null = null;
+  try {
+    acquired = await acquireNativeLock(paths, lockName, `${role} direct contender`);
+    await fs.writeFile(statusFile, `acquired:${acquired.owner.id}\n`);
+    await waitFor(releaseFile);
+  } catch (error) {
+    await fs.writeFile(statusFile, `blocked:${(error as Error).message}\n`);
+  } finally {
+    if (acquired) await releaseNativeLock(acquired);
+  }
 } else {
   throw new Error(`Unknown Native lock process worker mode: ${mode}`);
 }

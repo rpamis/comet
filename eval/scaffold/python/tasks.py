@@ -88,6 +88,7 @@ class EvaluationConfig:
     expected_artifacts: list[str] = field(default_factory=list)
     require_skill_invocation: bool = False
     rubric_criteria: list[str] = field(default_factory=list)
+    native_terminal: str = "archive"
 
 
 @dataclass
@@ -271,7 +272,13 @@ def load_task(name: str, tasks_dir: Path | None = None) -> Task:
         expected_artifacts=evaluation.get("expected_artifacts", []),
         require_skill_invocation=bool(evaluation.get("require_skill_invocation", False)),
         rubric_criteria=evaluation.get("rubric_criteria", []),
+        native_terminal=evaluation.get("native_terminal", "archive"),
     )
+    if evaluation_config.native_terminal not in {"archive", "active", "active-blocked"}:
+        raise ValueError(
+            f"Task {task_name} has invalid evaluation.native_terminal: "
+            f"{evaluation_config.native_terminal}"
+        )
 
     default_interaction_mode = "auto_user" if inferred_profile == "comet-workflow" else "none"
     interaction_config = InteractionConfig(

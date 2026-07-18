@@ -1,4 +1,5 @@
 import type { TrajectoryEvent } from '../engine/types.js';
+import { canonicalHash } from './native-canonical-hash.js';
 import {
   buildNativeRepairSignature,
   decideNativeRepairOverride,
@@ -37,6 +38,7 @@ export const NATIVE_REPAIR_TRAJECTORY_LIMITS = {
 } as const;
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+const REPAIR_SCOPE_HASH_TAG = 'comet.native.repair-scope.v1';
 const EVENT_TYPES = new Set<TrajectoryEvent['type']>([
   'run_started',
   'action_proposed',
@@ -145,6 +147,19 @@ function hash(value: unknown, label: string): string {
     throw new Error(`${label} must be a SHA-256 hash`);
   }
   return value;
+}
+
+/**
+ * Identify repair progress from the executable contract and project snapshot, not from
+ * content-addressed evidence prose such as `noCodeReason`.
+ */
+export function nativeRepairScopeHash(bundle: NativeImplementationScopeBundle): string {
+  const scope = parseNativeImplementationScopeBundle(bundle).scope;
+  return canonicalHash(REPAIR_SCOPE_HASH_TAG, {
+    schema: REPAIR_SCOPE_HASH_TAG,
+    contractHash: scope.contractHash,
+    artifactSnapshotHash: scope.currentProjectionHash,
+  });
 }
 
 function boundedRunId(value: string): string {
@@ -419,9 +434,11 @@ function projectNativeRepairHistory(
       throw new Error('Native repair committed trajectory exceeds its aggregate data boundary');
     }
     const data = event.data;
-    const eventScopeHash = Object.hasOwn(data, 'implementationScopeHash')
-      ? hash(data.implementationScopeHash, 'Native repair trajectory implementation scope hash')
-      : null;
+    const eventScopeHash = Object.hasOwn(data, 'repairScopeHash')
+      ? hash(data.repairScopeHash, 'Native repair trajectory repair scope hash')
+      : Object.hasOwn(data, 'implementationScopeHash')
+        ? hash(data.implementationScopeHash, 'Native repair trajectory implementation scope hash')
+        : null;
     if (!Object.hasOwn(data, NATIVE_REPAIR_TRAJECTORY_FIELD)) {
       if (
         event.type === 'state_transitioned' &&
@@ -583,7 +600,7 @@ export function nativeRepairFailureFacts(
   });
   return {
     contractHash: bundle.scope.contractHash,
-    implementationScopeHash: bundle.scope.scopeHash,
+    implementationScopeHash: nativeRepairScopeHash(bundle),
     artifactSnapshotHash: bundle.scope.currentProjectionHash,
     categories: tokens.categories,
     failedCheckIds: tokens.failedCheckIds,
@@ -619,7 +636,7 @@ export function inspectNativeRepairResume(
   const latestProjection = projected.latestProjection;
   const signatureHash = buildNativeRepairSignature(facts).signatureHash;
   const currentScope = parseNativeImplementationScopeBundle(input.currentImplementationScope);
-  if (currentScope.scope.scopeHash !== input.envelope.implementationScopeHash) {
+  if (nativeRepairScopeHash(currentScope) !== nativeRepairScopeHash(input.implementationScope)) {
     return {
       disposition: 'proceed',
       reason: 'scope-progress',

@@ -9,6 +9,7 @@ import {
   inspectNativeRepairFailure,
   inspectNativeRepairResume,
   nativeRepairFailureFacts,
+  nativeRepairScopeHash,
   NATIVE_REPAIR_TRAJECTORY_FIELD,
   NATIVE_REPAIR_TRAJECTORY_LIMITS,
   parseNativeRepairTrajectoryProjection,
@@ -85,6 +86,45 @@ function evidenceInput(
   return { envelope, implementationScope };
 }
 
+function unchangedEvidenceInput(noCodeReason: string): NativeRepairEvidenceInput {
+  const contract = buildNativeContractSnapshot({
+    briefMarkdown: '# Acceptance examples\n- The no-code behavior remains valid.\n',
+    specs: [],
+  });
+  const baseline = snapshot('a'.repeat(64));
+  const implementationScope = buildNativeImplementationScopeBundle({
+    baseline,
+    current: { ...baseline, createdAt: new Date(NOW.valueOf() + 1_000).toISOString() },
+    contractHash: contract.contractHash,
+    declaredArtifacts: [],
+    noCodeReason,
+  });
+  const acceptanceTrace = buildNativeAcceptanceEvidenceTrace(
+    contract.acceptance,
+    contract.acceptance.map((criterion) => ({
+      acceptance_id: criterion.id,
+      evidence_refs: ['verification.md'],
+    })),
+    { nativeRootRef: 'comet' },
+  );
+  const envelope = buildNativeVerificationEvidenceEnvelope({
+    change: 'repair-loop',
+    sourceRevision: 3,
+    result: 'fail',
+    contractHash: contract.contractHash,
+    acceptanceHash: contract.acceptanceHash,
+    implementationScope: {
+      ref: `runtime/evidence/scopes/${implementationScope.scope.scopeHash}.json`,
+      bundle: implementationScope,
+    },
+    reportRef: 'verification.md',
+    reportHash: 'c'.repeat(64),
+    acceptanceTrace,
+    now: NOW,
+  });
+  return { envelope, implementationScope };
+}
+
 function event(
   sequence: number,
   data: Record<string, unknown>,
@@ -139,12 +179,75 @@ describe('Native repair runtime integration', () => {
 
     expect(facts).toMatchObject({
       contractHash: input.envelope.contractHash,
-      implementationScopeHash: input.envelope.implementationScopeHash,
+      implementationScopeHash: nativeRepairScopeHash(input.implementationScope),
       artifactSnapshotHash: input.implementationScope.scope.currentProjectionHash,
       categories: ['verification-failed'],
       failedCheckIds: [],
     });
     expect(signature.signatureHash).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it('keeps one repair episode when only the no-code explanation is reworded', () => {
+    const first = unchangedEvidenceInput('No project edit is required.');
+    const reworded = unchangedEvidenceInput('The project intentionally remains unchanged.');
+    const firstSignature = buildNativeRepairSignatureFromEvidence(first).signatureHash;
+    const rewordedSignature = buildNativeRepairSignatureFromEvidence(reworded).signatureHash;
+    const repairScopeHash = nativeRepairScopeHash(reworded.implementationScope);
+
+    expect(reworded.implementationScope.scope.scopeHash).not.toBe(
+      first.implementationScope.scope.scopeHash,
+    );
+    expect(rewordedSignature).toBe(firstSignature);
+    expect(
+      rebuildNativeRepairHistory(
+        committed([
+          repairEvent(1, {
+            signatureHash: firstSignature,
+            disposition: 'continue',
+            overrideSummaryHash: null,
+          }),
+          event(2, {
+            previousPhase: 'build',
+            nextPhase: 'verify',
+            verificationResult: null,
+            implementationScopeHash: reworded.implementationScope.scope.scopeHash,
+            repairScopeHash,
+          }),
+          repairEvent(3, {
+            signatureHash: rewordedSignature,
+            disposition: 'warn',
+            overrideSummaryHash: null,
+          }),
+        ]),
+      ),
+    ).toMatchObject([
+      { kind: 'failure', iteration: 1, signatureHash: firstSignature },
+      { kind: 'failure', iteration: 2, signatureHash: firstSignature },
+    ]);
+
+    expect(
+      inspectNativeRepairResume({
+        ...first,
+        ...committed([
+          repairEvent(1, {
+            signatureHash: firstSignature,
+            disposition: 'continue',
+            overrideSummaryHash: null,
+          }),
+          repairEvent(2, {
+            signatureHash: firstSignature,
+            disposition: 'warn',
+            overrideSummaryHash: null,
+          }),
+          repairEvent(3, {
+            signatureHash: firstSignature,
+            disposition: 'manual-stop',
+            overrideSummaryHash: null,
+          }),
+        ]),
+        currentImplementationScope: reworded.implementationScope,
+      }),
+    ).toMatchObject({ disposition: 'override-required', reason: 'override-required' });
   });
 
   it('continues once, warns on the repeat, then persists a manual stop', () => {

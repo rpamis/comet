@@ -12,7 +12,10 @@ import {
 import { collectNativeContractFiles } from '../../../domains/comet-native/native-contract-files.js';
 import { buildNativeCheckReceipt } from '../../../domains/comet-native/native-check-receipt-model.js';
 import { writeNativeCheckReceipt } from '../../../domains/comet-native/native-check-receipt-storage.js';
-import { readNativeImplementationScopeBundle } from '../../../domains/comet-native/native-evidence-storage.js';
+import {
+  readNativeImplementationScopeBundle,
+  readNativeVerificationEvidence,
+} from '../../../domains/comet-native/native-evidence-storage.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import type {
   NativeChangeState,
@@ -203,6 +206,22 @@ Pass.
     expect(inspection.evidence.envelopeHash).toMatch(/^[a-f0-9]{64}$/u);
   });
 
+  it('preserves an immutable report snapshot after the live report is rewritten', async () => {
+    const { evidenceRef } = await archiveState();
+    const envelope = await readNativeVerificationEvidence(paths, verifyState.name, evidenceRef);
+    const snapshot = path.join(
+      changeDir,
+      'runtime',
+      'evidence',
+      'reports',
+      `${envelope.reportHash}.json`,
+    );
+
+    expect(JSON.parse(await fs.readFile(snapshot, 'utf8'))).toMatchObject({ content: report });
+    await fs.writeFile(path.join(changeDir, 'verification.md'), `${report}\nReverified later.\n`);
+    expect(JSON.parse(await fs.readFile(snapshot, 'utf8'))).toMatchObject({ content: report });
+  });
+
   it('binds a fresh Native check receipt and revalidates its policy during freshness inspection', async () => {
     const receiptRef = await writeCheckReceipt();
     const { state } = await archiveState(receiptRef);
@@ -298,6 +317,7 @@ Pass.
       findingCodes: ['verification-implementation-stale'],
       envelope: null,
       evidenceRef: null,
+      reportSnapshot: null,
     });
   });
 

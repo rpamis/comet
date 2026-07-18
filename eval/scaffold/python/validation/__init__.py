@@ -8,11 +8,21 @@ from scaffold.python.validation.core import (
     compose_validators,
     run_validators,
 )
-from scaffold.python.validation.docker import (
-    check_code_execution,
-    check_python_execution,
-    check_typescript_execution,
-)
+
+_DOCKER_EXPORTS = {
+    "check_code_execution",
+    "check_python_execution",
+    "check_typescript_execution",
+}
+
+
+def __getattr__(name: str):
+    """Load host-only Docker helpers only when callers explicitly request them."""
+    if name not in _DOCKER_EXPORTS:
+        raise AttributeError(name)
+    from scaffold.python.validation import docker
+
+    return getattr(docker, name)
 
 __all__ = [
     "ValidatorFn", "compose_validators", "run_validators",

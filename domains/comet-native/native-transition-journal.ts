@@ -89,6 +89,7 @@ const REQUIRED_TRANSITION_EVENT_DATA_KEYS = new Set([
 const TRANSITION_EVENT_DATA_KEYS = new Set([
   ...REQUIRED_TRANSITION_EVENT_DATA_KEYS,
   'implementationScopeHash',
+  'repairScopeHash',
   'repairStagnation',
 ]);
 
@@ -101,6 +102,7 @@ interface NativeTransitionEventData extends Record<string, unknown> {
   noCodeReason: string | null;
   verificationResult: 'pass' | 'fail' | null;
   implementationScopeHash?: string;
+  repairScopeHash?: string;
   repairStagnation?: NativeRepairTrajectoryProjection;
 }
 
@@ -180,6 +182,7 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
   const expectedSize =
     REQUIRED_TRANSITION_EVENT_DATA_KEYS.size +
     (Object.hasOwn(record, 'implementationScopeHash') ? 1 : 0) +
+    (Object.hasOwn(record, 'repairScopeHash') ? 1 : 0) +
     (Object.hasOwn(record, 'repairStagnation') ? 1 : 0);
   if (unknown || missing || keys.length !== expectedSize) {
     throw new Error(
@@ -258,6 +261,16 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
       throw new Error('Native transition journal repair projection does not match its phase');
     }
   }
+  const repairScopeHash = Object.hasOwn(record, 'repairScopeHash') ? record.repairScopeHash : null;
+  if (
+    repairScopeHash !== null &&
+    (typeof repairScopeHash !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(repairScopeHash) ||
+      (record.previousPhase !== 'build' && record.previousPhase !== 'verify') ||
+      implementationScopeHash === null)
+  ) {
+    throw new Error('Native transition journal repair scope hash is invalid');
+  }
   return {
     previousPhase: record.previousPhase as NativeTransitionEventData['previousPhase'],
     nextPhase: record.nextPhase as NativeTransitionEventData['nextPhase'],
@@ -267,6 +280,7 @@ function parseTransitionEventData(value: unknown, evidenceHash: string): NativeT
     noCodeReason: record.noCodeReason as string | null,
     verificationResult: record.verificationResult as 'pass' | 'fail' | null,
     ...(implementationScopeHash ? { implementationScopeHash } : {}),
+    ...(repairScopeHash ? { repairScopeHash } : {}),
     ...(repairStagnation ? { repairStagnation } : {}),
   };
 }
@@ -396,9 +410,14 @@ function validateTransitionRunSemantics(
   previousState: NativeReadableChangeState,
   nextState: NativeReadableChangeState,
   envelope: ReturnType<typeof validateJournalEnvelope>,
+  allowCompatibleLegacyIdentity = false,
 ): void {
   const { previousRun, nextRun } = envelope;
-  assertNativeRunMetadata(nextRun, 'next Run', previousRun !== null);
+  assertNativeRunMetadata(
+    nextRun,
+    'next Run',
+    allowCompatibleLegacyIdentity || previousRun !== null,
+  );
   assertCommittableRun(nextRun, 'next Run');
   if (nextRun.runId !== nextState.run_id || nextRun.currentStep !== nextState.phase) {
     throw new Error('Native transition journal next Run does not match the next change state');
@@ -704,7 +723,7 @@ export function parseLegacyNativeTransitionJournalValue(
     inferredLegacyTransitionOperation(previousState, nextState, envelope.eventData),
     true,
   );
-  validateTransitionRunSemantics(previousState, nextState, envelope);
+  validateTransitionRunSemantics(previousState, nextState, envelope, true);
   return {
     schema: NATIVE_LEGACY_TRANSITION_SCHEMA,
     id: envelope.id,
@@ -752,7 +771,7 @@ export function parseV2NativeTransitionJournalValue(
     inferredLegacyTransitionOperation(previousState, nextState, envelope.eventData),
     true,
   );
-  validateTransitionRunSemantics(previousState, nextState, envelope);
+  validateTransitionRunSemantics(previousState, nextState, envelope, true);
   if (nextState.revision !== previousState.revision + 1) {
     throw new Error('Native v2 transition journal state revision must advance exactly once');
   }

@@ -19,6 +19,7 @@ import { sha256File, sha256Text } from './native-hash.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { resolveContainedNativePath } from './native-paths.js';
 import { readNativeProtectedTextFile } from './native-protected-file.js';
+import { NATIVE_RUNTIME_HASH, NATIVE_RUNTIME_PACKAGE } from './native-runtime-package.js';
 import {
   parseNativeStoredRunStateValue,
   readNativeCheckpoint,
@@ -197,6 +198,14 @@ function upgradeV2TransitionToV3(journal: NativeV2TransitionJournal): NativeTran
         : {}),
     },
     eventData: { ...journal.eventData, evidenceHash },
+    nextRun:
+      journal.previousRun === null
+        ? {
+            ...journal.nextRun,
+            skillVersion: NATIVE_RUNTIME_PACKAGE.definition.metadata.version,
+            skillHash: NATIVE_RUNTIME_HASH,
+          }
+        : journal.nextRun,
   };
 }
 

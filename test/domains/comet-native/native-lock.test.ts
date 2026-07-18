@@ -111,4 +111,27 @@ describe('Native operation locks', () => {
     expect(await diagnoseNativeLock(file)).toMatchObject({ status: 'unknown' });
     expect(await fs.readFile(file, 'utf8')).toContain('another-host');
   });
+
+  it('serializes live mutation contenders so the later command can recheck state', async () => {
+    let releaseFirst!: () => void;
+    const firstMayFinish = new Promise<void>((resolve) => (releaseFirst = resolve));
+    let firstEntered!: () => void;
+    const firstDidEnter = new Promise<void>((resolve) => (firstEntered = resolve));
+    const order: string[] = [];
+    const first = withNativeMutationLock(paths, 'first mutation', async () => {
+      order.push('first');
+      firstEntered();
+      await firstMayFinish;
+    });
+    await firstDidEnter;
+    const second = withNativeMutationLock(paths, 'second mutation', async () => {
+      order.push('second');
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(order).toEqual(['first']);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['first', 'second']);
+  });
 });

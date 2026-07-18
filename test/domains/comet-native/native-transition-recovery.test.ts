@@ -916,10 +916,14 @@ describe('Native transition recovery', () => {
       const stateAtCrash = await readNativeChange(paths, 'recover-transition');
       const changeFile = path.join(changeDir, 'change.yaml');
       const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
+      const legacyJournal = legacyTransition(currentJournal);
+      const legacyNextRun = legacyJournal.nextRun as Record<string, unknown>;
+      legacyNextRun.skillVersion = '1';
+      legacyNextRun.skillHash = sha256Text('comet-native-runtime:v1');
       await fs.writeFile(changeFile, stringify(legacyState(stateAtCrash)));
       await fs.writeFile(
         transitionFile,
-        JSON.stringify(legacyTransition(currentJournal), null, 2) + '\n',
+        JSON.stringify(legacyJournal, null, 2) + '\n',
       );
       await fs.rm(nativeBaselineManifestFile(paths, 'recover-transition'), { force: true });
       const [changeBefore, transitionBefore] = await Promise.all([

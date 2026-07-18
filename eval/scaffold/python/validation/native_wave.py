@@ -1609,11 +1609,28 @@ def parse_verification_bundle(
         envelope["acceptanceTrace"], contract=contract, project_root=project_root
     )
     report_ref = portable_ref(envelope["reportRef"], "Verification report ref")
-    report = contained_file(change_root, report_ref, "Verification report")
-    if sha256_file(report) != _hash(envelope["reportHash"], "Verification report hash"):
-        raise NativeEvidenceError("Verification report content hash mismatch")
+    report_hash = _hash(envelope["reportHash"], "Verification report hash")
+    report_snapshot = read_contained_json(
+        change_root,
+        f"runtime/evidence/reports/{report_hash}.json",
+        "Verification report snapshot",
+    )
+    if (
+        not isinstance(report_snapshot, dict)
+        or set(report_snapshot) != {"schema", "reportHash", "content"}
+        or report_snapshot.get("schema") != "comet.native.verification-report.v1"
+        or report_snapshot.get("reportHash") != report_hash
+        or not isinstance(report_snapshot.get("content"), str)
+        or hashlib.sha256(report_snapshot["content"].encode()).hexdigest() != report_hash
+    ):
+        raise NativeEvidenceError("Verification report snapshot hash mismatch")
+    report_text = report_snapshot["content"]
+    if verify_current_files:
+        report = contained_file(change_root, report_ref, "Verification report")
+        if sha256_file(report) != report_hash:
+            raise NativeEvidenceError("Verification report content hash mismatch")
     for criterion in contract["acceptance"]:
-        if criterion["id"] not in report.read_text(encoding="utf-8"):
+        if criterion["id"] not in report_text:
             raise NativeEvidenceError("Verification report does not preserve every acceptance ID")
     allowance_ref = envelope["partialAllowanceRef"]
     allowance_hash = envelope["partialAllowanceHash"]

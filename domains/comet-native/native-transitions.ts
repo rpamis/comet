@@ -16,7 +16,10 @@ import {
   inspectNativeRepairFailureForTransition,
   projectNativeRepairDecision,
 } from './native-repair-integration.js';
-import type { NativeRepairTrajectoryProjection } from './native-repair-runtime.js';
+import {
+  nativeRepairScopeHash,
+  type NativeRepairTrajectoryProjection,
+} from './native-repair-runtime.js';
 import {
   hashNativeRepairOverrideSummary,
   normalizeNativeRepairFailureTokens,
@@ -416,6 +419,7 @@ async function advanceNativeChangeLocked(
   }
 
   let repairEventProjection: NativeRepairTrajectoryProjection | null = null;
+  let repairScopeHashForEvent = buildEvidence ? nativeRepairScopeHash(buildEvidence.bundle) : null;
   if (state.phase === 'build' && buildEvidence) {
     const repairGuard = await inspectNativeRepairBuildGuard({
       paths: options.paths,
@@ -520,6 +524,7 @@ async function advanceNativeChangeLocked(
         : {}),
     });
     repairEventProjection = repairResult.eventProjection;
+    repairScopeHashForEvent = repairResult.facts.implementationScopeHash;
     repairDecision = projectNativeRepairDecision(repairResult);
   }
 
@@ -609,6 +614,7 @@ async function advanceNativeChangeLocked(
               : verificationEvidence!.envelope!.implementationScopeHash,
         }
       : {}),
+    ...(repairScopeHashForEvent ? { repairScopeHash: repairScopeHashForEvent } : {}),
     ...(repairEventProjection ? { repairStagnation: repairEventProjection } : {}),
   };
   if (state.phase === 'build' && buildEvidence) {

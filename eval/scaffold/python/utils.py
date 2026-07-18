@@ -163,7 +163,10 @@ def _docker_run_script(mode, test_dir, script_name, timeout=120, args=None):
     try:
         cmd = [mode, str(test_dir), script_name] + (args or [])
         result = run_shell("docker.sh", *cmd, timeout=timeout, check=False)
-        return result.returncode == 0, result.stdout
+        output = result.stdout
+        if result.returncode != 0 and result.stderr:
+            output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+        return result.returncode == 0, output
     except subprocess.TimeoutExpired:
         return False, f"Timeout ({timeout}s)"
     except Exception as e:
@@ -195,10 +198,13 @@ def run_claude_in_docker(test_dir, prompt, timeout=300, model=None, image_id=Non
 def _copy_scaffold_to_docker(test_dir):
     scaffold_dir = test_dir / "scaffold"
     scaffold_dir.mkdir(parents=True, exist_ok=True)
-    (scaffold_dir / "__init__.py").touch()
+    (scaffold_dir / "__init__.py").write_text("", encoding="utf-8")
     py_dest = scaffold_dir / "python"
     py_dest.mkdir(exist_ok=True)
-    (py_dest / "__init__.py").touch()
+    # The repository package initializer imports host-only orchestration
+    # dependencies.  Validator containers need only the copied helper modules,
+    # so always replace a stale/full initializer with a minimal package stub.
+    (py_dest / "__init__.py").write_text("", encoding="utf-8")
     shutil.copy(SCAFFOLD_PYTHON_DIR / "utils.py", py_dest / "utils.py")
     py_validation = SCAFFOLD_PYTHON_DIR / "validation"
     if py_validation.is_dir():

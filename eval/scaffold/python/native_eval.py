@@ -34,8 +34,8 @@ Invoke /comet-native as the only Skill. Do not invoke /comet or any other Skill.
 Preserve every business requirement in the task below, but interpret legacy
 references to the comet workflow and its Open, Design, Build, Verify, and Archive
 phases as the Native Shape, Build, Verify, and Archive workflow. Use only Native's
-bundled runtime, initialize artifact_root `docs`, and leave a verified terminal
-Native archive without OpenSpec, Classic, Superpowers, or hidden `.comet` artifacts.
+bundled runtime and initialize artifact_root `docs`. {terminal_instruction}
+Do not create OpenSpec, Classic, Superpowers, or hidden `.comet` artifacts.
 
 [ORIGINAL BUSINESS TASK]
 """
@@ -86,11 +86,22 @@ def split_comet_completion_checks(
     }
 
 
-def adapt_prompt_for_native(prompt: str, treatment_name: str) -> str:
+def adapt_prompt_for_native(
+    prompt: str,
+    treatment_name: str,
+    terminal_mode: str = "archive",
+) -> str:
     """Give canonical Classic-worded tasks an explicit Native treatment contract."""
     if treatment_name not in NATIVE_TREATMENTS:
         return prompt
-    return f"{NATIVE_PROMPT_PREFIX}{prompt}"
+    terminal_instruction = {
+        "active": "Leave the task-requested Native changes active; do not force an Archive.",
+        "active-blocked": (
+            "If the task intentionally exercises a runtime stop, leave the change active at its "
+            "runtime-enforced blocked state."
+        ),
+    }.get(terminal_mode, "Leave a verified terminal Native archive.")
+    return f"{NATIVE_PROMPT_PREFIX.format(terminal_instruction=terminal_instruction)}{prompt}"
 
 
 def adapt_checks_for_native(
@@ -104,5 +115,9 @@ def adapt_checks_for_native(
         return passed, failed
     kept_passed = [check for check in passed if not _is_classic_workflow_check(check)]
     kept_failed = [check for check in failed if not _is_classic_workflow_check(check)]
-    native_passed, native_failed = validate_native_workflow(test_dir, outputs)
+    native_passed, native_failed = validate_native_workflow(
+        test_dir,
+        outputs,
+        terminal_mode=outputs.get("native_terminal", "archive"),
+    )
     return kept_passed + native_passed, kept_failed + native_failed

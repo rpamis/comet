@@ -296,9 +296,10 @@ async function publishNativeCoordinatorClaim(
   }
 }
 
-async function hasNativeCoordinatorContender(claim: NativeLock): Promise<boolean> {
+async function hasNativeCoordinatorPredecessor(claim: NativeLock): Promise<boolean> {
   const coordinatorDir = path.dirname(claim.file);
-  let contender = false;
+  let predecessor = false;
+  const claimName = path.basename(claim.file);
   for (const entry of await fs.readdir(coordinatorDir, { withFileTypes: true })) {
     if (!entry.isFile() || entry.isSymbolicLink() || !entry.name.endsWith('.claim')) continue;
     const file = path.join(coordinatorDir, entry.name);
@@ -311,12 +312,12 @@ async function hasNativeCoordinatorContender(claim: NativeLock): Promise<boolean
         await removeBoundNativeLock(snapshot, coordinatorDir);
         continue;
       }
-      contender = true;
+      if (entry.name < claimName) predecessor = true;
     } catch {
-      contender = true;
+      if (entry.name < claimName) predecessor = true;
     }
   }
-  return contender;
+  return predecessor;
 }
 
 async function releaseNativeCoordinatorClaim(claim: NativeLock): Promise<void> {
@@ -338,7 +339,10 @@ async function acquireNativeCoordinator(
   const deadline = Date.now() + NATIVE_LOCK_COORDINATOR_TIMEOUT_MS;
   while (true) {
     const claim = await publishNativeCoordinatorClaim(paths, operation);
-    if (!(await hasNativeCoordinatorContender(claim))) return claim;
+    // A total order prevents two simultaneous claimants from symmetrically observing each
+    // other, releasing, and retrying until both time out. The lexicographically first live
+    // claim proceeds; later claims wait for it to publish the actual lock.
+    if (!(await hasNativeCoordinatorPredecessor(claim))) return claim;
     await releaseNativeCoordinatorClaim(claim);
     if (Date.now() >= deadline) {
       throw new Error(`Native lock coordinator is busy: ${paths.locksDir}`);

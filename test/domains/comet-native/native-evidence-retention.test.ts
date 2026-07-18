@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,6 +24,7 @@ import {
 import {
   writeNativeImplementationScope,
   writeNativePartialAllowance,
+  writeNativeVerificationReportSnapshot,
   writeNativeVerificationEvidence,
 } from '../../../domains/comet-native/native-evidence-storage.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
@@ -47,6 +49,8 @@ const OLD = new Date(
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
 const HASH_C = 'c'.repeat(64);
+const REPORT_TEXT = 'Verification passed.';
+const REPORT_HASH = createHash('sha256').update(REPORT_TEXT).digest('hex');
 
 function snapshot(
   entries: NativeContentSnapshotManifest['entries'],
@@ -426,11 +430,17 @@ describe('Native evidence retention', () => {
         acceptanceHash: contract.acceptanceHash,
         implementationScope: { ref: scopeRef, bundle },
         reportRef: 'verification.md',
-        reportHash: HASH_C,
+        reportHash: REPORT_HASH,
         acceptanceTrace: trace,
         partialAllowance: { ref: allowanceRef, allowance },
         receiptRef,
         now: new Date('2026-07-01T00:00:00.000Z'),
+      });
+      await writeNativeVerificationReportSnapshot({
+        paths,
+        name: CHANGE,
+        hash: REPORT_HASH,
+        text: REPORT_TEXT,
       });
       const verificationRef = await writeNativeVerificationEvidence({
         paths,

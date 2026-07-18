@@ -51,6 +51,25 @@ def test_execution_validator_converts_structured_checks(monkeypatch, tmp_path: P
     assert failed == ["tests_written: missing assertions"]
 
 
+def test_docker_script_failure_preserves_stderr(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(utils, "check_docker_available", lambda: True)
+    monkeypatch.setattr(
+        utils,
+        "run_shell",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["docker.sh"],
+            returncode=1,
+            stdout="",
+            stderr="validator import failed",
+        ),
+    )
+
+    success, output = utils.run_python_in_docker(tmp_path, "validation/check.py")
+
+    assert success is False
+    assert "validator import failed" in output
+
+
 def test_run_shell_decodes_subprocess_output_as_utf8(monkeypatch):
     captured = {}
 

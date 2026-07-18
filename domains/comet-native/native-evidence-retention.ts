@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsConstants, promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -9,6 +9,7 @@ import { readProjectConfig } from './native-config.js';
 import {
   MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES,
   nativeEvidenceRef,
+  nativeReportEvidenceRef,
   type NativeEvidenceKind,
 } from './native-evidence-storage.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
@@ -40,12 +41,13 @@ const HASH_FILE_PATTERN = /^([a-f0-9]{64})\.json$/u;
 const CLEANUP_QUARANTINE_PATTERN =
   /^\.([a-f0-9]{64}\.json)\.([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.gc$/u;
 const MANAGED_REF_PATTERN =
-  /^runtime\/evidence\/(snapshots|scopes|allowances|verifications|check-receipts)\/[a-f0-9]{64}\.json$/u;
+  /^runtime\/evidence\/(snapshots|scopes|allowances|verifications|reports|check-receipts)\/[a-f0-9]{64}\.json$/u;
 const MANAGED_KINDS = [
   'snapshots',
   'scopes',
   'allowances',
   'verifications',
+  'reports',
   'check-receipts',
 ] as const;
 
@@ -270,11 +272,28 @@ function parseDocument(
       canonical: evidence,
       dependencies: [
         evidence.implementationScopeRef,
+        nativeReportEvidenceRef(evidence.reportHash),
         ...managedDependency(evidence.partialAllowanceRef),
         ...managedDependency(evidence.receiptRef),
         ...traceDependencies,
       ],
     };
+  }
+  if (kind === 'reports') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('Native report evidence must be an object');
+    }
+    const report = value as Record<string, unknown>;
+    if (
+      Object.keys(report).sort().join(',') !== 'content,reportHash,schema' ||
+      report.schema !== 'comet.native.verification-report.v1' ||
+      report.reportHash !== hash ||
+      typeof report.content !== 'string' ||
+      createHash('sha256').update(Buffer.from(report.content, 'utf8')).digest('hex') !== hash
+    ) {
+      throw new Error('Native report evidence filename/hash does not match its content');
+    }
+    return { canonical: report, dependencies: [] };
   }
   const receipt = parseNativeCheckReceipt(value);
   if (receipt.change !== expectedChange || receipt.receiptHash !== hash) {

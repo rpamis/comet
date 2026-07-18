@@ -76,6 +76,42 @@ def _write_native_archive(root: Path) -> None:
     )
 
 
+def _write_native_hard_stop(root: Path) -> None:
+    change = root / "docs" / "comet" / "changes" / "stalled-average"
+    (change / "runtime").mkdir(parents=True)
+    (root / "comet.config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema": "comet.project.v1",
+                "default_workflow": "native",
+                "native": {"artifact_root": "docs"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (change / "change.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema": "comet.native.v3",
+                "phase": "build",
+                "verification_result": "fail",
+                "archived": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (change / "runtime" / "trajectory.jsonl").write_text(
+        "\n".join(
+            [
+                '{"type":"state_transitioned","data":{"previousPhase":"shape","nextPhase":"build"}}',
+                '{"type":"state_transitioned","data":{"previousPhase":"build","nextPhase":"verify"}}',
+                '{"type":"state_transitioned","data":{"previousPhase":"verify","nextPhase":"build","verificationResult":"fail","repairStagnation":{"disposition":"hard-stop"}}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_validate_native_workflow_accepts_terminal_native_change(tmp_path: Path):
     _write_native_archive(tmp_path)
 
@@ -92,6 +128,20 @@ def test_validate_native_workflow_accepts_terminal_native_change(tmp_path: Path)
         "native_trajectory",
         "native_isolation",
     ]
+
+
+def test_validate_native_workflow_accepts_expected_active_hard_stop(tmp_path: Path):
+    _write_native_hard_stop(tmp_path)
+
+    passed, failed = validate_native_workflow(
+        tmp_path,
+        {"events": {"skills_invoked": ["comet-native"]}},
+        terminal_mode="active-blocked",
+    )
+
+    assert failed == []
+    assert "native_state" in passed
+    assert "native_trajectory" in passed
 
 
 def test_validate_native_workflow_rejects_classic_artifacts_and_active_change(tmp_path: Path):
@@ -172,6 +222,17 @@ def test_adapt_prompt_for_native_maps_legacy_workflow_words_without_changing_bus
     assert "Invoke /comet-native as the only Skill" in adapted
     assert "Shape, Build, Verify, and Archive" in adapted
     assert adapted.endswith(original)
+
+
+def test_adapt_prompt_for_native_preserves_an_expected_active_blocked_terminal():
+    adapted = adapt_prompt_for_native(
+        "Stop after the runtime hard-stop.",
+        "COMET_NATIVE_PHASE1",
+        terminal_mode="active-blocked",
+    )
+
+    assert "leave the change active at its runtime-enforced blocked state" in adapted
+    assert "leave a verified terminal Native archive" not in adapted
 
 
 def test_adapt_prompt_for_native_leaves_other_treatments_unchanged():
