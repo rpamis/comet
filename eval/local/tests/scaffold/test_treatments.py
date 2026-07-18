@@ -92,9 +92,7 @@ def test_build_treatment_skills_rejects_path_without_skill_md(tmp_path: Path):
     skill_dir.mkdir()
 
     with pytest.raises(FileNotFoundError, match="SKILL.md"):
-        build_treatment_skills(
-            [{"name": "broken-skill", "source": "path", "path": str(skill_dir)}]
-        )
+        build_treatment_skills([{"name": "broken-skill", "source": "path", "path": str(skill_dir)}])
 
 
 def test_load_treatments_keeps_comet_core_categories_only():
@@ -165,6 +163,11 @@ def test_comet_native_phase1_is_self_contained():
     assert treatment.skills[0]["require_skill_invocation"] is True
     assert "Shape, Build, Verify, and Archive" in treatment.claude_md
     assert "OpenSpec" in treatment.claude_md
+    normalized_claude_md = " ".join(treatment.claude_md.split())
+    assert "continue automatically while no user decision is unresolved" in normalized_claude_md
+    assert "explicit execution boundary" in normalized_claude_md
+    assert "takes priority over automatic progression" in normalized_claude_md
+    assert "material user decision" not in normalized_claude_md
 
     skills = build_treatment_skills(treatment.skills)
     assert set(skills) == {"comet-native"}
@@ -177,9 +180,7 @@ def test_comet_treatments_point_at_versioned_comet_snapshots():
     comet_039 = load_treatments()["COMET_FULL_039"]
 
     assert {
-        skill["skill"]
-        for skill in COMET_FULL_040_BETA.skills
-        if skill["name"].startswith("comet")
+        skill["skill"] for skill in COMET_FULL_040_BETA.skills if skill["name"].startswith("comet")
     } == {
         "040-beta/comet",
         "040-beta/comet-open",
@@ -190,11 +191,7 @@ def test_comet_treatments_point_at_versioned_comet_snapshots():
         "040-beta/comet-hotfix",
         "040-beta/comet-tweak",
     }
-    assert {
-        skill["skill"]
-        for skill in comet_039.skills
-        if skill["name"].startswith("comet")
-    } == {
+    assert {skill["skill"] for skill in comet_039.skills if skill["name"].startswith("comet")} == {
         "039-release/comet-classic-039",
         "039-release/comet-classic-039-open",
         "039-release/comet-classic-039-design",

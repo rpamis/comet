@@ -68,8 +68,8 @@ comet native archive <change-name> --dry-run
 comet native archive <change-name> --expect-preflight <sha256>
 ```
 
-- Shape：brief 和拟议规格通过后推进；只有本轮包含用户刚确认的高影响决定时才传 `--confirmed`。
-- Build：重新检查 brief 和拟议规格；至少给出一个真实项目产物，或使用 `--no-code-reason`。若本轮包含实现中用户刚确认的高影响决定，也传 `--confirmed`。无法证明完整 scope 时，第一次调用返回 scope hash 与未归属项而不推进；只有用户接受具体风险后，才可用完全匹配的 `--allow-partial-scope`、理由与 `--confirmed` 重试。
+- Shape：brief 和拟议规格通过后推进；只有本轮包含用户刚确认的决定时才传 `--confirmed`。
+- Build：重新检查 brief 和拟议规格；至少给出一个真实项目产物，或使用 `--no-code-reason`。若本轮包含实现中用户刚确认的决定，也传 `--confirmed`。无法证明完整 scope 时，第一次调用返回 scope hash 与未归属项而不推进；只有用户接受具体风险后，才可用完全匹配的 `--allow-partial-scope`、理由与 `--confirmed` 重试。
 - Verify：必须提供 `--result` 和完整 `--report`；可选 `--receipt` 必须是当前 change、revision、contract 与 implementation scope 上 fresh 的内置 receipt。fail 回到 Build，可用失败分类和检查 ID 形成无进展签名；pass 进入 Archive。
 - Repair：第三次相同失败会返回 manual stop。scope 真正变化时普通 Build `next` 会结束旧 repair episode 并继续；scope 不变时只能用 status 返回的 signature 和非空摘要 override 一次。单个 episode 的 semantic repair budget 与已耗尽 override 不可绕过；通用 Run iteration 只提供事件序号，不是长期 change 的永久停止条件。
 - Archive：只能由 `archive` 命令完成，不能用 `next` 代替。先 `--dry-run`，再把同一次预演返回的 `preflightHash` 原样传给 `--expect-preflight`；Runtime 在锁内重算后才提交。

@@ -10,9 +10,13 @@ COMET_NATIVE_PHASE1:
     When the task describes the legacy Comet Open, Design, Build, Verify, and
     Archive phases, preserve the business requirements but execute them as the
     Native Shape, Build, Verify, and Archive workflow. Initialize Native with
-    artifact_root `docs`, continue automatically while no material user decision
-    is unresolved, and leave a terminal verified Native archive. Do not create
-    OpenSpec, Classic, Superpowers, or hidden `.comet` workflow artifacts.
+    artifact_root `docs`, continue automatically while no user decision
+    is unresolved, and leave a terminal verified Native archive. An explicit
+    execution boundary in the task, including a request to stop at a phase or
+    switch sessions, takes priority over automatic progression: persist the
+    requested boundary, stop there, and continue toward the terminal archive
+    only in the resumed session. Do not create OpenSpec, Classic, Superpowers,
+    or hidden `.comet` workflow artifacts.
   skills:
     - name: comet-native
       source: path

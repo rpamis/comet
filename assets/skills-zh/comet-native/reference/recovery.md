@@ -75,7 +75,7 @@ Verify fail 会诚实回到 Build。提交稳定、非敏感的 `--failure-categ
 若另一个 change 在当前 change 冻结 `base_hash` 后改变了同一 canonical spec，Archive 会停止。不要手改 hash：
 
 1. 重读最新 canonical spec、brief 和拟议完整规格；
-2. 按用户意图改写完整目标规格，必要时先解决一个高影响决定；
+2. 按用户意图改写完整目标规格，必要时先解决一个用户决定；
 3. 运行 `comet native spec rebase <change-name> --summary <摘要>`；
 4. runtime 刷新 operation/hash，把 change 受控重开到 Build，并清除旧验证结论；
 5. 重新实现、在需要时用 `--confirmed` 记录刚确认的决定、重新 Verify 和 Archive。

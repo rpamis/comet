@@ -567,12 +567,19 @@ def test_wave_b_prompt_hides_the_normalization_decision_and_requires_disk_resume
 
     assert "case-insensitive" not in prompt.lower()
     assert "strip surrounding punctuation" not in prompt.lower()
+    assert "distinct normalized word values" in prompt.lower()
+    assert "words that occur exactly once" in prompt.lower()
     assert task.config.interaction.decision_reply == (
         "Treat words case-insensitively, strip surrounding punctuation, and preserve internal apostrophes."
     )
     assert "context-cleared continuation" in task.config.interaction.continue_prompt
     assert task.config.interaction.fresh_resume_marker == "COMET_NATIVE_COLD_RESUME_READY"
     assert "deliberately omits" not in prompt.lower()
+    assert "redirect stdout directly" in prompt.lower()
+    assert "verify all three files exist" in prompt.lower()
+    assert "do not rely on terminal output" in prompt.lower()
+    assert "before invoking either archive command" in prompt.lower()
+    assert "must itself redirect stdout" in prompt.lower()
 
 
 def test_shared_wave_helpers_recognize_state_cas_and_readonly_projection(tmp_path: Path):
@@ -657,7 +664,7 @@ def test_shared_wave_helpers_recognize_state_cas_and_readonly_projection(tmp_pat
         "continuation": {
             "disposition": "continue",
             "action": "work-phase",
-            "command": "comet native next add-unique-counting --summary \"<summary>\"",
+            "command": 'comet native next add-unique-counting --summary "<summary>"',
             "requiresUserDecision": False,
             "requiredInputs": ["summary"],
             "requiredInputsTruncated": False,
@@ -706,9 +713,7 @@ def test_wave_b_validator_accepts_one_confirmed_archive_and_resume_snapshot(tmp_
         "verification_result": "pass",
     }
     (archived / "change.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
-    decision = (
-        "Case-insensitive words strip surrounding punctuation and preserve internal apostrophes."
-    )
+    decision = "Lowercase every token, strip surrounding punctuation, and preserve apostrophes inside a word."
     (archived / "brief.md").write_text(f"# Decisions\n{decision}\n", encoding="utf-8")
     (archived / "specs/unique-word-counting/spec.md").write_text(decision, encoding="utf-8")
     canonical.write_text(decision, encoding="utf-8")

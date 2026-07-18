@@ -70,12 +70,17 @@ def check_decision_and_resume() -> dict[str, str]:
         archived / "specs/unique-word-counting/spec.md",
         canonical,
     ]
-    markers = ("case-insensitive", "surrounding punctuation", "internal apostroph")
     for path in decision_files:
         if not path.is_file():
             return failed(check, f"Decision artifact is missing: {path}")
         text = path.read_text(encoding="utf-8").lower()
-        if not all(marker in text for marker in markers):
+        case_rule = "case-insensitive" in text or "lowercase" in text
+        punctuation_rule = "surrounding punctuation" in text
+        apostrophe_rule = (
+            "internal apostroph" in text
+            or re.search(r"apostroph(?:e|es)\s+inside", text) is not None
+        )
+        if not (case_rule and punctuation_rule and apostrophe_rule):
             return failed(check, f"Confirmed normalization decision is incomplete in {path.name}")
 
     try:

@@ -13,6 +13,60 @@ async function read(language: keyof typeof roots, relative: string): Promise<str
 }
 
 describe('Chinese Comet Native Skill', () => {
+  it('locks unresolved user-visible decisions before any workflow action', async () => {
+    const source = await read('zh', 'SKILL.md');
+    const commands = await read('zh', 'reference/commands.md');
+    const recovery = await read('zh', 'reference/recovery.md');
+    const lockStart = source.indexOf('## 澄清锁');
+    const startOrResume = source.indexOf('## 开始或恢复');
+    const protocolStart = source.indexOf('## 决策协议');
+    const progressionStart = source.indexOf('## 推进契约');
+
+    expect(lockStart).toBeGreaterThan(0);
+    expect(lockStart).toBeLessThan(startOrResume);
+    expect(protocolStart).toBeGreaterThan(startOrResume);
+    expect(progressionStart).toBeGreaterThan(protocolStart);
+
+    const lock = source.slice(lockStart, startOrResume);
+    expect(lock).toContain('沿决策树');
+    expect(lock).toContain('无法证明它只是实现选择');
+    expect(lock).toContain('按用户决定处理');
+    expect(lock).toContain('一次只问一个');
+    expect(lock).toContain('推荐答案');
+    expect(lock).toContain('问完立即结束本轮');
+    expect(lock).toContain('达成共享理解前');
+    expect(lock).toContain('不进入 Build');
+    expect(lock).toContain('不修改项目实现');
+    expect(lock).toContain('不调用 `next`');
+    expect(lock).toContain('必须能引用');
+    expect(lock).toContain('不要询问实现选择');
+    expect(lock).toContain('不允许把产品决定重新归类为实现选择');
+    expect(lock).toContain('一个完整策略问题');
+    expect(lock).toContain('保持现有行为');
+    expect(lock).toContain('不代表新行为自动继承旧语义');
+    expect(lock).toContain('回答后仍会留下同级的用户可见分支');
+    expect(lock).toContain('这个问题就过窄');
+    expect(lock).toContain('新引入的输出或能力');
+    expect(lock).toContain('旧代码、相邻能力和兼容性要求都不能关闭');
+    expect(lock).toContain('该新行为本身');
+    expect(lock).toContain('“规范化”“直观”“标准”“预期”');
+    expect(lock).toContain('只是未定义行为的占位词');
+    expect(lock).toContain('唯一允许的用户可见结果');
+    expect(lock).toContain('当前消息是对已提出阻塞问题的回答');
+    expect(lock).toContain('离开 Shape 的 `next` 必须带 `--confirmed`');
+    expect(lock).toContain('该 transition 后禁止任何工具调用');
+    expect(lock).toContain('大小写折叠、外围标点、内部标点或撇号保留');
+    expect(lock).toContain('缺少其中任一项');
+    const clarificationSurfaces = [source, commands, recovery].join('\n');
+    expect(clarificationSurfaces).not.toContain('高影响决定');
+    expect(clarificationSurfaces).not.toContain('高影响用户决定');
+
+    const protocol = source.slice(protocolStart, progressionStart);
+    expect(protocol).not.toMatch(/高影响|显著改变/u);
+    expect(protocol).toContain('共享理解不是额外的确认步骤');
+    expect(protocol).toContain('没有用户决定时直接继续');
+  });
+
   it('has the public Native identity and a compact decision core', async () => {
     const source = await read('zh', 'SKILL.md');
     const frontmatter = /^---\n([\s\S]*?)\n---/u.exec(source)?.[1];
@@ -51,7 +105,7 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('一个反例能区分两种合理解释');
     expect(source).toContain('然后结束本轮等待回答');
     expect(source).toContain('调用 `next`');
-    expect(source).toContain('不存在高影响未知项时，不提确认题');
+    expect(source).toContain('没有用户决定时直接继续');
     expect(source).toContain('另一个没有当前对话上下文的强模型');
     expect(source).toContain('不猜测用户可见行为');
   });
@@ -64,6 +118,9 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('同一个 `/comet-native` Skill');
     expect(source).toContain('不要把四个阶段拆成多个 Skill');
     expect(source).toContain('没有用户决定或 Runtime 阻塞时持续推进');
+    expect(source).toContain('显式要求在某个阶段停下或切换会话');
+    expect(source).toContain('精确输出约定的停点标记');
+    expect(source).toContain('transition 成功后不再调用工具');
   });
 
   it('references only Comet-owned Native documentation and runtime', async () => {
@@ -141,6 +198,8 @@ describe('Chinese Comet Native Skill', () => {
     expect(commands).toContain('comet native spec remove <change-name> <capability>');
     expect(commands).toContain('comet native spec rebase <change-name> --summary <text>');
     expect(source).toContain('离开 Build 时传 `--confirmed`');
+    expect(source).toContain('先前已经提出的阻塞问题');
+    expect(source).toContain('最初提出功能不算这类显式确认');
     expect(recovery).toContain('受控重开到 Build');
     expect(recovery).toContain('transition.json');
     expect(recovery).toContain('copying');
@@ -156,12 +215,57 @@ describe('Chinese Comet Native Skill', () => {
 
   it('ships an English Skill with the same Native protocol surfaces', async () => {
     const source = await read('en', 'SKILL.md');
-    const files = [
-      source,
-      await read('en', 'reference/artifacts.md'),
-      await read('en', 'reference/commands.md'),
-      await read('en', 'reference/recovery.md'),
-    ].join('\n');
+    const commands = await read('en', 'reference/commands.md');
+    const recovery = await read('en', 'reference/recovery.md');
+    const files = [source, await read('en', 'reference/artifacts.md'), commands, recovery].join(
+      '\n',
+    );
+
+    const lockStart = source.indexOf('## Clarification lock');
+    const startOrResume = source.indexOf('## Start or resume');
+    const protocolStart = source.indexOf('## Decision protocol');
+    const progressionStart = source.indexOf('## Progression contract');
+    expect(lockStart).toBeGreaterThan(0);
+    expect(lockStart).toBeLessThan(startOrResume);
+    const lock = source.slice(lockStart, startOrResume);
+    expect(lock).toContain('walk the decision tree');
+    expect(lock).toContain('cannot prove that it is only an implementation choice');
+    expect(lock).toContain('treat it as a user decision');
+    expect(lock).toContain('ask one question at a time');
+    expect(lock).toContain('recommended answer');
+    expect(lock).toContain('end the turn immediately');
+    expect(lock).toContain('shared understanding');
+    expect(lock).toContain('do not enter Build');
+    expect(lock).toContain('do not modify the project implementation');
+    expect(lock).toContain('do not call `next`');
+    expect(lock).toContain('must be able to quote');
+    expect(lock).toContain('do not ask implementation choices');
+    expect(lock).toContain('does not reclassify product decisions as implementation choices');
+    expect(lock).toContain('one coherent policy question');
+    expect(lock).toContain('Preserve existing behavior');
+    expect(lock).toContain('does not mean that new behavior inherits old semantics');
+    expect(lock).toContain('would leave a sibling user-visible branch unresolved');
+    expect(lock).toContain('the question is too narrow');
+    expect(lock).toContain('newly introduced output or capability');
+    expect(lock).toContain(
+      'Old code, adjacent capabilities, and compatibility requirements cannot close',
+    );
+    expect(lock).toContain('that new behavior itself');
+    expect(lock).toContain('“normalized,” “intuitive,” “standard,” and “expected”');
+    expect(lock).toContain('placeholders for undefined behavior');
+    expect(lock).toContain('the only permitted user-visible result');
+    expect(lock).toContain('current message answers a surfaced blocking question');
+    expect(lock).toContain('the `next` that leaves Shape must include `--confirmed`');
+    expect(lock).toContain('no tool call is permitted after that transition');
+    expect(lock).toContain(
+      'case folding, surrounding punctuation, and preservation of internal punctuation or apostrophes',
+    );
+    expect(lock).toContain('Omitting any one');
+    expect(files).not.toMatch(/high-impact (?:user )?decision/iu);
+    const protocol = source.slice(protocolStart, progressionStart);
+    expect(protocol).not.toMatch(/materially change|high-impact/iu);
+    expect(protocol).toContain('Shared understanding is not an extra confirmation step');
+    expect(protocol).toContain('When no user decision exists, continue directly');
 
     expect(source).toContain('ask the single most upstream question');
     expect(source).toContain('recommended answer');
@@ -177,6 +281,9 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('natural-language display name');
     expect(source).toContain('the choice is a user decision owned by the user');
     expect(source).toContain('Progress automatically only when no user decision exists');
+    expect(source).toContain('explicitly asks you to stop at a phase or switch sessions');
+    expect(source).toContain('emit the requested boundary marker exactly');
+    expect(source).toContain('make no more tool calls after the transition succeeds');
     expect(source).toContain('implementation of an adjacent feature');
     expect(source).toContain("support a recommendation, not replace the user's answer");
     expect(source).toContain('one counterexample distinguishes two reasonable interpretations');
@@ -185,6 +292,10 @@ describe('Chinese Comet Native Skill', () => {
     expect(files).toContain('comet native spec remove <change-name> <capability>');
     expect(files).toContain('comet native spec rebase <change-name> --summary <text>');
     expect(source).toContain('pass `--confirmed` when leaving Build');
+    expect(source).toContain('previously surfaced blocking question');
+    expect(source).toContain(
+      'The initial feature request is not this kind of explicit confirmation',
+    );
     expect(files).toContain('reopens the change in Build');
     expect(files).toContain('runtime owns `approval`, `spec_changes`, operation, and `base_hash`');
     expect(files).toContain('runtime/transition.json');

@@ -75,7 +75,7 @@ A pass closes the active repair episode. If old Archive evidence later becomes s
 Archive stops when another change modifies a canonical specification after the current change froze its `base_hash`. Do not edit the hash:
 
 1. Re-read the latest canonical specification, brief, and proposed complete specification.
-2. Rewrite the complete target specification to reflect user intent, resolving one high-impact decision first when necessary.
+2. Rewrite the complete target specification to reflect user intent, resolving one user decision first when necessary.
 3. Run `comet native spec rebase <change-name> --summary <summary>`.
 4. The runtime refreshes operation/hash, reopens the change in Build, and clears the old verification conclusion.
 5. Implement again, record a newly confirmed decision with `--confirmed` when needed, then rerun Verify and Archive.
