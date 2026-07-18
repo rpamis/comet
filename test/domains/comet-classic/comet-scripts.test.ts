@@ -6348,4 +6348,47 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('HEAD is detached');
     }, 20_000);
   });
+
+  describe('guard bound_branch drift', () => {
+    const guardScript = path.join(scriptsDir, 'comet-guard.mjs');
+
+    it('drifted bound change: comet-guard archive returns non-zero with BLOCKED and drift message', async () => {
+      execFileSync('git', ['init', '-b', 'feature-A'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'guard-archive-drift',
+        [
+          'workflow: full',
+          'phase: archive',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: executing-plans',
+          'isolation: current',
+          'bound_branch: feature-A',
+          'verify_mode: null',
+          'verify_result: pass',
+          'verified_at: null',
+          'archived: true',
+          'branch_status: handled',
+          '',
+        ].join('\n'),
+      );
+
+      execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+      const result = runNode(tmpDir, guardScript, ['guard-archive-drift', 'archive']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('BLOCKED');
+      expect(result.stderr).toContain(
+        "bound to branch 'feature-A', but current branch is 'feature-B'",
+      );
+    }, 20_000);
+  });
 });
