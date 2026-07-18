@@ -13536,7 +13536,7 @@ async function init(output, name, workflow) {
     subagent_dispatch: null,
     tdd_mode: preset ? "direct" : null,
     review_mode: reviewMode,
-    isolation: preset ? "current" : null,
+    isolation: null,
     verify_mode: preset ? "light" : null,
     auto_transition: await autoTransition() === "true",
     base_ref: gitOutput(["rev-parse", "--verify", "HEAD"]),

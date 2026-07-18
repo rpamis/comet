@@ -229,16 +229,13 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it.each(['hotfix', 'tweak'])(
-    'initializes %s in the current workspace without claiming branch isolation',
+    'initializes %s with isolation pending until the user chooses a workspace mode',
     async (workflow) => {
       const result = runNode(tmpDir, stateScript, ['init', `${workflow}-current`, workflow]);
-      const yaml = await fs.readFile(
-        path.join(tmpDir, 'openspec', 'changes', `${workflow}-current`, '.comet.yaml'),
-        'utf8',
-      );
+      const isolation = runNode(tmpDir, stateScript, ['get', `${workflow}-current`, 'isolation']);
 
       expect(result.status).toBe(0);
-      expect(yaml).toContain('isolation: current');
+      expect(isolation.stdout.trim()).toBe('null');
     },
     20_000,
   );
