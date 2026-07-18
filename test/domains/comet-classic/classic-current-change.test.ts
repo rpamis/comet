@@ -96,8 +96,42 @@ describe('Classic current change selection', () => {
     });
   });
 
-  it('leaves isolation: branch changes unaffected by branch drift', async () => {
-    await seedActiveChange(root, 'change-a', false, { isolation: 'branch' });
+  it.each(['branch', 'worktree'])(
+    'marks isolation: %s selections stale after the bound branch drifts',
+    async (isolation) => {
+      await seedActiveChange(root, 'change-a', false, { isolation, boundBranch: 'main' });
+      await selectCurrentChange(root, 'change-a');
+
+      git(root, 'switch', '-c', 'other');
+
+      expect(await resolveCurrentChange(root)).toEqual({
+        status: 'stale',
+        reason: "change 'change-a' is bound to branch 'main', but current branch is 'other'",
+      });
+    },
+  );
+
+  it.each(['current', 'branch', 'worktree'])(
+    'lazily binds isolation: %s selections with no bound branch',
+    async (isolation) => {
+      await seedActiveChange(root, 'change-a', false, { isolation });
+      await selectCurrentChange(root, 'change-a');
+
+      expect(await resolveCurrentChange(root)).toEqual({
+        status: 'selected',
+        selection: { version: 1, change: 'change-a' },
+      });
+      expect(
+        await fs.readFile(
+          path.join(root, 'openspec', 'changes', 'change-a', '.comet.yaml'),
+          'utf8',
+        ),
+      ).toContain('bound_branch: main');
+    },
+  );
+
+  it('leaves isolation: null changes unaffected by branch drift', async () => {
+    await seedActiveChange(root, 'change-a', false, { isolation: 'null' });
     await selectCurrentChange(root, 'change-a');
 
     git(root, 'switch', '-c', 'other');

@@ -13,7 +13,9 @@ import {
   driftBlockedMessage,
   evaluateBranchBinding,
   healBoundBranch,
+  isGitWorkTree,
   liveGitBranch,
+  requiresBranchBinding,
   unboundDetachedMessage,
 } from './classic-branch-binding.js';
 import { collectClassicEvidence } from './classic-evidence.js';
@@ -454,7 +456,7 @@ async function setField(
   const document = await readDocument(file);
   document.set(field, parsedValue(field, value));
   if (field === 'isolation') {
-    if (value === 'current') {
+    if (requiresBranchBinding(value)) {
       const record = document.toJS() as Record<string, unknown>;
       const existing = record.bound_branch;
       const alreadyBound = typeof existing === 'string' && existing !== '';
@@ -462,7 +464,7 @@ async function setField(
         const branch = liveGitBranch(process.cwd());
         if (branch === null) {
           fail(
-            'ERROR: cannot bind isolation=current while HEAD is detached; checkout a branch first',
+            `ERROR: cannot bind isolation=${value} while HEAD is detached; checkout a branch first`,
           );
         }
         document.set('bound_branch', branch);
@@ -868,12 +870,13 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
     (archived !== 'true' ? pass : reject)(`archived=${archived} (expected: not true)`);
   }
   const isolation = await readField(name, 'isolation');
-  if (isolation === 'current') {
+  if (requiresBranchBinding(isolation)) {
     const boundBranchRaw = await readField(name, 'bound_branch');
     const verdict = evaluateBranchBinding({
       isolation,
       boundBranch: boundBranchRaw && boundBranchRaw !== 'null' ? boundBranchRaw : null,
       currentBranch: liveGitBranch(process.cwd()),
+      gitWorkTree: isGitWorkTree(process.cwd()),
     });
     if (verdict.status === 'drift') {
       reject(driftBlockedMessage(name, verdict.boundBranch, verdict.currentBranch));
@@ -881,9 +884,9 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
       reject(unboundDetachedMessage(name));
     } else if (verdict.status === 'needs-heal') {
       await healBoundBranch(directory, verdict.branch);
-      pass(`bound_branch lazily set to ${verdict.branch} (isolation=current)`);
+      pass(`bound_branch lazily set to ${verdict.branch}`);
     } else {
-      pass('bound_branch matches current branch (isolation=current)');
+      pass('bound_branch matches current branch');
     }
   }
   output.stdout.push('');
@@ -1297,7 +1300,7 @@ async function rebind(output: CommandOutput, name: string): Promise<void> {
   const boundBranch = await readField(name, 'bound_branch');
   if (!boundBranch || boundBranch === 'null') {
     fail(
-      `ERROR: '${name}' is not yet bound; use 'comet state set ${name} isolation current' to establish the first binding`,
+      `ERROR: '${name}' is not yet bound; use 'comet state set ${name} isolation <current|branch|worktree>' to establish the first binding`,
     );
   }
   const branch = liveGitBranch(process.cwd());

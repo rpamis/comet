@@ -17,6 +17,20 @@ export function liveGitBranch(cwd: string): string | null {
   }
 }
 
+export function isGitWorkTree(cwd: string): boolean {
+  try {
+    return (
+      execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() === 'true'
+    );
+  } catch {
+    return false;
+  }
+}
+
 export type BranchBindingVerdict =
   | { status: 'not-applicable' }
   | { status: 'ok' }
@@ -24,12 +38,22 @@ export type BranchBindingVerdict =
   | { status: 'unbound-detached' }
   | { status: 'drift'; boundBranch: string; currentBranch: string | null };
 
+export const BOUND_BRANCH_ISOLATIONS = ['current', 'branch', 'worktree'] as const;
+
+export function requiresBranchBinding(isolation: string | null): boolean {
+  return BOUND_BRANCH_ISOLATIONS.includes(isolation as (typeof BOUND_BRANCH_ISOLATIONS)[number]);
+}
+
 export function evaluateBranchBinding(input: {
   isolation: string | null;
   boundBranch: string | null;
   currentBranch: string | null;
+  gitWorkTree?: boolean;
 }): BranchBindingVerdict {
-  if (input.isolation !== 'current') return { status: 'not-applicable' };
+  if (!requiresBranchBinding(input.isolation)) return { status: 'not-applicable' };
+  if (input.boundBranch === null && input.currentBranch === null && input.gitWorkTree === false) {
+    return { status: 'not-applicable' };
+  }
   if (input.boundBranch === null) {
     return input.currentBranch === null
       ? { status: 'unbound-detached' }
@@ -77,5 +101,5 @@ export function driftStaleReason(
 }
 
 export function unboundDetachedMessage(change: string): string {
-  return `change '${change}' uses isolation=current but has no bound branch and HEAD is detached; checkout a branch first before continuing.`;
+  return `change '${change}' uses a branch-bound workspace mode but has no bound branch and HEAD is detached; checkout a branch first before continuing.`;
 }

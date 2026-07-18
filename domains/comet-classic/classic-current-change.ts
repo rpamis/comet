@@ -5,6 +5,7 @@ import {
   driftStaleReason,
   evaluateBranchBinding,
   healBoundBranch,
+  isGitWorkTree,
   liveGitBranch,
   unboundDetachedMessage,
 } from './classic-branch-binding.js';
@@ -135,6 +136,7 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
     isolation: projection.classic?.isolation ?? null,
     boundBranch: projection.classic?.boundBranch ?? null,
     currentBranch: branch,
+    gitWorkTree: isGitWorkTree(projectRoot),
   });
   if (verdict.status === 'drift') {
     return {

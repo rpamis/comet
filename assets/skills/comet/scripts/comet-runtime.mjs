@@ -10325,8 +10325,26 @@ function liveGitBranch(cwd) {
     return null;
   }
 }
+function isGitWorkTree(cwd) {
+  try {
+    return execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+var BOUND_BRANCH_ISOLATIONS = ["current", "branch", "worktree"];
+function requiresBranchBinding(isolation) {
+  return BOUND_BRANCH_ISOLATIONS.includes(isolation);
+}
 function evaluateBranchBinding(input) {
-  if (input.isolation !== "current") return { status: "not-applicable" };
+  if (!requiresBranchBinding(input.isolation)) return { status: "not-applicable" };
+  if (input.boundBranch === null && input.currentBranch === null && input.gitWorkTree === false) {
+    return { status: "not-applicable" };
+  }
   if (input.boundBranch === null) {
     return input.currentBranch === null ? { status: "unbound-detached" } : { status: "needs-heal", branch: input.currentBranch };
   }
@@ -10357,7 +10375,7 @@ function driftStaleReason(change, boundBranch, currentBranch) {
   return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'`;
 }
 function unboundDetachedMessage(change) {
-  return `change '${change}' uses isolation=current but has no bound branch and HEAD is detached; checkout a branch first before continuing.`;
+  return `change '${change}' uses a branch-bound workspace mode but has no bound branch and HEAD is detached; checkout a branch first before continuing.`;
 }
 
 // domains/comet-classic/classic-guard.ts
@@ -10740,14 +10758,15 @@ async function boundBranchMatches(changeDir, change) {
   const verdict = evaluateBranchBinding({
     isolation,
     boundBranch: boundBranch && boundBranch !== "null" ? boundBranch : null,
-    currentBranch: liveGitBranch(process.cwd())
+    currentBranch: liveGitBranch(process.cwd()),
+    gitWorkTree: isGitWorkTree(process.cwd())
   });
   if (verdict.status === "drift")
     return fail(driftBlockedMessage(change, verdict.boundBranch, verdict.currentBranch));
   if (verdict.status === "unbound-detached") return fail(unboundDetachedMessage(change));
   if (verdict.status === "needs-heal") {
     await healBoundBranch(changeDir, verdict.branch);
-    return pass(`bound_branch lazily set to ${verdict.branch} (isolation=current)`);
+    return pass(`bound_branch lazily set to ${verdict.branch}`);
   }
   return pass();
 }
@@ -11071,7 +11090,7 @@ async function guardDesignChecks(output, changeDir, change) {
 }
 async function guardBuildChecks(output, changeDir, change, run) {
   return runChecks(output, [
-    check("bound branch matches isolation=current", () => boundBranchMatches(changeDir, change)),
+    check("bound branch matches workspace mode", () => boundBranchMatches(changeDir, change)),
     check("isolation selected", () => isolationSelected(changeDir, change)),
     check("build_mode selected", () => buildModeSelected(changeDir, change)),
     check("build_mode allowed for workflow", () => buildModeAllowedForWorkflow(changeDir)),
@@ -11103,7 +11122,7 @@ async function guardBuildChecks(output, changeDir, change, run) {
 }
 async function guardVerifyChecks(output, changeDir, change, run) {
   return runChecks(output, [
-    check("bound branch matches isolation=current", () => boundBranchMatches(changeDir, change)),
+    check("bound branch matches workspace mode", () => boundBranchMatches(changeDir, change)),
     check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
     // Verification command runs after tasks check — no point running tests
     // if tasks.md is incomplete.
@@ -11124,7 +11143,7 @@ async function guardVerifyChecks(output, changeDir, change, run) {
 }
 async function guardArchiveChecks(output, changeDir, change) {
   return runChecks(output, [
-    check("bound branch matches isolation=current", () => boundBranchMatches(changeDir, change)),
+    check("bound branch matches workspace mode", () => boundBranchMatches(changeDir, change)),
     check("archived is true", async () => await archivedIsTrue(changeDir) ? pass() : fail("")),
     check(
       "proposal.md exists",
@@ -11803,7 +11822,8 @@ async function resolveCurrentChange(projectRoot2) {
   const verdict = evaluateBranchBinding({
     isolation: projection.classic?.isolation ?? null,
     boundBranch: projection.classic?.boundBranch ?? null,
-    currentBranch: branch
+    currentBranch: branch,
+    gitWorkTree: isGitWorkTree(projectRoot2)
   });
   if (verdict.status === "drift") {
     return {
@@ -13455,7 +13475,7 @@ async function setField2(output, name, field2, value, options = {}) {
   const document = await readDocument2(file);
   document.set(field2, parsedValue(field2, value));
   if (field2 === "isolation") {
-    if (value === "current") {
+    if (requiresBranchBinding(value)) {
       const record = document.toJS();
       const existing = record.bound_branch;
       const alreadyBound = typeof existing === "string" && existing !== "";
@@ -13463,7 +13483,7 @@ async function setField2(output, name, field2, value, options = {}) {
         const branch = liveGitBranch(process.cwd());
         if (branch === null) {
           fail2(
-            "ERROR: cannot bind isolation=current while HEAD is detached; checkout a branch first"
+            `ERROR: cannot bind isolation=${value} while HEAD is detached; checkout a branch first`
           );
         }
         document.set("bound_branch", branch);
@@ -13817,12 +13837,13 @@ async function check2(output, name, phase) {
     (archived !== "true" ? pass2 : reject)(`archived=${archived} (expected: not true)`);
   }
   const isolation = await readField3(name, "isolation");
-  if (isolation === "current") {
+  if (requiresBranchBinding(isolation)) {
     const boundBranchRaw = await readField3(name, "bound_branch");
     const verdict = evaluateBranchBinding({
       isolation,
       boundBranch: boundBranchRaw && boundBranchRaw !== "null" ? boundBranchRaw : null,
-      currentBranch: liveGitBranch(process.cwd())
+      currentBranch: liveGitBranch(process.cwd()),
+      gitWorkTree: isGitWorkTree(process.cwd())
     });
     if (verdict.status === "drift") {
       reject(driftBlockedMessage(name, verdict.boundBranch, verdict.currentBranch));
@@ -13830,9 +13851,9 @@ async function check2(output, name, phase) {
       reject(unboundDetachedMessage(name));
     } else if (verdict.status === "needs-heal") {
       await healBoundBranch(directory, verdict.branch);
-      pass2(`bound_branch lazily set to ${verdict.branch} (isolation=current)`);
+      pass2(`bound_branch lazily set to ${verdict.branch}`);
     } else {
-      pass2("bound_branch matches current branch (isolation=current)");
+      pass2("bound_branch matches current branch");
     }
   }
   output.stdout.push("");
@@ -14169,7 +14190,7 @@ async function rebind(output, name) {
   const boundBranch = await readField3(name, "bound_branch");
   if (!boundBranch || boundBranch === "null") {
     fail2(
-      `ERROR: '${name}' is not yet bound; use 'comet state set ${name} isolation current' to establish the first binding`
+      `ERROR: '${name}' is not yet bound; use 'comet state set ${name} isolation <current|branch|worktree>' to establish the first binding`
     );
   }
   const branch = liveGitBranch(process.cwd());

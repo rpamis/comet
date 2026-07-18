@@ -23,6 +23,7 @@ import {
   driftBlockedMessage,
   evaluateBranchBinding,
   healBoundBranch,
+  isGitWorkTree,
   liveGitBranch,
   unboundDetachedMessage,
 } from './classic-branch-binding.js';
@@ -499,13 +500,14 @@ async function boundBranchMatches(changeDir: string, change: string): Promise<Ch
     isolation,
     boundBranch: boundBranch && boundBranch !== 'null' ? boundBranch : null,
     currentBranch: liveGitBranch(process.cwd()),
+    gitWorkTree: isGitWorkTree(process.cwd()),
   });
   if (verdict.status === 'drift')
     return fail(driftBlockedMessage(change, verdict.boundBranch, verdict.currentBranch));
   if (verdict.status === 'unbound-detached') return fail(unboundDetachedMessage(change));
   if (verdict.status === 'needs-heal') {
     await healBoundBranch(changeDir, verdict.branch);
-    return pass(`bound_branch lazily set to ${verdict.branch} (isolation=current)`);
+    return pass(`bound_branch lazily set to ${verdict.branch}`);
   }
   return pass();
 }
@@ -834,7 +836,7 @@ async function guardBuildChecks(
   run: ClassicRunContext['run'],
 ): Promise<boolean> {
   return runChecks(output, [
-    check('bound branch matches isolation=current', () => boundBranchMatches(changeDir, change)),
+    check('bound branch matches workspace mode', () => boundBranchMatches(changeDir, change)),
     check('isolation selected', () => isolationSelected(changeDir, change)),
     check('build_mode selected', () => buildModeSelected(changeDir, change)),
     check('build_mode allowed for workflow', () => buildModeAllowedForWorkflow(changeDir)),
@@ -870,7 +872,7 @@ async function guardVerifyChecks(
   run: ClassicRunContext['run'],
 ): Promise<boolean> {
   return runChecks(output, [
-    check('bound branch matches isolation=current', () => boundBranchMatches(changeDir, change)),
+    check('bound branch matches workspace mode', () => boundBranchMatches(changeDir, change)),
     check('tasks.md all tasks checked', () => tasksAllDone(changeDir)),
     // Verification command runs after tasks check — no point running tests
     // if tasks.md is incomplete.
@@ -895,7 +897,7 @@ async function guardArchiveChecks(
   change: string,
 ): Promise<boolean> {
   return runChecks(output, [
-    check('bound branch matches isolation=current', () => boundBranchMatches(changeDir, change)),
+    check('bound branch matches workspace mode', () => boundBranchMatches(changeDir, change)),
     check('archived is true', async () => ((await archivedIsTrue(changeDir)) ? pass() : fail(''))),
     check('proposal.md exists', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),

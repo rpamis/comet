@@ -290,7 +290,7 @@ describe('status command', () => {
     expect(output).toContain('run_step: full.build.plan');
   });
 
-  it('prints current isolation with bound branch and omits bound suffix for other isolation modes', async () => {
+  it('prints branch-bound workspace modes with bound branch and omits bound suffix for null isolation', async () => {
     const changesDir = path.join(tmpDir, 'openspec', 'changes');
     state(tmpDir, 'init', 'current-bound', 'full');
     await setCometYamlField(path.join(changesDir, 'current-bound'), 'isolation', 'current');
@@ -317,10 +317,8 @@ describe('status command', () => {
     }
 
     expect(output).toContain('isolation: current (bound: feature-A)');
-    expect(output).toContain('isolation: branch');
-    expect(output).toContain('isolation: worktree');
-    expect(output).not.toContain('isolation: branch (bound: feature-B)');
-    expect(output).not.toContain('isolation: worktree (bound: feature-C)');
+    expect(output).toContain('isolation: branch (bound: feature-B)');
+    expect(output).toContain('isolation: worktree (bound: feature-C)');
     expect(output).not.toContain('feature-D');
   });
 

@@ -7,6 +7,7 @@ import {
   latestCommandCheck,
   type RecordedCommandCheck,
 } from '../../domains/comet-classic/classic-command-checks.js';
+import { requiresBranchBinding } from '../../domains/comet-classic/classic-branch-binding.js';
 
 export interface ChangeStatus {
   name: string;
@@ -258,7 +259,7 @@ function displayStatus(changes: ChangeStatus[]): void {
     console.log(`     workflow: ${c.workflow} | build_mode: ${c.buildMode}`);
     if (c.isolation) {
       const branchSuffix =
-        c.isolation === 'current' && c.boundBranch ? ` (bound: ${c.boundBranch})` : '';
+        requiresBranchBinding(c.isolation) && c.boundBranch ? ` (bound: ${c.boundBranch})` : '';
       console.log(`     isolation: ${c.isolation}${branchSuffix}`);
     }
     if (c.currentStep) console.log(`     run_step: ${c.currentStep}`);

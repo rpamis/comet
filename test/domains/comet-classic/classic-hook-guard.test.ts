@@ -467,19 +467,22 @@ describe('Classic hook guard command', () => {
     expect(result.stderr).toContain('invalid JSON');
   });
 
-  it('fails closed when the bound branch drifts (isolation: current)', async () => {
-    const dir = await makeProject();
-    await initializeGitProject(dir);
-    await seedChange(dir, 'build-ready', 'build', { isolation: 'current', boundBranch: 'main' });
-    expect(run(dir, 'state', ['select', 'build-ready']).status).toBe(0);
-    git(dir, ['switch', '-c', 'other']);
+  it.each(['current', 'branch', 'worktree'])(
+    'fails closed when the bound branch drifts (isolation: %s)',
+    async (isolation) => {
+      const dir = await makeProject();
+      await initializeGitProject(dir);
+      await seedChange(dir, 'build-ready', 'build', { isolation, boundBranch: 'main' });
+      expect(run(dir, 'state', ['select', 'build-ready']).status).toBe(0);
+      git(dir, ['switch', '-c', 'other']);
 
-    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+      const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
 
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("bound to branch 'main'");
-    expect(result.stderr).toContain("current branch is 'other'");
-  });
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("bound to branch 'main'");
+      expect(result.stderr).toContain("current branch is 'other'");
+    },
+  );
 
   it('still blocks selected full-workflow build source writes without a design document', async () => {
     const dir = await makeProject();
