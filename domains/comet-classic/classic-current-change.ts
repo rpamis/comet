@@ -1,14 +1,19 @@
-import { execFileSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
+import {
+  driftStaleReason,
+  evaluateBranchBinding,
+  healBoundBranch,
+  liveGitBranch,
+  unboundDetachedMessage,
+} from './classic-branch-binding.js';
 import { assertOpenSpecChangeName } from './classic-paths.js';
 import { readClassicState } from './classic-store.js';
 
 export interface CurrentChangeSelection {
   version: 1;
   change: string;
-  branch: string | null;
 }
 
 export type CurrentChangeResolution =
@@ -18,19 +23,6 @@ export type CurrentChangeResolution =
 
 export function currentChangeFile(projectRoot: string): string {
   return path.join(projectRoot, '.comet', 'current-change.json');
-}
-
-function currentBranch(projectRoot: string): string | null {
-  try {
-    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    return branch && branch !== 'HEAD' ? branch : null;
-  } catch {
-    return null;
-  }
 }
 
 function changeDirectory(projectRoot: string, changeName: string): string {
@@ -84,13 +76,9 @@ function parseSelection(source: string): CurrentChangeSelection {
     throw new Error('current change selection change must be a string');
   }
   assertOpenSpecChangeName(record.change);
-  if (record.branch !== null && typeof record.branch !== 'string') {
-    throw new Error('current change selection branch must be a string or null');
-  }
   return {
     version: 1,
     change: record.change,
-    branch: record.branch as string | null,
   };
 }
 
@@ -102,7 +90,6 @@ export async function selectCurrentChange(
   const selection: CurrentChangeSelection = {
     version: 1,
     change: changeName,
-    branch: currentBranch(projectRoot),
   };
   const file = currentChangeFile(projectRoot);
   const temporary = `${file}.${randomUUID()}.tmp`;
@@ -140,12 +127,26 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
     };
   }
 
-  const branch = currentBranch(projectRoot);
-  if (selection.branch !== null && branch !== selection.branch) {
+  const projection = await readClassicState(changeDirectory(projectRoot, selection.change), {
+    migrate: false,
+  });
+  const branch = liveGitBranch(projectRoot);
+  const verdict = evaluateBranchBinding({
+    isolation: projection.classic?.isolation ?? null,
+    boundBranch: projection.classic?.boundBranch ?? null,
+    currentBranch: branch,
+  });
+  if (verdict.status === 'drift') {
     return {
       status: 'stale',
-      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${branch ?? 'detached HEAD'}'`,
+      reason: driftStaleReason(selection.change, verdict.boundBranch, verdict.currentBranch),
     };
+  }
+  if (verdict.status === 'unbound-detached') {
+    return { status: 'stale', reason: unboundDetachedMessage(selection.change) };
+  }
+  if (verdict.status === 'needs-heal') {
+    await healBoundBranch(changeDirectory(projectRoot, selection.change), verdict.branch);
   }
   return { status: 'selected', selection };
 }

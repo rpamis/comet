@@ -292,6 +292,49 @@ describe('comet scripts', () => {
     expect(result.status).toBe(2);
   }, 20_000);
 
+  it('blocks repo source writes when an isolation: current change drifts off its bound branch', async () => {
+    execFileSync('git', ['init', '-b', 'feature-A'], { cwd: tmpDir, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+    await writeFile(path.join(tmpDir, 'README.md'), 'base\n');
+    execFileSync('git', ['add', '.'], { cwd: tmpDir });
+    execFileSync('git', ['commit', '-m', 'base'], { cwd: tmpDir, stdio: 'ignore' });
+
+    await createChange(
+      tmpDir,
+      'drift-change',
+      [
+        'workflow: full',
+        'phase: build',
+        'design_doc: docs/superpowers/specs/design.md',
+        'plan: null',
+        'build_mode: executing-plans',
+        'isolation: current',
+        'bound_branch: feature-A',
+        'verify_mode: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const select = runNode(tmpDir, stateScript, ['select', 'drift-change']);
+    expect(select.status).toBe(0);
+
+    execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+    const targetFile = path.join(tmpDir, 'src', 'index.ts');
+    await fs.mkdir(path.dirname(targetFile), { recursive: true });
+    const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('current change selection is stale or invalid');
+    expect(result.stderr).toContain(
+      "bound to branch 'feature-A', but current branch is 'feature-B'",
+    );
+  }, 20_000);
+
   it('falls back to the embedded Classic runtime package when installed script assets omit internal runtime files', async () => {
     const init = runNode(tmpDir, stateScript, ['init', 'embedded-runtime', 'full'], {
       COMET_RUNTIME_CLASSIC_ROOT: '',

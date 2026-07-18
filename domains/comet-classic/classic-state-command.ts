@@ -1236,9 +1236,10 @@ async function selectChange(output: CommandOutput, name: string): Promise<void> 
   validateChangeName(name);
   try {
     const selection = await selectCurrentChange(process.cwd(), name);
+    const boundBranch = await readField(name, 'bound_branch');
     output.stderr.push(
       green(
-        `[SELECTED] current change: ${selection.change}${selection.branch ? ` (branch: ${selection.branch})` : ''}`,
+        `[SELECTED] current change: ${selection.change}${boundBranch !== 'null' ? ` (branch: ${boundBranch})` : ''}`,
       ),
     );
   } catch (error) {
