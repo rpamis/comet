@@ -11325,6 +11325,7 @@ var SPEC_CHANGE_KEYS = /* @__PURE__ */ new Set(["capability", "operation", "sour
 var PHASES = /* @__PURE__ */ new Set(["shape", "build", "verify", "archive"]);
 var APPROVALS = /* @__PURE__ */ new Set(["implicit", "confirmed"]);
 var VERIFY_RESULTS = /* @__PURE__ */ new Set(["pending", "pass", "fail"]);
+var NATIVE_CHANGE_STATE_FILE = "comet-state.yaml";
 var HASH_PATTERN3 = /^[a-f0-9]{64}$/u;
 var NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 var CONTENT_ADDRESSED_REF_PATTERN = /^runtime\/evidence\/(scopes|allowances|verifications)\/([a-f0-9]{64})\.json$/u;
@@ -11449,7 +11450,7 @@ function validDate(value) {
   return (/* @__PURE__ */ new Date(`${value}T00:00:00.000Z`)).toISOString().slice(0, 10) === value;
 }
 function parseChangeFields(root, knownKeys) {
-  rejectUnknown4(root, knownKeys, "change.yaml");
+  rejectUnknown4(root, knownKeys, NATIVE_CHANGE_STATE_FILE);
   if (typeof root.name !== "string") throw new Error("Native change name is required");
   assertNativeName(root.name);
   if (root.language !== "en" && root.language !== "zh-CN") {
@@ -11501,7 +11502,7 @@ function parseChangeFields(root, knownKeys) {
   };
 }
 function parseLegacyNativeChangeValue(value) {
-  const root = record4(value, "change.yaml");
+  const root = record4(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_LEGACY_CHANGE_SCHEMA) {
     throw new Error(`Expected ${NATIVE_LEGACY_CHANGE_SCHEMA}`);
   }
@@ -11527,7 +11528,7 @@ function contentAddressedRef(value, label, kind) {
   return value;
 }
 function parseV2NativeChangeValue(value) {
-  const root = record4(value, "change.yaml");
+  const root = record4(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_V2_CHANGE_SCHEMA) {
     throw new Error(`Expected ${NATIVE_V2_CHANGE_SCHEMA}`);
   }
@@ -11546,7 +11547,7 @@ function parseV2NativeChangeValue(value) {
   };
 }
 function parseNativeChangeValue(value) {
-  const root = record4(value, "change.yaml");
+  const root = record4(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_CHANGE_SCHEMA) {
     if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA || root.schema === NATIVE_V2_CHANGE_SCHEMA) {
       const previous = root.schema === NATIVE_LEGACY_CHANGE_SCHEMA ? parseLegacyNativeChangeValue(root) : parseV2NativeChangeValue(root);
@@ -11593,7 +11594,7 @@ function parseNativeChangeValue(value) {
   };
 }
 function inspectNativeChangeValue(value) {
-  const root = record4(value, "change.yaml");
+  const root = record4(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA) {
     const state2 = parseLegacyNativeChangeValue(root);
     return {
@@ -11820,7 +11821,7 @@ async function readChangeDocumentFile(file, root = path16.dirname(file)) {
   return document.toJS();
 }
 async function inspectNativeChange(paths, name) {
-  const file = path16.join(nativeChangeDir(paths, name), "change.yaml");
+  const file = path16.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file, paths.nativeRoot));
   if (inspection.state && inspection.state.name !== name) {
@@ -11848,7 +11849,7 @@ async function readNativeChange(paths, name) {
   return inspection.state;
 }
 async function createNativeChangeFile(paths, state) {
-  const file = path16.join(nativeChangeDir(paths, state.name), "change.yaml");
+  const file = path16.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
     await fs12.access(file);
@@ -11894,7 +11895,7 @@ async function compareAndSwapNativeChangeLocked(paths, state, expectedRevision, 
     );
   }
   await assertNativeTrajectoryHealthy(paths, state.name);
-  const file = path16.join(nativeChangeDir(paths, state.name), "change.yaml");
+  const file = path16.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   return compareAndSwapNativeChangeFile(file, state, expectedRevision);
 }
@@ -19393,7 +19394,7 @@ async function finalizeArchive(paths, journal, hooks) {
     }
   }
   const archiveDir = archiveDirectoryFromJournal(paths, journal);
-  const stateFile = path34.join(archiveDir, "change.yaml");
+  const stateFile = path34.join(archiveDir, NATIVE_CHANGE_STATE_FILE);
   const state = await readNativeChangeFile(stateFile);
   if (!journal.change || state.name !== journal.change) {
     throw new Error(`Archive transaction ${journal.id} change mismatch`);
@@ -21281,7 +21282,7 @@ async function continueNativeSchemaMigrationLocked(paths, name, hooks) {
       `Native change ${name} has a pending progress checkpoint; recover it with its v2 runtime before schema migration`
     );
   }
-  const changeFile = path38.join(nativeChangeDir(paths, name), "change.yaml");
+  const changeFile = path38.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
   const actualHash = await sha256File(changeFile);
   await assertSupersedeSourceBeforeMutation(paths, journal, actualHash === journal.targetHash);
   if (actualHash !== journal.targetHash) {
@@ -21509,7 +21510,10 @@ async function prepareNextMigration(options) {
       }
     }
   }
-  const changeFile = path38.join(nativeChangeDir(options.paths, options.name), "change.yaml");
+  const changeFile = path38.join(
+    nativeChangeDir(options.paths, options.name),
+    NATIVE_CHANGE_STATE_FILE
+  );
   const targetContent = (0, import_yaml3.stringify)(migrationStateDocument(nextState));
   return {
     schema: "comet.native.schema-migration.v1",
@@ -23507,7 +23511,7 @@ async function inspectChanges(paths, name) {
         severity: "error",
         code: "change-invalid",
         message: status.error ?? `Native change ${status.name} is invalid`,
-        path: path41.join(paths.changesDir, status.name, "change.yaml")
+        path: path41.join(paths.changesDir, status.name, NATIVE_CHANGE_STATE_FILE)
       });
       continue;
     }
@@ -23620,7 +23624,7 @@ async function inspectSchemaMigrations(paths, options) {
           severity: "error",
           code: "change-runtime-incompatible",
           message: inspection.message ?? `Native change ${name} requires a newer runtime`,
-          path: path41.join(paths.changesDir, name, "change.yaml")
+          path: path41.join(paths.changesDir, name, NATIVE_CHANGE_STATE_FILE)
         });
         continue;
       }
@@ -23629,7 +23633,7 @@ async function inspectSchemaMigrations(paths, options) {
           severity: "error",
           code: pending ? "schema-migration-incomplete" : "schema-migration-required",
           message: pending ? `Native schema migration ${pending.id} is incomplete for ${name}` : `Native change ${name} requires migration to the current schema`,
-          path: pending ? file : path41.join(paths.changesDir, name, "change.yaml"),
+          path: pending ? file : path41.join(paths.changesDir, name, NATIVE_CHANGE_STATE_FILE),
           repair: "migrate"
         });
         continue;
@@ -23639,7 +23643,7 @@ async function inspectSchemaMigrations(paths, options) {
         severity: "info",
         code: pending ? "schema-migration-recovered" : "schema-migrated",
         message: `Migrated Native change ${name} to the current schema`,
-        path: path41.join(paths.changesDir, name, "change.yaml")
+        path: path41.join(paths.changesDir, name, NATIVE_CHANGE_STATE_FILE)
       });
     } catch (error) {
       if (error.code === "ENOENT") continue;

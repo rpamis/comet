@@ -43,13 +43,13 @@ def check_decision_and_resume() -> dict[str, str]:
         return failed(check, f"Expected exactly one archive, found {len(archives)}")
 
     archived = archives[0]
-    state_file = archived / "change.yaml"
+    state_file = archived / "comet-state.yaml"
     if not state_file.is_file():
-        return failed(check, "Archived change.yaml is missing")
+        return failed(check, "Archived comet-state.yaml is missing")
     try:
         state = yaml.safe_load(state_file.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as error:
-        return failed(check, f"Archived change.yaml is invalid: {error}")
+        return failed(check, f"Archived comet-state.yaml is invalid: {error}")
     expected_state = {
         "phase": "archive",
         "approval": "confirmed",

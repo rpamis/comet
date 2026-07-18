@@ -102,7 +102,7 @@ describe('Native check public seam', () => {
 
   it('runs the internal scoped check through a whitelist-only CLI projection', async () => {
     const { paths, changeDir } = await prepareVerifyChange();
-    const stateBefore = await fs.readFile(path.join(changeDir, 'change.yaml'), 'utf8');
+    const stateBefore = await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8');
     const runBefore = await fs.readFile(path.join(changeDir, 'runtime', 'run-state.json'), 'utf8');
     const trajectoryBefore = await fs.readFile(
       path.join(changeDir, 'runtime', 'trajectory.jsonl'),
@@ -154,7 +154,7 @@ describe('Native check public seam', () => {
     expect(serializedProjection).not.toContain('executable');
     expect(serializedProjection).not.toContain('stdout');
     expect(serializedProjection).not.toContain('stderr');
-    expect(await fs.readFile(path.join(changeDir, 'change.yaml'), 'utf8')).toBe(stateBefore);
+    expect(await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8')).toBe(stateBefore);
     expect(await fs.readFile(path.join(changeDir, 'runtime', 'run-state.json'), 'utf8')).toBe(
       runBefore,
     );

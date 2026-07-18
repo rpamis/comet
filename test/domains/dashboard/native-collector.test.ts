@@ -60,7 +60,7 @@ describe('Native Dashboard collector', () => {
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const state = await createNativeChange({ paths, name: 'dashboard-change', language: 'en' });
     await fs.writeFile(path.join(nativeChangeDir(paths, state.name), 'brief.md'), brief);
-    const stateFile = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+    const stateFile = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
     const before = await fs.readFile(stateFile, 'utf8');
 
     const projection = await collectNativeDashboardProjection(projectRoot, {
@@ -108,7 +108,7 @@ describe('Native Dashboard collector', () => {
         `dashboard-page-${String(index).padStart(2, '0')}`,
       );
       await fs.mkdir(directory, { recursive: true });
-      await fs.writeFile(path.join(directory, 'change.yaml'), 'schema: [invalid\n');
+      await fs.writeFile(path.join(directory, 'comet-state.yaml'), 'schema: [invalid\n');
     }
 
     const projection = await collectNativeDashboardProjection(projectRoot, {

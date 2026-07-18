@@ -36,7 +36,7 @@ describe('workflow contract normalization', () => {
     ]);
     expect(workflow.protocol.state).toEqual({
       kind: 'native-change',
-      statePath: 'changes/*/change.yaml',
+      statePath: 'changes/*/comet-state.yaml',
       pathBase: 'native-root',
       currentNodeField: 'phase',
       completedNodesField: 'runtime.completedNodes',

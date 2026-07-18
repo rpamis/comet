@@ -655,6 +655,12 @@ Wave B 失败轨迹显示，模型并非没有发现大小写与标点分支，�
 
 这一决定替代本文早期章节中的根目录 `comet.config.yaml` 描述；早期文字继续保留，用于呈现设计如何从“Native 自有可见配置”演进到“Comet 统一项目配置”。
 
+## 2026-07-18：Native 状态文件命名收口
+
+Native 尚未发布，因此不保留 `change.yaml` 兼容层，活跃与归档 change 的状态文件直接统一为 `comet-state.yaml`。项目级配置仍位于 `.comet/config.yaml`；`comet-state.yaml` 只表达单个 Native change 的状态机，避免把项目配置、change 身份和状态机混成同一种文件心智。
+
+Classic 本轮不迁移。未来 Classic 可以沿用同一状态文件命名，但 Native 与 Classic 仍保持各自独立的目录、schema、状态机和执行路径，不因文件同名而合并概念。
+
 ## 附录 A：原始 58 个检查点及收敛去向
 
 这份原始清单保留探索覆盖面。它不代表 58 个待发布功能；“收敛去向”才是当前设计决定。

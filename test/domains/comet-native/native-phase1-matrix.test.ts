@@ -464,7 +464,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     );
     await runNativeCli(['new', 'malformed-state', '--project-root', projectRoot]);
     await fs.writeFile(
-      path.join(nativeChangeDir(paths, 'malformed-state'), 'change.yaml'),
+      path.join(nativeChangeDir(paths, 'malformed-state'), 'comet-state.yaml'),
       'schema: comet.native.v1\nphase: [broken\n',
     );
 

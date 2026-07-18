@@ -6,7 +6,7 @@
 
 1. 读取项目 `.comet/config.yaml`，确认唯一 artifact root；若有 `pending_root_move`，先运行 doctor。
 2. 运行 `comet native status`；多个 active change 时读取 Native selection 或让用户明确选择。
-3. 对目标 change 运行 `show` 和 `status <change-name> --details`，读取 `change.yaml`、brief、拟议完整规格、verification、有界结构化 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；Verify/Archive 的验收 ID 则按 `acceptancePage.nextCursor` 独立分页取得，不依赖丢失的旧响应。
+3. 对目标 change 运行 `show` 和 `status <change-name> --details`，读取 `comet-state.yaml`、brief、拟议完整规格、verification、有界结构化 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；Verify/Archive 的验收 ID 则按 `acceptancePage.nextCursor` 独立分页取得，不依赖丢失的旧响应。
 4. 读取相关 canonical 规格、实现、规则、测试和当前工作区状态。
 5. 根据 phase 执行 Shape、Build、Verify 或 Archive，不依赖聊天记录猜阶段。
 
@@ -26,7 +26,7 @@ comet native checkpoint <change-name> \
 
 ## 普通阶段推进
 
-`next` 在 change 的 `runtime/transition.json` 先写入 prepared journal，再更新 Run state、`change.yaml`、trajectory 和 checkpoint。全部完成后才删除 journal。
+`next` 在 change 的 `runtime/transition.json` 先写入 prepared journal，再更新 Run state、`comet-state.yaml`、trajectory 和 checkpoint。全部完成后才删除 journal。
 
 `status` 和 doctor 会报告未完成 transition。再次运行 `next` 或进入 Archive 时，runtime 会先确定性续做；也可以显式执行：
 

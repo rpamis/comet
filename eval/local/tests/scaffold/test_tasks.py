@@ -232,7 +232,7 @@ def test_native_clarification_validator_rejects_multiple_archives(tmp_path: Path
     (archive_root / "2026-07-15-first-change").mkdir(parents=True)
     current = archive_root / "2026-07-15-second-change"
     current.mkdir()
-    (current / "change.yaml").write_text("approval: confirmed\n", encoding="utf-8")
+    (current / "comet-state.yaml").write_text("approval: confirmed\n", encoding="utf-8")
     (current / "brief.md").write_text("Abbreviation decision confirmed.\n", encoding="utf-8")
     canonical = tmp_path / "docs" / "comet" / "specs" / "sentence-counting" / "spec.md"
     canonical.parent.mkdir(parents=True)
@@ -256,7 +256,7 @@ def test_native_clarification_validator_accepts_one_semantic_canonical_spec(tmp_
 
     archived = tmp_path / "docs" / "comet" / "archive" / "2026-07-15-add-sentences"
     archived.mkdir(parents=True)
-    (archived / "change.yaml").write_text(
+    (archived / "comet-state.yaml").write_text(
         """schema: comet.native.v1
 name: add-sentences
 phase: archive

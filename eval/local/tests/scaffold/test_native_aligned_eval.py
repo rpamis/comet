@@ -30,7 +30,7 @@ def _write_native_archive(root: Path) -> None:
         ),
         encoding="utf-8",
     )
-    (archive / "change.yaml").write_text(
+    (archive / "comet-state.yaml").write_text(
         yaml.safe_dump(
             {
                 "schema": "comet.native.v1",
@@ -91,7 +91,7 @@ def _write_native_hard_stop(root: Path) -> None:
         ),
         encoding="utf-8",
     )
-    (change / "change.yaml").write_text(
+    (change / "comet-state.yaml").write_text(
         yaml.safe_dump(
             {
                 "schema": "comet.native.v3",

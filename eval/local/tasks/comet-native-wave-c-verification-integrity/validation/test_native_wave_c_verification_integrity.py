@@ -190,7 +190,10 @@ def check_verification_integrity() -> dict[str, str]:
         return failed(check, f"Expected exactly one Native archive, found {len(archives)}")
     change_root = archives[0]
     try:
-        state = yaml.safe_load((change_root / "change.yaml").read_text(encoding="utf-8")) or {}
+        state = (
+            yaml.safe_load((change_root / "comet-state.yaml").read_text(encoding="utf-8"))
+            or {}
+        )
         if (
             state.get("name") != "add-longest-word"
             or state.get("phase") != "archive"

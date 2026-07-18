@@ -712,7 +712,7 @@ def test_wave_b_validator_accepts_one_confirmed_archive_and_resume_snapshot(tmp_
         "archived": True,
         "verification_result": "pass",
     }
-    (archived / "change.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
+    (archived / "comet-state.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
     decision = "Lowercase every token, strip surrounding punctuation, and preserve apostrophes inside a word."
     (archived / "brief.md").write_text(f"# Decisions\n{decision}\n", encoding="utf-8")
     (archived / "specs/unique-word-counting/spec.md").write_text(decision, encoding="utf-8")
@@ -816,7 +816,7 @@ def test_wave_c_validator_requires_bound_partial_stale_and_complete_archive(tmp_
         include_receipt=True,
     )
     state["verification_evidence"] = final_ref
-    (archive / "change.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
+    (archive / "comet-state.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
     stale_hash = "b" * 64
     final_hash = "c" * 64
     transaction_id = "cccccccc-1111-2222-3333-dddddddddddd"
@@ -1371,7 +1371,7 @@ def test_wave_d_validator_requires_third_stop_one_override_and_twelfth_hard_stop
         for index in range(1, 13)
     ]
     state["verification_evidence"] = envelope_refs[-1]
-    (root / "change.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
+    (root / "comet-state.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
     first_signature = "a" * 64
     later_signatures = ["b" * 64, "c" * 64]
     repair_events = [
@@ -1602,7 +1602,7 @@ def test_wave_e_live_cas_never_executes_agent_mutable_runtime(tmp_path: Path):
         "comet-native-wave-e-parallel-safety", "test_native_wave_e_parallel_safety.py"
     )
     validator.WORKSPACE = tmp_path
-    state_file = tmp_path / "docs/comet/changes/normalize-case/change.yaml"
+    state_file = tmp_path / "docs/comet/changes/normalize-case/comet-state.yaml"
     state_file.parent.mkdir(parents=True)
     state_file.write_text("name: normalize-case\nrevision: 1\n", encoding="utf-8")
     (tmp_path / ".cache/comet-native-eval").mkdir(parents=True)
@@ -1737,7 +1737,9 @@ def test_wave_f_validator_requires_matching_projection_and_unchanged_tree(tmp_pa
     )
     native_change = tmp_path / "docs/comet/changes/dashboard-visible-change"
     native_change.mkdir(parents=True)
-    (native_change / "change.yaml").write_text("name: dashboard-visible-change\n", encoding="utf-8")
+    (native_change / "comet-state.yaml").write_text(
+        "name: dashboard-visible-change\n", encoding="utf-8"
+    )
     manifest = {"files": validator._current_native_manifest()}
     write_json(tmp_path / ".cache/comet-native-eval/native-tree-before.json", manifest)
     write_json(tmp_path / ".cache/comet-native-eval/native-tree-after.json", manifest)
@@ -1792,7 +1794,9 @@ def test_wave_f_live_check_rejects_a_single_dashboard_write(monkeypatch, tmp_pat
     (tmp_path / "current-comet.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     native = tmp_path / "docs/comet/changes/dashboard-visible-change"
     native.mkdir(parents=True)
-    (native / "change.yaml").write_text("name: dashboard-visible-change\n", encoding="utf-8")
+    (native / "comet-state.yaml").write_text(
+        "name: dashboard-visible-change\n", encoding="utf-8"
+    )
     (tmp_path / ".cache/comet-native-eval").mkdir(parents=True)
     calls = 0
 
@@ -1834,7 +1838,7 @@ def test_wave_f_live_check_never_executes_agent_mutable_wrapper(monkeypatch, tmp
 
     native_change = tmp_path / "docs/comet/changes/dashboard-visible-change"
     native_change.mkdir(parents=True)
-    (native_change / "change.yaml").write_text(
+    (native_change / "comet-state.yaml").write_text(
         "name: dashboard-visible-change\nphase: shape\n", encoding="utf-8"
     )
     (tmp_path / ".comet").mkdir()

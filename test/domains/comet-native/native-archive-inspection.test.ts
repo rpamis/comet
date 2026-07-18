@@ -74,7 +74,7 @@ describe('Native Archive inspection', () => {
       phase: 'verify',
       implementation_scope: build.scopeRef as NativeChangeState['implementation_scope'],
     };
-    const stateFile = path.join(changeDir, 'change.yaml');
+    const stateFile = path.join(changeDir, 'comet-state.yaml');
     const verifyState = await compareAndSwapNativeChangeFile(stateFile, verifyCandidate, 1);
     const contract = await collectNativeContractFiles({
       changeDir,
@@ -125,7 +125,7 @@ Pass.
   });
 
   it('returns a stable ready preview without writing project state', async () => {
-    const changeFile = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+    const changeFile = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
     const before = await fs.readFile(changeFile, 'utf8');
 
     const first = await inspectNativeArchivePreflight({

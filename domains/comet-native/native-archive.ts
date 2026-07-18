@@ -27,6 +27,7 @@ import {
   type NativeArchiveTransactionHooksV2,
 } from './native-archive-transaction.js';
 import {
+  NATIVE_CHANGE_STATE_FILE,
   nativeChangeDir,
   readNativeChange,
   readNativeChangeFile,
@@ -280,7 +281,7 @@ async function finalizeArchive(
     }
   }
   const archiveDir = archiveDirectoryFromJournal(paths, journal);
-  const stateFile = path.join(archiveDir, 'change.yaml');
+  const stateFile = path.join(archiveDir, NATIVE_CHANGE_STATE_FILE);
   const state = await readNativeChangeFile(stateFile);
   if (!journal.change || state.name !== journal.change) {
     throw new Error(`Archive transaction ${journal.id} change mismatch`);

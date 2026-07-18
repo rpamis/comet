@@ -9,6 +9,7 @@ import { atomicWriteJson, atomicWriteText } from './native-atomic-file.js';
 import {
   hasPendingNativeCheckpointRecovery,
   inspectNativeChange,
+  NATIVE_CHANGE_STATE_FILE,
   nativeChangeDir,
   nativeChangeDocument,
   nativeV2ChangeDocument,
@@ -764,7 +765,7 @@ async function continueNativeSchemaMigrationLocked(
       `Native change ${name} has a pending progress checkpoint; recover it with its v2 runtime before schema migration`,
     );
   }
-  const changeFile = path.join(nativeChangeDir(paths, name), 'change.yaml');
+  const changeFile = path.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
   const actualHash = await sha256File(changeFile);
   await assertSupersedeSourceBeforeMutation(paths, journal, actualHash === journal.targetHash);
   if (actualHash !== journal.targetHash) {
@@ -1034,7 +1035,10 @@ async function prepareNextMigration(options: {
       }
     }
   }
-  const changeFile = path.join(nativeChangeDir(options.paths, options.name), 'change.yaml');
+  const changeFile = path.join(
+    nativeChangeDir(options.paths, options.name),
+    NATIVE_CHANGE_STATE_FILE,
+  );
   const targetContent = stringify(migrationStateDocument(nextState));
   return {
     schema: 'comet.native.schema-migration.v1',

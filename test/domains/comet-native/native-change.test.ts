@@ -53,6 +53,12 @@ describe('Native change store', () => {
     });
     expect(state).not.toHaveProperty('confirmation_required');
     expect(await readNativeChange(paths, state.name)).toEqual(state);
+    await expect(
+      fs.access(path.join(paths.changesDir, state.name, 'comet-state.yaml')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(paths.changesDir, state.name, 'change.yaml')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await fs.stat(path.join(paths.changesDir, state.name, 'specs'))).toBeDefined();
     expect(
       await fs.stat(path.join(paths.changesDir, state.name, 'runtime', 'checkpoints')),
@@ -90,7 +96,7 @@ describe('Native change store', () => {
   it('fails closed before parsing an oversized change document', async () => {
     const state = await createNativeChange({ paths, name: 'oversized-change', language: 'en' });
     await fs.writeFile(
-      path.join(paths.changesDir, state.name, 'change.yaml'),
+      path.join(paths.changesDir, state.name, 'comet-state.yaml'),
       'x'.repeat(NATIVE_CHANGE_DOCUMENT_MAX_BYTES + 1),
     );
 
@@ -147,7 +153,7 @@ describe('Native change store', () => {
     ['bad name', { name: '../escape' }],
   ])('rejects %s', async (_label, patch) => {
     const state = await createNativeChange({ paths, name: 'strict-change', language: 'en' });
-    const file = path.join(paths.changesDir, state.name, 'change.yaml');
+    const file = path.join(paths.changesDir, state.name, 'comet-state.yaml');
     const value = { ...state, ...patch };
     await fs.writeFile(file, stringify(value));
     await expect(readNativeChange(paths, state.name)).rejects.toBeInstanceOf(Error);
@@ -155,7 +161,7 @@ describe('Native change store', () => {
 
   it('requires field-specific change-relative content-addressed evidence refs', async () => {
     const state = await createNativeChange({ paths, name: 'strict-evidence', language: 'en' });
-    const file = path.join(paths.changesDir, state.name, 'change.yaml');
+    const file = path.join(paths.changesDir, state.name, 'comet-state.yaml');
     const hash = 'a'.repeat(64);
     await fs.writeFile(
       file,
@@ -194,7 +200,7 @@ describe('Native change store', () => {
 
   it('rejects duplicate capabilities and path traversal sources', async () => {
     const state = await createNativeChange({ paths, name: 'strict-specs', language: 'en' });
-    const file = path.join(paths.changesDir, state.name, 'change.yaml');
+    const file = path.join(paths.changesDir, state.name, 'comet-state.yaml');
     await fs.writeFile(
       file,
       stringify({

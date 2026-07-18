@@ -257,7 +257,7 @@ describe('Native transition recovery', () => {
       ).rejects.toThrow('seed corrupt transition');
       const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
       const stateAtCrash = await readNativeChange(paths, 'recover-transition');
-      const changeFile = path.join(changeDir, 'change.yaml');
+      const changeFile = path.join(changeDir, 'comet-state.yaml');
       const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
       const journal = transitionForGeneration(currentJournal, generation);
       Object.assign(journal.nextRun as Record<string, unknown>, {
@@ -663,7 +663,7 @@ describe('Native transition recovery', () => {
       };
       const state = await readNativeChange(paths, 'recover-transition');
       await fs.writeFile(
-        path.join(changeDir, 'change.yaml'),
+        path.join(changeDir, 'comet-state.yaml'),
         stringify(generation === 'v1' ? legacyState(state) : v2State(state)),
       );
       await fs.writeFile(
@@ -730,7 +730,7 @@ describe('Native transition recovery', () => {
       }),
     ).rejects.toThrow('seed pending change CAS');
     const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
-    const changeFile = path.join(changeDir, 'change.yaml');
+    const changeFile = path.join(changeDir, 'comet-state.yaml');
     const current = await readNativeChange(paths, 'recover-transition');
     await fs.writeFile(changeFile, stringify({ ...current, approval: 'confirmed' }));
     const [changeBefore, journalBefore] = await Promise.all([
@@ -767,14 +767,14 @@ describe('Native transition recovery', () => {
       NATIVE_RUN_STORAGE,
     );
     const [changeBefore, journalBefore] = await Promise.all([
-      fs.readFile(path.join(changeDir, 'change.yaml'), 'utf8'),
+      fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8'),
       fs.readFile(transitionFile, 'utf8'),
     ]);
 
     await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
       /Run content changed/iu,
     );
-    expect(await fs.readFile(path.join(changeDir, 'change.yaml'), 'utf8')).toBe(changeBefore);
+    expect(await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8')).toBe(changeBefore);
     expect(await fs.readFile(transitionFile, 'utf8')).toBe(journalBefore);
     expect(await readRunStateAt(changeDir, NATIVE_RUN_STORAGE)).toMatchObject({
       runId: 'other-valid-run',
@@ -914,7 +914,7 @@ describe('Native transition recovery', () => {
       }
 
       const stateAtCrash = await readNativeChange(paths, 'recover-transition');
-      const changeFile = path.join(changeDir, 'change.yaml');
+      const changeFile = path.join(changeDir, 'comet-state.yaml');
       const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
       const legacyJournal = legacyTransition(currentJournal);
       const legacyNextRun = legacyJournal.nextRun as Record<string, unknown>;
@@ -1022,7 +1022,7 @@ describe('Native transition recovery', () => {
       }),
     ).rejects.toThrow('interrupt v2 transition');
     const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-    const changeFile = path.join(changeDir, 'change.yaml');
+    const changeFile = path.join(changeDir, 'comet-state.yaml');
     const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
     await fs.writeFile(
       changeFile,
@@ -1086,7 +1086,7 @@ describe('Native transition recovery', () => {
       }),
     ).rejects.toThrow('seed pending transition');
     const currentJournal = (await inspectPendingNativeTransition(paths, 'recover-transition'))!;
-    const changeFile = path.join(changeDir, 'change.yaml');
+    const changeFile = path.join(changeDir, 'comet-state.yaml');
     const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
     await fs.writeFile(
       changeFile,
@@ -1181,7 +1181,7 @@ describe('Native transition recovery', () => {
       now: new Date(currentJournal.createdAt),
     });
 
-    const changeFile = path.join(changeDir, 'change.yaml');
+    const changeFile = path.join(changeDir, 'comet-state.yaml');
     const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
     await fs.writeFile(
       changeFile,
@@ -1309,7 +1309,7 @@ describe('Native transition recovery', () => {
       });
       const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
       await fs.writeFile(
-        path.join(changeDir, 'change.yaml'),
+        path.join(changeDir, 'comet-state.yaml'),
         stringify(v2State(await readNativeChange(paths, 'recover-transition'))),
       );
       await fs.writeFile(transitionFile, JSON.stringify(v2Transition(pending), null, 2) + '\n');
@@ -1449,7 +1449,7 @@ describe('Native transition recovery', () => {
         },
       }),
     ).rejects.toThrow('crash before trajectory append completed');
-    const stateFile = path.join(changeDir, 'change.yaml');
+    const stateFile = path.join(changeDir, 'comet-state.yaml');
     const runFile = path.join(changeDir, NATIVE_RUN_STORAGE.stateRef);
     const transitionFile = nativeTransitionJournalFile(paths, 'recover-transition');
     const trajectoryFile = path.join(changeDir, NATIVE_RUN_STORAGE.trajectoryRef);

@@ -58,6 +58,8 @@ const SPEC_CHANGE_KEYS = new Set(['capability', 'operation', 'source', 'base_has
 const PHASES = new Set<NativePhase>(['shape', 'build', 'verify', 'archive']);
 const APPROVALS = new Set<Exclude<NativeApproval, null>>(['implicit', 'confirmed']);
 const VERIFY_RESULTS = new Set<NativeVerificationResult>(['pending', 'pass', 'fail']);
+
+export const NATIVE_CHANGE_STATE_FILE = 'comet-state.yaml';
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const CONTENT_ADDRESSED_REF_PATTERN =
@@ -206,7 +208,7 @@ function parseChangeFields(
   root: Record<string, unknown>,
   knownKeys: Set<string>,
 ): ParsedChangeFields {
-  rejectUnknown(root, knownKeys, 'change.yaml');
+  rejectUnknown(root, knownKeys, NATIVE_CHANGE_STATE_FILE);
   if (typeof root.name !== 'string') throw new Error('Native change name is required');
   assertNativeName(root.name);
   if (root.language !== 'en' && root.language !== 'zh-CN') {
@@ -264,7 +266,7 @@ function parseChangeFields(
 }
 
 export function parseLegacyNativeChangeValue(value: unknown): NativeLegacyChangeState {
-  const root = record(value, 'change.yaml');
+  const root = record(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_LEGACY_CHANGE_SCHEMA) {
     throw new Error(`Expected ${NATIVE_LEGACY_CHANGE_SCHEMA}`);
   }
@@ -297,7 +299,7 @@ function contentAddressedRef(
 }
 
 export function parseV2NativeChangeValue(value: unknown): NativeV2ChangeState {
-  const root = record(value, 'change.yaml');
+  const root = record(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_V2_CHANGE_SCHEMA) {
     throw new Error(`Expected ${NATIVE_V2_CHANGE_SCHEMA}`);
   }
@@ -317,7 +319,7 @@ export function parseV2NativeChangeValue(value: unknown): NativeV2ChangeState {
 }
 
 export function parseNativeChangeValue(value: unknown): NativeChangeState {
-  const root = record(value, 'change.yaml');
+  const root = record(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_CHANGE_SCHEMA) {
     if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA || root.schema === NATIVE_V2_CHANGE_SCHEMA) {
       const previous =
@@ -368,7 +370,7 @@ export function parseNativeChangeValue(value: unknown): NativeChangeState {
 }
 
 export function inspectNativeChangeValue(value: unknown): NativeChangeSchemaInspection {
-  const root = record(value, 'change.yaml');
+  const root = record(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA) {
     const state = parseLegacyNativeChangeValue(root);
     return {
@@ -626,7 +628,7 @@ export async function inspectNativeChange(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<NativeChangeSchemaInspection> {
-  const file = path.join(nativeChangeDir(paths, name), 'change.yaml');
+  const file = path.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file, paths.nativeRoot));
   if (inspection.state && inspection.state.name !== name) {
@@ -669,7 +671,7 @@ async function createNativeChangeFile(
   paths: NativeProjectPaths,
   state: NativeChangeState,
 ): Promise<void> {
-  const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+  const file = path.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
     await fs.access(file);
@@ -731,7 +733,7 @@ export async function compareAndSwapNativeChangeLocked(
     );
   }
   await assertNativeTrajectoryHealthy(paths, state.name);
-  const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+  const file = path.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   return compareAndSwapNativeChangeFile(file, state, expectedRevision);
 }

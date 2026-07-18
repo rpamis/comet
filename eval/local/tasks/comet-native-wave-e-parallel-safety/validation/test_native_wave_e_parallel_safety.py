@@ -83,7 +83,9 @@ def check_parallel_safety() -> dict[str, str]:
             check, f"Expected active changes {sorted(EXPECTED_CHANGES)}, found {sorted(active)}"
         )
     archived_names = {
-        (yaml.safe_load((path / "change.yaml").read_text(encoding="utf-8")) or {}).get("name")
+        (yaml.safe_load((path / "comet-state.yaml").read_text(encoding="utf-8")) or {}).get(
+            "name"
+        )
         for path in archive_changes(WORKSPACE)
     }
     if archived_names & EXPECTED_CHANGES:
@@ -185,7 +187,7 @@ def run_barrier_commands(
 
 def check_live_concurrent_cas() -> dict[str, str]:
     check = "live_concurrent_cas"
-    state_file = WORKSPACE / "docs/comet/changes/normalize-case/change.yaml"
+    state_file = WORKSPACE / "docs/comet/changes/normalize-case/comet-state.yaml"
     try:
         state = yaml.safe_load(state_file.read_text(encoding="utf-8")) or {}
         expected = state.get("revision")
@@ -242,7 +244,7 @@ def check_live_conflict_and_workspace() -> dict[str, str]:
     proposed_hashes: set[str] = set()
     for name in EXPECTED_CHANGES:
         root = WORKSPACE / "docs/comet/changes" / name
-        state_file = root / "change.yaml"
+        state_file = root / "comet-state.yaml"
         proposed = root / "specs/word-normalization/spec.md"
         workspace_file = root / "runtime/workspace.json"
         if not all(path.is_file() for path in (state_file, proposed, workspace_file)):

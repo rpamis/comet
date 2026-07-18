@@ -169,7 +169,7 @@ export function normalizeWorkflowDefinition(
         : input.kind === 'comet-native'
           ? {
               kind: 'native-change',
-              statePath: 'changes/*/change.yaml',
+              statePath: 'changes/*/comet-state.yaml',
               pathBase: 'native-root',
               currentNodeField: 'phase',
               completedNodesField: 'runtime.completedNodes',

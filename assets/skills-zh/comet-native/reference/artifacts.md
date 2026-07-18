@@ -7,7 +7,7 @@
 <artifact-root>/comet/
   specs/<capability>/spec.md
   changes/<change-name>/
-    change.yaml
+    comet-state.yaml
     brief.md
     specs/
     verification.md
@@ -48,6 +48,8 @@
 ```yaml
 schema: comet.project.v1
 default_workflow: native
+workflows:
+  - native
 native:
   artifact_root: docs
   language: zh-CN

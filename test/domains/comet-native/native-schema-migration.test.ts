@@ -103,7 +103,7 @@ describe('Native schema compatibility and journalized migration', () => {
 
   async function seedLegacyChange(name: string): Promise<string> {
     const state = await createNativeChange({ paths, name, language: 'en' });
-    const file = path.join(nativeChangeDir(paths, name), 'change.yaml');
+    const file = path.join(nativeChangeDir(paths, name), 'comet-state.yaml');
     await fs.writeFile(file, stringify(legacyDocument(state)));
     await fs.rm(nativeBaselineManifestFile(paths, name), { force: true });
     return file;
@@ -154,7 +154,7 @@ describe('Native schema compatibility and journalized migration', () => {
   }
 
   async function downgradeToV2(state: NativeChangeState): Promise<string> {
-    const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+    const file = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
     await fs.writeFile(file, stringify(v2Document(state)));
     return file;
   }
@@ -293,7 +293,7 @@ describe('Native schema compatibility and journalized migration', () => {
     async (phase) => {
       const name = `v1-${phase}`;
       const { changeDir, state } = await seedCurrentPhase(name, phase);
-      const file = path.join(changeDir, 'change.yaml');
+      const file = path.join(changeDir, 'comet-state.yaml');
       await fs.writeFile(file, stringify(legacyDocument(state)));
 
       const migrated = await migrateNativeChange({
@@ -452,7 +452,9 @@ describe('Native schema compatibility and journalized migration', () => {
         expectedPreflightHash: preflight.preflightHash,
         now: new Date('2026-07-17T02:33:00.000Z'),
       });
-      expect(await readNativeChangeFile(path.join(archived.archiveDir, 'change.yaml'))).toMatchObject({
+      expect(
+        await readNativeChangeFile(path.join(archived.archiveDir, 'comet-state.yaml')),
+      ).toMatchObject({
         phase: 'archive',
         archived: true,
       });
@@ -594,7 +596,10 @@ describe('Native schema compatibility and journalized migration', () => {
         },
       }),
     ).rejects.toThrow('interrupt after migration state write');
-    const stateFile = path.join(nativeChangeDir(paths, 'interrupted-migration'), 'change.yaml');
+    const stateFile = path.join(
+      nativeChangeDir(paths, 'interrupted-migration'),
+      'comet-state.yaml',
+    );
     const stateBeforeRecovery = await fs.readFile(stateFile, 'utf8');
     await expect(readNativeChange(paths, 'interrupted-migration')).rejects.toBeInstanceOf(
       NativeSchemaMigrationRequiredError,
@@ -658,7 +663,7 @@ describe('Native schema compatibility and journalized migration', () => {
 
   it('fails closed on a schema that requires a newer runtime without rewriting it', async () => {
     const state = await createNativeChange({ paths, name: 'future-change', language: 'en' });
-    const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+    const file = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
     const source = stringify({
       ...state,
       schema: 'comet.native.v4',
@@ -684,7 +689,7 @@ describe('Native schema compatibility and journalized migration', () => {
 
   it('fails closed on an unsupported older schema without inventing a migration route', async () => {
     const state = await createNativeChange({ paths, name: 'ancient-change', language: 'en' });
-    const file = path.join(nativeChangeDir(paths, state.name), 'change.yaml');
+    const file = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
     const source = stringify({
       ...state,
       schema: 'comet.native.v0',

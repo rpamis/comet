@@ -153,7 +153,7 @@ def check_stagnation_stop() -> dict[str, str]:
 
     root = active[0]
     trajectory = root / "runtime/trajectory.jsonl"
-    state_file = root / "change.yaml"
+    state_file = root / "comet-state.yaml"
     spec_file = root / "specs/average-word-length/spec.md"
     if not all(path.is_file() for path in (trajectory, state_file, spec_file)):
         return failed(check, "Active state, target specification, or trajectory is missing")

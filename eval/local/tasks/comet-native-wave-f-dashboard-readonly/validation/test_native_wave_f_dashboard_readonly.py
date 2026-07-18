@@ -280,7 +280,7 @@ def check_active_projection_source() -> dict[str, str]:
     if archive_changes(WORKSPACE):
         return failed(check, "Dashboard fixture change must not be archived")
     change_root = WORKSPACE / "docs/comet/changes/dashboard-visible-change"
-    state_file = change_root / "change.yaml"
+    state_file = change_root / "comet-state.yaml"
     spec_file = change_root / "specs/dashboard-visible-change/spec.md"
     if not state_file.is_file() or not spec_file.is_file():
         return failed(check, "The live Native change or target specification is missing")

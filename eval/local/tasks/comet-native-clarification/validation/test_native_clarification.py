@@ -88,9 +88,9 @@ def check_confirmed_archive():
             f"Expected exactly one Native archive for the clarified change, found {len(archives)}",
     )
     archived = archives[0]
-    state_file = archived / "change.yaml"
+    state_file = archived / "comet-state.yaml"
     if not state_file.is_file():
-        return failed("confirmed_archive", "Archived change.yaml is missing")
+        return failed("confirmed_archive", "Archived comet-state.yaml is missing")
     state = yaml.safe_load(state_file.read_text(encoding="utf-8")) or {}
     if state.get("phase") != "archive" or state.get("archived") is not True:
         return failed("confirmed_archive", "Archived state is not terminal")

@@ -29,7 +29,7 @@ def check_behavior():
 def check_native():
     archives = sorted((WORKSPACE / "docs/comet/archive").glob("*-*"))
     assert archives
-    state = yaml.safe_load((archives[-1] / "change.yaml").read_text(encoding="utf-8"))
+    state = yaml.safe_load((archives[-1] / "comet-state.yaml").read_text(encoding="utf-8"))
     assert state["approval"] == "implicit"
     brief = (archives[-1] / "brief.md").read_text(encoding="utf-8").lower()
     assert "whitespace" in brief or "blank line" in brief

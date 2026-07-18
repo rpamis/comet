@@ -89,7 +89,9 @@ describe('Native archive', () => {
     expect(await fs.readFile(replace, 'utf8')).toBe('new auth spec\n');
     await expect(fs.access(remove)).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(fs.access(changeDir)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(await readNativeChangeFile(path.join(result.archiveDir, 'change.yaml'))).toMatchObject({
+    expect(
+      await readNativeChangeFile(path.join(result.archiveDir, 'comet-state.yaml')),
+    ).toMatchObject({
       archived: true,
       phase: 'archive',
     });
@@ -140,7 +142,9 @@ describe('Native archive', () => {
       now,
     });
     expect(await fs.readdir(paths.specsDir).catch(() => [])).toEqual([]);
-    expect(await readNativeChangeFile(path.join(result.archiveDir, 'change.yaml'))).toMatchObject({
+    expect(
+      await readNativeChangeFile(path.join(result.archiveDir, 'comet-state.yaml')),
+    ).toMatchObject({
       archived: true,
     });
   });

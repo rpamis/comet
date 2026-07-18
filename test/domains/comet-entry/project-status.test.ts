@@ -236,7 +236,7 @@ describe('Comet project status', () => {
     );
     const brokenNativeDir = path.join(paths.changesDir, 'native-broken');
     await fs.mkdir(brokenNativeDir, { recursive: true });
-    await fs.writeFile(path.join(brokenNativeDir, 'change.yaml'), 'schema: [broken\n');
+    await fs.writeFile(path.join(brokenNativeDir, 'comet-state.yaml'), 'schema: [broken\n');
 
     initializeClassicChange(projectRoot, 'classic-healthy');
     initializeClassicChange(projectRoot, 'classic-broken');

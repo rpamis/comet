@@ -6,7 +6,7 @@ Resume from facts on disk every time:
 
 1. Read the project's `.comet/config.yaml` and confirm the single artifact root. If `pending_root_move` exists, run doctor first.
 2. Run `comet native status`. With multiple active changes, read the Native selection or ask the user to choose explicitly.
-3. Run `show` and `status <change-name> --details` for the target change. Read `change.yaml`, the brief, proposed complete specifications, verification, bounded structured findings, the `findingsTruncated` flag, and the latest checkpoint. When findings are truncated, handle the returned items and reread details. Fetch Verify/Archive acceptance IDs separately through `acceptancePage.nextCursor`; do not depend on a missing old response.
+3. Run `show` and `status <change-name> --details` for the target change. Read `comet-state.yaml`, the brief, proposed complete specifications, verification, bounded structured findings, the `findingsTruncated` flag, and the latest checkpoint. When findings are truncated, handle the returned items and reread details. Fetch Verify/Archive acceptance IDs separately through `acceptancePage.nextCursor`; do not depend on a missing old response.
 4. Read relevant canonical specifications, implementation, rules, tests, and current workspace state.
 5. Execute Shape, Build, Verify, or Archive according to the phase instead of guessing from chat history.
 
@@ -26,7 +26,7 @@ On resume, check checkpoint freshness first. If phase, revision, or manifest cha
 
 ## Ordinary phase progression
 
-Before updating Run state, `change.yaml`, trajectory, and checkpoint, `next` writes a prepared journal to the change's `runtime/transition.json`. It removes the journal only after every update completes.
+Before updating Run state, `comet-state.yaml`, trajectory, and checkpoint, `next` writes a prepared journal to the change's `runtime/transition.json`. It removes the journal only after every update completes.
 
 `status` and doctor report an unfinished transition. Running `next` again or entering Archive makes the runtime continue it deterministically. You can also run:
 

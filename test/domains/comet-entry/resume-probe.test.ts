@@ -376,7 +376,7 @@ describe('Comet entry resume probe v2', () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
     const broken = path.join(paths.changesDir, 'broken-change');
-    await writeFile(path.join(broken, 'change.yaml'), 'schema: [broken\n');
+    await writeFile(path.join(broken, 'comet-state.yaml'), 'schema: [broken\n');
 
     await expect(
       resolveCometEntryResumeProbe(projectRoot, input('继续 broken-change')),

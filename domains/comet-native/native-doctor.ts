@@ -2,7 +2,11 @@ import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
 
 import { recoverArchiveTransaction } from './native-archive.js';
-import { inspectNativeChange, readNativeChange } from './native-change.js';
+import {
+  inspectNativeChange,
+  NATIVE_CHANGE_STATE_FILE,
+  readNativeChange,
+} from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import { inspectNativeStatus, listNativeStatus } from './native-diagnostics.js';
 import { inspectNativeEvidenceRetention } from './native-evidence-retention.js';
@@ -412,7 +416,7 @@ async function inspectChanges(
         severity: 'error',
         code: 'change-invalid',
         message: status.error ?? `Native change ${status.name} is invalid`,
-        path: path.join(paths.changesDir, status.name, 'change.yaml'),
+        path: path.join(paths.changesDir, status.name, NATIVE_CHANGE_STATE_FILE),
       });
       continue;
     }
@@ -555,7 +559,7 @@ async function inspectSchemaMigrations(
           severity: 'error',
           code: 'change-runtime-incompatible',
           message: inspection.message ?? `Native change ${name} requires a newer runtime`,
-          path: path.join(paths.changesDir, name, 'change.yaml'),
+          path: path.join(paths.changesDir, name, NATIVE_CHANGE_STATE_FILE),
         });
         continue;
       }
@@ -566,7 +570,7 @@ async function inspectSchemaMigrations(
           message: pending
             ? `Native schema migration ${pending.id} is incomplete for ${name}`
             : `Native change ${name} requires migration to the current schema`,
-          path: pending ? file : path.join(paths.changesDir, name, 'change.yaml'),
+          path: pending ? file : path.join(paths.changesDir, name, NATIVE_CHANGE_STATE_FILE),
           repair: 'migrate',
         });
         continue;
@@ -576,7 +580,7 @@ async function inspectSchemaMigrations(
         severity: 'info',
         code: pending ? 'schema-migration-recovered' : 'schema-migrated',
         message: `Migrated Native change ${name} to the current schema`,
-        path: path.join(paths.changesDir, name, 'change.yaml'),
+        path: path.join(paths.changesDir, name, NATIVE_CHANGE_STATE_FILE),
       });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;

@@ -408,7 +408,9 @@ describe('Native archive recovery', () => {
       }),
     ).rejects.toThrow('crash after move');
     await expect(fs.access(changeDir)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect((await readNativeChangeFile(path.join(archiveDir, 'change.yaml'))).archived).toBe(false);
+    expect((await readNativeChangeFile(path.join(archiveDir, 'comet-state.yaml'))).archived).toBe(
+      false,
+    );
 
     const recovered = await recoverArchiveTransaction({
       paths,
@@ -416,7 +418,9 @@ describe('Native archive recovery', () => {
       strategy: 'continue',
     });
     expect(recovered.status).toBe('committed');
-    expect((await readNativeChangeFile(path.join(archiveDir, 'change.yaml'))).archived).toBe(true);
+    expect((await readNativeChangeFile(path.join(archiveDir, 'comet-state.yaml'))).archived).toBe(
+      true,
+    );
   });
 
   it('validates moved Run content before crossing the no-rollback marker', async () => {
@@ -705,6 +709,8 @@ describe('Native archive recovery', () => {
       schema: 'comet.native.transaction.v1',
       status: 'committed',
     });
-    expect((await readNativeChangeFile(path.join(archiveDir, 'change.yaml'))).archived).toBe(true);
+    expect((await readNativeChangeFile(path.join(archiveDir, 'comet-state.yaml'))).archived).toBe(
+      true,
+    );
   });
 });

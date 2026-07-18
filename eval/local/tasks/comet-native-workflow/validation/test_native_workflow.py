@@ -73,7 +73,7 @@ def check_native_artifacts():
     archived = archive_directory()
     if archived is None:
         return failed("native_artifacts", "No date-prefixed Native archive exists")
-    required = ["change.yaml", "brief.md", "verification.md", "runtime/trajectory.jsonl"]
+    required = ["comet-state.yaml", "brief.md", "verification.md", "runtime/trajectory.jsonl"]
     missing = [relative for relative in required if not (archived / relative).is_file()]
     if missing:
         return failed("native_artifacts", f"Archive is missing: {', '.join(missing)}")

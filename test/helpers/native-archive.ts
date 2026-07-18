@@ -80,7 +80,7 @@ export async function prepareNativeArchiveFixture(options: {
     artifactRefs: [],
     noCodeReason: 'The archive fixture changes only Native specifications.',
   });
-  const stateFile = path.join(changeDir, 'change.yaml');
+  const stateFile = path.join(changeDir, 'comet-state.yaml');
   const verifyState = await compareAndSwapNativeChangeFile(
     stateFile,
     {

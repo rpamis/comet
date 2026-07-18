@@ -138,7 +138,7 @@ describe('Native status diagnostics', () => {
       const name = `page-change-${String(index).padStart(2, '0')}`;
       const directory = path.join(paths.changesDir, name);
       await fs.mkdir(directory, { recursive: true });
-      await fs.writeFile(path.join(directory, 'change.yaml'), 'schema: [invalid\n');
+      await fs.writeFile(path.join(directory, 'comet-state.yaml'), 'schema: [invalid\n');
     }
 
     const first = await listNativeStatusPage(paths);
@@ -171,7 +171,7 @@ describe('Native status diagnostics', () => {
     await validChange('healthy-change');
     const broken = path.join(paths.changesDir, 'broken-change');
     await fs.mkdir(broken, { recursive: true });
-    await fs.writeFile(path.join(broken, 'change.yaml'), 'schema: [invalid\n');
+    await fs.writeFile(path.join(broken, 'comet-state.yaml'), 'schema: [invalid\n');
 
     const statuses = await listNativeStatus(paths);
     expect(statuses).toHaveLength(2);

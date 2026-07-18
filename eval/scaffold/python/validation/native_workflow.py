@@ -21,7 +21,7 @@ def _terminal_archive(archive_root: Path) -> tuple[Path | None, dict[str, Any] |
         (path for path in archive_root.iterdir() if path.is_dir()),
         reverse=True,
     ):
-        state_file = candidate / "change.yaml"
+        state_file = candidate / "comet-state.yaml"
         if not state_file.is_file():
             continue
         try:
@@ -137,7 +137,7 @@ def validate_native_workflow(
             try:
                 active_state = (
                     yaml.safe_load(
-                        (active_changes[0] / "change.yaml").read_text(encoding="utf-8")
+                        (active_changes[0] / "comet-state.yaml").read_text(encoding="utf-8")
                     )
                     or {}
                 )
@@ -159,7 +159,7 @@ def validate_native_workflow(
         active_states: list[dict[str, Any]] = []
         try:
             active_states = [
-                yaml.safe_load((change / "change.yaml").read_text(encoding="utf-8")) or {}
+                yaml.safe_load((change / "comet-state.yaml").read_text(encoding="utf-8")) or {}
                 for change in active_changes
             ]
         except (OSError, yaml.YAMLError):
