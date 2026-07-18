@@ -111,6 +111,7 @@ TURN=0
 while [[ $TURN -lt $MAX_TURNS ]]; do
     TURN=$((TURN + 1))
     echo "[loop] turn $TURN/$MAX_TURNS" >&2
+    SUBJECT_STDERR=$(mktemp)
 
     if [[ -z "$SESSION_ID" ]]; then
         # The first turn uses the task prompt. A requested cold-resume boundary
@@ -119,14 +120,32 @@ while [[ $TURN -lt $MAX_TURNS ]]; do
         FRESH_PROMPT=""
         RAW=$(claude -p "$SUBJECT_PROMPT" "${PLUGIN_ARGS[@]}" "${MODEL_FLAG[@]}" \
             --output-format stream-json --verbose \
-            --dangerously-skip-permissions 2>/dev/null) || RAW=""
+            --dangerously-skip-permissions 2>"$SUBJECT_STDERR")
+        SUBJECT_STATUS=$?
     else
         # Subsequent turns: resume the session with the simulated user reply.
         RAW=$(claude -p "$USER_REPLY" "${PLUGIN_ARGS[@]}" "${MODEL_FLAG[@]}" \
             --resume "$SESSION_ID" \
             --output-format stream-json --verbose \
-            --dangerously-skip-permissions 2>/dev/null) || RAW=""
+            --dangerously-skip-permissions 2>"$SUBJECT_STDERR")
+        SUBJECT_STATUS=$?
     fi
+
+    if [[ $SUBJECT_STATUS -ne 0 ]]; then
+        echo "[loop] subject turn $TURN failed (exit $SUBJECT_STATUS)" >&2
+        # Some Claude CLI failures write their diagnostic to stdout.  The
+        # command substitution above preserves it, so include it alongside
+        # stderr rather than turning a diagnosable subject failure into an
+        # opaque no-events sample.
+        if [[ -n "$RAW" ]]; then
+            echo "[loop] subject stdout:" >&2
+            printf '%s\n' "$RAW" >&2
+        fi
+        cat "$SUBJECT_STDERR" >&2
+        rm -f "$SUBJECT_STDERR"
+        exit "$SUBJECT_STATUS"
+    fi
+    rm -f "$SUBJECT_STDERR"
 
     COMBINED_OUT="${COMBINED_OUT}${RAW}"$'\n'
 

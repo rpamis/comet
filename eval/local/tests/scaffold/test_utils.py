@@ -1,6 +1,8 @@
 """Unit tests for eval scaffold utilities."""
 
 import importlib
+import os
+import subprocess
 from pathlib import Path
 
 import dotenv
@@ -190,6 +192,56 @@ def test_claude_loop_applies_plugin_args_to_subject_turns_only():
     assert 'claude -p "$USER_REPLY" "${PLUGIN_ARGS[@]}"' in loop_sh
     assert "fresh resume boundary detected" in loop_sh
     assert 'claude -p "$sim_prompt" "${PLUGIN_ARGS[@]}"' not in loop_sh
+
+
+def test_claude_loop_surfaces_subject_resume_failure(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_claude = fake_bin / "claude"
+    fake_claude.write_text(
+        """#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "$arg" == "--resume" ]]; then
+    echo "resume failed stdout diagnostic"
+    echo "resume failed diagnostic" >&2
+    exit 42
+  fi
+done
+printf '%s\n' '{"type":"system","session_id":"session-1"}'
+printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","result":"Should abbreviations end a sentence?"}'
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake_claude.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{utils._to_bash_path(fake_bin)}:{env.get('PATH', '')}"
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            utils._to_bash_path(utils.SHELL_DIR / "run-claude-loop.sh"),
+            "Implement the requested change.",
+            "--max-turns",
+            "2",
+            "--decision-pattern",
+            "abbreviation",
+            "--decision-reply",
+            "Use an explicit abbreviation list.",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=10,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "resume failed stdout diagnostic" in result.stderr
+    assert "resume failed diagnostic" in result.stderr
+    assert "subject turn 2 failed" in result.stderr
 
 
 def test_decision_point_detector_rejects_completion_statements():
