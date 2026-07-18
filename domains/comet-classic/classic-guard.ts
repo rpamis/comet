@@ -512,12 +512,10 @@ async function boundBranchMatches(changeDir: string, change: string): Promise<Ch
 
 async function isolationSelected(changeDir: string, change: string): Promise<CheckResult> {
   const isolation = await readField(changeDir, 'isolation');
-  const workflow = await readField(changeDir, 'workflow');
-  if (isolation === 'branch' || isolation === 'worktree') return pass();
-  if (isolation === 'current' && (workflow === 'hotfix' || workflow === 'tweak')) return pass();
-  const allowedValues = workflow === 'full' ? '<branch|worktree>' : '<current|branch|worktree>';
+  if (isolation === 'current' || isolation === 'branch' || isolation === 'worktree') return pass();
+  const allowedValues = '<current|branch|worktree>';
   return fail(
-    `isolation must be ${workflow === 'full' ? 'branch or worktree' : 'current, branch, or worktree'}, got '${isolation || 'null'}'\nNext: choose a valid workspace mode, prepare it when needed, then run:\n  comet state set ${change} isolation ${allowedValues}`,
+    `isolation must be current, branch, or worktree, got '${isolation || 'null'}'\nNext: choose a valid workspace mode, prepare it when needed, then run:\n  comet state set ${change} isolation ${allowedValues}`,
   );
 }
 

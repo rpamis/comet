@@ -10753,12 +10753,10 @@ async function boundBranchMatches(changeDir, change) {
 }
 async function isolationSelected(changeDir, change) {
   const isolation = await readField(changeDir, "isolation");
-  const workflow = await readField(changeDir, "workflow");
-  if (isolation === "branch" || isolation === "worktree") return pass();
-  if (isolation === "current" && (workflow === "hotfix" || workflow === "tweak")) return pass();
-  const allowedValues = workflow === "full" ? "<branch|worktree>" : "<current|branch|worktree>";
+  if (isolation === "current" || isolation === "branch" || isolation === "worktree") return pass();
+  const allowedValues = "<current|branch|worktree>";
   return fail(
-    `isolation must be ${workflow === "full" ? "branch or worktree" : "current, branch, or worktree"}, got '${isolation || "null"}'
+    `isolation must be current, branch, or worktree, got '${isolation || "null"}'
 Next: choose a valid workspace mode, prepare it when needed, then run:
   comet state set ${change} isolation ${allowedValues}`
   );
@@ -13568,10 +13566,10 @@ async function requireBuildDecisions(name) {
   const subagentDispatch = await readField3(name, "subagent_dispatch");
   const tddMode = await readField3(name, "tdd_mode");
   const reviewMode = await readField3(name, "review_mode");
-  const allowedIsolation = workflow === "full" ? ["branch", "worktree"] : ["current", "branch", "worktree"];
+  const allowedIsolation = ["current", "branch", "worktree"];
   if (!allowedIsolation.includes(isolation)) {
     fail2(
-      `ERROR: Cannot transition '${name}': isolation must be ${workflow === "full" ? "branch or worktree" : "current, branch, or worktree"}, got '${isolation || "null"}'`
+      `ERROR: Cannot transition '${name}': isolation must be current, branch, or worktree, got '${isolation || "null"}'`
     );
   }
   if (!["subagent-driven-development", "executing-plans", "direct"].includes(buildMode)) {

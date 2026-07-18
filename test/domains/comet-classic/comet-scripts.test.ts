@@ -2130,11 +2130,68 @@ describe('comet scripts', () => {
     expect(guard.stderr).toContain('[FAIL] build_mode selected');
     expect(guard.stderr).toContain('Next: choose a valid workspace mode');
     expect(guard.stderr).toContain(
-      'comet state set missing-build-decisions isolation <branch|worktree>',
+      'comet state set missing-build-decisions isolation <current|branch|worktree>',
     );
     expect(guard.stderr).toContain('Next: ask the user to choose an execution mode');
     expect(transition.status).not.toBe(0);
-    expect(transition.stderr).toContain('isolation must be branch or worktree');
+    expect(transition.stderr).toContain('isolation must be current, branch, or worktree');
+  }, 20_000);
+
+  it('allows full workflow build completion with current-branch isolation', async () => {
+    execFileSync('git', ['init', '-b', 'feature'], { cwd: tmpDir, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+    await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+    execFileSync('git', ['add', '.'], { cwd: tmpDir });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+    await createChange(
+      tmpDir,
+      'full-current-isolation',
+      [
+        'workflow: full',
+        'phase: build',
+        'build_mode: executing-plans',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: direct',
+        'review_mode: standard',
+        'isolation: current',
+        'bound_branch: feature',
+        'verify_mode: null',
+        'design_doc: docs/superpowers/specs/full-current-design.md',
+        'plan: docs/superpowers/plans/full-current-plan.md',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+      '- [x] done\n',
+    );
+    await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'specs'), { recursive: true });
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'full-current-design.md'),
+      '---\nchange: full-current-isolation\n---\n# Design\n',
+    );
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'plans', 'full-current-plan.md'),
+      '- [x] done\n',
+    );
+    await writeFile(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+    );
+
+    const guard = runNode(tmpDir, guardScript, ['full-current-isolation', 'build']);
+    const transition = runNode(tmpDir, stateScript, [
+      'transition',
+      'full-current-isolation',
+      'build-complete',
+    ]);
+
+    expect(guard.status).toBe(0);
+    expect(transition.status).toBe(0);
+    expect(transition.stderr).toContain('[SET] phase=verify');
+    expect(transition.stderr).toContain('[TRANSITION] build-complete');
   }, 20_000);
 
   it('blocks build completion until tdd_mode is selected for full workflow', async () => {

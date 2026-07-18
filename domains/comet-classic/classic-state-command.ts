@@ -569,11 +569,10 @@ async function requireBuildDecisions(name: string): Promise<void> {
   const subagentDispatch = await readField(name, 'subagent_dispatch');
   const tddMode = await readField(name, 'tdd_mode');
   const reviewMode = await readField(name, 'review_mode');
-  const allowedIsolation =
-    workflow === 'full' ? ['branch', 'worktree'] : ['current', 'branch', 'worktree'];
+  const allowedIsolation = ['current', 'branch', 'worktree'];
   if (!allowedIsolation.includes(isolation)) {
     fail(
-      `ERROR: Cannot transition '${name}': isolation must be ${workflow === 'full' ? 'branch or worktree' : 'current, branch, or worktree'}, got '${isolation || 'null'}'`,
+      `ERROR: Cannot transition '${name}': isolation must be current, branch, or worktree, got '${isolation || 'null'}'`,
     );
   }
   if (!['subagent-driven-development', 'executing-plans', 'direct'].includes(buildMode)) {
