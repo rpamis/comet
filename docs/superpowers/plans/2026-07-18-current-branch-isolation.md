@@ -31,24 +31,24 @@
 
 **Interfaces 产出**：`ClassicState.boundBranch: string | null`（wire key `bound_branch`），后续所有 Task 都依赖这个字段存在且可读写。
 
-- [ ] Step 1：在 `test/domains/comet-classic/classic-state.test.ts` 的 round-trip fixture 里，紧跟 `isolation` 之后加一行 `boundBranch: null,`。跑 `npx vitest run test/domains/comet-classic/classic-state.test.ts -t "round-trips"` 确认 FAIL（缺字段）。
-- [ ] Step 2：`classic-state.ts:35` 之后（`isolation` 字段声明后）加：
+- [x] Step 1：在 `test/domains/comet-classic/classic-state.test.ts` 的 round-trip fixture 里，紧跟 `isolation` 之后加一行 `boundBranch: null,`。跑 `npx vitest run test/domains/comet-classic/classic-state.test.ts -t "round-trips"` 确认 FAIL（缺字段）。
+- [x] Step 2：`classic-state.ts:35` 之后（`isolation` 字段声明后）加：
   ```ts
   boundBranch: string | null;
   ```
-- [ ] Step 3：`CLASSIC_WIRE_KEYS`（`classic-state.ts:72` `'isolation',` 之后）加 `'bound_branch',`。
-- [ ] Step 4：`classicStateFromDocument`（`classic-state.ts:213` `isolation:` 之后）加：
+- [x] Step 3：`CLASSIC_WIRE_KEYS`（`classic-state.ts:72` `'isolation',` 之后）加 `'bound_branch',`。
+- [x] Step 4：`classicStateFromDocument`（`classic-state.ts:213` `isolation:` 之后）加：
   ```ts
   boundBranch: nullableString(doc, 'bound_branch'),
   ```
-- [ ] Step 5：`classicStateToDocument`（`classic-state.ts:302` `isolation: state.isolation,` 之后）加：
+- [x] Step 5：`classicStateToDocument`（`classic-state.ts:302` `isolation: state.isolation,` 之后）加：
   ```ts
   bound_branch: state.boundBranch,
   ```
-- [ ] Step 6：`classic-state-command.ts:259` `sparseClassicState` 里，对应 `isolation` 的取值逻辑之后加 `boundBranch` 的同款取值（用该函数里已有的可空字符串 helper，风格与 `isolation`/`branch_status` 一致）。
-- [ ] Step 7：重跑 Step 1 的测试确认 PASS。`pnpm build`。
-- [ ] Step 8：在 `comet-scripts.test.ts` 里新增一个 CLI 测试：`.comet.yaml` 含 `bound_branch: feature-A` 时 `comet-yaml-validate.mjs` 校验通过，stderr 不含 `unknown field 'bound_branch'`。跑通过。
-- [ ] Step 9：提交：`git add domains/comet-classic/classic-state.ts domains/comet-classic/classic-state-command.ts test/domains/comet-classic/classic-state.test.ts test/domains/comet-classic/comet-scripts.test.ts assets/skills/comet/scripts/comet-runtime.mjs && git commit -m "feat: add bound_branch field to classic state model"`
+- [x] Step 6：`classic-state-command.ts:259` `sparseClassicState` 里，对应 `isolation` 的取值逻辑之后加 `boundBranch` 的同款取值（用该函数里已有的可空字符串 helper，风格与 `isolation`/`branch_status` 一致）。
+- [x] Step 7：重跑 Step 1 的测试确认 PASS。`pnpm build`。
+- [x] Step 8：在 `comet-scripts.test.ts` 里新增一个 CLI 测试：`.comet.yaml` 含 `bound_branch: feature-A` 时 `comet-yaml-validate.mjs` 校验通过，stderr 不含 `unknown field 'bound_branch'`。跑通过。
+- [x] Step 9：提交：`git add domains/comet-classic/classic-state.ts domains/comet-classic/classic-state-command.ts test/domains/comet-classic/classic-state.test.ts test/domains/comet-classic/comet-scripts.test.ts assets/skills/comet/scripts/comet-runtime.mjs && git commit -m "feat: add bound_branch field to classic state model"`
 
 ---
 
@@ -62,7 +62,7 @@
 
 **Interfaces 产出**：`liveGitBranch`、`evaluateBranchBinding`、`healBoundBranch`、`driftBlockedMessage`、`driftStaleReason`、`unboundDetachedMessage`——Task 3/4/5/6/7 全部消费这一个模块，不允许各自重复实现判定逻辑（这是 spec §5.2 目标"三处漂移检测口径一致"的落地方式）。
 
-- [ ] Step 1：写 `test/domains/comet-classic/classic-branch-binding.test.ts`，覆盖 `evaluateBranchBinding` 的五种输入组合：
+- [x] Step 1：写 `test/domains/comet-classic/classic-branch-binding.test.ts`，覆盖 `evaluateBranchBinding` 的五种输入组合：
   ```ts
   import { describe, expect, it } from 'vitest';
   import {
@@ -119,7 +119,7 @@
   });
   ```
   跑测试确认 FAIL（模块不存在）。
-- [ ] Step 2：实现 `domains/comet-classic/classic-branch-binding.ts`：
+- [x] Step 2：实现 `domains/comet-classic/classic-branch-binding.ts`：
   ```ts
   import { execFileSync } from 'child_process';
   import { randomUUID } from 'crypto';
@@ -195,8 +195,8 @@
     return `change '${change}' uses isolation=current but has no bound branch and HEAD is detached; checkout a branch first before continuing.`;
   }
   ```
-- [ ] Step 3：重跑测试确认 PASS。`pnpm build`（模块暂无消费方，但确认 esbuild 能正确打包新文件）。
-- [ ] Step 4：提交：`git commit -m "feat: add shared branch-binding verdict module"`
+- [x] Step 3：重跑测试确认 PASS。`pnpm build`（模块暂无消费方，但确认 esbuild 能正确打包新文件）。
+- [x] Step 4：提交：`git commit -m "feat: add shared branch-binding verdict module"`
 
 ---
 
@@ -212,12 +212,12 @@
 
 **现状确认**（master 实际代码，`classic-current-change.ts` 全文 155 行）：`CurrentChangeSelection` 含 `branch: string | null`；`currentBranch()`（8-34 行）是私有的活跃分支读取函数；`selectCurrentChange()`（97-118 行）**每次调用都无条件写入 `branch: currentBranch(projectRoot)`**；`resolveCurrentChange()`（120-151 行）第 144 行的比较是 `if (selection.branch !== null && branch !== selection.branch)`——`selection.branch` 为 `null` 时整个条件短路跳过，这正是 spec §5.1 描述的 bug 的确切代码位置。
 
-- [ ] Step 1：更新 `test/domains/comet-classic/classic-current-change.test.ts`：
+- [x] Step 1：更新 `test/domains/comet-classic/classic-current-change.test.ts`：
   - 把"atomically selects..."测试改为断言 `selectCurrentChange` 返回 `{ version: 1, change: 'change-a' }`（不含 `branch`）。
   - 把"marks a selection stale after the branch changes"测试改为：change 是 `isolation: current` 且 `.comet.yaml` 里 `bound_branch: main`，`selectCurrentChange` 后切到 `other` 分支，`resolveCurrentChange` 必须返回 `{ status: 'stale', reason: "change 'change-a' is bound to branch 'main', but current branch is 'other'" }`。
   - 新增一个测试：`isolation: branch`（非 current）的 change，切换分支后 `resolveCurrentChange` 仍然 `{ status: 'selected' }`（证明只有 `current` 模式受漂移检测约束，`branch`/`worktree` 模式行为不变）。
   跑测试确认 FAIL。
-- [ ] Step 2：改写 `classic-current-change.ts`：
+- [x] Step 2：改写 `classic-current-change.ts`：
   - imports 里去掉 `execFileSync`（不再需要私有 `currentBranch`），加入：
     ```ts
     import {
@@ -254,10 +254,10 @@
     return { status: 'selected', selection };
     ```
     （`changeDirectory` 是文件里已有的私有 helper，第 36-38 行，直接复用。）
-- [ ] Step 3：`classic-state-command.ts` 的 `selectChange`（第 1234 行附近）和 `currentChange`（第 1248 行附近）——检查两处是否读取了 `selection.branch`；若有，改为从 `resolveCurrentChange` 返回的 Classic state 或单独一次 `readField(name, 'bound_branch')` 读取，不再依赖 sidecar 里的分支字段。
-- [ ] Step 4：重跑 Step 1 测试确认 PASS。`pnpm build`。
-- [ ] Step 5：在 `comet-scripts.test.ts` 新增 hook-guard 回归测试：`isolation: current` 且已绑定 `feature-A` 的 change，`select` 后切到 `feature-B`，尝试写一个仓库源文件，`runHookGuard` 必须返回非 0，stderr 包含 `current change selection is stale or invalid` 和 `bound to branch 'feature-A', but current branch is 'feature-B'`。跑通过。
-- [ ] Step 6：提交：`git commit -m "feat: bind current-isolation drift detection to bound_branch"`
+- [x] Step 3：`classic-state-command.ts` 的 `selectChange`（第 1234 行附近）和 `currentChange`（第 1248 行附近）——检查两处是否读取了 `selection.branch`；若有，改为从 `resolveCurrentChange` 返回的 Classic state 或单独一次 `readField(name, 'bound_branch')` 读取，不再依赖 sidecar 里的分支字段。
+- [x] Step 4：重跑 Step 1 测试确认 PASS。`pnpm build`。
+- [x] Step 5：在 `comet-scripts.test.ts` 新增 hook-guard 回归测试：`isolation: current` 且已绑定 `feature-A` 的 change，`select` 后切到 `feature-B`，尝试写一个仓库源文件，`runHookGuard` 必须返回非 0，stderr 包含 `current change selection is stale or invalid` 和 `bound to branch 'feature-A', but current branch is 'feature-B'`。跑通过。
+- [x] Step 6：提交：`git commit -m "feat: bind current-isolation drift detection to bound_branch"`
 
 ---
 
@@ -269,16 +269,16 @@
 - Modify: `domains/comet-classic/classic-state-command.ts`（`MACHINE_OWNED_FIELDS` 第 42-48 行、`setField` 第 423-490 行）
 - Test: `test/domains/comet-classic/comet-scripts.test.ts`
 
-- [ ] Step 1：写失败的 CLI 测试（新增 `describe('isolation=current branch binding', ...)`），覆盖：
+- [x] Step 1：写失败的 CLI 测试（新增 `describe('isolation=current branch binding', ...)`），覆盖：
   - 首次 `set <name> isolation current` 在真实 git 分支上写入 `bound_branch` = 当前分支。
   - 已绑定后重复 `set isolation current`（哪怕当前分支已经变了）不覆盖已有 `bound_branch`。
   - `set <name> isolation branch` 把 `bound_branch` 清空为 `null`。
   - detached HEAD 下 `set isolation current` 报错退出非 0，stderr 含 `HEAD is detached`，且不写入 `bound_branch`。
   - 直接 `set <name> bound_branch x` 报错，stderr 含 `machine-owned`。
   跑测试确认 FAIL。
-- [ ] Step 2：`MACHINE_OWNED_FIELDS`（`classic-state-command.ts:42-48`）加入 `'bound_branch'`。
-- [ ] Step 3：文件顶部 import 区加：`import { liveGitBranch } from './classic-branch-binding.js';`
-- [ ] Step 4：`setField` 里 `document.set(field, parsedValue(field, value));`（第 446 行）之后插入：
+- [x] Step 2：`MACHINE_OWNED_FIELDS`（`classic-state-command.ts:42-48`）加入 `'bound_branch'`。
+- [x] Step 3：文件顶部 import 区加：`import { liveGitBranch } from './classic-branch-binding.js';`
+- [x] Step 4：`setField` 里 `document.set(field, parsedValue(field, value));`（第 446 行）之后插入：
   ```ts
   if (field === 'isolation') {
     if (value === 'current') {
@@ -297,8 +297,8 @@
     }
   }
   ```
-- [ ] Step 5：重跑 Step 1 测试确认 PASS。`pnpm build`，再跑一遍确认（`fail()` 抛出的 `CommandFailure` 依赖构建产物）。
-- [ ] Step 6：提交：`git commit -m "feat: capture bound_branch on set isolation current"`
+- [x] Step 5：重跑 Step 1 测试确认 PASS。`pnpm build`，再跑一遍确认（`fail()` 抛出的 `CommandFailure` 依赖构建产物）。
+- [x] Step 6：提交：`git commit -m "feat: capture bound_branch on set isolation current"`
 
 ---
 
@@ -310,13 +310,13 @@
 - Modify: `domains/comet-classic/classic-state-command.ts`（`check` 函数，第 790-850 行）
 - Test: `test/domains/comet-classic/comet-scripts.test.ts`
 
-- [ ] Step 1：写失败的 CLI 测试，覆盖：
+- [x] Step 1：写失败的 CLI 测试，覆盖：
   - `current` 模式绑定 `feature-A`，切到 `feature-B` 后 `state check <name> verify` 返回非 0，stdout 含 `BLOCKED` 与 `bound to branch 'feature-A', but current branch is 'feature-B'`。
   - sidecar（`.comet/`）被删除后重新 `select`，漂移检测依然生效（证明检测依据 `.comet.yaml` 而非 sidecar）。
   - detached HEAD 下检查已绑定的 change，返回非 0，stdout 含 `detached HEAD`。
   - **缺口 B 场景**：`isolation: current` 但 `bound_branch` 缺失（模拟 hotfix/tweak `init` 直写的情况，不经过 `set`），在真实分支上 `state check` 必须自动补绑并返回 0，随后 `get <name> bound_branch` 能读到该分支名。
   跑测试确认 FAIL。
-- [ ] Step 2：文件顶部 import 扩展为：
+- [x] Step 2：文件顶部 import 扩展为：
   ```ts
   import {
     driftBlockedMessage,
@@ -326,7 +326,7 @@
     unboundDetachedMessage,
   } from './classic-branch-binding.js';
   ```
-- [ ] Step 3：`check` 函数里，`output.stdout.push('');`（第 844 行）之前插入：
+- [x] Step 3：`check` 函数里，`output.stdout.push('');`（第 844 行）之前插入：
   ```ts
   const isolation = await readField(name, 'isolation');
   if (isolation === 'current') {
@@ -349,8 +349,8 @@
   }
   ```
   （`reject`/`pass`/`directory` 都是 `check` 函数已有的局部变量/闭包，第 793、797-801 行已定义，直接复用；`reject` 已经会把 `blocked` 置 `true`，不需要额外处理。）
-- [ ] Step 4：重跑 Step 1 测试确认 PASS。`pnpm build`。
-- [ ] Step 5：提交：`git commit -m "feat: enforce bound_branch drift in state check"`
+- [x] Step 4：重跑 Step 1 测试确认 PASS。`pnpm build`。
+- [x] Step 5：提交：`git commit -m "feat: enforce bound_branch drift in state check"`
 
 ---
 
@@ -363,13 +363,13 @@
 - Modify: `domains/comet-classic/classic-state-command.ts`（新增 `rebind` 函数 + 分发）
 - Test: `test/domains/comet-classic/comet-scripts.test.ts`
 
-- [ ] Step 1：`classic-state-events.ts:10` 的 `event: ClassicTransitionEvent;` 改为 `event: ClassicTransitionEvent | 'rebind';`
-- [ ] Step 2：写失败的 CLI 测试，覆盖：
+- [x] Step 1：`classic-state-events.ts:10` 的 `event: ClassicTransitionEvent;` 改为 `event: ClassicTransitionEvent | 'rebind';`
+- [x] Step 2：写失败的 CLI 测试，覆盖：
   - 已绑定 `feature-A`、切到 `feature-B` 后 `rebind <name>` 成功，`get <name> bound_branch` 变为 `feature-B`，随后 `state check <name> verify` 通过；`.comet/state-events.jsonl` 最后一条记录 `event: 'rebind'`、`effects` 含 `{ field: 'boundBranch', from: 'feature-A', to: 'feature-B' }`。
   - 未绑定（`bound_branch: null`）时 `rebind` 报错，stderr 含 `not yet bound`。
   - detached HEAD 下 `rebind` 报错，stderr 含 `HEAD is detached`。
   跑测试确认 FAIL。
-- [ ] Step 3：在 `classic-state-command.ts` 里 `selectChange` 函数附近新增：
+- [x] Step 3：在 `classic-state-command.ts` 里 `selectChange` 函数附近新增：
   ```ts
   async function rebind(output: CommandOutput, name: string): Promise<void> {
     validateChangeName(name);
@@ -404,8 +404,8 @@
     await rebind(output, rest[0]);
   } else if (subcommand === 'select') {
   ```
-- [ ] Step 4：重跑 Step 2 测试确认 PASS。`pnpm build`。
-- [ ] Step 5：提交：`git commit -m "feat: add state rebind subcommand with audit trail"`
+- [x] Step 4：重跑 Step 2 测试确认 PASS。`pnpm build`。
+- [x] Step 5：提交：`git commit -m "feat: add state rebind subcommand with audit trail"`
 
 ---
 
@@ -419,8 +419,8 @@
 
 **现状确认**：`classic-guard.ts` 里 `readField`（128 行）、`check` helper（273 行）、`runChecks`（300 行）已存在，可直接复用；`isolationSelected`（488-497 行）是既有的、与本次改动无关的字段选择检查（不要混淆）。
 
-- [ ] Step 1：写失败的 CLI 测试：`isolation: current` 绑定 `feature-A`、`archived: true`、`verify_result: pass`，切到 `feature-B` 后 `comet-guard <name> archive` 返回非 0，stderr 含 `BLOCKED` 与 `bound to branch 'feature-A', but current branch is 'feature-B'`。
-- [ ] Step 2：import 区加：
+- [x] Step 1：写失败的 CLI 测试：`isolation: current` 绑定 `feature-A`、`archived: true`、`verify_result: pass`，切到 `feature-B` 后 `comet-guard <name> archive` 返回非 0，stderr 含 `BLOCKED` 与 `bound to branch 'feature-A', but current branch is 'feature-B'`。
+- [x] Step 2：import 区加：
   ```ts
   import {
     driftBlockedMessage,
@@ -449,10 +449,10 @@
     return pass();
   }
   ```
-- [ ] Step 3：把 `check('bound branch matches isolation=current', () => boundBranchMatches(changeDir, change)),` 注册为 `guardBuildChecks`、`guardVerifyChecks`、`guardArchiveChecks` 三个 `runChecks(output, [...])` 数组的**第一项**（找 guard.ts 里这三个函数，定位方式：`grep -n "guardBuildChecks\|guardVerifyChecks\|guardArchiveChecks" classic-guard.ts`）。若 `guardArchiveChecks` 当前签名不含 `change` 参数，扩展签名并同步更新调用点。
-- [ ] Step 4：`pnpm build`，重跑 Step 1 测试确认 PASS。
-- [ ] Step 5：跑现有 guard 相关测试全集，确认无回归：`npx vitest run test/domains/comet-classic/comet-scripts.test.ts test/domains/comet-classic/classic-guard.test.ts`。特别注意：任何"`isolation=current` 下 build/verify/archive 完整流程通过"的既有测试，若原先在无 git 仓库环境下运行，会因为 `liveGitBranch` 返回 `null` 而变成 `unbound-detached` 判定并 FAIL——按 spec §5.5 的原则修 fixture（补 `gitInit` + 匹配的 `bound_branch`），**不得放宽新检查来迁就旧测试**。
-- [ ] Step 6：提交：`git commit -m "feat: mirror bound_branch drift check in phase guard"`
+- [x] Step 3：把 `check('bound branch matches isolation=current', () => boundBranchMatches(changeDir, change)),` 注册为 `guardBuildChecks`、`guardVerifyChecks`、`guardArchiveChecks` 三个 `runChecks(output, [...])` 数组的**第一项**（找 guard.ts 里这三个函数，定位方式：`grep -n "guardBuildChecks\|guardVerifyChecks\|guardArchiveChecks" classic-guard.ts`）。若 `guardArchiveChecks` 当前签名不含 `change` 参数，扩展签名并同步更新调用点。
+- [x] Step 4：`pnpm build`，重跑 Step 1 测试确认 PASS。
+- [x] Step 5：跑现有 guard 相关测试全集，确认无回归：`npx vitest run test/domains/comet-classic/comet-scripts.test.ts test/domains/comet-classic/classic-guard.test.ts`。特别注意：任何"`isolation=current` 下 build/verify/archive 完整流程通过"的既有测试，若原先在无 git 仓库环境下运行，会因为 `liveGitBranch` 返回 `null` 而变成 `unbound-detached` 判定并 FAIL——按 spec §5.5 的原则修 fixture（补 `gitInit` + 匹配的 `bound_branch`），**不得放宽新检查来迁就旧测试**。
+- [x] Step 6：提交：`git commit -m "feat: mirror bound_branch drift check in phase guard"`
 
 ---
 
@@ -466,21 +466,21 @@
 
 **现状确认**：`applyClassicTransition()` 的 `preset-escalate` 分支（第 147-164 行）用文件内部私有的纯函数 `setField(classic, effects, field, value)`（第 96-105 行，操作内存中的 `ClassicState` 对象，和 `classic-state-command.ts` 里那个操作 YAML `Document` 的同名异物函数完全不是一回事）依次清空 `workflow`/`classicProfile`/`phase`/`designDoc`/`buildPause`/`buildMode`/`subagentDispatch`/`tddMode`/`reviewMode`/`isolation`/`verifyMode`/`directOverride`，第 162 行 `setField(classic, effects, 'isolation', null);` 之后紧接着第 163 行才是 `verifyMode`。
 
-- [ ] Step 1：写失败测试：`isolation: current` 且已绑定 `bound_branch: feature-A` 的 hotfix change，`phase: build`，执行 `comet state transition <name> preset-escalate` 后 `get <name> bound_branch` 必须为 `null`（当前行为：仍是 `feature-A`，因为没人清它）。跑测试确认 FAIL。
-- [ ] Step 2：`classic-transitions.ts:162` 之后加一行：
+- [x] Step 1：写失败测试：`isolation: current` 且已绑定 `bound_branch: feature-A` 的 hotfix change，`phase: build`，执行 `comet state transition <name> preset-escalate` 后 `get <name> bound_branch` 必须为 `null`（当前行为：仍是 `feature-A`，因为没人清它）。跑测试确认 FAIL。
+- [x] Step 2：`classic-transitions.ts:162` 之后加一行：
   ```ts
   setField(classic, effects, 'boundBranch', null);
   ```
-- [ ] Step 3：重跑 Step 1 测试确认 PASS。`pnpm build`。
-- [ ] Step 4：提交：`git commit -m "fix: clear bound_branch when preset-escalate clears isolation"`
+- [x] Step 3：重跑 Step 1 测试确认 PASS。`pnpm build`。
+- [x] Step 4：提交：`git commit -m "fix: clear bound_branch when preset-escalate clears isolation"`
 
 ---
 
 ## Task 8：全量回归
 
-- [ ] `npx vitest run` 全通过。
-- [ ] `pnpm lint && pnpm build` 通过。
-- [ ] 若 Step 5-7b 暴露的既有 fixture 需要调整，一并提交：`git commit -m "test: reconcile existing fixtures with bound_branch drift checks"`（若无改动跳过）。
+- [x] `npx vitest run` 全通过。
+- [x] `pnpm lint && pnpm build` 通过。
+- [x] 若 Step 5-7b 暴露的既有 fixture 需要调整，一并提交：`git commit -m "test: reconcile existing fixtures with bound_branch drift checks"`（若无改动跳过）。
 
 ---
 
@@ -493,11 +493,11 @@
 - Modify: `assets/skills-zh/comet-hotfix/SKILL.md`、`assets/skills-zh/comet-tweak/SKILL.md`
 - Test: `test/domains/comet-classic/comet-scripts.test.ts`
 
-- [ ] Step 1：写失败测试：`comet state init <name> hotfix` 与 `comet state init <name> tweak` 之后，`get <name> isolation` 必须返回 `null`（不再是 `current`）。跑测试确认 FAIL。
-- [ ] Step 2：`classic-state-command.ts:511` 把 `isolation: preset ? 'current' : null,` 改为 `isolation: null,`（对所有 workflow 统一，不再按 `preset` 区分）。
-- [ ] Step 3：重跑 Step 1 测试确认 PASS。`pnpm build`。
-- [ ] Step 4：**回归排查**：`grep -rn "isolation.*current" test/domains/comet-classic/comet-scripts.test.ts` 找出所有依赖"hotfix/tweak `init` 后 `isolation` 直接是 `current`"的既有 fixture/断言，逐一改为在 `init` 之后显式补一次 `comet state set <name> isolation current`（或按测试场景选 `branch`/`worktree`）再继续，不得为了让旧测试通过而把 `init` 的默认值改回去。跑 `npx vitest run test/domains/comet-classic/comet-scripts.test.ts` 确认全部恢复 PASS。
-- [ ] Step 5：编辑中文 `comet-hotfix/SKILL.md`（原第 45 行）：删除"hotfix 默认 `isolation: current`..."整句，替换为工作区隔离决策点：
+- [x] Step 1：写失败测试：`comet state init <name> hotfix` 与 `comet state init <name> tweak` 之后，`get <name> isolation` 必须返回 `null`（不再是 `current`）。跑测试确认 FAIL。
+- [x] Step 2：`classic-state-command.ts:511` 把 `isolation: preset ? 'current' : null,` 改为 `isolation: null,`（对所有 workflow 统一，不再按 `preset` 区分）。
+- [x] Step 3：重跑 Step 1 测试确认 PASS。`pnpm build`。
+- [x] Step 4：**回归排查**：`grep -rn "isolation.*current" test/domains/comet-classic/comet-scripts.test.ts` 找出所有依赖"hotfix/tweak `init` 后 `isolation` 直接是 `current`"的既有 fixture/断言，逐一改为在 `init` 之后显式补一次 `comet state set <name> isolation current`（或按测试场景选 `branch`/`worktree`）再继续，不得为了让旧测试通过而把 `init` 的默认值改回去。跑 `npx vitest run test/domains/comet-classic/comet-scripts.test.ts` 确认全部恢复 PASS。
+- [x] Step 5：编辑中文 `comet-hotfix/SKILL.md`（原第 45 行）：删除"hotfix 默认 `isolation: current`..."整句，替换为工作区隔离决策点：
   ```markdown
   ### 工作区隔离（用户决策点）
 
@@ -522,9 +522,9 @@
   选择 B 或 C 后，必须在新工作区重新运行 `comet state select <change-name>`，再开始创建精简版产物。
   ```
   请用户审阅中文措辞。
-- [ ] Step 6：对 `comet-tweak/SKILL.md`（原第 53 行）做同样的替换，把命名规范换成 `tweak/YYYYMMDD/<change-name>`，其余文案与 hotfix 版一致。请用户审阅中文措辞。
-- [ ] Step 7：`grep -rn "压缩门\|调试门\|确认门" assets/skills-zh/comet-hotfix/SKILL.md assets/skills-zh/comet-tweak/SKILL.md` 确认零命中。
-- [ ] Step 8：提交（中文部分）：`git commit -m "feat: ask hotfix/tweak to choose isolation explicitly instead of defaulting to current"`
+- [x] Step 6：对 `comet-tweak/SKILL.md`（原第 53 行）做同样的替换，把命名规范换成 `tweak/YYYYMMDD/<change-name>`，其余文案与 hotfix 版一致。请用户审阅中文措辞。
+- [x] Step 7：`grep -rn "压缩门\|调试门\|确认门" assets/skills-zh/comet-hotfix/SKILL.md assets/skills-zh/comet-tweak/SKILL.md` 确认零命中。
+- [x] Step 8：提交（中文部分）：`git commit -m "feat: ask hotfix/tweak to choose isolation explicitly instead of defaulting to current"`
 
 ---
 
@@ -534,12 +534,12 @@
 
 **Files**：`assets/skills-zh/comet-build/SKILL.md`、`comet-verify/SKILL.md`、`comet-archive/SKILL.md`、`comet-hotfix/SKILL.md`、`comet-tweak/SKILL.md`。
 
-- [ ] Step 1：在五份 SKILL.md 的入口命令块（`comet state select` / `comet state check <name> <phase>`）之后，插入一段：检测到 `BLOCKED`（分支绑定漂移）时，按 `comet/reference/decision-point.md` 协议暂停，等待用户选择"切回绑定分支"或（明确确认后）执行 `comet state rebind <change-name>`；不得自行切换分支或换绑。
-- [ ] Step 2：**人工验收**：逐字通读 hotfix/tweak 两份 SKILL.md 里 Task 9 新加的"工作区隔离决策点"和本 Task 新加的"漂移 decision-point"，确认两段话读起来是"入口选一次"和"中途出问题再暂停"两件不同的事，不会被读成同一个决策点。
-- [ ] Step 3：`grep -rn "压缩门\|调试门\|确认门" assets/skills-zh/comet-build/SKILL.md assets/skills-zh/comet-verify/SKILL.md assets/skills-zh/comet-archive/SKILL.md assets/skills-zh/comet-hotfix/SKILL.md assets/skills-zh/comet-tweak/SKILL.md` 确认零命中。
-- [ ] Step 4：请用户审阅中文措辞。
-- [ ] Step 5：中文确认后，**同一轮**同步 Task 9 + 本 Task 涉及的全部五份英文版 SKILL.md，以及 `assets/skills/comet/reference/comet-yaml-fields.md` + 中文版补充 `bound_branch` 字段说明。不得带着中英不同步的状态提交。
-- [ ] Step 6：提交：`git commit -m "docs: add current-isolation drift decision point to build/verify/archive/hotfix/tweak skills"`
+- [x] Step 1：在五份 SKILL.md 的入口命令块（`comet state select` / `comet state check <name> <phase>`）之后，插入一段：检测到 `BLOCKED`（分支绑定漂移）时，按 `comet/reference/decision-point.md` 协议暂停，等待用户选择"切回绑定分支"或（明确确认后）执行 `comet state rebind <change-name>`；不得自行切换分支或换绑。
+- [x] Step 2：**人工验收**：逐字通读 hotfix/tweak 两份 SKILL.md 里 Task 9 新加的"工作区隔离决策点"和本 Task 新加的"漂移 decision-point"，确认两段话读起来是"入口选一次"和"中途出问题再暂停"两件不同的事，不会被读成同一个决策点。
+- [x] Step 3：`grep -rn "压缩门\|调试门\|确认门" assets/skills-zh/comet-build/SKILL.md assets/skills-zh/comet-verify/SKILL.md assets/skills-zh/comet-archive/SKILL.md assets/skills-zh/comet-hotfix/SKILL.md assets/skills-zh/comet-tweak/SKILL.md` 确认零命中。
+- [x] Step 4：请用户审阅中文措辞。
+- [x] Step 5：中文确认后，**同一轮**同步 Task 9 + 本 Task 涉及的全部五份英文版 SKILL.md，以及 `assets/skills/comet/reference/comet-yaml-fields.md` + 中文版补充 `bound_branch` 字段说明。不得带着中英不同步的状态提交。
+- [x] Step 6：提交：`git commit -m "docs: add current-isolation drift decision point to build/verify/archive/hotfix/tweak skills"`
 
 ---
 
@@ -551,21 +551,21 @@
 - Modify: `app/commands/status.ts`
 - Test: `test/app/` 下对应 status 测试文件
 
-- [ ] Step 1：新增/扩展测试：`isolation: current` 且已绑定的 change，`comet status`（文本输出）包含 `isolation: current (bound: feature-A)`；`isolation` 为 `null` 或 `branch`/`worktree` 时不打印该行（不引入噪音，`branch`/`worktree` 也不显示绑定分支）；`comet status --json` 输出的每条 change 记录包含 `"boundBranch"` 字段且与 `.comet.yaml` 一致。跑测试确认 FAIL。
-- [ ] Step 2：`app/commands/status.ts` 的 `ChangeStatus` 接口（第 11-40 行）在 `isolation: string | null;` 之后加：
+- [x] Step 1：新增/扩展测试：`isolation: current` 且已绑定的 change，`comet status`（文本输出）包含 `isolation: current (bound: feature-A)`；`isolation` 为 `null` 或 `branch`/`worktree` 时不打印该行（不引入噪音，`branch`/`worktree` 也不显示绑定分支）；`comet status --json` 输出的每条 change 记录包含 `"boundBranch"` 字段且与 `.comet.yaml` 一致。跑测试确认 FAIL。
+- [x] Step 2：`app/commands/status.ts` 的 `ChangeStatus` 接口（第 11-40 行）在 `isolation: string | null;` 之后加：
   ```ts
   boundBranch: string | null;
   ```
-- [ ] Step 3：`getActiveChanges()` 内四条构造 `ChangeStatus` 记录的分支（unknown-keys 分支约第 94-115 行、valid 分支约第 121-153 行、invalid 分支约第 156-177 行、catch 分支约第 179-200 行）都在 `isolation: ...` 那一行之后加 `boundBranch: projection.classic?.boundBranch ?? null,`（catch 分支没有 `projection` 可用，保持 `boundBranch: null,` 即可，与该分支 `isolation: null,` 的写法一致）。
-- [ ] Step 4：`displayStatus()` 里，`console.log(\`     workflow: ${c.workflow} | build_mode: ${c.buildMode}\`);`（第 252 行）之后加：
+- [x] Step 3：`getActiveChanges()` 内四条构造 `ChangeStatus` 记录的分支（unknown-keys 分支约第 94-115 行、valid 分支约第 121-153 行、invalid 分支约第 156-177 行、catch 分支约第 179-200 行）都在 `isolation: ...` 那一行之后加 `boundBranch: projection.classic?.boundBranch ?? null,`（catch 分支没有 `projection` 可用，保持 `boundBranch: null,` 即可，与该分支 `isolation: null,` 的写法一致）。
+- [x] Step 4：`displayStatus()` 里，`console.log(\`     workflow: ${c.workflow} | build_mode: ${c.buildMode}\`);`（第 252 行）之后加：
   ```ts
   if (c.isolation) {
     const branchSuffix = c.isolation === 'current' && c.boundBranch ? ` (bound: ${c.boundBranch})` : '';
     console.log(`     isolation: ${c.isolation}${branchSuffix}`);
   }
   ```
-- [ ] Step 5：重跑 Step 1 测试确认 PASS；`npx vitest run` 确认无回归（本 Task 不涉及 `domains/comet-classic`，不需要 `pnpm build`）。
-- [ ] Step 6：提交：`git commit -m "feat: surface isolation and bound branch in comet status"`
+- [x] Step 5：重跑 Step 1 测试确认 PASS；`npx vitest run` 确认无回归（本 Task 不涉及 `domains/comet-classic`，不需要 `pnpm build`）。
+- [x] Step 6：提交：`git commit -m "feat: surface isolation and bound branch in comet status"`
 
 ---
 
@@ -577,22 +577,22 @@
 - Modify: `assets/skills-zh/comet-archive/SKILL.md`（第 105-123 行附近的 Step 5）
 - Modify: `assets/skills/comet-archive/SKILL.md`（英文同步）
 
-- [ ] Step 1：编辑中文 `comet-archive/SKILL.md` Step 5：在加载 Superpowers `finishing-a-development-branch` 之前，插入 `isolation` 判断：
+- [x] Step 1：编辑中文 `comet-archive/SKILL.md` Step 5：在加载 Superpowers `finishing-a-development-branch` 之前，插入 `isolation` 判断：
   - `isolation !== 'current'`：完全保留现有三选一流程（本地合并到主分支 / 推送并创建 PR / 保持分支），不改一个字。
   - `isolation === 'current'`：跳过 `finishing-a-development-branch`，改为两选一 decision-point："1. 推送当前分支" / "2. 暂不推送，保留本地"。选 1 时执行 `git push`（若无上游分支，`git push -u origin <当前分支>`）；选 2 不执行任何 git 操作。
   两条路径收尾都保持不变：执行完选择后运行 `comet state set <change-name> branch_status handled` → `comet guard <change-name> archive` → `comet state clear-selection`。
-- [ ] Step 2：**人工验收**（同 Task 10 的性质，不是自动化测试）：确认新增的两选一文案措辞，与 Task 10 加入的"检测到 BLOCKED 时暂停"decision-point 文案、以及 Task 9 hotfix/tweak 的入口工作区隔离决策点，三者互相之间不冲突——这是三个不同触发条件的独立决策点（流程入口选一次隔离方式 / 漂移检测时触发 / 归档收尾时触发），不要在同一份文件里写出让人误解成同一件事的表述。
-- [ ] Step 3：若仓库现有对 SKILL.md 正文做断言式测试（例如 `test/domains/skill/skills.test.ts` 只做结构/存在性校验而非语义断言），本 Task 不强行新增脆弱的文本匹配测试；如需要回归保障，可在该测试文件里补一条"comet-archive SKILL.md 包含 isolation 关键字"的存在性检查即可，不用 assert 具体措辞。
-- [ ] Step 4：中文确认后，同一轮同步英文版 `assets/skills/comet-archive/SKILL.md`。
-- [ ] Step 5：`npx vitest run && pnpm lint`（本 Task 只改 SKILL.md，不涉及 `domains/comet-classic/*.ts`，不需要 `pnpm build`）。
-- [ ] Step 6：提交：`git commit -m "docs: branch current isolation archive flow away from finishing-a-development-branch"`
+- [x] Step 2：**人工验收**（同 Task 10 的性质，不是自动化测试）：确认新增的两选一文案措辞，与 Task 10 加入的"检测到 BLOCKED 时暂停"decision-point 文案、以及 Task 9 hotfix/tweak 的入口工作区隔离决策点，三者互相之间不冲突——这是三个不同触发条件的独立决策点（流程入口选一次隔离方式 / 漂移检测时触发 / 归档收尾时触发），不要在同一份文件里写出让人误解成同一件事的表述。
+- [x] Step 3：若仓库现有对 SKILL.md 正文做断言式测试（例如 `test/domains/skill/skills.test.ts` 只做结构/存在性校验而非语义断言），本 Task 不强行新增脆弱的文本匹配测试；如需要回归保障，可在该测试文件里补一条"comet-archive SKILL.md 包含 isolation 关键字"的存在性检查即可，不用 assert 具体措辞。
+- [x] Step 4：中文确认后，同一轮同步英文版 `assets/skills/comet-archive/SKILL.md`。
+- [x] Step 5：`npx vitest run && pnpm lint`（本 Task 只改 SKILL.md，不涉及 `domains/comet-classic/*.ts`，不需要 `pnpm build`）。
+- [x] Step 6：提交：`git commit -m "docs: branch current isolation archive flow away from finishing-a-development-branch"`
 
 ---
 
 ## Task 13：Changelog 与版本号
 
-- [ ] `package.json` 的 `"version"` 从 `0.4.0-beta.5` 改为 `0.4.0-beta.6`。
-- [ ] `CHANGELOG.md` 顶部新增（若已有同版本条目则追加到同一条目下，不新开版本号）：
+- [x] `package.json` 的 `"version"` 从 `0.4.0-beta.5` 改为 `0.4.0-beta.6`。
+- [x] `CHANGELOG.md` 顶部新增（若已有同版本条目则追加到同一条目下，不新开版本号）：
   ```markdown
   ## What's Changed [0.4.0-beta.6] - 2026-07-18
 
@@ -607,9 +607,9 @@
   - **Archive branch handling for `current` isolation**: no longer offers the feature-branch-oriented merge/PR/keep choices; instead asks whether to push the current branch or keep it local.
   - **hotfix/tweak workspace isolation**: no longer defaults silently to the current branch; both presets now pause to ask the user to choose between working directly on the current branch, creating a new branch, or creating a worktree.
   ```
-- [ ] `node -p "require('./package.json').version"` 输出 `0.4.0-beta.6`，与 changelog 标题一致。
-- [ ] `npx vitest run && pnpm lint && pnpm build` 全部通过。
-- [ ] 提交：`git commit -m "chore: release 0.4.0-beta.6 with current-isolation branch binding"`
+- [x] `node -p "require('./package.json').version"` 输出 `0.4.0-beta.6`，与 changelog 标题一致。
+- [x] `npx vitest run && pnpm lint && pnpm build` 全部通过。
+- [x] 提交：`git commit -m "chore: release 0.4.0-beta.6 with current-isolation branch binding"`
 
 ---
 

@@ -35,10 +35,10 @@ describe('CLI help text', () => {
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain(tagline);
     expect(packageJson.description).toBe(tagline);
-    expect(packageJson.version).toBe('0.4.0-beta.5');
-    expect(packageLock.version).toBe('0.4.0-beta.5');
-    expect(packageLock.packages[''].version).toBe('0.4.0-beta.5');
-    expect(assetsManifest.version).toBe('0.4.0-beta.5');
+    expect(packageJson.version).toBe('0.4.0-beta.6');
+    expect(packageLock.version).toBe('0.4.0-beta.6');
+    expect(packageLock.packages[''].version).toBe('0.4.0-beta.6');
+    expect(assetsManifest.version).toBe('0.4.0-beta.6');
   });
 
   it('marks bundle as the advanced backend and skill Engine runs as advanced', () => {
