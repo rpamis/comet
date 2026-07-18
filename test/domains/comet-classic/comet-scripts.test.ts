@@ -6085,4 +6085,141 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('machine-owned');
     }, 20_000);
   });
+
+  describe('state check bound_branch drift', () => {
+    const stateScript = path.join(scriptsDir, 'comet-state.mjs');
+
+    it('drifted bound change: state check returns non-zero with BLOCKED and drift message', async () => {
+      execFileSync('git', ['init', '-b', 'feature-A'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'check-drift',
+        [
+          'workflow: full',
+          'phase: verify',
+          'isolation: current',
+          'bound_branch: feature-A',
+          'verify_result: pending',
+          '',
+        ].join('\n'),
+      );
+
+      execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+      const result = runNode(tmpDir, stateScript, ['check', 'check-drift', 'verify']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('BLOCKED');
+      expect(result.stdout).toContain(
+        "bound to branch 'feature-A', but current branch is 'feature-B'",
+      );
+    }, 20_000);
+
+    it('drift is still detected after the .comet/ sidecar is deleted (reads .comet.yaml, not the sidecar)', async () => {
+      execFileSync('git', ['init', '-b', 'feature-A'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'check-drift-no-sidecar',
+        [
+          'workflow: full',
+          'phase: verify',
+          'design_doc: null',
+          'plan: null',
+          'build_mode: null',
+          'isolation: current',
+          'bound_branch: feature-A',
+          'verify_mode: null',
+          'verify_result: pending',
+          'verified_at: null',
+          'archived: false',
+          '',
+        ].join('\n'),
+      );
+
+      const select = runNode(tmpDir, stateScript, ['select', 'check-drift-no-sidecar']);
+      expect(select.status).toBe(0);
+
+      execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await fs.rm(path.join(tmpDir, '.comet'), { recursive: true, force: true });
+
+      const result = runNode(tmpDir, stateScript, ['check', 'check-drift-no-sidecar', 'verify']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('BLOCKED');
+      expect(result.stdout).toContain(
+        "bound to branch 'feature-A', but current branch is 'feature-B'",
+      );
+    }, 20_000);
+
+    it('detached HEAD on an already-bound change: state check returns non-zero with detached HEAD in output', async () => {
+      execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'check-detached',
+        [
+          'workflow: full',
+          'phase: verify',
+          'isolation: current',
+          'bound_branch: main',
+          'verify_result: pending',
+          '',
+        ].join('\n'),
+      );
+
+      execFileSync('git', ['checkout', '--detach'], { cwd: tmpDir, stdio: 'ignore' });
+
+      const result = runNode(tmpDir, stateScript, ['check', 'check-detached', 'verify']);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toContain('detached HEAD');
+    }, 20_000);
+
+    it('gap B: isolation=current with no bound_branch self-heals on a real branch and passes', async () => {
+      execFileSync('git', ['init', '-b', 'hotfix-branch'], { cwd: tmpDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+      await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+      execFileSync('git', ['add', '.'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+      await createChange(
+        tmpDir,
+        'check-gap-b',
+        [
+          'workflow: full',
+          'phase: verify',
+          'isolation: current',
+          'bound_branch: null',
+          'verify_result: pending',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runNode(tmpDir, stateScript, ['check', 'check-gap-b', 'verify']);
+
+      expect(result.status).toBe(0);
+
+      const get = runNode(tmpDir, stateScript, ['get', 'check-gap-b', 'bound_branch']);
+      expect(get.stdout.trim()).toBe('hotfix-branch');
+    }, 20_000);
+  });
 });
