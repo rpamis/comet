@@ -745,6 +745,36 @@ describe('comet scripts', () => {
     expect(valid.status).toBe(0);
   }, 20_000);
 
+  it('accepts bound_branch field in .comet.yaml without unknown field errors', async () => {
+    await createChange(
+      tmpDir,
+      'bound-branch-validate',
+      [
+        'workflow: full',
+        'phase: design',
+        'build_mode: null',
+        'build_pause: null',
+        'tdd_mode: null',
+        'isolation: current',
+        'bound_branch: feature-A',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const valid = runNode(tmpDir, path.join(tmpDir, 'scripts', 'comet-yaml-validate.mjs'), [
+      'bound-branch-validate',
+    ]);
+
+    expect(valid.status).toBe(0);
+    expect(valid.stderr).not.toContain("unknown field 'bound_branch'");
+  }, 20_000);
+
   it('next resolves auto for full workflow when auto_transition is true', async () => {
     await createChange(
       tmpDir,

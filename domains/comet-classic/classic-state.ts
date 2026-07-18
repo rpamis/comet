@@ -33,6 +33,7 @@ export interface ClassicState {
   tddMode: (typeof TDD_MODES)[number] | null;
   reviewMode: (typeof REVIEW_MODES)[number] | null;
   isolation: (typeof ISOLATIONS)[number] | null;
+  boundBranch: string | null;
   verifyMode: (typeof VERIFY_MODES)[number] | null;
   autoTransition: boolean | null;
   baseRef: string | null;
@@ -70,6 +71,7 @@ export const CLASSIC_WIRE_KEYS = [
   'tdd_mode',
   'review_mode',
   'isolation',
+  'bound_branch',
   'verify_mode',
   'auto_transition',
   'base_ref',
@@ -211,6 +213,7 @@ function classicStateFromDocument(doc: StateDocument): ClassicState | null {
     tddMode: enumValue(doc, 'tdd_mode', TDD_MODES),
     reviewMode: enumValue(doc, 'review_mode', REVIEW_MODES),
     isolation: enumValue(doc, 'isolation', ISOLATIONS),
+    boundBranch: nullableString(doc, 'bound_branch'),
     verifyMode: enumValue(doc, 'verify_mode', VERIFY_MODES),
     autoTransition: booleanValue(doc, 'auto_transition'),
     baseRef: nullableString(doc, 'base_ref'),
@@ -300,6 +303,7 @@ export function classicStateToDocument(state: ClassicState): StateDocument {
     tdd_mode: state.tddMode,
     review_mode: state.reviewMode,
     isolation: state.isolation,
+    bound_branch: state.boundBranch,
     verify_mode: state.verifyMode,
     auto_transition: state.autoTransition,
     base_ref: state.baseRef,
