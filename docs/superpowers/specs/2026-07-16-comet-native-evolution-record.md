@@ -217,13 +217,13 @@ Runtime、UX 和 eval 三路审查最初展开了 58 个行为、实现和评估
 
 快照时间为 2026-07-17，代码位于 `codex/feat-comet-native-workflow`；release status：unreleased。这里的“已实现”只表示功能分支工作树中存在，不表示 npm 或稳定 Website 已发布；Runtime 仍在本分支继续收口，不能用早期 commit 当作最终生成资产基线。
 
-| 状态                    | 内容                                                                                                                                                                                                                                                                                                                                                            | 证据边界                                                                                                                                                   |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 功能分支已实现          | 自定义 artifact root 与默认语言、`comet/` change/spec/archive、四阶段状态、schema v3 migration、Protected Run/File I/O、snapshot/CAS、structured finding/continuation、checkpoint、acceptance 分页与证据、Build/Verify inspect-then-persist、repair episode、内置 check receipt、process-free workspace/conflict radar、可恢复 quarantine、两步 Archive 与只读 Dashboard。 | 当前 feature branch、生成 Runtime、真实 CLI build、Native/入口域 608 个通过测试及 lint/架构检查；尚未发布，英文 Skill、Website 双语和最终全仓验证仍待收口。 |
-| 已有静态与 harness 覆盖 | Wave A–F 的 fixture、validator、adversarial artifact 和确定性 Runtime 测试；包括 clarification、repository fact、完整 workflow、interrupted transition、证据 stale、repair、并行冲突和 Dashboard projection。                                                                                                                                                   | 证明任务、检查器和机械契约可执行；没有专项真实模型实验 artifact 时，不证明模型行为或效率稳定。                                                             |
-| 有方向性真实模型证据    | 指定两个历史 experiment 严格配对 48 组：Native 46/48，0.4.0 为 43/48；pass@1/2/3/pass³ 分别为 Native 0.96/1/1/0.88、0.4.0 0.90/0.98/1/0.75。累加 duration 为 8,831 秒（48）与 16,562 秒（47）。                                                                                                                                                                 | 只覆盖 Mimo 2.5 Pro 且运行窗口不一致；0.4.0 缺 `comet-graph-execution-review#r2` duration；fallback manifest 只证明 task tree parity，不证明受控性能对比。 |
-| 尚待收口                | 英文 Skill 同步、Website 双语确认、发布 Changelog、npm pack 与全量 CI 级验证，以及 Control/Native/Classic 同模型同窗口真实实验。                                                                                                                                                                                                                              | 按用户安排没有启动 Docker 或新的真实模型运行；专项 eval 仍只能写成 fixture/validator 结果。                                                                |
-| 当前明确非目标          | 多阶段 Skill、外部 Skill 依赖、Native/Classic 转换、固定方法流程、项目管理系统、Runtime LLM、后台 daemon、Git/worktree 监控、通用命令执行器和可写 Dashboard。                                                                                                                                                                                                   | 产品边界；重新打开必须先进行设计审查。                                                                                                                     |
+| 状态                    | 内容                                                                                                                                                                                                                                                                                                                                                                       | 证据边界                                                                                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 功能分支已实现          | 自定义 artifact root 与默认语言、`comet/` change/spec/archive、四阶段状态、schema v3 migration、Protected Run/File I/O、snapshot/CAS、structured finding/continuation、checkpoint、acceptance 分页与证据、Build/Verify inspect-then-persist、repair episode、内置 check receipt、process-free workspace/conflict radar、可恢复 quarantine、两步 Archive 与只读 Dashboard。 | 当前 feature branch、生成 Runtime、真实 CLI build、双语 Skill、Native/入口域测试及 lint/架构检查；尚未发布。                                               |
+| 已有静态与 harness 覆盖 | Wave A–F 的 fixture、validator、adversarial artifact 和确定性 Runtime 测试；包括 clarification、repository fact、完整 workflow、interrupted transition、证据 stale、repair、并行冲突和 Dashboard projection。                                                                                                                                                              | 证明任务、检查器和机械契约可执行；没有专项真实模型实验 artifact 时，不证明模型行为或效率稳定。                                                             |
+| 有方向性真实模型证据    | 指定两个历史 experiment 严格配对 48 组：Native 46/48，0.4.0 为 43/48；pass@1/2/3/pass³ 分别为 Native 0.96/1/1/0.88、0.4.0 0.90/0.98/1/0.75。累加 duration 为 8,831 秒（48）与 16,562 秒（47）。                                                                                                                                                                            | 只覆盖 Mimo 2.5 Pro 且运行窗口不一致；0.4.0 缺 `comet-graph-execution-review#r2` duration；fallback manifest 只证明 task tree parity，不证明受控性能对比。 |
+| 尚待收口                | 目标强模型上的 Wave B 与多模型矩阵、npm pack、全量 CI 级验证，以及 Control/Native/Classic 同模型同窗口真实实验。                                                                                                                                                                                                                                                           | 已有 Docker 真实模型运行只覆盖当前 Mimo 配置；不能代替目标强模型或发布级多模型结论。                                                                       |
+| 当前明确非目标          | 多阶段 Skill、外部 Skill 依赖、Native/Classic 转换、固定方法流程、项目管理系统、Runtime LLM、后台 daemon、Git/worktree 监控、通用命令执行器和可写 Dashboard。                                                                                                                                                                                                              | 产品边界；重新打开必须先进行设计审查。                                                                                                                     |
 
 ## 9. 仍未回答的问题
 
@@ -558,16 +558,16 @@ Wave A–F 已经覆盖状态、续跑、证据、修复、并行和展示，但
 
 ### 波次 A–F 的当前事实状态
 
-| 波次 | 功能分支当前事实                                                                                                                              | 尚未得到的证据                                                              |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| A    | schema v3、journal migration、snapshot/CAS、敏感路径排除、Protected Run/File I/O、可恢复 quarantine、显式 doctor retention 与指标聚合已接线。 | 没有新的同窗口真实模型安全/效率对照。                                       |
-| B    | 单 Skill 决策前沿、仓库事实优先、冷启动可执行标准、structured continuation、checkpoint 与紧凑恢复视图已接线。                                 | 没有证明不同宿主都会实际 same-skill 续跑，也没有证明澄清质量等同 grilling。 |
-| C    | scope/allowance/verification/check receipt 内容寻址、acceptance trace、stale retreat、两步 Archive 与 transaction v2 已接线。                 | 没有大型真实仓库上的模型行为实验。                                          |
-| D    | semantic repair episode、无进展停止、单次 override 与真实 scope 进展解锁已接线。                                                              | 没有真实模型长程修复成功率、token 或耗时结论。                              |
-| E    | process-free root identity、同一 Native root conflict radar 与 Archive 阻塞已接线。                                                           | 不承诺未集成 worktree、远端或其他机器的分布式协调。                         |
-| F    | 只读 Dashboard adapter 复用 Runtime projection，不提供写入口。                                                                                | 没有真实团队使用或协作效率结论。                                            |
+| 波次 | 功能分支当前事实                                                                                                                              | 尚未得到的证据                                                                                            |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| A    | schema v3、journal migration、snapshot/CAS、敏感路径排除、Protected Run/File I/O、可恢复 quarantine、显式 doctor retention 与指标聚合已接线。 | 没有新的同窗口真实模型安全/效率对照。                                                                     |
+| B    | 单 Skill 决策前沿、仓库事实优先、冷启动可执行标准、structured continuation、checkpoint 与紧凑恢复视图已接线。                                 | 2026-07-18 的 `mimo-v2.5-pro` 专项运行未触发隐藏决定，不能证明澄清质量等同 grilling；仍缺目标强模型矩阵。 |
+| C    | scope/allowance/verification/check receipt 内容寻址、acceptance trace、stale retreat、两步 Archive 与 transaction v2 已接线。                 | 没有大型真实仓库上的模型行为实验。                                                                        |
+| D    | semantic repair episode、无进展停止、单次 override 与真实 scope 进展解锁已接线。                                                              | 没有真实模型长程修复成功率、token 或耗时结论。                                                            |
+| E    | process-free root identity、同一 Native root conflict radar 与 Archive 阻塞已接线。                                                           | 不承诺未集成 worktree、远端或其他机器的分布式协调。                                                       |
+| F    | 只读 Dashboard adapter 复用 Runtime projection，不提供写入口。                                                                                | 没有真实团队使用或协作效率结论。                                                                          |
 
-以上都只表示 `codex/feat-comet-native-workflow` 功能分支的开发事实，尚未发布。生成 Runtime、真实构建、Native/入口域 62 个测试文件共 608 个通过测试、9 个平台条件跳过，以及中文 Skill 校验已经完成；中文 Website 用户页和演进文章已形成待确认稿。专项 eval 当前完成的是 fixture、validator、artifact binding 与对抗性确定性测试；按用户安排没有启动 Docker 或新的真实模型运行。历史 Native/0.4.0 对齐只提供第 6 节所述方向性证据，不能替代 Wave A–F 的专项实验。
+以上都只表示 `codex/feat-comet-native-workflow` 功能分支的开发事实，尚未发布。生成 Runtime、真实构建、Native/入口域 62 个测试文件共 608 个通过测试、9 个平台条件跳过，以及中文 Skill 校验已经完成；中文 Website 用户页和演进文章已形成待确认稿。专项 eval 已具备 fixture、validator、artifact binding 与对抗性确定性测试；2026-07-18 又运行了 interrupted-transition、Wave C、Wave E 和多轮 Wave B 真实模型实验，其中 Wave B 的失败边界见下节。历史 Native/0.4.0 对齐只提供第 6 节所述方向性证据，不能替代 Wave A–F 的专项实验。
 
 ### Website 可用叙事草稿
 
@@ -575,6 +575,28 @@ Wave A–F 已经覆盖状态、续跑、证据、修复、并行和展示，但
 - 关键取舍：Comet 把“怎么实现”继续交给强模型，把输入预算、事实校验、证据封印、停止语义和不可逆边界放进 Runtime；新增的复杂度不变成用户阶段。
 - 可公开的开发故事：外部 Git receipt、Git workspace probe、通用 Run store、固定 Engine iteration 上限、过早 Archive marker、内容 hash 单独作 CAS、路径型 copy/delete、无界事件尾恢复和无恢复语义的 retention 删除都曾在开发中暴露边界问题，最终被更窄的 process-free、inspect-first、对象身份 CAS、protected I/O 与可恢复 quarantine 替换。
 - 发布前限制：Website 可以保留这段演进过程，但不能把功能分支事实写成稳定版能力，也不能用不同窗口的离线 duration 宣称性能倍数。
+
+## 2026-07-18：Wave B 真实模型澄清实验与边界收口
+
+这轮把“Native 的澄清是否已经达到 grilling 类似效果”从静态 prompt 评审推进到真实模型实验。任务 `comet-native-wave-b-decision-resume` 隐藏大小写、首尾标点和内部撇号的 token 归一化决定；成功样本必须只问一个产品问题，接收确定性用户回答，以 `--confirmed` 进入 Build，清空上下文后从磁盘恢复同一 change，再完成实现、验证和归档。
+
+### 迭代与真实结果
+
+| Experiment                   | Prompt 变量                                                                 | 结果 | 关键事实                                                                                                                                        |
+| ---------------------------- | --------------------------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `experiment_20260718_100052` | 增加用户可见契约扫描和文本/CLI 边界清单                                     | 0/3  | 三次都识别大小写或标点分歧，随后用相邻 `text.split()` 行为自行选择；`decision_points=0`，最终功能和 `approval` 不符合确定性答案。               |
+| `experiment_20260718_101243` | 明确相邻实现、一致性、惯例和最小改动只能支撑推荐，不能代替用户答案          | 0/3  | 三次仍把新语义重分类为实现选择；`decision_points=0`，并因没有进入预期多轮协议而缺少一个或多个冷恢复/归档 envelope。                             |
+| `experiment_20260718_102227` | 增加“出现两个合理输出就停止、不得 `next`”的硬停止句                         | 0/1  | 模型仍选择区分大小写和保留标点，功能输出错误，`approval` 保持 implicit。                                                                        |
+| `experiment_20260718_103320` | 把事实、用户决定和实现选择的所有权边界提前到 Skill 开头，模仿 grilling 结构 | 0/1  | 模型仍未提问，`actual_turns=1`、`decision_points=0`、`deterministic_replies=0`、`fresh_resume_boundaries=0`，随后缺少三份要求的 eval envelope。 |
+
+所有运行都使用当前 `eval/.env` 配置的 subject model `mimo-v2.5-pro`；仓库没有配置第二个更强 subject model，因此这些结果证明“当前 Native prompt 对该模型不可靠”，不能外推为所有强模型都失败，也不能把该模型结果包装成强模型发布结论。完整 experiment 轨迹保留在本地 ignored eval logs 中，报告没有进入发布包。
+
+### 最终设计判断
+
+- grilling 的有效核心不是边界清单，而是把“事实由模型调查、产品决定属于用户、逐题询问、确认前不行动”放在最前面。Native 保留这条所有权边界，但不照搬“任何任务都必须显式确认”的重型交互。
+- 继续堆禁止条款没有改善当前模型的行为，反而让主 Skill 更重。最终把重复分类和停止规则压缩为顶部优先边界与一段短 Decision protocol；静态 Skill/validator 测试证明契约存在，不证明模型遵守。
+- 不把语义理解塞进 Runtime。Runtime 无法可靠判断“大小写是否应归一化”，强制每个 Shape 都 `--confirmed` 又会破坏 Native 的轻量定位；当前保留“明确决定才阻塞、没有决定自动推进”的产品边界。
+- Website 可以写“Native 借鉴 grilling 的问题所有权与单问题结构，并用 Wave B 持续评估”，不能写“澄清质量已经等同 grilling”或“Wave B pass@3 已通过”。发布级结论仍需要在目标强模型上重新运行相同任务矩阵。
 
 ## 附录 A：原始 58 个检查点及收敛去向
 

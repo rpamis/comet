@@ -7,6 +7,8 @@ description: Use Comet-owned Native changes, state checks, and automatic progres
 
 Understand first, then act. Native preserves requirements, complete target specifications, state, and evidence; the model chooses how to implement instead of following a fixed method. It is always one lightweight entry: continue inside this Skill according to the phase on disk, without loading phase Skills or adding Plan, TDD, Debug, or Review method checklists.
 
+Hold this priority boundary first: investigate facts available from the environment yourself; whenever two reasonable answers produce different user-visible results, the choice is a user decision owned by the user and the model may only recommend; only approaches that produce the same user-visible result are implementation choices owned by the model. Ask one user decision at a time and wait. Until the answer arrives, do not write any option as decided specification behavior, call `next`, or begin implementation. Progress automatically only when no user decision exists.
+
 ## Start or resume
 
 `/comet-native` is a Skill entry, not a shell command. Invoke it through the host's Skill mechanism; never execute `/comet-native` in Bash.
@@ -21,20 +23,11 @@ See the [command reference](reference/commands.md) for commands and runtime disc
 
 Maintain a decision frontier: focus only on unresolved choices that would materially change scope, user-visible behavior, compatibility, risk, or an irreversible result.
 
-Before declaring the frontier empty, actively inspect primary branches, defaults, boundary conditions, failure paths, compatibility constraints, and irreversible actions. Every branch that could change a user-visible outcome must have exactly one answer derived from repository facts, information already supplied by the user, explicit non-goals, or confirmed decisions. Only when no unique answer exists is it a user decision; mark it `[blocking]`.
+Before declaring it empty, perform a brief **user-visible contract scan**: turn each key noun or action into one distinguishing input -> output or trigger -> result example, then inspect primary branches, defaults, boundary conditions, failure paths, compatibility constraints, and irreversible actions. For text or token behavior, include case, leading/trailing and internal punctuation, whitespace, Unicode, empty input, duplicates, ordering, and ties; for CLI/API behavior, include defaults, error results, and backward compatibility.
 
-Separate three kinds of information first:
+A branch is resolved only by information supplied by the user, an explicit non-goal or confirmed decision, or an existing user-visible contract, test, or rule that directly covers this exact behavior. The implementation of an adjacent feature, consistency, convention, or the smallest diff is a repository fact that may support a recommendation, not replace the user's answer.
 
-- **Repository facts**: current code, existing behavior, project rules, dependency constraints, and runnable tests. Investigate them yourself; do not ask the user.
-- **Implementation choices**: when multiple approaches satisfy the same user-visible result, choose the simplest reliable one according to risk. The user need not decide.
-- **User decisions**: multiple reasonable answers exist and the answer materially changes scope, user-visible behavior, compatibility, risk, or an irreversible result. Only these go to the user.
-
-When a user decision exists:
-
-1. Ask only the single most important question, then wait for the user's answer.
-2. Include a recommended answer, a short rationale, and the practical impact of each option.
-3. Ask the most upstream decision first—the one that determines whether later questions still apply. After the answer, recompute the frontier before deciding whether to ask the next dependent question.
-4. Stay in Shape and do not implement until every necessary decision is available.
+Once one counterexample distinguishes two reasonable interpretations, it is a user decision: keep one `[blocking]` question in the brief, ask the single most upstream question with a recommended answer, short rationale, and practical impact, then end the turn and wait. Until the answer arrives, do not write either output as decided specification behavior, call `next`, or implement. After the answer, update the existing artifacts and recompute the decision frontier before asking another question or continuing.
 
 When no high-impact unknown exists, do not ask confirmation questions, generic preference questions, or low-value questions; continue directly. Existing prose in the brief does not by itself prove that requirements are clear. Do not invent ambiguity merely to cover a checklist.
 
