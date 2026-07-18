@@ -6149,6 +6149,67 @@ describe('comet scripts', () => {
       20_000,
     );
 
+    it.each(['current', 'branch', 'worktree'])(
+      'non-git project can set isolation %s without binding a branch',
+      async (isolation) => {
+        await createChange(
+          tmpDir,
+          'non-git-workspace',
+          ['workflow: full', 'phase: build', 'isolation: null', 'bound_branch: null', ''].join(
+            '\n',
+          ),
+        );
+
+        const result = runNode(tmpDir, stateScript, [
+          'set',
+          'non-git-workspace',
+          'isolation',
+          isolation,
+        ]);
+
+        expect(result.status).toBe(0);
+        expect(result.stderr).toContain(`[SET] isolation=${isolation}`);
+        const yaml = await fs.readFile(
+          path.join(tmpDir, 'openspec', 'changes', 'non-git-workspace', '.comet.yaml'),
+          'utf-8',
+        );
+        expect(yaml).toContain(`isolation: ${isolation}`);
+        expect(yaml).toContain('bound_branch: null');
+      },
+      20_000,
+    );
+
+    it.each(['current', 'branch', 'worktree'])(
+      'selecting a legacy isolation %s change with no bound_branch writes the current git branch',
+      async (isolation) => {
+        execFileSync('git', ['init', '-b', 'workflow-branch'], { cwd: tmpDir, stdio: 'ignore' });
+        execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+        execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+        await writeFile(path.join(tmpDir, 'README.md'), 'test\n');
+        execFileSync('git', ['add', '.'], { cwd: tmpDir });
+        execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+
+        const init = runNode(tmpDir, stateScript, ['init', 'legacy-select', 'full']);
+        expect(init.status).toBe(0);
+        const stateFile = path.join(tmpDir, 'openspec', 'changes', 'legacy-select', '.comet.yaml');
+        const originalYaml = await fs.readFile(stateFile, 'utf-8');
+        await fs.writeFile(
+          stateFile,
+          originalYaml
+            .replace('isolation: null', `isolation: ${isolation}`)
+            .replace(/^bound_branch: .*\n/mu, ''),
+        );
+
+        const result = runNode(tmpDir, stateScript, ['select', 'legacy-select']);
+
+        expect(result.status).toBe(0);
+        expect(result.stderr).toContain('(branch: workflow-branch)');
+        const yaml = await fs.readFile(stateFile, 'utf-8');
+        expect(yaml).toContain('bound_branch: workflow-branch');
+      },
+      20_000,
+    );
+
     it('rejects direct set bound_branch with "machine-owned" error', async () => {
       execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
       execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });

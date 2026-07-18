@@ -116,6 +116,12 @@ describe('Classic current change selection', () => {
     async (isolation) => {
       await seedActiveChange(root, 'change-a', false, { isolation });
       await selectCurrentChange(root, 'change-a');
+      expect(
+        await fs.readFile(
+          path.join(root, 'openspec', 'changes', 'change-a', '.comet.yaml'),
+          'utf8',
+        ),
+      ).toContain('bound_branch: main');
 
       expect(await resolveCurrentChange(root)).toEqual({
         status: 'selected',

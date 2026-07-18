@@ -51,6 +51,19 @@ describe('evaluateBranchBinding', () => {
       });
     },
   );
+  it.each(['current', 'branch', 'worktree'])(
+    'skips branch binding for isolation: %s when the project is not a git worktree',
+    (isolation) => {
+      expect(
+        evaluateBranchBinding({
+          isolation,
+          boundBranch: null,
+          currentBranch: null,
+          gitWorkTree: false,
+        }),
+      ).toEqual({ status: 'not-applicable' });
+    },
+  );
 });
 
 describe('drift messages', () => {

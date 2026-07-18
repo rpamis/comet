@@ -463,11 +463,16 @@ async function setField(
       if (!alreadyBound) {
         const branch = liveGitBranch(process.cwd());
         if (branch === null) {
-          fail(
-            `ERROR: cannot bind isolation=${value} while HEAD is detached; checkout a branch first`,
-          );
+          if (!isGitWorkTree(process.cwd())) {
+            document.set('bound_branch', null);
+          } else {
+            fail(
+              `ERROR: cannot bind isolation=${value} while HEAD is detached; checkout a branch first`,
+            );
+          }
+        } else {
+          document.set('bound_branch', branch);
         }
-        document.set('bound_branch', branch);
       }
     } else {
       document.set('bound_branch', null);

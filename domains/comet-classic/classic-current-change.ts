@@ -88,6 +88,18 @@ export async function selectCurrentChange(
   changeName: string,
 ): Promise<CurrentChangeSelection> {
   await validateActiveChange(projectRoot, changeName);
+  const projection = await readClassicState(changeDirectory(projectRoot, changeName), {
+    migrate: false,
+  });
+  const verdict = evaluateBranchBinding({
+    isolation: projection.classic?.isolation ?? null,
+    boundBranch: projection.classic?.boundBranch ?? null,
+    currentBranch: liveGitBranch(projectRoot),
+    gitWorkTree: isGitWorkTree(projectRoot),
+  });
+  if (verdict.status === 'needs-heal') {
+    await healBoundBranch(changeDirectory(projectRoot, changeName), verdict.branch);
+  }
   const selection: CurrentChangeSelection = {
     version: 1,
     change: changeName,

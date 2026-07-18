@@ -11778,6 +11778,18 @@ function parseSelection(source) {
 }
 async function selectCurrentChange(projectRoot2, changeName) {
   await validateActiveChange(projectRoot2, changeName);
+  const projection = await readClassicState(changeDirectory(projectRoot2, changeName), {
+    migrate: false
+  });
+  const verdict = evaluateBranchBinding({
+    isolation: projection.classic?.isolation ?? null,
+    boundBranch: projection.classic?.boundBranch ?? null,
+    currentBranch: liveGitBranch(projectRoot2),
+    gitWorkTree: isGitWorkTree(projectRoot2)
+  });
+  if (verdict.status === "needs-heal") {
+    await healBoundBranch(changeDirectory(projectRoot2, changeName), verdict.branch);
+  }
   const selection = {
     version: 1,
     change: changeName
@@ -13482,11 +13494,16 @@ async function setField2(output, name, field2, value, options = {}) {
       if (!alreadyBound) {
         const branch = liveGitBranch(process.cwd());
         if (branch === null) {
-          fail2(
-            `ERROR: cannot bind isolation=${value} while HEAD is detached; checkout a branch first`
-          );
+          if (!isGitWorkTree(process.cwd())) {
+            document.set("bound_branch", null);
+          } else {
+            fail2(
+              `ERROR: cannot bind isolation=${value} while HEAD is detached; checkout a branch first`
+            );
+          }
+        } else {
+          document.set("bound_branch", branch);
         }
-        document.set("bound_branch", branch);
       }
     } else {
       document.set("bound_branch", null);

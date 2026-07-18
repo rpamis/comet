@@ -20,6 +20,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Skill discovery resilience**: Malformed YAML frontmatter in an unrelated local Skill no longer crashes bundle factory guidance or candidate discovery; Comet now skips the broken description and continues scanning.
+- **Workspace branch binding compatibility**: Legacy changes without `bound_branch` now bind to the current Git branch when selected or checked, while projects that are not Git worktrees can choose a workspace isolation mode without being blocked by detached-HEAD branch binding.
 
 ## What's Changed [0.4.0-beta.5] - 2026-07-14
 
