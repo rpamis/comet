@@ -1,0 +1,51 @@
+name: Integration canary
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-canary
+  cancel-in-progress: false
+
+jobs:
+  classic-latest-installers:
+    name: Classic external installers
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Exercise latest Classic integrations
+        env:
+          CANARY_PROJECT: ${{ runner.temp }}/comet-classic-canary
+          CANARY_RESULT: ${{ runner.temp }}/comet-classic-canary.json
+        run: |
+          mkdir -p "$CANARY_PROJECT"
+          node bin/comet.js init "$CANARY_PROJECT" --yes --workflow classic --json > "$CANARY_RESULT"
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const raw = fs.readFileSync(process.env.CANARY_RESULT, 'utf8');
+          const start = raw.indexOf('{');
+          if (start < 0) throw new Error('No JSON payload found in init output');
+          const data = JSON.parse(raw.slice(start));
+          const failures = data.results.flatMap((result) =>
+            ['openspec', 'superpowers']
+              .filter((component) => result[component] === 'failed')
+              .map((component) => `${result.platform}: ${component}`),
+          );
+          if (failures.length > 0) {
+            throw new Error(`External installer failures:\n${failures.join('\n')}`);
+          }
+          console.log(`Validated external installers for ${data.results.length} platforms`);
+          NODE

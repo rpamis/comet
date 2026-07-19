@@ -109,13 +109,10 @@ describe('hook guard', () => {
       await fs.mkdir(srcDir, { recursive: true });
       const targetFile = path.join(srcDir, 'new-feature.ts');
 
-      const result = runHookGuard(
-        submoduleDir,
-        hookGuardScript,
-        hookStdin(targetFile),
-        {},
-        ['--project-root', tmpDir],
-      );
+      const result = runHookGuard(submoduleDir, hookGuardScript, hookStdin(targetFile), {}, [
+        '--project-root',
+        tmpDir,
+      ]);
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('BLOCKED');

@@ -1,66 +1,49 @@
-# Comet skill eval regression gate.
-#
-# Pull requests only smoke-check the regression gate wiring. Real eval runs can
-# call external models and are restricted to manual workflow_dispatch runs.
-#
-# NOTE: requires Docker (for the subject agent) and an Anthropic-compatible
-# API key (ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY) as a repository secret
-# when manually dispatched.
-
+# Real model evals are intentionally manual because they consume paid API capacity.
 name: eval-regression
 
 on:
-  pull_request:
-    paths:
-      - "assets/skills/**"
-      - "assets/skills-zh/**"
-      - "eval/**"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-regression-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  gate:
+  model-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.12"
-
-      - name: Install uv
-        run: pip install uv
-
-      - name: Install eval deps
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: '0.11.29'
+          enable-cache: true
+          cache-dependency-glob: eval/uv.lock
+      - name: Install locked Eval dependencies
         working-directory: eval
-        run: uv sync
-
-      - name: Smoke check regression gate wiring
-        if: github.event_name == 'pull_request'
-        working-directory: eval
-        run: |
-          uv run python local/scripts/regression_check.py --help
-
+        run: uv sync --locked
       - name: Set up Docker
-        if: github.event_name == 'workflow_dispatch'
-        uses: docker/setup-buildx-action@v3
-
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Run regression gate
-        if: github.event_name == 'workflow_dispatch'
         working-directory: eval
         env:
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
           ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
-          BENCH_LOOP_MAX_TURNS: "8"
-        run: |
-          uv run python local/scripts/regression_check.py --count 1 --tolerance 0.10
-
+          BENCH_LOOP_MAX_TURNS: '8'
+        run: uv run python local/scripts/regression_check.py --count 1 --tolerance 0.10
       - name: Upload experiment logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: eval-logs
           path: eval/local/logs/experiments/
+          if-no-files-found: warn

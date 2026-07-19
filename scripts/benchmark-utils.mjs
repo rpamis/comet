@@ -85,7 +85,8 @@ export function extractUsage(events) {
 
 export function findUsageObject(value) {
   if (!value || typeof value !== 'object') return null;
-  const input = value.input_tokens ?? value.inputTokens ?? value.prompt_tokens ?? value.promptTokens;
+  const input =
+    value.input_tokens ?? value.inputTokens ?? value.prompt_tokens ?? value.promptTokens;
   const output =
     value.output_tokens ?? value.outputTokens ?? value.completion_tokens ?? value.completionTokens;
   const total = value.total_tokens ?? value.totalTokens;
@@ -231,11 +232,7 @@ export function parseClaudeJson(stdout) {
  * Uses --print for non-interactive mode, --dangerously-skip-permissions for file writes.
  */
 export function buildClaudeArgs({ cwd, model = null, permissionMode = 'bypassPermissions' }) {
-  const args = [
-    '-p',
-    '--output-format', 'json',
-    '--permission-mode', permissionMode,
-  ];
+  const args = ['-p', '--output-format', 'json', '--permission-mode', permissionMode];
   if (model) args.push('--model', model);
   return args;
 }

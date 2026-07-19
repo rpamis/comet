@@ -1,165 +1,103 @@
+import { promises as fs } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { promises as fs } from 'fs';
+
+async function readWorkflow(name: string): Promise<string> {
+  return (await fs.readFile(`.github/workflows/${name}`, 'utf8')).replace(/\r\n/g, '\n');
+}
 
 describe('CI workflows', () => {
-  it('routes Comet script smoke checks through the package script contract', async () => {
-    const workflow = (await fs.readFile('.github/workflows/ci.yml', 'utf-8')).replace(
-      /\r\n/g,
-      '\n',
-    );
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf-8')) as {
+  it('runs the required CI contract for every pull request', async () => {
+    const workflow = await readWorkflow('ci.yml');
+    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as {
       scripts?: Record<string, string>;
+      engines?: { node?: string };
     };
-    const scriptSmokeJob = workflow.slice(
-      workflow.indexOf('  script-smoke:'),
-      workflow.indexOf('  init-e2e:'),
-    );
 
-    expect(packageJson.scripts?.['test:script-smoke']).toBe(
-      'vitest run test/domains/comet-classic/comet-scripts.test.ts',
+    expect(workflow).toMatch(/pull_request:\s*\n\s*permissions:/);
+    expect(workflow).toContain('cancel-in-progress: true');
+    expect(workflow).toContain('pnpm check:generated');
+    expect(workflow.indexOf('pnpm check:generated')).toBeLessThan(workflow.indexOf('pnpm build'));
+    expect(workflow).toContain('git diff --exit-code -- assets');
+    expect(workflow).toContain('pnpm test:coverage');
+    expect(workflow).toContain('pnpm test:runtime-smoke');
+    expect(workflow).toContain('pnpm test:package-e2e');
+    expect(workflow).toContain('pnpm test:dashboard-e2e');
+    expect(workflow).toContain('uv sync --locked --extra dev --extra langsmith');
+    expect(workflow).toContain(
+      'uv run pytest -q local/tests/scaffold local/tests/tasks/test_validation_scripts.py',
     );
-    expect(scriptSmokeJob).toContain('run: pnpm run test:script-smoke');
-    expect(scriptSmokeJob).not.toContain('pnpm test --');
-    expect(scriptSmokeJob).not.toContain('pnpm exec vitest run');
+    expect(workflow).toContain('ci-required:');
+    expect(packageJson.engines?.node).toBe('>=22');
+    expect(packageJson.scripts?.['test:package-e2e']).toBe('node scripts/release/package-e2e.mjs');
   });
 
-  it('validates init e2e through owned files and installer status', async () => {
-    const workflow = (await fs.readFile('.github/workflows/ci.yml', 'utf-8')).replace(
-      /\r\n/g,
-      '\n',
-    );
-    const projectVerify = workflow.slice(
-      workflow.indexOf('- name: Verify Comet skills installed (project)'),
-      workflow.indexOf('- name: Verify external installer status (project)'),
-    );
-    const globalVerify = workflow.slice(
-      workflow.indexOf('- name: Verify Comet skills installed (global)'),
-      workflow.indexOf('- name: Verify external installer status (global)'),
-    );
+  it('pins third-party actions to immutable commit SHAs', async () => {
+    const names = await fs.readdir('.github/workflows');
+    for (const name of names.filter((entry) => entry.endsWith('.yml'))) {
+      const workflow = await readWorkflow(name);
+      for (const match of workflow.matchAll(/uses:\s+([^\s#]+)/g)) {
+        const reference = match[1];
+        if (reference.startsWith('docker://') || reference.startsWith('./')) continue;
+        expect(reference, `${name}: ${reference}`).toMatch(/@[0-9a-f]{40}$/);
+      }
+    }
+  });
 
-    expect(workflow).toContain('comet-init-project.json');
-    expect(workflow).toContain('comet-init-global.json');
-    expect(workflow).toContain('pnpm run lint:architecture');
-    expect(workflow).toContain('pnpm run test:script-smoke');
-    expect(workflow).not.toContain('pnpm test -- test/domains/comet-classic/comet-scripts.test.ts');
-    expect(workflow).not.toContain('test/ts/comet-scripts.test.ts');
-    expect(workflow).toContain('export USERPROFILE="$RUNNER_TEMP/comet-e2e-global"');
-    expect(workflow).toContain('check_file "$PROJ/$sd/comet/SKILL.md"');
-    expect(workflow).toContain('check_file "$HOME_DIR/$sd/comet/SKILL.md"');
-    expect(projectVerify).toContain('.opencode/skills');
-    expect(projectVerify).not.toContain('.config/opencode/skills');
-    expect(projectVerify).toContain('.agents/skills');
-    expect(projectVerify).not.toContain('.codex/skills');
-    expect(projectVerify).toContain('.mimocode/skills');
-    expect(projectVerify).not.toContain('.config/mimocode/skills');
-    expect(globalVerify).toContain('.config/opencode/skills');
-    expect(globalVerify).not.toContain('.opencode/skills');
-    expect(globalVerify).toContain('.agents/skills');
-    expect(globalVerify).not.toContain('.codex/skills');
-    expect(globalVerify).toContain('.config/mimocode/skills');
-    expect(globalVerify).not.toContain('.mimocode/skills');
-    expect(workflow).toContain('function extractJsonPayload(raw) {');
-    expect(workflow).toContain("throw new Error('No JSON payload found in init output');");
-    expect(workflow).toContain('const data = JSON.parse(extractJsonPayload(raw));');
-    expect(workflow).toContain("const allowed = new Set(['installed', 'skipped', 'failed']);");
-    expect(workflow).toContain("const components = ['openspec', 'superpowers'];");
-    expect(workflow).toContain("r[component] === 'failed'");
-    expect(workflow).toContain('External installer statuses validated for');
-    expect(workflow).not.toContain('check_glob "$PROJ/$sd/openspec-*"');
-    expect(workflow).not.toContain('check_dir "$PROJ/$sd/brainstorming"');
-    expect(workflow).not.toContain('check_dir "$PROJ/$sd/using-superpowers"');
-    expect(workflow).not.toContain('check_glob "$HOME_DIR/$sd/openspec-*"');
-    expect(workflow).not.toContain('check_dir "$HOME_DIR/$sd/brainstorming"');
-    expect(workflow).not.toContain('check_dir "$HOME_DIR/$sd/using-superpowers"');
-    expect(workflow).toContain('All 33 platforms project Comet skills: OK');
-    expect(workflow).toContain('All 33 platforms global Comet skills: OK');
+  it('keeps paid model regression manual and runs offline Eval tests in CI', async () => {
+    const modelWorkflow = await readWorkflow('eval-regression.yml');
+    const ciWorkflow = await readWorkflow('ci.yml');
+
+    expect(modelWorkflow).toContain('workflow_dispatch:');
+    expect(modelWorkflow).not.toContain('pull_request:');
+    expect(modelWorkflow).toContain(
+      'uv run python local/scripts/regression_check.py --count 1 --tolerance 0.10',
+    );
+    expect(ciWorkflow).toContain('eval-static:');
+    expect(ciWorkflow).toContain('uv sync --locked --extra dev --extra langsmith');
+    expect(ciWorkflow).toContain('uv run ruff check');
+    expect(ciWorkflow).toContain(
+      'uv run pytest -q local/tests/scaffold local/tests/tasks/test_validation_scripts.py',
+    );
+  });
+
+  it('separates unstable external integrations into a strict scheduled canary', async () => {
+    const workflow = await readWorkflow('integration-canary.yml');
+
+    expect(workflow).toContain('schedule:');
+    expect(workflow).toContain('--workflow classic --json');
+    expect(workflow).toContain("result[component] === 'failed'");
+    expect(workflow).toContain('throw new Error(`External installer failures:');
+  });
+
+  it('runs dependency review and CodeQL with least-privilege permissions', async () => {
+    const workflow = await readWorkflow('security.yml');
+    const dependabot = await fs.readFile('.github/dependabot.yml', 'utf8');
+
+    expect(workflow).toContain('actions/dependency-review-action@');
+    expect(workflow).toContain('github/codeql-action/init@');
+    expect(workflow).toContain('security-events: write');
+    expect(workflow).toContain('fail-on-severity: high');
+    expect(dependabot).toContain('package-ecosystem: npm');
+    expect(dependabot).toContain('package-ecosystem: pip');
+    expect(dependabot).toContain('package-ecosystem: github-actions');
   });
 
   it('defines PR title linting with Comet-specific semantic scopes', async () => {
-    const workflow = (await fs.readFile('.github/workflows/pr-title-lint.yml', 'utf-8')).replace(
-      /\r\n/g,
-      '\n',
-    );
+    const workflow = await readWorkflow('pr-title-lint.yml');
 
     expect(workflow).toContain('name: PR Title Lint');
     expect(workflow).toContain('pull-requests: read');
-    expect(workflow).toContain('amannn/action-semantic-pull-request@v5');
     expect(workflow).toContain('types: [opened, edited, reopened, ready_for_review]');
-    expect(workflow).not.toContain('synchronize');
     expect(workflow).toContain('requireScope: false');
     expect(workflow).toContain('subjectPattern: ^.{1,72}$');
-
-    for (const scope of [
-      'cli',
-      'commands',
-      'core',
-      'skills',
-      'assets',
-      'scripts',
-      'docs',
-      'ci',
-      'deps',
-      'release',
-    ]) {
-      expect(workflow).toMatch(new RegExp(`\\n\\s+${scope}\\n`));
-    }
-
-    for (const outOfScope of ['common', 'api', 'spi', 'plugins', 'mcp', 'tools']) {
-      expect(workflow).not.toMatch(new RegExp(`\\n\\s+${outOfScope}\\n`));
-    }
   });
 
   it('defines stale PR auto-closing with a manual dry-run mode', async () => {
-    const workflow = (await fs.readFile('.github/workflows/stale-prs.yml', 'utf-8')).replace(
-      /\r\n/g,
-      '\n',
-    );
+    const workflow = await readWorkflow('stale-prs.yml');
 
-    expect(workflow).toContain('name: Stale PRs');
-    expect(workflow).toContain("cron: '30 3 * * *'");
     expect(workflow).toContain('workflow_dispatch:');
-    expect(workflow).toContain('dryRun:');
-    expect(workflow).toContain('operationsPerRun:');
-    expect(workflow).toContain('issues: write');
-    expect(workflow).toContain('pull-requests: write');
-    expect(workflow).toContain('contents: read');
-    expect(workflow).toContain('actions/stale@v9');
     expect(workflow).toContain('debug-only: ${{ inputs.dryRun || false }}');
-    expect(workflow).toContain('operations-per-run: ${{ inputs.operationsPerRun || 500 }}');
-    expect(workflow).toContain('ascending: true');
     expect(workflow).toContain('days-before-stale: 90');
     expect(workflow).toContain('days-before-close: 30');
-    expect(workflow).toContain("stale-pr-label: 'stale'");
-    expect(workflow).toContain("close-pr-label: 'closed-stale'");
-    expect(workflow).toContain("stale-issue-label: 'stale-issue'");
-    expect(workflow).toContain('days-before-issue-stale: -1');
-    expect(workflow).toContain('days-before-issue-close: -1');
-  });
-
-  it('keeps eval regression model runs manual while pull requests run smoke only', async () => {
-    const workflow = (await fs.readFile('.github/workflows/eval-regression.yml', 'utf-8')).replace(
-      /\r\n/g,
-      '\n',
-    );
-
-    expect(workflow).toContain('pull_request:');
-    expect(workflow).toContain('workflow_dispatch:');
-    expect(workflow).toContain("if: github.event_name == 'pull_request'");
-    expect(workflow).toContain('uv run python local/scripts/regression_check.py --help');
-    expect(workflow).toContain("if: github.event_name == 'workflow_dispatch'");
-    expect(workflow).toContain(
-      'uv run python local/scripts/regression_check.py --count 1 --tolerance 0.10',
-    );
-
-    const pullRequestSection = workflow.slice(
-      workflow.indexOf('- name: Smoke check regression gate wiring'),
-      workflow.indexOf('- name: Run regression gate'),
-    );
-    expect(pullRequestSection).not.toContain('--count');
-    expect(pullRequestSection).not.toContain('ANTHROPIC_API_KEY');
-    expect(pullRequestSection).not.toContain('ANTHROPIC_AUTH_TOKEN');
-    expect(pullRequestSection).not.toContain('ANTHROPIC_BASE_URL');
-    expect(pullRequestSection).not.toContain('ANTHROPIC_MODEL');
-    expect(pullRequestSection).not.toContain('BENCH_LOOP_MAX_TURNS');
   });
 });

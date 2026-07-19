@@ -39,8 +39,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from scaffold.python.validation.core import ValidatorFn
-
 # All nine rubric dimensions, in display order.
 RUBRIC_DIMENSIONS = (
     "main_flow",

@@ -33,9 +33,9 @@ EVAL_ROOT = Path(__file__).resolve().parents[2]
 if str(EVAL_ROOT) not in sys.path:
     sys.path.insert(0, str(EVAL_ROOT))
 
-from scaffold.python.paths import get_logs_dir
-from scaffold.python.validation.rubric import RUBRIC_DIMENSIONS
-from local.scripts.compare_baselines import (
+from scaffold.python.paths import get_logs_dir  # noqa: E402
+from scaffold.python.validation.rubric import RUBRIC_DIMENSIONS  # noqa: E402
+from local.scripts.compare_baselines import (  # noqa: E402
     BASELINE,
     WORKFLOW,
     _aggregate,
@@ -85,7 +85,6 @@ def _run_eval(count: int, treatments: str) -> str:
         f"--count={count}",
         "-v",
     ]
-    env_runner = "BENCH_LOOP_MAX_TURNS"
     print(f"[regression] running eval: {' '.join(cmd)}", file=sys.stderr)
     result = subprocess.run(cmd, capture_output=False)
     if result.returncode != 0:

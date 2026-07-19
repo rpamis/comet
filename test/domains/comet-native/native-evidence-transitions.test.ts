@@ -429,7 +429,10 @@ describe('Native evidence-bound phase transitions', () => {
 
   it('redacts credential-shaped transition and partial-allowance text before hashing or persistence', async () => {
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
-    await fs.writeFile(path.join(projectRoot, 'src', 'user-work.ts'), 'export const user = true;\n');
+    await fs.writeFile(
+      path.join(projectRoot, 'src', 'user-work.ts'),
+      'export const user = true;\n',
+    );
     const partial = await advanceNativeChange({
       paths,
       name: 'evidence-change',

@@ -103,7 +103,6 @@ skills-lock.json
 eval/.venv/
 eval/.uv-cache/
 eval/.cache/
-eval/uv.lock
 eval/**/__pycache__/
 eval/.pytest_cache/
 eval/.pytest_cache*/

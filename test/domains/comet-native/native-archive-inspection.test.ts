@@ -174,10 +174,7 @@ Pass.
     await fs.mkdir(path.join(paths.archiveDir, '2026-07-17-archive-preview'), {
       recursive: true,
     });
-    await fs.writeFile(
-      nativeTransitionJournalFile(paths, state.name),
-      '{}\n',
-    );
+    await fs.writeFile(nativeTransitionJournalFile(paths, state.name), '{}\n');
 
     const preview = await inspectNativeArchivePreflight({
       paths,
@@ -198,11 +195,7 @@ Pass.
       language: 'en',
     });
     const sourceEvidence = path.join(nativeChangeDir(paths, state.name), 'runtime', 'evidence');
-    const targetEvidence = path.join(
-      nativeChangeDir(paths, competing.name),
-      'runtime',
-      'evidence',
-    );
+    const targetEvidence = path.join(nativeChangeDir(paths, competing.name), 'runtime', 'evidence');
     await fs.cp(sourceEvidence, targetEvidence, { recursive: true });
     await writeNativeChange(paths, {
       ...competing,

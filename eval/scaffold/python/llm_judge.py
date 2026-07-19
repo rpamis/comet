@@ -18,11 +18,8 @@ Usage from the rubric validator or rescore tool::
 
 from __future__ import annotations
 
-import json
-import os
 import re
 from pathlib import Path
-from typing import Any
 
 from scaffold.python.judge_config import build_judge_invocation, run_judge_prompt
 

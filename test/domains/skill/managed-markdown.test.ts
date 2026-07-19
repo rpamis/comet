@@ -191,9 +191,7 @@ describe('managed markdown blocks', () => {
     const result = await removeManagedMarkdownBlock(filePath, 'comet-ambient-resume');
 
     expect(result.action).toBe('removed');
-    expect(await fs.readFile(filePath, 'utf8')).toBe(
-      ['before', '', 'after', ''].join(CRLF),
-    );
+    expect(await fs.readFile(filePath, 'utf8')).toBe(['before', '', 'after', ''].join(CRLF));
   });
 
   it('rejects duplicate blocks', async () => {
@@ -218,9 +216,9 @@ describe('managed markdown blocks', () => {
       'utf8',
     );
 
-    await expect(
-      removeManagedMarkdownBlock(filePath, 'comet-ambient-resume'),
-    ).rejects.toThrow(/malformed managed block/);
+    await expect(removeManagedMarkdownBlock(filePath, 'comet-ambient-resume')).rejects.toThrow(
+      /malformed managed block/,
+    );
   });
 
   it('rejects invalid tag names in merge and remove', async () => {

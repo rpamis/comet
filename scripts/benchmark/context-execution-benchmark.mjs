@@ -74,22 +74,48 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--help') return { ...options, help: true };
-    if (arg === '--dry-run') { options.dryRun = true; continue; }
-    if (arg === '--phase') { options.phase = requireValue(argv, ++i, arg); continue; }
-    if (arg === '--workspace') { options.workspace = requireValue(argv, ++i, arg); continue; }
-    if (arg === '--repeats') { options.repeats = Number.parseInt(requireValue(argv, ++i, arg), 10); continue; }
-    if (arg === '--claude-command') { options.claudeCommand = requireValue(argv, ++i, arg); continue; }
-    if (arg === '--model') { options.model = requireValue(argv, ++i, arg); continue; }
-    if (arg === '--max-retries') { options.maxRetries = Number.parseInt(requireValue(argv, ++i, arg), 10); continue; }
+    if (arg === '--dry-run') {
+      options.dryRun = true;
+      continue;
+    }
+    if (arg === '--phase') {
+      options.phase = requireValue(argv, ++i, arg);
+      continue;
+    }
+    if (arg === '--workspace') {
+      options.workspace = requireValue(argv, ++i, arg);
+      continue;
+    }
+    if (arg === '--repeats') {
+      options.repeats = Number.parseInt(requireValue(argv, ++i, arg), 10);
+      continue;
+    }
+    if (arg === '--claude-command') {
+      options.claudeCommand = requireValue(argv, ++i, arg);
+      continue;
+    }
+    if (arg === '--model') {
+      options.model = requireValue(argv, ++i, arg);
+      continue;
+    }
+    if (arg === '--max-retries') {
+      options.maxRetries = Number.parseInt(requireValue(argv, ++i, arg), 10);
+      continue;
+    }
     if (arg === '--tiers') {
-      options.tiers = requireValue(argv, ++i, arg).split(',').map((t) => t.trim()).filter(Boolean);
+      options.tiers = requireValue(argv, ++i, arg)
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
       continue;
     }
     throw new Error(`Unknown option: ${arg}`);
   }
 
-  if (!PHASES.includes(options.phase)) throw new Error(`--phase must be one of: ${PHASES.join(', ')}`);
-  if (!Number.isInteger(options.repeats) || options.repeats < 1) throw new Error('--repeats must be a positive integer');
+  if (!PHASES.includes(options.phase))
+    throw new Error(`--phase must be one of: ${PHASES.join(', ')}`);
+  if (!Number.isInteger(options.repeats) || options.repeats < 1)
+    throw new Error('--repeats must be a positive integer');
   const unknownTiers = options.tiers.filter((t) => !TIERS.includes(t));
   if (unknownTiers.length > 0) throw new Error(`Unknown tier(s): ${unknownTiers.join(', ')}`);
   return options;
@@ -121,14 +147,27 @@ async function createChangeFixture(changeDir, mode, tier) {
   await fs.writeFile(
     path.join(changeDir, '.comet.yaml'),
     [
-      'workflow: full', 'phase: design', `context_compression: ${mode}`,
-      'build_mode: null', 'build_pause: null', 'subagent_dispatch: null',
-      'tdd_mode: null', 'isolation: null', 'verify_mode: null',
-      'design_doc: null', 'plan: null', 'base_ref: null',
-      'verify_result: pending', 'verification_report: null',
-      'branch_status: pending', 'created_at: 2026-06-07',
-      'verified_at: null', 'archived: false',
-      'handoff_context: null', 'handoff_hash: null', '',
+      'workflow: full',
+      'phase: design',
+      `context_compression: ${mode}`,
+      'build_mode: null',
+      'build_pause: null',
+      'subagent_dispatch: null',
+      'tdd_mode: null',
+      'isolation: null',
+      'verify_mode: null',
+      'design_doc: null',
+      'plan: null',
+      'base_ref: null',
+      'verify_result: pending',
+      'verification_report: null',
+      'branch_status: pending',
+      'created_at: 2026-06-07',
+      'verified_at: null',
+      'archived: false',
+      'handoff_context: null',
+      'handoff_hash: null',
+      '',
     ].join('\n'),
   );
 
@@ -136,12 +175,16 @@ async function createChangeFixture(changeDir, mode, tier) {
   await fs.writeFile(
     path.join(changeDir, 'proposal.md'),
     [
-      '# Proposal', '',
+      '# Proposal',
+      '',
       'Build a small note-board CLI that records notes, tags, and archive state.',
       'The implementation must preserve note order and reject empty note text.',
       '',
-      ...Array.from({ length: sp }, (_, i) =>
-        `Proposal rationale ${i + 1}: Implementation background and tradeoffs for the note-board feature.`),
+      ...Array.from(
+        { length: sp },
+        (_, i) =>
+          `Proposal rationale ${i + 1}: Implementation background and tradeoffs for the note-board feature.`,
+      ),
       '',
     ].join('\n'),
   );
@@ -149,12 +192,16 @@ async function createChangeFixture(changeDir, mode, tier) {
   await fs.writeFile(
     path.join(changeDir, 'design.md'),
     [
-      '# Design', '',
+      '# Design',
+      '',
       'Use a single JSON file named notes.json in the project root.',
       'Commands should be deterministic and should not require network access.',
       '',
-      ...Array.from({ length: sp }, (_, i) =>
-        `Design detail ${i + 1}: Architecture decisions and constraints for the note-board module.`),
+      ...Array.from(
+        { length: sp },
+        (_, i) =>
+          `Design detail ${i + 1}: Architecture decisions and constraints for the note-board module.`,
+      ),
       '',
     ].join('\n'),
   );
@@ -165,13 +212,18 @@ async function createChangeFixture(changeDir, mode, tier) {
       '- [ ] Create a note-board CLI with add, list, tag, and archive commands',
       '- [ ] Add tests for ordering, empty text validation, tag filtering, and archive filtering',
       '- [ ] Return a benchmark verdict JSON for this evaluation',
-      ...Array.from({ length: Math.floor(sp / 2) }, (_, i) =>
-        `- [ ] Supporting planning checkpoint ${i + 1}`),
+      ...Array.from(
+        { length: Math.floor(sp / 2) },
+        (_, i) => `- [ ] Supporting planning checkpoint ${i + 1}`,
+      ),
       '',
     ].join('\n'),
   );
 
-  await fs.writeFile(path.join(changeDir, 'specs', 'note-board', 'spec.md'), buildSpec(specCountFor(tier)));
+  await fs.writeFile(
+    path.join(changeDir, 'specs', 'note-board', 'spec.md'),
+    buildSpec(specCountFor(tier)),
+  );
 }
 
 /**
@@ -199,13 +251,20 @@ async function createL2Fixture(root, mode, tier) {
   await fs.writeFile(path.join(root, '.comet', 'config.yaml'), `context_compression: ${mode}\n`);
   await createChangeFixture(changeDir, mode, tier);
 
-  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({
-    name: 'execution-benchmark-fixture',
-    type: 'module',
-    private: true,
-    scripts: { test: 'vitest run --reporter=json' },
-    devDependencies: { vitest: '^4.1.6' },
-  }, null, 2));
+  await fs.writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'execution-benchmark-fixture',
+        type: 'module',
+        private: true,
+        scripts: { test: 'vitest run --reporter=json' },
+        devDependencies: { vitest: '^4.1.6' },
+      },
+      null,
+      2,
+    ),
+  );
 
   await fs.writeFile(
     path.join(root, 'vitest.config.js'),
@@ -264,20 +323,53 @@ describe('NoteBoard', () => {
 
 function buildSpec(count) {
   const requirements = [
-    ['Notes are stored in creation order', 'list active notes in the same order they were added', 'List preserves insertion order', 'notes "alpha", "beta", and "gamma" were added', 'the user lists active notes', 'the output order is "alpha", "beta", "gamma"'],
-    ['Empty note text is rejected', 'reject empty or whitespace-only note text', 'Whitespace text fails validation', 'no note text except spaces', 'the user adds the note', 'the command fails with "note text is required"'],
-    ['Tags filter active notes', 'allow active notes to be filtered by tag', 'Tag filter returns only matching notes', 'one note tagged "work" and one note tagged "home"', 'the user lists notes with tag "work"', 'only the "work" note is shown'],
-    ['Archived notes are hidden by default', 'hide archived notes unless the user requests archived notes', 'Archived note is omitted from default list', 'note "alpha" is archived', 'the user lists active notes', '"alpha" is not shown'],
+    [
+      'Notes are stored in creation order',
+      'list active notes in the same order they were added',
+      'List preserves insertion order',
+      'notes "alpha", "beta", and "gamma" were added',
+      'the user lists active notes',
+      'the output order is "alpha", "beta", "gamma"',
+    ],
+    [
+      'Empty note text is rejected',
+      'reject empty or whitespace-only note text',
+      'Whitespace text fails validation',
+      'no note text except spaces',
+      'the user adds the note',
+      'the command fails with "note text is required"',
+    ],
+    [
+      'Tags filter active notes',
+      'allow active notes to be filtered by tag',
+      'Tag filter returns only matching notes',
+      'one note tagged "work" and one note tagged "home"',
+      'the user lists notes with tag "work"',
+      'only the "work" note is shown',
+    ],
+    [
+      'Archived notes are hidden by default',
+      'hide archived notes unless the user requests archived notes',
+      'Archived note is omitted from default list',
+      'note "alpha" is archived',
+      'the user lists active notes',
+      '"alpha" is not shown',
+    ],
   ];
   const lines = ['## ADDED Requirements', ''];
   for (let index = 0; index < count; index++) {
     const base = requirements[index % requirements.length];
-    const suffix = index < requirements.length ? '' : ` ${Math.floor(index / requirements.length) + 1}`;
+    const suffix =
+      index < requirements.length ? '' : ` ${Math.floor(index / requirements.length) + 1}`;
     lines.push(
       `### Requirement: ${base[0]}${suffix}`,
-      `The note-board CLI MUST ${base[1]}.`, '',
+      `The note-board CLI MUST ${base[1]}.`,
+      '',
       `#### Scenario: ${base[2]}${suffix}`,
-      `- Given ${base[3]}`, `- When ${base[4]}`, `- Then ${base[5]}`, '',
+      `- Given ${base[3]}`,
+      `- When ${base[4]}`,
+      `- Then ${base[5]}`,
+      '',
     );
   }
   return lines.join('\n');
@@ -289,7 +381,11 @@ async function generateHandoff(cwd, changeName = CHANGE_NAME) {
   const bash = findBashCommand();
   if (!bash) throw new Error('Bash or Git Bash is required to generate Comet handoff context');
   const script = path.join(REPO_ROOT, 'assets', 'skills', 'comet', 'scripts', 'comet-handoff.sh');
-  await spawnCapture(bash.command, [toBashPath(script, bash.pathStyle), changeName, 'design', '--write'], { cwd });
+  await spawnCapture(
+    bash.command,
+    [toBashPath(script, bash.pathStyle), changeName, 'design', '--write'],
+    { cwd },
+  );
 }
 
 async function writeSyntheticHandoff(root, mode, tier) {
@@ -302,39 +398,71 @@ async function writeSyntheticHandoff(root, mode, tier) {
     path.join(handoffDir, `${contextName}.md`),
     [
       mode === 'beta' ? '# Comet Spec Context' : '# Comet Design Handoff',
-      '', `- Change: ${CHANGE_NAME}`, '- Phase: design',
-      `- Mode: ${mode === 'beta' ? 'beta' : 'compact'}`, '',
-      ...Array.from({ length: retainedLines }, (_, i) =>
-        `Context line ${i + 1}: ${mode} ${tier} benchmark material.`),
+      '',
+      `- Change: ${CHANGE_NAME}`,
+      '- Phase: design',
+      `- Mode: ${mode === 'beta' ? 'beta' : 'compact'}`,
+      '',
+      ...Array.from(
+        { length: retainedLines },
+        (_, i) => `Context line ${i + 1}: ${mode} ${tier} benchmark material.`,
+      ),
       '',
     ].join('\n'),
   );
   await fs.writeFile(
     path.join(handoffDir, `${contextName}.json`),
-    JSON.stringify({ change: CHANGE_NAME, phase: 'design', mode: mode === 'beta' ? 'beta' : 'compact', files: [] }, null, 2),
+    JSON.stringify(
+      {
+        change: CHANGE_NAME,
+        phase: 'design',
+        mode: mode === 'beta' ? 'beta' : 'compact',
+        files: [],
+      },
+      null,
+      2,
+    ),
   );
 }
 
 async function measureContext(root, mode) {
   const contextName = mode === 'beta' ? 'spec-context.md' : 'design-context.md';
   const content = await fs.readFile(
-    path.join(root, 'openspec', 'changes', CHANGE_NAME, '.comet', 'handoff', contextName), 'utf-8',
+    path.join(root, 'openspec', 'changes', CHANGE_NAME, '.comet', 'handoff', contextName),
+    'utf-8',
   );
-  return { chars: content.length, lines: content.split(/\r?\n/).length, approxTokens: Math.ceil(content.length / 4) };
+  return {
+    chars: content.length,
+    lines: content.split(/\r?\n/).length,
+    approxTokens: Math.ceil(content.length / 4),
+  };
 }
 
 async function measureL3Context(root, mode, tier) {
   const specContent = await fs.readFile(
-    path.join(root, 'openspec', 'changes', L3_CHANGE_NAME, 'specs', 'dictionary', 'spec.md'), 'utf-8',
+    path.join(root, 'openspec', 'changes', L3_CHANGE_NAME, 'specs', 'dictionary', 'spec.md'),
+    'utf-8',
   );
   const testContent = await fs.readFile(path.join(root, 'tests', 'dictionary.test.js'), 'utf-8');
   const totalChars = specContent.length + testContent.length;
-  return { chars: totalChars, lines: (specContent + testContent).split(/\r?\n/).length, approxTokens: Math.ceil(totalChars / 4) };
+  return {
+    chars: totalChars,
+    lines: (specContent + testContent).split(/\r?\n/).length,
+    approxTokens: Math.ceil(totalChars / 4),
+  };
 }
 
 async function readHandoffContext(root, mode, changeName = CHANGE_NAME) {
   const contextFile = mode === 'beta' ? 'spec-context.md' : 'design-context.md';
-  const contextPath = path.join(root, 'openspec', 'changes', changeName, '.comet', 'handoff', contextFile);
+  const contextPath = path.join(
+    root,
+    'openspec',
+    'changes',
+    changeName,
+    '.comet',
+    'handoff',
+    contextFile,
+  );
   const contextText = await fs.readFile(contextPath, 'utf-8');
   return { contextFile, contextText };
 }
@@ -381,7 +509,10 @@ export function parseDesignVerdict(text) {
       requirementsTotal: Number(data.requirementsTotal ?? 0),
       decisionsCount: Number(data.decisionsCount ?? 0),
       risksIdentified: Number(data.risksIdentified ?? 0),
-      coverageRate: safeRatio(Number(data.requirementsCovered ?? 0), Number(data.requirementsTotal ?? 0)),
+      coverageRate: safeRatio(
+        Number(data.requirementsCovered ?? 0),
+        Number(data.requirementsTotal ?? 0),
+      ),
     };
   } catch {
     return null;
@@ -454,7 +585,9 @@ export function parseTestOutput(stdout) {
         testPassRate: safeRatio(passed, data.numTotalTests),
       };
     }
-  } catch { /* not JSON */ }
+  } catch {
+    /* not JSON */
+  }
 
   const passMatch = stdout.match(/(\d+) passed/);
   const failMatch = stdout.match(/(\d+) failed/);
@@ -471,14 +604,23 @@ export function parseTestOutput(stdout) {
 
 async function runTests(cwd) {
   try {
-    const { stdout, stderr } = await spawnCapture(cmd('npx'), ['vitest', 'run', '--reporter=json'], {
-      cwd,
-      timeoutMs: 30_000,
-      allowFailure: true,
-    });
+    const { stdout, stderr } = await spawnCapture(
+      cmd('npx'),
+      ['vitest', 'run', '--reporter=json'],
+      {
+        cwd,
+        timeoutMs: 30_000,
+        allowFailure: true,
+      },
+    );
     return parseTestOutput(stdout + '\n' + stderr);
   } catch (error) {
-    return { testsTotal: 0, testsPassed: 0, testsFailed: [`Test error: ${error.message}`], testPassRate: 0 };
+    return {
+      testsTotal: 0,
+      testsPassed: 0,
+      testsFailed: [`Test error: ${error.message}`],
+      testPassRate: 0,
+    };
   }
 }
 
@@ -1217,55 +1359,96 @@ async function createL3Fixture(root, mode, tier) {
   await fs.writeFile(path.join(root, '.comet', 'config.yaml'), `context_compression: ${mode}\n`);
 
   // OpenSpec change artifacts
-  await fs.writeFile(path.join(changeDir, '.comet.yaml'), [
-    'workflow: full', 'phase: open', `context_compression: ${mode}`,
-    'build_mode: null', 'build_pause: null', 'subagent_dispatch: null',
-    'tdd_mode: null', 'isolation: null', 'verify_mode: null',
-    'design_doc: null', 'plan: null', 'base_ref: null',
-    'verify_result: pending', 'verification_report: null',
-    'branch_status: pending', 'created_at: 2026-06-07',
-    'verified_at: null', 'archived: false',
-    'handoff_context: null', 'handoff_hash: null', '',
-  ].join('\n'));
+  await fs.writeFile(
+    path.join(changeDir, '.comet.yaml'),
+    [
+      'workflow: full',
+      'phase: open',
+      `context_compression: ${mode}`,
+      'build_mode: null',
+      'build_pause: null',
+      'subagent_dispatch: null',
+      'tdd_mode: null',
+      'isolation: null',
+      'verify_mode: null',
+      'design_doc: null',
+      'plan: null',
+      'base_ref: null',
+      'verify_result: pending',
+      'verification_report: null',
+      'branch_status: pending',
+      'created_at: 2026-06-07',
+      'verified_at: null',
+      'archived: false',
+      'handoff_context: null',
+      'handoff_hash: null',
+      '',
+    ].join('\n'),
+  );
 
   const sp = supportingParagraphsFor(tier);
-  await fs.writeFile(path.join(changeDir, 'proposal.md'), [
-    '# Proposal', '',
-    'Build a dictionary module that stores word-definition pairs with categories.',
-    'Support case-insensitive lookup, category filtering, deprecation, and sorted listing.',
-    '',
-    ...Array.from({ length: sp }, (_, i) =>
-      `Proposal rationale ${i + 1}: Dictionary module background and tradeoffs.`),
-    '',
-  ].join('\n'));
+  await fs.writeFile(
+    path.join(changeDir, 'proposal.md'),
+    [
+      '# Proposal',
+      '',
+      'Build a dictionary module that stores word-definition pairs with categories.',
+      'Support case-insensitive lookup, category filtering, deprecation, and sorted listing.',
+      '',
+      ...Array.from(
+        { length: sp },
+        (_, i) => `Proposal rationale ${i + 1}: Dictionary module background and tradeoffs.`,
+      ),
+      '',
+    ].join('\n'),
+  );
 
-  await fs.writeFile(path.join(changeDir, 'design.md'), [
-    '# Design', '',
-    'Use an in-memory Map keyed by lowercase word.',
-    'Each entry stores word, definition, category, and deprecated flag.',
-    '',
-    ...Array.from({ length: sp }, (_, i) =>
-      `Design detail ${i + 1}: Architecture decisions for the dictionary module.`),
-    '',
-  ].join('\n'));
+  await fs.writeFile(
+    path.join(changeDir, 'design.md'),
+    [
+      '# Design',
+      '',
+      'Use an in-memory Map keyed by lowercase word.',
+      'Each entry stores word, definition, category, and deprecated flag.',
+      '',
+      ...Array.from(
+        { length: sp },
+        (_, i) => `Design detail ${i + 1}: Architecture decisions for the dictionary module.`,
+      ),
+      '',
+    ].join('\n'),
+  );
 
-  await fs.writeFile(path.join(changeDir, 'tasks.md'), [
-    '- [ ] Implement Dictionary class with add, getDefinition, lookup, getByCategory, list, deprecate, exists',
-    '- [ ] Write tests for all dictionary operations',
-    '- [ ] Ensure all tests pass',
-    '',
-  ].join('\n'));
+  await fs.writeFile(
+    path.join(changeDir, 'tasks.md'),
+    [
+      '- [ ] Implement Dictionary class with add, getDefinition, lookup, getByCategory, list, deprecate, exists',
+      '- [ ] Write tests for all dictionary operations',
+      '- [ ] Ensure all tests pass',
+      '',
+    ].join('\n'),
+  );
 
-  await fs.writeFile(path.join(changeDir, 'specs', 'dictionary', 'spec.md'), buildL3SpecContent(tier));
+  await fs.writeFile(
+    path.join(changeDir, 'specs', 'dictionary', 'spec.md'),
+    buildL3SpecContent(tier),
+  );
 
   // Project files
-  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({
-    name: 'dict-benchmark-fixture',
-    type: 'module',
-    private: true,
-    scripts: { test: 'vitest run --reporter=json' },
-    devDependencies: { vitest: '^4.1.6' },
-  }, null, 2));
+  await fs.writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'dict-benchmark-fixture',
+        type: 'module',
+        private: true,
+        scripts: { test: 'vitest run --reporter=json' },
+        devDependencies: { vitest: '^4.1.6' },
+      },
+      null,
+      2,
+    ),
+  );
 
   await fs.writeFile(
     path.join(root, 'vitest.config.js'),
@@ -1360,7 +1543,16 @@ function buildL3BuildPrompt(mode, contextFile, contextText, tier) {
   ].join('\n');
 }
 
-async function runL3Build({ claudeCommand, model, cwd, mode, contextFile, contextText, tier, maxRetries }) {
+async function runL3Build({
+  claudeCommand,
+  model,
+  cwd,
+  mode,
+  contextFile,
+  contextText,
+  tier,
+  maxRetries,
+}) {
   const basePrompt = buildL3BuildPrompt(mode, contextFile, contextText, tier);
   let totalUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   let totalDurationMs = 0;
@@ -1430,8 +1622,14 @@ async function runL3({ claudeCommand, model, cwd, mode, tier, maxRetries }) {
 
   // Phase 2: Build (from compressed handoff)
   const buildResult = await runL3Build({
-    claudeCommand, model, cwd, mode,
-    contextFile, contextText, tier, maxRetries,
+    claudeCommand,
+    model,
+    cwd,
+    mode,
+    contextFile,
+    contextText,
+    tier,
+    maxRetries,
   });
 
   // Aggregate metrics across both phases
@@ -1463,7 +1661,11 @@ function dryRunL1(mode, tier, context) {
     phase: 'l1',
     usage: beta
       ? { inputTokens: baseInput, outputTokens: 400, totalTokens: baseInput + 400 }
-      : { inputTokens: baseInput + 150 * tierMultiplier, outputTokens: 500, totalTokens: baseInput + 500 + 150 * tierMultiplier },
+      : {
+          inputTokens: baseInput + 150 * tierMultiplier,
+          outputTokens: 500,
+          totalTokens: baseInput + 500 + 150 * tierMultiplier,
+        },
     durationMs: beta ? 4000 * tierMultiplier : 6000 * tierMultiplier,
     costUsd: beta ? 0.04 : 0.06,
     verdict: {
@@ -1487,7 +1689,11 @@ function dryRunL2(mode, tier, context) {
     phase: 'l2',
     usage: beta
       ? { inputTokens: baseInput, outputTokens: 300, totalTokens: baseInput + 300 }
-      : { inputTokens: baseInput + 200 * tierMultiplier, outputTokens: 400, totalTokens: baseInput + 400 + 200 * tierMultiplier },
+      : {
+          inputTokens: baseInput + 200 * tierMultiplier,
+          outputTokens: 400,
+          totalTokens: baseInput + 400 + 200 * tierMultiplier,
+        },
     attempts: beta ? 1 : 2,
     testResult: {
       testsTotal,
@@ -1513,8 +1719,16 @@ function dryRunL3(mode, tier, context) {
   return {
     phase: 'l3',
     usage: beta
-      ? { inputTokens: baseInput, outputTokens: 600 * tierMultiplier, totalTokens: baseInput + 600 * tierMultiplier }
-      : { inputTokens: baseInput + offExtra, outputTokens: 800 * tierMultiplier, totalTokens: baseInput + offExtra + 800 * tierMultiplier },
+      ? {
+          inputTokens: baseInput,
+          outputTokens: 600 * tierMultiplier,
+          totalTokens: baseInput + 600 * tierMultiplier,
+        }
+      : {
+          inputTokens: baseInput + offExtra,
+          outputTokens: 800 * tierMultiplier,
+          totalTokens: baseInput + offExtra + 800 * tierMultiplier,
+        },
     attempts: beta ? 1 : 2,
     testResult: {
       testsTotal,
@@ -1544,19 +1758,33 @@ export function summarizeExecution(results) {
       const count = modeResults.length || 1;
 
       if (phase === 'l1') {
-        const totals = modeResults.reduce((acc, r) => {
-          acc.inputTokens += r.usage.inputTokens;
-          acc.outputTokens += r.usage.outputTokens;
-          acc.totalTokens += r.usage.totalTokens;
-          acc.durationMs += r.durationMs;
-          acc.costUsd += r.costUsd ?? 0;
-          acc.requirementsCovered += r.verdict?.requirementsCovered ?? 0;
-          acc.requirementsTotal += r.verdict?.requirementsTotal ?? 0;
-          acc.decisionsCount += r.verdict?.decisionsCount ?? 0;
-          acc.risksIdentified += r.verdict?.risksIdentified ?? 0;
-          acc.contextChars += r.context?.chars ?? 0;
-          return acc;
-        }, { inputTokens: 0, outputTokens: 0, totalTokens: 0, durationMs: 0, costUsd: 0, requirementsCovered: 0, requirementsTotal: 0, decisionsCount: 0, risksIdentified: 0, contextChars: 0 });
+        const totals = modeResults.reduce(
+          (acc, r) => {
+            acc.inputTokens += r.usage.inputTokens;
+            acc.outputTokens += r.usage.outputTokens;
+            acc.totalTokens += r.usage.totalTokens;
+            acc.durationMs += r.durationMs;
+            acc.costUsd += r.costUsd ?? 0;
+            acc.requirementsCovered += r.verdict?.requirementsCovered ?? 0;
+            acc.requirementsTotal += r.verdict?.requirementsTotal ?? 0;
+            acc.decisionsCount += r.verdict?.decisionsCount ?? 0;
+            acc.risksIdentified += r.verdict?.risksIdentified ?? 0;
+            acc.contextChars += r.context?.chars ?? 0;
+            return acc;
+          },
+          {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            costUsd: 0,
+            requirementsCovered: 0,
+            requirementsTotal: 0,
+            decisionsCount: 0,
+            risksIdentified: 0,
+            contextChars: 0,
+          },
+        );
 
         modes[mode] = {
           runs: modeResults.length,
@@ -1573,21 +1801,37 @@ export function summarizeExecution(results) {
           avgRisksIdentified: round(totals.risksIdentified / count),
         };
       } else {
-        const totals = modeResults.reduce((acc, r) => {
-          acc.inputTokens += r.usage.inputTokens;
-          acc.outputTokens += r.usage.outputTokens;
-          acc.totalTokens += r.usage.totalTokens;
-          acc.durationMs += r.durationMs;
-          acc.costUsd += r.costUsd ?? 0;
-          acc.attempts += r.attempts;
-          acc.testsPassed += r.testResult?.testsPassed ?? 0;
-          acc.testsTotal += r.testResult?.testsTotal ?? 0;
-          acc.completed += r.completed ? 1 : 0;
-          acc.specCoverageSum += r.specCoverage ?? 0;
-          acc.specCoverageCount += r.specCoverage != null ? 1 : 0;
-          acc.contextChars += r.context?.chars ?? 0;
-          return acc;
-        }, { inputTokens: 0, outputTokens: 0, totalTokens: 0, durationMs: 0, costUsd: 0, attempts: 0, testsPassed: 0, testsTotal: 0, completed: 0, specCoverageSum: 0, specCoverageCount: 0, contextChars: 0 });
+        const totals = modeResults.reduce(
+          (acc, r) => {
+            acc.inputTokens += r.usage.inputTokens;
+            acc.outputTokens += r.usage.outputTokens;
+            acc.totalTokens += r.usage.totalTokens;
+            acc.durationMs += r.durationMs;
+            acc.costUsd += r.costUsd ?? 0;
+            acc.attempts += r.attempts;
+            acc.testsPassed += r.testResult?.testsPassed ?? 0;
+            acc.testsTotal += r.testResult?.testsTotal ?? 0;
+            acc.completed += r.completed ? 1 : 0;
+            acc.specCoverageSum += r.specCoverage ?? 0;
+            acc.specCoverageCount += r.specCoverage != null ? 1 : 0;
+            acc.contextChars += r.context?.chars ?? 0;
+            return acc;
+          },
+          {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            durationMs: 0,
+            costUsd: 0,
+            attempts: 0,
+            testsPassed: 0,
+            testsTotal: 0,
+            completed: 0,
+            specCoverageSum: 0,
+            specCoverageCount: 0,
+            contextChars: 0,
+          },
+        );
 
         modes[mode] = {
           runs: modeResults.length,
@@ -1599,7 +1843,10 @@ export function summarizeExecution(results) {
           avgAttempts: round(totals.attempts / count),
           avgTestPassRate: round(safeRatio(totals.testsPassed, totals.testsTotal)),
           completionRate: round(safeRatio(totals.completed, count)),
-          avgSpecCoverage: totals.specCoverageCount > 0 ? round(totals.specCoverageSum / totals.specCoverageCount) : null,
+          avgSpecCoverage:
+            totals.specCoverageCount > 0
+              ? round(totals.specCoverageSum / totals.specCoverageCount)
+              : null,
           avgContextChars: round(totals.contextChars / count),
         };
       }
@@ -1612,7 +1859,9 @@ export function summarizeExecution(results) {
       tokenSavings: {
         totalTokens: round(off.avgTotalTokens - beta.avgTotalTokens),
         inputTokens: round(off.avgInputTokens - beta.avgInputTokens),
-        percent: round(safeRatio(off.avgTotalTokens - beta.avgTotalTokens, off.avgTotalTokens) * 100),
+        percent: round(
+          safeRatio(off.avgTotalTokens - beta.avgTotalTokens, off.avgTotalTokens) * 100,
+        ),
       },
     };
   }
@@ -1624,27 +1873,33 @@ export function summarizeExecution(results) {
 
 function renderMarkdownReport(report) {
   const lines = [
-    '# Comet Execution Benchmark 报告', '',
+    '# Comet Execution Benchmark 报告',
+    '',
     `- 生成时间: ${report.generatedAt}`,
     `- Dry run: ${report.dryRun ? '是' : '否'}`,
     `- 测试阶段: ${report.phase}`,
     `- 每组重复次数: ${report.repeats}`,
-    `- 测试档位: ${report.tiers.join(', ')}`, '',
+    `- 测试档位: ${report.tiers.join(', ')}`,
+    '',
   ];
 
   if (report.summary.l1) {
     const l1 = report.summary.l1;
     lines.push(
-      '## L1: 设计阶段', '',
+      '## L1: 设计阶段',
+      '',
       `- Token 节省: ${l1.tokenSavings.totalTokens} (${l1.tokenSavings.percent}%)`,
-      `- 输入 token 节省: ${l1.tokenSavings.inputTokens}`, '',
+      `- 输入 token 节省: ${l1.tokenSavings.inputTokens}`,
+      '',
       '| 模式 | 平均总 tokens | 需求覆盖率 | 平均决策数 | 平均风险数 | 平均耗时(s) | 平均成本($) |',
       '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
     );
     for (const mode of MODES) {
       const m = l1.modes[mode];
       if (!m) continue;
-      lines.push(`| ${mode} | ${m.avgTotalTokens} | ${round(m.avgCoverageRate * 100)}% | ${m.avgDecisionsCount} | ${m.avgRisksIdentified} | ${round(m.avgDurationMs / 1000)} | ${m.avgCostUsd} |`);
+      lines.push(
+        `| ${mode} | ${m.avgTotalTokens} | ${round(m.avgCoverageRate * 100)}% | ${m.avgDecisionsCount} | ${m.avgRisksIdentified} | ${round(m.avgDurationMs / 1000)} | ${m.avgCostUsd} |`,
+      );
     }
     lines.push('');
   }
@@ -1652,21 +1907,27 @@ function renderMarkdownReport(report) {
   if (report.summary.l2) {
     const l2 = report.summary.l2;
     lines.push(
-      '## L2: 构建阶段', '',
+      '## L2: 构建阶段',
+      '',
       `- Token 节省: ${l2.tokenSavings.totalTokens} (${l2.tokenSavings.percent}%)`,
-      `- 输入 token 节省: ${l2.tokenSavings.inputTokens}`, '',
+      `- 输入 token 节省: ${l2.tokenSavings.inputTokens}`,
+      '',
       '| 模式 | 平均总 tokens | 测试通过率 | 完成率 | 平均重试 | 平均耗时(s) | 平均成本($) |',
       '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
     );
     for (const mode of MODES) {
       const m = l2.modes[mode];
       if (!m) continue;
-      lines.push(`| ${mode} | ${m.avgTotalTokens} | ${round(m.avgTestPassRate * 100)}% | ${round(m.completionRate * 100)}% | ${m.avgAttempts} | ${round(m.avgDurationMs / 1000)} | ${m.avgCostUsd} |`);
+      lines.push(
+        `| ${mode} | ${m.avgTotalTokens} | ${round(m.avgTestPassRate * 100)}% | ${round(m.completionRate * 100)}% | ${m.avgAttempts} | ${round(m.avgDurationMs / 1000)} | ${m.avgCostUsd} |`,
+      );
     }
     lines.push('');
 
     // Tier breakdown for L2
-    lines.push('### L2 分档明细', '',
+    lines.push(
+      '### L2 分档明细',
+      '',
       '| 档位 | off 总 tokens | beta 总 tokens | Token 节省 | off 通过率 | beta 通过率 | off 完成率 | beta 完成率 |',
       '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     );
@@ -1677,13 +1938,16 @@ function renderMarkdownReport(report) {
       for (const mode of MODES) {
         const mr = tierResults.filter((r) => r.mode === mode);
         const c = mr.length || 1;
-        const t = mr.reduce((acc, r) => {
-          acc.totalTokens += r.usage.totalTokens;
-          acc.testsPassed += r.testResult?.testsPassed ?? 0;
-          acc.testsTotal += r.testResult?.testsTotal ?? 0;
-          acc.completed += r.completed ? 1 : 0;
-          return acc;
-        }, { totalTokens: 0, testsPassed: 0, testsTotal: 0, completed: 0 });
+        const t = mr.reduce(
+          (acc, r) => {
+            acc.totalTokens += r.usage.totalTokens;
+            acc.testsPassed += r.testResult?.testsPassed ?? 0;
+            acc.testsTotal += r.testResult?.testsTotal ?? 0;
+            acc.completed += r.completed ? 1 : 0;
+            return acc;
+          },
+          { totalTokens: 0, testsPassed: 0, testsTotal: 0, completed: 0 },
+        );
         tierModes[mode] = {
           avgTotalTokens: round(t.totalTokens / c),
           avgTestPassRate: round(safeRatio(t.testsPassed, t.testsTotal)),
@@ -1692,7 +1956,9 @@ function renderMarkdownReport(report) {
       }
       const savings = round(tierModes.off.avgTotalTokens - tierModes.beta.avgTotalTokens);
       const savingsPct = round(safeRatio(savings, tierModes.off.avgTotalTokens) * 100);
-      lines.push(`| ${tier} | ${tierModes.off.avgTotalTokens} | ${tierModes.beta.avgTotalTokens} | ${savings} (${savingsPct}%) | ${round(tierModes.off.avgTestPassRate * 100)}% | ${round(tierModes.beta.avgTestPassRate * 100)}% | ${round(tierModes.off.completionRate * 100)}% | ${round(tierModes.beta.completionRate * 100)}% |`);
+      lines.push(
+        `| ${tier} | ${tierModes.off.avgTotalTokens} | ${tierModes.beta.avgTotalTokens} | ${savings} (${savingsPct}%) | ${round(tierModes.off.avgTestPassRate * 100)}% | ${round(tierModes.beta.avgTestPassRate * 100)}% | ${round(tierModes.off.completionRate * 100)}% | ${round(tierModes.beta.completionRate * 100)}% |`,
+      );
     }
     lines.push('');
   }
@@ -1700,9 +1966,11 @@ function renderMarkdownReport(report) {
   if (report.summary.l3) {
     const l3 = report.summary.l3;
     lines.push(
-      '## L3: 全流程（spec → design doc → handoff 压缩 → 实现 → 测试）', '',
+      '## L3: 全流程（spec → design doc → handoff 压缩 → 实现 → 测试）',
+      '',
       `- Token 节省: ${l3.tokenSavings.totalTokens} (${l3.tokenSavings.percent}%)`,
-      `- 输入 token 节省: ${l3.tokenSavings.inputTokens}`, '',
+      `- 输入 token 节省: ${l3.tokenSavings.inputTokens}`,
+      '',
       '| 模式 | 平均总 tokens | Spec 覆盖率 | 测试通过率 | 平均重试 | 平均耗时(s) | 平均成本($) |',
       '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
     );
@@ -1710,12 +1978,16 @@ function renderMarkdownReport(report) {
       const m = l3.modes[mode];
       if (!m) continue;
       const specCov = m.avgSpecCoverage != null ? `${round(m.avgSpecCoverage * 100)}%` : '-';
-      lines.push(`| ${mode} | ${m.avgTotalTokens} | ${specCov} | ${round(m.avgTestPassRate * 100)}% | ${m.avgAttempts} | ${round(m.avgDurationMs / 1000)} | ${m.avgCostUsd} |`);
+      lines.push(
+        `| ${mode} | ${m.avgTotalTokens} | ${specCov} | ${round(m.avgTestPassRate * 100)}% | ${m.avgAttempts} | ${round(m.avgDurationMs / 1000)} | ${m.avgCostUsd} |`,
+      );
     }
     lines.push('');
 
     // Tier breakdown for L3
-    lines.push('### L3 分档明细', '',
+    lines.push(
+      '### L3 分档明细',
+      '',
       '| 档位 | off tokens | beta tokens | Token 节省 | off 测试通过率 | beta 测试通过率 | off Spec覆盖 | beta Spec覆盖 |',
       '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     );
@@ -1726,30 +1998,53 @@ function renderMarkdownReport(report) {
       for (const mode of MODES) {
         const mr = tierResults.filter((r) => r.mode === mode);
         const c = mr.length || 1;
-        const t = mr.reduce((acc, r) => {
-          acc.totalTokens += r.usage.totalTokens;
-          acc.testsPassed += r.testResult?.testsPassed ?? 0;
-          acc.testsTotal += r.testResult?.testsTotal ?? 0;
-          acc.specCoverageSum += r.specCoverage ?? 0;
-          acc.specCoverageCount += r.specCoverage != null ? 1 : 0;
-          return acc;
-        }, { totalTokens: 0, testsPassed: 0, testsTotal: 0, specCoverageSum: 0, specCoverageCount: 0 });
+        const t = mr.reduce(
+          (acc, r) => {
+            acc.totalTokens += r.usage.totalTokens;
+            acc.testsPassed += r.testResult?.testsPassed ?? 0;
+            acc.testsTotal += r.testResult?.testsTotal ?? 0;
+            acc.specCoverageSum += r.specCoverage ?? 0;
+            acc.specCoverageCount += r.specCoverage != null ? 1 : 0;
+            return acc;
+          },
+          {
+            totalTokens: 0,
+            testsPassed: 0,
+            testsTotal: 0,
+            specCoverageSum: 0,
+            specCoverageCount: 0,
+          },
+        );
         tierModes[mode] = {
           avgTotalTokens: round(t.totalTokens / c),
           avgTestPassRate: round(safeRatio(t.testsPassed, t.testsTotal)),
-          avgSpecCoverage: t.specCoverageCount > 0 ? round(t.specCoverageSum / t.specCoverageCount) : null,
+          avgSpecCoverage:
+            t.specCoverageCount > 0 ? round(t.specCoverageSum / t.specCoverageCount) : null,
         };
       }
       const savings = round(tierModes.off.avgTotalTokens - tierModes.beta.avgTotalTokens);
       const savingsPct = round(safeRatio(savings, tierModes.off.avgTotalTokens) * 100);
-      const offSpec = tierModes.off.avgSpecCoverage != null ? `${round(tierModes.off.avgSpecCoverage * 100)}%` : '-';
-      const betaSpec = tierModes.beta.avgSpecCoverage != null ? `${round(tierModes.beta.avgSpecCoverage * 100)}%` : '-';
-      lines.push(`| ${tier} | ${tierModes.off.avgTotalTokens} | ${tierModes.beta.avgTotalTokens} | ${savings} (${savingsPct}%) | ${round(tierModes.off.avgTestPassRate * 100)}% | ${round(tierModes.beta.avgTestPassRate * 100)}% | ${offSpec} | ${betaSpec} |`);
+      const offSpec =
+        tierModes.off.avgSpecCoverage != null
+          ? `${round(tierModes.off.avgSpecCoverage * 100)}%`
+          : '-';
+      const betaSpec =
+        tierModes.beta.avgSpecCoverage != null
+          ? `${round(tierModes.beta.avgSpecCoverage * 100)}%`
+          : '-';
+      lines.push(
+        `| ${tier} | ${tierModes.off.avgTotalTokens} | ${tierModes.beta.avgTotalTokens} | ${savings} (${savingsPct}%) | ${round(tierModes.off.avgTestPassRate * 100)}% | ${round(tierModes.beta.avgTestPassRate * 100)}% | ${offSpec} | ${betaSpec} |`,
+      );
     }
     lines.push('');
   }
 
-  lines.push('## 原始数据', '', '- `report.json` 包含每次运行的完整 token usage、verdict、测试结果和耗时。', '');
+  lines.push(
+    '## 原始数据',
+    '',
+    '- `report.json` 包含每次运行的完整 token usage、verdict、测试结果和耗时。',
+    '',
+  );
   return lines.join('\n');
 }
 
@@ -1805,7 +2100,15 @@ export async function runExecutionBenchmark(options = {}) {
                 contextText,
               });
 
-          results.push({ tier, mode, repeat, fixtureRoot: l1Root, context, durationMs: Date.now() - started, ...l1Result });
+          results.push({
+            tier,
+            mode,
+            repeat,
+            fixtureRoot: l1Root,
+            context,
+            durationMs: Date.now() - started,
+            ...l1Result,
+          });
         }
 
         // ── L2: Build Phase ──
@@ -1837,7 +2140,15 @@ export async function runExecutionBenchmark(options = {}) {
                 maxRetries: config.maxRetries,
               });
 
-          results.push({ tier, mode, repeat, fixtureRoot: l2Root, context, durationMs: Date.now() - started, ...l2Result });
+          results.push({
+            tier,
+            mode,
+            repeat,
+            fixtureRoot: l2Root,
+            context,
+            durationMs: Date.now() - started,
+            ...l2Result,
+          });
         }
 
         // ── L3: Full Workflow ──
@@ -1864,7 +2175,15 @@ export async function runExecutionBenchmark(options = {}) {
                 maxRetries: config.maxRetries,
               });
 
-          results.push({ tier, mode, repeat, fixtureRoot: l3Root, context, durationMs: Date.now() - started, ...l3Result });
+          results.push({
+            tier,
+            mode,
+            repeat,
+            fixtureRoot: l3Root,
+            context,
+            durationMs: Date.now() - started,
+            ...l3Result,
+          });
         }
       }
     }
@@ -1892,7 +2211,10 @@ export async function runExecutionBenchmark(options = {}) {
 
 async function installDependencies(cwd) {
   try {
-    await spawnCapture(cmd('pnpm'), ['install', '--no-frozen-lockfile'], { cwd, timeoutMs: INSTALL_TIMEOUT_MS });
+    await spawnCapture(cmd('pnpm'), ['install', '--no-frozen-lockfile'], {
+      cwd,
+      timeoutMs: INSTALL_TIMEOUT_MS,
+    });
   } catch {
     await spawnCapture(cmd('npm'), ['install'], { cwd, timeoutMs: INSTALL_TIMEOUT_MS });
   }
@@ -1903,13 +2225,18 @@ async function initGitRepo(cwd) {
     await spawnCapture('git', ['init'], { cwd, allowFailure: true });
     await spawnCapture('git', ['add', '-A'], { cwd, allowFailure: true });
     await spawnCapture('git', ['commit', '-m', 'initial fixture'], { cwd, allowFailure: true });
-  } catch { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 async function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
-    if (options.help) { console.log(usage()); return; }
+    if (options.help) {
+      console.log(usage());
+      return;
+    }
     const report = await runExecutionBenchmark(options);
     console.log(`Report: ${report.reportMarkdownPath}`);
     console.log(`Data:   ${report.reportJsonPath}`);

@@ -171,9 +171,9 @@ describe('Native transition recovery', () => {
       'x'.repeat(NATIVE_TRANSITION_JOURNAL_MAX_BYTES + 1),
     );
 
-    await expect(
-      inspectPendingNativeTransitionSchema(paths, 'recover-transition'),
-    ).rejects.toThrow(`exceeds ${NATIVE_TRANSITION_JOURNAL_MAX_BYTES} bytes`);
+    await expect(inspectPendingNativeTransitionSchema(paths, 'recover-transition')).rejects.toThrow(
+      `exceeds ${NATIVE_TRANSITION_JOURNAL_MAX_BYTES} bytes`,
+    );
   });
 
   it.each<{
@@ -921,10 +921,7 @@ describe('Native transition recovery', () => {
       legacyNextRun.skillVersion = '1';
       legacyNextRun.skillHash = sha256Text('comet-native-runtime:v1');
       await fs.writeFile(changeFile, stringify(legacyState(stateAtCrash)));
-      await fs.writeFile(
-        transitionFile,
-        JSON.stringify(legacyJournal, null, 2) + '\n',
-      );
+      await fs.writeFile(transitionFile, JSON.stringify(legacyJournal, null, 2) + '\n');
       await fs.rm(nativeBaselineManifestFile(paths, 'recover-transition'), { force: true });
       const [changeBefore, transitionBefore] = await Promise.all([
         fs.readFile(changeFile, 'utf8'),

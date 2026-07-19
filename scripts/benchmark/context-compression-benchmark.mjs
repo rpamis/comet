@@ -328,15 +328,14 @@ async function createFixture(root, mode, tier = 'small') {
       '',
     ].join('\n'),
   );
-  await fs.writeFile(
-    path.join(changeDir, 'specs', 'note-board', 'spec.md'),
-    buildSpec(specCount),
-  );
+  await fs.writeFile(path.join(changeDir, 'specs', 'note-board', 'spec.md'), buildSpec(specCount));
 }
 
 function supportingLines(label, count) {
-  return Array.from({ length: count }, (_, index) =>
-    `${label} ${index + 1}: This supporting note records implementation background, tradeoffs, and non-canonical context that helps planning but should not be required to preserve acceptance criteria.`,
+  return Array.from(
+    { length: count },
+    (_, index) =>
+      `${label} ${index + 1}: This supporting note records implementation background, tradeoffs, and non-canonical context that helps planning but should not be required to preserve acceptance criteria.`,
   );
 }
 
@@ -349,15 +348,44 @@ function supportingTaskLines(count) {
 
 function buildSpec(count) {
   const requirements = [
-    ['Notes are stored in creation order', 'list active notes in the same order they were added', 'List preserves insertion order', 'notes "alpha", "beta", and "gamma" were added', 'the user lists active notes', 'the output order is "alpha", "beta", "gamma"'],
-    ['Empty note text is rejected', 'reject empty or whitespace-only note text', 'Whitespace text fails validation', 'no note text except spaces', 'the user adds the note', 'the command fails with "note text is required"'],
-    ['Tags filter active notes', 'allow active notes to be filtered by tag', 'Tag filter returns only matching notes', 'one note tagged "work" and one note tagged "home"', 'the user lists notes with tag "work"', 'only the "work" note is shown'],
-    ['Archived notes are hidden by default', 'hide archived notes unless the user requests archived notes', 'Archived note is omitted from default list', 'note "alpha" is archived', 'the user lists active notes', '"alpha" is not shown'],
+    [
+      'Notes are stored in creation order',
+      'list active notes in the same order they were added',
+      'List preserves insertion order',
+      'notes "alpha", "beta", and "gamma" were added',
+      'the user lists active notes',
+      'the output order is "alpha", "beta", "gamma"',
+    ],
+    [
+      'Empty note text is rejected',
+      'reject empty or whitespace-only note text',
+      'Whitespace text fails validation',
+      'no note text except spaces',
+      'the user adds the note',
+      'the command fails with "note text is required"',
+    ],
+    [
+      'Tags filter active notes',
+      'allow active notes to be filtered by tag',
+      'Tag filter returns only matching notes',
+      'one note tagged "work" and one note tagged "home"',
+      'the user lists notes with tag "work"',
+      'only the "work" note is shown',
+    ],
+    [
+      'Archived notes are hidden by default',
+      'hide archived notes unless the user requests archived notes',
+      'Archived note is omitted from default list',
+      'note "alpha" is archived',
+      'the user lists active notes',
+      '"alpha" is not shown',
+    ],
   ];
   const lines = ['## ADDED Requirements', ''];
   for (let index = 0; index < count; index++) {
     const base = requirements[index % requirements.length];
-    const suffix = index < requirements.length ? '' : ` ${Math.floor(index / requirements.length) + 1}`;
+    const suffix =
+      index < requirements.length ? '' : ` ${Math.floor(index / requirements.length) + 1}`;
     lines.push(
       `### Requirement: ${base[0]}${suffix}`,
       `The note-board CLI MUST ${base[1]}.`,
@@ -378,22 +406,19 @@ async function generateHandoff(cwd) {
     throw new Error('Bash or Git Bash is required to generate Comet handoff context');
   }
   const script = path.join(REPO_ROOT, 'assets', 'skills', 'comet', 'scripts', 'comet-handoff.sh');
-  await spawnCapture(bash.command, [toBashPath(script, bash.pathStyle), CHANGE_NAME, 'design', '--write'], {
-    cwd,
-  });
+  await spawnCapture(
+    bash.command,
+    [toBashPath(script, bash.pathStyle), CHANGE_NAME, 'design', '--write'],
+    {
+      cwd,
+    },
+  );
 }
 
 async function writeSyntheticHandoff(root, mode, tier = 'small') {
   const syntheticLines = { small: 4, medium: 40, large: 140 }[tier] ?? 4;
   const retainedLines = mode === 'beta' ? Math.ceil(syntheticLines / 3) : syntheticLines;
-  const handoffDir = path.join(
-    root,
-    'openspec',
-    'changes',
-    CHANGE_NAME,
-    '.comet',
-    'handoff',
-  );
+  const handoffDir = path.join(root, 'openspec', 'changes', CHANGE_NAME, '.comet', 'handoff');
   await fs.mkdir(handoffDir, { recursive: true });
   const contextName = mode === 'beta' ? 'spec-context' : 'design-context';
   const contextPath = path.join(handoffDir, `${contextName}.md`);
@@ -463,7 +488,11 @@ function dryRunResult(mode, tier = 'small', context = { approxTokens: 0 }) {
   return {
     usage: beta
       ? { inputTokens: baseInput, outputTokens: 160, totalTokens: baseInput + 160 }
-      : { inputTokens: baseInput + 120 * tierMultiplier, outputTokens: 210, totalTokens: baseInput + 210 + 120 * tierMultiplier },
+      : {
+          inputTokens: baseInput + 120 * tierMultiplier,
+          outputTokens: 210,
+          totalTokens: baseInput + 210 + 120 * tierMultiplier,
+        },
     verdict: {
       completed: true,
       specFacts: 8 * tierMultiplier,

@@ -157,10 +157,12 @@ describe('Native spec conflict rebase', () => {
     });
     await fs.writeFile(canonicalFile, 'concurrent canonical\n');
     const concurrentHash = await sha256File(canonicalFile);
-    await expect(inspectNativeArchivePreflight({ paths, name: state.name })).resolves.toMatchObject({
-      ready: false,
-      findingCodes: expect.arrayContaining(['spec-base-conflict']),
-    });
+    await expect(inspectNativeArchivePreflight({ paths, name: state.name })).resolves.toMatchObject(
+      {
+        ready: false,
+        findingCodes: expect.arrayContaining(['spec-base-conflict']),
+      },
+    );
 
     const rebased = await rebaseNativeSpecChanges({
       paths,

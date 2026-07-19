@@ -159,9 +159,9 @@ describe('Native status diagnostics', () => {
     expect(second.nextCursor).toBeNull();
 
     await fs.mkdir(path.join(paths.changesDir, 'page-change-new'));
-    await expect(
-      listNativeStatusPage(paths, { cursor: first.nextCursor }),
-    ).rejects.toThrow('cursor is stale');
+    await expect(listNativeStatusPage(paths, { cursor: first.nextCursor })).rejects.toThrow(
+      'cursor is stale',
+    );
     await expect(
       listNativeStatusPage(paths, { cursor: `${first.nextCursor!.slice(0, -1)}0` }),
     ).rejects.toThrow(/cursor (?:is stale|integrity check failed)/u);

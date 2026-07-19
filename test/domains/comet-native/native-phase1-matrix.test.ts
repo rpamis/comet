@@ -254,7 +254,9 @@ describe('Comet Native Phase 1 behavior matrix', () => {
       },
       proposed: '# Sentence counting\nSecond target behavior.\n',
     });
-    await expect(inspectNativeChangeConflicts(paths, 'first-sentence-change')).resolves.toMatchObject({
+    await expect(
+      inspectNativeChangeConflicts(paths, 'first-sentence-change'),
+    ).resolves.toMatchObject({
       definiteConflictCount: 1,
       findingCodes: ['native-change-conflict'],
     });
@@ -499,10 +501,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     vi.restoreAllMocks();
 
     await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
-    await fs.writeFile(
-      path.join(projectRoot, '.comet', 'config.yaml'),
-      'native: [broken\n',
-    );
+    await fs.writeFile(path.join(projectRoot, '.comet', 'config.yaml'), 'native: [broken\n');
     const configResult = await runNativeCli(['list', '--json', '--project-root', projectRoot]);
     expect(configResult.exitCode).toBe(65);
     expect(json(configResult).error?.code).toBe('invalid-data');

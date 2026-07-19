@@ -25,7 +25,7 @@ jobs:
   stale:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/stale@v9
+      - uses: actions/stale@1e223db275d687790206a7acac4d1a11bd6fe629 # v10.4.0
         with:
           debug-only: ${{ inputs.dryRun || false }}
           operations-per-run: ${{ inputs.operationsPerRun || 500 }}
@@ -34,7 +34,7 @@ jobs:
           days-before-close: 30
           days-before-issue-stale: -1
           days-before-issue-close: -1
-          # Issue processing is disabled above (-1). actions/stale@v9 still
+          # Issue processing is disabled above (-1). actions/stale still
           # requires a non-empty stale-issue-label input to pass validation,
           # even though issue stale handling never runs and this label is
           # never applied. Placeholder only.

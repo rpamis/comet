@@ -80,7 +80,10 @@ policies:
   });
 
   it('applies defaults for optional fields', () => {
-    const result = normalizeSkillPreferencesDocument({ version: 1 }, '.comet/skill-preferences.yaml');
+    const result = normalizeSkillPreferencesDocument(
+      { version: 1 },
+      '.comet/skill-preferences.yaml',
+    );
 
     expect(result).toEqual({
       preferences: {

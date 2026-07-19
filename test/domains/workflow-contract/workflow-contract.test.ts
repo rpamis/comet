@@ -23,8 +23,12 @@ describe('workflow contract normalization', () => {
       'verify',
       'archive',
     ]);
-    expect(workflow.protocol.nodes.every((node) => node.implementation.skill === 'comet-native')).toBe(true);
-    expect(workflow.protocol.nodes.every((node) => node.requiredSkillCalls.length === 0)).toBe(true);
+    expect(
+      workflow.protocol.nodes.every((node) => node.implementation.skill === 'comet-native'),
+    ).toBe(true);
+    expect(workflow.protocol.nodes.every((node) => node.requiredSkillCalls.length === 0)).toBe(
+      true,
+    );
     expect(workflow.protocol.nodes.every((node) => node.augmentations.length === 0)).toBe(true);
     expect(workflow.requiredSkills).toEqual(['comet-native']);
     expect(workflow.protocol.outputSchemas.map((schema) => schema.id)).toEqual([

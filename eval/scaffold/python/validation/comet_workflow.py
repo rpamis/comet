@@ -97,23 +97,28 @@ def check_workflow_phases() -> dict:
 
     # Phase 1 (open): proposal/tasks
     if _glob_exists("openspec/changes/**/proposal.md") or _glob_exists("openspec/changes/**/tasks.md"):
-        evidence += 1; found.append("open")
+        evidence += 1
+        found.append("open")
     # Phase 2 (design): design.md or docs/superpowers/specs/
     if _glob_exists("openspec/changes/**/design.md") or _glob_exists("docs/superpowers/specs/*.md"):
-        evidence += 1; found.append("design")
+        evidence += 1
+        found.append("design")
     # Phase 3 (build): plan.md, docs/superpowers/plans/, or .comet/ handoff
     if _glob_exists("openspec/changes/**/plan.md") or _glob_exists("docs/superpowers/plans/*.md") or _glob_exists("openspec/changes/**/.comet/"):
-        evidence += 1; found.append("build")
+        evidence += 1
+        found.append("build")
     # Phase 4 (verify): verification report or docs/superpowers/reports/
     if (
         _glob_exists("openspec/changes/**/verification.md")
         or _glob_exists("openspec/changes/**/verification-report.md")
         or _glob_exists("docs/superpowers/reports/*.md")
     ):
-        evidence += 1; found.append("verify")
+        evidence += 1
+        found.append("verify")
     # Phase 5 (archive): openspec/changes/archive/
     if (WORKSPACE / "openspec" / "changes" / "archive").exists():
-        evidence += 1; found.append("archive")
+        evidence += 1
+        found.append("archive")
 
     if evidence >= 4:
         return _passed("workflow_phases", f"{evidence}/5 phases ({','.join(found)})")

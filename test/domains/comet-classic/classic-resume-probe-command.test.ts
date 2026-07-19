@@ -49,10 +49,7 @@ async function createActiveChange(name: string): Promise<string> {
   await writeFile(path.join(changeDir, 'proposal.md'), 'Improve cache ttl\n');
   await writeFile(path.join(changeDir, 'design.md'), 'Cache ttl design\n');
   await writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Update cache ttl\n');
-  await writeFile(
-    path.join(tmpDir, 'docs/superpowers/specs/cache-ttl.md'),
-    '# Cache TTL\n',
-  );
+  await writeFile(path.join(tmpDir, 'docs/superpowers/specs/cache-ttl.md'), '# Cache TTL\n');
   await writeFile(
     path.join(tmpDir, 'docs/superpowers/plans/cache-ttl.md'),
     '- [ ] Update cache ttl\n',

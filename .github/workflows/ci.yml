@@ -2,277 +2,179 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches:
+      - master
+      - 'beta*'
+      - 'release/**'
+      - 'hotfix/**'
   pull_request:
-    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  workflow-lint:
+    name: Workflow lint
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [20, 22]
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Validate GitHub Actions workflows
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 -color
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+  quality:
+    name: Quality and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
-
-      - run: pnpm build
-
-      - run: pnpm lint
-
-      - run: pnpm run lint:architecture
-
+      - name: Verify generated runtimes are current
+        run: pnpm check:generated
       - run: pnpm format:check
-
+      - run: pnpm lint
+      - run: pnpm build
+      - name: Verify build is deterministic
+        run: git diff --exit-code -- assets
       - run: pnpm test:coverage
-
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: error
       - name: Upload coverage to Codecov
-        if: github.event_name == 'push'
-        uses: codecov/codecov-action@v5
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == false
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
           flags: unittests
-          name: comet-node-${{ matrix.node-version }}
           fail_ci_if_error: false
 
-  script-smoke:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+  node-compatibility:
+    name: Node 22 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22.22.1
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
 
-      - name: Run Comet script smoke tests
-        run: pnpm run test:script-smoke
-
-  init-e2e:
+  runtime-smoke:
+    name: Runtime smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [20, 22]
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm test:runtime-smoke
 
-      - name: Install OpenSpec CLI
-        run: npm install -g @fission-ai/openspec@latest
+  package-e2e:
+    name: Package install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test:package-e2e
 
-      - name: Create temp project directory
-        run: mkdir -p "$RUNNER_TEMP/comet-e2e-project"
-        shell: bash
+  eval-static:
+    name: Eval static tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: eval
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: '0.11.29'
+          enable-cache: true
+          cache-dependency-glob: eval/uv.lock
+      - run: uv sync --locked --extra dev --extra langsmith
+      - run: uv run ruff check local/tests scaffold local/scripts langsmith
+      - run: uv run pytest -q local/tests/scaffold local/tests/tasks/test_validation_scripts.py
 
-      - name: Run comet init (project scope)
+  dashboard-e2e:
+    name: Dashboard browser E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:dashboard
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:dashboard-e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: coverage/playwright-report/
+          if-no-files-found: ignore
+
+  ci-required:
+    name: CI required
+    if: always()
+    needs:
+      - workflow-lint
+      - quality
+      - node-compatibility
+      - runtime-smoke
+      - package-e2e
+      - eval-static
+      - dashboard-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every CI job to pass
+        env:
+          NEEDS_CONTEXT: ${{ toJson(needs) }}
         run: |
-          node bin/comet.js init "$RUNNER_TEMP/comet-e2e-project" --yes --json \
-            | tee "$RUNNER_TEMP/comet-init-project.json"
-        shell: bash
-
-      - name: Verify Comet skills installed (project)
-        run: |
-          PROJ="$RUNNER_TEMP/comet-e2e-project"
-          check_file() {
-            if [ ! -f "$1" ]; then
-              echo "Missing file: $1" >&2
-              exit 1
-            fi
-          }
-          for sd in .claude/skills .cursor/skills .agents/skills .opencode/skills \
-                    .windsurf/skills .cline/skills .roo/skills .continue/skills \
-                    .gemini/skills .amazonq/skills .qwen/skills .kilocode/skills \
-                    .augment/skills .kiro/skills .kimi-code/skills .lingma/skills .junie/skills \
-                    .codebuddy/skills .cospec/skills .crush/skills .factory/skills \
-                    .iflow/skills .pi/skills .qoder/skills \
-                    .bob/skills .forge/skills .trae/skills .github/skills .zcode/skills \
-                    .mimocode/skills; do
-            check_file "$PROJ/$sd/comet/SKILL.md"
-            check_file "$PROJ/$sd/comet/scripts/comet-guard.mjs"
-            check_file "$PROJ/$sd/comet/scripts/comet-state.mjs"
-            check_file "$PROJ/$sd/comet/scripts/comet-handoff.mjs"
-            check_file "$PROJ/$sd/comet/scripts/comet-yaml-validate.mjs"
-            check_file "$PROJ/$sd/comet/scripts/comet-archive.mjs"
-            check_file "$PROJ/$sd/comet/scripts/comet-hook-guard.mjs"
-            check_file "$PROJ/$sd/comet/scripts/comet-env.mjs"
-            check_file "$PROJ/$sd/comet/scripts/comet-runtime.mjs"
-          done
-          check_file "$PROJ/.pi/extensions/comet-commands.ts"
-          PROJ="$PROJ" node -e "const s=require(process.env.PROJ+'/.pi/settings.json'); if(s.enableSkillCommands!==true) process.exit(1)"
-          echo "All 33 platforms project Comet skills: OK"
-        shell: bash
-
-      - name: Verify external installer status (project)
-        run: |
-          node - "$RUNNER_TEMP/comet-init-project.json" <<'NODE'
-          const fs = require('fs');
-          function extractJsonPayload(raw) {
-            const start = raw.indexOf('{');
-            if (start < 0) {
-              throw new Error('No JSON payload found in init output');
-            }
-            return raw.slice(start);
-          }
-          const raw = fs.readFileSync(process.argv[2], 'utf8');
-          const data = JSON.parse(extractJsonPayload(raw));
-          const allowed = new Set(['installed', 'skipped', 'failed']);
-          const components = ['openspec', 'superpowers'];
-          const malformed = data.results.flatMap((r) =>
-            components
-              .filter((component) => !allowed.has(r[component]))
-              .map((component) => `${r.platform}: ${component}=${r[component]}`),
-          );
-          if (malformed.length > 0) {
-            console.error('External installers returned unexpected status values:');
-            for (const item of malformed) {
-              console.error(`- ${item}`);
-            }
-            process.exit(1);
-          }
-          const failed = data.results.flatMap((r) =>
-            components
-              .filter((component) => r[component] === 'failed')
-              .map((component) => `${r.platform}: ${component}=${r[component]}`),
-          );
-          if (failed.length > 0) {
-            console.warn('External installers reported failed for:');
-            for (const item of failed) {
-              console.warn(`- ${item}`);
-            }
-          }
-          console.log(`External installer statuses validated for ${data.results.length} platforms`);
-          NODE
-        shell: bash
-
-      - name: Verify OpenSpec and working directories (project)
-        run: |
-          test -d "$RUNNER_TEMP/comet-e2e-project/openspec"
-          test -d "$RUNNER_TEMP/comet-e2e-project/docs/superpowers/specs"
-          test -d "$RUNNER_TEMP/comet-e2e-project/docs/superpowers/plans"
-          echo "OpenSpec + working dirs: OK"
-        shell: bash
-
-      - name: Create temp global home
-        run: mkdir -p "$RUNNER_TEMP/comet-e2e-global"
-        shell: bash
-
-      - name: Run comet init (global scope)
-        run: |
-          export HOME="$RUNNER_TEMP/comet-e2e-global"
-          export USERPROFILE="$RUNNER_TEMP/comet-e2e-global"
-          node bin/comet.js init "$RUNNER_TEMP/comet-e2e-global" --yes --scope global --json \
-            | tee "$RUNNER_TEMP/comet-init-global.json"
-        shell: bash
-
-      - name: Verify Comet skills installed (global)
-        run: |
-          HOME_DIR="$RUNNER_TEMP/comet-e2e-global"
-          check_file() {
-            if [ ! -f "$1" ]; then
-              echo "Missing file: $1" >&2
-              exit 1
-            fi
-          }
-          for sd in .claude/skills .cursor/skills .agents/skills .config/opencode/skills \
-                    .windsurf/skills .cline/skills .roo/skills .continue/skills \
-                    .gemini/skills .amazonq/skills .qwen/skills .kilocode/skills \
-                    .augment/skills .kiro/skills .kimi-code/skills .lingma/skills .junie/skills \
-                    .codebuddy/skills .cospec/skills .crush/skills .factory/skills \
-                    .iflow/skills .pi/agent/skills .qoder/skills .gemini/antigravity/skills \
-                    .bob/skills .forge/skills .trae/skills .github/skills .zcode/skills \
-                    .config/mimocode/skills; do
-            check_file "$HOME_DIR/$sd/comet/SKILL.md"
-            check_file "$HOME_DIR/$sd/comet/scripts/comet-guard.mjs"
-            check_file "$HOME_DIR/$sd/comet/scripts/comet-state.mjs"
-            check_file "$HOME_DIR/$sd/comet/scripts/comet-handoff.mjs"
-            check_file "$HOME_DIR/$sd/comet/scripts/comet-yaml-validate.mjs"
-            check_file "$HOME_DIR/$sd/comet/scripts/comet-archive.mjs"
-            check_file "$HOME_DIR/$sd/comet/scripts/comet-hook-guard.mjs"
-            check_file "$HOME_DIR/$sd/comet/scripts/comet-env.mjs"
-            check_file "$HOME_DIR/$sd/comet/scripts/comet-runtime.mjs"
-          done
-          check_file "$HOME_DIR/.pi/agent/extensions/comet-commands.ts"
-          HOME_DIR="$HOME_DIR" node -e "const s=require(process.env.HOME_DIR+'/.pi/agent/settings.json'); if(s.enableSkillCommands!==true) process.exit(1)"
-          echo "All 33 platforms global Comet skills: OK"
-        shell: bash
-
-      - name: Verify external installer status (global)
-        run: |
-          node - "$RUNNER_TEMP/comet-init-global.json" <<'NODE'
-          const fs = require('fs');
-          function extractJsonPayload(raw) {
-            const start = raw.indexOf('{');
-            if (start < 0) {
-              throw new Error('No JSON payload found in init output');
-            }
-            return raw.slice(start);
-          }
-          const raw = fs.readFileSync(process.argv[2], 'utf8');
-          const data = JSON.parse(extractJsonPayload(raw));
-          const allowed = new Set(['installed', 'skipped', 'failed']);
-          const components = ['openspec', 'superpowers'];
-          const malformed = data.results.flatMap((r) =>
-            components
-              .filter((component) => !allowed.has(r[component]))
-              .map((component) => `${r.platform}: ${component}=${r[component]}`),
-          );
-          if (malformed.length > 0) {
-            console.error('External installers returned unexpected status values:');
-            for (const item of malformed) {
-              console.error(`- ${item}`);
-            }
-            process.exit(1);
-          }
-          const failed = data.results.flatMap((r) =>
-            components
-              .filter((component) => r[component] === 'failed')
-              .map((component) => `${r.platform}: ${component}=${r[component]}`),
-          );
-          if (failed.length > 0) {
-            console.warn('External installers reported failed for:');
-            for (const item of failed) {
-              console.warn(`- ${item}`);
-            }
-          }
-          console.log(`External installer statuses validated for ${data.results.length} platforms`);
-          NODE
-        shell: bash
-
-      - name: Verify no working directories (global)
-        run: |
-          test ! -d "$RUNNER_TEMP/comet-e2e-global/docs/superpowers/specs"
-          echo "Global scope has no working dirs: OK"
-        shell: bash
+          node -e "const jobs=Object.values(JSON.parse(process.env.NEEDS_CONTEXT)); if(jobs.some(({result})=>result!=='success')) { console.error(jobs); process.exit(1); }"

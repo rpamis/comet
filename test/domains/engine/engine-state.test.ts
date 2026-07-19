@@ -64,10 +64,7 @@ describe('engine state projection', () => {
 
   it('rejects incomplete Run projections', async () => {
     await fs.mkdir(path.join(changeDir, '.comet'), { recursive: true });
-    await fs.writeFile(
-      path.join(changeDir, RUN_STATE_FILE),
-      JSON.stringify({ runId: 'run-1' }),
-    );
+    await fs.writeFile(path.join(changeDir, RUN_STATE_FILE), JSON.stringify({ runId: 'run-1' }));
 
     await expect(readRunState(changeDir)).rejects.toThrow(
       'Invalid Run state: skill must be a non-empty string',

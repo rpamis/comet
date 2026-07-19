@@ -50,7 +50,10 @@ describe('Skill Engine schema compatibility', () => {
   async function setYamlField(field: string, value: string): Promise<void> {
     const yamlPath = path.join(root, 'openspec', 'changes', 'demo', '.comet.yaml');
     const raw = await fs.readFile(yamlPath, 'utf8');
-    await fs.writeFile(yamlPath, raw.replace(new RegExp(`^${field}:.*$`, 'mu'), `${field}: ${value}`));
+    await fs.writeFile(
+      yamlPath,
+      raw.replace(new RegExp(`^${field}:.*$`, 'mu'), `${field}: ${value}`),
+    );
   }
 
   it.each([

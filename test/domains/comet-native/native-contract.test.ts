@@ -142,20 +142,16 @@ describe('Native contract snapshot', () => {
     ).toThrow('1024-criterion acceptance budget');
   });
 
-  it(
-    'rejects a near-maximum dense Markdown list without materializing every criterion',
-    () => {
-      const denseExamples = '- x\n'.repeat(1_048_000);
-      expect(Buffer.byteLength(denseExamples, 'utf8')).toBeLessThanOrEqual(4 * 1024 * 1024);
-      expect(() =>
-        buildNativeContractSnapshot({
-          briefMarkdown: `# Acceptance examples\n${denseExamples}`,
-          specs: [],
-        }),
-      ).toThrow('1024-criterion acceptance budget');
-    },
-    10_000,
-  );
+  it('rejects a near-maximum dense Markdown list without materializing every criterion', () => {
+    const denseExamples = '- x\n'.repeat(1_048_000);
+    expect(Buffer.byteLength(denseExamples, 'utf8')).toBeLessThanOrEqual(4 * 1024 * 1024);
+    expect(() =>
+      buildNativeContractSnapshot({
+        briefMarkdown: `# Acceptance examples\n${denseExamples}`,
+        specs: [],
+      }),
+    ).toThrow('1024-criterion acceptance budget');
+  }, 10_000);
 
   it('rejects a source shared by the brief or another capability', () => {
     expect(() =>

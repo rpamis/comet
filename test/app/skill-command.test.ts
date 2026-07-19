@@ -190,7 +190,9 @@ describe('skill validate and inspect commands', () => {
       });
       const runOutput = log.mock.calls.map((call) => call.join(' ')).join('\n');
       expect(runOutput).toContain('Pending action:');
-      expect(runOutput).toContain('Next: complete the pending action, then run comet skill continue');
+      expect(runOutput).toContain(
+        'Next: complete the pending action, then run comet skill continue',
+      );
 
       log.mockClear();
       await skillResumeCommand({
