@@ -53,7 +53,26 @@ describe('openspec', () => {
       expect(isOpenSpecVersionCompatible(version)).toBe(compatible);
     });
 
-    it('rejects a stale existing CLI when upgrade fails', async () => {
+    it('explains an incompatible existing CLI without claiming it is unavailable', async () => {
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('1.3.1'));
+
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+      const result = await installOpenSpec('/tmp/test', ['claude'], 'project', false);
+
+      expect(result).toBe('failed');
+      expect(mockedExecFileSync).toHaveBeenCalledTimes(2);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('OpenSpec 1.3.1'));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('requires >= 1.5.0'));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('upgrade was not selected'));
+      expect(errorSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('OpenSpec CLI not available'),
+      );
+      errorSpy.mockRestore();
+    });
+
+    it('rejects an incompatible existing CLI when an optional upgrade fails', async () => {
       mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
       mockedExecFileSync.mockImplementationOnce(() => {
         throw new Error('npm upgrade failed');

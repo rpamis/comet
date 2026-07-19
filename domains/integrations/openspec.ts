@@ -204,16 +204,16 @@ function getOpenSpecVersion(): string | null {
 async function ensureOpenSpecCli(
   projectPath: string,
   shouldInstall = true,
-): Promise<'ready' | 'missing' | 'failed'> {
+): Promise<'ready' | 'missing' | 'incompatible' | 'failed'> {
   const alreadyInstalled = isCommandAvailable('openspec');
   if (!shouldInstall) {
     if (!alreadyInstalled) return 'missing';
     const version = getOpenSpecVersion();
     if (version && isOpenSpecVersionCompatible(version)) return 'ready';
     console.error(
-      `    OpenSpec ${version || 'version unknown'} is incompatible; Comet requires >= ${MINIMUM_OPENSPEC_VERSION}.`,
+      `    OpenSpec ${version || 'version unknown'} is incompatible; Comet requires >= ${MINIMUM_OPENSPEC_VERSION}. The OpenSpec upgrade was not selected; rerun comet init and select OpenSpec, or run: npm install -g @fission-ai/openspec@latest`,
     );
-    return 'failed';
+    return 'incompatible';
   }
   const label = alreadyInstalled ? 'Upgrading' : 'Installing';
   console.warn(`    ${label} OpenSpec CLI...`);
@@ -227,7 +227,11 @@ async function ensureOpenSpecCli(
       timeout: 120_000,
       shell: process.platform === 'win32',
     });
-    return isCommandAvailable('openspec') ? 'ready' : 'failed';
+    if (isCommandAvailable('openspec')) return 'ready';
+    console.error(
+      '    OpenSpec CLI installation completed, but the command is still unavailable on PATH. Restart the terminal or install manually: npm install -g @fission-ai/openspec@latest',
+    );
+    return 'failed';
   } catch (error) {
     if (alreadyInstalled) {
       const version = getOpenSpecVersion();
@@ -241,7 +245,7 @@ async function ensureOpenSpecCli(
         `    OpenSpec upgrade failed and existing ${version || 'version could not be read'} is incompatible; Comet requires >= ${MINIMUM_OPENSPEC_VERSION}.`,
       );
       printCommandErrorDetails(error);
-      return 'failed';
+      return 'incompatible';
     }
     console.error(`    Failed to install OpenSpec CLI: ${(error as Error).message}`);
     printCommandErrorDetails(error);
@@ -373,10 +377,7 @@ async function installOpenSpec(
   mirrorOpenCodePlatformIds: string[] = [],
 ): Promise<'installed' | 'failed' | 'skipped'> {
   const cliStatus = await ensureOpenSpecCli(projectPath, shouldInstallCli);
-  if (cliStatus === 'failed') {
-    console.error(
-      `    OpenSpec CLI not available. Install manually: npm install -g @fission-ai/openspec@latest`,
-    );
+  if (cliStatus === 'failed' || cliStatus === 'incompatible') {
     return 'failed';
   }
   if (cliStatus === 'missing') {

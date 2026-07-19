@@ -638,6 +638,20 @@ describe('skills', () => {
       ).rejects.toMatchObject({ code: 'ENOENT' });
     });
 
+    it('reports failure when a legacy Codex Hook config cannot be cleaned up', async () => {
+      const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
+      const legacyPath = path.join(tmpDir, '.codex', 'settings.local.json');
+      await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+      await fs.writeFile(legacyPath, '{not-json', 'utf-8');
+
+      await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
+        status: 'installed',
+        cleanupFailed: 1,
+        reason: expect.stringContaining('legacy Hook cleanup failed'),
+      });
+      await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe('{not-json');
+    });
+
     it('keeps Codex hook installation idempotent when the project path contains spaces', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       const root = path.join(tmpDir, 'Jane Doe project');
@@ -804,6 +818,8 @@ describe('skills', () => {
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
         status: 'installed',
+        cleanupFailed: 1,
+        reason: 'legacy Hook cleanup failed for settings.local.json',
       });
       await expect(fs.access(canonicalPath)).resolves.toBeUndefined();
       await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(JSON.stringify(legacy, null, 2));
@@ -826,6 +842,8 @@ describe('skills', () => {
       try {
         await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
           status: 'installed',
+          cleanupFailed: 1,
+          reason: 'legacy Hook cleanup failed for settings.local.json',
         });
       } finally {
         accessSpy.mockRestore();
@@ -885,6 +903,8 @@ describe('skills', () => {
 
       await expect(installCometHooksForPlatform(tmpDir, codex, 'project')).resolves.toEqual({
         status: 'installed',
+        cleanupFailed: 1,
+        reason: 'legacy Hook cleanup failed for settings.local.json',
       });
 
       await expect(fs.readFile(legacyPath, 'utf-8')).resolves.toBe(invalid);

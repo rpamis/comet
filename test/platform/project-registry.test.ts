@@ -170,19 +170,19 @@ describe('project installation registry', () => {
     },
   );
 
-  it('rebuilds corrupt registry during single-project upsert', async () => {
+  it('refuses to overwrite a corrupt registry during single-project upsert', async () => {
     const registryPath = getProjectRegistryPath(homeDir);
     const projectDir = path.join(tmpDir, 'Project');
     await fs.mkdir(path.dirname(registryPath), { recursive: true });
     await fs.mkdir(projectDir, { recursive: true });
     await fs.writeFile(registryPath, '{not-json', 'utf-8');
 
-    await upsertProjectInstallation(projectDir, [{ platform: 'claude', language: 'en' }], 'init', {
-      homeDir,
-    });
-
-    const registry = await readProjectRegistry({ homeDir, strict: true });
-    expect(registry.projects.map((project) => project.path)).toEqual([path.resolve(projectDir)]);
+    await expect(
+      upsertProjectInstallation(projectDir, [{ platform: 'claude', language: 'en' }], 'init', {
+        homeDir,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-json' } satisfies Partial<ProjectRegistryError>);
+    await expect(fs.readFile(registryPath, 'utf-8')).resolves.toBe('{not-json');
   });
 
   it('uses case-insensitive keys on Windows', async () => {

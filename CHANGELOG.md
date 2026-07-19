@@ -21,6 +21,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Init and update failure reporting**: `comet init` and `comet update` now return non-zero exit codes for incomplete work, preserve npm diagnostics in JSON output, identify failed and unattempted projects during batch updates, avoid success banners after component failures, render unexpected CLI errors without Node.js stack traces, and surface corrupt registries or legacy Hook cleanup failures instead of silently continuing.
+- **OpenSpec setup diagnostics**: Setup now explains when an installed OpenSpec CLI is older than the required version and the optional upgrade was not selected, without incorrectly reporting that the CLI is unavailable.
 - **Windows interactive evals**: Interactive Docker evals now prefer Git Bash over WSL, preserve container prompt-file paths through MSYS argument conversion, count real driver turns for interaction limits, support deterministic task-supplied decision replies, distinguish user decisions from completion before ending a workflow, avoid false environment-failure flags from successful result text, and surface failed subject turns with their real exit status plus preserved stdout/stderr instead of treating them as natural completion.
 - **Parallel eval coordination**: Windows xdist workers now wait for shared Docker build locks instead of failing concurrent samples with a resource-deadlock error.
 - **npm publish cache pruning**: Package preflight now excludes nested and platform-specific pytest caches before filesystem inspection, so inaccessible local Eval byproducts cannot block publishing and cannot enter the npm package.

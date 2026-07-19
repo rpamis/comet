@@ -533,10 +533,9 @@ describe('comet init E2E', () => {
     expect(mockedExecFileSync).not.toHaveBeenCalled();
   });
 
-  it('does not persist workflow state when no platform is selected', async () => {
+  it('uses detected platforms without prompting in JSON mode', async () => {
     await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
     const { platformSelectPrompt } = await import('../../app/commands/platform-select-prompt.js');
-    vi.mocked(platformSelectPrompt).mockResolvedValue([]);
 
     const { initCommand } = await import('../../app/commands/init.js');
     const result = await captureJsonOutput(() =>
@@ -549,14 +548,13 @@ describe('comet init E2E', () => {
     );
 
     expect(result).toMatchObject({
+      status: 'complete',
       workflow: 'native',
-      projectConfigCreated: false,
-      selectedPlatforms: [],
-      results: [],
+      projectConfigCreated: true,
+      selectedPlatforms: ['codex'],
+      results: [expect.objectContaining({ platform: 'codex', comet: 'installed' })],
     });
-    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
-    await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toThrow();
-    await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toThrow();
+    expect(platformSelectPrompt).not.toHaveBeenCalled();
   });
 
   it.each([{ workflow: 'native' as const }, { artifactRoot: 'docs' }])(
@@ -589,10 +587,18 @@ describe('comet init E2E', () => {
     );
 
     expect(result).toMatchObject({
+      status: 'incomplete',
       workflow: 'native',
       projectConfigCreated: false,
       workingDirsCreated: false,
     });
+    expect(result.failures).toEqual([
+      expect.objectContaining({
+        platform: 'claude',
+        component: 'Comet',
+        reason: expect.any(String),
+      }),
+    ]);
     expect(result.results).toEqual([
       expect.objectContaining({ platform: 'claude', comet: 'failed' }),
     ]);
@@ -664,14 +670,23 @@ describe('comet init E2E', () => {
       }
 
       const { initCommand } = await import('../../app/commands/init.js');
-      await expect(
+      const result = await captureJsonOutput(() =>
         initCommand(tmpDir, {
           yes: true,
           json: true,
           scope: 'project',
           workflow: 'native',
         }),
-      ).rejects.toThrow(/incomplete managed block/u);
+      );
+      expect(result).toMatchObject({
+        status: 'incomplete',
+        failures: [
+          expect.objectContaining({
+            component: 'Finalization',
+            reason: expect.stringMatching(/incomplete managed block/u),
+          }),
+        ],
+      });
 
       if (existingWorkflow) {
         const config = await fs.readFile(configPath, 'utf8');
@@ -1018,6 +1033,16 @@ describe('comet init E2E', () => {
       );
 
       expect(codexResult?.comet).toBe('failed');
+      expect(result).toMatchObject({
+        status: 'incomplete',
+        failures: [
+          expect.objectContaining({
+            platform: 'codex',
+            component,
+            reason: expect.stringMatching(component === 'Rule' ? /rule/iu : /hook/iu),
+          }),
+        ],
+      });
       await expect(
         fs.access(getProjectRegistryPath(path.join(tmpDir, 'fake-home'))),
       ).rejects.toMatchObject({ code: 'ENOENT' });
@@ -1520,10 +1545,28 @@ describe('comet init E2E', () => {
       expect(output).not.toContain('Installed:\n    OpenCode -> .opencode/skills/');
       expect(output).toContain('Failed:');
       expect(output).toContain('OpenCode (OpenSpec failed)');
+      expect(output).toContain('Comet setup incomplete.');
+      expect(output).not.toContain('Comet setup complete!');
+      expect(output).not.toContain('Get started:');
       expect(output.match(/OpenCode \(OpenSpec failed\)/g) ?? []).toHaveLength(1);
     },
     INIT_E2E_TIMEOUT_MS,
   );
+
+  it('fails before installer writes when the project registry is corrupt', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    const registryPath = getProjectRegistryPath(path.join(tmpDir, 'fake-home'));
+    await fs.mkdir(path.dirname(registryPath), { recursive: true });
+    await fs.writeFile(registryPath, '{not-json', 'utf-8');
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    await expect(initCommand(tmpDir, { yes: true, json: true, scope: 'project' })).rejects.toThrow(
+      /registry is invalid JSON/iu,
+    );
+    await expect(fs.readFile(registryPath, 'utf-8')).resolves.toBe('{not-json');
+    await expect(fs.access(path.join(tmpDir, '.agents', 'skills'))).rejects.toThrow();
+  });
 
   it('uses platform selection prompt with selected summary labels in English', async () => {
     mockExternalSuccess();
@@ -1536,9 +1579,8 @@ describe('comet init E2E', () => {
 
     const { initCommand } = await import('../../app/commands/init.js');
 
-    await captureJsonOutput(() =>
+    await captureTextOutput(() =>
       initCommand(tmpDir, {
-        json: true,
         scope: 'project',
         language: 'en',
         workflow: 'classic',
@@ -1584,9 +1626,7 @@ describe('comet init E2E', () => {
 
     const { initCommand } = await import('../../app/commands/init.js');
 
-    await captureJsonOutput(() =>
-      initCommand(tmpDir, { json: true, scope: 'project', language: 'zh' }),
-    );
+    await captureTextOutput(() => initCommand(tmpDir, { scope: 'project', language: 'zh' }));
 
     expect(platformSelectPrompt).toHaveBeenCalledWith(
       expect.objectContaining({

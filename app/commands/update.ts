@@ -42,6 +42,7 @@ import type { InstallScope, InstallMode } from '../../platform/install/types.js'
 import { printVersionInfo } from '../../platform/version/version.js';
 import { t, type TranslationKey } from './i18n.js';
 import { assertProjectScopeOptions, resolveProjectScopeMode } from './project-scope-selection.js';
+import type { CommandExecutionResult } from './command-result.js';
 
 const PACKAGE_NAME = '@rpamis/comet';
 const OFFICIAL_REGISTRY = 'https://registry.npmjs.org';
@@ -67,8 +68,11 @@ interface NpmUpdateFailure extends Error {
   npmScope: InstallScope;
 }
 
-function createNpmUpdateFailure(scope: InstallScope): NpmUpdateFailure {
-  const error = new Error(`npm package update failed (${scope} scope)`) as NpmUpdateFailure;
+function createNpmUpdateFailure(scope: InstallScope, reason?: string): NpmUpdateFailure {
+  const detail = reason ? `: ${reason}` : '';
+  const error = new Error(
+    `npm package update failed (${scope} scope)${detail}`,
+  ) as NpmUpdateFailure;
   error.npmScope = scope;
   return error;
 }
@@ -89,6 +93,8 @@ interface SingleProjectUpdateResult {
     scope: InstallScope | 'skipped';
     status: NpmStatus;
     command: string | null;
+    exitCode: number | null;
+    reason?: string;
   };
   skills: {
     totalCopied: number;
@@ -149,9 +155,18 @@ interface ComponentFailureDetail {
   reason: string;
 }
 
+interface CommandFailureDetail {
+  component: 'npm' | 'CodeGraph' | 'Skill' | 'Rule' | 'Hook';
+  reason: string;
+  scope?: InstallScope;
+  platform?: string;
+  platformName?: string;
+  failed?: number;
+}
+
 interface AllProjectsUpdateResult {
   projectPath: string;
-  status: 'updated' | 'skipped' | 'failed';
+  status: 'updated' | 'skipped' | 'failed' | 'not_attempted';
   reason?: string;
   targets: Array<{
     scope: InstallScope;
@@ -159,7 +174,7 @@ interface AllProjectsUpdateResult {
     platformName: string;
     language: SkillLanguage;
   }>;
-  failures?: ComponentFailureDetail[];
+  failures?: CommandFailureDetail[];
   summary?: {
     skillsCopied: number;
     rulesCopied: number;
@@ -375,31 +390,45 @@ async function updateCometNpmPackage(
   projectPath: string,
   log: (message: string) => void,
   jsonMode = false,
-): Promise<boolean> {
+): Promise<{ success: boolean; exitCode: number | null; reason?: string }> {
   const args = buildNpmUpdateArgs(scope);
   const cwd = scope === 'global' ? process.cwd() : projectPath;
 
   return new Promise((resolve) => {
-    // In JSON mode, discard npm's stdout/stderr so it cannot corrupt the JSON
-    // document emitted on stdout. 'ignore' avoids the pipe backpressure a
-    // verbose npm install could otherwise cause.
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const finish = (result: { success: boolean; exitCode: number | null; reason?: string }) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
     const child = spawn(getNpmExecutable(), args, {
       cwd,
-      stdio: jsonMode ? 'ignore' : 'inherit',
+      stdio: jsonMode ? ['ignore', 'pipe', 'pipe'] : 'inherit',
       shell: true,
     });
+    if (jsonMode) {
+      child.stdout?.on('data', (chunk) => {
+        stdout += String(chunk);
+      });
+      child.stderr?.on('data', (chunk) => {
+        stderr += String(chunk);
+      });
+    }
     child.on('error', (err) => {
       log(`  npm package: failed to launch npm — ${err.message}`);
-      resolve(false);
+      finish({ success: false, exitCode: null, reason: `failed to launch npm: ${err.message}` });
     });
     child.on('exit', (code) => {
       if (code !== 0) {
-        log(
-          `  npm package: update failed (exit code ${code}). Unable to reach the official npm registry at ${OFFICIAL_REGISTRY}.`,
-        );
-        log(`  Check your network connection or firewall settings and try again.`);
+        const captured = (stderr.trim() || stdout.trim()).slice(-4000);
+        const reason = captured || `npm exited with code ${code ?? 'unknown'}`;
+        log(`  npm package: update failed (exit code ${code ?? 'unknown'}): ${reason}`);
+        finish({ success: false, exitCode: code, reason });
+        return;
       }
-      resolve(code === 0);
+      finish({ success: true, exitCode: code });
     });
   });
 }
@@ -416,7 +445,8 @@ async function promptCodegraphInstall(lang: string): Promise<boolean> {
 
 function currentProjectJson(result: SingleProjectUpdateResult): Record<string, unknown> {
   return {
-    status: hasComponentFailures(result) ? 'incomplete' : 'complete',
+    status: hasUpdateFailures(result) ? 'incomplete' : 'complete',
+    failures: collectCommandFailures(result),
     npm: result.npm,
     skills: {
       totalCopied: result.skills.totalCopied,
@@ -441,21 +471,10 @@ function hasComponentFailures(result: SingleProjectUpdateResult): boolean {
   );
 }
 
-function componentFailureReason(result: SingleProjectUpdateResult): string {
-  const reasons: string[] = [];
-  if (result.skills.totalFailed > 0) {
-    reasons.push(`Skill update failed (${result.skills.totalFailed})`);
-  }
-  if (result.rules.totalFailed > 0) {
-    reasons.push(`Rule update failed (${result.rules.totalFailed})`);
-  }
-  if (result.hooks.totalFailed > 0) {
-    reasons.push(`Hook update failed (${result.hooks.totalFailed})`);
-  }
-  if (result.skills.cleanupFailed > 0) {
-    reasons.push(`legacy Skill cleanup failed (${result.skills.cleanupFailed})`);
-  }
-  return reasons.join('; ');
+function hasUpdateFailures(result: SingleProjectUpdateResult): boolean {
+  return (
+    result.npm.status === 'failed' || result.codegraph === 'failed' || hasComponentFailures(result)
+  );
 }
 
 function collectComponentFailures(result: SingleProjectUpdateResult): ComponentFailureDetail[] {
@@ -503,6 +522,22 @@ function collectComponentFailures(result: SingleProjectUpdateResult): ComponentF
     ];
   });
   return [...skillFailures, ...ruleFailures, ...hookFailures];
+}
+
+function collectCommandFailures(result: SingleProjectUpdateResult): CommandFailureDetail[] {
+  const failures: CommandFailureDetail[] = [];
+  if (result.npm.status === 'failed') {
+    failures.push({
+      component: 'npm',
+      scope: result.npm.scope === 'skipped' ? undefined : result.npm.scope,
+      reason: result.npm.reason ?? 'npm package update failed',
+    });
+  }
+  failures.push(...collectComponentFailures(result));
+  if (result.codegraph === 'failed') {
+    failures.push({ component: 'CodeGraph', reason: 'CodeGraph installation failed' });
+  }
+  return failures;
 }
 
 function summarizeTargets(targets: InstalledCometTarget[]): AllProjectsUpdateResult['targets'] {
@@ -569,6 +604,8 @@ async function updateSingleProject(
       ? options.scope
       : await detectCometPackageScope(projectPath);
   let npmStatus: NpmStatus = 'skipped';
+  let npmExitCode: number | null = null;
+  let npmReason: string | undefined;
   const skipRepeatedGlobalNpm =
     !options.skipNpm && packageScope === 'global' && options.skipGlobalNpmUpdate === true;
   if (skipRepeatedGlobalNpm) {
@@ -576,13 +613,15 @@ async function updateSingleProject(
   } else if (!options.skipNpm) {
     log(`  ${t(lang, 'updatingNpmPackage')} (${packageScope} scope)...`);
     log(`    $ ${formatNpmUpdateCommand(packageScope)}`);
-    const npmUpdated = await updateCometNpmPackage(
+    const npmResult = await updateCometNpmPackage(
       packageScope,
       projectPath,
       log,
       options.json === true,
     );
-    if (npmUpdated) {
+    npmExitCode = npmResult.exitCode;
+    npmReason = npmResult.reason;
+    if (npmResult.success) {
       npmStatus = 'updated';
       log(`  ${t(lang, 'npmPackageUpdated')} ${PACKAGE_NAME}`);
     } else {
@@ -591,7 +630,7 @@ async function updateSingleProject(
         `  ${t(lang, options.failOnNpmFailure ? 'npmPackageFailedBlocking' : 'npmPackageFailed')}`,
       );
       if (options.failOnNpmFailure) {
-        throw createNpmUpdateFailure(packageScope);
+        throw createNpmUpdateFailure(packageScope, npmReason);
       }
     }
   }
@@ -609,6 +648,8 @@ async function updateSingleProject(
         status: npmStatus,
         command:
           options.skipNpm || skipRepeatedGlobalNpm ? null : formatNpmUpdateCommand(packageScope),
+        exitCode: npmExitCode,
+        reason: npmReason,
       },
       skills: { totalCopied: 0, totalFailed: 0, cleanupFailed: 0, targets: [] },
       rules: { totalCopied: 0, totalFailed: 0, targets: [] },
@@ -789,13 +830,17 @@ async function updateSingleProject(
     }
 
     try {
-      const { status, reason } = await installCometHooksForPlatform(
+      const {
+        status,
+        reason,
+        cleanupFailed = 0,
+      } = await installCometHooksForPlatform(
         baseDir,
         target.platform,
         target.scope,
         target.scope === 'global' ? 'classic' : projectWorkflowSelection,
       );
-      const hookFailed = status === 'failed' ? 1 : 0;
+      const hookFailed = status === 'failed' ? 1 : cleanupFailed;
       totalHooksFailed += hookFailed;
       hookTargetResults.push({
         scope: target.scope,
@@ -808,6 +853,9 @@ async function updateSingleProject(
       if (status === 'installed') {
         totalHooksInstalled++;
         log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksUpdated')}`);
+        if (cleanupFailed > 0) {
+          log(`  Comet hooks -> ${target.platform.name}: ${reason}`);
+        }
       } else if (status === 'failed') {
         log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksFailed')} (${reason})`);
       } else if (reason && target.platform.supportsHooks) {
@@ -911,6 +959,8 @@ async function updateSingleProject(
       status: npmStatus,
       command:
         options.skipNpm || skipRepeatedGlobalNpm ? null : formatNpmUpdateCommand(packageScope),
+      exitCode: npmExitCode,
+      reason: npmReason,
     },
     skills: {
       totalCopied,
@@ -971,8 +1021,11 @@ function logSingleProjectSummary(
   log(`    ${t(lang, 'summaryCodegraph')} ${result.codegraph}`);
   log(`    ${t(lang, 'summaryScope')} ${scopes}`);
   log(`    ${t(lang, 'summaryLanguage')} ${languages}`);
-  if (hasComponentFailures(result)) {
-    log(`\n  Update incomplete. ${componentFailureReason(result)}.\n`);
+  if (hasUpdateFailures(result)) {
+    const reasons = collectCommandFailures(result)
+      .map((failure) => failure.reason)
+      .join('; ');
+    log(`\n  Update incomplete. ${reasons}.\n`);
   } else {
     log(`\n  ${t(lang, 'updateComplete')}\n`);
   }
@@ -982,7 +1035,7 @@ async function updateAllIndexedProjects(
   registryProjects: ProjectRegistryEntry[],
   options: UpdateOptions,
   log: (message: string) => void,
-): Promise<void> {
+): Promise<CommandExecutionResult> {
   const lang = options.language ?? 'en';
   const results: AllProjectsUpdateResult[] = [];
   const runnableProjects: Array<{ projectPath: string; targets: InstalledCometTarget[] }> = [];
@@ -1006,7 +1059,7 @@ async function updateAllIndexedProjects(
     } catch (error) {
       results.push({
         projectPath,
-        status: 'skipped',
+        status: 'failed',
         reason: `unable to inspect project: ${(error as Error).message}`,
         targets: [],
       });
@@ -1028,7 +1081,7 @@ async function updateAllIndexedProjects(
     });
     if (!confirmed) {
       log(`\n  ${t(lang, 'cancelled')}\n`);
-      return;
+      return { status: 'complete' };
     }
   }
 
@@ -1045,7 +1098,8 @@ async function updateAllIndexedProjects(
   }
 
   let globalNpmAttempted = false;
-  for (const project of runnableProjects) {
+  for (let index = 0; index < runnableProjects.length; index++) {
+    const project = runnableProjects[index];
     const { projectPath, targets } = project;
     try {
       const result = await updateSingleProject(
@@ -1067,13 +1121,15 @@ async function updateAllIndexedProjects(
         continue;
       }
 
-      if (hasComponentFailures(result)) {
+      if (hasUpdateFailures(result)) {
         results.push({
           projectPath,
           status: 'failed',
-          reason: componentFailureReason(result),
+          reason: collectCommandFailures(result)
+            .map((failure) => failure.reason)
+            .join('; '),
           targets: summarizeUpdatedTargets(result.skills.targets),
-          failures: collectComponentFailures(result),
+          failures: collectCommandFailures(result),
         });
         continue;
       }
@@ -1091,13 +1147,33 @@ async function updateAllIndexedProjects(
         },
       });
     } catch (error) {
+      const npmFailure = isGlobalNpmUpdateFailure(error);
       results.push({
         projectPath,
         status: 'failed',
         reason: (error as Error).message,
         targets: summarizeTargets(targets),
+        failures: npmFailure
+          ? [
+              {
+                component: 'npm',
+                scope: 'global',
+                reason: (error as Error).message,
+              },
+            ]
+          : undefined,
       });
-      if (isGlobalNpmUpdateFailure(error)) break;
+      if (npmFailure) {
+        for (const remaining of runnableProjects.slice(index + 1)) {
+          results.push({
+            projectPath: remaining.projectPath,
+            status: 'not_attempted',
+            reason: 'not attempted because the global npm package update failed',
+            targets: summarizeTargets(remaining.targets),
+          });
+        }
+        break;
+      }
     }
   }
 
@@ -1106,6 +1182,11 @@ async function updateAllIndexedProjects(
       JSON.stringify(
         {
           mode: 'all-projects',
+          status: results.some(
+            (result) => result.status === 'failed' || result.status === 'not_attempted',
+          )
+            ? 'incomplete'
+            : 'complete',
           registry: {
             projectsFound: registryProjects.length,
             staleRemoved,
@@ -1116,26 +1197,40 @@ async function updateAllIndexedProjects(
         2,
       ),
     );
-    return;
+    return {
+      status: results.some(
+        (result) => result.status === 'failed' || result.status === 'not_attempted',
+      )
+        ? 'incomplete'
+        : 'complete',
+    };
   }
 
   log(
     `\n  Updated ${results.filter((result) => result.status === 'updated').length} indexed project(s).`,
   );
+  for (const result of results.filter((candidate) => candidate.status !== 'updated')) {
+    log(`    ${result.projectPath}: ${result.status} (${result.reason ?? 'no reason provided'})`);
+  }
+  return {
+    status: results.some(
+      (result) => result.status === 'failed' || result.status === 'not_attempted',
+    )
+      ? 'incomplete'
+      : 'complete',
+  };
 }
 
 export async function updateCommand(
   targetPath: string,
   options: UpdateOptions = {},
-): Promise<void> {
+): Promise<CommandExecutionResult> {
   const projectPath = path.resolve(targetPath);
   const log = options.json ? () => undefined : console.log;
   const lang = options.language ?? 'en';
 
   assertProjectScopeOptions(options);
-  const registryProjects = await listProjectRegistryEntries({
-    strict: options.allProjects === true,
-  });
+  const registryProjects = await listProjectRegistryEntries({ strict: true });
 
   log(`\n  ${t(lang, 'updateTitle')}`);
   if (!options.json) {
@@ -1145,30 +1240,30 @@ export async function updateCommand(
 
   const scopeMode = await resolveProjectScopeMode('update', options, registryProjects.length);
   if (scopeMode === 'all-projects') {
-    await updateAllIndexedProjects(registryProjects, options, log);
-    return;
+    return updateAllIndexedProjects(registryProjects, options, log);
   }
 
   const result = await updateSingleProject(projectPath, options, log);
   if (result.skills.targets.length === 0) {
     if (options.json) {
       console.log(JSON.stringify(currentProjectJson(result), null, 2));
-      return;
+      return { status: hasUpdateFailures(result) ? 'incomplete' : 'complete' };
     }
     log(`\n  ${t(lang, 'noInstallsFound')}\n`);
-    return;
+    return { status: hasUpdateFailures(result) ? 'incomplete' : 'complete' };
   }
 
-  if (!hasComponentFailures(result)) {
+  if (!hasUpdateFailures(result)) {
     await upsertUpdatedProjectTargets(result.projectPath, result);
   }
 
   if (options.json) {
     console.log(JSON.stringify(currentProjectJson(result), null, 2));
-    return;
+    return { status: hasUpdateFailures(result) ? 'incomplete' : 'complete' };
   }
 
   logSingleProjectSummary(result, options, log);
+  return { status: hasUpdateFailures(result) ? 'incomplete' : 'complete' };
 }
 
 export {

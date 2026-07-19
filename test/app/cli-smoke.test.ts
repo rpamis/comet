@@ -77,6 +77,28 @@ describe('built CLI smoke', () => {
     expect(result.stderr).toBe('');
   });
 
+  it('renders init failures as stable JSON without a Node.js stack trace', () => {
+    const result = runCli(
+      'init',
+      projectRoot,
+      '--scope',
+      'global',
+      '--workflow',
+      'native',
+      '--language',
+      'en',
+      '--json',
+    );
+
+    expect(result.status).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('only valid for project-scope initialization'),
+    });
+    expect(result.stderr).toContain('only valid for project-scope initialization');
+    expect(result.stderr).not.toContain('at initCommand');
+  });
+
   it('runs the Native facade without changing root status and doctor commands', async () => {
     const initialized = runCli('native', 'init', '--project-root', projectRoot, '--json');
     const created = runCli(

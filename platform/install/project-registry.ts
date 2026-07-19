@@ -272,7 +272,7 @@ export async function upsertProjectInstallation(
 ): Promise<ProjectRegistryEntry> {
   const registryPath = getProjectRegistryPath(options.homeDir);
   const timestamp = nowIso(options);
-  const registry = await readProjectRegistry({ ...options, strict: false });
+  const registry = await readProjectRegistry({ ...options, strict: true });
   const resolved = await resolveProjectPath(projectPath);
   const existing = findProjectRegistryEntryByCanonicalPath(
     registry.projects,
@@ -311,7 +311,7 @@ export async function removeProjectInstallation(
   options: ProjectRegistryOptions = {},
 ): Promise<boolean> {
   const registryPath = getProjectRegistryPath(options.homeDir);
-  const registry = await readProjectRegistry({ ...options, strict: false });
+  const registry = await readProjectRegistry({ ...options, strict: true });
   const resolved = await resolveProjectPath(projectPath);
   const key = canonicalKey(resolved.canonicalPath);
   const projects = registry.projects.filter(

@@ -53,6 +53,7 @@ type HookInstallStatus = 'installed' | 'skipped' | 'failed';
 export interface HookInstallResult {
   status: HookInstallStatus;
   reason?: string;
+  cleanupFailed?: number;
 }
 
 interface PlannedSkillSourceFile {
@@ -937,15 +938,24 @@ async function installCometHooksForPlatform(
           { platformId: platform.id, scope },
         );
         if (result.status === 'installed') {
+          const failedLegacyFiles: string[] = [];
           for (const legacyFile of platform.legacyHookConfigFiles ?? []) {
             try {
-              await removeManagedHooksFromJsonFile(
+              const cleanup = await removeManagedHooksFromJsonFile(
                 path.join(platformBase, legacyFile),
                 managedHookScriptPaths(hooksConfig),
               );
+              if (cleanup.failed > 0) failedLegacyFiles.push(legacyFile);
             } catch {
-              // Historical Hook cleanup is best-effort after canonical install succeeds.
+              failedLegacyFiles.push(legacyFile);
             }
+          }
+          if (failedLegacyFiles.length > 0) {
+            return {
+              status: 'installed',
+              reason: `legacy Hook cleanup failed for ${failedLegacyFiles.join(', ')}`,
+              cleanupFailed: failedLegacyFiles.length,
+            };
           }
         }
         return result;

@@ -715,6 +715,44 @@ describe('update command helpers', () => {
     });
   });
 
+  it('reports npm stderr and an incomplete status when a JSON update fails', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    mockedSpawn.mockImplementationOnce(() => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+      };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      queueMicrotask(() => {
+        child.stderr.emit('data', Buffer.from('npm ERR! EACCES permission denied\n'));
+        child.emit('exit', 1);
+      });
+      return child as ReturnType<typeof spawn>;
+    });
+
+    const fakeHome = path.join(tmpDir, 'fake-home-npm-json-failure');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.status).toBe('incomplete');
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        exitCode: 1,
+        reason: expect.stringContaining('EACCES permission denied'),
+      });
+      expect(result.failures).toEqual([
+        expect.objectContaining({ component: 'npm', reason: expect.stringContaining('EACCES') }),
+      ]);
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+  });
+
   it('updates all indexed project-scope installs when --all-projects is explicit in JSON mode', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     const projectA = path.join(tmpDir, 'project-a');
@@ -836,7 +874,13 @@ describe('update command helpers', () => {
         status: 'failed',
         reason: expect.stringContaining('npm package update failed'),
       }),
+      expect.objectContaining({
+        projectPath: path.resolve(projectB),
+        status: 'not_attempted',
+        reason: expect.stringContaining('global npm package update failed'),
+      }),
     ]);
+    expect(result.status).toBe('incomplete');
     expect(mockedSpawn).toHaveBeenCalledTimes(1);
   });
 
@@ -916,11 +960,12 @@ describe('update command helpers', () => {
     expect(result.projects).toEqual([
       {
         projectPath: path.resolve(project),
-        status: 'skipped',
+        status: 'failed',
         reason: 'unable to inspect project: permission denied',
         targets: [],
       },
     ]);
+    expect(result.status).toBe('incomplete');
 
     const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8')) as {
       projects: Array<{ path: string }>;

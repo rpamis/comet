@@ -1,4 +1,5 @@
 import { Command, Option } from 'commander';
+import { exitCodeForCommandResult } from '../commands/command-result.js';
 import { initCommand } from '../commands/init.js';
 import { workflowResolveCommand } from '../commands/workflow.js';
 import { statusCommand } from '../commands/status.js';
@@ -80,15 +81,8 @@ program
   )
   .option('--root <artifact-root>', 'Native artifact root relative to the project')
   .action(async (targetPath = '.', options) => {
-    try {
-      await initCommand(targetPath, { ...options, artifactRoot: options.root });
-    } catch (error) {
-      if (error instanceof Error && error.name === 'ExitPromptError') {
-        console.log('\n  Cancelled.\n');
-        process.exit(0);
-      }
-      throw error;
-    }
+    const result = await initCommand(targetPath, { ...options, artifactRoot: options.root });
+    process.exitCode = exitCodeForCommandResult(result);
   });
 
 program
@@ -165,7 +159,8 @@ program
   .option('--current-project', 'Update only the current project')
   .addOption(new Option('--skip-npm', 'Skip npm package self-update').hideHelp())
   .action(async (targetPath = '.', options) => {
-    await updateCommand(targetPath, options);
+    const result = await updateCommand(targetPath, options);
+    process.exitCode = exitCodeForCommandResult(result);
   });
 
 program
@@ -596,4 +591,33 @@ bundle
     await bundleDistributeCommand(name, options);
   });
 
-program.parse();
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function runCli(): Promise<void> {
+  try {
+    await program.parseAsync();
+  } catch (error) {
+    const cancelled = error instanceof Error && error.name === 'ExitPromptError';
+    const message = cancelled ? 'Command cancelled by user' : errorMessage(error);
+    if (process.argv.includes('--json')) {
+      console.log(
+        JSON.stringify(
+          {
+            status: cancelled ? 'cancelled' : 'failed',
+            error: message,
+          },
+          null,
+          2,
+        ),
+      );
+      console.error(`${cancelled ? 'Cancelled' : 'Error'}: ${message}`);
+    } else {
+      console.error(`\n  ${cancelled ? 'Cancelled.' : `Error: ${message}`}\n`);
+    }
+    process.exitCode = cancelled ? 130 : 1;
+  }
+}
+
+await runCli();
