@@ -117,7 +117,6 @@ git commit -m "chore: archive <change-name>"
 ```bash
 comet state set <change-name> branch_status handled
 comet guard <change-name> archive
-comet state clear-selection
 ```
 
 archive guard 必须同时确认归档产物完整且 `branch_status: handled`；失败时流程仍未完成。

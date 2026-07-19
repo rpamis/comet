@@ -1,58 +1,41 @@
-import { promises as fs } from 'fs';
-import path from 'path';
-
-import { atomicWriteJson } from './native-atomic-file.js';
+import {
+  clearCometCurrentSelection,
+  clearCometCurrentSelectionIf,
+  cometCurrentSelectionFile,
+  readCometCurrentSelection,
+  writeCometCurrentSelection,
+  type CometCurrentSelection,
+} from '../comet-entry/current-selection.js';
 import { assertNativeName, readNativeChange } from './native-change.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
-import { resolveContainedNativePath } from './native-paths.js';
-import { readNativeProtectedTextFile } from './native-protected-file.js';
 import type { NativeProjectPaths } from './native-types.js';
-
-export interface NativeSelection {
-  schema: 'comet.native.selection.v1';
-  change: string;
-}
 
 export const NATIVE_SELECTION_MAX_BYTES = 16 * 1024;
 
 export async function readNativeSelectionRecord(
   paths: NativeProjectPaths,
-): Promise<NativeSelection | null> {
-  const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
-  let source: string;
-  try {
-    source = (
-      await readNativeProtectedTextFile({
-        root: paths.nativeRoot,
-        file,
-        maxBytes: NATIVE_SELECTION_MAX_BYTES,
-        label: 'Native current-change selection',
-      })
-    ).text;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
-  }
-  const value = JSON.parse(source) as Partial<NativeSelection>;
-  if (value.schema !== 'comet.native.selection.v1' || typeof value.change !== 'string') {
-    throw new Error('Invalid Native current-change selection');
-  }
-  assertNativeName(value.change);
-  return value as NativeSelection;
+): Promise<CometCurrentSelection | null> {
+  const current = await readCometCurrentSelection(paths.projectRoot);
+  if (current.status === 'missing' || current.selection.workflow !== 'native') return null;
+  assertNativeName(current.selection.change);
+  return current.selection;
 }
 
 export function nativeSelectionFile(paths: NativeProjectPaths): string {
-  return path.join(paths.runtimeDir, 'current-change.json');
+  return cometCurrentSelectionFile(paths.projectRoot);
 }
 
 export async function selectNativeChange(paths: NativeProjectPaths, name: string): Promise<void> {
   return withNativeMutationLock(paths, `select change ${name}`, async () => {
     assertNativeName(name);
     await readNativeChange(paths, name);
-    const selection: NativeSelection = { schema: 'comet.native.selection.v1', change: name };
-    const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
-    await atomicWriteJson(file, selection);
+    await writeCometCurrentSelection(paths.projectRoot, {
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: name,
+      branch: null,
+    });
   });
 }
 
@@ -73,9 +56,10 @@ export async function clearNativeSelection(paths: NativeProjectPaths): Promise<v
 
 export async function clearNativeSelectionLocked(paths: NativeProjectPaths): Promise<void> {
   await assertNoPendingNativeRootMove(paths.projectRoot);
-  await fs.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
-    force: true,
-  });
+  const current = await readCometCurrentSelection(paths.projectRoot);
+  if (current.status === 'selected' && current.selection.workflow === 'native') {
+    await clearCometCurrentSelection(paths.projectRoot);
+  }
 }
 
 export async function clearNativeSelectionIf(
@@ -91,8 +75,6 @@ export async function clearNativeSelectionIfLocked(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<boolean> {
-  const value = await readNativeSelectionRecord(paths);
-  if (!value || value.change !== name) return false;
-  await clearNativeSelectionLocked(paths);
-  return true;
+  await assertNoPendingNativeRootMove(paths.projectRoot);
+  return clearCometCurrentSelectionIf(paths.projectRoot, 'native', name);
 }

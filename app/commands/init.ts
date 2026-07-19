@@ -27,6 +27,7 @@ import { installCometProjectInstructions } from '../../domains/skill/project-ins
 import { LANGUAGES, type LanguageConfig } from '../../domains/skill/languages.js';
 import { resolveInitWorkflow } from '../../domains/comet-entry/init-workflow.js';
 import type { CometWorkflow, InitWorkflowSelection } from '../../domains/comet-entry/types.js';
+import { migrateLegacyClassicSelection } from '../../domains/comet-entry/current-selection.js';
 import {
   defaultProjectConfig,
   readProjectConfig,
@@ -642,6 +643,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
   }
 
   const results: PlatformResult[] = [];
+  let projectRouterInstalled = false;
 
   for (const plan of plans) {
     const { platform, cmAction } = plan;
@@ -715,6 +717,7 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
         );
         cometComponentInstalled ||= status === 'installed';
         if (status === 'installed') {
+          if (scope === 'project') projectRouterInstalled = true;
           log(`  Comet hooks -> ${platform.name}: ${t(lang, 'hooksInstalled')}`);
         } else if (status === 'failed') {
           cmStatus = 'failed';
@@ -770,6 +773,17 @@ export async function initCommand(targetPath: string, options: InitOptions = {})
   let workingDirsCreated = false;
   const cometInstallComplete =
     results.length > 0 && results.every((result) => result.comet !== 'failed');
+
+  if (
+    scope === 'project' &&
+    projectRouterInstalled &&
+    cometInstallComplete &&
+    includesWorkflow(workflowSelection, 'classic')
+  ) {
+    if (await migrateLegacyClassicSelection(projectPath)) {
+      log('  Comet current selection -> migrated Classic v1 to shared v2');
+    }
+  }
 
   if (scope === 'project' && workflowDecision && cometInstallComplete) {
     if (includesWorkflow(workflowSelection, 'native')) {

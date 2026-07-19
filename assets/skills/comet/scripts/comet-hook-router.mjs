@@ -62,7 +62,7 @@ var require_identity = __commonJS({
     var NODE_TYPE = /* @__PURE__ */ Symbol.for("yaml.node.type");
     var isAlias = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === ALIAS;
     var isDocument = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === DOC;
-    var isMap2 = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
+    var isMap = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
     var isPair = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === PAIR;
     var isScalar = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SCALAR;
     var isSeq = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SEQ;
@@ -98,7 +98,7 @@ var require_identity = __commonJS({
     exports.isAlias = isAlias;
     exports.isCollection = isCollection;
     exports.isDocument = isDocument;
-    exports.isMap = isMap2;
+    exports.isMap = isMap;
     exports.isNode = isNode;
     exports.isPair = isPair;
     exports.isScalar = isScalar;
@@ -126,17 +126,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path23) {
-      const ctrl = callVisitor(key, node, visitor, path23);
+    function visit_(key, node, visitor, path13) {
+      const ctrl = callVisitor(key, node, visitor, path13);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path23, ctrl);
-        return visit_(key, ctrl, visitor, path23);
+        replaceNode(key, path13, ctrl);
+        return visit_(key, ctrl, visitor, path13);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path23 = Object.freeze(path23.concat(node));
+          path13 = Object.freeze(path13.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path23);
+            const ci = visit_(i, node.items[i], visitor, path13);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -147,13 +147,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path23 = Object.freeze(path23.concat(node));
-          const ck = visit_("key", node.key, visitor, path23);
+          path13 = Object.freeze(path13.concat(node));
+          const ck = visit_("key", node.key, visitor, path13);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path23);
+          const cv = visit_("value", node.value, visitor, path13);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -174,17 +174,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path23) {
-      const ctrl = await callVisitor(key, node, visitor, path23);
+    async function visitAsync_(key, node, visitor, path13) {
+      const ctrl = await callVisitor(key, node, visitor, path13);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path23, ctrl);
-        return visitAsync_(key, ctrl, visitor, path23);
+        replaceNode(key, path13, ctrl);
+        return visitAsync_(key, ctrl, visitor, path13);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path23 = Object.freeze(path23.concat(node));
+          path13 = Object.freeze(path13.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path23);
+            const ci = await visitAsync_(i, node.items[i], visitor, path13);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -195,13 +195,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path23 = Object.freeze(path23.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path23);
+          path13 = Object.freeze(path13.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path13);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path23);
+          const cv = await visitAsync_("value", node.value, visitor, path13);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -228,23 +228,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path23) {
+    function callVisitor(key, node, visitor, path13) {
       if (typeof visitor === "function")
-        return visitor(key, node, path23);
+        return visitor(key, node, path13);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path23);
+        return visitor.Map?.(key, node, path13);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path23);
+        return visitor.Seq?.(key, node, path13);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path23);
+        return visitor.Pair?.(key, node, path13);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path23);
+        return visitor.Scalar?.(key, node, path13);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path23);
+        return visitor.Alias?.(key, node, path13);
       return void 0;
     }
-    function replaceNode(key, path23, node) {
-      const parent = path23[path23.length - 1];
+    function replaceNode(key, path13, node) {
+      const parent = path13[path13.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -854,10 +854,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path23, value) {
+    function collectionFromPath(schema, path13, value) {
       let v = value;
-      for (let i = path23.length - 1; i >= 0; --i) {
-        const k = path23[i];
+      for (let i = path13.length - 1; i >= 0; --i) {
+        const k = path13[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -876,7 +876,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path23) => path23 == null || typeof path23 === "object" && !!path23[Symbol.iterator]().next().done;
+    var isEmptyPath = (path13) => path13 == null || typeof path13 === "object" && !!path13[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -906,11 +906,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path23, value) {
-        if (isEmptyPath(path23))
+      addIn(path13, value) {
+        if (isEmptyPath(path13))
           this.add(value);
         else {
-          const [key, ...rest] = path23;
+          const [key, ...rest] = path13;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -924,8 +924,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path23) {
-        const [key, ...rest] = path23;
+      deleteIn(path13) {
+        const [key, ...rest] = path13;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -939,8 +939,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path23, keepScalar) {
-        const [key, ...rest] = path23;
+      getIn(path13, keepScalar) {
+        const [key, ...rest] = path13;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -958,8 +958,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path23) {
-        const [key, ...rest] = path23;
+      hasIn(path13) {
+        const [key, ...rest] = path13;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -969,8 +969,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path23, value) {
-        const [key, ...rest] = path23;
+      setIn(path13, value) {
+        const [key, ...rest] = path13;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -1014,14 +1014,14 @@ var require_foldFlowLines = __commonJS({
     var FOLD_FLOW = "flow";
     var FOLD_BLOCK = "block";
     var FOLD_QUOTED = "quoted";
-    function foldFlowLines(text2, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
+    function foldFlowLines(text, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
       if (!lineWidth || lineWidth < 0)
-        return text2;
+        return text;
       if (lineWidth < minContentWidth)
         minContentWidth = 0;
       const endStep = Math.max(1 + minContentWidth, 1 + lineWidth - indent.length);
-      if (text2.length <= endStep)
-        return text2;
+      if (text.length <= endStep)
+        return text;
       const folds = [];
       const escapedFolds = {};
       let end = lineWidth - indent.length;
@@ -1038,14 +1038,14 @@ var require_foldFlowLines = __commonJS({
       let escStart = -1;
       let escEnd = -1;
       if (mode === FOLD_BLOCK) {
-        i = consumeMoreIndentedLines(text2, i, indent.length);
+        i = consumeMoreIndentedLines(text, i, indent.length);
         if (i !== -1)
           end = i + endStep;
       }
-      for (let ch; ch = text2[i += 1]; ) {
+      for (let ch; ch = text[i += 1]; ) {
         if (mode === FOLD_QUOTED && ch === "\\") {
           escStart = i;
-          switch (text2[i + 1]) {
+          switch (text[i + 1]) {
             case "x":
               i += 3;
               break;
@@ -1062,13 +1062,13 @@ var require_foldFlowLines = __commonJS({
         }
         if (ch === "\n") {
           if (mode === FOLD_BLOCK)
-            i = consumeMoreIndentedLines(text2, i, indent.length);
+            i = consumeMoreIndentedLines(text, i, indent.length);
           end = i + indent.length + endStep;
           split = void 0;
         } else {
           if (ch === " " && prev && prev !== " " && prev !== "\n" && prev !== "	") {
-            const next2 = text2[i + 1];
-            if (next2 && next2 !== " " && next2 !== "\n" && next2 !== "	")
+            const next = text[i + 1];
+            if (next && next !== " " && next !== "\n" && next !== "	")
               split = i;
           }
           if (i >= end) {
@@ -1079,12 +1079,12 @@ var require_foldFlowLines = __commonJS({
             } else if (mode === FOLD_QUOTED) {
               while (prev === " " || prev === "	") {
                 prev = ch;
-                ch = text2[i += 1];
+                ch = text[i += 1];
                 overflow = true;
               }
               const j = i > escEnd + 1 ? i - 2 : escStart - 1;
               if (escapedFolds[j])
-                return text2;
+                return text;
               folds.push(j);
               escapedFolds[j] = true;
               end = j + endStep;
@@ -1099,39 +1099,39 @@ var require_foldFlowLines = __commonJS({
       if (overflow && onOverflow)
         onOverflow();
       if (folds.length === 0)
-        return text2;
+        return text;
       if (onFold)
         onFold();
-      let res = text2.slice(0, folds[0]);
+      let res = text.slice(0, folds[0]);
       for (let i2 = 0; i2 < folds.length; ++i2) {
         const fold = folds[i2];
-        const end2 = folds[i2 + 1] || text2.length;
+        const end2 = folds[i2 + 1] || text.length;
         if (fold === 0)
           res = `
-${indent}${text2.slice(0, end2)}`;
+${indent}${text.slice(0, end2)}`;
         else {
           if (mode === FOLD_QUOTED && escapedFolds[fold])
-            res += `${text2[fold]}\\`;
+            res += `${text[fold]}\\`;
           res += `
-${indent}${text2.slice(fold + 1, end2)}`;
+${indent}${text.slice(fold + 1, end2)}`;
         }
       }
       return res;
     }
-    function consumeMoreIndentedLines(text2, i, indent) {
+    function consumeMoreIndentedLines(text, i, indent) {
       let end = i;
       let start = i + 1;
-      let ch = text2[start];
+      let ch = text[start];
       while (ch === " " || ch === "	") {
         if (i < start + indent) {
-          ch = text2[++i];
+          ch = text[++i];
         } else {
           do {
-            ch = text2[++i];
+            ch = text[++i];
           } while (ch && ch !== "\n");
           end = i;
           start = i + 1;
-          ch = text2[start];
+          ch = text[start];
         }
       }
       return end;
@@ -1517,7 +1517,7 @@ var require_stringify = __commonJS({
         props.push(doc.directives.tagString(tag));
       return props.join(" ");
     }
-    function stringify(item, ctx, onComment, onChompKeep) {
+    function stringify3(item, ctx, onComment, onChompKeep) {
       if (identity.isPair(item))
         return item.toString(ctx, onComment, onChompKeep);
       if (identity.isAlias(item)) {
@@ -1546,7 +1546,7 @@ var require_stringify = __commonJS({
 ${ctx.indent}${str}`;
     }
     exports.createStringifyContext = createStringifyContext;
-    exports.stringify = stringify;
+    exports.stringify = stringify3;
   }
 });
 
@@ -1556,7 +1556,7 @@ var require_stringifyPair = __commonJS({
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
-    var stringify = require_stringify();
+    var stringify3 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
       const { allNullValues, doc, indent, indentStep, options: { commentString, indentSeq, simpleKeys } } = ctx;
@@ -1578,7 +1578,7 @@ var require_stringifyPair = __commonJS({
       });
       let keyCommentDone = false;
       let chompKeep = false;
-      let str = stringify.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
+      let str = stringify3.stringify(key, ctx, () => keyCommentDone = true, () => chompKeep = true);
       if (!explicitKey && !ctx.inFlow && str.length > 1024) {
         if (simpleKeys)
           throw new Error("With simple keys, single line scalar must not span more than 1024 characters");
@@ -1630,7 +1630,7 @@ ${indent}:`;
         ctx.indent = ctx.indent.substring(2);
       }
       let valueCommentDone = false;
-      const valueStr = stringify.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
+      const valueStr = stringify3.stringify(value, ctx, () => valueCommentDone = true, () => chompKeep = true);
       let ws = " ";
       if (keyComment || vsb || vcb) {
         ws = vsb ? "\n" : "";
@@ -1771,7 +1771,7 @@ var require_addPairToJSMap = __commonJS({
     "use strict";
     var log = require_log();
     var merge = require_merge();
-    var stringify = require_stringify();
+    var stringify3 = require_stringify();
     var identity = require_identity();
     var toJS = require_toJS();
     function addPairToJSMap(ctx, map, { key, value }) {
@@ -1807,7 +1807,7 @@ var require_addPairToJSMap = __commonJS({
       if (typeof jsKey !== "object")
         return String(jsKey);
       if (identity.isNode(key) && ctx?.doc) {
-        const strCtx = stringify.createStringifyContext(ctx.doc, {});
+        const strCtx = stringify3.createStringifyContext(ctx.doc, {});
         strCtx.anchors = /* @__PURE__ */ new Set();
         for (const node of ctx.anchors.keys())
           strCtx.anchors.add(node.anchor);
@@ -1874,12 +1874,12 @@ var require_stringifyCollection = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyCollection.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify3 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyCollection(collection, ctx, options) {
       const flow = ctx.inFlow ?? collection.flow;
-      const stringify2 = flow ? stringifyFlowCollection : stringifyBlockCollection;
-      return stringify2(collection, ctx, options);
+      const stringify4 = flow ? stringifyFlowCollection : stringifyBlockCollection;
+      return stringify4(collection, ctx, options);
     }
     function stringifyBlockCollection({ comment, items }, ctx, { blockItemPrefix, flowChars, itemIndent, onChompKeep, onComment }) {
       const { indent, options: { commentString } } = ctx;
@@ -1904,7 +1904,7 @@ var require_stringifyCollection = __commonJS({
           }
         }
         chompKeep = false;
-        let str2 = stringify.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
+        let str2 = stringify3.stringify(item, itemCtx, () => comment2 = null, () => chompKeep = true);
         if (comment2)
           str2 += stringifyComment.lineComment(str2, itemIndent, commentString(comment2));
         if (chompKeep && comment2)
@@ -1971,7 +1971,7 @@ ${indent}${line}` : "\n";
         }
         if (comment)
           reqNewline = true;
-        let str = stringify.stringify(item, itemCtx, () => comment = null);
+        let str = stringify3.stringify(item, itemCtx, () => comment = null);
         reqNewline || (reqNewline = lines.length > linesAtValue || str.includes("\n"));
         if (i < items.length - 1) {
           str += ",";
@@ -3332,7 +3332,7 @@ var require_stringifyDocument = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/stringify/stringifyDocument.js"(exports) {
     "use strict";
     var identity = require_identity();
-    var stringify = require_stringify();
+    var stringify3 = require_stringify();
     var stringifyComment = require_stringifyComment();
     function stringifyDocument(doc, options) {
       const lines = [];
@@ -3347,7 +3347,7 @@ var require_stringifyDocument = __commonJS({
       }
       if (hasDirectives)
         lines.push("---");
-      const ctx = stringify.createStringifyContext(doc, options);
+      const ctx = stringify3.createStringifyContext(doc, options);
       const { commentString } = ctx.options;
       if (doc.commentBefore) {
         if (lines.length !== 1)
@@ -3369,7 +3369,7 @@ var require_stringifyDocument = __commonJS({
           contentComment = doc.contents.comment;
         }
         const onChompKeep = contentComment ? void 0 : () => chompKeep = true;
-        let body = stringify.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
+        let body = stringify3.stringify(doc.contents, ctx, () => contentComment = null, onChompKeep);
         if (contentComment)
           body += stringifyComment.lineComment(body, "", commentString(contentComment));
         if ((body[0] === "|" || body[0] === ">") && lines[lines.length - 1] === "---") {
@@ -3377,7 +3377,7 @@ var require_stringifyDocument = __commonJS({
         } else
           lines.push(body);
       } else {
-        lines.push(stringify.stringify(doc.contents, ctx));
+        lines.push(stringify3.stringify(doc.contents, ctx));
       }
       if (doc.directives?.docEnd) {
         if (doc.comment) {
@@ -3422,7 +3422,7 @@ var require_Document = __commonJS({
     var applyReviver = require_applyReviver();
     var createNode = require_createNode();
     var directives = require_directives();
-    var Document3 = class _Document {
+    var Document2 = class _Document {
       constructor(value, replacer, options) {
         this.commentBefore = null;
         this.comment = null;
@@ -3485,9 +3485,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path23, value) {
+      addIn(path13, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path23, value);
+          this.contents.addIn(path13, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3562,14 +3562,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path23) {
-        if (Collection.isEmptyPath(path23)) {
+      deleteIn(path13) {
+        if (Collection.isEmptyPath(path13)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path23) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path13) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3584,10 +3584,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path23, keepScalar) {
-        if (Collection.isEmptyPath(path23))
+      getIn(path13, keepScalar) {
+        if (Collection.isEmptyPath(path13))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path23, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path13, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3598,10 +3598,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path23) {
-        if (Collection.isEmptyPath(path23))
+      hasIn(path13) {
+        if (Collection.isEmptyPath(path13))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path23) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path13) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3618,13 +3618,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path23, value) {
-        if (Collection.isEmptyPath(path23)) {
+      setIn(path13, value) {
+        if (Collection.isEmptyPath(path13)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path23), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path13), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path23, value);
+          this.contents.setIn(path13, value);
         }
       }
       /**
@@ -3712,7 +3712,7 @@ var require_Document = __commonJS({
         return true;
       throw new Error("Expected a YAML collection as document contents");
     }
-    exports.Document = Document3;
+    exports.Document = Document2;
   }
 });
 
@@ -3785,7 +3785,7 @@ ${pointer}
 var require_resolve_props = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-props.js"(exports) {
     "use strict";
-    function resolveProps(tokens, { flow, indicator, next: next2, offset, onError, parentIndent, startOnNewline }) {
+    function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
       let spaceBefore = false;
       let atNewline = startOnNewline;
       let hasSpace = startOnNewline;
@@ -3814,7 +3814,7 @@ var require_resolve_props = __commonJS({
         }
         switch (token.type) {
           case "space":
-            if (!flow && (indicator !== "doc-start" || next2?.type !== "flow-collection") && token.source.includes("	")) {
+            if (!flow && (indicator !== "doc-start" || next?.type !== "flow-collection") && token.source.includes("	")) {
               tab = token;
             }
             hasSpace = true;
@@ -3893,10 +3893,10 @@ var require_resolve_props = __commonJS({
       }
       const last = tokens[tokens.length - 1];
       const end = last ? last.offset + last.source.length : offset;
-      if (reqSpace && next2 && next2.type !== "space" && next2.type !== "newline" && next2.type !== "comma" && (next2.type !== "scalar" || next2.source !== "")) {
-        onError(next2.offset, "MISSING_CHAR", "Tags and anchors must be separated from the next token by white space");
+      if (reqSpace && next && next.type !== "space" && next.type !== "newline" && next.type !== "comma" && (next.type !== "scalar" || next.source !== "")) {
+        onError(next.offset, "MISSING_CHAR", "Tags and anchors must be separated from the next token by white space");
       }
-      if (tab && (atNewline && tab.indent <= parentIndent || next2?.type === "block-map" || next2?.type === "block-seq"))
+      if (tab && (atNewline && tab.indent <= parentIndent || next?.type === "block-map" || next?.type === "block-seq"))
         onError(tab, "TAB_AS_INDENT", "Tabs are not allowed as indentation");
       return {
         comma,
@@ -4208,9 +4208,9 @@ var require_resolve_flow_collection = __commonJS({
     var blockMsg = "Block collections are not allowed within flow collections";
     var isBlock = (token) => token && (token.type === "block-map" || token.type === "block-seq");
     function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onError, tag) {
-      const isMap2 = fc.start.source === "{";
-      const fcName = isMap2 ? "flow map" : "flow sequence";
-      const NodeClass = tag?.nodeClass ?? (isMap2 ? YAMLMap.YAMLMap : YAMLSeq.YAMLSeq);
+      const isMap = fc.start.source === "{";
+      const fcName = isMap ? "flow map" : "flow sequence";
+      const NodeClass = tag?.nodeClass ?? (isMap ? YAMLMap.YAMLMap : YAMLSeq.YAMLSeq);
       const coll = new NodeClass(ctx.schema);
       coll.flow = true;
       const atRoot = ctx.atRoot;
@@ -4246,7 +4246,7 @@ var require_resolve_flow_collection = __commonJS({
             offset = props.end;
             continue;
           }
-          if (!isMap2 && ctx.options.strict && utilContainsNewline.containsNewline(key))
+          if (!isMap && ctx.options.strict && utilContainsNewline.containsNewline(key))
             onError(
               key,
               // checked by containsNewline()
@@ -4286,7 +4286,7 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap2 && !sep && !props.found) {
+        if (!isMap && !sep && !props.found) {
           const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
@@ -4309,7 +4309,7 @@ var require_resolve_flow_collection = __commonJS({
             startOnNewline: false
           });
           if (valueProps.found) {
-            if (!isMap2 && !props.found && ctx.options.strict) {
+            if (!isMap && !props.found && ctx.options.strict) {
               if (sep)
                 for (const st of sep) {
                   if (st === valueProps.found)
@@ -4341,7 +4341,7 @@ var require_resolve_flow_collection = __commonJS({
           const pair = new Pair.Pair(keyNode, valueNode);
           if (ctx.options.keepSourceTokens)
             pair.srcToken = collItem;
-          if (isMap2) {
+          if (isMap) {
             const map = coll;
             if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
               onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
@@ -4357,7 +4357,7 @@ var require_resolve_flow_collection = __commonJS({
           offset = valueNode ? valueNode.range[2] : valueProps.end;
         }
       }
-      const expectedEnd = isMap2 ? "}" : "]";
+      const expectedEnd = isMap ? "}" : "]";
       const [ce, ...ee] = fc.end;
       let cePos = offset;
       if (ce?.source === expectedEnd)
@@ -4457,13 +4457,13 @@ var require_resolve_block_scalar = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports) {
     "use strict";
     var Scalar = require_Scalar();
-    function resolveBlockScalar(ctx, scalar2, onError) {
-      const start = scalar2.offset;
-      const header = parseBlockScalarHeader(scalar2, ctx.options.strict, onError);
+    function resolveBlockScalar(ctx, scalar, onError) {
+      const start = scalar.offset;
+      const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
       if (!header)
         return { value: "", type: null, comment: "", range: [start, start, start] };
       const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
-      const lines = scalar2.source ? splitLines(scalar2.source) : [];
+      const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
       for (let i = lines.length - 1; i >= 0; --i) {
         const content = lines[i][1];
@@ -4475,12 +4475,12 @@ var require_resolve_block_scalar = __commonJS({
       if (chompStart === 0) {
         const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
         let end2 = start + header.length;
-        if (scalar2.source)
-          end2 += scalar2.source.length;
+        if (scalar.source)
+          end2 += scalar.source.length;
         return { value: value2, type, comment: header.comment, range: [start, end2, end2] };
       }
-      let trimIndent = scalar2.indent + header.indent;
-      let offset = scalar2.offset + header.length;
+      let trimIndent = scalar.indent + header.indent;
+      let offset = scalar.offset + header.length;
       let contentStart = 0;
       for (let i = 0; i < chompStart; ++i) {
         const [indent, content] = lines[i];
@@ -4558,7 +4558,7 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start + header.length + scalar2.source.length;
+      const end = start + header.length + scalar.source.length;
       return { value, type, comment: header.comment, range: [start, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
@@ -4641,8 +4641,8 @@ var require_resolve_flow_scalar = __commonJS({
     "use strict";
     var Scalar = require_Scalar();
     var resolveEnd = require_resolve_end();
-    function resolveFlowScalar(scalar2, strict, onError) {
-      const { offset, type, source, end } = scalar2;
+    function resolveFlowScalar(scalar, strict, onError) {
+      const { offset, type, source, end } = scalar;
       let _type;
       let value;
       const _onError = (rel, code, msg) => onError(offset + rel, code, msg);
@@ -4661,7 +4661,7 @@ var require_resolve_flow_scalar = __commonJS({
           break;
         /* istanbul ignore next should not happen */
         default:
-          onError(scalar2, "UNEXPECTED_TOKEN", `Expected a flow scalar value, but found: ${type}`);
+          onError(scalar, "UNEXPECTED_TOKEN", `Expected a flow scalar value, but found: ${type}`);
           return {
             value: "",
             type: null,
@@ -4755,20 +4755,20 @@ var require_resolve_flow_scalar = __commonJS({
           res += fold;
           i = offset;
         } else if (ch === "\\") {
-          let next2 = source[++i];
-          const cc = escapeCodes[next2];
+          let next = source[++i];
+          const cc = escapeCodes[next];
           if (cc)
             res += cc;
-          else if (next2 === "\n") {
-            next2 = source[i + 1];
-            while (next2 === " " || next2 === "	")
-              next2 = source[++i + 1];
-          } else if (next2 === "\r" && source[i + 1] === "\n") {
-            next2 = source[++i + 1];
-            while (next2 === " " || next2 === "	")
-              next2 = source[++i + 1];
-          } else if (next2 === "x" || next2 === "u" || next2 === "U") {
-            const length = next2 === "x" ? 2 : next2 === "u" ? 4 : 8;
+          else if (next === "\n") {
+            next = source[i + 1];
+            while (next === " " || next === "	")
+              next = source[++i + 1];
+          } else if (next === "\r" && source[i + 1] === "\n") {
+            next = source[++i + 1];
+            while (next === " " || next === "	")
+              next = source[++i + 1];
+          } else if (next === "x" || next === "u" || next === "U") {
+            const length = next === "x" ? 2 : next === "u" ? 4 : 8;
             res += parseCharCode(source, i + 1, length, onError);
             i += length;
           } else {
@@ -4778,10 +4778,10 @@ var require_resolve_flow_scalar = __commonJS({
           }
         } else if (ch === " " || ch === "	") {
           const wsStart = i;
-          let next2 = source[i + 1];
-          while (next2 === " " || next2 === "	")
-            next2 = source[++i + 1];
-          if (next2 !== "\n" && !(next2 === "\r" && source[i + 2] === "\n"))
+          let next = source[i + 1];
+          while (next === " " || next === "	")
+            next = source[++i + 1];
+          if (next !== "\n" && !(next === "\r" && source[i + 2] === "\n"))
             res += i > wsStart ? source.slice(wsStart, i + 1) : ch;
         } else {
           res += ch;
@@ -4875,26 +4875,26 @@ var require_compose_scalar = __commonJS({
         tag = findScalarTagByTest(ctx, value, token, onError);
       else
         tag = ctx.schema[identity.SCALAR];
-      let scalar2;
+      let scalar;
       try {
         const res = tag.resolve(value, (msg) => onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg), ctx.options);
-        scalar2 = identity.isScalar(res) ? res : new Scalar.Scalar(res);
+        scalar = identity.isScalar(res) ? res : new Scalar.Scalar(res);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg);
-        scalar2 = new Scalar.Scalar(value);
+        scalar = new Scalar.Scalar(value);
       }
-      scalar2.range = range;
-      scalar2.source = value;
+      scalar.range = range;
+      scalar.source = value;
       if (type)
-        scalar2.type = type;
+        scalar.type = type;
       if (tagName)
-        scalar2.tag = tagName;
+        scalar.tag = tagName;
       if (tag.format)
-        scalar2.format = tag.format;
+        scalar.format = tag.format;
       if (comment)
-        scalar2.comment = comment;
-      return scalar2;
+        scalar.comment = comment;
+      return scalar;
     }
     function findScalarTagByName(schema, value, tagName, tagToken, onError) {
       if (tagName === "!")
@@ -5076,13 +5076,13 @@ var require_compose_node = __commonJS({
 var require_compose_doc = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/compose-doc.js"(exports) {
     "use strict";
-    var Document3 = require_Document();
+    var Document2 = require_Document();
     var composeNode = require_compose_node();
     var resolveEnd = require_resolve_end();
     var resolveProps = require_resolve_props();
     function composeDoc(options, directives, { offset, start, value, end }, onError) {
       const opts = Object.assign({ _directives: directives }, options);
-      const doc = new Document3.Document(void 0, opts);
+      const doc = new Document2.Document(void 0, opts);
       const ctx = {
         atKey: false,
         atRoot: true,
@@ -5121,7 +5121,7 @@ var require_composer = __commonJS({
     "use strict";
     var node_process = __require("process");
     var directives = require_directives();
-    var Document3 = require_Document();
+    var Document2 = require_Document();
     var errors = require_errors();
     var identity = require_identity();
     var composeDoc = require_compose_doc();
@@ -5310,7 +5310,7 @@ ${end.comment}` : end.comment;
           this.doc = null;
         } else if (forceDoc) {
           const opts = Object.assign({ _directives: this.directives }, this.options);
-          const doc = new Document3.Document(void 0, opts);
+          const doc = new Document2.Document(void 0, opts);
           if (this.atDirectives)
             this.onError(endOffset, "MISSING_CHAR", "Missing directives-end indicator line");
           doc.range = [0, endOffset, endOffset];
@@ -5512,7 +5512,7 @@ var require_cst_scalar = __commonJS({
 var require_cst_stringify = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/parse/cst-stringify.js"(exports) {
     "use strict";
-    var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
+    var stringify3 = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
       switch (token.type) {
         case "block-scalar": {
@@ -5565,7 +5565,7 @@ var require_cst_stringify = __commonJS({
         res += stringifyToken(value);
       return res;
     }
-    exports.stringify = stringify;
+    exports.stringify = stringify3;
   }
 });
 
@@ -5584,9 +5584,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path23) => {
+    visit.itemAtPath = (cst, path13) => {
       let item = cst;
-      for (const [field2, index] of path23) {
+      for (const [field2, index] of path13) {
         const tok = item?.[field2];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5595,23 +5595,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path23) => {
-      const parent = visit.itemAtPath(cst, path23.slice(0, -1));
-      const field2 = path23[path23.length - 1][0];
+    visit.parentCollection = (cst, path13) => {
+      const parent = visit.itemAtPath(cst, path13.slice(0, -1));
+      const field2 = path13[path13.length - 1][0];
       const coll = parent?.[field2];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path23, item, visitor) {
-      let ctrl = visitor(item, path23);
+    function _visit(path13, item, visitor) {
+      let ctrl = visitor(item, path13);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field2 of ["key", "value"]) {
         const token = item[field2];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path23.concat([[field2, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path13.concat([[field2, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5622,10 +5622,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field2 === "key")
-            ctrl = ctrl(item, path23);
+            ctrl = ctrl(item, path13);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path23) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path13) : ctrl;
     }
     exports.visit = visit;
   }
@@ -5783,9 +5783,9 @@ var require_lexer = __commonJS({
           this.lineEndPos = null;
         }
         this.atEnd = !incomplete;
-        let next2 = this.next ?? "stream";
-        while (next2 && (incomplete || this.hasChars(1)))
-          next2 = yield* this.parseNext(next2);
+        let next = this.next ?? "stream";
+        while (next && (incomplete || this.hasChars(1)))
+          next = yield* this.parseNext(next);
       }
       atLineEnd() {
         let i = this.pos;
@@ -5808,8 +5808,8 @@ var require_lexer = __commonJS({
           while (ch === " ")
             ch = this.buffer[++indent + offset];
           if (ch === "\r") {
-            const next2 = this.buffer[indent + offset + 1];
-            if (next2 === "\n" || !next2 && !this.atEnd)
+            const next = this.buffer[indent + offset + 1];
+            if (next === "\n" || !next && !this.atEnd)
               return offset + indent + 1;
           }
           return ch === "\n" || indent >= this.indentNext || !ch && !this.atEnd ? offset + indent : -1;
@@ -5846,8 +5846,8 @@ var require_lexer = __commonJS({
       peek(n) {
         return this.buffer.substr(this.pos, n);
       }
-      *parseNext(next2) {
-        switch (next2) {
+      *parseNext(next) {
+        switch (next) {
           case "stream":
             return yield* this.parseStream();
           case "line-start":
@@ -6036,8 +6036,8 @@ var require_lexer = __commonJS({
             this.flowKey = true;
             return yield* this.parseQuotedScalar();
           case ":": {
-            const next2 = this.charAt(1);
-            if (this.flowKey || isEmpty(next2) || next2 === ",") {
+            const next = this.charAt(1);
+            if (this.flowKey || isEmpty(next) || next === ",") {
               this.flowKey = false;
               yield* this.pushCount(1);
               yield* this.pushSpaces(true);
@@ -6116,10 +6116,10 @@ var require_lexer = __commonJS({
               indent = 0;
               break;
             case "\r": {
-              const next2 = this.buffer[i2 + 1];
-              if (!next2 && !this.atEnd)
+              const next = this.buffer[i2 + 1];
+              if (!next && !this.atEnd)
                 return this.setNext("block-scalar");
-              if (next2 === "\n")
+              if (next === "\n")
                 break;
             }
             // fallthrough
@@ -6181,21 +6181,21 @@ var require_lexer = __commonJS({
         let ch;
         while (ch = this.buffer[++i]) {
           if (ch === ":") {
-            const next2 = this.buffer[i + 1];
-            if (isEmpty(next2) || inFlow && flowIndicatorChars.has(next2))
+            const next = this.buffer[i + 1];
+            if (isEmpty(next) || inFlow && flowIndicatorChars.has(next))
               break;
             end = i;
           } else if (isEmpty(ch)) {
-            let next2 = this.buffer[i + 1];
+            let next = this.buffer[i + 1];
             if (ch === "\r") {
-              if (next2 === "\n") {
+              if (next === "\n") {
                 i += 1;
                 ch = "\n";
-                next2 = this.buffer[i + 1];
+                next = this.buffer[i + 1];
               } else
                 end = i;
             }
-            if (next2 === "#" || inFlow && flowIndicatorChars.has(next2))
+            if (next === "#" || inFlow && flowIndicatorChars.has(next))
               break;
             if (ch === "\n") {
               const cs = this.continueScalar(i + 1);
@@ -6722,37 +6722,37 @@ var require_parser = __commonJS({
           };
         }
       }
-      *scalar(scalar2) {
+      *scalar(scalar) {
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
           let sep;
-          if (scalar2.end) {
-            sep = scalar2.end;
+          if (scalar.end) {
+            sep = scalar.end;
             sep.push(this.sourceToken);
-            delete scalar2.end;
+            delete scalar.end;
           } else
             sep = [this.sourceToken];
           const map = {
             type: "block-map",
-            offset: scalar2.offset,
-            indent: scalar2.indent,
-            items: [{ start, key: scalar2, sep }]
+            offset: scalar.offset,
+            indent: scalar.indent,
+            items: [{ start, key: scalar, sep }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
         } else
-          yield* this.lineEnd(scalar2);
+          yield* this.lineEnd(scalar);
       }
-      *blockScalar(scalar2) {
+      *blockScalar(scalar) {
         switch (this.type) {
           case "space":
           case "comment":
           case "newline":
-            scalar2.props.push(this.sourceToken);
+            scalar.props.push(this.sourceToken);
             return;
           case "scalar":
-            scalar2.source = this.source;
+            scalar.source = this.source;
             this.atNewLine = true;
             this.indent = 0;
             if (this.onNewLine) {
@@ -6927,14 +6927,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs22 = this.flowScalar(this.type);
+              const fs13 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs22, sep: [] });
+                map.items.push({ start, key: fs13, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs22);
+                this.stack.push(fs13);
               } else {
-                Object.assign(it, { key: fs22, sep: [] });
+                Object.assign(it, { key: fs13, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7062,13 +7062,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs22 = this.flowScalar(this.type);
+              const fs13 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs22, sep: [] });
+                fc.items.push({ start: [], key: fs13, sep: [] });
               else if (it.sep)
-                this.stack.push(fs22);
+                this.stack.push(fs13);
               else
-                Object.assign(it, { key: fs22, sep: [] });
+                Object.assign(it, { key: fs13, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7232,7 +7232,7 @@ var require_public_api = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/public-api.js"(exports) {
     "use strict";
     var composer = require_composer();
-    var Document3 = require_Document();
+    var Document2 = require_Document();
     var errors = require_errors();
     var log = require_log();
     var identity = require_identity();
@@ -7257,7 +7257,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument7(source, options = {}) {
+    function parseDocument4(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -7276,14 +7276,14 @@ var require_public_api = __commonJS({
       }
       return doc;
     }
-    function parse2(src, reviver, options) {
+    function parse(src, reviver, options) {
       let _reviver = void 0;
       if (typeof reviver === "function") {
         _reviver = reviver;
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument7(src, options);
+      const doc = parseDocument4(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -7295,7 +7295,7 @@ var require_public_api = __commonJS({
       }
       return doc.toJS(Object.assign({ reviver: _reviver }, options));
     }
-    function stringify(value, replacer, options) {
+    function stringify3(value, replacer, options) {
       let _replacer = null;
       if (typeof replacer === "function" || Array.isArray(replacer)) {
         _replacer = replacer;
@@ -7315,12 +7315,12 @@ var require_public_api = __commonJS({
       }
       if (identity.isDocument(value) && !_replacer)
         return value.toString(options);
-      return new Document3.Document(value, _replacer, options).toString(options);
+      return new Document2.Document(value, _replacer, options).toString(options);
     }
-    exports.parse = parse2;
+    exports.parse = parse;
     exports.parseAllDocuments = parseAllDocuments;
-    exports.parseDocument = parseDocument7;
-    exports.stringify = stringify;
+    exports.parseDocument = parseDocument4;
+    exports.stringify = stringify3;
   }
 });
 
@@ -7329,7 +7329,7 @@ var require_dist = __commonJS({
   "node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/index.js"(exports) {
     "use strict";
     var composer = require_composer();
-    var Document3 = require_Document();
+    var Document2 = require_Document();
     var Schema = require_Schema();
     var errors = require_errors();
     var Alias = require_Alias();
@@ -7345,7 +7345,7 @@ var require_dist = __commonJS({
     var publicApi = require_public_api();
     var visit = require_visit();
     exports.Composer = composer.Composer;
-    exports.Document = Document3.Document;
+    exports.Document = Document2.Document;
     exports.Schema = Schema.Schema;
     exports.YAMLError = errors.YAMLError;
     exports.YAMLParseError = errors.YAMLParseError;
@@ -7540,30 +7540,430 @@ var init_state = __esm({
   }
 });
 
-// domains/comet-classic/classic-cli.ts
-import { pathToFileURL } from "url";
+// domains/comet-entry/hook-router-entry.ts
+import path12 from "path";
+import { promises as fs12 } from "fs";
 
-// domains/comet-classic/classic-archive.ts
-import { createHash as createHash3 } from "crypto";
-import { spawnSync } from "child_process";
-import { promises as fs13 } from "fs";
-import path14 from "path";
-
-// domains/comet-classic/classic-paths.ts
+// domains/comet-native/native-paths.ts
 import { promises as fs } from "fs";
 import path from "path";
-async function exists(file) {
+import os from "os";
+var PROJECT_CONFIG_FILE = ".comet/config.yaml";
+async function isFileOrDirectory(target) {
   try {
-    await fs.access(file);
+    await fs.lstat(target);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
   }
 }
-function filesystemPath(relativePath2) {
-  return path.resolve(...relativePath2.split("/"));
+async function declaresNativeProjectConfig(target) {
+  try {
+    const source = await fs.readFile(target, "utf8");
+    return /^schema:\s*comet\.project\.v1\s*$/mu.test(source);
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
 }
+function inside(parent, target) {
+  const relative = path.relative(parent, target);
+  return relative === "" || !path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`);
+}
+async function physicalPath(target) {
+  const missing = [];
+  let cursor = target;
+  while (!await isFileOrDirectory(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    missing.push(path.basename(cursor));
+    cursor = parent;
+  }
+  const existing = await fs.realpath(cursor);
+  return path.resolve(existing, ...missing.reverse());
+}
+async function isSymbolicLink(target) {
+  try {
+    return (await fs.lstat(target)).isSymbolicLink();
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+async function discoverNativeProject(startPath) {
+  let cursor = path.resolve(startPath);
+  try {
+    if (!(await fs.stat(cursor)).isDirectory()) cursor = path.dirname(cursor);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const fallback = cursor;
+  const home = path.resolve(os.homedir());
+  while (true) {
+    const isHomeBoundary = cursor === home && fallback !== home;
+    if (!isHomeBoundary) {
+      const configFile = path.join(cursor, ...PROJECT_CONFIG_FILE.split("/"));
+      const configMarksProject = cursor === fallback || await declaresNativeProjectConfig(configFile);
+      if (await isFileOrDirectory(configFile) && configMarksProject) {
+        return cursor;
+      }
+    }
+    if (await isFileOrDirectory(path.join(cursor, ".git"))) return cursor;
+    const parent = path.dirname(cursor);
+    if (parent === cursor) return fallback;
+    cursor = parent;
+  }
+}
+function normalizeArtifactRootRef(value) {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || path.isAbsolute(trimmed) || /^(?:[A-Za-z]:|~|[\\/])/u.test(trimmed)) {
+    throw new Error("native.artifact_root must be a project-relative path");
+  }
+  const segments = trimmed.replaceAll("\\", "/").split("/");
+  if (segments.includes("..")) {
+    throw new Error("native.artifact_root must stay inside the project root");
+  }
+  const normalized2 = path.posix.normalize(segments.filter((segment) => segment !== "").join("/"));
+  if (normalized2 === ".." || normalized2.startsWith("../")) {
+    throw new Error("native.artifact_root must stay inside the project root");
+  }
+  return normalized2 === "" ? "." : normalized2;
+}
+async function resolveArtifactRoot(projectRoot, value) {
+  const normalized2 = normalizeArtifactRootRef(value);
+  const lexical = path.resolve(projectRoot, ...normalized2.split("/"));
+  const physicalProject = await fs.realpath(projectRoot);
+  const physicalTarget = await physicalPath(lexical);
+  if (!inside(physicalProject, physicalTarget)) {
+    throw new Error("native.artifact_root resolves outside the project root");
+  }
+  return lexical;
+}
+async function nativeProjectPaths(projectRoot, artifactRootRef) {
+  const normalized2 = normalizeArtifactRootRef(artifactRootRef);
+  const artifactRoot = await resolveArtifactRoot(projectRoot, normalized2);
+  const nativeRoot = path.join(artifactRoot, "comet");
+  if (await isSymbolicLink(nativeRoot)) {
+    throw new Error("The configured Native comet root must not be a symbolic link");
+  }
+  const [physicalArtifactRoot, physicalNativeRoot] = await Promise.all([
+    physicalPath(artifactRoot),
+    physicalPath(nativeRoot)
+  ]);
+  if (!inside(physicalArtifactRoot, physicalNativeRoot)) {
+    throw new Error("The configured Native comet root resolves outside its artifact root");
+  }
+  return {
+    projectRoot: path.resolve(projectRoot),
+    configFile: path.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/")),
+    artifactRoot,
+    artifactRootRef: normalized2,
+    nativeRoot,
+    specsDir: path.join(nativeRoot, "specs"),
+    changesDir: path.join(nativeRoot, "changes"),
+    archiveDir: path.join(nativeRoot, "archive"),
+    runtimeDir: path.join(nativeRoot, "runtime"),
+    locksDir: path.join(nativeRoot, "runtime", "locks"),
+    transactionsDir: path.join(nativeRoot, "runtime", "transactions")
+  };
+}
+function isInsidePath(parent, target) {
+  return inside(path.resolve(parent), path.resolve(target));
+}
+async function resolveContainedNativePath(root, target) {
+  const lexicalRoot = path.resolve(root);
+  const lexicalTarget = path.resolve(target);
+  if (!inside(lexicalRoot, lexicalTarget)) {
+    throw new Error(`Path is outside the Native root: ${target}`);
+  }
+  if (await isSymbolicLink(lexicalRoot)) {
+    throw new Error(`Native root must not be a symbolic link: ${root}`);
+  }
+  const [physicalRoot, physicalTarget] = await Promise.all([
+    physicalPath(lexicalRoot),
+    physicalPath(lexicalTarget)
+  ]);
+  if (!inside(physicalRoot, physicalTarget)) {
+    throw new Error(`Path resolves outside the Native root: ${target}`);
+  }
+  return lexicalTarget;
+}
+
+// domains/comet-entry/hook-adapter.ts
+import { readFileSync } from "fs";
+var WRITE_TOOL_NAMES = /* @__PURE__ */ new Set([
+  "applypatch",
+  "create",
+  "createfile",
+  "deletefile",
+  "edit",
+  "editfile",
+  "patch",
+  "strreplaceeditor",
+  "write",
+  "writefile",
+  "writefiletool"
+]);
+var NON_WRITE_TOOL_NAMES = /* @__PURE__ */ new Set([
+  "glob",
+  "grep",
+  "listfiles",
+  "read",
+  "readfile",
+  "search",
+  "view"
+]);
+var SINGULAR_PATH_KEYS = ["file_path", "filePath", "path", "target_file", "targetFile"];
+var PLURAL_PATH_KEYS = ["file_paths", "filePaths", "paths", "files", "targets"];
+var NESTED_TARGET_KEYS = ["operations", "edits"];
+var PATCH_KEYS = ["patch", "diff", "patchText", "patch_text", "changes"];
+var COMET_HOOK_PLATFORM_IDS = /* @__PURE__ */ new Set([
+  "claude",
+  "codex",
+  "windsurf",
+  "github-copilot",
+  "gemini",
+  "amazon-q",
+  "qwen",
+  "kiro",
+  "codebuddy",
+  "qoder"
+]);
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function normalizedToolName(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/gu, "");
+}
+function readToolName(input) {
+  for (const key of ["tool_name", "toolName", "tool", "name"]) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+function parseJsonValue(value) {
+  if (typeof value !== "string") return value;
+  const source = value.trim();
+  if (!source.startsWith("{") && !source.startsWith("[")) return value;
+  try {
+    return JSON.parse(source);
+  } catch {
+    return value;
+  }
+}
+function readToolArguments(input) {
+  for (const key of ["tool_input", "toolInput", "toolArgs", "tool_args", "arguments"]) {
+    if (input[key] !== void 0) return parseJsonValue(input[key]);
+  }
+  return input;
+}
+function patchTargets(source) {
+  const targets = [];
+  const patterns = [
+    /^\*\*\* (?:Add|Update|Delete) File:\s+(.+?)\s*$/gmu,
+    /^\+\+\+\s+(?:b\/)?(.+?)\s*$/gmu
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      const target = match[1]?.trim();
+      if (target && target !== "/dev/null") targets.push(target);
+    }
+  }
+  return targets;
+}
+function addTarget(targets, value) {
+  if (typeof value === "string") {
+    const target = value.trim();
+    if (target) targets.push(target);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) addTarget(targets, entry);
+    return;
+  }
+  if (!isRecord(value)) return;
+  for (const key of SINGULAR_PATH_KEYS) addTarget(targets, value[key]);
+  for (const key of PLURAL_PATH_KEYS) addTarget(targets, value[key]);
+  for (const key of NESTED_TARGET_KEYS) addTarget(targets, value[key]);
+}
+function collectTargets(input, args) {
+  const targets = [];
+  const records = [args, input].filter(isRecord);
+  for (const record3 of records) {
+    for (const key of SINGULAR_PATH_KEYS) addTarget(targets, record3[key]);
+    for (const key of PLURAL_PATH_KEYS) addTarget(targets, record3[key]);
+    for (const key of NESTED_TARGET_KEYS) addTarget(targets, record3[key]);
+    for (const key of PATCH_KEYS) {
+      const value = record3[key];
+      if (typeof value === "string") targets.push(...patchTargets(value));
+    }
+  }
+  if (typeof args === "string") targets.push(...patchTargets(args));
+  return [...new Set(targets)];
+}
+function parseCometHookRequest(source, filePath) {
+  if (filePath?.trim()) {
+    return { intent: "write", targets: [filePath.trim()], toolName: null };
+  }
+  if (!source.trim()) return { intent: "unknown", targets: [], toolName: null };
+  let input;
+  try {
+    input = JSON.parse(source);
+  } catch {
+    return { intent: "unknown", targets: [], toolName: null };
+  }
+  if (!isRecord(input)) return { intent: "unknown", targets: [], toolName: null };
+  const toolName = readToolName(input);
+  const targets = collectTargets(input, readToolArguments(input));
+  if (toolName && WRITE_TOOL_NAMES.has(normalizedToolName(toolName))) {
+    return {
+      intent: targets.length > 0 ? "write" : "unknown",
+      targets,
+      toolName
+    };
+  }
+  if (toolName && NON_WRITE_TOOL_NAMES.has(normalizedToolName(toolName))) {
+    return { intent: "non-write", targets: [], toolName };
+  }
+  if (toolName) return { intent: "unknown", targets, toolName };
+  return {
+    intent: targets.length > 0 ? "write" : "unknown",
+    targets,
+    toolName: null
+  };
+}
+function readCometHookRequest() {
+  const filePath = process.env.FILE_PATH;
+  if (filePath?.trim()) return parseCometHookRequest("", filePath);
+  if (process.stdin.isTTY) return parseCometHookRequest("", filePath);
+  try {
+    return parseCometHookRequest(readFileSync(0, "utf8"), filePath);
+  } catch {
+    return parseCometHookRequest("", filePath);
+  }
+}
+function renderCometHookDecision(platformId, decision) {
+  if (!COMET_HOOK_PLATFORM_IDS.has(platformId)) {
+    return {
+      exitCode: 64,
+      stdout: "",
+      stderr: `Unsupported Comet Hook platform: ${platformId}
+`
+    };
+  }
+  if (platformId === "github-copilot") {
+    return {
+      exitCode: 0,
+      stdout: decision.allowed ? "{}\n" : `${JSON.stringify({
+        permissionDecision: "deny",
+        permissionDecisionReason: decision.reason
+      })}
+`,
+      stderr: ""
+    };
+  }
+  if (decision.allowed) return { exitCode: 0, stdout: "", stderr: "" };
+  return { exitCode: 2, stdout: "", stderr: `${decision.reason}
+` };
+}
+
+// domains/comet-classic/classic-hook-guard.ts
+import { existsSync, promises as fs6, readFileSync as readFileSync2 } from "fs";
+import path6 from "path";
+
+// domains/comet-classic/classic-current-change.ts
+import { execFileSync } from "child_process";
+import { promises as fs5 } from "fs";
+import path5 from "path";
+
+// domains/comet-entry/current-selection.ts
+import { promises as fs2 } from "fs";
+import path2 from "path";
+var COMET_CURRENT_SELECTION_SCHEMA = "comet.selection.v2";
+var COMET_CURRENT_SELECTION_MAX_BYTES = 16 * 1024;
+function cometCurrentSelectionFile(projectRoot) {
+  return path2.join(projectRoot, ".comet", "current-change.json");
+}
+function isRecord2(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function validBranch(value) {
+  return value === null || typeof value === "string";
+}
+function parseSelection(source) {
+  let value;
+  try {
+    value = JSON.parse(source);
+  } catch (error) {
+    throw new Error(
+      `current change selection contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
+  }
+  if (!isRecord2(value)) {
+    throw new Error("current change selection must be a JSON object");
+  }
+  if (value.version === 1) {
+    if (typeof value.change !== "string") {
+      throw new Error("legacy current change selection change must be a string");
+    }
+    if (!validBranch(value.branch)) {
+      throw new Error("legacy current change selection branch must be a string or null");
+    }
+    return {
+      selection: {
+        schema: COMET_CURRENT_SELECTION_SCHEMA,
+        workflow: "classic",
+        change: value.change,
+        branch: value.branch
+      },
+      legacy: true
+    };
+  }
+  if (value.schema !== COMET_CURRENT_SELECTION_SCHEMA) {
+    throw new Error(`current change selection schema must be ${COMET_CURRENT_SELECTION_SCHEMA}`);
+  }
+  if (value.workflow !== "native" && value.workflow !== "classic") {
+    throw new Error("current change selection workflow must be native or classic");
+  }
+  if (typeof value.change !== "string") {
+    throw new Error("current change selection change must be a string");
+  }
+  if (!validBranch(value.branch)) {
+    throw new Error("current change selection branch must be a string or null");
+  }
+  if (value.workflow === "native" && value.branch !== null) {
+    throw new Error("Native current change selection branch must be null");
+  }
+  return { selection: value, legacy: false };
+}
+async function readCometCurrentSelection(projectRoot) {
+  let source;
+  try {
+    const stat = await fs2.lstat(cometCurrentSelectionFile(projectRoot));
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error("current change selection must be a regular file");
+    }
+    if (stat.size > COMET_CURRENT_SELECTION_MAX_BYTES) {
+      throw new Error(
+        `current change selection exceeds ${COMET_CURRENT_SELECTION_MAX_BYTES} bytes`
+      );
+    }
+    source = await fs2.readFile(cometCurrentSelectionFile(projectRoot), "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return { status: "missing" };
+    throw new Error(
+      `cannot read current change selection: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
+  }
+  const parsed = parseSelection(source);
+  return { status: "selected", ...parsed };
+}
+
+// domains/comet-classic/classic-paths.ts
 function openSpecChangeNameError(name) {
   if (!name) return "Change name cannot be empty";
   if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(name)) {
@@ -7576,218 +7976,6 @@ Valid format: lowercase kebab-case (a-z, 0-9, single hyphens)`;
 function assertOpenSpecChangeName(name) {
   const error = openSpecChangeNameError(name);
   if (error) throw new Error(error);
-}
-async function resolveClassicChangeDirectory(name) {
-  const active = `openspec/changes/${name}`;
-  if (await exists(filesystemPath(active))) {
-    return { label: active, directory: filesystemPath(active) };
-  }
-  const archiveRoot = "openspec/changes/archive";
-  const exactArchive = `${archiveRoot}/${name}`;
-  if (await exists(filesystemPath(exactArchive))) {
-    return { label: exactArchive, directory: filesystemPath(exactArchive) };
-  }
-  if (await exists(filesystemPath(archiveRoot))) {
-    const matches = [];
-    for (const entry2 of await fs.readdir(filesystemPath(archiveRoot), { withFileTypes: true })) {
-      if (!entry2.isDirectory() || !entry2.name.endsWith(`-${name}`)) continue;
-      const candidate = `${archiveRoot}/${entry2.name}`;
-      if (await exists(path.join(filesystemPath(candidate), ".comet.yaml"))) {
-        matches.push(candidate);
-      }
-    }
-    const latest = matches.sort((left, right) => right.localeCompare(left))[0];
-    if (latest) return { label: latest, directory: filesystemPath(latest) };
-  }
-  return { label: active, directory: filesystemPath(active) };
-}
-
-// domains/comet-classic/classic-runtime-run.ts
-import { promises as fs9 } from "fs";
-import path10 from "path";
-import { fileURLToPath } from "url";
-
-// domains/comet-classic/classic-evidence.ts
-import { promises as fs2 } from "fs";
-import path2 from "path";
-async function fileExists(file) {
-  try {
-    return (await fs2.stat(file)).isFile();
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-function projectRootFor(changeDir) {
-  let cursor = path2.resolve(changeDir);
-  while (path2.dirname(cursor) !== cursor) {
-    if (path2.basename(cursor) === "openspec") return path2.dirname(cursor);
-    cursor = path2.dirname(cursor);
-  }
-  throw new Error(`Classic change is not inside an openspec directory: ${changeDir}`);
-}
-function relativeSource(projectRoot2, file) {
-  return path2.relative(projectRoot2, file).split(path2.sep).join("/");
-}
-async function linkedFileEvidence(projectRoot2, code, relativePath2) {
-  if (!relativePath2) return { code, satisfied: false };
-  const file = path2.resolve(projectRoot2, relativePath2);
-  return {
-    code,
-    satisfied: await fileExists(file),
-    source: relativeSource(projectRoot2, file)
-  };
-}
-async function directFileEvidence(projectRoot2, code, file) {
-  return {
-    code,
-    satisfied: await fileExists(file),
-    source: relativeSource(projectRoot2, file)
-  };
-}
-async function deltaSpecEvidence(projectRoot2, changeDir) {
-  const specsDir = path2.join(changeDir, "specs");
-  let entries;
-  try {
-    entries = await fs2.readdir(specsDir);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return { code: "openspec.delta-spec", satisfied: false };
-    }
-    throw error;
-  }
-  const candidates = entries.map((entry2) => path2.join(specsDir, entry2, "spec.md"));
-  const existing = (await Promise.all(candidates.map(async (file) => await fileExists(file) ? file : null))).filter((file) => file !== null);
-  return {
-    code: "openspec.delta-spec",
-    satisfied: existing.length > 0,
-    source: existing[0] ? relativeSource(projectRoot2, existing[0]) : void 0,
-    detail: `${existing.length} delta spec${existing.length === 1 ? "" : "s"}`
-  };
-}
-async function taskEvidence(projectRoot2, tasksFile) {
-  let source;
-  try {
-    source = await fs2.readFile(tasksFile, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return { code: "build.tasks-complete", satisfied: false };
-    }
-    throw error;
-  }
-  const tasks = [...source.matchAll(/^\s*[-*]\s+\[([ xX])\]\s+/gmu)];
-  const complete = tasks.filter((match) => match[1].toLowerCase() === "x").length;
-  return {
-    code: "build.tasks-complete",
-    satisfied: tasks.length > 0 && complete === tasks.length,
-    source: relativeSource(projectRoot2, tasksFile),
-    detail: `${complete} of ${tasks.length} tasks complete`
-  };
-}
-function evidenceSatisfied(evidence, code) {
-  return evidence.some((item) => item.code === code && item.satisfied);
-}
-async function collectClassicEvidence(changeDir, projection) {
-  const projectRoot2 = projectRootFor(changeDir);
-  const classic = projection.classic;
-  const proposal = path2.join(changeDir, "proposal.md");
-  const design = path2.join(changeDir, "design.md");
-  const tasks = path2.join(changeDir, "tasks.md");
-  const checkpoint = projection.run ? path2.resolve(changeDir, projection.run.checkpointRef) : path2.join(changeDir, ".comet", "checkpoint.json");
-  const evidence = await Promise.all([
-    directFileEvidence(projectRoot2, "openspec.proposal", proposal),
-    directFileEvidence(projectRoot2, "openspec.design", design),
-    directFileEvidence(projectRoot2, "openspec.tasks", tasks),
-    deltaSpecEvidence(projectRoot2, changeDir),
-    linkedFileEvidence(projectRoot2, "design.document", classic?.designDoc ?? null),
-    linkedFileEvidence(projectRoot2, "build.plan", classic?.plan ?? null),
-    taskEvidence(projectRoot2, tasks),
-    linkedFileEvidence(projectRoot2, "verification.report", classic?.verificationReport ?? null),
-    linkedFileEvidence(projectRoot2, "design.handoff", classic?.handoffContext ?? null),
-    directFileEvidence(projectRoot2, "run.checkpoint", checkpoint)
-  ]);
-  const handoff = evidence.find((item) => item.code === "design.handoff");
-  if (handoff && !classic?.handoffHash) {
-    handoff.satisfied = false;
-    handoff.detail = "handoff hash is missing";
-  }
-  evidence.push({
-    code: "archive.confirmed",
-    satisfied: classic?.archiveConfirmation === "confirmed"
-  });
-  return evidence;
-}
-
-// domains/comet-classic/classic-migrate.ts
-import { createHash as createHash2, randomUUID as randomUUID5 } from "crypto";
-import { promises as fs8 } from "fs";
-import path9 from "path";
-
-// domains/comet-classic/classic-resolver.ts
-function profileFor(classic) {
-  return classic.classicProfile ?? classic.workflow;
-}
-function fullBuildConfigured(classic) {
-  if (!classic.buildMode || !classic.tddMode || !classic.isolation || !classic.verifyMode) {
-    return false;
-  }
-  if (classic.buildMode === "subagent-driven-development") {
-    return classic.subagentDispatch === "confirmed";
-  }
-  if (classic.buildMode === "direct") return classic.directOverride === true;
-  return true;
-}
-function presetBuildConfigured(classic) {
-  return Boolean(
-    classic.buildMode === "direct" && classic.tddMode === "direct" && classic.isolation !== null && classic.verifyMode === "light"
-  );
-}
-function resolveBuild(profile, classic, evidence) {
-  if (classic.verifyResult === "fail") {
-    return profile === "full" ? "full.build.fix" : `${profile}.build.execute`;
-  }
-  if (profile === "full") {
-    if (!evidenceSatisfied(evidence, "build.plan")) return "full.build.plan";
-    if (classic.buildPause === "plan-ready") return "full.build.plan-ready";
-    if (!fullBuildConfigured(classic)) return "full.build.configure";
-  } else if (!presetBuildConfigured(classic)) {
-    throw new Error(`${profile} build configuration is incomplete`);
-  }
-  return evidenceSatisfied(evidence, "build.tasks-complete") ? `${profile}.build.complete` : `${profile}.build.execute`;
-}
-function resolveVerify(profile, classic, evidence) {
-  if (classic.verifyResult !== "pass" || !evidenceSatisfied(evidence, "verification.report")) {
-    return `${profile}.verify.run`;
-  }
-  return `${profile}.verify.branch`;
-}
-function resolveArchive(profile, classic) {
-  if (classic.verifyResult !== "pass") {
-    throw new Error("archive requires verify_result=pass");
-  }
-  return classic.archiveConfirmation === "confirmed" ? `${profile}.archive.execute` : `${profile}.archive.confirm`;
-}
-function resolveClassicStepId(classic, evidence) {
-  const profile = profileFor(classic);
-  if (classic.archived && classic.phase !== "archive") {
-    throw new Error("archived=true requires phase=archive");
-  }
-  if (classic.archived) return "completed";
-  if (profile !== "full" && classic.phase === "design") {
-    throw new Error(`${profile} workflow cannot enter design`);
-  }
-  switch (classic.phase) {
-    case "open":
-      return `${profile}.open`;
-    case "design":
-      return evidenceSatisfied(evidence, "design.handoff") ? "full.design.document" : "full.design.handoff";
-    case "build":
-      return resolveBuild(profile, classic, evidence);
-    case "verify":
-      return resolveVerify(profile, classic, evidence);
-    case "archive":
-      return resolveArchive(profile, classic);
-  }
 }
 
 // domains/comet-classic/classic-store.ts
@@ -7995,38 +8183,6 @@ function readLegacyStateSummary(doc) {
     unknownKeys: Object.keys(doc).filter((key) => !KNOWN_KEYS.has(key))
   };
 }
-function classicStateToDocument(state) {
-  return {
-    workflow: state.workflow,
-    language: state.language,
-    phase: state.phase,
-    context_compression: state.contextCompression,
-    build_mode: state.buildMode,
-    build_pause: state.buildPause,
-    subagent_dispatch: state.subagentDispatch,
-    tdd_mode: state.tddMode,
-    review_mode: state.reviewMode,
-    isolation: state.isolation,
-    verify_mode: state.verifyMode,
-    auto_transition: state.autoTransition,
-    base_ref: state.baseRef,
-    design_doc: state.designDoc,
-    plan: state.plan,
-    verify_result: state.verifyResult,
-    verify_failures: state.verifyFailures,
-    verification_report: state.verificationReport,
-    branch_status: state.branchStatus,
-    created_at: state.createdAt,
-    verified_at: state.verifiedAt,
-    archive_confirmation: state.archiveConfirmation,
-    archived: state.archived,
-    direct_override: state.directOverride,
-    handoff_context: state.handoffContext,
-    handoff_hash: state.handoffHash,
-    classic_profile: state.classicProfile,
-    classic_migration: state.classicMigration
-  };
-}
 
 // domains/comet-classic/classic-store.ts
 init_state();
@@ -8037,24 +8193,6 @@ function documentRecord(document) {
     throw new Error("Invalid Classic state document: root must be a mapping");
   }
   return value;
-}
-function setIfChanged(document, key, value) {
-  if (document.get(key) !== value) document.set(key, value);
-}
-function applyProjection(document, projection) {
-  if (projection.classic) {
-    for (const [key, value] of Object.entries(classicStateToDocument(projection.classic))) {
-      setIfChanged(document, key, value);
-    }
-  } else {
-    for (const key of CLASSIC_WIRE_KEYS) document.delete(key);
-  }
-  applyRunStateToDocument(document.toJS(), projection.run);
-  if (projection.run) {
-    setIfChanged(document, "run_id", projection.run.runId);
-  } else {
-    document.delete("run_id");
-  }
 }
 function stripLegacyRunFields(document) {
   const LEGACY_RUN_KEYS = [
@@ -8128,1526 +8266,12 @@ async function readLegacyState(changeDir) {
   const document = await readDocument(path4.join(changeDir, ".comet.yaml"));
   return readLegacyStateSummary(documentRecord(document));
 }
-async function writeClassicState(changeDir, projection) {
-  const file = path4.join(changeDir, ".comet.yaml");
-  const document = await readDocument(file);
-  applyProjection(document, {
-    ...projection,
-    unknownKeys: projection.unknownKeys ?? []
-  });
-  parseClassicStateDocument(documentRecord(document), projection.run ?? null);
-  await fs4.mkdir(changeDir, { recursive: true });
-  const temporary = path4.join(changeDir, `.comet.yaml.${randomUUID2()}.tmp`);
-  try {
-    await fs4.writeFile(temporary, document.toString(), "utf8");
-    await fs4.rename(temporary, file);
-  } catch (error) {
-    await fs4.rm(temporary, { force: true });
-    throw error;
-  }
-  if (projection.run) {
-    await writeRunState(changeDir, projection.run);
-  } else {
-    await removeRunState(changeDir);
-  }
-}
-
-// domains/engine/loop.ts
-function startRun(pkg, runId, skillHash) {
-  return {
-    runId,
-    skill: pkg.definition.metadata.name,
-    skillVersion: pkg.definition.metadata.version,
-    skillHash,
-    orchestration: pkg.definition.orchestration.mode,
-    currentStep: pkg.definition.orchestration.entry ?? null,
-    iteration: 0,
-    pending: null,
-    pendingRef: ".comet/pending-action.json",
-    trajectoryRef: ".comet/trajectory.jsonl",
-    contextRef: ".comet/context.md",
-    artifactsRef: ".comet/artifacts.json",
-    checkpointRef: ".comet/checkpoint.json",
-    status: "running",
-    retries: {}
-  };
-}
-
-// domains/engine/run-store.ts
-import { randomUUID as randomUUID3 } from "crypto";
-import { promises as fs5 } from "fs";
-import path5 from "path";
-function resolveRunPath(changeDir, relativePath2) {
-  if (path5.isAbsolute(relativePath2))
-    throw new Error("Run path must stay inside the change directory");
-  const root = path5.resolve(changeDir);
-  const target = path5.resolve(root, relativePath2);
-  if (target !== root && !target.startsWith(root + path5.sep)) {
-    throw new Error("Run path must stay inside the change directory");
-  }
-  return target;
-}
-async function atomicWrite(file, content) {
-  await fs5.mkdir(path5.dirname(file), { recursive: true });
-  const temporary = `${file}.${randomUUID3()}.tmp`;
-  await fs5.writeFile(temporary, content, "utf8");
-  await fs5.rename(temporary, file);
-}
-async function readOptionalText(file) {
-  try {
-    return await fs5.readFile(file, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-}
-async function appendTrajectory(changeDir, relativePath2, event) {
-  const file = resolveRunPath(changeDir, relativePath2);
-  await fs5.mkdir(path5.dirname(file), { recursive: true });
-  await fs5.appendFile(file, JSON.stringify(event) + "\n", "utf8");
-}
-async function readTrajectory(changeDir, relativePath2) {
-  const raw = await readOptionalText(resolveRunPath(changeDir, relativePath2));
-  if (raw === null) return [];
-  return raw.split(/\r?\n/).map((line, index) => ({ line, number: index + 1 })).filter(({ line }) => line.length > 0).map(({ line, number }) => {
-    try {
-      return JSON.parse(line);
-    } catch (error) {
-      throw new Error(`Invalid Trajectory event at line ${number}`, { cause: error });
-    }
-  });
-}
-async function readArtifacts(changeDir, relativePath2) {
-  try {
-    return JSON.parse(await fs5.readFile(resolveRunPath(changeDir, relativePath2), "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return {};
-    throw error;
-  }
-}
-async function writeArtifacts(changeDir, relativePath2, artifacts) {
-  await atomicWrite(
-    resolveRunPath(changeDir, relativePath2),
-    JSON.stringify(artifacts, null, 2) + "\n"
-  );
-}
-async function writeContext(changeDir, relativePath2, context) {
-  await atomicWrite(resolveRunPath(changeDir, relativePath2), context);
-}
-async function readContext(changeDir, relativePath2) {
-  return readOptionalText(resolveRunPath(changeDir, relativePath2));
-}
-async function writePendingAction(changeDir, relativePath2, action) {
-  await atomicWrite(
-    resolveRunPath(changeDir, relativePath2),
-    JSON.stringify(action, null, 2) + "\n"
-  );
-}
-async function readPendingAction(changeDir, relativePath2) {
-  try {
-    return JSON.parse(await fs5.readFile(resolveRunPath(changeDir, relativePath2), "utf8"));
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-}
-async function clearPendingAction(changeDir, relativePath2) {
-  try {
-    await fs5.unlink(resolveRunPath(changeDir, relativePath2));
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-}
-async function writeCheckpoint(changeDir, relativePath2, checkpoint) {
-  await atomicWrite(
-    resolveRunPath(changeDir, relativePath2),
-    JSON.stringify(checkpoint, null, 2) + "\n"
-  );
-}
-async function readCheckpoint(changeDir, relativePath2) {
-  const raw = await readOptionalText(resolveRunPath(changeDir, relativePath2));
-  return raw === null ? null : JSON.parse(raw);
-}
-
-// domains/skill/snapshot.ts
-import { createHash, randomUUID as randomUUID4 } from "crypto";
-import { promises as fs7 } from "fs";
-import path8 from "path";
-
-// domains/skill/load.ts
-var import_yaml2 = __toESM(require_dist(), 1);
-import { promises as fs6 } from "fs";
-import path6 from "path";
-var ACTION_TYPES = ["invoke_skill", "call_tool", "handoff", "ask_user", "checkpoint"];
-var ORCHESTRATION_MODES = ["deterministic", "adaptive"];
-var TOOL_KINDS = ["function", "mcp", "script", "agent"];
-var TOOL_SIDE_EFFECTS = ["none", "read", "write", "external"];
-var EVAL_SCOPES = ["progress", "step", "completion"];
-var EVAL_TYPES = ["artifact_exists", "state_equals"];
-function invalidDocument(filePath, fieldPath, message) {
-  return new Error(`${filePath}: ${fieldPath} ${message}`);
-}
-function assertObject(value, filePath, fieldPath = "document") {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw invalidDocument(filePath, fieldPath, "must be an object");
-  }
-}
-function assertArray(value, filePath, fieldPath) {
-  if (!Array.isArray(value)) {
-    throw invalidDocument(filePath, fieldPath, "must be an array");
-  }
-}
-function assertString(value, filePath, fieldPath) {
-  if (typeof value !== "string") {
-    throw invalidDocument(filePath, fieldPath, "must be a string");
-  }
-}
-function assertOptionalString(document, field2, filePath, objectPath) {
-  if (field2 in document) {
-    assertString(document[field2], filePath, `${objectPath}.${field2}`);
-  }
-}
-function assertOptionalBoolean(document, field2, filePath, objectPath) {
-  if (field2 in document && typeof document[field2] !== "boolean") {
-    throw invalidDocument(filePath, `${objectPath}.${field2}`, "must be a boolean");
-  }
-}
-function assertEnum(value, values, filePath, fieldPath) {
-  if (typeof value !== "string" || !values.includes(value)) {
-    throw invalidDocument(filePath, fieldPath, `must be one of ${values.join(", ")}`);
-  }
-}
-function assertStringArray(value, filePath, fieldPath) {
-  assertArray(value, filePath, fieldPath);
-  value.forEach((entry2, index) => {
-    assertString(entry2, filePath, `${fieldPath}[${index}]`);
-  });
-}
-function validateNamedContract(value, filePath, fieldPath) {
-  assertObject(value, filePath, fieldPath);
-  assertString(value.name, filePath, `${fieldPath}.name`);
-  assertString(value.description, filePath, `${fieldPath}.description`);
-  assertOptionalBoolean(value, "required", filePath, fieldPath);
-}
-function validateSkillReference(value, filePath, fieldPath) {
-  assertObject(value, filePath, fieldPath);
-  assertString(value.id, filePath, `${fieldPath}.id`);
-  assertOptionalString(value, "source", filePath, fieldPath);
-  assertOptionalString(value, "version", filePath, fieldPath);
-}
-function validateAgent(value, filePath, fieldPath) {
-  assertObject(value, filePath, fieldPath);
-  assertString(value.id, filePath, `${fieldPath}.id`);
-  assertString(value.role, filePath, `${fieldPath}.role`);
-  assertOptionalString(value, "instructions", filePath, fieldPath);
-}
-function validateTool(value, filePath, fieldPath) {
-  assertObject(value, filePath, fieldPath);
-  assertString(value.id, filePath, `${fieldPath}.id`);
-  assertEnum(value.kind, TOOL_KINDS, filePath, `${fieldPath}.kind`);
-  assertString(value.source, filePath, `${fieldPath}.source`);
-  assertEnum(value.sideEffect, TOOL_SIDE_EFFECTS, filePath, `${fieldPath}.sideEffect`);
-  assertOptionalBoolean(value, "requiresConfirmation", filePath, fieldPath);
-}
-function validateAction(value, filePath, fieldPath) {
-  assertObject(value, filePath, fieldPath);
-  assertEnum(value.type, ACTION_TYPES, filePath, `${fieldPath}.type`);
-  assertOptionalString(value, "ref", filePath, fieldPath);
-  assertOptionalString(value, "prompt", filePath, fieldPath);
-  assertOptionalString(value, "question", filePath, fieldPath);
-  if ("options" in value) {
-    assertStringArray(value.options, filePath, `${fieldPath}.options`);
-  }
-}
-function validateStep(value, filePath, fieldPath) {
-  assertObject(value, filePath, fieldPath);
-  assertString(value.id, filePath, `${fieldPath}.id`);
-  validateAction(value.action, filePath, `${fieldPath}.action`);
-  assertOptionalString(value, "next", filePath, fieldPath);
-  if ("completionEvals" in value) {
-    assertStringArray(value.completionEvals, filePath, `${fieldPath}.completionEvals`);
-  }
-}
-function validateGoal(value, filePath) {
-  const fieldPath = "goal";
-  assertObject(value, filePath, fieldPath);
-  assertString(value.statement, filePath, `${fieldPath}.statement`);
-  assertArray(value.inputs, filePath, `${fieldPath}.inputs`);
-  value.inputs.forEach((entry2, index) => {
-    validateNamedContract(entry2, filePath, `${fieldPath}.inputs[${index}]`);
-  });
-  assertArray(value.outputs, filePath, `${fieldPath}.outputs`);
-  value.outputs.forEach((entry2, index) => {
-    validateNamedContract(entry2, filePath, `${fieldPath}.outputs[${index}]`);
-  });
-  assertStringArray(value.success, filePath, `${fieldPath}.success`);
-}
-function validateOrchestration(value, filePath) {
-  const fieldPath = "orchestration";
-  assertObject(value, filePath, fieldPath);
-  assertEnum(value.mode, ORCHESTRATION_MODES, filePath, `${fieldPath}.mode`);
-  assertOptionalString(value, "entry", filePath, fieldPath);
-  if ("steps" in value) {
-    assertArray(value.steps, filePath, `${fieldPath}.steps`);
-    value.steps.forEach((entry2, index) => {
-      validateStep(entry2, filePath, `${fieldPath}.steps[${index}]`);
-    });
-  }
-}
-function narrowSkillDefinition(document, filePath) {
-  assertObject(document, filePath);
-  assertEnum(document.apiVersion, ["comet/v1alpha1"], filePath, "apiVersion");
-  assertEnum(document.kind, ["Skill"], filePath, "kind");
-  assertObject(document.metadata, filePath, "metadata");
-  assertString(document.metadata.name, filePath, "metadata.name");
-  assertString(document.metadata.version, filePath, "metadata.version");
-  assertString(document.metadata.description, filePath, "metadata.description");
-  validateGoal(document.goal, filePath);
-  validateOrchestration(document.orchestration, filePath);
-  assertArray(document.skills, filePath, "skills");
-  document.skills.forEach((entry2, index) => {
-    validateSkillReference(entry2, filePath, `skills[${index}]`);
-  });
-  assertArray(document.agents, filePath, "agents");
-  document.agents.forEach((entry2, index) => {
-    validateAgent(entry2, filePath, `agents[${index}]`);
-  });
-  assertArray(document.tools, filePath, "tools");
-  document.tools.forEach((entry2, index) => {
-    validateTool(entry2, filePath, `tools[${index}]`);
-  });
-  return document;
-}
-function narrowGuardrails(document, filePath) {
-  assertObject(document, filePath);
-  for (const field2 of [
-    "allowedSkills",
-    "allowedAgents",
-    "allowedTools",
-    "confirmationRequiredFor"
-  ]) {
-    if (field2 in document) {
-      assertStringArray(document[field2], filePath, field2);
-    }
-  }
-  for (const field2 of ["maxIterations", "maxRetriesPerAction"]) {
-    if (field2 in document && (typeof document[field2] !== "number" || !Number.isFinite(document[field2]))) {
-      throw invalidDocument(filePath, field2, "must be a finite number");
-    }
-  }
-  return document;
-}
-function narrowEvalDocument(document, filePath) {
-  assertObject(document, filePath);
-  if ("runtime" in document) {
-    narrowRuntimeEvals(document.runtime, filePath, "runtime");
-  }
-  return document;
-}
-function narrowRuntimeEvals(value, filePath, fieldPath) {
-  assertArray(value, filePath, fieldPath);
-  value.forEach((entry2, index) => {
-    const itemPath = `${fieldPath}[${index}]`;
-    assertObject(entry2, filePath, itemPath);
-    assertString(entry2.id, filePath, `${itemPath}.id`);
-    assertEnum(entry2.scope, EVAL_SCOPES, filePath, `${itemPath}.scope`);
-    assertEnum(entry2.type, EVAL_TYPES, filePath, `${itemPath}.type`);
-    assertOptionalString(entry2, "artifact", filePath, itemPath);
-    assertOptionalString(entry2, "field", filePath, itemPath);
-    assertOptionalString(entry2, "equals", filePath, itemPath);
-  });
-  return value;
-}
-async function readYaml(filePath) {
-  const source = await fs6.readFile(filePath, "utf8");
-  try {
-    return (0, import_yaml2.parse)(source);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw invalidDocument(filePath, "document", message);
-  }
-}
-async function readOptionalYaml(filePath) {
-  try {
-    return await readYaml(filePath);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return null;
-    }
-    throw error;
-  }
-}
-async function yamlFileExists(filePath) {
-  try {
-    await fs6.access(filePath);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
-}
-async function readRuntimeChecks(cometRoot) {
-  const checksPath = path6.join(cometRoot, "checks.yaml");
-  const evalsPath = path6.join(cometRoot, "evals.yaml");
-  const [hasChecks, hasEvals] = await Promise.all([
-    yamlFileExists(checksPath),
-    yamlFileExists(evalsPath)
-  ]);
-  if (hasEvals) {
-    throw new Error(`${evalsPath}: evals.yaml is no longer supported; use checks.yaml`);
-  }
-  if (hasChecks) {
-    return {
-      document: narrowEvalDocument(await readYaml(checksPath), checksPath)
-    };
-  }
-  return { document: null };
-}
-async function loadPackageFromLayout(options) {
-  const packageRoot = path6.resolve(options.root);
-  const controlRoot = path6.resolve(options.controlRoot);
-  if (options.requireSkillMarkdown) {
-    await fs6.access(path6.join(packageRoot, "SKILL.md"));
-  }
-  const skillPath = path6.join(controlRoot, "skill.yaml");
-  const guardrailsPath = path6.join(controlRoot, "guardrails.yaml");
-  const definition = narrowSkillDefinition(await readYaml(skillPath), skillPath);
-  const rawGuardrails = await readOptionalYaml(guardrailsPath);
-  const guardrailDocument = rawGuardrails === null ? null : narrowGuardrails(rawGuardrails, guardrailsPath);
-  const runtimeChecks = await readRuntimeChecks(controlRoot);
-  const defaultGuardrails = {
-    allowedSkills: definition.skills.map((skill) => skill.id),
-    allowedAgents: definition.agents.map((agent) => agent.id),
-    allowedTools: definition.tools.map((tool) => tool.id),
-    maxIterations: 50,
-    maxRetriesPerAction: 3,
-    confirmationRequiredFor: definition.tools.filter((tool) => tool.requiresConfirmation).map((tool) => tool.id)
-  };
-  return {
-    root: packageRoot,
-    packageKind: options.packageKind === "runtime" ? "runtime" : void 0,
-    definition,
-    guardrails: {
-      ...defaultGuardrails,
-      ...guardrailDocument
-    },
-    evals: runtimeChecks.document?.runtime ?? []
-  };
-}
-async function loadSkillPackage(root) {
-  const packageRoot = path6.resolve(root);
-  return loadPackageFromLayout({
-    root: packageRoot,
-    controlRoot: path6.join(packageRoot, "comet"),
-    packageKind: "skill",
-    requireSkillMarkdown: true
-  });
-}
-async function loadRuntimePackage(root) {
-  const packageRoot = path6.resolve(root);
-  return loadPackageFromLayout({
-    root: packageRoot,
-    controlRoot: packageRoot,
-    packageKind: "runtime",
-    requireSkillMarkdown: false
-  });
-}
-function loadSkillPackageDocument(document, root, filePath = path6.join(root, "package.json")) {
-  assertObject(document, filePath);
-  const packageKind = document.packageKind === "runtime" ? "runtime" : void 0;
-  const definition = narrowSkillDefinition(document.definition, filePath);
-  const guardrailDocument = narrowGuardrails(document.guardrails, filePath);
-  const evals = narrowRuntimeEvals(document.evals, filePath, "evals");
-  const defaultGuardrails = {
-    allowedSkills: definition.skills.map((skill) => skill.id),
-    allowedAgents: definition.agents.map((agent) => agent.id),
-    allowedTools: definition.tools.map((tool) => tool.id),
-    maxIterations: 50,
-    maxRetriesPerAction: 3,
-    confirmationRequiredFor: definition.tools.filter((tool) => tool.requiresConfirmation).map((tool) => tool.id)
-  };
-  return {
-    root: path6.resolve(root),
-    packageKind,
-    definition,
-    guardrails: {
-      ...defaultGuardrails,
-      ...guardrailDocument
-    },
-    evals
-  };
-}
-
-// domains/skill/validate.ts
-import path7 from "path";
-function validatesAction(action, pkg, errors, stepId) {
-  if (action.type === "invoke_skill" && !pkg.definition.skills.some((item) => item.id === action.ref)) {
-    errors.push(`step ${stepId} references undeclared skill: ${action.ref ?? "(missing)"}`);
-  }
-  if (action.type === "call_tool" && !pkg.definition.tools.some((item) => item.id === action.ref)) {
-    errors.push(`step ${stepId} references undeclared tool: ${action.ref ?? "(missing)"}`);
-  }
-  if (action.type === "handoff" && !pkg.definition.agents.some((item) => item.id === action.ref)) {
-    errors.push(`step ${stepId} references undeclared agent: ${action.ref ?? "(missing)"}`);
-  }
-  if (action.type === "ask_user" && !action.question) {
-    errors.push(`step ${stepId} ask_user action requires question`);
-  }
-}
-function validateSkillPackage(pkg) {
-  const errors = [];
-  const { definition, guardrails, evals } = pkg;
-  if (definition.apiVersion !== "comet/v1alpha1") errors.push("unsupported apiVersion");
-  if (definition.kind !== "Skill") errors.push("kind must be Skill");
-  if (!definition.metadata.name) errors.push("metadata.name is required");
-  if (!definition.goal.statement) errors.push("goal.statement is required");
-  if (guardrails.maxIterations < 1) errors.push("maxIterations must be at least 1");
-  if (guardrails.maxRetriesPerAction < 0) errors.push("maxRetriesPerAction must not be negative");
-  const steps = definition.orchestration.steps ?? [];
-  if (definition.orchestration.mode === "adaptive") {
-    if (definition.orchestration.entry || steps.length > 0) {
-      errors.push("adaptive orchestration must not define entry or steps");
-    }
-  } else {
-    const ids = /* @__PURE__ */ new Set();
-    for (const step of steps) {
-      if (ids.has(step.id)) errors.push(`duplicate step id: ${step.id}`);
-      ids.add(step.id);
-      validatesAction(step.action, pkg, errors, step.id);
-    }
-    if (!definition.orchestration.entry || !ids.has(definition.orchestration.entry)) {
-      errors.push(
-        `orchestration.entry references unknown step: ${definition.orchestration.entry ?? "(missing)"}`
-      );
-    }
-    for (const step of steps) {
-      if (step.next && !ids.has(step.next))
-        errors.push(`step ${step.id} has unknown next step: ${step.next}`);
-      for (const evalId of step.completionEvals ?? []) {
-        if (!evals.some((item) => item.id === evalId)) {
-          errors.push(`step ${step.id} references unknown eval: ${evalId}`);
-        }
-      }
-    }
-  }
-  for (const tool of definition.tools) {
-    if (tool.kind !== "script") continue;
-    const normalized2 = path7.posix.normalize(tool.source.replaceAll("\\", "/"));
-    if (path7.isAbsolute(tool.source) || normalized2 === ".." || normalized2.startsWith("../")) {
-      errors.push(`script tool ${tool.id} must reference a relative path inside the Skill package`);
-    }
-  }
-  for (const id of guardrails.allowedSkills) {
-    if (!definition.skills.some((item) => item.id === id))
-      errors.push(`guardrails allow undeclared skill: ${id}`);
-  }
-  for (const id of guardrails.allowedAgents) {
-    if (!definition.agents.some((item) => item.id === id))
-      errors.push(`guardrails allow undeclared agent: ${id}`);
-  }
-  for (const id of guardrails.allowedTools) {
-    if (!definition.tools.some((item) => item.id === id))
-      errors.push(`guardrails allow undeclared tool: ${id}`);
-  }
-  return errors;
-}
-
-// domains/skill/snapshot.ts
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, stable(item)])
-    );
-  }
-  return value;
-}
-function packageDocument(pkg) {
-  return stable({
-    ...pkg.packageKind === "runtime" ? { packageKind: "runtime" } : {},
-    definition: pkg.definition,
-    guardrails: pkg.guardrails,
-    evals: pkg.evals
-  });
-}
-function normalizedRelativePath(source) {
-  return path8.posix.normalize(source.replaceAll("\\", "/"));
-}
-function assertInside(parent, target, label) {
-  const relative = path8.relative(parent, target);
-  if (relative === "" || !path8.isAbsolute(relative) && !relative.startsWith(`..${path8.sep}`)) {
-    return;
-  }
-  throw new Error(`${label} resolves outside the Skill package`);
-}
-async function readPackageFile(root, relativePath2, label) {
-  const normalized2 = normalizedRelativePath(relativePath2);
-  if (path8.posix.isAbsolute(normalized2) || normalized2 === ".." || normalized2.startsWith("../")) {
-    throw new Error(`${label} resolves outside the Skill package`);
-  }
-  const target = path8.resolve(root, ...normalized2.split("/"));
-  assertInside(root, target, label);
-  let realTarget;
-  try {
-    realTarget = await fs7.realpath(target);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      throw new Error(`${label} does not exist: ${relativePath2}`, { cause: error });
-    }
-    throw error;
-  }
-  assertInside(root, realTarget, label);
-  if (!(await fs7.stat(realTarget)).isFile()) {
-    throw new Error(`${label} is not a file: ${relativePath2}`);
-  }
-  return { path: normalized2, content: await fs7.readFile(realTarget) };
-}
-async function snapshotFiles(pkg) {
-  const root = await fs7.realpath(pkg.root);
-  const files = pkg.packageKind === "runtime" ? [] : [await readPackageFile(root, "SKILL.md", "SKILL.md")];
-  for (const tool of pkg.definition.tools) {
-    if (tool.kind !== "script") continue;
-    files.push(await readPackageFile(root, tool.source, `Script tool ${tool.id}`));
-  }
-  return files.sort((left, right) => left.path.localeCompare(right.path));
-}
-function hashSnapshot(document, files) {
-  const fileDigests = files.map((file) => ({
-    path: file.path,
-    sha256: createHash("sha256").update(file.content).digest("hex")
-  }));
-  return createHash("sha256").update(JSON.stringify(stable({ package: document, files: fileDigests }))).digest("hex");
-}
-function packageJson(document) {
-  return JSON.stringify(document, null, 2) + "\n";
-}
-async function snapshotMaterial(pkg) {
-  const document = packageDocument(pkg);
-  const files = await snapshotFiles(pkg);
-  return { document, files, hash: hashSnapshot(document, files) };
-}
-async function hashSkillPackage(pkg) {
-  return (await snapshotMaterial(pkg)).hash;
-}
-async function pathExists(target) {
-  try {
-    await fs7.access(target);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-async function verifyPublishedSnapshot(snapshotDir, material) {
-  try {
-    const storedHash = (await fs7.readFile(path8.join(snapshotDir, "sha256"), "utf8")).trim();
-    if (storedHash !== material.hash) throw new Error("hash mismatch");
-    const storedPackage = await fs7.readFile(path8.join(snapshotDir, "package.json"), "utf8");
-    if (storedPackage !== packageJson(material.document)) throw new Error("package mismatch");
-    for (const file of material.files) {
-      const stored = await fs7.readFile(path8.join(snapshotDir, ...file.path.split("/")));
-      if (!stored.equals(file.content)) throw new Error(`file mismatch: ${file.path}`);
-    }
-  } catch (error) {
-    throw new Error(`Existing Skill snapshot is invalid: ${material.hash}`, { cause: error });
-  }
-}
-async function createSkillSnapshot(pkg, changeDir) {
-  const material = await snapshotMaterial(pkg);
-  const snapshotsRoot = path8.resolve(changeDir, ".comet", "skill-snapshots");
-  const snapshotDir = path8.join(snapshotsRoot, material.hash);
-  await fs7.mkdir(snapshotsRoot, { recursive: true });
-  if (await pathExists(snapshotDir)) {
-    await verifyPublishedSnapshot(snapshotDir, material);
-    return { hash: material.hash, snapshotDir };
-  }
-  const temporaryDir = path8.join(snapshotsRoot, `.tmp-${randomUUID4()}`);
-  assertInside(snapshotsRoot, temporaryDir, "Temporary snapshot");
-  assertInside(snapshotsRoot, snapshotDir, "Published snapshot");
-  try {
-    await fs7.mkdir(temporaryDir);
-    for (const file of material.files) {
-      const destination = path8.join(temporaryDir, ...file.path.split("/"));
-      assertInside(temporaryDir, destination, `Snapshot file ${file.path}`);
-      await fs7.mkdir(path8.dirname(destination), { recursive: true });
-      await fs7.writeFile(destination, file.content);
-    }
-    await fs7.writeFile(path8.join(temporaryDir, "package.json"), packageJson(material.document));
-    await fs7.writeFile(path8.join(temporaryDir, "sha256"), material.hash + "\n");
-    await fs7.rename(temporaryDir, snapshotDir);
-  } catch (error) {
-    if (await pathExists(snapshotDir)) {
-      try {
-        await verifyPublishedSnapshot(snapshotDir, material);
-      } finally {
-        await fs7.rm(temporaryDir, { recursive: true, force: true });
-      }
-      return { hash: material.hash, snapshotDir };
-    }
-    await fs7.rm(temporaryDir, { recursive: true, force: true });
-    throw error;
-  }
-  return { hash: material.hash, snapshotDir };
-}
-async function readSkillSnapshot(changeDir, hash) {
-  if (!/^[a-f0-9]{64}$/u.test(hash)) {
-    throw new Error(`Invalid Skill snapshot hash: ${hash}`);
-  }
-  const snapshotsRoot = path8.resolve(changeDir, ".comet", "skill-snapshots");
-  const snapshotDir = path8.join(snapshotsRoot, hash);
-  assertInside(snapshotsRoot, snapshotDir, "Skill snapshot");
-  try {
-    const storedHash = (await fs7.readFile(path8.join(snapshotDir, "sha256"), "utf8")).trim();
-    if (storedHash !== hash) {
-      throw new Error(`stored hash is ${storedHash || "(empty)"}`);
-    }
-    const packagePath = path8.join(snapshotDir, "package.json");
-    const document = JSON.parse(await fs7.readFile(packagePath, "utf8"));
-    const pkg = loadSkillPackageDocument(document, snapshotDir, packagePath);
-    const errors = validateSkillPackage(pkg);
-    if (errors.length > 0) {
-      throw new Error(errors.map((error) => `  - ${error}`).join("\n"));
-    }
-    const calculated = await hashSkillPackage(pkg);
-    if (calculated !== hash) {
-      throw new Error(`calculated hash is ${calculated}`);
-    }
-    return pkg;
-  } catch (error) {
-    throw new Error(`Skill snapshot is invalid or missing: ${hash}`, { cause: error });
-  }
-}
-
-// domains/comet-classic/classic-migrate.ts
-async function pathExists2(target) {
-  try {
-    await fs8.access(target);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-function projectRootFor2(changeDir) {
-  let cursor = path9.resolve(changeDir);
-  while (path9.dirname(cursor) !== cursor) {
-    if (path9.basename(cursor) === "openspec") return path9.dirname(cursor);
-    cursor = path9.dirname(cursor);
-  }
-  throw new Error(`Classic change is not inside an openspec directory: ${changeDir}`);
-}
-function sha2562(content) {
-  return createHash2("sha256").update(content).digest("hex");
-}
-function artifactHash(artifacts) {
-  return sha2562(
-    JSON.stringify(
-      Object.fromEntries(
-        Object.entries(artifacts).sort(([left], [right]) => left.localeCompare(right))
-      )
-    )
-  );
-}
-function artifactKey(code) {
-  return code.replaceAll(".", "_").replaceAll("-", "_");
-}
-async function migrationArtifacts(changeDir, evidence) {
-  const projectRoot2 = projectRootFor2(changeDir);
-  const artifacts = Object.fromEntries(
-    evidence.filter((item) => item.satisfied && item.source).map((item) => [artifactKey(item.code), item.source])
-  );
-  const progress = path9.join(changeDir, "subagent-progress.md");
-  if (await pathExists2(progress)) {
-    artifacts.subagent_progress = path9.relative(projectRoot2, progress).split(path9.sep).join("/");
-  }
-  const handoff = evidence.find((item) => item.code === "design.handoff" && item.satisfied);
-  if (handoff?.source) artifacts.handoff_context = handoff.source;
-  return artifacts;
-}
-function migrationEvents(run, profile, timestamp) {
-  return [
-    {
-      sequence: 1,
-      timestamp,
-      type: "run_started",
-      runId: run.runId,
-      data: {
-        skill: run.skill,
-        skillVersion: run.skillVersion,
-        skillHash: run.skillHash
-      }
-    },
-    {
-      sequence: 2,
-      timestamp,
-      type: "state_migrated",
-      runId: run.runId,
-      data: {
-        kind: "classic",
-        migrationVersion: CLASSIC_MIGRATION_VERSION,
-        profile,
-        source: "pre-migration"
-      }
-    }
-  ];
-}
-async function removeCreatedFiles(files) {
-  await Promise.all(files.map((file) => fs8.rm(file, { recursive: true, force: true })));
-}
-async function ensureClassicRun(changeDir, options) {
-  const projection = await readClassicState(changeDir);
-  if (!projection.classic) {
-    throw new Error("Classic migration requires a legacy state projection");
-  }
-  const classic = projection.classic;
-  const profile = classic.classicProfile ?? classic.workflow;
-  if (projection.run) {
-    if (classic.classicMigration !== CLASSIC_MIGRATION_VERSION) {
-      throw new Error("Classic Run exists without a supported classic_migration marker");
-    }
-    if (projection.run.skill !== options.skillPackage.definition.metadata.name) {
-      throw new Error(
-        `Classic Run skill mismatch: expected ${options.skillPackage.definition.metadata.name}, got ${projection.run.skill}`
-      );
-    }
-    const installedHash = await hashSkillPackage(options.skillPackage);
-    if (installedHash !== projection.run.skillHash) {
-      await readSkillSnapshot(changeDir, projection.run.skillHash);
-      return {
-        classic,
-        run: projection.run,
-        evidence: await collectClassicEvidence(changeDir, projection),
-        migrated: false,
-        snapshotDir: path9.join(changeDir, ".comet", "skill-snapshots", projection.run.skillHash)
-      };
-    }
-    const snapshot = await createSkillSnapshot(options.skillPackage, changeDir);
-    return {
-      classic,
-      run: projection.run,
-      evidence: await collectClassicEvidence(changeDir, projection),
-      migrated: false,
-      snapshotDir: snapshot.snapshotDir
-    };
-  }
-  const evidence = await collectClassicEvidence(changeDir, projection);
-  const step = resolveClassicStepId(classic, evidence);
-  if (!options.skillPackage.definition.orchestration.steps?.some((item) => item.id === step)) {
-    throw new Error(`Classic Skill package does not define resolved step: ${step}`);
-  }
-  const expectedHash = await hashSkillPackage(options.skillPackage);
-  const expectedSnapshotDir = path9.join(changeDir, ".comet", "skill-snapshots", expectedHash);
-  const snapshotExisted = await pathExists2(expectedSnapshotDir);
-  const createdFiles = [];
-  try {
-    const snapshot = await createSkillSnapshot(options.skillPackage, changeDir);
-    const run = startRun(options.skillPackage, options.runId?.() ?? randomUUID5(), snapshot.hash);
-    run.currentStep = step;
-    if (step === "completed") run.status = "completed";
-    const migratedClassic = {
-      ...classic,
-      classicProfile: profile,
-      classicMigration: CLASSIC_MIGRATION_VERSION
-    };
-    const artifacts = await migrationArtifacts(changeDir, evidence);
-    const projectRoot2 = projectRootFor2(changeDir);
-    const handoff = evidence.find((item) => item.code === "design.handoff" && item.satisfied);
-    let context = null;
-    if (handoff?.source) {
-      context = await fs8.readFile(path9.resolve(projectRoot2, handoff.source), "utf8");
-      await writeContext(changeDir, run.contextRef, context);
-      createdFiles.push(path9.resolve(changeDir, run.contextRef));
-    }
-    await writeArtifacts(changeDir, run.artifactsRef, artifacts);
-    createdFiles.push(path9.resolve(changeDir, run.artifactsRef));
-    const timestamp = (options.now?.() ?? /* @__PURE__ */ new Date()).toISOString();
-    const checkpoint = {
-      runId: run.runId,
-      stateVersion: 1,
-      trajectoryOffset: 2,
-      contextHash: context === null ? null : sha2562(context),
-      artifactsHash: artifactHash(artifacts),
-      createdAt: timestamp
-    };
-    await writeCheckpoint(changeDir, run.checkpointRef, checkpoint);
-    createdFiles.push(path9.resolve(changeDir, run.checkpointRef));
-    createdFiles.push(path9.resolve(changeDir, run.trajectoryRef));
-    for (const event of migrationEvents(run, profile, timestamp)) {
-      await appendTrajectory(changeDir, run.trajectoryRef, event);
-    }
-    await writeClassicState(changeDir, {
-      classic: migratedClassic,
-      run,
-      unknownKeys: projection.unknownKeys
-    });
-    return {
-      classic: migratedClassic,
-      run,
-      evidence,
-      migrated: true,
-      snapshotDir: snapshot.snapshotDir
-    };
-  } catch (error) {
-    await removeCreatedFiles(createdFiles);
-    if (!snapshotExisted) await fs8.rm(expectedSnapshotDir, { recursive: true, force: true });
-    throw error;
-  }
-}
-
-// domains/comet-classic/classic-runtime-run.ts
-async function directoryExists(directory) {
-  try {
-    return (await fs9.stat(directory)).isDirectory();
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-async function fileExists2(file) {
-  try {
-    return (await fs9.stat(file)).isFile();
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-async function isClassicRuntimePackageRoot(root) {
-  if (!await directoryExists(root)) return false;
-  if (await fileExists2(path10.join(root, "skill.yaml"))) return true;
-  return await fileExists2(path10.join(root, "SKILL.md")) && await fileExists2(path10.join(root, "comet", "skill.yaml"));
-}
-function embeddedClassicRuntimePackage(root) {
-  return {
-    root,
-    packageKind: "runtime",
-    definition: {
-      apiVersion: "comet/v1alpha1",
-      kind: "Skill",
-      metadata: {
-        name: "comet-classic",
-        version: "1",
-        description: "Internal compatibility orchestration for classic Comet full, hotfix, and tweak workflows"
-      },
-      goal: {
-        statement: "Advance or restore a classic Comet Run without changing the user command surface",
-        inputs: [
-          {
-            name: "classic-state",
-            description: "Validated ClassicState consistent with the Run projection",
-            required: true
-          },
-          {
-            name: "evidence",
-            description: "Structured evidence produced by the Classic Evidence collector",
-            required: true
-          }
-        ],
-        outputs: [
-          {
-            name: "run-state",
-            description: "Atomically synchronized Classic and Run state",
-            required: true
-          }
-        ],
-        success: [
-          "Legacy fields and Run fields remain consistent",
-          "Every step invokes only a declared public Comet Skill",
-          "The completed state passes its completion eval"
-        ]
-      },
-      orchestration: {
-        mode: "deterministic",
-        entry: "full.open",
-        steps: [
-          {
-            id: "full.open",
-            action: { type: "invoke_skill", ref: "comet-open" },
-            next: "full.design.handoff"
-          },
-          {
-            id: "full.design.handoff",
-            action: { type: "invoke_skill", ref: "comet-design" },
-            next: "full.design.document"
-          },
-          {
-            id: "full.design.document",
-            action: { type: "invoke_skill", ref: "comet-design" },
-            next: "full.build.plan"
-          },
-          {
-            id: "full.build.plan",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "full.build.plan-ready"
-          },
-          {
-            id: "full.build.plan-ready",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "full.build.configure"
-          },
-          {
-            id: "full.build.configure",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "full.build.execute"
-          },
-          {
-            id: "full.build.execute",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "full.build.complete"
-          },
-          {
-            id: "full.build.complete",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "full.verify.run"
-          },
-          {
-            id: "full.build.fix",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "full.build.execute"
-          },
-          {
-            id: "full.verify.run",
-            action: { type: "invoke_skill", ref: "comet-verify" },
-            next: "full.verify.branch"
-          },
-          {
-            id: "full.verify.branch",
-            action: { type: "invoke_skill", ref: "comet-verify" },
-            next: "full.archive.confirm"
-          },
-          {
-            id: "full.archive.confirm",
-            action: { type: "invoke_skill", ref: "comet-archive" },
-            next: "full.archive.execute"
-          },
-          {
-            id: "full.archive.execute",
-            action: { type: "invoke_skill", ref: "comet-archive" },
-            next: "completed"
-          },
-          {
-            id: "hotfix.open",
-            action: { type: "invoke_skill", ref: "comet-hotfix" },
-            next: "hotfix.build.execute"
-          },
-          {
-            id: "hotfix.build.execute",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "hotfix.build.complete"
-          },
-          {
-            id: "hotfix.build.complete",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "hotfix.verify.run"
-          },
-          {
-            id: "hotfix.verify.run",
-            action: { type: "invoke_skill", ref: "comet-verify" },
-            next: "hotfix.verify.branch"
-          },
-          {
-            id: "hotfix.verify.branch",
-            action: { type: "invoke_skill", ref: "comet-verify" },
-            next: "hotfix.archive.confirm"
-          },
-          {
-            id: "hotfix.archive.confirm",
-            action: { type: "invoke_skill", ref: "comet-archive" },
-            next: "hotfix.archive.execute"
-          },
-          {
-            id: "hotfix.archive.execute",
-            action: { type: "invoke_skill", ref: "comet-archive" },
-            next: "completed"
-          },
-          {
-            id: "tweak.open",
-            action: { type: "invoke_skill", ref: "comet-tweak" },
-            next: "tweak.build.execute"
-          },
-          {
-            id: "tweak.build.execute",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "tweak.build.complete"
-          },
-          {
-            id: "tweak.build.complete",
-            action: { type: "invoke_skill", ref: "comet-build" },
-            next: "tweak.verify.run"
-          },
-          {
-            id: "tweak.verify.run",
-            action: { type: "invoke_skill", ref: "comet-verify" },
-            next: "tweak.verify.branch"
-          },
-          {
-            id: "tweak.verify.branch",
-            action: { type: "invoke_skill", ref: "comet-verify" },
-            next: "tweak.archive.confirm"
-          },
-          {
-            id: "tweak.archive.confirm",
-            action: { type: "invoke_skill", ref: "comet-archive" },
-            next: "tweak.archive.execute"
-          },
-          {
-            id: "tweak.archive.execute",
-            action: { type: "invoke_skill", ref: "comet-archive" },
-            next: "completed"
-          },
-          {
-            id: "completed",
-            action: { type: "checkpoint" },
-            completionEvals: ["classic-completed"]
-          }
-        ]
-      },
-      skills: [
-        { id: "comet-open" },
-        { id: "comet-design" },
-        { id: "comet-build" },
-        { id: "comet-verify" },
-        { id: "comet-archive" },
-        { id: "comet-hotfix" },
-        { id: "comet-tweak" }
-      ],
-      agents: [],
-      tools: []
-    },
-    guardrails: {
-      allowedSkills: [
-        "comet-open",
-        "comet-design",
-        "comet-build",
-        "comet-verify",
-        "comet-archive",
-        "comet-hotfix",
-        "comet-tweak"
-      ],
-      allowedAgents: [],
-      allowedTools: [],
-      maxIterations: 500,
-      maxRetriesPerAction: 3,
-      confirmationRequiredFor: []
-    },
-    evals: [
-      {
-        id: "classic-completed",
-        scope: "completion",
-        type: "state_equals",
-        field: "status",
-        equals: "completed"
-      }
-    ]
-  };
-}
-async function classicRuntimeRoot() {
-  const runtimeDirectory = path10.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    process.env.COMET_RUNTIME_CLASSIC_ROOT,
-    path10.resolve(runtimeDirectory, "..", "runtime", "classic"),
-    path10.resolve(runtimeDirectory, "..", "..", "comet", "runtime", "classic"),
-    path10.resolve(runtimeDirectory, "..", "..", "assets", "skills", "comet", "runtime", "classic"),
-    path10.resolve("assets", "skills", "comet", "runtime", "classic"),
-    process.env.COMET_CLASSIC_SKILL_ROOT,
-    path10.resolve(runtimeDirectory, "..", "..", "comet-classic"),
-    path10.resolve(runtimeDirectory, "..", "..", "assets", "skills", "comet-classic"),
-    path10.resolve("assets", "skills", "comet-classic")
-  ].filter((candidate) => Boolean(candidate));
-  for (const candidate of candidates) {
-    if (await isClassicRuntimePackageRoot(candidate)) return candidate;
-  }
-  return null;
-}
-async function loadClassicRuntimePackage(root) {
-  if (await fileExists2(path10.join(root, "skill.yaml"))) {
-    return loadRuntimePackage(root);
-  }
-  return loadSkillPackage(root);
-}
-async function ensureClassicRuntimeRun(changeDir) {
-  const root = await classicRuntimeRoot();
-  return ensureClassicRun(changeDir, {
-    skillPackage: root ? await loadClassicRuntimePackage(root) : embeddedClassicRuntimePackage(path10.dirname(fileURLToPath(import.meta.url)))
-  });
-}
-async function ensureStrictClassicRuntimeRun(changeDir) {
-  const projection = await readClassicState(changeDir);
-  const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
-  if (unknownKeys.length > 0) {
-    throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(", ")}`);
-  }
-  return ensureClassicRuntimeRun(changeDir);
-}
-async function validateClassicRuntimeRun(changeDir, existingProjection) {
-  const projection = existingProjection ?? await readClassicState(changeDir, { migrate: false });
-  const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
-  if (unknownKeys.length > 0) {
-    throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(", ")}`);
-  }
-  if (!projection.classic || !projection.run) {
-    throw new Error("Classic runtime validation requires synchronized Classic and Run projections");
-  }
-  if (projection.classic.classicMigration !== CLASSIC_MIGRATION_VERSION) {
-    throw new Error("Classic Run exists without a supported classic_migration marker");
-  }
-  const root = await classicRuntimeRoot();
-  const skillPackage = root ? await loadClassicRuntimePackage(root) : embeddedClassicRuntimePackage(path10.dirname(fileURLToPath(import.meta.url)));
-  if (projection.run.skill !== skillPackage.definition.metadata.name) {
-    throw new Error(
-      `Classic Run skill mismatch: expected ${skillPackage.definition.metadata.name}, got ${projection.run.skill}`
-    );
-  }
-  const snapshot = await readSkillSnapshot(changeDir, projection.run.skillHash);
-  if (snapshot.definition.metadata.name !== projection.run.skill) {
-    throw new Error(
-      `Classic Run snapshot skill mismatch: expected ${projection.run.skill}, got ${snapshot.definition.metadata.name}`
-    );
-  }
-  const evidence = await collectClassicEvidence(changeDir, projection);
-  const currentStep = resolveClassicStepId(projection.classic, evidence);
-  if (projection.run.currentStep !== currentStep) {
-    throw new Error(
-      `Classic Run step mismatch: expected ${currentStep}, got ${projection.run.currentStep}`
-    );
-  }
-  return {
-    classic: projection.classic,
-    run: projection.run,
-    evidence,
-    migrated: false,
-    snapshotDir: path10.join(changeDir, ".comet", "skill-snapshots", projection.run.skillHash)
-  };
-}
-async function transitionClassicRuntimeRun(changeDir, classic, run, data) {
-  const projection = await readClassicState(changeDir);
-  if (!projection.classic || !projection.run) {
-    throw new Error("Classic transition requires synchronized Classic and Run projections");
-  }
-  const evidence = await collectClassicEvidence(changeDir, {
-    classic,
-    run,
-    unknownKeys: projection.unknownKeys
-  });
-  const currentStep = resolveClassicStepId(classic, evidence);
-  const nextRun = {
-    ...run,
-    currentStep,
-    iteration: run.iteration + 1,
-    status: currentStep === "completed" ? "completed" : "running"
-  };
-  await writeClassicState(changeDir, {
-    classic,
-    run: nextRun,
-    unknownKeys: projection.unknownKeys
-  });
-  const trajectory = await readTrajectory(changeDir, nextRun.trajectoryRef);
-  await appendTrajectory(changeDir, nextRun.trajectoryRef, {
-    sequence: trajectory.length + 1,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    type: "state_transitioned",
-    runId: nextRun.runId,
-    data: {
-      kind: "classic",
-      fromStep: run.currentStep,
-      toStep: currentStep,
-      ...data
-    }
-  });
-  return nextRun;
-}
-
-// domains/comet-classic/classic-state-events.ts
-import { promises as fs10 } from "fs";
-import path11 from "path";
-var CLASSIC_STATE_EVENT_LOG = path11.join(".comet", "state-events.jsonl");
-async function appendClassicStateEvent(changeDir, input) {
-  const record = {
-    schemaVersion: 1,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    ...input
-  };
-  const file = path11.join(changeDir, CLASSIC_STATE_EVENT_LOG);
-  await fs10.mkdir(path11.dirname(file), { recursive: true });
-  await fs10.appendFile(file, `${JSON.stringify(record)}
-`, "utf8");
-  return record;
-}
-
-// domains/comet-classic/classic-transitions.ts
-var CLASSIC_TRANSITION_EVENTS = [
-  "open-complete",
-  "design-complete",
-  "build-complete",
-  "verify-pass",
-  "verify-fail",
-  "archive-confirm",
-  "archive-reopen",
-  "archived",
-  "preset-escalate"
-];
-var CLASSIC_TRANSITION_TABLE = {
-  "open-complete": {
-    event: "open-complete",
-    from: "open",
-    guardRefs: ["open-artifacts-present"]
-  },
-  "design-complete": {
-    event: "design-complete",
-    from: "design",
-    guardRefs: ["design-evidence-present"]
-  },
-  "build-complete": {
-    event: "build-complete",
-    from: "build",
-    guardRefs: ["build-decisions-selected"]
-  },
-  "verify-pass": {
-    event: "verify-pass",
-    from: "verify",
-    guardRefs: ["verification-report-present"]
-  },
-  "verify-fail": {
-    event: "verify-fail",
-    from: "verify",
-    guardRefs: ["verification-failed"]
-  },
-  "archive-confirm": {
-    event: "archive-confirm",
-    from: "archive",
-    guardRefs: ["archive-final-confirmation"]
-  },
-  "archive-reopen": {
-    event: "archive-reopen",
-    from: "archive",
-    guardRefs: ["archive-not-finalized"]
-  },
-  archived: {
-    event: "archived",
-    from: "archive",
-    guardRefs: ["verify-result-pass", "archive-confirmed"]
-  },
-  "preset-escalate": {
-    event: "preset-escalate",
-    from: "build",
-    guardRefs: ["preset-workflow"]
-  }
-};
-var CLASSIC_GUARD_TRANSITION_EVENT = {
-  open: "open-complete",
-  design: "design-complete",
-  build: "build-complete",
-  verify: "verify-pass"
-};
-function dateOnly(date) {
-  return date.toISOString().slice(0, 10);
-}
-function setField(classic, effects, field2, value) {
-  const from = classic[field2];
-  classic[field2] = value;
-  if (from !== value) effects.push({ field: field2, from, to: value });
-}
-function applyClassicTransition(current, event, options = {}) {
-  const definition = CLASSIC_TRANSITION_TABLE[event];
-  if (current.phase !== definition.from) {
-    throw new Error(
-      `Cannot apply ${event}: phase is '${current.phase}', expected '${definition.from}'`
-    );
-  }
-  const classic = { ...current };
-  const effects = [];
-  const now = options.now ?? /* @__PURE__ */ new Date();
-  if (event === "open-complete") {
-    setField(classic, effects, "phase", classic.workflow === "full" ? "design" : "build");
-  } else if (event === "design-complete") {
-    setField(classic, effects, "phase", "build");
-  } else if (event === "build-complete") {
-    const preserveEvidence = classic.verifyResult === "fail";
-    setField(classic, effects, "phase", "verify");
-    setField(classic, effects, "verifyResult", "pending");
-    setField(classic, effects, "branchStatus", "pending");
-    if (!preserveEvidence) {
-      setField(classic, effects, "verificationReport", null);
-    }
-  } else if (event === "verify-pass") {
-    setField(classic, effects, "verifyResult", "pass");
-    setField(classic, effects, "verifyFailures", 0);
-    setField(classic, effects, "phase", "archive");
-    setField(classic, effects, "verifiedAt", dateOnly(now));
-    setField(classic, effects, "archiveConfirmation", "pending");
-    setField(classic, effects, "branchStatus", "pending");
-  } else if (event === "verify-fail") {
-    setField(classic, effects, "verifyResult", "fail");
-    setField(classic, effects, "verifyFailures", classic.verifyFailures + 1);
-    setField(classic, effects, "phase", "build");
-    setField(classic, effects, "branchStatus", "pending");
-  } else if (event === "preset-escalate") {
-    if (classic.workflow !== "hotfix" && classic.workflow !== "tweak") {
-      throw new Error(
-        `Cannot apply ${event}: workflow must be hotfix or tweak, got '${classic.workflow}'`
-      );
-    }
-    setField(classic, effects, "workflow", "full");
-    setField(classic, effects, "classicProfile", "full");
-    setField(classic, effects, "phase", "design");
-    setField(classic, effects, "designDoc", null);
-    setField(classic, effects, "buildPause", null);
-    setField(classic, effects, "buildMode", null);
-    setField(classic, effects, "subagentDispatch", null);
-    setField(classic, effects, "tddMode", null);
-    setField(classic, effects, "reviewMode", null);
-    setField(classic, effects, "isolation", null);
-    setField(classic, effects, "verifyMode", null);
-    setField(classic, effects, "directOverride", null);
-  } else if (event === "archive-confirm") {
-    if (classic.verifyResult !== "pass") {
-      throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
-    }
-    if (classic.archived) throw new Error(`Cannot apply ${event}: already archived`);
-    setField(classic, effects, "archiveConfirmation", "confirmed");
-  } else if (event === "archive-reopen") {
-    if (classic.archived) throw new Error(`Cannot apply ${event}: already archived`);
-    setField(classic, effects, "verifyResult", "pending");
-    setField(classic, effects, "verifyFailures", 0);
-    setField(classic, effects, "phase", "verify");
-    setField(classic, effects, "verifiedAt", null);
-    setField(classic, effects, "archiveConfirmation", null);
-    setField(classic, effects, "branchStatus", "pending");
-  } else {
-    if (classic.verifyResult !== "pass") {
-      throw new Error(`Cannot apply ${event}: verifyResult must be pass`);
-    }
-    if (classic.archiveConfirmation !== "confirmed") {
-      throw new Error(`Cannot apply ${event}: archiveConfirmation must be confirmed`);
-    }
-    setField(classic, effects, "archived", true);
-  }
-  return { classic, effects, definition };
-}
 
 // domains/comet-classic/classic-current-change.ts
-import { execFileSync } from "child_process";
-import { promises as fs12 } from "fs";
-import path13 from "path";
-
-// domains/comet-entry/current-selection.ts
-import { randomUUID as randomUUID6 } from "crypto";
-import { promises as fs11 } from "fs";
-import path12 from "path";
-var COMET_CURRENT_SELECTION_SCHEMA = "comet.selection.v2";
-var COMET_CURRENT_SELECTION_MAX_BYTES = 16 * 1024;
-function cometCurrentSelectionFile(projectRoot2) {
-  return path12.join(projectRoot2, ".comet", "current-change.json");
-}
-function isRecord(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-function validBranch(value) {
-  return value === null || typeof value === "string";
-}
-function parseSelection(source) {
-  let value;
-  try {
-    value = JSON.parse(source);
-  } catch (error) {
-    throw new Error(
-      `current change selection contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error }
-    );
-  }
-  if (!isRecord(value)) {
-    throw new Error("current change selection must be a JSON object");
-  }
-  if (value.version === 1) {
-    if (typeof value.change !== "string") {
-      throw new Error("legacy current change selection change must be a string");
-    }
-    if (!validBranch(value.branch)) {
-      throw new Error("legacy current change selection branch must be a string or null");
-    }
-    return {
-      selection: {
-        schema: COMET_CURRENT_SELECTION_SCHEMA,
-        workflow: "classic",
-        change: value.change,
-        branch: value.branch
-      },
-      legacy: true
-    };
-  }
-  if (value.schema !== COMET_CURRENT_SELECTION_SCHEMA) {
-    throw new Error(`current change selection schema must be ${COMET_CURRENT_SELECTION_SCHEMA}`);
-  }
-  if (value.workflow !== "native" && value.workflow !== "classic") {
-    throw new Error("current change selection workflow must be native or classic");
-  }
-  if (typeof value.change !== "string") {
-    throw new Error("current change selection change must be a string");
-  }
-  if (!validBranch(value.branch)) {
-    throw new Error("current change selection branch must be a string or null");
-  }
-  if (value.workflow === "native" && value.branch !== null) {
-    throw new Error("Native current change selection branch must be null");
-  }
-  return { selection: value, legacy: false };
-}
-async function readCometCurrentSelection(projectRoot2) {
-  let source;
-  try {
-    const stat = await fs11.lstat(cometCurrentSelectionFile(projectRoot2));
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw new Error("current change selection must be a regular file");
-    }
-    if (stat.size > COMET_CURRENT_SELECTION_MAX_BYTES) {
-      throw new Error(
-        `current change selection exceeds ${COMET_CURRENT_SELECTION_MAX_BYTES} bytes`
-      );
-    }
-    source = await fs11.readFile(cometCurrentSelectionFile(projectRoot2), "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return { status: "missing" };
-    throw new Error(
-      `cannot read current change selection: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error }
-    );
-  }
-  const parsed = parseSelection(source);
-  return { status: "selected", ...parsed };
-}
-async function writeCometCurrentSelection(projectRoot2, selection) {
-  const parsed = parseSelection(JSON.stringify(selection));
-  if (parsed.legacy) throw new Error("cannot write a legacy current change selection");
-  const file = cometCurrentSelectionFile(projectRoot2);
-  const temporary = `${file}.${randomUUID6()}.tmp`;
-  await fs11.mkdir(path12.dirname(file), { recursive: true });
-  try {
-    await fs11.writeFile(temporary, `${JSON.stringify(parsed.selection, null, 2)}
-`, "utf8");
-    await fs11.rename(temporary, file);
-  } catch (error) {
-    await fs11.rm(temporary, { force: true });
-    throw error;
-  }
-}
-async function clearCometCurrentSelection(projectRoot2) {
-  await fs11.rm(cometCurrentSelectionFile(projectRoot2), { force: true });
-}
-async function clearCometCurrentSelectionIf(projectRoot2, workflow, change) {
-  const current = await readCometCurrentSelection(projectRoot2);
-  if (current.status !== "selected" || current.selection.workflow !== workflow || current.selection.change !== change) {
-    return false;
-  }
-  await clearCometCurrentSelection(projectRoot2);
-  return true;
-}
-
-// domains/comet-classic/classic-current-change.ts
-function currentBranch(projectRoot2) {
+function currentBranch(projectRoot) {
   try {
     const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      cwd: projectRoot2,
+      cwd: projectRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
     }).trim();
@@ -9656,14 +8280,14 @@ function currentBranch(projectRoot2) {
     return null;
   }
 }
-function changeDirectory(projectRoot2, changeName) {
-  return path13.join(projectRoot2, "openspec", "changes", changeName);
+function changeDirectory(projectRoot, changeName) {
+  return path5.join(projectRoot, "openspec", "changes", changeName);
 }
-async function validateActiveChange(projectRoot2, changeName) {
+async function validateActiveChange(projectRoot, changeName) {
   assertOpenSpecChangeName(changeName);
-  const changeDir = changeDirectory(projectRoot2, changeName);
+  const changeDir = changeDirectory(projectRoot, changeName);
   try {
-    await fs12.access(path13.join(changeDir, ".comet.yaml"));
+    await fs5.access(path5.join(changeDir, ".comet.yaml"));
   } catch (error) {
     if (error.code === "ENOENT") {
       throw new Error(
@@ -9683,21 +8307,10 @@ async function validateActiveChange(projectRoot2, changeName) {
     throw new Error(`Cannot select current change '${changeName}': change is archived`);
   }
 }
-async function selectCurrentChange(projectRoot2, changeName) {
-  await validateActiveChange(projectRoot2, changeName);
-  const selection = {
-    schema: "comet.selection.v2",
-    workflow: "classic",
-    change: changeName,
-    branch: currentBranch(projectRoot2)
-  };
-  await writeCometCurrentSelection(projectRoot2, selection);
-  return selection;
-}
-async function resolveCurrentChange(projectRoot2) {
+async function resolveCurrentChange(projectRoot) {
   let current;
   try {
-    current = await readCometCurrentSelection(projectRoot2);
+    current = await readCometCurrentSelection(projectRoot);
   } catch (error) {
     return {
       status: "stale",
@@ -9713,14 +8326,14 @@ async function resolveCurrentChange(projectRoot2) {
   }
   const selection = current.selection;
   try {
-    await validateActiveChange(projectRoot2, selection.change);
+    await validateActiveChange(projectRoot, selection.change);
   } catch (error) {
     return {
       status: "stale",
       reason: error instanceof Error ? error.message : String(error)
     };
   }
-  const branch = currentBranch(projectRoot2);
+  const branch = currentBranch(projectRoot);
   if (selection.branch !== null && branch !== selection.branch) {
     return {
       status: "stale",
@@ -9729,2139 +8342,13 @@ async function resolveCurrentChange(projectRoot2) {
   }
   return { status: "selected", selection };
 }
-async function clearCurrentChange(projectRoot2) {
-  let current;
-  try {
-    current = await readCometCurrentSelection(projectRoot2);
-  } catch {
-    return;
-  }
-  if (current.status === "selected" && current.selection.workflow === "classic") {
-    await clearCometCurrentSelection(projectRoot2);
-  }
-}
-async function clearCurrentChangeIf(projectRoot2, change) {
-  return clearCometCurrentSelectionIf(projectRoot2, "classic", change);
-}
-
-// domains/comet-classic/classic-archive.ts
-var GREEN = "\x1B[32m";
-var RED = "\x1B[31m";
-var YELLOW = "\x1B[33m";
-var RESET = "\x1B[0m";
-function green(message) {
-  return `${GREEN}${message}${RESET}`;
-}
-function red(message) {
-  return `${RED}${message}${RESET}`;
-}
-function yellow(message) {
-  return `${YELLOW}${message}${RESET}`;
-}
-var ArchiveFailure = class extends Error {
-  constructor(message, exitCode = 1) {
-    super(message);
-    this.exitCode = exitCode;
-  }
-  exitCode;
-};
-var ArchiveOutput = class {
-  stderr = [];
-  stepsOk = 0;
-  stepsTotal = 0;
-  toResult(exitCode = 0) {
-    return {
-      exitCode,
-      ...this.stderr.length > 0 ? { stderr: this.stderr.join("\n") + "\n" } : {}
-    };
-  }
-};
-async function exists2(file) {
-  try {
-    await fs13.access(file);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-function validateChangeName(name) {
-  const error = openSpecChangeNameError(name);
-  if (error) throw new ArchiveFailure(red(`FATAL: ${error}`));
-}
-function hashText(content) {
-  return createHash3("sha256").update(content).digest("hex");
-}
-function artifactsHash(artifacts) {
-  return hashText(
-    JSON.stringify(
-      Object.fromEntries(
-        Object.entries(artifacts).sort(([left], [right]) => left.localeCompare(right))
-      )
-    )
-  );
-}
-function exactlyOneFinalNewline(markdown) {
-  return `${markdown.replace(/\n+$/u, "")}
-`;
-}
-function annotatedMarkdown(original, archiveName, extraFields) {
-  const normalized2 = original.replace(/\r\n/gu, "\n");
-  const lines = normalized2.split("\n");
-  const closingDelimiter = lines[0] === "---" ? lines.indexOf("---", 1) : -1;
-  const extraFieldName = extraFields.match(/^([^:\n]+):/u)?.[1]?.trim();
-  if (closingDelimiter !== -1) {
-    const frontmatter = lines.slice(1, closingDelimiter).filter((line) => {
-      const fieldName = line.match(/^([^:\n]+):/u)?.[1]?.trim();
-      if (fieldName === void 0) return true;
-      return fieldName !== "archived-with" && fieldName !== extraFieldName;
-    });
-    frontmatter.push(`archived-with: ${archiveName}`);
-    if (extraFields) frontmatter.push(extraFields);
-    return exactlyOneFinalNewline(
-      ["---", ...frontmatter, "---", ...lines.slice(closingDelimiter + 1)].join("\n")
-    );
-  }
-  const header = ["---", `archived-with: ${archiveName}`];
-  if (extraFields) header.push(extraFields);
-  if (extraFieldName !== "status") header.push("status: final");
-  header.push("---");
-  return exactlyOneFinalNewline([...header, normalized2].join("\n"));
-}
-async function findArchiveDir(change, preferred) {
-  if (await exists2(preferred)) return preferred;
-  const archiveRoot = "openspec/changes/archive";
-  if (!await exists2(archiveRoot)) return null;
-  for (const entry2 of (await fs13.readdir(archiveRoot)).sort()) {
-    if (!entry2.endsWith(`-${change}`)) continue;
-    const candidate = `${archiveRoot}/${entry2}`;
-    if ((await fs13.stat(candidate)).isDirectory()) return candidate;
-  }
-  return null;
-}
-async function appendRecoveryEvent(changeDir, run, actionId) {
-  const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
-  if (trajectory.some(
-    (event) => event.type === "recovery_reconciled" && event.data.kind === "classic-archive" && event.data.actionId === actionId
-  )) {
-    return;
-  }
-  await appendTrajectory(changeDir, run.trajectoryRef, {
-    sequence: trajectory.length + 1,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    type: "recovery_reconciled",
-    runId: run.runId,
-    data: {
-      kind: "classic-archive",
-      actionId
-    }
-  });
-}
-async function annotateFrontmatter(output, file, archiveName, extraFields, dryRun) {
-  if (!await exists2(file)) return;
-  if (dryRun) {
-    output.stderr.push(yellow(`  [DRY-RUN] Would annotate: ${file}`));
-    output.stepsOk += 1;
-    output.stepsTotal += 1;
-    return;
-  }
-  const original = await fs13.readFile(file, "utf8");
-  const updated = annotatedMarkdown(original, archiveName, extraFields);
-  await fs13.writeFile(file, updated);
-  output.stderr.push(green(`  [OK] Annotated: ${file}`));
-  output.stepsOk += 1;
-  output.stepsTotal += 1;
-}
-async function verifyMainSpecsClean() {
-  const specsRoot = "openspec/specs";
-  if (!await exists2(specsRoot)) return;
-  let found = false;
-  for (const entry2 of await fs13.readdir(specsRoot)) {
-    const specFile = `${specsRoot}/${entry2}/spec.md`;
-    if (!await exists2(specFile)) continue;
-    const matches = (await fs13.readFile(specFile, "utf8")).split(/\r?\n/u).map((line, index) => ({ line, number: index + 1 })).filter((item) => /^## (ADDED|MODIFIED|REMOVED|RENAMED) Requirements$/u.test(item.line));
-    if (matches.length > 0) {
-      found = true;
-      process.stderr.write(
-        red(`FATAL: delta-only section heading leaked into main spec: ${specFile}`) + "\n"
-      );
-      for (const match of matches) process.stderr.write(`${match.number}:${match.line}
-`);
-    }
-  }
-  if (found) throw new ArchiveFailure("");
-}
-var classicArchiveCommand = async (args) => {
-  const output = new ArchiveOutput();
-  const change = args[0];
-  const dryRun = args[1] === "--dry-run";
-  try {
-    validateChangeName(change);
-    const activeDir = `openspec/changes/${change}`;
-    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    let archiveName = `${today}-${change}`;
-    let archiveDir = `openspec/changes/archive/${archiveName}`;
-    const openspec = process.env.COMET_OPENSPEC || "openspec";
-    output.stderr.push(`=== Comet Archive: ${change} ===`);
-    const activeExists = await exists2(`${activeDir}/.comet.yaml`);
-    const recoveredArchive = activeExists ? null : await findArchiveDir(change, archiveDir);
-    const changeDir = activeExists ? activeDir : recoveredArchive;
-    if (!changeDir || !await exists2(`${changeDir}/.comet.yaml`)) {
-      throw new ArchiveFailure(red(`FATAL: .comet.yaml not found in ${activeDir}/`));
-    }
-    if (recoveredArchive) {
-      archiveDir = recoveredArchive;
-      archiveName = path14.basename(recoveredArchive);
-    }
-    const projection = await readClassicState(changeDir);
-    if (!projection.classic) {
-      throw new ArchiveFailure(red("FATAL: archive requires Classic state"));
-    }
-    const classic = projection.classic;
-    const designDoc = classic.designDoc;
-    const planPath = classic.plan;
-    if (classic.phase !== "archive") {
-      throw new ArchiveFailure(red(`FATAL: phase is '${classic.phase}', expected 'archive'`));
-    }
-    if (classic.verifyResult !== "pass") {
-      throw new ArchiveFailure(
-        red(
-          `FATAL: verify_result is '${classic.verifyResult}', expected 'pass'. Run comet-verify first.`
-        )
-      );
-    }
-    output.stderr.push(green("  [OK] Entry state verified"));
-    output.stepsOk += 1;
-    output.stepsTotal += 1;
-    if (activeExists && await exists2(archiveDir)) {
-      throw new ArchiveFailure(red(`FATAL: archive target already exists: ${archiveDir}`));
-    }
-    output.stderr.push(green("  [OK] Archive target available"));
-    output.stepsOk += 1;
-    output.stepsTotal += 1;
-    if (dryRun) {
-      output.stderr.push(yellow(`  [DRY-RUN] Would run OpenSpec archive: ${change}`));
-      output.stepsOk += 1;
-      output.stepsTotal += 1;
-    } else if (!classic.archived || projection.run?.pending) {
-      const runtime = await ensureClassicRuntimeRun(changeDir);
-      const actionId = `classic-archive:${change}`;
-      const pendingAction = await readPendingAction(changeDir, runtime.run.pendingRef);
-      const recovering = Boolean(recoveredArchive) || pendingAction?.id === actionId && pendingAction.type === "checkpoint" && pendingAction.ref === change;
-      if (runtime.run.pending && runtime.run.pending !== actionId) {
-        throw new ArchiveFailure(red(`FATAL: another action is pending: ${runtime.run.pending}`));
-      }
-      if (!recovering && !classic.archived && classic.archiveConfirmation !== "confirmed") {
-        throw new ArchiveFailure(
-          red(
-            `FATAL: archive_confirmation is '${classic.archiveConfirmation ?? "null"}', expected 'confirmed'. Run final archive confirmation first.`
-          )
-        );
-      }
-      if (!recovering) {
-        const action = {
-          id: actionId,
-          stepId: runtime.run.currentStep,
-          type: "checkpoint",
-          ref: change
-        };
-        await writePendingAction(changeDir, runtime.run.pendingRef, action);
-        await writeClassicState(changeDir, {
-          classic: runtime.classic,
-          run: {
-            ...runtime.run,
-            pending: actionId,
-            status: "waiting"
-          },
-          unknownKeys: (await readClassicState(changeDir)).unknownKeys
-        });
-      }
-      if (!recoveredArchive) {
-        const archiveRun = spawnSync(openspec, ["archive", change, "--yes"], {
-          encoding: "utf8",
-          shell: process.platform === "win32"
-        });
-        if (archiveRun.stdout) process.stderr.write(archiveRun.stdout);
-        if (archiveRun.stderr) process.stderr.write(archiveRun.stderr);
-        if (archiveRun.error && archiveRun.error.code === "ENOENT") {
-          throw new ArchiveFailure(
-            [
-              red(`FATAL: OpenSpec CLI not found: ${openspec}`),
-              red("Install OpenSpec or set COMET_OPENSPEC to the openspec executable.")
-            ].join("\n")
-          );
-        }
-        if (archiveRun.status !== 0) {
-          throw new ArchiveFailure("", archiveRun.status ?? 1);
-        }
-      }
-      const resolvedArchive = await findArchiveDir(change, archiveDir);
-      if (!resolvedArchive) {
-        output.stderr.push(red("  [FAIL] OpenSpec archive output not found"));
-        output.stepsTotal += 1;
-        output.stderr.push("");
-        output.stderr.push(
-          green(`Archive complete. ${output.stepsOk}/${output.stepsTotal} steps succeeded.`)
-        );
-        return output.toResult(1);
-      }
-      archiveDir = resolvedArchive;
-      archiveName = path14.basename(resolvedArchive);
-      output.stderr.push(green(`  [OK] OpenSpec archive completed: ${archiveDir}`));
-      output.stepsOk += 1;
-      output.stepsTotal += 1;
-      await verifyMainSpecsClean();
-      output.stderr.push(green("  [OK] Main specs verified clean"));
-      output.stepsOk += 1;
-      output.stepsTotal += 1;
-      if (designDoc) {
-        await annotateFrontmatter(output, designDoc, archiveName, "status: final", false);
-      }
-      if (planPath) {
-        await annotateFrontmatter(output, planPath, archiveName, "", false);
-      }
-      const archivedProjection = await readClassicState(archiveDir);
-      if (!archivedProjection.classic || !archivedProjection.run) {
-        throw new ArchiveFailure(red("  [FAIL] archived state projection is incomplete"));
-      }
-      const artifacts = {
-        ...await readArtifacts(archiveDir, archivedProjection.run.artifactsRef),
-        archive_directory: archiveDir
-      };
-      await writeArtifacts(archiveDir, archivedProjection.run.artifactsRef, artifacts);
-      const archiveTransition = applyClassicTransition(
-        recovering && archivedProjection.classic.archiveConfirmation !== "confirmed" ? { ...archivedProjection.classic, archiveConfirmation: "confirmed" } : archivedProjection.classic,
-        "archived"
-      );
-      const archivedClassic = archiveTransition.classic;
-      let transitionedRun = archivedProjection.run;
-      if (archivedProjection.run.currentStep !== "completed" || archivedProjection.run.status !== "completed") {
-        transitionedRun = await transitionClassicRuntimeRun(
-          archiveDir,
-          archivedClassic,
-          archivedProjection.run,
-          {
-            actionId,
-            archiveDirectory: archiveDir,
-            event: "archived",
-            source: "comet-archive"
-          }
-        );
-      }
-      if (recovering) {
-        await appendRecoveryEvent(archiveDir, transitionedRun, actionId);
-      }
-      const trajectory = await readTrajectory(archiveDir, transitionedRun.trajectoryRef);
-      const context = await readContext(archiveDir, transitionedRun.contextRef);
-      const checkpoint = {
-        runId: transitionedRun.runId,
-        stateVersion: transitionedRun.iteration,
-        trajectoryOffset: trajectory.length,
-        contextHash: context === null ? null : hashText(context),
-        artifactsHash: artifactsHash(artifacts),
-        createdAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      await writeCheckpoint(archiveDir, transitionedRun.checkpointRef, checkpoint);
-      const completedRun = {
-        ...transitionedRun,
-        pending: null,
-        status: "completed"
-      };
-      await writeClassicState(archiveDir, {
-        classic: archivedClassic,
-        run: completedRun,
-        unknownKeys: archivedProjection.unknownKeys
-      });
-      await appendClassicStateEvent(archiveDir, {
-        change: archiveName,
-        event: "archived",
-        source: "comet-archive",
-        from: archivedProjection.classic,
-        to: archivedClassic,
-        effects: archiveTransition.effects
-      });
-      await clearPendingAction(archiveDir, completedRun.pendingRef);
-      output.stderr.push(green("  [OK] archived: true"));
-      output.stepsOk += 1;
-      output.stepsTotal += 1;
-    } else {
-      if (!projection.run) {
-        throw new ArchiveFailure(
-          red("FATAL: archived Classic state is missing its Run projection")
-        );
-      }
-      output.stderr.push(green(`  [OK] OpenSpec archive completed: ${archiveDir}`));
-      output.stepsOk += 1;
-      output.stepsTotal += 1;
-      output.stderr.push(green("  [OK] Main specs verified clean"));
-      output.stepsOk += 1;
-      output.stepsTotal += 1;
-      output.stderr.push(green("  [OK] archived: true"));
-      output.stepsOk += 1;
-      output.stepsTotal += 1;
-    }
-    if (dryRun) {
-      if (designDoc) {
-        await annotateFrontmatter(output, designDoc, archiveName, "status: final", true);
-      }
-      if (planPath) {
-        await annotateFrontmatter(output, planPath, archiveName, "", true);
-      }
-      output.stderr.push(
-        yellow(`  [DRY-RUN] Would set archived: true in ${archiveDir}/.comet.yaml`)
-      );
-      output.stepsOk += 1;
-      output.stepsTotal += 1;
-    }
-    if (!dryRun) await clearCurrentChangeIf(process.cwd(), change);
-    output.stderr.push("");
-    output.stderr.push(
-      dryRun ? yellow(`Dry run complete. ${output.stepsOk}/${output.stepsTotal} steps would succeed.`) : green(`Archive complete. ${output.stepsOk}/${output.stepsTotal} steps succeeded.`)
-    );
-    return output.toResult(output.stepsOk < output.stepsTotal ? 1 : 0);
-  } catch (error) {
-    if (error instanceof ArchiveFailure) {
-      if (error.message) {
-        for (const line of error.message.split("\n")) output.stderr.push(line);
-      }
-      return output.toResult(error.exitCode);
-    }
-    throw error;
-  }
-};
-
-// domains/comet-classic/classic-guard.ts
-var import_yaml5 = __toESM(require_dist(), 1);
-import { spawnSync as spawnSync2 } from "child_process";
-import { createHash as createHash4 } from "crypto";
-import { existsSync, promises as fs17, readFileSync } from "fs";
-import path18 from "path";
-
-// domains/comet-classic/classic-command-checks.ts
-import path15 from "path";
-function validateScope(scope) {
-  if (scope !== "build" && scope !== "verify") {
-    throw new Error(`Invalid command check scope: '${String(scope)}'`);
-  }
-}
-function projectRoot(changeDir) {
-  return path15.resolve(changeDir, "..", "..", "..");
-}
-function normalizedCwd(changeDir, cwd = ".") {
-  if (cwd.trim().length === 0) throw new Error("Command check cwd cannot be blank");
-  const root = projectRoot(changeDir);
-  const target = path15.resolve(root, cwd);
-  if (target !== root && !target.startsWith(root + path15.sep)) {
-    throw new Error(`Command check cwd must resolve within the project root: '${cwd}'`);
-  }
-  return path15.relative(root, target).replaceAll("\\", "/") || ".";
-}
-function validRecord(changeDir, event) {
-  if (event.type !== "command_check_recorded") return null;
-  const data = event.data;
-  if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
-  const { scope, command, exitCode, cwd } = data;
-  if (scope !== "build" && scope !== "verify" || typeof command !== "string" || command.trim().length === 0 || !Number.isInteger(exitCode) || typeof cwd !== "string") {
-    return null;
-  }
-  let normalized2;
-  try {
-    normalized2 = normalizedCwd(changeDir, cwd);
-  } catch {
-    return null;
-  }
-  return {
-    sequence: event.sequence,
-    timestamp: event.timestamp,
-    runId: event.runId,
-    scope,
-    command,
-    exitCode,
-    cwd: normalized2
-  };
-}
-async function recordCommandCheck(changeDir, run, input) {
-  validateScope(input.scope);
-  if (typeof input.command !== "string" || input.command.trim().length === 0) {
-    throw new Error("Command check command cannot be blank");
-  }
-  if (!Number.isInteger(input.exitCode)) {
-    throw new Error("Command check exitCode must be an integer");
-  }
-  const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
-  const recorded = {
-    sequence: trajectory.reduce((maximum, event) => Math.max(maximum, event.sequence), 0) + 1,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    runId: run.runId,
-    scope: input.scope,
-    command: input.command,
-    exitCode: input.exitCode,
-    cwd: normalizedCwd(changeDir, input.cwd)
-  };
-  await appendTrajectory(changeDir, run.trajectoryRef, {
-    sequence: recorded.sequence,
-    timestamp: recorded.timestamp,
-    type: "command_check_recorded",
-    runId: recorded.runId,
-    data: {
-      scope: recorded.scope,
-      command: recorded.command,
-      exitCode: recorded.exitCode,
-      cwd: recorded.cwd
-    }
-  });
-  return recorded;
-}
-async function latestCommandCheck(changeDir, run, scope) {
-  validateScope(scope);
-  const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
-  for (let index = trajectory.length - 1; index >= 0; index -= 1) {
-    const event = trajectory[index];
-    if (event.runId !== run.runId) continue;
-    const record = validRecord(changeDir, event);
-    if (record?.scope === scope) return record;
-  }
-  return null;
-}
-
-// domains/comet-classic/classic-runtime-evals.ts
-var STEP_EVIDENCE = {
-  "full.open": ["openspec.proposal", "openspec.tasks"],
-  "full.design.handoff": ["openspec.proposal", "openspec.design", "openspec.tasks"],
-  "full.design.document": ["design.handoff"],
-  "full.build.plan": ["openspec.tasks"],
-  "full.build.plan-ready": ["build.plan"],
-  "full.build.configure": ["build.plan"],
-  "full.build.execute": ["build.plan"],
-  "full.build.complete": ["build.tasks-complete"],
-  "full.verify.run": ["build.tasks-complete"],
-  "full.verify.branch": ["verification.report"],
-  "full.archive.confirm": ["verification.report"],
-  "full.archive.execute": ["archive.confirmed"]
-};
-function requirementsFor(stepId) {
-  if (STEP_EVIDENCE[stepId]) return STEP_EVIDENCE[stepId];
-  if (stepId.endsWith(".open")) return ["openspec.proposal", "openspec.tasks"];
-  if (stepId.endsWith(".build.execute")) return [];
-  if (stepId.endsWith(".build.complete")) return ["build.tasks-complete"];
-  if (stepId.endsWith(".verify.run")) return ["build.tasks-complete"];
-  if (stepId.endsWith(".verify.branch")) return ["verification.report"];
-  if (stepId.endsWith(".archive.confirm")) return ["verification.report"];
-  if (stepId.endsWith(".archive.execute")) return ["archive.confirmed"];
-  return [];
-}
-function evaluateClassicRuntimeStep(stepId, evidence) {
-  const requiredEvidence = requirementsFor(stepId);
-  const missingEvidence = requiredEvidence.filter((code) => !evidenceSatisfied(evidence, code));
-  return {
-    stepId,
-    passed: missingEvidence.length === 0,
-    requiredEvidence,
-    missingEvidence
-  };
-}
-
-// domains/comet-classic/classic-diagnostics.ts
-function nextCommandForPhase(phase) {
-  switch (phase) {
-    case "open":
-      return "/comet-open";
-    case "design":
-      return "/comet-design";
-    case "build":
-      return "/comet-build";
-    case "verify":
-      return "/comet-verify";
-    case "archive":
-      return "/comet-archive";
-    default:
-      return null;
-  }
-}
-async function inspectClassicChange(changeDir, name) {
-  try {
-    const runtime = await ensureStrictClassicRuntimeRun(changeDir);
-    const evidence = await collectClassicEvidence(changeDir, {
-      classic: runtime.classic,
-      run: runtime.run,
-      unknownKeys: []
-    });
-    const currentStep = resolveClassicStepId(runtime.classic, evidence);
-    return {
-      name,
-      valid: true,
-      workflow: runtime.classic.workflow,
-      phase: runtime.classic.phase,
-      currentStep,
-      nextCommand: nextCommandForPhase(runtime.classic.phase),
-      runtimeMode: "engine-projection",
-      runtimeEval: evaluateClassicRuntimeStep(currentStep, evidence),
-      evidence
-    };
-  } catch (error) {
-    return {
-      name,
-      valid: false,
-      workflow: "unknown",
-      phase: "invalid",
-      currentStep: null,
-      nextCommand: null,
-      runtimeMode: "invalid",
-      runtimeEval: null,
-      evidence: [],
-      error: error instanceof Error ? error.message : String(error)
-    };
-  }
-}
-
-// domains/comet-classic/classic-validate-command.ts
-var import_yaml3 = __toESM(require_dist(), 1);
-import { promises as fs14 } from "fs";
-import path16 from "path";
-var GREEN2 = "\x1B[32m";
-var RED2 = "\x1B[31m";
-var YELLOW2 = "\x1B[33m";
-var RESET2 = "\x1B[0m";
-var REQUIRED = [
-  "workflow",
-  "phase",
-  "design_doc",
-  "plan",
-  "build_mode",
-  "isolation",
-  "verify_mode",
-  "verify_result",
-  "verified_at",
-  "archived"
-];
-var ENUMS = {
-  workflow: ["full", "hotfix", "tweak"],
-  language: ["en", "zh-CN"],
-  phase: ["open", "design", "build", "verify", "archive"],
-  context_compression: ["off", "beta"],
-  build_mode: ["subagent-driven-development", "executing-plans", "direct"],
-  build_pause: ["plan-ready"],
-  subagent_dispatch: ["confirmed"],
-  tdd_mode: ["tdd", "direct"],
-  review_mode: ["off", "standard", "thorough"],
-  isolation: ["current", "branch", "worktree"],
-  verify_mode: ["light", "full"],
-  auto_transition: ["true", "false"],
-  verify_result: ["pending", "pass", "fail"],
-  branch_status: ["pending", "handled"],
-  archive_confirmation: ["pending", "confirmed"],
-  archived: ["true", "false"],
-  direct_override: ["true", "false"],
-  classic_profile: ["full", "hotfix", "tweak"],
-  classic_migration: ["1"]
-};
-var KNOWN_KEYS2 = /* @__PURE__ */ new Set([
-  ...CLASSIC_WIRE_KEYS,
-  ...RUN_WIRE_KEYS,
-  // just 'run_id'
-  "classic_profile",
-  "classic_migration"
-]);
-function color(code, message) {
-  return `${code}${message}${RESET2}`;
-}
-async function exists3(file) {
-  try {
-    await fs14.access(file);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-function text(value) {
-  if (value === null || value === void 0) return "";
-  return typeof value === "object" ? JSON.stringify(value) : String(value);
-}
-var classicValidateCommand = async (args) => {
-  const name = args[0];
-  const nameError = openSpecChangeNameError(name);
-  if (nameError) {
-    return {
-      exitCode: 1,
-      stderr: color(RED2, `ERROR: ${nameError}`)
-    };
-  }
-  const { directory, label } = await resolveClassicChangeDirectory(name);
-  const yamlFile = path16.join(directory, ".comet.yaml");
-  const lines = [`[VALIDATE] ${label}/.comet.yaml`];
-  let errors = 0;
-  let warnings = 0;
-  const fail3 = (message) => {
-    errors += 1;
-    lines.push(color(RED2, `  FAIL: ${message}`));
-  };
-  const warn = (message) => {
-    warnings += 1;
-    lines.push(color(YELLOW2, `  WARN: ${message}`));
-  };
-  let source;
-  try {
-    source = await fs14.readFile(yamlFile, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      fail3(".comet.yaml does not exist");
-      lines.push("", color(RED2, `${errors} error(s), ${warnings} warning(s) — validation FAILED`));
-      return { exitCode: 1, stderr: lines.join("\n") };
-    }
-    throw error;
-  }
-  const document = (0, import_yaml3.parseDocument)(source);
-  if (document.errors.length > 0 || !(0, import_yaml3.isMap)(document.contents)) {
-    for (const error of document.errors) fail3(error.message);
-    if (!(0, import_yaml3.isMap)(document.contents)) fail3("document root must be a mapping");
-    lines.push("", color(RED2, `${errors} error(s), ${warnings} warning(s) — validation FAILED`));
-    return { exitCode: 1, stderr: lines.join("\n") };
-  }
-  const record = document.toJS();
-  for (const field2 of REQUIRED) {
-    if (!Object.prototype.hasOwnProperty.call(record, field2)) {
-      fail3(`missing required field '${field2}'`);
-    }
-  }
-  for (const [field2, values] of Object.entries(ENUMS)) {
-    if (!Object.prototype.hasOwnProperty.call(record, field2)) continue;
-    const value = text(record[field2]);
-    if (!value) {
-      if (field2 === "auto_transition") {
-        fail3(`${field2}='' is not valid. Expected: ${values.join(" ")}`);
-      }
-      continue;
-    }
-    if (!values.includes(value)) {
-      fail3(`${field2}='${value}' is not valid. Expected: ${values.join(" ")}`);
-    }
-  }
-  if (Object.prototype.hasOwnProperty.call(record, "verify_failures")) {
-    const value = record.verify_failures;
-    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-      fail3(`verify_failures='${text(value)}' is not a non-negative integer`);
-    }
-  }
-  for (const field2 of ["design_doc", "plan", "handoff_context"]) {
-    const value = text(record[field2]);
-    if (value && !await exists3(path16.resolve(value))) {
-      fail3(`${field2}='${value}' does not exist on disk`);
-    }
-  }
-  for (const field2 of ["handoff_hash"]) {
-    const value = text(record[field2]);
-    if (value && !/^[a-f0-9]{64}$/u.test(value)) {
-      fail3(`${field2}='${value}' is not a sha256 hex digest`);
-    }
-  }
-  for (const field2 of Object.keys(record)) {
-    if (!KNOWN_KEYS2.has(field2)) warn(`unknown field '${field2}' found`);
-  }
-  lines.push("");
-  if (errors > 0) {
-    lines.push(color(RED2, `${errors} error(s), ${warnings} warning(s) — validation FAILED`));
-    return { exitCode: 1, stderr: lines.join("\n") };
-  }
-  lines.push(color(GREEN2, `0 errors, ${warnings} warning(s) — validation PASSED`));
-  return { exitCode: 0, stderr: lines.join("\n") };
-};
-
-// domains/comet-classic/classic-project-config.ts
-var import_yaml4 = __toESM(require_dist(), 1);
-import os from "os";
-import { promises as fs16 } from "fs";
-import path17 from "path";
-
-// platform/fs/file-system.ts
-import { promises as fs15 } from "fs";
-async function fileExists3(filePath) {
-  try {
-    await fs15.access(filePath);
-    return true;
-  } catch (error) {
-    if (isNotFoundError(error)) return false;
-    throw error;
-  }
-}
-async function readDir(dirPath) {
-  try {
-    return await fs15.readdir(dirPath);
-  } catch (error) {
-    const code = error?.code;
-    if (code === "ENOENT" || code === "ENOTDIR") {
-      return [];
-    }
-    throw error;
-  }
-}
-function isNotFoundError(error) {
-  return error?.code === "ENOENT";
-}
-
-// domains/comet-classic/classic-project-config.ts
-function configCandidates(options = {}) {
-  const cwd = options.cwd ?? process.cwd();
-  const homeDir = options.homeDir ?? os.homedir();
-  const candidates = [
-    { file: path17.resolve(cwd, ".comet", "config.yaml"), source: ".comet/config.yaml" },
-    {
-      file: path17.resolve(homeDir, ".comet", "config.yaml"),
-      source: "~/.comet/config.yaml"
-    }
-  ];
-  return candidates.filter(
-    (candidate, index) => candidates.findIndex((entry2) => entry2.file === candidate.file) === index
-  );
-}
-async function readClassicConfigValue(field2, options = {}) {
-  for (const candidate of configCandidates(options)) {
-    if (!await fileExists3(candidate.file)) continue;
-    const document = (0, import_yaml4.parseDocument)(await fs16.readFile(candidate.file, "utf8"), {
-      uniqueKeys: false
-    });
-    const value = document.get(field2);
-    if (value === null || value === void 0) continue;
-    return { value: String(value), source: candidate.source };
-  }
-  return null;
-}
-
-// domains/comet-classic/classic-guard.ts
-var GREEN3 = "\x1B[32m";
-var RED3 = "\x1B[31m";
-var YELLOW3 = "\x1B[33m";
-var RESET3 = "\x1B[0m";
-var PHASES2 = ["open", "design", "build", "verify", "archive"];
-var PHASE_HEADER = {
-  open: "=== Guard: open → next ===",
-  design: "=== Guard: design → build ===",
-  build: "=== Guard: build → verify ===",
-  verify: "=== Guard: verify → archive ===",
-  archive: "=== Guard: archive completeness ==="
-};
-var APPLY_MESSAGE = {
-  open: "  [APPLY] .comet.yaml updated: phase=PLACEHOLDER",
-  design: "  [APPLY] .comet.yaml updated: phase=build",
-  build: "  [APPLY] .comet.yaml updated: phase=verify, verify_result=pending",
-  verify: "  [APPLY] .comet.yaml updated: phase=archive, verify_result=pass"
-};
-var CLASSIC_FIELD_WIRE_NAMES = {
-  branchStatus: "branch_status",
-  phase: "phase",
-  verificationReport: "verification_report",
-  verifiedAt: "verified_at",
-  verifyResult: "verify_result"
-};
-function green2(message) {
-  return `${GREEN3}${message}${RESET3}`;
-}
-function red2(message) {
-  return `${RED3}${message}${RESET3}`;
-}
-function yellow2(message) {
-  return `${YELLOW3}${message}${RESET3}`;
-}
-function wireField(field2) {
-  return CLASSIC_FIELD_WIRE_NAMES[field2] ?? String(field2);
-}
-function wireValue(value) {
-  if (value === null) return "null";
-  if (value === void 0) return "";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-var GuardFailure = class extends Error {
-  constructor(message, exitCode = 1) {
-    super(message);
-    this.exitCode = exitCode;
-  }
-  exitCode;
-};
-var GuardOutput = class {
-  stderr = [];
-  diagnostics;
-  toResult(exitCode = 0) {
-    return {
-      exitCode,
-      ...this.diagnostics ? { stdout: JSON.stringify({ diagnostics: this.diagnostics }) + "\n" } : {},
-      ...this.stderr.length > 0 ? { stderr: this.stderr.join("\n") + "\n" } : {}
-    };
-  }
-};
-async function exists4(file) {
-  try {
-    await fs17.access(file);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-async function nonempty(file) {
-  try {
-    return (await fs17.stat(file)).size > 0;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-function validateChangeName2(name) {
-  const error = openSpecChangeNameError(name);
-  if (error) throw new GuardFailure(red2(`ERROR: ${error}`));
-}
-async function resolveChangeDir(name) {
-  return (await resolveClassicChangeDirectory(name)).label;
-}
-async function readField(changeDir, field2) {
-  const file = path18.join(changeDir, ".comet.yaml");
-  const document = (0, import_yaml5.parseDocument)(await fs17.readFile(file, "utf8"), { uniqueKeys: false });
-  if (document.errors.length > 0) {
-    throw new GuardFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
-  }
-  const record = document.toJS();
-  const value = record[field2];
-  if (value === null || value === void 0) return "";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-async function projectConfigValue(field2, changeDir) {
-  const changeValue = await readField(changeDir, field2);
-  if (changeValue && changeValue !== "null") return changeValue;
-  return (await readClassicConfigValue(field2))?.value ?? "";
-}
-async function configuredLanguage(changeDir) {
-  const language = await projectConfigValue("language", changeDir);
-  if (!language) return "en";
-  if (language === "en" || language === "zh-CN") return language;
-  throw new Error(`configured language '${language}' is invalid; expected en or zh-CN.`);
-}
-function stripFencedCodeBlocks(source) {
-  const kept = [];
-  let inFence = false;
-  for (const line of source.split(/\r?\n/u)) {
-    if (/^\s*```/u.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (!inFence) kept.push(line);
-  }
-  return kept.join("\n");
-}
-function countCjkChars(source) {
-  return source.match(/[\u4e00-\u9fff]/gu)?.length ?? 0;
-}
-function countEnglishWords(source) {
-  return source.match(/[A-Za-z][A-Za-z0-9_-]{2,}/gu)?.length ?? 0;
-}
-async function documentLanguageMatchesConfigured(changeDir, file) {
-  const language = await configuredLanguage(changeDir);
-  const source = stripFencedCodeBlocks(await fs17.readFile(file, "utf8"));
-  const cjk = countCjkChars(source);
-  const englishWords = countEnglishWords(source);
-  if (language === "zh-CN" && cjk < 20 && englishWords >= 20) {
-    return fail(
-      `configured language is zh-CN, but ${file} appears to be English-dominant (cjk_chars=${cjk}, english_words=${englishWords}).
-Next: regenerate or rewrite this artifact in Chinese while preserving necessary technical terms.`
-    );
-  }
-  if (language === "en" && cjk > 20 && cjk > englishWords) {
-    return fail(
-      `configured language is en, but ${file} appears to be Chinese-dominant (cjk_chars=${cjk}, english_words=${englishWords}).
-Next: regenerate or rewrite this artifact in English while preserving necessary technical terms.`
-    );
-  }
-  return pass();
-}
-function hashFile(file) {
-  return createHash4("sha256").update(readFileSync(file)).digest("hex");
-}
-async function handoffSourceFiles(changeDir) {
-  const files = [`${changeDir}/proposal.md`, `${changeDir}/design.md`, `${changeDir}/tasks.md`];
-  const specs = `${changeDir}/specs`;
-  if (await exists4(specs)) {
-    for (const entry2 of (await fs17.readdir(specs)).sort()) {
-      const spec = `${specs}/${entry2}/spec.md`;
-      if (await exists4(spec)) files.push(spec);
-    }
-  }
-  return files;
-}
-async function computeHandoffHash(changeDir) {
-  const lines = [];
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (await exists4(file)) {
-      lines.push(`path:${file}`, `sha256:${hashFile(file)}`);
-    }
-  }
-  return createHash4("sha256").update(lines.join("\n")).digest("hex");
-}
-async function preflight(changeDir, name) {
-  if (!await exists4(changeDir)) {
-    throw new GuardFailure(red2(`FATAL: change directory not found: ${changeDir}`));
-  }
-  if (!await exists4(path18.join(changeDir, ".comet.yaml"))) {
-    throw new GuardFailure(red2(`FATAL: .comet.yaml not found in ${changeDir}`));
-  }
-  const result5 = await classicValidateCommand([name], { json: false });
-  if (result5.exitCode !== 0) {
-    if (result5.stderr)
-      process.stderr.write(result5.stderr.endsWith("\n") ? result5.stderr : `${result5.stderr}
-`);
-    throw new GuardFailure(red2("FATAL: .comet.yaml schema validation failed"));
-  }
-  const projection = await readClassicState(changeDir);
-  const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
-  if (unknownKeys.length > 0) {
-    throw new GuardFailure(
-      red2(`FATAL: .comet.yaml has unknown field(s): ${unknownKeys.join(", ")}`)
-    );
-  }
-}
-function pushCheck(output, outcome) {
-  if (outcome.passed) {
-    output.stderr.push(green2(`  [PASS] ${outcome.description}`));
-    if (outcome.detail) {
-      for (const line of outcome.detail.split("\n")) output.stderr.push(green2(`    ${line}`));
-    }
-  } else {
-    output.stderr.push(red2(`  [FAIL] ${outcome.description}`));
-    if (outcome.detail) {
-      for (const line of outcome.detail.split("\n")) output.stderr.push(red2(`    ${line}`));
-    }
-  }
-}
-function check(description, run) {
-  return async () => {
-    try {
-      const result5 = await run();
-      return {
-        description,
-        passed: result5.passed,
-        detail: ("detail" in result5 ? result5.detail : "") ?? ""
-      };
-    } catch (error) {
-      return {
-        description,
-        passed: false,
-        detail: error instanceof Error ? error.message : String(error)
-      };
-    }
-  };
-}
-function pass(detail) {
-  return { passed: true, ...detail ? { detail } : {} };
-}
-function fail(detail) {
-  return { passed: false, detail };
-}
-async function runChecks(output, builders) {
-  let blocked2 = false;
-  for (const build of builders) {
-    const outcome = await build();
-    pushCheck(output, outcome);
-    if (!outcome.passed) blocked2 = true;
-  }
-  return blocked2;
-}
-var INFERRED_COMMAND_SOURCES = [
-  "package.json with a build script",
-  "pom.xml",
-  "Cargo.toml"
-];
-async function removedProjectCommandField(field2) {
-  const config = path18.join(".comet", "config.yaml");
-  if (!await exists4(config)) return false;
-  const document = (0, import_yaml5.parseDocument)(await fs17.readFile(config, "utf8"));
-  if (document.errors.length > 0) {
-    throw new Error(
-      `.comet/config.yaml is invalid YAML (${document.errors[0].message}); cannot check for removed "${field2}" field. Fix the config and retry.`
-    );
-  }
-  const value = document.toJS();
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, field2);
-}
-function removedProjectCommandRun(field2) {
-  return {
-    status: 1,
-    output: `${field2} has been removed from .comet/config.yaml. Delete this field and run any required ${field2 === "build_command" ? "build" : "verification"} command manually before retrying.`
-  };
-}
-function runInferred(command) {
-  const result5 = spawnSync2(command, { shell: true, encoding: "utf8", timeout: 3e5 });
-  return {
-    status: result5.status ?? 1,
-    output: `${result5.stdout ?? ""}${result5.stderr ?? ""}`.replace(/\n+$/u, "")
-  };
-}
-async function inferredBuildCommand() {
-  if (await exists4("package.json") && (() => {
-    const parsed = JSON.parse(readFileSync("package.json", "utf8"));
-    return typeof parsed.scripts?.build === "string";
-  })()) {
-    return "npm run build";
-  }
-  if (await exists4("pom.xml")) {
-    if (process.platform === "win32") {
-      if (existsSync("mvnw.cmd")) return "mvnw.cmd compile -q";
-      return "mvn.cmd compile -q";
-    }
-    if (existsSync("mvnw")) return "./mvnw compile -q";
-    return "mvn compile -q";
-  }
-  if (await exists4("Cargo.toml")) return "cargo build";
-  return null;
-}
-function evidenceDetail(record) {
-  return `Evidence: recorded command-check at ${record.timestamp}; command: ${record.command}; cwd: ${record.cwd}`;
-}
-function recoveryCommand(change, scope, command) {
-  return `comet state record-check ${change} ${scope} --command "${command}" --exit-code 0`;
-}
-async function commandCheckPasses(changeDir, change, run, scope) {
-  if (process.env.COMET_SKIP_BUILD === "1") {
-    return { status: 0, output: "SKIPPED via COMET_SKIP_BUILD=1" };
-  }
-  const removedFields = scope === "build" ? ["build_command"] : ["verify_command", "build_command"];
-  for (const removedField of removedFields) {
-    if (await removedProjectCommandField(removedField)) {
-      return removedProjectCommandRun(removedField);
-    }
-  }
-  const inferred = scope === "build" ? await inferredBuildCommand() : null;
-  if (inferred) return runInferred(inferred);
-  const recorded = await latestCommandCheck(changeDir, run, scope);
-  if (!recorded) {
-    return {
-      status: 1,
-      output: scope === "build" ? `No inferred build command or recorded build check. Detection searched: ${INFERRED_COMMAND_SOURCES.join(", ")}.
-Next: run the required command, then record it with:
-${recoveryCommand(change, scope, "<command>")}` : `No recorded verify check.
-Next: run the required verification command, then record it with:
-${recoveryCommand(change, scope, "<command>")}`
-    };
-  }
-  if (recorded.exitCode !== 0) {
-    return {
-      status: recorded.exitCode,
-      output: `Latest recorded ${scope} check failed with exit code ${recorded.exitCode}.
-${evidenceDetail(recorded)}
-Next: rerun the command successfully, then record it with:
-${recoveryCommand(change, scope, recorded.command)}`
-    };
-  }
-  return { status: 0, output: evidenceDetail(recorded) };
-}
-async function tasksAllDone(changeDir) {
-  const tasks = path18.join(changeDir, "tasks.md");
-  if (!await exists4(tasks)) {
-    return fail(
-      `tasks.md is missing at ${tasks}
-Next: restore or create tasks.md for this change before leaving build.`
-    );
-  }
-  const source = await fs17.readFile(tasks, "utf8");
-  if (!/- \[x\]/u.test(source)) {
-    return fail(
-      "tasks.md has no completed tasks.\nNext: complete implementation tasks and mark them with '- [x]'."
-    );
-  }
-  const unfinished = source.split(/\r?\n/u).map((line, index) => ({ line, number: index + 1 })).filter((entry2) => /^- \[ \]/u.test(entry2.line));
-  if (unfinished.length > 0) {
-    return fail(
-      `Unfinished tasks:
-${unfinished.map((entry2) => `${entry2.number}:${entry2.line}`).join("\n")}
-Next: complete or explicitly remove unfinished tasks, then mark tasks.md with '- [x]'.`
-    );
-  }
-  return pass();
-}
-async function tasksHasAny(changeDir) {
-  const tasks = path18.join(changeDir, "tasks.md");
-  if (!await exists4(tasks)) return false;
-  return /- \[/u.test(await fs17.readFile(tasks, "utf8"));
-}
-async function planTasksAllDone(changeDir) {
-  const plan = await readField(changeDir, "plan");
-  if (!plan || plan === "null") return pass();
-  if (!await exists4(plan)) {
-    return fail(
-      `plan file is missing at ${plan}
-Next: restore the Superpowers plan file or update .comet.yaml plan before leaving build.`
-    );
-  }
-  const source = await fs17.readFile(plan, "utf8");
-  const unfinished = source.split(/\r?\n/u).map((line, index) => ({ line, number: index + 1 })).filter((entry2) => /^\s*- \[ \]/u.test(entry2.line));
-  if (unfinished.length > 0) {
-    return fail(
-      `Unfinished Superpowers plan tasks:
-${unfinished.map((entry2) => `${entry2.number}:${entry2.line}`).join("\n")}
-Next: check off corresponding completed plan tasks, then commit the plan update.`
-    );
-  }
-  return pass();
-}
-async function isolationSelected(changeDir, change) {
-  const isolation = await readField(changeDir, "isolation");
-  const workflow = await readField(changeDir, "workflow");
-  if (isolation === "branch" || isolation === "worktree") return pass();
-  if (isolation === "current" && (workflow === "hotfix" || workflow === "tweak")) return pass();
-  const allowedValues = workflow === "full" ? "<branch|worktree>" : "<current|branch|worktree>";
-  return fail(
-    `isolation must be ${workflow === "full" ? "branch or worktree" : "current, branch, or worktree"}, got '${isolation || "null"}'
-Next: choose a valid workspace mode, prepare it when needed, then run:
-  comet state set ${change} isolation ${allowedValues}`
-  );
-}
-async function buildModeSelected(changeDir, change) {
-  const buildMode = await readField(changeDir, "build_mode");
-  if (["subagent-driven-development", "executing-plans", "direct"].includes(buildMode))
-    return pass();
-  return fail(
-    `build_mode must be selected before leaving build, got '${buildMode || "null"}'
-Next: ask the user to choose an execution mode, then run:
-  comet state set ${change} build_mode <subagent-driven-development|executing-plans>`
-  );
-}
-async function buildModeAllowedForWorkflow(changeDir) {
-  const workflow = await readField(changeDir, "workflow");
-  const buildMode = await readField(changeDir, "build_mode");
-  const directOverride = await readField(changeDir, "direct_override");
-  if (buildMode !== "direct") return pass();
-  if (workflow === "hotfix" || workflow === "tweak") return pass();
-  if (directOverride === "true") return pass();
-  return fail(
-    "build_mode=direct is only allowed for hotfix/tweak unless direct_override: true is recorded\nNext: choose executing-plans or subagent-driven-development, or stop and ask the user for an explicit direct override."
-  );
-}
-async function subagentDispatchConfirmed(changeDir, change) {
-  const buildMode = await readField(changeDir, "build_mode");
-  const subagentDispatch = await readField(changeDir, "subagent_dispatch");
-  if (buildMode !== "subagent-driven-development") return pass();
-  if (subagentDispatch === "confirmed") return pass();
-  return fail(
-    `subagent_dispatch must be confirmed before using build_mode=subagent-driven-development
-Next: confirm the current platform has a real background subagent/Task/multi-agent dispatcher, then run:
-  comet state set ${change} subagent_dispatch confirmed
-If dispatch is unavailable, return to /comet-build Step 2 with subagent-driven-development removed. When executing-plans is the only valid mode, run:
-  comet state set ${change} build_mode executing-plans`
-  );
-}
-async function tddModeSelected(changeDir, change) {
-  const workflow = await readField(changeDir, "workflow");
-  if (workflow === "hotfix" || workflow === "tweak") return pass();
-  const tddMode = await readField(changeDir, "tdd_mode");
-  if (tddMode === "tdd" || tddMode === "direct") return pass();
-  return fail(
-    `tdd_mode must be tdd or direct for full workflow, got '${tddMode || "null"}'
-Next: ask the user to choose TDD enforcement level, then run:
-  comet state set ${change} tdd_mode <tdd|direct>`
-  );
-}
-async function reviewModeSelected(changeDir, change) {
-  const workflow = await readField(changeDir, "workflow");
-  if (workflow === "hotfix" || workflow === "tweak") return pass();
-  const reviewMode = await readField(changeDir, "review_mode");
-  if (reviewMode === "off" || reviewMode === "standard" || reviewMode === "thorough") {
-    return pass();
-  }
-  return fail(
-    `review_mode must be off, standard, or thorough before leaving build, got '${reviewMode || "null"}'
-Next: ask the user to choose review strength, then run:
-  comet state set ${change} review_mode <off|standard|thorough>`
-  );
-}
-async function verificationReportExists(changeDir) {
-  const report = await readField(changeDir, "verification_report");
-  return Boolean(report) && report !== "null" && existsSync(report);
-}
-async function branchStatusHandled(changeDir) {
-  return await readField(changeDir, "branch_status") === "handled";
-}
-async function archivedIsTrue(changeDir) {
-  return await readField(changeDir, "archived") === "true";
-}
-async function designDocFrontmatterHas(designDoc, field2, expected) {
-  const source = (await fs17.readFile(designDoc, "utf8")).replace(/^\uFEFF/u, "");
-  let inFrontmatter = false;
-  for (const line of source.split(/\r?\n/u)) {
-    if (!inFrontmatter) {
-      if (line === "---") inFrontmatter = true;
-      continue;
-    }
-    if (line === "---") break;
-    if (new RegExp(`^${field2}: ['"]?${expected}['"]?\\s*$`, "u").test(line)) return true;
-  }
-  return false;
-}
-async function designDocRecorded(changeDir, change) {
-  const designDoc = await readField(changeDir, "design_doc");
-  if (designDoc && designDoc !== "null" && existsSync(designDoc)) return pass();
-  return fail(
-    `design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design.
-Next: create the Design Doc and run: comet state set ${change} design_doc <path>`
-  );
-}
-async function designHandoffContextValid(changeDir, change) {
-  const context = await readField(changeDir, "handoff_context");
-  const recordedHash = await readField(changeDir, "handoff_hash");
-  if (!context || context === "null") {
-    return fail(
-      `handoff_context is missing from .comet.yaml
-Next: run node "$COMET_HANDOFF" ${change} design --write before invoking Superpowers.`
-    );
-  }
-  if (!await nonempty(context)) {
-    return fail(
-      `handoff_context does not point to a non-empty file: ${context}
-Next: regenerate the design handoff with comet handoff ${change} design --write.`
-    );
-  }
-  if (!/^[a-f0-9]{64}$/u.test(recordedHash)) {
-    return fail(
-      `handoff_hash is missing or invalid: ${recordedHash || "null"}
-Next: regenerate the design handoff with comet handoff ${change} design --write.`
-    );
-  }
-  const actualHash = await computeHandoffHash(changeDir);
-  if (actualHash !== recordedHash) {
-    return fail(
-      `OpenSpec artifacts changed after handoff was generated.
-Expected handoff_hash: ${recordedHash}
-Actual handoff_hash:   ${actualHash}
-Next: run comet handoff ${change} design --write so Superpowers receives the current OpenSpec context.`
-    );
-  }
-  const markdown = `${context.replace(/\.json$/u, "")}.md`;
-  if (!await nonempty(markdown)) {
-    return fail(
-      `design handoff markdown is missing or empty: ${markdown}
-Next: regenerate the design handoff with comet handoff ${change} design --write.`
-    );
-  }
-  return pass();
-}
-async function designHandoffMarkdownTraceable(changeDir) {
-  const context = await readField(changeDir, "handoff_context");
-  if (!context || context === "null") return fail("handoff_context is missing from .comet.yaml");
-  const markdown = `${context.replace(/\.json$/u, "")}.md`;
-  if (!await nonempty(markdown))
-    return fail(`design handoff markdown is missing or empty: ${markdown}`);
-  const source = await fs17.readFile(markdown, "utf8");
-  const problems = [];
-  if (!/^Generated-by: comet-handoff\.sh$/mu.test(source)) {
-    problems.push("handoff markdown is missing Generated-by marker");
-  }
-  if (!/^- Mode: (compact|full|beta)$/mu.test(source)) {
-    problems.push("handoff markdown is missing Mode marker");
-  }
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (!await exists4(file)) continue;
-    if (!new RegExp(`^- Source: ${file}$`, "mu").test(source)) {
-      problems.push(`handoff markdown is missing source reference: ${file}`);
-    }
-    if (!new RegExp(`^- SHA256: ${hashFile(file)}$`, "mu").test(source)) {
-      problems.push(`handoff markdown is missing current sha256 for: ${file}`);
-    }
-  }
-  return problems.length === 0 ? pass() : fail(problems.join("\n"));
-}
-async function contextCompressionMode(changeDir) {
-  return await readField(changeDir, "context_compression") || "off";
-}
-async function betaSpecJsonStructurallyValid(changeDir) {
-  if (await contextCompressionMode(changeDir) !== "beta") return pass();
-  const context = await readField(changeDir, "handoff_context");
-  if (!context || context === "null") return fail("handoff_context is missing from .comet.yaml");
-  if (!await nonempty(context)) return fail(`spec-context.json is missing or empty: ${context}`);
-  const source = await fs17.readFile(context, "utf8");
-  const problems = [];
-  let parsed;
-  try {
-    parsed = JSON.parse(source);
-  } catch (error) {
-    return fail(
-      `spec-context.json invalid JSON: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return fail("spec-context.json root must be an object");
-  }
-  const record = parsed;
-  if (typeof record.change !== "string") problems.push("spec-context.json missing 'change' field");
-  if (typeof record.phase !== "string") problems.push("spec-context.json missing 'phase' field");
-  if (record.mode !== "beta") problems.push("spec-context.json mode is not beta");
-  if (typeof record.context_hash !== "string") {
-    problems.push("spec-context.json missing 'context_hash' field");
-  }
-  if (!Array.isArray(record.files)) problems.push("spec-context.json missing 'files' field");
-  const files = Array.isArray(record.files) ? record.files.filter(
-    (file) => Boolean(file) && typeof file === "object" && !Array.isArray(file)
-  ) : [];
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (!await exists4(file)) continue;
-    if (!files.some((entry2) => entry2.path === file && typeof entry2.sha256 === "string")) {
-      problems.push(`spec-context.json missing source file reference: ${file}`);
-    }
-  }
-  return problems.length === 0 ? pass() : fail(problems.join("\n"));
-}
-async function guardOpenChecks(output, changeDir) {
-  const workflow = await readField(changeDir, "workflow");
-  const checks = [
-    check(
-      "proposal.md exists and non-empty",
-      async () => await nonempty(path18.join(changeDir, "proposal.md")) ? pass() : fail("")
-    ),
-    check(
-      "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "proposal.md"))
-    ),
-    check(
-      "tasks.md exists and non-empty",
-      async () => await nonempty(path18.join(changeDir, "tasks.md")) ? pass() : fail("")
-    ),
-    check(
-      "tasks.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "tasks.md"))
-    ),
-    check(
-      "tasks.md has at least one task",
-      async () => await tasksHasAny(changeDir) ? pass() : fail("")
-    )
-  ];
-  if (workflow === "full") {
-    checks.splice(
-      1,
-      0,
-      check(
-        "design.md exists and non-empty",
-        async () => await nonempty(path18.join(changeDir, "design.md")) ? pass() : fail("")
-      ),
-      check(
-        "design.md matches configured language",
-        () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "design.md"))
-      )
-    );
-  }
-  return runChecks(output, checks);
-}
-async function guardDesignChecks(output, changeDir, change) {
-  const designDoc = await readField(changeDir, "design_doc");
-  const workflow = await readField(changeDir, "workflow");
-  const builders = [
-    check(
-      "proposal.md exists",
-      async () => await nonempty(path18.join(changeDir, "proposal.md")) ? pass() : fail("")
-    ),
-    check(
-      "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "proposal.md"))
-    ),
-    check(
-      "design.md exists",
-      async () => await nonempty(path18.join(changeDir, "design.md")) ? pass() : fail("")
-    ),
-    check(
-      "design.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "design.md"))
-    ),
-    check(
-      "tasks.md exists",
-      async () => await nonempty(path18.join(changeDir, "tasks.md")) ? pass() : fail("")
-    ),
-    check(
-      "tasks.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "tasks.md"))
-    ),
-    check("design handoff context exists", () => designHandoffContextValid(changeDir, change)),
-    check("design handoff markdown is traceable", () => designHandoffMarkdownTraceable(changeDir))
-  ];
-  if (await contextCompressionMode(changeDir) === "beta") {
-    builders.push(
-      check(
-        "beta spec-context.json is structurally valid",
-        () => betaSpecJsonStructurallyValid(changeDir)
-      )
-    );
-  }
-  if (workflow === "full") {
-    builders.push(
-      check("design_doc is recorded for full workflow", () => designDocRecorded(changeDir, change))
-    );
-  }
-  let blocked2 = await runChecks(output, builders);
-  if (designDoc && designDoc !== "null") {
-    blocked2 = await runChecks(output, [
-      check(
-        `Design Doc (${designDoc}) exists`,
-        async () => await nonempty(designDoc) ? pass() : fail("")
-      ),
-      check(
-        "Design Doc matches configured language",
-        () => documentLanguageMatchesConfigured(changeDir, designDoc)
-      ),
-      check("Design Doc frontmatter links current change", async () => {
-        if (!await nonempty(designDoc)) return fail("");
-        return await designDocFrontmatterHas(designDoc, "comet_change", change) ? pass() : fail("");
-      }),
-      check("Design Doc declares technical design role", async () => {
-        if (!await nonempty(designDoc)) return fail("");
-        return await designDocFrontmatterHas(designDoc, "role", "technical-design") ? pass() : fail("");
-      }),
-      check("Design Doc declares OpenSpec as canonical spec", async () => {
-        if (!await nonempty(designDoc)) return fail("");
-        return await designDocFrontmatterHas(designDoc, "canonical_spec", "openspec") ? pass() : fail("");
-      })
-    ]) || blocked2;
-  } else if (workflow !== "full") {
-    output.stderr.push(
-      yellow2("  [WARN] No design_doc recorded in .comet.yaml (optional for hotfix/tweak)")
-    );
-  }
-  return blocked2;
-}
-async function guardBuildChecks(output, changeDir, change, run) {
-  return runChecks(output, [
-    check("isolation selected", () => isolationSelected(changeDir, change)),
-    check("build_mode selected", () => buildModeSelected(changeDir, change)),
-    check("build_mode allowed for workflow", () => buildModeAllowedForWorkflow(changeDir)),
-    check("subagent dispatch confirmed", () => subagentDispatchConfirmed(changeDir, change)),
-    check("tdd_mode selected", () => tddModeSelected(changeDir, change)),
-    check("review_mode selected", () => reviewModeSelected(changeDir, change)),
-    check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
-    check("Superpowers plan all tasks checked", () => planTasksAllDone(changeDir)),
-    check(
-      "proposal.md exists",
-      async () => await nonempty(path18.join(changeDir, "proposal.md")) ? pass() : fail("")
-    ),
-    check(
-      "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "proposal.md"))
-    ),
-    check("Superpowers plan matches configured language", async () => {
-      const plan = await readField(changeDir, "plan");
-      if (!plan || plan === "null" || !await exists4(plan)) return pass();
-      return documentLanguageMatchesConfigured(changeDir, plan);
-    }),
-    // Build check runs last — only after all config checks pass — to avoid
-    // wasting time on a build that would be rejected by a config failure.
-    check("Build passes", async () => {
-      const buildResult = await commandCheckPasses(changeDir, change, run, "build");
-      return buildResult.status === 0 ? pass(buildResult.output) : fail(buildResult.output);
-    })
-  ]);
-}
-async function guardVerifyChecks(output, changeDir, change, run) {
-  return runChecks(output, [
-    check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
-    // Verification command runs after tasks check — no point running tests
-    // if tasks.md is incomplete.
-    check("Verification passes", async () => {
-      const verifyResult = await commandCheckPasses(changeDir, change, run, "verify");
-      return verifyResult.status === 0 ? pass(verifyResult.output) : fail(verifyResult.output);
-    }),
-    check(
-      "verification_report exists",
-      async () => await verificationReportExists(changeDir) ? pass() : fail("")
-    ),
-    check("verification_report matches configured language", async () => {
-      const report = await readField(changeDir, "verification_report");
-      if (!report || report === "null" || !await exists4(report)) return pass();
-      return documentLanguageMatchesConfigured(changeDir, report);
-    })
-  ]);
-}
-async function guardArchiveChecks(output, changeDir) {
-  return runChecks(output, [
-    check("archived is true", async () => await archivedIsTrue(changeDir) ? pass() : fail("")),
-    check(
-      "proposal.md exists",
-      async () => await nonempty(path18.join(changeDir, "proposal.md")) ? pass() : fail("")
-    ),
-    check(
-      "design.md exists",
-      async () => await nonempty(path18.join(changeDir, "design.md")) ? pass() : fail("")
-    ),
-    check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
-    check(
-      "branch_status=handled",
-      async () => await branchStatusHandled(changeDir) ? pass() : fail("")
-    )
-  ]);
-}
-async function applyStateUpdate(output, change, changeDir, phase, context) {
-  const event = CLASSIC_GUARD_TRANSITION_EVENT[phase];
-  if (!event) return;
-  const result5 = applyClassicTransition(context.classic, event);
-  await transitionClassicRuntimeRun(changeDir, result5.classic, context.run, {
-    event,
-    phase,
-    source: "comet-guard"
-  });
-  await appendClassicStateEvent(changeDir, {
-    change,
-    event,
-    source: "comet-guard",
-    from: context.classic,
-    to: result5.classic,
-    effects: result5.effects
-  });
-  for (const effect of result5.effects) {
-    output.stderr.push(green2(`[SET] ${wireField(effect.field)}=${wireValue(effect.to)}`));
-  }
-  output.stderr.push(green2(`[TRANSITION] ${event}`));
-  const template = APPLY_MESSAGE[phase];
-  const message = phase === "open" ? template.replace("PLACEHOLDER", result5.classic.phase) : template;
-  output.stderr.push(green2(message));
-}
-var classicGuardCommand = async (args, options) => {
-  const output = new GuardOutput();
-  const [change, phase, flag] = args;
-  try {
-    validateChangeName2(change);
-    if (!phase || !PHASES2.includes(phase)) {
-      throw new GuardFailure(
-        `${red2(`Unknown phase: ${phase ?? ""}`)}
-Valid phases: open, design, build, verify, archive`
-      );
-    }
-    const changeDir = await resolveChangeDir(change);
-    await preflight(changeDir, change);
-    const runContext = await ensureClassicRuntimeRun(changeDir);
-    const diagnostic = await inspectClassicChange(changeDir, change);
-    if (options.json) {
-      output.diagnostics = {
-        change,
-        phase,
-        currentStep: diagnostic.currentStep,
-        runtimeEval: diagnostic.runtimeEval
-      };
-    }
-    output.stderr.push(PHASE_HEADER[phase]);
-    let blocked2;
-    if (phase === "open") blocked2 = await guardOpenChecks(output, changeDir);
-    else if (phase === "design") blocked2 = await guardDesignChecks(output, changeDir, change);
-    else if (phase === "build")
-      blocked2 = await guardBuildChecks(output, changeDir, change, runContext.run);
-    else if (phase === "verify")
-      blocked2 = await guardVerifyChecks(output, changeDir, change, runContext.run);
-    else blocked2 = await guardArchiveChecks(output, changeDir);
-    if (blocked2) {
-      output.stderr.push("");
-      output.stderr.push(red2("BLOCKED — fix failing checks before proceeding to next phase"));
-      return output.toResult(1);
-    }
-    output.stderr.push("");
-    output.stderr.push(green2("ALL CHECKS PASSED — ready for next phase"));
-    if (flag === "--apply") {
-      await applyStateUpdate(output, change, changeDir, phase, runContext);
-    }
-    return output.toResult(0);
-  } catch (error) {
-    if (error instanceof GuardFailure) {
-      for (const line of error.message.split("\n")) output.stderr.push(line);
-      return output.toResult(error.exitCode);
-    }
-    throw error;
-  }
-};
-
-// domains/comet-classic/classic-handoff.ts
-var import_yaml6 = __toESM(require_dist(), 1);
-import { createHash as createHash5 } from "crypto";
-import { promises as fs18, readFileSync as readFileSync2 } from "fs";
-import path19 from "path";
-var GREEN4 = "\x1B[32m";
-var RED4 = "\x1B[31m";
-var YELLOW4 = "\x1B[33m";
-var RESET4 = "\x1B[0m";
-function green3(message) {
-  return `${GREEN4}${message}${RESET4}`;
-}
-function red3(message) {
-  return `${RED4}${message}${RESET4}`;
-}
-function yellow3(message) {
-  return `${YELLOW4}${message}${RESET4}`;
-}
-var HandoffFailure = class extends Error {
-  constructor(message, exitCode = 1) {
-    super(message);
-    this.exitCode = exitCode;
-  }
-  exitCode;
-};
-var HandoffOutput = class {
-  stdout = [];
-  stderr = [];
-  toResult(exitCode = 0) {
-    return {
-      exitCode,
-      ...this.stdout.length > 0 ? { stdout: this.stdout.join("\n") + "\n" } : {},
-      ...this.stderr.length > 0 ? { stderr: this.stderr.join("\n") + "\n" } : {}
-    };
-  }
-};
-async function exists5(file) {
-  try {
-    await fs18.access(file);
-    return true;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-async function nonempty2(file) {
-  try {
-    return (await fs18.stat(file)).size > 0;
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-function validateChangeName3(name) {
-  const error = openSpecChangeNameError(name);
-  if (error) throw new HandoffFailure(red3(`ERROR: ${error}`));
-}
-function hashFile2(file) {
-  return createHash5("sha256").update(readFileSync2(file)).digest("hex");
-}
-function hashText2(content) {
-  return createHash5("sha256").update(content).digest("hex");
-}
-function artifactsHash2(artifacts) {
-  return hashText2(
-    JSON.stringify(
-      Object.fromEntries(
-        Object.entries(artifacts).sort(([left], [right]) => left.localeCompare(right))
-      )
-    )
-  );
-}
-async function handoffSourceFiles2(changeDir) {
-  const files = [`${changeDir}/proposal.md`, `${changeDir}/design.md`, `${changeDir}/tasks.md`];
-  const specs = `${changeDir}/specs`;
-  if (await exists5(specs)) {
-    for (const entry2 of (await fs18.readdir(specs)).sort()) {
-      const spec = `${specs}/${entry2}/spec.md`;
-      if (await exists5(spec)) files.push(spec);
-    }
-  }
-  return files;
-}
-async function computeContextHash(changeDir) {
-  const lines = [];
-  for (const file of await handoffSourceFiles2(changeDir)) {
-    if (await exists5(file)) {
-      lines.push(`path:${file}`, `sha256:${hashFile2(file)}`);
-    }
-  }
-  return createHash5("sha256").update(lines.join("\n")).digest("hex");
-}
-function jsonEscape(value) {
-  return value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
-}
-function lineCount(content) {
-  return (content.match(/\n/gu) ?? []).length;
-}
-function firstLines(content, max) {
-  let count = 0;
-  for (let i = 0; i < content.length; i += 1) {
-    if (content[i] === "\n") {
-      count += 1;
-      if (count === max) return content.slice(0, i + 1);
-    }
-  }
-  return content;
-}
-async function writeMarkdownContext(changeDir, change, mode, contextHash, output) {
-  const lines = [
-    "# Comet Design Handoff",
-    "",
-    `- Change: ${change}`,
-    "- Phase: design",
-    `- Mode: ${mode}`,
-    `- Context hash: ${contextHash}`,
-    "",
-    "Generated-by: comet-handoff.sh",
-    "",
-    "OpenSpec remains the canonical capability spec. This handoff is a deterministic, source-traceable context pack, not an agent-authored summary.",
-    ""
-  ];
-  for (const file of await handoffSourceFiles2(changeDir)) {
-    if (!await exists5(file)) continue;
-    const content = await fs18.readFile(file, "utf8");
-    const total = lineCount(content);
-    lines.push(
-      `## ${file}`,
-      "",
-      `- Source: ${file}`,
-      `- Lines: 1-${total}`,
-      `- SHA256: ${hashFile2(file)}`,
-      ""
-    );
-    if (mode === "full" || total <= 80) {
-      lines.push("```md", content, "```");
-    } else {
-      lines.push(
-        "[TRUNCATED]",
-        "",
-        "```md",
-        firstLines(content, 80),
-        "```",
-        "",
-        `Full source: ${file}`
-      );
-    }
-    lines.push("");
-  }
-  await fs18.writeFile(output, lines.join("\n"));
-}
-async function writeJsonContext(changeDir, change, mode, contextHash, output) {
-  const entries = [];
-  for (const file of await handoffSourceFiles2(changeDir)) {
-    if (!await exists5(file)) continue;
-    entries.push(`    { "path": "${jsonEscape(file)}", "sha256": "${hashFile2(file)}" }`);
-  }
-  const filesBlock = entries.join(",\n");
-  const document = [
-    "{",
-    `  "change": "${jsonEscape(change)}",`,
-    '  "phase": "design",',
-    `  "mode": "${mode}",`,
-    '  "canonical_spec": "openspec",',
-    '  "generated_by": "comet-handoff.sh",',
-    `  "context_hash": "${contextHash}",`,
-    '  "files": [',
-    filesBlock,
-    "  ]",
-    "}",
-    ""
-  ].join("\n");
-  await fs18.writeFile(output, document);
-}
-async function writeSpecProjectionForFile(file, content) {
-  return [
-    `## ${file}`,
-    "",
-    `- Source: ${file}`,
-    `- Lines: 1-${lineCount(content)}`,
-    `- SHA256: ${hashFile2(file)}`,
-    "",
-    "```md",
-    content,
-    "```",
-    ""
-  ];
-}
-async function writeSpecMarkdownContext(changeDir, change, contextHash, output) {
-  const lines = [
-    "# Comet Spec Context",
-    "",
-    `- Change: ${change}`,
-    "- Phase: design",
-    "- Mode: beta",
-    `- Context hash: ${contextHash}`,
-    "",
-    "Generated-by: comet-handoff.sh",
-    "",
-    "OpenSpec remains the canonical capability spec. This beta context pack verbatim-projects spec files and references supporting artifacts by hash, not an agent-authored summary.",
-    "",
-    "## Source References",
-    ""
-  ];
-  for (const file of await handoffSourceFiles2(changeDir)) {
-    if (!await exists5(file)) continue;
-    lines.push(`- Source: ${file}`, `- SHA256: ${hashFile2(file)}`);
-  }
-  lines.push("", "## Acceptance Projection", "");
-  const specs = `${changeDir}/specs`;
-  let projected = false;
-  if (await exists5(specs)) {
-    for (const entry2 of (await fs18.readdir(specs)).sort()) {
-      const spec = `${specs}/${entry2}/spec.md`;
-      if (!await exists5(spec)) continue;
-      projected = true;
-      lines.push(...await writeSpecProjectionForFile(spec, await fs18.readFile(spec, "utf8")));
-    }
-  }
-  if (!projected) {
-    lines.push("No delta spec files found.", "");
-  }
-  lines.push(
-    "Full source files remain canonical. If a required heading or scenario is missing here, regenerate the handoff or read the source spec directly. Supporting files (proposal, design, tasks) are referenced by hash only."
-  );
-  await fs18.writeFile(output, lines.join("\n"));
-}
-async function writeSpecJsonContext(changeDir, change, contextHash, output) {
-  const entries = [];
-  for (const file of await handoffSourceFiles2(changeDir)) {
-    if (!await exists5(file)) continue;
-    const role = /\/specs\/[^/]+\/spec\.md$/u.test(file) ? "spec" : "supporting";
-    entries.push({ path: file, sha256: hashFile2(file), role });
-  }
-  await fs18.writeFile(
-    output,
-    `${JSON.stringify(
-      {
-        change,
-        phase: "design",
-        mode: "beta",
-        canonical_spec: "openspec",
-        generated_by: "comet-handoff.sh",
-        context_hash: contextHash,
-        files: entries
-      },
-      null,
-      2
-    )}
-`
-  );
-}
-async function readField2(changeDir, field2) {
-  const file = path19.join(changeDir, ".comet.yaml");
-  const document = (0, import_yaml6.parseDocument)(await fs18.readFile(file, "utf8"), { uniqueKeys: false });
-  if (document.errors.length > 0) {
-    throw new HandoffFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
-  }
-  const record = document.toJS();
-  const value = record[field2];
-  if (value === null || value === void 0) return "";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-async function appendRecoveryEvent2(changeDir, run, actionId) {
-  const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
-  const alreadyRecorded = trajectory.some(
-    (event) => event.type === "recovery_reconciled" && event.data.kind === "classic-handoff" && event.data.actionId === actionId
-  );
-  if (alreadyRecorded) return;
-  await appendTrajectory(changeDir, run.trajectoryRef, {
-    sequence: trajectory.length + 1,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    type: "recovery_reconciled",
-    runId: run.runId,
-    data: {
-      kind: "classic-handoff",
-      actionId
-    }
-  });
-}
-async function completedHandoffIsCurrent(changeDir, run, contextHash, contextJson, contextMd) {
-  const [context, artifacts, checkpoint] = await Promise.all([
-    readContext(changeDir, run.contextRef),
-    readArtifacts(changeDir, run.artifactsRef),
-    readCheckpoint(changeDir, run.checkpointRef)
-  ]);
-  if (!await exists5(contextJson) || !await exists5(contextMd)) return false;
-  if (context !== await fs18.readFile(contextMd, "utf8")) return false;
-  if (artifacts.handoff_context !== contextJson || artifacts.handoff_markdown !== contextMd) {
-    return false;
-  }
-  return checkpoint?.runId === run.runId && checkpoint.contextHash === (context === null ? null : hashText2(context)) && checkpoint.artifactsHash === artifactsHash2(artifacts) && contextHash.length === 64;
-}
-var classicHandoffCommand = async (args) => {
-  const output = new HandoffOutput();
-  const [change, phase, mode, fullFlag] = args;
-  try {
-    validateChangeName3(change);
-    const changeDir = `openspec/changes/${change}`;
-    if (phase === "--hash-only") {
-      if (!await exists5(changeDir)) {
-        throw new HandoffFailure(red3(`ERROR: change directory not found: ${changeDir}`));
-      }
-      for (const required2 of ["proposal.md", "design.md", "tasks.md"]) {
-        if (!await nonempty2(`${changeDir}/${required2}`)) {
-          throw new HandoffFailure(
-            red3(`ERROR: required file missing or empty: ${changeDir}/${required2}`)
-          );
-        }
-      }
-      output.stdout.push(await computeContextHash(changeDir));
-      return output.toResult(0);
-    }
-    if (phase !== "design" || mode !== "--write") {
-      throw new HandoffFailure(
-        red3("Usage: comet-handoff.mjs <change-name> design --write [--full]")
-      );
-    }
-    let handoffMode;
-    if (fullFlag === void 0 || fullFlag === "") handoffMode = "compact";
-    else if (fullFlag === "--full") handoffMode = "full";
-    else
-      throw new HandoffFailure(
-        red3("Usage: comet-handoff.mjs <change-name> design --write [--full]")
-      );
-    const yaml = `${changeDir}/.comet.yaml`;
-    if (!await exists5(changeDir)) {
-      throw new HandoffFailure(red3(`ERROR: change directory not found: ${changeDir}`));
-    }
-    if (!await exists5(yaml)) {
-      throw new HandoffFailure(red3(`ERROR: .comet.yaml not found at ${yaml}`));
-    }
-    if (await readField2(changeDir, "phase") !== "design") {
-      throw new HandoffFailure(red3("ERROR: design handoff requires phase: design"));
-    }
-    for (const required2 of ["proposal.md", "design.md", "tasks.md"]) {
-      if (!await nonempty2(`${changeDir}/${required2}`)) {
-        throw new HandoffFailure(
-          red3(`ERROR: required OpenSpec artifact missing or empty: ${changeDir}/${required2}`)
-        );
-      }
-    }
-    const handoffDir = `${changeDir}/.comet/handoff`;
-    const contextCompression2 = await readField2(changeDir, "context_compression") || "off";
-    let contextJson;
-    let contextMd;
-    if (contextCompression2 === "off") {
-      contextJson = `${handoffDir}/design-context.json`;
-      contextMd = `${handoffDir}/design-context.md`;
-    } else if (contextCompression2 === "beta") {
-      if (handoffMode === "full") {
-        output.stderr.push(
-          yellow3("[HANDOFF] --full is ignored in beta mode; spec files are projected verbatim")
-        );
-      }
-      handoffMode = "beta";
-      contextJson = `${handoffDir}/spec-context.json`;
-      contextMd = `${handoffDir}/spec-context.md`;
-    } else {
-      throw new HandoffFailure(
-        [
-          red3(`ERROR: invalid context_compression: ${contextCompression2}`),
-          red3("Valid values: off, beta")
-        ].join("\n")
-      );
-    }
-    const contextHash = await computeContextHash(changeDir);
-    const actionId = `classic-handoff:${contextHash}`;
-    const initialProjection = await readClassicState(changeDir);
-    if (!initialProjection.classic) {
-      throw new HandoffFailure(red3("ERROR: design handoff requires Classic state"));
-    }
-    const initialPending = initialProjection.run ? await readPendingAction(changeDir, initialProjection.run.pendingRef) : null;
-    const recovering = initialPending?.id === actionId && initialPending.type === "handoff" && initialPending.ref === contextHash;
-    if (initialProjection.classic.handoffHash && initialProjection.classic.handoffHash !== contextHash && !recovering) {
-      throw new HandoffFailure(
-        red3(
-          `ERROR: stale handoff detected: source hash ${contextHash} does not match completed hash ${initialProjection.classic.handoffHash}`
-        )
-      );
-    }
-    const runtime = await ensureClassicRuntimeRun(changeDir);
-    const pendingAction = await readPendingAction(changeDir, runtime.run.pendingRef);
-    const resumesPending = pendingAction?.id === actionId && pendingAction.type === "handoff" && pendingAction.ref === contextHash;
-    if (runtime.run.pending && runtime.run.pending !== actionId) {
-      throw new HandoffFailure(red3(`ERROR: another action is pending: ${runtime.run.pending}`));
-    }
-    if (runtime.classic.handoffHash === contextHash && runtime.classic.handoffContext === contextJson && !runtime.run.pending && !pendingAction && await completedHandoffIsCurrent(changeDir, runtime.run, contextHash, contextJson, contextMd)) {
-      output.stderr.push(green3(`[HANDOFF] wrote ${contextJson}`));
-      output.stderr.push(green3(`[HANDOFF] wrote ${contextMd}`));
-      output.stderr.push(green3(`[HANDOFF] handoff_hash=${contextHash}`));
-      return output.toResult(0);
-    }
-    const action = {
-      id: actionId,
-      stepId: runtime.run.currentStep,
-      type: "handoff",
-      ref: contextHash
-    };
-    await writePendingAction(changeDir, runtime.run.pendingRef, action);
-    const pendingRun = {
-      ...runtime.run,
-      pending: actionId,
-      status: "waiting"
-    };
-    await writeClassicState(changeDir, {
-      classic: runtime.classic,
-      run: pendingRun,
-      unknownKeys: (await readClassicState(changeDir)).unknownKeys
-    });
-    await fs18.mkdir(handoffDir, { recursive: true });
-    if (handoffMode === "beta") {
-      await writeSpecMarkdownContext(changeDir, change, contextHash, contextMd);
-      await writeSpecJsonContext(changeDir, change, contextHash, contextJson);
-    } else {
-      await writeMarkdownContext(changeDir, change, handoffMode, contextHash, contextMd);
-      await writeJsonContext(changeDir, change, handoffMode, contextHash, contextJson);
-    }
-    const context = await fs18.readFile(contextMd, "utf8");
-    await writeContext(changeDir, pendingRun.contextRef, context);
-    const artifacts = {
-      ...await readArtifacts(changeDir, pendingRun.artifactsRef),
-      handoff_context: contextJson,
-      handoff_markdown: contextMd
-    };
-    await writeArtifacts(changeDir, pendingRun.artifactsRef, artifacts);
-    const completedClassic = {
-      ...runtime.classic,
-      handoffContext: contextJson,
-      handoffHash: contextHash
-    };
-    const transitionedRun = pendingRun.currentStep === "full.design.handoff" ? await transitionClassicRuntimeRun(changeDir, completedClassic, pendingRun, {
-      actionId,
-      kind: "classic-handoff"
-    }) : pendingRun;
-    const completedRun = {
-      ...transitionedRun,
-      pending: null,
-      status: "running"
-    };
-    if (recovering || resumesPending) {
-      await appendRecoveryEvent2(changeDir, completedRun, actionId);
-    }
-    const trajectory = await readTrajectory(changeDir, completedRun.trajectoryRef);
-    const checkpoint = {
-      runId: completedRun.runId,
-      stateVersion: completedRun.iteration,
-      trajectoryOffset: trajectory.length,
-      contextHash: hashText2(context),
-      artifactsHash: artifactsHash2(artifacts),
-      createdAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    await writeCheckpoint(changeDir, completedRun.checkpointRef, checkpoint);
-    await writeClassicState(changeDir, {
-      classic: completedClassic,
-      run: completedRun,
-      unknownKeys: (await readClassicState(changeDir)).unknownKeys
-    });
-    await clearPendingAction(changeDir, completedRun.pendingRef);
-    output.stderr.push(green3(`[SET] handoff_context=${contextJson}`));
-    output.stderr.push(green3(`[SET] handoff_hash=${contextHash}`));
-    output.stderr.push(green3(`[HANDOFF] wrote ${contextJson}`));
-    output.stderr.push(green3(`[HANDOFF] wrote ${contextMd}`));
-    output.stderr.push(green3(`[HANDOFF] handoff_hash=${contextHash}`));
-    return output.toResult(0);
-  } catch (error) {
-    if (error instanceof HandoffFailure) {
-      for (const line of error.message.split("\n")) output.stderr.push(line);
-      return output.toResult(error.exitCode);
-    }
-    throw error;
-  }
-};
 
 // domains/comet-classic/classic-hook-guard.ts
-import { existsSync as existsSync2, promises as fs19, readFileSync as readFileSync3 } from "fs";
-import path20 from "path";
 function result(exitCode, message) {
   return { exitCode, stderr: message + "\n" };
 }
 function allowed(message) {
   return result(0, `[COMET-HOOK] allowed: ${message}`);
-}
-function inputTarget() {
-  if (process.env.FILE_PATH) return process.env.FILE_PATH;
-  if (process.stdin.isTTY) return "";
-  const input = readFileSync3(0, "utf8");
-  if (!input) return "";
-  try {
-    const parsed = JSON.parse(input);
-    return typeof parsed.tool_input?.file_path === "string" ? parsed.tool_input.file_path : "";
-  } catch {
-    return "";
-  }
 }
 function normalized(value) {
   return value.replaceAll("\\", "/").replace(/\/+/gu, "/");
@@ -11870,55 +8357,50 @@ function comparisonKey(value) {
   const normalizedValue = normalized(value);
   return process.platform === "win32" ? normalizedValue.toLowerCase() : normalizedValue;
 }
-function parseProjectRoot(args) {
-  const index = args.indexOf("--project-root");
-  const value = index >= 0 ? args[index + 1] : void 0;
-  return path20.resolve(value && !value.startsWith("--") ? value : process.cwd());
-}
-function relativeToProjectRoot(target, projectRoot2) {
-  const relative = normalized(path20.relative(projectRoot2, target));
+function relativeToProjectRoot(target, projectRoot) {
+  const relative = normalized(path6.relative(projectRoot, target));
   if (relative === "") return "";
-  if (relative.startsWith("../") || relative === ".." || path20.isAbsolute(relative)) return null;
+  if (relative.startsWith("../") || relative === ".." || path6.isAbsolute(relative)) return null;
   return relative;
 }
 async function physicalPathForPossiblyMissingTarget(target) {
-  const resolved = path20.resolve(target);
-  const root = path20.parse(resolved).root;
+  const resolved = path6.resolve(target);
+  const root = path6.parse(resolved).root;
   const missingSegments = [];
   let cursor = resolved;
   while (cursor && cursor !== root) {
     try {
-      const physicalBase = await fs19.realpath(cursor);
-      return path20.join(physicalBase, ...missingSegments.reverse());
+      const physicalBase = await fs6.realpath(cursor);
+      return path6.join(physicalBase, ...missingSegments.reverse());
     } catch (error) {
       const code = error.code;
       if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
-      missingSegments.push(path20.basename(cursor));
-      cursor = path20.dirname(cursor);
+      missingSegments.push(path6.basename(cursor));
+      cursor = path6.dirname(cursor);
     }
   }
   try {
-    const physicalRoot = await fs19.realpath(root);
-    return path20.join(physicalRoot, ...missingSegments.reverse());
+    const physicalRoot = await fs6.realpath(root);
+    return path6.join(physicalRoot, ...missingSegments.reverse());
   } catch {
     return null;
   }
 }
-async function projectRelative(target, projectRoot2) {
-  const rawCandidate = path20.isAbsolute(target) ? target : path20.resolve(process.cwd(), target);
+async function projectRelative(target, projectRoot) {
+  const rawCandidate = path6.isAbsolute(target) ? target : path6.resolve(process.cwd(), target);
   let candidate = normalized(rawCandidate);
-  const rootRelative = relativeToProjectRoot(rawCandidate, projectRoot2);
+  const rootRelative = relativeToProjectRoot(rawCandidate, projectRoot);
   if (rootRelative !== null) return rootRelative;
   try {
     const physicalCandidate = await physicalPathForPossiblyMissingTarget(rawCandidate);
-    const physicalRoot = await fs19.realpath(projectRoot2);
+    const physicalRoot = await fs6.realpath(projectRoot);
     if (physicalCandidate) {
       const physicalRootRelative = relativeToProjectRoot(physicalCandidate, physicalRoot);
       if (physicalRootRelative !== null) return physicalRootRelative;
       candidate = normalized(physicalCandidate);
     }
   } catch {
-    if (!path20.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
+    if (!path6.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
   }
   return candidate.replace(/^\.\//u, "");
 }
@@ -11947,21 +8429,28 @@ async function loadGoverningChange(changeDir) {
     };
   }
 }
-async function activeChanges(projectRoot2) {
-  const changesDir = path20.join(projectRoot2, "openspec", "changes");
+async function activeChanges(projectRoot) {
+  const changesDir = path6.join(projectRoot, "openspec", "changes");
   const governingChanges = [];
-  if (!existsSync2(changesDir)) return governingChanges;
-  for (const entry2 of (await fs19.readdir(changesDir, { withFileTypes: true })).sort(
+  if (!existsSync(changesDir)) return governingChanges;
+  for (const entry of (await fs6.readdir(changesDir, { withFileTypes: true })).sort(
     (left, right) => left.name.localeCompare(right.name)
   )) {
-    if (!entry2.isDirectory() || entry2.name === "archive") continue;
-    const changeDir = path20.join(changesDir, entry2.name);
-    if (!existsSync2(path20.join(changeDir, ".comet.yaml"))) continue;
+    if (!entry.isDirectory() || entry.name === "archive") continue;
+    const changeDir = path6.join(changesDir, entry.name);
+    if (!existsSync(path6.join(changeDir, ".comet.yaml"))) continue;
     const governing = await loadGoverningChange(changeDir);
     if (!governing || governing.archived) continue;
     governingChanges.push(governing);
   }
   return governingChanges;
+}
+async function listActiveClassicHookChanges(projectRoot) {
+  return (await activeChanges(projectRoot)).map((change) => ({
+    workflow: "classic",
+    name: governingChangeName(change),
+    phase: change.phase
+  }));
 }
 function isSuperpowersArtifactPath(relativePath2) {
   return comparisonKey(relativePath2).startsWith("docs/superpowers/");
@@ -12004,7 +8493,7 @@ function allowsSuperpowersArtifacts(governing) {
   return governing.phase === "design" || governing.phase === "build" || governing.phase === "verify";
 }
 function governingChangeName(governing) {
-  return governing.changeDir ? path20.basename(governing.changeDir) : null;
+  return governing.changeDir ? path6.basename(governing.changeDir) : null;
 }
 var SUPERPOWERS_ARTIFACT_SUFFIXES = /* @__PURE__ */ new Set([
   "design",
@@ -12035,8 +8524,8 @@ function matchesSuperpowersArtifactName(relativePath2, changeName) {
   const pattern = new RegExp(`(^|[-_.])${escapeRegex(changeName)}[-_.](${suffixes})$`, "u");
   return pattern.test(stem);
 }
-async function superpowersArtifactGoverningChange(relativePath2, projectRoot2) {
-  const active = await activeChanges(projectRoot2);
+async function superpowersArtifactGoverningChange(relativePath2, projectRoot) {
+  const active = await activeChanges(projectRoot);
   const recorded = active.find(
     (governing) => matchesRecordedSuperpowersArtifact(relativePath2, governing)
   );
@@ -12051,8 +8540,8 @@ async function superpowersArtifactGoverningChange(relativePath2, projectRoot2) {
   if (named) return { governing: named, match: "named" };
   return null;
 }
-async function repoSourceGoverningChange(projectRoot2, relativePath2, selectedChangeName) {
-  const active = await activeChanges(projectRoot2);
+async function repoSourceGoverningChange(projectRoot, relativePath2, selectedChangeName) {
+  const active = await activeChanges(projectRoot);
   if (active.length === 0) return null;
   if (selectedChangeName) {
     const selected = active.find(
@@ -12065,7 +8554,7 @@ async function repoSourceGoverningChange(projectRoot2, relativePath2, selectedCh
       )
     };
   }
-  const current = await resolveCurrentChange(projectRoot2);
+  const current = await resolveCurrentChange(projectRoot);
   if (current.status === "stale") {
     return { blockedResult: blockedStaleSelection(relativePath2, current.reason) };
   }
@@ -12089,15 +8578,15 @@ async function repoSourceGoverningChange(projectRoot2, relativePath2, selectedCh
     )
   };
 }
-async function governingChange(relativePath2, projectRoot2, selectedChangeName) {
+async function governingChange(relativePath2, projectRoot, selectedChangeName) {
   const prefix = "openspec/changes/";
   if (relativePath2.startsWith(prefix)) {
     const rest = relativePath2.slice(prefix.length);
     const [name] = rest.split("/");
     if (name && name !== "archive") {
-      const changeDir = path20.join(projectRoot2, "openspec", "changes", name);
-      const stateFile2 = path20.join(changeDir, ".comet.yaml");
-      if (existsSync2(stateFile2)) {
+      const changeDir = path6.join(projectRoot, "openspec", "changes", name);
+      const stateFile = path6.join(changeDir, ".comet.yaml");
+      if (existsSync(stateFile)) {
         const governing = await loadGoverningChange(changeDir);
         if (governing) return governing;
         return { changeDir, phase: "open", classic: null, archived: false };
@@ -12106,7 +8595,7 @@ async function governingChange(relativePath2, projectRoot2, selectedChangeName) 
     }
   }
   if (isSuperpowersArtifactPath(relativePath2)) {
-    const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot2);
+    const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot);
     if (superpowers?.match === "recorded") {
       return { ...superpowers.governing, superpowersArtifact: "matched" };
     }
@@ -12120,7 +8609,7 @@ async function governingChange(relativePath2, projectRoot2, selectedChangeName) 
     }
     if (slot) {
       const candidate = await repoSourceGoverningChange(
-        projectRoot2,
+        projectRoot,
         relativePath2,
         selectedChangeName
       );
@@ -12131,11 +8620,11 @@ async function governingChange(relativePath2, projectRoot2, selectedChangeName) 
         superpowersSlot: slot
       };
     }
-    const active = await activeChanges(projectRoot2);
+    const active = await activeChanges(projectRoot);
     const fallback = selectedChangeName ? active.find((candidate) => governingChangeName(candidate) === selectedChangeName) ?? null : active[0] ?? null;
     return fallback ? { ...fallback, superpowersArtifact: "unmatched" } : null;
   }
-  return repoSourceGoverningChange(projectRoot2, relativePath2, selectedChangeName);
+  return repoSourceGoverningChange(projectRoot, relativePath2, selectedChangeName);
 }
 function isRootMarkdown(relativePath2) {
   return !relativePath2.includes("/") && relativePath2.endsWith(".md");
@@ -12148,23 +8637,23 @@ function isSuperpowersWorkspace(relativePath2) {
 }
 function openSpecAllowed(relativePath2, phase) {
   if (!relativePath2.startsWith("openspec/")) return null;
-  const stateFile2 = relativePath2.endsWith("/.comet.yaml") || relativePath2.endsWith("/.openspec.yaml");
+  const stateFile = relativePath2.endsWith("/.comet.yaml") || relativePath2.endsWith("/.openspec.yaml");
   const proposal = relativePath2.endsWith("/proposal.md") || relativePath2.endsWith("/design.md") || relativePath2.endsWith("/tasks.md");
   const handoff = relativePath2.includes("/.comet/");
   const specs = relativePath2.includes("/specs/");
-  if (phase === "open" && (proposal || stateFile2 || handoff || specs)) {
+  if (phase === "open" && (proposal || stateFile || handoff || specs)) {
     return `${relativePath2} (phase: open, openspec artifacts)`;
   }
-  if (phase === "design" && (proposal || stateFile2 || handoff || specs)) {
+  if (phase === "design" && (proposal || stateFile || handoff || specs)) {
     return `${relativePath2} (phase: design, handoff/spec)`;
   }
-  if (phase === "build" && (relativePath2.endsWith("/tasks.md") || stateFile2 || specs)) {
+  if (phase === "build" && (relativePath2.endsWith("/tasks.md") || stateFile || specs)) {
     return `${relativePath2} (phase: build, spec/tasks)`;
   }
-  if (phase === "verify" && (relativePath2.endsWith("/tasks.md") || stateFile2)) {
+  if (phase === "verify" && (relativePath2.endsWith("/tasks.md") || stateFile)) {
     return `${relativePath2} (phase: verify, tasks/state)`;
   }
-  if (phase === "archive" && stateFile2) {
+  if (phase === "archive" && stateFile) {
     return `${relativePath2} (phase: archive, state)`;
   }
   return null;
@@ -12291,8 +8780,8 @@ function blockedStaleSelection(relativePath2, reason) {
     ].join("\n")
   );
 }
-async function inspectClassicHookTarget(projectRoot2, target, selectedChangeName) {
-  const relativePath2 = await projectRelative(target, projectRoot2);
+async function inspectClassicHookTarget(projectRoot, target, selectedChangeName) {
+  const relativePath2 = await projectRelative(target, projectRoot);
   if (isCometConfig(relativePath2)) {
     return allowed(`${relativePath2} (whitelist: comet config)`);
   }
@@ -12307,7 +8796,7 @@ async function inspectClassicHookTarget(projectRoot2, target, selectedChangeName
   }
   let governing;
   try {
-    governing = await governingChange(relativePath2, projectRoot2, selectedChangeName);
+    governing = await governingChange(relativePath2, projectRoot, selectedChangeName);
   } catch (error) {
     return result(
       2,
@@ -12336,1998 +8825,1302 @@ async function inspectClassicHookTarget(projectRoot2, target, selectedChangeName
   }
   return blocked(relativePath2, phase);
 }
-var classicHookGuardCommand = async (args) => {
-  const projectRoot2 = parseProjectRoot(args);
-  const target = inputTarget();
-  if (!target) return allowed("no file path in tool input");
-  return inspectClassicHookTarget(projectRoot2, target);
-};
-
-// domains/comet-classic/classic-intent.ts
-var COMET_INTENT_SCHEMA_VERSION = "comet.intent.v1";
-var COMET_INTENT_CONFIDENCE_THRESHOLD = 0.7;
-var INTENT_NAMES = [
-  "start_change",
-  "resume_change",
-  "fix_bug",
-  "make_tweak",
-  "ask_question",
-  "unknown"
-];
-var ENTITY_TYPES = [
-  "change_id",
-  "workflow",
-  "file_path",
-  "command",
-  "capability",
-  "bug_signal",
-  "risk_signal"
-];
-var REQUESTED_ACTIONS = [
-  "start",
-  "resume",
-  "continue",
-  "fix",
-  "modify",
-  "create",
-  "verify",
-  "archive",
-  "question",
-  "unknown"
-];
-var WORKFLOWS = ["full", "hotfix", "tweak"];
-var SCOPES = ["small", "medium", "large", "unknown"];
-var ROUTES = ["full", "hotfix", "tweak", "resume", "ask_user", "out_of_scope"];
-var NEXT_SKILLS = [
-  "comet-open",
-  "comet-hotfix",
-  "comet-tweak",
-  "comet-design",
-  "comet-build",
-  "comet-verify",
-  "comet-archive"
-];
-var EVIDENCE_SOURCES = ["user", "repo", "state"];
-var CometIntentValidationError = class extends Error {
-  constructor(issues) {
-    super(`Invalid CometIntentFrame:
-${issues.map((issue) => `- ${issue}`).join("\n")}`);
-    this.issues = issues;
+async function inspectClassicHookGuard(projectRoot, changeName, request) {
+  const active = await activeChanges(projectRoot);
+  const selected = active.find((change) => governingChangeName(change) === changeName);
+  if (!selected) {
+    return {
+      allowed: false,
+      reason: `Selected Classic change ${changeName} is missing or archived; resume /comet-classic before retrying`,
+      workflow: "classic",
+      change: changeName
+    };
   }
-  issues;
-};
-function isRecord2(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function enumValue2(value, allowed2, field2, issues) {
-  if (typeof value !== "string" || !allowed2.includes(value)) {
-    issues.push(`${field2} must be one of: ${allowed2.join(", ")}`);
-    return null;
+  if (request.intent === "non-write") {
+    return { allowed: true, reason: "Hook event is not a write" };
   }
-  return value;
-}
-function optionalEnumValue(value, allowed2, field2, issues) {
-  if (value === null || value === void 0) return null;
-  return enumValue2(value, allowed2, field2, issues);
-}
-function stringValue(value, field2, issues) {
-  if (typeof value !== "string" || value.trim() === "") {
-    issues.push(`${field2} must be a non-empty string`);
-    return "";
-  }
-  return value;
-}
-function optionalStringValue(value, field2, issues) {
-  if (value === null || value === void 0) return null;
-  if (typeof value !== "string" || value.trim() === "") {
-    issues.push(`${field2} must be a non-empty string or null`);
-    return null;
-  }
-  return value;
-}
-function optionalBooleanValue(value, field2, issues) {
-  if (value === null || value === void 0) return null;
-  if (typeof value !== "boolean") {
-    issues.push(`${field2} must be boolean or null`);
-    return null;
-  }
-  return value;
-}
-function confidenceValue(value, field2, issues) {
-  if (typeof value !== "number" || Number.isNaN(value) || value < 0 || value > 1) {
-    issues.push(`${field2} must be a number between 0 and 1`);
-    return 0;
-  }
-  return value;
-}
-function nonNegativeIntegerValue(value, field2, issues) {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    issues.push(`${field2} must be a non-negative integer`);
-    return 0;
-  }
-  return value;
-}
-function validateFrame(input) {
-  const issues = [];
-  if (!isRecord2(input)) throw new CometIntentValidationError(["frame must be an object"]);
-  const intent = isRecord2(input.intent) ? input.intent : {};
-  if (!isRecord2(input.intent)) issues.push("intent must be an object");
-  const slots = isRecord2(input.slots) ? input.slots : {};
-  if (!isRecord2(input.slots)) issues.push("slots must be an object");
-  const context = isRecord2(input.context) ? input.context : {};
-  if (!isRecord2(input.context)) issues.push("context must be an object");
-  const proposedRouteInput = isRecord2(input.proposed_route) ? input.proposed_route : {};
-  if (!isRecord2(input.proposed_route)) issues.push("proposed_route must be an object");
-  const entities = input.entities === void 0 ? [] : Array.isArray(input.entities) ? input.entities : [];
-  if (input.entities !== void 0 && !Array.isArray(input.entities)) {
-    issues.push("entities must be an array");
-  }
-  const evidence = Array.isArray(input.evidence) ? input.evidence : [];
-  if (!Array.isArray(input.evidence)) issues.push("evidence must be an array");
-  const frame = {
-    schema_version: enumValue2(
-      input.schema_version,
-      [COMET_INTENT_SCHEMA_VERSION],
-      "schema_version",
-      issues
-    ),
-    utterance: stringValue(input.utterance, "utterance", issues),
-    locale: input.locale === void 0 ? "unknown" : stringValue(input.locale, "locale", issues),
-    intent: {
-      name: enumValue2(intent.name, INTENT_NAMES, "intent.name", issues) ?? "unknown",
-      confidence: confidenceValue(intent.confidence, "intent.confidence", issues)
-    },
-    entities: entities.map((entity, index) => {
-      const record = isRecord2(entity) ? entity : {};
-      if (!isRecord2(entity)) issues.push(`entities[${index}] must be an object`);
+  if (request.intent === "unknown" || request.targets.length === 0) {
+    if (selected.phase === "verify" || selected.phase === "build" && !(selected.classic?.workflow === "full" && !selected.classic.designDoc)) {
       return {
-        type: enumValue2(record.type, ENTITY_TYPES, `entities[${index}].type`, issues) ?? "risk_signal",
-        value: stringValue(record.value, `entities[${index}].value`, issues),
-        text: stringValue(record.text, `entities[${index}].text`, issues)
+        allowed: true,
+        reason: `Classic change is in ${selected.phase}`,
+        workflow: "classic",
+        change: changeName,
+        phase: selected.phase
       };
-    }),
-    slots: {
-      requested_action: enumValue2(slots.requested_action, REQUESTED_ACTIONS, "slots.requested_action", issues) ?? "unknown",
-      workflow_candidate: optionalEnumValue(
-        slots.workflow_candidate,
-        WORKFLOWS,
-        "slots.workflow_candidate",
-        issues
-      ),
-      user_explicit_workflow: optionalEnumValue(
-        slots.user_explicit_workflow,
-        WORKFLOWS,
-        "slots.user_explicit_workflow",
-        issues
-      ),
-      change_id: optionalStringValue(slots.change_id, "slots.change_id", issues),
-      target_area: optionalStringValue(slots.target_area, "slots.target_area", issues),
-      scope: slots.scope === void 0 ? "unknown" : enumValue2(slots.scope, SCOPES, "slots.scope", issues) ?? "unknown",
-      existing_behavior: optionalBooleanValue(
-        slots.existing_behavior,
-        "slots.existing_behavior",
-        issues
-      ),
-      new_capability: optionalBooleanValue(slots.new_capability, "slots.new_capability", issues),
-      public_api_change: optionalBooleanValue(
-        slots.public_api_change,
-        "slots.public_api_change",
-        issues
-      ),
-      schema_change: optionalBooleanValue(slots.schema_change, "slots.schema_change", issues),
-      cross_module_change: optionalBooleanValue(
-        slots.cross_module_change,
-        "slots.cross_module_change",
-        issues
-      )
-    },
-    context: {
-      active_changes_count: nonNegativeIntegerValue(
-        context.active_changes_count,
-        "context.active_changes_count",
-        issues
-      ),
-      active_change_names: isRecord2(context) ? (() => {
-        if (!Array.isArray(context.active_change_names)) {
-          issues.push("context.active_change_names must be an array");
-          return [];
-        }
-        if (!context.active_change_names.every((value) => typeof value === "string")) {
-          issues.push("context.active_change_names must only contain strings");
-          return [];
-        }
-        return context.active_change_names;
-      })() : [],
-      dirty_worktree: optionalBooleanValue(
-        context.dirty_worktree,
-        "context.dirty_worktree",
-        issues
-      )
-    },
-    evidence: evidence.map((item, index) => {
-      const record = isRecord2(item) ? item : {};
-      if (!isRecord2(item)) issues.push(`evidence[${index}] must be an object`);
-      return {
-        field: stringValue(record.field, `evidence[${index}].field`, issues),
-        quote: stringValue(record.quote, `evidence[${index}].quote`, issues),
-        source: enumValue2(record.source, EVIDENCE_SOURCES, `evidence[${index}].source`, issues) ?? "user"
-      };
-    }),
-    proposed_route: {
-      name: enumValue2(proposedRouteInput.name, ROUTES, "proposed_route.name", issues) ?? "ask_user",
-      next_skill: optionalEnumValue(
-        proposedRouteInput.next_skill,
-        NEXT_SKILLS,
-        "proposed_route.next_skill",
-        issues
-      ),
-      confidence: confidenceValue(
-        proposedRouteInput.confidence,
-        "proposed_route.confidence",
-        issues
-      ),
-      requires_confirmation: typeof proposedRouteInput.requires_confirmation === "boolean" ? proposedRouteInput.requires_confirmation : true,
-      fallback_reason: optionalStringValue(
-        proposedRouteInput.fallback_reason,
-        "proposed_route.fallback_reason",
-        issues
-      )
     }
-  };
-  if (issues.length > 0) throw new CometIntentValidationError(issues);
-  return frame;
-}
-function hasEvidence(frame, field2) {
-  return frame.evidence.some((item) => item.field === field2 && item.quote.trim() !== "");
-}
-function hasRiskSignal(frame) {
-  return frame.slots.new_capability === true || frame.slots.public_api_change === true || frame.slots.schema_change === true || frame.slots.cross_module_change === true;
-}
-function route(name, confidence, fallback_reason = null) {
-  const nextSkill = {
-    full: "comet-open",
-    hotfix: "comet-hotfix",
-    tweak: "comet-tweak",
-    resume: null,
-    ask_user: null,
-    out_of_scope: null
-  };
-  return {
-    name,
-    next_skill: nextSkill[name],
-    confidence,
-    requires_confirmation: name === "ask_user" || name === "out_of_scope",
-    fallback_reason
-  };
-}
-function askUser(reason) {
-  return route("ask_user", 0.5, reason);
-}
-function workflowRoute(workflow, confidence) {
-  return route(workflow, confidence);
-}
-function resolveCometIntentRoute(input) {
-  const frame = validateFrame(input);
-  const diagnostics = [];
-  const confidence = frame.intent.confidence;
-  let resolved;
-  if (frame.intent.confidence < COMET_INTENT_CONFIDENCE_THRESHOLD) {
-    resolved = askUser(
-      `intent confidence ${frame.intent.confidence} is below ${COMET_INTENT_CONFIDENCE_THRESHOLD}`
-    );
-  } else if ((frame.intent.name === "resume_change" || frame.slots.requested_action === "resume" || frame.slots.requested_action === "continue") && !frame.slots.change_id && frame.context.active_changes_count > 1) {
-    resolved = askUser("multiple active changes require an explicit change_id");
-  } else if ((frame.intent.name === "resume_change" || frame.slots.requested_action === "resume" || frame.slots.requested_action === "continue") && frame.slots.change_id) {
-    resolved = frame.context.active_change_names.includes(frame.slots.change_id) ? route("resume", confidence) : askUser(`change_id '${frame.slots.change_id}' is not in active_change_names`);
-  } else if (frame.intent.name === "ask_question" || frame.slots.requested_action === "question") {
-    resolved = route(
-      "out_of_scope",
-      confidence,
-      "user asked a question without requesting a Comet workflow"
-    );
-  } else if (frame.slots.user_explicit_workflow && frame.slots.user_explicit_workflow !== "full" && hasRiskSignal(frame)) {
-    resolved = askUser(
-      `explicit workflow '${frame.slots.user_explicit_workflow}' conflicts with risk signals`
-    );
-  } else if (frame.slots.user_explicit_workflow) {
-    resolved = workflowRoute(frame.slots.user_explicit_workflow, confidence);
-  } else if (hasRiskSignal(frame)) {
-    resolved = route("full", confidence);
-  } else if (frame.intent.name === "fix_bug" && frame.slots.existing_behavior === true && hasEvidence(frame, "slots.workflow_candidate")) {
-    resolved = route("hotfix", confidence);
-  } else if (frame.intent.name === "make_tweak" && frame.slots.workflow_candidate === "tweak" && hasEvidence(frame, "slots.workflow_candidate")) {
-    resolved = route("tweak", confidence);
-  } else if (frame.slots.workflow_candidate && hasEvidence(frame, "slots.workflow_candidate")) {
-    resolved = workflowRoute(frame.slots.workflow_candidate, confidence);
-  } else {
-    resolved = askUser("workflow_candidate evidence is missing or route is ambiguous");
+    return {
+      allowed: false,
+      reason: `Hook write target could not be determined while Classic change ${changeName} is in ${selected.phase}; resume /comet-classic before retrying`,
+      workflow: "classic",
+      change: changeName,
+      phase: selected.phase
+    };
   }
-  if (resolved.name !== frame.proposed_route.name) {
-    diagnostics.push(
-      `agent proposed_route '${frame.proposed_route.name}' normalized to '${resolved.name}'`
-    );
-  }
-  if (resolved.next_skill !== frame.proposed_route.next_skill) {
-    diagnostics.push(
-      `agent proposed_route next_skill '${frame.proposed_route.next_skill}' normalized to '${resolved.next_skill}'`
-    );
-  }
-  if (resolved.requires_confirmation !== frame.proposed_route.requires_confirmation) {
-    diagnostics.push(
-      `agent proposed_route requires_confirmation '${frame.proposed_route.requires_confirmation}' normalized to '${resolved.requires_confirmation}'`
-    );
-  }
-  if (resolved.fallback_reason !== frame.proposed_route.fallback_reason) {
-    diagnostics.push(
-      `agent proposed_route fallback_reason '${frame.proposed_route.fallback_reason}' normalized to '${resolved.fallback_reason}'`
-    );
+  for (const target of request.targets) {
+    const inspected = await inspectClassicHookTarget(projectRoot, target, changeName);
+    if (inspected.exitCode !== 0) {
+      return {
+        allowed: false,
+        reason: inspected.stderr?.trim() || "Classic phase guard blocked the write",
+        workflow: "classic",
+        change: changeName,
+        phase: selected.phase
+      };
+    }
   }
   return {
-    route: resolved,
-    diagnostics,
-    normalizedFrame: { ...frame, route: resolved }
+    allowed: true,
+    reason: `Classic write allowed in ${selected.phase}`,
+    workflow: "classic",
+    change: changeName,
+    phase: selected.phase
   };
 }
 
-// domains/comet-classic/classic-intent-command.ts
-function result2(exitCode, stdout, stderr) {
+// domains/comet-native/native-hook-guard.ts
+import { promises as fs11 } from "fs";
+import path11 from "path";
+
+// domains/comet-native/native-change.ts
+var import_yaml3 = __toESM(require_dist(), 1);
+import { promises as fs10 } from "fs";
+import path10 from "path";
+
+// domains/comet-native/native-bounded-file.ts
+import { createHash } from "node:crypto";
+import { promises as fs7 } from "node:fs";
+import path7 from "node:path";
+import { TextDecoder } from "node:util";
+
+// domains/comet-native/native-sensitive-paths.ts
+var NATIVE_EXCLUDED_DIRECTORY_NAMES = /* @__PURE__ */ new Set([
+  ".cache",
+  ".git",
+  ".gradle",
+  ".gnupg",
+  ".mypy_cache",
+  ".next",
+  ".npm",
+  ".pnpm-store",
+  ".pytest_cache",
+  ".ssh",
+  ".turbo",
+  ".venv",
+  ".yarn",
+  "__pycache__",
+  "node_modules",
+  "venv"
+]);
+var NATIVE_SENSITIVE_FILE_NAMES = /* @__PURE__ */ new Set([
+  ".git-credentials",
+  ".netrc",
+  ".npmrc",
+  ".pypirc",
+  "auth.json",
+  "credentials.json"
+]);
+function isNativeEnvFileName(name) {
+  return name.toLowerCase().startsWith(".env");
+}
+function nativeSensitiveRelativePathReason(relativeRef) {
+  const segments = relativeRef.replaceAll("\\", "/").split("/").filter(Boolean);
+  const lower = segments.map((segment) => segment.toLowerCase());
+  if (lower.some((segment) => isNativeEnvFileName(segment))) return "environment-file";
+  if (lower.some((segment) => NATIVE_SENSITIVE_FILE_NAMES.has(segment))) {
+    return "credential-config";
+  }
+  if (lower.includes(".git")) return "git-metadata";
+  if (lower.some((segment) => NATIVE_EXCLUDED_DIRECTORY_NAMES.has(segment))) {
+    return "dependency-or-cache";
+  }
+  if (lower.join("/") === ".comet/config.yaml") {
+    return "comet-config";
+  }
+  if (lower.join("/") === ".comet/current-change.json") {
+    return "comet-selection";
+  }
+  return null;
+}
+
+// domains/comet-native/native-bounded-file.ts
+var DEFAULT_NATIVE_ARTIFACT_MAX_BYTES = 1024 * 1024;
+function isInside(parent, target) {
+  const relative = path7.relative(parent, target);
+  return relative === "" || !path7.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path7.sep}`);
+}
+function portableArtifactRef(value) {
+  const normalized2 = path7.posix.normalize(value);
+  if (value.length === 0 || value !== value.trim() || value.includes("\\") || Array.from(value).some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 31 || code === 127;
+  }) || path7.posix.isAbsolute(normalized2) || /^(?:[A-Za-z]:|~)/u.test(value) || value.split("/").includes("..") || normalized2 !== value || normalized2 === "." || value.endsWith("/")) {
+    throw new Error(`Native artifact ref must be normalized and relative: ${value}`);
+  }
+  const lower = value.toLowerCase();
+  const sensitiveReason = nativeSensitiveRelativePathReason(value);
+  if (sensitiveReason || lower === "runtime" || lower.startsWith("runtime/")) {
+    throw new Error(
+      `Native artifact ref is excluded as sensitive (${sensitiveReason ?? "native-runtime"}): ${value}`
+    );
+  }
+  return value;
+}
+function positiveLimit(value) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error("Native artifact byte limit must be a positive integer");
+  }
+  return value;
+}
+function sameDirectoryIdentity(identity, stat) {
+  if (identity.dev !== 0 || identity.ino !== 0 || stat.dev !== 0 || stat.ino !== 0) {
+    return identity.dev === stat.dev && identity.ino === stat.ino;
+  }
+  return identity.birthtimeMs === stat.birthtimeMs;
+}
+function sameFileIdentity(left, right) {
+  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
+    return left.dev === right.dev && left.ino === right.ino;
+  }
+  return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
+}
+async function directoryIdentity(directory) {
+  const stat = await fs7.lstat(directory);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error(`Native artifact parent must be a real directory: ${directory}`);
+  }
   return {
-    exitCode,
-    ...stdout === void 0 ? {} : { stdout },
-    ...stderr === void 0 ? {} : { stderr }
+    path: directory,
+    realPath: await fs7.realpath(directory),
+    dev: stat.dev,
+    ino: stat.ino,
+    birthtimeMs: stat.birthtimeMs
   };
 }
-function usage() {
-  return result2(
-    64,
-    void 0,
-    "Usage: comet-intent.mjs route <frame-json>\nUsage: comet-intent.mjs route --stdin"
-  );
-}
-async function readStdin() {
-  const chunks = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+async function captureDirectoryChain(root, directory) {
+  const lexicalRoot = path7.resolve(root);
+  const lexicalDirectory = path7.resolve(directory);
+  if (!isInside(lexicalRoot, lexicalDirectory)) {
+    throw new Error("Native artifact path is outside its root");
   }
-  return Buffer.concat(chunks).toString("utf8");
+  const chain = [await directoryIdentity(lexicalRoot)];
+  let cursor = lexicalRoot;
+  for (const segment of path7.relative(lexicalRoot, lexicalDirectory).split(path7.sep).filter(Boolean)) {
+    cursor = path7.join(cursor, segment);
+    const identity = await directoryIdentity(cursor);
+    if (!isInside(chain[0].realPath, identity.realPath)) {
+      throw new Error(`Native artifact parent resolves outside its root: ${cursor}`);
+    }
+    chain.push(identity);
+  }
+  return chain;
 }
-var classicIntentCommand = async (args, _options) => {
-  const [subcommand, input] = args;
-  if (subcommand !== "route") return usage();
-  const source = input === "--stdin" ? await readStdin() : input;
-  if (!source) return usage();
+async function verifyDirectoryChain(chain) {
+  for (const identity of chain) {
+    const stat = await fs7.lstat(identity.path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity(identity, stat) || await fs7.realpath(identity.path) !== identity.realPath) {
+      throw new Error(`Native artifact parent changed while reading: ${identity.path}`);
+    }
+  }
+}
+async function readNativeBoundedTextFile(options) {
+  const ref = portableArtifactRef(options.ref);
+  const maxBytes = positiveLimit(options.maxBytes ?? DEFAULT_NATIVE_ARTIFACT_MAX_BYTES);
+  const file = path7.resolve(options.root, ...ref.split("/"));
+  const chain = await captureDirectoryChain(options.root, path7.dirname(file));
+  await options.hooks?.afterParentChainCaptured?.();
+  const before = await fs7.lstat(file);
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new Error(`Native artifact must be a regular file: ${ref}`);
+  }
+  if (before.size > maxBytes) throw new Error(`Native artifact exceeds ${maxBytes} bytes: ${ref}`);
+  const realPath = await fs7.realpath(file);
+  if (!isInside(chain[0].realPath, realPath)) {
+    throw new Error(`Native artifact resolves outside its root: ${ref}`);
+  }
+  const handle = await fs7.open(file, "r");
   try {
-    const resolution = resolveCometIntentRoute(JSON.parse(source));
-    return result2(0, `${JSON.stringify(resolution, null, 2)}
-`);
+    const [opened, afterOpenPath, afterOpenRealPath] = await Promise.all([
+      handle.stat(),
+      fs7.lstat(file),
+      fs7.realpath(file)
+    ]);
+    await verifyDirectoryChain(chain);
+    if (!opened.isFile() || !afterOpenPath.isFile() || afterOpenPath.isSymbolicLink() || afterOpenRealPath !== realPath || !sameFileIdentity(before, opened) || !sameFileIdentity(opened, afterOpenPath)) {
+      throw new Error(`Native artifact changed while opening: ${ref}`);
+    }
+    await options.hooks?.afterOpen?.();
+    const chunks = [];
+    let total = 0;
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    while (true) {
+      const remaining = maxBytes + 1 - total;
+      const result2 = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+      if (result2.bytesRead === 0) break;
+      total += result2.bytesRead;
+      if (total > maxBytes) throw new Error(`Native artifact exceeds ${maxBytes} bytes: ${ref}`);
+      chunks.push(Buffer.from(buffer.subarray(0, result2.bytesRead)));
+    }
+    await options.hooks?.beforeFinalCheck?.();
+    const [afterHandle, afterPath, afterRealPath] = await Promise.all([
+      handle.stat(),
+      fs7.lstat(file),
+      fs7.realpath(file)
+    ]);
+    await verifyDirectoryChain(chain);
+    if (!afterPath.isFile() || afterPath.isSymbolicLink() || afterRealPath !== realPath || !sameFileIdentity(opened, afterHandle) || !sameFileIdentity(opened, afterPath)) {
+      throw new Error(`Native artifact changed while reading: ${ref}`);
+    }
+    const bytes = Buffer.concat(chunks, total);
+    let text;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch (error) {
+      throw new Error(`Native artifact is not valid UTF-8: ${ref}`, { cause: error });
+    }
+    return {
+      ref,
+      size: total,
+      hash: createHash("sha256").update(bytes).digest("hex"),
+      text
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+// domains/comet-native/native-config.ts
+var import_yaml2 = __toESM(require_dist(), 1);
+import { promises as fs9 } from "fs";
+import path9 from "path";
+
+// domains/comet-native/native-protected-file.ts
+import { createHash as createHash2 } from "node:crypto";
+import { constants as fsConstants, promises as fs8 } from "node:fs";
+import path8 from "node:path";
+import { TextDecoder as TextDecoder2 } from "node:util";
+function isInside2(parent, target) {
+  const relative = path8.relative(parent, target);
+  return relative === "" || !path8.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path8.sep}`);
+}
+function positiveLimit2(value) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error("Native protected file byte limit must be a positive integer");
+  }
+  return value;
+}
+function sameDirectoryIdentity2(expected, actual) {
+  if (expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0) {
+    return expected.dev === actual.dev && expected.ino === actual.ino;
+  }
+  return expected.birthtimeMs === actual.birthtimeMs;
+}
+function asFileIdentity(stat) {
+  return {
+    dev: stat.dev,
+    ino: stat.ino,
+    birthtimeMs: stat.birthtimeMs,
+    ctimeMs: stat.ctimeMs,
+    mtimeMs: stat.mtimeMs,
+    size: stat.size
+  };
+}
+function sameFileIdentity2(expected, actual) {
+  const sameObject = expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0 ? expected.dev === actual.dev && expected.ino === actual.ino : expected.birthtimeMs === actual.birthtimeMs;
+  return sameObject && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
+}
+async function captureDirectoryIdentity(directory, label) {
+  const stat = await fs8.lstat(directory);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error(`${label} parent must be a real directory: ${directory}`);
+  }
+  return {
+    path: directory,
+    realPath: await fs8.realpath(directory),
+    dev: stat.dev,
+    ino: stat.ino,
+    birthtimeMs: stat.birthtimeMs
+  };
+}
+async function captureDirectoryChain2(root, directory, label) {
+  const lexicalRoot = path8.resolve(root);
+  const lexicalDirectory = path8.resolve(directory);
+  if (!isInside2(lexicalRoot, lexicalDirectory)) {
+    throw new Error(`${label} is outside its managed root`);
+  }
+  const chain = [await captureDirectoryIdentity(lexicalRoot, label)];
+  let cursor = lexicalRoot;
+  for (const segment of path8.relative(lexicalRoot, lexicalDirectory).split(path8.sep).filter(Boolean)) {
+    await verifyDirectoryChain2(chain, label);
+    cursor = path8.join(cursor, segment);
+    const identity = await captureDirectoryIdentity(cursor, label);
+    if (!isInside2(chain[0].realPath, identity.realPath)) {
+      throw new Error(`${label} parent resolves outside its managed root: ${cursor}`);
+    }
+    chain.push(identity);
+  }
+  await verifyDirectoryChain2(chain, label);
+  return chain;
+}
+async function verifyDirectoryChain2(chain, label) {
+  for (const identity of chain) {
+    const stat = await fs8.lstat(identity.path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity2(identity, stat) || await fs8.realpath(identity.path) !== identity.realPath) {
+      throw new Error(`${label} parent changed during I/O: ${identity.path}`);
+    }
+  }
+}
+async function readHandleBounded(handle, maxBytes, label) {
+  const chunks = [];
+  let total = 0;
+  const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+  while (true) {
+    const remaining = maxBytes + 1 - total;
+    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+    if (bytesRead === 0) break;
+    total += bytesRead;
+    if (total > maxBytes) throw new Error(`${label} exceeds ${maxBytes} bytes`);
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+  }
+  return Buffer.concat(chunks, total);
+}
+async function readNativeProtectedFile(options) {
+  const maxBytes = positiveLimit2(options.maxBytes);
+  const file = path8.resolve(options.file);
+  const chain = await captureDirectoryChain2(options.root, path8.dirname(file), options.label);
+  const forbidden = await Promise.all(
+    (options.forbiddenRoots ?? []).map(
+      (root) => captureDirectoryIdentity(path8.resolve(root), options.label)
+    )
+  );
+  await options.hooks?.afterParentChainCaptured?.();
+  await verifyDirectoryChain2(chain, options.label);
+  const before = await fs8.lstat(file);
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new Error(`${options.label} must be a regular file`);
+  }
+  if (before.size > maxBytes) throw new Error(`${options.label} exceeds ${maxBytes} bytes`);
+  const beforeIdentity = asFileIdentity(before);
+  const beforeRealPath = await fs8.realpath(file);
+  if (!isInside2(chain[0].realPath, beforeRealPath)) {
+    throw new Error(`${options.label} resolves outside its managed root`);
+  }
+  if (forbidden.some((identity) => isInside2(identity.realPath, beforeRealPath))) {
+    throw new Error(`${options.label} resolves inside an excluded root`);
+  }
+  const flags = process.platform === "win32" ? fsConstants.O_RDONLY : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+  const handle = await fs8.open(file, flags);
+  try {
+    const opened = await handle.stat();
+    await options.hooks?.afterOpen?.();
+    const [pathAfterOpen, realPathAfterOpen] = await Promise.all([
+      fs8.lstat(file),
+      fs8.realpath(file)
+    ]);
+    await verifyDirectoryChain2(chain, options.label);
+    await verifyDirectoryChain2(forbidden, options.label);
+    if (!opened.isFile() || !pathAfterOpen.isFile() || pathAfterOpen.isSymbolicLink() || realPathAfterOpen !== beforeRealPath || !sameFileIdentity2(beforeIdentity, opened) || !sameFileIdentity2(beforeIdentity, pathAfterOpen)) {
+      throw new Error(`${options.label} changed while opening`);
+    }
+    await options.hooks?.beforeRead?.();
+    const bytes = await readHandleBounded(handle, maxBytes, options.label);
+    await options.hooks?.beforeFinalCheck?.();
+    const [afterHandle, afterPath, afterRealPath] = await Promise.all([
+      handle.stat(),
+      fs8.lstat(file),
+      fs8.realpath(file)
+    ]);
+    await verifyDirectoryChain2(chain, options.label);
+    await verifyDirectoryChain2(forbidden, options.label);
+    if (!afterPath.isFile() || afterPath.isSymbolicLink() || afterRealPath !== beforeRealPath || !sameFileIdentity2(beforeIdentity, afterHandle) || !sameFileIdentity2(beforeIdentity, afterPath)) {
+      throw new Error(`${options.label} changed while reading`);
+    }
+    return {
+      bytes,
+      hash: createHash2("sha256").update(bytes).digest("hex"),
+      size: bytes.length
+    };
+  } finally {
+    await handle.close();
+  }
+}
+async function readNativeProtectedTextFile(options) {
+  const snapshot = await readNativeProtectedFile(options);
+  let text;
+  try {
+    text = new TextDecoder2("utf-8", { fatal: true }).decode(snapshot.bytes);
   } catch (error) {
-    if (error instanceof SyntaxError) {
-      return result2(1, void 0, `Invalid JSON: ${error.message}`);
+    throw new Error(`${options.label} is not valid UTF-8`, { cause: error });
+  }
+  return { ...snapshot, text };
+}
+
+// domains/comet-native/native-config.ts
+var NATIVE_KEYS = /* @__PURE__ */ new Set(["artifact_root", "language", "pending_root_move"]);
+var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
+var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
+var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
+function record(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a mapping`);
+  }
+  return value;
+}
+function rejectUnknown(value, known, label) {
+  const unknown = Object.keys(value).filter((key) => !known.has(key));
+  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
+}
+function parsePending(value) {
+  if (value === void 0) return void 0;
+  const pending = record(value, "native.pending_root_move");
+  rejectUnknown(pending, PENDING_KEYS, "native.pending_root_move");
+  const id = pending.id;
+  const from = pending.from_artifact_root;
+  const to = pending.to_artifact_root;
+  const stage = pending.stage;
+  if (typeof id !== "string" || !/^[a-f0-9-]{8,}$/u.test(id)) {
+    throw new Error("native.pending_root_move.id is invalid");
+  }
+  if (typeof from !== "string" || typeof to !== "string") {
+    throw new Error("native.pending_root_move roots must be strings");
+  }
+  if (stage !== "copying" && stage !== "ready" && stage !== "switched") {
+    throw new Error("native.pending_root_move.stage is invalid");
+  }
+  let cleanup;
+  if (pending.cleanup !== void 0) {
+    const value2 = record(pending.cleanup, "native.pending_root_move.cleanup");
+    rejectUnknown(value2, CLEANUP_KEYS, "native.pending_root_move.cleanup");
+    const kind = value2.kind;
+    const state = value2.state;
+    const manifestHash = value2.manifest_hash;
+    if (kind !== "forward-source" && kind !== "restart-staging" && kind !== "rollback-destination" && kind !== "rollback-staging") {
+      throw new Error("native.pending_root_move.cleanup.kind is invalid");
     }
-    if (error instanceof CometIntentValidationError) {
-      return result2(1, void 0, error.message);
+    if (state !== "prepared" && state !== "quarantined" && state !== "deleting") {
+      throw new Error("native.pending_root_move.cleanup.state is invalid");
     }
+    if (typeof manifestHash !== "string" || !/^[a-f0-9]{64}$/u.test(manifestHash)) {
+      throw new Error("native.pending_root_move.cleanup.manifest_hash is invalid");
+    }
+    cleanup = { kind, state, manifestHash };
+  }
+  return {
+    id,
+    fromArtifactRoot: normalizeArtifactRootRef(from),
+    toArtifactRoot: normalizeArtifactRootRef(to),
+    stage,
+    ...cleanup ? { cleanup } : {}
+  };
+}
+function parseConfig(value) {
+  const root = record(value, PROJECT_CONFIG_FILE);
+  if (root.schema !== "comet.project.v1") throw new Error("Unsupported Comet project schema");
+  if (root.default_workflow !== "native" && root.default_workflow !== "classic") {
+    throw new Error("default_workflow must be native or classic");
+  }
+  const configuredWorkflows = root.workflows ?? [root.default_workflow];
+  if (!Array.isArray(configuredWorkflows) || configuredWorkflows.length === 0 || configuredWorkflows.some((workflow) => workflow !== "native" && workflow !== "classic")) {
+    throw new Error("workflows must contain native and/or classic");
+  }
+  const workflows = [...new Set(configuredWorkflows)];
+  if (!workflows.includes(root.default_workflow)) {
+    throw new Error("workflows must include default_workflow");
+  }
+  const native = record(root.native, "native");
+  rejectUnknown(native, NATIVE_KEYS, "native");
+  if (typeof native.artifact_root !== "string") {
+    throw new Error("native.artifact_root must be a string");
+  }
+  const language = native.language ?? "en";
+  if (language !== "en" && language !== "zh-CN") {
+    throw new Error("native.language must be en or zh-CN");
+  }
+  const pending = parsePending(native.pending_root_move);
+  return {
+    schema: "comet.project.v1",
+    default_workflow: root.default_workflow,
+    workflows,
+    native: {
+      artifact_root: normalizeArtifactRootRef(native.artifact_root),
+      language,
+      ...pending ? { pending_root_move: pending } : {}
+    }
+  };
+}
+async function readProjectConfig(projectRoot) {
+  const canonical = path9.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
+  const file = canonical;
+  try {
+    await fs9.lstat(file);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
     throw error;
   }
+  const source = (await readNativeProtectedTextFile({
+    root: projectRoot,
+    file,
+    maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
+    label: PROJECT_CONFIG_FILE
+  })).text;
+  const document = (0, import_yaml2.parseDocument)(source, { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
+  }
+  const value = document.toJS();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const root = value;
+  if (root.schema === void 0 && root.native === void 0 && root.default_workflow === void 0) {
+    return null;
+  }
+  return parseConfig(value);
+}
+
+// domains/comet-native/native-lock.ts
+import { AsyncLocalStorage } from "async_hooks";
+var NATIVE_LOCK_MAX_BYTES = 16 * 1024;
+var nativeLockCoordinator = new AsyncLocalStorage();
+
+// domains/comet-native/native-transaction.ts
+import { TextDecoder as TextDecoder3 } from "util";
+var NATIVE_TRANSACTION_JOURNAL_MAX_BYTES = 256 * 1024;
+var NATIVE_TRANSACTION_EVENTS_MAX_BYTES = 1024 * 1024;
+var NATIVE_TRANSACTION_EVENT_MAX_BYTES = 16 * 1024;
+var NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES = 64 * 1024 * 1024;
+var UTF8_DECODER = new TextDecoder3("utf-8", { fatal: true });
+
+// domains/comet-native/native-snapshot.ts
+var DEFAULT_NATIVE_SNAPSHOT_LIMITS = {
+  maxFiles: 1e4,
+  maxFileBytes: 5 * 1024 * 1024,
+  maxTotalBytes: 64 * 1024 * 1024,
+  maxManifestBytes: 1024 * 1024
 };
+var NATIVE_SNAPSHOT_MANIFEST_HARD_MAX_BYTES = 8 * 1024 * 1024;
 
-// domains/comet-classic/classic-resume-probe.ts
-import path21 from "path";
-import { promises as fs20 } from "fs";
-import { spawn } from "child_process";
-var COMET_RESUME_PROBE_SCHEMA_VERSION = "comet.resume_probe.v1";
-function isRecord3(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function normalizeInput(input) {
-  if (!isRecord3(input)) {
-    throw new Error("Invalid CometResumeProbeInput: input must be an object");
-  }
-  if (input.schema_version !== COMET_RESUME_PROBE_SCHEMA_VERSION) {
-    throw new Error(
-      `Invalid CometResumeProbeInput: schema_version must be ${COMET_RESUME_PROBE_SCHEMA_VERSION}`
-    );
-  }
-  if (typeof input.utterance !== "string") {
-    throw new Error("Invalid CometResumeProbeInput: utterance must be a string");
-  }
-  const context = isRecord3(input.agent_context) ? input.agent_context : {};
-  return {
-    schema_version: COMET_RESUME_PROBE_SCHEMA_VERSION,
-    utterance: input.utterance,
-    locale: typeof input.locale === "string" ? input.locale : "unknown",
-    agent_context: {
-      non_trivial_work: context.non_trivial_work === true,
-      already_in_comet_flow: context.already_in_comet_flow === true
-    }
-  };
-}
-function result3(action, change, confidence, reason, evidence = []) {
-  return {
-    schema_version: COMET_RESUME_PROBE_SCHEMA_VERSION,
-    action,
-    changeName: change?.name ?? null,
-    phase: change?.phase ?? null,
-    nextCommand: action === "auto_resume" || action === "ask_user" ? change?.nextCommand ?? null : null,
-    confidence,
-    reason,
-    evidence
-  };
-}
-async function readIfExists(filePath) {
-  if (!await fileExists3(filePath)) return "";
-  return fs20.readFile(filePath, "utf8");
-}
-async function changeSearchText(changeDir, classic) {
-  const files = ["proposal.md", "design.md", "tasks.md"];
-  const parts = [classic.name, classic.workflow, classic.phase];
-  for (const file of files) {
-    parts.push(await readIfExists(path21.join(changeDir, file)));
-  }
-  return parts.join("\n").toLowerCase();
-}
-function nextCommandForPhase2(phase) {
-  switch (phase) {
-    case "open":
-      return "/comet-open";
-    case "design":
-      return "/comet-design";
-    case "build":
-      return "/comet-build";
-    case "verify":
-      return "/comet-verify";
-    case "archive":
-      return "/comet-archive";
-    default:
-      return null;
-  }
-}
-function diagnosticFromProjection(changeDir, name, projection) {
-  const classic = projection.classic;
-  const unknownKeys = projection.unknownKeys.filter((key) => key !== "run_id");
-  if (!classic) {
-    return {
-      name,
-      valid: false,
-      workflow: "unknown",
-      phase: "invalid",
-      currentStep: null,
-      nextCommand: null,
-      runtimeMode: "invalid",
-      runtimeEval: null,
-      evidence: [],
-      error: `${changeDir} does not contain valid Comet state`
-    };
-  }
-  if (unknownKeys.length > 0) {
-    return {
-      name,
-      valid: false,
-      workflow: classic.workflow,
-      phase: classic.phase,
-      currentStep: null,
-      nextCommand: null,
-      runtimeMode: "invalid",
-      runtimeEval: null,
-      evidence: [],
-      error: `unknown field(s): ${unknownKeys.join(", ")}`
-    };
-  }
-  return {
-    name,
-    valid: true,
-    workflow: classic.workflow,
-    phase: classic.phase,
-    currentStep: null,
-    nextCommand: nextCommandForPhase2(classic.phase),
-    runtimeMode: "engine-projection",
-    runtimeEval: null,
-    evidence: []
-  };
-}
-async function hasOpenSpecChangeFiles(changeDir) {
-  return await fileExists3(path21.join(changeDir, "proposal.md")) || await fileExists3(path21.join(changeDir, "design.md")) || await fileExists3(path21.join(changeDir, "tasks.md"));
-}
-async function discoverActiveChanges(projectRoot2) {
-  const changesDir = path21.join(projectRoot2, "openspec", "changes");
-  if (!await fileExists3(changesDir)) return [];
-  const entries = await readDir(changesDir);
-  const changes = [];
-  for (const entry2 of entries) {
-    if (entry2 === "archive") continue;
-    const changeDir = path21.join(changesDir, entry2);
-    const stat = await fs20.stat(changeDir).catch(() => null);
-    if (!stat?.isDirectory()) continue;
-    const hasCometState = await fileExists3(path21.join(changeDir, ".comet.yaml"));
-    if (!hasCometState) {
-      if (!await hasOpenSpecChangeFiles(changeDir)) continue;
-      const missingStateChange = {
-        name: entry2,
-        workflow: "unknown",
-        phase: "invalid",
-        nextCommand: null,
-        diagnostic: {
-          name: entry2,
-          valid: false,
-          workflow: "unknown",
-          phase: "invalid",
-          currentStep: null,
-          nextCommand: null,
-          runtimeMode: "invalid",
-          runtimeEval: null,
-          evidence: [],
-          error: "missing Comet state"
-        },
-        buildPause: null,
-        hasClassicProjection: false,
-        verifyResult: null,
-        text: "",
-        missingCometState: true
-      };
-      missingStateChange.text = await changeSearchText(changeDir, missingStateChange);
-      changes.push(missingStateChange);
-      continue;
-    }
-    const projection = await readClassicState(changeDir, { migrate: false });
-    const classic = projection.classic;
-    const diagnostic = diagnosticFromProjection(changeDir, entry2, projection);
-    const hasClassicProjection = Boolean(classic);
-    const phase = classic?.phase ?? diagnostic.phase;
-    const workflow = classic?.workflow ?? diagnostic.workflow;
-    if (phase === "archive" || classic?.archived) continue;
-    const change = {
-      name: entry2,
-      workflow,
-      phase,
-      nextCommand: diagnostic.nextCommand,
-      diagnostic,
-      buildPause: classic?.buildPause ?? null,
-      hasClassicProjection,
-      verifyResult: classic?.verifyResult ?? null,
-      text: "",
-      missingCometState: false
-    };
-    change.text = await changeSearchText(changeDir, change);
-    changes.push(change);
-  }
-  return changes;
-}
-var RESUME_WORDS = [
-  "continue",
-  "resume",
-  "carry on",
-  "finish",
-  "run it",
-  "commit",
-  "verify",
-  "archive",
-  "继续",
-  "接着",
-  "恢复",
-  "跑完",
-  "提交",
-  "验证",
-  "归档",
-  "修刚才"
-];
-var QUESTION_WORDS = [
-  "what",
-  "why",
-  "how",
-  "explain",
-  "summarize",
-  "reliable",
-  "靠谱吗",
-  "是什么",
-  "为什么",
-  "解释",
-  "总结",
-  "取名",
-  "命名"
-];
-var GENERIC_RELATED_TOKENS = /* @__PURE__ */ new Set([
-  "add",
-  "build",
-  "cache",
-  "change",
-  "code",
-  "design",
-  "docs",
-  "file",
-  "fix",
-  "implement",
-  "plan",
-  "readme",
-  "task",
-  "test",
-  "update",
-  "修改",
-  "更新",
-  "修复",
-  "添加",
-  "文档",
-  "任务",
-  "计划",
-  "实现"
-]);
-var OPT_OUT_WORDS = [
-  "do not resume",
-  "don't resume",
-  "without comet",
-  "skip comet",
-  "不要恢复",
-  "不走 comet",
-  "不要走 comet",
-  "直接解释",
-  "只回答"
-];
-function includesAny(text2, words) {
-  return words.some((word) => text2.includes(word));
-}
-function hasDecisionPoint(change) {
-  if (change.missingCometState) return true;
-  if (!change.hasClassicProjection) return true;
-  if (!change.diagnostic.valid) return true;
-  if (change.phase === "archive") return true;
-  if (change.verifyResult === "fail") return true;
-  if (change.diagnostic.runtimeEval && !change.diagnostic.runtimeEval.passed) return true;
-  if (change.phase !== "build") return false;
-  if (change.buildPause === "plan-ready") return true;
-  return false;
-}
-function relatedEvidence(utterance, change) {
-  const text2 = utterance.toLowerCase();
-  const evidence = [];
-  if (text2.includes(change.name.toLowerCase())) {
-    evidence.push({ source: "user", quote: change.name });
-  }
-  const tokens = change.text.split(/[^a-zA-Z0-9_\-\u4e00-\u9fff/]+/u).map((token) => token.trim().toLowerCase()).filter((token) => token.length >= 4 && !GENERIC_RELATED_TOKENS.has(token));
-  const matched = [...new Set(tokens.filter((token) => text2.includes(token)))].slice(0, 3);
-  for (const token of matched) {
-    evidence.push({ source: "repo", quote: token });
-  }
-  return evidence;
-}
-async function gitDirtyFiles(projectRoot2) {
-  return new Promise((resolve) => {
-    const child = spawn("git", ["status", "--short", "--untracked-files=all"], {
-      cwd: projectRoot2,
-      stdio: ["ignore", "pipe", "ignore"],
-      shell: false
-    });
-    const chunks = [];
-    child.stdout.on("data", (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-    });
-    child.on("error", () => resolve([]));
-    child.on("exit", (code) => {
-      if (code !== 0) {
-        resolve([]);
-        return;
-      }
-      const dirtyFiles = Buffer.concat(chunks).toString("utf8").split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
-      resolve(dirtyFiles);
-    });
-  });
-}
-async function resolveCometResumeProbe(projectRoot2, rawInput) {
-  const input = normalizeInput(rawInput);
-  const utterance = input.utterance.trim();
-  const lower = utterance.toLowerCase();
-  if (input.agent_context.already_in_comet_flow) {
-    return result3("out_of_scope", null, "low", "already in Comet flow");
-  }
-  if (includesAny(lower, OPT_OUT_WORDS)) {
-    return result3("out_of_scope", null, "low", "user opted out of Comet resume", [
-      { source: "user", quote: utterance }
-    ]);
-  }
-  const changes = await discoverActiveChanges(projectRoot2);
-  if (changes.length === 0) {
-    return result3("none", null, "none", "no active Comet changes");
-  }
-  const dirtyFiles = await gitDirtyFiles(projectRoot2);
-  if (changes.length > 1) {
-    const named = changes.find((change2) => lower.includes(change2.name.toLowerCase()));
-    if (!named) {
-      return result3("ask_user", null, "low", "multiple active changes require a change name");
-    }
-    if (dirtyFiles.length > 0) {
-      return result3("ask_user", named, "low", "uncommitted worktree changes require attribution", [
-        { source: "repo", quote: `${dirtyFiles.length} dirty file(s)` }
-      ]);
-    }
-    return hasDecisionPoint(named) ? result3("ask_user", named, "low", "active change is at a decision point") : result3("auto_resume", named, "high", "request names an active change", [
-      { source: "user", quote: named.name }
-    ]);
-  }
-  const [change] = changes;
-  if (dirtyFiles.length > 0) {
-    return result3("ask_user", change, "low", "uncommitted worktree changes require attribution", [
-      { source: "repo", quote: `${dirtyFiles.length} dirty file(s)` }
-    ]);
-  }
-  if (hasDecisionPoint(change)) {
-    if (change.missingCometState) {
-      return result3("ask_user", change, "low", "active OpenSpec change is missing Comet state");
-    }
-    return result3("ask_user", change, "low", "active change is at a decision point", [
-      { source: "state", quote: `phase: ${change.phase}` }
-    ]);
-  }
-  const resumeLike = includesAny(lower, RESUME_WORDS);
-  const questionLike = !input.agent_context.non_trivial_work && includesAny(lower, QUESTION_WORDS);
-  if (questionLike && !resumeLike) {
-    return result3("out_of_scope", change, "low", "user asked a question without workflow work");
-  }
-  const evidence = relatedEvidence(utterance, change);
-  if (resumeLike || evidence.length > 0) {
-    return result3("auto_resume", change, "high", "single active change and request is related", [
-      { source: "state", quote: `phase: ${change.phase}` },
-      ...evidence
-    ]);
-  }
-  if (input.agent_context.non_trivial_work) {
-    return result3(
-      "ask_user",
-      change,
-      "low",
-      "single active change exists but request looks unrelated"
-    );
-  }
-  return result3("out_of_scope", change, "low", "request is not workflow work");
-}
-
-// domains/comet-classic/classic-resume-probe-command.ts
-function result4(exitCode, stdout, stderr) {
-  return {
-    exitCode,
-    ...stdout === void 0 ? {} : { stdout },
-    ...stderr === void 0 ? {} : { stderr }
-  };
-}
-function usage2() {
-  return result4(
-    64,
-    void 0,
-    "Usage: comet-resume-probe.mjs probe <input-json>\nUsage: comet-resume-probe.mjs probe --stdin"
-  );
-}
-async function readStdin2() {
-  const chunks = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
-function rawUtteranceInput(utterance) {
-  return {
-    schema_version: COMET_RESUME_PROBE_SCHEMA_VERSION,
-    utterance,
-    locale: "unknown",
-    agent_context: {
-      non_trivial_work: true,
-      already_in_comet_flow: false
-    }
-  };
-}
-function parseStdinInput(source) {
-  try {
-    return JSON.parse(source);
-  } catch {
-    return rawUtteranceInput(source);
-  }
-}
-var classicResumeProbeCommand = async (args) => {
-  const [subcommand, input] = args;
-  if (subcommand !== "probe") return usage2();
-  const fromStdin = input === "--stdin";
-  const source = fromStdin ? await readStdin2() : input;
-  if (!source) return usage2();
-  try {
-    const parsedInput = fromStdin ? parseStdinInput(source) : JSON.parse(source);
-    const resolution = await resolveCometResumeProbe(process.cwd(), parsedInput);
-    return result4(0, `${JSON.stringify(resolution, null, 2)}
-`);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return result4(1, void 0, `Invalid JSON: ${error.message}`);
-    }
-    return result4(1, void 0, error instanceof Error ? error.message : String(error));
-  }
-};
-
-// domains/comet-classic/classic-state-command.ts
-var import_yaml7 = __toESM(require_dist(), 1);
-import { spawnSync as spawnSync3 } from "child_process";
-import { randomUUID as randomUUID7 } from "crypto";
-import { existsSync as existsSync3, promises as fs21 } from "fs";
-import path22 from "path";
+// domains/engine/storage-run.ts
 init_state();
-var GREEN5 = "\x1B[32m";
-var RED5 = "\x1B[31m";
-var YELLOW5 = "\x1B[33m";
-var RESET5 = "\x1B[0m";
-var PROFILES = ["full", "hotfix", "tweak"];
-var PHASES3 = ["open", "design", "build", "verify", "archive"];
-var ARTIFACT_LANGUAGES2 = ["en", "zh-CN"];
-var EVENTS = CLASSIC_TRANSITION_EVENTS;
-var MACHINE_OWNED_FIELDS = /* @__PURE__ */ new Set([
-  ...RUN_WIRE_KEYS,
-  "archive_confirmation",
-  "verify_failures",
-  "classic_profile",
-  "classic_migration"
+
+// domains/comet-native/native-run-store.ts
+var NATIVE_RUN_IO_LIMITS = {
+  runStateBytes: 256 * 1024,
+  trajectoryBytes: 8 * 1024 * 1024,
+  trajectoryEvents: 4096,
+  trajectoryEventBytes: 256 * 1024,
+  checkpointBytes: 256 * 1024,
+  pendingActionBytes: 256 * 1024,
+  contextBytes: 1024 * 1024,
+  artifactsBytes: 1024 * 1024
+};
+
+// domains/comet-native/native-workspace.ts
+var MAX_WORKSPACE_IDENTITY_BYTES = 16 * 1024;
+
+// domains/comet-native/native-types.ts
+var NATIVE_RUNTIME_PROTOCOL_VERSION = 3;
+var NATIVE_CHANGE_SCHEMA = "comet.native.v3";
+var NATIVE_V2_CHANGE_SCHEMA = "comet.native.v2";
+var NATIVE_LEGACY_CHANGE_SCHEMA = "comet.native.v1";
+
+// domains/comet-native/native-change.ts
+var CHANGE_KEYS = [
+  "schema",
+  "name",
+  "language",
+  "phase",
+  "brief",
+  "approval",
+  "spec_changes",
+  "verification_result",
+  "verification_report",
+  "archived",
+  "created_at",
+  "run_id"
+];
+var LEGACY_CHANGE_KEYS = new Set(CHANGE_KEYS);
+var V2_CHANGE_KEYS = /* @__PURE__ */ new Set([...CHANGE_KEYS, "minimum_runtime_version", "revision"]);
+var CURRENT_CHANGE_KEYS = /* @__PURE__ */ new Set([
+  ...V2_CHANGE_KEYS,
+  "implementation_scope",
+  "verification_evidence",
+  "partial_allowance"
 ]);
-var SETTABLE_FIELDS = new Set(
-  CLASSIC_WIRE_KEYS.filter((field2) => !MACHINE_OWNED_FIELDS.has(field2))
-);
-var FIELD_ENUMS = {
-  workflow: PROFILES,
-  phase: PHASES3,
-  context_compression: ["off", "beta"],
-  build_mode: ["subagent-driven-development", "executing-plans", "direct"],
-  build_pause: ["null", "plan-ready"],
-  subagent_dispatch: ["null", "confirmed"],
-  tdd_mode: ["tdd", "direct"],
-  review_mode: ["off", "standard", "thorough"],
-  isolation: ["current", "branch", "worktree"],
-  verify_mode: ["light", "full"],
-  auto_transition: ["true", "false"],
-  verify_result: ["pending", "pass", "fail"],
-  branch_status: ["pending", "handled"],
-  archive_confirmation: ["pending", "confirmed"],
-  archived: ["true", "false"],
-  direct_override: ["true", "false"],
-  classic_profile: PROFILES,
-  classic_migration: ["1"]
-};
-var PATH_FIELDS = /* @__PURE__ */ new Set(["design_doc", "plan", "verification_report", "handoff_context"]);
-var CLASSIC_FIELD_WIRE_NAMES2 = {
-  archived: "archived",
-  branchStatus: "branch_status",
-  classicProfile: "classic_profile",
-  designDoc: "design_doc",
-  language: "language",
-  phase: "phase",
-  verificationReport: "verification_report",
-  verifiedAt: "verified_at",
-  archiveConfirmation: "archive_confirmation",
-  verifyResult: "verify_result",
-  verifyFailures: "verify_failures",
-  workflow: "workflow"
-};
-var CommandFailure = class extends Error {
-  constructor(message, exitCode = 1) {
-    super(message);
-    this.exitCode = exitCode;
+var SPEC_CHANGE_KEYS = /* @__PURE__ */ new Set(["capability", "operation", "source", "base_hash"]);
+var PHASES2 = /* @__PURE__ */ new Set(["shape", "build", "verify", "archive"]);
+var APPROVALS = /* @__PURE__ */ new Set(["implicit", "confirmed"]);
+var VERIFY_RESULTS2 = /* @__PURE__ */ new Set(["pending", "pass", "fail"]);
+var NATIVE_CHANGE_STATE_FILE = "comet-state.yaml";
+var HASH_PATTERN = /^[a-f0-9]{64}$/u;
+var NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+var CONTENT_ADDRESSED_REF_PATTERN = /^runtime\/evidence\/(scopes|allowances|verifications)\/([a-f0-9]{64})\.json$/u;
+var NativeSchemaMigrationRequiredError = class extends Error {
+  constructor(change, schema) {
+    super(
+      `Native change ${change} uses ${schema}; run comet native doctor ${change} --repair before mutating it`
+    );
+    this.change = change;
+    this.schema = schema;
+    this.name = "NativeSchemaMigrationRequiredError";
   }
-  exitCode;
+  change;
+  schema;
+  code = "native-schema-migration-required";
 };
-var CommandOutput = class {
-  stdout = [];
-  stderr = [];
-  result(exitCode = 0) {
+var NativeRuntimeCompatibilityError = class extends Error {
+  constructor(schema, minimumRuntimeVersion) {
+    super(
+      schema !== NATIVE_CHANGE_SCHEMA || minimumRuntimeVersion === null ? `Unsupported Native change schema ${schema} for runtime protocol ${NATIVE_RUNTIME_PROTOCOL_VERSION}` : `Native change ${schema} requires runtime protocol ${minimumRuntimeVersion}; current protocol is ${NATIVE_RUNTIME_PROTOCOL_VERSION}`
+    );
+    this.schema = schema;
+    this.minimumRuntimeVersion = minimumRuntimeVersion;
+    this.name = "NativeRuntimeCompatibilityError";
+  }
+  schema;
+  minimumRuntimeVersion;
+  code = "native-runtime-incompatible";
+};
+var NATIVE_BRIEF_TEMPLATE = [
+  "# Outcome",
+  "",
+  "# Scope",
+  "",
+  "# Non-goals",
+  "",
+  "# Acceptance examples",
+  "",
+  "# Constraints and invariants",
+  "",
+  "# Decisions",
+  "",
+  "# Open questions",
+  "",
+  "# Verification expectations",
+  ""
+].join("\n");
+function record2(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a mapping`);
+  }
+  return value;
+}
+function rejectUnknown2(value, known, label) {
+  const unknown = Object.keys(value).filter((key) => !known.has(key));
+  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
+}
+function assertNativeName(value) {
+  if (!NAME_PATTERN.test(value)) throw new Error(`Invalid Native change name: ${value}`);
+}
+function assertCapabilityId(value) {
+  if (!NAME_PATTERN.test(value)) throw new Error(`Invalid Native capability id: ${value}`);
+}
+function assertRelativeRef(value, label) {
+  if (value.length === 0 || path10.isAbsolute(value) || /^(?:[A-Za-z]:|~|[\\/])/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+    throw new Error(`${label} must stay inside the Native change`);
+  }
+}
+function parseSpecChange(value, index) {
+  const item = record2(value, `spec_changes[${index}]`);
+  rejectUnknown2(item, SPEC_CHANGE_KEYS, `spec_changes[${index}]`);
+  if (typeof item.capability !== "string") throw new Error("spec change capability is required");
+  assertCapabilityId(item.capability);
+  if (item.operation !== "create" && item.operation !== "replace" && item.operation !== "remove") {
+    throw new Error(`Invalid spec operation for ${item.capability}`);
+  }
+  const source = item.source;
+  const baseHash = item.base_hash;
+  if (source !== void 0 && typeof source !== "string") {
+    throw new Error(`Spec source for ${item.capability} must be a string`);
+  }
+  if (typeof source === "string") assertRelativeRef(source, `Spec source for ${item.capability}`);
+  if (item.operation === "create") {
+    if (!source) throw new Error(`Create spec ${item.capability} requires source`);
+    if (baseHash !== null)
+      throw new Error(`Create spec ${item.capability} requires null base_hash`);
+  } else if (item.operation === "replace") {
+    if (!source) throw new Error(`Replace spec ${item.capability} requires source`);
+    if (typeof baseHash !== "string" || !HASH_PATTERN.test(baseHash)) {
+      throw new Error(`Replace spec ${item.capability} requires a SHA-256 base_hash`);
+    }
+  } else {
+    if (source !== void 0) throw new Error(`Remove spec ${item.capability} forbids source`);
+    if (typeof baseHash !== "string" || !HASH_PATTERN.test(baseHash)) {
+      throw new Error(`Remove spec ${item.capability} requires a SHA-256 base_hash`);
+    }
+  }
+  return {
+    capability: item.capability,
+    operation: item.operation,
+    ...typeof source === "string" ? { source } : {},
+    base_hash: baseHash
+  };
+}
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  return (/* @__PURE__ */ new Date(`${value}T00:00:00.000Z`)).toISOString().slice(0, 10) === value;
+}
+function parseChangeFields(root, knownKeys) {
+  rejectUnknown2(root, knownKeys, NATIVE_CHANGE_STATE_FILE);
+  if (typeof root.name !== "string") throw new Error("Native change name is required");
+  assertNativeName(root.name);
+  if (root.language !== "en" && root.language !== "zh-CN") {
+    throw new Error("Native change language must be en or zh-CN");
+  }
+  if (typeof root.phase !== "string" || !PHASES2.has(root.phase)) {
+    throw new Error("Native change phase is invalid");
+  }
+  if (root.brief !== "brief.md") throw new Error("Native change brief must be brief.md");
+  if (root.approval !== null && !APPROVALS.has(root.approval)) {
+    throw new Error("Native change approval is invalid");
+  }
+  if (!Array.isArray(root.spec_changes)) throw new Error("Native spec_changes must be an array");
+  const specChanges = root.spec_changes.map(parseSpecChange);
+  const duplicates = specChanges.map((change) => change.capability).filter((capability, index, all) => all.indexOf(capability) !== index);
+  if (duplicates.length > 0) {
+    throw new Error(
+      `Duplicate Native capability operation: ${[...new Set(duplicates)].join(", ")}`
+    );
+  }
+  if (typeof root.verification_result !== "string" || !VERIFY_RESULTS2.has(root.verification_result)) {
+    throw new Error("Native verification_result is invalid");
+  }
+  if (root.verification_report !== null && typeof root.verification_report !== "string") {
+    throw new Error("Native verification_report must be a string or null");
+  }
+  if (typeof root.verification_report === "string") {
+    assertRelativeRef(root.verification_report, "Native verification_report");
+  }
+  if (typeof root.archived !== "boolean") throw new Error("Native archived must be boolean");
+  if (typeof root.created_at !== "string" || !validDate(root.created_at)) {
+    throw new Error("Native created_at must be a valid YYYY-MM-DD date");
+  }
+  if (root.run_id !== null && (typeof root.run_id !== "string" || root.run_id.length === 0)) {
+    throw new Error("Native run_id must be a non-empty string or null");
+  }
+  return {
+    name: root.name,
+    language: root.language,
+    phase: root.phase,
+    brief: "brief.md",
+    approval: root.approval,
+    spec_changes: specChanges,
+    verification_result: root.verification_result,
+    verification_report: root.verification_report,
+    archived: root.archived,
+    created_at: root.created_at,
+    run_id: root.run_id
+  };
+}
+function parseLegacyNativeChangeValue(value) {
+  const root = record2(value, NATIVE_CHANGE_STATE_FILE);
+  if (root.schema !== NATIVE_LEGACY_CHANGE_SCHEMA) {
+    throw new Error(`Expected ${NATIVE_LEGACY_CHANGE_SCHEMA}`);
+  }
+  return {
+    schema: NATIVE_LEGACY_CHANGE_SCHEMA,
+    ...parseChangeFields(root, LEGACY_CHANGE_KEYS)
+  };
+}
+function positiveInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return value;
+}
+function contentAddressedRef(value, label, kind) {
+  if (value === null) return null;
+  const match = typeof value === "string" ? CONTENT_ADDRESSED_REF_PATTERN.exec(value) : null;
+  if (!match || match[1] !== kind) {
+    throw new Error(
+      `${label} must be null or runtime/evidence/${kind}/<sha256>.json relative to the Native change`
+    );
+  }
+  return value;
+}
+function parseV2NativeChangeValue(value) {
+  const root = record2(value, NATIVE_CHANGE_STATE_FILE);
+  if (root.schema !== NATIVE_V2_CHANGE_SCHEMA) {
+    throw new Error(`Expected ${NATIVE_V2_CHANGE_SCHEMA}`);
+  }
+  const minimumRuntimeVersion = positiveInteger(
+    root.minimum_runtime_version,
+    "Native v2 minimum_runtime_version"
+  );
+  if (minimumRuntimeVersion !== 2) {
+    throw new Error(`Native ${NATIVE_V2_CHANGE_SCHEMA} minimum_runtime_version must be 2`);
+  }
+  return {
+    schema: NATIVE_V2_CHANGE_SCHEMA,
+    minimum_runtime_version: 2,
+    revision: positiveInteger(root.revision, "Native v2 revision"),
+    ...parseChangeFields(root, V2_CHANGE_KEYS)
+  };
+}
+function parseNativeChangeValue(value) {
+  const root = record2(value, NATIVE_CHANGE_STATE_FILE);
+  if (root.schema !== NATIVE_CHANGE_SCHEMA) {
+    if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA || root.schema === NATIVE_V2_CHANGE_SCHEMA) {
+      const previous = root.schema === NATIVE_LEGACY_CHANGE_SCHEMA ? parseLegacyNativeChangeValue(root) : parseV2NativeChangeValue(root);
+      throw new NativeSchemaMigrationRequiredError(previous.name, previous.schema);
+    }
+    throw new NativeRuntimeCompatibilityError(
+      typeof root.schema === "string" ? root.schema : "(missing)",
+      typeof root.minimum_runtime_version === "number" ? root.minimum_runtime_version : null
+    );
+  }
+  const minimumRuntimeVersion = positiveInteger(
+    root.minimum_runtime_version,
+    "Native minimum_runtime_version"
+  );
+  if (minimumRuntimeVersion > NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new NativeRuntimeCompatibilityError(root.schema, minimumRuntimeVersion);
+  }
+  if (minimumRuntimeVersion !== NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    throw new Error(
+      `Native ${root.schema} minimum_runtime_version must be ${NATIVE_RUNTIME_PROTOCOL_VERSION}`
+    );
+  }
+  const revision = positiveInteger(root.revision, "Native revision");
+  return {
+    schema: NATIVE_CHANGE_SCHEMA,
+    minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    revision,
+    ...parseChangeFields(root, CURRENT_CHANGE_KEYS),
+    implementation_scope: contentAddressedRef(
+      root.implementation_scope,
+      "Native implementation_scope",
+      "scopes"
+    ),
+    verification_evidence: contentAddressedRef(
+      root.verification_evidence,
+      "Native verification_evidence",
+      "verifications"
+    ),
+    partial_allowance: contentAddressedRef(
+      root.partial_allowance,
+      "Native partial_allowance",
+      "allowances"
+    )
+  };
+}
+function inspectNativeChangeValue(value) {
+  const root = record2(value, NATIVE_CHANGE_STATE_FILE);
+  if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA) {
+    const state2 = parseLegacyNativeChangeValue(root);
     return {
-      exitCode,
-      ...this.stdout.length > 0 ? { stdout: this.stdout.join("\n") + "\n" } : {},
-      ...this.stderr.length > 0 ? { stderr: this.stderr.join("\n") } : {}
+      status: "migration-required",
+      schema: state2.schema,
+      minimumRuntimeVersion: 1,
+      state: state2,
+      message: `Native change ${state2.name} requires migration to ${NATIVE_CHANGE_SCHEMA}`
     };
   }
-};
-function green4(message) {
-  return `${GREEN5}${message}${RESET5}`;
-}
-function red4(message) {
-  return `${RED5}${message}${RESET5}`;
-}
-function yellow4(message) {
-  return `${YELLOW5}${message}${RESET5}`;
-}
-function fail2(message) {
-  throw new CommandFailure(message);
-}
-function validateChangeName4(name) {
-  const error = openSpecChangeNameError(name);
-  if (error) fail2(`ERROR: ${error}`);
-}
-function validateEnum(value, values) {
-  if (!values.includes(value)) {
-    fail2(`ERROR: Invalid value: '${value}'
-Valid values: ${values.join(" ")}`);
+  if (root.schema === NATIVE_V2_CHANGE_SCHEMA) {
+    const state2 = parseV2NativeChangeValue(root);
+    return {
+      status: "migration-required",
+      schema: state2.schema,
+      minimumRuntimeVersion: state2.minimum_runtime_version,
+      state: state2,
+      message: `Native change ${state2.name} requires migration to ${NATIVE_CHANGE_SCHEMA}`
+    };
   }
-}
-function validateLanguage(value, source) {
-  if (ARTIFACT_LANGUAGES2.includes(value)) {
-    return value;
+  if (root.schema !== NATIVE_CHANGE_SCHEMA) {
+    const minimumRuntimeVersion2 = typeof root.minimum_runtime_version === "number" && Number.isSafeInteger(root.minimum_runtime_version) ? root.minimum_runtime_version : null;
+    return {
+      status: "runtime-incompatible",
+      schema: typeof root.schema === "string" ? root.schema : "(missing)",
+      minimumRuntimeVersion: minimumRuntimeVersion2,
+      state: null,
+      message: new NativeRuntimeCompatibilityError(
+        typeof root.schema === "string" ? root.schema : "(missing)",
+        minimumRuntimeVersion2
+      ).message
+    };
   }
-  fail2(`ERROR: Invalid language from ${source}: '${value}'
-Valid values: en, zh-CN`);
-}
-function validateRelativePath(value, field2) {
-  if (!value || value === "null") return;
-  if (/^(?:[A-Za-z]:|[\\/]|~)/u.test(value)) {
-    fail2(`ERROR: ${field2} must be a relative path within the repo: '${value}'`);
+  const minimumRuntimeVersion = positiveInteger(
+    root.minimum_runtime_version,
+    "Native minimum_runtime_version"
+  );
+  if (minimumRuntimeVersion > NATIVE_RUNTIME_PROTOCOL_VERSION) {
+    return {
+      status: "runtime-incompatible",
+      schema: root.schema,
+      minimumRuntimeVersion,
+      state: null,
+      message: new NativeRuntimeCompatibilityError(root.schema, minimumRuntimeVersion).message
+    };
   }
-  if (value.split(/[\\/]/u).includes("..")) {
-    fail2(`ERROR: ${field2} cannot contain '..' (path traversal not allowed): '${value}'`);
-  }
+  const state = parseNativeChangeValue(root);
+  return {
+    status: "current",
+    schema: state.schema,
+    minimumRuntimeVersion: state.minimum_runtime_version,
+    state
+  };
 }
-async function exists6(file) {
+function nativeChangeDir(paths, name) {
+  assertNativeName(name);
+  const target = path10.join(paths.changesDir, name);
+  if (!isInsidePath(paths.changesDir, target)) throw new Error("Native change path escaped");
+  return target;
+}
+async function hasPendingNativeSchemaMigration(paths, name) {
+  const file = path10.join(nativeChangeDir(paths, name), "runtime", "schema-migration.json");
+  await resolveContainedNativePath(paths.nativeRoot, file);
   try {
-    await fs21.access(file);
+    await fs10.lstat(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
   }
 }
-async function nonempty3(file) {
+var NATIVE_CHANGE_DOCUMENT_MAX_BYTES = 256 * 1024;
+async function readChangeDocumentFile(file, root = path10.dirname(file)) {
+  const ref = path10.relative(root, file).split(path10.sep).join("/");
+  const source = await readNativeBoundedTextFile({
+    root,
+    ref,
+    maxBytes: NATIVE_CHANGE_DOCUMENT_MAX_BYTES
+  });
+  const document = (0, import_yaml3.parseDocument)(source.text, { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
+  }
+  return document.toJS();
+}
+async function inspectNativeChange(paths, name) {
+  const file = path10.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
+  await resolveContainedNativePath(paths.nativeRoot, file);
+  const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file, paths.nativeRoot));
+  if (inspection.state && inspection.state.name !== name) {
+    throw new Error(`Native change directory/name mismatch: ${name}`);
+  }
+  if (await hasPendingNativeSchemaMigration(paths, name)) {
+    return {
+      status: "migration-required",
+      schema: inspection.schema,
+      minimumRuntimeVersion: inspection.minimumRuntimeVersion,
+      state: inspection.state,
+      message: `Native schema migration is incomplete for ${name}; run doctor --repair`
+    };
+  }
+  return inspection;
+}
+async function readNativeChange(paths, name) {
+  const inspection = await inspectNativeChange(paths, name);
+  if (inspection.status === "migration-required") {
+    throw new NativeSchemaMigrationRequiredError(name, inspection.schema);
+  }
+  if (inspection.status === "runtime-incompatible" || !inspection.state) {
+    throw new NativeRuntimeCompatibilityError(inspection.schema, inspection.minimumRuntimeVersion);
+  }
+  return inspection.state;
+}
+
+// domains/comet-native/native-selection.ts
+var NATIVE_SELECTION_MAX_BYTES = 16 * 1024;
+async function readNativeSelectionRecord(paths) {
+  const current = await readCometCurrentSelection(paths.projectRoot);
+  if (current.status === "missing" || current.selection.workflow !== "native") return null;
+  assertNativeName(current.selection.change);
+  return current.selection;
+}
+async function resolveSelectedNativeChange(paths) {
+  const value = await readNativeSelectionRecord(paths);
+  if (!value) return null;
+  await readNativeChange(paths, value.change);
+  return value.change;
+}
+
+// domains/comet-native/native-hook-guard.ts
+function isWithin(parent, target) {
+  const relative = path11.relative(parent, target);
+  return relative === "" || !relative.startsWith("..") && !path11.isAbsolute(relative);
+}
+function requestTargetsAreControlOnly(projectRoot, nativeRoot, request) {
+  return request.targets.length > 0 && request.targets.every((targetPath) => {
+    const target = path11.resolve(projectRoot, targetPath);
+    if (!isWithin(projectRoot, target)) return true;
+    const relative = path11.relative(projectRoot, target).replaceAll("\\", "/");
+    return relative === ".comet/config.yaml" || isWithin(nativeRoot, target);
+  });
+}
+async function activeNativeContext(projectRoot) {
+  const config = await readProjectConfig(projectRoot);
+  if (!config || !(config.workflows ?? [config.default_workflow]).includes("native")) return null;
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  let entries;
   try {
-    return (await fs21.stat(file)).size > 0;
+    entries = await fs11.readdir(paths.changesDir, { withFileTypes: true });
   } catch (error) {
-    if (error.code === "ENOENT") return false;
+    if (error.code === "ENOENT") return { paths, changes: [] };
     throw error;
   }
+  const changes = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const state = await readNativeChange(paths, entry.name);
+    if (!state.archived) changes.push(state);
+  }
+  return { paths, changes };
 }
-async function changeDirectory2(name) {
-  return resolveClassicChangeDirectory(name);
+async function listActiveNativeHookChanges(projectRoot) {
+  const context = await activeNativeContext(projectRoot);
+  return (context?.changes ?? []).map((change) => ({
+    workflow: "native",
+    name: change.name,
+    phase: change.phase
+  }));
 }
-async function readDocument2(file) {
-  let source;
-  try {
-    source = await fs21.readFile(file, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      fail2(
-        `ERROR: .comet.yaml not found at ${path22.relative(process.cwd(), file).replaceAll("\\", "/")}`
-      );
+async function inspectNativeHookGuard(projectRoot, request, selectedChangeName) {
+  const context = await activeNativeContext(projectRoot);
+  if (!context) return { allowed: true, reason: "Native workflow is not enabled" };
+  if (request.intent === "non-write") {
+    return { allowed: true, reason: "Hook event is not a write" };
+  }
+  if (context.changes.length === 0) {
+    return {
+      allowed: true,
+      reason: requestTargetsAreControlOnly(projectRoot, context.paths.nativeRoot, request) ? "Native control artifact write" : "No Native changes exist"
+    };
+  }
+  let change;
+  if (selectedChangeName) {
+    change = context.changes.find((candidate) => candidate.name === selectedChangeName);
+    if (!change) {
+      return {
+        allowed: false,
+        reason: `Selected Native change ${selectedChangeName} is missing or archived; resume /comet-native before retrying`,
+        workflow: "native",
+        change: selectedChangeName
+      };
     }
-    throw error;
+  } else if (context.changes.length === 1) {
+    change = context.changes[0];
+  } else {
+    const selectedName = await resolveSelectedNativeChange(context.paths);
+    change = context.changes.find((candidate) => candidate.name === selectedName);
+    if (!change) {
+      return {
+        allowed: false,
+        reason: "Multiple Native changes are active; select the change to resume before writing code",
+        workflow: "native"
+      };
+    }
   }
-  const document = (0, import_yaml7.parseDocument)(source, { uniqueKeys: false });
-  if (document.errors.length > 0) fail2(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
-  return document;
+  if (change.phase === "build") {
+    return {
+      allowed: true,
+      reason: "Native change is in Build",
+      workflow: "native",
+      phase: change.phase,
+      change: change.name
+    };
+  }
+  if (request.intent === "unknown" || request.targets.length === 0) {
+    return {
+      allowed: false,
+      reason: `Hook write target could not be determined while Native change ${change.name} is in ${change.phase}; resume /comet-native before retrying`,
+      workflow: "native",
+      phase: change.phase,
+      change: change.name
+    };
+  }
+  let controlTarget = false;
+  let externalTarget = false;
+  for (const targetPath of request.targets) {
+    const target = path11.resolve(projectRoot, targetPath);
+    if (!isWithin(projectRoot, target)) {
+      externalTarget = true;
+      continue;
+    }
+    const relative = path11.relative(projectRoot, target).replaceAll("\\", "/");
+    if (relative === ".comet/config.yaml" || isWithin(context.paths.nativeRoot, target)) {
+      controlTarget = true;
+      continue;
+    }
+    return {
+      allowed: false,
+      reason: `Native change ${change.name} is in ${change.phase}; implementation writes are only allowed in build. Resume /comet-native to continue safely`,
+      workflow: "native",
+      phase: change.phase,
+      change: change.name
+    };
+  }
+  return {
+    allowed: true,
+    reason: controlTarget ? "Native control artifact write" : externalTarget ? "Write target is outside the guarded project" : "No guarded write target was provided",
+    workflow: "native",
+    phase: change.phase,
+    change: change.name
+  };
 }
-async function atomicWrite2(file, content) {
-  await fs21.mkdir(path22.dirname(file), { recursive: true });
-  const temporary = `${file}.${randomUUID7()}.tmp`;
+
+// domains/comet-entry/hook-router.ts
+var DEFAULT_DEPENDENCIES = {
+  listNative: listActiveNativeHookChanges,
+  listClassic: listActiveClassicHookChanges,
+  inspectNative: inspectNativeHookGuard,
+  inspectClassic: inspectClassicHookGuard
+};
+function enabledWorkflows(config) {
+  if (!config) return ["classic"];
+  return config.workflows ?? [config.default_workflow];
+}
+async function resolveHookWorkflowOwner(projectRoot, dependencies = DEFAULT_DEPENDENCIES) {
+  const config = await readProjectConfig(projectRoot);
+  const enabled = enabledWorkflows(config);
+  const [native, classic] = await Promise.all([
+    enabled.includes("native") ? dependencies.listNative(projectRoot) : Promise.resolve([]),
+    enabled.includes("classic") ? dependencies.listClassic(projectRoot) : Promise.resolve([])
+  ]);
+  const candidates = [...native, ...classic];
+  let current;
   try {
-    await fs21.writeFile(temporary, content, "utf8");
-    await fs21.rename(temporary, file);
+    current = await readCometCurrentSelection(projectRoot);
   } catch (error) {
-    await fs21.rm(temporary, { force: true });
-    throw error;
+    return { status: "stale", reason: error instanceof Error ? error.message : String(error) };
+  }
+  if (current.status === "selected") {
+    const selection = current.selection;
+    if (!enabled.includes(selection.workflow)) {
+      return {
+        status: "stale",
+        reason: `selected workflow '${selection.workflow}' is not enabled for this project`
+      };
+    }
+    if (selection.workflow === "classic") {
+      const resolved = await resolveCurrentChange(projectRoot);
+      if (resolved.status !== "selected") {
+        return {
+          status: "stale",
+          reason: resolved.status === "stale" ? resolved.reason : `selected Classic change '${selection.change}' is no longer active`
+        };
+      }
+    }
+    const owner = candidates.find(
+      (candidate) => candidate.workflow === selection.workflow && candidate.name === selection.change
+    );
+    if (!owner) {
+      return {
+        status: "stale",
+        reason: `selected ${selection.workflow} change '${selection.change}' is missing or archived`
+      };
+    }
+    return { status: "owned", owner };
+  }
+  if (candidates.length === 0) return { status: "none" };
+  if (candidates.length === 1) return { status: "inferred", owner: candidates[0] };
+  return { status: "ambiguous", candidates };
+}
+async function inspectCometHook(projectRoot, request, dependencies = DEFAULT_DEPENDENCIES) {
+  if (request.intent === "non-write") {
+    return { allowed: true, reason: "Hook event is not a write" };
+  }
+  try {
+    const resolution = await resolveHookWorkflowOwner(projectRoot, dependencies);
+    if (resolution.status === "none") {
+      return { allowed: true, reason: "No active Comet change" };
+    }
+    if (resolution.status === "stale") {
+      return {
+        allowed: false,
+        reason: `${resolution.reason}. Resume /comet-native or /comet-classic and select the current change before retrying`
+      };
+    }
+    if (resolution.status === "ambiguous") {
+      return {
+        allowed: false,
+        reason: `Multiple active Comet changes require one current selection: ${resolution.candidates.map((candidate) => `${candidate.workflow}:${candidate.name}`).join(", ")}`
+      };
+    }
+    const owner = resolution.owner;
+    return owner.workflow === "native" ? dependencies.inspectNative(projectRoot, request, owner.name) : dependencies.inspectClassic(projectRoot, owner.name, request);
+  } catch (error) {
+    return {
+      allowed: false,
+      reason: `Comet Hook Router failed closed: ${error instanceof Error ? error.message : String(error)}`
+    };
   }
 }
-function scalar(value) {
-  if (value === null) return "null";
-  if (value === void 0) return "";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
+
+// domains/comet-entry/hook-router-entry.ts
+var USAGE = "Usage: comet-hook-router --platform <platform-id> [--project-root <project-root>]";
+function parseArgs(args) {
+  let platformId;
+  let projectRoot;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--platform") {
+      platformId = args[++index];
+      continue;
+    }
+    if (arg === "--project-root") {
+      projectRoot = args[++index];
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+  if (!platformId || platformId.startsWith("--")) throw new Error("--platform is required");
+  if (!COMET_HOOK_PLATFORM_IDS.has(platformId)) {
+    throw new Error(`unsupported Hook platform: ${platformId}`);
+  }
+  if (projectRoot?.startsWith("--")) throw new Error("--project-root requires a value");
+  return { platformId, ...projectRoot ? { projectRoot: path12.resolve(projectRoot) } : {} };
 }
-function wireField2(field2) {
-  return CLASSIC_FIELD_WIRE_NAMES2[field2] ?? String(field2);
-}
-function wireValue2(value) {
-  return value === null ? "null" : scalar(value);
-}
-function enumRecordValue(record, field2, values, fallback) {
-  const value = record[field2];
-  return typeof value === "string" && values.includes(value) ? value : fallback;
-}
-function nullableRecordString(record, field2) {
-  const value = record[field2];
-  if (value === null || value === void 0 || value === "") return null;
-  return typeof value === "string" ? value : String(value);
-}
-function nullableRecordBoolean(record, field2) {
-  const value = record[field2];
-  if (value === null || value === void 0 || value === "") return null;
-  if (typeof value === "boolean") return value;
-  if (value === "true") return true;
-  if (value === "false") return false;
+async function projectRootFrom(parsed) {
+  if (parsed.projectRoot) return parsed.projectRoot;
+  const discovered = await discoverNativeProject(process.cwd());
+  for (const marker of [[".comet", "config.yaml"], [".git"], ["openspec", "changes"]]) {
+    try {
+      await fs12.lstat(path12.join(discovered, ...marker));
+      return discovered;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  let cursor = path12.resolve(process.cwd());
+  while (true) {
+    try {
+      await fs12.lstat(path12.join(cursor, "openspec", "changes"));
+      return cursor;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const parent = path12.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
   return null;
 }
-function nonNegativeRecordInteger(record, field2, fallback = 0) {
-  const value = record[field2];
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback;
-}
-function sparseClassicState(record) {
-  const workflow = enumRecordValue(record, "workflow", PROFILES, "full");
-  return {
-    workflow,
-    language: enumRecordValue(record, "language", ARTIFACT_LANGUAGES2, null),
-    phase: enumRecordValue(record, "phase", PHASES3, "open"),
-    contextCompression: enumRecordValue(
-      record,
-      "context_compression",
-      ["off", "beta"],
-      null
-    ),
-    buildMode: enumRecordValue(
-      record,
-      "build_mode",
-      ["subagent-driven-development", "executing-plans", "direct"],
-      null
-    ),
-    buildPause: enumRecordValue(record, "build_pause", ["plan-ready"], null),
-    subagentDispatch: enumRecordValue(record, "subagent_dispatch", ["confirmed"], null),
-    tddMode: enumRecordValue(record, "tdd_mode", ["tdd", "direct"], null),
-    reviewMode: enumRecordValue(
-      record,
-      "review_mode",
-      ["off", "standard", "thorough"],
-      null
-    ),
-    isolation: enumRecordValue(
-      record,
-      "isolation",
-      ["current", "branch", "worktree"],
-      null
-    ),
-    verifyMode: enumRecordValue(record, "verify_mode", ["light", "full"], null),
-    autoTransition: nullableRecordBoolean(record, "auto_transition"),
-    baseRef: nullableRecordString(record, "base_ref"),
-    designDoc: nullableRecordString(record, "design_doc"),
-    plan: nullableRecordString(record, "plan"),
-    verifyResult: enumRecordValue(
-      record,
-      "verify_result",
-      ["pending", "pass", "fail"],
-      "pending"
-    ),
-    verifyFailures: nonNegativeRecordInteger(record, "verify_failures"),
-    verificationReport: nullableRecordString(record, "verification_report"),
-    branchStatus: enumRecordValue(record, "branch_status", ["pending", "handled"], null),
-    createdAt: nullableRecordString(record, "created_at"),
-    verifiedAt: nullableRecordString(record, "verified_at"),
-    archiveConfirmation: enumRecordValue(
-      record,
-      "archive_confirmation",
-      ["pending", "confirmed"],
-      null
-    ),
-    archived: nullableRecordBoolean(record, "archived") ?? false,
-    directOverride: nullableRecordBoolean(record, "direct_override"),
-    handoffContext: nullableRecordString(record, "handoff_context"),
-    handoffHash: nullableRecordString(record, "handoff_hash"),
-    classicProfile: enumRecordValue(record, "classic_profile", PROFILES, workflow),
-    classicMigration: typeof record.classic_migration === "number" ? record.classic_migration : null
-  };
-}
-async function projectConfigValue2(field2) {
-  return (await readClassicConfigValue(field2))?.value ?? null;
-}
-async function projectLanguageDefault() {
-  if (process.env.COMET_LANGUAGE)
-    return validateLanguage(process.env.COMET_LANGUAGE, "COMET_LANGUAGE");
-  const configured = await readClassicConfigValue("language");
-  if (configured) return validateLanguage(configured.value, configured.source);
-  return "en";
-}
-async function contextCompression() {
-  const value = process.env.COMET_CONTEXT_COMPRESSION ?? await projectConfigValue2("context_compression") ?? "off";
-  if (!["off", "beta"].includes(value)) {
-    fail2(`ERROR: Invalid context_compression: '${value}'
-Valid values: off, beta`);
-  }
-  return value;
-}
-async function autoTransition() {
-  const value = process.env.COMET_AUTO_TRANSITION ?? await projectConfigValue2("auto_transition") ?? "true";
-  if (!["true", "false"].includes(value)) {
-    fail2(`ERROR: Invalid auto_transition: '${value}'
-Valid values: true, false`);
-  }
-  return value;
-}
-async function reviewModeDefault() {
-  const value = process.env.COMET_REVIEW_MODE ?? await projectConfigValue2("review_mode") ?? "standard";
-  if (!["null", "off", "standard", "thorough"].includes(value)) {
-    fail2(`ERROR: Invalid review_mode: '${value}'
-Valid values: off, standard, thorough`);
-  }
-  return value === "null" ? null : value;
-}
-function gitOutput(args) {
-  const result5 = spawnSync3("git", args, { encoding: "utf8" });
-  return result5.status === 0 ? result5.stdout.trim() : null;
-}
-async function stateFile(name) {
-  const change = await changeDirectory2(name);
-  return {
-    ...change,
-    file: path22.join(change.directory, ".comet.yaml")
-  };
-}
-async function readField3(name, field2) {
-  const { file } = await stateFile(name);
-  const document = await readDocument2(file);
-  const record = document.toJS();
-  const value = record[field2];
-  if (field2 === "language") {
-    if (value === null || value === void 0 || value === "") return projectLanguageDefault();
-    return validateLanguage(scalar(value), ".comet.yaml");
-  }
-  if (field2 === "auto_transition" && (value === null || value === void 0 || value === "")) {
-    return autoTransition();
-  }
-  return scalar(value);
-}
-function parsedValue(field2, value) {
-  const document = (0, import_yaml7.parseDocument)(`${field2}: ${value}
+async function runCometHookRouter(args) {
+  let parsed;
+  try {
+    parsed = parseArgs(args);
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}
+${USAGE}
 `);
-  if (document.errors.length > 0) fail2(`ERROR: Invalid value: '${value}'`);
-  return document.get(field2);
-}
-function validateSetValue(field2, value) {
-  if (field2 === "language") {
-    validateLanguage(value, "language");
-    return;
+    return 64;
   }
-  const enumValues = FIELD_ENUMS[field2];
-  if (enumValues) validateEnum(value, enumValues);
-  if (PATH_FIELDS.has(field2)) validateRelativePath(value, field2);
-  if ((field2 === "skill_hash" || field2 === "handoff_hash") && !/^[a-f0-9]{64}$/u.test(value)) {
-    fail2(`ERROR: ${field2} must be a sha256 hex digest`);
-  }
-  if (field2 === "iteration" && !/^[0-9]+$/u.test(value)) {
-    fail2("ERROR: iteration must be a non-negative integer");
-  }
-}
-async function setField2(output, name, field2, value, options = {}) {
-  if (MACHINE_OWNED_FIELDS.has(field2) && !options.machineOwned) {
-    fail2(`ERROR: '${field2}' is a machine-owned field and cannot be set directly`);
-  }
-  if (!SETTABLE_FIELDS.has(field2) && !MACHINE_OWNED_FIELDS.has(field2)) {
-    fail2(`ERROR: Unknown field: '${field2}'`);
-  }
-  if (field2 === "phase" && !options.internal && process.env.COMET_FORCE_PHASE !== "1") {
-    fail2(
-      "ERROR: Setting 'phase' directly is not allowed; it bypasses state machine evidence checks.\n  Use: comet-state.mjs transition <change-name> <event>\n  Repair-only escape hatch: COMET_FORCE_PHASE=1 comet-state.mjs set <change-name> phase <value>"
-    );
-  }
-  validateSetValue(field2, value);
-  const { file, directory } = await stateFile(name);
-  const document = await readDocument2(file);
-  document.set(field2, parsedValue(field2, value));
-  const run = await readRunState(directory);
-  const projection = parseClassicStateDocument(document.toJS(), run);
-  if (projection.run) {
-    if (!projection.classic) fail2("ERROR: migrated Run is missing its Classic projection");
-    const evidence = await collectClassicEvidence(directory, projection);
-    const currentStep = resolveClassicStepId(projection.classic, evidence);
-    const stepChanged = currentStep !== projection.run.currentStep;
-    const run2 = {
-      ...projection.run,
-      currentStep,
-      iteration: projection.run.iteration + (stepChanged ? 1 : 0),
-      status: currentStep === "completed" ? "completed" : "running"
-    };
-    await writeClassicState(directory, {
-      classic: projection.classic,
-      run: run2,
-      unknownKeys: projection.unknownKeys
-    });
-    if (stepChanged) {
-      const trajectory = await readTrajectory(directory, run2.trajectoryRef);
-      await appendTrajectory(directory, run2.trajectoryRef, {
-        sequence: trajectory.length + 1,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        type: "state_transitioned",
-        runId: run2.runId,
-        data: {
-          kind: "classic-config",
-          field: field2,
-          fromStep: projection.run.currentStep,
-          toStep: currentStep
-        }
-      });
-    }
-  } else {
-    await atomicWrite2(file, document.toString());
-  }
-  if (field2 === "phase" && !options.internal) {
-    output.stderr.push(
-      yellow4("WARNING: Setting 'phase' directly bypasses state machine constraints."),
-      yellow4("  Consider using: comet-state.mjs transition <change-name> <event>")
-    );
-  }
-  output.stderr.push(green4(`[SET] ${field2}=${value}`));
-}
-async function init(output, name, workflow) {
-  validateChangeName4(name);
-  validateEnum(workflow, PROFILES);
-  const { file, label, directory } = await stateFile(name);
-  if (await exists6(file)) fail2(`ERROR: .comet.yaml already exists at ${label}/.comet.yaml`);
-  await fs21.mkdir(directory, { recursive: true });
-  const preset = workflow !== "full";
-  const reviewMode = preset ? "off" : await reviewModeDefault();
-  const document = new import_yaml7.Document({
-    workflow,
-    language: await projectLanguageDefault(),
-    phase: "open",
-    context_compression: await contextCompression(),
-    build_mode: preset ? "direct" : null,
-    build_pause: null,
-    subagent_dispatch: null,
-    tdd_mode: preset ? "direct" : null,
-    review_mode: reviewMode,
-    isolation: preset ? "current" : null,
-    verify_mode: preset ? "light" : null,
-    auto_transition: await autoTransition() === "true",
-    base_ref: gitOutput(["rev-parse", "--verify", "HEAD"]),
-    design_doc: null,
-    plan: null,
-    verify_result: "pending",
-    verify_failures: 0,
-    verification_report: null,
-    branch_status: "pending",
-    created_at: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
-    verified_at: null,
-    archive_confirmation: null,
-    archived: false
-  });
-  await atomicWrite2(file, document.toString());
-  output.stdout.push(green4(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
-}
-async function requirePhase(name, expected) {
-  const actual = await readField3(name, "phase");
-  if (actual !== expected) {
-    fail2(`ERROR: Cannot transition '${name}': expected phase ${expected}, got ${actual}`);
-  }
-}
-async function requireBuildDecisions(name) {
-  const workflow = await readField3(name, "workflow");
-  const buildMode = await readField3(name, "build_mode");
-  const isolation = await readField3(name, "isolation");
-  const directOverride = await readField3(name, "direct_override");
-  const subagentDispatch = await readField3(name, "subagent_dispatch");
-  const tddMode = await readField3(name, "tdd_mode");
-  const reviewMode = await readField3(name, "review_mode");
-  const allowedIsolation = workflow === "full" ? ["branch", "worktree"] : ["current", "branch", "worktree"];
-  if (!allowedIsolation.includes(isolation)) {
-    fail2(
-      `ERROR: Cannot transition '${name}': isolation must be ${workflow === "full" ? "branch or worktree" : "current, branch, or worktree"}, got '${isolation || "null"}'`
-    );
-  }
-  if (!["subagent-driven-development", "executing-plans", "direct"].includes(buildMode)) {
-    fail2(
-      `ERROR: Cannot transition '${name}': build_mode must be selected before leaving build, got '${buildMode || "null"}'`
-    );
-  }
-  if (buildMode === "direct" && !["hotfix", "tweak"].includes(workflow) && directOverride !== "true") {
-    fail2(
-      `ERROR: Cannot transition '${name}': build_mode=direct is only allowed for hotfix/tweak unless direct_override=true`
-    );
-  }
-  if (buildMode === "subagent-driven-development" && subagentDispatch !== "confirmed") {
-    fail2(
-      `ERROR: Cannot transition '${name}': subagent_dispatch must be confirmed before using build_mode=subagent-driven-development`
-    );
-  }
-  if (workflow === "full" && (!tddMode || tddMode === "null")) {
-    fail2(
-      `ERROR: Cannot transition '${name}': tdd_mode must be selected before leaving build (full workflow)`
-    );
-  }
-  if (workflow === "full" && !["off", "standard", "thorough"].includes(reviewMode)) {
-    fail2(
-      `ERROR: Cannot transition '${name}': review_mode must be selected before leaving build (full workflow); review_mode must be off, standard, or thorough, got '${reviewMode || "null"}'`
-    );
-  }
-}
-async function requireOpenArtifacts(name) {
-  const { directory } = await stateFile(name);
-  const workflow = await readField3(name, "workflow");
-  for (const artifact of ["proposal.md", "tasks.md"]) {
-    if (!await nonempty3(path22.join(directory, artifact))) {
-      fail2(
-        `ERROR: Cannot transition '${name}': ${artifact} must exist and be non-empty before leaving open`
-      );
-    }
-  }
-  if (workflow === "full" && !await nonempty3(path22.join(directory, "design.md"))) {
-    fail2(
-      `ERROR: Cannot transition '${name}': design.md must exist and be non-empty before leaving open`
-    );
-  }
-}
-async function requireDesignEvidence(name) {
-  const designDoc = await readField3(name, "design_doc");
-  if (!designDoc || designDoc === "null" || !await nonempty3(path22.resolve(designDoc))) {
-    fail2(
-      `ERROR: Cannot transition '${name}': design_doc must point to an existing Design Doc before leaving design`
-    );
-  }
-}
-async function writeSparseTransitionEffects(directory, effects) {
-  const file = path22.join(directory, ".comet.yaml");
-  const document = await readDocument2(file);
-  for (const effect of effects) {
-    const field2 = wireField2(effect.field);
-    document.set(field2, parsedValue(field2, wireValue2(effect.to)));
-  }
-  await atomicWrite2(file, document.toString());
-}
-async function applyTransitionEvent(output, name, event) {
-  const { directory } = await stateFile(name);
-  const projection = await readClassicState(directory);
-  let classic = projection.classic;
-  let sparse = false;
-  if (!classic) {
-    if (projection.run) fail2("ERROR: Classic state projection is missing");
-    const document = await readDocument2(path22.join(directory, ".comet.yaml"));
-    classic = sparseClassicState(document.toJS());
-    sparse = true;
-  }
-  const result5 = applyClassicTransition(classic, event);
-  if (projection.run) {
-    await transitionClassicRuntimeRun(directory, result5.classic, projection.run, {
-      event,
-      source: "comet-state"
-    });
-  } else if (sparse) {
-    await writeSparseTransitionEffects(directory, result5.effects);
-  } else {
-    await writeClassicState(directory, {
-      classic: result5.classic,
-      run: null,
-      unknownKeys: projection.unknownKeys
-    });
-  }
-  await appendClassicStateEvent(directory, {
-    change: name,
-    event,
-    source: "comet-state",
-    from: classic,
-    to: result5.classic,
-    effects: result5.effects
-  });
-  for (const effect of result5.effects) {
-    output.stderr.push(green4(`[SET] ${wireField2(effect.field)}=${wireValue2(effect.to)}`));
-  }
-  output.stderr.push(green4(`[TRANSITION] ${event}`));
-}
-async function transition(output, name, event) {
-  validateChangeName4(name);
-  validateEnum(event, EVENTS);
-  if (event === "open-complete") {
-    await requirePhase(name, "open");
-    await requireOpenArtifacts(name);
-  } else if (event === "design-complete") {
-    await requirePhase(name, "design");
-    await requireDesignEvidence(name);
-  } else if (event === "build-complete") {
-    await requirePhase(name, "build");
-    await requireBuildDecisions(name);
-  } else if (event === "verify-pass") {
-    await requirePhase(name, "verify");
-    const report = await readField3(name, "verification_report");
-    if (!report || !await exists6(path22.resolve(report))) {
-      fail2(
-        `ERROR: Cannot transition '${name}': verification_report must point to an existing report file`
-      );
-    }
-  } else if (event === "verify-fail") {
-    await requirePhase(name, "verify");
-  } else if (event === "archive-confirm") {
-    await requirePhase(name, "archive");
-    if (await readField3(name, "verify_result") !== "pass") {
-      fail2(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
-    }
-    if (await readField3(name, "archived") === "true") {
-      fail2(`ERROR: Cannot transition '${name}': already archived`);
-    }
-  } else if (event === "preset-escalate") {
-    await requirePhase(name, "build");
-    const workflow = await readField3(name, "workflow");
-    if (!["hotfix", "tweak"].includes(workflow)) {
-      fail2(
-        `ERROR: Cannot transition '${name}': preset-escalate only applies to hotfix/tweak, got workflow='${workflow}'`
-      );
-    }
-  } else if (event === "archive-reopen") {
-    await requirePhase(name, "archive");
-    if (await readField3(name, "archived") === "true") {
-      fail2(`ERROR: Cannot transition '${name}': already archived`);
-    }
-  } else {
-    await requirePhase(name, "archive");
-    if (await readField3(name, "verify_result") !== "pass") {
-      fail2(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
-    }
-    if (await readField3(name, "archive_confirmation") !== "confirmed") {
-      fail2(
-        `ERROR: Cannot transition '${name}': archive_confirmation must be confirmed before archiving`
-      );
-    }
-  }
-  await applyTransitionEvent(output, name, event);
-}
-async function next(output, name) {
-  validateChangeName4(name);
-  const { file, label } = await stateFile(name);
-  if (!await exists6(file)) fail2(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
-  const phase = await readField3(name, "phase");
-  const workflow = await readField3(name, "workflow");
-  const automatic = await readField3(name, "auto_transition");
-  if (await readField3(name, "archived") === "true") {
-    output.stdout.push("NEXT: done");
-    return;
-  }
-  const skill = phase === "open" ? "comet-open" : phase === "design" ? "comet-design" : phase === "verify" ? "comet-verify" : phase === "archive" ? "comet-archive" : phase === "build" ? workflow === "hotfix" ? "comet-hotfix" : workflow === "tweak" ? "comet-tweak" : "comet-build" : null;
-  if (!skill) {
-    fail2(`ERROR: Cannot resolve next step for '${name}': unknown phase '${phase || "null"}'`);
-  }
-  output.stdout.push(`NEXT: ${automatic === "false" ? "manual" : "auto"}`, `SKILL: ${skill}`);
-  if (automatic === "false") {
-    output.stdout.push(`HINT: phase is '${phase}'; run /${skill} manually to continue`);
-  }
-}
-async function taskCheckoff(output, taskFile, taskText) {
-  validateRelativePath(taskFile, "task file");
-  if (!taskText) fail2("ERROR: Task text cannot be empty");
-  const file = path22.resolve(taskFile);
-  if (!await exists6(file)) fail2(`ERROR: Task file not found: ${taskFile}`);
-  const lines = (await fs21.readFile(file, "utf8")).split(/\r?\n/u);
-  const matches = lines.filter(
-    (line) => [`- [ ] ${taskText}`, `- [x] ${taskText}`, `- [X] ${taskText}`].includes(line)
-  );
-  const checked = matches.filter((line) => /^- \[[xX]\] /u.test(line));
-  if (matches.length !== 1) {
-    fail2(
-      `ERROR: task text must appear exactly once in ${taskFile} (found ${matches.length}): ${taskText}`
-    );
-  }
-  if (checked.length !== 1) fail2(`ERROR: task is not checked in ${taskFile}: ${taskText}`);
-  output.stdout.push("TASK_CHECKOFF: PASS", `FILE: ${taskFile}`, `TASK: ${taskText}`);
-}
-async function check2(output, name, phase) {
-  validateChangeName4(name);
-  validateEnum(phase, PHASES3);
-  const { file, directory, label } = await stateFile(name);
-  output.stdout.push(`=== Entry Check: comet-${phase} ===`);
-  if (!await exists6(file)) fail2(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
-  let blocked2 = false;
-  const pass2 = (message) => output.stdout.push(`  ${green4("[PASS]")} ${message}`);
-  const reject = (message) => {
-    output.stdout.push(`  ${red4("[FAIL]")} ${message}`);
-    blocked2 = true;
-  };
-  const expectField = async (field2, expected) => {
-    const actual = await readField3(name, field2);
-    (actual === expected ? pass2 : reject)(`${field2}=${actual} (expected: ${expected})`);
-  };
-  pass2(".comet.yaml exists");
-  await expectField("phase", phase);
-  if (phase === "design") {
-    await expectField("workflow", "full");
-    const designDoc = await readField3(name, "design_doc");
-    (!designDoc || designDoc === "null" ? pass2 : reject)(
-      designDoc ? `design_doc=${designDoc} (expected: empty/null)` : "design_doc is empty/null"
-    );
-    for (const artifact of ["proposal.md", "design.md", "tasks.md"]) {
-      (await nonempty3(path22.join(directory, artifact)) ? pass2 : reject)(
-        `${artifact} ${await nonempty3(path22.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
-      );
-    }
-  } else if (phase === "build") {
-    const workflow = await readField3(name, "workflow");
-    const designDoc = await readField3(name, "design_doc");
-    if (workflow === "full") {
-      (designDoc && designDoc !== "null" && await exists6(path22.resolve(designDoc)) ? pass2 : reject)(`design_doc=${designDoc} (expected: non-null and file exists)`);
-    } else {
-      pass2(`workflow=${workflow} (design_doc not required)`);
-    }
-    for (const artifact of ["proposal.md", "tasks.md"]) {
-      (await nonempty3(path22.join(directory, artifact)) ? pass2 : reject)(
-        `${artifact} ${await nonempty3(path22.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
-      );
-    }
-  } else if (phase === "verify") {
-    const value = await readField3(name, "verify_result");
-    (["", "null", "pending"].includes(value) ? pass2 : reject)(
-      `verify_result=${value} (expected: pending or null)`
-    );
-  } else if (phase === "archive") {
-    await expectField("verify_result", "pass");
-    const archived = await readField3(name, "archived");
-    (archived !== "true" ? pass2 : reject)(`archived=${archived} (expected: not true)`);
-  }
-  output.stdout.push("");
-  if (blocked2) {
-    output.stderr.push(red4("BLOCKED — fix failing checks before proceeding"));
-    throw new CommandFailure("", 1);
-  }
-  output.stderr.push(green4("ALL CHECKS PASSED — ready to proceed"));
-}
-function fieldStatus(field2, value, file) {
-  if (!value || value === "null") return `  - ${field2}: PENDING`;
-  if (file && !existsSync3(path22.resolve(file))) {
-    return `  - ${field2}: BROKEN (path ${value} does not exist)`;
-  }
-  return `  - ${field2}: DONE (${value})`;
-}
-async function recoverOpen(output, directory) {
-  output.stdout.push("  Artifacts:");
-  let complete = 0;
-  for (const artifact of ["proposal.md", "design.md", "tasks.md"]) {
-    const done = await nonempty3(path22.join(directory, artifact));
-    if (done) complete += 1;
-    output.stdout.push(`  - ${artifact}: ${done ? "DONE" : "PENDING"}`);
-  }
-  output.stdout.push(
-    "",
-    complete === 3 ? "Recovery action: All artifacts complete. Run /comet-open user confirmation, then guard to transition." : complete === 0 ? "Recovery action: No artifacts created yet. Start from /comet-open Step 1 (explore and clarify)." : "Recovery action: Some artifacts incomplete. Resume /comet-open from the first missing artifact."
-  );
-}
-async function recoverDesign(output, name, directory) {
-  output.stdout.push("  Artifacts:");
-  for (const artifact of ["proposal.md", "design.md", "tasks.md"]) {
-    output.stdout.push(
-      `  - ${artifact}: ${await nonempty3(path22.join(directory, artifact)) ? "DONE" : "MISSING (unexpected in design phase)"}`
-    );
-  }
-  const handoff = await readField3(name, "handoff_context");
-  const hash = await readField3(name, "handoff_hash");
-  const design = await readField3(name, "design_doc");
-  output.stdout.push(
-    "",
-    "  Design progress:",
-    fieldStatus("handoff_context", handoff, handoff),
-    fieldStatus("handoff_hash", hash),
-    fieldStatus("design_doc", design, design),
-    ""
-  );
-  if (design && design !== "null" && await exists6(path22.resolve(design))) {
-    output.stdout.push(
-      "Recovery action: Design Doc already created and linked. Run guard to transition to build."
-    );
-  } else if (handoff && handoff !== "null" && await exists6(path22.resolve(handoff))) {
-    output.stdout.push(
-      "Recovery action: Handoff generated but Design Doc not yet created. Resume from brainstorming confirmation (Step 1c)."
-    );
-  } else {
-    output.stdout.push(
-      "Recovery action: No handoff generated yet. Start from Step 1a (generate handoff package)."
-    );
-  }
-}
-async function recoverBuild(output, name, directory, workflow) {
-  const isolation = await readField3(name, "isolation");
-  const buildMode = await readField3(name, "build_mode");
-  const pause = await readField3(name, "build_pause");
-  const subagentDispatch = await readField3(name, "subagent_dispatch");
-  const tdd = await readField3(name, "tdd_mode");
-  const review = await readField3(name, "review_mode");
-  const plan = await readField3(name, "plan");
-  const decisions = [
-    "  Build decisions:",
-    fieldStatus("isolation", isolation),
-    fieldStatus("build_mode", buildMode),
-    fieldStatus("build_pause", pause),
-    fieldStatus("tdd_mode", tdd),
-    fieldStatus("review_mode", review)
-  ];
-  if (buildMode === "subagent-driven-development" || subagentDispatch && subagentDispatch !== "null") {
-    decisions.push(fieldStatus("subagent_dispatch", subagentDispatch));
-  }
-  output.stdout.push(...decisions, "", "  Plan:", fieldStatus("plan", plan, plan), "");
-  const tasks = path22.join(directory, "tasks.md");
-  if (!await exists6(tasks)) {
-    output.stdout.push(
-      "  Tasks: tasks.md MISSING",
-      "",
-      "Recovery action: tasks.md missing. Verify change directory integrity."
-    );
-    return;
-  }
-  const lines = (await fs21.readFile(tasks, "utf8")).split(/\r?\n/u);
-  const total = lines.filter((line) => /^\s*- \[[ xX]\] /u.test(line)).length;
-  const done = lines.filter((line) => /^\s*- \[[xX]\] /u.test(line)).length;
-  const pending = total - done;
-  let planTotal = 0;
-  let planDone = 0;
-  if (plan && plan !== "null" && await exists6(path22.resolve(plan))) {
-    const planLines = (await fs21.readFile(path22.resolve(plan), "utf8")).split(/\r?\n/u);
-    planTotal = planLines.filter((line) => /^\s*- \[[ xX]\] /u.test(line)).length;
-    planDone = planLines.filter((line) => /^\s*- \[[xX]\] /u.test(line)).length;
-  }
-  const planPending = planTotal - planDone;
-  output.stdout.push(`  Tasks: ${done}/${total} done, ${pending} pending`);
-  if (planTotal > 0) {
-    output.stdout.push(`  Plan tasks: ${planDone}/${planTotal} done, ${planPending} pending`);
-  }
-  output.stdout.push("");
-  const action = resolveBuildRecoveryAction(
-    workflow,
-    isolation,
-    buildMode,
-    pause,
-    subagentDispatch,
-    tdd,
-    review,
-    plan,
-    pending,
-    planPending
-  );
-  output.stdout.push(action);
-}
-function isMissingStateValue(value) {
-  return !value || value === "null";
-}
-function resolveBuildRecoveryAction(workflow, isolation, buildMode, pause, subagentDispatch, tdd, review, plan, pending, planPending) {
-  const planExists = plan && plan !== "null";
-  const missingWorkflowChoices = workflow === "full" && (isMissingStateValue(tdd) || isMissingStateValue(review));
-  if (pause === "plan-ready" && planExists && (isMissingStateValue(isolation) || isMissingStateValue(buildMode) || missingWorkflowChoices)) {
-    return workflow === "full" ? "Recovery action: Plan-ready pause detected. Ask the user whether to continue, then choose isolation, build mode, TDD mode, and review mode without regenerating the plan." : "Recovery action: Plan-ready pause detected. Ask the user whether to continue, then choose isolation and build mode without regenerating the plan.";
-  }
-  if (pause === "plan-ready" && !planExists) {
-    return "Recovery action: Plan-ready pause is recorded, but the plan file is missing. Restore the plan file or rerun writing-plans before choosing execution.";
-  }
-  if (pause === "plan-ready") {
-    if (buildMode === "subagent-driven-development" && (pending > 0 || planPending > 0)) {
-      return subagentDispatch === "confirmed" ? "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Plan-ready pause is stale and subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.";
-    }
-    if (pending > 0 || planPending > 0) {
-      return "Recovery action: Plan-ready pause is stale because build decisions are already selected. Clear build_pause to null, then continue from the first unchecked task.";
-    }
-    return "Recovery action: Plan-ready pause is stale and all tasks are done. Clear build_pause to null, then run guard to transition to verify.";
-  }
-  if (isMissingStateValue(isolation)) {
-    return "Recovery action: Isolation not selected. Use the current platform's user confirmation mechanism to ask user for branch/worktree choice.";
-  }
-  if (isMissingStateValue(buildMode)) {
-    return "Recovery action: Build mode not selected. Use the current platform's user confirmation mechanism to ask user for execution method.";
-  }
-  if (workflow === "full" && isMissingStateValue(tdd)) {
-    return "Recovery action: TDD mode not selected. Use the current platform's user confirmation mechanism to ask user for tdd or direct.";
-  }
-  if (workflow === "full" && isMissingStateValue(review)) {
-    return "Recovery action: Review mode not selected. Use the current platform's user confirmation mechanism to ask user for off, standard, or thorough.";
-  }
-  if (pending > 0) {
-    if (buildMode === "subagent-driven-development") {
-      return subagentDispatch === "confirmed" ? "Recovery action: Read tasks.md and the Superpowers plan (which may include additions beyond OpenSpec), then inspect the first unchecked task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.";
-    }
-    return "Recovery action: Read tasks.md and continue from first unchecked task.";
-  }
-  if (planPending > 0) {
-    if (buildMode === "subagent-driven-development") {
-      return subagentDispatch === "confirmed" ? "Recovery action: Read the Superpowers plan, then inspect the first unchecked Superpowers plan task against recent git history/diff. If implemented, check it off; otherwise dispatch a real background subagent. Do not execute the pending task directly in the main window." : "Recovery action: Subagent dispatch is not confirmed. Return to /comet-build Step 2 capability preflight. Confirm a real background subagent/Task/multi-agent dispatcher and set subagent_dispatch to confirmed, or remove the unavailable mode and set build_mode to executing-plans before continuing.";
-    }
-    return "Recovery action: Read the Superpowers plan and continue from the first unchecked plan task.";
-  }
-  return "Recovery action: All tasks done. Run guard to transition to verify.";
-}
-async function recoverVerify(output, name) {
-  const result5 = await readField3(name, "verify_result");
-  const failures = await readField3(name, "verify_failures");
-  const mode = await readField3(name, "verify_mode");
-  const report = await readField3(name, "verification_report");
-  const branch = await readField3(name, "branch_status");
-  output.stdout.push(
-    "  Verification:",
-    fieldStatus("verify_result", result5),
-    `  - verify_failures: ${failures || "0"}`,
-    fieldStatus("verify_mode", mode),
-    fieldStatus("verification_report", report, report),
-    branch === "handled" ? "  - branch_status: LEGACY (handled before archive; archive still owns final closure)" : "  - branch_status: DEFERRED (handled after the archive commit)",
-    "",
-    result5 === "pass" ? "Recovery action: Verification complete. Continue to archive; branch handling happens after archive changes are committed." : result5 === "fail" ? "Recovery action: Verification failed and rolled back to build. Resume from /comet-build." : "Recovery action: Verification not yet started or in progress. Run scale assessment then verify."
-  );
-}
-async function recoverArchive(output, name) {
-  const archiveConfirmation = await readField3(name, "archive_confirmation");
-  output.stdout.push(
-    "  Archive:",
-    fieldStatus("verify_result", await readField3(name, "verify_result")),
-    fieldStatus("archive_confirmation", archiveConfirmation),
-    fieldStatus("archived", await readField3(name, "archived")),
-    "",
-    archiveConfirmation === "confirmed" ? "Recovery action: Archive is confirmed. Run /comet-archive to complete archiving." : "Recovery action: Ask for final archive confirmation in /comet-archive before running the archive command."
-  );
-}
-async function recover(output, name) {
-  validateChangeName4(name);
-  const { file, directory, label } = await stateFile(name);
-  if (!await exists6(file)) fail2(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
-  const phase = await readField3(name, "phase");
-  const workflow = await readField3(name, "workflow");
-  output.stdout.push(
-    `=== Recovery Context: ${name} ===`,
-    `Phase: ${phase}`,
-    `Workflow: ${workflow}`,
-    "",
-    "State fields:"
-  );
-  if (phase === "open") {
-    await recoverOpen(output, directory);
-  } else if (phase === "design") {
-    await recoverDesign(output, name, directory);
-  } else if (phase === "build") {
-    await recoverBuild(output, name, directory, workflow);
-  } else if (phase === "verify") {
-    await recoverVerify(output, name);
-  } else if (phase === "archive") {
-    await recoverArchive(output, name);
-  } else {
-    fail2(`ERROR: Unknown phase: ${phase}`);
-  }
-  output.stdout.push("", "=== End Recovery Context ===");
-}
-async function scale(output, name) {
-  validateChangeName4(name);
-  const { file, directory, label } = await stateFile(name);
-  if (!await exists6(file)) fail2(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
-  const tasksFile = path22.join(directory, "tasks.md");
-  const taskCount = await exists6(tasksFile) ? (await fs21.readFile(tasksFile, "utf8")).split(/\r?\n/u).filter((line) => /^- \[/u.test(line)).length : 0;
-  const specs = path22.join(directory, "specs");
-  let deltaSpecs = 0;
-  if (await exists6(specs)) {
-    for (const entry2 of await fs21.readdir(specs)) {
-      if (await exists6(path22.join(specs, entry2, "spec.md"))) deltaSpecs += 1;
-    }
-  }
-  const plan = await readField3(name, "plan");
-  let baseRef = "";
-  if (plan && plan !== "null" && await exists6(path22.resolve(plan))) {
-    const match = (await fs21.readFile(path22.resolve(plan), "utf8")).match(/^base-ref:\s*(.+)$/mu);
-    baseRef = match?.[1].trim() ?? "";
-  }
-  if (!baseRef) baseRef = await readField3(name, "base_ref");
-  const changed = gitOutput([
-    "diff",
-    "--name-only",
-    ...baseRef && baseRef !== "null" ? [`${baseRef}...HEAD`] : ["HEAD"]
-  ]);
-  const changedFiles = changed ? changed.split(/\r?\n/u).filter(Boolean).length : 0;
-  const result5 = taskCount > 3 || deltaSpecs > 1 || changedFiles > 8 ? "full" : "light";
-  await setField2(new CommandOutput(), name, "verify_mode", result5);
-  output.stderr.push(
-    `=== Scale Assessment: ${name} ===`,
-    `  Tasks: ${taskCount} (threshold: 3)`,
-    `  Delta specs: ${deltaSpecs} capabilities (threshold: 1)`,
-    `  Changed files: ${changedFiles} (threshold: 8)`,
-    `  → Result: ${result5}`,
-    green4(`[SCALE] verify_mode=${result5}`)
-  );
-}
-function parseRecordCheckOptions(args) {
-  let command;
-  let exitCodeText;
-  let cwd;
-  for (let index = 0; index < args.length; index += 2) {
-    const option = args[index];
-    if (!["--command", "--exit-code", "--cwd"].includes(option)) {
-      fail2(`ERROR: Unknown option: ${option}`);
-    }
-    const value = args[index + 1];
-    if (value === void 0) fail2(`ERROR: Missing value for option: ${option}`);
-    if (option === "--command") command = value;
-    else if (option === "--exit-code") exitCodeText = value;
-    else cwd = value;
-  }
-  if (command === void 0) fail2("ERROR: Missing option: --command");
-  if (exitCodeText === void 0) fail2("ERROR: Missing option: --exit-code");
-  if (!/^-?\d+$/u.test(exitCodeText)) fail2("ERROR: --exit-code must be an integer");
-  return { command, exitCode: Number(exitCodeText), ...cwd === void 0 ? {} : { cwd } };
-}
-async function recordCheck(output, name, scopeText, args) {
-  validateChangeName4(name);
-  if (scopeText !== "build" && scopeText !== "verify") {
-    fail2(`ERROR: Invalid command check scope: '${scopeText}'`);
-  }
-  const options = parseRecordCheckOptions(args);
-  const { label, directory, file } = await stateFile(name);
-  if (label !== `openspec/changes/${name}` || !await exists6(file)) {
-    fail2(`ERROR: command checks require an active change: ${name}`);
-  }
+  let decision;
   try {
-    const projection = await readClassicState(directory, { migrate: false });
-    if (!projection.classic || !projection.run) {
-      throw new Error("command checks require an existing synchronized Classic Run");
-    }
-    const { run } = await validateClassicRuntimeRun(directory, projection);
-    const recorded = await recordCommandCheck(directory, run, {
-      scope: scopeText,
-      ...options
-    });
-    output.stderr.push(
-      green4(
-        `[RECORDED] ${recorded.scope} exit=${recorded.exitCode} cwd=${recorded.cwd} command=${recorded.command}`
-      )
-    );
+    const projectRoot = await projectRootFrom(parsed);
+    decision = projectRoot ? await inspectCometHook(projectRoot, readCometHookRequest()) : { allowed: true, reason: "No Comet project discovered" };
   } catch (error) {
-    fail2(`ERROR: ${error.message}`);
-  }
-}
-function required(args, count, usage3) {
-  if (args.length < count) fail2(usage3);
-}
-function requiredExact(args, count, usage3) {
-  if (args.length !== count) fail2(usage3);
-}
-async function selectChange(output, name) {
-  validateChangeName4(name);
-  try {
-    const selection = await selectCurrentChange(process.cwd(), name);
-    output.stderr.push(
-      green4(
-        `[SELECTED] current change: ${selection.change}${selection.branch ? ` (branch: ${selection.branch})` : ""}`
-      )
-    );
-  } catch (error) {
-    fail2(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-async function currentChange(output) {
-  const resolution = await resolveCurrentChange(process.cwd());
-  if (resolution.status === "selected") {
-    output.stdout.push(resolution.selection.change);
-    return;
-  }
-  if (resolution.status === "missing") {
-    fail2("ERROR: no current change selected\nUse: comet-state.mjs select <change-name>");
-  }
-  fail2(
-    `ERROR: current change selection is stale: ${resolution.reason}
-Use: comet-state.mjs select <change-name>`
-  );
-}
-async function clearSelection(output) {
-  await clearCurrentChange(process.cwd());
-  output.stderr.push(green4("[CLEARED] current change selection"));
-}
-var classicStateCommand = async (args) => {
-  const output = new CommandOutput();
-  try {
-    const [subcommand, ...rest] = args;
-    if (subcommand === "init") {
-      required(rest, 2, "Usage: comet-state.mjs init <change-name> <workflow>");
-      await init(output, rest[0], rest[1]);
-    } else if (subcommand === "get") {
-      required(rest, 2, "Usage: comet-state.mjs get <change-name> <field>");
-      validateChangeName4(rest[0]);
-      output.stdout.push(await readField3(rest[0], rest[1]));
-    } else if (subcommand === "set") {
-      required(rest, 3, "Usage: comet-state.mjs set <change-name> <field> <value>");
-      validateChangeName4(rest[0]);
-      await setField2(output, rest[0], rest[1], rest[2]);
-    } else if (subcommand === "transition") {
-      required(rest, 2, "Usage: comet-state.mjs transition <change-name> <event>");
-      await transition(output, rest[0], rest[1]);
-    } else if (subcommand === "check") {
-      required(rest, 2, "Usage: comet-state.mjs check <change-name> <phase> [--recover]");
-      if (rest[2] === "--recover") await recover(output, rest[0]);
-      else await check2(output, rest[0], rest[1]);
-    } else if (subcommand === "scale") {
-      required(rest, 1, "Usage: comet-state.mjs scale <change-name>");
-      await scale(output, rest[0]);
-    } else if (subcommand === "record-check") {
-      required(
-        rest,
-        2,
-        "Usage: comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]"
-      );
-      await recordCheck(output, rest[0], rest[1], rest.slice(2));
-    } else if (subcommand === "task-checkoff") {
-      required(rest, 2, "Usage: comet-state.mjs task-checkoff <file> <task-text>");
-      await taskCheckoff(output, rest[0], rest[1]);
-    } else if (subcommand === "select") {
-      requiredExact(rest, 1, "Usage: comet-state.mjs select <change-name>");
-      await selectChange(output, rest[0]);
-    } else if (subcommand === "current") {
-      requiredExact(rest, 0, "Usage: comet-state.mjs current");
-      await currentChange(output);
-    } else if (subcommand === "clear-selection") {
-      requiredExact(rest, 0, "Usage: comet-state.mjs clear-selection");
-      await clearSelection(output);
-    } else if (subcommand === "next") {
-      required(rest, 1, "Usage: comet-state.mjs next <change-name>");
-      await next(output, rest[0]);
-    } else {
-      fail2(`Unknown subcommand: ${subcommand ?? ""}`);
-    }
-    return output.result();
-  } catch (error) {
-    if (!(error instanceof CommandFailure)) throw error;
-    if (error.message) {
-      for (const line of error.message.split("\n")) output.stderr.push(red4(line));
-    }
-    return output.result(error.exitCode);
-  }
-};
-
-// domains/comet-classic/classic-cli.ts
-var CLASSIC_COMMANDS = [
-  "state",
-  "validate",
-  "guard",
-  "handoff",
-  "archive",
-  "hook-guard",
-  "intent",
-  "resume-probe"
-];
-var DEFAULT_HANDLERS = {
-  state: classicStateCommand,
-  validate: classicValidateCommand,
-  guard: classicGuardCommand,
-  handoff: classicHandoffCommand,
-  archive: classicArchiveCommand,
-  "hook-guard": classicHookGuardCommand,
-  intent: classicIntentCommand,
-  "resume-probe": classicResumeProbeCommand
-};
-function isClassicCommand(value) {
-  return CLASSIC_COMMANDS.includes(value);
-}
-function commandError(command) {
-  if (!command) {
-    return {
-      exitCode: 64,
-      stderr: `Usage: comet-classic <${CLASSIC_COMMANDS.join("|")}> [args]`
+    decision = {
+      allowed: false,
+      reason: `Comet Hook Router failed closed during project discovery: ${error instanceof Error ? error.message : String(error)}`
     };
   }
-  return {
-    exitCode: 64,
-    stderr: `Unknown Classic command: ${command}`
-  };
+  const output = renderCometHookDecision(parsed.platformId, decision);
+  if (output.stdout) process.stdout.write(output.stdout);
+  if (output.stderr) process.stderr.write(output.stderr);
+  return output.exitCode;
 }
-async function dispatch(command, args, options, handlers) {
-  if (!command || !isClassicCommand(command)) return commandError(command);
-  const handler = handlers[command];
-  if (!handler) {
-    return {
-      exitCode: 70,
-      stderr: `Classic command is not implemented: ${command}`
-    };
-  }
-  try {
-    return await handler(args, options);
-  } catch (error) {
-    return {
-      exitCode: 70,
-      stderr: error instanceof Error ? error.message : String(error)
-    };
-  }
-}
-function jsonResult(command, result5) {
-  return {
-    exitCode: result5.exitCode,
-    stdout: JSON.stringify({
-      command: command ?? null,
-      exitCode: result5.exitCode,
-      ...result5.stdout === void 0 ? {} : { stdout: result5.stdout },
-      ...result5.stderr === void 0 ? {} : { stderr: result5.stderr }
-    }) + "\n"
-  };
-}
-async function runClassicCli(argv, handlers = DEFAULT_HANDLERS) {
-  const json = argv.includes("--json");
-  const args = argv.filter((argument) => argument !== "--json");
-  const command = args.shift();
-  const result5 = await dispatch(command, args, { json }, handlers);
-  return json ? jsonResult(command, result5) : result5;
-}
-async function main(argv = process.argv.slice(2)) {
-  const result5 = await runClassicCli(argv);
-  if (result5.stdout) process.stdout.write(result5.stdout);
-  if (result5.stderr)
-    process.stderr.write(result5.stderr + (result5.stderr.endsWith("\n") ? "" : "\n"));
-  return result5.exitCode;
-}
-var entry = process.argv[1];
-if (entry && import.meta.url === pathToFileURL(entry).href) {
-  void main().then((exitCode) => {
-    process.exitCode = exitCode;
-  });
-}
+process.exitCode = await runCometHookRouter(process.argv.slice(2));
 export {
-  CLASSIC_COMMANDS,
-  main,
-  runClassicCli
+  projectRootFrom,
+  runCometHookRouter
 };

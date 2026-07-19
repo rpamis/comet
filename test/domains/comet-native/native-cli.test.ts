@@ -518,8 +518,13 @@ Pass.
     await runNativeCli(['init', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, '.');
     await fs.writeFile(
-      path.join(paths.runtimeDir, 'current-change.json'),
-      JSON.stringify({ schema: 'comet.native.selection.v1', change: 'missing-change' }),
+      path.join(projectRoot, '.comet', 'current-change.json'),
+      JSON.stringify({
+        schema: 'comet.selection.v2',
+        workflow: 'native',
+        change: 'missing-change',
+        branch: null,
+      }),
     );
     const repaired = await runNativeCli(['doctor', '--repair', '--json', ...projectArgs()]);
     expect(repaired.exitCode).toBe(0);

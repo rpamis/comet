@@ -141,9 +141,9 @@ async function inspectSelection(
   repair: boolean,
 ): Promise<NativeDoctorFinding[]> {
   const file = nativeSelectionFile(paths);
-  let value: { schema?: unknown; change?: unknown };
+  let value: { schema?: unknown; workflow?: unknown; change?: unknown };
   try {
-    await resolveContainedNativePath(paths.nativeRoot, file);
+    await resolveContainedNativePath(paths.projectRoot, file);
     const selection = await readNativeSelectionRecord(paths);
     if (!selection) return [];
     value = selection;
@@ -158,7 +158,11 @@ async function inspectSelection(
       },
     ];
   }
-  if (value.schema !== 'comet.native.selection.v1' || typeof value.change !== 'string') {
+  if (
+    value.schema !== 'comet.selection.v2' ||
+    value.workflow !== 'native' ||
+    typeof value.change !== 'string'
+  ) {
     return [
       {
         severity: 'error',

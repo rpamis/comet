@@ -55,6 +55,7 @@ describe('Native VCS-independent content snapshots', () => {
       fs.writeFile(path.join(projectRoot, 'private', 'nested', 'key.txt'), 'secret\n'),
       fs.writeFile(path.join(paths.nativeRoot, 'runtime', 'state.json'), 'secret\n'),
       fs.writeFile(paths.configFile, 'secret\n'),
+      fs.writeFile(path.join(projectRoot, '.comet', 'current-change.json'), 'selection\n'),
       fs.writeFile(path.join(outsideRoot, 'outside.txt'), 'secret\n'),
     ]);
     await fs.symlink(

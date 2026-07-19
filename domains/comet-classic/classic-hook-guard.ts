@@ -1,5 +1,6 @@
 import { existsSync, promises as fs, readFileSync } from 'fs';
 import path from 'path';
+import type { CometHookDecision, CometHookRequest } from '../comet-entry/hook-types.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import { resolveCurrentChange } from './classic-current-change.js';
 import { readClassicState, readLegacyState } from './classic-store.js';
@@ -155,6 +156,22 @@ async function activeChanges(projectRoot: string): Promise<GoverningChange[]> {
   return governingChanges;
 }
 
+export interface ActiveClassicHookChange {
+  workflow: 'classic';
+  name: string;
+  phase: ClassicPhase;
+}
+
+export async function listActiveClassicHookChanges(
+  projectRoot: string,
+): Promise<ActiveClassicHookChange[]> {
+  return (await activeChanges(projectRoot)).map((change) => ({
+    workflow: 'classic',
+    name: governingChangeName(change)!,
+    phase: change.phase,
+  }));
+}
+
 function isSuperpowersArtifactPath(relativePath: string): boolean {
   return comparisonKey(relativePath).startsWith('docs/superpowers/');
 }
@@ -290,9 +307,24 @@ async function superpowersArtifactGoverningChange(
 async function repoSourceGoverningChange(
   projectRoot: string,
   relativePath: string,
+  selectedChangeName?: string,
 ): Promise<GoverningResolution> {
   const active = await activeChanges(projectRoot);
   if (active.length === 0) return null;
+
+  if (selectedChangeName) {
+    const selected = active.find(
+      (governing) => governingChangeName(governing) === selectedChangeName,
+    );
+    return (
+      selected ?? {
+        blockedResult: blockedStaleSelection(
+          relativePath,
+          `selected change '${selectedChangeName}' is no longer active`,
+        ),
+      }
+    );
+  }
 
   const current = await resolveCurrentChange(projectRoot);
   if (current.status === 'stale') {
@@ -322,6 +354,7 @@ async function repoSourceGoverningChange(
 async function governingChange(
   relativePath: string,
   projectRoot: string,
+  selectedChangeName?: string,
 ): Promise<GoverningResolution> {
   const prefix = 'openspec/changes/';
   if (relativePath.startsWith(prefix)) {
@@ -357,7 +390,11 @@ async function governingChange(
         : { ...superpowers.governing, superpowersArtifact: 'matched' };
     }
     if (slot) {
-      const candidate = await repoSourceGoverningChange(projectRoot, relativePath);
+      const candidate = await repoSourceGoverningChange(
+        projectRoot,
+        relativePath,
+        selectedChangeName,
+      );
       if (!candidate || 'blockedResult' in candidate) return candidate;
       return {
         ...candidate,
@@ -368,10 +405,13 @@ async function governingChange(
       };
     }
 
-    const fallback = (await activeChanges(projectRoot))[0] ?? null;
+    const active = await activeChanges(projectRoot);
+    const fallback = selectedChangeName
+      ? (active.find((candidate) => governingChangeName(candidate) === selectedChangeName) ?? null)
+      : (active[0] ?? null);
     return fallback ? { ...fallback, superpowersArtifact: 'unmatched' } : null;
   }
-  return repoSourceGoverningChange(projectRoot, relativePath);
+  return repoSourceGoverningChange(projectRoot, relativePath, selectedChangeName);
 }
 
 function isRootMarkdown(relativePath: string): boolean {
@@ -557,10 +597,11 @@ function blockedStaleSelection(relativePath: string, reason: string): ClassicCom
   );
 }
 
-export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
-  const projectRoot = parseProjectRoot(args);
-  const target = inputTarget();
-  if (!target) return allowed('no file path in tool input');
+async function inspectClassicHookTarget(
+  projectRoot: string,
+  target: string,
+  selectedChangeName?: string,
+): Promise<ClassicCommandResult> {
   const relativePath = await projectRelative(target, projectRoot);
 
   if (isCometConfig(relativePath)) {
@@ -583,7 +624,7 @@ export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
 
   let governing: GoverningResolution;
   try {
-    governing = await governingChange(relativePath, projectRoot);
+    governing = await governingChange(relativePath, projectRoot, selectedChangeName);
   } catch (error) {
     return result(
       2,
@@ -613,4 +654,73 @@ export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
     return allowed(`${relativePath} (phase: ${phase})`);
   }
   return blocked(relativePath, phase);
+}
+
+export async function inspectClassicHookGuard(
+  projectRoot: string,
+  changeName: string,
+  request: CometHookRequest,
+): Promise<CometHookDecision> {
+  const active = await activeChanges(projectRoot);
+  const selected = active.find((change) => governingChangeName(change) === changeName);
+  if (!selected) {
+    return {
+      allowed: false,
+      reason: `Selected Classic change ${changeName} is missing or archived; resume /comet-classic before retrying`,
+      workflow: 'classic',
+      change: changeName,
+    };
+  }
+  if (request.intent === 'non-write') {
+    return { allowed: true, reason: 'Hook event is not a write' };
+  }
+  if (request.intent === 'unknown' || request.targets.length === 0) {
+    if (
+      selected.phase === 'verify' ||
+      (selected.phase === 'build' &&
+        !(selected.classic?.workflow === 'full' && !selected.classic.designDoc))
+    ) {
+      return {
+        allowed: true,
+        reason: `Classic change is in ${selected.phase}`,
+        workflow: 'classic',
+        change: changeName,
+        phase: selected.phase,
+      };
+    }
+    return {
+      allowed: false,
+      reason: `Hook write target could not be determined while Classic change ${changeName} is in ${selected.phase}; resume /comet-classic before retrying`,
+      workflow: 'classic',
+      change: changeName,
+      phase: selected.phase,
+    };
+  }
+
+  for (const target of request.targets) {
+    const inspected = await inspectClassicHookTarget(projectRoot, target, changeName);
+    if (inspected.exitCode !== 0) {
+      return {
+        allowed: false,
+        reason: inspected.stderr?.trim() || 'Classic phase guard blocked the write',
+        workflow: 'classic',
+        change: changeName,
+        phase: selected.phase,
+      };
+    }
+  }
+  return {
+    allowed: true,
+    reason: `Classic write allowed in ${selected.phase}`,
+    workflow: 'classic',
+    change: changeName,
+    phase: selected.phase,
+  };
+}
+
+export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
+  const projectRoot = parseProjectRoot(args);
+  const target = inputTarget();
+  if (!target) return allowed('no file path in tool input');
+  return inspectClassicHookTarget(projectRoot, target);
 };

@@ -131,7 +131,7 @@ describe('skills', () => {
   });
 
   describe('copyCometRulesForPlatform', () => {
-    it('installs only the Native Rule for a Native project', async () => {
+    it('installs the unified workflow Rule for a Native project', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'claude')!;
 
       await expect(
@@ -139,10 +139,13 @@ describe('skills', () => {
       ).resolves.toEqual({ copied: 1, skipped: 0, failed: 0 });
 
       await expect(
-        fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-native-phase-guard.md')),
+        fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md')),
       ).resolves.toBeUndefined();
       await expect(
         fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(
+        fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-native-phase-guard.md')),
       ).rejects.toMatchObject({ code: 'ENOENT' });
     });
 
@@ -540,12 +543,17 @@ describe('skills', () => {
 
   describe('installCometHooksForPlatform', () => {
     const staleCometCommand = 'bash .legacy/skills/comet/scripts/comet-hook-guard.sh';
-    const currentCometScript = 'comet/scripts/comet-hook-guard.mjs';
+    const currentCometScript = 'comet/scripts/comet-hook-router.mjs';
     const normalized = (value: string) => value.replace(/\\/g, '/');
-    const expectedHookCommand = (skillsDir: string, baseDir = tmpDir) =>
-      `node "${normalized(path.join(baseDir, skillsDir, 'skills', ...currentCometScript.split('/')))}" --project-root "${normalized(baseDir)}"`;
+    const expectedHookCommand = (
+      skillsDir: string,
+      platformId: string,
+      baseDir = tmpDir,
+      scope: 'project' | 'global' = 'project',
+    ) =>
+      `node "${normalized(path.join(baseDir, skillsDir, 'skills', ...currentCometScript.split('/')))}" --platform "${platformId}"${scope === 'project' ? ` --project-root "${normalized(baseDir)}"` : ''}`;
 
-    it('installs only the Native Hook for a Native project', async () => {
+    it('installs only the unified Router Hook for a Native project', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
 
       await expect(
@@ -556,8 +564,33 @@ describe('skills', () => {
         await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8'),
       ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
       const source = JSON.stringify(hooks).replaceAll('\\', '/');
-      expect(source).toContain('comet-native/scripts/comet-native-hook-guard.mjs');
+      expect(source).toContain('comet/scripts/comet-hook-router.mjs');
+      expect(source).toContain('--platform /"codex/"');
       expect(source).not.toContain('comet/scripts/comet-hook-guard.mjs');
+      expect(source).not.toContain('comet-native/scripts/comet-native-hook-guard.mjs');
+    });
+
+    it('installs the Native Copilot Hook with a write matcher and structured denial output', async () => {
+      const copilot = PLATFORMS.find((candidate) => candidate.id === 'github-copilot')!;
+
+      await expect(
+        installCometHooksForPlatform(tmpDir, copilot, 'project', 'native'),
+      ).resolves.toEqual({ status: 'installed' });
+
+      const config = JSON.parse(
+        await fs.readFile(path.join(tmpDir, '.github', 'hooks', 'comet-guard.json'), 'utf8'),
+      ) as {
+        hooks: {
+          preToolUse: Array<{ matcher?: string; bash: string; powershell: string }>;
+        };
+      };
+      expect(config.hooks.preToolUse).toHaveLength(1);
+      expect(config.hooks.preToolUse[0].matcher).toBe('create|edit|str_replace_editor|apply_patch');
+      expect(config.hooks.preToolUse[0].bash.replaceAll('\\', '/')).toContain(
+        'comet/scripts/comet-hook-router.mjs',
+      );
+      expect(config.hooks.preToolUse[0].bash).toContain('--platform "github-copilot"');
+      expect(config.hooks.preToolUse[0].powershell).toBe(config.hooks.preToolUse[0].bash);
     });
 
     it('returns failed when the Hook manifest cannot be read', async () => {
@@ -598,7 +631,7 @@ describe('skills', () => {
 
       const hooks = JSON.parse(await fs.readFile(path.join(root, '.codex', 'hooks.json'), 'utf-8'));
       expect(hooks.hooks.PreToolUse[0].hooks[0].command.replaceAll('\\', '/')).toContain(
-        '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
+        '/.agents/skills/comet/scripts/comet-hook-router.mjs',
       );
       await expect(
         fs.access(path.join(root, '.codex', 'settings.local.json')),
@@ -664,7 +697,7 @@ describe('skills', () => {
       expect(secondInstall.hooks.PreToolUse[2].description).toBe('primary group metadata');
       expect(secondInstall.hooks.PreToolUse[2].hooks.slice(0, 2)).toEqual([null, 'manual-handler']);
       expect(secondInstall.hooks.PreToolUse[2].hooks[2].command.replaceAll('\\', '/')).toContain(
-        '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
+        '/.agents/skills/comet/scripts/comet-hook-router.mjs',
       );
       expect(secondInstall.hooks.PreToolUse[3]).toEqual({
         matcher: 'Write|Edit',
@@ -1032,8 +1065,8 @@ describe('skills', () => {
           },
           {
             type: 'command',
-            command: expectedHookCommand(skillsDir),
-            description: 'Block code writes in wrong Comet phase (open/design/archive)',
+            command: expectedHookCommand(skillsDir, id),
+            description: 'Route each write to the selected Comet Native or Classic phase guard',
           },
         ]);
 
@@ -1061,7 +1094,7 @@ describe('skills', () => {
       expect(updated.enabledPlugins).toEqual(initialSettings.enabledPlugins);
       expect(updated.hooks.PreToolUse).toHaveLength(1);
       expect(updated.hooks.PreToolUse[0].hooks[0].command).toBe(
-        expectedHookCommand('.codebuddy', homeDir),
+        expectedHookCommand('.codebuddy', 'codebuddy', homeDir, 'global'),
       );
     });
 
@@ -1160,8 +1193,8 @@ describe('skills', () => {
         },
         {
           type: 'command',
-          command: expectedHookCommand('.gemini'),
-          name: 'Block code writes in wrong Comet phase (open/design/archive)',
+          command: expectedHookCommand('.gemini', 'gemini'),
+          name: 'Route each write to the selected Comet Native or Classic phase guard',
         },
       ]);
 
@@ -1201,7 +1234,7 @@ describe('skills', () => {
       expect(firstInstall.hooks.pre_write_code).toEqual([
         { command: 'echo user-write-check', show_output: false },
         {
-          command: expectedHookCommand('.windsurf'),
+          command: expectedHookCommand('.windsurf', 'windsurf'),
           show_output: true,
         },
       ]);
@@ -2405,6 +2438,31 @@ describe('skills', () => {
       return nextHeading === -1 ? rest : rest.slice(0, nextHeading);
     };
 
+    it('ships one bilingual workflow Rule with shared ownership semantics', async () => {
+      const manifest = await readManifest();
+      expect(manifest.rules).toEqual([
+        'comet/rules/comet-workflow-guard.md',
+        'comet/rules/comet-workflow-guard.en.md',
+      ]);
+      expect(manifest.nativeRules).toBeUndefined();
+
+      const zhGuard = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet', 'rules', 'comet-workflow-guard.md'),
+        'utf-8',
+      );
+      const enGuard = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet', 'rules', 'comet-workflow-guard.en.md'),
+        'utf-8',
+      );
+      for (const guard of [zhGuard, enGuard]) {
+        expect(guard).toContain('default_workflow');
+        expect(guard).toContain('.comet/current-change.json');
+        expect(guard).toContain('Native');
+        expect(guard).toContain('Classic');
+        expect(guard).toContain('Hook Router');
+      }
+    });
+
     it('delegates post-guard handoff to comet-state next so auto_transition is honored', async () => {
       const zhGuard = await fs.readFile(
         path.resolve('assets', 'skills', 'comet', 'rules', 'comet-phase-guard.md'),
@@ -2460,6 +2518,24 @@ describe('skills', () => {
 
       expect(zhGuard).toContain('`.superpowers/*`');
       expect(enGuard).toContain('`.superpowers/*`');
+    });
+
+    it('keeps Native Verify repairs in Build and guards dot-prefixed project writes', async () => {
+      const zhGuard = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-native', 'rules', 'comet-native-phase-guard.md'),
+        'utf-8',
+      );
+      const enGuard = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-native', 'rules', 'comet-native-phase-guard.en.md'),
+        'utf-8',
+      );
+
+      expect(zhGuard).toContain('记录失败结果并返回 Build');
+      expect(zhGuard).toContain('点号开头的项目文件');
+      expect(zhGuard).not.toContain('Verify 阶段只运行验证、记录证据和修复');
+      expect(enGuard).toContain('record the failed result and return to Build');
+      expect(enGuard).toContain('dot-prefixed project files');
+      expect(enGuard).not.toContain('Verify runs checks, records evidence, and fixes');
     });
   });
 

@@ -7371,7 +7371,7 @@ import { pathToFileURL } from "url";
 import path47 from "path";
 
 // domains/comet-native/native-archive.ts
-import { randomUUID as randomUUID5 } from "crypto";
+import { randomUUID as randomUUID6 } from "crypto";
 import { promises as fs22 } from "fs";
 import path34 from "path";
 import { isDeepStrictEqual as isDeepStrictEqual2 } from "util";
@@ -7568,6 +7568,9 @@ function nativeSensitiveRelativePathReason(relativeRef) {
   }
   if (lower.join("/") === ".comet/config.yaml") {
     return "comet-config";
+  }
+  if (lower.join("/") === ".comet/current-change.json") {
+    return "comet-selection";
   }
   return null;
 }
@@ -10193,6 +10196,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
   const nativeRoot = path10.resolve(paths.nativeRoot);
   const physicalNativeRoot = await fs9.realpath(nativeRoot);
   const configFile = path10.resolve(paths.configFile);
+  const selectionFile = path10.join(projectRoot, ".comet", "current-change.json");
   const denylist = normalizedDenylist(projectRoot, options.denylist ?? []);
   const entries = [];
   const omitted = [];
@@ -10233,7 +10237,7 @@ ${JSON.stringify(value)}`);
     for (const child of children) {
       const target = path10.join(directory, child.name);
       const relative = portableRelative(projectRoot, target);
-      if (target === configFile || sameOrInside(nativeRoot, target) || denylist.some((denied) => sameOrInside(denied, target)) || isNativeEnvFileName(child.name) || child.name.toLowerCase() === ".git") {
+      if (target === configFile || target === selectionFile || sameOrInside(nativeRoot, target) || denylist.some((denied) => sameOrInside(denied, target)) || isNativeEnvFileName(child.name) || child.name.toLowerCase() === ".git") {
         continue;
       }
       let before;
@@ -19152,41 +19156,139 @@ async function settleNativeChangeJournalsLocked(paths, name) {
   await continueNativeCheckpointLocked(paths, name);
 }
 
-// domains/comet-native/native-selection.ts
+// domains/comet-entry/current-selection.ts
+import { randomUUID as randomUUID5 } from "crypto";
 import { promises as fs21 } from "fs";
 import path33 from "path";
-var NATIVE_SELECTION_MAX_BYTES = 16 * 1024;
-async function readNativeSelectionRecord(paths) {
-  const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
+var COMET_CURRENT_SELECTION_SCHEMA = "comet.selection.v2";
+var COMET_CURRENT_SELECTION_MAX_BYTES = 16 * 1024;
+function cometCurrentSelectionFile(projectRoot) {
+  return path33.join(projectRoot, ".comet", "current-change.json");
+}
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function validBranch(value) {
+  return value === null || typeof value === "string";
+}
+function parseSelection(source) {
+  let value;
+  try {
+    value = JSON.parse(source);
+  } catch (error) {
+    throw new Error(
+      `current change selection contains invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
+  }
+  if (!isRecord(value)) {
+    throw new Error("current change selection must be a JSON object");
+  }
+  if (value.version === 1) {
+    if (typeof value.change !== "string") {
+      throw new Error("legacy current change selection change must be a string");
+    }
+    if (!validBranch(value.branch)) {
+      throw new Error("legacy current change selection branch must be a string or null");
+    }
+    return {
+      selection: {
+        schema: COMET_CURRENT_SELECTION_SCHEMA,
+        workflow: "classic",
+        change: value.change,
+        branch: value.branch
+      },
+      legacy: true
+    };
+  }
+  if (value.schema !== COMET_CURRENT_SELECTION_SCHEMA) {
+    throw new Error(`current change selection schema must be ${COMET_CURRENT_SELECTION_SCHEMA}`);
+  }
+  if (value.workflow !== "native" && value.workflow !== "classic") {
+    throw new Error("current change selection workflow must be native or classic");
+  }
+  if (typeof value.change !== "string") {
+    throw new Error("current change selection change must be a string");
+  }
+  if (!validBranch(value.branch)) {
+    throw new Error("current change selection branch must be a string or null");
+  }
+  if (value.workflow === "native" && value.branch !== null) {
+    throw new Error("Native current change selection branch must be null");
+  }
+  return { selection: value, legacy: false };
+}
+async function readCometCurrentSelection(projectRoot) {
   let source;
   try {
-    source = (await readNativeProtectedTextFile({
-      root: paths.nativeRoot,
-      file,
-      maxBytes: NATIVE_SELECTION_MAX_BYTES,
-      label: "Native current-change selection"
-    })).text;
+    const stat = await fs21.lstat(cometCurrentSelectionFile(projectRoot));
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error("current change selection must be a regular file");
+    }
+    if (stat.size > COMET_CURRENT_SELECTION_MAX_BYTES) {
+      throw new Error(
+        `current change selection exceeds ${COMET_CURRENT_SELECTION_MAX_BYTES} bytes`
+      );
+    }
+    source = await fs21.readFile(cometCurrentSelectionFile(projectRoot), "utf8");
   } catch (error) {
-    if (error.code === "ENOENT") return null;
+    if (error.code === "ENOENT") return { status: "missing" };
+    throw new Error(
+      `cannot read current change selection: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
+  }
+  const parsed = parseSelection(source);
+  return { status: "selected", ...parsed };
+}
+async function writeCometCurrentSelection(projectRoot, selection) {
+  const parsed = parseSelection(JSON.stringify(selection));
+  if (parsed.legacy) throw new Error("cannot write a legacy current change selection");
+  const file = cometCurrentSelectionFile(projectRoot);
+  const temporary = `${file}.${randomUUID5()}.tmp`;
+  await fs21.mkdir(path33.dirname(file), { recursive: true });
+  try {
+    await fs21.writeFile(temporary, `${JSON.stringify(parsed.selection, null, 2)}
+`, "utf8");
+    await fs21.rename(temporary, file);
+  } catch (error) {
+    await fs21.rm(temporary, { force: true });
     throw error;
   }
-  const value = JSON.parse(source);
-  if (value.schema !== "comet.native.selection.v1" || typeof value.change !== "string") {
-    throw new Error("Invalid Native current-change selection");
+}
+async function clearCometCurrentSelection(projectRoot) {
+  await fs21.rm(cometCurrentSelectionFile(projectRoot), { force: true });
+}
+async function clearCometCurrentSelectionIf(projectRoot, workflow, change) {
+  const current = await readCometCurrentSelection(projectRoot);
+  if (current.status !== "selected" || current.selection.workflow !== workflow || current.selection.change !== change) {
+    return false;
   }
-  assertNativeName(value.change);
-  return value;
+  await clearCometCurrentSelection(projectRoot);
+  return true;
+}
+
+// domains/comet-native/native-selection.ts
+var NATIVE_SELECTION_MAX_BYTES = 16 * 1024;
+async function readNativeSelectionRecord(paths) {
+  const current = await readCometCurrentSelection(paths.projectRoot);
+  if (current.status === "missing" || current.selection.workflow !== "native") return null;
+  assertNativeName(current.selection.change);
+  return current.selection;
 }
 function nativeSelectionFile(paths) {
-  return path33.join(paths.runtimeDir, "current-change.json");
+  return cometCurrentSelectionFile(paths.projectRoot);
 }
 async function selectNativeChange(paths, name) {
   return withNativeMutationLock(paths, `select change ${name}`, async () => {
     assertNativeName(name);
     await readNativeChange(paths, name);
-    const selection = { schema: "comet.native.selection.v1", change: name };
-    const file = await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths));
-    await atomicWriteJson(file, selection);
+    await writeCometCurrentSelection(paths.projectRoot, {
+      schema: "comet.selection.v2",
+      workflow: "native",
+      change: name,
+      branch: null
+    });
   });
 }
 async function resolveSelectedNativeChange(paths) {
@@ -19195,17 +19297,9 @@ async function resolveSelectedNativeChange(paths) {
   await readNativeChange(paths, value.change);
   return value.change;
 }
-async function clearNativeSelectionLocked(paths) {
-  await assertNoPendingNativeRootMove(paths.projectRoot);
-  await fs21.rm(await resolveContainedNativePath(paths.nativeRoot, nativeSelectionFile(paths)), {
-    force: true
-  });
-}
 async function clearNativeSelectionIfLocked(paths, name) {
-  const value = await readNativeSelectionRecord(paths);
-  if (!value || value.change !== name) return false;
-  await clearNativeSelectionLocked(paths);
-  return true;
+  await assertNoPendingNativeRootMove(paths.projectRoot);
+  return clearCometCurrentSelectionIf(paths.projectRoot, "native", name);
 }
 
 // domains/comet-native/native-archive.ts
@@ -19540,7 +19634,7 @@ async function archiveNativeChange(options) {
         const state = await readNativeChange(options.paths, options.name);
         assertArchiveReady(state);
         await assertArchiveArtifacts(options.paths, state);
-        const transactionId = randomUUID5();
+        const transactionId = randomUUID6();
         const journal = await buildArchiveJournal({
           paths: options.paths,
           state,
@@ -20755,13 +20849,13 @@ import { promises as fs27 } from "fs";
 import path41 from "path";
 
 // domains/comet-native/native-evidence-retention.ts
-import { createHash as createHash12, randomUUID as randomUUID7 } from "node:crypto";
+import { createHash as createHash12, randomUUID as randomUUID8 } from "node:crypto";
 import { constants as fsConstants4, promises as fs25 } from "node:fs";
 import path39 from "node:path";
 
 // domains/comet-native/native-schema-migration.ts
 var import_yaml3 = __toESM(require_dist(), 1);
-import { randomUUID as randomUUID6 } from "crypto";
+import { randomUUID as randomUUID7 } from "crypto";
 import { promises as fs24 } from "fs";
 import path38 from "path";
 import { isDeepStrictEqual as isDeepStrictEqual3 } from "util";
@@ -21579,7 +21673,7 @@ async function migrateNativeChange(options) {
             state,
             pendingTransition,
             now: options.now ?? /* @__PURE__ */ new Date(),
-            id: options.id?.() ?? randomUUID6()
+            id: options.id?.() ?? randomUUID7()
           });
           const journalFile = nativeSchemaMigrationJournalFile(options.paths, options.name);
           await resolveContainedNativePath(options.paths.nativeRoot, journalFile);
@@ -22217,7 +22311,7 @@ async function deleteCandidate(candidate, hooks) {
   }
   const quarantine = path39.join(
     path39.dirname(candidate.file),
-    `.${path39.basename(candidate.file)}.${randomUUID7()}.gc`
+    `.${path39.basename(candidate.file)}.${randomUUID8()}.gc`
   );
   await fs25.rename(candidate.file, quarantine);
   try {
@@ -22391,7 +22485,7 @@ async function inspectNativeEvidenceRetention(options) {
 }
 
 // domains/comet-native/native-root-move.ts
-import { createHash as createHash13, randomUUID as randomUUID8 } from "crypto";
+import { createHash as createHash13, randomUUID as randomUUID9 } from "crypto";
 import { promises as fs26 } from "fs";
 import path40 from "path";
 var NATIVE_ROOT_MOVE_MAX_FILE_BYTES = 64 * 1024 * 1024;
@@ -23064,7 +23158,7 @@ async function moveNativeRoot(options) {
     throw new Error(`Native destination is occupied: ${destinationPaths.nativeRoot}`);
   }
   const lock = await acquireNativeLock(sourcePaths, "root-move", `move root to ${toArtifactRoot}`);
-  const id = randomUUID8();
+  const id = randomUUID9();
   const pending = {
     id,
     fromArtifactRoot: current.native.artifact_root,
@@ -23263,7 +23357,7 @@ async function inspectSelection(paths, repair) {
   const file = nativeSelectionFile(paths);
   let value;
   try {
-    await resolveContainedNativePath(paths.nativeRoot, file);
+    await resolveContainedNativePath(paths.projectRoot, file);
     const selection = await readNativeSelectionRecord(paths);
     if (!selection) return [];
     value = selection;
@@ -23278,7 +23372,7 @@ async function inspectSelection(paths, repair) {
       }
     ];
   }
-  if (value.schema !== "comet.native.selection.v1" || typeof value.change !== "string") {
+  if (value.schema !== "comet.selection.v2" || value.workflow !== "native" || typeof value.change !== "string") {
     return [
       {
         severity: "error",
@@ -24309,7 +24403,7 @@ async function checkNativeChange(options) {
 }
 
 // domains/comet-native/native-progress-checkpoint.ts
-import { randomUUID as randomUUID9 } from "crypto";
+import { randomUUID as randomUUID10 } from "crypto";
 function requiredText2(value, label) {
   const normalized = redactNativeCredentialText(value).trim();
   if (normalized.length === 0 || normalized.length > 2e3) {
@@ -24377,7 +24471,7 @@ async function checkpointNativeChange(options) {
         const nextState = { ...state, revision: state.revision + 1 };
         const checkpoint = {
           schema: "comet.native.progress-checkpoint.v1",
-          id: options.checkpointId?.() ?? randomUUID9(),
+          id: options.checkpointId?.() ?? randomUUID10(),
           change: state.name,
           phase: state.phase,
           previousRevision: state.revision,
@@ -24683,7 +24777,7 @@ async function readNativeProposedSpecs(paths, name) {
 }
 
 // domains/comet-native/native-transitions.ts
-import { randomUUID as randomUUID10 } from "crypto";
+import { randomUUID as randomUUID11 } from "crypto";
 
 // domains/comet-native/native-guards.ts
 import { promises as fs30 } from "fs";
@@ -25354,7 +25448,7 @@ async function advanceNativeChangeLocked(options) {
     }
     run = startNativeRun(
       NATIVE_RUNTIME_PACKAGE,
-      options.runId?.() ?? randomUUID10(),
+      options.runId?.() ?? randomUUID11(),
       NATIVE_RUNTIME_HASH
     );
   }
@@ -25470,82 +25564,267 @@ async function advanceNativeChangeLocked(options) {
 }
 
 // domains/comet-native/native-hook-guard.ts
-import { promises as fs32, readFileSync } from "fs";
+import { promises as fs32 } from "fs";
 import path46 from "path";
+
+// domains/comet-entry/hook-adapter.ts
+import { readFileSync } from "fs";
+var WRITE_TOOL_NAMES = /* @__PURE__ */ new Set([
+  "applypatch",
+  "create",
+  "createfile",
+  "deletefile",
+  "edit",
+  "editfile",
+  "patch",
+  "strreplaceeditor",
+  "write",
+  "writefile",
+  "writefiletool"
+]);
+var NON_WRITE_TOOL_NAMES = /* @__PURE__ */ new Set([
+  "glob",
+  "grep",
+  "listfiles",
+  "read",
+  "readfile",
+  "search",
+  "view"
+]);
+var SINGULAR_PATH_KEYS = ["file_path", "filePath", "path", "target_file", "targetFile"];
+var PLURAL_PATH_KEYS = ["file_paths", "filePaths", "paths", "files", "targets"];
+var NESTED_TARGET_KEYS = ["operations", "edits"];
+var PATCH_KEYS = ["patch", "diff", "patchText", "patch_text", "changes"];
+function isRecord2(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function normalizedToolName(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/gu, "");
+}
+function readToolName(input) {
+  for (const key of ["tool_name", "toolName", "tool", "name"]) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+function parseJsonValue(value) {
+  if (typeof value !== "string") return value;
+  const source = value.trim();
+  if (!source.startsWith("{") && !source.startsWith("[")) return value;
+  try {
+    return JSON.parse(source);
+  } catch {
+    return value;
+  }
+}
+function readToolArguments(input) {
+  for (const key of ["tool_input", "toolInput", "toolArgs", "tool_args", "arguments"]) {
+    if (input[key] !== void 0) return parseJsonValue(input[key]);
+  }
+  return input;
+}
+function patchTargets(source) {
+  const targets = [];
+  const patterns = [
+    /^\*\*\* (?:Add|Update|Delete) File:\s+(.+?)\s*$/gmu,
+    /^\+\+\+\s+(?:b\/)?(.+?)\s*$/gmu
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      const target = match[1]?.trim();
+      if (target && target !== "/dev/null") targets.push(target);
+    }
+  }
+  return targets;
+}
+function addTarget(targets, value) {
+  if (typeof value === "string") {
+    const target = value.trim();
+    if (target) targets.push(target);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry2 of value) addTarget(targets, entry2);
+    return;
+  }
+  if (!isRecord2(value)) return;
+  for (const key of SINGULAR_PATH_KEYS) addTarget(targets, value[key]);
+  for (const key of PLURAL_PATH_KEYS) addTarget(targets, value[key]);
+  for (const key of NESTED_TARGET_KEYS) addTarget(targets, value[key]);
+}
+function collectTargets(input, args) {
+  const targets = [];
+  const records = [args, input].filter(isRecord2);
+  for (const record8 of records) {
+    for (const key of SINGULAR_PATH_KEYS) addTarget(targets, record8[key]);
+    for (const key of PLURAL_PATH_KEYS) addTarget(targets, record8[key]);
+    for (const key of NESTED_TARGET_KEYS) addTarget(targets, record8[key]);
+    for (const key of PATCH_KEYS) {
+      const value = record8[key];
+      if (typeof value === "string") targets.push(...patchTargets(value));
+    }
+  }
+  if (typeof args === "string") targets.push(...patchTargets(args));
+  return [...new Set(targets)];
+}
+function parseCometHookRequest(source, filePath) {
+  if (filePath?.trim()) {
+    return { intent: "write", targets: [filePath.trim()], toolName: null };
+  }
+  if (!source.trim()) return { intent: "unknown", targets: [], toolName: null };
+  let input;
+  try {
+    input = JSON.parse(source);
+  } catch {
+    return { intent: "unknown", targets: [], toolName: null };
+  }
+  if (!isRecord2(input)) return { intent: "unknown", targets: [], toolName: null };
+  const toolName = readToolName(input);
+  const targets = collectTargets(input, readToolArguments(input));
+  if (toolName && WRITE_TOOL_NAMES.has(normalizedToolName(toolName))) {
+    return {
+      intent: targets.length > 0 ? "write" : "unknown",
+      targets,
+      toolName
+    };
+  }
+  if (toolName && NON_WRITE_TOOL_NAMES.has(normalizedToolName(toolName))) {
+    return { intent: "non-write", targets: [], toolName };
+  }
+  if (toolName) return { intent: "unknown", targets, toolName };
+  return {
+    intent: targets.length > 0 ? "write" : "unknown",
+    targets,
+    toolName: null
+  };
+}
+function readCometHookRequest() {
+  const filePath = process.env.FILE_PATH;
+  if (filePath?.trim()) return parseCometHookRequest("", filePath);
+  if (process.stdin.isTTY) return parseCometHookRequest("", filePath);
+  try {
+    return parseCometHookRequest(readFileSync(0, "utf8"), filePath);
+  } catch {
+    return parseCometHookRequest("", filePath);
+  }
+}
+
+// domains/comet-native/native-hook-guard.ts
 function isWithin(parent, target) {
   const relative = path46.relative(parent, target);
   return relative === "" || !relative.startsWith("..") && !path46.isAbsolute(relative);
 }
-async function readNativeHookTarget() {
-  if (process.env.FILE_PATH) return process.env.FILE_PATH;
-  if (process.stdin.isTTY) return null;
-  try {
-    const source = readFileSync(0, "utf8");
-    if (!source.trim()) return null;
-    const input = JSON.parse(source);
-    const target = input.tool_input?.file_path ?? input.tool_input?.path ?? input.file_path;
-    return typeof target === "string" && target.length > 0 ? target : null;
-  } catch {
-    return null;
-  }
+function requestTargetsAreControlOnly(projectRoot, nativeRoot, request) {
+  return request.targets.length > 0 && request.targets.every((targetPath) => {
+    const target = path46.resolve(projectRoot, targetPath);
+    if (!isWithin(projectRoot, target)) return true;
+    const relative = path46.relative(projectRoot, target).replaceAll("\\", "/");
+    return relative === ".comet/config.yaml" || isWithin(nativeRoot, target);
+  });
 }
-async function inspectNativeHookGuard(projectRoot, targetPath) {
+async function activeNativeContext(projectRoot) {
   const config = await readProjectConfig(projectRoot);
-  if (!config || !(config.workflows ?? [config.default_workflow]).includes("native")) {
-    return { allowed: true, reason: "Native workflow is not enabled" };
-  }
-  if (!targetPath) return { allowed: true, reason: "No write target was provided" };
-  const target = path46.resolve(projectRoot, targetPath);
-  if (!isWithin(projectRoot, target)) {
-    return { allowed: true, reason: "Write target is outside the guarded project" };
-  }
+  if (!config || !(config.workflows ?? [config.default_workflow]).includes("native")) return null;
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
-  const relative = path46.relative(projectRoot, target).replaceAll("\\", "/");
-  if (relative === ".comet/config.yaml" || isWithin(paths.nativeRoot, target)) {
-    return { allowed: true, reason: "Native control artifact write" };
-  }
-  if (relative.startsWith(".")) {
-    return { allowed: true, reason: "Platform configuration write" };
-  }
   let entries;
   try {
     entries = await fs32.readdir(paths.changesDir, { withFileTypes: true });
   } catch (error) {
-    if (error.code === "ENOENT") {
-      return { allowed: true, reason: "No Native changes exist" };
-    }
+    if (error.code === "ENOENT") return { paths, changes: [] };
     throw error;
   }
-  const active = [];
+  const changes = [];
   for (const entry2 of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (!entry2.isDirectory() || entry2.isSymbolicLink()) continue;
     const state = await readNativeChange(paths, entry2.name);
-    if (!state.archived) active.push(state);
+    if (!state.archived) changes.push(state);
   }
-  if (active.length === 0) return { allowed: true, reason: "No active Native change" };
-  let change = active[0];
-  if (active.length > 1) {
-    const selectedName2 = await resolveSelectedNativeChange(paths);
-    const selected = active.find((candidate) => candidate.name === selectedName2);
-    if (!selected) {
+  return { paths, changes };
+}
+async function readNativeHookRequest() {
+  const { intent, targets } = await readCometHookRequest();
+  return { intent, targets };
+}
+async function inspectNativeHookGuard(projectRoot, request, selectedChangeName) {
+  const context = await activeNativeContext(projectRoot);
+  if (!context) return { allowed: true, reason: "Native workflow is not enabled" };
+  if (request.intent === "non-write") {
+    return { allowed: true, reason: "Hook event is not a write" };
+  }
+  if (context.changes.length === 0) {
+    return {
+      allowed: true,
+      reason: requestTargetsAreControlOnly(projectRoot, context.paths.nativeRoot, request) ? "Native control artifact write" : "No Native changes exist"
+    };
+  }
+  let change;
+  if (selectedChangeName) {
+    change = context.changes.find((candidate) => candidate.name === selectedChangeName);
+    if (!change) {
       return {
         allowed: false,
-        reason: "Multiple Native changes are active; select the change to resume before writing code"
+        reason: `Selected Native change ${selectedChangeName} is missing or archived; resume /comet-native before retrying`,
+        workflow: "native",
+        change: selectedChangeName
       };
     }
-    change = selected;
+  } else if (context.changes.length === 1) {
+    change = context.changes[0];
+  } else {
+    const selectedName2 = await resolveSelectedNativeChange(context.paths);
+    change = context.changes.find((candidate) => candidate.name === selectedName2);
+    if (!change) {
+      return {
+        allowed: false,
+        reason: "Multiple Native changes are active; select the change to resume before writing code",
+        workflow: "native"
+      };
+    }
   }
   if (change.phase === "build") {
     return {
       allowed: true,
       reason: "Native change is in Build",
+      workflow: "native",
+      phase: change.phase,
+      change: change.name
+    };
+  }
+  if (request.intent === "unknown" || request.targets.length === 0) {
+    return {
+      allowed: false,
+      reason: `Hook write target could not be determined while Native change ${change.name} is in ${change.phase}; resume /comet-native before retrying`,
+      workflow: "native",
+      phase: change.phase,
+      change: change.name
+    };
+  }
+  let controlTarget = false;
+  let externalTarget = false;
+  for (const targetPath of request.targets) {
+    const target = path46.resolve(projectRoot, targetPath);
+    if (!isWithin(projectRoot, target)) {
+      externalTarget = true;
+      continue;
+    }
+    const relative = path46.relative(projectRoot, target).replaceAll("\\", "/");
+    if (relative === ".comet/config.yaml" || isWithin(context.paths.nativeRoot, target)) {
+      controlTarget = true;
+      continue;
+    }
+    return {
+      allowed: false,
+      reason: `Native change ${change.name} is in ${change.phase}; implementation writes are only allowed in build. Resume /comet-native to continue safely`,
+      workflow: "native",
       phase: change.phase,
       change: change.name
     };
   }
   return {
-    allowed: false,
-    reason: `Native change ${change.name} is in ${change.phase}; implementation writes are only allowed in build. Resume /comet-native to continue safely`,
+    allowed: true,
+    reason: controlTarget ? "Native control artifact write" : externalTarget ? "Write target is outside the guarded project" : "No guarded write target was provided",
+    workflow: "native",
     phase: change.phase,
     change: change.name
   };
@@ -25558,7 +25837,7 @@ var NativeUsageError = class extends Error {
 var USAGE = `Usage: comet native <command> [options]
 
 Commands:
-  hook-guard
+  hook-guard [--hook-output copilot]
   init [--root <artifact-root>] [--language en|zh-CN]
   root show
   root move <artifact-root>
@@ -25658,8 +25937,24 @@ async function dispatch(rawArgs, explicitProjectRoot) {
   const command = rawArgs.shift();
   const projectRoot = await projectRootFrom(explicitProjectRoot);
   if (command === "hook-guard") {
+    const hookOutput = takeOption(rawArgs, "--hook-output");
+    if (hookOutput !== void 0 && hookOutput !== "copilot") {
+      throw new NativeUsageError("--hook-output must be copilot");
+    }
     assertNoArguments(rawArgs);
-    const result2 = await inspectNativeHookGuard(projectRoot, await readNativeHookTarget());
+    const result2 = await inspectNativeHookGuard(projectRoot, await readNativeHookRequest());
+    if (hookOutput === "copilot") {
+      return {
+        command,
+        exitCode: 0,
+        data: result2,
+        text: result2.allowed ? "{}\n" : `${JSON.stringify({
+          permissionDecision: "deny",
+          permissionDecisionReason: result2.reason
+        })}
+`
+      };
+    }
     return result2.allowed ? { command, exitCode: 0, data: result2 } : {
       command,
       exitCode: 2,

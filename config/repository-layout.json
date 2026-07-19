@@ -39,10 +39,12 @@
   },
   "entryRuntime": {
     "entries": {
-      "runtime": "domains/comet-entry/entry-runtime-entry.ts"
+      "runtime": "domains/comet-entry/entry-runtime-entry.ts",
+      "hookRouter": "domains/comet-entry/hook-router-entry.ts"
     },
     "outputs": {
-      "runtime": "assets/skills/comet/scripts/comet-entry-runtime.mjs"
+      "runtime": "assets/skills/comet/scripts/comet-entry-runtime.mjs",
+      "hookRouter": "assets/skills/comet/scripts/comet-hook-router.mjs"
     }
   },
   "allowedTopLevelEntries": [

@@ -9,6 +9,11 @@ import {
   installCometHooksForPlatform,
 } from '../../domains/skill/platform-install.js';
 import { PLATFORMS } from '../../platform/install/platforms.js';
+import { readCometCurrentSelection } from '../../domains/comet-entry/current-selection.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../domains/comet-native/native-config.js';
 
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
@@ -217,6 +222,193 @@ describe('doctor command', () => {
     );
   });
 
+  it.each([
+    'claude',
+    'codex',
+    'windsurf',
+    'github-copilot',
+    'gemini',
+    'amazon-q',
+    'qwen',
+    'kiro',
+    'codebuddy',
+    'qoder',
+  ])('recognizes exactly one healthy Router for the %s platform', async (id) => {
+    const target = PLATFORMS.find((platform) => platform.id === id)!;
+    await installManagedCometSkills(tmpDir, target.skillsDir);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(
+      results.find((result) => result.check === `hooks: ${target.name} (project)`),
+    ).toMatchObject({
+      status: 'pass',
+      message: 'exactly one managed Router Hook present',
+    });
+  });
+
+  it('detects and repairs an outdated Hook Router runtime', async () => {
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    await installManagedCometSkills(tmpDir);
+    await installCometHooksForPlatform(tmpDir, claude, 'project');
+
+    const before = await collectDoctorResults(tmpDir);
+    expect(
+      before.find((result) => result.check === 'hook runtime: Claude Code (project)'),
+    ).toMatchObject({ status: 'warn', message: expect.stringContaining('outdated') });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: tmpDir });
+    } finally {
+      log.mockRestore();
+    }
+
+    const installed = path.join(
+      tmpDir,
+      '.claude',
+      'skills',
+      'comet',
+      'scripts',
+      'comet-hook-router.mjs',
+    );
+    await expect(fs.readFile(installed)).resolves.toEqual(
+      await fs.readFile(
+        path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs'),
+      ),
+    );
+    const after = await collectDoctorResults(tmpDir);
+    expect(
+      after.find((result) => result.check === 'hook runtime: Claude Code (project)'),
+    ).toMatchObject({ status: 'pass', message: 'current' });
+  });
+
+  it('repairs duplicate and legacy managed Hook and Rule state without touching user entries', async () => {
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    await installManagedCometSkills(tmpDir);
+    await copyCometRulesForPlatform(tmpDir, claude, true, 'zh', 'project');
+    await installCometHooksForPlatform(tmpDir, claude, 'project');
+
+    const hookPath = path.join(tmpDir, '.claude', 'settings.local.json');
+    const settings = JSON.parse(await fs.readFile(hookPath, 'utf8'));
+    const router = settings.hooks.PreToolUse[0].hooks[0];
+    settings.hooks.PreToolUse[0].hooks.push(
+      { ...router },
+      {
+        type: 'command',
+        command: router.command.replace('comet-hook-router.mjs', 'comet-hook-guard.mjs'),
+      },
+      { type: 'command', command: 'node user-hook.mjs' },
+    );
+    await fs.writeFile(hookPath, JSON.stringify(settings), 'utf8');
+    const legacyRule = path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md');
+    await fs.writeFile(legacyRule, '# Legacy\n', 'utf8');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: tmpDir });
+    } finally {
+      log.mockRestore();
+    }
+
+    const repaired = JSON.parse(await fs.readFile(hookPath, 'utf8'));
+    const commands = repaired.hooks.PreToolUse.flatMap(
+      (group: { hooks: Array<{ command?: string }> }) =>
+        group.hooks.map((hook: { command?: string }) => hook.command),
+    );
+    expect(
+      commands.filter((command: string) => command?.includes('comet-hook-router.mjs')),
+    ).toHaveLength(1);
+    expect(commands.some((command: string) => command?.includes('comet-hook-guard.mjs'))).toBe(
+      false,
+    );
+    expect(commands).toContain('node user-hook.mjs');
+    await expect(fs.access(legacyRule)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('migrates Classic v1 selection only after a project Router is ready', async () => {
+    await installManagedCometSkills(tmpDir);
+    const selectionPath = path.join(tmpDir, '.comet', 'current-change.json');
+    await fs.mkdir(path.dirname(selectionPath), { recursive: true });
+    await fs.writeFile(
+      selectionPath,
+      `${JSON.stringify({ version: 1, change: 'legacy-change', branch: null })}\n`,
+    );
+    await fs.mkdir(path.join(tmpDir, 'openspec', 'changes', 'legacy-change'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'legacy-change', '.comet.yaml'),
+      [
+        'workflow: full',
+        'phase: open',
+        'design_doc: null',
+        'plan: null',
+        'build_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: tmpDir });
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(readCometCurrentSelection(tmpDir)).resolves.toMatchObject({
+      status: 'selected',
+      legacy: false,
+      selection: { workflow: 'classic', change: 'legacy-change' },
+    });
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'settings.local.json')),
+    ).resolves.toBeUndefined();
+  });
+
+  it('keeps Classic v1 selection when doctor cannot establish a project Router', async () => {
+    const selectionPath = path.join(tmpDir, '.comet', 'current-change.json');
+    const legacy = `${JSON.stringify({ version: 1, change: 'legacy-change', branch: null })}\n`;
+    await fs.mkdir(path.dirname(selectionPath), { recursive: true });
+    await fs.writeFile(selectionPath, legacy);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: tmpDir });
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(legacy);
+  });
+
+  it('keeps Classic v1 selection when the repaired project is Native-only', async () => {
+    await installManagedCometSkills(tmpDir);
+    const config = defaultProjectConfig('.');
+    config.workflows = ['native'];
+    config.default_workflow = 'native';
+    await writeProjectConfig(tmpDir, config);
+    const selectionPath = path.join(tmpDir, '.comet', 'current-change.json');
+    const legacy = `${JSON.stringify({ version: 1, change: 'legacy-change', branch: null })}\n`;
+    await fs.writeFile(selectionPath, legacy);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: tmpDir });
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(legacy);
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'settings.local.json')),
+    ).resolves.toBeUndefined();
+  });
+
   it('reports a Hook JSON parse failure without rewriting the canonical config', async () => {
     const hookPath = path.join(tmpDir, '.claude', 'settings.local.json');
     const malformed = '{\r\n  "hooks": {\r\n';
@@ -236,7 +428,7 @@ describe('doctor command', () => {
 
   it('reports a Rule destination access failure as a component warning', async () => {
     await installManagedCometSkills(tmpDir);
-    const rulePath = path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md');
+    const rulePath = path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md');
     const access = fs.access.bind(fs);
     const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
     const accessSpy = vi.spyOn(fs, 'access').mockImplementation(async (filePath, mode) => {

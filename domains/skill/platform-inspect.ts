@@ -7,14 +7,29 @@ import {
 } from '../../platform/install/platforms.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import { fileExists } from '../../platform/fs/file-system.js';
-import { buildHookCommand, computeRuleDestPath, readManifest } from './platform-install.js';
+import {
+  buildHookCommand,
+  computeRuleDestPath,
+  isManagedHookCommand,
+  readManifest,
+} from './platform-install.js';
 import { readJsonObjectFile } from './json-object.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
 
 export interface HookInspectionResult {
   present: boolean;
+  legacyPresent?: boolean;
+  duplicatePresent?: boolean;
   error?: string;
 }
+
+const LEGACY_HOOK_SCRIPT_NAMES = ['comet-hook-guard.mjs', 'comet-native-hook-guard.mjs'] as const;
+const LEGACY_HOOK_SCRIPT_PATHS = [
+  'comet/scripts/comet-hook-guard.mjs',
+  'comet-native/scripts/comet-native-hook-guard.mjs',
+] as const;
+
+const LEGACY_RULE_FILE_NAMES = ['comet-phase-guard.md', 'comet-native-phase-guard.md'] as const;
 
 type JsonReadResult =
   | { status: 'missing' }
@@ -33,7 +48,7 @@ export async function getPlatformRuleDestinations(
   baseDir: string,
   platform: Platform,
   scope: InstallScope,
-  workflowSelection: InitWorkflowSelection = 'classic',
+  _workflowSelection: InitWorkflowSelection = 'classic',
 ): Promise<string[]> {
   if (!platform.rulesDir || !platform.rulesFormat) return [];
 
@@ -41,16 +56,25 @@ export async function getPlatformRuleDestinations(
   const rulesDestDir = path.join(getRulesBaseDir(baseDir, platform, scope), platform.rulesDir);
   const destinations = new Set<string>();
 
-  const rulePaths = [
-    ...(workflowSelection === 'native' ? [] : (manifest.rules ?? [])),
-    ...(workflowSelection === 'classic' ? [] : (manifest.nativeRules ?? [])),
-  ];
+  const rulePaths = manifest.rules ?? [];
   for (const ruleRelPath of rulePaths) {
     const installedName = path.basename(ruleRelPath).replace(/\.en\.md$/u, '.md');
     destinations.add(computeRuleDestPath(rulesDestDir, installedName, platform.rulesFormat));
   }
 
   return [...destinations];
+}
+
+export function getLegacyPlatformRuleDestinations(
+  baseDir: string,
+  platform: Platform,
+  scope: InstallScope,
+): string[] {
+  if (!platform.rulesDir || !platform.rulesFormat) return [];
+  const rulesDestDir = path.join(getRulesBaseDir(baseDir, platform, scope), platform.rulesDir);
+  return LEGACY_RULE_FILE_NAMES.map((fileName) =>
+    computeRuleDestPath(rulesDestDir, fileName, platform.rulesFormat!),
+  );
 }
 
 async function readHookJson(filePath: string): Promise<JsonReadResult> {
@@ -93,8 +117,35 @@ function collectCommandArray(config: Record<string, unknown>, groupName: string)
   });
 }
 
+function collectCopilotCommands(config: Record<string, unknown>): unknown[] {
+  const hooks = config.hooks;
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
+  const entries = (hooks as Record<string, unknown>).preToolUse;
+  if (!Array.isArray(entries)) return [];
+  return entries.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
+    const record = entry as Record<string, unknown>;
+    return record.command ?? record.bash ?? record.powershell;
+  });
+}
+
 function containsAllManagedCommands(commands: unknown[], expectedCommands: string[]): boolean {
   return expectedCommands.every((expected) => commands.some((command) => command === expected));
+}
+
+function containsDuplicateManagedCommand(commands: unknown[], expectedCommands: string[]): boolean {
+  return expectedCommands.some(
+    (expected) => commands.filter((command) => command === expected).length > 1,
+  );
+}
+
+function containsLegacyManagedCommand(commands: unknown[]): boolean {
+  return commands.some(
+    (command) =>
+      typeof command === 'string' &&
+      isManagedHookCommand(command, [...LEGACY_HOOK_SCRIPT_PATHS]) &&
+      LEGACY_HOOK_SCRIPT_NAMES.some((scriptName) => command.includes(scriptName)),
+  );
 }
 
 async function inspectSingleHookJson(
@@ -105,8 +156,13 @@ async function inspectSingleHookJson(
   const result = await readHookJson(configPath);
   if (result.status === 'missing') return { present: false };
   if (result.status === 'error') return { present: false, error: result.error };
+  const commands = collectCommands(result.value);
+  const legacyPresent = containsLegacyManagedCommand(commands);
+  const duplicatePresent = containsDuplicateManagedCommand(commands, expectedCommands);
   return {
-    present: containsAllManagedCommands(collectCommands(result.value), expectedCommands),
+    present: containsAllManagedCommands(commands, expectedCommands),
+    ...(legacyPresent ? { legacyPresent: true } : {}),
+    ...(duplicatePresent ? { duplicatePresent: true } : {}),
   };
 }
 
@@ -130,27 +186,34 @@ async function inspectKiroHooks(
     if (command !== expectedCommands[index]) return { present: false };
   }
 
-  return { present: scriptRelPaths.length > 0 };
+  const legacyPresent = (
+    await Promise.all(
+      LEGACY_HOOK_SCRIPT_NAMES.map((scriptName) =>
+        fileExists(path.join(platformBase, 'hooks', scriptName.replace(/\.mjs$/u, '.kiro.hook'))),
+      ),
+    )
+  ).some(Boolean);
+  return { present: scriptRelPaths.length > 0, ...(legacyPresent ? { legacyPresent: true } : {}) };
 }
 
 export async function inspectCometHooksForPlatform(
   baseDir: string,
   platform: Platform,
   scope: InstallScope,
-  workflowSelection: InitWorkflowSelection = 'classic',
+  _workflowSelection: InitWorkflowSelection = 'classic',
 ): Promise<HookInspectionResult> {
   if (!platform.supportsHooks || !platform.hookFormat) return { present: false };
 
   const manifest = await readManifest();
-  const scriptRelPaths = Object.keys({
-    ...(workflowSelection === 'native' ? {} : (manifest.hooks ?? {})),
-    ...(workflowSelection === 'classic' ? {} : (manifest.nativeHooks ?? {})),
-  });
+  const scriptRelPaths = Object.keys(manifest.hooks ?? {});
   if (scriptRelPaths.length === 0) return { present: false };
 
   const skillsDir = getPlatformSkillsDir(platform, scope);
   const expectedCommands = scriptRelPaths.map((scriptRelPath) =>
-    buildHookCommand(baseDir, skillsDir, scriptRelPath),
+    buildHookCommand(baseDir, skillsDir, scriptRelPath, {
+      platformId: platform.id,
+      scope,
+    }),
   );
 
   const platformBase = path.join(baseDir, getPlatformConfigDir(platform, scope));
@@ -190,7 +253,7 @@ export async function inspectCometHooksForPlatform(
       inspection = await inspectSingleHookJson(
         path.join(platformBase, 'hooks', 'comet-guard.json'),
         expectedCommands,
-        (config) => collectCommandArray(config, 'preToolUse'),
+        collectCopilotCommands,
       );
       break;
     case 'kiro':

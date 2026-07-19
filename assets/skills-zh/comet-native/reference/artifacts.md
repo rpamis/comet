@@ -4,6 +4,7 @@
 
 ```text
 <project>/.comet/config.yaml
+<project>/.comet/current-change.json       # Native/Classic 共享的当前需求归属
 <artifact-root>/comet/
   specs/<capability>/spec.md
   changes/<change-name>/
@@ -34,7 +35,6 @@
         check-receipts/<sha256>.json
   archive/YYYY-MM-DD-<change-name>/
   runtime/
-    current-change.json
     locks/
     transactions/<transaction-id>/
       transaction.json

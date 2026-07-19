@@ -8,6 +8,7 @@ import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-
 import { appendClassicStateEvent } from './classic-state-events.js';
 import { readClassicState, writeClassicState } from './classic-store.js';
 import { applyClassicTransition } from './classic-transitions.js';
+import { clearCurrentChangeIf } from './classic-current-change.js';
 import {
   appendTrajectory,
   clearPendingAction,
@@ -451,6 +452,8 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
       output.stepsOk += 1;
       output.stepsTotal += 1;
     }
+
+    if (!dryRun) await clearCurrentChangeIf(process.cwd(), change);
 
     output.stderr.push('');
     output.stderr.push(

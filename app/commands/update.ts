@@ -37,6 +37,7 @@ import { discoverNativeProject } from '../../domains/comet-native/native-paths.j
 import { readProjectConfig } from '../../domains/comet-native/native-config.js';
 import { resolveCometEntry } from '../../domains/comet-entry/resolve-entry.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
+import { migrateLegacyClassicSelection } from '../../domains/comet-entry/current-selection.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
 import { printVersionInfo } from '../../platform/version/version.js';
 import { t, type TranslationKey } from './i18n.js';
@@ -824,6 +825,23 @@ async function updateSingleProject(
         reason,
       });
       log(`  Comet hooks -> ${target.platform.name}: ${t(lang, 'hooksFailed')} (${reason})`);
+    }
+  }
+
+  const projectRouterInstalled = hookTargetResults.some(
+    (target) => target.scope === 'project' && target.status === 'installed',
+  );
+  const projectHookFailed = hookTargetResults.some(
+    (target) => target.scope === 'project' && target.status === 'failed',
+  );
+  if (
+    includesProjectScope &&
+    projectRouterInstalled &&
+    !projectHookFailed &&
+    (projectWorkflowSelection === 'classic' || projectWorkflowSelection === 'both')
+  ) {
+    if (await migrateLegacyClassicSelection(projectPath)) {
+      log('  Comet current selection -> migrated Classic v1 to shared v2');
     }
   }
 

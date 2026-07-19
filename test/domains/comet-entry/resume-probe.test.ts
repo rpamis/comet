@@ -281,7 +281,12 @@ describe('Comet entry resume probe v2', () => {
     const paths = await nativeProjectPaths(projectRoot, '.');
     await writeFile(
       nativeSelectionFile(paths),
-      JSON.stringify({ schema: 'comet.native.selection.v1', change: 'missing-change' }),
+      JSON.stringify({
+        schema: 'comet.selection.v2',
+        workflow: 'native',
+        change: 'missing-change',
+        branch: null,
+      }),
     );
 
     const sole = await resolveCometEntryResumeProbe(projectRoot, input('继续'));

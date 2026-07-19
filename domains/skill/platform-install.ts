@@ -36,6 +36,18 @@ type Manifest = {
   languages?: LanguageConfig[];
 };
 
+const HOOK_ROUTER_SCRIPT = 'comet/scripts/comet-hook-router.mjs';
+const LEGACY_HOOK_SCRIPTS = [
+  'comet/scripts/comet-hook-guard.mjs',
+  'comet-native/scripts/comet-native-hook-guard.mjs',
+] as const;
+const LEGACY_RULE_FILES = ['comet-phase-guard.md', 'comet-native-phase-guard.md'] as const;
+
+interface HookCommandContext {
+  platformId: string;
+  scope: InstallScope;
+}
+
 type HookInstallStatus = 'installed' | 'skipped' | 'failed';
 
 export interface HookInstallResult {
@@ -741,21 +753,19 @@ function selectRulePathsForLanguage(rulePaths: string[], languageId: SkillLangua
   return [...selected.values()].map((entry) => entry.rulePath);
 }
 
-function managedRulesForSelection(manifest: Manifest, selection: InitWorkflowSelection): string[] {
-  return [
-    ...(selection === 'native' ? [] : (manifest.rules ?? [])),
-    ...(selection === 'classic' ? [] : (manifest.nativeRules ?? [])),
-  ];
+function managedRulesForSelection(manifest: Manifest, _selection: InitWorkflowSelection): string[] {
+  return manifest.rules ?? [];
 }
 
 function managedHooksForSelection(
   manifest: Manifest,
-  selection: InitWorkflowSelection,
+  _selection: InitWorkflowSelection,
 ): Record<string, HookConfig> {
-  return {
-    ...(selection === 'native' ? {} : (manifest.hooks ?? {})),
-    ...(selection === 'classic' ? {} : (manifest.nativeHooks ?? {})),
-  };
+  return manifest.hooks ?? {};
+}
+
+function managedHookScriptPaths(hooksConfig: Record<string, HookConfig>): string[] {
+  return [...new Set([...Object.keys(hooksConfig), ...LEGACY_HOOK_SCRIPTS])];
 }
 
 async function copyCometRulesForPlatform(
@@ -819,6 +829,17 @@ async function copyCometRulesForPlatform(
       copied++;
     } catch (err) {
       console.error(`    Failed to copy rule ${ruleRelPath}: ${(err as Error).message}`);
+      failed++;
+    }
+  }
+
+  const rulesDestDir = path.join(rulesBase, platform.rulesDir);
+  for (const legacyFile of LEGACY_RULE_FILES) {
+    const legacyPath = computeRuleDestPath(rulesDestDir, legacyFile, platform.rulesFormat);
+    try {
+      await rm(legacyPath, { force: true });
+    } catch (error) {
+      console.error(`    Failed to remove legacy Rule ${legacyPath}: ${(error as Error).message}`);
       failed++;
     }
   }
@@ -913,13 +934,14 @@ async function installCometHooksForPlatform(
           hooksConfig,
           platform.hookConfigFile ?? 'settings.local.json',
           platform.name,
+          { platformId: platform.id, scope },
         );
         if (result.status === 'installed') {
           for (const legacyFile of platform.legacyHookConfigFiles ?? []) {
             try {
               await removeManagedHooksFromJsonFile(
                 path.join(platformBase, legacyFile),
-                Object.keys(hooksConfig),
+                managedHookScriptPaths(hooksConfig),
               );
             } catch {
               // Historical Hook cleanup is best-effort after canonical install succeeds.
@@ -937,6 +959,7 @@ async function installCometHooksForPlatform(
           skillsDir,
           hooksConfig,
           platform.name,
+          { platformId: platform.id, scope },
         );
       case 'gemini':
         return await installGeminiHooks(
@@ -945,6 +968,7 @@ async function installCometHooksForPlatform(
           skillsDir,
           hooksConfig,
           platform.name,
+          { platformId: platform.id, scope },
         );
       case 'windsurf':
         return await installWindsurfHooks(
@@ -953,11 +977,18 @@ async function installCometHooksForPlatform(
           skillsDir,
           hooksConfig,
           platform.name,
+          { platformId: platform.id, scope },
         );
       case 'copilot':
-        return await installCopilotHooks(baseDir, platformBase, skillsDir, hooksConfig);
+        return await installCopilotHooks(baseDir, platformBase, skillsDir, hooksConfig, {
+          platformId: platform.id,
+          scope,
+        });
       case 'kiro':
-        return await installKiroHooks(baseDir, platformBase, skillsDir, hooksConfig);
+        return await installKiroHooks(baseDir, platformBase, skillsDir, hooksConfig, {
+          platformId: platform.id,
+          scope,
+        });
       default:
         return { status: 'failed', reason: `unsupported hook format: ${hookFormat}` };
     }
@@ -971,10 +1002,23 @@ function quoteCommandArg(value: string): string {
 }
 
 /** Build a hook command that is stable even when the hook runner executes from a subdirectory. */
-function buildHookCommand(baseDir: string, skillsDir: string, scriptRelPath: string): string {
+function buildHookCommand(
+  baseDir: string,
+  skillsDir: string,
+  scriptRelPath: string,
+  context?: HookCommandContext,
+): string {
   const projectRoot = path.resolve(baseDir);
   const scriptPath = path.join(projectRoot, skillsDir, 'skills', ...scriptRelPath.split('/'));
-  return `node ${quoteCommandArg(scriptPath)} --project-root ${quoteCommandArg(projectRoot)}`;
+  let command = `node ${quoteCommandArg(scriptPath)}`;
+  if (scriptRelPath === HOOK_ROUTER_SCRIPT && context) {
+    command += ` --platform ${quoteCommandArg(context.platformId)}`;
+    if (context.scope === 'project') {
+      command += ` --project-root ${quoteCommandArg(projectRoot)}`;
+    }
+    return command;
+  }
+  return `${command} --project-root ${quoteCommandArg(projectRoot)}`;
 }
 
 function parseCommandTokens(command: string): string[] | undefined {
@@ -1174,6 +1218,7 @@ async function installClaudeCodeHooks(
   hooksConfig: Record<string, HookConfig>,
   configFile: string,
   platformName: string,
+  context: HookCommandContext,
 ): Promise<HookInstallResult> {
   const settingsPath = path.join(platformBase, configFile);
 
@@ -1186,7 +1231,7 @@ async function installClaudeCodeHooks(
   // Group by matcher so hooks sharing the same matcher are merged
   const matcherGroups: Record<string, Array<{ type: string; command: string }>> = {};
   for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
-    const command = buildHookCommand(baseDir, skillsDir, scriptRelPath);
+    const command = buildHookCommand(baseDir, skillsDir, scriptRelPath, context);
     if (!matcherGroups[config.matcher]) {
       matcherGroups[config.matcher] = [];
     }
@@ -1201,7 +1246,11 @@ async function installClaudeCodeHooks(
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
   const existingPreToolUse = asHookGroup(existingHooks.PreToolUse);
-  const merged = mergeHookGroups(existingPreToolUse, newEntries, Object.keys(hooksConfig));
+  const merged = mergeHookGroups(
+    existingPreToolUse,
+    newEntries,
+    managedHookScriptPaths(hooksConfig),
+  );
 
   settings.hooks = { ...existingHooks, PreToolUse: merged };
   await ensureDir(path.dirname(settingsPath));
@@ -1219,6 +1268,7 @@ async function installQwenStyleHooks(
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
   platformName: string,
+  context: HookCommandContext,
 ): Promise<HookInstallResult> {
   const settingsPath = path.join(platformBase, 'settings.json');
 
@@ -1233,7 +1283,7 @@ async function installQwenStyleHooks(
     }
     matcherGroups[config.matcher].push({
       type: 'command',
-      command: buildHookCommand(baseDir, skillsDir, scriptRelPath),
+      command: buildHookCommand(baseDir, skillsDir, scriptRelPath, context),
       description: config.description,
     });
   }
@@ -1247,7 +1297,11 @@ async function installQwenStyleHooks(
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
   const existingPreToolUse = asHookGroup(existingHooks.PreToolUse);
-  const merged = mergeHookGroups(existingPreToolUse, preToolUseEntries, Object.keys(hooksConfig));
+  const merged = mergeHookGroups(
+    existingPreToolUse,
+    preToolUseEntries,
+    managedHookScriptPaths(hooksConfig),
+  );
 
   settings.hooks = { ...existingHooks, PreToolUse: merged };
   await ensureDir(path.dirname(settingsPath));
@@ -1265,6 +1319,7 @@ async function installGeminiHooks(
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
   platformName: string,
+  context: HookCommandContext,
 ): Promise<HookInstallResult> {
   const settingsPath = path.join(platformBase, 'settings.json');
 
@@ -1278,7 +1333,7 @@ async function installGeminiHooks(
       hooks: [
         {
           type: 'command',
-          command: buildHookCommand(baseDir, skillsDir, scriptRelPath),
+          command: buildHookCommand(baseDir, skillsDir, scriptRelPath, context),
           name: config.description,
         },
       ],
@@ -1289,7 +1344,7 @@ async function installGeminiHooks(
 
   const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
   const existingBeforeTool = asHookGroup(existingHooks.BeforeTool);
-  const merged = mergeHookGroups(existingBeforeTool, entries, Object.keys(hooksConfig));
+  const merged = mergeHookGroups(existingBeforeTool, entries, managedHookScriptPaths(hooksConfig));
 
   settings.hooks = { ...existingHooks, BeforeTool: merged };
   await ensureDir(path.dirname(settingsPath));
@@ -1307,13 +1362,14 @@ async function installWindsurfHooks(
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
   platformName: string,
+  context: HookCommandContext,
 ): Promise<HookInstallResult> {
   const hooksPath = path.join(platformBase, 'hooks.json');
 
   const entries: Array<{ command: string; show_output: boolean }> = [];
   for (const [scriptRelPath] of Object.entries(hooksConfig)) {
     entries.push({
-      command: buildHookCommand(baseDir, skillsDir, scriptRelPath),
+      command: buildHookCommand(baseDir, skillsDir, scriptRelPath, context),
       show_output: true,
     });
   }
@@ -1325,7 +1381,7 @@ async function installWindsurfHooks(
   const merged = existingPreWrite.filter((entry) => {
     const command =
       entry && typeof entry === 'object' ? (entry as Record<string, unknown>).command : undefined;
-    return !isManagedHookCommand(command, Object.keys(hooksConfig));
+    return !isManagedHookCommand(command, managedHookScriptPaths(hooksConfig));
   });
   merged.push(...entries);
 
@@ -1344,15 +1400,20 @@ async function installCopilotHooks(
   platformBase: string,
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
+  context: HookCommandContext,
 ): Promise<HookInstallResult> {
   const hooksDir = path.join(platformBase, 'hooks');
   const hookFilePath = path.join(hooksDir, 'comet-guard.json');
 
-  const scriptEntries: Array<{ bash: string; powershell: string }> = [];
-  for (const [scriptRelPath] of Object.entries(hooksConfig)) {
-    const cmd = buildHookCommand(baseDir, skillsDir, scriptRelPath);
+  const scriptEntries: Array<{ matcher: string; bash: string; powershell: string }> = [];
+  for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
+    const cmd = buildHookCommand(baseDir, skillsDir, scriptRelPath, context);
+    const matcher =
+      config.matcher === 'Write|Edit'
+        ? 'create|edit|str_replace_editor|apply_patch'
+        : config.matcher;
     // Hook runs through node on every platform; both fields use the same command
-    scriptEntries.push({ bash: cmd, powershell: cmd });
+    scriptEntries.push({ matcher, bash: cmd, powershell: cmd });
   }
 
   const hookConfig = {
@@ -1376,6 +1437,7 @@ async function installKiroHooks(
   platformBase: string,
   skillsDir: string,
   hooksConfig: Record<string, HookConfig>,
+  context: HookCommandContext,
 ): Promise<HookInstallResult> {
   const hooksDir = path.join(platformBase, 'hooks');
 
@@ -1397,12 +1459,20 @@ async function installKiroHooks(
       },
       then: {
         type: 'runCommand',
-        command: buildHookCommand(baseDir, skillsDir, scriptRelPath),
+        command: buildHookCommand(baseDir, skillsDir, scriptRelPath, context),
       },
     };
 
     await ensureDir(hooksDir);
     await writeFile(hookFilePath, JSON.stringify(hookConfig, null, 2) + '\n', 'utf-8');
+  }
+
+  for (const legacyScript of LEGACY_HOOK_SCRIPTS) {
+    const legacyFile = path.join(
+      hooksDir,
+      path.basename(legacyScript).replace(/\.mjs$/u, '.kiro.hook'),
+    );
+    await rm(legacyFile, { force: true });
   }
 
   return { status: 'installed' };

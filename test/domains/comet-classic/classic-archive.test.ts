@@ -246,6 +246,39 @@ describe('Classic archive command', () => {
     );
   });
 
+  it('clears the shared selection when the archived change is current', async () => {
+    const dir = await makeProject();
+    await seedArchiveChange(dir);
+    confirmArchiveChange(dir);
+    expect(run(dir, ['state', 'select', 'demo']).status).toBe(0);
+    const fake = await fakeOpenSpec(dir, 'success');
+
+    expect(run(dir, ['archive', 'demo'], { COMET_OPENSPEC: fake.command }).status).toBe(0);
+
+    await expect(fs.access(path.join(dir, '.comet', 'current-change.json'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('preserves the shared selection when archiving another Classic change', async () => {
+    const dir = await makeProject();
+    await seedArchiveChange(dir);
+    confirmArchiveChange(dir);
+    expect(run(dir, ['state', 'init', 'other', 'full']).status).toBe(0);
+    expect(run(dir, ['state', 'select', 'other']).status).toBe(0);
+    const fake = await fakeOpenSpec(dir, 'success');
+
+    expect(run(dir, ['archive', 'demo'], { COMET_OPENSPEC: fake.command }).status).toBe(0);
+
+    expect(
+      JSON.parse(await fs.readFile(path.join(dir, '.comet', 'current-change.json'), 'utf8')),
+    ).toMatchObject({
+      schema: 'comet.selection.v2',
+      workflow: 'classic',
+      change: 'other',
+    });
+  });
+
   it('treats a completed archive retry as an idempotent no-op', async () => {
     const dir = await makeProject();
     await seedArchiveChange(dir);

@@ -35,6 +35,7 @@
     "comet/scripts/comet-intent.mjs",
     "comet/scripts/comet-resume-probe.mjs",
     "comet/scripts/comet-entry-runtime.mjs",
+    "comet/scripts/comet-hook-router.mjs",
     "comet-native/SKILL.md",
     "comet-native/reference/artifacts.md",
     "comet-native/reference/commands.md",
@@ -55,23 +56,13 @@
     "comet/runtime/classic/checks.yaml"
   ],
   "rules": [
-    "comet/rules/comet-phase-guard.md",
-    "comet/rules/comet-phase-guard.en.md"
-  ],
-  "nativeRules": [
-    "comet-native/rules/comet-native-phase-guard.md",
-    "comet-native/rules/comet-native-phase-guard.en.md"
+    "comet/rules/comet-workflow-guard.md",
+    "comet/rules/comet-workflow-guard.en.md"
   ],
   "hooks": {
-    "comet/scripts/comet-hook-guard.mjs": {
+    "comet/scripts/comet-hook-router.mjs": {
       "matcher": "Write|Edit",
-      "description": "Block code writes in wrong Comet phase (open/design/archive)"
-    }
-  },
-  "nativeHooks": {
-    "comet-native/scripts/comet-native-hook-guard.mjs": {
-      "matcher": "Write|Edit",
-      "description": "Block implementation writes outside the Comet Native Build phase"
+      "description": "Route each write to the selected Comet Native or Classic phase guard"
     }
   },
   "languages": [

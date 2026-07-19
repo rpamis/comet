@@ -350,6 +350,7 @@ export async function createNativeContentSnapshot(
   const nativeRoot = path.resolve(paths.nativeRoot);
   const physicalNativeRoot = await fs.realpath(nativeRoot);
   const configFile = path.resolve(paths.configFile);
+  const selectionFile = path.join(projectRoot, '.comet', 'current-change.json');
   const denylist = normalizedDenylist(projectRoot, options.denylist ?? []);
   const entries: NativeContentSnapshotManifest['entries'] = [];
   const omitted: NativeSnapshotOmission[] = [];
@@ -394,6 +395,7 @@ export async function createNativeContentSnapshot(
       const relative = portableRelative(projectRoot, target);
       if (
         target === configFile ||
+        target === selectionFile ||
         sameOrInside(nativeRoot, target) ||
         denylist.some((denied) => sameOrInside(denied, target)) ||
         isNativeEnvFileName(child.name) ||

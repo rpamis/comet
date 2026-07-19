@@ -19,6 +19,10 @@ import {
   getProjectRegistryPath,
   upsertProjectInstallation,
 } from '../../platform/install/project-registry.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../domains/comet-native/native-config.js';
 
 // Mock the interactive select prompt so tests don't hang on CI (no TTY).
 vi.mock('@inquirer/prompts', () => ({
@@ -311,7 +315,7 @@ describe('update command helpers', () => {
     );
     const hooks = JSON.parse(await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8'));
     expect(hooks.hooks.PreToolUse[0].hooks[0].command.replaceAll('\\', '/')).toContain(
-      '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
+      '/.agents/skills/comet/scripts/comet-hook-router.mjs',
     );
     const legacy = JSON.parse(
       await fs.readFile(path.join(tmpDir, '.codex', 'settings.local.json'), 'utf8'),
@@ -1082,6 +1086,9 @@ describe('update command helpers', () => {
     ].join('\n');
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
     await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), nativeConfig, 'utf8');
+    const selectionPath = path.join(tmpDir, '.comet', 'current-change.json');
+    const legacySelection = `${JSON.stringify({ version: 1, change: 'legacy-change', branch: null })}\n`;
+    await fs.writeFile(selectionPath, legacySelection, 'utf8');
 
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(
@@ -1149,16 +1156,20 @@ describe('update command helpers', () => {
       fs.readFile(path.join(tmpDir, 'docs', 'superpowers', 'keep.md'), 'utf8'),
     ).resolves.toBe('keep classic working files\n');
     await expect(
-      fs.readFile(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md'), 'utf8'),
-    ).resolves.toBe('keep classic rule\n');
+      fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(
       fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-native-phase-guard.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md')),
     ).resolves.toBeUndefined();
     const settings = JSON.parse(
       await fs.readFile(path.join(tmpDir, '.claude', 'settings.local.json'), 'utf8'),
     ) as { keep: string; hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
     expect(settings.keep).toBe('classic hook');
-    expect(JSON.stringify(settings.hooks)).toContain('comet-native-hook-guard.mjs');
+    expect(JSON.stringify(settings.hooks)).toContain('comet-hook-router.mjs');
+    expect(JSON.stringify(settings.hooks)).not.toContain('comet-native-hook-guard.mjs');
     const agents = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
     const claude = await fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8');
     for (const content of [agents, claude]) {
@@ -1171,6 +1182,44 @@ describe('update command helpers', () => {
     expect(agents).toContain('# User\nKeep this.');
     expect(claude).toContain('# User\nAlso keep this.');
     expect(mockedSelect).not.toHaveBeenCalled();
+    await expect(fs.readFile(selectionPath, 'utf8')).resolves.toBe(legacySelection);
+  });
+
+  it('migrates Classic v1 selection after update installs the project Router', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-update-home');
+    const config = defaultProjectConfig('.');
+    config.workflows = ['classic'];
+    config.default_workflow = 'classic';
+    await writeProjectConfig(tmpDir, config);
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Stale Comet\n',
+    );
+    const selectionPath = path.join(tmpDir, '.comet', 'current-change.json');
+    await fs.writeFile(
+      selectionPath,
+      `${JSON.stringify({ version: 1, change: 'legacy-change', branch: null })}\n`,
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, installMode: 'copy', skipNpm: true });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(JSON.parse(await fs.readFile(selectionPath, 'utf8'))).toEqual({
+      schema: 'comet.selection.v2',
+      workflow: 'classic',
+      change: 'legacy-change',
+      branch: null,
+    });
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'settings.local.json')),
+    ).resolves.toBeUndefined();
   });
 
   it('migrates manifest-managed legacy Codex Skills for Native without touching unrelated state', async () => {

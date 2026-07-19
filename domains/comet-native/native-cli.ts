@@ -41,7 +41,7 @@ import {
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import { advanceNativeChange } from './native-transitions.js';
-import { inspectNativeHookGuard, readNativeHookTarget } from './native-hook-guard.js';
+import { inspectNativeHookGuard, readNativeHookRequest } from './native-hook-guard.js';
 import type {
   CometProjectConfig,
   NativeAdvanceEvidence,
@@ -74,7 +74,7 @@ class NativeUsageError extends Error {}
 const USAGE = `Usage: comet native <command> [options]
 
 Commands:
-  hook-guard
+  hook-guard [--hook-output copilot]
   init [--root <artifact-root>] [--language en|zh-CN]
   root show
   root move <artifact-root>
@@ -192,8 +192,25 @@ async function dispatch(
   const command = rawArgs.shift()!;
   const projectRoot = await projectRootFrom(explicitProjectRoot);
   if (command === 'hook-guard') {
+    const hookOutput = takeOption(rawArgs, '--hook-output');
+    if (hookOutput !== undefined && hookOutput !== 'copilot') {
+      throw new NativeUsageError('--hook-output must be copilot');
+    }
     assertNoArguments(rawArgs);
-    const result = await inspectNativeHookGuard(projectRoot, await readNativeHookTarget());
+    const result = await inspectNativeHookGuard(projectRoot, await readNativeHookRequest());
+    if (hookOutput === 'copilot') {
+      return {
+        command,
+        exitCode: 0,
+        data: result,
+        text: result.allowed
+          ? '{}\n'
+          : `${JSON.stringify({
+              permissionDecision: 'deny',
+              permissionDecisionReason: result.reason,
+            })}\n`,
+      };
+    }
     return result.allowed
       ? { command, exitCode: 0, data: result }
       : {

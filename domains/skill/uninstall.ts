@@ -31,6 +31,14 @@ interface RemovalResult {
 }
 
 const OPENCODE_STYLE_PLATFORM_IDS = new Set(['opencode', 'mimocode']);
+const LEGACY_RULE_PATHS = [
+  'comet/rules/comet-phase-guard.md',
+  'comet-native/rules/comet-native-phase-guard.md',
+] as const;
+const LEGACY_HOOK_SCRIPT_PATHS = [
+  'comet/scripts/comet-hook-guard.mjs',
+  'comet-native/scripts/comet-native-hook-guard.mjs',
+] as const;
 
 async function removeManagedSkillsFromDirs(
   baseDir: string,
@@ -186,7 +194,11 @@ async function removeCometRulesForPlatform(
   }
 
   const manifest = await readManifest();
-  const rulePaths = [...(manifest.rules ?? []), ...(manifest.nativeRules ?? [])];
+  const rulePaths = [
+    ...(manifest.rules ?? []),
+    ...(manifest.nativeRules ?? []),
+    ...LEGACY_RULE_PATHS,
+  ];
   if (!rulePaths || rulePaths.length === 0) {
     return { removed: 0, failed: 0 };
   }
@@ -246,7 +258,7 @@ async function removeCometHooksForPlatform(
 
   const hookFormat = platform.hookFormat;
   const platformBase = path.join(baseDir, getPlatformConfigDir(platform, scope));
-  const scriptRelPaths = Object.keys(hooksConfig);
+  const scriptRelPaths = [...new Set([...Object.keys(hooksConfig), ...LEGACY_HOOK_SCRIPT_PATHS])];
 
   try {
     switch (hookFormat) {

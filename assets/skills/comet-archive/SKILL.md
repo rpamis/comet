@@ -117,7 +117,6 @@ Archive is already complete, so do not offer "discard work". Only after the sele
 ```bash
 comet state set <change-name> branch_status handled
 comet guard <change-name> archive
-comet state clear-selection
 ```
 
 The archive guard must verify both archive completeness and `branch_status: handled`; a failure means the workflow is still incomplete.

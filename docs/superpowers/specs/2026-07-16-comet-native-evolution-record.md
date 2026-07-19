@@ -661,6 +661,20 @@ Native 尚未发布，因此不保留 `change.yaml` 兼容层，活跃与归档 
 
 Classic 本轮不迁移。未来 Classic 可以沿用同一状态文件命名，但 Native 与 Classic 仍保持各自独立的目录、schema、状态机和执行路径，不因文件同名而合并概念。
 
+## 2026-07-18：Native Hook 写入边界加固
+
+Native Hook 的最终边界从“单个 `Write|Edit` 文件路径提示”收紧为一次工具调用级别的原子判断：同时解析 Claude 兼容的 `tool_name/tool_input` 与原生 `toolName/toolArgs` 载荷，识别多目标字段和 patch 文件头；任一目标属于普通项目文件时，Shape、Verify、Archive 都阻断整次写入。明确的非写工具继续放行；已识别写工具却无法恢复目标、空输入或畸形载荷在非 Build 阶段失败关闭。
+
+点号开头不再等于平台配置白名单，`.github/workflows/*`、`.husky/*`、`.env`、`.gitignore` 等都服从普通项目写入边界。跨阶段只保留 `.comet/config.yaml` 与配置的 `<artifact-root>/comet/` Native 控制产物；项目外路径继续超出本项目 Hook 的责任范围。Verify 只运行检查和记录证据，发现实现问题时先记录失败并返回 Build，再修改实现。
+
+## 2026-07-18：Native 与 Classic 统一 Hook 路由
+
+项目同时启用 Native 与 Classic 时，不再同时安装两套常驻 Hook 和 Rule。`workflows` 只表示项目具备的能力，`default_workflow` 只决定 `/comet` 默认入口；当前需求归属统一记录在项目级 `.comet/current-change.json`，格式为 `comet.selection.v2` 的 `workflow + change + branch`。Native 和 Classic 的阶段、产物和 Guard 仍完全独立。
+
+所有支持 Hook 的平台只安装 `comet-hook-router.mjs`。Router 先规范化平台载荷，再验证共享 selection；selection 缺失时只允许只读推断唯一活跃 change，存在多个候选时失败关闭。一次写入事件最多调用一个 workflow Guard，因此保留 `workflow: both` 不会再造成双 Guard 误拦。所有支持 Rule 的平台也只安装一份 `comet-workflow-guard`，用于说明 enabled、default、current 三种状态和跨 workflow 的稳定边界。
+
+Init、Update、Doctor repair 与 Uninstall 同时识别新 Router/Rule 和旧 Native/Classic managed 文件。已发布的 Classic v1 selection 可确定性迁移到 v2；无法唯一判断归属时不自动选择。Native 尚未发布，不保留旧 Native selection 的长期兼容格式。
+
 ## 附录 A：原始 58 个检查点及收敛去向
 
 这份原始清单保留探索覆盖面。它不代表 58 个待发布功能；“收敛去向”才是当前设计决定。

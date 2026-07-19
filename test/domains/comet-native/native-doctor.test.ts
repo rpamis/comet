@@ -58,11 +58,13 @@ describe('Native doctor', () => {
   });
 
   it('is read-only by default and can explicitly clear a stale selection', async () => {
-    await fs.mkdir(paths.runtimeDir, { recursive: true });
     const selection = nativeSelectionFile(paths);
+    await fs.mkdir(path.dirname(selection), { recursive: true });
     const source = JSON.stringify({
-      schema: 'comet.native.selection.v1',
+      schema: 'comet.selection.v2',
+      workflow: 'native',
       change: 'missing-change',
+      branch: null,
     });
     await fs.writeFile(selection, source);
 
@@ -81,8 +83,8 @@ describe('Native doctor', () => {
   });
 
   it('reports an oversized selection without reading it unboundedly', async () => {
-    await fs.mkdir(paths.runtimeDir, { recursive: true });
     const selection = nativeSelectionFile(paths);
+    await fs.mkdir(path.dirname(selection), { recursive: true });
     await fs.writeFile(selection, Buffer.alloc(16 * 1024 + 1, 0x61));
 
     const result = await doctorNativeProject({ paths });

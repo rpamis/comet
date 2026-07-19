@@ -13,6 +13,13 @@ const generatedRuntime = path.resolve(
   'scripts',
   'comet-entry-runtime.mjs',
 );
+const generatedHookRouter = path.resolve(
+  'assets',
+  'skills',
+  'comet',
+  'scripts',
+  'comet-hook-router.mjs',
+);
 const builder = path.resolve('scripts', 'build', 'build-entry-runtime.mjs');
 
 describe('Comet entry resolver runtime release asset', () => {
@@ -54,6 +61,34 @@ describe('Comet entry resolver runtime release asset', () => {
       /openspec|superpowers|comet native|comet state|comet guard|runNativeCli|runClassicCli|classic-runtime|native-runtime/iu,
     );
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
+  });
+
+  it('publishes a fresh Hook Router that validates platform configuration', async () => {
+    expect(manifest.skills).toContain('comet/scripts/comet-hook-router.mjs');
+    const source = await fs.readFile(generatedHookRouter, 'utf8');
+    expect(source.startsWith('#!/usr/bin/env node\n')).toBe(true);
+    expect(source).toContain('comet.selection.v2');
+    expect(source).toContain('Multiple active Comet changes');
+
+    const unsupported = spawnSync(
+      process.execPath,
+      [generatedHookRouter, '--platform', 'unknown-platform'],
+      { cwd: temporaryRoot, encoding: 'utf8' },
+    );
+    expect(unsupported.status).toBe(64);
+    expect(unsupported.stderr).toContain('unsupported Hook platform');
+
+    const outsideProject = spawnSync(
+      process.execPath,
+      [generatedHookRouter, '--platform', 'claude'],
+      {
+        cwd: temporaryRoot,
+        encoding: 'utf8',
+        env: { ...process.env, FILE_PATH: 'src/app.ts' },
+      },
+    );
+    expect(outsideProject.status, outsideProject.stderr).toBe(0);
+    expect(outsideProject.stdout).toBe('');
   });
 
   it('resolves Native from project config with only the bundled Skill runtime available', async () => {

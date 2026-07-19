@@ -209,8 +209,8 @@ describe('uninstall', () => {
   it('counts a Rule removal failure and continues removing independent managed Rules', async () => {
     const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
     const rulesDir = path.join(tmpDir, '.claude', 'rules');
-    const blockedRule = path.join(rulesDir, 'comet-phase-guard.md');
-    const removableRule = path.join(rulesDir, 'comet-phase-guard.en.md');
+    const blockedRule = path.join(rulesDir, 'comet-workflow-guard.md');
+    const removableRule = path.join(rulesDir, 'comet-phase-guard.md');
     const userRule = path.join(rulesDir, 'personal.md');
     await fs.mkdir(rulesDir, { recursive: true });
     await fs.writeFile(blockedRule, '# Blocked Rule\n');
@@ -239,7 +239,7 @@ describe('uninstall', () => {
   it('counts a Hook-file removal failure without deleting user Hook files', async () => {
     const kiroPlatform = PLATFORMS.find((platform) => platform.id === 'kiro')!;
     const hooksDir = path.join(tmpDir, '.kiro', 'hooks');
-    const managedHook = path.join(hooksDir, 'comet-hook-guard.kiro.hook');
+    const managedHook = path.join(hooksDir, 'comet-hook-router.kiro.hook');
     const userHook = path.join(hooksDir, 'personal.kiro.hook');
     await fs.mkdir(hooksDir, { recursive: true });
     await fs.writeFile(managedHook, '{}\n');
@@ -268,8 +268,8 @@ describe('uninstall', () => {
     const claudePlatform = PLATFORMS.find((platform) => platform.id === 'claude')!;
     const rulesDir = path.join(tmpDir, '.claude', 'rules');
     await fs.mkdir(rulesDir, { recursive: true });
-    await fs.writeFile(path.join(rulesDir, 'comet-phase-guard.md'), '# Rule\n');
-    await fs.writeFile(path.join(rulesDir, 'comet-phase-guard.en.md'), '# English Rule\n');
+    await fs.writeFile(path.join(rulesDir, 'comet-workflow-guard.md'), '# Rule\n');
+    await fs.writeFile(path.join(rulesDir, 'comet-phase-guard.md'), '# Legacy Rule\n');
     const rm = fs.rm.bind(fs);
     const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
     const rmSpy = vi.spyOn(fs, 'rm').mockImplementation(async (dirPath, options) => {
@@ -449,7 +449,7 @@ describe('uninstall', () => {
 
       await copyCometRulesForPlatform(tmpDir, claudePlatform, true, 'zh', 'project');
 
-      const rulePath = path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md');
+      const rulePath = path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md');
       expect(await fileExists(rulePath)).toBe(true);
 
       const result = await removeCometRulesForPlatform(tmpDir, claudePlatform, 'project');
@@ -462,7 +462,7 @@ describe('uninstall', () => {
 
       await copyCometRulesForPlatform(tmpDir, cursorPlatform, true, 'zh', 'project');
 
-      const rulePath = path.join(tmpDir, '.cursor', 'rules', 'comet-phase-guard.mdc');
+      const rulePath = path.join(tmpDir, '.cursor', 'rules', 'comet-workflow-guard.mdc');
       expect(await fileExists(rulePath)).toBe(true);
 
       const result = await removeCometRulesForPlatform(tmpDir, cursorPlatform, 'project');
@@ -479,7 +479,7 @@ describe('uninstall', () => {
         tmpDir,
         '.github',
         'instructions',
-        'comet-phase-guard.instructions.md',
+        'comet-workflow-guard.instructions.md',
       );
       expect(await fileExists(rulePath)).toBe(true);
 
@@ -822,7 +822,7 @@ describe('uninstall', () => {
       const skillEntries = (await fs.readdir(skillsDir)).filter((e) => e.startsWith('comet'));
       expect(skillEntries.length).toBeGreaterThan(0);
 
-      const rulePath = path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md');
+      const rulePath = path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md');
       expect(await fileExists(rulePath)).toBe(true);
 
       // Uninstall everything

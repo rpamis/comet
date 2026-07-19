@@ -29,16 +29,19 @@ describe('Native current change selection', () => {
     await fs.rm(outside, { recursive: true, force: true });
   });
 
-  it('stores selection only in the Native runtime', async () => {
+  it('stores the Native owner in the shared project selection', async () => {
     await createNativeChange({ paths, name: 'selected-change', language: 'en' });
     await selectNativeChange(paths, 'selected-change');
 
     expect(await resolveSelectedNativeChange(paths)).toBe('selected-change');
     expect(nativeSelectionFile(paths)).toBe(
-      path.join(projectRoot, 'comet', 'runtime', 'current-change.json'),
+      path.join(projectRoot, '.comet', 'current-change.json'),
     );
-    await expect(fs.access(path.join(projectRoot, '.comet'))).rejects.toMatchObject({
-      code: 'ENOENT',
+    expect(JSON.parse(await fs.readFile(nativeSelectionFile(paths), 'utf8'))).toEqual({
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'selected-change',
+      branch: null,
     });
 
     await clearNativeSelection(paths);
@@ -51,7 +54,7 @@ describe('Native current change selection', () => {
     });
   });
 
-  it('refuses a runtime junction that would write selection outside comet', async () => {
+  it('refuses a runtime junction before writing the shared selection', async () => {
     await createNativeChange({ paths, name: 'selected-change', language: 'en' });
     await fs.rm(paths.runtimeDir, { recursive: true, force: true });
     await fs.symlink(outside, paths.runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');
@@ -59,9 +62,9 @@ describe('Native current change selection', () => {
     await expect(selectNativeChange(paths, 'selected-change')).rejects.toThrow(
       'resolves outside the Native root',
     );
+    await expect(fs.access(nativeSelectionFile(paths))).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(fs.access(path.join(outside, 'current-change.json'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
-    await expect(fs.access(path.join(outside, 'locks'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

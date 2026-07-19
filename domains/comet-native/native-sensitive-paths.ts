@@ -49,6 +49,9 @@ export function nativeSensitiveRelativePathReason(relativeRef: string): string |
   if (lower.join('/') === '.comet/config.yaml') {
     return 'comet-config';
   }
+  if (lower.join('/') === '.comet/current-change.json') {
+    return 'comet-selection';
+  }
   return null;
 }
 

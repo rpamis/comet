@@ -139,7 +139,7 @@ describe('removeCometHooksForPlatform', () => {
     {
       id: 'kiro',
       accessPath: ['.kiro', 'hooks'],
-      snapshotPath: ['.kiro', 'hooks', 'comet-hook-guard.kiro.hook'],
+      snapshotPath: ['.kiro', 'hooks', 'comet-hook-router.kiro.hook'],
     },
   ])(
     'fails closed when canonical $id Hook configuration is unreadable',

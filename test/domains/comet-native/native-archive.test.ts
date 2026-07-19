@@ -123,7 +123,7 @@ describe('Native archive', () => {
       ]),
     );
     await expect(
-      fs.access(path.join(paths.runtimeDir, 'current-change.json')),
+      fs.access(path.join(paths.projectRoot, '.comet', 'current-change.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 

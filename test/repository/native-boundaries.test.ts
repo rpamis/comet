@@ -31,7 +31,7 @@ describe('Comet Native isolation boundaries', () => {
     expect(source).not.toMatch(/openspec[\\/]changes/iu);
     expect(source).toContain("'.comet/config.yaml'");
     expect(new Set(source.match(/\.comet\/[A-Za-z0-9._/-]+/gu) ?? [])).toEqual(
-      new Set(['.comet/config.yaml']),
+      new Set(['.comet/config.yaml', '.comet/current-change.json']),
     );
   });
 
@@ -62,7 +62,14 @@ describe('Comet Native isolation boundaries', () => {
       ),
     ]);
 
-    expect(nativeSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-(?:classic|entry)[^'"]*['"]/u);
-    expect(classicSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-(?:native|entry)[^'"]*['"]/u);
+    expect(nativeSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-classic[^'"]*['"]/u);
+    expect(classicSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-native[^'"]*['"]/u);
+    for (const source of [nativeSource, classicSource]) {
+      const entryImports = source.match(/\bfrom\s+['"][^'"]*comet-entry[^'"]*['"]/gu) ?? [];
+      expect(entryImports.length).toBeGreaterThan(0);
+      expect(
+        entryImports.every((entry) => /(?:current-selection|hook-adapter|hook-types)/u.test(entry)),
+      ).toBe(true);
+    }
   });
 });

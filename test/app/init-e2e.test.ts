@@ -217,7 +217,7 @@ describe('comet init E2E', () => {
       await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers'))).rejects.toThrow();
       await expect(fs.stat(path.join(tmpDir, '.comet', 'config.yaml'))).resolves.toBeDefined();
       await expect(
-        fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-native-phase-guard.md')),
+        fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md')),
       ).resolves.toBeDefined();
       await expect(
         fs.stat(path.join(tmpDir, '.claude', 'settings.local.json')),
@@ -258,7 +258,7 @@ describe('comet init E2E', () => {
     await expect(fs.access(path.join(tmpDir, 'comet.config.yaml'))).rejects.toThrow();
     await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers', 'specs'))).resolves.toBeDefined();
     await expect(
-      fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md')),
+      fs.access(path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md')),
     ).resolves.toBeUndefined();
     await expect(
       fs.access(path.join(tmpDir, '.claude', 'settings.local.json')),
@@ -318,12 +318,46 @@ describe('comet init E2E', () => {
     await expect(fs.stat(path.join(tmpDir, 'comet', 'changes'))).resolves.toBeDefined();
     await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers', 'specs'))).resolves.toBeDefined();
     await expect(
-      fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-phase-guard.md')),
+      fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md')),
     ).resolves.toBeDefined();
     await expect(
-      fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-native-phase-guard.md')),
-    ).resolves.toBeDefined();
+      fs.access(path.join(tmpDir, '.comet', 'current-change.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it.each([
+    { workflow: 'classic' as const, migrated: true },
+    { workflow: 'native' as const, migrated: false },
+  ])(
+    'migrates Classic v1 selection only when init enables Classic ($workflow)',
+    async ({ workflow, migrated }) => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+      const selectionPath = path.join(tmpDir, '.comet', 'current-change.json');
+      await fs.mkdir(path.dirname(selectionPath), { recursive: true });
+      await fs.writeFile(
+        selectionPath,
+        `${JSON.stringify({ version: 1, change: 'legacy-change', branch: null })}\n`,
+      );
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, workflow, language: 'en' }),
+      );
+
+      const selection = JSON.parse(await fs.readFile(selectionPath, 'utf8'));
+      expect(selection).toEqual(
+        migrated
+          ? {
+              schema: 'comet.selection.v2',
+              workflow: 'classic',
+              change: 'legacy-change',
+              branch: null,
+            }
+          : { version: 1, change: 'legacy-change', branch: null },
+      );
+    },
+  );
 
   it('materializes an old symlink installation before Native copy without writing through it', async () => {
     mockExternalSuccess();
@@ -701,10 +735,10 @@ describe('comet init E2E', () => {
         fs.access(path.join(tmpDir, '.codex', 'skills', 'comet', 'SKILL.md')),
       ).rejects.toThrow();
 
-      const ruleDest = path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md');
+      const ruleDest = path.join(tmpDir, '.codex', 'rules', 'comet-workflow-guard.md');
       await expect(fs.access(ruleDest)).resolves.toBeUndefined();
       await expect(
-        fs.access(path.join(tmpDir, '.agents', 'rules', 'comet-phase-guard.md')),
+        fs.access(path.join(tmpDir, '.agents', 'rules', 'comet-workflow-guard.md')),
       ).rejects.toThrow();
 
       const hooks = JSON.parse(
@@ -712,7 +746,7 @@ describe('comet init E2E', () => {
       );
       const hookCommand = hooks.hooks.PreToolUse[0].hooks[0].command as string;
       expect(hookCommand.replaceAll('\\', '/')).toContain(
-        '/.agents/skills/comet/scripts/comet-hook-guard.mjs',
+        '/.agents/skills/comet/scripts/comet-hook-router.mjs',
       );
       await expect(
         fs.access(path.join(tmpDir, '.codex', 'settings.local.json')),
@@ -742,7 +776,7 @@ describe('comet init E2E', () => {
 
       expect(output).toMatch(/Codex \(Comet failed\)/u);
       await expect(
-        fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md')),
+        fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-workflow-guard.md')),
       ).rejects.toMatchObject({ code: 'ENOENT' });
       await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).rejects.toMatchObject({
         code: 'ENOENT',
@@ -778,7 +812,7 @@ describe('comet init E2E', () => {
 
       expect(codex?.comet).toBe('installed');
       await expect(
-        fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-phase-guard.md')),
+        fs.access(path.join(tmpDir, '.codex', 'rules', 'comet-workflow-guard.md')),
       ).resolves.toBeUndefined();
       await expect(fs.access(path.join(tmpDir, '.codex', 'hooks.json'))).resolves.toBeUndefined();
       const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf8')) as {
@@ -836,7 +870,7 @@ describe('comet init E2E', () => {
         'skills',
         'comet',
         'scripts',
-        'comet-hook-guard.mjs',
+        'comet-hook-router.mjs',
       );
 
       await captureJsonOutput(() =>
@@ -1400,13 +1434,13 @@ describe('comet init E2E', () => {
       // Comet rules are distributed to the platform rules directory, but only
       // the selected language's variant (default init selects English here) —
       // not every language variant listed in the manifest.
-      const ruleDest = path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.md');
+      const ruleDest = path.join(fakeHome, '.zcode', 'rules', 'comet-workflow-guard.md');
       await expect(fs.access(ruleDest)).resolves.toBeUndefined();
       const ruleContent = await fs.readFile(ruleDest, 'utf-8');
-      expect(ruleContent).toContain('Comet Phase Awareness');
+      expect(ruleContent).toContain('Comet Current-Change Phase Rule');
 
       await expect(
-        fs.access(path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.en.md')),
+        fs.access(path.join(fakeHome, '.zcode', 'rules', 'comet-workflow-guard.en.md')),
       ).rejects.toThrow();
 
       await expect(
@@ -1439,13 +1473,13 @@ describe('comet init E2E', () => {
 
       // With zh selected, only the normalized zh rule file should be installed —
       // the .en.md variant must not appear alongside it.
-      const ruleDest = path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.md');
+      const ruleDest = path.join(fakeHome, '.zcode', 'rules', 'comet-workflow-guard.md');
       await expect(fs.access(ruleDest)).resolves.toBeUndefined();
       const ruleContent = await fs.readFile(ruleDest, 'utf-8');
-      expect(ruleContent).toContain('Comet 阶段感知');
+      expect(ruleContent).toContain('Comet 当前需求阶段规则');
 
       await expect(
-        fs.access(path.join(fakeHome, '.zcode', 'rules', 'comet-phase-guard.en.md')),
+        fs.access(path.join(fakeHome, '.zcode', 'rules', 'comet-workflow-guard.en.md')),
       ).rejects.toThrow();
     },
     INIT_E2E_TIMEOUT_MS,

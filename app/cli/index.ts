@@ -143,6 +143,7 @@ program
   .command('doctor [path]')
   .description('Diagnose Comet installation health')
   .option('--json', 'Output as JSON')
+  .option('--repair', 'Repair managed Hook, Rule, and deterministic selection state')
   .addOption(
     new Option('--scope <scope>', 'Install scope to diagnose').choices([
       'auto',

@@ -4,6 +4,7 @@
 
 ```text
 <project>/.comet/config.yaml
+<project>/.comet/current-change.json       # Shared Native/Classic current owner selection
 <artifact-root>/comet/
   specs/<capability>/spec.md
   changes/<change-name>/
@@ -34,7 +35,6 @@
         check-receipts/<sha256>.json
   archive/YYYY-MM-DD-<change-name>/
   runtime/
-    current-change.json
     locks/
     transactions/<transaction-id>/
       transaction.json

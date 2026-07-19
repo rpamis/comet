@@ -49,6 +49,8 @@ describe('Native runtime release asset', () => {
     expect(source).not.toMatch(/domains\/comet-classic|openspec|superpowers|requiredSkillCalls/iu);
     expect(source).not.toMatch(/CLASSIC_RUN_STORAGE/u);
     expect(source).toContain('.comet/config.yaml');
+    expect(source).toContain('parseCometHookRequest');
+    expect(source).toContain('Hook write target could not be determined');
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
   });
 
