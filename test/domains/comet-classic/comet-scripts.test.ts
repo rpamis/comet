@@ -815,6 +815,111 @@ describe('comet scripts', () => {
     expect(valid.stderr).not.toContain("unknown field 'bound_branch'");
   }, 20_000);
 
+  it('rejects a numeric bound_branch value in comet validate', async () => {
+    await createChange(
+      tmpDir,
+      'bound-branch-number',
+      [
+        'workflow: full',
+        'phase: design',
+        'build_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'isolation: current',
+        'bound_branch: 123',
+        'verify_mode: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const valid = runNode(tmpDir, path.join(tmpDir, 'scripts', 'comet-yaml-validate.mjs'), [
+      'bound-branch-number',
+    ]);
+
+    expect(valid.status).toBe(1);
+    expect(valid.stderr).toContain("bound_branch='123' is not a string or null");
+  }, 20_000);
+
+  it('rejects array and mapping bound_branch values in comet validate', async () => {
+    await createChange(
+      tmpDir,
+      'bound-branch-array',
+      [
+        'workflow: full',
+        'phase: design',
+        'build_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'isolation: current',
+        'bound_branch: [feature-A, feature-B]',
+        'verify_mode: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+    await createChange(
+      tmpDir,
+      'bound-branch-mapping',
+      [
+        'workflow: full',
+        'phase: design',
+        'build_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'isolation: current',
+        'bound_branch:',
+        '  name: feature-A',
+        'verify_mode: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const validateScript = path.join(tmpDir, 'scripts', 'comet-yaml-validate.mjs');
+    const arrayResult = runNode(tmpDir, validateScript, ['bound-branch-array']);
+    const mappingResult = runNode(tmpDir, validateScript, ['bound-branch-mapping']);
+
+    expect(arrayResult.status).toBe(1);
+    expect(arrayResult.stderr).toContain('is not a string or null');
+    expect(mappingResult.status).toBe(1);
+    expect(mappingResult.stderr).toContain('is not a string or null');
+  }, 20_000);
+
+  it('accepts a quoted numeric bound_branch string in comet validate', async () => {
+    await createChange(
+      tmpDir,
+      'bound-branch-quoted',
+      [
+        'workflow: full',
+        'phase: design',
+        'build_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'isolation: current',
+        "bound_branch: '123'",
+        'verify_mode: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+
+    const valid = runNode(tmpDir, path.join(tmpDir, 'scripts', 'comet-yaml-validate.mjs'), [
+      'bound-branch-quoted',
+    ]);
+
+    expect(valid.status).toBe(0);
+    expect(valid.stderr).not.toContain('bound_branch');
+  }, 20_000);
+
   it('next resolves auto for full workflow when auto_transition is true', async () => {
     await createChange(
       tmpDir,
