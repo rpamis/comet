@@ -57,6 +57,19 @@ native:
 
 根目录迁移期间会出现 runtime 管理的 `pending_root_move`。存在该字段时普通写命令必须停止，不能自行选择旧根或新根。
 
+## 当前需求归属
+
+```json
+{
+  "schema": "comet.selection.v2",
+  "workflow": "native",
+  "change": "add-sentence-counting",
+  "branch": null
+}
+```
+
+`.comet/current-change.json` 是 Native 与 Classic 共用的当前需求 selection，不是 Native change 产物。Native 的 `new` 和 `select` 会写入 `workflow: native`；Hook Router 每次只把写入交给这一个 workflow 的 Guard。selection 缺失时只有全项目恰好一个 active Comet change 才能只读推断；多个候选、失效 selection 或已归档目标都会失败关闭。
+
 项目配置最多 64 KiB，selection 最多 16 KiB，change YAML 最多 256 KiB。brief 与单个拟议规格最多各 1 MiB；一个 change 最多 64 个拟议规格，contract 的 brief + specs 总读取最多 4 MiB。拟议规格目录还限制可枚举条目，`show` 的序列化载荷最多 10 MiB。超过预算时 Runtime 保留原文件并失败关闭，不以静默截断替代完整需求。
 
 ## Change 状态

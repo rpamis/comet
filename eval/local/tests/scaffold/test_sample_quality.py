@@ -33,6 +33,37 @@ def test_rate_limit_is_excluded_from_analysis():
     assert quality.include_in_analysis is False
 
 
+def test_structured_connection_failure_outranks_rate_limit_wording_in_prompt():
+    stderr = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {"content": "Document rate limit behavior."},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "result",
+                    "is_error": True,
+                    "terminal_reason": "api_error",
+                    "result": "API Error: Connection closed mid-response.",
+                }
+            ),
+        ]
+    )
+
+    quality = infer_sample_quality(
+        checks_failed=["Required skill not invoked"],
+        stderr=stderr,
+        returncode=1,
+    )
+
+    assert quality.status == "excluded"
+    assert quality.reason_code == "network_failure"
+    assert quality.include_in_analysis is False
+
+
 def test_container_failure_is_excluded_from_analysis():
     quality = infer_sample_quality(stderr="ERROR: Docker daemon not running")
 

@@ -2461,6 +2461,28 @@ describe('skills', () => {
         expect(guard).toContain('Classic');
         expect(guard).toContain('Hook Router');
       }
+      expect(zhGuard).toContain('先记录失败并通过 Native Runtime 回到 Build');
+      expect(zhGuard).toContain('点号开头的普通项目文件');
+      expect(enGuard).toContain('record the failed result');
+      expect(enGuard).toContain('return to Build before modifying the implementation');
+      expect(enGuard).toContain('dot-prefixed project files');
+
+      await expect(
+        fs.access(
+          path.resolve('assets', 'skills', 'comet-native', 'rules', 'comet-native-phase-guard.md'),
+        ),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(
+        fs.access(
+          path.resolve(
+            'assets',
+            'skills',
+            'comet-native',
+            'rules',
+            'comet-native-phase-guard.en.md',
+          ),
+        ),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
     });
 
     it('delegates post-guard handoff to comet-state next so auto_transition is honored', async () => {
@@ -2518,24 +2540,6 @@ describe('skills', () => {
 
       expect(zhGuard).toContain('`.superpowers/*`');
       expect(enGuard).toContain('`.superpowers/*`');
-    });
-
-    it('keeps Native Verify repairs in Build and guards dot-prefixed project writes', async () => {
-      const zhGuard = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-native', 'rules', 'comet-native-phase-guard.md'),
-        'utf-8',
-      );
-      const enGuard = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-native', 'rules', 'comet-native-phase-guard.en.md'),
-        'utf-8',
-      );
-
-      expect(zhGuard).toContain('记录失败结果并返回 Build');
-      expect(zhGuard).toContain('点号开头的项目文件');
-      expect(zhGuard).not.toContain('Verify 阶段只运行验证、记录证据和修复');
-      expect(enGuard).toContain('record the failed result and return to Build');
-      expect(enGuard).toContain('dot-prefixed project files');
-      expect(enGuard).not.toContain('Verify runs checks, records evidence, and fixes');
     });
   });
 

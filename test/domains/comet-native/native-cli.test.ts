@@ -51,6 +51,36 @@ describe('Comet Native CLI dispatcher', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('selects each successfully created change as the current Native owner', async () => {
+    expect(await runNativeCli(['new', 'first-change', ...projectArgs()])).toMatchObject({
+      exitCode: 0,
+    });
+    expect(
+      JSON.parse(
+        await fs.readFile(path.join(projectRoot, '.comet', 'current-change.json'), 'utf8'),
+      ),
+    ).toEqual({
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'first-change',
+      branch: null,
+    });
+
+    expect(await runNativeCli(['new', 'second-change', ...projectArgs()])).toMatchObject({
+      exitCode: 0,
+    });
+    expect(
+      JSON.parse(
+        await fs.readFile(path.join(projectRoot, '.comet', 'current-change.json'), 'utf8'),
+      ),
+    ).toEqual({
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'second-change',
+      branch: null,
+    });
+  });
+
   it('runs the complete change lifecycle with a custom artifact root', async () => {
     const initialized = await runNativeCli([
       'init',

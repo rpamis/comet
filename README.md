@@ -197,7 +197,7 @@ Comet Eval's automated dual-agent architecture can integrate online with LangSmi
 <details>
 <summary><code>comet init [path]</code> — Initialize Comet workflow</summary>
 
-Initializes Comet for selected AI coding platforms. Interactive setup selects Native, Classic, or both; new non-interactive projects default to self-contained Native, while projects with existing Classic state remain Classic. The workflows keep independent entries, state, and artifacts. Native and Classic install their own Rules and Hooks, while only Classic installs OpenSpec and Superpowers.
+Initializes Comet for selected AI coding platforms. Interactive setup selects Native, Classic, or both; new non-interactive projects default to self-contained Native, while projects with existing Classic state remain Classic. The workflows keep independent entries, state, artifacts, and Guards. Each platform installs one `comet-workflow-guard` Rule, and platforms with Hook support install only `comet-hook-router.mjs`. The Router uses `.comet/current-change.json` to send each write to exactly one current Native or Classic Guard. Only Classic installs OpenSpec and Superpowers; Native depends on no external Skill.
 
 | Option              | Description                                                                    |
 | ------------------- | ------------------------------------------------------------------------------ |
@@ -467,7 +467,8 @@ After `comet init`, three groups of skills are installed to the selected platfor
 | `comet-archive.mjs`       | One-command archive — validates state, syncs specs, moves to archive, updates status                       |
 | `comet-yaml-validate.mjs` | Schema validator — validates `.comet.yaml` structure and field values                                      |
 | `comet-state.mjs`         | Unified state management — init/set/get/check/scale, agents' exclusive YAML interface                      |
-| `comet-hook-guard.mjs`    | Phase write guard — PreToolUse hook, blocks file writes during open/design/archive phases                  |
+| `comet-hook-router.mjs`   | The platform's only Hook entry — routes by current ownership to one workflow Guard                         |
+| `comet-hook-guard.mjs`    | Classic Guard implementation — runs only when the Router selects Classic                                   |
 
 Classic automation ships as independent Node.js command scripts generated from TypeScript. They run through `node`
 on every platform, so Comet requires only Node.js — no Bash, Git Bash, or WSL.
@@ -607,11 +608,12 @@ Comet ensures agent execution reliability through automated state transitions:
    - Supports `--dry-run` for preview
 
 7. **Anti-drift Phase Guards** — Phase awareness for long-context sessions
-   - Rule layer: `comet-phase-guard.md` injects phase awareness, Skill invocation rules, and context recovery guidance
-     each turn across platforms
-   - Hook layer: `comet-hook-guard.mjs` hard-blocks file writes during open/design/archive phases on platforms that
-     support hooks, such as Claude Code
-   - Allowlisted paths: `openspec/*`, `docs/superpowers/*`, `.superpowers/*`, `.claude/*`, and `.comet/*`
+   - Rule layer: each platform installs one `comet-workflow-guard`, resolves enabled, default, and current ownership
+     from `.comet/current-change.json`, and applies only one phase model
+   - Hook layer: platforms with Hook support install only `comet-hook-router.mjs`; one write reaches at most one Guard,
+     and ambiguous or stale selection fails closed
+   - Guard layer: Native and Classic keep independent phases and allowed paths. Native permits ordinary implementation
+     writes only in Build; Classic permits them in Build and Verify
 
 </details>
 
@@ -629,7 +631,8 @@ your-project/
 │   │       ├── comet-handoff.mjs     # Design handoff (OpenSpec → Superpowers context tracing)
 │   │       ├── comet-archive.mjs     # One-command archive automation
 │   │       ├── comet-yaml-validate.mjs # Schema validator
-│   │       ├── comet-hook-guard.mjs   # Phase write guard (PreToolUse hook)
+│   │       ├── comet-hook-router.mjs  # The platform's only Hook entry (routes the current workflow Guard)
+│   │       ├── comet-hook-guard.mjs   # Classic Guard (not installed as a separate platform Hook)
 │   │       └── comet-state.mjs       # Unified state management (init/set/get/check/scale)
 │   ├── comet-*/SKILL.md
 │   ├── openspec-*/SKILL.md

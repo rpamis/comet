@@ -188,6 +188,44 @@ describe('Comet Hook Router', () => {
     expect(inspectClassic).not.toHaveBeenCalled();
   });
 
+  it('classifies a missing selected change for deterministic repair', async () => {
+    await configureBoth();
+    await writeCometCurrentSelection(root, {
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'missing-change',
+      branch: null,
+    });
+
+    await expect(
+      resolveHookWorkflowOwner(root, {
+        listNative: async () => [],
+        listClassic: async () => [],
+      }),
+    ).resolves.toEqual({
+      status: 'stale',
+      code: 'target-missing',
+      reason: "selected native change 'missing-change' is missing or archived",
+    });
+  });
+
+  it('classifies unreadable change state without throwing from Doctor callers', async () => {
+    await configureBoth();
+
+    await expect(
+      resolveHookWorkflowOwner(root, {
+        listNative: async () => {
+          throw new Error('invalid comet-state.yaml');
+        },
+        listClassic: async () => [],
+      }),
+    ).resolves.toEqual({
+      status: 'stale',
+      code: 'change-state-unreadable',
+      reason: 'cannot safely enumerate active Comet changes: invalid comet-state.yaml',
+    });
+  });
+
   it('allows ordinary development when no Comet change is active', async () => {
     await configureBoth();
     const inspectNative = vi.fn();

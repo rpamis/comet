@@ -20,6 +20,7 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 | Native | Shape、Verify、Archive | Build |
 | Classic | Open、Design、Archive | Build、Verify |
 
+- Native 的 Verify 只运行检查并记录证据；发现实现问题时，先记录失败并通过 Native Runtime 回到 Build，再修改实现。点号开头的普通项目文件不因名称而自动成为跨阶段白名单。
 - 当前 workflow 是 Native：恢复 `/comet-native`，由 Native 状态、证据和自动推进协议继续。
 - 当前 workflow 是 Classic：恢复 `/comet-classic`，由 Classic 状态、确认点和阶段协议继续。
 - 不要把 Native change 转换成 Classic change，或反向转换；切换 workflow 必须选择另一个独立 change。

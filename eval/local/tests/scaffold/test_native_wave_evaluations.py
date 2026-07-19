@@ -572,7 +572,20 @@ def test_wave_b_prompt_hides_the_normalization_decision_and_requires_disk_resume
     assert task.config.interaction.decision_reply == (
         "Treat words case-insensitively, strip surrounding punctuation, and preserve internal apostrophes."
     )
-    assert "context-cleared continuation" in task.config.interaction.continue_prompt
+    continuation = task.config.interaction.continue_prompt.lower()
+    assert "context-cleared continuation" in continuation
+    assert "invoke `/comet-native`" in continuation
+    assert "first bash command" in continuation
+    assert "before any read, edit, test, or transition" in continuation
+    assert "status add-unique-counting --json" in continuation
+    assert "archive-preview.json" in continuation
+    assert "archive-commit.json" in continuation
+    assert "--dry-run --json" in continuation
+    assert "--expect-preflight" in continuation
+    assert "redirect stdout directly" in continuation
+    assert "exactly once" in continuation
+    assert "never overwrite" in continuation
+    assert "do not reconstruct" in continuation
     assert task.config.interaction.fresh_resume_marker == "COMET_NATIVE_COLD_RESUME_READY"
     assert "deliberately omits" not in prompt.lower()
     assert "redirect stdout directly" in prompt.lower()
@@ -713,7 +726,10 @@ def test_wave_b_validator_accepts_one_confirmed_archive_and_resume_snapshot(tmp_
         "verification_result": "pass",
     }
     (archived / "comet-state.yaml").write_text(yaml.safe_dump(state), encoding="utf-8")
-    decision = "Lowercase every token, strip surrounding punctuation, and preserve apostrophes inside a word."
+    decision = (
+        "Case-fold tokens with str.lower(), strip punctuation from the start and end of each "
+        "token. Internal punctuation is preserved; apostrophes are not removed."
+    )
     (archived / "brief.md").write_text(f"# Decisions\n{decision}\n", encoding="utf-8")
     (archived / "specs/unique-word-counting/spec.md").write_text(decision, encoding="utf-8")
     canonical.write_text(decision, encoding="utf-8")

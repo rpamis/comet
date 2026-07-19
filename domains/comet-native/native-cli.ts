@@ -292,6 +292,7 @@ async function dispatch(
     const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
     await ensureNativeDirectories(paths);
     const state = await createNativeChange({ paths, name, language });
+    await selectNativeChange(paths, state.name);
     const status = await inspectNativeStatus(paths, state.name);
     return success(
       'new',

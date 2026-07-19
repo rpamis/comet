@@ -8,10 +8,16 @@ import {
   NativeArchivePreflightError,
 } from '../../../domains/comet-native/native-archive.js';
 import { nativeArchiveTransactionPaths } from '../../../domains/comet-native/native-archive-transaction.js';
-import { readNativeChangeFile } from '../../../domains/comet-native/native-change.js';
+import {
+  createNativeChange,
+  readNativeChangeFile,
+} from '../../../domains/comet-native/native-change.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
+import {
+  resolveSelectedNativeChange,
+  selectNativeChange,
+} from '../../../domains/comet-native/native-selection.js';
 import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
 import type {
   NativeProjectPaths,
@@ -147,6 +153,27 @@ describe('Native archive', () => {
     ).toMatchObject({
       archived: true,
     });
+  });
+
+  it('preserves the current selection when archiving a different Native change', async () => {
+    const now = new Date('2026-07-15T00:00:00.000Z');
+    await createNativeChange({ paths, name: 'selected-change', language: 'en' });
+    await prepareNativeArchiveFixture({ paths, name: 'archived-change' });
+    await selectNativeChange(paths, 'selected-change');
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'archived-change',
+      now,
+    });
+
+    await archiveNativeChange({
+      paths,
+      name: 'archived-change',
+      expectedPreflightHash,
+      now,
+    });
+
+    expect(await resolveSelectedNativeChange(paths)).toBe('selected-change');
   });
 
   it('refuses a transactions junction that would stage archive data outside comet', async () => {

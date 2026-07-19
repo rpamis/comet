@@ -4,7 +4,7 @@ Languages: [English](CONTRIBUTING.md) | [中文](CONTRIBUTING-zh.md)
 
 Thank you for helping improve Comet. This guide explains how to set up the
 project, prepare a change, keep branches healthy, submit a pull request, and
-update project-specific assets such as skills and Classic workflow scripts.
+update project-specific assets such as skills and workflow runtimes.
 
 Deeper project conventions (Chinese terminology, changelog authoring, bilingual
 skill sync, restraint on README updates, etc.) live in `CLAUDE.md`. This guide
@@ -70,30 +70,36 @@ pnpm build
 
 ## Commands
 
-| Command                      | Purpose                                                                    |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| `pnpm dev`                   | Watch mode (TypeScript)                                                    |
-| `pnpm build`                 | Full build (`build.js` + Classic runtime + dashboard)                      |
-| `pnpm build:classic-runtime` | Build only the Classic runtime (`scripts/build/build-classic-runtime.mjs`) |
-| `pnpm build:dashboard`       | Build only the `comet dashboard` frontend (Vite)                           |
-| `pnpm dev:dashboard`         | Dashboard frontend dev mode                                                |
-| `pnpm test`                  | Run unit tests (Vitest)                                                    |
-| `pnpm test:coverage`         | Run tests with coverage                                                    |
-| `pnpm test:script-smoke`     | Run the Classic launcher smoke suite; CI entry point                       |
-| `pnpm test:watch`            | Vitest watch mode                                                          |
-| `pnpm lint`                  | ESLint + architecture linter                                               |
-| `pnpm lint:architecture`     | Repository layering linter (`scripts/lint/architecture.mjs`)               |
-| `pnpm lint:fix`              | ESLint auto-fix                                                            |
-| `pnpm format`                | Prettier formatting for `app/`, `domains/`, `platform/`                    |
-| `pnpm format:check`          | Prettier check (CI-enforced)                                               |
-| `pnpm benchmark:context`     | Context compression benchmark                                              |
-| `pnpm benchmark:execution`   | Context execution benchmark                                                |
-| `pnpm benchmark:classic`     | Classic baseline regression benchmark                                      |
-| `pnpm benchmark:bundle`      | Bundle compatibility benchmark (includes build)                            |
+| Command                      | Purpose                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------- |
+| `pnpm dev`                   | Watch mode (TypeScript)                                                               |
+| `pnpm build`                 | Full build (Classic, Native, and entry runtimes + dashboard)                          |
+| `pnpm build:classic-runtime` | Build only the Classic runtime (`scripts/build/build-classic-runtime.mjs`)            |
+| `pnpm build:native-runtime`  | Build only the Native runtime (`scripts/build/build-native-runtime.mjs`)              |
+| `pnpm build:entry-runtime`   | Build only the shared entry and Hook Router (`scripts/build/build-entry-runtime.mjs`) |
+| `pnpm build:dashboard`       | Build only the `comet dashboard` frontend (Vite)                                      |
+| `pnpm dev:dashboard`         | Dashboard frontend dev mode                                                           |
+| `pnpm test`                  | Run unit tests (Vitest)                                                               |
+| `pnpm test:coverage`         | Run tests with coverage                                                               |
+| `pnpm test:script-smoke`     | Run the Classic launcher smoke suite; CI entry point                                  |
+| `pnpm test:watch`            | Vitest watch mode                                                                     |
+| `pnpm lint`                  | ESLint + architecture linter                                                          |
+| `pnpm lint:architecture`     | Repository layering linter (`scripts/lint/architecture.mjs`)                          |
+| `pnpm lint:fix`              | ESLint auto-fix                                                                       |
+| `pnpm format`                | Prettier formatting for `app/`, `domains/`, `platform/`                               |
+| `pnpm format:check`          | Prettier check (CI-enforced)                                                          |
+| `pnpm benchmark:context`     | Context compression benchmark                                                         |
+| `pnpm benchmark:execution`   | Context execution benchmark                                                           |
+| `pnpm benchmark:classic`     | Classic baseline regression benchmark                                                 |
+| `pnpm benchmark:bundle`      | Bundle compatibility benchmark (includes build)                                       |
 
-For Classic workflow script work, the most useful targeted check is:
+For workflow runtime work, first check freshness for the affected owner. Classic
+launchers also have a focused smoke suite:
 
 ```bash
+node scripts/build/build-classic-runtime.mjs --check
+node scripts/build/build-native-runtime.mjs --check
+node scripts/build/build-entry-runtime.mjs --check
 npx vitest run test/domains/comet-classic/comet-scripts.test.ts
 ```
 
@@ -253,6 +259,8 @@ app/                 # CLI entry and command orchestration. Composes domain/plat
 domains/             # Business domain modules
 ├── bundle/          # Skill bundle compilation, publishing, loading
 ├── comet-classic/   # Classic workflow (state / guard / handoff / archive / intent / hook-guard)
+├── comet-entry/     # Shared Native/Classic entry, selection, and Hook Router
+├── comet-native/    # Native workflow (change / state / evidence / archive / guard)
 ├── dashboard/       # comet dashboard backend + frontend (web/)
 ├── engine/          # Generic execution engine (loop / state / guardrails / evals)
 ├── eval/            # comet eval harness
@@ -270,7 +278,7 @@ platform/            # Platform adaptation; domain code does not leak platform d
 
 scripts/             # Repository automation (build / release / benchmark / lint / install)
 ├── benchmark/       # Benchmark suites
-├── build/           # build-classic-runtime.mjs, build.js, etc.
+├── build/           # Classic, Native, and entry runtime builders
 ├── install/         # postinstall.js
 ├── lib/             # Cross-script utilities
 ├── lint/            # architecture.mjs, gitignore-top-level.mjs
@@ -298,7 +306,7 @@ configurations.
   (`sourceRoots`).
 - Sub-modules of each layer
   (`appModules` / `domainModules` / `platformModules` / `scriptModules`).
-- Classic runtime entry/output consistency.
+- Classic, Native, and entry runtime entry/output consistency.
 - Built-in skill roots and the install manifest are consistent.
 - Test ownership (see the next section).
 - Migration-legacy directories (e.g. `src/`, `test/ts/`) are not reintroduced.
@@ -312,15 +320,15 @@ opening the PR**.
 
 Test directories strictly follow the ownership of the code under test:
 
-| Test directory           | Coverage                                                                                                  |
-| ------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `test/app/`              | CLI and commands under `app/`                                                                             |
-| `test/domains/<domain>/` | The matching `domains/<domain>/` (each domain has a same-named subdirectory)                              |
-| `test/platform/`         | The `platform/` adaptation layer                                                                          |
-| `test/scripts/`          | The `scripts/` automation scripts                                                                         |
-| `test/repository/`       | Cross-layer constraints: README, CI workflows, repository layout, package scripts, Classic runtime assets |
-| `test/fixtures/`         | Test data                                                                                                 |
-| `test/helpers/`          | Test utilities (`comet-test-utils.ts`, `ensure-cli-built.ts`, `workflow-plan.ts`)                         |
+| Test directory           | Coverage                                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `test/app/`              | CLI and commands under `app/`                                                                              |
+| `test/domains/<domain>/` | The matching `domains/<domain>/` (each domain has a same-named subdirectory)                               |
+| `test/platform/`         | The `platform/` adaptation layer                                                                           |
+| `test/scripts/`          | The `scripts/` automation scripts                                                                          |
+| `test/repository/`       | Cross-layer constraints: README, CI workflows, repository layout, package scripts, workflow runtime assets |
+| `test/fixtures/`         | Test data                                                                                                  |
+| `test/helpers/`          | Test utilities (`comet-test-utils.ts`, `ensure-cli-built.ts`, `workflow-plan.ts`)                          |
 
 Do not add horizontal buckets like `test/ts/`; legacy files should be migrated
 to the directories above. The CI smoke entry point is
@@ -359,23 +367,27 @@ Skill design guidance:
   differs naturally. Chinese terminology follows the translation rules in
   `CLAUDE.md` (do not translate `gate` as "门").
 
-## Classic Workflow Scripts
+## Workflow Runtimes and Hook Routing
 
-Workflow scripts live under `assets/skills/comet/scripts/` as thin **Node.js
-launchers** (`.mjs`). They depend only on Node.js (every Comet user has
-Node.js) and **never on Bash / Git Bash / WSL**, so behavior is identical on
-macOS, Linux, and Windows.
+Workflow scripts are **Node.js launchers or generated bundles** (`.mjs`). They
+depend only on Node.js and **never on Bash / Git Bash / WSL**, so behavior is
+identical on macOS, Linux, and Windows.
 
-- Each launcher (`comet-state.mjs`, `comet-guard.mjs`, `comet-handoff.mjs`,
-  `comet-archive.mjs`, `comet-yaml-validate.mjs`, `comet-hook-guard.mjs`,
-  `comet-intent.mjs`) is a thin wrapper: `import { main } from './comet-runtime.mjs'`
-  and dispatch via `main(['<command>', ...process.argv.slice(2)])`.
-- All real logic lives in `domains/comet-classic/*.ts` (TypeScript) and is
-  bundled into a single `comet-runtime.mjs` by
-  `scripts/build/build-classic-runtime.mjs` (esbuild). **After editing anything
-  in `domains/comet-classic/*`, run `pnpm build` (or
-  `pnpm build:classic-runtime`)**, otherwise tests exercise a stale bundle and
-  the freshness check in `classic-runtime.test.ts` will fail.
+- Classic thin launchers live in `assets/skills/comet/scripts/`; real logic
+  lives in `domains/comet-classic/` and `pnpm build:classic-runtime` generates
+  `comet-runtime.mjs`.
+- Native logic lives in `domains/comet-native/`; `pnpm build:native-runtime`
+  generates `assets/skills/comet-native/scripts/comet-native-runtime.mjs`.
+  The Native core workflow and Guard must not depend on external Skills.
+- Shared entry resolution, selection, and Hook routing live in
+  `domains/comet-entry/`; `pnpm build:entry-runtime` generates
+  `comet-entry-runtime.mjs` and `comet-hook-router.mjs`.
+- Each platform installs one `comet-workflow-guard` Rule. Platforms with Hook
+  support install only `comet-hook-router.mjs`. The Router uses
+  `.comet/current-change.json` to invoke exactly one Native or Classic Guard per
+  write. Their phases, directories, schemas, and Guard logic remain separate.
+- `comet-hook-guard.mjs` and `comet-native-hook-guard.mjs` are thin launchers
+  for their workflow Guards; neither is installed directly as a platform Hook.
 - Cross-platform concerns are handled by Node: hashing via `node:crypto`, YAML
   via the `yaml` package, subprocesses via `child_process`
   (build/validate commands go through `spawnSync(cmd, { shell: true })`). There
@@ -383,21 +395,20 @@ macOS, Linux, and Windows.
 - `comet-env.mjs` prints its own directory so skill boilerplate can resolve
   sibling launcher paths via `node "$COMET_ENV"`. Commands use the unified form
   `node "$COMET_STATE" ...`.
-- When adding or renaming a launcher, sync:
-  1. `assets/manifest.json` (`skills[]` and the `hooks` entry for
-     `comet-hook-guard.mjs`);
-  2. `config/repository-layout.json`'s `classicRuntime.entries` / `outputs`;
-  3. The `beforeEach` copy list in
-     `test/domains/comet-classic/comet-scripts.test.ts`;
-  4. The `.codex/skills/comet/scripts/` mirror (gitignored, regenerated by
-     install; just keep it consistent locally).
+- When adding or renaming an entry or generated output, sync
+  `assets/manifest.json`, the matching runtime mapping in
+  `config/repository-layout.json`, and the corresponding
+  `test/repository/*-runtime-assets.test.ts`. Classic launchers also require an
+  update to the fixture list in
+  `test/domains/comet-classic/comet-scripts.test.ts`.
 
 Runtime dispatch:
 
 ```text
-comet-runtime.mjs  <-  every comet-*.mjs launcher imports it
-  └─ domains/comet-classic/classic-cli.ts dispatches: state / validate / guard / handoff / archive / hook-guard / intent
-comet-hook-guard.mjs <- PreToolUse hook (install writes `node <skillsDir>/.../comet-hook-guard.mjs` into each platform's settings)
+comet-runtime.mjs        <- domains/comet-classic/*
+comet-native-runtime.mjs <- domains/comet-native/*
+comet-entry-runtime.mjs  <- domains/comet-entry/*
+comet-hook-router.mjs    <- only installed Hook entry -> one Guard selected by current ownership
 ```
 
 ## `.comet.yaml` State Changes

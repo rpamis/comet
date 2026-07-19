@@ -9971,33 +9971,39 @@ function enabledWorkflows(config) {
 async function resolveHookWorkflowOwner(projectRoot, dependencies = DEFAULT_DEPENDENCIES) {
   const config = await readProjectConfig(projectRoot);
   const enabled = enabledWorkflows(config);
-  const [native, classic] = await Promise.all([
-    enabled.includes("native") ? dependencies.listNative(projectRoot) : Promise.resolve([]),
-    enabled.includes("classic") ? dependencies.listClassic(projectRoot) : Promise.resolve([])
-  ]);
+  let native;
+  let classic;
+  try {
+    [native, classic] = await Promise.all([
+      enabled.includes("native") ? dependencies.listNative(projectRoot) : Promise.resolve([]),
+      enabled.includes("classic") ? dependencies.listClassic(projectRoot) : Promise.resolve([])
+    ]);
+  } catch (error) {
+    return {
+      status: "stale",
+      code: "change-state-unreadable",
+      reason: `cannot safely enumerate active Comet changes: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
   const candidates = [...native, ...classic];
   let current;
   try {
     current = await readCometCurrentSelection(projectRoot);
   } catch (error) {
-    return { status: "stale", reason: error instanceof Error ? error.message : String(error) };
+    return {
+      status: "stale",
+      code: "selection-unreadable",
+      reason: error instanceof Error ? error.message : String(error)
+    };
   }
   if (current.status === "selected") {
     const selection = current.selection;
     if (!enabled.includes(selection.workflow)) {
       return {
         status: "stale",
+        code: "workflow-disabled",
         reason: `selected workflow '${selection.workflow}' is not enabled for this project`
       };
-    }
-    if (selection.workflow === "classic") {
-      const resolved = await resolveCurrentChange(projectRoot);
-      if (resolved.status !== "selected") {
-        return {
-          status: "stale",
-          reason: resolved.status === "stale" ? resolved.reason : `selected Classic change '${selection.change}' is no longer active`
-        };
-      }
     }
     const owner = candidates.find(
       (candidate) => candidate.workflow === selection.workflow && candidate.name === selection.change
@@ -10005,8 +10011,19 @@ async function resolveHookWorkflowOwner(projectRoot, dependencies = DEFAULT_DEPE
     if (!owner) {
       return {
         status: "stale",
+        code: "target-missing",
         reason: `selected ${selection.workflow} change '${selection.change}' is missing or archived`
       };
+    }
+    if (selection.workflow === "classic") {
+      const resolved = await resolveCurrentChange(projectRoot);
+      if (resolved.status !== "selected") {
+        return {
+          status: "stale",
+          code: "classic-selection-invalid",
+          reason: resolved.status === "stale" ? resolved.reason : `selected Classic change '${selection.change}' is no longer active`
+        };
+      }
     }
     return { status: "owned", owner };
   }

@@ -35,11 +35,7 @@ import type { InstallScope } from '../../platform/install/types.js';
 import { inspectClassicChange } from '../../domains/comet-classic/classic-diagnostics.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { readProjectConfig } from '../../domains/comet-native/native-config.js';
-import {
-  clearCometCurrentSelection,
-  migrateLegacyClassicSelection,
-  readCometCurrentSelection,
-} from '../../domains/comet-entry/current-selection.js';
+import { repairCometCurrentSelection } from '../../domains/comet-entry/current-selection-repair.js';
 import { resolveHookWorkflowOwner } from '../../domains/comet-entry/hook-router.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 
@@ -678,23 +674,12 @@ async function repairDoctorState(
     }
   }
 
-  if (scope !== 'global' && projectRouterReady && workflows.includes('classic')) {
-    if (await migrateLegacyClassicSelection(projectPath)) repaired.push('Classic selection v1');
-    try {
-      const current = await readCometCurrentSelection(projectPath);
-      if (current.status === 'selected') {
-        const resolution = await resolveHookWorkflowOwner(projectPath);
-        if (
-          resolution.status === 'stale' &&
-          /missing or archived|no longer active/iu.test(resolution.reason)
-        ) {
-          await clearCometCurrentSelection(projectPath);
-          repaired.push('stale current selection');
-        }
-      }
-    } catch {
-      // Malformed or unreadable selection is not deterministic, so keep it for manual recovery.
-    }
+  if (scope !== 'global' && projectRouterReady) {
+    const selectionRepair = await repairCometCurrentSelection(projectPath, {
+      migrateLegacyClassic: workflows.includes('classic'),
+    });
+    if (selectionRepair.migratedLegacyClassic) repaired.push('Classic selection v1');
+    if (selectionRepair.clearedStaleSelection) repaired.push('stale current selection');
   }
 
   for (const target of targets) {

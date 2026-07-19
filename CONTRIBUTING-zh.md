@@ -2,7 +2,7 @@
 
 语言：[English](CONTRIBUTING.md) | [中文](CONTRIBUTING-zh.md)
 
-感谢你帮助改进 Comet。这份指南说明如何配置项目、准备改动、维护分支、提交 PR，以及如何更新 Skill、Classic 工作流脚本等 Comet 特有资产。
+感谢你帮助改进 Comet。这份指南说明如何配置项目、准备改动、维护分支、提交 PR，以及如何更新 Skill、Workflow runtime 等 Comet 特有资产。
 
 更深层的项目规范（中文术语翻译、Changelog 撰写、Skill 双语同步、README 改动克制等）写在 `CLAUDE.md` 中，本指南只覆盖贡献流程本身，不重复那些规则。
 
@@ -48,30 +48,35 @@ pnpm build
 
 ## 常用命令
 
-| 命令                         | 用途                                                                  |
-| ---------------------------- | --------------------------------------------------------------------- |
-| `pnpm dev`                   | TypeScript watch 模式                                                 |
-| `pnpm build`                 | 全量构建（`build.js` + Classic runtime + dashboard）                  |
-| `pnpm build:classic-runtime` | 单独打包 Classic runtime（`scripts/build/build-classic-runtime.mjs`） |
-| `pnpm build:dashboard`       | 单独构建 `comet dashboard` 前端（Vite）                               |
-| `pnpm dev:dashboard`         | Dashboard 前端开发模式                                                |
-| `pnpm test`                  | 运行单元测试（Vitest）                                                |
-| `pnpm test:coverage`         | 运行测试并生成覆盖率                                                  |
-| `pnpm test:script-smoke`     | 运行 Classic 启动器 smoke 套件，CI 入口                               |
-| `pnpm test:watch`            | Vitest watch 模式                                                     |
-| `pnpm lint`                  | ESLint + 架构 linter                                                  |
-| `pnpm lint:architecture`     | 仓库分层 linter（`scripts/lint/architecture.mjs`）                    |
-| `pnpm lint:fix`              | ESLint 自动修复                                                       |
-| `pnpm format`                | Prettier 格式化 `app/`、`domains/`、`platform/`                       |
-| `pnpm format:check`          | Prettier 校验（CI 强制）                                              |
-| `pnpm benchmark:context`     | 上下文压缩 benchmark                                                  |
-| `pnpm benchmark:execution`   | 上下文执行 benchmark                                                  |
-| `pnpm benchmark:classic`     | Classic 基线回归 benchmark                                            |
-| `pnpm benchmark:bundle`      | Bundle 兼容性 benchmark（含构建）                                     |
+| 命令                         | 用途                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| `pnpm dev`                   | TypeScript watch 模式                                                     |
+| `pnpm build`                 | 全量构建（Classic、Native、Entry runtime + dashboard）                    |
+| `pnpm build:classic-runtime` | 单独打包 Classic runtime（`scripts/build/build-classic-runtime.mjs`）     |
+| `pnpm build:native-runtime`  | 单独打包 Native runtime（`scripts/build/build-native-runtime.mjs`）       |
+| `pnpm build:entry-runtime`   | 单独打包共享入口与 Hook Router（`scripts/build/build-entry-runtime.mjs`） |
+| `pnpm build:dashboard`       | 单独构建 `comet dashboard` 前端（Vite）                                   |
+| `pnpm dev:dashboard`         | Dashboard 前端开发模式                                                    |
+| `pnpm test`                  | 运行单元测试（Vitest）                                                    |
+| `pnpm test:coverage`         | 运行测试并生成覆盖率                                                      |
+| `pnpm test:script-smoke`     | 运行 Classic 启动器 smoke 套件，CI 入口                                   |
+| `pnpm test:watch`            | Vitest watch 模式                                                         |
+| `pnpm lint`                  | ESLint + 架构 linter                                                      |
+| `pnpm lint:architecture`     | 仓库分层 linter（`scripts/lint/architecture.mjs`）                        |
+| `pnpm lint:fix`              | ESLint 自动修复                                                           |
+| `pnpm format`                | Prettier 格式化 `app/`、`domains/`、`platform/`                           |
+| `pnpm format:check`          | Prettier 校验（CI 强制）                                                  |
+| `pnpm benchmark:context`     | 上下文压缩 benchmark                                                      |
+| `pnpm benchmark:execution`   | 上下文执行 benchmark                                                      |
+| `pnpm benchmark:classic`     | Classic 基线回归 benchmark                                                |
+| `pnpm benchmark:bundle`      | Bundle 兼容性 benchmark（含构建）                                         |
 
-如果改动 Classic 工作流脚本，最常用的定向检查是：
+如果改动 Workflow runtime，先按归属运行对应新鲜度检查；Classic launcher 另有定向 smoke：
 
 ```bash
+node scripts/build/build-classic-runtime.mjs --check
+node scripts/build/build-native-runtime.mjs --check
+node scripts/build/build-entry-runtime.mjs --check
 npx vitest run test/domains/comet-classic/comet-scripts.test.ts
 ```
 
@@ -208,6 +213,8 @@ app/                 # CLI 入口与命令编排层。只组合 domain/platform 
 domains/             # 业务领域模块
 ├── bundle/          # Skill bundle 编译、发布、加载
 ├── comet-classic/   # Classic 工作流（state / guard / handoff / archive / intent / hook-guard）
+├── comet-entry/     # Native/Classic 共享入口、selection 与 Hook Router
+├── comet-native/    # Native 工作流（change / state / evidence / archive / guard）
 ├── dashboard/       # comet dashboard 后端 + 前端（web/）
 ├── engine/          # 通用执行引擎（loop / state / guardrails / evals）
 ├── eval/            # comet eval 评测
@@ -225,7 +232,7 @@ platform/            # 平台适配层，domain 不直接散落平台差异
 
 scripts/             # 仓库自动化脚本（构建/发布/benchmark/lint/install）
 ├── benchmark/       # benchmark 套件
-├── build/           # build-classic-runtime.mjs、build.js 等
+├── build/           # Classic、Native、Entry runtime builder
 ├── install/         # postinstall.js
 ├── lib/             # 跨脚本工具
 ├── lint/            # architecture.mjs、gitignore-top-level.mjs
@@ -248,7 +255,7 @@ docs/                # 架构、运维、设计文档（docs/superpowers/ 由工
 - 顶层目录白名单（`config/repository-layout.json` 的 `allowedTopLevelEntries`）。
 - 活跃源码根只能是 `app` / `domains` / `platform`（`sourceRoots`）。
 - 各层的子模块（`appModules` / `domainModules` / `platformModules` / `scriptModules`）。
-- Classic runtime 入口与生成物一致性。
+- Classic、Native 与 Entry runtime 入口和生成物一致性。
 - 内置 Skill 根目录与 install manifest 一致。
 - 测试归属（见下节）。
 - 禁止恢复已迁移走的旧目录（例如 `src/`、`test/ts/`）。
@@ -259,15 +266,15 @@ docs/                # 架构、运维、设计文档（docs/superpowers/ 由工
 
 测试目录严格跟随被测对象归属：
 
-| 测试目录                 | 覆盖范围                                                                           |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| `test/app/`              | `app/` 下的 CLI 与命令                                                             |
-| `test/domains/<domain>/` | 对应 `domains/<domain>/`（每个 domain 同名子目录）                                 |
-| `test/platform/`         | `platform/` 适配层                                                                 |
-| `test/scripts/`          | `scripts/` 自动化脚本                                                              |
-| `test/repository/`       | README、CI workflows、仓库布局、package scripts、Classic runtime assets 等跨层约束 |
-| `test/fixtures/`         | 测试数据                                                                           |
-| `test/helpers/`          | 测试工具（`comet-test-utils.ts`、`ensure-cli-built.ts`、`workflow-plan.ts`）       |
+| 测试目录                 | 覆盖范围                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| `test/app/`              | `app/` 下的 CLI 与命令                                                                 |
+| `test/domains/<domain>/` | 对应 `domains/<domain>/`（每个 domain 同名子目录）                                     |
+| `test/platform/`         | `platform/` 适配层                                                                     |
+| `test/scripts/`          | `scripts/` 自动化脚本                                                                  |
+| `test/repository/`       | README、CI workflows、仓库布局、package scripts、各 workflow runtime assets 等跨层约束 |
+| `test/fixtures/`         | 测试数据                                                                               |
+| `test/helpers/`          | 测试工具（`comet-test-utils.ts`、`ensure-cli-built.ts`、`workflow-plan.ts`）           |
 
 禁止新增 `test/ts/` 这种横向桶；旧文件应迁移到上面对应目录。CI smoke 入口是 `pnpm test:script-smoke`，GitHub Actions 与本地跑同一套 Classic 启动器 smoke。
 
@@ -294,26 +301,26 @@ Skill 设计建议：
 - **Reference Appendix**：字段说明、脚本位置、最佳实践放在底部。
 - 中文与英文版本行为等价，表达可以自然不同；中文术语遵循 `CLAUDE.md` 的翻译规范（不要把 `gate` 译成"门"）。
 
-## Classic 工作流脚本
+## Workflow runtime 与 Hook 路由
 
-工作流脚本位于 `assets/skills/comet/scripts/`，全部是 **Node.js 启动器（`.mjs`）**，只依赖 Node.js（用户用 comet 必有 Node.js），**不依赖 Bash / Git Bash / WSL**，在 macOS、Linux、Windows 上行为一致。
+工作流脚本是 **Node.js 启动器或生成 bundle（`.mjs`）**，只依赖 Node.js，**不依赖 Bash / Git Bash / WSL**，在 macOS、Linux、Windows 上行为一致。
 
-- 每个启动器（`comet-state.mjs`、`comet-guard.mjs`、`comet-handoff.mjs`、`comet-archive.mjs`、`comet-yaml-validate.mjs`、`comet-hook-guard.mjs`、`comet-intent.mjs`）是薄封装：`import { main } from './comet-runtime.mjs'` 后以 `main(['<command>', ...process.argv.slice(2)])` 分发。
-- 所有真实逻辑在 `domains/comet-classic/*.ts`（TypeScript），由 `scripts/build/build-classic-runtime.mjs`（esbuild）打包成单个 `comet-runtime.mjs`。**修改 `domains/comet-classic/*` 后必须 `pnpm build`（或 `pnpm build:classic-runtime`）**，否则测试用的是旧 bundle，`classic-runtime.test.ts` 的新鲜度检查也会失败。
+- Classic 的薄 launcher 位于 `assets/skills/comet/scripts/`，真实逻辑在 `domains/comet-classic/`，由 `pnpm build:classic-runtime` 生成 `comet-runtime.mjs`。
+- Native 真实逻辑位于 `domains/comet-native/`，由 `pnpm build:native-runtime` 生成 `assets/skills/comet-native/scripts/comet-native-runtime.mjs`。Native 主流程和 Guard 不得依赖外部 Skill。
+- 共享入口、selection 与 Hook Router 位于 `domains/comet-entry/`，由 `pnpm build:entry-runtime` 生成 `comet-entry-runtime.mjs` 和 `comet-hook-router.mjs`。
+- 每个平台只安装一份 `comet-workflow-guard` Rule；支持 Hook 的平台只安装一个 `comet-hook-router.mjs`。Router 根据 `.comet/current-change.json` 一次只调用 Native 或 Classic 的一个 Guard。两边的阶段、目录、schema 与 Guard 逻辑保持独立。
+- `comet-hook-guard.mjs` 和 `comet-native-hook-guard.mjs` 是各自 runtime 的薄 Guard launcher，不直接作为平台 Hook 安装。
 - 跨平台由 Node 保证：hash 用 `node:crypto`，YAML 用 `yaml` 包，子进程用 `child_process`（构建/校验命令走 `spawnSync(cmd, { shell: true })`）。不再有 `sed -i` / `sha256sum` vs `shasum` / `pipefail` 等 shell 可移植性问题。
 - `comet-env.mjs` 打印自身所在目录，skill 样板通过 `node "$COMET_ENV"` 解析同级启动器路径，命令统一为 `node "$COMET_STATE" ...` 形式。
-- 新增/重命名脚本必须同步：
-  1. `assets/manifest.json` 的 `skills[]`（以及 `hooks` 里的 `comet-hook-guard.mjs`）；
-  2. `config/repository-layout.json` 的 `classicRuntime.entries` / `outputs`；
-  3. `test/domains/comet-classic/comet-scripts.test.ts` 的 `beforeEach` 拷贝列表；
-  4. `.codex/skills/comet/scripts/` 镜像（该目录 gitignored，由 install 重新生成，本地保持一致即可）。
+- 新增或重命名入口/生成物时，必须同步 `assets/manifest.json`、`config/repository-layout.json` 的对应 runtime 映射，以及 `test/repository/*-runtime-assets.test.ts`；Classic launcher 还需同步 `test/domains/comet-classic/comet-scripts.test.ts` 的 fixture 列表。
 
 运行时分发：
 
 ```text
-comet-runtime.mjs  <-  所有 comet-*.mjs 启动器 import 它
-  └─ domains/comet-classic/classic-cli.ts 分发：state / validate / guard / handoff / archive / hook-guard / intent
-comet-hook-guard.mjs <- PreToolUse hook（install 写入各平台 settings，命令形如 node <skillsDir>/.../comet-hook-guard.mjs）
+comet-runtime.mjs        <- domains/comet-classic/*
+comet-native-runtime.mjs <- domains/comet-native/*
+comet-entry-runtime.mjs  <- domains/comet-entry/*
+comet-hook-router.mjs    <- 平台唯一 Hook 入口 -> 当前 selection 的一个 workflow Guard
 ```
 
 ## `.comet.yaml` 状态变更

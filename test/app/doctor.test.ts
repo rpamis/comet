@@ -9,7 +9,10 @@ import {
   installCometHooksForPlatform,
 } from '../../domains/skill/platform-install.js';
 import { PLATFORMS } from '../../platform/install/platforms.js';
-import { readCometCurrentSelection } from '../../domains/comet-entry/current-selection.js';
+import {
+  readCometCurrentSelection,
+  writeCometCurrentSelection,
+} from '../../domains/comet-entry/current-selection.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -407,6 +410,26 @@ describe('doctor command', () => {
     await expect(
       fs.access(path.join(tmpDir, '.claude', 'settings.local.json')),
     ).resolves.toBeUndefined();
+  });
+
+  it('clears a missing Native selection after the repaired Router is ready', async () => {
+    await installManagedCometSkills(tmpDir);
+    await writeProjectConfig(tmpDir, defaultProjectConfig('.'));
+    await writeCometCurrentSelection(tmpDir, {
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'missing-change',
+      branch: null,
+    });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: tmpDir });
+    } finally {
+      log.mockRestore();
+    }
+
+    await expect(readCometCurrentSelection(tmpDir)).resolves.toEqual({ status: 'missing' });
   });
 
   it('reports a Hook JSON parse failure without rewriting the canonical config', async () => {

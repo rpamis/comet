@@ -15,9 +15,17 @@ description: 使用 Comet 自有 Native change、澄清锁、状态检查与自�
 
 若当前消息是对已提出阻塞问题的回答，先重新读取调用方原始请求中的执行边界，再调用任何 transition。把回答的每一部分写入 brief 和完整目标规格；离开 Shape 的 `next` 必须带 `--confirmed`。若调用方要求在该 transition 后停下或切换会话，该 transition 后禁止任何工具调用：只精确输出约定标记并结束本轮，下一会话再从磁盘恢复。
 
+回答回合不是下一阶段的执行回合。若调用方把停点放在“记录答案并进入下一 phase”之后，本轮唯一序列是：更新原有 brief 与完整规格 → 调用一次带 `--confirmed` 的允许 transition → 成功后精确输出停点标记并结束。不得在成功后读取 status、实现、测试、验证或归档；Runtime 返回 `continuation.disposition: continue` 也不能覆盖调用方停点。
+
 进入 Build 或修改项目实现之前，先执行硬停止检查：调查仓库事实，再沿决策树列出每个新引入的输出或能力中会改变用户可见结果的分支。消除一个分支时，必须能引用用户对该新行为本身的原话、对先前问题的已确认回答，或已经发布的同一能力精确契约；不能引用就仍未解决。旧代码、相邻能力和兼容性要求都不能关闭新行为的产品分支，只能帮助形成推荐。“保持现有行为”只保护已有结果，不代表新行为自动继承旧语义。未解决分支是用户决定，决定权属于用户，模型只能给出推荐；只有保持相同用户可见结果的做法才是模型自主选择的实现方式。即使请求写着“不要询问实现选择”，也不允许把产品决定重新归类为实现选择。若无法证明它只是实现选择，就按用户决定处理，不要替用户选择一个“合理默认值”。
 
 有用户决定时，一次只问一个最上游问题，给出推荐答案、理由和各选项的实际影响，问完立即结束本轮。多个细节若共同定义同一项上游语义，就合并为一个完整策略问题，不只问其中一个任意细节，也不拆成固定问卷；若任一合理回答后仍会留下同级的用户可见分支，这个问题就过窄。推荐应基于用户目标和行为权衡，而不是最省代码。达成共享理解前，可以调查事实、创建或恢复 Native change，并在 brief 记录 `[blocking]`；但不把任何选项写成既定规格、不进入 Build、不修改项目实现、不调用 `next`。用户回答后重新计算决策树；没有用户决定时才自动推进。
+
+## 执行边界与时点证据
+
+调用方明确要求在某个 transition 后停下或切换会话时，先保存已确认决定，只完成允许的 transition；transition 成功后工具调用数必须为零，只输出约定标记并结束本轮。新会话重新调用 `/comet-native`，先从磁盘运行 `status`、确认 selection 并读取正式产物，再继续实现；不依赖聊天记忆猜测进度。
+
+调用方若要求保存某个状态变化前或特定时点的 Runtime envelope，该文件是一次性的不可变证据：在越过该时点前，用要求的真实 Runtime 命令及机器可读模式生成，并直接重定向标准输出到目标文件；确认 envelope 成功且结构完整后，不得在状态变化后重建、刷新或覆盖。证据只能记录当时真实返回值，不能根据最终状态补写。若调用方要求恢复快照，它应在新会话重新进入 Native 后、任何会改变该时点事实的动作前产生。
 
 ## 开始或恢复
 
@@ -25,11 +33,11 @@ description: 使用 Comet 自有 Native change、澄清锁、状态检查与自�
 
 先运行 Native `status` 和 `show`；恢复 Verify 或 Archive 时使用 `status <change-name> --details` 取得有预算的验收页、有界的详细 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；不能把未展示项当作不存在。若 `acceptancePage.nextCursor` 非空，继续按命令参考逐页取得剩余验收 ID。再读取 `.comet/config.yaml`、`comet-state.yaml`、brief、拟议完整规格、canonical 规格、仓库实现、项目规则和相关测试。磁盘与仓库事实优先于聊天记忆；能从环境得到的事实不要询问用户。
 
-若 `status` 或 `show` 显示已有 active change，就继续该 change。用户回答澄清问题或补充约束后，重新读取它并更新原有 brief 与规格；不得为用户刚补充的答案创建第二个 change。只有磁盘事实证明没有 active change 时，才把用户目标归纳成 lowercase kebab-case 名称，再用 `comet native new <change-name> --language zh-CN` 创建 Native change。只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
+若 `status` 或 `show` 显示已有 active change，先只读确认哪个 change 对应当前目标；恢复或继续这个已确认的 change 前，显式运行 `comet native select <change-name>`，建立项目级共享 selection，再进行后续写入或 transition。多个 active change 且现有 selection 不能唯一确定目标时，让用户选择，不新增 `resume` 命令，也不靠 `status`/`show` 的读取副作用建立归属。用户回答澄清问题或补充约束后，重新读取选中的原有 change 并更新其 brief 与规格；不得为用户刚补充的答案创建第二个 change。只有磁盘事实证明没有 active change 时，才把用户目标归纳成 lowercase kebab-case 名称，再用 `comet native new <change-name> --language zh-CN` 创建 Native change。只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
 
 命令与 runtime 定位见 [命令参考](reference/commands.md)，产物格式见 [产物参考](reference/artifacts.md)，中断与恢复见 [恢复参考](reference/recovery.md)。自带 runtime 位于 [scripts/comet-native-runtime.mjs](scripts/comet-native-runtime.mjs)。
 
-初始化会安装 Native 自有 Rule 与 Write/Edit Hook：Rule 提供阶段约束，Hook 在存在 active change 时只允许 Build 阶段写实现代码。它们只读取 Native 配置与状态，不调用 Classic，也不依赖任何外部 Skill。
+初始化在每个平台只安装一份 Comet 工作流 Rule，并在支持 Hook 的平台只安装一个 `comet-hook-router.mjs`。Rule 根据 `.comet/config.yaml` 与 `.comet/current-change.json` 区分 enabled、default 和 current；Router 也先解析这份共享 selection，再把一次写入最多路由给当前 workflow 的一个 Guard。当前需求属于 Native 时，只应用 Native 的 Shape/Build/Verify/Archive 写入边界；属于 Classic 时才应用独立的 Classic Guard。不要同时运行两套 Guard，也不要用默认 workflow 猜当前需求归属。Native Guard 只读取 Native 配置与状态，Native 主流程仍不依赖任何外部 Skill。
 
 ## 决策协议
 
@@ -128,6 +136,8 @@ comet native archive <change-name> --dry-run
 ```text
 comet native archive <change-name> --expect-preflight <sha256>
 ```
+
+调用方要求保存预演或提交 envelope 时，首次预演与首次提交调用本身就必须使用机器可读模式并写入各自目标；提交使用已保存预演中的 hash。文件一旦验证成功便保持不可变，归档后不得重新运行命令去覆盖它。
 
 归档会在锁内重新计算相同事实；任何漂移都会拒绝，不复用旧 hash。成功后更新 canonical 规格，并把 change 移到日期前缀的 archive 目录。遇到 canonical 冲突时先重读并改写完整目标规格，再用 `comet native spec rebase <change-name> --summary <摘要>` 刷新基线并受控回到 Build 重新实现、确认和验证；不覆盖并发变化。未完成事务按恢复参考处理。
 

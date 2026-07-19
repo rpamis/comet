@@ -179,7 +179,7 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 <details>
 <summary><code>comet init [path]</code> — 初始化 Comet 工作流</summary>
 
-为选定的 AI 编码平台初始化 Comet。交互模式可选择 Native、Classic 或两者；新的非交互项目默认使用自包含 Native，检测到既有 Classic 状态时保持 Classic。两套工作流拥有独立入口、状态与产物；Native 和 Classic 都安装各自的 Rule 与 Hook，只有 Classic 安装 OpenSpec 和 Superpowers。
+为选定的 AI 编码平台初始化 Comet。交互模式可选择 Native、Classic 或两者；新的非交互项目默认使用自包含 Native，检测到既有 Classic 状态时保持 Classic。两套工作流拥有独立入口、状态、产物与 Guard；每个平台只安装一份 `comet-workflow-guard` Rule，支持 Hook 的平台只安装一个 `comet-hook-router.mjs`。Router 根据 `.comet/current-change.json`，一次只把写入路由给当前 Native 或 Classic Guard。只有 Classic 安装 OpenSpec 和 Superpowers，Native 不依赖外部 Skill。
 
 | 选项                | 描述                                                 |
 | ------------------- | ---------------------------------------------------- |
@@ -442,7 +442,8 @@ PowerShell 中可以用 `$env:LANGSMITH_API_KEY`、`$env:LANGSMITH_PROJECT` 和 
 | `comet-archive.mjs`       | 一键归档 — 验证状态、同步 specs、移至归档、更新状态                     |
 | `comet-yaml-validate.mjs` | 模式校验器 — 校验 `.comet.yaml` 结构和字段值                            |
 | `comet-state.mjs`         | 统一状态管理 — init/set/get/check/scale，agent 的专属 YAML 接口         |
-| `comet-hook-guard.mjs`    | 阶段写入守护 — PreToolUse hook，在 open/design/archive 阶段拦截文件写入 |
+| `comet-hook-router.mjs`   | 平台唯一 Hook 入口 — 按当前需求归属路由到一个 workflow Guard            |
+| `comet-hook-guard.mjs`    | Classic Guard 实现 — 仅在 Router 选中 Classic 时执行                    |
 
 Classic 自动化以 TypeScript 生成的独立 Node.js 命令脚本分发，通过 `node` 在所有平台运行，因此 Comet 只依赖Node.js，无需 Bash、Git Bash 或 WSL。
 
@@ -575,9 +576,9 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
    - 支持 `--dry-run` 预览
 
 7. **防漂移阶段守护** — 长上下文会话中的阶段意识保障
-   - Rule 层：`comet-phase-guard.md` 每轮注入阶段感知、Skill 调用规范和上下文恢复指令（所有平台通用）
-   - Hook 层：`comet-hook-guard.mjs` 在 open/design/archive 阶段硬拦截文件写入（Claude Code 等支持 hook 的平台）
-   - 白名单路径：`openspec/*`、`docs/superpowers/*`、`.superpowers/*`、`.claude/*`、`.comet/*`
+   - Rule 层：每个平台只安装一份 `comet-workflow-guard`，根据 enabled、default 与 `.comet/current-change.json` 中的 current 归属，只应用一套阶段模型
+   - Hook 层：支持 Hook 的平台只安装一个 `comet-hook-router.mjs`；一次写入最多路由到一个 Guard，selection 不明确或失效时失败关闭
+   - Guard 层：Native 与 Classic 各自保留独立阶段和允许路径；Native 仅在 Build 允许普通实现写入，Classic 在 Build、Verify 允许
 
 </details>
 
@@ -595,7 +596,8 @@ your-project/
 │   │       ├── comet-handoff.mjs     # 设计交接（OpenSpec → Superpowers 上下文追踪）
 │   │       ├── comet-archive.mjs     # 一键归档自动化
 │   │       ├── comet-yaml-validate.mjs # 模式校验器
-│   │       ├── comet-hook-guard.mjs    # 阶段写入守护（PreToolUse hook）
+│   │       ├── comet-hook-router.mjs   # 平台唯一 Hook 入口（路由当前 workflow Guard）
+│   │       ├── comet-hook-guard.mjs    # Classic Guard（不单独安装为平台 Hook）
 │   │       └── comet-state.mjs       # 统一状态管理（init/set/get/check/scale）
 │   ├── comet-*/SKILL.md
 │   ├── openspec-*/SKILL.md

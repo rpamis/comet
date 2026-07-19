@@ -123,6 +123,29 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('transition 成功后不再调用工具');
   });
 
+  it('preserves caller-requested timepoint evidence across execution boundaries', async () => {
+    const zh = await read('zh', 'SKILL.md');
+    const en = await read('en', 'SKILL.md');
+
+    expect(zh).toContain('## 执行边界与时点证据');
+    expect(zh).toContain('直接重定向标准输出');
+    expect(zh).toContain('不可变证据');
+    expect(zh).toContain('不得在状态变化后重建、刷新或覆盖');
+    expect(zh).toContain('transition 成功后工具调用数必须为零');
+    expect(zh).toContain('回答回合不是下一阶段的执行回合');
+    expect(zh).toContain('`continuation.disposition: continue` 也不能覆盖');
+    expect(zh).toContain('首次预演与首次提交调用本身');
+
+    expect(en).toContain('## Execution boundaries and timepoint evidence');
+    expect(en).toContain('redirect standard output directly');
+    expect(en).toContain('immutable evidence');
+    expect(en).toContain('Never reconstruct, refresh, or overwrite it after state changes');
+    expect(en).toContain('the tool-call count after success must be zero');
+    expect(en).toContain('The answer turn is not the next phase execution turn');
+    expect(en).toContain('`continuation.disposition: continue` does not override');
+    expect(en).toContain('the first preview and first commit invocations themselves');
+  });
+
   it('references only Comet-owned Native documentation and runtime', async () => {
     const source = await read('zh', 'SKILL.md');
     const links = [...source.matchAll(/\]\(([^)]+)\)/gu)].map((match) => match[1]).sort();

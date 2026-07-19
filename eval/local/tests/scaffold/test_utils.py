@@ -317,14 +317,26 @@ def test_completion_point_detector_requires_explicit_non_negated_workflow_comple
     archive_complete = utils.run_shell(
         "completion-point.sh", "The archive is complete and verified from disk.", check=False
     )
+    completed_through_archive = utils.run_shell(
+        "completion-point.sh", "Change add-counting completed through Archive.", check=False
+    )
+    archived_to = utils.run_shell(
+        "completion-point.sh", "- **Archived to**: docs/comet/archive/2026-07-19-add-counting/", check=False
+    )
     phase_done = utils.run_shell(
         "completion-point.sh", "Shape is done; Build remains pending.", check=False
     )
     negated = utils.run_shell(
         "completion-point.sh", "The workflow is not complete yet.", check=False
     )
+    negated_through_archive = utils.run_shell(
+        "completion-point.sh", "The change is not completed through Archive.", check=False
+    )
 
     assert archived.returncode == 0
     assert archive_complete.returncode == 0
+    assert completed_through_archive.returncode == 0
+    assert archived_to.returncode == 0
     assert phase_done.returncode == 1
     assert negated.returncode == 1
+    assert negated_through_archive.returncode == 1

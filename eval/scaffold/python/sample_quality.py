@@ -28,7 +28,7 @@ _AUTH_RE = re.compile(
     re.I,
 )
 _NETWORK_RE = re.compile(
-    r"(dns|tls|connection reset|connection refused|gateway timeout|econnreset|etimedout)",
+    r"(dns|tls|connection closed|connection reset|connection refused|gateway timeout|econnreset|etimedout)",
     re.I,
 )
 _OUTER_FAILURE_MENTION_RE = re.compile(
@@ -110,6 +110,32 @@ def _has_result_event(stdout: str | None) -> bool:
         if payload.get("type") == "result":
             return True
     return False
+
+
+def _terminal_error_text(*streams: str | None) -> str | None:
+    parts: list[str] = []
+    for stream in streams:
+        if not stream:
+            continue
+        for line in stream.splitlines():
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if payload.get("type") != "result" or not (
+                payload.get("is_error") or payload.get("terminal_reason") == "api_error"
+            ):
+                continue
+            parts.extend(
+                str(value)
+                for value in (
+                    payload.get("terminal_reason"),
+                    payload.get("error"),
+                    payload.get("result"),
+                )
+                if value
+            )
+    return "\n".join(parts) or None
 
 
 def _text_parts(*values: Any) -> str:
@@ -267,6 +293,19 @@ def infer_sample_quality(
     )
     stdout = stdout if stdout is not None else _artifact_text(report, "raw_stdout")
     stderr = stderr if stderr is not None else _artifact_text(report, "raw_stderr")
+
+    terminal_error = _terminal_error_text(stderr, stdout)
+    if terminal_error:
+        hard = _hard_noise(terminal_error, returncode, False)
+        if hard:
+            return hard
+        return SampleQuality(
+            "excluded",
+            "api_failure",
+            "Claude/API execution ended with a structured error result",
+            False,
+            evidence=[terminal_error[:200]],
+        )
 
     has_result = _has_result_event(stdout) or events.get("duration_seconds") is not None
     text = _text_parts(stderr, stdout, checks_failed)

@@ -650,7 +650,7 @@ Wave B 失败轨迹显示，模型并非没有发现大小写与标点分支，�
 
 - `comet init` 交互式提供 Native、Classic、两者三种选择，并在选项中直接解释适用模型、流程重量和依赖边界；`both` 只并列安装两套永久入口，默认入口仍为 Native，不合并 change、状态或产物。
 - Native 尚未发布，因此不保留根目录 `comet.config.yaml` 兼容层，直接统一迁移到 `.comet/config.yaml`。同一 YAML 在顶层保留 Classic 配置，并增加 `schema`、`default_workflow`、`workflows` 与 `native` 映射；Native 产物仍只进入可配置的 `<artifact-root>/comet/`。
-- Native 增加自有的中英文阶段 Rule 和 Write/Edit Hook。Hook 只读取 Native 配置、selection 与 change 状态，在 Shape、Verify、Archive 阶段拦截普通实现写入，允许 Native 控制产物和平台配置写入；多 change 时遵循显式 selection，不调用 Classic 或外部 Skill。
+- Native 当时先增加了自有的中英文阶段 Rule 和 Write/Edit Hook，用于验证独立 Guard 边界；这套“分别安装”的中间形态已由后文的统一 Rule/Hook Router 取代。保留下来的是 Native Guard 本身：它只读取 Native 配置与 change 状态，在 Shape、Verify、Archive 阶段拦截普通实现写入，允许 Native 控制产物和平台配置写入，也不依赖外部 Skill。
 - Native Eval 的任务清单、Docker 夹具和验证器同步使用 `.comet/config.yaml`，隔离检查只允许该配置文件，不再把整个 `.comet/` 目录视为非法。
 
 这一决定替代本文早期章节中的根目录 `comet.config.yaml` 描述；早期文字继续保留，用于呈现设计如何从“Native 自有可见配置”演进到“Comet 统一项目配置”。
@@ -661,9 +661,9 @@ Native 尚未发布，因此不保留 `change.yaml` 兼容层，活跃与归档 
 
 Classic 本轮不迁移。未来 Classic 可以沿用同一状态文件命名，但 Native 与 Classic 仍保持各自独立的目录、schema、状态机和执行路径，不因文件同名而合并概念。
 
-## 2026-07-18：Native Hook 写入边界加固
+## 2026-07-18：Native Guard 写入边界加固
 
-Native Hook 的最终边界从“单个 `Write|Edit` 文件路径提示”收紧为一次工具调用级别的原子判断：同时解析 Claude 兼容的 `tool_name/tool_input` 与原生 `toolName/toolArgs` 载荷，识别多目标字段和 patch 文件头；任一目标属于普通项目文件时，Shape、Verify、Archive 都阻断整次写入。明确的非写工具继续放行；已识别写工具却无法恢复目标、空输入或畸形载荷在非 Build 阶段失败关闭。
+Native Guard 的最终边界从“单个 `Write|Edit` 文件路径提示”收紧为一次工具调用级别的原子判断：同时解析 Claude 兼容的 `tool_name/tool_input` 与原生 `toolName/toolArgs` 载荷，识别多目标字段和 patch 文件头；任一目标属于普通项目文件时，Shape、Verify、Archive 都阻断整次写入。明确的非写工具继续放行；已识别写工具却无法恢复目标、空输入或畸形载荷在非 Build 阶段失败关闭。后续统一路由只改变安装入口，不合并或弱化这套 Native Guard 语义。
 
 点号开头不再等于平台配置白名单，`.github/workflows/*`、`.husky/*`、`.env`、`.gitignore` 等都服从普通项目写入边界。跨阶段只保留 `.comet/config.yaml` 与配置的 `<artifact-root>/comet/` Native 控制产物；项目外路径继续超出本项目 Hook 的责任范围。Verify 只运行检查和记录证据，发现实现问题时先记录失败并返回 Build，再修改实现。
 
@@ -771,3 +771,11 @@ Init、Update、Doctor repair 与 Uninstall 同时识别新 Router/Rule 和旧 N
 |  56 | 多强模型验证                                | 发布级实验要求，不是 Runtime 功能。     |
 |  57 | 每次 strict success 的正确指标              | `native-eval-matrix` 的指标契约。       |
 |  58 | 避免 pass@3、原始耗时、检查数等误导性单指标 | `native-eval-matrix` 的报告约束。       |
+
+## 2026-07-19：时点证据、回答回合停点与最新版 Wave B
+
+这轮把完整 workflow 失败拆成了三类独立问题，而不是继续把所有失败归因给澄清质量：调用方要求的时点证据被归档后重建或覆盖；回答用户决定的回合越过 Shape→Build 停点；Eval controller 没有识别 `completed through Archive` / `Archived to` 等完成表达，错误追加 continuation 并破坏原本正确的冷恢复快照。Native 双语 Skill 因此只增加两条轻量执行契约：回答回合不执行下一阶段，调用方时点 envelope 由首次真实命令直接生成并在验证后保持不可变。Controller 与 validator 同时补充语义等价回归，避免把控制器误触发或 `case folding`、`str.lower()`、内部标点保留等正确规格误判为失败。
+
+迭代中的 `experiment_20260719_122705` 曾达到单样本 25/25；其后的 `experiment_20260719_123746` 暴露三条样本对 archive envelope 与冷恢复快照的时点纪律不稳定。`experiment_20260719_125807`、`experiment_20260719_131425` 和 `experiment_20260719_132636` 进一步区分了完成检测误触发、validator 过度字面化与真实停点失败。`experiment_20260719_133850` 是 `Connection closed mid-response`，已由 sample-quality 以 `excluded / network_failure` 保留但不计入分析集。
+
+最新版三样本实验为 `experiment_20260719_134408`，Skill hash `sha256:78f4845c33a528622b6095ff3acccb985ba89302f3b0c6875931ae2515cca7d6`，case hash `sha256:789f349fd0a2538b6ef9fada566fda0a63dfbb77b68c48611c77a6485cf46068`。三个样本分别为 23/25、24/25、25/25；都触发了一个 normalization 决策点并使用确定性回答，其中一条完整完成澄清、停点、冷恢复、实现、验证和归档。按仓库采用的 HumanEval 至少一次成功估计器，`n=3, c=1` 时 overall `pass@1 = 0.33`、`pass@3 = 1.00`；但 `pass^3 = 0.00`，因此只能证明三次预算内存在完整成功路径，不能声称三次都稳定。两条失败分别是缺少完整目标 specification，以及没有进入冷恢复边界。Website 若引用本轮，应同时展示 capability ceiling 与 reliability floor，不能只写 `pass@3 = 1.00`。

@@ -57,6 +57,19 @@ native:
 
 During an artifact-root move, the runtime-managed `pending_root_move` field is present. Ordinary write commands must stop while it exists; never choose the old or new root yourself.
 
+## Current request ownership
+
+```json
+{
+  "schema": "comet.selection.v2",
+  "workflow": "native",
+  "change": "add-sentence-counting",
+  "branch": null
+}
+```
+
+`.comet/current-change.json` is the current-request selection shared by Native and Classic, not a Native change artifact. Native `new` and `select` write `workflow: native`; the Hook Router then sends each write to only that workflow's Guard. Without a selection, read-only ownership can be inferred only when exactly one active Comet change exists across the project. Multiple candidates, stale selections, and archived targets fail closed.
+
 Project configuration is capped at 64 KiB, selection at 16 KiB, and change YAML at 256 KiB. The brief and each proposed specification are capped at 1 MiB. A change may contain at most 64 proposed specifications, and contract reads across the brief and specifications are capped at 4 MiB. The proposed-spec directory also has an entry budget, and the serialized `show` payload is capped at 10 MiB. On overflow, the runtime preserves the source and fails closed instead of silently truncating complete requirements.
 
 ## Change state

@@ -5,10 +5,11 @@
 每次恢复都从磁盘事实开始：
 
 1. 读取项目 `.comet/config.yaml`，确认唯一 artifact root；若有 `pending_root_move`，先运行 doctor。
-2. 运行 `comet native status`；多个 active change 时读取 Native selection 或让用户明确选择。
-3. 对目标 change 运行 `show` 和 `status <change-name> --details`，读取 `comet-state.yaml`、brief、拟议完整规格、verification、有界结构化 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；Verify/Archive 的验收 ID 则按 `acceptancePage.nextCursor` 独立分页取得，不依赖丢失的旧响应。
-4. 读取相关 canonical 规格、实现、规则、测试和当前工作区状态。
-5. 根据 phase 执行 Shape、Build、Verify 或 Archive，不依赖聊天记录猜阶段。
+2. 运行只读的 `comet native status`；多个 active change 时读取项目级共享 `.comet/current-change.json`，确认 `workflow: native` 和目标 change，或让用户明确选择。
+3. 对目标 change 运行只读的 `show` 和 `status <change-name> --details`，读取 `comet-state.yaml`、brief、拟议完整规格、verification、有界结构化 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；Verify/Archive 的验收 ID 则按 `acceptancePage.nextCursor` 独立分页取得，不依赖丢失的旧响应。
+4. 目标确认后运行 `comet native select <change-name>` 建立共享 selection；没有单独的 `resume` 命令，且只读命令不会隐式选择 change。
+5. 读取相关 canonical 规格、实现、规则、测试和当前工作区状态。
+6. 根据 phase 执行 Shape、Build、Verify 或 Archive，不依赖聊天记录猜阶段。
 
 状态、Run state、trajectory 或 transaction journal 畸形时停止写入并运行只读 doctor。不要通过手工改 phase 来绕过问题。
 

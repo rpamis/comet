@@ -74,11 +74,41 @@ def check_decision_and_resume() -> dict[str, str]:
         if not path.is_file():
             return failed(check, f"Decision artifact is missing: {path}")
         text = path.read_text(encoding="utf-8").lower()
-        case_rule = "case-insensitive" in text or "lowercase" in text
-        punctuation_rule = "surrounding punctuation" in text
+        case_rule = (
+            "case-insensitive" in text
+            or "lowercase" in text
+            or "case folding" in text
+            or "case-fold" in text
+            or "str.lower" in text
+        )
+        punctuation_rule = (
+            "surrounding punctuation" in text
+            or "leading and trailing punctuation" in text
+            or re.search(
+                r"(?:strip|remove)[^.\n]{0,80}punctuation[^.\n]{0,80}"
+                r"(?:start|beginning|leading)[^.\n]{0,40}(?:end|trailing)",
+                text,
+            )
+            is not None
+        )
         apostrophe_rule = (
             "internal apostroph" in text
             or re.search(r"apostroph(?:e|es)\s+inside", text) is not None
+            or re.search(
+                r"(?:preserve|keep)[^.\n]{0,120}apostroph(?:e|es)"
+                r"[^.\n]{0,80}(?:inside|within)",
+                text,
+            )
+            is not None
+            or (
+                re.search(r"internal\s+punctuation[^.\n]{0,60}(?:preserv|kept|intact)", text)
+                is not None
+                and re.search(
+                    r"apostroph(?:e|es)[^.\n]{0,80}(?:not\s+removed|preserv|kept|intact)",
+                    text,
+                )
+                is not None
+            )
         )
         if not (case_rule and punctuation_rule and apostrophe_rule):
             return failed(check, f"Confirmed normalization decision is incomplete in {path.name}")

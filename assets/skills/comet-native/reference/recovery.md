@@ -5,10 +5,11 @@
 Resume from facts on disk every time:
 
 1. Read the project's `.comet/config.yaml` and confirm the single artifact root. If `pending_root_move` exists, run doctor first.
-2. Run `comet native status`. With multiple active changes, read the Native selection or ask the user to choose explicitly.
-3. Run `show` and `status <change-name> --details` for the target change. Read `comet-state.yaml`, the brief, proposed complete specifications, verification, bounded structured findings, the `findingsTruncated` flag, and the latest checkpoint. When findings are truncated, handle the returned items and reread details. Fetch Verify/Archive acceptance IDs separately through `acceptancePage.nextCursor`; do not depend on a missing old response.
-4. Read relevant canonical specifications, implementation, rules, tests, and current workspace state.
-5. Execute Shape, Build, Verify, or Archive according to the phase instead of guessing from chat history.
+2. Run the read-only `comet native status`. With multiple active changes, read the shared project-level `.comet/current-change.json` and confirm `workflow: native` plus the target change, or ask the user to choose explicitly.
+3. Run the read-only `show` and `status <change-name> --details` for the target change. Read `comet-state.yaml`, the brief, proposed complete specifications, verification, bounded structured findings, the `findingsTruncated` flag, and the latest checkpoint. When findings are truncated, handle the returned items and reread details. Fetch Verify/Archive acceptance IDs separately through `acceptancePage.nextCursor`; do not depend on a missing old response.
+4. After confirming the target, run `comet native select <change-name>` to establish the shared selection. There is no separate `resume` command, and read-only commands never select a change implicitly.
+5. Read relevant canonical specifications, implementation, rules, tests, and current workspace state.
+6. Execute Shape, Build, Verify, or Archive according to the phase instead of guessing from chat history.
 
 When state, Run state, trajectory, or a transaction journal is malformed, stop writing and run read-only doctor. Never bypass the problem by editing `phase` manually.
 

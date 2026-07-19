@@ -2,6 +2,8 @@
 
 import importlib.util
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -368,3 +370,74 @@ def test_native_interrupted_transition_task_requires_runtime_recovery():
     prompt = task.render_prompt()
     assert "recover the existing `add-character-counting` change" in prompt
     assert "do not create a replacement change" in prompt
+
+
+def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(tmp_path: Path):
+    task = load_task("comet-native-interrupted-transition")
+    workspace = tmp_path / "workspace"
+    shutil.copytree(task.environment_dir, workspace)
+    runtime = get_tasks_dir().parents[2] / "assets/skills/comet-native/scripts/comet-native-runtime.mjs"
+    change = workspace / "docs/comet/changes/add-character-counting"
+
+    def run_native(*args: str) -> dict:
+        result = subprocess.run(
+            [
+                "node",
+                str(runtime),
+                *args,
+                "--json",
+                "--project-root",
+                str(workspace),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stdout or result.stderr
+        return json.loads(result.stdout)
+
+    status = run_native("status", "add-character-counting")
+
+    assert status["data"]["name"] == "add-character-counting"
+    assert status["data"]["phase"] == "shape"
+    assert status["data"]["migrationRequired"] is True
+
+    repaired = run_native(
+        "doctor",
+        "add-character-counting",
+        "--repair",
+        "--strategy",
+        "continue",
+    )
+
+    assert {finding["code"] for finding in repaired["data"]["findings"]} >= {
+        "schema-migrated",
+        "transition-recovered",
+    }
+    state = yaml.safe_load((change / "comet-state.yaml").read_text(encoding="utf-8"))
+    assert state["phase"] == "build"
+    assert state["run_id"] == "native-recovery-eval-run"
+    assert not (change / "runtime/transition.json").exists()
+
+    run_native(
+        "doctor",
+        "add-character-counting",
+        "--repair",
+        "--strategy",
+        "continue",
+    )
+
+    events = [
+        json.loads(line)
+        for line in (change / "runtime/trajectory.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    recovered = [
+        event
+        for event in events
+        if event.get("type") == "state_transitioned"
+        and event.get("data", {}).get("transitionId")
+        == "11111111-2222-4333-8444-555555555555"
+    ]
+    assert len(recovered) == 1

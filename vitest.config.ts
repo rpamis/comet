@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     testTimeout: 30000,
+    // Several test files spawn their own subprocesses and platform-install loops.
+    // Bound file-level parallelism so nested work does not starve individual tests.
+    maxWorkers: 4,
     include: ['test/**/*.test.ts'],
     exclude: [
       // Benchmark tests are developer-only tools, not part of CI validation
