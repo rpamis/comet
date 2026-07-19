@@ -75,6 +75,7 @@ const VERIFY_TONE = {
 
 function App() {
   const [snapshot, setSnapshot] = useState(null);
+  const [workflow, setWorkflow] = useState('classic');
   const [selectedId, setSelectedId] = useState(null);
   const [tab, setTab] = useState('active');
   const [query, setQuery] = useState('');
@@ -133,6 +134,11 @@ function App() {
       <section className="min-w-0">
         <Topbar
           project={snapshot?.project}
+          workflow={workflow}
+          onWorkflow={(nextWorkflow) => {
+            setWorkflow(nextWorkflow);
+            setQuery('');
+          }}
           loading={loading}
           query={query}
           onQuery={setQuery}
@@ -145,6 +151,13 @@ function App() {
         <div className="px-4 pb-12 pt-5 sm:px-6 lg:px-8">
           {!snapshot ? (
             <LoadingState />
+          ) : workflow === 'native' ? (
+            <NativeWorkflowPanel
+              native={snapshot.native}
+              git={snapshot.git}
+              query={query}
+              onPreview={setArtifact}
+            />
           ) : (
             <Dashboard
               snapshot={snapshot}
@@ -200,6 +213,8 @@ function Sidebar({ open, onClose }) {
 
 function Topbar({
   project,
+  workflow,
+  onWorkflow,
   loading,
   query,
   onQuery,
@@ -220,9 +235,12 @@ function Topbar({
       >
         ☰
       </button>
-      <div className="min-w-0 leading-tight">
-        <div className="truncate text-base font-semibold">项目仪表盘</div>
-        <div className="truncate text-xs text-meta">{project?.path ?? '—'}</div>
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="min-w-0 leading-tight">
+          <div className="truncate text-base font-semibold">项目仪表盘</div>
+          <div className="truncate text-xs text-meta">{project?.path ?? '—'}</div>
+        </div>
+        <WorkflowSwitch workflow={workflow} onWorkflow={onWorkflow} />
       </div>
       <label className="relative ml-auto w-[clamp(180px,24vw,300px)] max-sm:hidden">
         <SearchIcon className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-meta" />
@@ -253,6 +271,42 @@ function Topbar({
         {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
       </button>
     </header>
+  );
+}
+
+function WorkflowSwitch({ workflow, onWorkflow }) {
+  return (
+    <div
+      className="relative grid w-[140px] shrink-0 grid-cols-2 rounded-xl border border-border-soft bg-bg/70 p-0.5 shadow-sm backdrop-blur"
+      role="group"
+      aria-label="工作流模式"
+    >
+      <span
+        className={[
+          'pointer-events-none absolute bottom-0.5 left-0.5 top-0.5 w-[calc(50%-2px)] rounded-[9px] border border-accent/15 bg-accent-soft shadow-[0_1px_3px_rgba(15,23,42,0.08)] transition-transform duration-200 ease-out',
+          workflow === 'native' ? 'translate-x-full' : 'translate-x-0',
+        ].join(' ')}
+        aria-hidden="true"
+      />
+      {['classic', 'native'].map((item) => {
+        const selected = workflow === item;
+        const label = item === 'classic' ? 'Classic' : 'Native';
+        return (
+          <button
+            key={item}
+            type="button"
+            aria-pressed={selected}
+            className={[
+              'relative z-10 rounded-[9px] px-2 py-1.5 text-[11px] font-semibold leading-none tracking-[0.01em] transition-colors duration-200',
+              selected ? 'text-accent-active' : 'text-muted hover:text-fg',
+            ].join(' ')}
+            onClick={() => onWorkflow(item)}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -325,7 +379,6 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
         hint={`生成于 ${formatTimestamp(snapshot.project.generatedAt)}`}
       />
       <SummaryCards snapshot={snapshot} />
-      <NativeWorkflowPanel native={snapshot.native} />
       <SectionHead title="变更工作区" hint="查看文件产物与项目进度" />
       {isEmpty ? (
         <EmptyState />

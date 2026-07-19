@@ -21,10 +21,13 @@ export const NATIVE_DASHBOARD_LIMITS = Object.freeze({
   maxArchiveFindingCodes: 8,
   maxRequiredInputs: 8,
   maxConflictPeers: 8,
+  maxArtifactPreviews: 8,
+  maxArtifactPreviewBytes: 48 * 1024,
+  maxCapabilities: 8,
   maxNameBytes: 128,
   maxCodeBytes: 64,
   maxCommandBytes: 512,
-  maxSerializedBytes: 128 * 1024,
+  maxSerializedBytes: 16 * 1024 * 1024,
 });
 
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
@@ -75,12 +78,64 @@ export interface NativeDashboardChangeConflictSummary {
   peersTruncated: boolean;
 }
 
+export interface NativeDashboardArtifactPreview {
+  key: string;
+  label: string;
+  path: string;
+  exists: boolean;
+  content?: string;
+  truncated?: boolean;
+  size?: number;
+  updatedAt?: string;
+}
+
+export interface NativeDashboardProgressSummary {
+  createdAt: string | null;
+  checkpointAt: string | null;
+  checkpointPhase: NativePhase | null;
+  summary: string | null;
+  nextAction: string | null;
+  artifactCount: number;
+}
+
+export interface NativeDashboardSpecSummary {
+  total: number;
+  create: number;
+  replace: number;
+  remove: number;
+  capabilities: Array<{ capability: string; operation: 'create' | 'replace' | 'remove' }>;
+  capabilitiesTruncated: boolean;
+}
+
+export interface NativeDashboardAcceptanceSummary {
+  total: number;
+  evidenced: number;
+  skipped: number;
+  missing: number;
+}
+
+export interface NativeDashboardImplementationSummary {
+  complete: boolean;
+  declaredArtifactCount: number;
+  changeCount: number;
+  unattributedCount: number;
+  unresolvedCount: number;
+}
+
+export interface NativeDashboardRepairSummary {
+  disposition: 'manual-stop' | 'hard-stop';
+  overrideRecorded: boolean;
+}
+
 export interface NativeDashboardChangeProjection {
   workflow: 'native';
   name: string;
+  status: 'active' | 'archived';
+  archivedAt: string | null;
   phase: NativePhase | 'invalid';
   revision: number | null;
   selected: boolean;
+  approval: 'implicit' | 'confirmed' | null;
   nextCommand: string | null;
   verificationResult: NativeVerificationResult;
   verificationFreshness: NativeDashboardVerificationFreshness;
@@ -89,6 +144,12 @@ export interface NativeDashboardChangeProjection {
   findings: NativeDashboardFindingSummary;
   archive: NativeDashboardArchiveSummary;
   conflicts: NativeDashboardChangeConflictSummary;
+  artifacts: NativeDashboardArtifactPreview[];
+  progress: NativeDashboardProgressSummary;
+  specs: NativeDashboardSpecSummary;
+  acceptance: NativeDashboardAcceptanceSummary | null;
+  implementation: NativeDashboardImplementationSummary | null;
+  repair: NativeDashboardRepairSummary | null;
 }
 
 export interface NativeDashboardConflictSummary {
@@ -385,13 +446,19 @@ function projectChange(
   radar: NativeConflictRadarSnapshot | null | undefined,
 ): NativeDashboardChangeProjection {
   const archive = archiveSummary(status, preflight);
+  const checkpoint = status.checkpoint;
+  const repair = status.repair;
   return {
     workflow: 'native',
     name: status.name,
+    status: 'active',
+    archivedAt: null,
     phase: normalizePhase(status.phase),
     revision:
       Number.isSafeInteger(status.revision) && (status.revision ?? 0) > 0 ? status.revision : null,
     selected: status.selected === true,
+    approval:
+      status.approval === 'implicit' || status.approval === 'confirmed' ? status.approval : null,
     nextCommand: safeNativeCommand(status.nextCommand, status.name),
     verificationResult: verificationResult(status.verificationResult),
     verificationFreshness: archive.evidenceFreshness,
@@ -400,15 +467,38 @@ function projectChange(
     findings: findingSummary(status.findingSummary),
     archive,
     conflicts: changeConflictSummary(status.name, radar),
+    artifacts: [],
+    progress: {
+      createdAt: null,
+      checkpointAt: checkpoint?.createdAt ?? null,
+      checkpointPhase: checkpoint?.phase ?? null,
+      summary: checkpoint?.summary ?? null,
+      nextAction: checkpoint?.nextAction ?? null,
+      artifactCount: nonNegativeInteger(checkpoint?.artifactCount),
+    },
+    specs: {
+      total: nonNegativeInteger(status.specChanges),
+      create: 0,
+      replace: 0,
+      remove: 0,
+      capabilities: [],
+      capabilitiesTruncated: false,
+    },
+    acceptance: null,
+    implementation: null,
+    repair:
+      repair?.disposition === 'manual-stop' || repair?.disposition === 'hard-stop'
+        ? { disposition: repair.disposition, overrideRecorded: repair.overrideRecorded === true }
+        : null,
   };
 }
 
 /**
  * Convert Native's existing read-only Runtime projections into a bounded Dashboard payload.
  *
- * The adapter intentionally projects only machine-level summaries. Detailed findings, artifact
- * paths, conflict signals, Native root locations, verification reports, and evidence envelopes
- * never cross this boundary.
+ * The adapter intentionally projects only machine-level summaries. The collector may add bounded,
+ * user-authored Markdown previews, but detailed findings, absolute Native root paths, conflict
+ * signals, and evidence envelopes never cross this boundary.
  */
 export function adaptNativeDashboardProjection(
   input: NativeDashboardAdapterInput,

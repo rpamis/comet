@@ -22,6 +22,11 @@ describe('Native dashboard web source contracts', () => {
       'change.continuation',
       'change.findings.codes',
       'change.conflicts.peers',
+      'change.progress',
+      'change.specs',
+      'change.acceptance',
+      'change.implementation',
+      'change.repair',
       'peer.change',
       'peer.classification',
     ]) {
@@ -40,7 +45,7 @@ describe('Native dashboard web source contracts', () => {
       '.signalCount',
       '.path',
       '.report',
-      '.evidence',
+      '.evidenceRefs',
       '.operations',
       '.message',
     ]) {
@@ -55,6 +60,11 @@ describe('Native dashboard web source contracts', () => {
     );
 
     expect(source).toContain("from './native-workflow-panel.jsx'");
-    expect(source).toContain('<NativeWorkflowPanel native={snapshot.native} />');
+    expect(source).toContain("useState('classic')");
+    expect(source).toContain("workflow === 'native'");
+    expect(source).toContain('native={snapshot.native}');
+    expect(source).toContain('git={snapshot.git}');
+    expect(source).toContain('onPreview={setArtifact}');
+    expect(source).not.toContain('<NativeWorkflowPanel native={snapshot.native} />');
   });
 });

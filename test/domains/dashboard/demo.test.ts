@@ -11,4 +11,28 @@ describe('dashboard demo data', () => {
     expect(source).not.toContain('Benchmark result attached');
     expect(source).not.toContain("currentStep: 'needs-benchmark'");
   });
+
+  it('includes representative Native workflow projections', async () => {
+    const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+
+    expect(DEMO_SNAPSHOT.native).toMatchObject({
+      schema: 'comet.dashboard.native.v1',
+      totalChangeCount: 3,
+      visibleChangeCount: 3,
+      omittedChangeCount: 0,
+      changesTruncated: false,
+    });
+    expect(DEMO_SNAPSHOT.native.changes.map((change) => change.phase)).toEqual([
+      'build',
+      'verify',
+      'archive',
+    ]);
+    expect(DEMO_SNAPSHOT.native.changes.some((change) => change.archiveReady)).toBe(true);
+    expect(
+      DEMO_SNAPSHOT.native.changes.some((change) => change.continuation?.requiresUserDecision),
+    ).toBe(true);
+    expect(DEMO_SNAPSHOT.native.changes.some((change) => change.conflicts.peers.length > 0)).toBe(
+      true,
+    );
+  });
 });
