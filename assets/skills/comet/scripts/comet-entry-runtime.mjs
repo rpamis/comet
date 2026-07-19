@@ -7245,7 +7245,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument2(source, options = {}) {
+    function parseDocument3(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -7271,7 +7271,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument2(src, options);
+      const doc = parseDocument3(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -7307,7 +7307,7 @@ var require_public_api = __commonJS({
     }
     exports.parse = parse;
     exports.parseAllDocuments = parseAllDocuments;
-    exports.parseDocument = parseDocument2;
+    exports.parseDocument = parseDocument3;
     exports.stringify = stringify2;
   }
 });
@@ -7368,9 +7368,12 @@ var require_dist = __commonJS({
 import path4 from "path";
 
 // domains/comet-native/native-config.ts
-var import_yaml = __toESM(require_dist(), 1);
+var import_yaml2 = __toESM(require_dist(), 1);
 import { promises as fs3 } from "fs";
 import path3 from "path";
+
+// domains/workflow-contract/project-config.ts
+var import_yaml = __toESM(require_dist(), 1);
 
 // domains/comet-native/native-protected-file.ts
 import { createHash } from "node:crypto";
@@ -7668,6 +7671,10 @@ function parseConfig(value) {
   if (!workflows.includes(root.default_workflow)) {
     throw new Error("workflows must include default_workflow");
   }
+  const ambientResume = root.ambient_resume ?? true;
+  if (typeof ambientResume !== "boolean") {
+    throw new Error("ambient_resume must be true or false");
+  }
   const native = record(root.native, "native");
   rejectUnknown(native, NATIVE_KEYS, "native");
   if (typeof native.artifact_root !== "string") {
@@ -7682,6 +7689,7 @@ function parseConfig(value) {
     schema: "comet.project.v1",
     default_workflow: root.default_workflow,
     workflows,
+    ambient_resume: ambientResume,
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
@@ -7704,7 +7712,7 @@ async function readProjectConfig(projectRoot) {
     maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
     label: PROJECT_CONFIG_FILE
   })).text;
-  const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
+  const document = (0, import_yaml2.parseDocument)(source, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
   }

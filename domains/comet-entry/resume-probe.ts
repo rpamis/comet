@@ -27,6 +27,7 @@ import type {
 } from '../comet-native/native-types.js';
 import { resolveCometEntry } from './resolve-entry.js';
 import type { CometEntryResolutionSource, CometEntrySkill, CometWorkflow } from './types.js';
+import { readAmbientResumeEnabled } from '../workflow-contract/project-config.js';
 
 export const COMET_RESUME_PROBE_SCHEMA_VERSION = 'comet.resume_probe.v2' as const;
 
@@ -505,6 +506,15 @@ export async function resolveCometEntryResumeProbe(
   let entry: Awaited<ReturnType<typeof resolveCometEntry>>;
   try {
     projectRoot = await discoverNativeProject(startPath);
+    if (!(await readAmbientResumeEnabled(projectRoot))) {
+      return result({
+        action: 'out_of_scope',
+        confidence: 'none',
+        reasonCode: 'ambient-resume-disabled',
+        reason: 'Ambient Resume is disabled by .comet/config.yaml',
+        evidence: [{ source: 'state', quote: 'ambient_resume: false' }],
+      });
+    }
     entry = await resolveCometEntry(projectRoot);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

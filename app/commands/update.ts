@@ -896,7 +896,6 @@ async function updateSingleProject(
   for (const scope of ['project', 'global'] as const) {
     const scopeTargets = targets.filter((candidate) => candidate.scope === scope);
     if (scopeTargets.length === 0) continue;
-    if (scope === 'project' && nativeProject) continue;
     // An explicit --language always wins. Otherwise only force the persisted language when
     // every platform installed at this scope agrees — if two platforms disagree (e.g. one
     // installed with English skills, another with Chinese) and the user didn't say which one

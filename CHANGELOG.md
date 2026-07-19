@@ -19,6 +19,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Selectable project workflows**: Project-scope `comet init` now explains and offers Native, Classic, or both independent workflows; new projects default `/comet` to Native, `--workflow both` installs both sets of project assets without combining their state, and Native shares the established `.comet/config.yaml` location with preserved Classic settings while keeping its configurable Comet artifact root.
 - **Explicit Native state files**: Active and archived Native changes now store their workflow state in `comet-state.yaml`, giving Comet-owned changes a stable, recognizable state filename while keeping Native and Classic schemas and lifecycles independent.
 - **Partitioned status and recovery**: `comet status` now reports the configured entry and separate Native, Classic, and unmanaged OpenSpec changes, while `comet resume-probe` uses a workflow-aware v2 result to resume only through `/comet-native` or `/comet-classic`, fail closed on malformed configuration or workflow state, and preserve each workflow's own ambiguity and worktree rules.
+- **Configurable Ambient Resume**: Project `.comet/config.yaml` now exposes one `ambient_resume` switch for both Native and Classic. Generated configuration comments explain each managed setting and follow the language selected during init or update, while older configs keep Ambient Resume enabled by default.
 
 ### Fixed
 

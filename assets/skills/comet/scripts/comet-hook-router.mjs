@@ -7257,7 +7257,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument4(source, options = {}) {
+    function parseDocument5(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -7283,7 +7283,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument4(src, options);
+      const doc = parseDocument5(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -7319,7 +7319,7 @@ var require_public_api = __commonJS({
     }
     exports.parse = parse;
     exports.parseAllDocuments = parseAllDocuments;
-    exports.parseDocument = parseDocument4;
+    exports.parseDocument = parseDocument5;
     exports.stringify = stringify3;
   }
 });
@@ -8883,7 +8883,7 @@ import { promises as fs11 } from "fs";
 import path11 from "path";
 
 // domains/comet-native/native-change.ts
-var import_yaml3 = __toESM(require_dist(), 1);
+var import_yaml4 = __toESM(require_dist(), 1);
 import { promises as fs10 } from "fs";
 import path10 from "path";
 
@@ -9090,9 +9090,12 @@ async function readNativeBoundedTextFile(options) {
 }
 
 // domains/comet-native/native-config.ts
-var import_yaml2 = __toESM(require_dist(), 1);
+var import_yaml3 = __toESM(require_dist(), 1);
 import { promises as fs9 } from "fs";
 import path9 from "path";
+
+// domains/workflow-contract/project-config.ts
+var import_yaml2 = __toESM(require_dist(), 1);
 
 // domains/comet-native/native-protected-file.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -9327,6 +9330,10 @@ function parseConfig(value) {
   if (!workflows.includes(root.default_workflow)) {
     throw new Error("workflows must include default_workflow");
   }
+  const ambientResume = root.ambient_resume ?? true;
+  if (typeof ambientResume !== "boolean") {
+    throw new Error("ambient_resume must be true or false");
+  }
   const native = record(root.native, "native");
   rejectUnknown(native, NATIVE_KEYS, "native");
   if (typeof native.artifact_root !== "string") {
@@ -9341,6 +9348,7 @@ function parseConfig(value) {
     schema: "comet.project.v1",
     default_workflow: root.default_workflow,
     workflows,
+    ambient_resume: ambientResume,
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
@@ -9363,7 +9371,7 @@ async function readProjectConfig(projectRoot) {
     maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
     label: PROJECT_CONFIG_FILE
   })).text;
-  const document = (0, import_yaml2.parseDocument)(source, { uniqueKeys: true });
+  const document = (0, import_yaml3.parseDocument)(source, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
   }
@@ -9783,7 +9791,7 @@ async function readChangeDocumentFile(file, root = path10.dirname(file)) {
     ref,
     maxBytes: NATIVE_CHANGE_DOCUMENT_MAX_BYTES
   });
-  const document = (0, import_yaml3.parseDocument)(source.text, { uniqueKeys: true });
+  const document = (0, import_yaml4.parseDocument)(source.text, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
   }

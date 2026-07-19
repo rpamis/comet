@@ -1118,7 +1118,7 @@ describe('update command helpers', () => {
     expect(claude).not.toContain('<comet-ambient-resume>');
   });
 
-  it('updates Native project Skills without creating or rewriting Classic project state', async () => {
+  it('updates Native project Skills and shared config comments without rewriting Classic state', async () => {
     const fakeHome = path.join(tmpDir, 'native-update-home');
     const nativeConfig = [
       'schema: comet.project.v1',
@@ -1194,9 +1194,13 @@ describe('update command helpers', () => {
     await expect(fs.access(path.join(tmpDir, '.comet', 'skills'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
-    await expect(fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')).resolves.toBe(
-      nativeConfig,
+    const updatedConfig = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
+    expect(updatedConfig).toContain(
+      '# Enables automatic recovery through the read-only Ambient Resume probe',
     );
+    expect(updatedConfig).toContain('ambient_resume: true');
+    expect(updatedConfig).toContain('keep: true');
+    expect(updatedConfig).toContain('artifact_root: docs');
     await expect(
       fs.readFile(path.join(tmpDir, 'docs', 'superpowers', 'keep.md'), 'utf8'),
     ).resolves.toBe('keep classic working files\n');

@@ -97,6 +97,25 @@ describe('resumeProbe command', () => {
     expect(result.stdout).toContain('next: /comet-classic');
   });
 
+  it('honors ambient_resume: false in a legacy Classic project config', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'language: en\nambient_resume: false\n',
+      'utf8',
+    );
+
+    const result = runCli(tmpDir, ['resume-probe', tmpDir, '--utterance', '继续', '--json']);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(parseResult(result.stdout)).toMatchObject({
+      workflow: null,
+      skill: null,
+      action: 'out_of_scope',
+      reason: 'Ambient Resume is disabled by .comet/config.yaml',
+      nextCommand: null,
+    });
+  });
+
   it('routes a configured Native project without considering Classic changes', async () => {
     const initialized = runCli(tmpDir, ['native', 'init', '--language', 'en']);
     expect(initialized.status, initialized.stderr).toBe(0);

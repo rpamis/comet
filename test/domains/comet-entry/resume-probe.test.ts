@@ -171,6 +171,30 @@ describe('Comet entry resume probe v2', () => {
     });
   });
 
+  it.each(['native', 'classic'] as const)(
+    'stops before inspecting %s workflow state when Ambient Resume is disabled',
+    async (workflow) => {
+      const config = {
+        ...defaultProjectConfig('.'),
+        default_workflow: workflow,
+        ambient_resume: false,
+      };
+      await writeProjectConfig(projectRoot, config);
+      await createNative(projectRoot, 'native-disabled');
+      await createClassic(projectRoot, 'classic-disabled');
+
+      await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject(
+        {
+          workflow: null,
+          skill: null,
+          action: 'out_of_scope',
+          reasonCode: 'ambient-resume-disabled',
+          nextCommand: null,
+        },
+      );
+    },
+  );
+
   it('preserves the Classic dirty-worktree confirmation rule behind the v2 facade', async () => {
     await createClassic(projectRoot, 'classic-dirty');
     const initialized = spawnSync('git', ['init'], { cwd: projectRoot, encoding: 'utf8' });

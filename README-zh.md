@@ -131,6 +131,13 @@ comet init --workflow classic
 comet init --workflow both
 ```
 
+生成的配置会按安装时选择的语言写入用途注释。环境感知恢复是 Native 与 Classic 共用的项目级开关；如需停用只读探针，可以修改：
+
+```yaml
+# 是否启用只读的环境感知恢复探针，同时作用于 Native 和 Classic
+ambient_resume: false
+```
+
 Native 产物也可以放在项目内指定根目录，例如 `docs/comet/`：
 
 ```bash
@@ -587,7 +594,7 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
 ```
 your-project/
 ├── .comet/
-│   └── config.yaml              # 项目级全局配置（context_compression、review_mode、auto_transition）
+│   └── config.yaml              # 共享项目配置（工作流、环境感知恢复、语言和 Classic 默认值）
 ├── .claude/skills/              # 平台技能目录（Comet + OpenSpec + Superpowers）
 │   ├── comet/SKILL.md
 │   │   └── scripts/

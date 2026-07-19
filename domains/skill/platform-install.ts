@@ -11,11 +11,15 @@ import {
   type Platform,
 } from '../../platform/install/platforms.js';
 import type { InstallScope, InstallMode } from '../../platform/install/types.js';
-import { formatSupportedArtifactLanguages, resolveArtifactLanguage } from './languages.js';
+import { resolveArtifactLanguage } from './languages.js';
 import type { LanguageConfig, SkillLanguageId } from './languages.js';
 import { installCometProjectInstructions } from './project-instructions.js';
 import { readJsonObjectFile } from './json-object.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
+import {
+  projectConfigComment,
+  renderStructuredProjectConfig,
+} from '../workflow-contract/project-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1490,15 +1494,33 @@ async function installKiroHooks(
 
 function managedConfigFields(language: string = 'en') {
   const artifactLanguage = resolveArtifactLanguage(language);
+  const commentLanguage = artifactLanguage.id === 'zh-CN' ? 'zh-CN' : 'en';
   return [
     {
       key: 'language',
       def: artifactLanguage.id,
-      comment: `# language: ${formatSupportedArtifactLanguages()}`,
+      comment: projectConfigComment('language', commentLanguage),
     },
-    { key: 'context_compression', def: 'off', comment: '# context_compression: off | beta' },
-    { key: 'review_mode', def: 'standard', comment: '# review_mode: off | standard | thorough' },
-    { key: 'auto_transition', def: 'true', comment: '# auto_transition: true | false' },
+    {
+      key: 'context_compression',
+      def: 'off',
+      comment: projectConfigComment('context_compression', commentLanguage),
+    },
+    {
+      key: 'review_mode',
+      def: 'standard',
+      comment: projectConfigComment('review_mode', commentLanguage),
+    },
+    {
+      key: 'auto_transition',
+      def: 'true',
+      comment: projectConfigComment('auto_transition', commentLanguage),
+    },
+    {
+      key: 'ambient_resume',
+      def: 'true',
+      comment: projectConfigComment('ambient_resume', commentLanguage),
+    },
   ] as const;
 }
 
@@ -1578,7 +1600,14 @@ async function mergeProjectConfig(
       const raw = field.key === 'language' ? resolvedLanguage : (existing[field.key] ?? field.def);
       document.set(field.key, raw === 'true' ? true : raw === 'false' ? false : raw);
     }
-    await writeFile(configPath, document.toString(), 'utf-8');
+    await writeFile(
+      configPath,
+      renderStructuredProjectConfig(
+        document.toJS() as Record<string, unknown>,
+        resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en',
+      ),
+      'utf-8',
+    );
     return;
   }
   await writeFile(configPath, renderProjectConfig(existing, language), 'utf-8');

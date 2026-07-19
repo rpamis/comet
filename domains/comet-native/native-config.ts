@@ -1,6 +1,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { parseDocument, stringify } from 'yaml';
+import { parseDocument } from 'yaml';
+
+import { renderStructuredProjectConfig } from '../workflow-contract/project-config.js';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import { readNativeProtectedTextFile } from './native-protected-file.js';
@@ -100,6 +102,10 @@ function parseConfig(value: unknown): CometProjectConfig {
   if (!workflows.includes(root.default_workflow)) {
     throw new Error('workflows must include default_workflow');
   }
+  const ambientResume = root.ambient_resume ?? true;
+  if (typeof ambientResume !== 'boolean') {
+    throw new Error('ambient_resume must be true or false');
+  }
   const native = record(root.native, 'native');
   rejectUnknown(native, NATIVE_KEYS, 'native');
   if (typeof native.artifact_root !== 'string') {
@@ -114,6 +120,7 @@ function parseConfig(value: unknown): CometProjectConfig {
     schema: 'comet.project.v1',
     default_workflow: root.default_workflow,
     workflows,
+    ambient_resume: ambientResume,
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
@@ -129,6 +136,7 @@ export function defaultProjectConfig(
   return {
     schema: 'comet.project.v1',
     default_workflow: 'native',
+    ambient_resume: true,
     native: { artifact_root: normalizeArtifactRootRef(artifactRoot), language },
   };
 }
@@ -207,6 +215,7 @@ export async function writeProjectConfig(
     schema: config.schema,
     default_workflow: config.default_workflow,
     workflows: config.workflows ?? [config.default_workflow],
+    ambient_resume: config.ambient_resume,
     native: {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
@@ -236,6 +245,7 @@ export async function writeProjectConfig(
     schema: validated.schema,
     default_workflow: validated.default_workflow,
     workflows: validated.workflows,
+    ambient_resume: validated.ambient_resume,
     native: {
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
@@ -262,7 +272,10 @@ export async function writeProjectConfig(
   };
   const canonical = path.join(projectRoot, ...PROJECT_CONFIG_FILE.split('/'));
   await fs.mkdir(path.dirname(canonical), { recursive: true });
-  await atomicWriteText(canonical, stringify(document));
+  await atomicWriteText(
+    canonical,
+    renderStructuredProjectConfig(document, validated.native.language === 'zh-CN' ? 'zh-CN' : 'en'),
+  );
 }
 
 export async function resolveNativeProject(options: {

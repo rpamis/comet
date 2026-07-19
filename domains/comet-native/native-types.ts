@@ -35,6 +35,7 @@ export interface CometProjectConfig {
   schema: 'comet.project.v1';
   default_workflow: 'native' | 'classic';
   workflows?: Array<'native' | 'classic'>;
+  ambient_resume: boolean;
   native: {
     artifact_root: string;
     language: 'en' | 'zh-CN';

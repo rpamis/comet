@@ -7245,7 +7245,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument4(source, options = {}) {
+    function parseDocument5(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -7271,7 +7271,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument4(src, options);
+      const doc = parseDocument5(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -7307,7 +7307,7 @@ var require_public_api = __commonJS({
     }
     exports.parse = parse;
     exports.parseAllDocuments = parseAllDocuments;
-    exports.parseDocument = parseDocument4;
+    exports.parseDocument = parseDocument5;
     exports.stringify = stringify4;
   }
 });
@@ -7514,7 +7514,7 @@ import { promises as fs13 } from "fs";
 import path17 from "path";
 
 // domains/comet-native/native-change.ts
-var import_yaml2 = __toESM(require_dist(), 1);
+var import_yaml3 = __toESM(require_dist(), 1);
 import { promises as fs12 } from "fs";
 import path16 from "path";
 
@@ -7882,9 +7882,71 @@ async function atomicWriteJson(file, value, options = {}) {
 }
 
 // domains/comet-native/native-config.ts
-var import_yaml = __toESM(require_dist(), 1);
+var import_yaml2 = __toESM(require_dist(), 1);
 import { promises as fs5 } from "fs";
 import path6 from "path";
+
+// domains/workflow-contract/project-config.ts
+var import_yaml = __toESM(require_dist(), 1);
+var COMMENTS = {
+  en: {
+    schema: "# Configuration schema used by Comet. Do not edit this value.",
+    default_workflow: "# Default workflow entered by /comet. Must also appear in workflows.",
+    workflows: "# Workflows enabled in this project: native, classic, or both.",
+    ambient_resume: "# Enables automatic recovery through the read-only Ambient Resume probe for both Native and Classic. Set false to disable it.\n# ambient_resume: true | false",
+    language: "# Artifact language used for workflow documents.\n# language: en | zh-CN",
+    context_compression: "# Controls beta context compression for new Classic changes.\n# context_compression: off | beta",
+    review_mode: "# Sets the default review depth for new Classic changes.\n# review_mode: off | standard | thorough",
+    auto_transition: "# Automatically enters the next Classic phase after a phase passes.\n# auto_transition: true | false",
+    native: "# Native workflow settings. They do not change Classic state or behavior.",
+    "native.artifact_root": "# Root directory where Native stores Comet specs, changes, and runtime data.",
+    "native.language": "# Artifact language used by Native workflow documents.\n# language: en | zh-CN"
+  },
+  "zh-CN": {
+    schema: "# Comet 使用的配置格式版本，请勿修改此值。",
+    default_workflow: "# `/comet` 默认进入的工作流；该值也必须出现在 workflows 中。",
+    workflows: "# 此项目启用的工作流，可填写 native、classic 或同时启用两者。",
+    ambient_resume: "# 是否启用只读的环境感知恢复探针，同时作用于 Native 和 Classic；设为 false 可关闭自动工作流恢复。\n# ambient_resume: true | false",
+    language: "# 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
+    context_compression: "# 新建 Classic change 是否启用 beta 上下文压缩。\n# 可选值：off | beta",
+    review_mode: "# 新建 Classic change 默认使用的审查深度。\n# 可选值：off | standard | thorough",
+    auto_transition: "# Classic 阶段通过后是否自动进入下一阶段。\n# 可选值：true | false",
+    native: "# Native 工作流配置，不会改变 Classic 的状态或行为。",
+    "native.artifact_root": "# Native 产物的存放根目录，包括规格、change 和运行时数据。",
+    "native.language": "# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN"
+  }
+};
+function projectConfigComment(key, language) {
+  return COMMENTS[language][key];
+}
+function commentKey(line, inNative) {
+  const match = /^(\s*)([a-z_]+):/u.exec(line);
+  if (!match) return null;
+  const indent = match[1].length;
+  const key = match[2];
+  if (indent === 0 && key in COMMENTS.en) return key;
+  if (indent === 2 && inNative && (key === "artifact_root" || key === "language")) {
+    return `native.${key}`;
+  }
+  return null;
+}
+function renderStructuredProjectConfig(value, language) {
+  const output = [];
+  let inNative = false;
+  for (const line of (0, import_yaml.stringify)(value).trimEnd().split("\n")) {
+    const key = commentKey(line, inNative);
+    if (key) {
+      const indent = line.match(/^\s*/u)?.[0] ?? "";
+      for (const comment of projectConfigComment(key, language).split("\n")) {
+        output.push(`${indent}${comment}`);
+      }
+    }
+    output.push(line);
+    if (/^[a-z_]+:/u.test(line)) inNative = line.startsWith("native:");
+  }
+  output.push("");
+  return output.join("\n");
+}
 
 // domains/comet-native/native-protected-file.ts
 import { createHash as createHash3 } from "node:crypto";
@@ -8533,6 +8595,10 @@ function parseConfig(value) {
   if (!workflows.includes(root.default_workflow)) {
     throw new Error("workflows must include default_workflow");
   }
+  const ambientResume = root.ambient_resume ?? true;
+  if (typeof ambientResume !== "boolean") {
+    throw new Error("ambient_resume must be true or false");
+  }
   const native = record(root.native, "native");
   rejectUnknown(native, NATIVE_KEYS, "native");
   if (typeof native.artifact_root !== "string") {
@@ -8547,6 +8613,7 @@ function parseConfig(value) {
     schema: "comet.project.v1",
     default_workflow: root.default_workflow,
     workflows,
+    ambient_resume: ambientResume,
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
@@ -8558,6 +8625,7 @@ function defaultProjectConfig(artifactRoot = ".", language = "en") {
   return {
     schema: "comet.project.v1",
     default_workflow: "native",
+    ambient_resume: true,
     native: { artifact_root: normalizeArtifactRootRef(artifactRoot), language }
   };
 }
@@ -8576,7 +8644,7 @@ async function readProjectConfig(projectRoot) {
     maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
     label: PROJECT_CONFIG_FILE
   })).text;
-  const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
+  const document = (0, import_yaml2.parseDocument)(source, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
   }
@@ -8597,7 +8665,7 @@ async function existingConfigDocument(projectRoot) {
       maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
       label: PROJECT_CONFIG_FILE
     })).text;
-    const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
+    const document = (0, import_yaml2.parseDocument)(source, { uniqueKeys: true });
     if (document.errors.length > 0) throw new Error(document.errors[0].message);
     const value = document.toJS();
     if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -8621,6 +8689,7 @@ async function writeProjectConfig(projectRoot, config) {
     schema: config.schema,
     default_workflow: config.default_workflow,
     workflows: config.workflows ?? [config.default_workflow],
+    ambient_resume: config.ambient_resume,
     native: {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
@@ -8646,6 +8715,7 @@ async function writeProjectConfig(projectRoot, config) {
     schema: validated.schema,
     default_workflow: validated.default_workflow,
     workflows: validated.workflows,
+    ambient_resume: validated.ambient_resume,
     native: {
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
@@ -8668,7 +8738,10 @@ async function writeProjectConfig(projectRoot, config) {
   };
   const canonical = path6.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
   await fs5.mkdir(path6.dirname(canonical), { recursive: true });
-  await atomicWriteText(canonical, (0, import_yaml.stringify)(document));
+  await atomicWriteText(
+    canonical,
+    renderStructuredProjectConfig(document, validated.native.language === "zh-CN" ? "zh-CN" : "en")
+  );
 }
 async function resolveNativeProject(options) {
   const projectRoot = await discoverNativeProject(options.startPath);
@@ -11818,7 +11891,7 @@ async function readChangeDocumentFile(file, root = path16.dirname(file)) {
     ref,
     maxBytes: NATIVE_CHANGE_DOCUMENT_MAX_BYTES
   });
-  const document = (0, import_yaml2.parseDocument)(source.text, { uniqueKeys: true });
+  const document = (0, import_yaml3.parseDocument)(source.text, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
   }
@@ -11862,7 +11935,7 @@ async function createNativeChangeFile(paths, state) {
     if (error.code !== "ENOENT") throw error;
   }
   if (state.revision !== 1) throw new Error("New Native change must start at revision 1");
-  await atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(state)));
+  await atomicWriteText(file, (0, import_yaml3.stringify)(nativeChangeDocument(state)));
 }
 async function compareAndSwapNativeChangeFile(file, state, expectedRevision) {
   const next = {
@@ -11881,7 +11954,7 @@ async function compareAndSwapNativeChangeFile(file, state, expectedRevision) {
       }
       return current;
     },
-    write: (value) => atomicWriteText(file, (0, import_yaml2.stringify)(nativeChangeDocument(value))),
+    write: (value) => atomicWriteText(file, (0, import_yaml3.stringify)(nativeChangeDocument(value))),
     equals: (left, right) => JSON.stringify(nativeChangeDocument(left)) === JSON.stringify(nativeChangeDocument(right)),
     conflict: (actualRevision) => new NativeChangeRevisionConflictError(state.name, expectedRevision, actualRevision)
   });
@@ -20854,7 +20927,7 @@ import { constants as fsConstants4, promises as fs25 } from "node:fs";
 import path39 from "node:path";
 
 // domains/comet-native/native-schema-migration.ts
-var import_yaml3 = __toESM(require_dist(), 1);
+var import_yaml4 = __toESM(require_dist(), 1);
 import { randomUUID as randomUUID7 } from "crypto";
 import { promises as fs24 } from "fs";
 import path38 from "path";
@@ -21089,7 +21162,7 @@ function parseMigrationJournal(value, expectedName) {
   if (nextState.name !== expectedName) {
     throw new Error("Schema migration target state change mismatch");
   }
-  if (sha256Text((0, import_yaml3.stringify)(migrationStateDocument(nextState))) !== journal.targetHash) {
+  if (sha256Text((0, import_yaml4.stringify)(migrationStateDocument(nextState))) !== journal.targetHash) {
     throw new Error("Schema migration state target hash does not match its document");
   }
   let transition;
@@ -21385,7 +21458,7 @@ async function continueNativeSchemaMigrationLocked(paths, name, hooks) {
         `Native schema migration source changed for ${name}: expected ${journal.sourceHash}, actual ${actualHash}`
       );
     }
-    await atomicWriteText(changeFile, (0, import_yaml3.stringify)(migrationStateDocument(journal.nextState)));
+    await atomicWriteText(changeFile, (0, import_yaml4.stringify)(migrationStateDocument(journal.nextState)));
     await hooks?.afterStateWritten?.(journal);
   }
   if (journal.transition) {
@@ -21608,7 +21681,7 @@ async function prepareNextMigration(options) {
     nativeChangeDir(options.paths, options.name),
     NATIVE_CHANGE_STATE_FILE
   );
-  const targetContent = (0, import_yaml3.stringify)(migrationStateDocument(nextState));
+  const targetContent = (0, import_yaml4.stringify)(migrationStateDocument(nextState));
   return {
     schema: "comet.native.schema-migration.v1",
     id: options.id,
@@ -21781,7 +21854,7 @@ function refForKind(kind, hash6) {
 function managedDependency(value) {
   return value !== null && MANAGED_REF_PATTERN.test(value) ? [value] : [];
 }
-function parseDocument3(kind, hash6, value, expectedChange) {
+function parseDocument4(kind, hash6, value, expectedChange) {
   if (kind === "snapshots") {
     return {
       canonical: parseNativeSnapshotProjection(value, hash6),
@@ -21902,7 +21975,7 @@ async function readCanonicalDocument(options) {
         cause: error
       });
     }
-    const parsed = parseDocument3(options.kind, options.hash, json, options.name);
+    const parsed = parseDocument4(options.kind, options.hash, json, options.name);
     if (text !== JSON.stringify(parsed.canonical, null, 2) + "\n") {
       throw new Error(`Native evidence entry is not canonically serialized: ${options.ref}`);
     }

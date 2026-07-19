@@ -387,7 +387,8 @@ describe('skills', () => {
       await createWorkingDirs(tmpDir, 'zh-CN');
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
-      expect(config).toContain('# language: en | zh-CN');
+      expect(config).toContain('# 工作流文档使用的产物语言');
+      expect(config).not.toContain('# Artifact language used for workflow documents');
       expect(config).toContain('language: zh-CN');
     });
 
@@ -2871,14 +2872,18 @@ describe('skills', () => {
   describe('renderProjectConfig', () => {
     it('renders all managed fields with defaults when no existing values', () => {
       const output = renderProjectConfig({});
-      expect(output).toContain('# language: en | zh-CN');
+      expect(output).toContain('# Artifact language used for workflow documents');
       expect(output).toContain('language: en');
-      expect(output).toContain('# context_compression: off | beta');
+      expect(output).toContain('# Controls beta context compression');
       expect(output).toContain('context_compression: off');
-      expect(output).toContain('# review_mode: off | standard | thorough');
+      expect(output).toContain('# Sets the default review depth');
       expect(output).toContain('review_mode: standard');
-      expect(output).toContain('# auto_transition: true | false');
+      expect(output).toContain('# Automatically enters the next Classic phase');
       expect(output).toContain('auto_transition: true');
+      expect(output).toContain(
+        '# Enables automatic recovery through the read-only Ambient Resume probe',
+      );
+      expect(output).toContain('ambient_resume: true');
     });
 
     it('preserves existing managed field values', () => {
@@ -2897,6 +2902,9 @@ describe('skills', () => {
     it('uses the selected artifact language as the default language value', () => {
       const output = renderProjectConfig({}, 'zh-CN');
       expect(output).toContain('language: zh-CN');
+      expect(output).toContain('# 工作流文档使用的产物语言');
+      expect(output).toContain('# 是否启用只读的环境感知恢复探针');
+      expect(output).not.toContain('# Artifact language used for workflow documents');
     });
 
     it('forces the language field to the passed value even when an existing value differs', () => {

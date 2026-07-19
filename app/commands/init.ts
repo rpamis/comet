@@ -944,7 +944,9 @@ export async function initCommand(
         configuredWorkflows.length !== selectedWorkflows.length ||
         selectedWorkflows.some((selected) => !configuredWorkflows.includes(selected));
       if (workflowDecision.writeProjectConfig || (existing !== null && workflowsChanged)) {
-        const config = existing ?? defaultProjectConfig(workflowDecision.artifactRoot);
+        const config =
+          existing ??
+          defaultProjectConfig(workflowDecision.artifactRoot, language.artifactLanguage);
         config.default_workflow = workflowDecision.workflow;
         config.workflows = [...selectedWorkflows];
         await writeProjectConfig(projectPath, config);

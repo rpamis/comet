@@ -148,6 +148,13 @@ comet init --workflow classic
 comet init --workflow both
 ```
 
+Generated configuration comments follow the language selected during installation. Ambient Resume is a shared project setting for Native and Classic; disable the read-only probe with:
+
+```yaml
+# Enables the read-only Ambient Resume probe for both Native and Classic
+ambient_resume: false
+```
+
 Native artifacts can also live under a project-relative root such as `docs/comet/`:
 
 ```bash
@@ -622,7 +629,7 @@ Comet ensures agent execution reliability through automated state transitions:
 ```
 your-project/
 ├── .comet/
-│   └── config.yaml              # Project-level global config (context_compression, review_mode, auto_transition)
+│   └── config.yaml              # Shared project config (workflows, Ambient Resume, language, Classic defaults)
 ├── .claude/skills/              # Platform skills dir (Comet + OpenSpec + Superpowers)
 │   ├── comet/SKILL.md
 │   │   └── scripts/

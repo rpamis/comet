@@ -30,11 +30,12 @@ describe('Native project configuration', () => {
       schema: 'comet.project.v1',
       default_workflow: 'native',
       workflows: ['native'],
+      ambient_resume: true,
       native: { artifact_root: 'docs', language: 'en' },
     });
-    expect(await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8')).toBe(
-      'schema: comet.project.v1\ndefault_workflow: native\nworkflows:\n  - native\nnative:\n  artifact_root: docs\n  language: en\n',
-    );
+    const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
+    expect(source).toContain('# Enables automatic recovery');
+    expect(source).toContain('ambient_resume: true');
   });
 
   it('reads an older project config without a language as English', async () => {
@@ -44,6 +45,27 @@ describe('Native project configuration', () => {
     );
 
     expect((await readProjectConfig(projectRoot))?.native.language).toBe('en');
+    expect((await readProjectConfig(projectRoot))?.ambient_resume).toBe(true);
+  });
+
+  it('renders Chinese comments for a Chinese project config', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'zh-CN'));
+
+    const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
+    expect(source).toContain('# 是否启用只读的环境感知恢复探针');
+    expect(source).toContain('# Native 产物的存放根目录');
+    expect(source).not.toContain('# Enables automatic recovery');
+  });
+
+  it('rejects a non-boolean Ambient Resume setting', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      'schema: comet.project.v1\ndefault_workflow: native\nambient_resume: sometimes\nnative:\n  artifact_root: .\n',
+    );
+
+    await expect(readProjectConfig(projectRoot)).rejects.toThrow(
+      'ambient_resume must be true or false',
+    );
   });
 
   it('round-trips a transaction-bound root-move cleanup marker', async () => {
