@@ -1,6 +1,11 @@
 import { existsSync, promises as fs, readFileSync } from 'fs';
 import path from 'path';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
+import {
+  driftStaleReason,
+  resolveBranchBinding,
+  unboundDetachedMessage,
+} from './classic-branch-binding.js';
 import { resolveCurrentChange } from './classic-current-change.js';
 import { readClassicState, readLegacyState } from './classic-store.js';
 import type { ClassicPhase, ClassicState } from './classic-state.js';
@@ -310,7 +315,33 @@ async function repoSourceGoverningChange(
       ),
     };
   }
-  if (active.length === 1) return active[0];
+  if (active.length === 1) {
+    // No selection file exists, so the drift check inside
+    // resolveCurrentChange never ran — enforce the branch binding here
+    // (read-only) before letting the sole active change govern the write.
+    const sole = active[0];
+    if (sole.changeDir !== null) {
+      const outcome = await resolveBranchBinding(sole.changeDir, {
+        heal: false,
+        cwd: projectRoot,
+      });
+      const name = governingChangeName(sole) ?? 'unknown';
+      if (outcome.status === 'drift') {
+        return {
+          blockedResult: blockedStaleSelection(
+            relativePath,
+            driftStaleReason(name, outcome.boundBranch, outcome.currentBranch),
+          ),
+        };
+      }
+      if (outcome.status === 'unbound-detached') {
+        return {
+          blockedResult: blockedStaleSelection(relativePath, unboundDetachedMessage(name)),
+        };
+      }
+    }
+    return sole;
+  }
   return {
     blockedResult: blockedMultipleChanges(
       relativePath,

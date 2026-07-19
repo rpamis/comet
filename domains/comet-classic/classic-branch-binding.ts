@@ -63,6 +63,51 @@ export function evaluateBranchBinding(input: {
   return { status: 'drift', boundBranch: input.boundBranch, currentBranch: input.currentBranch };
 }
 
+/**
+ * A `BranchBindingVerdict` joined with the live git facts it was computed
+ * from, so callers never re-derive them (or re-read the state file).
+ */
+export type BranchBindingOutcome = (BranchBindingVerdict | { status: 'healed'; branch: string }) & {
+  bindingRequired: boolean;
+  currentBranch: string | null;
+};
+
+/**
+ * Single entry point for every consumer of the branch binding: reads
+ * isolation/bound_branch straight from `.comet.yaml` (typed — a yaml `null`
+ * is a JS null, never a "null" string), spawns git lazily, and optionally
+ * performs the lazy heal. Read-only paths (the PreToolUse hook) must pass
+ * `heal: false` so resolving never writes to disk.
+ */
+export async function resolveBranchBinding(
+  changeDir: string,
+  options: { heal: boolean; cwd: string },
+): Promise<BranchBindingOutcome> {
+  const file = path.join(changeDir, '.comet.yaml');
+  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: false });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid .comet.yaml: ${document.errors[0].message}`);
+  }
+  const record = (document.toJS() ?? {}) as Record<string, unknown>;
+  const isolation = typeof record.isolation === 'string' ? record.isolation : null;
+  const boundBranch =
+    typeof record.bound_branch === 'string' && record.bound_branch !== ''
+      ? record.bound_branch
+      : null;
+  const bindingRequired = requiresBranchBinding(isolation);
+  const currentBranch = liveGitBranch(options.cwd);
+  const gitWorkTree =
+    bindingRequired && boundBranch === null && currentBranch === null
+      ? isGitWorkTree(options.cwd)
+      : true;
+  const verdict = evaluateBranchBinding({ isolation, boundBranch, currentBranch, gitWorkTree });
+  if (verdict.status === 'needs-heal' && options.heal) {
+    await healBoundBranch(changeDir, verdict.branch);
+    return { status: 'healed', branch: verdict.branch, bindingRequired, currentBranch };
+  }
+  return { ...verdict, bindingRequired, currentBranch };
+}
+
 export async function healBoundBranch(changeDir: string, branch: string): Promise<void> {
   const file = path.join(changeDir, '.comet.yaml');
   const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: false });

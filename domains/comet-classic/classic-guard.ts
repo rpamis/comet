@@ -21,11 +21,9 @@ import { readClassicState } from './classic-store.js';
 import { readClassicConfigValue } from './classic-project-config.js';
 import {
   driftBlockedMessage,
-  evaluateBranchBinding,
-  healBoundBranch,
-  isGitWorkTree,
-  liveGitBranch,
+  resolveBranchBinding,
   unboundDetachedMessage,
+  type BranchBindingOutcome,
 } from './classic-branch-binding.js';
 
 const GREEN = '\u001b[32m';
@@ -494,22 +492,28 @@ async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
 }
 
 async function boundBranchMatches(changeDir: string, change: string): Promise<CheckResult> {
-  const isolation = await readField(changeDir, 'isolation');
-  const boundBranch = await readField(changeDir, 'bound_branch');
-  const verdict = evaluateBranchBinding({
-    isolation,
-    boundBranch: boundBranch && boundBranch !== 'null' ? boundBranch : null,
-    currentBranch: liveGitBranch(process.cwd()),
-    gitWorkTree: isGitWorkTree(process.cwd()),
-  });
-  if (verdict.status === 'drift')
-    return fail(driftBlockedMessage(change, verdict.boundBranch, verdict.currentBranch));
-  if (verdict.status === 'unbound-detached') return fail(unboundDetachedMessage(change));
-  if (verdict.status === 'needs-heal') {
-    await healBoundBranch(changeDir, verdict.branch);
-    return pass(`bound_branch lazily set to ${verdict.branch}`);
+  let outcome: BranchBindingOutcome;
+  try {
+    outcome = await resolveBranchBinding(changeDir, { heal: true, cwd: process.cwd() });
+  } catch (error) {
+    throw new GuardFailure(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
   }
-  return pass();
+  switch (outcome.status) {
+    case 'drift':
+      return fail(driftBlockedMessage(change, outcome.boundBranch, outcome.currentBranch));
+    case 'unbound-detached':
+      return fail(unboundDetachedMessage(change));
+    case 'healed':
+      return pass(`bound_branch lazily set to ${outcome.branch}`);
+    case 'needs-heal':
+    case 'ok':
+    case 'not-applicable':
+      return pass();
+    default: {
+      const exhaustive: never = outcome;
+      throw new Error(`unhandled branch binding status: ${JSON.stringify(exhaustive)}`);
+    }
+  }
 }
 
 async function isolationSelected(changeDir: string, change: string): Promise<CheckResult> {
@@ -917,11 +921,14 @@ async function applyStateUpdate(
   change: string,
   changeDir: string,
   phase: string,
-  context: ClassicRunContext,
 ): Promise<void> {
   const event = CLASSIC_GUARD_TRANSITION_EVENT[phase as ClassicPhase];
   if (!event) return;
 
+  // Re-read instead of reusing the run context captured before the checks:
+  // boundBranchMatches may have lazily healed bound_branch on disk, and a
+  // stale projection would write the pre-heal null back over it.
+  const context = await ensureClassicRuntimeRun(changeDir);
   const result = applyClassicTransition(context.classic, event);
   await transitionClassicRuntimeRun(changeDir, result.classic, context.run, {
     event,
@@ -988,7 +995,7 @@ export const classicGuardCommand: ClassicCommandHandler = async (args, options) 
     output.stderr.push('');
     output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
     if (flag === '--apply') {
-      await applyStateUpdate(output, change, changeDir, phase, runContext);
+      await applyStateUpdate(output, change, changeDir, phase);
     }
     return output.toResult(0);
   } catch (error) {

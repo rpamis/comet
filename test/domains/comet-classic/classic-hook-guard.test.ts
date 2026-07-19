@@ -484,6 +484,19 @@ describe('Classic hook guard command', () => {
     },
   );
 
+  it('fails closed for a drifted sole active change without a selection', async () => {
+    const dir = await makeProject();
+    await initializeGitProject(dir);
+    await seedChange(dir, 'build-ready', 'build', { isolation: 'current', boundBranch: 'main' });
+    git(dir, ['switch', '-c', 'other']);
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("bound to branch 'main'");
+    expect(result.stderr).toContain("current branch is 'other'");
+  });
+
   it('still blocks selected full-workflow build source writes without a design document', async () => {
     const dir = await makeProject();
     await seedChange(dir, 'illegal-build', 'build', { designDoc: null });

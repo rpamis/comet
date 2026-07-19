@@ -347,6 +347,26 @@ describe('comet guard', () => {
       ]);
     }
 
+    it('keeps a bound_branch healed during guard --apply', async () => {
+      execFileSync('git', ['switch', '-c', 'feat-x'], { cwd: tmpDir, stdio: 'ignore' });
+      await createChange(tmpDir, 'apply-heal', buildYaml);
+      await writeFile(
+        path.join(tmpDir, 'package.json'),
+        JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
+      );
+
+      const result = runNode(tmpDir, guardScript, ['apply-heal', 'build', '--apply'], {}, 20000);
+
+      expect(result.status, JSON.stringify({ stderr: result.stderr })).toBe(0);
+      expect(result.stderr).toContain('bound_branch lazily set to feat-x');
+      expect(result.stderr).toContain('[TRANSITION] build-complete');
+      const yaml = await fs.readFile(
+        path.join(tmpDir, 'openspec', 'changes', 'apply-heal', '.comet.yaml'),
+        'utf-8',
+      );
+      expect(yaml).toContain('bound_branch: feat-x');
+    });
+
     it('explains how to recover when a commandless build has no recorded evidence', async () => {
       await createChange(tmpDir, 'commandless-build', buildYaml);
 
