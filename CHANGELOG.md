@@ -10,8 +10,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Current-isolation drift detection**: `isolation: current` now persists its bound branch in the committed change state instead of a local sidecar, so switching branches mid-change is reliably detected at every build/verify/archive entry check and by the write guard, and is no longer silently reset by re-selecting the current change. Establishing `isolation: current` on a detached HEAD is now rejected.
-- **Branch/worktree drift detection**: `isolation: branch` and `isolation: worktree` now use the same bound-branch safety checks as current-branch isolation, so switching branches inside those workspace modes blocks entry checks and write guards until the user switches back or explicitly rebinds the change.
+- **Current-isolation drift detection**: `isolation: current` now records the branch it was established on in the change state, so switching branches mid-change is reliably detected at every build/verify/archive entry check and by the write guard — including when only a single change is active — and is no longer silently reset by re-selecting the current change. Selecting a change whose bound branch has drifted is refused instead of reported as successful. Legacy changes without a recorded binding bind to the current Git branch on their next select or check, projects that are not Git worktrees are never blocked by branch binding, and establishing `isolation: current` on a detached HEAD is rejected.
+- **Branch/worktree drift detection**: `isolation: branch` and `isolation: worktree` now use the same bound-branch safety checks as current-branch isolation, so switching branches inside those workspace modes blocks entry checks and write guards until the user switches back or explicitly rebinds the change. Switching a change between workspace modes re-points the binding to the current branch, while repeating the same mode keeps the existing binding.
 - **`comet status`**: Now surfaces the selected isolation mode and bound branch for branch-bound workspace modes in both text and `--json` output.
 - **Archive branch handling for `current` isolation**: No longer offers feature-branch-oriented merge/PR/keep choices; instead asks whether to push the current branch or keep it local.
 - **Hotfix/tweak workspace isolation**: No longer defaults silently to the current branch; both presets now pause to ask the user to choose between working directly on the current branch, creating a new branch, or creating a worktree.
@@ -20,7 +20,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Skill discovery resilience**: Malformed YAML frontmatter in an unrelated local Skill no longer crashes bundle factory guidance or candidate discovery; Comet now skips the broken description and continues scanning.
-- **Workspace branch binding compatibility**: Legacy changes without `bound_branch` now bind to the current Git branch when selected or checked, while projects that are not Git worktrees can choose a workspace isolation mode without being blocked by detached-HEAD branch binding.
 
 ## What's Changed [0.4.0-beta.5] - 2026-07-14
 
