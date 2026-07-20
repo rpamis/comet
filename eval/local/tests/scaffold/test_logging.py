@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from scaffold.python.logging import (
     ExperimentLogger,
     TreatmentResult,
@@ -38,9 +40,7 @@ def test_save_artifacts_excludes_controller_cli_snapshot(tmp_path: Path):
 
     workspace = tmp_path / "workspace"
     (workspace / "_eval_current_comet/dist").mkdir(parents=True)
-    (workspace / "_eval_current_comet/dist/index.js").write_text(
-        "export {};\n", encoding="utf-8"
-    )
+    (workspace / "_eval_current_comet/dist/index.js").write_text("export {};\n", encoding="utf-8")
     (workspace / "result.md").write_text("ok", encoding="utf-8")
 
     _save_artifacts(tmp_path, "COMET_NATIVE_PHASE1", 1, workspace)
@@ -120,13 +120,67 @@ def test_extract_events_accumulates_duration_across_results():
     events = extract_events(parse_output(stdout))
 
     assert events["duration_seconds"] == 2.0
-    # Preserve the legacy latest-result semantics for telemetry whose resumed
-    # Claude CLI contract may already be cumulative. Do not sum it blindly.
-    assert events["num_turns"] == 4
-    assert events["input_tokens"] == 200
-    assert events["output_tokens"] == 40
-    assert events["total_tokens"] == 240
-    assert events["total_cost_usd"] == 0.2
+    assert events["subject_invocations"] == 2
+    assert events["num_turns"] == 6
+    assert events["input_tokens"] == 300
+    assert events["output_tokens"] == 60
+    assert events["total_tokens"] == 360
+    assert events["total_cost_usd"] == pytest.approx(0.3)
+
+
+def test_extract_events_reports_deduplicated_context_pressure():
+    assistant = {
+        "type": "assistant",
+        "message": {
+            "id": "message-1",
+            "model": "mimo-v2.5-pro",
+            "content": [],
+            "usage": {
+                "input_tokens": 2_000,
+                "cache_read_input_tokens": 8_000,
+                "cache_creation_input_tokens": 0,
+            },
+        },
+    }
+    stdout = "\n".join(
+        [
+            json.dumps(assistant),
+            json.dumps(assistant),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "id": "message-2",
+                        "model": "mimo-v2.5-pro",
+                        "content": [],
+                        "usage": {
+                            "input_tokens": 1_000,
+                            "cache_read_input_tokens": 4_000,
+                        },
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "result",
+                    "modelUsage": {
+                        "mimo-v2.5-pro": {
+                            "contextWindow": 200_000,
+                            "inputTokens": 3_000,
+                        }
+                    },
+                }
+            ),
+        ]
+    )
+
+    events = extract_events(parse_output(stdout))
+
+    assert events["peak_context_input_tokens"] == 10_000
+    assert events["p95_context_input_tokens"] == 10_000
+    assert events["average_context_input_tokens"] == 7_500
+    assert events["peak_context_window_tokens"] == 200_000
+    assert events["peak_context_occupancy_pct"] == 5
 
 
 def test_extract_events_ignores_missing_result_duration():
@@ -307,7 +361,13 @@ def test_treatment_result_exposes_eval_metadata():
             "eval_manifest": "demo/comet/eval.yaml",
             "interaction": {"mode": "none"},
             "artifact_references": {"report": "logs/reports/demo_report.json"},
-            "failure_attribution": [{"bucket": "task", "check": "validator missing", "reason": "task or validator path assumption failed"}],
+            "failure_attribution": [
+                {
+                    "bucket": "task",
+                    "check": "validator missing",
+                    "reason": "task or validator path assumption failed",
+                }
+            ],
         },
     )
 

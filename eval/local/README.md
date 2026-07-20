@@ -116,6 +116,13 @@ interaction 配置。某个 task 缺少 repetition 时，报告会降低该 k �
 兼容比较，并明确标注无法证明当时的 runner、image、tool、model 或 interaction 身份，
 不会把比较时一致误写成历史 checkout 与执行环境已被精确证明一致。
 
+严格对齐报告还会从 raw stdout 重算成对效率指标，包括模型启动/恢复次数、Agent 轮次、
+工具调用、累计耗时、输入/输出/cache token、总 token、模型成本和上下文压力。主要视图只
+统计两侧都通过的同一 `task + repetition + case_hash`，避免把未完成任务的低消耗误当成
+效率提升。多次恢复产生的顶层 `result` 按调用累加；流式 assistant 事件按 message id 去重。
+上下文指标只有在两侧都保存逐消息 usage 时才可比较，coverage 过低时报告会明确提示，不能
+据此宣传 workflow 间的上下文改进。
+
 也可以设置 `COMET_EVAL_REPORT_CONFIG=/path/to/report-config.json`。
 
 每次运行的报告都会包含 profile、Skill 来源元数据、run id、产物引用，以及结构化失败归因。归因桶包括 `harness`、`workflow`、`task` 和 `model`。

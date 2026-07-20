@@ -21,6 +21,7 @@ from scaffold.python.aligned_comparison import (
     case_manifest_payload,
     expected_case_matrix_payload,
 )
+from scaffold.python.report_outputs import render_markdown_html
 
 
 def _digest(value: str) -> str:
@@ -107,6 +108,7 @@ def _write_run(
     passed: bool,
     manifest_variant: str = "canonical",
     duration_ms: tuple[int, ...] | None = (1000,),
+    result_telemetry: dict | None = None,
 ) -> None:
     reports = experiment / "reports"
     raw = experiment / "raw"
@@ -117,7 +119,14 @@ def _write_run(
     if duration_ms is not None:
         stdout.write_text(
             "\n".join(
-                json.dumps({"type": "result", "duration_ms": duration}) for duration in duration_ms
+                json.dumps(
+                    {
+                        "type": "result",
+                        "duration_ms": duration,
+                        **(result_telemetry or {}),
+                    }
+                )
+                for duration in duration_ms
             ),
             encoding="utf-8",
         )
@@ -645,6 +654,80 @@ def test_duration_is_recomputed_from_raw_stdout_with_explicit_coverage(tmp_path:
     assert "9999" not in report
     assert "Stored historical duration fields are not mixed" in report
     assert "COMET_NATIVE_PHASE1 missing raw duration: `task-a#r3`" in report
+
+
+def test_aligned_report_compares_cumulative_success_efficiency(tmp_path: Path):
+    candidate, baseline, tasks = _make_experiments(tmp_path)
+    _write_run(
+        candidate,
+        task="task-a",
+        treatment="COMET_NATIVE_PHASE1",
+        rep=1,
+        passed=True,
+        result_telemetry={
+            "num_turns": 4,
+            "usage": {"input_tokens": 100, "output_tokens": 20},
+            "total_cost_usd": 0.1,
+        },
+    )
+    _write_run(
+        baseline,
+        task="task-a",
+        treatment="COMET_FULL_040_BETA",
+        rep=1,
+        passed=True,
+        result_telemetry={
+            "num_turns": 8,
+            "usage": {"input_tokens": 200, "output_tokens": 40},
+            "total_cost_usd": 0.2,
+        },
+    )
+
+    report = build_aligned_report(
+        candidate,
+        baseline,
+        candidate_treatment="COMET_NATIVE_PHASE1",
+        baseline_treatment="COMET_FULL_040_BETA",
+        tasks_dir=tasks,
+    )
+
+    assert "## Paired task efficiency from raw stdout" in report
+    assert "### Strict-success intersection (1 paired runs)" in report
+    assert "| Agent turns | 1/1 | 4.00 | 8.00 | 50.0% less |" in report
+    assert "| Total tokens incl. cache | 1/1 | 120 | 240 | 50.0% less |" in report
+    html = render_markdown_html(report, title="Comet Aligned Experiment Comparison Report")
+    assert "Model starts/resumes" in html
+    assert "模型启动/恢复次数" in html
+    assert "Total tokens incl. cache" in html
+
+
+def test_aligned_report_excludes_raw_stdout_without_a_result_event(tmp_path: Path):
+    candidate, baseline, tasks = _make_experiments(tmp_path)
+    _write_run(
+        candidate,
+        task="task-a",
+        treatment="COMET_NATIVE_PHASE1",
+        rep=1,
+        passed=True,
+        duration_ms=None,
+    )
+    _write_run(
+        baseline,
+        task="task-a",
+        treatment="COMET_FULL_040_BETA",
+        rep=1,
+        passed=True,
+    )
+
+    report = build_aligned_report(
+        candidate,
+        baseline,
+        candidate_treatment="COMET_NATIVE_PHASE1",
+        baseline_treatment="COMET_FULL_040_BETA",
+        tasks_dir=tasks,
+    )
+
+    assert "| Model starts/resumes | 0/1 | N/A | N/A | N/A |" in report
 
 
 def test_duration_rejects_a_raw_artifact_from_another_task(tmp_path: Path):

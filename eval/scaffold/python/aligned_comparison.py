@@ -1014,6 +1014,32 @@ def recompute_duration(
     report_path: Path,
 ) -> float | None:
     """Recompute additive duration from raw stdout; never use stale report duration."""
+    telemetry = recompute_telemetry(
+        report,
+        experiment_dir,
+        task=task,
+        treatment=treatment,
+        rep=rep,
+        report_path=report_path,
+    )
+    if telemetry is None:
+        return None
+    duration = telemetry.get("duration_seconds")
+    if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+        return None
+    return float(duration)
+
+
+def recompute_telemetry(
+    report: dict[str, Any],
+    experiment_dir: Path,
+    *,
+    task: str,
+    treatment: str,
+    rep: int,
+    report_path: Path,
+) -> dict[str, Any] | None:
+    """Recompute cumulative task telemetry from the controller-bound raw stdout."""
     path = _artifact_path(
         report,
         experiment_dir,
@@ -1039,10 +1065,10 @@ def recompute_duration(
     stdout = _read_raw_stdout(path, allowed_root)
     if stdout is None:
         return None
-    duration = extract_events(parse_output(stdout)).get("duration_seconds")
-    if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+    telemetry = extract_events(parse_output(stdout))
+    if telemetry.get("subject_invocations") == 0:
         return None
-    return float(duration)
+    return telemetry
 
 
 def _hash_short(value: str) -> str:
@@ -1104,6 +1130,113 @@ def _duration_summary(
     total = sum(values) if values else None
     average = statistics.fmean(values) if values else None
     return len(pairs), len(values), total, average, tuple(missing)
+
+
+_EFFICIENCY_METRICS = (
+    ("subject_invocations", "Model starts/resumes", "count"),
+    ("num_turns", "Agent turns", "count"),
+    ("tool_calls", "Tool calls", "tool-count"),
+    ("duration_seconds", "Wall duration", "seconds"),
+    ("input_tokens", "Non-cache input tokens", "tokens"),
+    ("output_tokens", "Output tokens", "tokens"),
+    ("cache_read_input_tokens", "Cache-read input tokens", "tokens"),
+    ("total_tokens", "Total tokens incl. cache", "tokens"),
+    ("total_cost_usd", "Model cost", "usd"),
+    ("peak_context_input_tokens", "Peak context input", "tokens"),
+    ("p95_context_input_tokens", "P95 context input", "tokens"),
+    ("peak_context_occupancy_pct", "Peak context occupancy", "percent"),
+)
+
+
+def _telemetry_value(events: dict[str, Any], key: str, kind: str) -> float | None:
+    value: Any = events.get(key)
+    if kind == "tool-count":
+        value = len(value) if isinstance(value, list) else value
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _format_efficiency(value: float | None, kind: str) -> str:
+    if value is None:
+        return "N/A"
+    if kind == "seconds":
+        return f"{value:,.0f}s"
+    if kind == "tokens":
+        return f"{value:,.0f}"
+    if kind == "usd":
+        return f"${value:,.3f}"
+    if kind == "percent":
+        return f"{value:,.1f}%"
+    return f"{value:,.2f}"
+
+
+def _format_reduction(candidate: float | None, baseline: float | None) -> str:
+    if candidate is None or baseline in (None, 0):
+        return "N/A"
+    change = (baseline - candidate) / baseline * 100
+    return f"{abs(change):.1f}% {'less' if change >= 0 else 'more'}"
+
+
+def _telemetry_by_pair(
+    pairs: Sequence[AlignedPair],
+    candidate_dir: Path,
+    baseline_dir: Path,
+) -> list[tuple[AlignedPair, dict[str, Any] | None, dict[str, Any] | None]]:
+    output = []
+    for pair in pairs:
+        sides = []
+        for record, directory in (
+            (pair.candidate, candidate_dir),
+            (pair.baseline, baseline_dir),
+        ):
+            sides.append(
+                recompute_telemetry(
+                    record.report,
+                    directory,
+                    task=record.task,
+                    treatment=record.treatment,
+                    rep=record.rep,
+                    report_path=record.report_path,
+                )
+            )
+        output.append((pair, sides[0], sides[1]))
+    return output
+
+
+def _render_efficiency_table(
+    telemetry: Sequence[tuple[AlignedPair, dict[str, Any] | None, dict[str, Any] | None]],
+    *,
+    successes_only: bool,
+) -> list[str]:
+    selected = [
+        item
+        for item in telemetry
+        if not successes_only
+        or (_run_passed(item[0].candidate.report) and _run_passed(item[0].baseline.report))
+    ]
+    lines = [
+        "| Metric | Complete pairs | Candidate average | Baseline average | Candidate delta |",
+        "|--------|----------------|-------------------|------------------|-----------------|",
+    ]
+    for key, label, kind in _EFFICIENCY_METRICS:
+        values = []
+        for _pair, candidate, baseline in selected:
+            if candidate is None or baseline is None:
+                continue
+            candidate_value = _telemetry_value(candidate, key, kind)
+            baseline_value = _telemetry_value(baseline, key, kind)
+            if candidate_value is not None and baseline_value is not None:
+                values.append((candidate_value, baseline_value))
+        candidate_average = statistics.fmean(value[0] for value in values) if values else None
+        baseline_average = statistics.fmean(value[1] for value in values) if values else None
+        lines.append(
+            f"| {label} | {len(values)}/{len(selected)} | "
+            f"{_format_efficiency(candidate_average, kind)} | "
+            f"{_format_efficiency(baseline_average, kind)} | "
+            f"{_format_reduction(candidate_average, baseline_average)} |"
+        )
+    return lines
 
 
 def build_aligned_report(
@@ -1385,6 +1518,32 @@ def build_aligned_report(
         lines.append(f"- {treatment} missing raw duration: {references}")
     if duration_missing:
         lines.append("")
+
+    paired_telemetry = _telemetry_by_pair(alignment.pairs, candidate_dir, baseline_dir)
+    successful_pairs = sum(
+        _run_passed(pair.candidate.report) and _run_passed(pair.baseline.report)
+        for pair in alignment.pairs
+    )
+    lines.extend(
+        [
+            "## Paired task efficiency from raw stdout",
+            "",
+            "Result telemetry is additive across the initial model start, deterministic user-answer resumes, and cold resumes. Token totals include cache-read tokens. Context input deduplicates streamed assistant events by message id.",
+            "",
+            f"### Strict-success intersection ({successful_pairs} paired runs)",
+            "",
+            "This is the primary completed-task efficiency view: both Native and Classic passed the same task repetition.",
+            "",
+            *_render_efficiency_table(paired_telemetry, successes_only=True),
+            "",
+            f"### All aligned runs ({len(alignment.pairs)} paired runs)",
+            "",
+            *_render_efficiency_table(paired_telemetry, successes_only=False),
+            "",
+            "> Context rows require per-assistant-message usage from both sides. Low pair coverage means the historical CLI did not preserve enough context telemetry; those rows must not be promoted as a workflow comparison.",
+            "",
+        ]
+    )
 
     candidate_manifests = _manifest_by_task(candidate_records)
     baseline_manifests = _manifest_by_task(baseline_records)

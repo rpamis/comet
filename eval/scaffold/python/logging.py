@@ -1,6 +1,7 @@
 """Output parsing, event extraction, and experiment logging for Claude CLI."""
 
 import json
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -68,6 +69,7 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
         "commands_run": [],
         "skills_invoked": [],
         "duration_seconds": None,
+        "subject_invocations": 0,
         "num_turns": None,
         "input_tokens": None,
         "output_tokens": None,
@@ -76,42 +78,99 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
         "total_tokens": None,
         "total_cost_usd": None,
         "model_usage": {},
+        "peak_context_input_tokens": None,
+        "p95_context_input_tokens": None,
+        "average_context_input_tokens": None,
+        "peak_context_window_tokens": None,
+        "peak_context_occupancy_pct": None,
     }
 
     # Map tool_use_id -> index in tool_calls list for matching outputs
     tool_id_to_index = {}
     duration_ms_total = 0.0
     duration_observed = False
+    additive_metrics = {
+        "num_turns": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "total_cost_usd": 0.0,
+    }
+    observed_metrics: set[str] = set()
+    context_by_message: dict[str, tuple[int, str | None]] = {}
+
+    def add_metric(key: str, value: Any) -> None:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            additive_metrics[key] += value
+            observed_metrics.add(key)
+
+    def merge_model_usage(value: Any) -> None:
+        if not isinstance(value, dict):
+            return
+        additive = {
+            "inputTokens",
+            "outputTokens",
+            "cacheReadInputTokens",
+            "cacheCreationInputTokens",
+            "webSearchRequests",
+            "costUSD",
+        }
+        capacities = {"contextWindow", "maxOutputTokens"}
+        for model, raw_usage in value.items():
+            if not isinstance(model, str) or not isinstance(raw_usage, dict):
+                continue
+            target = events["model_usage"].setdefault(model, {})
+            for key, item in raw_usage.items():
+                if isinstance(item, bool) or not isinstance(item, (int, float)):
+                    continue
+                if key in additive:
+                    target[key] = target.get(key, 0) + item
+                elif key in capacities:
+                    target[key] = max(target.get(key, 0), item)
 
     for msg in parsed.get("messages", []):
         if msg.get("type") == "result":
+            events["subject_invocations"] += 1
             duration_ms = msg.get("duration_ms")
             if isinstance(duration_ms, (int, float)) and not isinstance(duration_ms, bool):
                 duration_ms_total += duration_ms
                 duration_observed = True
 
-            # A loop concatenates one result per resumed subject invocation, so
-            # duration is additive. Preserve legacy latest-result semantics for
-            # turns, usage, cost, and modelUsage until their resumed CLI fields
-            # have an explicit cumulative-versus-delta contract.
-            events["num_turns"] = msg.get("num_turns")
+            # A loop concatenates one result per subject invocation. Claude's
+            # result telemetry is invocation-local, so task totals must add all
+            # initial, answer, and cold-resume invocations instead of retaining
+            # only the final result event.
+            add_metric("num_turns", msg.get("num_turns"))
             usage = msg.get("usage") or {}
-            input_tokens = usage.get("input_tokens")
-            output_tokens = usage.get("output_tokens")
-            cache_read = usage.get("cache_read_input_tokens")
-            cache_creation = usage.get("cache_creation_input_tokens")
-            events["input_tokens"] = input_tokens
-            events["output_tokens"] = output_tokens
-            events["cache_read_input_tokens"] = cache_read
-            events["cache_creation_input_tokens"] = cache_creation
-            token_parts = [input_tokens, output_tokens, cache_read, cache_creation]
-            if any(v is not None for v in token_parts):
-                events["total_tokens"] = sum(v or 0 for v in token_parts)
-            events["total_cost_usd"] = msg.get("total_cost_usd")
-            events["model_usage"] = msg.get("modelUsage") or {}
+            add_metric("input_tokens", usage.get("input_tokens"))
+            add_metric("output_tokens", usage.get("output_tokens"))
+            add_metric("cache_read_input_tokens", usage.get("cache_read_input_tokens"))
+            add_metric("cache_creation_input_tokens", usage.get("cache_creation_input_tokens"))
+            add_metric("total_cost_usd", msg.get("total_cost_usd"))
+            merge_model_usage(msg.get("modelUsage"))
 
         if msg.get("type") == "assistant":
-            for item in msg.get("message", {}).get("content", []):
+            message = msg.get("message", {})
+            message_id = message.get("id")
+            usage = message.get("usage") or {}
+            context_parts = (
+                usage.get("input_tokens"),
+                usage.get("cache_read_input_tokens"),
+                usage.get("cache_creation_input_tokens"),
+            )
+            if isinstance(message_id, str):
+                context_tokens = sum(
+                    value
+                    for value in context_parts
+                    if isinstance(value, (int, float)) and not isinstance(value, bool)
+                )
+                if context_tokens > 0:
+                    previous = context_by_message.get(message_id)
+                    if previous is None or context_tokens > previous[0]:
+                        context_by_message[message_id] = (context_tokens, message.get("model"))
+
+            for item in message.get("content", []):
                 if item.get("type") == "tool_use":
                     tool, inp = item.get("name", ""), item.get("input", {})
                     tool_id = item.get("id")
@@ -155,6 +214,32 @@ def extract_events(parsed: dict[str, Any]) -> dict[str, Any]:
 
     if duration_observed:
         events["duration_seconds"] = duration_ms_total / 1000
+
+    for key, value in additive_metrics.items():
+        if key in observed_metrics:
+            events[key] = value
+    token_keys = (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    )
+    if any(key in observed_metrics for key in token_keys):
+        events["total_tokens"] = sum(additive_metrics[key] for key in token_keys)
+
+    if context_by_message:
+        samples = sorted(value for value, _model in context_by_message.values())
+        peak = samples[-1]
+        p95 = samples[max(0, math.ceil(len(samples) * 0.95) - 1)]
+        peak_model = next(model for value, model in context_by_message.values() if value == peak)
+        model_usage = events["model_usage"].get(peak_model, {}) if peak_model else {}
+        context_window = model_usage.get("contextWindow")
+        events["peak_context_input_tokens"] = peak
+        events["p95_context_input_tokens"] = p95
+        events["average_context_input_tokens"] = sum(samples) / len(samples)
+        if isinstance(context_window, (int, float)) and not isinstance(context_window, bool):
+            events["peak_context_window_tokens"] = context_window
+            events["peak_context_occupancy_pct"] = peak / context_window * 100
 
     return events
 
@@ -386,6 +471,7 @@ def rubric_columns(dimensions: tuple[str, ...] | list[str] | None = None) -> lis
     cols.extend(rubric_column(dim) for dim in derived_metrics)
     cols.append(rubric_total_column())
     return cols
+
 
 def _checks_aggregate(runs: list) -> str:
     """Aggregate checks passed across runs."""
