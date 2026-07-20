@@ -67,7 +67,7 @@ describe('init command helpers', () => {
       await createWorkingDirs(tmpDir, 'zh-CN');
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
-      expect(config).toContain('# 工作流文档使用的产物语言');
+      expect(config).toContain('# Classic 工作流文档使用的产物语言');
       expect(config).toContain('language: zh-CN');
       expect(config).toContain('# 新建 Classic change 是否启用 beta 上下文压缩');
       expect(config).toContain('context_compression: off');

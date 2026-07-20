@@ -10630,7 +10630,11 @@ async function readClassicConfigValue(field2, options = {}) {
     const document = (0, import_yaml5.parseDocument)(await fs17.readFile(candidate.file, "utf8"), {
       uniqueKeys: false
     });
-    const value = document.get(field2);
+    const root = document.toJS();
+    if (!root || typeof root !== "object" || Array.isArray(root)) continue;
+    const classic = root.classic;
+    if (!classic || typeof classic !== "object" || Array.isArray(classic)) continue;
+    const value = classic[field2];
     if (value === null || value === void 0) continue;
     return { value: String(value), source: candidate.source };
   }

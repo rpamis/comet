@@ -41,6 +41,12 @@ export interface CometProjectConfig {
     language: 'en' | 'zh-CN';
     pending_root_move?: NativePendingRootMove;
   };
+  classic?: {
+    language?: 'en' | 'zh-CN';
+    context_compression?: 'off' | 'beta';
+    review_mode?: 'off' | 'standard' | 'thorough';
+    auto_transition?: boolean;
+  };
 }
 
 export interface NativeProjectPaths {

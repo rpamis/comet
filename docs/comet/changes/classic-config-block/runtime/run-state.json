@@ -1,0 +1,17 @@
+{
+  "runId": "8aac4eef-d3d8-4f61-bc15-77c5587baffb",
+  "skill": "comet-native-runtime",
+  "skillVersion": "3",
+  "skillHash": "e97587222d94381f3798ff0cb5821f6557b2c3c5bc9c7df6653e86079364af96",
+  "orchestration": "deterministic",
+  "currentStep": "build",
+  "iteration": 1,
+  "pending": null,
+  "pendingRef": "runtime/pending-action.json",
+  "trajectoryRef": "runtime/trajectory.jsonl",
+  "contextRef": "runtime/context.md",
+  "artifactsRef": "runtime/artifacts.json",
+  "checkpointRef": "runtime/checkpoints/latest.json",
+  "status": "running",
+  "retries": {}
+}

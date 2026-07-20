@@ -387,7 +387,7 @@ describe('skills', () => {
       await createWorkingDirs(tmpDir, 'zh-CN');
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
-      expect(config).toContain('# 工作流文档使用的产物语言');
+      expect(config).toContain('# Classic 工作流文档使用的产物语言');
       expect(config).not.toContain('# Artifact language used for workflow documents');
       expect(config).toContain('language: zh-CN');
     });
@@ -2872,7 +2872,7 @@ describe('skills', () => {
   describe('renderProjectConfig', () => {
     it('renders all managed fields with defaults when no existing values', () => {
       const output = renderProjectConfig({});
-      expect(output).toContain('# Artifact language used for workflow documents');
+      expect(output).toContain('# Artifact language used by Classic workflow documents');
       expect(output).toContain('language: en');
       expect(output).toContain('# Controls beta context compression');
       expect(output).toContain('context_compression: off');
@@ -2902,7 +2902,7 @@ describe('skills', () => {
     it('uses the selected artifact language as the default language value', () => {
       const output = renderProjectConfig({}, 'zh-CN');
       expect(output).toContain('language: zh-CN');
-      expect(output).toContain('# 工作流文档使用的产物语言');
+      expect(output).toContain('# Classic 工作流文档使用的产物语言');
       expect(output).toContain('# 是否启用只读的环境感知恢复探针');
       expect(output).not.toContain('# Artifact language used for workflow documents');
     });

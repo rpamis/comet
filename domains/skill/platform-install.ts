@@ -1492,43 +1492,55 @@ async function installKiroHooks(
   return { status: 'installed' };
 }
 
-function managedConfigFields(language: string = 'en') {
+type ManagedConfigField = {
+  key: string;
+  def: string;
+  comment: string;
+};
+
+type ManagedConfigFields = {
+  top: readonly ManagedConfigField[];
+  classic: readonly ManagedConfigField[];
+};
+
+function managedConfigFields(language: string = 'en'): ManagedConfigFields {
   const artifactLanguage = resolveArtifactLanguage(language);
   const commentLanguage = artifactLanguage.id === 'zh-CN' ? 'zh-CN' : 'en';
-  return [
-    {
-      key: 'language',
-      def: artifactLanguage.id,
-      comment: projectConfigComment('language', commentLanguage),
-    },
-    {
-      key: 'context_compression',
-      def: 'off',
-      comment: projectConfigComment('context_compression', commentLanguage),
-    },
-    {
-      key: 'review_mode',
-      def: 'standard',
-      comment: projectConfigComment('review_mode', commentLanguage),
-    },
-    {
-      key: 'auto_transition',
-      def: 'true',
-      comment: projectConfigComment('auto_transition', commentLanguage),
-    },
+  const top: ManagedConfigField[] = [
     {
       key: 'ambient_resume',
       def: 'true',
       comment: projectConfigComment('ambient_resume', commentLanguage),
     },
-  ] as const;
+  ];
+  const classic: ManagedConfigField[] = [
+    {
+      key: 'language',
+      def: artifactLanguage.id,
+      comment: projectConfigComment('classic.language', commentLanguage),
+    },
+    {
+      key: 'context_compression',
+      def: 'off',
+      comment: projectConfigComment('classic.context_compression', commentLanguage),
+    },
+    {
+      key: 'review_mode',
+      def: 'standard',
+      comment: projectConfigComment('classic.review_mode', commentLanguage),
+    },
+    {
+      key: 'auto_transition',
+      def: 'true',
+      comment: projectConfigComment('classic.auto_transition', commentLanguage),
+    },
+  ];
+  return { top, classic };
 }
 
 const MANAGED_CONFIG_FIELDS = managedConfigFields();
 
-type ManagedConfigField = ReturnType<typeof managedConfigFields>[number];
-
-function getManagedConfigFields(language: string = 'en'): readonly ManagedConfigField[] {
+function getManagedConfigFields(language: string = 'en'): ManagedConfigFields {
   return language === 'en' ? MANAGED_CONFIG_FIELDS : managedConfigFields(language);
 }
 
@@ -1548,29 +1560,43 @@ function parseProjectConfigOverrides(content: string): Record<string, string> {
   return out;
 }
 
+// Coerce the string forms captured by `parseProjectConfigOverrides` back into YAML scalars
+// so booleans render as bare true/false rather than quoted strings.
+function coerceConfigScalar(raw: unknown): unknown {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return raw;
+}
+
 // `language` is null when the caller has no definitive language selection to assert (e.g.
 // multiple platforms in the same scope disagree and no --language flag was given) — in that
 // case the existing config's language is preserved, falling back to 'en' only when absent.
-// A non-null language always overwrites the managed `language` field: init/update pass it
-// specifically to persist the language the user just selected/installed.
+// A non-null language always overwrites the managed `classic.language` field: init/update
+// pass it specifically to persist the language the user just selected/installed.
 function renderProjectConfig(
   existing: Record<string, string>,
   language: string | null = null,
 ): string {
   const resolvedLanguage = language ?? existing.language ?? 'en';
-  const lines: string[] = [];
   const fields = getManagedConfigFields(resolvedLanguage);
-  const managed: Set<string> = new Set(fields.map((f) => f.key));
-  for (const f of fields) {
-    lines.push(f.comment);
-    const value = f.key === 'language' ? resolvedLanguage : (existing[f.key] ?? f.def);
-    lines.push(`${f.key}: ${value}`);
+  const managedKeys = new Set<string>([
+    ...fields.top.map((f) => f.key),
+    ...fields.classic.map((f) => f.key),
+  ]);
+  const root: Record<string, unknown> = {};
+  for (const f of fields.top) {
+    root[f.key] = coerceConfigScalar(existing[f.key] ?? f.def);
   }
   for (const [k, v] of Object.entries(existing)) {
-    if (!managed.has(k)) lines.push(`${k}: ${v}`);
+    if (!managedKeys.has(k)) root[k] = coerceConfigScalar(v);
   }
-  lines.push('');
-  return lines.join('\n');
+  const classicBlock: Record<string, unknown> = {};
+  for (const f of fields.classic) {
+    const value = f.key === 'language' ? resolvedLanguage : (existing[f.key] ?? f.def);
+    classicBlock[f.key] = coerceConfigScalar(value);
+  }
+  root.classic = classicBlock;
+  return renderStructuredProjectConfig(root, resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en');
 }
 
 async function mergeProjectConfig(
@@ -1585,32 +1611,58 @@ async function mergeProjectConfig(
     existing = parseProjectConfigOverrides(existingSource);
   }
   await ensureDir(path.dirname(configPath));
+
+  const resolvedLanguage = language ?? existing.language ?? 'en';
+  const fields = getManagedConfigFields(resolvedLanguage);
+
+  // Preserve the full parsed structure (e.g. the `native:` block) plus any legacy top-level
+  // Classic fields pending migration. Falling back to an empty mapping keeps this idempotent
+  // for a missing or unparseable config.
   const document = parseDocument(existingSource, { uniqueKeys: false });
-  const root = document.errors.length === 0 ? document.toJS() : null;
-  const hasStructuredFields =
-    root &&
-    typeof root === 'object' &&
-    !Array.isArray(root) &&
-    Object.values(root as Record<string, unknown>).some(
-      (value) => value !== null && typeof value === 'object',
-    );
-  if (hasStructuredFields) {
-    const resolvedLanguage = language ?? existing.language ?? 'en';
-    for (const field of getManagedConfigFields(resolvedLanguage)) {
-      const raw = field.key === 'language' ? resolvedLanguage : (existing[field.key] ?? field.def);
-      document.set(field.key, raw === 'true' ? true : raw === 'false' ? false : raw);
-    }
-    await writeFile(
-      configPath,
-      renderStructuredProjectConfig(
-        document.toJS() as Record<string, unknown>,
-        resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en',
-      ),
-      'utf-8',
-    );
-    return;
+  const parsedRoot = document.errors.length === 0 ? document.toJS() : null;
+  const root: Record<string, unknown> =
+    parsedRoot && typeof parsedRoot === 'object' && !Array.isArray(parsedRoot)
+      ? { ...(parsedRoot as Record<string, unknown>) }
+      : {};
+
+  // Top-level managed field (ambient_resume).
+  for (const f of fields.top) {
+    root[f.key] = coerceConfigScalar(existing[f.key] ?? f.def);
   }
-  await writeFile(configPath, renderProjectConfig(existing, language), 'utf-8');
+
+  // Classic block: migrate legacy top-level values first, then any existing classic values,
+  // then defaults. `classic.language` follows the resolved language like the legacy field did.
+  const prevClassic =
+    root.classic && typeof root.classic === 'object' && !Array.isArray(root.classic)
+      ? { ...(root.classic as Record<string, unknown>) }
+      : {};
+  const classicBlock: Record<string, unknown> = {};
+  for (const f of fields.classic) {
+    // `language` always follows the resolved language (init/update pass the user's explicit
+    // selection); other fields migrate legacy top-level values, then existing classic values,
+    // then defaults.
+    let value: unknown;
+    if (f.key === 'language') {
+      value = resolvedLanguage;
+    } else {
+      const legacyTop = root[f.key];
+      if (legacyTop !== undefined) value = legacyTop;
+      else if (prevClassic[f.key] !== undefined) value = prevClassic[f.key];
+      else value = f.def;
+    }
+    classicBlock[f.key] = coerceConfigScalar(value);
+  }
+  // Remove migrated legacy top-level Classic fields so they don't linger at the root.
+  for (const f of fields.classic) {
+    delete root[f.key];
+  }
+  root.classic = classicBlock;
+
+  await writeFile(
+    configPath,
+    renderStructuredProjectConfig(root, resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en'),
+    'utf-8',
+  );
 }
 
 async function createWorkingDirs(projectPath: string, language: string = 'en'): Promise<void> {
