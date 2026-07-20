@@ -126,17 +126,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path13) {
-      const ctrl = callVisitor(key, node, visitor, path13);
+    function visit_(key, node, visitor, path14) {
+      const ctrl = callVisitor(key, node, visitor, path14);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path13, ctrl);
-        return visit_(key, ctrl, visitor, path13);
+        replaceNode(key, path14, ctrl);
+        return visit_(key, ctrl, visitor, path14);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path13 = Object.freeze(path13.concat(node));
+          path14 = Object.freeze(path14.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path13);
+            const ci = visit_(i, node.items[i], visitor, path14);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -147,13 +147,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path13 = Object.freeze(path13.concat(node));
-          const ck = visit_("key", node.key, visitor, path13);
+          path14 = Object.freeze(path14.concat(node));
+          const ck = visit_("key", node.key, visitor, path14);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path13);
+          const cv = visit_("value", node.value, visitor, path14);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -174,17 +174,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path13) {
-      const ctrl = await callVisitor(key, node, visitor, path13);
+    async function visitAsync_(key, node, visitor, path14) {
+      const ctrl = await callVisitor(key, node, visitor, path14);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path13, ctrl);
-        return visitAsync_(key, ctrl, visitor, path13);
+        replaceNode(key, path14, ctrl);
+        return visitAsync_(key, ctrl, visitor, path14);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path13 = Object.freeze(path13.concat(node));
+          path14 = Object.freeze(path14.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path13);
+            const ci = await visitAsync_(i, node.items[i], visitor, path14);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -195,13 +195,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path13 = Object.freeze(path13.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path13);
+          path14 = Object.freeze(path14.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path14);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path13);
+          const cv = await visitAsync_("value", node.value, visitor, path14);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -228,23 +228,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path13) {
+    function callVisitor(key, node, visitor, path14) {
       if (typeof visitor === "function")
-        return visitor(key, node, path13);
+        return visitor(key, node, path14);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path13);
+        return visitor.Map?.(key, node, path14);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path13);
+        return visitor.Seq?.(key, node, path14);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path13);
+        return visitor.Pair?.(key, node, path14);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path13);
+        return visitor.Scalar?.(key, node, path14);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path13);
+        return visitor.Alias?.(key, node, path14);
       return void 0;
     }
-    function replaceNode(key, path13, node) {
-      const parent = path13[path13.length - 1];
+    function replaceNode(key, path14, node) {
+      const parent = path14[path14.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -854,10 +854,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path13, value) {
+    function collectionFromPath(schema, path14, value) {
       let v = value;
-      for (let i = path13.length - 1; i >= 0; --i) {
-        const k = path13[i];
+      for (let i = path14.length - 1; i >= 0; --i) {
+        const k = path14[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -876,7 +876,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path13) => path13 == null || typeof path13 === "object" && !!path13[Symbol.iterator]().next().done;
+    var isEmptyPath = (path14) => path14 == null || typeof path14 === "object" && !!path14[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -906,11 +906,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path13, value) {
-        if (isEmptyPath(path13))
+      addIn(path14, value) {
+        if (isEmptyPath(path14))
           this.add(value);
         else {
-          const [key, ...rest] = path13;
+          const [key, ...rest] = path14;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -924,8 +924,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path13) {
-        const [key, ...rest] = path13;
+      deleteIn(path14) {
+        const [key, ...rest] = path14;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -939,8 +939,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path13, keepScalar) {
-        const [key, ...rest] = path13;
+      getIn(path14, keepScalar) {
+        const [key, ...rest] = path14;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -958,8 +958,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path13) {
-        const [key, ...rest] = path13;
+      hasIn(path14) {
+        const [key, ...rest] = path14;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -969,8 +969,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path13, value) {
-        const [key, ...rest] = path13;
+      setIn(path14, value) {
+        const [key, ...rest] = path14;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3485,9 +3485,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path13, value) {
+      addIn(path14, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path13, value);
+          this.contents.addIn(path14, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3562,14 +3562,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path13) {
-        if (Collection.isEmptyPath(path13)) {
+      deleteIn(path14) {
+        if (Collection.isEmptyPath(path14)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path13) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path14) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3584,10 +3584,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path13, keepScalar) {
-        if (Collection.isEmptyPath(path13))
+      getIn(path14, keepScalar) {
+        if (Collection.isEmptyPath(path14))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path13, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path14, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3598,10 +3598,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path13) {
-        if (Collection.isEmptyPath(path13))
+      hasIn(path14) {
+        if (Collection.isEmptyPath(path14))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path13) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path14) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3618,13 +3618,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path13, value) {
-        if (Collection.isEmptyPath(path13)) {
+      setIn(path14, value) {
+        if (Collection.isEmptyPath(path14)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path13), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path14), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path13, value);
+          this.contents.setIn(path14, value);
         }
       }
       /**
@@ -5584,9 +5584,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path13) => {
+    visit.itemAtPath = (cst, path14) => {
       let item = cst;
-      for (const [field2, index] of path13) {
+      for (const [field2, index] of path14) {
         const tok = item?.[field2];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5595,23 +5595,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path13) => {
-      const parent = visit.itemAtPath(cst, path13.slice(0, -1));
-      const field2 = path13[path13.length - 1][0];
+    visit.parentCollection = (cst, path14) => {
+      const parent = visit.itemAtPath(cst, path14.slice(0, -1));
+      const field2 = path14[path14.length - 1][0];
       const coll = parent?.[field2];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path13, item, visitor) {
-      let ctrl = visitor(item, path13);
+    function _visit(path14, item, visitor) {
+      let ctrl = visitor(item, path14);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field2 of ["key", "value"]) {
         const token = item[field2];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path13.concat([[field2, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path14.concat([[field2, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5622,10 +5622,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field2 === "key")
-            ctrl = ctrl(item, path13);
+            ctrl = ctrl(item, path14);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path13) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path14) : ctrl;
     }
     exports.visit = visit;
   }
@@ -6927,14 +6927,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs13 = this.flowScalar(this.type);
+              const fs14 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs13, sep: [] });
+                map.items.push({ start, key: fs14, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs13);
+                this.stack.push(fs14);
               } else {
-                Object.assign(it, { key: fs13, sep: [] });
+                Object.assign(it, { key: fs14, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7062,13 +7062,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs13 = this.flowScalar(this.type);
+              const fs14 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs13, sep: [] });
+                fc.items.push({ start: [], key: fs14, sep: [] });
               else if (it.sep)
-                this.stack.push(fs13);
+                this.stack.push(fs14);
               else
-                Object.assign(it, { key: fs13, sep: [] });
+                Object.assign(it, { key: fs14, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7257,7 +7257,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument5(source, options = {}) {
+    function parseDocument6(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -7283,7 +7283,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument5(src, options);
+      const doc = parseDocument6(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -7319,7 +7319,7 @@ var require_public_api = __commonJS({
     }
     exports.parse = parse;
     exports.parseAllDocuments = parseAllDocuments;
-    exports.parseDocument = parseDocument5;
+    exports.parseDocument = parseDocument6;
     exports.stringify = stringify3;
   }
 });
@@ -7386,9 +7386,9 @@ __export(state_exports, {
   runStateFromDocument: () => runStateFromDocument,
   writeRunState: () => writeRunState
 });
-import { randomUUID } from "crypto";
-import { promises as fs3 } from "fs";
-import path3 from "path";
+import { randomUUID as randomUUID2 } from "crypto";
+import { promises as fs4 } from "fs";
+import path4 from "path";
 function requiredString(doc, key) {
   const value = doc[key];
   if (typeof value !== "string" || value.length === 0) {
@@ -7398,7 +7398,7 @@ function requiredString(doc, key) {
 }
 function requiredRunReference(doc, key) {
   const value = requiredString(doc, key);
-  if (path3.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+  if (path4.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
     throw new Error(`Invalid Run state: ${key} must stay inside the change directory`);
   }
   return value;
@@ -7507,10 +7507,10 @@ function runStateFromJson(json) {
   return runStateFromDocument(doc);
 }
 async function readRunState(changeDir) {
-  const file = path3.join(changeDir, RUN_STATE_FILE);
+  const file = path4.join(changeDir, RUN_STATE_FILE);
   let raw;
   try {
-    raw = await fs3.readFile(file, "utf8");
+    raw = await fs4.readFile(file, "utf8");
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -7519,14 +7519,14 @@ async function readRunState(changeDir) {
   return runStateFromJson(json);
 }
 async function writeRunState(changeDir, state) {
-  await fs3.mkdir(path3.join(changeDir, ".comet"), { recursive: true });
-  const file = path3.join(changeDir, RUN_STATE_FILE);
-  const temporary = path3.join(changeDir, ".comet", `run-state.${randomUUID()}.tmp`);
-  await fs3.writeFile(temporary, JSON.stringify(runStateToJson(state), null, 2), "utf8");
-  await fs3.rename(temporary, file);
+  await fs4.mkdir(path4.join(changeDir, ".comet"), { recursive: true });
+  const file = path4.join(changeDir, RUN_STATE_FILE);
+  const temporary = path4.join(changeDir, ".comet", `run-state.${randomUUID2()}.tmp`);
+  await fs4.writeFile(temporary, JSON.stringify(runStateToJson(state), null, 2), "utf8");
+  await fs4.rename(temporary, file);
 }
 async function removeRunState(changeDir) {
-  await fs3.rm(path3.join(changeDir, RUN_STATE_FILE), { force: true });
+  await fs4.rm(path4.join(changeDir, RUN_STATE_FILE), { force: true });
 }
 var field, RUN_STATE_FILE;
 var init_state = __esm({
@@ -7541,8 +7541,8 @@ var init_state = __esm({
 });
 
 // domains/comet-entry/hook-router-entry.ts
-import path12 from "path";
-import { promises as fs12 } from "fs";
+import path13 from "path";
+import { promises as fs13 } from "fs";
 
 // domains/comet-native/native-paths.ts
 import { promises as fs } from "fs";
@@ -7870,21 +7870,106 @@ function renderCometHookDecision(platformId, decision) {
 }
 
 // domains/comet-classic/classic-hook-guard.ts
-import { existsSync, promises as fs6, readFileSync as readFileSync2 } from "fs";
-import path6 from "path";
+import { existsSync, promises as fs7, readFileSync as readFileSync2 } from "fs";
+import path7 from "path";
 
-// domains/comet-classic/classic-current-change.ts
+// domains/comet-classic/classic-branch-binding.ts
+var import_yaml = __toESM(require_dist(), 1);
 import { execFileSync } from "child_process";
-import { promises as fs5 } from "fs";
-import path5 from "path";
-
-// domains/comet-entry/current-selection.ts
+import { randomUUID } from "crypto";
 import { promises as fs2 } from "fs";
 import path2 from "path";
+function liveGitBranch(cwd) {
+  try {
+    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    return branch && branch !== "HEAD" ? branch : null;
+  } catch {
+    return null;
+  }
+}
+function isGitWorkTree(cwd) {
+  try {
+    return execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+var BOUND_BRANCH_ISOLATIONS = ["current", "branch", "worktree"];
+function requiresBranchBinding(isolation) {
+  return BOUND_BRANCH_ISOLATIONS.includes(isolation);
+}
+function evaluateBranchBinding(input) {
+  if (!requiresBranchBinding(input.isolation)) return { status: "not-applicable" };
+  if (input.boundBranch === null && input.currentBranch === null && input.gitWorkTree === false) {
+    return { status: "not-applicable" };
+  }
+  if (input.boundBranch === null) {
+    return input.currentBranch === null ? { status: "unbound-detached" } : { status: "needs-heal", branch: input.currentBranch };
+  }
+  if (input.currentBranch === input.boundBranch) return { status: "ok" };
+  return { status: "drift", boundBranch: input.boundBranch, currentBranch: input.currentBranch };
+}
+async function resolveBranchBinding(changeDir, options) {
+  const file = path2.join(changeDir, ".comet.yaml");
+  const document = (0, import_yaml.parseDocument)(await fs2.readFile(file, "utf8"), { uniqueKeys: false });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid .comet.yaml: ${document.errors[0].message}`);
+  }
+  const record3 = document.toJS() ?? {};
+  const isolation = typeof record3.isolation === "string" ? record3.isolation : null;
+  const boundBranch = typeof record3.bound_branch === "string" && record3.bound_branch !== "" ? record3.bound_branch : null;
+  const bindingRequired = requiresBranchBinding(isolation);
+  const currentBranch = liveGitBranch(options.cwd);
+  const gitWorkTree = bindingRequired && boundBranch === null && currentBranch === null ? isGitWorkTree(options.cwd) : true;
+  const verdict = evaluateBranchBinding({ isolation, boundBranch, currentBranch, gitWorkTree });
+  if (verdict.status === "needs-heal" && options.heal) {
+    await healBoundBranch(changeDir, verdict.branch);
+    return { status: "healed", branch: verdict.branch, bindingRequired, currentBranch };
+  }
+  return { ...verdict, bindingRequired, currentBranch };
+}
+async function healBoundBranch(changeDir, branch) {
+  const file = path2.join(changeDir, ".comet.yaml");
+  const document = (0, import_yaml.parseDocument)(await fs2.readFile(file, "utf8"), { uniqueKeys: false });
+  document.set("bound_branch", branch);
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    await fs2.writeFile(temporary, document.toString(), "utf8");
+    await fs2.rename(temporary, file);
+  } catch (error) {
+    await fs2.rm(temporary, { force: true });
+    throw error;
+  }
+}
+function branchLabel(currentBranch) {
+  return currentBranch ?? "detached HEAD";
+}
+function driftStaleReason(change, boundBranch, currentBranch) {
+  return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'`;
+}
+function unboundDetachedMessage(change) {
+  return `change '${change}' uses a branch-bound workspace mode but has no bound branch and HEAD is detached; checkout a branch first before continuing.`;
+}
+
+// domains/comet-classic/classic-current-change.ts
+import { promises as fs6 } from "fs";
+import path6 from "path";
+
+// domains/comet-entry/current-selection.ts
+import { promises as fs3 } from "fs";
+import path3 from "path";
 var COMET_CURRENT_SELECTION_SCHEMA = "comet.selection.v2";
 var COMET_CURRENT_SELECTION_MAX_BYTES = 16 * 1024;
 function cometCurrentSelectionFile(projectRoot) {
-  return path2.join(projectRoot, ".comet", "current-change.json");
+  return path3.join(projectRoot, ".comet", "current-change.json");
 }
 function isRecord2(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -7909,7 +7994,7 @@ function parseSelection(source) {
     if (typeof value.change !== "string") {
       throw new Error("legacy current change selection change must be a string");
     }
-    if (!validBranch(value.branch)) {
+    if (value.branch !== void 0 && !validBranch(value.branch)) {
       throw new Error("legacy current change selection branch must be a string or null");
     }
     return {
@@ -7917,7 +8002,7 @@ function parseSelection(source) {
         schema: COMET_CURRENT_SELECTION_SCHEMA,
         workflow: "classic",
         change: value.change,
-        branch: value.branch
+        branch: value.branch ?? null
       },
       legacy: true
     };
@@ -7942,7 +8027,7 @@ function parseSelection(source) {
 async function readCometCurrentSelection(projectRoot) {
   let source;
   try {
-    const stat = await fs2.lstat(cometCurrentSelectionFile(projectRoot));
+    const stat = await fs3.lstat(cometCurrentSelectionFile(projectRoot));
     if (stat.isSymbolicLink() || !stat.isFile()) {
       throw new Error("current change selection must be a regular file");
     }
@@ -7951,7 +8036,7 @@ async function readCometCurrentSelection(projectRoot) {
         `current change selection exceeds ${COMET_CURRENT_SELECTION_MAX_BYTES} bytes`
       );
     }
-    source = await fs2.readFile(cometCurrentSelectionFile(projectRoot), "utf8");
+    source = await fs3.readFile(cometCurrentSelectionFile(projectRoot), "utf8");
   } catch (error) {
     if (error.code === "ENOENT") return { status: "missing" };
     throw new Error(
@@ -7979,10 +8064,10 @@ function assertOpenSpecChangeName(name) {
 }
 
 // domains/comet-classic/classic-store.ts
-var import_yaml = __toESM(require_dist(), 1);
-import { randomUUID as randomUUID2 } from "crypto";
-import { promises as fs4 } from "fs";
-import path4 from "path";
+var import_yaml2 = __toESM(require_dist(), 1);
+import { randomUUID as randomUUID3 } from "crypto";
+import { promises as fs5 } from "fs";
+import path5 from "path";
 
 // domains/comet-classic/classic-state.ts
 init_state();
@@ -8012,6 +8097,7 @@ var CLASSIC_WIRE_KEYS = [
   "tdd_mode",
   "review_mode",
   "isolation",
+  "bound_branch",
   "verify_mode",
   "auto_transition",
   "base_ref",
@@ -8130,6 +8216,7 @@ function classicStateFromDocument(doc) {
     tddMode: enumValue(doc, "tdd_mode", TDD_MODES),
     reviewMode: enumValue(doc, "review_mode", REVIEW_MODES),
     isolation: enumValue(doc, "isolation", ISOLATIONS),
+    boundBranch: nullableString(doc, "bound_branch"),
     verifyMode: enumValue(doc, "verify_mode", VERIFY_MODES),
     autoTransition: booleanValue(doc, "auto_transition"),
     baseRef: nullableString(doc, "base_ref"),
@@ -8226,12 +8313,12 @@ function stripLegacyCommandFields(document) {
 async function readDocument(file) {
   let source;
   try {
-    source = await fs4.readFile(file, "utf8");
+    source = await fs5.readFile(file, "utf8");
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
-    return new import_yaml.Document({});
+    return new import_yaml2.Document({});
   }
-  const document = (0, import_yaml.parseDocument)(source);
+  const document = (0, import_yaml2.parseDocument)(source);
   if (document.errors.length > 0) {
     throw new Error(`Invalid Classic state document: ${document.errors[0].message}`);
   }
@@ -8240,7 +8327,7 @@ async function readDocument(file) {
 }
 async function readClassicState(changeDir, options = {}) {
   const shouldMigrate = options.migrate !== false;
-  const file = path4.join(changeDir, ".comet.yaml");
+  const file = path5.join(changeDir, ".comet.yaml");
   const document = await readDocument(file);
   let doc = documentRecord(document);
   let migrated = stripLegacyCommandFields(document);
@@ -8256,38 +8343,26 @@ async function readClassicState(changeDir, options = {}) {
     }
   }
   if (migrated && shouldMigrate) {
-    const temporary = path4.join(changeDir, `.comet.yaml.${randomUUID2()}.tmp`);
-    await fs4.writeFile(temporary, document.toString(), "utf8");
-    await fs4.rename(temporary, file);
+    const temporary = path5.join(changeDir, `.comet.yaml.${randomUUID3()}.tmp`);
+    await fs5.writeFile(temporary, document.toString(), "utf8");
+    await fs5.rename(temporary, file);
   }
   return parseClassicStateDocument(documentRecord(document), run);
 }
 async function readLegacyState(changeDir) {
-  const document = await readDocument(path4.join(changeDir, ".comet.yaml"));
+  const document = await readDocument(path5.join(changeDir, ".comet.yaml"));
   return readLegacyStateSummary(documentRecord(document));
 }
 
 // domains/comet-classic/classic-current-change.ts
-function currentBranch(projectRoot) {
-  try {
-    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      cwd: projectRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    return branch && branch !== "HEAD" ? branch : null;
-  } catch {
-    return null;
-  }
-}
 function changeDirectory(projectRoot, changeName) {
-  return path5.join(projectRoot, "openspec", "changes", changeName);
+  return path6.join(projectRoot, "openspec", "changes", changeName);
 }
 async function validateActiveChange(projectRoot, changeName) {
   assertOpenSpecChangeName(changeName);
   const changeDir = changeDirectory(projectRoot, changeName);
   try {
-    await fs5.access(path5.join(changeDir, ".comet.yaml"));
+    await fs6.access(path6.join(changeDir, ".comet.yaml"));
   } catch (error) {
     if (error.code === "ENOENT") {
       throw new Error(
@@ -8333,11 +8408,24 @@ async function resolveCurrentChange(projectRoot) {
       reason: error instanceof Error ? error.message : String(error)
     };
   }
-  const branch = currentBranch(projectRoot);
-  if (selection.branch !== null && branch !== selection.branch) {
+  const outcome = await resolveBranchBinding(changeDirectory(projectRoot, selection.change), {
+    heal: false,
+    cwd: projectRoot
+  });
+  if (outcome.status === "drift") {
     return {
       status: "stale",
-      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${branch ?? "detached HEAD"}'`
+      reason: driftStaleReason(selection.change, outcome.boundBranch, outcome.currentBranch)
+    };
+  }
+  if (outcome.status === "unbound-detached") {
+    return { status: "stale", reason: unboundDetachedMessage(selection.change) };
+  }
+  if (outcome.status === "ok") return { status: "selected", selection };
+  if (selection.branch !== null && outcome.currentBranch !== selection.branch) {
+    return {
+      status: "stale",
+      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${outcome.currentBranch ?? "detached HEAD"}'`
     };
   }
   return { status: "selected", selection };
@@ -8358,49 +8446,49 @@ function comparisonKey(value) {
   return process.platform === "win32" ? normalizedValue.toLowerCase() : normalizedValue;
 }
 function relativeToProjectRoot(target, projectRoot) {
-  const relative = normalized(path6.relative(projectRoot, target));
+  const relative = normalized(path7.relative(projectRoot, target));
   if (relative === "") return "";
-  if (relative.startsWith("../") || relative === ".." || path6.isAbsolute(relative)) return null;
+  if (relative.startsWith("../") || relative === ".." || path7.isAbsolute(relative)) return null;
   return relative;
 }
 async function physicalPathForPossiblyMissingTarget(target) {
-  const resolved = path6.resolve(target);
-  const root = path6.parse(resolved).root;
+  const resolved = path7.resolve(target);
+  const root = path7.parse(resolved).root;
   const missingSegments = [];
   let cursor = resolved;
   while (cursor && cursor !== root) {
     try {
-      const physicalBase = await fs6.realpath(cursor);
-      return path6.join(physicalBase, ...missingSegments.reverse());
+      const physicalBase = await fs7.realpath(cursor);
+      return path7.join(physicalBase, ...missingSegments.reverse());
     } catch (error) {
       const code = error.code;
       if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
-      missingSegments.push(path6.basename(cursor));
-      cursor = path6.dirname(cursor);
+      missingSegments.push(path7.basename(cursor));
+      cursor = path7.dirname(cursor);
     }
   }
   try {
-    const physicalRoot = await fs6.realpath(root);
-    return path6.join(physicalRoot, ...missingSegments.reverse());
+    const physicalRoot = await fs7.realpath(root);
+    return path7.join(physicalRoot, ...missingSegments.reverse());
   } catch {
     return null;
   }
 }
 async function projectRelative(target, projectRoot) {
-  const rawCandidate = path6.isAbsolute(target) ? target : path6.resolve(process.cwd(), target);
+  const rawCandidate = path7.isAbsolute(target) ? target : path7.resolve(process.cwd(), target);
   let candidate = normalized(rawCandidate);
   const rootRelative = relativeToProjectRoot(rawCandidate, projectRoot);
   if (rootRelative !== null) return rootRelative;
   try {
     const physicalCandidate = await physicalPathForPossiblyMissingTarget(rawCandidate);
-    const physicalRoot = await fs6.realpath(projectRoot);
+    const physicalRoot = await fs7.realpath(projectRoot);
     if (physicalCandidate) {
       const physicalRootRelative = relativeToProjectRoot(physicalCandidate, physicalRoot);
       if (physicalRootRelative !== null) return physicalRootRelative;
       candidate = normalized(physicalCandidate);
     }
   } catch {
-    if (!path6.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
+    if (!path7.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
   }
   return candidate.replace(/^\.\//u, "");
 }
@@ -8430,15 +8518,15 @@ async function loadGoverningChange(changeDir) {
   }
 }
 async function activeChanges(projectRoot) {
-  const changesDir = path6.join(projectRoot, "openspec", "changes");
+  const changesDir = path7.join(projectRoot, "openspec", "changes");
   const governingChanges = [];
   if (!existsSync(changesDir)) return governingChanges;
-  for (const entry of (await fs6.readdir(changesDir, { withFileTypes: true })).sort(
+  for (const entry of (await fs7.readdir(changesDir, { withFileTypes: true })).sort(
     (left, right) => left.name.localeCompare(right.name)
   )) {
     if (!entry.isDirectory() || entry.name === "archive") continue;
-    const changeDir = path6.join(changesDir, entry.name);
-    if (!existsSync(path6.join(changeDir, ".comet.yaml"))) continue;
+    const changeDir = path7.join(changesDir, entry.name);
+    if (!existsSync(path7.join(changeDir, ".comet.yaml"))) continue;
     const governing = await loadGoverningChange(changeDir);
     if (!governing || governing.archived) continue;
     governingChanges.push(governing);
@@ -8493,7 +8581,7 @@ function allowsSuperpowersArtifacts(governing) {
   return governing.phase === "design" || governing.phase === "build" || governing.phase === "verify";
 }
 function governingChangeName(governing) {
-  return governing.changeDir ? path6.basename(governing.changeDir) : null;
+  return governing.changeDir ? path7.basename(governing.changeDir) : null;
 }
 var SUPERPOWERS_ARTIFACT_SUFFIXES = /* @__PURE__ */ new Set([
   "design",
@@ -8570,7 +8658,30 @@ async function repoSourceGoverningChange(projectRoot, relativePath2, selectedCha
       )
     };
   }
-  if (active.length === 1) return active[0];
+  if (active.length === 1) {
+    const sole = active[0];
+    if (sole.changeDir !== null) {
+      const outcome = await resolveBranchBinding(sole.changeDir, {
+        heal: false,
+        cwd: projectRoot
+      });
+      const name = governingChangeName(sole) ?? "unknown";
+      if (outcome.status === "drift") {
+        return {
+          blockedResult: blockedStaleSelection(
+            relativePath2,
+            driftStaleReason(name, outcome.boundBranch, outcome.currentBranch)
+          )
+        };
+      }
+      if (outcome.status === "unbound-detached") {
+        return {
+          blockedResult: blockedStaleSelection(relativePath2, unboundDetachedMessage(name))
+        };
+      }
+    }
+    return sole;
+  }
   return {
     blockedResult: blockedMultipleChanges(
       relativePath2,
@@ -8584,8 +8695,8 @@ async function governingChange(relativePath2, projectRoot, selectedChangeName) {
     const rest = relativePath2.slice(prefix.length);
     const [name] = rest.split("/");
     if (name && name !== "archive") {
-      const changeDir = path6.join(projectRoot, "openspec", "changes", name);
-      const stateFile = path6.join(changeDir, ".comet.yaml");
+      const changeDir = path7.join(projectRoot, "openspec", "changes", name);
+      const stateFile = path7.join(changeDir, ".comet.yaml");
       if (existsSync(stateFile)) {
         const governing = await loadGoverningChange(changeDir);
         if (governing) return governing;
@@ -8879,18 +8990,18 @@ async function inspectClassicHookGuard(projectRoot, changeName, request) {
 }
 
 // domains/comet-native/native-hook-guard.ts
+import { promises as fs12 } from "fs";
+import path12 from "path";
+
+// domains/comet-native/native-change.ts
+var import_yaml5 = __toESM(require_dist(), 1);
 import { promises as fs11 } from "fs";
 import path11 from "path";
 
-// domains/comet-native/native-change.ts
-var import_yaml4 = __toESM(require_dist(), 1);
-import { promises as fs10 } from "fs";
-import path10 from "path";
-
 // domains/comet-native/native-bounded-file.ts
 import { createHash } from "node:crypto";
-import { promises as fs7 } from "node:fs";
-import path7 from "node:path";
+import { promises as fs8 } from "node:fs";
+import path8 from "node:path";
 import { TextDecoder } from "node:util";
 
 // domains/comet-native/native-sensitive-paths.ts
@@ -8946,15 +9057,15 @@ function nativeSensitiveRelativePathReason(relativeRef) {
 // domains/comet-native/native-bounded-file.ts
 var DEFAULT_NATIVE_ARTIFACT_MAX_BYTES = 1024 * 1024;
 function isInside(parent, target) {
-  const relative = path7.relative(parent, target);
-  return relative === "" || !path7.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path7.sep}`);
+  const relative = path8.relative(parent, target);
+  return relative === "" || !path8.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path8.sep}`);
 }
 function portableArtifactRef(value) {
-  const normalized2 = path7.posix.normalize(value);
+  const normalized2 = path8.posix.normalize(value);
   if (value.length === 0 || value !== value.trim() || value.includes("\\") || Array.from(value).some((character) => {
     const code = character.codePointAt(0) ?? 0;
     return code <= 31 || code === 127;
-  }) || path7.posix.isAbsolute(normalized2) || /^(?:[A-Za-z]:|~)/u.test(value) || value.split("/").includes("..") || normalized2 !== value || normalized2 === "." || value.endsWith("/")) {
+  }) || path8.posix.isAbsolute(normalized2) || /^(?:[A-Za-z]:|~)/u.test(value) || value.split("/").includes("..") || normalized2 !== value || normalized2 === "." || value.endsWith("/")) {
     throw new Error(`Native artifact ref must be normalized and relative: ${value}`);
   }
   const lower = value.toLowerCase();
@@ -8985,28 +9096,28 @@ function sameFileIdentity(left, right) {
   return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function directoryIdentity(directory) {
-  const stat = await fs7.lstat(directory);
+  const stat = await fs8.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error(`Native artifact parent must be a real directory: ${directory}`);
   }
   return {
     path: directory,
-    realPath: await fs7.realpath(directory),
+    realPath: await fs8.realpath(directory),
     dev: stat.dev,
     ino: stat.ino,
     birthtimeMs: stat.birthtimeMs
   };
 }
 async function captureDirectoryChain(root, directory) {
-  const lexicalRoot = path7.resolve(root);
-  const lexicalDirectory = path7.resolve(directory);
+  const lexicalRoot = path8.resolve(root);
+  const lexicalDirectory = path8.resolve(directory);
   if (!isInside(lexicalRoot, lexicalDirectory)) {
     throw new Error("Native artifact path is outside its root");
   }
   const chain = [await directoryIdentity(lexicalRoot)];
   let cursor = lexicalRoot;
-  for (const segment of path7.relative(lexicalRoot, lexicalDirectory).split(path7.sep).filter(Boolean)) {
-    cursor = path7.join(cursor, segment);
+  for (const segment of path8.relative(lexicalRoot, lexicalDirectory).split(path8.sep).filter(Boolean)) {
+    cursor = path8.join(cursor, segment);
     const identity = await directoryIdentity(cursor);
     if (!isInside(chain[0].realPath, identity.realPath)) {
       throw new Error(`Native artifact parent resolves outside its root: ${cursor}`);
@@ -9017,8 +9128,8 @@ async function captureDirectoryChain(root, directory) {
 }
 async function verifyDirectoryChain(chain) {
   for (const identity of chain) {
-    const stat = await fs7.lstat(identity.path);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity(identity, stat) || await fs7.realpath(identity.path) !== identity.realPath) {
+    const stat = await fs8.lstat(identity.path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity(identity, stat) || await fs8.realpath(identity.path) !== identity.realPath) {
       throw new Error(`Native artifact parent changed while reading: ${identity.path}`);
     }
   }
@@ -9026,24 +9137,24 @@ async function verifyDirectoryChain(chain) {
 async function readNativeBoundedTextFile(options) {
   const ref = portableArtifactRef(options.ref);
   const maxBytes = positiveLimit(options.maxBytes ?? DEFAULT_NATIVE_ARTIFACT_MAX_BYTES);
-  const file = path7.resolve(options.root, ...ref.split("/"));
-  const chain = await captureDirectoryChain(options.root, path7.dirname(file));
+  const file = path8.resolve(options.root, ...ref.split("/"));
+  const chain = await captureDirectoryChain(options.root, path8.dirname(file));
   await options.hooks?.afterParentChainCaptured?.();
-  const before = await fs7.lstat(file);
+  const before = await fs8.lstat(file);
   if (!before.isFile() || before.isSymbolicLink()) {
     throw new Error(`Native artifact must be a regular file: ${ref}`);
   }
   if (before.size > maxBytes) throw new Error(`Native artifact exceeds ${maxBytes} bytes: ${ref}`);
-  const realPath = await fs7.realpath(file);
+  const realPath = await fs8.realpath(file);
   if (!isInside(chain[0].realPath, realPath)) {
     throw new Error(`Native artifact resolves outside its root: ${ref}`);
   }
-  const handle = await fs7.open(file, "r");
+  const handle = await fs8.open(file, "r");
   try {
     const [opened, afterOpenPath, afterOpenRealPath] = await Promise.all([
       handle.stat(),
-      fs7.lstat(file),
-      fs7.realpath(file)
+      fs8.lstat(file),
+      fs8.realpath(file)
     ]);
     await verifyDirectoryChain(chain);
     if (!opened.isFile() || !afterOpenPath.isFile() || afterOpenPath.isSymbolicLink() || afterOpenRealPath !== realPath || !sameFileIdentity(before, opened) || !sameFileIdentity(opened, afterOpenPath)) {
@@ -9064,8 +9175,8 @@ async function readNativeBoundedTextFile(options) {
     await options.hooks?.beforeFinalCheck?.();
     const [afterHandle, afterPath, afterRealPath] = await Promise.all([
       handle.stat(),
-      fs7.lstat(file),
-      fs7.realpath(file)
+      fs8.lstat(file),
+      fs8.realpath(file)
     ]);
     await verifyDirectoryChain(chain);
     if (!afterPath.isFile() || afterPath.isSymbolicLink() || afterRealPath !== realPath || !sameFileIdentity(opened, afterHandle) || !sameFileIdentity(opened, afterPath)) {
@@ -9090,21 +9201,21 @@ async function readNativeBoundedTextFile(options) {
 }
 
 // domains/comet-native/native-config.ts
-var import_yaml3 = __toESM(require_dist(), 1);
-import { promises as fs9 } from "fs";
-import path9 from "path";
+var import_yaml4 = __toESM(require_dist(), 1);
+import { promises as fs10 } from "fs";
+import path10 from "path";
 
 // domains/workflow-contract/project-config.ts
-var import_yaml2 = __toESM(require_dist(), 1);
+var import_yaml3 = __toESM(require_dist(), 1);
 
 // domains/comet-native/native-protected-file.ts
 import { createHash as createHash2 } from "node:crypto";
-import { constants as fsConstants, promises as fs8 } from "node:fs";
-import path8 from "node:path";
+import { constants as fsConstants, promises as fs9 } from "node:fs";
+import path9 from "node:path";
 import { TextDecoder as TextDecoder2 } from "node:util";
 function isInside2(parent, target) {
-  const relative = path8.relative(parent, target);
-  return relative === "" || !path8.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path8.sep}`);
+  const relative = path9.relative(parent, target);
+  return relative === "" || !path9.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path9.sep}`);
 }
 function positiveLimit2(value) {
   if (!Number.isSafeInteger(value) || value < 1) {
@@ -9133,29 +9244,29 @@ function sameFileIdentity2(expected, actual) {
   return sameObject && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
 }
 async function captureDirectoryIdentity(directory, label) {
-  const stat = await fs8.lstat(directory);
+  const stat = await fs9.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error(`${label} parent must be a real directory: ${directory}`);
   }
   return {
     path: directory,
-    realPath: await fs8.realpath(directory),
+    realPath: await fs9.realpath(directory),
     dev: stat.dev,
     ino: stat.ino,
     birthtimeMs: stat.birthtimeMs
   };
 }
 async function captureDirectoryChain2(root, directory, label) {
-  const lexicalRoot = path8.resolve(root);
-  const lexicalDirectory = path8.resolve(directory);
+  const lexicalRoot = path9.resolve(root);
+  const lexicalDirectory = path9.resolve(directory);
   if (!isInside2(lexicalRoot, lexicalDirectory)) {
     throw new Error(`${label} is outside its managed root`);
   }
   const chain = [await captureDirectoryIdentity(lexicalRoot, label)];
   let cursor = lexicalRoot;
-  for (const segment of path8.relative(lexicalRoot, lexicalDirectory).split(path8.sep).filter(Boolean)) {
+  for (const segment of path9.relative(lexicalRoot, lexicalDirectory).split(path9.sep).filter(Boolean)) {
     await verifyDirectoryChain2(chain, label);
-    cursor = path8.join(cursor, segment);
+    cursor = path9.join(cursor, segment);
     const identity = await captureDirectoryIdentity(cursor, label);
     if (!isInside2(chain[0].realPath, identity.realPath)) {
       throw new Error(`${label} parent resolves outside its managed root: ${cursor}`);
@@ -9167,8 +9278,8 @@ async function captureDirectoryChain2(root, directory, label) {
 }
 async function verifyDirectoryChain2(chain, label) {
   for (const identity of chain) {
-    const stat = await fs8.lstat(identity.path);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity2(identity, stat) || await fs8.realpath(identity.path) !== identity.realPath) {
+    const stat = await fs9.lstat(identity.path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity2(identity, stat) || await fs9.realpath(identity.path) !== identity.realPath) {
       throw new Error(`${label} parent changed during I/O: ${identity.path}`);
     }
   }
@@ -9189,22 +9300,22 @@ async function readHandleBounded(handle, maxBytes, label) {
 }
 async function readNativeProtectedFile(options) {
   const maxBytes = positiveLimit2(options.maxBytes);
-  const file = path8.resolve(options.file);
-  const chain = await captureDirectoryChain2(options.root, path8.dirname(file), options.label);
+  const file = path9.resolve(options.file);
+  const chain = await captureDirectoryChain2(options.root, path9.dirname(file), options.label);
   const forbidden = await Promise.all(
     (options.forbiddenRoots ?? []).map(
-      (root) => captureDirectoryIdentity(path8.resolve(root), options.label)
+      (root) => captureDirectoryIdentity(path9.resolve(root), options.label)
     )
   );
   await options.hooks?.afterParentChainCaptured?.();
   await verifyDirectoryChain2(chain, options.label);
-  const before = await fs8.lstat(file);
+  const before = await fs9.lstat(file);
   if (!before.isFile() || before.isSymbolicLink()) {
     throw new Error(`${options.label} must be a regular file`);
   }
   if (before.size > maxBytes) throw new Error(`${options.label} exceeds ${maxBytes} bytes`);
   const beforeIdentity = asFileIdentity(before);
-  const beforeRealPath = await fs8.realpath(file);
+  const beforeRealPath = await fs9.realpath(file);
   if (!isInside2(chain[0].realPath, beforeRealPath)) {
     throw new Error(`${options.label} resolves outside its managed root`);
   }
@@ -9212,13 +9323,13 @@ async function readNativeProtectedFile(options) {
     throw new Error(`${options.label} resolves inside an excluded root`);
   }
   const flags = process.platform === "win32" ? fsConstants.O_RDONLY : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
-  const handle = await fs8.open(file, flags);
+  const handle = await fs9.open(file, flags);
   try {
     const opened = await handle.stat();
     await options.hooks?.afterOpen?.();
     const [pathAfterOpen, realPathAfterOpen] = await Promise.all([
-      fs8.lstat(file),
-      fs8.realpath(file)
+      fs9.lstat(file),
+      fs9.realpath(file)
     ]);
     await verifyDirectoryChain2(chain, options.label);
     await verifyDirectoryChain2(forbidden, options.label);
@@ -9230,8 +9341,8 @@ async function readNativeProtectedFile(options) {
     await options.hooks?.beforeFinalCheck?.();
     const [afterHandle, afterPath, afterRealPath] = await Promise.all([
       handle.stat(),
-      fs8.lstat(file),
-      fs8.realpath(file)
+      fs9.lstat(file),
+      fs9.realpath(file)
     ]);
     await verifyDirectoryChain2(chain, options.label);
     await verifyDirectoryChain2(forbidden, options.label);
@@ -9357,10 +9468,10 @@ function parseConfig(value) {
   };
 }
 async function readProjectConfig(projectRoot) {
-  const canonical = path9.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
+  const canonical = path10.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
   const file = canonical;
   try {
-    await fs9.lstat(file);
+    await fs10.lstat(file);
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -9371,7 +9482,7 @@ async function readProjectConfig(projectRoot) {
     maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
     label: PROJECT_CONFIG_FILE
   })).text;
-  const document = (0, import_yaml3.parseDocument)(source, { uniqueKeys: true });
+  const document = (0, import_yaml4.parseDocument)(source, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
   }
@@ -9522,7 +9633,7 @@ function assertCapabilityId(value) {
   if (!NAME_PATTERN.test(value)) throw new Error(`Invalid Native capability id: ${value}`);
 }
 function assertRelativeRef(value, label) {
-  if (value.length === 0 || path10.isAbsolute(value) || /^(?:[A-Za-z]:|~|[\\/])/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+  if (value.length === 0 || path11.isAbsolute(value) || /^(?:[A-Za-z]:|~|[\\/])/u.test(value) || value.split(/[\\/]/u).includes("..")) {
     throw new Error(`${label} must stay inside the Native change`);
   }
 }
@@ -9768,15 +9879,15 @@ function inspectNativeChangeValue(value) {
 }
 function nativeChangeDir(paths, name) {
   assertNativeName(name);
-  const target = path10.join(paths.changesDir, name);
+  const target = path11.join(paths.changesDir, name);
   if (!isInsidePath(paths.changesDir, target)) throw new Error("Native change path escaped");
   return target;
 }
 async function hasPendingNativeSchemaMigration(paths, name) {
-  const file = path10.join(nativeChangeDir(paths, name), "runtime", "schema-migration.json");
+  const file = path11.join(nativeChangeDir(paths, name), "runtime", "schema-migration.json");
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
-    await fs10.lstat(file);
+    await fs11.lstat(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -9784,21 +9895,21 @@ async function hasPendingNativeSchemaMigration(paths, name) {
   }
 }
 var NATIVE_CHANGE_DOCUMENT_MAX_BYTES = 256 * 1024;
-async function readChangeDocumentFile(file, root = path10.dirname(file)) {
-  const ref = path10.relative(root, file).split(path10.sep).join("/");
+async function readChangeDocumentFile(file, root = path11.dirname(file)) {
+  const ref = path11.relative(root, file).split(path11.sep).join("/");
   const source = await readNativeBoundedTextFile({
     root,
     ref,
     maxBytes: NATIVE_CHANGE_DOCUMENT_MAX_BYTES
   });
-  const document = (0, import_yaml4.parseDocument)(source.text, { uniqueKeys: true });
+  const document = (0, import_yaml5.parseDocument)(source.text, { uniqueKeys: true });
   if (document.errors.length > 0) {
     throw new Error(`Invalid Native change file ${file}: ${document.errors[0].message}`);
   }
   return document.toJS();
 }
 async function inspectNativeChange(paths, name) {
-  const file = path10.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
+  const file = path11.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file, paths.nativeRoot));
   if (inspection.state && inspection.state.name !== name) {
@@ -9843,14 +9954,14 @@ async function resolveSelectedNativeChange(paths) {
 
 // domains/comet-native/native-hook-guard.ts
 function isWithin(parent, target) {
-  const relative = path11.relative(parent, target);
-  return relative === "" || !relative.startsWith("..") && !path11.isAbsolute(relative);
+  const relative = path12.relative(parent, target);
+  return relative === "" || !relative.startsWith("..") && !path12.isAbsolute(relative);
 }
 function requestTargetsAreControlOnly(projectRoot, nativeRoot, request) {
   return request.targets.length > 0 && request.targets.every((targetPath) => {
-    const target = path11.resolve(projectRoot, targetPath);
+    const target = path12.resolve(projectRoot, targetPath);
     if (!isWithin(projectRoot, target)) return true;
-    const relative = path11.relative(projectRoot, target).replaceAll("\\", "/");
+    const relative = path12.relative(projectRoot, target).replaceAll("\\", "/");
     return relative === ".comet/config.yaml" || isWithin(nativeRoot, target);
   });
 }
@@ -9860,7 +9971,7 @@ async function activeNativeContext(projectRoot) {
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   let entries;
   try {
-    entries = await fs11.readdir(paths.changesDir, { withFileTypes: true });
+    entries = await fs12.readdir(paths.changesDir, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return { paths, changes: [] };
     throw error;
@@ -9938,12 +10049,12 @@ async function inspectNativeHookGuard(projectRoot, request, selectedChangeName) 
   let controlTarget = false;
   let externalTarget = false;
   for (const targetPath of request.targets) {
-    const target = path11.resolve(projectRoot, targetPath);
+    const target = path12.resolve(projectRoot, targetPath);
     if (!isWithin(projectRoot, target)) {
       externalTarget = true;
       continue;
     }
-    const relative = path11.relative(projectRoot, target).replaceAll("\\", "/");
+    const relative = path12.relative(projectRoot, target).replaceAll("\\", "/");
     if (relative === ".comet/config.yaml" || isWithin(context.paths.nativeRoot, target)) {
       controlTarget = true;
       continue;
@@ -10092,28 +10203,28 @@ function parseArgs(args) {
     throw new Error(`unsupported Hook platform: ${platformId}`);
   }
   if (projectRoot?.startsWith("--")) throw new Error("--project-root requires a value");
-  return { platformId, ...projectRoot ? { projectRoot: path12.resolve(projectRoot) } : {} };
+  return { platformId, ...projectRoot ? { projectRoot: path13.resolve(projectRoot) } : {} };
 }
 async function projectRootFrom(parsed) {
   if (parsed.projectRoot) return parsed.projectRoot;
   const discovered = await discoverNativeProject(process.cwd());
   for (const marker of [[".comet", "config.yaml"], [".git"], ["openspec", "changes"]]) {
     try {
-      await fs12.lstat(path12.join(discovered, ...marker));
+      await fs13.lstat(path13.join(discovered, ...marker));
       return discovered;
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
   }
-  let cursor = path12.resolve(process.cwd());
+  let cursor = path13.resolve(process.cwd());
   while (true) {
     try {
-      await fs12.lstat(path12.join(cursor, "openspec", "changes"));
+      await fs13.lstat(path13.join(cursor, "openspec", "changes"));
       return cursor;
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    const parent = path12.dirname(cursor);
+    const parent = path13.dirname(cursor);
     if (parent === cursor) break;
     cursor = parent;
   }

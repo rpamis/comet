@@ -126,17 +126,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path23) {
-      const ctrl = callVisitor(key, node, visitor, path23);
+    function visit_(key, node, visitor, path24) {
+      const ctrl = callVisitor(key, node, visitor, path24);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path23, ctrl);
-        return visit_(key, ctrl, visitor, path23);
+        replaceNode(key, path24, ctrl);
+        return visit_(key, ctrl, visitor, path24);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path23 = Object.freeze(path23.concat(node));
+          path24 = Object.freeze(path24.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path23);
+            const ci = visit_(i, node.items[i], visitor, path24);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -147,13 +147,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path23 = Object.freeze(path23.concat(node));
-          const ck = visit_("key", node.key, visitor, path23);
+          path24 = Object.freeze(path24.concat(node));
+          const ck = visit_("key", node.key, visitor, path24);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path23);
+          const cv = visit_("value", node.value, visitor, path24);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -174,17 +174,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path23) {
-      const ctrl = await callVisitor(key, node, visitor, path23);
+    async function visitAsync_(key, node, visitor, path24) {
+      const ctrl = await callVisitor(key, node, visitor, path24);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path23, ctrl);
-        return visitAsync_(key, ctrl, visitor, path23);
+        replaceNode(key, path24, ctrl);
+        return visitAsync_(key, ctrl, visitor, path24);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path23 = Object.freeze(path23.concat(node));
+          path24 = Object.freeze(path24.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path23);
+            const ci = await visitAsync_(i, node.items[i], visitor, path24);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -195,13 +195,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path23 = Object.freeze(path23.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path23);
+          path24 = Object.freeze(path24.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path24);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path23);
+          const cv = await visitAsync_("value", node.value, visitor, path24);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -228,23 +228,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path23) {
+    function callVisitor(key, node, visitor, path24) {
       if (typeof visitor === "function")
-        return visitor(key, node, path23);
+        return visitor(key, node, path24);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path23);
+        return visitor.Map?.(key, node, path24);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path23);
+        return visitor.Seq?.(key, node, path24);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path23);
+        return visitor.Pair?.(key, node, path24);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path23);
+        return visitor.Scalar?.(key, node, path24);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path23);
+        return visitor.Alias?.(key, node, path24);
       return void 0;
     }
-    function replaceNode(key, path23, node) {
-      const parent = path23[path23.length - 1];
+    function replaceNode(key, path24, node) {
+      const parent = path24[path24.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -854,10 +854,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path23, value) {
+    function collectionFromPath(schema, path24, value) {
       let v = value;
-      for (let i = path23.length - 1; i >= 0; --i) {
-        const k = path23[i];
+      for (let i = path24.length - 1; i >= 0; --i) {
+        const k = path24[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -876,7 +876,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path23) => path23 == null || typeof path23 === "object" && !!path23[Symbol.iterator]().next().done;
+    var isEmptyPath = (path24) => path24 == null || typeof path24 === "object" && !!path24[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -906,11 +906,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path23, value) {
-        if (isEmptyPath(path23))
+      addIn(path24, value) {
+        if (isEmptyPath(path24))
           this.add(value);
         else {
-          const [key, ...rest] = path23;
+          const [key, ...rest] = path24;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -924,8 +924,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path23) {
-        const [key, ...rest] = path23;
+      deleteIn(path24) {
+        const [key, ...rest] = path24;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -939,8 +939,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path23, keepScalar) {
-        const [key, ...rest] = path23;
+      getIn(path24, keepScalar) {
+        const [key, ...rest] = path24;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -958,8 +958,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path23) {
-        const [key, ...rest] = path23;
+      hasIn(path24) {
+        const [key, ...rest] = path24;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -969,8 +969,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path23, value) {
-        const [key, ...rest] = path23;
+      setIn(path24, value) {
+        const [key, ...rest] = path24;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3485,9 +3485,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path23, value) {
+      addIn(path24, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path23, value);
+          this.contents.addIn(path24, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3562,14 +3562,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path23) {
-        if (Collection.isEmptyPath(path23)) {
+      deleteIn(path24) {
+        if (Collection.isEmptyPath(path24)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path23) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path24) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3584,10 +3584,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path23, keepScalar) {
-        if (Collection.isEmptyPath(path23))
+      getIn(path24, keepScalar) {
+        if (Collection.isEmptyPath(path24))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path23, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path24, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3598,10 +3598,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path23) {
-        if (Collection.isEmptyPath(path23))
+      hasIn(path24) {
+        if (Collection.isEmptyPath(path24))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path23) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path24) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3618,13 +3618,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path23, value) {
-        if (Collection.isEmptyPath(path23)) {
+      setIn(path24, value) {
+        if (Collection.isEmptyPath(path24)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path23), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path24), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path23, value);
+          this.contents.setIn(path24, value);
         }
       }
       /**
@@ -5584,9 +5584,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path23) => {
+    visit.itemAtPath = (cst, path24) => {
       let item = cst;
-      for (const [field2, index] of path23) {
+      for (const [field2, index] of path24) {
         const tok = item?.[field2];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5595,23 +5595,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path23) => {
-      const parent = visit.itemAtPath(cst, path23.slice(0, -1));
-      const field2 = path23[path23.length - 1][0];
+    visit.parentCollection = (cst, path24) => {
+      const parent = visit.itemAtPath(cst, path24.slice(0, -1));
+      const field2 = path24[path24.length - 1][0];
       const coll = parent?.[field2];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path23, item, visitor) {
-      let ctrl = visitor(item, path23);
+    function _visit(path24, item, visitor) {
+      let ctrl = visitor(item, path24);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field2 of ["key", "value"]) {
         const token = item[field2];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path23.concat([[field2, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path24.concat([[field2, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5622,10 +5622,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field2 === "key")
-            ctrl = ctrl(item, path23);
+            ctrl = ctrl(item, path24);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path23) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path24) : ctrl;
     }
     exports.visit = visit;
   }
@@ -6927,14 +6927,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs22 = this.flowScalar(this.type);
+              const fs23 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs22, sep: [] });
+                map.items.push({ start, key: fs23, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs22);
+                this.stack.push(fs23);
               } else {
-                Object.assign(it, { key: fs22, sep: [] });
+                Object.assign(it, { key: fs23, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7062,13 +7062,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs22 = this.flowScalar(this.type);
+              const fs23 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs22, sep: [] });
+                fc.items.push({ start: [], key: fs23, sep: [] });
               else if (it.sep)
-                this.stack.push(fs22);
+                this.stack.push(fs23);
               else
-                Object.assign(it, { key: fs22, sep: [] });
+                Object.assign(it, { key: fs23, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7257,7 +7257,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument7(source, options = {}) {
+    function parseDocument8(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -7283,7 +7283,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument7(src, options);
+      const doc = parseDocument8(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -7319,7 +7319,7 @@ var require_public_api = __commonJS({
     }
     exports.parse = parse2;
     exports.parseAllDocuments = parseAllDocuments;
-    exports.parseDocument = parseDocument7;
+    exports.parseDocument = parseDocument8;
     exports.stringify = stringify;
   }
 });
@@ -7546,8 +7546,8 @@ import { pathToFileURL } from "url";
 // domains/comet-classic/classic-archive.ts
 import { createHash as createHash3 } from "crypto";
 import { spawnSync } from "child_process";
-import { promises as fs13 } from "fs";
-import path14 from "path";
+import { promises as fs14 } from "fs";
+import path15 from "path";
 
 // domains/comet-classic/classic-paths.ts
 import { promises as fs } from "fs";
@@ -7824,6 +7824,7 @@ var CLASSIC_WIRE_KEYS = [
   "tdd_mode",
   "review_mode",
   "isolation",
+  "bound_branch",
   "verify_mode",
   "auto_transition",
   "base_ref",
@@ -7942,6 +7943,7 @@ function classicStateFromDocument(doc) {
     tddMode: enumValue(doc, "tdd_mode", TDD_MODES),
     reviewMode: enumValue(doc, "review_mode", REVIEW_MODES),
     isolation: enumValue(doc, "isolation", ISOLATIONS),
+    boundBranch: nullableString(doc, "bound_branch"),
     verifyMode: enumValue(doc, "verify_mode", VERIFY_MODES),
     autoTransition: booleanValue(doc, "auto_transition"),
     baseRef: nullableString(doc, "base_ref"),
@@ -8007,6 +8009,7 @@ function classicStateToDocument(state) {
     tdd_mode: state.tddMode,
     review_mode: state.reviewMode,
     isolation: state.isolation,
+    bound_branch: state.boundBranch,
     verify_mode: state.verifyMode,
     auto_transition: state.autoTransition,
     base_ref: state.baseRef,
@@ -9498,6 +9501,7 @@ function applyClassicTransition(current, event, options = {}) {
     setField(classic, effects, "tddMode", null);
     setField(classic, effects, "reviewMode", null);
     setField(classic, effects, "isolation", null);
+    setField(classic, effects, "boundBranch", null);
     setField(classic, effects, "verifyMode", null);
     setField(classic, effects, "directOverride", null);
   } else if (event === "archive-confirm") {
@@ -9527,9 +9531,8 @@ function applyClassicTransition(current, event, options = {}) {
 }
 
 // domains/comet-classic/classic-current-change.ts
-import { execFileSync } from "child_process";
-import { promises as fs12 } from "fs";
-import path13 from "path";
+import { promises as fs13 } from "fs";
+import path14 from "path";
 
 // domains/comet-entry/current-selection.ts
 import { randomUUID as randomUUID6 } from "crypto";
@@ -9563,7 +9566,7 @@ function parseSelection(source) {
     if (typeof value.change !== "string") {
       throw new Error("legacy current change selection change must be a string");
     }
-    if (!validBranch(value.branch)) {
+    if (value.branch !== void 0 && !validBranch(value.branch)) {
       throw new Error("legacy current change selection branch must be a string or null");
     }
     return {
@@ -9571,7 +9574,7 @@ function parseSelection(source) {
         schema: COMET_CURRENT_SELECTION_SCHEMA,
         workflow: "classic",
         change: value.change,
-        branch: value.branch
+        branch: value.branch ?? null
       },
       legacy: true
     };
@@ -9643,11 +9646,16 @@ async function clearCometCurrentSelectionIf(projectRoot2, workflow, change) {
   return true;
 }
 
-// domains/comet-classic/classic-current-change.ts
-function currentBranch(projectRoot2) {
+// domains/comet-classic/classic-branch-binding.ts
+var import_yaml3 = __toESM(require_dist(), 1);
+import { execFileSync } from "child_process";
+import { randomUUID as randomUUID7 } from "crypto";
+import { promises as fs12 } from "fs";
+import path13 from "path";
+function liveGitBranch(cwd) {
   try {
     const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      cwd: projectRoot2,
+      cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
     }).trim();
@@ -9656,14 +9664,87 @@ function currentBranch(projectRoot2) {
     return null;
   }
 }
+function isGitWorkTree(cwd) {
+  try {
+    return execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+var BOUND_BRANCH_ISOLATIONS = ["current", "branch", "worktree"];
+function requiresBranchBinding(isolation) {
+  return BOUND_BRANCH_ISOLATIONS.includes(isolation);
+}
+function evaluateBranchBinding(input) {
+  if (!requiresBranchBinding(input.isolation)) return { status: "not-applicable" };
+  if (input.boundBranch === null && input.currentBranch === null && input.gitWorkTree === false) {
+    return { status: "not-applicable" };
+  }
+  if (input.boundBranch === null) {
+    return input.currentBranch === null ? { status: "unbound-detached" } : { status: "needs-heal", branch: input.currentBranch };
+  }
+  if (input.currentBranch === input.boundBranch) return { status: "ok" };
+  return { status: "drift", boundBranch: input.boundBranch, currentBranch: input.currentBranch };
+}
+async function resolveBranchBinding(changeDir, options) {
+  const file = path13.join(changeDir, ".comet.yaml");
+  const document = (0, import_yaml3.parseDocument)(await fs12.readFile(file, "utf8"), { uniqueKeys: false });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid .comet.yaml: ${document.errors[0].message}`);
+  }
+  const record = document.toJS() ?? {};
+  const isolation = typeof record.isolation === "string" ? record.isolation : null;
+  const boundBranch = typeof record.bound_branch === "string" && record.bound_branch !== "" ? record.bound_branch : null;
+  const bindingRequired = requiresBranchBinding(isolation);
+  const currentBranch = liveGitBranch(options.cwd);
+  const gitWorkTree = bindingRequired && boundBranch === null && currentBranch === null ? isGitWorkTree(options.cwd) : true;
+  const verdict = evaluateBranchBinding({ isolation, boundBranch, currentBranch, gitWorkTree });
+  if (verdict.status === "needs-heal" && options.heal) {
+    await healBoundBranch(changeDir, verdict.branch);
+    return { status: "healed", branch: verdict.branch, bindingRequired, currentBranch };
+  }
+  return { ...verdict, bindingRequired, currentBranch };
+}
+async function healBoundBranch(changeDir, branch) {
+  const file = path13.join(changeDir, ".comet.yaml");
+  const document = (0, import_yaml3.parseDocument)(await fs12.readFile(file, "utf8"), { uniqueKeys: false });
+  document.set("bound_branch", branch);
+  const temporary = `${file}.${randomUUID7()}.tmp`;
+  try {
+    await fs12.writeFile(temporary, document.toString(), "utf8");
+    await fs12.rename(temporary, file);
+  } catch (error) {
+    await fs12.rm(temporary, { force: true });
+    throw error;
+  }
+}
+function branchLabel(currentBranch) {
+  return currentBranch ?? "detached HEAD";
+}
+function driftBlockedMessage(change, boundBranch, currentBranch) {
+  return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'.
+Next: ask the user to confirm — switch back to '${boundBranch}', or run \`comet state rebind ${change}\` after explicit confirmation.`;
+}
+function driftStaleReason(change, boundBranch, currentBranch) {
+  return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'`;
+}
+function unboundDetachedMessage(change) {
+  return `change '${change}' uses a branch-bound workspace mode but has no bound branch and HEAD is detached; checkout a branch first before continuing.`;
+}
+
+// domains/comet-classic/classic-current-change.ts
 function changeDirectory(projectRoot2, changeName) {
-  return path13.join(projectRoot2, "openspec", "changes", changeName);
+  return path14.join(projectRoot2, "openspec", "changes", changeName);
 }
 async function validateActiveChange(projectRoot2, changeName) {
   assertOpenSpecChangeName(changeName);
   const changeDir = changeDirectory(projectRoot2, changeName);
   try {
-    await fs12.access(path13.join(changeDir, ".comet.yaml"));
+    await fs13.access(path14.join(changeDir, ".comet.yaml"));
   } catch (error) {
     if (error.code === "ENOENT") {
       throw new Error(
@@ -9685,11 +9766,21 @@ async function validateActiveChange(projectRoot2, changeName) {
 }
 async function selectCurrentChange(projectRoot2, changeName) {
   await validateActiveChange(projectRoot2, changeName);
+  const outcome = await resolveBranchBinding(changeDirectory(projectRoot2, changeName), {
+    heal: true,
+    cwd: projectRoot2
+  });
+  if (outcome.status === "drift") {
+    throw new Error(driftStaleReason(changeName, outcome.boundBranch, outcome.currentBranch));
+  }
+  if (outcome.status === "unbound-detached") {
+    throw new Error(unboundDetachedMessage(changeName));
+  }
   const selection = {
     schema: "comet.selection.v2",
     workflow: "classic",
     change: changeName,
-    branch: currentBranch(projectRoot2)
+    branch: outcome.currentBranch
   };
   await writeCometCurrentSelection(projectRoot2, selection);
   return selection;
@@ -9720,11 +9811,24 @@ async function resolveCurrentChange(projectRoot2) {
       reason: error instanceof Error ? error.message : String(error)
     };
   }
-  const branch = currentBranch(projectRoot2);
-  if (selection.branch !== null && branch !== selection.branch) {
+  const outcome = await resolveBranchBinding(changeDirectory(projectRoot2, selection.change), {
+    heal: false,
+    cwd: projectRoot2
+  });
+  if (outcome.status === "drift") {
     return {
       status: "stale",
-      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${branch ?? "detached HEAD"}'`
+      reason: driftStaleReason(selection.change, outcome.boundBranch, outcome.currentBranch)
+    };
+  }
+  if (outcome.status === "unbound-detached") {
+    return { status: "stale", reason: unboundDetachedMessage(selection.change) };
+  }
+  if (outcome.status === "ok") return { status: "selected", selection };
+  if (selection.branch !== null && outcome.currentBranch !== selection.branch) {
+    return {
+      status: "stale",
+      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${outcome.currentBranch ?? "detached HEAD"}'`
     };
   }
   return { status: "selected", selection };
@@ -9778,7 +9882,7 @@ var ArchiveOutput = class {
 };
 async function exists2(file) {
   try {
-    await fs13.access(file);
+    await fs14.access(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -9832,10 +9936,10 @@ async function findArchiveDir(change, preferred) {
   if (await exists2(preferred)) return preferred;
   const archiveRoot = "openspec/changes/archive";
   if (!await exists2(archiveRoot)) return null;
-  for (const entry2 of (await fs13.readdir(archiveRoot)).sort()) {
+  for (const entry2 of (await fs14.readdir(archiveRoot)).sort()) {
     if (!entry2.endsWith(`-${change}`)) continue;
     const candidate = `${archiveRoot}/${entry2}`;
-    if ((await fs13.stat(candidate)).isDirectory()) return candidate;
+    if ((await fs14.stat(candidate)).isDirectory()) return candidate;
   }
   return null;
 }
@@ -9865,9 +9969,9 @@ async function annotateFrontmatter(output, file, archiveName, extraFields, dryRu
     output.stepsTotal += 1;
     return;
   }
-  const original = await fs13.readFile(file, "utf8");
+  const original = await fs14.readFile(file, "utf8");
   const updated = annotatedMarkdown(original, archiveName, extraFields);
-  await fs13.writeFile(file, updated);
+  await fs14.writeFile(file, updated);
   output.stderr.push(green(`  [OK] Annotated: ${file}`));
   output.stepsOk += 1;
   output.stepsTotal += 1;
@@ -9876,10 +9980,10 @@ async function verifyMainSpecsClean() {
   const specsRoot = "openspec/specs";
   if (!await exists2(specsRoot)) return;
   let found = false;
-  for (const entry2 of await fs13.readdir(specsRoot)) {
+  for (const entry2 of await fs14.readdir(specsRoot)) {
     const specFile = `${specsRoot}/${entry2}/spec.md`;
     if (!await exists2(specFile)) continue;
-    const matches = (await fs13.readFile(specFile, "utf8")).split(/\r?\n/u).map((line, index) => ({ line, number: index + 1 })).filter((item) => /^## (ADDED|MODIFIED|REMOVED|RENAMED) Requirements$/u.test(item.line));
+    const matches = (await fs14.readFile(specFile, "utf8")).split(/\r?\n/u).map((line, index) => ({ line, number: index + 1 })).filter((item) => /^## (ADDED|MODIFIED|REMOVED|RENAMED) Requirements$/u.test(item.line));
     if (matches.length > 0) {
       found = true;
       process.stderr.write(
@@ -9911,7 +10015,7 @@ var classicArchiveCommand = async (args) => {
     }
     if (recoveredArchive) {
       archiveDir = recoveredArchive;
-      archiveName = path14.basename(recoveredArchive);
+      archiveName = path15.basename(recoveredArchive);
     }
     const projection = await readClassicState(changeDir);
     if (!projection.classic) {
@@ -10006,7 +10110,7 @@ var classicArchiveCommand = async (args) => {
         return output.toResult(1);
       }
       archiveDir = resolvedArchive;
-      archiveName = path14.basename(resolvedArchive);
+      archiveName = path15.basename(resolvedArchive);
       output.stderr.push(green(`  [OK] OpenSpec archive completed: ${archiveDir}`));
       output.stepsOk += 1;
       output.stepsTotal += 1;
@@ -10131,30 +10235,30 @@ var classicArchiveCommand = async (args) => {
 };
 
 // domains/comet-classic/classic-guard.ts
-var import_yaml5 = __toESM(require_dist(), 1);
+var import_yaml6 = __toESM(require_dist(), 1);
 import { spawnSync as spawnSync2 } from "child_process";
 import { createHash as createHash4 } from "crypto";
-import { existsSync, promises as fs17, readFileSync } from "fs";
-import path18 from "path";
+import { existsSync, promises as fs18, readFileSync } from "fs";
+import path19 from "path";
 
 // domains/comet-classic/classic-command-checks.ts
-import path15 from "path";
+import path16 from "path";
 function validateScope(scope) {
   if (scope !== "build" && scope !== "verify") {
     throw new Error(`Invalid command check scope: '${String(scope)}'`);
   }
 }
 function projectRoot(changeDir) {
-  return path15.resolve(changeDir, "..", "..", "..");
+  return path16.resolve(changeDir, "..", "..", "..");
 }
 function normalizedCwd(changeDir, cwd = ".") {
   if (cwd.trim().length === 0) throw new Error("Command check cwd cannot be blank");
   const root = projectRoot(changeDir);
-  const target = path15.resolve(root, cwd);
-  if (target !== root && !target.startsWith(root + path15.sep)) {
+  const target = path16.resolve(root, cwd);
+  if (target !== root && !target.startsWith(root + path16.sep)) {
     throw new Error(`Command check cwd must resolve within the project root: '${cwd}'`);
   }
-  return path15.relative(root, target).replaceAll("\\", "/") || ".";
+  return path16.relative(root, target).replaceAll("\\", "/") || ".";
 }
 function validRecord(changeDir, event) {
   if (event.type !== "command_check_recorded") return null;
@@ -10315,9 +10419,9 @@ async function inspectClassicChange(changeDir, name) {
 }
 
 // domains/comet-classic/classic-validate-command.ts
-var import_yaml3 = __toESM(require_dist(), 1);
-import { promises as fs14 } from "fs";
-import path16 from "path";
+var import_yaml4 = __toESM(require_dist(), 1);
+import { promises as fs15 } from "fs";
+import path17 from "path";
 var GREEN2 = "\x1B[32m";
 var RED2 = "\x1B[31m";
 var YELLOW2 = "\x1B[33m";
@@ -10367,7 +10471,7 @@ function color(code, message) {
 }
 async function exists3(file) {
   try {
-    await fs14.access(file);
+    await fs15.access(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -10388,7 +10492,7 @@ var classicValidateCommand = async (args) => {
     };
   }
   const { directory, label } = await resolveClassicChangeDirectory(name);
-  const yamlFile = path16.join(directory, ".comet.yaml");
+  const yamlFile = path17.join(directory, ".comet.yaml");
   const lines = [`[VALIDATE] ${label}/.comet.yaml`];
   let errors = 0;
   let warnings = 0;
@@ -10402,7 +10506,7 @@ var classicValidateCommand = async (args) => {
   };
   let source;
   try {
-    source = await fs14.readFile(yamlFile, "utf8");
+    source = await fs15.readFile(yamlFile, "utf8");
   } catch (error) {
     if (error.code === "ENOENT") {
       fail3(".comet.yaml does not exist");
@@ -10411,10 +10515,10 @@ var classicValidateCommand = async (args) => {
     }
     throw error;
   }
-  const document = (0, import_yaml3.parseDocument)(source);
-  if (document.errors.length > 0 || !(0, import_yaml3.isMap)(document.contents)) {
+  const document = (0, import_yaml4.parseDocument)(source);
+  if (document.errors.length > 0 || !(0, import_yaml4.isMap)(document.contents)) {
     for (const error of document.errors) fail3(error.message);
-    if (!(0, import_yaml3.isMap)(document.contents)) fail3("document root must be a mapping");
+    if (!(0, import_yaml4.isMap)(document.contents)) fail3("document root must be a mapping");
     lines.push("", color(RED2, `${errors} error(s), ${warnings} warning(s) — validation FAILED`));
     return { exitCode: 1, stderr: lines.join("\n") };
   }
@@ -10437,6 +10541,12 @@ var classicValidateCommand = async (args) => {
       fail3(`${field2}='${value}' is not valid. Expected: ${values.join(" ")}`);
     }
   }
+  if (Object.prototype.hasOwnProperty.call(record, "bound_branch")) {
+    const value = record.bound_branch;
+    if (value !== null && typeof value !== "string") {
+      fail3(`bound_branch='${text(value)}' is not a string or null`);
+    }
+  }
   if (Object.prototype.hasOwnProperty.call(record, "verify_failures")) {
     const value = record.verify_failures;
     if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
@@ -10445,7 +10555,7 @@ var classicValidateCommand = async (args) => {
   }
   for (const field2 of ["design_doc", "plan", "handoff_context"]) {
     const value = text(record[field2]);
-    if (value && !await exists3(path16.resolve(value))) {
+    if (value && !await exists3(path17.resolve(value))) {
       fail3(`${field2}='${value}' does not exist on disk`);
     }
   }
@@ -10468,16 +10578,16 @@ var classicValidateCommand = async (args) => {
 };
 
 // domains/comet-classic/classic-project-config.ts
-var import_yaml4 = __toESM(require_dist(), 1);
+var import_yaml5 = __toESM(require_dist(), 1);
 import os from "os";
-import { promises as fs16 } from "fs";
-import path17 from "path";
+import { promises as fs17 } from "fs";
+import path18 from "path";
 
 // platform/fs/file-system.ts
-import { promises as fs15 } from "fs";
+import { promises as fs16 } from "fs";
 async function fileExists3(filePath) {
   try {
-    await fs15.access(filePath);
+    await fs16.access(filePath);
     return true;
   } catch (error) {
     if (isNotFoundError(error)) return false;
@@ -10486,7 +10596,7 @@ async function fileExists3(filePath) {
 }
 async function readDir(dirPath) {
   try {
-    return await fs15.readdir(dirPath);
+    return await fs16.readdir(dirPath);
   } catch (error) {
     const code = error?.code;
     if (code === "ENOENT" || code === "ENOTDIR") {
@@ -10504,9 +10614,9 @@ function configCandidates(options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const homeDir = options.homeDir ?? os.homedir();
   const candidates = [
-    { file: path17.resolve(cwd, ".comet", "config.yaml"), source: ".comet/config.yaml" },
+    { file: path18.resolve(cwd, ".comet", "config.yaml"), source: ".comet/config.yaml" },
     {
-      file: path17.resolve(homeDir, ".comet", "config.yaml"),
+      file: path18.resolve(homeDir, ".comet", "config.yaml"),
       source: "~/.comet/config.yaml"
     }
   ];
@@ -10517,7 +10627,7 @@ function configCandidates(options = {}) {
 async function readClassicConfigValue(field2, options = {}) {
   for (const candidate of configCandidates(options)) {
     if (!await fileExists3(candidate.file)) continue;
-    const document = (0, import_yaml4.parseDocument)(await fs16.readFile(candidate.file, "utf8"), {
+    const document = (0, import_yaml5.parseDocument)(await fs17.readFile(candidate.file, "utf8"), {
       uniqueKeys: false
     });
     const value = document.get(field2);
@@ -10591,7 +10701,7 @@ var GuardOutput = class {
 };
 async function exists4(file) {
   try {
-    await fs17.access(file);
+    await fs18.access(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -10600,7 +10710,7 @@ async function exists4(file) {
 }
 async function nonempty(file) {
   try {
-    return (await fs17.stat(file)).size > 0;
+    return (await fs18.stat(file)).size > 0;
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -10614,8 +10724,8 @@ async function resolveChangeDir(name) {
   return (await resolveClassicChangeDirectory(name)).label;
 }
 async function readField(changeDir, field2) {
-  const file = path18.join(changeDir, ".comet.yaml");
-  const document = (0, import_yaml5.parseDocument)(await fs17.readFile(file, "utf8"), { uniqueKeys: false });
+  const file = path19.join(changeDir, ".comet.yaml");
+  const document = (0, import_yaml6.parseDocument)(await fs18.readFile(file, "utf8"), { uniqueKeys: false });
   if (document.errors.length > 0) {
     throw new GuardFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
   }
@@ -10656,7 +10766,7 @@ function countEnglishWords(source) {
 }
 async function documentLanguageMatchesConfigured(changeDir, file) {
   const language = await configuredLanguage(changeDir);
-  const source = stripFencedCodeBlocks(await fs17.readFile(file, "utf8"));
+  const source = stripFencedCodeBlocks(await fs18.readFile(file, "utf8"));
   const cjk = countCjkChars(source);
   const englishWords = countEnglishWords(source);
   if (language === "zh-CN" && cjk < 20 && englishWords >= 20) {
@@ -10680,7 +10790,7 @@ async function handoffSourceFiles(changeDir) {
   const files = [`${changeDir}/proposal.md`, `${changeDir}/design.md`, `${changeDir}/tasks.md`];
   const specs = `${changeDir}/specs`;
   if (await exists4(specs)) {
-    for (const entry2 of (await fs17.readdir(specs)).sort()) {
+    for (const entry2 of (await fs18.readdir(specs)).sort()) {
       const spec = `${specs}/${entry2}/spec.md`;
       if (await exists4(spec)) files.push(spec);
     }
@@ -10700,7 +10810,7 @@ async function preflight(changeDir, name) {
   if (!await exists4(changeDir)) {
     throw new GuardFailure(red2(`FATAL: change directory not found: ${changeDir}`));
   }
-  if (!await exists4(path18.join(changeDir, ".comet.yaml"))) {
+  if (!await exists4(path19.join(changeDir, ".comet.yaml"))) {
     throw new GuardFailure(red2(`FATAL: .comet.yaml not found in ${changeDir}`));
   }
   const result5 = await classicValidateCommand([name], { json: false });
@@ -10770,9 +10880,9 @@ var INFERRED_COMMAND_SOURCES = [
   "Cargo.toml"
 ];
 async function removedProjectCommandField(field2) {
-  const config = path18.join(".comet", "config.yaml");
+  const config = path19.join(".comet", "config.yaml");
   if (!await exists4(config)) return false;
-  const document = (0, import_yaml5.parseDocument)(await fs17.readFile(config, "utf8"));
+  const document = (0, import_yaml6.parseDocument)(await fs18.readFile(config, "utf8"));
   if (document.errors.length > 0) {
     throw new Error(
       `.comet/config.yaml is invalid YAML (${document.errors[0].message}); cannot check for removed "${field2}" field. Fix the config and retry.`
@@ -10853,14 +10963,14 @@ ${recoveryCommand(change, scope, recorded.command)}`
   return { status: 0, output: evidenceDetail(recorded) };
 }
 async function tasksAllDone(changeDir) {
-  const tasks = path18.join(changeDir, "tasks.md");
+  const tasks = path19.join(changeDir, "tasks.md");
   if (!await exists4(tasks)) {
     return fail(
       `tasks.md is missing at ${tasks}
 Next: restore or create tasks.md for this change before leaving build.`
     );
   }
-  const source = await fs17.readFile(tasks, "utf8");
+  const source = await fs18.readFile(tasks, "utf8");
   if (!/- \[x\]/u.test(source)) {
     return fail(
       "tasks.md has no completed tasks.\nNext: complete implementation tasks and mark them with '- [x]'."
@@ -10877,9 +10987,9 @@ Next: complete or explicitly remove unfinished tasks, then mark tasks.md with '-
   return pass();
 }
 async function tasksHasAny(changeDir) {
-  const tasks = path18.join(changeDir, "tasks.md");
+  const tasks = path19.join(changeDir, "tasks.md");
   if (!await exists4(tasks)) return false;
-  return /- \[/u.test(await fs17.readFile(tasks, "utf8"));
+  return /- \[/u.test(await fs18.readFile(tasks, "utf8"));
 }
 async function planTasksAllDone(changeDir) {
   const plan = await readField(changeDir, "plan");
@@ -10890,7 +11000,7 @@ async function planTasksAllDone(changeDir) {
 Next: restore the Superpowers plan file or update .comet.yaml plan before leaving build.`
     );
   }
-  const source = await fs17.readFile(plan, "utf8");
+  const source = await fs18.readFile(plan, "utf8");
   const unfinished = source.split(/\r?\n/u).map((line, index) => ({ line, number: index + 1 })).filter((entry2) => /^\s*- \[ \]/u.test(entry2.line));
   if (unfinished.length > 0) {
     return fail(
@@ -10901,14 +11011,36 @@ Next: check off corresponding completed plan tasks, then commit the plan update.
   }
   return pass();
 }
+async function boundBranchMatches(changeDir, change) {
+  let outcome;
+  try {
+    outcome = await resolveBranchBinding(changeDir, { heal: true, cwd: process.cwd() });
+  } catch (error) {
+    throw new GuardFailure(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  switch (outcome.status) {
+    case "drift":
+      return fail(driftBlockedMessage(change, outcome.boundBranch, outcome.currentBranch));
+    case "unbound-detached":
+      return fail(unboundDetachedMessage(change));
+    case "healed":
+      return pass(`bound_branch lazily set to ${outcome.branch}`);
+    case "needs-heal":
+    case "ok":
+    case "not-applicable":
+      return pass();
+    default: {
+      const exhaustive = outcome;
+      throw new Error(`unhandled branch binding status: ${JSON.stringify(exhaustive)}`);
+    }
+  }
+}
 async function isolationSelected(changeDir, change) {
   const isolation = await readField(changeDir, "isolation");
-  const workflow = await readField(changeDir, "workflow");
-  if (isolation === "branch" || isolation === "worktree") return pass();
-  if (isolation === "current" && (workflow === "hotfix" || workflow === "tweak")) return pass();
-  const allowedValues = workflow === "full" ? "<branch|worktree>" : "<current|branch|worktree>";
+  if (isolation === "current" || isolation === "branch" || isolation === "worktree") return pass();
+  const allowedValues = "<current|branch|worktree>";
   return fail(
-    `isolation must be ${workflow === "full" ? "branch or worktree" : "current, branch, or worktree"}, got '${isolation || "null"}'
+    `isolation must be current, branch, or worktree, got '${isolation || "null"}'
 Next: choose a valid workspace mode, prepare it when needed, then run:
   comet state set ${change} isolation ${allowedValues}`
   );
@@ -10982,7 +11114,7 @@ async function archivedIsTrue(changeDir) {
   return await readField(changeDir, "archived") === "true";
 }
 async function designDocFrontmatterHas(designDoc, field2, expected) {
-  const source = (await fs17.readFile(designDoc, "utf8")).replace(/^\uFEFF/u, "");
+  const source = (await fs18.readFile(designDoc, "utf8")).replace(/^\uFEFF/u, "");
   let inFrontmatter = false;
   for (const line of source.split(/\r?\n/u)) {
     if (!inFrontmatter) {
@@ -11047,7 +11179,7 @@ async function designHandoffMarkdownTraceable(changeDir) {
   const markdown = `${context.replace(/\.json$/u, "")}.md`;
   if (!await nonempty(markdown))
     return fail(`design handoff markdown is missing or empty: ${markdown}`);
-  const source = await fs17.readFile(markdown, "utf8");
+  const source = await fs18.readFile(markdown, "utf8");
   const problems = [];
   if (!/^Generated-by: comet-handoff\.sh$/mu.test(source)) {
     problems.push("handoff markdown is missing Generated-by marker");
@@ -11074,7 +11206,7 @@ async function betaSpecJsonStructurallyValid(changeDir) {
   const context = await readField(changeDir, "handoff_context");
   if (!context || context === "null") return fail("handoff_context is missing from .comet.yaml");
   if (!await nonempty(context)) return fail(`spec-context.json is missing or empty: ${context}`);
-  const source = await fs17.readFile(context, "utf8");
+  const source = await fs18.readFile(context, "utf8");
   const problems = [];
   let parsed;
   try {
@@ -11111,19 +11243,19 @@ async function guardOpenChecks(output, changeDir) {
   const checks = [
     check(
       "proposal.md exists and non-empty",
-      async () => await nonempty(path18.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path19.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "proposal.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path19.join(changeDir, "proposal.md"))
     ),
     check(
       "tasks.md exists and non-empty",
-      async () => await nonempty(path18.join(changeDir, "tasks.md")) ? pass() : fail("")
+      async () => await nonempty(path19.join(changeDir, "tasks.md")) ? pass() : fail("")
     ),
     check(
       "tasks.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "tasks.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path19.join(changeDir, "tasks.md"))
     ),
     check(
       "tasks.md has at least one task",
@@ -11136,11 +11268,11 @@ async function guardOpenChecks(output, changeDir) {
       0,
       check(
         "design.md exists and non-empty",
-        async () => await nonempty(path18.join(changeDir, "design.md")) ? pass() : fail("")
+        async () => await nonempty(path19.join(changeDir, "design.md")) ? pass() : fail("")
       ),
       check(
         "design.md matches configured language",
-        () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "design.md"))
+        () => documentLanguageMatchesConfigured(changeDir, path19.join(changeDir, "design.md"))
       )
     );
   }
@@ -11152,27 +11284,27 @@ async function guardDesignChecks(output, changeDir, change) {
   const builders = [
     check(
       "proposal.md exists",
-      async () => await nonempty(path18.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path19.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "proposal.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path19.join(changeDir, "proposal.md"))
     ),
     check(
       "design.md exists",
-      async () => await nonempty(path18.join(changeDir, "design.md")) ? pass() : fail("")
+      async () => await nonempty(path19.join(changeDir, "design.md")) ? pass() : fail("")
     ),
     check(
       "design.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "design.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path19.join(changeDir, "design.md"))
     ),
     check(
       "tasks.md exists",
-      async () => await nonempty(path18.join(changeDir, "tasks.md")) ? pass() : fail("")
+      async () => await nonempty(path19.join(changeDir, "tasks.md")) ? pass() : fail("")
     ),
     check(
       "tasks.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "tasks.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path19.join(changeDir, "tasks.md"))
     ),
     check("design handoff context exists", () => designHandoffContextValid(changeDir, change)),
     check("design handoff markdown is traceable", () => designHandoffMarkdownTraceable(changeDir))
@@ -11223,6 +11355,7 @@ async function guardDesignChecks(output, changeDir, change) {
 }
 async function guardBuildChecks(output, changeDir, change, run) {
   return runChecks(output, [
+    check("bound branch matches workspace mode", () => boundBranchMatches(changeDir, change)),
     check("isolation selected", () => isolationSelected(changeDir, change)),
     check("build_mode selected", () => buildModeSelected(changeDir, change)),
     check("build_mode allowed for workflow", () => buildModeAllowedForWorkflow(changeDir)),
@@ -11233,11 +11366,11 @@ async function guardBuildChecks(output, changeDir, change, run) {
     check("Superpowers plan all tasks checked", () => planTasksAllDone(changeDir)),
     check(
       "proposal.md exists",
-      async () => await nonempty(path18.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path19.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "proposal.md matches configured language",
-      () => documentLanguageMatchesConfigured(changeDir, path18.join(changeDir, "proposal.md"))
+      () => documentLanguageMatchesConfigured(changeDir, path19.join(changeDir, "proposal.md"))
     ),
     check("Superpowers plan matches configured language", async () => {
       const plan = await readField(changeDir, "plan");
@@ -11254,6 +11387,7 @@ async function guardBuildChecks(output, changeDir, change, run) {
 }
 async function guardVerifyChecks(output, changeDir, change, run) {
   return runChecks(output, [
+    check("bound branch matches workspace mode", () => boundBranchMatches(changeDir, change)),
     check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
     // Verification command runs after tasks check — no point running tests
     // if tasks.md is incomplete.
@@ -11272,16 +11406,17 @@ async function guardVerifyChecks(output, changeDir, change, run) {
     })
   ]);
 }
-async function guardArchiveChecks(output, changeDir) {
+async function guardArchiveChecks(output, changeDir, change) {
   return runChecks(output, [
+    check("bound branch matches workspace mode", () => boundBranchMatches(changeDir, change)),
     check("archived is true", async () => await archivedIsTrue(changeDir) ? pass() : fail("")),
     check(
       "proposal.md exists",
-      async () => await nonempty(path18.join(changeDir, "proposal.md")) ? pass() : fail("")
+      async () => await nonempty(path19.join(changeDir, "proposal.md")) ? pass() : fail("")
     ),
     check(
       "design.md exists",
-      async () => await nonempty(path18.join(changeDir, "design.md")) ? pass() : fail("")
+      async () => await nonempty(path19.join(changeDir, "design.md")) ? pass() : fail("")
     ),
     check("tasks.md all tasks checked", () => tasksAllDone(changeDir)),
     check(
@@ -11290,9 +11425,10 @@ async function guardArchiveChecks(output, changeDir) {
     )
   ]);
 }
-async function applyStateUpdate(output, change, changeDir, phase, context) {
+async function applyStateUpdate(output, change, changeDir, phase) {
   const event = CLASSIC_GUARD_TRANSITION_EVENT[phase];
   if (!event) return;
+  const context = await ensureClassicRuntimeRun(changeDir);
   const result5 = applyClassicTransition(context.classic, event);
   await transitionClassicRuntimeRun(changeDir, result5.classic, context.run, {
     event,
@@ -11346,7 +11482,7 @@ Valid phases: open, design, build, verify, archive`
       blocked2 = await guardBuildChecks(output, changeDir, change, runContext.run);
     else if (phase === "verify")
       blocked2 = await guardVerifyChecks(output, changeDir, change, runContext.run);
-    else blocked2 = await guardArchiveChecks(output, changeDir);
+    else blocked2 = await guardArchiveChecks(output, changeDir, change);
     if (blocked2) {
       output.stderr.push("");
       output.stderr.push(red2("BLOCKED — fix failing checks before proceeding to next phase"));
@@ -11355,7 +11491,7 @@ Valid phases: open, design, build, verify, archive`
     output.stderr.push("");
     output.stderr.push(green2("ALL CHECKS PASSED — ready for next phase"));
     if (flag === "--apply") {
-      await applyStateUpdate(output, change, changeDir, phase, runContext);
+      await applyStateUpdate(output, change, changeDir, phase);
     }
     return output.toResult(0);
   } catch (error) {
@@ -11368,10 +11504,10 @@ Valid phases: open, design, build, verify, archive`
 };
 
 // domains/comet-classic/classic-handoff.ts
-var import_yaml6 = __toESM(require_dist(), 1);
+var import_yaml7 = __toESM(require_dist(), 1);
 import { createHash as createHash5 } from "crypto";
-import { promises as fs18, readFileSync as readFileSync2 } from "fs";
-import path19 from "path";
+import { promises as fs19, readFileSync as readFileSync2 } from "fs";
+import path20 from "path";
 var GREEN4 = "\x1B[32m";
 var RED4 = "\x1B[31m";
 var YELLOW4 = "\x1B[33m";
@@ -11405,7 +11541,7 @@ var HandoffOutput = class {
 };
 async function exists5(file) {
   try {
-    await fs18.access(file);
+    await fs19.access(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -11414,7 +11550,7 @@ async function exists5(file) {
 }
 async function nonempty2(file) {
   try {
-    return (await fs18.stat(file)).size > 0;
+    return (await fs19.stat(file)).size > 0;
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -11443,7 +11579,7 @@ async function handoffSourceFiles2(changeDir) {
   const files = [`${changeDir}/proposal.md`, `${changeDir}/design.md`, `${changeDir}/tasks.md`];
   const specs = `${changeDir}/specs`;
   if (await exists5(specs)) {
-    for (const entry2 of (await fs18.readdir(specs)).sort()) {
+    for (const entry2 of (await fs19.readdir(specs)).sort()) {
       const spec = `${specs}/${entry2}/spec.md`;
       if (await exists5(spec)) files.push(spec);
     }
@@ -11491,7 +11627,7 @@ async function writeMarkdownContext(changeDir, change, mode, contextHash, output
   ];
   for (const file of await handoffSourceFiles2(changeDir)) {
     if (!await exists5(file)) continue;
-    const content = await fs18.readFile(file, "utf8");
+    const content = await fs19.readFile(file, "utf8");
     const total = lineCount(content);
     lines.push(
       `## ${file}`,
@@ -11516,7 +11652,7 @@ async function writeMarkdownContext(changeDir, change, mode, contextHash, output
     }
     lines.push("");
   }
-  await fs18.writeFile(output, lines.join("\n"));
+  await fs19.writeFile(output, lines.join("\n"));
 }
 async function writeJsonContext(changeDir, change, mode, contextHash, output) {
   const entries = [];
@@ -11539,7 +11675,7 @@ async function writeJsonContext(changeDir, change, mode, contextHash, output) {
     "}",
     ""
   ].join("\n");
-  await fs18.writeFile(output, document);
+  await fs19.writeFile(output, document);
 }
 async function writeSpecProjectionForFile(file, content) {
   return [
@@ -11579,11 +11715,11 @@ async function writeSpecMarkdownContext(changeDir, change, contextHash, output) 
   const specs = `${changeDir}/specs`;
   let projected = false;
   if (await exists5(specs)) {
-    for (const entry2 of (await fs18.readdir(specs)).sort()) {
+    for (const entry2 of (await fs19.readdir(specs)).sort()) {
       const spec = `${specs}/${entry2}/spec.md`;
       if (!await exists5(spec)) continue;
       projected = true;
-      lines.push(...await writeSpecProjectionForFile(spec, await fs18.readFile(spec, "utf8")));
+      lines.push(...await writeSpecProjectionForFile(spec, await fs19.readFile(spec, "utf8")));
     }
   }
   if (!projected) {
@@ -11592,7 +11728,7 @@ async function writeSpecMarkdownContext(changeDir, change, contextHash, output) 
   lines.push(
     "Full source files remain canonical. If a required heading or scenario is missing here, regenerate the handoff or read the source spec directly. Supporting files (proposal, design, tasks) are referenced by hash only."
   );
-  await fs18.writeFile(output, lines.join("\n"));
+  await fs19.writeFile(output, lines.join("\n"));
 }
 async function writeSpecJsonContext(changeDir, change, contextHash, output) {
   const entries = [];
@@ -11601,7 +11737,7 @@ async function writeSpecJsonContext(changeDir, change, contextHash, output) {
     const role = /\/specs\/[^/]+\/spec\.md$/u.test(file) ? "spec" : "supporting";
     entries.push({ path: file, sha256: hashFile2(file), role });
   }
-  await fs18.writeFile(
+  await fs19.writeFile(
     output,
     `${JSON.stringify(
       {
@@ -11620,8 +11756,8 @@ async function writeSpecJsonContext(changeDir, change, contextHash, output) {
   );
 }
 async function readField2(changeDir, field2) {
-  const file = path19.join(changeDir, ".comet.yaml");
-  const document = (0, import_yaml6.parseDocument)(await fs18.readFile(file, "utf8"), { uniqueKeys: false });
+  const file = path20.join(changeDir, ".comet.yaml");
+  const document = (0, import_yaml7.parseDocument)(await fs19.readFile(file, "utf8"), { uniqueKeys: false });
   if (document.errors.length > 0) {
     throw new HandoffFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
   }
@@ -11655,7 +11791,7 @@ async function completedHandoffIsCurrent(changeDir, run, contextHash, contextJso
     readCheckpoint(changeDir, run.checkpointRef)
   ]);
   if (!await exists5(contextJson) || !await exists5(contextMd)) return false;
-  if (context !== await fs18.readFile(contextMd, "utf8")) return false;
+  if (context !== await fs19.readFile(contextMd, "utf8")) return false;
   if (artifacts.handoff_context !== contextJson || artifacts.handoff_markdown !== contextMd) {
     return false;
   }
@@ -11778,7 +11914,7 @@ var classicHandoffCommand = async (args) => {
       run: pendingRun,
       unknownKeys: (await readClassicState(changeDir)).unknownKeys
     });
-    await fs18.mkdir(handoffDir, { recursive: true });
+    await fs19.mkdir(handoffDir, { recursive: true });
     if (handoffMode === "beta") {
       await writeSpecMarkdownContext(changeDir, change, contextHash, contextMd);
       await writeSpecJsonContext(changeDir, change, contextHash, contextJson);
@@ -11786,7 +11922,7 @@ var classicHandoffCommand = async (args) => {
       await writeMarkdownContext(changeDir, change, handoffMode, contextHash, contextMd);
       await writeJsonContext(changeDir, change, handoffMode, contextHash, contextJson);
     }
-    const context = await fs18.readFile(contextMd, "utf8");
+    const context = await fs19.readFile(contextMd, "utf8");
     await writeContext(changeDir, pendingRun.contextRef, context);
     const artifacts = {
       ...await readArtifacts(changeDir, pendingRun.artifactsRef),
@@ -11843,8 +11979,8 @@ var classicHandoffCommand = async (args) => {
 };
 
 // domains/comet-classic/classic-hook-guard.ts
-import { existsSync as existsSync2, promises as fs19, readFileSync as readFileSync3 } from "fs";
-import path20 from "path";
+import { existsSync as existsSync2, promises as fs20, readFileSync as readFileSync3 } from "fs";
+import path21 from "path";
 function result(exitCode, message) {
   return { exitCode, stderr: message + "\n" };
 }
@@ -11873,52 +12009,52 @@ function comparisonKey(value) {
 function parseProjectRoot(args) {
   const index = args.indexOf("--project-root");
   const value = index >= 0 ? args[index + 1] : void 0;
-  return path20.resolve(value && !value.startsWith("--") ? value : process.cwd());
+  return path21.resolve(value && !value.startsWith("--") ? value : process.cwd());
 }
 function relativeToProjectRoot(target, projectRoot2) {
-  const relative = normalized(path20.relative(projectRoot2, target));
+  const relative = normalized(path21.relative(projectRoot2, target));
   if (relative === "") return "";
-  if (relative.startsWith("../") || relative === ".." || path20.isAbsolute(relative)) return null;
+  if (relative.startsWith("../") || relative === ".." || path21.isAbsolute(relative)) return null;
   return relative;
 }
 async function physicalPathForPossiblyMissingTarget(target) {
-  const resolved = path20.resolve(target);
-  const root = path20.parse(resolved).root;
+  const resolved = path21.resolve(target);
+  const root = path21.parse(resolved).root;
   const missingSegments = [];
   let cursor = resolved;
   while (cursor && cursor !== root) {
     try {
-      const physicalBase = await fs19.realpath(cursor);
-      return path20.join(physicalBase, ...missingSegments.reverse());
+      const physicalBase = await fs20.realpath(cursor);
+      return path21.join(physicalBase, ...missingSegments.reverse());
     } catch (error) {
       const code = error.code;
       if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
-      missingSegments.push(path20.basename(cursor));
-      cursor = path20.dirname(cursor);
+      missingSegments.push(path21.basename(cursor));
+      cursor = path21.dirname(cursor);
     }
   }
   try {
-    const physicalRoot = await fs19.realpath(root);
-    return path20.join(physicalRoot, ...missingSegments.reverse());
+    const physicalRoot = await fs20.realpath(root);
+    return path21.join(physicalRoot, ...missingSegments.reverse());
   } catch {
     return null;
   }
 }
 async function projectRelative(target, projectRoot2) {
-  const rawCandidate = path20.isAbsolute(target) ? target : path20.resolve(process.cwd(), target);
+  const rawCandidate = path21.isAbsolute(target) ? target : path21.resolve(process.cwd(), target);
   let candidate = normalized(rawCandidate);
   const rootRelative = relativeToProjectRoot(rawCandidate, projectRoot2);
   if (rootRelative !== null) return rootRelative;
   try {
     const physicalCandidate = await physicalPathForPossiblyMissingTarget(rawCandidate);
-    const physicalRoot = await fs19.realpath(projectRoot2);
+    const physicalRoot = await fs20.realpath(projectRoot2);
     if (physicalCandidate) {
       const physicalRootRelative = relativeToProjectRoot(physicalCandidate, physicalRoot);
       if (physicalRootRelative !== null) return physicalRootRelative;
       candidate = normalized(physicalCandidate);
     }
   } catch {
-    if (!path20.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
+    if (!path21.isAbsolute(target)) return normalized(target).replace(/^\.\//u, "");
   }
   return candidate.replace(/^\.\//u, "");
 }
@@ -11948,15 +12084,15 @@ async function loadGoverningChange(changeDir) {
   }
 }
 async function activeChanges(projectRoot2) {
-  const changesDir = path20.join(projectRoot2, "openspec", "changes");
+  const changesDir = path21.join(projectRoot2, "openspec", "changes");
   const governingChanges = [];
   if (!existsSync2(changesDir)) return governingChanges;
-  for (const entry2 of (await fs19.readdir(changesDir, { withFileTypes: true })).sort(
+  for (const entry2 of (await fs20.readdir(changesDir, { withFileTypes: true })).sort(
     (left, right) => left.name.localeCompare(right.name)
   )) {
     if (!entry2.isDirectory() || entry2.name === "archive") continue;
-    const changeDir = path20.join(changesDir, entry2.name);
-    if (!existsSync2(path20.join(changeDir, ".comet.yaml"))) continue;
+    const changeDir = path21.join(changesDir, entry2.name);
+    if (!existsSync2(path21.join(changeDir, ".comet.yaml"))) continue;
     const governing = await loadGoverningChange(changeDir);
     if (!governing || governing.archived) continue;
     governingChanges.push(governing);
@@ -12004,7 +12140,7 @@ function allowsSuperpowersArtifacts(governing) {
   return governing.phase === "design" || governing.phase === "build" || governing.phase === "verify";
 }
 function governingChangeName(governing) {
-  return governing.changeDir ? path20.basename(governing.changeDir) : null;
+  return governing.changeDir ? path21.basename(governing.changeDir) : null;
 }
 var SUPERPOWERS_ARTIFACT_SUFFIXES = /* @__PURE__ */ new Set([
   "design",
@@ -12081,7 +12217,30 @@ async function repoSourceGoverningChange(projectRoot2, relativePath2, selectedCh
       )
     };
   }
-  if (active.length === 1) return active[0];
+  if (active.length === 1) {
+    const sole = active[0];
+    if (sole.changeDir !== null) {
+      const outcome = await resolveBranchBinding(sole.changeDir, {
+        heal: false,
+        cwd: projectRoot2
+      });
+      const name = governingChangeName(sole) ?? "unknown";
+      if (outcome.status === "drift") {
+        return {
+          blockedResult: blockedStaleSelection(
+            relativePath2,
+            driftStaleReason(name, outcome.boundBranch, outcome.currentBranch)
+          )
+        };
+      }
+      if (outcome.status === "unbound-detached") {
+        return {
+          blockedResult: blockedStaleSelection(relativePath2, unboundDetachedMessage(name))
+        };
+      }
+    }
+    return sole;
+  }
   return {
     blockedResult: blockedMultipleChanges(
       relativePath2,
@@ -12095,8 +12254,8 @@ async function governingChange(relativePath2, projectRoot2, selectedChangeName) 
     const rest = relativePath2.slice(prefix.length);
     const [name] = rest.split("/");
     if (name && name !== "archive") {
-      const changeDir = path20.join(projectRoot2, "openspec", "changes", name);
-      const stateFile2 = path20.join(changeDir, ".comet.yaml");
+      const changeDir = path21.join(projectRoot2, "openspec", "changes", name);
+      const stateFile2 = path21.join(changeDir, ".comet.yaml");
       if (existsSync2(stateFile2)) {
         const governing = await loadGoverningChange(changeDir);
         if (governing) return governing;
@@ -12712,8 +12871,8 @@ var classicIntentCommand = async (args, _options) => {
 };
 
 // domains/comet-classic/classic-resume-probe.ts
-import path21 from "path";
-import { promises as fs20 } from "fs";
+import path22 from "path";
+import { promises as fs21 } from "fs";
 import { spawn } from "child_process";
 var COMET_RESUME_PROBE_SCHEMA_VERSION = "comet.resume_probe.v1";
 function isRecord3(value) {
@@ -12756,13 +12915,13 @@ function result3(action, change, confidence, reason, evidence = []) {
 }
 async function readIfExists(filePath) {
   if (!await fileExists3(filePath)) return "";
-  return fs20.readFile(filePath, "utf8");
+  return fs21.readFile(filePath, "utf8");
 }
 async function changeSearchText(changeDir, classic) {
   const files = ["proposal.md", "design.md", "tasks.md"];
   const parts = [classic.name, classic.workflow, classic.phase];
   for (const file of files) {
-    parts.push(await readIfExists(path21.join(changeDir, file)));
+    parts.push(await readIfExists(path22.join(changeDir, file)));
   }
   return parts.join("\n").toLowerCase();
 }
@@ -12826,19 +12985,19 @@ function diagnosticFromProjection(changeDir, name, projection) {
   };
 }
 async function hasOpenSpecChangeFiles(changeDir) {
-  return await fileExists3(path21.join(changeDir, "proposal.md")) || await fileExists3(path21.join(changeDir, "design.md")) || await fileExists3(path21.join(changeDir, "tasks.md"));
+  return await fileExists3(path22.join(changeDir, "proposal.md")) || await fileExists3(path22.join(changeDir, "design.md")) || await fileExists3(path22.join(changeDir, "tasks.md"));
 }
 async function discoverActiveChanges(projectRoot2) {
-  const changesDir = path21.join(projectRoot2, "openspec", "changes");
+  const changesDir = path22.join(projectRoot2, "openspec", "changes");
   if (!await fileExists3(changesDir)) return [];
   const entries = await readDir(changesDir);
   const changes = [];
   for (const entry2 of entries) {
     if (entry2 === "archive") continue;
-    const changeDir = path21.join(changesDir, entry2);
-    const stat = await fs20.stat(changeDir).catch(() => null);
+    const changeDir = path22.join(changesDir, entry2);
+    const stat = await fs21.stat(changeDir).catch(() => null);
     if (!stat?.isDirectory()) continue;
-    const hasCometState = await fileExists3(path21.join(changeDir, ".comet.yaml"));
+    const hasCometState = await fileExists3(path22.join(changeDir, ".comet.yaml"));
     if (!hasCometState) {
       if (!await hasOpenSpecChangeFiles(changeDir)) continue;
       const missingStateChange = {
@@ -13138,11 +13297,11 @@ var classicResumeProbeCommand = async (args) => {
 };
 
 // domains/comet-classic/classic-state-command.ts
-var import_yaml7 = __toESM(require_dist(), 1);
+var import_yaml8 = __toESM(require_dist(), 1);
 import { spawnSync as spawnSync3 } from "child_process";
-import { randomUUID as randomUUID7 } from "crypto";
-import { existsSync as existsSync3, promises as fs21 } from "fs";
-import path22 from "path";
+import { randomUUID as randomUUID8 } from "crypto";
+import { existsSync as existsSync3, promises as fs22 } from "fs";
+import path23 from "path";
 init_state();
 var GREEN5 = "\x1B[32m";
 var RED5 = "\x1B[31m";
@@ -13157,7 +13316,8 @@ var MACHINE_OWNED_FIELDS = /* @__PURE__ */ new Set([
   "archive_confirmation",
   "verify_failures",
   "classic_profile",
-  "classic_migration"
+  "classic_migration",
+  "bound_branch"
 ]);
 var SETTABLE_FIELDS = new Set(
   CLASSIC_WIRE_KEYS.filter((field2) => !MACHINE_OWNED_FIELDS.has(field2))
@@ -13255,7 +13415,7 @@ function validateRelativePath(value, field2) {
 }
 async function exists6(file) {
   try {
-    await fs21.access(file);
+    await fs22.access(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -13264,7 +13424,7 @@ async function exists6(file) {
 }
 async function nonempty3(file) {
   try {
-    return (await fs21.stat(file)).size > 0;
+    return (await fs22.stat(file)).size > 0;
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -13276,27 +13436,27 @@ async function changeDirectory2(name) {
 async function readDocument2(file) {
   let source;
   try {
-    source = await fs21.readFile(file, "utf8");
+    source = await fs22.readFile(file, "utf8");
   } catch (error) {
     if (error.code === "ENOENT") {
       fail2(
-        `ERROR: .comet.yaml not found at ${path22.relative(process.cwd(), file).replaceAll("\\", "/")}`
+        `ERROR: .comet.yaml not found at ${path23.relative(process.cwd(), file).replaceAll("\\", "/")}`
       );
     }
     throw error;
   }
-  const document = (0, import_yaml7.parseDocument)(source, { uniqueKeys: false });
+  const document = (0, import_yaml8.parseDocument)(source, { uniqueKeys: false });
   if (document.errors.length > 0) fail2(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
   return document;
 }
 async function atomicWrite2(file, content) {
-  await fs21.mkdir(path22.dirname(file), { recursive: true });
-  const temporary = `${file}.${randomUUID7()}.tmp`;
+  await fs22.mkdir(path23.dirname(file), { recursive: true });
+  const temporary = `${file}.${randomUUID8()}.tmp`;
   try {
-    await fs21.writeFile(temporary, content, "utf8");
-    await fs21.rename(temporary, file);
+    await fs22.writeFile(temporary, content, "utf8");
+    await fs22.rename(temporary, file);
   } catch (error) {
-    await fs21.rm(temporary, { force: true });
+    await fs22.rm(temporary, { force: true });
     throw error;
   }
 }
@@ -13366,6 +13526,7 @@ function sparseClassicState(record) {
       ["current", "branch", "worktree"],
       null
     ),
+    boundBranch: nullableRecordString(record, "bound_branch"),
     verifyMode: enumRecordValue(record, "verify_mode", ["light", "full"], null),
     autoTransition: nullableRecordBoolean(record, "auto_transition"),
     baseRef: nullableRecordString(record, "base_ref"),
@@ -13438,7 +13599,7 @@ async function stateFile(name) {
   const change = await changeDirectory2(name);
   return {
     ...change,
-    file: path22.join(change.directory, ".comet.yaml")
+    file: path23.join(change.directory, ".comet.yaml")
   };
 }
 async function readField3(name, field2) {
@@ -13456,7 +13617,7 @@ async function readField3(name, field2) {
   return scalar(value);
 }
 function parsedValue(field2, value) {
-  const document = (0, import_yaml7.parseDocument)(`${field2}: ${value}
+  const document = (0, import_yaml8.parseDocument)(`${field2}: ${value}
 `);
   if (document.errors.length > 0) fail2(`ERROR: Invalid value: '${value}'`);
   return document.get(field2);
@@ -13491,7 +13652,35 @@ async function setField2(output, name, field2, value, options = {}) {
   validateSetValue(field2, value);
   const { file, directory } = await stateFile(name);
   const document = await readDocument2(file);
+  const previousRecord = document.toJS() ?? {};
   document.set(field2, parsedValue(field2, value));
+  if (field2 === "isolation") {
+    if (requiresBranchBinding(value)) {
+      const previousIsolation = typeof previousRecord.isolation === "string" ? previousRecord.isolation : null;
+      const existing = previousRecord.bound_branch;
+      const alreadyBound = typeof existing === "string" && existing !== "";
+      if (!alreadyBound || previousIsolation !== value) {
+        const currentBranch = liveGitBranch(process.cwd());
+        const verdict = evaluateBranchBinding({
+          isolation: value,
+          boundBranch: null,
+          currentBranch,
+          gitWorkTree: currentBranch === null ? isGitWorkTree(process.cwd()) : true
+        });
+        if (verdict.status === "needs-heal") {
+          document.set("bound_branch", verdict.branch);
+        } else if (verdict.status === "unbound-detached") {
+          fail2(
+            `ERROR: cannot bind isolation=${value} while HEAD is detached; checkout a branch first`
+          );
+        } else {
+          document.set("bound_branch", null);
+        }
+      }
+    } else {
+      document.set("bound_branch", null);
+    }
+  }
   const run = await readRunState(directory);
   const projection = parseClassicStateDocument(document.toJS(), run);
   if (projection.run) {
@@ -13541,10 +13730,10 @@ async function init(output, name, workflow) {
   validateEnum(workflow, PROFILES);
   const { file, label, directory } = await stateFile(name);
   if (await exists6(file)) fail2(`ERROR: .comet.yaml already exists at ${label}/.comet.yaml`);
-  await fs21.mkdir(directory, { recursive: true });
+  await fs22.mkdir(directory, { recursive: true });
   const preset = workflow !== "full";
   const reviewMode = preset ? "off" : await reviewModeDefault();
-  const document = new import_yaml7.Document({
+  const document = new import_yaml8.Document({
     workflow,
     language: await projectLanguageDefault(),
     phase: "open",
@@ -13554,7 +13743,7 @@ async function init(output, name, workflow) {
     subagent_dispatch: null,
     tdd_mode: preset ? "direct" : null,
     review_mode: reviewMode,
-    isolation: preset ? "current" : null,
+    isolation: null,
     verify_mode: preset ? "light" : null,
     auto_transition: await autoTransition() === "true",
     base_ref: gitOutput(["rev-parse", "--verify", "HEAD"]),
@@ -13586,10 +13775,10 @@ async function requireBuildDecisions(name) {
   const subagentDispatch = await readField3(name, "subagent_dispatch");
   const tddMode = await readField3(name, "tdd_mode");
   const reviewMode = await readField3(name, "review_mode");
-  const allowedIsolation = workflow === "full" ? ["branch", "worktree"] : ["current", "branch", "worktree"];
+  const allowedIsolation = ["current", "branch", "worktree"];
   if (!allowedIsolation.includes(isolation)) {
     fail2(
-      `ERROR: Cannot transition '${name}': isolation must be ${workflow === "full" ? "branch or worktree" : "current, branch, or worktree"}, got '${isolation || "null"}'`
+      `ERROR: Cannot transition '${name}': isolation must be current, branch, or worktree, got '${isolation || "null"}'`
     );
   }
   if (!["subagent-driven-development", "executing-plans", "direct"].includes(buildMode)) {
@@ -13622,13 +13811,13 @@ async function requireOpenArtifacts(name) {
   const { directory } = await stateFile(name);
   const workflow = await readField3(name, "workflow");
   for (const artifact of ["proposal.md", "tasks.md"]) {
-    if (!await nonempty3(path22.join(directory, artifact))) {
+    if (!await nonempty3(path23.join(directory, artifact))) {
       fail2(
         `ERROR: Cannot transition '${name}': ${artifact} must exist and be non-empty before leaving open`
       );
     }
   }
-  if (workflow === "full" && !await nonempty3(path22.join(directory, "design.md"))) {
+  if (workflow === "full" && !await nonempty3(path23.join(directory, "design.md"))) {
     fail2(
       `ERROR: Cannot transition '${name}': design.md must exist and be non-empty before leaving open`
     );
@@ -13636,14 +13825,14 @@ async function requireOpenArtifacts(name) {
 }
 async function requireDesignEvidence(name) {
   const designDoc = await readField3(name, "design_doc");
-  if (!designDoc || designDoc === "null" || !await nonempty3(path22.resolve(designDoc))) {
+  if (!designDoc || designDoc === "null" || !await nonempty3(path23.resolve(designDoc))) {
     fail2(
       `ERROR: Cannot transition '${name}': design_doc must point to an existing Design Doc before leaving design`
     );
   }
 }
 async function writeSparseTransitionEffects(directory, effects) {
-  const file = path22.join(directory, ".comet.yaml");
+  const file = path23.join(directory, ".comet.yaml");
   const document = await readDocument2(file);
   for (const effect of effects) {
     const field2 = wireField2(effect.field);
@@ -13658,7 +13847,7 @@ async function applyTransitionEvent(output, name, event) {
   let sparse = false;
   if (!classic) {
     if (projection.run) fail2("ERROR: Classic state projection is missing");
-    const document = await readDocument2(path22.join(directory, ".comet.yaml"));
+    const document = await readDocument2(path23.join(directory, ".comet.yaml"));
     classic = sparseClassicState(document.toJS());
     sparse = true;
   }
@@ -13705,7 +13894,7 @@ async function transition(output, name, event) {
   } else if (event === "verify-pass") {
     await requirePhase(name, "verify");
     const report = await readField3(name, "verification_report");
-    if (!report || !await exists6(path22.resolve(report))) {
+    if (!report || !await exists6(path23.resolve(report))) {
       fail2(
         `ERROR: Cannot transition '${name}': verification_report must point to an existing report file`
       );
@@ -13769,9 +13958,9 @@ async function next(output, name) {
 async function taskCheckoff(output, taskFile, taskText) {
   validateRelativePath(taskFile, "task file");
   if (!taskText) fail2("ERROR: Task text cannot be empty");
-  const file = path22.resolve(taskFile);
+  const file = path23.resolve(taskFile);
   if (!await exists6(file)) fail2(`ERROR: Task file not found: ${taskFile}`);
-  const lines = (await fs21.readFile(file, "utf8")).split(/\r?\n/u);
+  const lines = (await fs22.readFile(file, "utf8")).split(/\r?\n/u);
   const matches = lines.filter(
     (line) => [`- [ ] ${taskText}`, `- [x] ${taskText}`, `- [X] ${taskText}`].includes(line)
   );
@@ -13809,21 +13998,21 @@ async function check2(output, name, phase) {
       designDoc ? `design_doc=${designDoc} (expected: empty/null)` : "design_doc is empty/null"
     );
     for (const artifact of ["proposal.md", "design.md", "tasks.md"]) {
-      (await nonempty3(path22.join(directory, artifact)) ? pass2 : reject)(
-        `${artifact} ${await nonempty3(path22.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
+      (await nonempty3(path23.join(directory, artifact)) ? pass2 : reject)(
+        `${artifact} ${await nonempty3(path23.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
       );
     }
   } else if (phase === "build") {
     const workflow = await readField3(name, "workflow");
     const designDoc = await readField3(name, "design_doc");
     if (workflow === "full") {
-      (designDoc && designDoc !== "null" && await exists6(path22.resolve(designDoc)) ? pass2 : reject)(`design_doc=${designDoc} (expected: non-null and file exists)`);
+      (designDoc && designDoc !== "null" && await exists6(path23.resolve(designDoc)) ? pass2 : reject)(`design_doc=${designDoc} (expected: non-null and file exists)`);
     } else {
       pass2(`workflow=${workflow} (design_doc not required)`);
     }
     for (const artifact of ["proposal.md", "tasks.md"]) {
-      (await nonempty3(path22.join(directory, artifact)) ? pass2 : reject)(
-        `${artifact} ${await nonempty3(path22.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
+      (await nonempty3(path23.join(directory, artifact)) ? pass2 : reject)(
+        `${artifact} ${await nonempty3(path23.join(directory, artifact)) ? "non-empty" : "missing or empty"}`
       );
     }
   } else if (phase === "verify") {
@@ -13836,6 +14025,29 @@ async function check2(output, name, phase) {
     const archived = await readField3(name, "archived");
     (archived !== "true" ? pass2 : reject)(`archived=${archived} (expected: not true)`);
   }
+  const binding = await resolveBranchBinding(directory, { heal: true, cwd: process.cwd() });
+  if (binding.bindingRequired) {
+    switch (binding.status) {
+      case "drift":
+        reject(driftBlockedMessage(name, binding.boundBranch, binding.currentBranch));
+        break;
+      case "unbound-detached":
+        reject(unboundDetachedMessage(name));
+        break;
+      case "healed":
+        pass2(`bound_branch lazily set to ${binding.branch}`);
+        break;
+      case "needs-heal":
+      case "ok":
+      case "not-applicable":
+        pass2("bound_branch matches current branch");
+        break;
+      default: {
+        const exhaustive = binding;
+        throw new Error(`unhandled branch binding status: ${JSON.stringify(exhaustive)}`);
+      }
+    }
+  }
   output.stdout.push("");
   if (blocked2) {
     output.stderr.push(red4("BLOCKED — fix failing checks before proceeding"));
@@ -13845,7 +14057,7 @@ async function check2(output, name, phase) {
 }
 function fieldStatus(field2, value, file) {
   if (!value || value === "null") return `  - ${field2}: PENDING`;
-  if (file && !existsSync3(path22.resolve(file))) {
+  if (file && !existsSync3(path23.resolve(file))) {
     return `  - ${field2}: BROKEN (path ${value} does not exist)`;
   }
   return `  - ${field2}: DONE (${value})`;
@@ -13854,7 +14066,7 @@ async function recoverOpen(output, directory) {
   output.stdout.push("  Artifacts:");
   let complete = 0;
   for (const artifact of ["proposal.md", "design.md", "tasks.md"]) {
-    const done = await nonempty3(path22.join(directory, artifact));
+    const done = await nonempty3(path23.join(directory, artifact));
     if (done) complete += 1;
     output.stdout.push(`  - ${artifact}: ${done ? "DONE" : "PENDING"}`);
   }
@@ -13867,7 +14079,7 @@ async function recoverDesign(output, name, directory) {
   output.stdout.push("  Artifacts:");
   for (const artifact of ["proposal.md", "design.md", "tasks.md"]) {
     output.stdout.push(
-      `  - ${artifact}: ${await nonempty3(path22.join(directory, artifact)) ? "DONE" : "MISSING (unexpected in design phase)"}`
+      `  - ${artifact}: ${await nonempty3(path23.join(directory, artifact)) ? "DONE" : "MISSING (unexpected in design phase)"}`
     );
   }
   const handoff = await readField3(name, "handoff_context");
@@ -13881,11 +14093,11 @@ async function recoverDesign(output, name, directory) {
     fieldStatus("design_doc", design, design),
     ""
   );
-  if (design && design !== "null" && await exists6(path22.resolve(design))) {
+  if (design && design !== "null" && await exists6(path23.resolve(design))) {
     output.stdout.push(
       "Recovery action: Design Doc already created and linked. Run guard to transition to build."
     );
-  } else if (handoff && handoff !== "null" && await exists6(path22.resolve(handoff))) {
+  } else if (handoff && handoff !== "null" && await exists6(path23.resolve(handoff))) {
     output.stdout.push(
       "Recovery action: Handoff generated but Design Doc not yet created. Resume from brainstorming confirmation (Step 1c)."
     );
@@ -13915,7 +14127,7 @@ async function recoverBuild(output, name, directory, workflow) {
     decisions.push(fieldStatus("subagent_dispatch", subagentDispatch));
   }
   output.stdout.push(...decisions, "", "  Plan:", fieldStatus("plan", plan, plan), "");
-  const tasks = path22.join(directory, "tasks.md");
+  const tasks = path23.join(directory, "tasks.md");
   if (!await exists6(tasks)) {
     output.stdout.push(
       "  Tasks: tasks.md MISSING",
@@ -13924,14 +14136,14 @@ async function recoverBuild(output, name, directory, workflow) {
     );
     return;
   }
-  const lines = (await fs21.readFile(tasks, "utf8")).split(/\r?\n/u);
+  const lines = (await fs22.readFile(tasks, "utf8")).split(/\r?\n/u);
   const total = lines.filter((line) => /^\s*- \[[ xX]\] /u.test(line)).length;
   const done = lines.filter((line) => /^\s*- \[[xX]\] /u.test(line)).length;
   const pending = total - done;
   let planTotal = 0;
   let planDone = 0;
-  if (plan && plan !== "null" && await exists6(path22.resolve(plan))) {
-    const planLines = (await fs21.readFile(path22.resolve(plan), "utf8")).split(/\r?\n/u);
+  if (plan && plan !== "null" && await exists6(path23.resolve(plan))) {
+    const planLines = (await fs22.readFile(path23.resolve(plan), "utf8")).split(/\r?\n/u);
     planTotal = planLines.filter((line) => /^\s*- \[[ xX]\] /u.test(line)).length;
     planDone = planLines.filter((line) => /^\s*- \[[xX]\] /u.test(line)).length;
   }
@@ -14062,19 +14274,19 @@ async function scale(output, name) {
   validateChangeName4(name);
   const { file, directory, label } = await stateFile(name);
   if (!await exists6(file)) fail2(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
-  const tasksFile = path22.join(directory, "tasks.md");
-  const taskCount = await exists6(tasksFile) ? (await fs21.readFile(tasksFile, "utf8")).split(/\r?\n/u).filter((line) => /^- \[/u.test(line)).length : 0;
-  const specs = path22.join(directory, "specs");
+  const tasksFile = path23.join(directory, "tasks.md");
+  const taskCount = await exists6(tasksFile) ? (await fs22.readFile(tasksFile, "utf8")).split(/\r?\n/u).filter((line) => /^- \[/u.test(line)).length : 0;
+  const specs = path23.join(directory, "specs");
   let deltaSpecs = 0;
   if (await exists6(specs)) {
-    for (const entry2 of await fs21.readdir(specs)) {
-      if (await exists6(path22.join(specs, entry2, "spec.md"))) deltaSpecs += 1;
+    for (const entry2 of await fs22.readdir(specs)) {
+      if (await exists6(path23.join(specs, entry2, "spec.md"))) deltaSpecs += 1;
     }
   }
   const plan = await readField3(name, "plan");
   let baseRef = "";
-  if (plan && plan !== "null" && await exists6(path22.resolve(plan))) {
-    const match = (await fs21.readFile(path22.resolve(plan), "utf8")).match(/^base-ref:\s*(.+)$/mu);
+  if (plan && plan !== "null" && await exists6(path23.resolve(plan))) {
+    const match = (await fs22.readFile(path23.resolve(plan), "utf8")).match(/^base-ref:\s*(.+)$/mu);
     baseRef = match?.[1].trim() ?? "";
   }
   if (!baseRef) baseRef = await readField3(name, "base_ref");
@@ -14154,14 +14366,41 @@ async function selectChange(output, name) {
   validateChangeName4(name);
   try {
     const selection = await selectCurrentChange(process.cwd(), name);
+    const boundBranch = await readField3(name, "bound_branch");
+    const bound = boundBranch && boundBranch !== "null" ? boundBranch : null;
     output.stderr.push(
-      green4(
-        `[SELECTED] current change: ${selection.change}${selection.branch ? ` (branch: ${selection.branch})` : ""}`
-      )
+      green4(`[SELECTED] current change: ${selection.change}${bound ? ` (branch: ${bound})` : ""}`)
     );
   } catch (error) {
     fail2(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+async function rebind(output, name) {
+  validateChangeName4(name);
+  const { directory } = await stateFile(name);
+  const boundBranch = await readField3(name, "bound_branch");
+  if (!boundBranch || boundBranch === "null") {
+    fail2(
+      `ERROR: '${name}' is not yet bound; use 'comet state set ${name} isolation <current|branch|worktree>' to establish the first binding`
+    );
+  }
+  const branch = liveGitBranch(process.cwd());
+  if (branch === null) {
+    fail2("ERROR: cannot rebind while HEAD is detached; checkout a branch first");
+  }
+  const before = await readClassicState(directory);
+  if (!before.classic) fail2("ERROR: Classic state projection is missing");
+  await healBoundBranch(directory, branch);
+  const after = { ...before.classic, boundBranch: branch };
+  await appendClassicStateEvent(directory, {
+    change: name,
+    event: "rebind",
+    source: "comet-state",
+    from: before.classic,
+    to: after,
+    effects: [{ field: "boundBranch", from: boundBranch, to: branch }]
+  });
+  output.stderr.push(green4(`[REBIND] bound_branch: ${boundBranch} → ${branch}`));
 }
 async function currentChange(output) {
   const resolution = await resolveCurrentChange(process.cwd());
@@ -14216,6 +14455,9 @@ var classicStateCommand = async (args) => {
     } else if (subcommand === "task-checkoff") {
       required(rest, 2, "Usage: comet-state.mjs task-checkoff <file> <task-text>");
       await taskCheckoff(output, rest[0], rest[1]);
+    } else if (subcommand === "rebind") {
+      requiredExact(rest, 1, "Usage: comet-state.mjs rebind <change-name>");
+      await rebind(output, rest[0]);
     } else if (subcommand === "select") {
       requiredExact(rest, 1, "Usage: comet-state.mjs select <change-name>");
       await selectChange(output, rest[0]);

@@ -19,6 +19,12 @@ import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classi
 import { classicValidateCommand } from './classic-validate-command.js';
 import { readClassicState } from './classic-store.js';
 import { readClassicConfigValue } from './classic-project-config.js';
+import {
+  driftBlockedMessage,
+  resolveBranchBinding,
+  unboundDetachedMessage,
+  type BranchBindingOutcome,
+} from './classic-branch-binding.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -485,14 +491,37 @@ async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
   return pass();
 }
 
+async function boundBranchMatches(changeDir: string, change: string): Promise<CheckResult> {
+  let outcome: BranchBindingOutcome;
+  try {
+    outcome = await resolveBranchBinding(changeDir, { heal: true, cwd: process.cwd() });
+  } catch (error) {
+    throw new GuardFailure(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  switch (outcome.status) {
+    case 'drift':
+      return fail(driftBlockedMessage(change, outcome.boundBranch, outcome.currentBranch));
+    case 'unbound-detached':
+      return fail(unboundDetachedMessage(change));
+    case 'healed':
+      return pass(`bound_branch lazily set to ${outcome.branch}`);
+    case 'needs-heal':
+    case 'ok':
+    case 'not-applicable':
+      return pass();
+    default: {
+      const exhaustive: never = outcome;
+      throw new Error(`unhandled branch binding status: ${JSON.stringify(exhaustive)}`);
+    }
+  }
+}
+
 async function isolationSelected(changeDir: string, change: string): Promise<CheckResult> {
   const isolation = await readField(changeDir, 'isolation');
-  const workflow = await readField(changeDir, 'workflow');
-  if (isolation === 'branch' || isolation === 'worktree') return pass();
-  if (isolation === 'current' && (workflow === 'hotfix' || workflow === 'tweak')) return pass();
-  const allowedValues = workflow === 'full' ? '<branch|worktree>' : '<current|branch|worktree>';
+  if (isolation === 'current' || isolation === 'branch' || isolation === 'worktree') return pass();
+  const allowedValues = '<current|branch|worktree>';
   return fail(
-    `isolation must be ${workflow === 'full' ? 'branch or worktree' : 'current, branch, or worktree'}, got '${isolation || 'null'}'\nNext: choose a valid workspace mode, prepare it when needed, then run:\n  comet state set ${change} isolation ${allowedValues}`,
+    `isolation must be current, branch, or worktree, got '${isolation || 'null'}'\nNext: choose a valid workspace mode, prepare it when needed, then run:\n  comet state set ${change} isolation ${allowedValues}`,
   );
 }
 
@@ -811,6 +840,7 @@ async function guardBuildChecks(
   run: ClassicRunContext['run'],
 ): Promise<boolean> {
   return runChecks(output, [
+    check('bound branch matches workspace mode', () => boundBranchMatches(changeDir, change)),
     check('isolation selected', () => isolationSelected(changeDir, change)),
     check('build_mode selected', () => buildModeSelected(changeDir, change)),
     check('build_mode allowed for workflow', () => buildModeAllowedForWorkflow(changeDir)),
@@ -846,6 +876,7 @@ async function guardVerifyChecks(
   run: ClassicRunContext['run'],
 ): Promise<boolean> {
   return runChecks(output, [
+    check('bound branch matches workspace mode', () => boundBranchMatches(changeDir, change)),
     check('tasks.md all tasks checked', () => tasksAllDone(changeDir)),
     // Verification command runs after tasks check — no point running tests
     // if tasks.md is incomplete.
@@ -864,8 +895,13 @@ async function guardVerifyChecks(
   ]);
 }
 
-async function guardArchiveChecks(output: GuardOutput, changeDir: string): Promise<boolean> {
+async function guardArchiveChecks(
+  output: GuardOutput,
+  changeDir: string,
+  change: string,
+): Promise<boolean> {
   return runChecks(output, [
+    check('bound branch matches workspace mode', () => boundBranchMatches(changeDir, change)),
     check('archived is true', async () => ((await archivedIsTrue(changeDir)) ? pass() : fail(''))),
     check('proposal.md exists', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),
@@ -885,11 +921,14 @@ async function applyStateUpdate(
   change: string,
   changeDir: string,
   phase: string,
-  context: ClassicRunContext,
 ): Promise<void> {
   const event = CLASSIC_GUARD_TRANSITION_EVENT[phase as ClassicPhase];
   if (!event) return;
 
+  // Re-read instead of reusing the run context captured before the checks:
+  // boundBranchMatches may have lazily healed bound_branch on disk, and a
+  // stale projection would write the pre-heal null back over it.
+  const context = await ensureClassicRuntimeRun(changeDir);
   const result = applyClassicTransition(context.classic, event);
   await transitionClassicRuntimeRun(changeDir, result.classic, context.run, {
     event,
@@ -946,7 +985,7 @@ export const classicGuardCommand: ClassicCommandHandler = async (args, options) 
       blocked = await guardBuildChecks(output, changeDir, change, runContext.run);
     else if (phase === 'verify')
       blocked = await guardVerifyChecks(output, changeDir, change, runContext.run);
-    else blocked = await guardArchiveChecks(output, changeDir);
+    else blocked = await guardArchiveChecks(output, changeDir, change);
 
     if (blocked) {
       output.stderr.push('');
@@ -956,7 +995,7 @@ export const classicGuardCommand: ClassicCommandHandler = async (args, options) 
     output.stderr.push('');
     output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
     if (flag === '--apply') {
-      await applyStateUpdate(output, change, changeDir, phase, runContext);
+      await applyStateUpdate(output, change, changeDir, phase);
     }
     return output.toResult(0);
   } catch (error) {

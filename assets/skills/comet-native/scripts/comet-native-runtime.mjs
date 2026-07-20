@@ -19261,7 +19261,7 @@ function parseSelection(source) {
     if (typeof value.change !== "string") {
       throw new Error("legacy current change selection change must be a string");
     }
-    if (!validBranch(value.branch)) {
+    if (value.branch !== void 0 && !validBranch(value.branch)) {
       throw new Error("legacy current change selection branch must be a string or null");
     }
     return {
@@ -19269,7 +19269,7 @@ function parseSelection(source) {
         schema: COMET_CURRENT_SELECTION_SCHEMA,
         workflow: "classic",
         change: value.change,
-        branch: value.branch
+        branch: value.branch ?? null
       },
       legacy: true
     };

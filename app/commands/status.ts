@@ -1,6 +1,7 @@
 import path from 'path';
 import { inspectCometProjectStatus } from '../../domains/comet-entry/project-status.js';
 import type { ChangeStatus, CometProjectStatus } from '../../domains/comet-entry/types.js';
+import { requiresBranchBinding } from '../../domains/comet-classic/classic-branch-binding.js';
 import type { RecordedCommandCheck } from '../../domains/comet-classic/classic-command-checks.js';
 import type { NativeStatusProjection } from '../../domains/comet-native/native-types.js';
 
@@ -49,6 +50,11 @@ function displayChangeSection(title: string, changes: ChangeStatus[]): void {
       continue;
     }
     console.log(`     workflow: ${c.workflow} | build_mode: ${c.buildMode}`);
+    if (c.isolation) {
+      const branchSuffix =
+        requiresBranchBinding(c.isolation) && c.boundBranch ? ` (bound: ${c.boundBranch})` : '';
+      console.log(`     isolation: ${c.isolation}${branchSuffix}`);
+    }
     if (c.currentStep) console.log(`     run_step: ${c.currentStep}`);
     console.log(`     runtime_mode: ${c.runtimeMode}`);
     if (c.runtimeEval) {

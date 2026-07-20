@@ -553,7 +553,8 @@ build_mode: subagent-driven-development                  # Build mode: subagent-
 build_pause: null                                        # `build_pause` records an internal build-phase pause point: null none, `plan-ready` means the plan has been generated
 subagent_dispatch: null                                  # Dispatch confirmation; confirm before verify
 tdd_mode: null                                           # Full-workflow build choice: tdd | direct
-isolation: branch                                        # Isolation mode: branch | worktree
+isolation: branch                                        # Isolation mode: current | branch | worktree
+bound_branch: null                                       # Git branch bound by current/branch/worktree isolation; branch drift blocks progress
 verify_mode: null                                        # Verification mode: light | full
 design_doc: docs/superpowers/specs/<design-doc>.md       # Design doc path
 plan: docs/superpowers/plans/YYYY-MM-DD-feature.md       # Implementation plan path
@@ -597,7 +598,8 @@ Comet ensures agent execution reliability through automated state transitions:
    - Detects unknown/typos fields
 
 4. **Build Decision Enforcement** — Guard and state transitions both block skipped build choices
-   - `isolation` must be `branch` or `worktree`
+   - `isolation` must be `current`, `branch`, or `worktree`
+   - `isolation: current`, `branch`, and `worktree` bind the current Git branch, and later entry checks block accidental branch drift
    - `build_mode` must be selected before leaving build
    - `build_pause: plan-ready` is a recoverable pause after plan generation, not a `build_mode`
    - Full workflow `build_mode: direct` requires `direct_override: true`
@@ -739,7 +741,7 @@ Track our development progress and upcoming features on the [Comet Roadmap](http
       <b>DouYin (Recommended)</b>
     </td>
     <td align="center" width="180">
-      <img src="https://github.com/rpamis/comet/blob/master/img/wechat.jpg" width="120" height="120"><br>
+      <img src="https://github.com/rpamis/comet/blob/master/img/wechat.png" width="120" height="120"><br>
       <b>WeChat</b>
     </td>
     <td align="center" width="180">

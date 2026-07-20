@@ -20,6 +20,7 @@ tdd_mode: tdd
 review_mode: standard
 auto_transition: true
 isolation: branch
+bound_branch: null
 verify_mode: light
 verify_result: pending
 verify_failures: 0
@@ -46,7 +47,8 @@ archived: false
 | `subagent_dispatch` | `null` 或 `confirmed`。仅当已确认当前平台存在真实后台 subagent / Task / multi-agent 调度能力时，`build_mode: subagent-driven-development` 才能写入并用于离开 build 阶段 |
 | `tdd_mode` | `tdd` 或 `direct`。full workflow 离开 build 阶段前必须已选择。`tdd` 强制每个任务先写失败测试再实现；`direct` 不强制逐任务 TDD，但仍需相关测试与 bug 回归证据。hotfix/tweak 默认 `direct` |
 | `review_mode` | `off`、`standard` 或 `thorough`。full workflow 离开 build 阶段前必须已选择；hotfix/tweak 默认 `off` |
-| `isolation` | `current`、`branch` 或 `worktree`。full 初始化可为 `null`，离开 build 前必须实际创建/选择 `branch` 或 `worktree`；hotfix/tweak 默认 `current`，不得在未创建分支时虚构为 `branch` |
+| `isolation` | `current`、`branch` 或 `worktree`。full 初始化可为 `null`，离开 build 前必须由用户显式选择 `current`、实际创建/选择 `branch`，或实际创建/选择 `worktree`；hotfix/tweak 在入口用户决策点后也可如实使用三种模式，不得在未创建分支时虚构为 `branch` |
+| `bound_branch` | 工作区分支绑定记录，可为空。`isolation: current` / `branch` / `worktree` 首次设置或入口检查时记录命令执行目录所在的当前 Git 分支（worktree 模式请在对应工作区内执行 set/check/guard，否则会绑定/比对错误的分支）；在不同工作区模式之间切换 `isolation` 会重新绑定到当前分支，重复设置同一模式保持原绑定。后续 `comet state select` / `comet state check` 必须确认绑定分支与当前分支一致；漂移时 `select` 直接拒绝、检查进入 `BLOCKED`，按决策点协议让用户选择切回绑定分支或明确确认后运行 `comet state rebind <change-name>`。清空 `isolation` 时会清空该字段 |
 | `verify_mode` | `light` 或 `full`，可为空 |
 | `auto_transition` | `true` 或 `false`。只控制阶段守卫推进 phase 后是否自动调用下一个 skill；`false` 时由 `comet-state next` 输出 `manual`，暂停下一 skill 调用，但不阻止 phase 字段更新 |
 | `verify_result` | `pending`、`pass` 或 `fail` |
@@ -66,7 +68,7 @@ archived: false
 
 ## 状态机硬约束
 
-- full workflow 的 `build → verify` 前，`isolation` 必须是 `branch` 或 `worktree`；hotfix/tweak 可使用 `current`
+- `build → verify` 前，`isolation` 必须是 `current`、`branch` 或 `worktree`
 - `build → verify` 前，`build_mode` 必须已选择
 - `build_mode: subagent-driven-development` 必须同时有 `subagent_dispatch: confirmed`
 - full workflow 离开 build 阶段前 `tdd_mode` 必须已选择为 `tdd` 或 `direct`

@@ -24,6 +24,7 @@ export interface ChangeStatus {
   phase: string | null;
   buildMode: string | null;
   isolation: string | null;
+  boundBranch: string | null;
   verifyMode: string | null;
   verifyResult: string | null;
   designDoc: string | null;

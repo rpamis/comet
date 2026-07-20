@@ -59,6 +59,7 @@ describe('Classic guard command', () => {
   it('passes the open guard and applies the transition when artifacts exist', async () => {
     const dir = await makeProject();
     run(dir, 'state', 'init', 'demo', 'hotfix');
+    run(dir, 'state', 'set', 'demo', 'isolation', 'branch');
     const changeDir = path.join(dir, 'openspec', 'changes', 'demo');
     await fs.writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
     await fs.writeFile(path.join(changeDir, 'design.md'), 'design\n');

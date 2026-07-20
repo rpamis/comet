@@ -42,7 +42,21 @@ comet state select <name>
 comet state check <name> open
 ```
 
-Hotfix defaults to `isolation: current`, truthfully indicating execution in the current workspace. Change it to `branch` or `worktree` only after that workspace is actually created/selected. Then create the streamlined artifacts:
+If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
+
+Entry workspace isolation is a user decision point; do not use `current` as the default isolation mode. Pause under `comet/reference/decision-point.md` and let the user choose one option:
+
+- A. Work directly on the current branch: run `comet state set <name> isolation current` to truthfully bind the current branch
+- B. Create a branch: create and switch to `hotfix/YYYYMMDD/<change-name>`, then run `comet state set <name> isolation branch`
+- C. Create a worktree: first use the Skill tool to load Superpowers `using-git-worktrees`; let that skill create the isolated workspace, then run `comet state set <name> isolation worktree` inside the worktree
+
+After B/C, rerun this in the actual execution branch or worktree:
+
+```bash
+comet state select <name>
+```
+
+Then create the streamlined artifacts:
   - `proposal.md` — problem description + root cause analysis + fix goal (no solution comparison needed)
   - `design.md` — fix solution (one is enough, no multi-solution comparison needed)
   - `tasks.md` — fix task list
@@ -65,7 +79,7 @@ comet state next <name>
 
 ### 2. Direct Build (preset build)
 
-Use hotfix defaults: `build_mode: direct`, `tdd_mode: direct`, `review_mode: off`, and `isolation: current`. Here `direct` skips full planning/TDD orchestration; it never skips reproduction, regression coverage, or verification. Skip Superpowers `brainstorming` and `writing-plans`; **task count alone does not route to `/comet-build`**. Keep larger task lists ordered in the current hotfix and ask about upgrading only when a qualitative-change signal or scope tripwire is hit.
+Use hotfix defaults: `build_mode: direct`, `tdd_mode: direct`, and `review_mode: off`. `isolation` must keep the entry workspace isolation the user confirmed in Step 1; do not change it back to `current` on your own. Here `direct` skips full planning/TDD orchestration; it never skips reproduction, regression coverage, or verification. Skip Superpowers `brainstorming` and `writing-plans`; **task count alone does not route to `/comet-build`**. Keep larger task lists ordered in the current hotfix and ask about upgrading only when a qualitative-change signal or scope tripwire is hit.
 
 Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows a qualitative-change signal or file-count tripwire is hit, handle it through this file's "Upgrade Assessment".
 

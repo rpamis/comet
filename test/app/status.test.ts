@@ -39,6 +39,21 @@ async function snapshotChange(changeDir: string): Promise<{ files: string[]; yam
   };
 }
 
+async function setCometYamlField(
+  changeDir: string,
+  field: string,
+  value: string | null,
+): Promise<void> {
+  const yamlPath = path.join(changeDir, '.comet.yaml');
+  const yaml = await fs.readFile(yamlPath, 'utf8');
+  const rendered = value === null ? 'null' : value;
+  const pattern = new RegExp(`^${field}:.*$`, 'mu');
+  const next = pattern.test(yaml)
+    ? yaml.replace(pattern, `${field}: ${rendered}`)
+    : `${yaml.trimEnd()}\n${field}: ${rendered}\n`;
+  await fs.writeFile(yamlPath, next);
+}
+
 describe('status command', () => {
   let tmpDir: string;
 
@@ -127,6 +142,7 @@ describe('status command', () => {
       phase: null,
       buildMode: null,
       isolation: null,
+      boundBranch: null,
       verifyMode: null,
       verifyResult: null,
       designDoc: null,
@@ -168,6 +184,9 @@ describe('status command', () => {
       tasksTotal: 1,
       commandChecks: null,
     });
+    expect(changes.every((change: { boundBranch?: unknown }) => 'boundBranch' in change)).toBe(
+      true,
+    );
   });
 
   it('includes latest build and verify command checks for a synchronized Comet Run', async () => {
@@ -297,6 +316,60 @@ describe('status command', () => {
     expect(output).toContain('next: /comet-build');
     expect(output).toContain('[1/2 tasks]');
     expect(output).toContain('run_step: full.build.plan');
+  });
+
+  it('prints branch-bound workspace modes with bound branch and omits bound suffix for null isolation', async () => {
+    const changesDir = path.join(tmpDir, 'openspec', 'changes');
+    state(tmpDir, 'init', 'current-bound', 'full');
+    await setCometYamlField(path.join(changesDir, 'current-bound'), 'isolation', 'current');
+    await setCometYamlField(path.join(changesDir, 'current-bound'), 'bound_branch', 'feature-A');
+
+    state(tmpDir, 'init', 'branch-bound', 'full');
+    await setCometYamlField(path.join(changesDir, 'branch-bound'), 'isolation', 'branch');
+    await setCometYamlField(path.join(changesDir, 'branch-bound'), 'bound_branch', 'feature-B');
+
+    state(tmpDir, 'init', 'worktree-bound', 'full');
+    await setCometYamlField(path.join(changesDir, 'worktree-bound'), 'isolation', 'worktree');
+    await setCometYamlField(path.join(changesDir, 'worktree-bound'), 'bound_branch', 'feature-C');
+
+    state(tmpDir, 'init', 'null-bound', 'full');
+    await setCometYamlField(path.join(changesDir, 'null-bound'), 'bound_branch', 'feature-D');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      await statusCommand(tmpDir);
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(output).toContain('isolation: current (bound: feature-A)');
+    expect(output).toContain('isolation: branch (bound: feature-B)');
+    expect(output).toContain('isolation: worktree (bound: feature-C)');
+    expect(output).not.toContain('feature-D');
+  });
+
+  it('includes boundBranch in JSON status output', async () => {
+    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'current-bound');
+    state(tmpDir, 'init', 'current-bound', 'full');
+    await setCometYamlField(changeDir, 'isolation', 'current');
+    await setCometYamlField(changeDir, 'bound_branch', 'feature-A');
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await statusCommand(tmpDir, { json: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(JSON.parse(json).changes[0]).toMatchObject({
+      name: 'current-bound',
+      isolation: 'current',
+      boundBranch: 'feature-A',
+    });
   });
 
   it('keeps legacy state without a Run byte-for-byte read-only in text and JSON status', async () => {

@@ -160,6 +160,7 @@ export function applyClassicTransition(
     setField(classic, effects, 'tddMode', null);
     setField(classic, effects, 'reviewMode', null);
     setField(classic, effects, 'isolation', null);
+    setField(classic, effects, 'boundBranch', null);
     setField(classic, effects, 'verifyMode', null);
     setField(classic, effects, 'directOverride', null);
   } else if (event === 'archive-confirm') {

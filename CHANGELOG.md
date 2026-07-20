@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.6] - 2026-07-19
+## What's Changed [0.4.0-beta.7] - 2026-07-20
 
 ### Added
 
@@ -28,6 +28,25 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Windows interactive evals**: Interactive Docker evals now prefer Git Bash over WSL, preserve container prompt-file paths through MSYS argument conversion, count real driver turns for interaction limits, support deterministic task-supplied decision replies, distinguish user decisions from completion before ending a workflow, avoid false environment-failure flags from successful result text, and surface failed subject turns with their real exit status plus preserved stdout/stderr instead of treating them as natural completion.
 - **Parallel eval coordination**: Windows xdist workers now wait for shared Docker build locks instead of failing concurrent samples with a resource-deadlock error.
 - **npm publish cache pruning**: Package preflight now excludes nested and platform-specific pytest caches before filesystem inspection, so inaccessible local Eval byproducts cannot block publishing and cannot enter the npm package.
+
+## What's Changed [0.4.0-beta.6] - 2026-07-18
+
+### Added
+
+- **`comet state rebind`**: New command to explicitly re-bind an `isolation: current` change to the current branch after user confirmation, recording an audit event; refuses to run while HEAD is detached or before an initial binding exists.
+
+### Changed
+
+- **Current-isolation drift detection**: `isolation: current` now records the branch it was established on in the change state, so switching branches mid-change is reliably detected at every build/verify/archive entry check and by the write guard — including when only a single change is active — and is no longer silently reset by re-selecting the current change. Selecting a change whose bound branch has drifted is refused instead of reported as successful. Legacy changes without a recorded binding bind to the current Git branch on their next select or check, projects that are not Git worktrees are never blocked by branch binding, and establishing `isolation: current` on a detached HEAD is rejected.
+- **Branch/worktree drift detection**: `isolation: branch` and `isolation: worktree` now use the same bound-branch safety checks as current-branch isolation, so switching branches inside those workspace modes blocks entry checks and write guards until the user switches back or explicitly rebinds the change. Switching a change between workspace modes re-points the binding to the current branch, while repeating the same mode keeps the existing binding.
+- **`comet status`**: Now surfaces the selected isolation mode and bound branch for branch-bound workspace modes in both text and `--json` output.
+- **Archive branch handling for `current` isolation**: No longer offers feature-branch-oriented merge/PR/keep choices; instead asks whether to push the current branch or keep it local.
+- **Hotfix/tweak workspace isolation**: No longer defaults silently to the current branch; both presets now pause to ask the user to choose between working directly on the current branch, creating a new branch, or creating a worktree.
+- **Full workflow current-branch isolation**: Full workflows can now let users explicitly keep working on the current branch instead of forcing a new branch or worktree, while preserving the same bound-branch drift checks used by hotfix and tweak ([#190](https://github.com/rpamis/comet/issues/190)).
+
+### Fixed
+
+- **Skill discovery resilience**: Malformed YAML frontmatter in an unrelated local Skill no longer crashes bundle factory guidance or candidate discovery; Comet now skips the broken description and continues scanning.
 
 ## What's Changed [0.4.0-beta.5] - 2026-07-14
 

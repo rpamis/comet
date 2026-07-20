@@ -1,4 +1,3 @@
-import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import {
@@ -9,6 +8,11 @@ import {
   writeCometCurrentSelection,
   type CometCurrentSelection,
 } from '../comet-entry/current-selection.js';
+import {
+  driftStaleReason,
+  resolveBranchBinding,
+  unboundDetachedMessage,
+} from './classic-branch-binding.js';
 import { assertOpenSpecChangeName } from './classic-paths.js';
 import { readClassicState } from './classic-store.js';
 
@@ -21,19 +25,6 @@ export type CurrentChangeResolution =
 
 export function currentChangeFile(projectRoot: string): string {
   return cometCurrentSelectionFile(projectRoot);
-}
-
-function currentBranch(projectRoot: string): string | null {
-  try {
-    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    return branch && branch !== 'HEAD' ? branch : null;
-  } catch {
-    return null;
-  }
 }
 
 function changeDirectory(projectRoot: string, changeName: string): string {
@@ -71,11 +62,21 @@ export async function selectCurrentChange(
   changeName: string,
 ): Promise<CurrentChangeSelection> {
   await validateActiveChange(projectRoot, changeName);
+  const outcome = await resolveBranchBinding(changeDirectory(projectRoot, changeName), {
+    heal: true,
+    cwd: projectRoot,
+  });
+  if (outcome.status === 'drift') {
+    throw new Error(driftStaleReason(changeName, outcome.boundBranch, outcome.currentBranch));
+  }
+  if (outcome.status === 'unbound-detached') {
+    throw new Error(unboundDetachedMessage(changeName));
+  }
   const selection: CurrentChangeSelection = {
     schema: 'comet.selection.v2',
     workflow: 'classic',
     change: changeName,
-    branch: currentBranch(projectRoot),
+    branch: outcome.currentBranch,
   };
   await writeCometCurrentSelection(projectRoot, selection);
   return selection;
@@ -109,11 +110,24 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
     };
   }
 
-  const branch = currentBranch(projectRoot);
-  if (selection.branch !== null && branch !== selection.branch) {
+  const outcome = await resolveBranchBinding(changeDirectory(projectRoot, selection.change), {
+    heal: false,
+    cwd: projectRoot,
+  });
+  if (outcome.status === 'drift') {
     return {
       status: 'stale',
-      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${branch ?? 'detached HEAD'}'`,
+      reason: driftStaleReason(selection.change, outcome.boundBranch, outcome.currentBranch),
+    };
+  }
+  if (outcome.status === 'unbound-detached') {
+    return { status: 'stale', reason: unboundDetachedMessage(selection.change) };
+  }
+  if (outcome.status === 'ok') return { status: 'selected', selection };
+  if (selection.branch !== null && outcome.currentBranch !== selection.branch) {
+    return {
+      status: 'stale',
+      reason: `current change '${selection.change}' was selected on branch '${selection.branch}', current branch is '${outcome.currentBranch ?? 'detached HEAD'}'`,
     };
   }
   return { status: 'selected', selection };

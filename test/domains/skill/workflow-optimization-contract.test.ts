@@ -54,21 +54,28 @@ describe('Comet workflow optimization contracts', () => {
   );
 
   it.each([
-    ['中文', zhSkillRoot, '先复现问题并记录失败证据', '任务数量本身不触发 `/comet-build`'],
+    [
+      '中文',
+      zhSkillRoot,
+      '先复现问题并记录失败证据',
+      '任务数量本身不触发 `/comet-build`',
+      '入口工作区隔离是用户决策点',
+    ],
     [
       'English',
       skillRoot,
       'reproduce the bug and record failing evidence first',
       'task count alone does not route to `/comet-build`',
+      'Entry workspace isolation is a user decision point',
     ],
   ])(
     '%s hotfix flow preserves regression evidence without task-count routing',
-    async (_language, root, regression, routing) => {
+    async (_language, root, regression, routing, isolationDecision) => {
       const skill = await readSkill(root, 'comet-hotfix');
 
       expect(skill).toContain(regression);
       expect(skill).toContain(routing);
-      expect(skill).toContain('isolation: current');
+      expect(skill).toContain(isolationDecision);
     },
   );
 

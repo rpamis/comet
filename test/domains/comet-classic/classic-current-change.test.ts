@@ -24,25 +24,30 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-async function seedActiveChange(root: string, name: string, archived: boolean): Promise<void> {
+async function seedActiveChange(
+  root: string,
+  name: string,
+  archived: boolean,
+  options: { isolation?: string; boundBranch?: string | null } = {},
+): Promise<void> {
+  const { isolation = 'branch', boundBranch = null } = options;
   const changeDir = path.join(root, 'openspec', 'changes', name);
   await fs.mkdir(changeDir, { recursive: true });
-  await fs.writeFile(
-    path.join(changeDir, '.comet.yaml'),
-    [
-      'workflow: full',
-      'phase: build',
-      'design_doc: docs/superpowers/specs/design.md',
-      'plan: null',
-      'build_mode: executing-plans',
-      'isolation: branch',
-      'verify_mode: null',
-      'verify_result: pending',
-      'verified_at: null',
-      `archived: ${archived}`,
-      '',
-    ].join('\n'),
-  );
+  const lines = [
+    'workflow: full',
+    'phase: build',
+    'design_doc: docs/superpowers/specs/design.md',
+    'plan: null',
+    'build_mode: executing-plans',
+    `isolation: ${isolation}`,
+    'verify_mode: null',
+    'verify_result: pending',
+    'verified_at: null',
+    `archived: ${archived}`,
+  ];
+  if (boundBranch !== null) lines.push(`bound_branch: ${boundBranch}`);
+  lines.push('');
+  await fs.writeFile(path.join(changeDir, '.comet.yaml'), lines.join('\n'));
 }
 
 describe('Classic current change selection', () => {
@@ -62,7 +67,7 @@ describe('Classic current change selection', () => {
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  it('atomically selects an active change with the current branch', async () => {
+  it('atomically selects an active change and records the selection branch', async () => {
     await seedActiveChange(root, 'change-a', false);
 
     const selected = await selectCurrentChange(root, 'change-a');
@@ -77,6 +82,16 @@ describe('Classic current change selection', () => {
     expect((await fs.readdir(path.join(root, '.comet'))).sort()).toEqual(['current-change.json']);
   });
 
+  it('refuses to select a change whose bound branch drifted', async () => {
+    await seedActiveChange(root, 'change-a', false, { isolation: 'current', boundBranch: 'main' });
+    git(root, 'switch', '-c', 'other');
+
+    await expect(selectCurrentChange(root, 'change-a')).rejects.toThrow(
+      "change 'change-a' is bound to branch 'main', but current branch is 'other'",
+    );
+    expect(await exists(currentChangeFile(root))).toBe(false);
+  });
+
   it('rejects missing, archived, and invalid changes', async () => {
     await expect(selectCurrentChange(root, '../escape')).rejects.toThrow('Invalid change name');
     await expect(selectCurrentChange(root, 'missing')).rejects.toThrow('active change');
@@ -84,8 +99,65 @@ describe('Classic current change selection', () => {
     await expect(selectCurrentChange(root, 'archived-change')).rejects.toThrow('archived');
   });
 
-  it('marks a selection stale after the branch changes', async () => {
-    await seedActiveChange(root, 'change-a', false);
+  it('marks a selection stale after the bound branch drifts', async () => {
+    await seedActiveChange(root, 'change-a', false, { isolation: 'current', boundBranch: 'main' });
+    await selectCurrentChange(root, 'change-a');
+
+    git(root, 'switch', '-c', 'other');
+
+    expect(await resolveCurrentChange(root)).toEqual({
+      status: 'stale',
+      reason: "change 'change-a' is bound to branch 'main', but current branch is 'other'",
+    });
+  });
+
+  it.each(['branch', 'worktree'])(
+    'marks isolation: %s selections stale after the bound branch drifts',
+    async (isolation) => {
+      await seedActiveChange(root, 'change-a', false, { isolation, boundBranch: 'main' });
+      await selectCurrentChange(root, 'change-a');
+
+      git(root, 'switch', '-c', 'other');
+
+      expect(await resolveCurrentChange(root)).toEqual({
+        status: 'stale',
+        reason: "change 'change-a' is bound to branch 'main', but current branch is 'other'",
+      });
+    },
+  );
+
+  it.each(['current', 'branch', 'worktree'])(
+    'lazily binds isolation: %s selections with no bound branch',
+    async (isolation) => {
+      await seedActiveChange(root, 'change-a', false, { isolation });
+      await selectCurrentChange(root, 'change-a');
+      expect(
+        await fs.readFile(
+          path.join(root, 'openspec', 'changes', 'change-a', '.comet.yaml'),
+          'utf8',
+        ),
+      ).toContain('bound_branch: main');
+
+      expect(await resolveCurrentChange(root)).toEqual({
+        status: 'selected',
+        selection: {
+          schema: 'comet.selection.v2',
+          workflow: 'classic',
+          change: 'change-a',
+          branch: 'main',
+        },
+      });
+      expect(
+        await fs.readFile(
+          path.join(root, 'openspec', 'changes', 'change-a', '.comet.yaml'),
+          'utf8',
+        ),
+      ).toContain('bound_branch: main');
+    },
+  );
+
+  it('marks isolation: null selections stale after switching branches', async () => {
+    await seedActiveChange(root, 'change-a', false, { isolation: 'null' });
     await selectCurrentChange(root, 'change-a');
 
     git(root, 'switch', '-c', 'other');
@@ -94,6 +166,48 @@ describe('Classic current change selection', () => {
       status: 'stale',
       reason: "current change 'change-a' was selected on branch 'main', current branch is 'other'",
     });
+  });
+
+  it('tolerates legacy selections without a recorded branch', async () => {
+    await seedActiveChange(root, 'change-a', false, { isolation: 'null' });
+    await fs.mkdir(path.dirname(currentChangeFile(root)), { recursive: true });
+    await fs.writeFile(
+      currentChangeFile(root),
+      JSON.stringify({ version: 1, change: 'change-a' }) + '\n',
+    );
+    git(root, 'switch', '-c', 'other');
+
+    expect(await resolveCurrentChange(root)).toEqual({
+      status: 'selected',
+      selection: {
+        schema: 'comet.selection.v2',
+        workflow: 'classic',
+        change: 'change-a',
+        branch: null,
+      },
+    });
+  });
+
+  it('does not write bound_branch while resolving an unbound selection', async () => {
+    await seedActiveChange(root, 'change-a', false, { isolation: 'current' });
+    await fs.mkdir(path.dirname(currentChangeFile(root)), { recursive: true });
+    await fs.writeFile(
+      currentChangeFile(root),
+      JSON.stringify({ version: 1, change: 'change-a', branch: 'main' }) + '\n',
+    );
+
+    expect(await resolveCurrentChange(root)).toEqual({
+      status: 'selected',
+      selection: {
+        schema: 'comet.selection.v2',
+        workflow: 'classic',
+        change: 'change-a',
+        branch: 'main',
+      },
+    });
+    expect(
+      await fs.readFile(path.join(root, 'openspec', 'changes', 'change-a', '.comet.yaml'), 'utf8'),
+    ).not.toContain('bound_branch');
   });
 
   it('reports malformed selection data as stale instead of missing', async () => {

@@ -200,6 +200,7 @@ function legacyProjection(document: Record<string, unknown>): Record<string, unk
     'language',
     'archive_confirmation',
     'isolation',
+    'bound_branch',
     'verify_failures',
     // The active runtime writes these with null defaults during init; the
     // frozen 0.3.9 bash scripts only write them when explicitly set.

@@ -76,6 +76,8 @@ async function seedChange(
     designDoc?: string | null;
     plan?: string | null;
     verificationReport?: string | null;
+    isolation?: string;
+    boundBranch?: string;
   } = {},
 ): Promise<string> {
   const changeDir = path.join(dir, 'openspec', 'changes', name);
@@ -87,23 +89,24 @@ async function seedChange(
         ? `docs/superpowers/specs/${name}-design.md`
         : null
       : options.designDoc;
-  await fs.writeFile(
-    path.join(changeDir, '.comet.yaml'),
-    [
-      `workflow: ${workflow}`,
-      `phase: ${phase}`,
-      `design_doc: ${designDoc ?? 'null'}`,
-      `plan: ${options.plan ?? 'null'}`,
-      `verification_report: ${options.verificationReport ?? 'null'}`,
-      `build_mode: ${phase === 'open' || phase === 'design' ? 'null' : 'executing-plans'}`,
-      `isolation: ${phase === 'open' || phase === 'design' ? 'null' : 'branch'}`,
-      `verify_mode: ${phase === 'verify' || phase === 'archive' ? 'light' : 'null'}`,
-      `verify_result: ${phase === 'archive' ? 'pass' : 'pending'}`,
-      `verified_at: ${phase === 'archive' ? '2026-07-12' : 'null'}`,
-      `archived: ${options.archived ?? false}`,
-      '',
-    ].join('\n'),
-  );
+  const isolation =
+    options.isolation ?? (phase === 'open' || phase === 'design' ? 'null' : 'branch');
+  const lines = [
+    `workflow: ${workflow}`,
+    `phase: ${phase}`,
+    `design_doc: ${designDoc ?? 'null'}`,
+    `plan: ${options.plan ?? 'null'}`,
+    `verification_report: ${options.verificationReport ?? 'null'}`,
+    `build_mode: ${phase === 'open' || phase === 'design' ? 'null' : 'executing-plans'}`,
+    `isolation: ${isolation}`,
+    `verify_mode: ${phase === 'verify' || phase === 'archive' ? 'light' : 'null'}`,
+    `verify_result: ${phase === 'archive' ? 'pass' : 'pending'}`,
+    `verified_at: ${phase === 'archive' ? '2026-07-12' : 'null'}`,
+    `archived: ${options.archived ?? false}`,
+  ];
+  if (options.boundBranch) lines.push(`bound_branch: ${options.boundBranch}`);
+  lines.push('');
+  await fs.writeFile(path.join(changeDir, '.comet.yaml'), lines.join('\n'));
   return changeDir;
 }
 
@@ -322,7 +325,7 @@ describe('Classic hook guard command', () => {
     it('fails closed for a stale selection before a standard plan first write', async () => {
       const dir = await makeProject();
       await initializeGitProject(dir);
-      await seedChange(dir, 'build-change', 'build');
+      await seedChange(dir, 'build-change', 'build', { isolation: 'current', boundBranch: 'main' });
       await seedChange(dir, 'other-build', 'build');
       expect(run(dir, 'state', ['select', 'build-change']).status).toBe(0);
       git(dir, ['switch', '-c', 'other']);
@@ -464,17 +467,33 @@ describe('Classic hook guard command', () => {
     expect(result.stderr).toContain('invalid JSON');
   });
 
-  it('fails closed when the selected branch changes', async () => {
+  it.each(['current', 'branch', 'worktree'])(
+    'fails closed when the bound branch drifts (isolation: %s)',
+    async (isolation) => {
+      const dir = await makeProject();
+      await initializeGitProject(dir);
+      await seedChange(dir, 'build-ready', 'build', { isolation, boundBranch: 'main' });
+      expect(run(dir, 'state', ['select', 'build-ready']).status).toBe(0);
+      git(dir, ['switch', '-c', 'other']);
+
+      const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("bound to branch 'main'");
+      expect(result.stderr).toContain("current branch is 'other'");
+    },
+  );
+
+  it('fails closed for a drifted sole active change without a selection', async () => {
     const dir = await makeProject();
     await initializeGitProject(dir);
-    await seedChange(dir, 'build-ready', 'build');
-    expect(run(dir, 'state', ['select', 'build-ready']).status).toBe(0);
+    await seedChange(dir, 'build-ready', 'build', { isolation: 'current', boundBranch: 'main' });
     git(dir, ['switch', '-c', 'other']);
 
     const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
 
     expect(result.status).toBe(2);
-    expect(result.stderr).toContain("selected on branch 'main'");
+    expect(result.stderr).toContain("bound to branch 'main'");
     expect(result.stderr).toContain("current branch is 'other'");
   });
 
@@ -491,6 +510,7 @@ describe('Classic hook guard command', () => {
 
   it('selects, reads, and clears the current change through the state launcher', async () => {
     const dir = await makeProject();
+    await initializeGitProject(dir);
     expect(run(dir, 'state', ['init', 'demo', 'hotfix']).status).toBe(0);
 
     const selected = run(dir, 'state', ['select', 'demo']);
