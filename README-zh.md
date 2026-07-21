@@ -480,6 +480,60 @@ Native 与 Classic runtime 都由 TypeScript 生成，通过 `node` 在所有平
 
 `/comet-native` 使用 Shape → Build → Verify → Archive 四个阶段。Shape 负责澄清、brief、完整目标规格与用户确认；其余规划和实现方法由 Agent 自主选择。状态、验证证据和恢复数据都由 Native runtime 管理，默认写入 `docs/comet/`。
 
+<details>
+<summary>查看 Native 阶段流程</summary>
+
+```text
+/comet-native（或 default_workflow: native 时的 /comet）
+  Shape  ──确认需求契约──>  Build  ──记录实现范围──>  Verify  ──验证通过──>  Archive
+                              ^                         │
+                              └────── 验证失败 ─────────┘
+```
+
+| 阶段      | 主要工作                                                                       | 必要结果                                                      |
+| --------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Shape     | 调查环境、逐轮澄清、编写 brief 和每个 capability 的完整目标规格               | 无阻塞问题，用户确认与当前 contract hash 绑定                 |
+| Build     | Agent 自主选择规划、实现、测试与审查方式；长任务可记录阶段内 checkpoint        | 实现范围与基线差异可计算，普通源码写入只允许发生在 Build      |
+| Verify    | 按验收 ID 检查行为，编写 `verification.md`，记录执行、跳过项、风险和证据       | 验证通过进入 Archive；验证失败返回 Build，并进入有界修复过程  |
+| Archive   | 只读预检、确认 canonical spec 没有并发漂移，再同步规格并移动完整 change         | 用户确认的预检仍然有效，归档事务完整提交                      |
+
+Shape 的 `clarification_mode` 可设为 `sequential` 或 `batch`。前者每轮询问一个最上游问题；后者一次询问当前所有前置条件已确定的问题。两种模式都要求 Agent 自己调查可查事实，并把用户决定写回 brief 与完整目标规格。
+
+</details>
+
+<details>
+<summary>查看 Native 状态与产物</summary>
+
+| 文件或目录                                      | 用途                                                                 |
+| ----------------------------------------------- | -------------------------------------------------------------------- |
+| `.comet/config.yaml`                            | 选择启用/default workflow、artifact root、语言和澄清模式             |
+| `.comet/current-change.json`                    | Native/Classic 共用的当前需求归属；一次写入只路由到一个 workflow     |
+| `docs/comet/changes/<name>/comet-state.yaml`    | Native phase、revision、approval、spec operation 和证据引用           |
+| `docs/comet/changes/<name>/brief.md`            | Outcome、范围、非目标、验收示例、约束、决定和未决问题                 |
+| `docs/comet/changes/<name>/specs/`              | 每个 capability 归档后应具备的完整目标行为                           |
+| `docs/comet/changes/<name>/verification.md`     | 验收证据、命令结果、跳过检查、规格一致性、风险和结论                 |
+| `docs/comet/changes/<name>/runtime/`            | baseline、Run、trajectory、checkpoint、实现范围和验证 evidence        |
+| `docs/comet/specs/` / `archive/` / `runtime/`   | canonical specs、已归档 changes，以及锁和可恢复事务                  |
+
+Native 可以同时保留多个 active change；`comet status` 会分别列出候选，`.comet/current-change.json` 只选择当前请求归属，不代表只能存在一个 change。选择缺失、失效或存在歧义时，恢复和写入都会停止并要求明确选择，不会猜测另一个 change 或切换到 Classic。
+
+`comet-state.yaml` 和 `runtime/` 中的 revision、hash、evidence 引用及事务状态由 Runtime 管理。需求改变时修改 brief 或拟议规格，再让命令重新计算 contract；不要手改 phase、hash 或 JSON 证据来绕过检查。
+
+</details>
+
+<details>
+<summary>查看 Native 可靠性与恢复</summary>
+
+1. **澄清阻塞点** — Shape 把仍影响实现的用户决定保存为 blocking question；Batch 模式还要求用户明确确认双方已形成共同理解，未确认前不能进入 Build。
+2. **确认绑定需求** — approval 与 brief + 完整目标规格的 contract hash 绑定；需求变化会使旧确认失效，避免按过期目标继续实现。
+3. **可审计实现范围** — change 创建时记录完整 baseline；离开 Build 时根据前后快照计算内容寻址的 implementation scope，不靠 Agent 自述改了什么。
+4. **验收与验证证据** — Runtime 从 brief/spec 派生稳定验收 ID，验证报告把每项验收绑定到项目文件、跳过理由和可选只读检查 receipt；scope、contract 或报告变化会让旧证据失效。
+5. **阶段内恢复与修复** — checkpoint 保存阶段内进度和产物 manifest；恢复时检查 freshness。连续无进展的验证失败进入有界 repair episode，真实实现进展会重置停滞判断。
+6. **受保护文件与事务** — Run、trajectory、checkpoint 和 evidence 经过受保护 I/O；Archive 与 artifact-root move 使用可恢复事务、CAS 和锁，遇到中断时由 doctor 明确 continue 或 rollback。
+7. **统一但不混合的守护** — 平台只安装一份 Rule 和一个 Hook Router；Router 根据当前归属调用 Native Guard。Native 只在 Build 允许普通实现写入，并与 Classic 的 phase、schema、目录和 Guard 保持独立。
+
+</details>
+
 ### Classic 五阶段工作流
 
 <details>

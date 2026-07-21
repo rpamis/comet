@@ -510,6 +510,60 @@ not depend on OpenSpec, Superpowers, Bash, Git Bash, or WSL.
 user approval; the agent chooses its own planning and implementation methods. Native runtime owns state, verification
 evidence, and recovery data under `docs/comet/` by default.
 
+<details>
+<summary>View the Native phase flow</summary>
+
+```text
+/comet-native (or /comet when default_workflow: native)
+  Shape  ──approve contract──>  Build  ──record scope──>  Verify  ──pass──>  Archive
+                                  ^                        │
+                                  └──────── fail ──────────┘
+```
+
+| Phase     | Main work                                                                                       | Required result                                                        |
+| --------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Shape     | Inspect the environment, clarify in rounds, and write the brief plus complete target specs       | No blocking questions; user approval bound to the current contract hash |
+| Build     | The agent chooses its own planning, implementation, testing, and review methods; checkpoints are optional | A computable implementation scope; ordinary source writes occur only in Build |
+| Verify    | Check stable acceptance IDs and write executions, skipped checks, risks, and evidence to `verification.md` | Pass advances to Archive; failure returns to Build through bounded repair |
+| Archive   | Run read-only preflight, check canonical-spec concurrency, then sync specs and move the complete change | The confirmed preflight is still current and the archive transaction commits |
+
+Shape supports `clarification_mode: sequential` and `clarification_mode: batch`. Sequential asks one upstream question per round; Batch asks every currently answerable question whose prerequisites are settled. In both modes, the agent investigates discoverable facts and writes user decisions back into the brief and complete target specs.
+
+</details>
+
+<details>
+<summary>View Native state and artifacts</summary>
+
+| File or directory                                  | Purpose                                                                    |
+| -------------------------------------------------- | -------------------------------------------------------------------------- |
+| `.comet/config.yaml`                               | Select enabled/default workflows, artifact root, language, and clarification mode |
+| `.comet/current-change.json`                       | Shared Native/Classic ownership; each write routes to one workflow         |
+| `docs/comet/changes/<name>/comet-state.yaml`       | Native phase, revision, approval, spec operations, and evidence references |
+| `docs/comet/changes/<name>/brief.md`               | Outcome, scope, non-goals, examples, constraints, decisions, and open questions |
+| `docs/comet/changes/<name>/specs/`                 | Complete target behavior for each capability after archive                 |
+| `docs/comet/changes/<name>/verification.md`        | Acceptance evidence, command results, skipped checks, consistency, risks, and conclusion |
+| `docs/comet/changes/<name>/runtime/`               | Baseline, Run, trajectory, checkpoints, implementation scope, and verification evidence |
+| `docs/comet/specs/` / `archive/` / `runtime/`      | Canonical specs, archived changes, locks, and recoverable transactions     |
+
+Native can keep multiple active changes at the same time. `comet status` lists the candidates, while `.comet/current-change.json` selects ownership for the current request; it does not limit the project to one change. Missing, stale, or ambiguous selection stops resume and writes for an explicit choice instead of guessing another change or switching to Classic.
+
+Runtime owns revisions, hashes, evidence references, and transaction state in `comet-state.yaml` and `runtime/`. When requirements change, update the brief or proposed specs and let commands recompute the contract; do not hand-edit phases, hashes, or JSON evidence to bypass checks.
+
+</details>
+
+<details>
+<summary>View Native reliability and recovery</summary>
+
+1. **Clarification blocking** — Shape persists unresolved implementation decisions as blocking questions. Batch mode also requires explicit shared-understanding confirmation before Build.
+2. **Approval bound to requirements** — Approval is bound to the contract hash of the brief and complete target specs; requirement changes invalidate stale approval.
+3. **Auditable implementation scope** — Creation records a complete baseline, and leaving Build derives a content-addressed implementation scope from before/after snapshots instead of agent claims.
+4. **Acceptance and verification evidence** — Runtime derives stable acceptance IDs and binds each to project evidence, a skipped reason, and optional read-only check receipts. Contract, scope, or report changes make stale evidence unusable.
+5. **In-phase recovery and repair** — Checkpoints persist progress and artifact manifests with freshness checks. Repeated no-progress failures enter a bounded repair episode, while real implementation progress resets the stall decision.
+6. **Protected files and transactions** — Run, trajectory, checkpoints, and evidence use protected I/O. Archive and artifact-root moves use recoverable transactions, CAS, and locks; doctor explicitly continues or rolls back interrupted work.
+7. **Unified guards without merged workflows** — Each platform installs one Rule and one Hook Router. The Router invokes Native Guard from current ownership; Native permits ordinary implementation writes only in Build and keeps its phases, schema, directories, and Guard independent from Classic.
+
+</details>
+
 ### Classic Five-Phase Workflow
 
 <details>

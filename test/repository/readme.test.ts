@@ -80,6 +80,12 @@ describe('README assets', () => {
     expect(readmeEn).toContain('<summary>Classic project structure');
     expect(readmeZh).toContain('<summary>Native 项目结构');
     expect(readmeZh).toContain('<summary>Classic 项目结构');
+    expect(readmeEn).toContain('<summary>View the Native phase flow');
+    expect(readmeEn).toContain('<summary>View Native state and artifacts');
+    expect(readmeEn).toContain('<summary>View Native reliability and recovery');
+    expect(readmeZh).toContain('<summary>查看 Native 阶段流程');
+    expect(readmeZh).toContain('<summary>查看 Native 状态与产物');
+    expect(readmeZh).toContain('<summary>查看 Native 可靠性与恢复');
   });
 
   it('documents task-first paths for comet-any and eval without making Bundle CLI the default user path', async () => {
