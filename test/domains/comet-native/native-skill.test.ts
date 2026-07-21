@@ -127,10 +127,12 @@ describe('Comet Native Skills', () => {
 
   it('preserves caller-requested point-in-time evidence', async () => {
     const zh = await read('zh', 'SKILL.md');
-    expect(zh).toContain('## 执行边界与时点证据');
+    expect(zh).toContain('## 执行边界与状态快照');
+    expect(zh).toContain('状态变化前的 Runtime 返回快照');
     expect(zh).toContain('通过重定向直接保存标准输出');
-    expect(zh).toContain('不可变证据');
-    expect(zh).toContain('不得在状态变化后重建、刷新或覆盖');
+    expect(zh).toContain('快照确认完整后不得重建、刷新或覆盖');
+    expect(zh).toContain('只反映生成时的真实状态');
+    expect(zh).not.toContain('时点证据');
     expect(zh).toContain('首次调用本身就使用机器可读模式');
 
     const en = await read('en', 'SKILL.md');
