@@ -1532,7 +1532,7 @@ def build_aligned_report(
             "",
             f"### Strict-success intersection ({successful_pairs} paired runs)",
             "",
-            "This is the primary completed-task efficiency view: both Native and Classic passed the same task repetition.",
+            "This is the primary completed-task efficiency view: both candidate and baseline passed the same task repetition.",
             "",
             *_render_efficiency_table(paired_telemetry, successes_only=True),
             "",

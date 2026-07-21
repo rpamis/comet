@@ -699,6 +699,17 @@ def test_aligned_report_compares_cumulative_success_efficiency(tmp_path: Path):
     assert "Model starts/resumes" in html
     assert "模型启动/恢复次数" in html
     assert "Total tokens incl. cache" in html
+    zh = html.split('<section class="localized" data-locale="zh"', 1)[1].split(
+        '<section class="localized" data-locale="en"',
+        1,
+    )[0]
+    assert "Comet 对齐实验对比报告" in zh
+    assert "对齐规则" in zh
+    assert "对齐摘要" in zh
+    assert "候选模式平均值" in zh
+    assert "已剔除的数据" in zh
+    assert "Alignment contract" not in zh
+    assert "Candidate average" not in zh
 
 
 def test_aligned_report_excludes_raw_stdout_without_a_result_event(tmp_path: Path):
@@ -959,3 +970,43 @@ def test_cli_supports_explicit_candidate_and_baseline_experiments(
     assert "COMET_NATIVE_PHASE1" in report
     assert "COMET_FULL_040_BETA" in report
     assert "Requested k: 1, 3" in report
+
+    chinese_output = tmp_path / "aligned-zh.md"
+    report_config = tmp_path / "report-config.json"
+    report_config.write_text(
+        json.dumps({"report_outputs": {"markdown": True, "html": True}}),
+        encoding="utf-8",
+    )
+    chinese_result = main(
+        [
+            "--candidate-experiment",
+            str(candidate),
+            "--baseline-experiment",
+            str(baseline),
+            "--ks",
+            "1",
+            "--language",
+            "zh",
+            "--report-config",
+            str(report_config),
+            "--out",
+            str(chinese_output),
+        ]
+    )
+
+    assert chinese_result == 0
+    chinese_report = chinese_output.read_text(encoding="utf-8")
+    assert "# Comet 对齐实验对比报告" in chinese_report
+    assert "## 对齐规则" in chinese_report
+    assert "## 已剔除的数据" in chinese_report
+    assert "Alignment contract" not in chinese_report
+    chinese_html = chinese_output.with_suffix(".html").read_text(encoding="utf-8")
+    assert "<title>Comet 对齐实验对比报告</title>" in chinese_html
+    zh_html = chinese_html.split('<section class="localized" data-locale="zh"', 1)[1].split(
+        '<section class="localized" data-locale="en"',
+        1,
+    )[0]
+    en_html = chinese_html.split('<section class="localized" data-locale="en"', 1)[1]
+    assert "## 对齐规则" not in zh_html
+    assert "对齐规则" in zh_html
+    assert "Alignment contract" in en_html

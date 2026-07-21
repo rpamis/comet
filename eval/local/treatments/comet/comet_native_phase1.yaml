@@ -25,3 +25,42 @@ COMET_NATIVE_PHASE1:
       required_skills:
         - comet-native
       require_skill_invocation: true
+
+COMET_NATIVE_SEQUENTIAL:
+  description: 'Self-contained Comet Native workflow with sequential clarification'
+  claude_md: |
+    Begin by invoking the /comet-native Skill and use only its bundled runtime.
+    Initialize Native under `docs/comet/`, then set native.clarification_mode `sequential`
+    in `.comet/config.yaml` before asking any product question.
+    Do not change the configured clarification mode. Ask one most-upstream user
+    decision per round, persist every answer, and continue through Shape, Build,
+    Verify, and Archive. Do not create OpenSpec, Classic, Superpowers, or hidden
+    `.comet` workflow artifacts.
+  skills:
+    - name: comet-native
+      source: path
+      path: ../assets/skills/comet-native
+      profile: generic
+      required_skills:
+        - comet-native
+      require_skill_invocation: true
+
+COMET_NATIVE_BATCH:
+  description: 'Self-contained Comet Native workflow with batch clarification'
+  claude_md: |
+    Begin by invoking the /comet-native Skill and use only its bundled runtime.
+    Initialize Native under `docs/comet/`, then set native.clarification_mode `batch`
+    in `.comet/config.yaml` before asking any product question.
+    Do not change the configured clarification mode. Ask every currently answerable
+    independent user decision in one numbered round, persist every answer, then
+    present and persist the required final shared-understanding confirmation
+    before continuing through Build, Verify, and Archive. Do not create OpenSpec,
+    Classic, Superpowers, or hidden `.comet` workflow artifacts.
+  skills:
+    - name: comet-native
+      source: path
+      path: ../assets/skills/comet-native
+      profile: generic
+      required_skills:
+        - comet-native
+      require_skill_invocation: true

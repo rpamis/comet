@@ -1,0 +1,39 @@
+[metadata]
+name = "comet-native-clarification-modes"
+description = "Compare Native Sequential and Batch clarification over the same independent product decisions"
+difficulty = "hard"
+category = "comet-native"
+tags = ["comet-native", "clarification", "batch", "sequential", "multi-turn"]
+default_treatments = ["COMET_NATIVE_SEQUENTIAL", "COMET_NATIVE_BATCH"]
+
+[template]
+required = []
+
+[environment]
+description = "Python word-count workspace with only the self-contained Comet Native Skill available."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 2400
+
+[validation]
+test_scripts = "test_native_clarification_modes.py"
+target_artifacts = [".comet/config.yaml", "docs/comet/archive", "docs/comet/specs"]
+timeout = 120
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet-native"]
+expected_artifacts = [".comet/config.yaml", "docs/comet/archive", "docs/comet/specs"]
+require_skill_invocation = true
+rubric_criteria = [
+  "Preserves the treatment-selected clarification mode for the entire run",
+  "Asks only user-owned product decisions and groups them according to Sequential or Batch semantics",
+  "Records abbreviation, empty-input, and consecutive-terminator decisions in the brief and complete target specification",
+  "Completes Build, Verify, and Archive using only the Comet Native Skill and bundled runtime",
+]
+
+[interaction]
+mode = "auto_user"
+max_turns = 6
+simulator_prompt = """You are the developer user in a paired Comet Native clarification eval. Answer only the questions present in the assistant's current message; never volunteer answers to questions it has not asked. Use these fixed product decisions: (1) abbreviations such as e.g. and Dr. do not end a sentence, using a small explicit abbreviation list; (2) empty input prints Sentences: 0; (3) consecutive terminators such as ?! count as one sentence boundary. If the assistant presents a final shared-understanding summary, confirm it explicitly. Do not choose or change the clarification mode, write code, select implementation tooling, or reject the task."""
+decision_patterns = ["abbreviation", "empty input", "consecutive terminators", "shared understanding", "confirm"]
+continue_prompt = "Please read the persisted Native state and continue the same change through verification and archive."

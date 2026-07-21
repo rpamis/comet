@@ -477,10 +477,17 @@ docker_run_claude_loop() {
     local windir shell_dir
     windir=$(_winpath "$dir")
     shell_dir=$(_winpath "$SCRIPT_DIR")
+    local container_name
+    container_name="comet-eval-loop-$(sha256_text "$dir" | cut -c1-24)"
+
+    # A previous host-side timeout may have terminated bash before Docker could
+    # process --rm. The name is scoped to this unique pytest workspace, so it is
+    # safe to remove only that stale container before retrying the same case.
+    docker rm -f "$container_name" &> /dev/null || true
 
     # Mount the scaffold shell scripts read-only so the loop driver is available
     # at /opt/scaffold-shell/ inside the container.
-    docker run --rm \
+    docker run --rm --name "$container_name" \
         -v "$windir://workspace" \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
         -v "$shell_dir://opt/scaffold-shell:ro" \
@@ -491,6 +498,13 @@ docker_run_claude_loop() {
         bash //opt/scaffold-shell/run-claude-loop.sh "$prompt" \
             ${PLUGIN_CLI_ARGS[@]+"${PLUGIN_CLI_ARGS[@]}"} \
             "${loop_args[@]}"
+}
+
+cleanup_claude_loop() {
+    local dir="$1"
+    local container_name
+    container_name="comet-eval-loop-$(sha256_text "$dir" | cut -c1-24)"
+    docker rm -f "$container_name" &> /dev/null || true
 }
 
 # =============================================================================
@@ -567,6 +581,13 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         fi
         shift 2
         docker_run_claude_loop "$(realpath "$dir")" "$prompt" "$@"
+        ;;
+    cleanup-claude-loop)
+        dir="${1:-}"
+        if [[ -z "$dir" ]]; then
+            die "Usage: $0 cleanup-claude-loop <directory>"
+        fi
+        cleanup_claude_loop "$(realpath "$dir")"
         ;;
     help|*)
         cat <<EOF

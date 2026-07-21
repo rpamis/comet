@@ -102,7 +102,9 @@ def test_load_treatments_keeps_comet_core_categories_only():
         "CONTROL",
         "COMET_FULL_040_BETA",
         "COMET_FULL_039",
+        "COMET_NATIVE_BATCH",
         "COMET_NATIVE_PHASE1",
+        "COMET_NATIVE_SEQUENTIAL",
     }
     assert all(isinstance(treatment, TreatmentConfig) for treatment in treatments.values())
 
@@ -173,6 +175,23 @@ def test_comet_native_phase1_is_self_contained():
     assert set(skills) == {"comet-native"}
     assert skills["comet-native"]["scripts_dir"].name == "scripts"
     assert skills["comet-native"]["source_dir"].name == "comet-native"
+
+
+@pytest.mark.parametrize(
+    ("name", "mode"),
+    [
+        ("COMET_NATIVE_SEQUENTIAL", "sequential"),
+        ("COMET_NATIVE_BATCH", "batch"),
+    ],
+)
+def test_comet_native_clarification_treatments_are_self_contained(name: str, mode: str):
+    treatment = load_treatments()[name]
+
+    assert {skill["name"] for skill in treatment.skills} == {"comet-native"}
+    assert treatment.skills[0]["source"] == "path"
+    assert treatment.skills[0]["profile"] == "generic"
+    assert f"clarification_mode `{mode}`" in treatment.claude_md
+    assert "Do not change the configured clarification mode" in treatment.claude_md
 
 
 def test_comet_treatments_point_at_versioned_comet_snapshots():
@@ -264,6 +283,8 @@ def test_list_treatments_is_sorted_for_stable_cli_output():
     assert list_treatments() == [
         "COMET_FULL_039",
         "COMET_FULL_040_BETA",
+        "COMET_NATIVE_BATCH",
         "COMET_NATIVE_PHASE1",
+        "COMET_NATIVE_SEQUENTIAL",
         "CONTROL",
     ]

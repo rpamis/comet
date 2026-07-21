@@ -5,6 +5,13 @@ tasks:
       - COMET_NATIVE_PHASE1
     description: Interactive Native workflow that must clarify one high-impact requirement before confirmed execution.
 
+  - name: comet-native-clarification-modes
+    category: comet-native
+    default_treatments:
+      - COMET_NATIVE_SEQUENTIAL
+      - COMET_NATIVE_BATCH
+    description: Paired Native clarification benchmark with three independent decisions for Sequential versus Batch comparison.
+
   - name: comet-native-workflow
     category: comet-native
     default_treatments:

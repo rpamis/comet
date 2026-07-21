@@ -42,6 +42,7 @@ from scaffold.python import (
 )
 from scaffold.python.sample_quality import infer_sample_quality
 from scaffold.python.skill_parser import SCRIPT_EXTENSIONS
+from scaffold.python.utils import run_claude_loop_in_docker
 from scaffold.python.aligned_comparison import (
     EXPECTED_CASE_MATRIX_FILENAME,
     build_execution_identity,
@@ -1148,7 +1149,11 @@ def run_claude(test_dir, experiment_logger, request):
                         "--simulator-prompt-file",
                         "//workspace/.eval-simulator-prompt.txt",
                     ]
-                result = run_shell("docker.sh", *loop_args, timeout=timeout + 60, check=False)
+                result = run_claude_loop_in_docker(
+                    test_dir,
+                    loop_args[2:],
+                    timeout=timeout + 60,
+                )
             finally:
                 task_prompt_file.unlink(missing_ok=True)
                 if prompt_file and prompt_file.exists():

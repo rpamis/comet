@@ -178,6 +178,28 @@ def test_docker_loop_passes_langsmith_plugin_args_to_loop_driver():
     assert "CC_LANGSMITH_LOG_FILE" in docker_sh
 
 
+def test_claude_loop_timeout_force_removes_its_named_container(monkeypatch, tmp_path: Path):
+    calls = []
+
+    def fake_run_shell(script, *args, **kwargs):
+        calls.append((script, args, kwargs))
+        if args[0] == "run-claude-loop":
+            raise subprocess.TimeoutExpired([script, *args], timeout=42)
+        return subprocess.CompletedProcess([script, *args], 0, "", "")
+
+    monkeypatch.setattr(utils, "run_shell", fake_run_shell)
+
+    result = utils.run_claude_loop_in_docker(tmp_path, ["prompt"], timeout=42)
+
+    assert result.returncode == 124
+    assert calls[0][1][0] == "run-claude-loop"
+    assert calls[1][1] == ("cleanup-claude-loop", tmp_path)
+
+    docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+    assert '--name "$container_name"' in docker_sh
+    assert "cleanup-claude-loop" in docker_sh
+
+
 def test_docker_subject_run_uses_controller_verified_immutable_image_identity():
     docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
 
@@ -277,6 +299,19 @@ def test_decision_point_detector_rejects_completion_statements():
     assert question_result.returncode == 0
 
 
+def test_decision_point_detector_rejects_multiline_archived_decision_summary():
+    result = utils.run_shell(
+        "decision-point.sh",
+        """Change archived successfully.
+1. Should abbreviations end sentences — No.
+2. Consecutive terminators (`?!`) count as one boundary.
+All verification checks passed.""",
+        check=False,
+    )
+
+    assert result.returncode == 1
+
+
 def test_decision_point_patterns_require_an_unresolved_decision_signal():
     ordinary = utils.run_shell(
         "decision-point.sh",
@@ -308,6 +343,24 @@ Impact: Counts remain intuitive, but the list needs maintenance.""",
     assert result.returncode == 0
 
 
+def test_decision_point_detector_accepts_batch_labels_and_reply_confirmation():
+    labelled_question = utils.run_shell(
+        "decision-point.sh",
+        """**1. Question:** Whether abbreviations such as `e.g.` end a sentence.
+**Recommendation:** No.
+**Impact:** Counts stay intuitive.""",
+        check=False,
+    )
+    reply_confirmation = utils.run_shell(
+        "decision-point.sh",
+        'Please reply **"confirmed"** to approve this shared understanding.',
+        check=False,
+    )
+
+    assert labelled_question.returncode == 0
+    assert reply_confirmation.returncode == 0
+
+
 def test_completion_point_detector_requires_explicit_non_negated_workflow_completion():
     archived = utils.run_shell(
         "completion-point.sh",
@@ -323,6 +376,21 @@ def test_completion_point_detector_requires_explicit_non_negated_workflow_comple
     archived_to = utils.run_shell(
         "completion-point.sh", "- **Archived to**: docs/comet/archive/2026-07-19-add-counting/", check=False
     )
+    completed_all_phases = utils.run_shell(
+        "completion-point.sh",
+        "The change has been completed through all phases and archived.",
+        check=False,
+    )
+    terminal_archived = utils.run_shell(
+        "completion-point.sh",
+        "The change is already in its terminal archived state.",
+        check=False,
+    )
+    archived_heading = utils.run_shell(
+        "completion-point.sh",
+        "**Native change `add-sentence-counting` is archived**",
+        check=False,
+    )
     phase_done = utils.run_shell(
         "completion-point.sh", "Shape is done; Build remains pending.", check=False
     )
@@ -337,6 +405,9 @@ def test_completion_point_detector_requires_explicit_non_negated_workflow_comple
     assert archive_complete.returncode == 0
     assert completed_through_archive.returncode == 0
     assert archived_to.returncode == 0
+    assert completed_all_phases.returncode == 0
+    assert terminal_archived.returncode == 0
+    assert archived_heading.returncode == 0
     assert phase_done.returncode == 1
     assert negated.returncode == 1
     assert negated_through_archive.returncode == 1

@@ -8,7 +8,11 @@ from typing import Any
 from scaffold.python.validation.native_workflow import validate_native_workflow
 
 
-NATIVE_TREATMENTS = {"COMET_NATIVE_PHASE1"}
+NATIVE_CLARIFICATION_MODES = {
+    "COMET_NATIVE_SEQUENTIAL": "sequential",
+    "COMET_NATIVE_BATCH": "batch",
+}
+NATIVE_TREATMENTS = {"COMET_NATIVE_PHASE1", *NATIVE_CLARIFICATION_MODES}
 CONTROL_BUSINESS_ONLY_TREATMENTS = {"CONTROL"}
 CLASSIC_WORKFLOW_CHECK_PREFIXES = (
     "openspec_artifacts",
@@ -35,6 +39,7 @@ Preserve every business requirement in the task below, but interpret legacy
 references to the comet workflow and its Open, Design, Build, Verify, and Archive
 phases as the Native Shape, Build, Verify, and Archive workflow. Use only Native's
 bundled runtime and initialize artifact_root `docs`. {terminal_instruction}
+{clarification_instruction}
 Do not create OpenSpec, Classic, Superpowers, or hidden `.comet` artifacts.
 
 [ORIGINAL BUSINESS TASK]
@@ -101,7 +106,17 @@ def adapt_prompt_for_native(
             "runtime-enforced blocked state."
         ),
     }.get(terminal_mode, "Leave a verified terminal Native archive.")
-    return f"{NATIVE_PROMPT_PREFIX.format(terminal_instruction=terminal_instruction)}{prompt}"
+    clarification_mode = NATIVE_CLARIFICATION_MODES.get(treatment_name)
+    clarification_instruction = (
+        f"Configure native.clarification_mode `{clarification_mode}` before asking any product "
+        "question and do not change it during the run."
+        if clarification_mode
+        else ""
+    )
+    return (
+        f"{NATIVE_PROMPT_PREFIX.format(terminal_instruction=terminal_instruction, clarification_instruction=clarification_instruction)}"
+        f"{prompt}"
+    )
 
 
 def adapt_checks_for_native(

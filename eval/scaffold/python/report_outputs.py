@@ -54,6 +54,7 @@ def write_report_outputs(
     config: ReportOutputConfig,
     *,
     title: str,
+    html_markdown: str | None = None,
 ) -> dict[str, Path]:
     """Write enabled report formats and return paths by format name."""
     written: dict[str, Path] = {}
@@ -66,7 +67,10 @@ def write_report_outputs(
     if config.html:
         html_path = markdown_path.with_suffix(".html")
         html_path.parent.mkdir(parents=True, exist_ok=True)
-        html_path.write_text(render_markdown_html(markdown, title=title), encoding="utf-8")
+        html_path.write_text(
+            render_markdown_html(html_markdown or markdown, title=title),
+            encoding="utf-8",
+        )
         written["html"] = html_path
 
     return written
@@ -969,6 +973,122 @@ def _indent(text: str, spaces: int) -> str:
 def _localize_eval_markdown(markdown: str) -> str:
     """Translate the human-facing eval report shell for HTML display only."""
     replacements = [
+        ("# Comet Aligned Experiment Comparison Report", "# Comet 对齐实验对比报告"),
+        ("- Candidate:", "- 候选模式："),
+        ("- Baseline:", "- 基准模式："),
+        ("- Requested k:", "- 请求的 k："),
+        (
+            "## Alignment contract",
+            "> 数据清洗：超时、缺失完整 report 或无法组成同 repetition 严格配对的样本已剔除，不进入成功率和效率指标。已完成但验证失败的样本仍作为有效失败保留，避免人为抬高成功率。\n\n## 对齐规则",
+        ),
+        (
+            "- Runs pair only when `task` and repetition match. Two v2 records must also match the full execution-bound `case_hash`; when either side is historical v1, only the shared task-core hash can be checked and the limitation is disclosed below.",
+            "- 仅当 `task` 和 repetition 相同时才配对。两个 v2 记录还必须具有相同的完整执行级 `case_hash`；若任一侧为历史 v1，则只能校验共享的 task-core hash，限制会在下文说明。",
+        ),
+        (
+            "- Expected task/repetition coverage comes from each experiment's controller-written matrix when available, not from the reports that happened to survive.",
+            "- 预期的 task/repetition 覆盖以实验控制器写入的矩阵为准，不以偶然保留下来的 report 反推。",
+        ),
+        (
+            "- Metrics are computed per task and then macro-averaged; runs are never pooled across tasks.",
+            "- 指标先按 task 计算，再做宏平均；不会把不同 task 的运行混在一起。",
+        ),
+        (
+            "- A task with fewer than k aligned repetitions is excluded from that k's task coverage; k is never reduced.",
+            "- 某 task 的对齐 repetition 少于 k 时，该 task 不纳入该 k 的统计；k 不会被自动降低。",
+        ),
+        (
+            "- Duration is reparsed from raw stdout with the current additive result-event parser. Stored historical duration fields are not mixed into this metric.",
+            "- 耗时使用当前累加式 result-event 解析器从 raw stdout 重算，不混用历史存储的 duration 字段。",
+        ),
+        ("## Alignment summary", "## 对齐摘要"),
+        (
+            "| Candidate runs | Baseline runs | Expected task/rep keys | Strictly matched pairs | Tasks | Issues |",
+            "| 发现的候选 report 数 | 发现的基准 report 数 | 预期 task/rep 键 | 有效严格配对数 | Task 数 | 剔除数 |",
+        ),
+        ("## Expected case matrix audit", "## 预期用例矩阵审计"),
+        (
+            "| Experiment | Source | Matrix hash | Target cases |",
+            "| 实验 | 来源 | 矩阵 hash | 目标用例数 |",
+        ),
+        (
+            "## pass@k / pass^k — task macro average",
+            "## pass@k / pass^k — Task 宏平均",
+        ),
+        (
+            "Each value is the mean of the per-task estimator. Coverage is shown as eligible tasks / all aligned task names.",
+            "每个值都是先按 task 计算后的平均值。覆盖率表示为可统计 task 数 / 全部对齐 task 数。",
+        ),
+        (
+            "`pass@k` uses the HumanEval at-least-one-success estimator. `pass^k` keeps Comet's observed consistency lower bound: a task contributes 1 only when all of its aligned repetitions pass.",
+            "`pass@k` 使用 HumanEval 的至少一次成功估计。`pass^k` 表示 Comet 的一致性下限：只有当某 task 的所有对齐 repetition 都通过时才记为 1。",
+        ),
+        (
+            "| Treatment | Metric |",
+            "| Treatment | 指标 |",
+        ),
+        ("| Matched pass/fail |", "| 对齐通过/失败 |"),
+        ("## Duration from raw stdout", "## 基于 raw stdout 的耗时"),
+        (
+            "Missing raw duration is reported as missing coverage and is not replaced by, or averaged with, the stored report duration.",
+            "缺失的 raw duration 只记为覆盖缺口，不使用 report 中存储的 duration 替代或混合平均。",
+        ),
+        (
+            "| Treatment | Matched runs | Duration coverage | Total | Average / covered run | Source |",
+            "| Treatment | 对齐运行数 | 耗时覆盖 | 总计 | 平均每次有效运行 | 来源 |",
+        ),
+        (
+            "Result telemetry is additive across the initial model start, deterministic user-answer resumes, and cold resumes. Token totals include cache-read tokens. Context input deduplicates streamed assistant events by message id.",
+            "Result 遥测会累加首次模型启动、用户答案恢复和冷恢复。Token 总量包含缓存读取；上下文输入会按 message id 去重流式 assistant 事件。",
+        ),
+        (
+            "This is the primary completed-task efficiency view: both candidate and baseline passed the same task repetition.",
+            "这是已完成 task 的主要效率视图：候选模式与基准模式在同一 task repetition 上都必须通过。",
+        ),
+        (
+            "> Context rows require per-assistant-message usage from both sides. Low pair coverage means the historical CLI did not preserve enough context telemetry; those rows must not be promoted as a workflow comparison.",
+            "> 上下文指标要求两侧都保留每条 assistant message 的 usage。配对覆盖率较低时，这些指标不能上升为 workflow 对比结论。",
+        ),
+        ("## Case manifest audit", "## 用例 Manifest 审计"),
+        (
+            "Hash cells show the first 12 hexadecimal characters. Full hashes remain in the source report when report-bound; fallback hashes are reproducible from the task tree.",
+            "Hash 单元格只显示前 12 位十六进制字符。report-bound 记录的完整 hash 保留在源 report 中；fallback hash 可由 task tree 重现。",
+        ),
+        (
+            "| Task | Candidate case | Baseline case | Source | Instruction | Validator | Environment | Prompt | Runner | Controller | Execution |",
+            "| Task | 候选用例 | 基准用例 | 来源 | 任务说明 | Validator | 环境 | Prompt | Runner | Controller | 执行身份 |",
+        ),
+        (
+            "## Task outcomes on strictly matched repetitions",
+            "## 严格配对 repetition 的 Task 结果",
+        ),
+        (
+            "| Task | Repetitions | Candidate | Baseline |",
+            "| Task | Repetition | 候选模式 | 基准模式 |",
+        ),
+        ("## Alignment issues", "## 已剔除的数据"),
+        ("Issue counts:", "剔除数量："),
+        (
+            "| Task | Rep | Reason | Detail |",
+            "| Task | Rep | 原因 | 详情 |",
+        ),
+        ("missing-repetition", "缺失 repetition"),
+        ("missing baseline run", "缺失基准模式运行"),
+        ("missing candidate run", "缺失候选模式运行"),
+        ("_None._", "_无。_"),
+        ("Candidate average", "候选模式平均值"),
+        ("Baseline average", "基准模式平均值"),
+        ("Candidate delta", "候选模式差异"),
+        ("Complete pairs", "完整配对"),
+        (" paired runs)", " 个配对运行)"),
+        ("% less", "% 更少"),
+        ("% more", "% 更多"),
+        ("` from `", "`，来源：`"),
+        ("| Candidate |", "| 候选模式 |"),
+        ("| Baseline |", "| 基准模式 |"),
+        ("| Treatment |", "| 模式 |"),
+        ("| Metric |", "| 指标 |"),
+        (" tasks)", " 个 task)"),
         ("# Comet Baseline Comparison Report", "# Comet 基线对比报告"),
         ("- Experiment:", "- 实验："),
         ("- Treatments with data:", "- 有数据的 Treatment："),
@@ -1226,6 +1346,11 @@ def _localize_eval_markdown(markdown: str) -> str:
         localized = localized.replace(source, target)
     localized = _localize_failure_attribution(localized)
     return localized
+
+
+def localize_eval_markdown(markdown: str) -> str:
+    """Return the Chinese localization used by the HTML report's default view."""
+    return _localize_eval_markdown(markdown)
 
 
 def _localize_failure_attribution(markdown: str) -> str:

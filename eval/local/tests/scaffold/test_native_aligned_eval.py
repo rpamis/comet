@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from scaffold.python.native_eval import (
@@ -224,6 +225,20 @@ def test_adapt_prompt_for_native_maps_legacy_workflow_words_without_changing_bus
     assert "Invoke /comet-native as the only Skill" in adapted
     assert "Shape, Build, Verify, and Archive" in adapted
     assert adapted.endswith(original)
+
+
+@pytest.mark.parametrize(
+    ("treatment", "mode"),
+    [
+        ("COMET_NATIVE_SEQUENTIAL", "sequential"),
+        ("COMET_NATIVE_BATCH", "batch"),
+    ],
+)
+def test_adapt_prompt_for_native_preserves_clarification_mode(treatment: str, mode: str):
+    adapted = adapt_prompt_for_native("Clarify three decisions.", treatment)
+
+    assert f"native.clarification_mode `{mode}`" in adapted
+    assert adapted.endswith("Clarify three decisions.")
 
 
 def test_adapt_prompt_for_native_preserves_an_expected_active_blocked_terminal():

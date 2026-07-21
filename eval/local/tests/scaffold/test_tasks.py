@@ -153,7 +153,7 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
-    assert len(names) == 29
+    assert len(names) == 30
     assert set(names) == {
         "authoring-skill-smoke",
         "comet-agent-memory-routing",
@@ -173,6 +173,7 @@ def test_comet_task_index_lists_real_tasks():
         "comet-noise-distractor",
         "comet-native-workflow",
         "comet-native-clarification",
+        "comet-native-clarification-modes",
         "comet-native-repository-fact",
         "comet-native-interrupted-transition",
         "comet-native-wave-b-decision-resume",
@@ -218,6 +219,103 @@ def test_native_clarification_task_requires_one_decision_and_confirmed_resume():
     prompt = task.render_prompt()
     assert "Do not guess how abbreviations should behave" in prompt
     assert "Do not begin implementation before the user answers" in prompt
+
+
+def test_native_clarification_modes_task_compares_batch_and_sequential():
+    task = load_task("comet-native-clarification-modes")
+
+    assert task.default_treatments == ["COMET_NATIVE_SEQUENTIAL", "COMET_NATIVE_BATCH"]
+    assert task.config.evaluation.profile == "generic"
+    assert task.config.evaluation.required_skills == ["comet-native"]
+    assert task.config.interaction.mode == "auto_user"
+    assert task.config.interaction.max_turns == 6
+    assert task.config.timeout_sec == 2400
+    assert task.config.interaction.decision_reply is None
+    assert "answer only the questions present" in task.config.interaction.simulator_prompt.lower()
+    prompt = task.render_prompt()
+    assert "three independent product decisions" in prompt
+    assert "Do not choose the clarification mode" in prompt
+
+
+@pytest.mark.parametrize(
+    ("treatment", "mode", "decision_points"),
+    [
+        ("COMET_NATIVE_SEQUENTIAL", "sequential", 3),
+        ("COMET_NATIVE_BATCH", "batch", 2),
+    ],
+)
+def test_native_clarification_modes_validator_accepts_expected_rounds(
+    tmp_path: Path,
+    treatment: str,
+    mode: str,
+    decision_points: int,
+):
+    validator_path = (
+        get_tasks_dir()
+        / "comet-native-clarification-modes"
+        / "validation"
+        / "test_native_clarification_modes.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "native_clarification_modes_validator", validator_path
+    )
+    assert spec and spec.loader
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.WORKSPACE = tmp_path
+
+    config = tmp_path / ".comet" / "config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        f"schema: comet.project.v1\nnative:\n  clarification_mode: {mode}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "_test_context.json").write_text(
+        json.dumps(
+            {
+                "treatment_name": treatment,
+                "interaction": {
+                    "mode": "auto_user",
+                    "actual_turns": decision_points + 1,
+                    "decision_points": decision_points,
+                    "deterministic_replies": 0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert validator.check_mode_and_interaction()["status"] == "passed"
+
+
+def test_native_clarification_modes_validator_accepts_semantic_decision_wording_and_approval():
+    validator_path = (
+        get_tasks_dir()
+        / "comet-native-clarification-modes"
+        / "validation"
+        / "test_native_clarification_modes.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "native_clarification_modes_semantic_validator", validator_path
+    )
+    assert spec and spec.loader
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+
+    text = """
+### Scenario: Empty input
+Given input `""`, the function returns `0`.
+### Scenario: Abbreviations do not end sentences
+Known abbreviations such as `Dr.` are ignored as sentence boundaries.
+### Scenario: Punctuation runs
+A contiguous run of terminal punctuation (`.`, `!`, `?`) counts as exactly one boundary.
+"""
+
+    assert validator.missing_decisions(text) == []
+    assert validator.approval_is_valid("sequential", "implicit") is True
+    assert validator.approval_is_valid("sequential", "confirmed") is True
+    assert validator.approval_is_valid("batch", "confirmed") is True
+    assert validator.approval_is_valid("batch", "implicit") is False
 
 
 def test_native_clarification_validator_rejects_multiple_archives(tmp_path: Path):

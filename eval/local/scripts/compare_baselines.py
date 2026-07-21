@@ -35,6 +35,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from scaffold.python.aligned_comparison import build_aligned_report
 from scaffold.python.paths import get_logs_dir
 from scaffold.python.report_outputs import (
+    localize_eval_markdown,
     load_report_output_config,
     write_report_outputs,
 )
@@ -1017,6 +1018,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--report-config", default=None, help="JSON/YAML config for report outputs")
     parser.add_argument(
+        "--language",
+        choices=("en", "zh"),
+        default="en",
+        help="Language used by generated Markdown and HTML report bodies",
+    )
+    parser.add_argument(
         "--candidate-experiment",
         default=None,
         help="Candidate experiment id or path for strict two-experiment alignment",
@@ -1084,16 +1091,20 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 1
-        out_path = (
-            Path(args.out)
-            if args.out
-            else candidate_dir / "aligned_comparison_report.md"
-        )
+        html_report = report
+        if args.language == "zh":
+            report = localize_eval_markdown(report)
+        out_path = Path(args.out) if args.out else candidate_dir / "aligned_comparison_report.md"
         outputs = write_report_outputs(
             report,
             out_path,
             load_report_output_config(args.report_config),
-            title="Comet Aligned Experiment Comparison Report",
+            title=(
+                "Comet 对齐实验对比报告"
+                if args.language == "zh"
+                else "Comet Aligned Experiment Comparison Report"
+            ),
+            html_markdown=html_report,
         )
         print(report)
         if outputs:

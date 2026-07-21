@@ -37,8 +37,8 @@ from scaffold.python.treatments import TreatmentConfig, build_treatment_skills, 
 from scaffold.python.validation import run_validators
 
 # Timeouts
-CLAUDE_TIMEOUT = 1500  # 25 minutes for Claude to complete task (multi-turn loop)
-PYTEST_TIMEOUT = 1800  # 30 minutes total including setup/teardown
+CLAUDE_TIMEOUT = 1500  # Default floor for Claude to complete a multi-turn task
+PYTEST_TIMEOUT = 3000  # 50 minutes total including task-specific runtime and teardown
 MANIFEST_DYNAMIC_ONLY_TASKS = {"workflow-overlay-contract"}
 
 
@@ -380,7 +380,7 @@ def test_task_treatment(task_name, treatment_name):
 
     result = fixtures.run_claude(
         prompt,
-        timeout=CLAUDE_TIMEOUT,
+        timeout=max(CLAUDE_TIMEOUT, task.config.timeout_sec),
         model=selected_model,
         interaction=interaction,
         image_id=captured_execution.runtime_image_id,

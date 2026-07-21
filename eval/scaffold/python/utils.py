@@ -195,6 +195,41 @@ def run_claude_in_docker(test_dir, prompt, timeout=300, model=None, image_id=Non
         return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
 
 
+def run_claude_loop_in_docker(test_dir, loop_args, timeout=600):
+    """Run the interactive driver and remove its container after host-side timeout."""
+    cmd = ["run-claude-loop", str(test_dir), *loop_args]
+    try:
+        return run_shell("docker.sh", *cmd, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired as error:
+        cleanup_error = ""
+        try:
+            cleanup = run_shell(
+                "docker.sh",
+                "cleanup-claude-loop",
+                test_dir,
+                timeout=30,
+                check=False,
+            )
+            if cleanup.returncode != 0:
+                cleanup_error = f"; cleanup failed: {cleanup.stderr or cleanup.stdout}"
+        except Exception as cleanup_exception:  # pragma: no cover - defensive cleanup
+            cleanup_error = f"; cleanup failed: {cleanup_exception}"
+        stdout = (
+            error.stdout.decode("utf-8", errors="replace")
+            if isinstance(error.stdout, bytes)
+            else (error.stdout or "")
+        )
+        stderr = (
+            error.stderr.decode("utf-8", errors="replace")
+            if isinstance(error.stderr, bytes)
+            else (error.stderr or "")
+        )
+        message = f"Timeout after {timeout}s{cleanup_error}"
+        return subprocess.CompletedProcess(
+            cmd, 124, stdout, "\n".join(filter(None, (stderr, message)))
+        )
+
+
 def _copy_scaffold_to_docker(test_dir):
     scaffold_dir = test_dir / "scaffold"
     scaffold_dir.mkdir(parents=True, exist_ok=True)
