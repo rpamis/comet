@@ -23,6 +23,15 @@ You are responsible for investigating facts available from the repository, tools
 
 Combine details only when they jointly define the same user decision. Do not merge independent user decisions: Sequential mode handles them in separate rounds, while Batch mode numbers each one separately. Do not manufacture ambiguity to increase the question count or include implementation choices in the user question list. If a question still leaves a reasonable interpretation of that same decision uncovered, broaden that question instead of creating another question with an unclear dependency.
 
+### Question interface
+
+Before asking, inspect the current host's tool list. When the current tool list provides `AskUserQuestion`, prefer it in Claude Code for presenting structured options; on other hosts, use an equivalent user-input tool. Give every option a short label and an impact description. Mark the recommended option in its description, but never select it on the user's behalf.
+
+- Sequential mode submits one structured question per round. Use single-select when the options are mutually exclusive. Use multi-select only when the same user decision genuinely permits multiple compatible selections. Do not compress independent user decisions into one multi-select question.
+- In Batch mode, when the complete set fits the current tool's limits on questions, options, and fields, put the entire ready question set in the same call. Do not split the same round across multiple tool calls so that later questions remain hidden until after an earlier answer.
+- When the current host has no structured question tool, or a Batch round cannot be expressed completely in one call, use the numbered-text fallback for the entire round. Preserve the same questions, options, recommendations, and impacts, then stop and wait for the user to reply with the numbers.
+- If the first call fails or the host reports an error, treat structured questions as unavailable for this session. Use the text fallback for the current round and do not retry it again during this session. After a successful tool call, wait for the user's answers and do not also output a duplicate set of text questions.
+
 ### Sequential mode
 
 When a user decision remains:

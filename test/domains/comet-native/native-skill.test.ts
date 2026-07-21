@@ -110,6 +110,56 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('uses Claude Code structured questions without changing Native clarification rounds', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        start: '## 需求澄清协议',
+        end: '## 执行边界与状态快照',
+        required: [
+          '当前工具列表提供 `AskUserQuestion` 时',
+          'Sequential 模式每轮提交一道结构化问题',
+          '选项互斥时使用单选',
+          '把本轮整组问题放在同一次调用中',
+          '不能把同一轮拆成多次工具调用',
+          '整轮使用编号文本降级模式',
+          '不能用一道多选题压缩多个独立的用户决定',
+          '第一次调用失败',
+          '本会话后续不再重试',
+          '不再同时输出一套重复的文本问题',
+        ],
+      },
+      {
+        language: 'en' as const,
+        start: '## Clarification Protocol',
+        end: '## Execution Boundaries and Point-in-Time Evidence',
+        required: [
+          'current tool list provides `AskUserQuestion`',
+          'Sequential mode submits one structured question per round',
+          'Use single-select when the options are mutually exclusive',
+          'put the entire ready question set in the same call',
+          'Do not split the same round across multiple tool calls',
+          'use the numbered-text fallback for the entire round',
+          'Do not compress independent user decisions into one multi-select question',
+          'If the first call fails',
+          'do not retry it again during this session',
+          'do not also output a duplicate set of text questions',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const source = await read(variant.language, 'SKILL.md');
+      const clarification = source.slice(
+        source.indexOf(variant.start),
+        source.indexOf(variant.end),
+      );
+      for (const required of variant.required) {
+        expect(clarification, `${variant.language}: ${required}`).toContain(required);
+      }
+    }
+  });
+
   it('has the public Native identity and preserves agent autonomy', async () => {
     for (const language of ['en', 'zh'] as const) {
       const source = await read(language, 'SKILL.md');
