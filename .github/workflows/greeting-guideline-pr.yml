@@ -15,6 +15,10 @@ jobs:
       - uses: actions/first-interaction@1c4688942c71f71d4f5502a26ea67c331730fa4d # v3.1.0
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
+          issue_message: |-
+            👋 Thanks for opening your first issue in Comet, @${{ github.actor }}.
+
+            Please make sure the issue includes the expected behavior, actual behavior, and enough context to reproduce or evaluate the request.
           pr_message: |-
             👋 Thanks for opening your first PR to Comet, @${{ github.actor }}.
 
