@@ -80,6 +80,7 @@ describe('repository layout registry', () => {
     expect(layout.allowedTopLevelEntries).toContain('domains');
     expect(layout.allowedTopLevelEntries).toContain('platform');
     expect(layout.allowedTopLevelEntries).toContain('.superpowers');
+    expect(layout.allowedTopLevelEntries).toContain('codecov.yml');
     expect(layout.allowedTopLevelEntries).not.toContain('src');
   });
 });

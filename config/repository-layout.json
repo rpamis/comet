@@ -72,6 +72,7 @@
     "build.js",
     "CHANGELOG.md",
     "CLAUDE.md",
+    "codecov.yml",
     "config",
     "CONTRIBUTING-zh.md",
     "CONTRIBUTING.md",

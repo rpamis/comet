@@ -1,0 +1,10 @@
+coverage:
+  status:
+    project:
+      default:
+        # Codecov counts partially covered branches in its aggregate percentage,
+        # so use the repository's lowest enforced Vitest threshold here.
+        target: 70%
+    patch:
+      default:
+        target: 70%
