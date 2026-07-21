@@ -21,7 +21,6 @@
       context.md                     # 可选；Run context ref
       artifacts.json                 # 可选；Run artifact refs
       transition.json                # 可选；未完成阶段推进日志
-      schema-migration.json          # 可选；未完成 schema 迁移日志
       checkpoint-journal.json        # 可选；未完成 progress checkpoint 日志
       checkpoints/
         latest.json                  # 最近阶段边界 checkpoint
@@ -99,7 +98,9 @@ created_at: 2026-07-14
 run_id: null
 ```
 
-不要直接编辑 runtime 管理字段。`phase`、`revision`、`approval`、`approved_contract_hash`、`spec_changes`、operation、`base_hash`、三个 evidence ref、`run_id` 和 `archived` 都由 runtime 管理。`approved_contract_hash` 把 approval 绑定到当时的 brief/spec contract；后续 contract 漂移必须由用户重新确认。需要改变需求时只更新 brief 和 `specs/<capability>/spec.md`；删除 capability 使用 `comet native spec remove`，再由命令检查并推进。旧 schema 由 `doctor --repair` 通过可恢复迁移升级，不能手工补字段。v2 的 Verify/Archive 状态没有 v3 所需的 scope/evidence 绑定，迁移时会受控退回 Build 重新采集，而不是把旧 pass 冒充为当前证据。
+不要直接编辑 Runtime 管理字段。`phase`、`revision`、`approval`、`approved_contract_hash`、`spec_changes`、operation、`base_hash`、三个 evidence ref、`run_id` 和 `archived` 都由 Runtime 管理。
+
+`approved_contract_hash` 把 approval 绑定到当时的 brief/spec contract。contract 发生变化后，必须由用户重新确认。需要改变需求时，只更新 brief 和 `specs/<capability>/spec.md`；删除 capability 使用 `comet native spec remove`，再由命令检查并推进。
 
 ## Brief
 
@@ -171,7 +172,11 @@ Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出�
 
 ## 内容寻址证据
 
-- `baseline-manifest.json`：change 创建时的有界项目快照；只记录项目相对路径、size、hash、capture provider 和省略事实，不保存文件内容。Git provider 只纳入 tracked 与未被 ignore 的 untracked 文件，并把 submodule/gitlink 作为原子条目；非 Git 项目使用带前后枚举围栏的有界物理树 provider。创建时若项目所有范围内仍有省略项，`new` 会立即失败并清理未完成 change，避免到 Build 才发现基线不可用。`git-selection-changed` 表示枚举期间 Git index 变化，必须等 Git 写入稳定后重试，绝不能按 partial scope 授权。`git-enumeration-limit` 表示项目所有范围超过 Git 枚举安全预算。baseline 创建或 migration cutover 没有 partial 授权，必须先缩小/清理范围或等待产品预算调整；仅在之后的 current snapshot 中恢复确实不可行、Runtime 返回带计数和内容 hash 的可授权 scope，且用户理解未知尾部风险时，才可按精确 hash、理由与 `--confirmed` 使用普通 partial 协议。`physical-selection-changed` 与 `physical-enumeration-limit` 分别表示物理项目树在捕获期间变化或枚举/协作式执行预算耗尽；由于未知尾部无法稳定绑定，两者在 current snapshot 中也不能授权，必须稳定或缩小项目树后重试。任何情况都不能手改 evidence 或猜测未枚举路径。
+- `baseline-manifest.json`：change 创建时的有界项目快照。它只记录项目相对路径、size、hash、capture provider 和省略事实，不保存文件内容。Git provider 纳入 tracked 和未被 ignore 的 untracked 文件，并把 submodule/gitlink 作为原子条目；非 Git 项目使用带前后枚举围栏的有界物理树 provider。创建时若项目所有范围内仍有省略项，`new` 会失败并清理未完成 change。
+  - `git-selection-changed`：等待 Git 写入稳定后重试，不能授权为 partial scope。
+  - `git-enumeration-limit`：先缩小或清理项目所有范围。只有 current snapshot 返回可授权 scope，且用户接受未知尾部的具体风险时，才能按精确 hash、理由与 `--confirmed` 使用 partial 协议。
+  - `physical-selection-changed` 和 `physical-enumeration-limit`：稳定或缩小项目树后重试，不能授权为 partial scope。
+  - 任何情况都不能手改 evidence 或猜测未枚举路径。
 - `evidence/scopes/`：Build 离开时由 baseline、当前快照、声明产物和 contract 派生的 implementation scope。当前快照不完整时不会猜测删除；变化过多时只展开有界明细，其余由带数量与内容 hash 的 `scope-detail-overflow` 表示。scope 不完整时 Runtime 停止；用户显式接受后才生成 `allowances/`。
 - `evidence/verifications/`：Verify 结论的 envelope，绑定 Runtime 身份、change revision、contract、acceptance coverage、scope、报告 hash 和可选 check receipt。任一绑定事实变化都会 stale。
 - `evidence/check-receipts/`：`comet native check` 的内置策略结果。它只保存 policy/version、scope/snapshot 绑定、有界 issue 与计数，不保存文件内容，也不是测试完整性的证明。
@@ -179,10 +184,16 @@ Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出�
 
 所有 hash ref 都由 Runtime 写入并在读取时重算。不要复制旧 ref 到新状态、手改 JSON 或把 receipt 当作 pass；`next`、status 和 Archive 会重新读取并检查新鲜度。
 
-Evidence retention 是显式 doctor 能力，不在普通工作流中后台删除文件。只读 doctor 会报告候选；`doctor --repair` 只清理 active change 中至少 30 天、每种 evidence kind 最新 32 份之外、且从当前 state refs 及其依赖闭包证明未引用的 snapshot/scope/allowance/verification/check receipt。候选按 dependents-before-dependencies 排序，每个文件在父链与身份复核后先改名到同目录唯一 `.gc` quarantine，再复核并删除，避免崩溃留下仍引用已删除依赖的上层 evidence。中断 quarantine 会由后续 doctor 发现；只读模式报告 recovery required，显式 repair 只在原路径仍不存在且内容/身份有效时无覆盖恢复。原文件与 quarantine 同时存在、多 quarantine、归档 change、pending transition/migration/checkpoint、缺失依赖、损坏文档、未知目录项、symlink 或其他特殊文件都会推迟或拒绝清理。不能把 retention 当作修复损坏证据的办法。
+Evidence retention 只能由 doctor 显式执行，不在普通工作流中后台删除文件。只读 doctor 报告候选；`doctor --repair` 只清理 active change 中至少 30 天、每种 evidence kind 最新 32 份之外，并且能从当前 state refs 及其依赖闭包证明未引用的 snapshot、scope、allowance、verification 和 check receipt。
+
+候选按 dependents-before-dependencies 排序。每个文件先在父链与身份复核后改名到同目录唯一 `.gc` quarantine，再复核并删除。中断的 quarantine 会由后续 doctor 发现；显式 repair 仅在原路径不存在且内容与身份有效时无覆盖恢复。
+
+出现原文件与 quarantine 冲突、多份 quarantine、归档 change、pending transition/checkpoint、缺失依赖、损坏文档、未知目录项、symlink 或其他特殊文件时，推迟或拒绝清理。不要把 retention 当作修复损坏证据的办法。
 
 Build 与 Verify 使用 inspect-then-persist：先计算并校验 contract、scope、acceptance、repair、Run 与 trajectory，再把最终证据引用写入状态和 transition。Partial Build 可先内容寻址保存候选 scope 以返回稳定 hash，但没有确认时不会生成 allowance 或推进；被后续检查阻塞的 Verify 不会留下可被误认成已提交结论的 verification evidence。
 
-Run state、trajectory、checkpoint、pending action、context 和 artifact refs 只能经过 Native Protected Run I/O。读取拒绝 symlink/junction、非普通文件、路径或文件身份变化和越界，并执行打开前后复核；写入在原子提交前复核父链和目标身份。当前预算为：Run state 256 KiB、trajectory 8 MiB/4096 事件/单事件 256 KiB、checkpoint 与 pending action 各 256 KiB、context 与 artifact refs 各 1 MiB。通用 Engine 存储函数不是 Native 文件边界。
+Run state、trajectory、checkpoint、pending action、context 和 artifact refs 只能经过 Native Protected Run I/O。读取拒绝 symlink/junction、非普通文件、路径或文件身份变化和越界，并执行打开前后复核；写入在原子提交前复核父链和目标身份。
 
-阶段 transition journal 最多 512 KiB，schema migration journal 最多 512 KiB，baseline manifest 有 8 MiB 硬上限。Archive/root move transaction journal 最多 256 KiB；`events.jsonl` 最多 1 MiB/1024 个事件，单事件最多 16 KiB。摘要、无代码理由、partial 理由、repair override 摘要与跳过理由在进入持久状态前执行长度校验和凭据形态脱敏；不要把 token、密码、私钥或连接串当作 workflow 证据写入。
+当前预算为：Run state 256 KiB；trajectory 8 MiB、4096 个事件、单事件 256 KiB；checkpoint 与 pending action 各 256 KiB；context 与 artifact refs 各 1 MiB。通用 Engine 存储函数不是 Native 文件边界。
+
+阶段 transition journal 最多 512 KiB，baseline manifest 的硬上限为 8 MiB。Archive/root move transaction journal 最多 256 KiB；`events.jsonl` 最多 1 MiB 或 1024 个事件，单个事件最多 16 KiB。摘要、无代码理由、partial 理由、repair override 摘要与跳过理由在持久化前执行长度校验和凭据形态脱敏；不要把 token、密码、私钥或连接串写入 workflow 证据。

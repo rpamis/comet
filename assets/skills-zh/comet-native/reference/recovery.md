@@ -37,22 +37,13 @@ comet native doctor <change-name> --repair --strategy continue
 
 普通阶段推进没有 canonical 文件副作用，因此只支持 `continue`，不支持 `rollback`。journal 畸形时保留原文件并停止，不手工拼接状态。
 
-## Schema 升级
-
-旧 Native change 会被 `show/status` 标记为 migration required；普通 mutation fail closed。先只读检查，再让 doctor 执行带 journal 的迁移：
-
-```text
-comet native doctor <change-name>
-comet native doctor <change-name> --repair
-```
-
-迁移会保护旧状态、Run/checkpoint/trajectory 绑定，并在中断后确定性续做。v2 的 pending evidence transition 会被明确 supersede；即使没有 pending transition，处于 Verify 或 Archive 的 v2 change 也会连同 Run、trajectory 与 checkpoint 受控退回 Build，因为旧状态没有 v3 所需的 implementation scope 与 verification envelope。不要手工把 `comet.native.v1/v2` 改成 v3，也不要自行补 revision 或 evidence ref。比当前 Runtime 更高的 `minimum_runtime_version` 不是可迁移旧格式，应升级 Comet 后再处理。
-
 ## Baseline 缺失或不完整
 
-新 change 在创建时就要求 baseline 完整；Git 项目只评估 tracked 与未被 ignore 的 untracked 文件，因此 ignored 缓存和嵌套仓库内容不会制造省略。旧物理树 baseline 会先投影到同一项目所有范围。对于已经是 `comet.native.v3` 的 change，若投影后仍返回 `baseline-snapshot-missing` 或 `baseline-snapshot-incomplete`，不要用当前文件重新生成 baseline，也不要把它当成 doctor 可自动修复的问题——那会丢失从 change 创建以来的历史差异。只能从可信备份恢复原 baseline，或在保留用户编写的 brief/spec 与实现事实后新建 change、重新建立完整 baseline。
+`new` 要求 baseline 完整。Git 项目只评估 tracked 与未被 ignore 的 untracked 文件；ignored 缓存和嵌套仓库内容不会制造省略。
 
-显式的 v1/v2 schema 迁移是唯一例外：旧 schema 本来没有这份 v3 baseline，`doctor --repair` 会先在任何状态写入前建立完整的 journal 时间点 cutover baseline；捕获不完整时迁移保持原状态并停止。迁移后的 implementation evidence 只证明这个 cutover 之后的变化，不能把迁移前聊天或旧 pass 当成新 scope 的证据。
+若 Runtime 返回 `baseline-snapshot-missing` 或 `baseline-snapshot-incomplete`，不要用当前文件重建 baseline，也不要把它当成 doctor 可自动修复的问题。这会丢失 change 创建以来的历史差异。
+
+只能从可信备份恢复原 baseline，或保留用户编写的 brief、规格和实现事实后新建 change，重新建立完整 baseline。
 
 ## 证据失效与受控回退
 
@@ -93,7 +84,9 @@ Verify fail 会诚实回到 Build。提交稳定、非敏感的 `--failure-categ
 
 status/Archive 会比较当前 Native root 中可见 change 的 capability、operation、base hash 和声明产物：确定冲突必须先解决；可能重叠也会在归档前阻塞。它不能看到未集成 worktree、远端分支或其他机器，因此不是分布式锁。
 
-`workspace-root-changed` 和 `workspace-inspection-unavailable` 是显式 advisory，只帮助解释当前 root 的事实来源，不单独阻止推进或归档；finding 会列出 `native-root-ref`、`project-root-path`、`native-root-path` 等具体漂移组件。Native 默认不读取 Git branch、HEAD 或 worktree changed paths。旧 Git-backed `comet.native.workspace.v1` 与缺少稳定 path identity 的早期 v2 在普通只读路径中不会被当作可靠路径漂移证据；doctor 会报告 `workspace-identity-migration-required`，`doctor --repair` 才把它重建为带稳定路径身份的 process-free v2。不要把任意 `workspace-*` 都当成提示；未知 workspace 完整性 finding 仍按错误处理。
+`workspace-root-changed` 和 `workspace-inspection-unavailable` 是显式 advisory，只用于解释当前 root 的事实来源，不单独阻止推进或归档。finding 会列出 `native-root-ref`、`project-root-path`、`native-root-path` 等具体漂移组件。Native 默认不读取 Git branch、HEAD 或 worktree changed paths。
+
+不要把任意 `workspace-*` 都当成提示。未知 workspace 完整性 finding 仍按错误处理；Runtime 要求修复 workspace 身份时，先运行只读 doctor，再按报告执行显式 `doctor --repair`。
 
 ## Archive 事务
 
@@ -135,4 +128,8 @@ doctor 区分活动锁、可证明陈旧的本机锁和无法判断的远端锁�
 
 doctor 可以安全清理指向不存在 change 的 selection。它不会自动重写损坏的配置、change YAML、brief、规格或 verification；这些内容必须根据用户意图人工修正后重新检查。
 
-Evidence retention 也遵守显式修复边界：默认 doctor 只报告候选；`--repair` 仅删除至少 30 天、每种 evidence kind 最新 32 份之外、且依赖闭包证明未引用的 active-change 派生 evidence/receipt。删除严格按 dependents-before-dependencies 排序，并先改名到同目录唯一 `.gc` quarantine。若在最终删除前中断，后续只读 doctor 报告 `evidence-retention-recovery-required`；显式 repair 仅在原路径仍不存在、quarantine 内容与身份有效时无覆盖恢复。原文件与 quarantine 同时存在、多 quarantine、归档证据、pending 恢复、缺失依赖、损坏文档、未知目录项、symlink 或其他特殊文件都会让清理推迟或 fail closed。
+Evidence retention 遵守显式修复边界。默认 doctor 只报告候选；`--repair` 仅删除至少 30 天、每种 evidence kind 最新 32 份之外，并且依赖闭包证明未引用的 active-change 派生 evidence/receipt。
+
+删除按 dependents-before-dependencies 排序，并先改名到同目录唯一 `.gc` quarantine。若在最终删除前中断，后续只读 doctor 报告 `evidence-retention-recovery-required`；显式 repair 仅在原路径不存在、quarantine 内容与身份有效时无覆盖恢复。
+
+出现原文件与 quarantine 冲突、多份 quarantine、归档证据、pending 恢复、缺失依赖、损坏文档、未知目录项、symlink 或其他特殊文件时，推迟清理并失败关闭。

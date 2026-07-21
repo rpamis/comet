@@ -1,155 +1,210 @@
 ---
 name: comet-native
-description: 使用 Comet 自有 Native change、需求澄清协议、状态检查与自动推进，为强编码模型提供轻量但可恢复的需求到归档流程；实现前必须先澄清未解决的用户可见行为。
+description: 当用户明确调用 /comet-native、要求启动或恢复 Native change，或入口路由到 Native 时使用；负责澄清需求、读取状态并推动 Shape → Build → Verify → Archive。
 ---
 
 # Comet Native
 
-先理解，再行动。Native 保存需求、完整目标规格、状态和证据；实现过程由模型自主判断，不照搬固定方法。它始终是一个轻入口：根据磁盘 phase 在同一个 Skill 内继续，不加载阶段 Skill，也不增加 Plan、TDD、Debug 或 Review 方法清单。
+Native 保存需求、完整目标规格、状态和证据。你负责理解、实现和验证；Runtime 负责状态、边界和恢复。
+
+整个流程在本 Skill 内完成。不要加载阶段 Skill，也不要强制套用 Plan、TDD、Debug 或 Review 方法。
 
 ## 需求澄清协议
 
-首先执行这个入口契约：“规范化”“直观”“标准”“预期”等词只是未定义行为的占位词，不是精确产品契约。只要这种词会改变新输出，且用户没有定义其可观察规则，就存在用户决定。此时不得实现、写成既定规格或推进 phase；本轮唯一允许的用户可见结果，是一个包含“问题 / 推荐 / 影响”的最上游澄清，然后立即结束本轮。
+先识别会改变用户可见结果、但尚未定义的分支。“规范化”“直观”“标准”“预期”等词不是产品契约；只有用户原话、用户确认的答案，或明确适用于当前行为的公开契约可以关闭这类分支。
 
-当占位词是文本“规范化”时，一个完整策略问题必须同时覆盖大小写折叠、外围标点、内部标点或撇号保留，并用反例展示各分支如何改变输出；缺少其中任一项都会留下同级用户可见分支，不能进入实现。把这些细节合并成一个策略问题，不拆成多轮问卷。
+仓库现状、依赖默认值、相邻功能和行业惯例只能支持推荐，不能代替用户决定。“保持现有行为”只约束已经存在的结果，不自动定义新行为。
 
-若当前消息是对已提出阻塞问题的回答，先重新读取调用方原始请求中的执行边界，再调用任何 transition。把回答的每一部分写入 brief 和完整目标规格；离开 Shape 的 `next` 必须带 `--confirmed`。若调用方要求在该 transition 后停下或切换会话，该 transition 后禁止任何工具调用：只精确输出约定标记并结束本轮，下一会话再从磁盘恢复。
+先判断分支是否只影响实现方式，而不改变任何用户可见结果。不能证明这一点时，按用户决定处理。即使用户要求“不要询问实现选择”，也不能把产品决定重新归类为实现选择。
 
-回答回合不是下一阶段的执行回合。若调用方把停点放在“记录答案并进入下一 phase”之后，本轮唯一序列是：更新原有 brief 与完整规格 → 调用一次带 `--confirmed` 的允许 transition → 成功后精确输出停点标记并结束。不得在成功后读取 status、实现、测试、验证或归档；Runtime 返回 `continuation.disposition: continue` 也不能覆盖调用方停点。
+发现用户决定后：
 
-进入 Build 或修改项目实现之前，先执行硬停止检查：调查仓库事实，再沿决策树列出每个新引入的输出或能力中会改变用户可见结果的分支。消除一个分支时，必须能引用用户对该新行为本身的原话、对先前问题的已确认回答，或已经发布的同一能力精确契约；不能引用就仍未解决。旧代码、相邻能力和兼容性要求都不能关闭新行为的产品分支，只能帮助形成推荐。“保持现有行为”只保护已有结果，不代表新行为自动继承旧语义。未解决分支是用户决定，决定权属于用户，模型只能给出推荐；只有保持相同用户可见结果的做法才是模型自主选择的实现方式。即使请求写着“不要询问实现选择”，也不允许把产品决定重新归类为实现选择。若无法证明它只是实现选择，就按用户决定处理，不要替用户选择一个“合理默认值”。
+1. 在 brief 中记录一个 `[blocking]` 问题。
+2. 一次只问最上游的一个问题。
+3. 给出“问题 / 推荐 / 影响”，然后结束本轮。
 
-有用户决定时，一次只问一个最上游问题，给出推荐答案、理由和各选项的实际影响，问完立即结束本轮。多个细节若共同定义同一项上游语义，就合并为一个完整策略问题，不只问其中一个任意细节，也不拆成固定问卷；若任一合理回答后仍会留下同级的用户可见分支，这个问题就过窄。推荐应基于用户目标和行为权衡，而不是最省代码。达成共享理解前，可以调查事实、创建或恢复 Native change，并在 brief 记录 `[blocking]`；但不把任何选项写成既定规格、不进入 Build、不修改项目实现、不调用 `next`。用户回答后重新计算决策树；没有用户决定时才自动推进。
+若多个细节共同定义同一项上游语义，把它们合并为一个策略问题，不拆成问卷。任何合理回答仍会留下同级用户可见分支时，说明问题过窄，应把这些分支合并处理。
+
+以文本“规范化”为例，一个完整问题应同时说明大小写折叠、外围标点、内部标点或撇号保留，并用反例展示不同选择的输出。
+
+达成共享理解前，可以调查仓库事实、创建或恢复 Native change，并在 brief 中记录 `[blocking]`。不要进入 Build、修改项目实现或调用 `next`。
+
+用户回答后，更新原有 change 的 brief 和完整目标规格，再重新检查是否还有用户决定。不要为补充答案创建第二个 change，也不要把未确认选项写成既定规格。
+
+离开 Shape 时，只有本轮刚记录了用户对既有阻塞问题的确认，才给 `next` 传 `--confirmed`。用户最初提出需求不算这类确认。
+
+若调用方要求在该 transition 后停下或切换会话，严格执行以下序列：更新正式产物 → 调用一次允许的 transition → transition 成功后不再调用工具 → 输出约定标记并结束本轮。即使 Runtime 返回 `continuation.disposition: continue`，也不能越过这个停点。
 
 ## 执行边界与时点证据
 
-调用方明确要求在某个 transition 后停下或切换会话时，先保存已确认决定，只完成允许的 transition；transition 成功后工具调用数必须为零，只输出约定标记并结束本轮。新会话重新调用 `/comet-native`，先从磁盘运行 `status`、确认 selection 并读取正式产物，再继续实现；不依赖聊天记忆猜测进度。
+调用方指定停点时，只完成停点前允许的工作。下一会话重新调用 `/comet-native`，从磁盘读取 status、selection 和正式产物后继续，不依赖聊天记忆恢复进度。
 
-调用方若要求保存某个状态变化前或特定时点的 Runtime envelope，该文件是一次性的不可变证据：在越过该时点前，用要求的真实 Runtime 命令及机器可读模式生成，并直接重定向标准输出到目标文件；确认 envelope 成功且结构完整后，不得在状态变化后重建、刷新或覆盖。证据只能记录当时真实返回值，不能根据最终状态补写。若调用方要求恢复快照，它应在新会话重新进入 Native 后、任何会改变该时点事实的动作前产生。
+调用方若要求保存某次状态变化前或特定时点的 Runtime envelope，应在越过该时点前使用真实命令和机器可读模式生成，并通过重定向直接保存标准输出。该文件是不可变证据；确认完整后，不得在状态变化后重建、刷新或覆盖。证据只记录当时的真实返回值。
 
 ## 开始或恢复
 
-`/comet-native` 是 Skill 入口，不是 shell 命令。通过宿主的 Skill 机制调用它；不要在 Bash 中执行 `/comet-native`。
+`/comet-native` 是 Skill 入口，不是 shell 命令。通过宿主的 Skill 机制调用；不要在 shell 中执行 `/comet-native`。
 
-先运行 Native `status` 和 `show`；恢复 Verify 或 Archive 时使用 `status <change-name> --details` 取得有预算的验收页、有界的详细 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；不能把未展示项当作不存在。若 `acceptancePage.nextCursor` 非空，继续按命令参考逐页取得剩余验收 ID。再读取 `.comet/config.yaml`、`comet-state.yaml`、brief、拟议完整规格、canonical 规格、仓库实现、项目规则和相关测试。磁盘与仓库事实优先于聊天记忆；能从环境得到的事实不要询问用户。
+先运行 Native `status` 和 `show`。恢复 Verify 或 Archive 时，运行 `status <change-name> --details`，读取有预算的验收页、详细 findings、`findingsTruncated` 和最新 checkpoint。
 
-若 `status` 或 `show` 显示已有 active change，先只读确认哪个 change 对应当前目标；恢复或继续这个已确认的 change 前，显式运行 `comet native select <change-name>`，建立项目级共享 selection，再进行后续写入或 transition。多个 active change 且现有 selection 不能唯一确定目标时，让用户选择，不新增 `resume` 命令，也不靠 `status`/`show` 的读取副作用建立归属。用户回答澄清问题或补充约束后，重新读取选中的原有 change 并更新其 brief 与规格；不得为用户刚补充的答案创建第二个 change。只有磁盘事实证明没有 active change 时，才把用户目标归纳成 lowercase kebab-case 名称，再用 `comet native new <change-name> --language zh-CN` 创建 Native change。只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
+- findings 被截断时，先处理已返回项，再重新读取 details。
+- `acceptancePage.nextCursor` 非空时，按命令参考继续分页。
+- 随后读取 `.comet/config.yaml`、`comet-state.yaml`、brief、拟议规格、canonical 规格、仓库实现、项目规则和相关测试。
+- 磁盘与仓库事实优先于聊天记忆；能从环境取得的事实不要询问用户。
 
-命令与 runtime 定位见 [命令参考](reference/commands.md)，产物格式见 [产物参考](reference/artifacts.md)，中断与恢复见 [恢复参考](reference/recovery.md)。自带 runtime 位于 [scripts/comet-native-runtime.mjs](scripts/comet-native-runtime.mjs)。
+已有 active change 时，先只读确认哪个 change 对应当前目标。确认后显式运行：
 
-初始化在每个平台只安装一份 Comet 工作流 Rule，并在支持 Hook 的平台只安装一个 `comet-hook-router.mjs`。Rule 根据 `.comet/config.yaml` 与 `.comet/current-change.json` 区分 enabled、default 和 current；Router 也先解析这份共享 selection，再把一次写入最多路由给当前 workflow 的一个 Guard。当前需求属于 Native 时，只应用 Native 的 Shape/Build/Verify/Archive 写入边界；属于 Classic 时才应用独立的 Classic Guard。不要同时运行两套 Guard，也不要用默认 workflow 猜当前需求归属。Native Guard 只读取 Native 配置与状态，Native 主流程仍不依赖任何外部 Skill。
+```text
+comet native select <change-name>
+```
+
+该命令建立项目级共享 selection。不要新增 `resume` 命令，也不要依赖 `status` 或 `show` 的读取副作用建立归属。
+
+存在多个 active change，且 selection 不能唯一确定目标时，让用户选择。只有磁盘事实证明没有 active change 时，才把目标归纳为 lowercase kebab-case 名称并创建：
+
+```text
+comet native new <change-name> --language zh-CN
+```
+
+只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
+
+命令与 Runtime 定位见[命令参考](reference/commands.md)，产物格式见[产物参考](reference/artifacts.md)，中断与恢复见[恢复参考](reference/recovery.md)。自带 Runtime 位于 [scripts/comet-native-runtime.mjs](scripts/comet-native-runtime.mjs)。
+
+项目只安装一份 Comet 工作流 Rule；支持 Hook 的平台只安装一个 `comet-hook-router.mjs`。Rule 与 Router 根据 `.comet/config.yaml` 和 `.comet/current-change.json` 确定当前 workflow，一次写入最多路由给一个 Guard。
+
+当前 change 属于 Native 时，只应用 Native 的 Shape、Build、Verify、Archive 边界。不要同时运行 Native 与 Classic Guard，也不要用默认 workflow 猜测当前 change 的归属。Native 主流程不依赖任何外部 Skill。
 
 ## 决策协议
 
-维护“决策前沿”：列出仍没有唯一答案的用户可见分支，沿依赖顺序逐项解决。任何会改变输出、默认行为、错误结果、兼容性、范围、风险或不可逆结果的分支都适用，不使用“影响不大”作为模型自行决定的理由。
+维护一份未决事项清单，按依赖顺序处理仍没有唯一答案的用户可见分支。重点检查：
 
-先做一次很短的用户可见契约扫描：把每个关键名词或动作写成一个能区分解释的输入→输出或触发→结果例子，再检查主要分支、默认行为、边界条件、失败路径、兼容性约束和不可逆操作。文本或 token 行为覆盖大小写、首尾与内部标点、空白、Unicode、空输入、重复项、顺序和并列结果；CLI/API 行为覆盖默认值、错误结果和向后兼容。一个反例能区分两种合理解释，就证明分支尚未解决。
+- 输出与默认行为；
+- 边界条件与失败结果；
+- 范围、风险和不可逆操作；
+- 明确适用于当前行为的已有约束。
 
-只有用户已给信息、明确非目标或已确认决定，以及明确适用于当前新行为的既有用户可见契约、测试或规则，才能消除分支。内部实现原语、依赖库默认值、相邻功能的实现方式、保持一致、行业惯例或最小改动都只是仓库事实，只能用于形成推荐项，不能代替用户答案。
+把关键名词或动作改写成可区分解释的“输入 → 输出”或“触发 → 结果”示例。一个反例能区分两种合理解释，就说明仍需用户决定。
 
-发现用户决定后，在 brief 保留一个 `[blocking]` 问题，询问最上游、最重要的一个问题，并按“问题 / 推荐 / 影响”给出简短选项，然后结束本轮等待回答。回答前不得把任一输出写成已决定的规格、调用 `next` 或开始实现；回答后更新原有产物并重新计算决策前沿，再决定继续或询问下一个问题。
+文本或 token 行为通常要检查大小写、首尾与内部标点、空白、Unicode、空输入、重复项、顺序和并列结果。CLI 或 API 行为通常要检查默认值和错误结果。不要为了覆盖清单制造不存在的歧义。
 
-共享理解不是额外的确认步骤：当决策前沿为空，且另一个没有当前对话的强模型不必猜测用户可见行为即可实现和验收时，就已达成共享理解。没有用户决定时直接继续，不提确认题、通用偏好题或低价值问题；也不要为了覆盖检查清单而制造不存在的歧义。
+只有用户给出的信息、明确非目标、已确认决定，或当前能力的明确公开契约可以消除分支。发现阻塞后，按“问题 / 推荐 / 影响”询问一个最上游问题并等待回答；回答前不要调用 `next` 或修改项目实现。
+
+当未决事项清单为空，且仅凭 brief、完整目标规格、仓库事实和项目规则就能实现并验收，不需要额外确认。没有用户决定时直接继续。
 
 ## 推进契约
 
-Shape、Build、Verify 的真实阶段 transition 会返回 `next: auto | manual`，并同时给出结构化 `continuation.disposition: continue | await-user | blocked | done`、所需输入和下一动作；这些字段共同构成机器可读 continuation 契约。`next: auto` 只表示当前状态已经成功推进，不代表宿主会在后台自动执行后续工作；Archive 不通过 `next` 推进，成功归档才返回 `disposition: done`。
+Shape、Build、Verify 的 transition 会返回 `next: auto | manual`，以及 `continuation.disposition: continue | await-user | blocked | done`、所需输入和下一动作。Archive 不通过 `next` 推进；成功归档才返回 `done`。
 
-收到 `next: auto` 且 continuation 为 `continue` 后，重新读取返回的 phase 和必要磁盘产物。没有用户决定或 Runtime 阻塞时持续推进，在同一个 `/comet-native` Skill 中执行下一阶段；不要结束工作等待用户再次触发，也不要把四个阶段拆成多个 Skill。若 continuation 为 `await-user`、`blocked` 或 `next: manual`，先根据磁盘事实和 blocking findings 修正；只有所需输入确实属于用户决定时才提问。只有显式的 `workspace-root-changed` 与 `workspace-inspection-unavailable` 是只读提示，不单独阻止继续或归档；未知 workspace finding、确定冲突、失效证据和修复停止仍必须处理。
+这些字段组成机器可读的 continuation 契约。`next: auto` 只表示当前 transition 已成功，不代表宿主会在后台执行后续工作。
 
-自动推进服从调用方明确要求的执行边界。若调用方显式要求在某个阶段停下或切换会话，先把已确认决定和当前状态写入正式 Native 产物，完成允许的 transition；transition 成功后不再调用工具，只精确输出约定的停点标记并结束本轮，不越过边界开始下一阶段。新会话只从磁盘 `status`、brief、规格和 checkpoint 恢复，不依赖聊天记忆。
+收到 `next: auto` 且 disposition 为 `continue` 后，重新读取返回的 phase 和必要产物。没有用户决定或 Runtime 阻塞时，在本 Skill 内持续推进下一阶段，不等待用户再次触发。
 
-长任务需要跨会话保留阶段内进度时，使用 `comet native checkpoint` 保存简短摘要、下一动作和真实产物引用。checkpoint 不推进 phase，也不替代 brief、规格或验证报告；不要创建额外的 resume、handoff 或任务清单。
+若 disposition 为 `await-user`、`blocked` 或 `next: manual`，先根据磁盘事实和 blocking findings 处理。只有缺少的输入确实属于用户决定时才提问。
+
+`workspace-root-changed` 与 `workspace-inspection-unavailable` 是只读提示，不单独阻止推进或归档。未知 workspace finding、确定冲突、失效证据和 repair stop 必须处理。
+
+长任务需要保留阶段内进度时，使用 `comet native checkpoint` 保存简短摘要、下一动作和真实产物引用。checkpoint 不推进 phase，也不替代 brief、规格或验证报告；不要另建 resume、handoff 或任务清单。
 
 ## Shape
 
-确认 Outcome、Scope、Non-goals、Acceptance examples、Constraints and invariants、Decisions、Open questions 和 Verification expectations。阻塞问题在 brief 中标记为 `- [blocking]`。
+确认并写入：Outcome、Scope、Non-goals、Acceptance examples、Constraints and invariants、Decisions、Open questions、Verification expectations。阻塞问题在 brief 中标记为 `- [blocking]`。
 
-Shape 只有在满足冷启动可执行标准时才完成：另一个没有当前对话上下文的强模型，只读取 brief、完整目标规格、仓库事实和项目规则，就能在不猜测用户可见行为的情况下实现并验收。
+只有当 brief、完整目标规格、仓库事实和项目规则足以让后续执行者在不猜测用户可见行为的情况下实现并验收，Shape 才算完成。
 
-理解达成一致后：
+- 更新 `brief.md`，使其能够约束实现与验收。
+- 用户明确给出的 lowercase kebab-case capability ID 必须原样用于 `specs/<capability>/spec.md`。
+- 用户只给出显示名称时，在正文保留原名，并稳定派生 lowercase kebab-case capability ID。
+- 长期行为发生变化时，写归档后的完整目标规格，不写增量 patch。
+- 删除 capability 时运行 `comet native spec remove <change-name> <capability>`；operation 和 canonical base hash 由 Runtime 推断并冻结。
+- 仍有未决事项时保留 `[blocking]` 并停下。
 
-- 更新 `brief.md`，让它足以约束实现和验收；
-- 用户明确给出的 lowercase kebab-case capability ID 必须原样保留，并用于 `specs/<capability>/spec.md`；若用户只给出自然语言显示名称，就在规格正文中原样保留显示名称，并稳定派生 lowercase kebab-case capability ID；不得悄悄替换用户明确给出的合法 ID；
-- 若长期行为发生变化，在 `specs/<capability>/spec.md` 写完整目标规格，不写只描述增量的 patch；
-- 删除长期 capability 时使用 `comet native spec remove <change-name> <capability>`；create/replace 和 canonical base hash 由 runtime 推断并冻结；
-- 只有用户决定刚由用户确认时才记录显式确认；仍未解决时保留 `[blocking]` 并停下。
-
-随后提交可验证摘要并运行：
+准备完成后运行：
 
 ```text
 comet native next <change-name> --summary <摘要>
 ```
 
-只有用户刚刚回答了先前已经提出的阻塞问题，且摘要记录了该答案时，才追加 `--confirmed`；用户最初提出功能不算这类显式确认。Shape 离开后，Runtime 会把 approval 绑定到当时的 brief/spec contract hash；若 Build 中 contract 发生变化，status 会要求用户重新确认当前 contract，只有取得该确认后才可用返回的 `--confirmed` 重试。否则不加；`approval` 与 `approved_contract_hash` 都由 runtime 记录，不能手工修改。
+仅在本轮刚记录用户对既有阻塞问题的确认时追加 `--confirmed`。Runtime 会把 approval 绑定到当时的 brief/spec contract hash；若 Build 中 contract 发生变化，先取得用户对当前 contract 的确认，再按 status 返回的命令重试。不要手工编辑 `approval` 或 `approved_contract_hash`。
 
 ## Build
 
-选择满足 brief 与拟议规格的最简单可靠方案。实现方式、是否落盘计划、测试粒度、调试方法和审查强度都由模型根据风险自主决定。
+选择满足 brief 与拟议规格的最简单可靠方案。实现方式、是否保存计划、测试粒度、调试方法和审查强度由你根据风险决定。
 
-不要为了遵守流程制造额外文档或步骤。若实现中发现需求或规格漂移，先更新 Native 产物。出现新的用户决定时，把它标成 `[blocking]`，一次只问一个；用户回答后更新 Decisions、移除阻塞项，继续实现，并在离开 Build 时传 `--confirmed`。
+不要为流程制造额外文档。发现需求或规格漂移时，先更新 Native 产物；出现新的用户决定时标记 `[blocking]`，按澄清协议处理。
 
-完成后提供真实产物引用；没有代码变化时给出明确理由。然后运行：
+完成后提供真实项目产物；没有代码变化时给出明确理由。然后运行：
 
 ```text
 comet native next <change-name> --summary <摘要> --artifact <项目内路径> [--confirmed]
 ```
 
-Runtime 会返回本次 implementation scope 和首个 `acceptancePage`。Git 项目的快照只包含 tracked 与未被 ignore 的 untracked 文件，submodule/gitlink 作为单个原子条目；非 Git 项目才使用有界物理树快照。保留这些由 Runtime 派生的验收 ID；若响应丢失，进入 Verify 后用 `comet native status <change-name> --details` 重新取得。页内文字和 context 可能显式截断，但 ID 不会静默丢失；按 `nextCursor` 取完所有页，不自行计算 ID。
+没有代码变化时按命令参考使用 `--no-code-reason`。Runtime 会返回 implementation scope 和首个 `acceptancePage`；保存 Runtime 派生的验收 ID，并按 `nextCursor` 读取全部页面。不要自行计算 ID。
 
-Git selection 本身也有界并要求一次稳定视图。`git-selection-changed` 表示枚举期间 index 发生变化：停止推进，等待所有 Git 写入结束后重新运行，由 Runtime 重新捕获；绝不能把它当作用户可接受的 partial scope。`git-enumeration-limit` 表示项目所有范围超过 Git 枚举安全预算，是结构化不完整；应优先缩小或清理 tracked / 未忽略 untracked 的项目所有范围，或通过后续产品版本调整预算，不能默认越过。若确实无法恢复，只有 Runtime 返回已用计数与内容 hash 绑定的可授权 scope，且用户理解未枚举尾部的具体风险时，才可按普通 partial 协议使用精确 scope hash、理由与 `--confirmed`。用户与模型都不能手改 snapshot/evidence 或猜测未枚举路径。
+Git 快照只包含 tracked 和未被 ignore 的 untracked 文件，submodule/gitlink 作为原子条目。非 Git 项目使用有界物理树快照。
 
-非 Git 项目的 physical selection 使用有界、顺序无关的前后枚举围栏。`physical-selection-changed` 表示项目树在捕获期间变化；`physical-enumeration-limit` 表示节点、路径、字节或协作式执行预算耗尽。两者都无法为未知尾部建立稳定 scope，不能通过 partial scope 授权；等待文件系统操作稳定、缩小项目树或把非项目内容移出项目所有范围后重试。
+- `git-selection-changed`：等待 Git 写入稳定后重试，不能授权为 partial scope。
+- `git-enumeration-limit`：先缩小或清理项目所有范围；只有 Runtime 返回可授权 scope，且用户接受未枚举尾部的具体风险时，才能使用 partial 协议。
+- `physical-selection-changed` 或 `physical-enumeration-limit`：等待文件系统稳定或缩小项目树后重试，不能授权为 partial scope。
 
-若 Runtime 无法证明 scope 完整，它会停在 Build 并返回 partial scope hash 与未归属项。当前快照不完整时不会把缺失路径猜成删除；变化明细过多时会保留有界样本，并用带数量与内容 hash 的 `scope-detail-overflow` 表示其余变化。先补充真实 artifact 或消除未归属变化；确实只能 partial 且用户需要接受该风险时，说明具体缺口并取得确认，再按命令参考使用同一个 scope hash、理由与 `--confirmed`。不能把 partial 静默写成 complete。
+Runtime 无法证明 scope 完整时会停在 Build，返回 partial scope hash 和未归属项。先补充真实 artifact 或消除未归属变化。确实只能接受 partial 时，说明具体缺口并取得用户确认，再使用同一个 hash：
+
+```text
+--allow-partial-scope <sha256> --partial-reason <理由> --confirmed
+```
+
+不要手改 snapshot、evidence 或猜测未枚举路径，也不要把 partial 写成 complete。
 
 ## Verify
 
-根据 brief 的 Acceptance examples、完整目标规格和风险运行适当验证。记录实际命令、结果、跳过项、规格一致性、已知限制和结论，不把未运行的检查写成通过。
+根据 Acceptance examples、完整目标规格和风险运行验证。记录实际命令、结果、跳过项、规格一致性、已知限制和结论；未运行的检查不能写成通过。
 
-在 `verification.md` 的固定 acceptance evidence 块中，逐项使用 Runtime 返回的 `acceptance_id`：每项只能记录项目相对 evidence refs，或记录一个诚实的 `skipped_reason`。用户不维护 ID，模型也不从文本猜 hash；具体格式见产物参考。
+在 `verification.md` 的固定 acceptance evidence 块中逐项使用 Runtime 返回的 `acceptance_id`。每项只能记录项目相对 evidence refs，或记录诚实的 `skipped_reason`。格式见产物参考。
 
-需要一份窄而可重建的文本卫生证据时，可以显式运行内置只读文本扫描：
+需要一份可重建的文本卫生证据时，可运行内置只读检查：
 
 ```text
 comet native check <change-name>
 ```
 
-它不调用 Git、shell、项目脚本或任何外部进程，只扫描当前 implementation scope/current snapshot 中受限数量的项目内普通文本文件，检查 conflict marker、行尾空白和 space-before-tab；symlink、越界、TOCTOU、hash/size 不匹配或预算超限都会失败关闭。扫描不修改项目文件、phase、Run 或 trajectory，但会在 Native evidence 目录写入独立的内容寻址 receipt。它不是通用命令执行器，也不替代模型按风险选择的测试。若该 check receipt 与最终结论相关，在 `next` 中追加返回的 `--receipt <ref>`；pass 只能绑定 fresh passed receipt。
+该命令只扫描当前 implementation scope/current snapshot 中有界的项目内普通文本文件，不调用 Git、shell、项目脚本、外部进程或外部 Skill。它不会修改项目文件、phase、Run 或 trajectory；结果写入内容寻址 receipt。它不替代按风险选择的项目测试。
 
-验证通过或失败都写入 `verification.md`，再运行：
+写完报告后运行：
 
 ```text
 comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md [--receipt <ref>]
 ```
 
-失败会回到 Build；先修复证据指出的问题，再重新验证，并用 `--failure-category` 与 `--failed-check` 提交稳定、非敏感的失败分类。Runtime 会先校验这些 failure facts，再写任何证据或 transition。相同失败第二次出现会告警，第三次且 scope 没有进展会停止；真实 implementation scope 变化会结束旧 repair episode 并直接解除停止。没有 scope 进展但有一个明确的新假设时，可按 status 返回的 signature 使用一次 `--override-repair` 和摘要；同一 signature 不得重复 override。单个 repair episode 达到语义上限时停止并请用户决定，不弱化检查或伪造 pass；通用 Run iteration 计数不会把长期 change 永久锁死。
+fail 会回到 Build。修复后重新验证，并用 `--failure-category` 与 `--failed-check` 提交稳定、非敏感的失败事实。
 
-进入 Archive 后若 brief、规格、实现 scope、报告或 receipt 发生变化，旧证据会变为 stale。按 Runtime continuation 受控回到 Build，重新封印 scope 与验证；不要手改 evidence ref 或沿用旧 pass。
+同一失败第二次出现会告警；第三次且 scope 没有进展会停止。scope 发生真实变化会结束当前 repair episode。scope 未变化但有明确新假设时，可按 status 返回的 signature 使用一次 `--override-repair`；同一 signature 不得重复 override。达到停止条件后请用户决定，不要弱化检查或伪造 pass。
+
+进入 Archive 后，brief、规格、implementation scope、报告或 receipt 发生变化会使证据失效。按 Runtime continuation 回到 Build，重新封印 scope 并验证；不要沿用失效的 pass。
 
 ## Archive
 
-只有状态进入 Archive 且 Verify 为 pass 时，先预演：
+状态进入 Archive 且 Verify 为 pass 后，先预演：
 
 ```text
 comet native archive <change-name> --dry-run
 ```
 
-检查预演中的 create/replace/remove、证据新鲜度、当前 Native root 内可见的 change 重叠和恢复状态。没有阻塞时，使用预演返回的精确 hash 提交：
+检查 create/replace/remove、证据新鲜度、当前 Native root 内的 change 重叠和恢复状态。没有阻塞时，用本次预演返回的精确 hash 提交：
 
 ```text
 comet native archive <change-name> --expect-preflight <sha256>
 ```
 
-调用方要求保存预演或提交 envelope 时，首次预演与首次提交调用本身就必须使用机器可读模式并写入各自目标；提交使用已保存预演中的 hash。文件一旦验证成功便保持不可变，归档后不得重新运行命令去覆盖它。
+调用方要求保存预演或提交 envelope 时，首次调用本身就使用机器可读模式并写入目标文件。提交使用已保存预演中的 hash；文件验证成功后保持不可变，不得在归档后重跑命令覆盖。
 
-归档会在锁内重新计算相同事实；任何漂移都会拒绝，不复用旧 hash。成功后更新 canonical 规格，并把 change 移到日期前缀的 archive 目录。遇到 canonical 冲突时先重读并改写完整目标规格，再用 `comet native spec rebase <change-name> --summary <摘要>` 刷新基线并受控回到 Build 重新实现、确认和验证；不覆盖并发变化。未完成事务按恢复参考处理。
+Runtime 会在锁内重新计算事实，发生漂移就拒绝提交。成功后更新 canonical 规格，并把 change 移入日期前缀的 archive 目录。
+
+遇到 canonical 冲突时，重读并改写完整目标规格，再运行 `comet native spec rebase <change-name> --summary <摘要>`。该命令会受控回到 Build；随后重新实现、确认、验证和归档。未完成事务按恢复参考处理。
 
 ## 不变规则
 
 - 不直接编辑 `phase`、`approval`、`spec_changes`、Run state、trajectory、锁或 transaction journal。
-- 不跳过阶段检查；Shape、Build、Verify 用 `comet native next` 推进，Archive 使用 `archive --dry-run` 与 `archive --expect-preflight` 两步协议。
-- 不调用外部 Skill；Native 主流程只依赖 Comet 自带 runtime。
-- 不记录隐藏推理过程，只保存摘要、产物引用、命令结果、hash、状态变化和时间戳。
-- 不把 token、密码、私钥、连接串或其他凭据写入摘要、理由与报告；Runtime 会对持久化的简短文本再次执行凭据形态脱敏，但这不是保存秘密的许可。
-- 没有需要用户决定的阻塞点时持续推进；有阻塞点时只问一个最高价值问题并等待回答。
+- 不跳过阶段检查。Shape、Build、Verify 使用 `comet native next`；Archive 使用两步预演与提交。
+- 不调用外部 Skill。Native 主流程只依赖 Comet 自带 Runtime。
+- 不保存隐藏推理，只保存摘要、产物引用、命令结果、hash、状态变化和时间戳。
+- 不把 token、密码、私钥、连接串或其他凭据写入摘要、理由与报告。
+- 没有用户决定或 Runtime 阻塞时持续推进；有用户决定时只问一个最上游问题并等待回答。

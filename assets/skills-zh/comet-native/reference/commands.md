@@ -31,7 +31,20 @@ comet native status <change-name> [--details [--acceptance-cursor <token>]]
 comet native select <change-name>
 ```
 
-`new` 在配置缺失时创建默认配置和 `<project>/docs/comet/`。完整目标规格写入 `specs/<capability>/spec.md`；`next` 自动推断 create/replace 并冻结 canonical hash。删除 capability 使用 `spec remove`，不要手工编辑 `spec_changes`。canonical 并发变化导致冲突时，先重读并改写完整目标规格，再用 `spec rebase` 刷新 operation/hash、回到 Build 并清除旧验证结论。`show` 返回状态、brief 和拟议完整规格；`status` 返回有预算的阶段、证据新鲜度、finding 摘要、checkpoint、repair 状态和 continuation。`status <change-name> --details` 额外返回最多 50 条详细 findings、`findingsTruncated` 标记、恢复细节和首个 `acceptancePage`；findings 被截断时先处理已返回项，再重新读取 details，不能把未展示项当作不存在。若 `nextCursor` 非空，用 `--acceptance-cursor` 读取下一页，直至为 null。acceptance cursor 只允许与具体 change 和 `--details` 同用，并绑定当前 acceptance hash。`status` 与 `show` 始终只读；恢复已确认的目标 change 时显式运行 `select`，不要新增 `resume` 命令。`new` 与 `select` 都会写项目级共享 `.comet/current-change.json`，并把 `workflow` 固定为 `native`；它们不会修改 Classic change。
+`new` 在配置缺失时创建默认配置和 `<project>/docs/comet/`。完整目标规格写入 `specs/<capability>/spec.md`；`next` 自动推断 create/replace 并冻结 canonical hash。删除 capability 使用 `spec remove`，不要手工编辑 `spec_changes`。
+
+canonical 并发变化导致冲突时，先重读并改写完整目标规格，再用 `spec rebase` 刷新 operation/hash、回到 Build 并清除原验证结论。
+
+`show` 返回状态、brief 和拟议完整规格。`status` 返回有预算的阶段、证据新鲜度、finding 摘要、checkpoint、repair 状态和 continuation。`status <change-name> --details` 还会返回：
+
+- 最多 50 条详细 findings；
+- `findingsTruncated` 标记；
+- 恢复细节；
+- 首个 `acceptancePage`。
+
+findings 被截断时，先处理已返回项，再重新读取 details。`nextCursor` 非空时，用 `--acceptance-cursor` 逐页读取，直至为 null。acceptance cursor 只允许与具体 change 和 `--details` 同用，并绑定当前 acceptance hash。
+
+`status` 与 `show` 始终只读。恢复已确认的目标 change 时显式运行 `select`，不要新增 `resume` 命令。`new` 与 `select` 都会写项目级共享 `.comet/current-change.json`，并把 `workflow` 固定为 `native`；它们不会修改 Classic change。
 
 `list` 与不带 change 的 `status` 返回同一种只读分页投影，每页最多 24 个 change；`nextCursor` 非空时原样传给 `--cursor`。cursor 绑定当前完整名称集合，change 增删后旧 cursor 会明确失效，不会错位分页。最多接受 4096 个可见 change，整页序列化结果不超过 512 KiB。`show` 还会限制规格数量、单文件、累计读取和最终输出大小；超限时拒绝，不截断需求正文。
 
@@ -82,7 +95,9 @@ comet native doctor [<change-name>] --repair
 comet native doctor [<change-name>] --repair [--strategy continue|rollback]
 ```
 
-只读 doctor 不改文件。`--repair` 只处理可证明安全的 selection、陈旧锁、schema/workspace 迁移、evidence retention、普通阶段 transition 和确定性事务恢复；用户编写的 YAML、Markdown 与规格不会被自动重写。`--strategy` 是可选的事务恢复参数，不是普通 repair 的必填项；普通 transition 只支持 `continue`，不支持 `rollback`。
+只读 doctor 不改文件。`--repair` 只处理可证明安全的 selection、陈旧锁、evidence retention、普通阶段 transition、workspace 身份修复和确定性事务恢复；用户编写的 YAML、Markdown 与规格不会被自动重写。
+
+`--strategy` 是可选的事务恢复参数，不是普通 repair 的必填项。普通 transition 只支持 `continue`，不支持 `rollback`。
 
 doctor 也会只读报告 evidence retention 候选。显式 `--repair` 只清理 active change 中至少 30 天、每种 evidence kind 最新 32 份之外、且依赖闭包证明未引用的派生 evidence/receipt；归档证据、当前状态引用、依赖项、较新文件和每类最新 32 份始终保留。删除按 dependents-before-dependencies 排序，并先进入同目录 quarantine；中断后只读 doctor 报告 recovery required，显式 repair 在无覆盖且身份匹配时恢复。存在 pending journal、损坏、原文件与 quarantine 冲突或未知/特殊文件时 fail closed，不为腾空间冒险删除。
 

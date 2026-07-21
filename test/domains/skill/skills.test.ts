@@ -120,6 +120,83 @@ describe('skills', () => {
         expect(content, file).not.toContain('触发本次工作流的用户请求语言');
       }
     });
+
+    it('keeps both Native skills operational without unreleased migration narratives', async () => {
+      for (const languageDir of ['skills', 'skills-zh']) {
+        const nativeDir = path.join(getAssetsDir(), languageDir, 'comet-native');
+        const main = await fs.readFile(path.join(nativeDir, 'SKILL.md'), 'utf-8');
+        const references = await Promise.all(
+          ['commands.md', 'artifacts.md', 'recovery.md'].map((file) =>
+            fs.readFile(path.join(nativeDir, 'reference', file), 'utf-8'),
+          ),
+        );
+        const allContent = [main, ...references].join('\n');
+
+        for (const required of [
+          'comet native select <change-name>',
+          'continuation.disposition',
+          '[blocking]',
+          '--confirmed',
+          '--no-code-reason',
+          '--allow-partial-scope',
+          'git-selection-changed',
+          'physical-selection-changed',
+          'scope-detail-overflow',
+          'acceptancePage.nextCursor',
+          'comet native check <change-name>',
+          '--result pass|fail --report verification.md',
+          '--failure-category',
+          '--failed-check',
+          '--override-repair',
+          'comet native archive <change-name> --dry-run',
+          '--expect-preflight',
+          'comet native spec rebase',
+          'comet native checkpoint',
+          'baseline-snapshot-missing',
+          'workspace-root-changed',
+        ]) {
+          expect(allContent, `${languageDir}: ${required}`).toContain(required);
+        }
+
+        const phaseHeadings = ['## Shape', '## Build', '## Verify', '## Archive'];
+        const phaseOffsets = phaseHeadings.map((heading) => main.indexOf(heading));
+        expect(phaseOffsets.every((offset) => offset >= 0)).toBe(true);
+        expect(phaseOffsets).toEqual([...phaseOffsets].sort((left, right) => left - right));
+
+        for (const unwanted of [
+          'comet.native.v1',
+          'comet.native.v2',
+          'strong coding model',
+          'another strong model',
+          'decision frontier',
+          'cold-start executable standard',
+          'Schema upgrades',
+          'legacy physical-tree baseline',
+          '强编码模型',
+          '强模型',
+          '决策前沿',
+          '冷启动可执行标准',
+          'Schema 升级',
+          '旧 schema',
+          '早期 v2',
+        ]) {
+          expect(allContent, `${languageDir}: ${unwanted}`).not.toContain(unwanted);
+        }
+      }
+
+      const zhMain = await fs.readFile(
+        path.join(getAssetsDir(), 'skills-zh', 'comet-native', 'SKILL.md'),
+        'utf-8',
+      );
+      const enMain = await fs.readFile(
+        path.join(getAssetsDir(), 'skills', 'comet-native', 'SKILL.md'),
+        'utf-8',
+      );
+      expect(zhMain).toMatch(/transition 成功后(?:不再调用工具|禁止任何工具调用)/);
+      expect(zhMain).toContain('不依赖任何外部 Skill');
+      expect(enMain).toContain('make no tool calls after the transition succeeds');
+      expect(enMain).toContain('does not depend on any external Skill');
+    });
   });
 
   describe('getManifestSkills', () => {

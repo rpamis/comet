@@ -31,7 +31,20 @@ comet native status <change-name> [--details [--acceptance-cursor <token>]]
 comet native select <change-name>
 ```
 
-`new` creates default configuration and `<project>/docs/comet/` when configuration is absent. Write complete target specifications at `specs/<capability>/spec.md`; `next` infers create/replace and freezes the canonical hash. Use `spec remove` to remove a capability instead of editing `spec_changes`. After a concurrent canonical change causes a conflict, re-read and rewrite the complete target specification, then use `spec rebase` to refresh operation/hash, return to Build, and clear the old verification conclusion. `show` returns state, the brief, and proposed complete specifications. `status` returns a bounded view of the phase, evidence freshness, finding summary, checkpoint, repair state, and continuation. `status <change-name> --details` additionally returns up to 50 detailed findings, a `findingsTruncated` flag, recovery details, and the first `acceptancePage`. When findings are truncated, handle the returned findings and then reread details; never assume hidden findings do not exist. When `nextCursor` is non-null, pass it to `--acceptance-cursor` until the cursor becomes null. Acceptance cursors are valid only with a specific change and `--details`, and they are bound to the current acceptance hash. `status` and `show` are always read-only. Explicitly run `select` when resuming a confirmed target change; do not add a `resume` command. Both `new` and `select` write the shared project-level `.comet/current-change.json` with `workflow` fixed to `native`; neither mutates a Classic change.
+`new` creates default configuration and `<project>/docs/comet/` when configuration is absent. Write complete target specifications at `specs/<capability>/spec.md`; `next` infers create/replace and freezes the canonical hash. Use `spec remove` to remove a capability instead of editing `spec_changes`.
+
+After a concurrent canonical change causes a conflict, reread and rewrite the complete target specification. Then use `spec rebase` to refresh operation/hash, return to Build, and clear the previous verification conclusion.
+
+`show` returns state, the brief, and proposed complete specifications. `status` returns a bounded view of phase, evidence freshness, finding summary, checkpoint, repair state, and continuation. `status <change-name> --details` also returns:
+
+- up to 50 detailed findings;
+- the `findingsTruncated` flag;
+- recovery details;
+- the first `acceptancePage`.
+
+When findings are truncated, handle the returned findings and then read details again. When `nextCursor` is non-null, pass it to `--acceptance-cursor` until it becomes null. Acceptance cursors are valid only with a specific change and `--details`, and bind to the current acceptance hash.
+
+`status` and `show` are always read-only. Run `select` explicitly when resuming a confirmed target change; do not add a `resume` command. Both `new` and `select` write the shared project-level `.comet/current-change.json` with `workflow` fixed to `native`; neither modifies a Classic change.
 
 `list` and `status` without a change name return the same read-only paginated projection, with at most 24 changes per page. Pass a non-null `nextCursor` back unchanged through `--cursor`. The cursor is bound to the complete visible name set; adding or removing changes makes an old cursor fail explicitly instead of shifting the page. At most 4096 visible changes are accepted, and a serialized page is capped at 512 KiB. `show` also bounds the number of specifications, per-file and cumulative reads, and final output size; it rejects oversized input instead of truncating requirement text.
 
@@ -82,7 +95,9 @@ comet native doctor [<change-name>] --repair
 comet native doctor [<change-name>] --repair [--strategy continue|rollback]
 ```
 
-Read-only doctor does not modify files. `--repair` is limited to provably safe selection cleanup, stale locks, schema/workspace migration, evidence retention, ordinary phase transitions, and deterministic transaction recovery. It never rewrites user-authored YAML, Markdown, or specifications. `--strategy` is an optional transaction-recovery argument, not a requirement for ordinary repair. Ordinary transitions support only `continue`, not `rollback`.
+Read-only doctor does not modify files. `--repair` is limited to provably safe selection cleanup, stale locks, evidence retention, ordinary phase transitions, workspace identity repair, and deterministic transaction recovery. It never rewrites user-authored YAML, Markdown, or specifications.
+
+`--strategy` is an optional transaction-recovery argument, not a requirement for ordinary repair. Ordinary transitions support only `continue`, not `rollback`.
 
 Doctor also reports evidence-retention candidates without changing them. Explicit `--repair` removes only derived evidence/receipts in active changes that are at least 30 days old, outside the latest 32 items of each evidence kind, and proven unreferenced by the dependency closure. Archived evidence, current-state references, dependencies, newer files, and the latest 32 of every kind are always retained. Removal is ordered dependents before dependencies and first moves files into a same-directory quarantine. After interruption, read-only doctor reports recovery required; explicit repair restores files only when there is no overwrite and identity still matches. Pending journals, damage, source/quarantine conflicts, and unknown or special files fail closed rather than deleting data to reclaim space.
 

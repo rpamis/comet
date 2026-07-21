@@ -37,22 +37,13 @@ comet native doctor <change-name> --repair --strategy continue
 
 An ordinary phase transition has no canonical-file side effects, so it supports only `continue`, not `rollback`. Preserve a malformed journal and stop instead of assembling state by hand.
 
-## Schema upgrades
-
-`show/status` marks old Native changes as migration required, and ordinary mutations fail closed. Inspect read-only first, then let doctor perform the journaled migration:
-
-```text
-comet native doctor <change-name>
-comet native doctor <change-name> --repair
-```
-
-Migration protects old state and Run/checkpoint/trajectory bindings and resumes deterministically after interruption. A pending v2 evidence transition is explicitly superseded. Even without a pending transition, a v2 change in Verify or Archive is returned to Build together with its Run, trajectory, and checkpoint because the old state lacks the v3 implementation scope and verification envelope. Never change `comet.native.v1/v2` to v3 manually or invent revision/evidence refs. A `minimum_runtime_version` newer than the current runtime is not an old format that can be migrated; upgrade Comet first.
-
 ## Missing or incomplete baselines
 
-A new change now requires a complete baseline at creation. Git projects evaluate only tracked and non-ignored untracked files, so ignored caches and nested-repository contents do not create omissions. A legacy physical-tree baseline is first projected onto the same project-owned universe. For a change already using `comet.native.v3`, if projection still reports `baseline-snapshot-missing` or `baseline-snapshot-incomplete`, never regenerate the baseline from current files or present it as an automatic doctor repair: doing so would erase historical differences since the change was created. Restore the original baseline from a trusted backup, or preserve the user-authored brief/specifications and implementation facts while creating a new change with a complete baseline.
+`new` requires a complete baseline. Git projects evaluate only tracked and non-ignored untracked files; ignored caches and nested-repository contents do not create omissions.
 
-Explicit v1/v2 schema migration is the sole exception. Those schemas did not have the v3 baseline, so `doctor --repair` establishes a complete journal-time cutover baseline before any state write; an incomplete capture leaves the old state unchanged and stops migration. Implementation evidence after migration proves only changes after that cutover. It must not treat pre-migration chat or an old pass as evidence for the new scope.
+If the Runtime reports `baseline-snapshot-missing` or `baseline-snapshot-incomplete`, do not rebuild the baseline from current files or present it as an automatic doctor repair. That would erase historical differences since the change was created.
+
+Restore the original baseline from a trusted backup, or preserve the user-authored brief, specifications, and implementation facts while creating a new change with a complete baseline.
 
 ## Stale evidence and controlled fallback
 
@@ -93,7 +84,9 @@ If another change already removed the target of a remove intent, rebase drops th
 
 Status and Archive compare capability, operation, base hash, and declared artifacts across changes visible in the current Native root. Definite conflicts must be resolved first, and possible overlap also blocks Archive. This cannot see unintegrated worktrees, remote branches, or other machines, so it is not a distributed lock.
 
-`workspace-root-changed` and `workspace-inspection-unavailable` are explicit advisories. They only explain where current root facts came from and do not independently block progression or Archive; findings list concrete drift components such as `native-root-ref`, `project-root-path`, and `native-root-path`. Native does not read Git branch, HEAD, or worktree changed paths by default. Ordinary read paths do not treat the old Git-backed `comet.native.workspace.v1` identity or an early hash-only v2 identity as reliable path-drift evidence. Doctor reports `workspace-identity-migration-required`, and only `doctor --repair` rebuilds it as a process-free v2 identity with stable path IDs. Do not treat every arbitrary `workspace-*` finding as advisory; unknown workspace-integrity findings remain errors.
+`workspace-root-changed` and `workspace-inspection-unavailable` are explicit advisories. They explain where current root facts came from and do not independently block progression or Archive. Findings list concrete drift components such as `native-root-ref`, `project-root-path`, and `native-root-path`. Native does not read Git branch, HEAD, or worktree changed paths by default.
+
+Do not treat every `workspace-*` finding as advisory. Unknown workspace-integrity findings remain errors. When the Runtime requires workspace identity repair, run read-only doctor first and then follow its report with explicit `doctor --repair`.
 
 ## Archive transactions
 
@@ -135,4 +128,8 @@ Locks bind owner metadata, lock-file identity, and in-process FIFO ordering. Ord
 
 Doctor may safely clear a selection that points to a missing change. It does not rewrite damaged configuration, change YAML, briefs, specifications, or verification reports; repair those files manually from user intent, then inspect again.
 
-Evidence retention follows the same explicit-repair boundary. Doctor reports candidates by default. `--repair` removes only active-change derived evidence/receipts that are at least 30 days old, outside the latest 32 items per evidence kind, and proven unreferenced by the dependency closure. Removal is strictly dependents before dependencies and first renames into a unique same-directory `.gc` quarantine. If interrupted before final deletion, a later read-only doctor reports `evidence-retention-recovery-required`; explicit repair restores without overwrite only when the original path remains absent and quarantine content/identity are valid. Cleanup is deferred or fails closed for simultaneous original/quarantine files, multiple quarantines, archived evidence, pending recovery, missing dependencies, damaged documents, unknown entries, symlinks, or other special files.
+Evidence retention follows the explicit-repair boundary. Doctor reports candidates by default. `--repair` removes only active-change derived evidence or receipts that are at least 30 days old, outside the latest 32 items per evidence kind, and proven unreferenced by the dependency closure.
+
+Removal is ordered dependents before dependencies and first renames each candidate into a unique same-directory `.gc` quarantine. If interrupted before final deletion, a later read-only doctor reports `evidence-retention-recovery-required`; explicit repair restores without overwrite only when the original path remains absent and quarantine content and identity are valid.
+
+Cleanup is deferred and fails closed for original/quarantine conflicts, multiple quarantines, archived evidence, pending recovery, missing dependencies, damaged documents, unknown entries, symlinks, or other special files.
