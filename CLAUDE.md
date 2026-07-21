@@ -4,22 +4,31 @@
 
 ## 测试
 
+验证范围必须与改动风险相匹配，不要在每次编辑后默认运行全量测试。
+
+- 每轮先运行覆盖当前改动的最小相关测试。
+- 纯文档或 Skill 内容修改：运行相关契约测试和受影响文件的 Prettier 检查。
+- 单一 `app/`、`domains/` 或 `platform/` 模块修改：运行对应测试；涉及编译、Runtime 或生成物时再运行 build。
+- 跨模块、Runtime、安装/路由、发布准备或其他高风险修改：最终交付前运行一次全量测试。
+- 全量测试失败或超时时，先定位原因；只有修正了明确原因后才重跑，不盲目重复。
+- CI 已覆盖全量检查时，可以在本地只运行相关验证，但交付时必须明确说明未在本地运行的检查。
+
 ```bash
-npx vitest run test/domains/comet-classic/comet-scripts.test.ts   # comet 脚本契约 + 行为测试
-npx vitest run                                   # 全量测试
+npx vitest run <相关测试文件>                     # 默认：最小相关测试
+npx vitest run                                   # 高风险修改或最终交付前的全量测试
 ```
 
 ## 提交前检查
 
-仓库已配置 Git pre-commit 钩子（husky + lint-staged），每次 `git commit` 会自动对 `app/`、`domains/`、`platform/` 下的暂存源文件运行 `prettier --write`（与 CI `format:check` 范围一致），编辑器无关，所有贡献者生效。
+仓库已配置 Git pre-commit 钩子（husky + lint-staged），每次 `git commit` 会自动对 `app/`、`domains/`、`platform/`、`scripts/`、`test/`、`.github/`、`config/` 下的暂存源文件运行 `prettier --write`（与 CI `format:check` 范围一致；冻结的 `test/fixtures/` 除外），编辑器无关，所有贡献者生效。
 
-提交前建议手动确认（CI 会强制检查）：
+根据改动范围选择提交前检查；不要求每个提交机械地运行全部命令（CI 会执行完整检查）：
 
 ```bash
-pnpm format:check   # Prettier 格式检查
-pnpm lint           # ESLint
-pnpm build          # TypeScript 构建
-pnpm test           # 单元测试
+pnpm format:check   # 大范围格式检查；小范围可只检查受影响文件
+pnpm lint           # 修改源码、测试、脚本或配置时
+pnpm build          # 涉及编译、Runtime、生成物或发布资产时
+pnpm test           # 高风险修改或最终交付前需要本地全量验证时
 ```
 
 注：本地 Windows 若 `core.autocrlf=true`，未改动的旧文件可能因 CRLF 被 `prettier --check` 误报；钩子只处理暂存文件，不受影响，旧文件下次编辑时会自动转为 LF。
