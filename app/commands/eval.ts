@@ -5,6 +5,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { prepareEvalManifest } from '../../domains/bundle/eval-manifest-runtime.js';
 
+type EvalSuite = 'local' | 'langsmith';
+
 interface EvalCommandOptions {
   project?: string;
   manifest?: string;
@@ -16,10 +18,12 @@ interface EvalCommandOptions {
   html?: boolean;
   quick?: boolean;
   collect?: boolean;
+  suite?: EvalSuite;
 }
 
 interface EvalLaunchDetails {
   mode: 'run' | 'collect';
+  suite: EvalSuite;
   evalRoot: string;
   experimentId: string;
   profile: string;
@@ -39,14 +43,20 @@ function evalRoot(options: EvalCommandOptions): string {
     : path.join(packageRoot, 'eval');
 }
 
-function assertEvalHarness(root: string): void {
-  const requiredFiles = ['pyproject.toml', 'local/tests/tasks/test_tasks.py'];
+function assertEvalHarness(root: string, suite: EvalSuite): void {
+  const requiredFiles = ['pyproject.toml', `${suite}/tests/tasks/test_tasks.py`];
   if (requiredFiles.every((file) => existsSync(path.join(root, file)))) return;
 
   throw new Error(
     `Eval harness is missing at ${root}.\n` +
       'Reinstall @rpamis/comet or pass --project <repository-root>.',
   );
+}
+
+function resolveSuite(options: EvalCommandOptions): EvalSuite {
+  const suite = options.suite ?? 'local';
+  if (suite === 'local' || suite === 'langsmith') return suite;
+  throw new Error(`Unsupported eval suite: ${suite}. Expected local or langsmith.`);
 }
 
 function assertTarget(options: EvalCommandOptions): void {
@@ -130,7 +140,8 @@ async function buildEvalArgs(
 ): Promise<string[]> {
   assertTarget(options);
 
-  const args = ['run', 'pytest', 'local/tests/tasks/test_tasks.py'];
+  const suite = resolveSuite(options);
+  const args = ['run', 'pytest', `${suite}/tests/tasks/test_tasks.py`];
 
   if (options.manifest) {
     args.push(`--eval-manifest=${path.resolve(options.manifest)}`);
@@ -164,9 +175,11 @@ async function buildLaunchDetails(
   collectOnly: boolean,
   root: string,
 ): Promise<EvalLaunchDetails> {
+  const suite = resolveSuite(options);
   const reportConfig = await resolveReportConfig(options);
   return {
     mode: collectOnly ? 'collect' : 'run',
+    suite,
     evalRoot: root,
     experimentId: `comet-eval-${Date.now()}`,
     profile: resolveProfile(options),
@@ -174,7 +187,7 @@ async function buildLaunchDetails(
     reportConfig,
     reportPath: path.join(
       root,
-      'local',
+      suite,
       'logs',
       'experiments',
       '<experiment-id>',
@@ -189,6 +202,7 @@ async function buildLaunchDetails(
 function printLaunchDetails(details: EvalLaunchDetails): void {
   console.log(`Eval root: ${details.evalRoot}`);
   console.log(`Mode: ${details.mode}`);
+  console.log(`Suite: ${details.suite}`);
   console.log(`Target: ${details.target}`);
   console.log(`Experiment: ${details.experimentId}`);
   console.log(`Profile: ${details.profile}`);
@@ -215,8 +229,8 @@ function assertUvAvailable(): void {
   }
 }
 
-function runEval(args: string[], root: string): void {
-  assertEvalHarness(root);
+function runEval(args: string[], root: string, suite: EvalSuite): void {
+  assertEvalHarness(root, suite);
   assertUvAvailable();
   execFileSync('uv', args, {
     cwd: root,
@@ -237,7 +251,7 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
     const runtimeOptions = prepared ? { ...options, manifest: prepared.path } : options;
     const args = await buildEvalArgs(runtimeOptions, collectOnly, details.reportConfig);
     printLaunchDetails(details);
-    runEval(args, root);
+    runEval(args, root, details.suite);
   } catch (error) {
     bodyFailed = true;
     bodyError = error;
@@ -273,4 +287,4 @@ export async function evalCommand(
   await evalRunCommand(resolvedOptions);
 }
 
-export type { EvalCommandOptions };
+export type { EvalCommandOptions, EvalSuite };

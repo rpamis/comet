@@ -135,6 +135,36 @@ describe('eval command', () => {
     expect(cleanupPreparedManifest).not.toHaveBeenCalled();
   });
 
+  it('routes LangSmith evals through the LangSmith runner and report directory', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let output: string;
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({
+        project,
+        skillPath,
+        suite: 'langsmith',
+        task: 'generic-skill-smoke',
+      });
+      output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+    }
+
+    expectUvRun([
+      'run',
+      'pytest',
+      'langsmith/tests/tasks/test_tasks.py',
+      '--task=generic-skill-smoke',
+      `--skill-path=${path.resolve(skillPath)}`,
+      '-v',
+    ]);
+    expect(output).toContain('Suite: langsmith');
+    expect(output).toContain(
+      path.join(evalCwd, 'langsmith', 'logs', 'experiments', '<experiment-id>', 'summary.md'),
+    );
+  });
+
   it('runs a local Skill target directly without requiring --skill-path', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
@@ -364,6 +394,20 @@ describe('eval command', () => {
         project,
       }),
     ).rejects.toThrow('Pass one of --manifest or --skill-path');
+
+    expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unsupported eval suite before invoking uv', async () => {
+    const { evalRunCommand } = await import('../../app/commands/eval.js');
+
+    await expect(
+      evalRunCommand({
+        project,
+        manifest,
+        suite: 'remote' as 'local',
+      }),
+    ).rejects.toThrow('Unsupported eval suite: remote. Expected local or langsmith.');
 
     expect(execFileSync).not.toHaveBeenCalled();
   });

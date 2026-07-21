@@ -54,6 +54,22 @@ describe('README assets', () => {
     expect(readmeEn).toContain('Skill platform');
   });
 
+  it('documents Native and Classic skills and keeps both project structures folded', async () => {
+    const readmeEn = await fs.readFile('README.md', 'utf-8');
+    const readmeZh = await fs.readFile('README-zh.md', 'utf-8');
+    const skillsEn = readmeEn.split('### Comet Skills')[1]?.split('</details>')[0] ?? '';
+    const skillsZh = readmeZh.split('### Comet 技能')[1]?.split('</details>')[0] ?? '';
+
+    expect(skillsEn).toContain('| `/comet-native`');
+    expect(skillsEn).toContain('| `/comet-classic`');
+    expect(skillsZh).toContain('| `/comet-native`');
+    expect(skillsZh).toContain('| `/comet-classic`');
+    expect(readmeEn).toContain('<summary>Native project structure');
+    expect(readmeEn).toContain('<summary>Classic project structure');
+    expect(readmeZh).toContain('<summary>Native 项目结构');
+    expect(readmeZh).toContain('<summary>Classic 项目结构');
+  });
+
   it('documents task-first paths for comet-any and eval without making Bundle CLI the default user path', async () => {
     const readmeEn = await fs.readFile('README.md', 'utf-8');
     const readmeZh = await fs.readFile('README-zh.md', 'utf-8');

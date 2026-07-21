@@ -94,12 +94,27 @@ and `Evidence:`.
 It should not start a full model evaluation first, and it should not spend long-running cost
 before manifest and discovery work.
 
+## Choose the Local or LangSmith suite
+
+`comet eval` uses the `local` suite by default for day-to-day development and local reports. To sync runs, rubric
+feedback, costs, and Claude Code trajectories to LangSmith, select the suite explicitly:
+
+```bash
+comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
+```
+
+Both suites reuse the same tasks, treatments, rubric, and manifest. The `langsmith` suite reads
+`LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, and `LANGSMITH_TRACING`, provisions the Claude Code trajectory plugin, and
+writes reports under `eval/langsmith/logs/experiments/`. Without `--suite langsmith`, enabling tracing in the
+environment does not make the Local runner create a LangSmith experiment.
+
 ## What `--html` prints
 
 During execution, the CLI prints a set of execution facts:
 
 - `Eval root`: which `eval/` root was actually used
 - `Mode`: `collect` or `run`
+- `Suite`: `local` or `langsmith`
 - `Target`: whether the target is a manifest or local Skill directory
 - `Experiment`: the experiment id for this run
 - `Profile`: which profile the run used
@@ -107,10 +122,10 @@ During execution, the CLI prints a set of execution facts:
 - `Report path`: where the report was written
 - `Report config`: the temporary report config used when `--html` is enabled
 
-`--html` requests both markdown and HTML reports. Reports are typically written under:
+`--html` requests both markdown and HTML reports. The report path follows the selected suite:
 
 ```text
-eval/local/logs/experiments/<experiment-id>/summary.html
+eval/<suite>/logs/experiments/<experiment-id>/summary.html
 ```
 
 If CLI output shows the placeholder `<experiment-id>`, use the `Experiment` value printed in the

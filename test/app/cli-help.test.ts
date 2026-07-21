@@ -116,6 +116,7 @@ describe('CLI help text', () => {
     expect(skillCheckHelp.status, skillCheckHelp.stderr).toBe(0);
     expect(evalHelp.stdout).toContain('Evaluate a Skill or eval manifest with one command');
     expect(evalHelp.stdout).toContain('Usage: comet eval [options] [target]');
+    expect(evalHelp.stdout).toContain('--suite <suite>');
     expect(evalHelp.stdout).toContain('--collect');
     expect(evalHelp.stdout).not.toContain('run [options]');
     expect(evalHelp.stdout).not.toContain('collect [options]');

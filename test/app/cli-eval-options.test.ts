@@ -35,4 +35,15 @@ describe('eval CLI options', () => {
     expect(explicitTarget).toBeUndefined();
     expect((explicitOptions as { project?: string }).project).toBe('custom-project');
   });
+
+  it('defaults to the local suite and accepts an explicit LangSmith suite', async () => {
+    const [, defaultOptions] = await runEvalCli();
+
+    expect((defaultOptions as { suite?: string }).suite).toBe('local');
+
+    evalFacadeCommand.mockReset();
+    const [, explicitOptions] = await runEvalCli('--suite', 'langsmith');
+
+    expect((explicitOptions as { suite?: string }).suite).toBe('langsmith');
+  });
 });

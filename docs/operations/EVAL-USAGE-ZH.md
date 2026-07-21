@@ -73,12 +73,23 @@ comet publish review <name> --platform <reference-platform> --json
 
 它不应该先跑完整模型评估，也不应该先消耗长时间任务。失败时，通常先修 manifest、路径或任务发现问题。
 
+## 选择 Local 或 LangSmith 套件
+
+`comet eval` 默认使用 `local` 套件，适合日常开发和本地报告。需要把 run、rubric feedback、成本和 Claude Code 轨迹同步到 LangSmith 时，显式选择 `langsmith`：
+
+```bash
+comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
+```
+
+两个套件复用同一套任务、treatment、rubric 和 manifest。`langsmith` 套件会读取 `LANGSMITH_API_KEY`、`LANGSMITH_PROJECT` 和 `LANGSMITH_TRACING`，准备 Claude Code 轨迹插件，并把报告写入 `eval/langsmith/logs/experiments/`。没有 `--suite langsmith` 时，即使环境里启用了 tracing，Local runner 也不会创建 LangSmith experiment。
+
 ## `--html` 会输出什么
 
 运行时 CLI 会先打印一组执行信息：
 
 - `Eval root`：实际从哪个 `eval/` 根目录启动
 - `Mode`：`collect` 或 `run`
+- `Suite`：`local` 或 `langsmith`
 - `Target`：当前评估的是 manifest 还是本地 Skill 目录
 - `Experiment`：本次实验 id
 - `Profile`：本次评估使用的 profile
@@ -86,10 +97,10 @@ comet publish review <name> --platform <reference-platform> --json
 - `Report path`：报告位置
 - `Report config`：启用 `--html` 时使用的临时报告配置
 
-`--html` 会要求报告同时产出 markdown 和 HTML。报告通常位于：
+`--html` 会要求报告同时产出 markdown 和 HTML。报告路径跟随所选套件：
 
 ```text
-eval/local/logs/experiments/<experiment-id>/summary.html
+eval/<suite>/logs/experiments/<experiment-id>/summary.html
 ```
 
 如果 CLI 输出里显示的是 `<experiment-id>` 占位符，用同一段输出里的 `Experiment` 值对应查找即可。

@@ -357,22 +357,20 @@ LANGSMITH_PROJECT=comet-skill-eval
 LANGSMITH_TRACING=true
 ```
 
-然后运行同一个 manifest：
+然后通过同一个 `comet eval` 入口选择 LangSmith 套件：
 
 ```bash
-cd eval
-uv run pytest langsmith/tests/tasks/test_tasks.py \
-  --eval-manifest=/absolute/path/to/generated-skill/comet/eval.yaml -v
+comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
 ```
 
-PowerShell 中可以用 `$env:LANGSMITH_API_KEY`、`$env:LANGSMITH_PROJECT` 和 `$env:LANGSMITH_TRACING` 设置变量；也可以把它们放进 `eval/.env`。完整插件缓存和轨迹追踪说明见 [eval/langsmith/README.md](eval/langsmith/README.md)。
+`--suite` 默认为 `local`。选择 `langsmith` 后，CLI 会启动 LangSmith runner，在启动信息中显示 `Suite: langsmith`，并把报告写入 `eval/langsmith/logs/experiments/`。PowerShell 中可以用 `$env:LANGSMITH_API_KEY`、`$env:LANGSMITH_PROJECT` 和 `$env:LANGSMITH_TRACING` 设置变量；也可以把它们放进 `eval/.env`。完整插件缓存和轨迹追踪说明见 [eval/langsmith/README.md](eval/langsmith/README.md)。
 
 ### 什么时候用哪个
 
 - 日常开发：`comet eval ./my-skill --quick --html`
 - `/comet-any` 生成物：`comet eval ./generated-skill/comet/eval.yaml --collect`，再跑 `--html`
 - 发布前证据：优先使用 `comet/eval.yaml` 的本地 HTML 报告
-- 团队追踪和横向对比：用同一个 `comet/eval.yaml` 跑 LangSmith 套件
+- 团队追踪和横向对比：`comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html`
 
 更完整的任务、treatment、报告口径和排障说明见 [Eval 使用文档](docs/operations/EVAL-USAGE-ZH.md)。
 
@@ -429,24 +427,26 @@ PowerShell 中可以用 `$env:LANGSMITH_API_KEY`、`$env:LANGSMITH_PROJECT` 和 
 
 ## 技能
 
-`comet init` 完成后，三组技能将被安装到所选平台的 `skills/` 目录：
+`comet init` 会按所选工作流安装技能：Native 只依赖 Comet 自有技能，Classic 会额外安装 OpenSpec 与 Superpowers。
 
 ### Comet 技能
 
 <details>
 <summary>查看 Comet 技能列表</summary>
 
-| 技能             | 描述                                                                                    |
-| ---------------- | --------------------------------------------------------------------------------------- |
-| `/comet`         | 主入口 — 自动检测阶段并分派到子命令                                                     |
-| `/comet-open`    | 阶段 1：打开变更（提案、设计、任务分解）                                                |
-| `/comet-design`  | 阶段 2：深度设计（头脑风暴、设计文档）                                                  |
-| `/comet-build`   | 阶段 3：规划与构建（实现计划、代码提交）                                                |
-| `/comet-verify`  | 阶段 4：验证与完成（测试、验证报告）                                                    |
-| `/comet-archive` | 阶段 5：归档（delta spec 同步、状态标注）                                               |
-| `/comet-hotfix`  | 快捷路径：快速 bug 修复（跳过头脑风暴，不需要能力设计）                                 |
-| `/comet-tweak`   | 轻量预设路径：串联 OpenSpec 的中等改动（delta spec 为一等公民，跳过头脑风暴和完整计划） |
-| `/comet-any`     | Comet Skill Creator：创建或优化可复用 Skill                                             |
+| 技能             | 描述                                                                          |
+| ---------------- | ----------------------------------------------------------------------------- |
+| `/comet`         | 共享入口 — 根据 `.comet/config.yaml` 转发到项目配置的 Native 或 Classic       |
+| `/comet-native`  | Native 永久入口 — Shape、Build、Verify、Archive，自包含且可恢复               |
+| `/comet-classic` | Classic 永久入口 — OpenSpec + Superpowers 五阶段工作流                        |
+| `/comet-open`    | Classic 阶段 1：打开变更（提案、设计、任务分解）                              |
+| `/comet-design`  | Classic 阶段 2：深度设计（头脑风暴、设计文档）                                |
+| `/comet-build`   | Classic 阶段 3：规划与构建（实现计划、代码提交）                              |
+| `/comet-verify`  | Classic 阶段 4：验证与完成（测试、验证报告）                                  |
+| `/comet-archive` | Classic 阶段 5：归档（delta spec 同步、状态标注）                             |
+| `/comet-hotfix`  | Classic 快捷路径：快速 bug 修复                                                |
+| `/comet-tweak`   | Classic 轻量路径：串联 OpenSpec 的中等改动                                     |
+| `/comet-any`     | Comet Skill Creator：创建或优化可复用 Skill                                   |
 
 </details>
 
@@ -464,17 +464,28 @@ PowerShell 中可以用 `$env:LANGSMITH_API_KEY`、`$env:LANGSMITH_PROJECT` 和 
 | `comet-yaml-validate.mjs` | 模式校验器 — 校验 `.comet.yaml` 结构和字段值                            |
 | `comet-state.mjs`         | 统一状态管理 — init/set/get/check/scale，agent 的专属 YAML 接口         |
 | `comet-hook-router.mjs`   | 平台唯一 Hook 入口 — 按当前需求归属路由到一个 workflow Guard            |
-| `comet-hook-guard.mjs`    | Classic Guard 实现 — 仅在 Router 选中 Classic 时执行                    |
+| `comet-hook-guard.mjs`    | Classic Guard launcher — Router 选中 Classic 时调用 Classic runtime     |
+| `comet-native-runtime.mjs` | Native 状态、检查、归档与恢复 runtime                                   |
+| `comet-native-hook-guard.mjs` | Native Guard launcher — Router 选中 Native 时调用 Native runtime     |
 
-Classic 自动化以 TypeScript 生成的独立 Node.js 命令脚本分发，通过 `node` 在所有平台运行，因此 Comet 只依赖Node.js，无需 Bash、Git Bash 或 WSL。
+Native 与 Classic runtime 都由 TypeScript 生成，通过 `node` 在所有平台运行；Native 不依赖 OpenSpec、Superpowers、Bash、Git Bash 或 WSL。
 
 </details>
 
 ## 工作流
 
+### Native 工作流
+
+`/comet-native` 使用 Shape → Build → Verify → Archive 四个阶段。Shape 负责澄清、brief、完整目标规格与用户确认；其余规划和实现方法由 Agent 自主选择。状态、验证证据和恢复数据都由 Native runtime 管理，默认写入 `docs/comet/`。
+
+### Classic 五阶段工作流
+
+<details>
+<summary>查看 Classic 五阶段流程</summary>
+
 ```
-/comet
-  ↓ auto-detect
+/comet-classic（或 default_workflow: classic 时的 /comet）
+  ↓
 /comet-open  -->  /comet-design  -->  /comet-build  -->  /comet-verify  -->  /comet-archive
 (OpenSpec)         (Superpowers)       (Superpowers)       (Both)           (OpenSpec)
 
@@ -485,7 +496,7 @@ Classic 自动化以 TypeScript 生成的独立 Node.js 命令脚本分发，通
   open  -->  build  -->  verify  -->  archive
 ```
 
-### 五个阶段
+#### 五个阶段
 
 | 阶段               | 命令             | 归属        | 产出物                           |
 | ------------------ | ---------------- | ----------- | -------------------------------- |
@@ -495,12 +506,14 @@ Classic 自动化以 TypeScript 生成的独立 Node.js 命令脚本分发，通
 | 4. Verify & Finish | `/comet-verify`  | Both        | 验证报告、分支处理               |
 | 5. Archive         | `/comet-archive` | OpenSpec    | delta→main spec 同步、归档       |
 
-### 状态管理
+</details>
 
-Comet 使用解耦状态架构，文件独立管理
+### Classic 状态管理
+
+Classic 使用解耦状态架构，文件独立管理：
 
 <details>
-<summary>查看状态管理</summary>
+<summary>查看 Classic 状态管理</summary>
 
 | 文件                                      | 归属     | 用途                           |
 | ----------------------------------------- | -------- | ------------------------------ |
@@ -520,7 +533,7 @@ Comet 使用解耦状态架构，文件独立管理
 </details>
 
 <details>
-<summary>查看 change .comet.yaml 关键字段</summary>
+<summary>查看 Classic change .comet.yaml 关键字段</summary>
 
 **change `.comet.yaml` 关键字段：**
 
@@ -556,12 +569,12 @@ classic_migration: 1                                     # 脚本维护的迁移
 
 </details>
 
-### 可靠性特性
+### Classic 可靠性与共享守护
 
-Comet 通过自动化状态转换确保 agent 执行可靠性：
+下面前六项是 Classic 的阶段自动化；最后一项是 Native 与 Classic 共用的 Router/Rule 边界：
 
 <details>
-<summary>查看可靠性特性</summary>
+<summary>查看 Classic 可靠性与共享守护</summary>
 
 1. **入口验证** — 每个阶段在执行前验证前置条件
    - 检查文件存在、状态一致性、阶段转换
@@ -605,7 +618,38 @@ Comet 通过自动化状态转换确保 agent 执行可靠性：
 
 </details>
 
-## 经典Spec模式项目结构
+## 项目结构
+
+<details>
+<summary>Native 项目结构（默认 <code>docs/comet/</code>）</summary>
+
+```text
+your-project/
+├── .comet/
+│   ├── config.yaml                    # 共享项目配置与 Native artifact_root
+│   └── current-change.json            # 可选；当前需求归属（Native/Classic 共用）
+├── .claude/skills/                    # 以 Claude Code 为例的平台技能目录
+│   ├── comet/SKILL.md                 # 配置驱动的共享入口
+│   └── comet-native/
+│       ├── SKILL.md                   # Native 永久入口
+│       ├── reference/                 # 产物、命令与恢复协议
+│       └── scripts/                   # Native runtime 与 Guard launcher
+└── docs/comet/                        # native.artifact_root: docs
+    ├── specs/<capability>/spec.md     # 已归档的 canonical specs
+    ├── changes/<name>/
+    │   ├── comet-state.yaml           # Native change 状态
+    │   ├── brief.md                   # 结果、范围、决策与验收预期
+    │   ├── specs/<capability>/spec.md # 完整目标规格
+    │   ├── verification.md            # 验证报告
+    │   └── runtime/                   # checkpoint、证据与恢复状态
+    ├── archive/YYYY-MM-DD-<name>/     # 已归档 change
+    └── runtime/                       # locks 与可恢复 transactions
+```
+
+</details>
+
+<details>
+<summary>Classic 项目结构</summary>
 
 ```
 your-project/
@@ -643,8 +687,10 @@ your-project/
     └── plans/                   # 实现计划
 ```
 
+</details>
+
 <details>
-<summary>上下文压缩（Beta）</summary>
+<summary>Classic 上下文压缩（Beta）</summary>
 
 Comet 支持在 Design → Build 阶段交接时进行上下文压缩。启用后，`comet-handoff.mjs` 会生成精简的上下文包，在不影响实现正确性的前提下，将
 Build 阶段的输入 token 降低 **25–30%**。
@@ -667,7 +713,7 @@ Benchmark 核心结论：
 </details>
 
 <details>
-<summary>自动流转（Auto Transition）</summary>
+<summary>Classic 自动流转（Auto Transition）</summary>
 
 `auto_transition` 控制阶段完成后是否自动调用下一个 Skill，还是暂停等待用户手动触发。阶段推进本身始终执行，该配置仅影响 Skill 调用。
 

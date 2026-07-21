@@ -193,6 +193,9 @@ program
   .option('--manifest <path>', 'Path to comet/eval.yaml')
   .option('--skill-path <path>', 'Local Skill directory or SKILL.md')
   .option('--skill-name <name>', 'Skill name used with --skill-path')
+  .addOption(
+    new Option('--suite <suite>', 'Eval suite').choices(['local', 'langsmith']).default('local'),
+  )
   .option('--profile <name>', 'Eval profile override')
   .option('--task <task>', 'Explicit eval task override')
   .option('--report-config <path>', 'JSON/YAML report output config')
