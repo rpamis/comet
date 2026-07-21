@@ -2267,19 +2267,13 @@ export async function createNativeContentSnapshot(
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
     let firstTarget: Buffer;
     let secondTarget: Buffer;
-    let firstRealTarget: string;
-    let secondRealTarget: string;
     let after: import('fs').Stats;
     try {
       firstTarget = await fs.readlink(target, { encoding: 'buffer' });
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      firstRealTarget = await fs.realpath(target);
-      if (!nativeSnapshotExecutionHasBudget(execution)) return;
       after = await fs.lstat(target);
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       secondTarget = await fs.readlink(target, { encoding: 'buffer' });
-      if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      secondRealTarget = await fs.realpath(target);
     } catch (error) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -2297,16 +2291,9 @@ export async function createNativeContentSnapshot(
       !sameFileIdentity(before, after) ||
       after.mtimeMs !== before.mtimeMs ||
       after.ctimeMs !== before.ctimeMs ||
-      !firstTarget.equals(secondTarget) ||
-      firstRealTarget !== secondRealTarget
+      !firstTarget.equals(secondTarget)
     ) {
       omit({ path: relative, size: null, type: 'other', reason: 'changed-during-read' });
-      return;
-    }
-    if (
-      !isInsidePath(physicalProjectRoot, firstRealTarget) ||
-      sameOrInside(physicalNativeRoot, firstRealTarget)
-    ) {
       return;
     }
     const size = firstTarget.byteLength;

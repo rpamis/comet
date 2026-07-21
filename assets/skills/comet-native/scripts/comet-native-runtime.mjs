@@ -11717,19 +11717,13 @@ async function createNativeContentSnapshot(paths, options = {}) {
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
     let firstTarget;
     let secondTarget;
-    let firstRealTarget;
-    let secondRealTarget;
     let after;
     try {
       firstTarget = await fs9.readlink(target, { encoding: "buffer" });
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      firstRealTarget = await fs9.realpath(target);
-      if (!nativeSnapshotExecutionHasBudget(execution)) return;
       after = await fs9.lstat(target);
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       secondTarget = await fs9.readlink(target, { encoding: "buffer" });
-      if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      secondRealTarget = await fs9.realpath(target);
     } catch (error) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -11742,11 +11736,8 @@ async function createNativeContentSnapshot(paths, options = {}) {
       return;
     }
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
-    if (!after.isSymbolicLink() || !sameFileIdentity4(before, after) || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs || !firstTarget.equals(secondTarget) || firstRealTarget !== secondRealTarget) {
+    if (!after.isSymbolicLink() || !sameFileIdentity4(before, after) || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs || !firstTarget.equals(secondTarget)) {
       omit({ path: relative, size: null, type: "other", reason: "changed-during-read" });
-      return;
-    }
-    if (!isInsidePath(physicalProjectRoot, firstRealTarget) || sameOrInside(physicalNativeRoot, firstRealTarget)) {
       return;
     }
     const size = firstTarget.byteLength;

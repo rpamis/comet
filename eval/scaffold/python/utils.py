@@ -1,6 +1,7 @@
 """Python utilities - thin wrappers around shell scripts."""
 
 import json
+import ntpath
 import os
 import random
 import shutil
@@ -29,7 +30,7 @@ def _uses_wsl_bash(bash_exec: str) -> bool:
     return normalized.endswith("/windowsapps/bash.exe") or normalized.endswith("/system32/bash.exe")
 
 
-def _resolve_bash() -> str:
+def _resolve_bash(os_name: str | None = None) -> str:
     """Resolve a reliable bash executable for running MSYS shell scripts.
 
     On Windows, ``subprocess.run(['bash', ...])`` may resolve ``bash`` via
@@ -41,7 +42,8 @@ def _resolve_bash() -> str:
     """
     import shutil
 
-    if os.name != "nt":
+    platform_name = os_name or os.name
+    if platform_name != "nt":
         return "bash"
 
     env_bash = os.environ.get("GIT_BASH")
@@ -54,10 +56,13 @@ def _resolve_bash() -> str:
 
     git_exec = shutil.which("git")
     if git_exec:
-        git_root = Path(git_exec).parent.parent
-        for candidate in (git_root / "bin" / "bash.exe", git_root / "usr" / "bin" / "bash.exe"):
+        git_root = ntpath.dirname(ntpath.dirname(git_exec))
+        for candidate in (
+            ntpath.join(git_root, "bin", "bash.exe"),
+            ntpath.join(git_root, "usr", "bin", "bash.exe"),
+        ):
             if os.path.isfile(candidate):
-                return str(candidate)
+                return candidate
 
     return "bash"
 

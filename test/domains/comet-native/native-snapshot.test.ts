@@ -82,16 +82,24 @@ describe('Native VCS-independent content snapshots', () => {
       createdAt: '2026-07-17T00:00:00.000Z',
       complete: true,
       omittedCount: 0,
-      entries: [
-        expect.objectContaining({ path: '.gitignore', type: 'file' }),
-        {
-          path: 'src/app.ts',
-          hash: sha256Text(safe),
-          size: Buffer.byteLength(safe),
-          type: 'file',
-        },
-      ],
     });
+    expect(manifest.entries).toContainEqual(
+      expect.objectContaining({ path: '.gitignore', type: 'file' }),
+    );
+    expect(manifest.entries).toContainEqual({
+      path: 'src/app.ts',
+      hash: sha256Text(safe),
+      size: Buffer.byteLength(safe),
+      type: 'file',
+    });
+    if (process.platform !== 'win32') {
+      expect(manifest.entries).toContainEqual({
+        path: 'linked-outside',
+        hash: createHash('sha256').update('symlink\0').update(outsideRoot).digest('hex'),
+        size: Buffer.byteLength(outsideRoot),
+        type: 'file',
+      });
+    }
     const serialized = JSON.stringify(manifest);
     expect(serialized).not.toContain(projectRoot);
     expect(serialized).not.toContain(outsideRoot);

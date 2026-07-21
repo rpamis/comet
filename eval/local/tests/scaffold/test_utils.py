@@ -93,7 +93,6 @@ def test_to_bash_path_uses_msys_drive_prefix_for_git_bash(monkeypatch):
 
 
 def test_resolve_bash_prefers_git_bash_when_path_bash_is_wsl(monkeypatch):
-    monkeypatch.setattr(utils.os, "name", "nt")
     monkeypatch.delenv("GIT_BASH", raising=False)
     monkeypatch.setattr(
         utils.shutil,
@@ -108,7 +107,7 @@ def test_resolve_bash_prefers_git_bash_when_path_bash_is_wsl(monkeypatch):
         lambda path: str(path).replace("/", "\\").lower() == r"d:\git\bin\bash.exe",
     )
 
-    assert utils._resolve_bash() == r"D:\Git\bin\bash.exe"
+    assert utils._resolve_bash(os_name="nt") == r"D:\Git\bin\bash.exe"
 
 
 def test_to_bash_path_uses_wsl_mount_prefix_for_windowsapps_bash(monkeypatch):

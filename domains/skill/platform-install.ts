@@ -905,6 +905,8 @@ async function copyCometRulesForPlatform(
     try {
       await rm(legacyPath, { force: true });
     } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') continue;
       console.error(`    Failed to remove legacy Rule ${legacyPath}: ${(error as Error).message}`);
       failed++;
     }

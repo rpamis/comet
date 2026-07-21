@@ -1353,6 +1353,7 @@ def test_verification_parser_rejects_symlinked_evidence_documents(tmp_path: Path
             change_root=root,
             evidence_ref=ref,
             state=state,
+            verify_current_files=True,
         )
 
 
