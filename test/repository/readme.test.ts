@@ -54,6 +54,18 @@ describe('README assets', () => {
     expect(readmeEn).toContain('Skill platform');
   });
 
+  it('highlights the current beta and links the website changelog', async () => {
+    const readmeEn = await fs.readFile('README.md', 'utf-8');
+    const readmeZh = await fs.readFile('README-zh.md', 'utf-8');
+
+    expect(readmeEn).toContain('**0.4.0-beta.7**');
+    expect(readmeZh).toContain('**0.4.0-beta.7**');
+    expect(readmeEn).toContain('**0.4.0-beta.1**');
+    expect(readmeZh).toContain('**0.4.0-beta.1**');
+    expect(readmeEn).toContain('https://docs.comet.rpamis.com/en/changelog');
+    expect(readmeZh).toContain('https://docs.comet.rpamis.com/zh/changelog');
+  });
+
   it('documents Native and Classic skills and keeps both project structures folded', async () => {
     const readmeEn = await fs.readFile('README.md', 'utf-8');
     const readmeZh = await fs.readFile('README-zh.md', 'utf-8');

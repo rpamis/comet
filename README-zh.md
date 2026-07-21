@@ -45,7 +45,9 @@
 让你可以用一个工具链处理需求到归档、中断后恢复，将任意Skill组合得像Comet一样，基于科学的**Rubric**、**Pass@k**、**Pass^k**评分演进你的Skill
 
 > [!IMPORTANT]
-> **0.4.0-beta.1** — Comet 升级为纯 Node runtime（不再依赖 Bash/WSL），并带来三大核心能力：用 `/comet-any` 把**任意** Skill 组合成自定义工作流、用 `comet eval` 评估**任意**Skill， 并接入到LangSmith系统中、用 `comet dashboard` 在浏览器里可视化每一个 change。
+> **0.4.0-beta.7** — 新增面向强模型、自包含且可恢复的 Native 工作流，并让 Native 与 Classic 通过统一配置、状态、Guard、Dashboard 和 Eval 入口保持独立协作。
+>
+> **0.4.0-beta.1** — Comet 升级为纯 Node runtime（不再依赖 Bash/WSL），并带来三大核心能力：用 `/comet-any` 把**任意** Skill 组合成自定义工作流、用 `comet eval` 评估**任意** Skill 并接入 LangSmith、用 `comet dashboard` 在浏览器里可视化每一个 change。
 >
 > **0.3.9** — `review_mode: off|standard|thorough` 控制 Build/Verify 自动代码审查并支持项目级默认；init/update 改为可选依赖安装，补齐 CLI 国际化、阶段守护加固和 macOS 可执行权限。
 >
@@ -53,7 +55,7 @@
 >
 > **0.3.7** — 新增 CodeGraph 语义索引、Beta 上下文压缩、主动式上下文压缩、Token 优化、`auto_transition`、阶段守护、可选 TDD 和更稳的归档/验证流程。
 >
-> 详见 [NEWS.md](NEWS.md)。
+> 详见官网 [Changelog](https://docs.comet.rpamis.com/zh/changelog)。
 
 > Native 与 Classic 不是轻重档位，也不会互相升级。Native 服务于能够自主规划和验证的强模型；Classic 服务于需要完整阶段方法与强约束的场景。
 

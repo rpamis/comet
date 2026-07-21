@@ -45,7 +45,9 @@ It provides two independent requirements workflows: Native for strong models, po
 It allows you to use a toolchain to handle everything from requirements to archiving, combine any skill to make it like Comet, evolving your skills based on scientific **Rubric**, **Pass@k**, and **Pass^k** scoring.
 
 > [!IMPORTANT]
-> **0.4.0-beta.1** — Comet has been upgraded to a pure Node runtime (no longer dependent on Bash/WSL) and brings three core capabilities: use `/comet-any` to combine **any** skill into a custom workflow, use `comet eval` to evaluate **any** skill and integrate it into the LangSmith system, and use `comet dashboard` to visualize each change in the browser.
+> **0.4.0-beta.7** — Adds a self-contained, recoverable Native workflow for strong models while keeping Native and Classic independent behind shared configuration, status, Guard, Dashboard, and Eval entry points.
+>
+> **0.4.0-beta.1** — Upgrades Comet to a pure Node runtime without Bash/WSL and adds three core capabilities: compose **any** Skill through `/comet-any`, evaluate **any** Skill through `comet eval` with LangSmith integration, and visualize every change through `comet dashboard`.
 >
 > **0.3.9** — Review mode (`off|standard|thorough`) controls Build/Verify code review with project defaults; init/update now use optional dependency prompts, broader CLI i18n, stronger phase guards, and macOS executable bits.
 >
@@ -53,7 +55,7 @@ It allows you to use a toolchain to handle everything from requirements to archi
 >
 > **0.3.7** — Adds CodeGraph semantic indexing, Beta context compression, active context compression, token optimizations, `auto_transition`, phase guards, optional TDD, and safer archive/verification flow.
 >
-> See [NEWS.md](NEWS.md) for details.
+> See the website [Changelog](https://docs.comet.rpamis.com/en/changelog) for details.
 
 > Native and Classic are not lightweight and heavyweight tiers, and neither upgrades into the other. Native is for strong models that can plan and verify autonomously; Classic is for scenarios that benefit from a complete phased methodology and stronger constraints.
 
