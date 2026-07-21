@@ -2,6 +2,7 @@ export type NativePhase = 'shape' | 'build' | 'verify' | 'archive';
 export type NativeApproval = null | 'implicit' | 'confirmed';
 export type NativeVerificationResult = 'pending' | 'pass' | 'fail';
 export type NativeSpecOperation = 'create' | 'replace' | 'remove';
+export type NativeClarificationMode = 'sequential' | 'batch';
 
 export const NATIVE_RUNTIME_PROTOCOL_VERSION = 3 as const;
 export const NATIVE_CHANGE_SCHEMA = 'comet.native.v3' as const;
@@ -39,6 +40,7 @@ export interface CometProjectConfig {
   native: {
     artifact_root: string;
     language: 'en' | 'zh-CN';
+    clarification_mode: NativeClarificationMode;
     pending_root_move?: NativePendingRootMove;
   };
   classic?: {

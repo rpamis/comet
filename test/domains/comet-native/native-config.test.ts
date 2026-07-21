@@ -25,6 +25,7 @@ describe('Native project configuration', () => {
 
   it('builds the shared default project config with docs as the Native artifact root', () => {
     expect(defaultProjectConfig().native.artifact_root).toBe('docs');
+    expect(defaultProjectConfig().native.clarification_mode).toBe('sequential');
   });
 
   it('round-trips a custom artifact root with stable YAML fields', async () => {
@@ -35,21 +36,40 @@ describe('Native project configuration', () => {
       default_workflow: 'native',
       workflows: ['native'],
       ambient_resume: true,
-      native: { artifact_root: 'docs', language: 'en' },
+      native: {
+        artifact_root: 'docs',
+        language: 'en',
+        clarification_mode: 'sequential',
+      },
     });
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
     expect(source).toContain('# Enables automatic recovery');
+    expect(source).toContain('# Controls whether Native asks one clarification at a time');
     expect(source).toContain('ambient_resume: true');
+    expect(source).toContain('clarification_mode: sequential');
   });
 
-  it('reads an older project config without a language as English', async () => {
+  it('reads an older project config with the missing Native defaults', async () => {
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
       'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: .\n',
     );
 
     expect((await readProjectConfig(projectRoot))?.native.language).toBe('en');
+    expect((await readProjectConfig(projectRoot))?.native.clarification_mode).toBe('sequential');
     expect((await readProjectConfig(projectRoot))?.ambient_resume).toBe(true);
+  });
+
+  it('round-trips the batch clarification mode', async () => {
+    const config = defaultProjectConfig('docs');
+    config.native.clarification_mode = 'batch';
+
+    await writeProjectConfig(projectRoot, config);
+
+    expect((await readProjectConfig(projectRoot))?.native.clarification_mode).toBe('batch');
+    await expect(
+      fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),
+    ).resolves.toContain('clarification_mode: batch');
   });
 
   it('renders Chinese comments for a Chinese project config', async () => {
@@ -58,6 +78,7 @@ describe('Native project configuration', () => {
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
     expect(source).toContain('# 是否启用只读的环境感知恢复探针');
     expect(source).toContain('# Native 产物的存放根目录');
+    expect(source).toContain('# Native 每轮询问一个问题');
     expect(source).not.toContain('# Enables automatic recovery');
   });
 
@@ -69,6 +90,17 @@ describe('Native project configuration', () => {
 
     await expect(readProjectConfig(projectRoot)).rejects.toThrow(
       'ambient_resume must be true or false',
+    );
+  });
+
+  it('fails closed for an invalid clarification mode', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n  clarification_mode: sometimes\n',
+    );
+
+    await expect(readProjectConfig(projectRoot)).rejects.toThrow(
+      'native.clarification_mode must be sequential or batch',
     );
   });
 

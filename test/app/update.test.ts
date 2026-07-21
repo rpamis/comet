@@ -1910,6 +1910,7 @@ describe('update command helpers', () => {
     expect(updatedConfig).toContain('ambient_resume: true');
     expect(updatedConfig).toContain('keep: true');
     expect(updatedConfig).toContain('artifact_root: docs');
+    expect(updatedConfig).toContain('clarification_mode: sequential');
     expect(updatedConfig).toContain('classic:');
     expect(updatedConfig).not.toMatch(
       /^(language|context_compression|review_mode|auto_transition):/mu,

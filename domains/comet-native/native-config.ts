@@ -18,7 +18,12 @@ import type {
   NativeProjectPaths,
 } from './native-types.js';
 
-const NATIVE_KEYS = new Set(['artifact_root', 'language', 'pending_root_move']);
+const NATIVE_KEYS = new Set([
+  'artifact_root',
+  'language',
+  'clarification_mode',
+  'pending_root_move',
+]);
 const PENDING_KEYS = new Set(['id', 'from_artifact_root', 'to_artifact_root', 'stage', 'cleanup']);
 const NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 const CLEANUP_KEYS = new Set(['kind', 'state', 'manifest_hash']);
@@ -115,6 +120,10 @@ function parseConfig(value: unknown): CometProjectConfig {
   if (language !== 'en' && language !== 'zh-CN') {
     throw new Error('native.language must be en or zh-CN');
   }
+  const clarificationMode = native.clarification_mode ?? 'sequential';
+  if (clarificationMode !== 'sequential' && clarificationMode !== 'batch') {
+    throw new Error('native.clarification_mode must be sequential or batch');
+  }
   const pending = parsePending(native.pending_root_move);
   return {
     schema: 'comet.project.v1',
@@ -124,6 +133,7 @@ function parseConfig(value: unknown): CometProjectConfig {
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
+      clarification_mode: clarificationMode,
       ...(pending ? { pending_root_move: pending } : {}),
     },
   };
@@ -137,7 +147,11 @@ export function defaultProjectConfig(
     schema: 'comet.project.v1',
     default_workflow: 'native',
     ambient_resume: true,
-    native: { artifact_root: normalizeArtifactRootRef(artifactRoot), language },
+    native: {
+      artifact_root: normalizeArtifactRootRef(artifactRoot),
+      language,
+      clarification_mode: 'sequential',
+    },
   };
 }
 
@@ -219,6 +233,7 @@ export async function writeProjectConfig(
     native: {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
+      clarification_mode: config.native.clarification_mode,
       ...(config.native.pending_root_move
         ? {
             pending_root_move: {
@@ -249,6 +264,7 @@ export async function writeProjectConfig(
     native: {
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
+      clarification_mode: validated.native.clarification_mode,
       ...(validated.native.pending_root_move
         ? {
             pending_root_move: {

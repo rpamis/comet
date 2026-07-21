@@ -4,7 +4,10 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { readProjectConfig } from '../../../domains/comet-native/native-config.js';
+import {
+  readProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 import { createNativeChange } from '../../../domains/comet-native/native-change.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
@@ -35,6 +38,9 @@ describe('Native artifact root moves', () => {
     ['docs', 'artifacts/native'],
   ])('moves %s to %s with file-by-file hash equivalence', async (from, to) => {
     const source = await seedNativeRoot(projectRoot, from);
+    const config = await readProjectConfig(projectRoot);
+    config!.native.clarification_mode = 'batch';
+    await writeProjectConfig(projectRoot, config!);
     const sourcePaths = await nativeProjectPaths(projectRoot, from);
     await createNativeChange({ paths: sourcePaths, name: 'identity-change', language: 'en' });
     const sourceSpec = path.join(source, 'specs', 'word-count', 'spec.md');
@@ -57,7 +63,11 @@ describe('Native artifact root moves', () => {
       default_workflow: 'native',
       workflows: ['native'],
       ambient_resume: true,
-      native: { artifact_root: to, language: 'en' },
+      native: {
+        artifact_root: to,
+        language: 'en',
+        clarification_mode: 'batch',
+      },
     });
     const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');
     expect(workspace).not.toBeNull();
@@ -224,6 +234,7 @@ describe('Native artifact root moves', () => {
       expect((await readProjectConfig(projectRoot))?.native).toEqual({
         artifact_root: '.',
         language: 'en',
+        clarification_mode: 'sequential',
       });
       await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({
         code: 'ENOENT',

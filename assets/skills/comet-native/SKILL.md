@@ -11,11 +11,19 @@ Run the entire workflow inside this Skill. Do not load phase Skills or impose fi
 
 ## Clarification Protocol
 
+Read `native.clarification_mode` from `.comet/config.yaml`. Allowed values are `sequential` and `batch`; use `sequential` when the field is absent. This setting changes only how user questions are organized. It does not change Native phases, state, Guards, safety confirmations, or caller-defined stop points.
+
 First identify undefined branches that would change user-visible results. Words such as “normalize,” “intuitive,” “standard,” and “expected” are not product contracts. Only the user's words, a confirmed answer, or a published contract that clearly applies to the current behavior can close such a branch.
 
 Repository conventions, dependency defaults, adjacent features, and industry practice may support a recommendation. They do not replace a user decision. “Preserve existing behavior” constrains existing results; it does not define new behavior automatically.
 
 First determine whether a branch affects only implementation and leaves every user-visible result unchanged. If you cannot prove that, treat it as a user decision. Even when the user says not to ask about implementation choices, do not reclassify a product decision as an implementation choice.
+
+You are responsible for investigating facts available from the repository, tools, or runtime environment. Do not ask the user to supply them. When the host supports parallel work, independent facts may be investigated in parallel, but parallel capability must not be a workflow prerequisite. An unresolved fact blocks only questions that depend on it, not other questions that are ready.
+
+Combine details only when they jointly define the same user decision. Do not merge independent user decisions: Sequential mode handles them in separate rounds, while Batch mode numbers each one separately. Do not manufacture ambiguity to increase the question count or include implementation choices in the user question list. If a question still leaves a reasonable interpretation of that same decision uncovered, broaden that question instead of creating another question with an unclear dependency.
+
+### Sequential mode
 
 When a user decision remains:
 
@@ -23,7 +31,35 @@ When a user decision remains:
 2. Ask only the most upstream question.
 3. Provide “Question / Recommendation / Impact,” then end the turn.
 
-If several details define one upstream policy, combine them into one question instead of a questionnaire. If any reasonable answer would leave a sibling user-visible branch unresolved, the question is too narrow and must cover those branches together.
+When no user decision remains, continue directly without adding a generic final confirmation.
+
+### Batch mode
+
+Organize unresolved user decisions by their prerequisite relationships. Maintain only reviewable open items, dependency summaries, and formal artifacts; do not persist hidden reasoning or a complete internal exploration.
+
+For each round, compute the ready question set. Every question in the set must have all prerequisite decisions settled, all required environment facts established, and an answer that does not depend on another question in the same round. Defer questions that depend on an unresolved decision or a fact still under investigation.
+
+For the ready question set:
+
+1. Under Open questions in the brief, persist each item using the exact forms `- [blocking] Q1: <question>`, `- [blocking] Q2: <question>`, and so on. Do not replace this prefix with a Markdown ordered list.
+2. Ask the entire set together, giving “Question / Recommendation / Impact” for each item. Numbering must let the user reply in forms such as “1 use the recommendation; 2 choose B.”
+3. After updating the formal artifacts and asking the questions, end the turn. Do not enter Build or call `next`.
+
+Use this format:
+
+```text
+1. Question: …
+   Recommendation: …
+   Impact: …
+
+2. Question: …
+   Recommendation: …
+   Impact: …
+```
+
+After the user answers, write confirmed content into Decisions and the complete target specifications, then remove the corresponding `[blocking]` items. Keep unanswered or ambiguous items `[blocking]`; never fill them from the recommendation. Recompute the ready question set from the new answers and continue round by round as new branches become available.
+
+When the ready question set is empty, all relevant facts are established, and every identified user decision is resolved, perform one completeness review. Recheck that no user-visible branch remains unaddressed or silently assumed. Present a shared-understanding summary that covers the outcome, scope, key decisions, acceptance criteria, and explicit non-goals, then persist the final confirmation as `- [blocking] CONFIRM: <confirmation>` in the brief. Until the user confirms explicitly, do not enter Build or call `next`. If the user adds or rejects anything, update the affected branches and continue with another round. After explicit confirmation, remove the blocking item, record the confirmation, and follow the normal transition.
 
 For text “normalization,” for example, cover case folding, surrounding punctuation, preservation of internal punctuation or apostrophes, and use counterexamples to show how each choice changes output.
 
@@ -31,7 +67,7 @@ Before shared understanding, you may inspect repository facts, create or resume 
 
 After the user answers, update the existing change's brief and complete target specifications, then check again for unresolved user decisions. Do not create another change for a clarification answer or write an unconfirmed option as decided behavior.
 
-When leaving Shape, pass `--confirmed` only if this turn recorded the user's answer to an existing blocking question. The initial feature request is not that confirmation.
+When leaving Shape, pass `--confirmed` only if this turn recorded the user's answer to an existing blocking question. Batch mode's final shared-understanding confirmation qualifies; the initial feature request does not.
 
 If the caller requires a stop or session switch after that transition, use this exact sequence: update the formal artifacts → run the one allowed transition → make no tool calls after the transition succeeds → output the agreed marker and end the turn. A Runtime response of `continuation.disposition: continue` does not override that stop point.
 
@@ -49,7 +85,7 @@ Run Native `status` and `show` first. When resuming Verify or Archive, run `stat
 
 - If findings are truncated, address the returned items and read details again.
 - If `acceptancePage.nextCursor` is non-null, continue paging as documented in the command reference.
-- Then read `.comet/config.yaml`, `comet-state.yaml`, the brief, proposed specifications, canonical specifications, repository implementation, project rules, and relevant tests.
+- Then read `.comet/config.yaml` and determine `native.clarification_mode` before reading `comet-state.yaml`, the brief, proposed specifications, canonical specifications, repository implementation, project rules, and relevant tests.
 - Disk and repository facts outrank chat memory. Do not ask the user for facts available from the environment.
 
 When active changes exist, first confirm read-only which change matches the current goal. Then select the confirmed change explicitly:
@@ -87,9 +123,9 @@ Rewrite important nouns or actions as distinguishing “input → output” or �
 
 For text or token behavior, normally inspect case, surrounding and internal punctuation, whitespace, Unicode, empty input, duplicates, ordering, and tied results. For CLI or API behavior, inspect defaults and error results. Do not invent ambiguity merely to cover a checklist.
 
-Only user-provided information, explicit non-goals, confirmed decisions, or a clear published contract for the current capability may close a branch. When blocked, ask one upstream question in “Question / Recommendation / Impact” form and wait. Do not call `next` or modify project implementation before the answer.
+Only user-provided information, explicit non-goals, confirmed decisions, or a clear published contract for the current capability may close a branch. When blocked, follow the Clarification Protocol to compute and ask either one question or the ready question set for the configured mode. Do not call `next` or modify project implementation before the answer.
 
-When no unresolved branch remains and the brief, complete target specifications, repository facts, and project rules are sufficient to implement and accept the work, do not ask for additional confirmation. Continue directly.
+When no unresolved branch remains and the brief, complete target specifications, repository facts, and project rules are sufficient to implement and accept the work, Sequential mode continues directly. Batch mode first completes its final shared-understanding confirmation.
 
 ## Progression Contract
 
@@ -101,13 +137,15 @@ After `next: auto` with disposition `continue`, reread the returned phase and re
 
 For `await-user`, `blocked`, or `next: manual`, first resolve the returned disk facts and blocking findings. Ask only when the missing input is genuinely a user decision.
 
+In Batch mode, unanswered questions and the final shared-understanding confirmation remain `[blocking]`. They are normal stop points for user input. They do not change the continuation contract and cannot be bypassed by automatic progression.
+
 `workspace-root-changed` and `workspace-inspection-unavailable` are read-only advisories and do not block progress or archive by themselves. Unknown workspace findings, confirmed conflicts, stale evidence, and repair stops must be resolved.
 
 For long work that must resume within a phase, use `comet native checkpoint` to save a short summary, next action, and real artifact references. A checkpoint does not advance phase or replace the brief, specifications, or verification report. Do not create separate resume, handoff, or task-list artifacts.
 
 ## Shape
 
-Confirm and record Outcome, Scope, Non-goals, Acceptance examples, Constraints and invariants, Decisions, Open questions, and Verification expectations. Mark blocking questions in the brief as `- [blocking]`.
+Confirm and record Outcome, Scope, Non-goals, Acceptance examples, Constraints and invariants, Decisions, Open questions, and Verification expectations. Mark blocking questions in the brief as `- [blocking]`; Batch mode may preserve the entire ready question set at once.
 
 Shape is complete only when the brief, complete target specifications, repository facts, and project rules let the next executor implement and accept the change without guessing user-visible behavior.
 
@@ -124,13 +162,13 @@ When ready, run:
 comet native next <change-name> --summary <summary>
 ```
 
-Append `--confirmed` only when this turn recorded the user's answer to an existing blocking question. The Runtime binds approval to the current brief/spec contract hash. If the contract changes during Build, obtain user confirmation for the current contract and retry with the command returned by status. Do not edit `approval` or `approved_contract_hash` manually.
+Append `--confirmed` only when this turn recorded the user's answer to an existing blocking question; Batch mode must first obtain the final shared-understanding confirmation. The Runtime binds approval to the current brief/spec contract hash. If the contract changes during Build, obtain user confirmation for the current contract and retry with the command returned by status. Do not edit `approval` or `approved_contract_hash` manually.
 
 ## Build
 
 Choose the simplest reliable implementation that satisfies the brief and proposed specifications. Decide implementation details, whether to save a plan, test granularity, debugging method, and review depth according to risk.
 
-Do not create extra documents merely to satisfy the workflow. If requirements or specifications drift, update the Native artifacts first. If a new user decision appears, mark it `[blocking]` and follow the clarification protocol.
+Do not create extra documents merely to satisfy the workflow. If requirements or specifications drift, update the Native artifacts first. If a new user decision appears, mark it `[blocking]` and follow the configured clarification protocol. Batch mode must recompute the ready question set and obtain a final confirmation of the updated shared understanding before implementation continues.
 
 When implementation is complete, provide real project artifacts. If no code changed, provide a concrete reason. Then run:
 
@@ -207,4 +245,4 @@ For a canonical conflict, reread and rewrite the complete target specification, 
 - Never invoke external Skills. The Native flow depends only on the bundled Comet Runtime.
 - Do not persist hidden reasoning. Save summaries, artifact references, command results, hashes, state changes, and timestamps.
 - Do not write tokens, passwords, private keys, connection strings, or other credentials into summaries, reasons, or reports.
-- Continue while no user decision or Runtime blocker remains. When a user decision remains, ask only the most upstream question and wait.
+- Continue while no user decision or Runtime blocker remains. When a user decision remains, Sequential mode asks only the most upstream question; Batch mode asks the entire ready question set, then waits for the user's answers.

@@ -22,18 +22,34 @@ describe('Comet Native Skills', () => {
         decision: '## 决策协议',
         progression: '## 推进契约',
         required: [
+          'native.clarification_mode',
+          '字段缺失时使用 `sequential`',
           '不能证明这一点时，按用户决定处理',
           '不要询问实现选择',
           '不能把产品决定重新归类为实现选择',
+          '尚未查清的事实只阻塞依赖它的问题',
+          '彼此独立的用户决定不能合并',
+          '同一决定的某种合理解释',
           '一次只问最上游的一个问题',
           '问题 / 推荐 / 影响',
-          '任何合理回答仍会留下同级用户可见分支',
+          '不增加通用的最终确认',
+          '本轮可回答问题集',
+          '前置决定都已确定',
+          '答案不依赖本轮其他问题',
+          '一次提出整组问题',
+          '- [blocking] Q1: <问题>',
+          '不要使用 Markdown 有序列表',
+          '没有回答或回答不明确的问题继续保持 `[blocking]`',
+          '重新计算本轮可回答问题集',
+          '被静默假设的用户可见分支',
+          '- [blocking] CONFIRM: <确认内容>',
+          '用户明确确认前，不进入 Build，也不调用 `next`',
           '大小写折叠、外围标点、内部标点或撇号保留',
           '可以调查仓库事实、创建或恢复 Native change',
           '不要进入 Build、修改项目实现或调用 `next`',
           '更新原有 change 的 brief 和完整目标规格',
           '不要为补充答案创建第二个 change',
-          '用户最初提出需求不算这类确认',
+          '用户最初提出需求不算',
         ],
       },
       {
@@ -43,18 +59,34 @@ describe('Comet Native Skills', () => {
         decision: '## Decision Protocol',
         progression: '## Progression Contract',
         required: [
+          'native.clarification_mode',
+          'use `sequential` when the field is absent',
           'If you cannot prove that, treat it as a user decision',
           'not to ask about implementation choices',
           'do not reclassify a product decision as an implementation choice',
+          'An unresolved fact blocks only questions that depend on it',
+          'Do not merge independent user decisions',
+          'reasonable interpretation of that same decision',
           'Ask only the most upstream question',
           'Question / Recommendation / Impact',
-          'would leave a sibling user-visible branch unresolved',
+          'without adding a generic final confirmation',
+          'ready question set',
+          'all prerequisite decisions settled',
+          'does not depend on another question in the same round',
+          'Ask the entire set together',
+          '- [blocking] Q1: <question>',
+          'Do not replace this prefix with a Markdown ordered list',
+          'Keep unanswered or ambiguous items `[blocking]`',
+          'Recompute the ready question set',
+          'silently assumed',
+          '- [blocking] CONFIRM: <confirmation>',
+          'Until the user confirms explicitly, do not enter Build or call `next`',
           'case folding, surrounding punctuation, preservation of internal punctuation or apostrophes',
           'inspect repository facts, create or resume the Native change',
           'Do not enter Build, modify project implementation, or call `next`',
           "update the existing change's brief and complete target specifications",
           'Do not create another change for a clarification answer',
-          'The initial feature request is not that confirmation',
+          'initial feature request does not',
         ],
       },
     ];
@@ -99,14 +131,53 @@ describe('Comet Native Skills', () => {
     const zh = await read('zh', 'SKILL.md');
     expect(zh).toContain('能从环境取得的事实不要询问用户');
     expect(zh).toContain('实现方式、是否保存计划、测试粒度、调试方法和审查强度由你根据风险决定');
-    expect(zh).toContain('不需要额外确认');
+    expect(zh).toContain('Sequential 模式直接继续；Batch 模式先完成最终共享理解确认');
+    expect(zh).toContain('Batch 模式需要重新计算问题集');
     expect(zh).toContain('用户明确给出的 lowercase kebab-case capability ID 必须原样');
 
     const en = await read('en', 'SKILL.md');
     expect(en).toContain('Do not ask the user for facts available from the environment');
     expect(en).toContain('Decide implementation details');
-    expect(en).toContain('do not ask for additional confirmation');
+    expect(en).toContain(
+      'Sequential mode continues directly. Batch mode first completes its final shared-understanding confirmation',
+    );
+    expect(en).toContain('Batch mode must recompute the ready question set');
     expect(en).toContain('Preserve a user-provided lowercase kebab-case capability ID exactly');
+  });
+
+  it('documents clarification mode, persistence, and recovery in both languages', async () => {
+    for (const language of ['en', 'zh'] as const) {
+      const artifacts = await read(language, 'reference/artifacts.md');
+      const recovery = await read(language, 'reference/recovery.md');
+
+      expect(artifacts).toContain('clarification_mode: sequential');
+      expect(artifacts).toContain('`sequential`');
+      expect(artifacts).toContain('`batch`');
+      expect(artifacts).toContain('[blocking]');
+      expect(artifacts).toContain(
+        language === 'en' ? '- [blocking] Q1: <question>' : '- [blocking] Q1: <问题>',
+      );
+      expect(artifacts).toContain('- [blocking] CONFIRM:');
+      expect(recovery).toContain('native.clarification_mode');
+      expect(recovery).toContain('[blocking]');
+      expect(recovery).toContain(language === 'en' ? 'saved numbers' : '已保存编号');
+      expect(recovery).toContain(
+        language === 'en'
+          ? 'Do not reconstruct answers from chat history'
+          : '不依赖聊天记录重建答案',
+      );
+      expect(recovery).toContain(
+        language === 'en'
+          ? 'Changing configuration does not clear existing blockers'
+          : '切换配置不会消除已有阻塞项',
+      );
+      expect(recovery).toContain(
+        language === 'en'
+          ? "first map the user's answers to the saved questions"
+          : '先把用户答案对应回已保存问题',
+      );
+      expect(recovery).toContain(language === 'en' ? 'explicit user confirmation' : '用户明确确认');
+    }
   });
 
   it('keeps Runtime continuation and caller stop points explicit', async () => {

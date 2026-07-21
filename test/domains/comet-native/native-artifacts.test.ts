@@ -69,7 +69,7 @@ describe('Native artifact validation', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('accepts a complete brief and blocks an explicit blocking question', async () => {
+  it('accepts a complete brief and blocks multiple explicit blocking questions', async () => {
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
     expect(await validateNativeBrief(changeDir, 'brief.md')).toEqual({ valid: true, findings: [] });
 
@@ -77,7 +77,7 @@ describe('Native artifact validation', () => {
       path.join(changeDir, 'brief.md'),
       brief.replace(
         '# Open questions\n',
-        '# Open questions\n- [blocking] Choose token lifetime.\n',
+        '# Open questions\n- [blocking] Q1: Choose token lifetime.\n- [blocking] Q2: Choose refresh behavior.\n',
       ),
     );
     expect((await validateNativeBrief(changeDir, 'brief.md')).findings).toEqual(

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   readProjectConfig,
   resolveNativeProject,
+  writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { createNativeChange } from '../../../domains/comet-native/native-change.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
@@ -33,8 +34,16 @@ describe('Native artifact root recovery', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  async function enableBatchClarification(): Promise<void> {
+    const config = await readProjectConfig(projectRoot);
+    if (!config) throw new Error('Expected seeded Native project config');
+    config.native.clarification_mode = 'batch';
+    await writeProjectConfig(projectRoot, config);
+  }
+
   it('continues an interruption in the copying stage and blocks normal discovery meanwhile', async () => {
     const source = await seedNativeRoot(projectRoot, '.');
+    await enableBatchClarification();
     await createNativeChange({
       paths: await nativeProjectPaths(projectRoot, '.'),
       name: 'identity-change',
@@ -65,7 +74,11 @@ describe('Native artifact root recovery', () => {
 
     const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'continue' });
     expect(recovered.activeNativeRoot).toBe(path.join(projectRoot, 'docs', 'comet'));
-    expect(recovered.config.native).toEqual({ artifact_root: 'docs', language: 'en' });
+    expect(recovered.config.native).toEqual({
+      artifact_root: 'docs',
+      language: 'en',
+      clarification_mode: 'batch',
+    });
     await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
     const destinationPaths = await nativeProjectPaths(projectRoot, 'docs');
     const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');
@@ -76,6 +89,7 @@ describe('Native artifact root recovery', () => {
 
   it('rolls back an interruption in the ready stage', async () => {
     const source = await seedNativeRoot(projectRoot, '.');
+    await enableBatchClarification();
     const sourcePaths = await nativeProjectPaths(projectRoot, '.');
     await createNativeChange({ paths: sourcePaths, name: 'identity-change', language: 'en' });
     let transactionId = '';
@@ -94,7 +108,11 @@ describe('Native artifact root recovery', () => {
 
     const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'rollback' });
     expect(recovered.activeNativeRoot).toBe(source);
-    expect(recovered.config.native).toEqual({ artifact_root: '.', language: 'en' });
+    expect(recovered.config.native).toEqual({
+      artifact_root: '.',
+      language: 'en',
+      clarification_mode: 'batch',
+    });
     expect(
       (await readNativeTransaction(await nativeProjectPaths(projectRoot, '.'), transactionId))
         .status,
@@ -170,7 +188,11 @@ describe('Native artifact root recovery', () => {
     const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'continue' });
     expect(recovered.activeNativeRoot).toBe(path.join(projectRoot, 'docs', 'comet'));
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(recovered.config.native).toEqual({ artifact_root: 'docs', language: 'en' });
+    expect(recovered.config.native).toEqual({
+      artifact_root: 'docs',
+      language: 'en',
+      clarification_mode: 'sequential',
+    });
   });
 
   it('continues deletion when a quarantined source is only a valid manifest subset', async () => {
@@ -196,7 +218,11 @@ describe('Native artifact root recovery', () => {
     expect((await fs.readdir(quarantine, { recursive: true })).length).toBeGreaterThan(0);
 
     const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'continue' });
-    expect(recovered.config.native).toEqual({ artifact_root: 'docs', language: 'en' });
+    expect(recovered.config.native).toEqual({
+      artifact_root: 'docs',
+      language: 'en',
+      clarification_mode: 'sequential',
+    });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
@@ -279,7 +305,11 @@ describe('Native artifact root recovery', () => {
 
     const recovered = await recoverNativeRootMove({ projectRoot, strategy: 'rollback' });
     expect(recovered.activeNativeRoot).toBe(source);
-    expect(recovered.config.native).toEqual({ artifact_root: '.', language: 'en' });
+    expect(recovered.config.native).toEqual({
+      artifact_root: '.',
+      language: 'en',
+      clarification_mode: 'sequential',
+    });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 

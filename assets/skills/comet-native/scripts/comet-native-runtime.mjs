@@ -7897,6 +7897,7 @@ var COMMENTS = {
     native: "# Native workflow settings. They do not change Classic state or behavior.",
     "native.artifact_root": "# Root directory where Native stores Comet specs, changes, and runtime data.",
     "native.language": "# Artifact language used by Native workflow documents.\n# language: en | zh-CN",
+    "native.clarification_mode": "# Controls whether Native asks one clarification at a time or every currently answerable question in a round.\n# clarification_mode: sequential | batch",
     classic: "# Classic workflow settings. They do not change Native state or behavior.",
     "classic.language": "# Artifact language used by Classic workflow documents.\n# language: en | zh-CN",
     "classic.context_compression": "# Controls beta context compression for new Classic changes.\n# context_compression: off | beta",
@@ -7911,6 +7912,7 @@ var COMMENTS = {
     native: "# Native 工作流配置，不会改变 Classic 的状态或行为。",
     "native.artifact_root": "# Native 产物的存放根目录，包括规格、change 和运行时数据。",
     "native.language": "# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
+    "native.clarification_mode": "# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。\n# 可选值：sequential | batch",
     classic: "# Classic 工作流配置，不会改变 Native 的状态或行为。",
     "classic.language": "# Classic 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
     "classic.context_compression": "# 新建 Classic change 是否启用 beta 上下文压缩。\n# 可选值：off | beta",
@@ -8531,7 +8533,12 @@ async function resolveContainedNativePath(root, target) {
 }
 
 // domains/comet-native/native-config.ts
-var NATIVE_KEYS = /* @__PURE__ */ new Set(["artifact_root", "language", "pending_root_move"]);
+var NATIVE_KEYS = /* @__PURE__ */ new Set([
+  "artifact_root",
+  "language",
+  "clarification_mode",
+  "pending_root_move"
+]);
 var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
 var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
@@ -8615,6 +8622,10 @@ function parseConfig(value) {
   if (language !== "en" && language !== "zh-CN") {
     throw new Error("native.language must be en or zh-CN");
   }
+  const clarificationMode = native.clarification_mode ?? "sequential";
+  if (clarificationMode !== "sequential" && clarificationMode !== "batch") {
+    throw new Error("native.clarification_mode must be sequential or batch");
+  }
   const pending = parsePending(native.pending_root_move);
   return {
     schema: "comet.project.v1",
@@ -8624,6 +8635,7 @@ function parseConfig(value) {
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
+      clarification_mode: clarificationMode,
       ...pending ? { pending_root_move: pending } : {}
     }
   };
@@ -8633,7 +8645,11 @@ function defaultProjectConfig(artifactRoot = "docs", language = "en") {
     schema: "comet.project.v1",
     default_workflow: "native",
     ambient_resume: true,
-    native: { artifact_root: normalizeArtifactRootRef(artifactRoot), language }
+    native: {
+      artifact_root: normalizeArtifactRootRef(artifactRoot),
+      language,
+      clarification_mode: "sequential"
+    }
   };
 }
 async function readProjectConfig(projectRoot) {
@@ -8700,6 +8716,7 @@ async function writeProjectConfig(projectRoot, config) {
     native: {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
+      clarification_mode: config.native.clarification_mode,
       ...config.native.pending_root_move ? {
         pending_root_move: {
           id: config.native.pending_root_move.id,
@@ -8726,6 +8743,7 @@ async function writeProjectConfig(projectRoot, config) {
     native: {
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
+      clarification_mode: validated.native.clarification_mode,
       ...validated.native.pending_root_move ? {
         pending_root_move: {
           id: validated.native.pending_root_move.id,
@@ -25373,7 +25391,8 @@ async function finishForwardMove(options) {
   await finalizeNativeTransaction(options.destinationPaths, destinationJournal, "commit");
   const stableNative = {
     artifact_root: config.native.artifact_root,
-    language: config.native.language
+    language: config.native.language,
+    clarification_mode: config.native.clarification_mode
   };
   const committed = {
     ...config,
@@ -25515,7 +25534,8 @@ async function recoverNativeRootMove(options) {
     await rollbackNativeTransaction(sourcePaths, sourceJournal);
     const stableNative = {
       artifact_root: config.native.artifact_root,
-      language: config.native.language
+      language: config.native.language,
+      clarification_mode: config.native.clarification_mode
     };
     const restored = {
       ...config,

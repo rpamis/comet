@@ -4,7 +4,7 @@
 
 每次恢复都从磁盘事实开始：
 
-1. 读取项目 `.comet/config.yaml`，确认唯一 artifact root；若有 `pending_root_move`，先运行 doctor。
+1. 读取项目 `.comet/config.yaml`，确认唯一 artifact root 和 `native.clarification_mode`；该字段缺失时使用 `sequential`。若有 `pending_root_move`，先运行 doctor。
 2. 运行只读的 `comet native status`；多个 active change 时读取项目级共享 `.comet/current-change.json`，确认 `workflow: native` 和目标 change，或让用户明确选择。
 3. 对目标 change 运行只读的 `show` 和 `status <change-name> --details`，读取 `comet-state.yaml`、brief、拟议完整规格、verification、有界结构化 findings、`findingsTruncated` 标记和最新 checkpoint。若 findings 被截断，先处理已返回项，再重新读取 details；Verify/Archive 的验收 ID 则按 `acceptancePage.nextCursor` 独立分页取得，不依赖丢失的旧响应。
 4. 目标确认后运行 `comet native select <change-name>` 建立共享 selection；没有单独的 `resume` 命令，且只读命令不会隐式选择 change。
@@ -12,6 +12,14 @@
 6. 根据 phase 执行 Shape、Build、Verify 或 Archive，不依赖聊天记录猜阶段。
 
 状态、Run state、trajectory 或 transaction journal 畸形时停止写入并运行只读 doctor。不要通过手工改 phase 来绕过问题。
+
+## 澄清轮次恢复
+
+Shape 或 Build 存在 `[blocking]` 时，从 brief 的 Open questions 恢复当前未决事项，不依赖聊天记录重建答案。Sequential 模式恢复一个最上游问题；Batch 模式按已保存编号恢复本轮全部可回答问题。切换配置不会消除已有阻塞项：先把用户答案对应回已保存问题，再按当前 `clarification_mode` 计算下一轮。
+
+能从仓库、工具或运行环境查明的事实继续由 Agent 调查。宿主支持并行工作时可以并行查证，但恢复不能依赖任何可选的并行能力；调查中的事实只延后依赖它的问题。
+
+Batch 模式中，未回答的问题继续保持 `[blocking]`。全部问题解决后仍要恢复或建立最终共享理解确认；只有用户明确确认后，才能移除该阻塞项并进入 Build。该过程不增加新 phase、change 状态字段或独立决策树文件。
 
 长任务在同一 phase 内中断前可写 checkpoint：
 

@@ -1500,6 +1500,7 @@ type ManagedConfigField = {
 
 type ManagedConfigFields = {
   top: readonly ManagedConfigField[];
+  native: readonly ManagedConfigField[];
   classic: readonly ManagedConfigField[];
 };
 
@@ -1535,7 +1536,14 @@ function managedConfigFields(language: string = 'en'): ManagedConfigFields {
       comment: projectConfigComment('classic.auto_transition', commentLanguage),
     },
   ];
-  return { top, classic };
+  const native: ManagedConfigField[] = [
+    {
+      key: 'clarification_mode',
+      def: 'sequential',
+      comment: projectConfigComment('native.clarification_mode', commentLanguage),
+    },
+  ];
+  return { top, native, classic };
 }
 
 const MANAGED_CONFIG_FIELDS = managedConfigFields();
@@ -1625,6 +1633,10 @@ async function mergeProjectConfig(
     root.classic && typeof root.classic === 'object' && !Array.isArray(root.classic)
       ? { ...(root.classic as Record<string, unknown>) }
       : {};
+  const prevNative =
+    root.native && typeof root.native === 'object' && !Array.isArray(root.native)
+      ? { ...(root.native as Record<string, unknown>) }
+      : null;
   const existingClassicLanguage =
     typeof prevClassic.language === 'string' ? prevClassic.language : undefined;
   const resolvedLanguage = language ?? existingClassicLanguage ?? existing.language ?? 'en';
@@ -1633,6 +1645,20 @@ async function mergeProjectConfig(
   // Top-level managed field (ambient_resume).
   for (const f of fields.top) {
     root[f.key] = coerceConfigScalar(existing[f.key] ?? f.def);
+  }
+
+  // Native settings are managed only when the project already has a Native block. This lets
+  // update add new Native defaults without activating Native in Classic-only installations.
+  if (prevNative) {
+    const nativeBlock = { ...prevNative };
+    for (const f of fields.native) {
+      const value = nativeBlock[f.key] ?? f.def;
+      if (f.key === 'clarification_mode' && value !== 'sequential' && value !== 'batch') {
+        throw new Error('native.clarification_mode must be sequential or batch');
+      }
+      nativeBlock[f.key] = coerceConfigScalar(value);
+    }
+    root.native = nativeBlock;
   }
 
   // Classic block: preserve explicit new-format values, then migrate legacy top-level values,

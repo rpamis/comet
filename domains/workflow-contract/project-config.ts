@@ -12,6 +12,7 @@ type ProjectConfigCommentKey =
   | 'native'
   | 'native.artifact_root'
   | 'native.language'
+  | 'native.clarification_mode'
   | 'classic'
   | 'classic.language'
   | 'classic.context_compression'
@@ -30,6 +31,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Root directory where Native stores Comet specs, changes, and runtime data.',
     'native.language':
       '# Artifact language used by Native workflow documents.\n# language: en | zh-CN',
+    'native.clarification_mode':
+      '# Controls whether Native asks one clarification at a time or every currently answerable question in a round.\n# clarification_mode: sequential | batch',
     classic: '# Classic workflow settings. They do not change Native state or behavior.',
     'classic.language':
       '# Artifact language used by Classic workflow documents.\n# language: en | zh-CN',
@@ -49,6 +52,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     native: '# Native 工作流配置，不会改变 Classic 的状态或行为。',
     'native.artifact_root': '# Native 产物的存放根目录，包括规格、change 和运行时数据。',
     'native.language': '# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN',
+    'native.clarification_mode':
+      '# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。\n# 可选值：sequential | batch',
     classic: '# Classic 工作流配置，不会改变 Native 的状态或行为。',
     'classic.language': '# Classic 工作流文档使用的产物语言。\n# 可选值：en | zh-CN',
     'classic.context_compression':

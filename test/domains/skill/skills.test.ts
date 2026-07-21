@@ -3019,7 +3019,79 @@ describe('skills', () => {
           auto_transition: true,
         },
       });
+      expect(parse(content)).not.toHaveProperty('native');
       expect(content).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
+    });
+
+    it('adds the sequential clarification default only to an existing Native block', async () => {
+      const configDir = path.join(tmpDir, '.comet');
+      const configPath = path.join(configDir, 'config.yaml');
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        configPath,
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'native:',
+          '  artifact_root: docs',
+          '  language: en',
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
+
+      await mergeProjectConfig(tmpDir);
+
+      expect(parse(await fs.readFile(configPath, 'utf-8'))).toMatchObject({
+        native: {
+          artifact_root: 'docs',
+          language: 'en',
+          clarification_mode: 'sequential',
+        },
+      });
+    });
+
+    it('preserves batch clarification mode across idempotent config updates', async () => {
+      const configDir = path.join(tmpDir, '.comet');
+      const configPath = path.join(configDir, 'config.yaml');
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        configPath,
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'native:',
+          '  artifact_root: docs',
+          '  language: en',
+          '  clarification_mode: batch',
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
+
+      await mergeProjectConfig(tmpDir);
+      const first = await fs.readFile(configPath, 'utf-8');
+      await mergeProjectConfig(tmpDir);
+      const second = await fs.readFile(configPath, 'utf-8');
+
+      expect(parse(second)).toMatchObject({
+        native: { clarification_mode: 'batch' },
+      });
+      expect(second).toBe(first);
+    });
+
+    it('fails closed when updating an invalid Native clarification mode', async () => {
+      const configDir = path.join(tmpDir, '.comet');
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        path.join(configDir, 'config.yaml'),
+        'native:\n  artifact_root: docs\n  clarification_mode: sometimes\n',
+        'utf-8',
+      );
+
+      await expect(mergeProjectConfig(tmpDir)).rejects.toThrow(
+        'native.clarification_mode must be sequential or batch',
+      );
     });
 
     it('preserves existing user values and fills missing managed fields', async () => {

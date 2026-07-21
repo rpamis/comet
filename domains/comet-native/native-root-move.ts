@@ -844,6 +844,7 @@ async function finishForwardMove(options: {
   const stableNative = {
     artifact_root: config.native.artifact_root,
     language: config.native.language,
+    clarification_mode: config.native.clarification_mode,
   };
   const committed: CometProjectConfig = {
     ...config,
@@ -1007,6 +1008,7 @@ export async function recoverNativeRootMove(options: {
     const stableNative = {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
+      clarification_mode: config.native.clarification_mode,
     };
     const restored: CometProjectConfig = {
       ...config,

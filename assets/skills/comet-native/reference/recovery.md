@@ -4,7 +4,7 @@
 
 Resume from facts on disk every time:
 
-1. Read the project's `.comet/config.yaml` and confirm the single artifact root. If `pending_root_move` exists, run doctor first.
+1. Read the project's `.comet/config.yaml` and confirm the single artifact root and `native.clarification_mode`; use `sequential` when the field is absent. If `pending_root_move` exists, run doctor first.
 2. Run the read-only `comet native status`. With multiple active changes, read the shared project-level `.comet/current-change.json` and confirm `workflow: native` plus the target change, or ask the user to choose explicitly.
 3. Run the read-only `show` and `status <change-name> --details` for the target change. Read `comet-state.yaml`, the brief, proposed complete specifications, verification, bounded structured findings, the `findingsTruncated` flag, and the latest checkpoint. When findings are truncated, handle the returned items and reread details. Fetch Verify/Archive acceptance IDs separately through `acceptancePage.nextCursor`; do not depend on a missing old response.
 4. After confirming the target, run `comet native select <change-name>` to establish the shared selection. There is no separate `resume` command, and read-only commands never select a change implicitly.
@@ -12,6 +12,14 @@ Resume from facts on disk every time:
 6. Execute Shape, Build, Verify, or Archive according to the phase instead of guessing from chat history.
 
 When state, Run state, trajectory, or a transaction journal is malformed, stop writing and run read-only doctor. Never bypass the problem by editing `phase` manually.
+
+## Clarification-round recovery
+
+When Shape or Build contains `[blocking]` items, recover the current open decisions from Open questions in the brief. Do not reconstruct answers from chat history. Sequential mode recovers one most-upstream question; Batch mode recovers the round's entire ready question set from its saved numbers. Changing configuration does not clear existing blockers: first map the user's answers to the saved questions, then use the current `clarification_mode` to compute the next round.
+
+Continue investigating facts available from the repository, tools, or runtime environment yourself. Independent facts may be investigated in parallel when the host supports it, but recovery must not depend on any optional parallel capabilities. A fact still under investigation delays only the questions that depend on it.
+
+In Batch mode, unanswered questions remain `[blocking]`. After all questions are resolved, recover or establish the final shared-understanding confirmation. Remove that blocking item and enter Build only after explicit user confirmation. This process adds no phase, change-state field, or separate decision-tree file.
 
 Before interrupting a long task within the same phase, write a checkpoint when useful:
 

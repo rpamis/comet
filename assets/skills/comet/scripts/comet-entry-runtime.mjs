@@ -7600,7 +7600,12 @@ function normalizeArtifactRootRef(value) {
 }
 
 // domains/comet-native/native-config.ts
-var NATIVE_KEYS = /* @__PURE__ */ new Set(["artifact_root", "language", "pending_root_move"]);
+var NATIVE_KEYS = /* @__PURE__ */ new Set([
+  "artifact_root",
+  "language",
+  "clarification_mode",
+  "pending_root_move"
+]);
 var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
 var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
@@ -7684,6 +7689,10 @@ function parseConfig(value) {
   if (language !== "en" && language !== "zh-CN") {
     throw new Error("native.language must be en or zh-CN");
   }
+  const clarificationMode = native.clarification_mode ?? "sequential";
+  if (clarificationMode !== "sequential" && clarificationMode !== "batch") {
+    throw new Error("native.clarification_mode must be sequential or batch");
+  }
   const pending = parsePending(native.pending_root_move);
   return {
     schema: "comet.project.v1",
@@ -7693,6 +7702,7 @@ function parseConfig(value) {
     native: {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
+      clarification_mode: clarificationMode,
       ...pending ? { pending_root_move: pending } : {}
     }
   };
