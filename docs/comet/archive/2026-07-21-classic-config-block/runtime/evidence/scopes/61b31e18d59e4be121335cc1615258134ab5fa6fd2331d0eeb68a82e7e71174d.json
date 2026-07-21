@@ -1,0 +1,652 @@
+{
+  "schema": "comet.native.implementation-scope.v2",
+  "contractHash": "cb56cd5c5f526dc2ba569d078643580c0a6905b71f0cd3907b167eb19f373ede",
+  "baselineProjectionRef": "runtime/evidence/snapshots/3865ff94f979905991f1c84dcb623357f0e7c18a69aa72f4ee724069fc214572.json",
+  "baselineProjectionHash": "3865ff94f979905991f1c84dcb623357f0e7c18a69aa72f4ee724069fc214572",
+  "currentProjectionRef": "runtime/evidence/snapshots/1eefcff6eb049f12da1540b03960f66421a5383fa38b56105b24e3170828a76c.json",
+  "currentProjectionHash": "1eefcff6eb049f12da1540b03960f66421a5383fa38b56105b24e3170828a76c",
+  "complete": true,
+  "declaredArtifacts": [
+    {
+      "path": "CHANGELOG.md",
+      "kind": "file"
+    },
+    {
+      "path": "README-zh.md",
+      "kind": "file"
+    },
+    {
+      "path": "README.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills-zh/comet-classic/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills-zh/comet-design/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills-zh/comet-hotfix/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills-zh/comet-open/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills-zh/comet-tweak/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/comet-yaml-fields.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills/comet-classic/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills/comet-design/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills/comet-hotfix/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills/comet-open/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills/comet-tweak/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills/comet/reference/comet-yaml-fields.md",
+      "kind": "file"
+    },
+    {
+      "path": "assets/skills/comet/scripts/comet-runtime.mjs",
+      "kind": "file"
+    },
+    {
+      "path": "docs/operations/AUTO-TRANSITION.md",
+      "kind": "file"
+    },
+    {
+      "path": "domains/comet-classic/classic-project-config.ts",
+      "kind": "file"
+    },
+    {
+      "path": "domains/comet-native/native-types.ts",
+      "kind": "file"
+    },
+    {
+      "path": "domains/skill/platform-install.ts",
+      "kind": "file"
+    },
+    {
+      "path": "domains/workflow-contract/project-config.ts",
+      "kind": "file"
+    },
+    {
+      "path": "scripts/benchmark/context-compression-benchmark.mjs",
+      "kind": "file"
+    },
+    {
+      "path": "scripts/benchmark/context-execution-benchmark.mjs",
+      "kind": "file"
+    },
+    {
+      "path": "test/app/init.test.ts",
+      "kind": "file"
+    },
+    {
+      "path": "test/app/update.test.ts",
+      "kind": "file"
+    },
+    {
+      "path": "test/domains/comet-classic/classic-project-config.test.ts",
+      "kind": "file"
+    },
+    {
+      "path": "test/domains/comet-classic/comet-scripts.test.ts",
+      "kind": "file"
+    },
+    {
+      "path": "test/domains/skill/skills.test.ts",
+      "kind": "file"
+    }
+  ],
+  "changes": [
+    {
+      "path": "CHANGELOG.md",
+      "kind": "modified",
+      "before": {
+        "hash": "d2d8573bc5837d7ae082d1554e03c279f5fc3a950379b9dca34a02e488f2f7e2",
+        "size": 126677
+      },
+      "after": {
+        "hash": "2937e73e3cf4e96a725980d8f5c971cffdbc1aafdd10a2b6a347da38bdcc3fae",
+        "size": 127109
+      },
+      "attributedTo": [
+        {
+          "path": "CHANGELOG.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "README-zh.md",
+      "kind": "modified",
+      "before": {
+        "hash": "0c8a6aff384f726b1f3f526ef7507ffa8b2362b7cef9a59c58e1f157e5d06501",
+        "size": 41269
+      },
+      "after": {
+        "hash": "bd2c8548f292db20da1e1f4049d23647100ab2d6775facc5741f0f020bebccba",
+        "size": 41566
+      },
+      "attributedTo": [
+        {
+          "path": "README-zh.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "README.md",
+      "kind": "modified",
+      "before": {
+        "hash": "ddc2082eb9d7c54da45dded9da60ed096d4bb4ddb8d910d258da4b27d25c1865",
+        "size": 43645
+      },
+      "after": {
+        "hash": "8057fc82fa9d6a8ba66022c33470f9d442ecf7b10b96c9594443d8e1efa95012",
+        "size": 43937
+      },
+      "attributedTo": [
+        {
+          "path": "README.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills-zh/comet-classic/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "6477b2b920cca0a95a17878a9c5e48d1e0d1b1adcecfcae65ba743c00e3d789d",
+        "size": 18593
+      },
+      "after": {
+        "hash": "32e98f0c4a2f0fc786562e4690b9f9288221e3c8877c220a44d5fe26aeb4dd93",
+        "size": 18601
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet-classic/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills-zh/comet-design/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "82d507ccedff6b9a5cbe800b343da5b5e5fea6ded6d91763f6dbf783d77ecbe0",
+        "size": 12154
+      },
+      "after": {
+        "hash": "35d90b3ca56c82e700526777aa6eee5d182c031353974e9a1c5496c2338b413b",
+        "size": 12162
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet-design/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills-zh/comet-hotfix/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "ae2fc65ca5ffa2010e69ad299f4a43642d70df2b853e44216d7546b0320bd7bd",
+        "size": 12696
+      },
+      "after": {
+        "hash": "d55ccf2e5b0718887846089d480ac3d0a7c8df2cbdb40435ba9278f6ca3b5b3a",
+        "size": 12704
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet-hotfix/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills-zh/comet-open/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "e1a766d296dc4333e46155143125eb5e88a531655e6af35a9dc0dbd4a7006a12",
+        "size": 17367
+      },
+      "after": {
+        "hash": "a71fee2f98f9e353f13030ac3d1d134343537ae9b28ed5996145bb6e78eb7db1",
+        "size": 17375
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet-open/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills-zh/comet-tweak/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "818661f57d3d3cbbb43bf3e23a57fe0b0ec31a101847e75ca061dbfdf32eb82e",
+        "size": 13211
+      },
+      "after": {
+        "hash": "12e5446de3f8c8506a107bd6e4836a2da75e1eda09a3e7e7ab4b4d5ca70ddb22",
+        "size": 13219
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet-tweak/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/comet-yaml-fields.md",
+      "kind": "modified",
+      "before": {
+        "hash": "533bfb49d98974cec79d4aa35bc22fc3b50a0956af0037dae2eae9cb7e718942",
+        "size": 6714
+      },
+      "after": {
+        "hash": "251fe2b478d7c0d733829ba132ffc140c2b2613f4fa02a6b70e9fbf003a887c9",
+        "size": 6737
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills-zh/comet/reference/comet-yaml-fields.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-classic/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "3bcedda34e666a9743f57ad19635e07db781e7615fc53634029fa1e3f61f6439",
+        "size": 20211
+      },
+      "after": {
+        "hash": "ec7c6c3557dc93047d007ce0940bd070e852a02ca21dcc68a3821488b70cf201",
+        "size": 20219
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-classic/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-design/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "d9ec7b4f0f100d448af71ed643b2c36fa30747059a3da54d5c8157972a7fb6a6",
+        "size": 13336
+      },
+      "after": {
+        "hash": "424e8681d566bf641094c963f7e4eba0656aab2ae9d51d499638bcc1cfc06a41",
+        "size": 13344
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-design/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-hotfix/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "550a6e7a4057eb2b7ef74209e7d78c7078fd240f649c08d579d86db6b8883fde",
+        "size": 14214
+      },
+      "after": {
+        "hash": "d8d3000d8e6e3091a135e713a377968c873efe139fc5ca383b47322a31eae687",
+        "size": 14222
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-hotfix/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "0f801fd8e9ce1feca4a1e9b106845dbcc145b657b8c2cdd4e08ba72c0c11ece1",
+        "size": 1028234
+      },
+      "after": {
+        "hash": "2a8831b650ce027c475f8ac49d67215d4c4b7d9f7c79382d1266ff567e26d5a7",
+        "size": 1030344
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-open/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "a653c378dd6fff9f363828ba13e288eb159df61c524e572e8f953784e07caeca",
+        "size": 18628
+      },
+      "after": {
+        "hash": "fd916ababc4ae4ab3e9b3c26823ecb6b6ad2ed144b871f69de97ac51853829dd",
+        "size": 18636
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-open/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet-tweak/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "767555a8bcdbba75bdfa4c4746a47206c7f70a8a38f7060df14f400ebc982929",
+        "size": 14723
+      },
+      "after": {
+        "hash": "3a956dc47a5ba01cb90c4c5bf603bad234a860aa0fe145ede26aeb09c40428c5",
+        "size": 14731
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet-tweak/SKILL.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet/reference/comet-yaml-fields.md",
+      "kind": "modified",
+      "before": {
+        "hash": "aa149b77f9061e1424fda059bbe22ec8abae9d2f24f209f7d10542e01b4fb2ef",
+        "size": 7074
+      },
+      "after": {
+        "hash": "b1b5f5d245f3b56fae3b2dad7315a19bf7d1c05926e10fe403b9bdbb6936f41d",
+        "size": 7096
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet/reference/comet-yaml-fields.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "assets/skills/comet/scripts/comet-runtime.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "80074fe4dea1000efe66cf67c928a8a3da3e557b9888ea6027e11d42b3c79e54",
+        "size": 541663
+      },
+      "after": {
+        "hash": "e69feaecafce9c9c464f81717397fa41dabd9b1ad3f38dc97ddc36c42e7d0e04",
+        "size": 543615
+      },
+      "attributedTo": [
+        {
+          "path": "assets/skills/comet/scripts/comet-runtime.mjs",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "docs/operations/AUTO-TRANSITION.md",
+      "kind": "modified",
+      "before": {
+        "hash": "efbe8327a599b97dad4d236ea7dfc890a5b1a0a40a15575b3bdaaae84a27e9f7",
+        "size": 5842
+      },
+      "after": {
+        "hash": "8ba162477772acdb342ffcff3b5271a2e383b4ed333617b8b0e1bbea5c9f7ee4",
+        "size": 6745
+      },
+      "attributedTo": [
+        {
+          "path": "docs/operations/AUTO-TRANSITION.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-classic/classic-project-config.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "8b5038de8d5de9b3b23ac345f0e7102183e79c34f04938b9f1fcc1784c496c6d",
+        "size": 2152
+      },
+      "after": {
+        "hash": "35597ff35bea2593c590a7745fb5e609d1f3480ccca72a0e631382e788f13721",
+        "size": 2353
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-classic/classic-project-config.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "domains/comet-native/native-types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "9de37ab59241a15d7f7c8fe94df7c935ac668902fe939f5f27c49ad75a61ff78",
+        "size": 16618
+      },
+      "after": {
+        "hash": "d61e8f3d0c61516f6c0e72d43469dba15a167359c71bd4231b82c33a2c163aa1",
+        "size": 16792
+      },
+      "attributedTo": [
+        {
+          "path": "domains/comet-native/native-types.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "domains/skill/platform-install.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "af9e8d070e023bf022886ebc5777165f05604664b0edde6f8b30751aba9a3866",
+        "size": 53713
+      },
+      "after": {
+        "hash": "39ac9396a2e822a26cc63119c7abe17ade3a52e7a3d6baa7bdfc1ab7d3e8f4be",
+        "size": 55739
+      },
+      "attributedTo": [
+        {
+          "path": "domains/skill/platform-install.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "domains/workflow-contract/project-config.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "21ee022aa4b3d1a46d26058f13cef13a2314dd1f3df9a195cbed19cdce12ffc5",
+        "size": 5376
+      },
+      "after": {
+        "hash": "c235f743044fc37ab6f15d1e94b4e6e6d834306f7408c681e4488ec82ee7d35c",
+        "size": 5878
+      },
+      "attributedTo": [
+        {
+          "path": "domains/workflow-contract/project-config.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "scripts/benchmark/context-compression-benchmark.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "6fe5c168e37e9da9a7c62f8944f08444eff8983ad86a0127248ec6a7b5a26bd5",
+        "size": 21922
+      },
+      "after": {
+        "hash": "25236eddbe3da69da52d8b569501433364a8ae2ed0ca476df508828149baf6ed",
+        "size": 21947
+      },
+      "attributedTo": [
+        {
+          "path": "scripts/benchmark/context-compression-benchmark.mjs",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "scripts/benchmark/context-execution-benchmark.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "593f49eda2aab963eeb35abd2f4598529b15f202049a5f5dd075ba54a55c7502",
+        "size": 79231
+      },
+      "after": {
+        "hash": "28f0361b89c7f0646f3fe5746a272e587dddfe503d3c8b591f0b5f681e50c4ba",
+        "size": 79306
+      },
+      "attributedTo": [
+        {
+          "path": "scripts/benchmark/context-execution-benchmark.mjs",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "test/app/init.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "9881eb1a512734ccdd7e870142cf35070c31ab5bcbc9fc8ae0a8ed640e626e59",
+        "size": 8135
+      },
+      "after": {
+        "hash": "a7bd5cc41ac3c3b0eddac5b2d11803b020c2f6d71cfb850e2b0a786abdfbf064",
+        "size": 8522
+      },
+      "attributedTo": [
+        {
+          "path": "test/app/init.test.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "test/app/update.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "751416105189fcaef72028e9bd530ab7564b12efbdc036982dee0da4b086a387",
+        "size": 67359
+      },
+      "after": {
+        "hash": "49eac4fb110e4d47f3ed572badadd9a9e45ffd209a5cbc4be9b964d5c2d373b2",
+        "size": 67696
+      },
+      "attributedTo": [
+        {
+          "path": "test/app/update.test.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "test/domains/comet-classic/classic-project-config.test.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "a68e6789cafddb60982df7ec91392a9e4b786f235f1bcbeb1fbca81cf2c49998",
+        "size": 2434
+      },
+      "attributedTo": [
+        {
+          "path": "test/domains/comet-classic/classic-project-config.test.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "test/domains/comet-classic/comet-scripts.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "bc788eff188681d51ed864ed76de455ac8e2e830ccfee2fc437f91f2add341c7",
+        "size": 227397
+      },
+      "after": {
+        "hash": "15407436d0775e3e660a22bacf05c9253cca4f749124ce4dc4b110706704b618",
+        "size": 228516
+      },
+      "attributedTo": [
+        {
+          "path": "test/domains/comet-classic/comet-scripts.test.ts",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "test/domains/skill/skills.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "9433f8349bfdebf362e11b842f52c1d91c4bf9bc050c89e016e3082cc963bd45",
+        "size": 141582
+      },
+      "after": {
+        "hash": "6ab24717caa720fc5f9621db8dd75864050735281aca9f4319f77c0dbd158676",
+        "size": 143173
+      },
+      "attributedTo": [
+        {
+          "path": "test/domains/skill/skills.test.ts",
+          "kind": "file"
+        }
+      ]
+    }
+  ],
+  "unattributed": [],
+  "unresolvedScopes": [],
+  "noCodeReason": null,
+  "scopeHash": "61b31e18d59e4be121335cc1615258134ab5fa6fd2331d0eeb68a82e7e71174d"
+}

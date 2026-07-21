@@ -1,0 +1,22 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 7
+name: classic-config-block
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: cb56cd5c5f526dc2ba569d078643580c0a6905b71f0cd3907b167eb19f373ede
+spec_changes:
+  - capability: classic-config-block
+    operation: create
+    source: specs/classic-config-block/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/34679e7b98bdb51e22cf807f93ba3cb79c4427af866fdb97171548d224970945.json
+verification_evidence: runtime/evidence/verifications/3938bdbdfb79695122d3148cdeddb123e45756ab6287388e6d19b22c16cf2660.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-21
+run_id: 38ad5382-29b4-48f2-af77-864e63812717

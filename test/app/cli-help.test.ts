@@ -135,6 +135,15 @@ describe('CLI help text', () => {
     expect(help.stdout).not.toContain('eval [options]');
   });
 
+  it('exposes explicit package self-update controls', () => {
+    const help = runCli('update', '--help');
+
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toContain('--self-update');
+    expect(help.stdout).toContain('--skip-self-update');
+    expect(help.stdout).not.toContain('--skip-npm');
+  });
+
   it('keeps Skill Creator resume commands out of the publish surface', () => {
     const creatorHelp = runCli('creator', '--help');
     const publishHelp = runCli('publish', '--help');

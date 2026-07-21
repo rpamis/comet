@@ -80,6 +80,7 @@ function legacyState(state: NativeChangeState): Record<string, unknown> {
   delete legacy.minimum_runtime_version;
   delete legacy.revision;
   delete legacy.operation;
+  delete legacy.approved_contract_hash;
   delete legacy.implementation_scope;
   delete legacy.verification_evidence;
   delete legacy.partial_allowance;
@@ -101,6 +102,7 @@ function legacyTransition(journal: NativeTransitionJournal): Record<string, unkn
 
 function v2State(state: NativeChangeState): Record<string, unknown> {
   const previous: Record<string, unknown> = { ...state };
+  delete previous.approved_contract_hash;
   delete previous.implementation_scope;
   delete previous.verification_evidence;
   delete previous.partial_allowance;

@@ -155,6 +155,16 @@ Generated configuration comments follow the language selected during installatio
 ambient_resume: false
 ```
 
+Classic-specific defaults live under `classic:`. The next `comet init` or `comet update` migrates legacy top-level fields:
+
+```yaml
+classic:
+  language: en
+  context_compression: off
+  review_mode: standard
+  auto_transition: true
+```
+
 Native artifacts can also live under a project-relative root such as `docs/comet/`:
 
 ```bash
@@ -278,13 +288,17 @@ for valid changes, and runtime evidence gaps that block safe resume.
 <details>
 <summary><code>comet update [path]</code> — Update Comet package and skills</summary>
 
-Updates the npm package and refreshes installed Comet skills in detected project/global targets.
+Refreshes installed Comet skills in detected project/global targets. A current-project refresh does not mutate any npm installation, whether global or project-local, by default; pass `--self-update` explicitly when the CLI should be upgraded too. Explicit `--scope global` deterministically uses the current-project asset scope, never opens the all-projects selector, and still does not update the npm package implicitly. Self-update compares full semver values, including prereleases, refuses downgrades, and validates the candidate package's version, Workflow command, and Native command in isolation before installation. A failed install attempts to restore the exact installed version.
 
-| Option              | Description                                   |
-| ------------------- | --------------------------------------------- |
-| `--json`            | Output npm and skill update results as JSON   |
-| `--language <lang>` | Override detected skill language (`en`, `zh`) |
-| `--scope <scope>`   | Update only `global` or `project` scope       |
+| Option               | Description                                      |
+| -------------------- | ------------------------------------------------ |
+| `--json`             | Output npm and skill update results as JSON      |
+| `--language <lang>`  | Override detected skill language (`en`, `zh`)    |
+| `--scope <scope>`    | Update only the `global` or `project` install scope |
+| `--current-project`  | Refresh only the current project                 |
+| `--all-projects`     | Refresh all registered project installations     |
+| `--self-update`      | Explicitly update the Comet npm package first    |
+| `--skip-self-update` | Explicitly skip Comet npm package self-update    |
 
 </details>
 
@@ -681,7 +695,7 @@ Key findings from benchmark testing:
 - **Spec coverage**: 100% (off) vs 95% (beta) — minor edge-case detail loss
 - **Scaling**: Larger tasks yield higher absolute savings (up to 15,000 tokens for large-tier tasks)
 
-Enable in `.comet/config.yaml`: `context_compression: beta`
+Enable `context_compression: beta` under the `classic:` block in `.comet/config.yaml`.
 
 See [CONTEXT-COMPRESSION.md](docs/CONTEXT-COMPRESSION.md) for the full benchmark report, compression principles, and
 reproduction steps.
@@ -699,8 +713,8 @@ manual handoff. Phase advancement itself always happens — this setting only af
 | `true`  | Auto-invoke the next skill after each phase (default)         |
 | `false` | Pause after each phase; user manually triggers the next skill |
 
-Three-layer configuration with precedence: `COMET_AUTO_TRANSITION` env var > `.comet/config.yaml` (project) > change
-`.comet.yaml`.
+Three-layer configuration with precedence: `COMET_AUTO_TRANSITION` env var > `classic.auto_transition` in
+`.comet/config.yaml` (project) > change `.comet.yaml`.
 
 See [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) for configuration details, workflow mapping, and FAQ.
 

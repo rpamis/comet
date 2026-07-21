@@ -1,0 +1,72 @@
+# Acceptance evidence
+
+<!-- comet-native:acceptance-evidence:start -->
+[
+  {
+    "acceptance_id": "acceptance-27e27a9aa8c815d2dfb0bf9661907de30e985b2aec8edb054aea12dcf9b4452f",
+    "evidence_refs": [
+      "domains/comet-classic/classic-project-config.ts",
+      "test/domains/comet-classic/classic-project-config.test.ts",
+      "test/domains/comet-classic/comet-scripts.test.ts"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-6d8abf07d9f4b6c0ca6ba42290c029ab81cad69839de0ace2fa264f1b0b9ed1f",
+    "evidence_refs": [
+      "domains/comet-classic/classic-project-config.ts",
+      "test/domains/comet-classic/classic-project-config.test.ts"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-a59556148ce681d04cf326136046af305da0cde2cd84b2d5e2ac862b63d48f7f",
+    "evidence_refs": [
+      "domains/skill/platform-install.ts",
+      "domains/workflow-contract/project-config.ts",
+      "test/app/init.test.ts",
+      "test/domains/skill/skills.test.ts"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-e1c24895325450edc3ec4ce30b10689270179d375223dc72fd65b1a7d79a441c",
+    "evidence_refs": [
+      "domains/skill/platform-install.ts",
+      "test/app/update.test.ts",
+      "test/domains/skill/skills.test.ts"
+    ]
+  },
+  {
+    "acceptance_id": "acceptance-f46e668c41a31be17c0bfdf1736ab9e902fd23a57778d07866143d59b269d0d4",
+    "evidence_refs": [
+      "domains/workflow-contract/project-config.ts",
+      "test/app/init.test.ts",
+      "test/domains/skill/skills.test.ts"
+    ]
+  }
+]
+<!-- comet-native:acceptance-evidence:end -->
+
+# Commands and results
+
+- `pnpm exec vitest run test/domains/comet-classic test/domains/skill test/domains/workflow-contract test/app/init.test.ts test/app/update.test.ts`: 47 个测试文件通过，906 条测试通过，13 条按既定条件跳过。
+- `pnpm build`: 通过；Classic、Native、Entry runtime、TypeScript 与 Dashboard 均构建成功。
+- `pnpm lint`: 通过；ESLint 与架构约束检查均通过。
+- `pnpm check:generated`: 通过；Classic、Native 与 Entry 生成物均与源码一致。
+- 对本 change 修改范围执行 `prettier --check`: 全部通过。全仓 `pnpm format:check` 仅报告基线中 4 个未修改的 Dashboard 文件。
+- `pnpm test`: 202 个测试文件中 201 个通过，2424 条测试通过、22 条跳过；唯一失败为 `test/domains/dashboard/markdown-preview.test.ts` 在全量并发下超过 30 秒。随后单独重跑该文件，11 条测试全部通过，耗时 3.12 秒。
+- `comet native check classic-config-block --json`: 通过；扫描 29 个实现文件，0 个问题，receipt 为 `runtime/evidence/check-receipts/468d987764ca7e1490d67b7cf8d946be11cd502581e91da4708275fb3bc62f61.json`。
+
+# Skipped checks
+
+无。
+
+# Spec consistency
+
+实现与已批准契约一致：Classic 的四项配置统一归入 `classic:`；运行时仅读取嵌套配置并保留缺失时的默认值；`init` 生成嵌套块和双语注释；`update` 将旧平铺字段迁移到嵌套块，同时保留其他顶层字段与 `native:` 配置。
+
+# Known limitations and risks
+
+旧平铺字段在运行 `comet init` 或 `comet update` 前会被 Classic 有意忽略，这是契约明确的不兼容边界。全仓格式检查仍受基线中 4 个未修改的 Dashboard 文件影响；本 change 的修改文件格式检查已通过。全量测试中的 Dashboard Markdown 用例出现一次并发超时，单独重跑全部通过。
+
+# Conclusion
+
+通过。五条验收项均有项目内可复核证据，目标回归、构建、lint、架构、生成物一致性和 Native 内置检查均通过；全量测试的唯一超时已通过隔离重跑确认不是稳定失败。

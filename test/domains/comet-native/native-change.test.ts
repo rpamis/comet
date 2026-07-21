@@ -48,6 +48,7 @@ describe('Native change store', () => {
       revision: 1,
       phase: 'shape',
       approval: null,
+      approved_contract_hash: null,
       verification_result: 'pending',
       created_at: '2026-07-14',
     });
@@ -69,6 +70,39 @@ describe('Native change store', () => {
       complete: true,
       entries: [],
     });
+  });
+
+  it('fails at change creation when the baseline snapshot is incomplete', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, 'oversized-baseline.bin'),
+      Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
+    );
+
+    await expect(
+      createNativeChange({ paths, name: 'incomplete-baseline', language: 'en' }),
+    ).rejects.toMatchObject({
+      name: 'NativeBaselineIncompleteError',
+      code: 'native-baseline-incomplete',
+      omittedCount: 1,
+      samplePaths: ['oversized-baseline.bin'],
+      sampleTruncated: false,
+    });
+    await expect(
+      fs.access(path.join(paths.changesDir, 'incomplete-baseline')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('reads older v3 state without an approval hash and canonicalizes it to null', async () => {
+    const state = await createNativeChange({ paths, name: 'legacy-v3-state', language: 'en' });
+    const file = path.join(paths.changesDir, state.name, 'comet-state.yaml');
+    const legacy = { ...state } as Record<string, unknown>;
+    delete legacy.approved_contract_hash;
+    await fs.writeFile(file, stringify(legacy));
+
+    const parsed = await readNativeChange(paths, state.name);
+    expect(parsed.approved_contract_hash).toBeNull();
+    await writeNativeChange(paths, parsed);
+    expect(await fs.readFile(file, 'utf8')).toContain('approved_contract_hash: null');
   });
 
   it('round-trips create, replace, and remove spec operations', async () => {

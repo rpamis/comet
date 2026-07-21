@@ -76,6 +76,30 @@ const EXACT_METADATA: Record<string, FindingMetadata> = {
     retry: 'status',
     repair: 'none',
   },
+  'contract-changed-after-approval': {
+    severity: 'error',
+    requiredAction: 're-confirm-contract',
+    retry: 'next',
+    repair: 'none',
+  },
+  'baseline-snapshot-incomplete': {
+    severity: 'error',
+    requiredAction: 'resolve-native-baseline',
+    retry: 'none',
+    repair: 'none',
+  },
+  'baseline-snapshot-missing': {
+    severity: 'error',
+    requiredAction: 'resolve-native-baseline',
+    retry: 'none',
+    repair: 'none',
+  },
+  'workspace-inspection-unavailable': {
+    severity: 'info',
+    requiredAction: 'migrate-workspace-identity',
+    retry: 'status',
+    repair: 'doctor',
+  },
   'repair-stagnation-warning': {
     severity: 'warning',
     requiredAction: 'change-repair-approach',
@@ -182,8 +206,16 @@ function projectRelativePath(
   return relative === '' ? '.' : relative;
 }
 
-function retryCommand(retry: FindingMetadata['retry'], state: NativeChangeState): string | null {
-  if (retry === 'next') return `comet native next ${state.name} --summary "<summary>"`;
+function retryCommand(
+  retry: FindingMetadata['retry'],
+  state: NativeChangeState,
+  code: string,
+): string | null {
+  if (retry === 'next') {
+    return `comet native next ${state.name} --summary "<summary>"${
+      code === 'contract-changed-after-approval' ? ' --confirmed' : ''
+    }`;
+  }
   if (retry === 'status') return `comet native status ${state.name} --details`;
   return null;
 }
@@ -202,7 +234,7 @@ export function structureNativeFindings(options: {
         severity: metadata.severity,
         path: projectRelativePath(options.paths, options.state, finding),
         requiredAction: metadata.requiredAction,
-        retryCommand: retryCommand(metadata.retry, options.state),
+        retryCommand: retryCommand(metadata.retry, options.state, finding.code),
         repairCommand:
           metadata.repair === 'doctor'
             ? `comet native doctor ${options.state.name} --repair${
@@ -213,6 +245,7 @@ export function structureNativeFindings(options: {
         // missing data must never be presented as a user decision.
         requiresUserDecision:
           finding.code === 'brief-blocking-question' ||
+          finding.code === 'contract-changed-after-approval' ||
           finding.code === 'verification-scope-partial' ||
           finding.code === 'repair-iteration-limit' ||
           finding.code === 'repair-override-exhausted',

@@ -48,9 +48,15 @@ comet native doctor <change-name> --repair
 
 Migration protects old state and Run/checkpoint/trajectory bindings and resumes deterministically after interruption. A pending v2 evidence transition is explicitly superseded. Even without a pending transition, a v2 change in Verify or Archive is returned to Build together with its Run, trajectory, and checkpoint because the old state lacks the v3 implementation scope and verification envelope. Never change `comet.native.v1/v2` to v3 manually or invent revision/evidence refs. A `minimum_runtime_version` newer than the current runtime is not an old format that can be migrated; upgrade Comet first.
 
+## Missing or incomplete baselines
+
+A new change now requires a complete baseline at creation. Git projects evaluate only tracked and non-ignored untracked files, so ignored caches and nested-repository contents do not create omissions. A legacy physical-tree baseline is first projected onto the same project-owned universe. For a change already using `comet.native.v3`, if projection still reports `baseline-snapshot-missing` or `baseline-snapshot-incomplete`, never regenerate the baseline from current files or present it as an automatic doctor repair: doing so would erase historical differences since the change was created. Restore the original baseline from a trusted backup, or preserve the user-authored brief/specifications and implementation facts while creating a new change with a complete baseline.
+
+Explicit v1/v2 schema migration is the sole exception. Those schemas did not have the v3 baseline, so `doctor --repair` establishes a complete journal-time cutover baseline before any state write; an incomplete capture leaves the old state unchanged and stops migration. Implementation evidence after migration proves only changes after that cutover. It must not treat pre-migration chat or an old pass as evidence for the new scope.
+
 ## Stale evidence and controlled fallback
 
-After entering Archive, a change to any bound fact—the brief, proposed specifications, implementation scope, verification report, or check receipt—makes status report stale and points continuation to a controlled fallback. Run the returned `next` command to return to Build and regenerate scope, verification report, and evidence envelope. Do not delete findings, reuse the old pass, or replace hash refs manually.
+After entering Verify, a change to the brief, proposed specifications, or project snapshot makes status point the stale implementation scope to a controlled fallback. Run the returned summary-only `next` command to return to Build, reconfirm the changed contract, and generate a fresh scope. In Archive, a change to any bound fact such as the implementation scope, verification report, or check receipt triggers the same fallback. Do not delete findings, reuse the old pass, or replace hash refs manually.
 
 Archive requires a two-step preflight; an old ready result is never commit authorization:
 
@@ -87,7 +93,7 @@ If another change already removed the target of a remove intent, rebase drops th
 
 Status and Archive compare capability, operation, base hash, and declared artifacts across changes visible in the current Native root. Definite conflicts must be resolved first, and possible overlap also blocks Archive. This cannot see unintegrated worktrees, remote branches, or other machines, so it is not a distributed lock.
 
-`workspace-root-changed` and `workspace-inspection-unavailable` are explicit advisories. They only explain where current physical-root facts came from and do not independently block progression or Archive. Native does not read Git branch, HEAD, or worktree changed paths by default. Ordinary read paths do not trust the old Git-backed `comet.native.workspace.v1` identity. Doctor reports `workspace-identity-migration-required`, and only `doctor --repair` rebuilds it as a process-free v2 identity. Do not treat every arbitrary `workspace-*` finding as advisory; unknown workspace-integrity findings remain errors.
+`workspace-root-changed` and `workspace-inspection-unavailable` are explicit advisories. They only explain where current root facts came from and do not independently block progression or Archive; findings list concrete drift components such as `native-root-ref`, `project-root-path`, and `native-root-path`. Native does not read Git branch, HEAD, or worktree changed paths by default. Ordinary read paths do not treat the old Git-backed `comet.native.workspace.v1` identity or an early hash-only v2 identity as reliable path-drift evidence. Doctor reports `workspace-identity-migration-required`, and only `doctor --repair` rebuilds it as a process-free v2 identity with stable path IDs. Do not treat every arbitrary `workspace-*` finding as advisory; unknown workspace-integrity findings remain errors.
 
 ## Archive transactions
 

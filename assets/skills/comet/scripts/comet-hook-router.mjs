@@ -9516,6 +9516,19 @@ var DEFAULT_NATIVE_SNAPSHOT_LIMITS = {
   maxManifestBytes: 1024 * 1024
 };
 var NATIVE_SNAPSHOT_MANIFEST_HARD_MAX_BYTES = 8 * 1024 * 1024;
+var GIT_LIST_STDERR_LIMIT = 64 * 1024;
+var GIT_TEXT_STDOUT_LIMIT = 64 * 1024;
+var DEFAULT_NATIVE_GIT_SELECTION_LIMITS = {
+  maxRecords: 2e4,
+  maxBytes: 8 * 1024 * 1024,
+  maxRecordBytes: 64 * 1024
+};
+var DEFAULT_NATIVE_PHYSICAL_SELECTION_LIMITS = {
+  maxNodes: 2e4,
+  maxBytes: 8 * 1024 * 1024,
+  maxPathBytes: 64 * 1024
+};
+var PHYSICAL_SELECTION_SUM_MASK = (1n << 256n) - 1n;
 
 // domains/engine/storage-run.ts
 init_state();
@@ -9560,6 +9573,7 @@ var LEGACY_CHANGE_KEYS = new Set(CHANGE_KEYS);
 var V2_CHANGE_KEYS = /* @__PURE__ */ new Set([...CHANGE_KEYS, "minimum_runtime_version", "revision"]);
 var CURRENT_CHANGE_KEYS = /* @__PURE__ */ new Set([
   ...V2_CHANGE_KEYS,
+  "approved_contract_hash",
   "implementation_scope",
   "verification_evidence",
   "partial_allowance"
@@ -9755,6 +9769,13 @@ function contentAddressedRef(value, label, kind) {
   }
   return value;
 }
+function approvedContractHash(value) {
+  if (value === void 0 || value === null) return null;
+  if (typeof value !== "string" || !HASH_PATTERN.test(value)) {
+    throw new Error("Native approved_contract_hash must be null or a SHA-256 hash");
+  }
+  return value;
+}
 function parseV2NativeChangeValue(value) {
   const root = record2(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_V2_CHANGE_SCHEMA) {
@@ -9799,11 +9820,17 @@ function parseNativeChangeValue(value) {
     );
   }
   const revision = positiveInteger(root.revision, "Native revision");
+  const fields = parseChangeFields(root, CURRENT_CHANGE_KEYS);
+  const approvalHash = approvedContractHash(root.approved_contract_hash);
+  if (fields.approval === null && approvalHash !== null) {
+    throw new Error("Native approved_contract_hash requires an approval");
+  }
   return {
     schema: NATIVE_CHANGE_SCHEMA,
     minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
     revision,
-    ...parseChangeFields(root, CURRENT_CHANGE_KEYS),
+    ...fields,
+    approved_contract_hash: approvalHash,
     implementation_scope: contentAddressedRef(
       root.implementation_scope,
       "Native implementation_scope",

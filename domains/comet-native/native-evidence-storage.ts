@@ -11,6 +11,7 @@ import {
   parseNativeImplementationScope,
   parseNativeSnapshotProjection,
   rebuildNativeImplementationScopeBundle,
+  MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES,
   type NativeImplementationScopeBundle,
   type NativeImplementationScope,
   type NativeSnapshotProjection,
@@ -23,7 +24,8 @@ import {
 } from './native-verification-evidence.js';
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
-export const MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES = 1024 * 1024;
+export const MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES = MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES;
+/** Retained for callers that size transient bundles; persistence is governed per document. */
 export const MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES = 3 * MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES;
 
 export type NativeEvidenceKind =
@@ -332,14 +334,6 @@ function serializedEvidenceBytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value, null, 2) + '\n', 'utf8');
 }
 
-function assertImplementationScopeBundleBudget(bundle: NativeImplementationScopeBundle): void {
-  if (serializedEvidenceBytes(bundle) > MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES) {
-    throw new Error(
-      `Native implementation scope bundle exceeds ${MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES} bytes`,
-    );
-  }
-}
-
 function parseSnapshot(value: unknown, expectedHash: string): NativeSnapshotProjection {
   return parseNativeSnapshotProjection(value, expectedHash);
 }
@@ -413,7 +407,6 @@ export async function writeNativeImplementationScope(options: {
 }): Promise<string> {
   const bundle = parseNativeImplementationScopeBundle(options.bundle);
   const { baseline, current, scope } = bundle;
-  assertImplementationScopeBundleBudget(bundle);
   assertEvidenceDocumentBudget(baseline);
   assertEvidenceDocumentBudget(current);
   assertEvidenceDocumentBudget(scope);

@@ -5,6 +5,7 @@ import os from 'os';
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
 import { select } from '@inquirer/prompts';
+import { getLatestVersion } from '../../platform/version/version.js';
 import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
 import {
   buildNpmUpdateArgs,
@@ -13,6 +14,7 @@ import {
   detectInstalledCometTargets,
   formatNpmUpdateCommand,
   formatSkillUpdateCommand,
+  resolveNpmSelfUpdatePlan,
   updateCommand,
 } from '../../app/commands/update.js';
 import {
@@ -32,13 +34,28 @@ vi.mock('@inquirer/prompts', () => ({
 vi.mock('child_process', () => ({
   spawn: vi.fn(() => {
     const child = new EventEmitter();
-    queueMicrotask(() => child.emit('exit', 0));
+    queueMicrotask(() => {
+      child.emit('exit', 0);
+      child.emit('close', 0);
+    });
     return child;
   }),
 }));
 
+vi.mock('../../platform/version/version.js', () => ({
+  getCurrentVersion: vi.fn(() => '0.4.0-beta.7'),
+  getLatestVersion: vi.fn(async () => '0.4.0-beta.8'),
+  printVersionInfo: vi.fn(async () => ({
+    currentVersion: '0.4.0-beta.7',
+    latestVersion: '0.4.0-beta.8',
+    hasUpdate: true,
+    checked: true,
+  })),
+}));
+
 const mockedSelect = vi.mocked(select);
 const mockedSpawn = vi.mocked(spawn);
+const mockedGetLatestVersion = vi.mocked(getLatestVersion);
 
 const claudePlatform: Platform = {
   id: 'claude',
@@ -48,6 +65,15 @@ const claudePlatform: Platform = {
 };
 
 type ComponentFailure = 'Skill' | 'Rule' | 'Hook';
+
+async function writeFakeCometPackage(packageRoot: string, version: string): Promise<void> {
+  await fs.mkdir(path.join(packageRoot, 'bin'), { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, 'package.json'),
+    JSON.stringify({ name: '@rpamis/comet', version, bin: { comet: 'bin/comet.js' } }),
+  );
+  await fs.writeFile(path.join(packageRoot, 'bin', 'comet.js'), '#!/usr/bin/env node\n');
+}
 
 async function arrangeComponentFailure(
   projectPath: string,
@@ -86,20 +112,176 @@ async function arrangeComponentFailure(
 
 describe('update command helpers', () => {
   let tmpDir: string;
+  let fakeGlobalNpmRoot: string;
+  let candidateVersionOverride: string | null;
+  let candidateCommandFailure: string | null;
+  let candidateCommandHang: boolean;
+  let candidateCommandOutputBytes: number | null;
+  let candidateInstallHang: boolean;
+  let candidateBinEscapesPackage: boolean;
+  let targetInstallFailureVersion: string | null;
+  let mutateProjectMetadataOnFailure: boolean;
+  let delayGlobalRootClose: boolean;
+  let releaseGlobalRootClose: (() => void) | null;
+  let projectNpmRootOverride: string | null;
+  let projectNpmPrefixOverride: string | null;
 
   beforeEach(async () => {
-    mockedSelect.mockClear();
-    mockedSpawn.mockClear();
-    mockedSpawn.mockImplementation(() => {
-      const child = new EventEmitter();
-      queueMicrotask(() => child.emit('exit', 0));
-      return child as ReturnType<typeof spawn>;
-    });
     tmpDir = path.join(
       os.tmpdir(),
       `comet-update-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     await fs.mkdir(tmpDir, { recursive: true });
+    fakeGlobalNpmRoot = path.join(tmpDir, 'global node_modules & safe');
+    await writeFakeCometPackage(path.join(fakeGlobalNpmRoot, '@rpamis', 'comet'), '0.4.0-beta.7');
+    candidateVersionOverride = null;
+    candidateCommandFailure = null;
+    candidateCommandHang = false;
+    candidateCommandOutputBytes = null;
+    candidateInstallHang = false;
+    candidateBinEscapesPackage = false;
+    targetInstallFailureVersion = null;
+    mutateProjectMetadataOnFailure = false;
+    delayGlobalRootClose = false;
+    releaseGlobalRootClose = null;
+    projectNpmRootOverride = null;
+    projectNpmPrefixOverride = null;
+    mockedSelect.mockClear();
+    mockedSpawn.mockClear();
+    mockedGetLatestVersion.mockClear();
+    mockedSpawn.mockImplementation((_command, args, options) => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+        kill: ReturnType<typeof vi.fn>;
+      };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      let childClosed = false;
+      child.kill = vi.fn(() => {
+        queueMicrotask(() => {
+          if (childClosed) return;
+          childClosed = true;
+          child.emit('close', null);
+        });
+        return true;
+      });
+      queueMicrotask(async () => {
+        try {
+          const commandArgs = (args ?? []) as string[];
+          const firstArg = commandArgs[0] ?? '';
+          const npmInvocation = path.basename(firstArg).toLowerCase() === 'npm-cli.js';
+          const npmArgs = npmInvocation ? commandArgs.slice(1) : [];
+          const cwd = String((options as { cwd?: string } | undefined)?.cwd ?? tmpDir);
+
+          if (npmArgs[0] === 'root' && npmArgs[1] === '--global') {
+            child.stdout.emit('data', Buffer.from(`${fakeGlobalNpmRoot}\n`));
+            if (delayGlobalRootClose) {
+              child.emit('exit', 0);
+              await new Promise<void>((resolve) => {
+                releaseGlobalRootClose = resolve;
+              });
+              child.emit('close', 0);
+              return;
+            }
+          } else if (npmArgs[0] === 'root') {
+            child.stdout.emit(
+              'data',
+              Buffer.from(`${projectNpmRootOverride ?? path.join(cwd, 'node_modules')}\n`),
+            );
+          } else if (npmArgs[0] === 'prefix') {
+            child.stdout.emit('data', Buffer.from(`${projectNpmPrefixOverride ?? cwd}\n`));
+          } else if (npmArgs[0] === 'install' && npmArgs.includes('--prefix')) {
+            if (candidateInstallHang) return;
+            const prefix = npmArgs[npmArgs.indexOf('--prefix') + 1];
+            const packageSpec = npmArgs.find((arg) => arg.startsWith('@rpamis/comet@'))!;
+            const requestedVersion = packageSpec.slice('@rpamis/comet@'.length);
+            await writeFakeCometPackage(
+              path.join(prefix, 'node_modules', '@rpamis', 'comet'),
+              candidateVersionOverride ?? requestedVersion,
+            );
+            if (candidateBinEscapesPackage) {
+              const packageRoot = path.join(prefix, 'node_modules', '@rpamis', 'comet');
+              const outsideDir = path.join(tmpDir, 'candidate-bin-outside');
+              await fs.mkdir(outsideDir, { recursive: true });
+              await fs.writeFile(path.join(outsideDir, 'comet.js'), '#!/usr/bin/env node\n');
+              await fs.writeFile(
+                path.join(packageRoot, 'package.json'),
+                JSON.stringify({
+                  name: '@rpamis/comet',
+                  version: candidateVersionOverride ?? requestedVersion,
+                  bin: { comet: 'linked/comet.js' },
+                }),
+              );
+              await fs.symlink(outsideDir, path.join(packageRoot, 'linked'), 'junction');
+            }
+          } else if (firstArg.endsWith(path.join('bin', 'comet.js'))) {
+            const packageRoot = path.resolve(path.dirname(firstArg), '..');
+            const pkg = JSON.parse(
+              await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8'),
+            ) as { version: string };
+            const cliArgs = commandArgs.slice(1);
+            const label =
+              cliArgs[0] === 'workflow'
+                ? 'workflow'
+                : cliArgs[0] === 'native'
+                  ? 'native'
+                  : 'version';
+            if (candidateCommandFailure === label) {
+              child.stderr.emit('data', Buffer.from(`candidate ${label} command failed\n`));
+              child.emit('exit', 1);
+              child.emit('close', 1);
+              return;
+            }
+            if (candidateCommandHang && label === 'version') return;
+            if (candidateCommandOutputBytes !== null && label === 'version') {
+              child.stdout.emit('data', Buffer.alloc(candidateCommandOutputBytes, 120));
+              return;
+            }
+            const output =
+              label === 'version'
+                ? `${pkg.version}\n`
+                : label === 'workflow'
+                  ? 'Usage: comet workflow resolve [options]\n'
+                  : 'Usage: comet native <command> [options]\n';
+            child.stdout.emit('data', Buffer.from(output));
+          } else if (npmArgs[0] === 'install') {
+            const packageSpec = npmArgs.find((arg) => arg.startsWith('@rpamis/comet@'))!;
+            const requestedVersion = packageSpec.slice('@rpamis/comet@'.length);
+            const packageRoot = npmArgs.includes('-g')
+              ? path.join(fakeGlobalNpmRoot, '@rpamis', 'comet')
+              : path.join(
+                  projectNpmRootOverride ?? path.join(cwd, 'node_modules'),
+                  '@rpamis',
+                  'comet',
+                );
+            if (targetInstallFailureVersion === requestedVersion) {
+              if (mutateProjectMetadataOnFailure && !npmArgs.includes('-g')) {
+                await fs.writeFile(path.join(cwd, 'package.json'), '{"mutated":true}\n');
+                await fs.writeFile(
+                  path.join(projectNpmPrefixOverride ?? cwd, 'package-lock.json'),
+                  '{"mutated":true}\n',
+                );
+              }
+              child.stderr.emit('data', Buffer.from('npm ERR! EACCES permission denied\n'));
+              child.emit('exit', 1);
+              child.emit('close', 1);
+              return;
+            }
+            await writeFakeCometPackage(packageRoot, requestedVersion);
+          }
+
+          child.emit('exit', 0);
+          childClosed = true;
+          child.emit('close', 0);
+        } catch (error) {
+          child.emit('error', error);
+          child.emit('close', null);
+        }
+      });
+      return child as ReturnType<typeof spawn>;
+    });
+    mockedGetLatestVersion.mockResolvedValue('0.4.0-beta.8');
   });
 
   afterEach(async () => {
@@ -640,6 +822,542 @@ describe('update command helpers', () => {
     ]);
   });
 
+  it('blocks a prerelease downgrade before invoking npm', async () => {
+    expect(resolveNpmSelfUpdatePlan('0.4.0-beta.7', '0.4.0-beta.6')).toEqual({
+      action: 'skip',
+      reason: 'registry version 0.4.0-beta.6 is older than current version 0.4.0-beta.7',
+    });
+  });
+
+  it('does not self-update the global package for an explicit current-project refresh', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+
+    const fakeHome = path.join(tmpDir, 'fake-home-current-project-no-self-update');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        scope: 'skipped',
+        status: 'skipped',
+        command: null,
+        reason: 'self-update disabled for current-project updates; pass --self-update to opt in',
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    expect(mockedGetLatestVersion).not.toHaveBeenCalled();
+    expect(mockedSpawn).not.toHaveBeenCalled();
+  });
+
+  it('does not suppress the CodeGraph prompt when only package self-update is skipped', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    mockedSelect.mockResolvedValue(false as never);
+
+    const fakeHome = path.join(tmpDir, 'fake-home-current-project-codegraph');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, installMode: 'copy' });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    expect(mockedSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('CodeGraph') }),
+    );
+    expect(mockedGetLatestVersion).not.toHaveBeenCalled();
+    expect(mockedSpawn).not.toHaveBeenCalled();
+  });
+
+  it('does not self-update for implicit JSON current-project mode even with global scope', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-implicit-current-global-scope');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { json: true, scope: 'global' });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        scope: 'skipped',
+        status: 'skipped',
+        reason: 'self-update disabled for current-project updates; pass --self-update to opt in',
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    expect(mockedGetLatestVersion).not.toHaveBeenCalled();
+    expect(mockedSpawn).not.toHaveBeenCalled();
+  });
+
+  it('blocks registry prerelease downgrade when current-project explicitly opts into self-update', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    mockedGetLatestVersion.mockResolvedValue('0.4.0-beta.6');
+
+    const fakeHome = path.join(tmpDir, 'fake-home-current-project-downgrade');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        scope: 'global',
+        status: 'skipped',
+        command: null,
+        reason: 'registry version 0.4.0-beta.6 is older than current version 0.4.0-beta.7',
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    expect(
+      mockedSpawn.mock.calls.some((call) =>
+        ((call[1] ?? []) as string[]).some((arg) => arg === 'install'),
+      ),
+    ).toBe(false);
+  });
+
+  it('compares against the actual installed global package instead of the running CLI version', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    await writeFakeCometPackage(path.join(fakeGlobalNpmRoot, '@rpamis', 'comet'), '0.4.0-beta.9');
+    mockedGetLatestVersion.mockResolvedValue('0.4.0-beta.8');
+
+    const fakeHome = path.join(tmpDir, 'fake-home-actual-global-version');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'skipped',
+        reason: 'registry version 0.4.0-beta.8 is older than current version 0.4.0-beta.9',
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    expect(mockedSpawn.mock.calls.some((call) => (call[1]?.slice(1) ?? [])[0] === 'install')).toBe(
+      false,
+    );
+  });
+
+  it('allows current-project to opt into a validated self-update explicitly', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+
+    const fakeHome = path.join(tmpDir, 'fake-home-current-project-self-update');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        scope: 'global',
+        status: 'updated',
+        command: 'npm install -g @rpamis/comet@0.4.0-beta.8 --registry https://registry.npmjs.org',
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    expect(mockedSpawn).toHaveBeenCalledTimes(6);
+    expect(mockedSpawn.mock.calls.at(-1)?.[0]).toBe(process.execPath);
+    expect(mockedSpawn.mock.calls.at(-1)?.[1]?.slice(1)).toEqual([
+      'install',
+      '-g',
+      '@rpamis/comet@0.4.0-beta.8',
+      '--registry',
+      'https://registry.npmjs.org',
+    ]);
+    expect(mockedSpawn.mock.calls.every((call) => call[2]?.shell === false)).toBe(true);
+    expect(mockedSpawn.mock.calls.every((call) => call[0] === process.execPath)).toBe(true);
+    const candidateBinCalls = mockedSpawn.mock.calls.filter((call) =>
+      String(call[1]?.[0]).endsWith(path.join('bin', 'comet.js')),
+    );
+    expect(candidateBinCalls).toHaveLength(3);
+    expect(candidateBinCalls.every((call) => path.isAbsolute(String(call[1]?.[0])))).toBe(true);
+  });
+
+  it('does not mutate the installation when candidate command validation fails', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    candidateCommandFailure = 'native';
+
+    const fakeHome = path.join(tmpDir, 'fake-home-invalid-candidate');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('candidate native command failed'),
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const targetInstallCalls = mockedSpawn.mock.calls.filter((call) => {
+      const npmArgs = call[1]?.slice(1) ?? [];
+      return npmArgs[0] === 'install' && !npmArgs.includes('--prefix');
+    });
+    expect(targetInstallCalls).toHaveLength(0);
+  });
+
+  it('terminates candidate validation that exceeds the combined output budget', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    candidateCommandOutputBytes = 256 * 1024 + 1;
+
+    const fakeHome = path.join(tmpDir, 'fake-home-candidate-output-limit');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('process output exceeded 262144 bytes'),
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const targetInstallCalls = mockedSpawn.mock.calls.filter((call) => {
+      const npmArgs = call[1]?.slice(1) ?? [];
+      return npmArgs[0] === 'install' && !npmArgs.includes('--prefix');
+    });
+    expect(targetInstallCalls).toHaveLength(0);
+  });
+
+  it('terminates candidate validation after its dedicated timeout', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    candidateCommandHang = true;
+    const realSetTimeout = globalThis.setTimeout;
+    const timeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation(((
+        callback: (...args: unknown[]) => void,
+        delay?: number,
+        ...args: unknown[]
+      ) => realSetTimeout(callback, delay === 15_000 ? 0 : delay, ...args)) as typeof setTimeout);
+
+    const fakeHome = path.join(tmpDir, 'fake-home-candidate-timeout');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('process timed out after 15000ms'),
+      });
+    } finally {
+      timeoutSpy.mockRestore();
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+  });
+
+  it('terminates a candidate npm install after its longer dedicated timeout', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    candidateInstallHang = true;
+    const realSetTimeout = globalThis.setTimeout;
+    const timeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation(((
+        callback: (...args: unknown[]) => void,
+        delay?: number,
+        ...args: unknown[]
+      ) => realSetTimeout(callback, delay === 180_000 ? 0 : delay, ...args)) as typeof setTimeout);
+
+    const fakeHome = path.join(tmpDir, 'fake-home-candidate-install-timeout');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('process timed out after 180000ms'),
+      });
+    } finally {
+      timeoutSpy.mockRestore();
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const targetInstallCalls = mockedSpawn.mock.calls.filter((call) => {
+      const npmArgs = call[1]?.slice(1) ?? [];
+      return npmArgs[0] === 'install' && !npmArgs.includes('--prefix');
+    });
+    expect(targetInstallCalls).toHaveLength(0);
+  });
+
+  it('rejects a candidate bin whose real path escapes the package root', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    candidateBinEscapesPackage = true;
+
+    const fakeHome = path.join(tmpDir, 'fake-home-candidate-bin-escape');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('Comet package bin is invalid: linked/comet.js'),
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    expect(
+      mockedSpawn.mock.calls.some((call) => String(call[1]?.[0]).includes('candidate-bin-outside')),
+    ).toBe(false);
+  });
+
+  it('waits for child close instead of resolving on exit', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    mockedGetLatestVersion.mockResolvedValue('0.4.0-beta.6');
+    delayGlobalRootClose = true;
+
+    const fakeHome = path.join(tmpDir, 'fake-home-close-wait');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let settled = false;
+    try {
+      const update = updateCommand(tmpDir, {
+        currentProject: true,
+        selfUpdate: true,
+        json: true,
+      }).then(() => {
+        settled = true;
+      });
+      await vi.waitFor(() => expect(releaseGlobalRootClose).toBeTypeOf('function'));
+      expect(settled).toBe(false);
+      releaseGlobalRootClose?.();
+      await update;
+      expect(settled).toBe(true);
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+  });
+
+  it('retries candidate prefix cleanup without masking the validation error', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    candidateCommandFailure = 'native';
+    const originalRm = fs.rm.bind(fs);
+    let cleanupAttempts = 0;
+    const rmSpy = vi.spyOn(fs, 'rm').mockImplementation(async (target, options) => {
+      if (String(target).includes('comet-self-update-')) {
+        cleanupAttempts++;
+        if (cleanupAttempts < 3) {
+          throw Object.assign(new Error('temporary directory busy'), { code: 'EPERM' });
+        }
+      }
+      return originalRm(target, options);
+    });
+
+    const fakeHome = path.join(tmpDir, 'fake-home-cleanup-retry');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm.reason).toContain('candidate native command failed');
+      expect(result.npm.reason).not.toContain('temporary cleanup failed');
+      expect(cleanupAttempts).toBe(3);
+    } finally {
+      rmSpy.mockRestore();
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+  });
+
+  it('restores the exact current version when the npm install command fails', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    targetInstallFailureVersion = '0.4.0-beta.8';
+
+    const fakeHome = path.join(tmpDir, 'fake-home-install-rollback');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('restored 0.4.0-beta.7'),
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const installCalls = mockedSpawn.mock.calls.filter((call) => {
+      const npmArgs = call[1]?.slice(1) ?? [];
+      return npmArgs[0] === 'install' && !npmArgs.includes('--prefix');
+    });
+    expect(installCalls.map((call) => call[1]?.[3])).toEqual([
+      '@rpamis/comet@0.4.0-beta.8',
+      '@rpamis/comet@0.4.0-beta.7',
+    ]);
+  });
+
+  it('restores project package metadata byte-for-byte after a failed project install', async () => {
+    const projectDir = path.join(tmpDir, 'project with spaces & metadata');
+    const packageJson = '{\n  "devDependencies": { "@rpamis/comet": "^0.4.0-beta.7" }\n}\n';
+    const packageLock = '{"lockfileVersion":3,"name":"before"}\n';
+    await fs.mkdir(path.join(projectDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(projectDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    await fs.writeFile(path.join(projectDir, 'package.json'), packageJson);
+    await fs.writeFile(path.join(projectDir, 'package-lock.json'), packageLock);
+    await writeFakeCometPackage(
+      path.join(projectDir, 'node_modules', '@rpamis', 'comet'),
+      '0.4.0-beta.7',
+    );
+    targetInstallFailureVersion = '0.4.0-beta.8';
+    mutateProjectMetadataOnFailure = true;
+
+    const fakeHome = path.join(tmpDir, 'fake-home-project-metadata');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(projectDir, {
+        currentProject: true,
+        selfUpdate: true,
+        scope: 'project',
+        json: true,
+      });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('restored 0.4.0-beta.7'),
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(path.join(projectDir, 'package.json'), 'utf8')).resolves.toBe(
+      packageJson,
+    );
+    await expect(fs.readFile(path.join(projectDir, 'package-lock.json'), 'utf8')).resolves.toBe(
+      packageLock,
+    );
+    expect(mockedSpawn.mock.calls.every((call) => call[2]?.shell === false)).toBe(true);
+  });
+
+  it('reads a hoisted project package and restores workspace-root metadata after failure', async () => {
+    const workspaceRoot = path.join(tmpDir, 'workspace with spaces');
+    const projectDir = path.join(workspaceRoot, 'packages', 'app');
+    const projectPackageJson = '{\n  "devDependencies": { "@rpamis/comet": "^0.4.0-beta.7" }\n}\n';
+    const rootPackageJson = '{\n  "private": true, "workspaces": ["packages/*"]\n}\n';
+    const rootPackageLock = '{"lockfileVersion":3,"name":"workspace-before"}\n';
+    const config = defaultProjectConfig('.');
+    config.workflows = ['classic'];
+    config.default_workflow = 'classic';
+    await writeProjectConfig(projectDir, config);
+    await fs.mkdir(path.join(projectDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(projectDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    await fs.writeFile(path.join(projectDir, 'package.json'), projectPackageJson);
+    await fs.writeFile(path.join(workspaceRoot, 'package.json'), rootPackageJson);
+    await fs.writeFile(path.join(workspaceRoot, 'package-lock.json'), rootPackageLock);
+    projectNpmRootOverride = path.join(workspaceRoot, 'node_modules');
+    projectNpmPrefixOverride = workspaceRoot;
+    await writeFakeCometPackage(
+      path.join(projectNpmRootOverride, '@rpamis', 'comet'),
+      '0.4.0-beta.7',
+    );
+    targetInstallFailureVersion = '0.4.0-beta.8';
+    mutateProjectMetadataOnFailure = true;
+
+    const fakeHome = path.join(tmpDir, 'fake-home-workspace-metadata');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(projectDir, {
+        currentProject: true,
+        selfUpdate: true,
+        scope: 'project',
+        json: true,
+      });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('restored 0.4.0-beta.7'),
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    await expect(fs.readFile(path.join(projectDir, 'package.json'), 'utf8')).resolves.toBe(
+      projectPackageJson,
+    );
+    await expect(fs.readFile(path.join(workspaceRoot, 'package.json'), 'utf8')).resolves.toBe(
+      rootPackageJson,
+    );
+    await expect(fs.readFile(path.join(workspaceRoot, 'package-lock.json'), 'utf8')).resolves.toBe(
+      rootPackageLock,
+    );
+    expect(mockedSpawn.mock.calls.some((call) => call[1]?.slice(1).join(' ') === 'root')).toBe(
+      true,
+    );
+    expect(mockedSpawn.mock.calls.some((call) => call[1]?.slice(1).join(' ') === 'prefix')).toBe(
+      true,
+    );
+  });
+
+  it('rejects a candidate whose installed package version does not exactly match the target', async () => {
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
+    candidateVersionOverride = '0.4.0-beta.80';
+
+    const fakeHome = path.join(tmpDir, 'fake-home-candidate-version-mismatch');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, { currentProject: true, selfUpdate: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.npm).toMatchObject({
+        status: 'failed',
+        reason: 'candidate package version mismatch: expected 0.4.0-beta.8, got 0.4.0-beta.80',
+      });
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const targetInstallCalls = mockedSpawn.mock.calls.filter((call) => {
+      const npmArgs = call[1]?.slice(1) ?? [];
+      return npmArgs[0] === 'install' && !npmArgs.includes('--prefix');
+    });
+    expect(targetInstallCalls).toHaveLength(0);
+  });
+
   it('formats the npm update command for friendly console output', () => {
     expect(formatNpmUpdateCommand('global')).toBe(
       'npm install -g @rpamis/comet@latest --registry https://registry.npmjs.org',
@@ -718,25 +1436,13 @@ describe('update command helpers', () => {
   it('reports npm stderr and an incomplete status when a JSON update fails', async () => {
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
-    mockedSpawn.mockImplementationOnce(() => {
-      const child = new EventEmitter() as EventEmitter & {
-        stdout: EventEmitter;
-        stderr: EventEmitter;
-      };
-      child.stdout = new EventEmitter();
-      child.stderr = new EventEmitter();
-      queueMicrotask(() => {
-        child.stderr.emit('data', Buffer.from('npm ERR! EACCES permission denied\n'));
-        child.emit('exit', 1);
-      });
-      return child as ReturnType<typeof spawn>;
-    });
+    targetInstallFailureVersion = '0.4.0-beta.8';
 
     const fakeHome = path.join(tmpDir, 'fake-home-npm-json-failure');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
-      await updateCommand(tmpDir, { json: true });
+      await updateCommand(tmpDir, { json: true, selfUpdate: true });
       const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
       expect(result.status).toBe('incomplete');
       expect(result.npm).toMatchObject({
@@ -820,21 +1526,20 @@ describe('update command helpers', () => {
       homedirSpy.mockRestore();
     }
 
-    expect(mockedSpawn).toHaveBeenCalledTimes(1);
-    expect(mockedSpawn.mock.calls[0][1]).toEqual([
+    const installCalls = mockedSpawn.mock.calls.filter((call) => {
+      const npmArgs = call[1]?.slice(1) ?? [];
+      return npmArgs[0] === 'install' && !npmArgs.includes('--prefix');
+    });
+    expect(mockedSpawn).toHaveBeenCalledTimes(6);
+    expect(installCalls).toHaveLength(1);
+    expect(installCalls[0][1]?.slice(1)).toEqual([
       'install',
       '-g',
-      '@rpamis/comet@latest',
+      '@rpamis/comet@0.4.0-beta.8',
       '--registry',
       'https://registry.npmjs.org',
     ]);
-    expect(mockedSpawn.mock.calls).not.toContainEqual(
-      expect.arrayContaining([
-        expect.anything(),
-        ['install', '@rpamis/comet@latest', '--registry', 'https://registry.npmjs.org'],
-        expect.anything(),
-      ]),
-    );
+    expect(installCalls.some((call) => !(call[1]?.slice(1) ?? []).includes('-g'))).toBe(false);
   });
 
   it('reports global npm update failure before updating all indexed projects', async () => {
@@ -850,11 +1555,7 @@ describe('update command helpers', () => {
       });
     }
 
-    mockedSpawn.mockImplementationOnce(() => {
-      const child = new EventEmitter();
-      queueMicrotask(() => child.emit('exit', 1));
-      return child as ReturnType<typeof spawn>;
-    });
+    targetInstallFailureVersion = '0.4.0-beta.8';
 
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -881,7 +1582,7 @@ describe('update command helpers', () => {
       }),
     ]);
     expect(result.status).toBe('incomplete');
-    expect(mockedSpawn).toHaveBeenCalledTimes(1);
+    expect(mockedSpawn.mock.calls.some((call) => call[1]?.includes('-g'))).toBe(true);
   });
 
   it('removes stale indexed projects that no longer have project-scope installs during all-projects update', async () => {
@@ -1007,7 +1708,7 @@ describe('update command helpers', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json: string;
     try {
-      await updateCommand(projectA, { json: true, skipNpm: true });
+      await updateCommand(projectA, { json: true });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
       log.mockRestore();
@@ -1017,6 +1718,14 @@ describe('update command helpers', () => {
     const result = JSON.parse(json);
     expect(result.mode).toBeUndefined();
     expect(result.skills.targets).toHaveLength(1);
+    expect(result.npm).toMatchObject({
+      scope: 'skipped',
+      status: 'skipped',
+      command: null,
+      reason: 'self-update disabled for current-project updates; pass --self-update to opt in',
+    });
+    expect(mockedGetLatestVersion).not.toHaveBeenCalled();
+    expect(mockedSpawn).not.toHaveBeenCalled();
   });
 
   it('refreshes the project registry after a successful current-project update', async () => {
@@ -1201,6 +1910,10 @@ describe('update command helpers', () => {
     expect(updatedConfig).toContain('ambient_resume: true');
     expect(updatedConfig).toContain('keep: true');
     expect(updatedConfig).toContain('artifact_root: docs');
+    expect(updatedConfig).toContain('classic:');
+    expect(updatedConfig).not.toMatch(
+      /^(language|context_compression|review_mode|auto_transition):/mu,
+    );
     await expect(
       fs.readFile(path.join(tmpDir, 'docs', 'superpowers', 'keep.md'), 'utf8'),
     ).resolves.toBe('keep classic working files\n');
@@ -1655,7 +2368,11 @@ describe('update command helpers', () => {
       'utf-8',
     );
     await fs.mkdir(path.join(fakeHome, '.comet'), { recursive: true });
-    await fs.writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: en\n', 'utf-8');
+    await fs.writeFile(
+      path.join(fakeHome, '.comet', 'config.yaml'),
+      'classic:\n  language: en\n',
+      'utf-8',
+    );
 
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -1674,6 +2391,7 @@ describe('update command helpers', () => {
 
     const config = await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf-8');
     expect(config).toContain('language: zh-CN');
+    expect(config).not.toMatch(/^language:/mu);
   });
 
   it('does not guess a language when installed platforms in the same scope disagree and none is requested', async () => {
@@ -1691,7 +2409,11 @@ describe('update command helpers', () => {
       'utf-8',
     );
     await fs.mkdir(path.join(fakeHome, '.comet'), { recursive: true });
-    await fs.writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: en\n', 'utf-8');
+    await fs.writeFile(
+      path.join(fakeHome, '.comet', 'config.yaml'),
+      'classic:\n  language: en\n',
+      'utf-8',
+    );
 
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -1709,5 +2431,6 @@ describe('update command helpers', () => {
 
     const config = await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf-8');
     expect(config).toContain('language: en');
+    expect(config).not.toMatch(/^language:/mu);
   });
 });

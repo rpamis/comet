@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { execFileSync } from 'node:child_process';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,11 +45,38 @@ describe('Comet Native CLI dispatcher', () => {
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-cli-'));
-    await fs.mkdir(path.join(projectRoot, '.git'));
+    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
   });
 
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('returns structured baseline diagnostics when change creation cannot capture a complete baseline', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, 'oversized-baseline.bin'),
+      Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
+    );
+
+    const result = json(
+      await runNativeCli(['new', 'incomplete-baseline', '--json', ...projectArgs()]),
+    );
+    expect(result).toMatchObject({
+      exitCode: 65,
+      data: {
+        change: 'incomplete-baseline',
+        complete: false,
+        omittedCount: 1,
+        omittedByReason: { 'file-size': 1 },
+        samplePaths: ['oversized-baseline.bin'],
+        sampleTruncated: false,
+        requiredAction: 'resolve-native-baseline',
+      },
+      error: { code: 'baseline-incomplete' },
+    });
+    await expect(
+      fs.access(path.join(projectRoot, 'comet', 'changes', 'incomplete-baseline')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('selects each successfully created change as the current Native owner', async () => {

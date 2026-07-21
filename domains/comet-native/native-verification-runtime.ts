@@ -150,6 +150,36 @@ async function inspectCurrentScopeFacts(options: {
   };
 }
 
+export interface NativeImplementationScopeFreshnessInspection {
+  freshness: 'fresh' | 'stale' | 'missing' | 'invalid';
+  findingCodes: NativeVerificationFreshnessFindingCode[];
+}
+
+/**
+ * Recomputes the facts bound by the Build implementation scope without requiring a Verify report.
+ * Verify uses this to retreat safely when its contract or project snapshot changes before an
+ * evidence envelope can be created.
+ */
+export async function inspectNativeImplementationScopeFreshness(options: {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+  now?: Date;
+}): Promise<NativeImplementationScopeFreshnessInspection> {
+  if (!options.state.implementation_scope) {
+    return { freshness: 'missing', findingCodes: ['verification-evidence-missing'] };
+  }
+  try {
+    const facts = await inspectCurrentScopeFacts(options);
+    const findingCodes = [...new Set(facts.findingCodes)].sort();
+    return {
+      freshness: findingCodes.length === 0 ? 'fresh' : 'stale',
+      findingCodes,
+    };
+  } catch {
+    return { freshness: 'invalid', findingCodes: ['verification-evidence-invalid'] };
+  }
+}
+
 async function reportEvidence(options: {
   paths: NativeProjectPaths;
   state: NativeChangeState;

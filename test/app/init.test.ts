@@ -9,6 +9,7 @@ import { PLATFORMS } from '../../platform/install/platforms.js';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { parse } from 'yaml';
 
 describe('init command helpers', () => {
   it('can apply a single overwrite choice to all existing components on a platform', () => {
@@ -67,6 +68,16 @@ describe('init command helpers', () => {
       await createWorkingDirs(tmpDir, 'zh-CN');
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
+      expect(parse(config)).toMatchObject({
+        ambient_resume: true,
+        classic: {
+          language: 'zh-CN',
+          context_compression: 'off',
+          review_mode: 'standard',
+          auto_transition: true,
+        },
+      });
+      expect(config).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
       expect(config).toContain('# Classic 工作流文档使用的产物语言');
       expect(config).toContain('language: zh-CN');
       expect(config).toContain('# 新建 Classic change 是否启用 beta 上下文压缩');

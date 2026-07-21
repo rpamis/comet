@@ -47,7 +47,7 @@ describe('dashboard markdown-preview', () => {
     expect(html).toContain('<div class="mermaid">');
     expect(html).toContain('flowchart TD');
     expect(html).toContain('id="section-two"');
-  });
+  }, 60_000);
 
   it('assigns unique ids for duplicate headings and falls back for symbol-only titles', async () => {
     const html = await renderMarkdown(

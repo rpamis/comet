@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -44,7 +45,7 @@ describe('Native phase Hook guard', () => {
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-hook-'));
-    await fs.mkdir(path.join(projectRoot, '.git'));
+    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
   });
 
   afterEach(async () => {

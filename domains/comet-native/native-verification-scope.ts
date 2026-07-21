@@ -1,6 +1,7 @@
+import { createHash, type Hash } from 'node:crypto';
 import path from 'path';
 
-import { canonicalHash } from './native-canonical-hash.js';
+import { canonicalHash, canonicalJson } from './native-canonical-hash.js';
 import { parseNativeContentSnapshotManifest } from './native-snapshot.js';
 import type {
   NativeContentSnapshotManifest,
@@ -15,7 +16,12 @@ export const NATIVE_SNAPSHOT_PROJECTION_SCHEMA =
 const SNAPSHOT_PROJECTION_HASH_TAG = 'comet.native.content-snapshot-projection.v1';
 const IMPLEMENTATION_SCOPE_HASH_TAG = 'comet.native.implementation-scope.v2';
 const UNRESOLVED_SCOPE_ID_TAG = 'comet.native.unresolved-scope-id.v1';
+const SCOPE_DETAIL_OVERFLOW_HASH_TAG = 'comet.native.scope-detail-overflow.v1';
+const SNAPSHOT_PROJECTION_OVERFLOW_HASH_TAG = 'comet.native.snapshot-projection-overflow.v2';
 const SHA256_HASH_PATTERN = /^[a-f0-9]{64}$/u;
+export const MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES = 1024 * 1024;
+export const MAX_NATIVE_DETAILED_SCOPE_CHANGES = 128;
+export const MAX_NATIVE_DETAILED_UNRESOLVED_SCOPES = 128;
 
 export interface NativeDeclaredArtifact {
   path: string;
@@ -42,6 +48,7 @@ export type NativeUnresolvedScopeKind =
   | 'snapshot-omission'
   | 'snapshot-incomplete'
   | 'snapshot-omission-overflow'
+  | 'scope-detail-overflow'
   | 'missing-no-code-reason';
 
 export interface NativeUnresolvedScope {
@@ -88,6 +95,7 @@ export interface BuildNativeImplementationScopeInput {
 export interface NativeSnapshotProjection {
   schema: typeof NATIVE_SNAPSHOT_PROJECTION_SCHEMA;
   origin: NativeContentSnapshotManifest['origin'];
+  capture?: NativeContentSnapshotManifest['capture'];
   complete: boolean;
   limits: NativeContentSnapshotManifest['limits'];
   entries: NativeSnapshotEntry[];
@@ -167,6 +175,10 @@ function projectRelativePath(value: string, label: string): string {
   return value;
 }
 
+function snapshotOmissionPath(value: string, label: string): string {
+  return value === '.' ? value : projectRelativePath(value, label);
+}
+
 function nonNegativeSafeInteger(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} must be a non-negative safe integer`);
@@ -192,7 +204,7 @@ function normalizeOmission(
   label: string,
 ): NativeSnapshotOmission {
   return {
-    path: projectRelativePath(omission.path, `${label} path`),
+    path: snapshotOmissionPath(omission.path, `${label} path`),
     size: omission.size === null ? null : nonNegativeSafeInteger(omission.size, `${label} size`),
     type: omission.type,
     reason: omission.reason,
@@ -216,6 +228,115 @@ function compareOmissions(left: NativeSnapshotOmission, right: NativeSnapshotOmi
   );
 }
 
+function serializedEvidenceBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value, null, 2) + '\n', 'utf8');
+}
+
+function updateFramedHash(hash: Hash, kind: string, value: unknown): void {
+  const encoded = `${kind}\n${canonicalJson(value)}`;
+  hash.update(`${Buffer.byteLength(encoded, 'utf8')}:`);
+  hash.update(encoded);
+}
+
+/**
+ * Snapshot manifests have their own byte limit, but their timestamp-free evidence projection has
+ * slightly different metadata. Compact it before returning the bundle so persistence can never be
+ * the first place that discovers a one-megabyte projection overflow.
+ */
+function fitSnapshotProjectionBudget(value: NativeSnapshotProjection): NativeSnapshotProjection {
+  if (serializedEvidenceBytes(value) <= MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES) {
+    return value;
+  }
+
+  const entries = [...value.entries];
+  const omitted = [...value.omitted];
+  let omittedCount = value.omittedCount;
+  let overflowCount = value.omissionOverflow?.count ?? 0;
+  const overflowHash = createHash('sha256');
+  overflowHash.update(`${SNAPSHOT_PROJECTION_OVERFLOW_HASH_TAG}\n`);
+  if (value.omissionOverflow) {
+    updateFramedHash(overflowHash, 'existing-overflow', value.omissionOverflow);
+  }
+
+  const foldOmission = (omission: NativeSnapshotOmission, alreadyCounted: boolean): void => {
+    if (!alreadyCounted) omittedCount += 1;
+    overflowCount += 1;
+    updateFramedHash(overflowHash, 'omission', omission);
+  };
+  const foldEntry = (entry: NativeSnapshotEntry): void => {
+    omittedCount += 1;
+    overflowCount += 1;
+    // The projection overflow is part of snapshot freshness. Bind the full entry, including its
+    // content hash, rather than reducing it to omission-style path/size metadata.
+    updateFramedHash(overflowHash, 'entry', entry);
+  };
+  const takeCompactableOmission = (): NativeSnapshotOmission | null => {
+    for (let index = omitted.length - 1; index >= 0; index -= 1) {
+      const omission = omitted[index]!;
+      if (
+        omission.reason === 'git-enumeration-limit' ||
+        omission.reason === 'git-selection-changed' ||
+        omission.reason === 'physical-enumeration-limit' ||
+        omission.reason === 'physical-selection-changed'
+      ) {
+        continue;
+      }
+      omitted.splice(index, 1);
+      return omission;
+    }
+    return null;
+  };
+  const candidate = (): NativeSnapshotProjection => ({
+    ...value,
+    complete: omittedCount === 0,
+    entries,
+    omitted,
+    omittedCount,
+    omissionOverflow: {
+      ref: `native-snapshot://omitted-overflow/${'0'.repeat(64)}`,
+      hash: '0'.repeat(64),
+      count: overflowCount,
+    },
+  });
+
+  let projection = candidate();
+  while (serializedEvidenceBytes(projection) > MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES) {
+    const compactableOmissionCount = omitted.filter(
+      (omission) =>
+        omission.reason !== 'git-enumeration-limit' &&
+        omission.reason !== 'git-selection-changed' &&
+        omission.reason !== 'physical-enumeration-limit' &&
+        omission.reason !== 'physical-selection-changed',
+    ).length;
+    if (compactableOmissionCount > 0) {
+      const removeCount = Math.max(1, Math.ceil(omitted.length / 4));
+      for (let removed = 0; removed < removeCount; removed += 1) {
+        const omission = takeCompactableOmission();
+        if (omission === null) break;
+        foldOmission(omission, true);
+      }
+    } else if (entries.length > 0) {
+      const removeCount = Math.max(1, Math.ceil(entries.length / 4));
+      for (const entry of entries.splice(-removeCount)) {
+        foldEntry(entry);
+      }
+    } else {
+      throw new Error('Native snapshot projection metadata exceeds its evidence byte budget');
+    }
+    projection = candidate();
+  }
+
+  const digest = overflowHash.digest('hex');
+  return {
+    ...projection,
+    omissionOverflow: {
+      ref: `native-snapshot://omitted-overflow/${digest}`,
+      hash: digest,
+      count: overflowCount,
+    },
+  };
+}
+
 function snapshotProjection(manifest: NativeContentSnapshotManifest): NativeSnapshotProjection {
   const parsed = parseNativeContentSnapshotManifest(manifest);
   const entries = parsed.entries.map((entry, index) =>
@@ -231,9 +352,10 @@ function snapshotProjection(manifest: NativeContentSnapshotManifest): NativeSnap
   );
   omitted.sort(compareOmissions);
 
-  return {
+  return fitSnapshotProjectionBudget({
     schema: NATIVE_SNAPSHOT_PROJECTION_SCHEMA,
     origin: parsed.origin,
+    ...(parsed.capture ? { capture: parsed.capture } : {}),
     complete: parsed.complete,
     limits: {
       maxFiles: parsed.limits.maxFiles,
@@ -253,7 +375,7 @@ function snapshotProjection(manifest: NativeContentSnapshotManifest): NativeSnap
           },
         }
       : {}),
-  };
+  });
 }
 
 function normalizeDeclaredArtifacts(
@@ -290,29 +412,54 @@ function fileIdentity(
   return entry ? { hash: entry.hash, size: entry.size } : null;
 }
 
-function deriveChanges(
+interface NativeImplementationChangeCore {
+  path: string;
+  kind: NativeImplementationChange['kind'];
+  before: NativeImplementationFileIdentity | null;
+  after: NativeImplementationFileIdentity | null;
+}
+
+function visitDerivedChanges(
   baseline: NativeSnapshotProjection,
   current: NativeSnapshotProjection,
-  declaredArtifacts: NativeDeclaredArtifact[],
-): NativeImplementationChange[] {
-  const beforeByPath = new Map(baseline.entries.map((entry) => [entry.path, entry]));
-  const afterByPath = new Map(current.entries.map((entry) => [entry.path, entry]));
-  const paths = [...new Set([...beforeByPath.keys(), ...afterByPath.keys()])].sort(compareText);
-  const changes: NativeImplementationChange[] = [];
-
-  for (const changedPath of paths) {
-    const before = beforeByPath.get(changedPath);
-    const after = afterByPath.get(changedPath);
+  visitor: (change: NativeImplementationChangeCore) => void,
+): void {
+  let beforeIndex = 0;
+  let afterIndex = 0;
+  while (beforeIndex < baseline.entries.length || afterIndex < current.entries.length) {
+    const beforeCandidate = baseline.entries[beforeIndex];
+    const afterCandidate = current.entries[afterIndex];
+    const order =
+      beforeCandidate === undefined
+        ? 1
+        : afterCandidate === undefined
+          ? -1
+          : compareText(beforeCandidate.path, afterCandidate.path);
+    const before = order <= 0 ? beforeCandidate : undefined;
+    const after = order >= 0 ? afterCandidate : undefined;
+    if (order <= 0) beforeIndex += 1;
+    if (order >= 0) afterIndex += 1;
     if (before && after && before.hash === after.hash && before.size === after.size) continue;
-    changes.push({
+    if (before && !after && !current.complete) continue;
+    const changedPath = before?.path ?? after?.path;
+    if (changedPath === undefined) continue;
+    visitor({
       path: changedPath,
       kind: before ? (after ? 'modified' : 'removed') : 'added',
       before: fileIdentity(before),
       after: fileIdentity(after),
-      attributedTo: declaredArtifacts.filter((artifact) => artifactOwnsPath(artifact, changedPath)),
     });
   }
-  return changes;
+}
+
+function materializeChange(
+  core: NativeImplementationChangeCore,
+  declaredArtifacts: NativeDeclaredArtifact[],
+): NativeImplementationChange {
+  return {
+    ...core,
+    attributedTo: declaredArtifacts.filter((artifact) => artifactOwnsPath(artifact, core.path)),
+  };
 }
 
 function unresolvedScope(identity: UnresolvedScopeIdentity, reason: string): NativeUnresolvedScope {
@@ -377,6 +524,15 @@ function omissionScopes(
   return scopes;
 }
 
+function omissionSummaryScopes(
+  source: 'baseline' | 'current',
+  projection: NativeSnapshotProjection,
+): NativeUnresolvedScope[] {
+  return omissionScopes(source, { ...projection, omitted: [] }).filter(
+    (scope) => scope.kind !== 'snapshot-omission',
+  );
+}
+
 function compareUnresolvedScopes(
   left: NativeUnresolvedScope,
   right: NativeUnresolvedScope,
@@ -419,89 +575,327 @@ function normalizeScopeAuthority(
   };
 }
 
+interface NativeScopeChangeScan {
+  candidates: NativeImplementationChange[];
+  gitPathsPresentInChanges: string[];
+  totalChanges: number;
+  totalUnattributed: number;
+}
+
+function scanScopeChanges(
+  baseline: NativeSnapshotProjection,
+  current: NativeSnapshotProjection,
+  declaredArtifacts: NativeDeclaredArtifact[],
+  gitChangedPaths?: string[],
+): NativeScopeChangeScan {
+  const candidates: NativeImplementationChange[] = [];
+  const gitChangedPathSet = gitChangedPaths === undefined ? null : new Set(gitChangedPaths);
+  const gitPathsPresentInChanges: string[] = [];
+  let candidateBytes = 0;
+  let candidateBudgetExhausted = false;
+  let totalChanges = 0;
+  let totalUnattributed = 0;
+  visitDerivedChanges(baseline, current, (core) => {
+    const attributed = declaredArtifacts.some((artifact) => artifactOwnsPath(artifact, core.path));
+    totalChanges += 1;
+    if (!attributed) totalUnattributed += 1;
+    if (gitChangedPathSet?.has(core.path)) gitPathsPresentInChanges.push(core.path);
+    if (!candidateBudgetExhausted && candidates.length < MAX_NATIVE_DETAILED_SCOPE_CHANGES) {
+      const candidate = materializeChange(core, declaredArtifacts);
+      const nextBytes = serializedEvidenceBytes(candidate);
+      if (candidateBytes + nextBytes <= MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES) {
+        candidates.push(candidate);
+        candidateBytes += nextBytes;
+      } else {
+        candidateBudgetExhausted = true;
+      }
+    }
+  });
+  return { candidates, gitPathsPresentInChanges, totalChanges, totalUnattributed };
+}
+
+function scopeDetailOverflow(
+  hash: string,
+  counts: { changes: number; unattributed: number; unresolved: number },
+): NativeUnresolvedScope {
+  return unresolvedScope(
+    {
+      kind: 'scope-detail-overflow',
+      source: 'implementation-scope',
+      path: null,
+      evidence: {
+        changeCount: counts.changes,
+        hash,
+        unattributedCount: counts.unattributed,
+        unresolvedCount: counts.unresolved,
+      },
+    },
+    `Implementation scope summarized ${counts.changes} additional change details and ${counts.unresolved} unresolved details (${counts.unattributed} unattributed); overflow hash ${hash}`,
+  );
+}
+
+function parseScopeDetailOverflow(scope: NativeUnresolvedScope): {
+  changes: number;
+  hash: string;
+  unattributed: number;
+  unresolved: number;
+} {
+  const match =
+    /^Implementation scope summarized ([0-9]+) additional change details and ([0-9]+) unresolved details \(([0-9]+) unattributed\); overflow hash ([a-f0-9]{64})$/u.exec(
+      scope.reason,
+    );
+  if (!match) throw new Error('Implementation scope detail overflow is invalid');
+  const counts = {
+    changes: nonNegativeSafeInteger(Number(match[1]), 'Scope overflow change count'),
+    unresolved: nonNegativeSafeInteger(Number(match[2]), 'Scope overflow unresolved count'),
+    unattributed: nonNegativeSafeInteger(Number(match[3]), 'Scope overflow unattributed count'),
+  };
+  const hash = scopeHashValue(match[4], 'Scope detail overflow hash');
+  if (JSON.stringify(scope) !== JSON.stringify(scopeDetailOverflow(hash, counts))) {
+    throw new Error('Implementation scope detail overflow is inconsistent');
+  }
+  return { ...counts, hash };
+}
+
+function hashScopeDetailOverflow(options: {
+  baseline: NativeSnapshotProjection;
+  current: NativeSnapshotProjection;
+  declaredArtifacts: NativeDeclaredArtifact[];
+  detailedChangeCount: number;
+  detailedOmissionCount: number;
+}): string {
+  const hash = createHash('sha256');
+  hash.update(`${SCOPE_DETAIL_OVERFLOW_HASH_TAG}\n`);
+  let changeIndex = 0;
+  visitDerivedChanges(options.baseline, options.current, (core) => {
+    if (changeIndex >= options.detailedChangeCount) {
+      updateFramedHash(hash, 'change', core);
+      let attributionCount = 0;
+      for (const artifact of options.declaredArtifacts) {
+        if (!artifactOwnsPath(artifact, core.path)) continue;
+        attributionCount += 1;
+        updateFramedHash(hash, 'change-attribution', artifact);
+      }
+      updateFramedHash(hash, 'change-end', { attributionCount });
+      if (attributionCount === 0) {
+        updateFramedHash(hash, 'unattributed-change', {
+          after: core.after,
+          before: core.before,
+          changeKind: core.kind,
+          path: core.path,
+        });
+      }
+    }
+    changeIndex += 1;
+  });
+
+  let omissionIndex = 0;
+  for (const [source, projection] of [
+    ['baseline', options.baseline],
+    ['current', options.current],
+  ] as const) {
+    for (const omission of projection.omitted) {
+      if (omissionIndex >= options.detailedOmissionCount) {
+        updateFramedHash(hash, 'snapshot-omission', { source, ...omission });
+      }
+      omissionIndex += 1;
+    }
+  }
+  return hash.digest('hex');
+}
+
 function buildScopeFromProjections(
   baseline: NativeSnapshotProjection,
   current: NativeSnapshotProjection,
   authority: NativeImplementationScopeAuthority,
 ): NativeImplementationScope {
   const { contractHash, declaredArtifacts, noCodeReason } = authority;
-  const changes = deriveChanges(baseline, current, declaredArtifacts);
-  const unattributed = changes.filter((change) => change.attributedTo.length === 0);
+  const changeScan = scanScopeChanges(
+    baseline,
+    current,
+    declaredArtifacts,
+    authority.gitChangedPaths,
+  );
   const baselineProjectionHash = canonicalHash(SNAPSHOT_PROJECTION_HASH_TAG, baseline);
   const currentProjectionHash = canonicalHash(SNAPSHOT_PROJECTION_HASH_TAG, current);
-
-  const unresolved = [
-    ...unattributed.map((change) =>
-      unresolvedScope(
-        {
-          kind: 'unattributed-change',
-          source: 'implementation-scope',
-          path: change.path,
-          evidence: {
-            after: change.after,
-            before: change.before,
-            changeKind: change.kind,
+  const omissionCandidates: NativeUnresolvedScope[] = [];
+  for (const [source, projection] of [
+    ['baseline', baseline],
+    ['current', current],
+  ] as const) {
+    for (const omission of projection.omitted) {
+      if (omissionCandidates.length >= MAX_NATIVE_DETAILED_UNRESOLVED_SCOPES) break;
+      omissionCandidates.push(
+        unresolvedScope(
+          {
+            kind: 'snapshot-omission',
+            source,
+            path: omission.path,
+            evidence: {
+              reason: omission.reason,
+              size: omission.size,
+              type: omission.type,
+            },
           },
-        },
-        `Changed path is not covered by a declared artifact: ${change.path}`,
-      ),
-    ),
-    ...omissionScopes('baseline', baseline),
-    ...omissionScopes('current', current),
+          `${source} snapshot omitted ${omission.path}: ${omission.reason}`,
+        ),
+      );
+    }
+  }
+  const totalOmissionDetails = baseline.omitted.length + current.omitted.length;
+  const essentialScopes = [
+    ...omissionSummaryScopes('baseline', baseline),
+    ...omissionSummaryScopes('current', current),
+    ...(changeScan.totalChanges === 0 && noCodeReason === null
+      ? [
+          unresolvedScope(
+            {
+              kind: 'missing-no-code-reason',
+              source: 'implementation-scope',
+              path: null,
+              evidence: {
+                baselineProjectionHash,
+                currentProjectionHash,
+              },
+            },
+            'A non-empty no-code reason is required when the snapshots contain no changes',
+          ),
+        ]
+      : []),
   ];
-  if (changes.length === 0 && noCodeReason === null) {
-    unresolved.push(
-      unresolvedScope(
-        {
-          kind: 'missing-no-code-reason',
-          source: 'implementation-scope',
-          path: null,
-          evidence: {
-            baselineProjectionHash,
-            currentProjectionHash,
-          },
-        },
-        'A non-empty no-code reason is required when the snapshots contain no changes',
+
+  const buildGitAdvisory = (): NativeGitScopeAdvisory | undefined => {
+    if (authority.gitChangedPaths === undefined) return undefined;
+    const snapshotChangePaths = new Set(changeScan.gitPathsPresentInChanges);
+    return {
+      advisoryOnly: true,
+      changedPaths: authority.gitChangedPaths,
+      pathsPresentInSnapshotChanges: authority.gitChangedPaths.filter((value) =>
+        snapshotChangePaths.has(value),
       ),
-    );
+      pathsAbsentFromSnapshotChanges: authority.gitChangedPaths.filter(
+        (value) => !snapshotChangePaths.has(value),
+      ),
+    };
+  };
+
+  const buildScopeContent = (options: {
+    detailedChangeCount: number;
+    detailedOmissionCount: number;
+    includeGitAdvisory: boolean;
+    overflowHash: string;
+  }) => {
+    const changes = changeScan.candidates.slice(0, options.detailedChangeCount);
+    const unattributed = changes.filter((change) => change.attributedTo.length === 0);
+    const overflowChanges = changeScan.totalChanges - changes.length;
+    const overflowUnattributed = changeScan.totalUnattributed - unattributed.length;
+    const overflowOmissions = totalOmissionDetails - options.detailedOmissionCount;
+    const overflowUnresolved = overflowUnattributed + overflowOmissions;
+    const unresolved = [
+      ...unattributed.map((change) =>
+        unresolvedScope(
+          {
+            kind: 'unattributed-change',
+            source: 'implementation-scope',
+            path: change.path,
+            evidence: {
+              after: change.after,
+              before: change.before,
+              changeKind: change.kind,
+            },
+          },
+          `Changed path is not covered by a declared artifact: ${change.path}`,
+        ),
+      ),
+      ...omissionCandidates.slice(0, options.detailedOmissionCount),
+      ...essentialScopes,
+      ...(overflowChanges > 0 || overflowUnresolved > 0
+        ? [
+            scopeDetailOverflow(options.overflowHash, {
+              changes: overflowChanges,
+              unattributed: overflowUnattributed,
+              unresolved: overflowUnresolved,
+            }),
+          ]
+        : []),
+    ];
+    const unresolvedScopes = uniqueUnresolvedScopes(unresolved);
+    const gitAdvisory = options.includeGitAdvisory ? buildGitAdvisory() : undefined;
+    return {
+      schema: NATIVE_IMPLEMENTATION_SCOPE_SCHEMA,
+      contractHash,
+      baselineProjectionRef: nativeSnapshotProjectionRef(baselineProjectionHash),
+      baselineProjectionHash,
+      currentProjectionRef: nativeSnapshotProjectionRef(currentProjectionHash),
+      currentProjectionHash,
+      complete: unresolvedScopes.length === 0,
+      declaredArtifacts,
+      changes,
+      unattributed,
+      unresolvedScopes,
+      noCodeReason,
+      ...(gitAdvisory ? { gitAdvisory } : {}),
+    };
+  };
+
+  let detailedChangeCount = changeScan.candidates.length;
+  let detailedOmissionCount = omissionCandidates.length;
+  let includeGitAdvisory = authority.gitChangedPaths !== undefined;
+  const placeholderHash = '0'.repeat(64);
+  while (true) {
+    const candidate = buildScopeContent({
+      detailedChangeCount,
+      detailedOmissionCount,
+      includeGitAdvisory,
+      overflowHash: placeholderHash,
+    });
+    if (
+      serializedEvidenceBytes({ ...candidate, scopeHash: placeholderHash }) <=
+      MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES
+    ) {
+      break;
+    }
+    if (includeGitAdvisory) {
+      includeGitAdvisory = false;
+      continue;
+    }
+    if (detailedOmissionCount > 0) {
+      detailedOmissionCount -= Math.max(1, Math.ceil(detailedOmissionCount / 4));
+      continue;
+    }
+    if (detailedChangeCount > 0) {
+      const removable = detailedChangeCount;
+      detailedChangeCount -= Math.max(1, Math.ceil(removable / 4));
+      continue;
+    }
+    throw new Error('Native implementation scope metadata exceeds its evidence byte budget');
   }
 
-  const unresolvedScopes = uniqueUnresolvedScopes(unresolved);
-  const gitChangedPaths = authority.gitChangedPaths;
-  const snapshotChangePaths = new Set(changes.map((change) => change.path));
-  const gitAdvisory =
-    gitChangedPaths === undefined
-      ? undefined
-      : {
-          advisoryOnly: true as const,
-          changedPaths: gitChangedPaths,
-          pathsPresentInSnapshotChanges: gitChangedPaths.filter((value) =>
-            snapshotChangePaths.has(value),
-          ),
-          pathsAbsentFromSnapshotChanges: gitChangedPaths.filter(
-            (value) => !snapshotChangePaths.has(value),
-          ),
-        };
-
-  const scopeContent = {
-    schema: NATIVE_IMPLEMENTATION_SCOPE_SCHEMA,
-    contractHash,
-    baselineProjectionRef: nativeSnapshotProjectionRef(baselineProjectionHash),
-    baselineProjectionHash,
-    currentProjectionRef: nativeSnapshotProjectionRef(currentProjectionHash),
-    currentProjectionHash,
-    complete: unresolvedScopes.length === 0,
-    declaredArtifacts,
-    changes,
-    unattributed,
-    unresolvedScopes,
-    noCodeReason,
-    ...(gitAdvisory ? { gitAdvisory } : {}),
-  };
-  return {
+  const hasOverflow =
+    changeScan.totalChanges > detailedChangeCount || totalOmissionDetails > detailedOmissionCount;
+  const overflowHash = hasOverflow
+    ? hashScopeDetailOverflow({
+        baseline,
+        current,
+        declaredArtifacts,
+        detailedChangeCount,
+        detailedOmissionCount,
+      })
+    : placeholderHash;
+  const scopeContent = buildScopeContent({
+    detailedChangeCount,
+    detailedOmissionCount,
+    includeGitAdvisory,
+    overflowHash,
+  });
+  const scope = {
     ...scopeContent,
     scopeHash: canonicalHash(IMPLEMENTATION_SCOPE_HASH_TAG, scopeContent),
   };
+  if (serializedEvidenceBytes(scope) > MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES) {
+    throw new Error('Native implementation scope exceeded its evidence byte budget after fitting');
+  }
+  return scope;
 }
 
 /**
@@ -592,7 +986,7 @@ export function parseNativeSnapshotProjection(
   exactScopeKeys(
     root,
     ['schema', 'origin', 'complete', 'limits', 'entries', 'omitted', 'omittedCount'],
-    ['omissionOverflow'],
+    ['capture', 'omissionOverflow'],
     'Native snapshot projection',
   );
   if (root.schema !== NATIVE_SNAPSHOT_PROJECTION_SCHEMA) {
@@ -601,6 +995,7 @@ export function parseNativeSnapshotProjection(
   const parsedManifest = parseNativeContentSnapshotManifest({
     schema: 'comet.native.content-snapshot.v1',
     origin: root.origin,
+    ...(root.capture === undefined ? {} : { capture: root.capture }),
     createdAt: '1970-01-01T00:00:00.000Z',
     complete: root.complete,
     limits: root.limits,
@@ -699,6 +1094,7 @@ function parseUnresolvedScope(value: unknown, index: number): NativeUnresolvedSc
     'snapshot-omission',
     'snapshot-incomplete',
     'snapshot-omission-overflow',
+    'scope-detail-overflow',
     'missing-no-code-reason',
   ]);
   if (typeof scope.kind !== 'string' || !kinds.has(scope.kind as NativeUnresolvedScopeKind)) {
@@ -731,7 +1127,9 @@ function parseUnresolvedScope(value: unknown, index: number): NativeUnresolvedSc
     path:
       scope.path === null
         ? null
-        : projectRelativePath(scope.path, `Unresolved scope ${index} path`),
+        : scope.kind === 'snapshot-omission'
+          ? snapshotOmissionPath(scope.path, `Unresolved scope ${index} path`)
+          : projectRelativePath(scope.path, `Unresolved scope ${index} path`),
     reason: scope.reason,
   };
 }
@@ -834,6 +1232,24 @@ export function parseNativeImplementationScope(value: unknown): NativeImplementa
     throw new Error('Implementation scope unattributed changes are inconsistent');
   }
   const unresolvedScopes = root.unresolvedScopes.map(parseUnresolvedScope);
+  const detailOverflowScopes = unresolvedScopes.filter(
+    (scope) => scope.kind === 'scope-detail-overflow',
+  );
+  if (detailOverflowScopes.length > 1) {
+    throw new Error('Implementation scope has multiple detail overflow records');
+  }
+  const detailOverflow =
+    detailOverflowScopes[0] === undefined
+      ? null
+      : parseScopeDetailOverflow(detailOverflowScopes[0]);
+  if (
+    detailOverflow &&
+    (detailOverflow.changes + detailOverflow.unresolved === 0 ||
+      detailOverflow.unattributed > detailOverflow.changes ||
+      detailOverflow.unattributed > detailOverflow.unresolved)
+  ) {
+    throw new Error('Implementation scope detail overflow counts are inconsistent');
+  }
   const noCodeReason = root.noCodeReason as string | null;
   const expectedDerivedScopes = [
     ...expectedUnattributed.map((change) =>
@@ -851,7 +1267,7 @@ export function parseNativeImplementationScope(value: unknown): NativeImplementa
         `Changed path is not covered by a declared artifact: ${change.path}`,
       ),
     ),
-    ...(changes.length === 0 && noCodeReason === null
+    ...(changes.length + (detailOverflow?.changes ?? 0) === 0 && noCodeReason === null
       ? [
           unresolvedScope(
             {
@@ -916,14 +1332,12 @@ export function parseNativeImplementationScope(value: unknown): NativeImplementa
     const partition = [...pathsPresentInSnapshotChanges, ...pathsAbsentFromSnapshotChanges].sort(
       compareText,
     );
+    const detailedChangePaths = new Set(changes.map((change) => change.path));
     if (
       JSON.stringify(partition) !== JSON.stringify(changedPaths) ||
-      pathsPresentInSnapshotChanges.some(
-        (entry) => !changes.some((change) => change.path === entry),
-      ) ||
-      pathsAbsentFromSnapshotChanges.some((entry) =>
-        changes.some((change) => change.path === entry),
-      )
+      ((detailOverflow?.changes ?? 0) === 0 &&
+        pathsPresentInSnapshotChanges.some((entry) => !detailedChangePaths.has(entry))) ||
+      pathsAbsentFromSnapshotChanges.some((entry) => detailedChangePaths.has(entry))
     ) {
       throw new Error('Implementation scope Git advisory partition is invalid');
     }

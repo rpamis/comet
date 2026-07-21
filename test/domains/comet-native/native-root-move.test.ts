@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { execFileSync } from 'node:child_process';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,7 +22,7 @@ describe('Native artifact root moves', () => {
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-root-move-'));
-    await fs.mkdir(path.join(projectRoot, '.git'));
+    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
   });
 
   afterEach(async () => {
@@ -62,7 +63,7 @@ describe('Native artifact root moves', () => {
     expect(workspace).not.toBeNull();
     await expect(
       inspectNativeWorkspaceAdvisory({ paths: destinationPaths, identity: workspace! }),
-    ).resolves.toEqual({ state: 'aligned', findingCodes: [] });
+    ).resolves.toEqual({ state: 'aligned', findingCodes: [], driftComponents: [] });
     expect([
       await sha256File(path.join(destinationPaths.specsDir, 'word-count', 'spec.md')),
       await sha256File(path.join(destinationPaths.changesDir, 'active-change', 'payload.bin')),

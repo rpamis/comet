@@ -138,6 +138,16 @@ comet init --workflow both
 ambient_resume: false
 ```
 
+Classic 专属默认值统一收纳在 `classic:` 块中；旧顶层字段会在下次 `comet init` / `comet update` 时迁移：
+
+```yaml
+classic:
+  language: zh-CN
+  context_compression: off
+  review_mode: standard
+  auto_transition: true
+```
+
 Native 产物也可以放在项目内指定根目录，例如 `docs/comet/`：
 
 ```bash
@@ -259,13 +269,17 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 <details>
 <summary><code>comet update [path]</code> — 更新 Comet 包和技能</summary>
 
-更新 npm 包，并刷新已检测到的项目级/全局 Comet 技能。
+刷新已检测到的项目级/全局 Comet 技能。仅刷新当前项目时默认不会修改任何 npm 安装（包括全局包和项目级包）；需要同时升级 CLI 时必须显式传入 `--self-update`。显式 `--scope global` 会确定性走 current-project 资产范围，不会进入 all-projects 选择，也不会隐式更新 npm 包。自更新会先比较完整 semver（包括预发布版本），拒绝降级，并在安装前隔离验证候选包的版本、Workflow 与 Native 命令；安装失败时尝试恢复精确的当前版本。
 
-| 选项                | 描述                                     |
-| ------------------- | ---------------------------------------- |
-| `--json`            | 以 JSON 输出 npm 和 skill 更新结果       |
-| `--language <lang>` | 覆盖自动检测到的 skill 语言 (`en`, `zh`) |
-| `--scope <scope>`   | 仅更新 `global` 或 `project` 范围        |
+| 选项                 | 描述                                      |
+| -------------------- | ----------------------------------------- |
+| `--json`             | 以 JSON 输出 npm 和 skill 更新结果        |
+| `--language <lang>`  | 覆盖自动检测到的 skill 语言 (`en`, `zh`)  |
+| `--scope <scope>`    | 仅更新 `global` 或 `project` 安装范围     |
+| `--current-project`  | 只刷新当前项目                            |
+| `--all-projects`     | 刷新登记的所有项目级安装                  |
+| `--self-update`      | 刷新资产前显式升级 Comet npm 包           |
+| `--skip-self-update` | 显式跳过 Comet npm 包自更新                |
 
 </details>
 
@@ -646,7 +660,7 @@ Benchmark 核心结论：
 - **Spec 覆盖率**：off 100% vs beta 95%（压缩可能丢失少量边缘需求细节）
 - **规模效应**：任务越大，绝对节省量越高（large 档位节省可达 15,000 tokens）
 
-启用方式：在 `.comet/config.yaml` 中设置 `context_compression: beta`
+启用方式：在 `.comet/config.yaml` 的 `classic:` 块中设置 `context_compression: beta`。
 
 详见 [CONTEXT-COMPRESSION.md](docs/CONTEXT-COMPRESSION.md) 获取完整 Benchmark 报告、压缩原理和复现步骤。
 
@@ -662,7 +676,7 @@ Benchmark 核心结论：
 | `true`  | 阶段完成后自动调用下一个 Skill（默认）   |
 | `false` | 阶段完成后暂停，用户手动触发下一个 Skill |
 
-三层配置与优先级：`COMET_AUTO_TRANSITION` 环境变量 > `.comet/config.yaml`（项目级）> change `.comet.yaml`。
+三层配置与优先级：`COMET_AUTO_TRANSITION` 环境变量 > `.comet/config.yaml` 的 `classic.auto_transition`（项目级）> change `.comet.yaml`。
 
 详见 [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) 获取配置详情、工作流映射和常见问题。
 

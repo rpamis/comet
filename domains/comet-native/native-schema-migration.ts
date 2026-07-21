@@ -9,6 +9,7 @@ import { atomicWriteJson, atomicWriteText } from './native-atomic-file.js';
 import {
   hasPendingNativeCheckpointRecovery,
   inspectNativeChange,
+  NativeBaselineIncompleteError,
   NATIVE_CHANGE_STATE_FILE,
   nativeChangeDir,
   nativeChangeDocument,
@@ -30,6 +31,8 @@ import {
 } from './native-run-store.js';
 import {
   createNativeContentSnapshot,
+  filterNativeContentSnapshotToProjectScope,
+  inspectNativeContentSnapshotHealth,
   readNativeBaselineManifest,
   writeNativeBaselineManifest,
 } from './native-snapshot.js';
@@ -155,6 +158,7 @@ function upgradeV2StateToV3(
     phase: retreat ? 'build' : state.phase,
     verification_result: retreat ? 'pending' : state.verification_result,
     verification_report: retreat ? null : state.verification_report,
+    approved_contract_hash: null,
     implementation_scope: null,
     verification_evidence: null,
     partial_allowance: null,
@@ -553,12 +557,30 @@ async function ensureMigrationBaseline(
   name: string,
   createdAt: string,
 ): Promise<void> {
-  if (await readNativeBaselineManifest(paths, name)) return;
-  const baseline = await createNativeContentSnapshot(paths, {
-    now: new Date(createdAt),
-    origin: 'legacy-migration',
-  });
-  await writeNativeBaselineManifest(paths, name, baseline);
+  const stored = await readNativeBaselineManifest(paths, name);
+  const baseline = stored
+    ? await filterNativeContentSnapshotToProjectScope(paths, stored)
+    : await createNativeContentSnapshot(paths, {
+        now: new Date(createdAt),
+        origin: 'legacy-migration',
+      });
+  if (!baseline.complete) {
+    const health = inspectNativeContentSnapshotHealth(baseline);
+    const omittedByReason = baseline.omitted.reduce<Record<string, number>>((counts, item) => {
+      counts[item.reason] = (counts[item.reason] ?? 0) + 1;
+      return counts;
+    }, {});
+    const overflowCount = baseline.omissionOverflow?.count ?? 0;
+    if (overflowCount > 0) omittedByReason.overflow = overflowCount;
+    throw new NativeBaselineIncompleteError(
+      name,
+      baseline.omittedCount,
+      omittedByReason,
+      health.samplePaths,
+      health.sampleTruncated,
+    );
+  }
+  if (stored === null) await writeNativeBaselineManifest(paths, name, baseline);
 }
 
 async function optionalFileHash(file: string): Promise<string | null> {
@@ -768,6 +790,10 @@ async function continueNativeSchemaMigrationLocked(
   const changeFile = path.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
   const actualHash = await sha256File(changeFile);
   await assertSupersedeSourceBeforeMutation(paths, journal, actualHash === journal.targetHash);
+  // Baseline safety must be established before writing state, Run, trajectory, or checkpoint.
+  // A failed capture leaves only the prepared migration journal and the original state, so retry
+  // remains deterministic after the project omission is resolved.
+  await ensureMigrationBaseline(paths, name, journal.createdAt);
   if (actualHash !== journal.targetHash) {
     if (actualHash !== journal.sourceHash) {
       throw new Error(
@@ -792,7 +818,6 @@ async function continueNativeSchemaMigrationLocked(
   }
   await continueTransitionSupersede(paths, journal, hooks);
   await continueRunRetreat(paths, journal, hooks);
-  await ensureMigrationBaseline(paths, name, journal.createdAt);
   await fs.rm(nativeSchemaMigrationJournalFile(paths, name), { force: true });
   return journal.nextState;
 }

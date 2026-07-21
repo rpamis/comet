@@ -10,6 +10,7 @@ import {
   createNativeChange,
   inspectNativeChange,
   NativeChangeRevisionConflictError,
+  NativeBaselineIncompleteError,
   NativeRuntimeCompatibilityError,
   nativeChangeDir,
   readNativeChange,
@@ -55,7 +56,7 @@ export interface NativeCommandResult {
 }
 
 interface NativeCliErrorShape {
-  code: 'usage' | 'invalid-data' | 'blocked' | 'conflict' | 'internal';
+  code: 'usage' | 'invalid-data' | 'blocked' | 'conflict' | 'internal' | 'baseline-incomplete';
   message: string;
 }
 
@@ -672,6 +673,22 @@ function errorResult(command: string | null, error: unknown): DispatchResult {
         outcome: 'revision-conflict',
       },
       error: { code: 'conflict', message: error.message },
+    };
+  }
+  if (error instanceof NativeBaselineIncompleteError) {
+    return {
+      command,
+      exitCode: 65,
+      data: {
+        change: error.change,
+        complete: false,
+        omittedCount: error.omittedCount,
+        omittedByReason: error.omittedByReason,
+        samplePaths: error.samplePaths,
+        sampleTruncated: error.sampleTruncated,
+        requiredAction: 'resolve-native-baseline',
+      },
+      error: { code: 'baseline-incomplete', message: error.message },
     };
   }
   if (error instanceof Error) {

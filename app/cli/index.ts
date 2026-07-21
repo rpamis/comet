@@ -157,7 +157,9 @@ program
   .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
   .option('--all-projects', 'Update all indexed project-scope Comet installs')
   .option('--current-project', 'Update only the current project')
-  .addOption(new Option('--skip-npm', 'Skip npm package self-update').hideHelp())
+  .option('--self-update', 'Update the Comet npm package before refreshing project assets')
+  .option('--skip-self-update', 'Skip the Comet npm package self-update')
+  .addOption(new Option('--skip-npm', 'Deprecated alias for --skip-self-update').hideHelp())
   .action(async (targetPath = '.', options) => {
     const result = await updateCommand(targetPath, options);
     process.exitCode = exitCodeForCommandResult(result);

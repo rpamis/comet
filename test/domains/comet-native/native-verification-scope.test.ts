@@ -4,6 +4,7 @@ import { canonicalHash } from '../../../domains/comet-native/native-canonical-ha
 import {
   buildNativeImplementationScopeBundle,
   buildNativeImplementationScope,
+  MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES,
   NATIVE_IMPLEMENTATION_SCOPE_SCHEMA,
   parseNativeImplementationScopeBundle,
   parseNativeImplementationScope,
@@ -18,6 +19,80 @@ const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
 const HASH_C = 'c'.repeat(64);
 
+function overflowGitSelection(combinedHash: string) {
+  return {
+    schema: 'comet.native.git-selection.v1' as const,
+    status: 'overflow' as const,
+    stageBefore: {
+      hash: HASH_A,
+      recordCount: 1,
+      storedRecordCount: 1,
+      stdoutBytes: 80,
+      overflow: false,
+    },
+    combined: {
+      hash: combinedHash,
+      recordCount: 200,
+      storedRecordCount: 128,
+      stdoutBytes: 10_000,
+      overflow: true,
+    },
+    stageAfter: {
+      hash: HASH_A,
+      recordCount: 1,
+      storedRecordCount: 1,
+      stdoutBytes: 80,
+      overflow: false,
+    },
+    finalStageBefore: {
+      hash: HASH_A,
+      recordCount: 1,
+      storedRecordCount: 1,
+      stdoutBytes: 80,
+      overflow: false,
+    },
+    finalCombined: {
+      hash: combinedHash,
+      recordCount: 200,
+      storedRecordCount: 128,
+      stdoutBytes: 10_000,
+      overflow: true,
+    },
+    finalStageAfter: {
+      hash: HASH_A,
+      recordCount: 1,
+      storedRecordCount: 1,
+      stdoutBytes: 80,
+      overflow: false,
+    },
+  };
+}
+
+function changedPhysicalSelection(afterHash: string) {
+  return {
+    schema: 'comet.native.physical-selection.v1' as const,
+    status: 'changed' as const,
+    before: {
+      hash: HASH_A,
+      visitedNodeCount: 1,
+      recordCount: 1,
+      storedRecordCount: 1,
+      encodedBytes: 16,
+      overflow: false,
+      unstable: false,
+    },
+    after: {
+      hash: afterHash,
+      visitedNodeCount: 1,
+      recordCount: 1,
+      storedRecordCount: 1,
+      encodedBytes: 16,
+      overflow: false,
+      unstable: false,
+    },
+  };
+}
+
 function entry(entryPath: string, hash: string, size = 1): NativeSnapshotEntry {
   return { path: entryPath, hash, size, type: 'file' };
 }
@@ -30,6 +105,7 @@ function manifest(
     omittedCount?: number;
     overflow?: NativeContentSnapshotManifest['omissionOverflow'];
     origin?: NativeContentSnapshotManifest['origin'];
+    capture?: NativeContentSnapshotManifest['capture'];
   } = {},
 ): NativeContentSnapshotManifest {
   const omitted = options.omitted ?? [];
@@ -37,6 +113,7 @@ function manifest(
   return {
     schema: 'comet.native.content-snapshot.v1',
     origin: options.origin ?? 'explicit',
+    ...(options.capture ? { capture: options.capture } : {}),
     createdAt: options.createdAt ?? '2026-07-17T00:00:00.000Z',
     complete: omittedCount === 0,
     limits: {
@@ -77,6 +154,432 @@ describe('Native implementation scope', () => {
     expect(result.complete).toBe(true);
     expect(result.unattributed).toEqual([]);
     expect(result.scopeHash).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it('does not infer removals from paths absent in an incomplete current snapshot', () => {
+    const result = buildNativeImplementationScope({
+      baseline: manifest({
+        entries: [entry('src/stable.ts', HASH_A), entry('src/unknown.ts', HASH_B)],
+      }),
+      current: manifest({
+        entries: [entry('src/stable.ts', HASH_C)],
+        omitted: [
+          {
+            path: 'src/unknown.ts',
+            size: null,
+            type: 'file',
+            reason: 'changed-during-read',
+          },
+        ],
+      }),
+      contractHash: HASH_B,
+      declaredArtifacts: [{ path: 'src', kind: 'directory' }],
+    });
+
+    expect(result.changes.map(({ path, kind }) => ({ path, kind }))).toEqual([
+      { path: 'src/stable.ts', kind: 'modified' },
+    ]);
+    expect(result.unresolvedScopes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'snapshot-incomplete', source: 'current' }),
+        expect.objectContaining({ kind: 'snapshot-omission', path: 'src/unknown.ts' }),
+      ]),
+    );
+  });
+
+  it('does not infer removals when current omissions exist only in overflow metadata', () => {
+    const overflow = {
+      ref: `native-snapshot://omitted-overflow/${HASH_C}`,
+      hash: HASH_C,
+      count: 1,
+    } as const;
+    const result = buildNativeImplementationScope({
+      baseline: manifest({ entries: [entry('src/unknown.ts', HASH_A)] }),
+      current: manifest({ omittedCount: 1, overflow }),
+      contractHash: HASH_B,
+      declaredArtifacts: [{ path: 'src/unknown.ts', kind: 'file' }],
+    });
+
+    expect(result.changes).toEqual([]);
+    expect(result.unresolvedScopes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'snapshot-incomplete', source: 'current' }),
+        expect.objectContaining({ kind: 'snapshot-omission-overflow', source: 'current' }),
+      ]),
+    );
+  });
+
+  it('preserves a root-level Git enumeration omission as bounded partial evidence', () => {
+    const bundle = buildNativeImplementationScopeBundle({
+      baseline: manifest(),
+      current: manifest({
+        capture: { provider: 'git', gitSelection: overflowGitSelection(HASH_C) },
+        omitted: [
+          {
+            path: '.',
+            size: null,
+            type: 'directory',
+            reason: 'git-enumeration-limit',
+          },
+        ],
+      }),
+      contractHash: HASH_B,
+      declaredArtifacts: [],
+      noCodeReason: 'No selected content changed.',
+    });
+
+    expect(bundle.scope.unresolvedScopes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'snapshot-omission', path: '.', source: 'current' }),
+      ]),
+    );
+    expect(parseNativeImplementationScopeBundle(bundle)).toEqual(bundle);
+  });
+
+  it('binds Git selection evidence into the snapshot projection and scope hashes', () => {
+    const current = (combinedHash: string) =>
+      manifest({
+        capture: { provider: 'git', gitSelection: overflowGitSelection(combinedHash) },
+        omitted: [
+          {
+            path: '.',
+            size: null,
+            type: 'directory',
+            reason: 'git-enumeration-limit',
+          },
+        ],
+      });
+    const authority = {
+      baseline: manifest(),
+      contractHash: HASH_B,
+      declaredArtifacts: [] as const,
+      noCodeReason: 'No selected content changed.',
+    };
+    const first = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: current(HASH_B),
+    });
+    const second = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: current(HASH_C),
+    });
+
+    expect(first.current.capture?.gitSelection?.combined.hash).toBe(HASH_B);
+    expect(second.scope.currentProjectionHash).not.toBe(first.scope.currentProjectionHash);
+    expect(second.scope.scopeHash).not.toBe(first.scope.scopeHash);
+    expect(parseNativeImplementationScopeBundle(first)).toEqual(first);
+  });
+
+  it('binds legacy physical-to-Git projection evidence into scope hashes', () => {
+    const current = (combinedHash: string) =>
+      manifest({
+        capture: {
+          provider: 'physical-tree',
+          projection: {
+            provider: 'git',
+            selection: overflowGitSelection(combinedHash),
+          },
+        },
+        omitted: [
+          {
+            path: '.',
+            size: null,
+            type: 'directory',
+            reason: 'git-enumeration-limit',
+          },
+        ],
+      });
+    const authority = {
+      baseline: manifest(),
+      contractHash: HASH_B,
+      declaredArtifacts: [] as const,
+      noCodeReason: 'No selected content changed.',
+    };
+    const first = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: current(HASH_B),
+    });
+    const second = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: current(HASH_C),
+    });
+
+    expect(first.current.capture?.projection?.selection?.combined.hash).toBe(HASH_B);
+    expect(second.scope.currentProjectionHash).not.toBe(first.scope.currentProjectionHash);
+    expect(second.scope.scopeHash).not.toBe(first.scope.scopeHash);
+    expect(parseNativeImplementationScopeBundle(first)).toEqual(first);
+  });
+
+  it('binds physical selection evidence into the snapshot projection and scope hashes', () => {
+    const current = (afterHash: string) =>
+      manifest({
+        capture: {
+          provider: 'physical-tree',
+          physicalSelection: changedPhysicalSelection(afterHash),
+        },
+        omitted: [
+          {
+            path: '.',
+            size: null,
+            type: 'directory',
+            reason: 'physical-selection-changed',
+          },
+        ],
+      });
+    const authority = {
+      baseline: manifest(),
+      contractHash: HASH_B,
+      declaredArtifacts: [] as const,
+      noCodeReason: 'No selected content changed.',
+    };
+    const first = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: current(HASH_B),
+    });
+    const second = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: current(HASH_C),
+    });
+
+    expect(first.current.capture?.physicalSelection?.after.hash).toBe(HASH_B);
+    expect(second.scope.currentProjectionHash).not.toBe(first.scope.currentProjectionHash);
+    expect(second.scope.scopeHash).not.toBe(first.scope.scopeHash);
+    expect(parseNativeImplementationScopeBundle(first)).toEqual(first);
+  });
+
+  it('never compacts away a root-level physical selection blocker', () => {
+    const omitted = Array.from({ length: 999 }, (_, index) => ({
+      path:
+        'generated/omitted-' + String(index).padStart(4, '0') + '-' + 'x'.repeat(1_200) + '.bin',
+      size: 2_000,
+      type: 'file' as const,
+      reason: 'file-size' as const,
+    }));
+    const rootSelectionBlocker: NativeSnapshotOmission = {
+      path: '.',
+      size: null,
+      type: 'directory',
+      reason: 'physical-selection-changed',
+    };
+    const bundle = buildNativeImplementationScopeBundle({
+      baseline: manifest(),
+      current: {
+        ...manifest({
+          capture: {
+            provider: 'physical-tree',
+            physicalSelection: changedPhysicalSelection(HASH_B),
+          },
+          omitted: [rootSelectionBlocker, ...omitted],
+        }),
+        limits: {
+          maxFiles: 100,
+          maxFileBytes: 1_000,
+          maxTotalBytes: 10_000,
+          maxManifestBytes: 8 * 1024 * 1024,
+        },
+      },
+      contractHash: HASH_B,
+      declaredArtifacts: [],
+      noCodeReason: 'No selected content changed.',
+    });
+
+    expect(bundle.current.omitted).toContainEqual(rootSelectionBlocker);
+    expect(bundle.current.omissionOverflow).toBeDefined();
+    expect(bundle.scope.unresolvedScopes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'snapshot-omission',
+          path: '.',
+          source: 'current',
+        }),
+      ]),
+    );
+    expect(parseNativeImplementationScopeBundle(bundle)).toEqual(bundle);
+  });
+
+  it('keeps a complete Git scope stable when only staging state changes', () => {
+    const unchangedWorkingTree = manifest({
+      capture: { provider: 'git' },
+      entries: [entry('src/feature.ts', HASH_A)],
+    });
+    const authority = {
+      baseline: manifest(),
+      contractHash: HASH_B,
+      declaredArtifacts: [{ path: 'src/feature.ts', kind: 'file' as const }],
+    };
+    const beforeStaging = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: unchangedWorkingTree,
+    });
+    const afterStaging = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: { ...unchangedWorkingTree, createdAt: '2030-01-01T00:00:00.000Z' },
+    });
+
+    expect(beforeStaging.current.capture).toEqual({ provider: 'git' });
+    expect(afterStaging.scope.currentProjectionHash).toBe(
+      beforeStaging.scope.currentProjectionHash,
+    );
+    expect(afterStaging.scope.scopeHash).toBe(beforeStaging.scope.scopeHash);
+  });
+
+  it('summarizes oversized change details into a stable bounded unresolved scope', () => {
+    const entries = Array.from({ length: 500 }, (_, index) =>
+      entry(`generated/${String(index).padStart(4, '0')}-${'x'.repeat(80)}.ts`, HASH_A),
+    );
+    const largeManifest = (values: NativeSnapshotEntry[]): NativeContentSnapshotManifest => ({
+      ...manifest(),
+      limits: {
+        maxFiles: 1_000,
+        maxFileBytes: 1_000,
+        maxTotalBytes: 1_000_000,
+        maxManifestBytes: 1_000_000,
+      },
+      entries: values,
+    });
+    const input = {
+      baseline: largeManifest([]),
+      current: largeManifest(entries),
+      contractHash: HASH_B,
+      declaredArtifacts: [] as const,
+    };
+
+    const first = buildNativeImplementationScopeBundle(input);
+    const second = buildNativeImplementationScopeBundle(input);
+    const overflow = first.scope.unresolvedScopes.find(
+      (scope) => scope.kind === 'scope-detail-overflow',
+    );
+
+    expect(first.scope.changes.length).toBeLessThan(entries.length);
+    expect(first.scope.unattributed.length).toBeLessThan(entries.length);
+    expect(overflow).toMatchObject({
+      source: 'implementation-scope',
+      path: null,
+      reason: expect.stringMatching(/additional change details/iu),
+    });
+    expect(Buffer.byteLength(JSON.stringify(first.scope, null, 2) + '\n')).toBeLessThanOrEqual(
+      1024 * 1024,
+    );
+    expect(second).toEqual(first);
+    expect(parseNativeImplementationScopeBundle(first)).toEqual(first);
+  });
+
+  it('bounds long omission details by serialized bytes and folds the remainder stably', () => {
+    const omitted = Array.from({ length: 1_000 }, (_, index) => ({
+      path: `generated/omitted-${String(index).padStart(4, '0')}-${'x'.repeat(450)}.bin`,
+      size: 2_000,
+      type: 'file' as const,
+      reason: 'file-size' as const,
+    }));
+    const largeOmissionManifest: NativeContentSnapshotManifest = {
+      ...manifest(),
+      complete: false,
+      limits: {
+        maxFiles: 10_000,
+        maxFileBytes: 1_000,
+        maxTotalBytes: 10_000,
+        maxManifestBytes: 8 * 1024 * 1024,
+      },
+      omitted,
+      omittedCount: omitted.length,
+    };
+    const input = {
+      baseline: largeOmissionManifest,
+      current: manifest(),
+      contractHash: HASH_B,
+      declaredArtifacts: [] as const,
+      noCodeReason: 'No readable project content changed.',
+    };
+
+    const first = buildNativeImplementationScopeBundle(input);
+    const second = buildNativeImplementationScopeBundle(input);
+
+    expect(
+      first.scope.unresolvedScopes.filter((scope) => scope.kind === 'snapshot-omission').length,
+    ).toBeLessThan(omitted.length);
+    expect(first.scope.unresolvedScopes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'scope-detail-overflow' })]),
+    );
+    expect(
+      [first.baseline, first.current, first.scope].every(
+        (document) =>
+          Buffer.byteLength(JSON.stringify(document, null, 2) + '\n', 'utf8') <=
+          MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES,
+      ),
+    ).toBe(true);
+    expect(second).toEqual(first);
+    expect(parseNativeImplementationScopeBundle(first)).toEqual(first);
+  });
+
+  it('binds the content hashes of entries folded into projection overflow', () => {
+    const entries = Array.from({ length: 2_500 }, (_, index) =>
+      entry(`generated/${String(index).padStart(4, '0')}-${'x'.repeat(450)}.ts`, HASH_A),
+    );
+    const oversizedManifest = (values: NativeSnapshotEntry[]): NativeContentSnapshotManifest => ({
+      ...manifest(),
+      limits: {
+        maxFiles: 10_000,
+        maxFileBytes: 1_000,
+        maxTotalBytes: 10_000_000,
+        maxManifestBytes: 8 * 1024 * 1024,
+      },
+      entries: values,
+    });
+    const authority = {
+      baseline: oversizedManifest([]),
+      contractHash: HASH_B,
+      declaredArtifacts: [{ path: 'generated', kind: 'directory' as const }],
+    };
+    const first = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: oversizedManifest(entries),
+    });
+    const sameSizeContentChange = entries.map((value, index) =>
+      index === entries.length - 1 ? { ...value, hash: HASH_C } : value,
+    );
+    const second = buildNativeImplementationScopeBundle({
+      ...authority,
+      current: oversizedManifest(sameSizeContentChange),
+    });
+
+    expect(first.current.omissionOverflow).toBeDefined();
+    expect(first.current.entries.some((value) => value.path === entries.at(-1)!.path)).toBe(false);
+    expect(second.current.omissionOverflow?.hash).not.toBe(first.current.omissionOverflow?.hash);
+    expect(second.scope.currentProjectionHash).not.toBe(first.scope.currentProjectionHash);
+    expect(second.scope.scopeHash).not.toBe(first.scope.scopeHash);
+  });
+
+  it('keeps a Git path present when its snapshot change is beyond the detailed prefix', () => {
+    const entries = Array.from({ length: 200 }, (_, index) =>
+      entry(`generated/${String(index).padStart(4, '0')}.ts`, HASH_A),
+    );
+    const current: NativeContentSnapshotManifest = {
+      ...manifest(),
+      limits: {
+        maxFiles: 1_000,
+        maxFileBytes: 1_000,
+        maxTotalBytes: 10_000,
+        maxManifestBytes: 1_000_000,
+      },
+      entries,
+    };
+    const lastPath = entries.at(-1)!.path;
+    const bundle = buildNativeImplementationScopeBundle({
+      baseline: manifest(),
+      current,
+      contractHash: HASH_B,
+      declaredArtifacts: [{ path: 'generated', kind: 'directory' }],
+      gitChangedPaths: [lastPath],
+    });
+
+    expect(bundle.scope.changes).toHaveLength(128);
+    expect(bundle.scope.gitAdvisory).toEqual({
+      advisoryOnly: true,
+      changedPaths: [lastPath],
+      pathsPresentInSnapshotChanges: [lastPath],
+      pathsAbsentFromSnapshotChanges: [],
+    });
+    expect(parseNativeImplementationScopeBundle(bundle)).toEqual(bundle);
   });
 
   it('attributes exact files and directory ranges without prefix collisions', () => {

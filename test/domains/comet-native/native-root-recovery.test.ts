@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { execFileSync } from 'node:child_process';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -25,7 +26,7 @@ describe('Native artifact root recovery', () => {
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-root-recovery-'));
-    await fs.mkdir(path.join(projectRoot, '.git'));
+    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
   });
 
   afterEach(async () => {
@@ -70,7 +71,7 @@ describe('Native artifact root recovery', () => {
     const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');
     await expect(
       inspectNativeWorkspaceAdvisory({ paths: destinationPaths, identity: workspace! }),
-    ).resolves.toEqual({ state: 'aligned', findingCodes: [] });
+    ).resolves.toEqual({ state: 'aligned', findingCodes: [], driftComponents: [] });
   });
 
   it('rolls back an interruption in the ready stage', async () => {
@@ -104,7 +105,7 @@ describe('Native artifact root recovery', () => {
     const workspace = await readNativeWorkspaceIdentity(sourcePaths, 'identity-change');
     await expect(
       inspectNativeWorkspaceAdvisory({ paths: sourcePaths, identity: workspace! }),
-    ).resolves.toEqual({ state: 'aligned', findingCodes: [] });
+    ).resolves.toEqual({ state: 'aligned', findingCodes: [], driftComponents: [] });
   });
 
   it('continues an interruption after the config switched', async () => {
@@ -138,7 +139,7 @@ describe('Native artifact root recovery', () => {
     const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');
     await expect(
       inspectNativeWorkspaceAdvisory({ paths: destinationPaths, identity: workspace! }),
-    ).resolves.toEqual({ state: 'aligned', findingCodes: [] });
+    ).resolves.toEqual({ state: 'aligned', findingCodes: [], driftComponents: [] });
   });
 
   it('continues a transaction-bound source quarantine after a removal crash', async () => {

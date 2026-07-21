@@ -13,7 +13,7 @@ description: "Use only when explicitly invoked as /comet-open or routed by the r
 
 ### 0. Output Language Constraint
 
-Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language, using normalized ids such as `en` or `zh-CN`. Before `.comet.yaml` exists, read `language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after the change is initialized, use `comet state get <name> language`. If no configured language exists, fall back to the current user request language. The generated `proposal.md`, `design.md`, and `tasks.md` must use that language as their main language.
+Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language, using normalized ids such as `en` or `zh-CN`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after the change is initialized, use `comet state get <name> language`. If no configured language exists, fall back to the current user request language. The generated `proposal.md`, `design.md`, and `tasks.md` must use that language as their main language.
 
 ### 0a. Current Change Binding
 

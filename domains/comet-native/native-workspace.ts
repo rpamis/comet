@@ -17,8 +17,18 @@ export interface NativeWorkspaceIdentity {
   nativeRootRef: string;
   projectRootId: string;
   nativeRootId: string;
+  /** Stable real-path hashes used for root drift decisions. */
+  projectRootPathId?: string;
+  nativeRootPathId?: string;
   sessionHash?: string;
 }
+
+export type NativeWorkspaceDriftComponent =
+  | 'native-root-ref'
+  | 'project-root-path'
+  | 'native-root-path'
+  | 'project-root-legacy-identity'
+  | 'native-root-legacy-identity';
 
 export type NativeWorkspaceFindingCode =
   | 'workspace-root-changed'
@@ -36,6 +46,7 @@ export function isNativeWorkspaceAdvisoryCode(code: string): code is NativeWorks
 export interface NativeWorkspaceAdvisory {
   state: 'aligned' | 'drifted' | 'unknown';
   findingCodes: NativeWorkspaceFindingCode[];
+  driftComponents: NativeWorkspaceDriftComponent[];
 }
 
 export interface CaptureNativeWorkspaceOptions {
@@ -94,6 +105,17 @@ async function physicalDirectoryIdentity(tag: string, value: string): Promise<st
   return identityHash(tag, `${normalizedPath}\n${stat.dev}\n${stat.ino}\n${stat.birthtimeMs}`);
 }
 
+async function directoryPathIdentity(tag: string, value: string): Promise<string> {
+  const realPath = await fs.realpath(value);
+  const stat = await fs.lstat(realPath);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error('Native workspace identity requires a real directory');
+  }
+  const normalizedPath =
+    process.platform === 'win32' ? path.normalize(realPath).toLowerCase() : realPath;
+  return identityHash(tag, normalizedPath);
+}
+
 function isoTimestamp(value: unknown): string {
   if (typeof value !== 'string') throw new Error('Native workspace capturedAt is invalid');
   const parsed = new Date(value);
@@ -115,6 +137,8 @@ function assertIdentity(value: unknown): asserts value is NativeWorkspaceIdentit
     'nativeRootRef',
     'projectRootId',
     'nativeRootId',
+    'projectRootPathId',
+    'nativeRootPathId',
     'sessionHash',
   ]);
   const unknown = Object.keys(root).filter((key) => !allowed.has(key));
@@ -135,6 +159,17 @@ function assertIdentity(value: unknown): asserts value is NativeWorkspaceIdentit
   }
   isoTimestamp(root.capturedAt);
   normalizedPortableRef(root.nativeRootRef, 'Native workspace root ref');
+  const hasProjectPathId = root.projectRootPathId !== undefined;
+  const hasNativePathId = root.nativeRootPathId !== undefined;
+  if (hasProjectPathId !== hasNativePathId) {
+    throw new Error('Native workspace path identities must be provided together');
+  }
+  if (
+    (hasProjectPathId && !HASH_PATTERN.test(String(root.projectRootPathId))) ||
+    (hasNativePathId && !HASH_PATTERN.test(String(root.nativeRootPathId)))
+  ) {
+    throw new Error('Native workspace path identity is invalid');
+  }
   if (root.sessionHash !== undefined && !HASH_PATTERN.test(String(root.sessionHash))) {
     throw new Error('Native workspace session hash is invalid');
   }
@@ -184,6 +219,20 @@ export async function inspectNativeWorkspaceSchema(
   throw new Error('Unsupported Native workspace identity');
 }
 
+export async function nativeWorkspaceIdentityNeedsMigration(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<boolean> {
+  const value = await readNativeWorkspaceValue(paths, name);
+  if (value === null) return false;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Native workspace identity must be an object');
+  }
+  if ((value as { schema?: unknown }).schema === 'comet.native.workspace.v1') return true;
+  assertIdentity(value);
+  return value.projectRootPathId === undefined || value.nativeRootPathId === undefined;
+}
+
 export async function inspectNativeWorkspaceIdentity(
   options: CaptureNativeWorkspaceOptions,
 ): Promise<NativeWorkspaceIdentity> {
@@ -192,9 +241,11 @@ export async function inspectNativeWorkspaceIdentity(
   }
   const nativeRootRef = portableRelative(options.paths.projectRoot, options.paths.nativeRoot);
   if (!nativeRootRef) throw new Error('Native root is outside the project root');
-  const [projectRootId, nativeRootId] = await Promise.all([
+  const [projectRootId, nativeRootId, projectRootPathId, nativeRootPathId] = await Promise.all([
     physicalDirectoryIdentity('comet.native.workspace-project-root.v2', options.paths.projectRoot),
     physicalDirectoryIdentity('comet.native.workspace-native-root.v2', options.paths.nativeRoot),
+    directoryPathIdentity('comet.native.workspace-project-root-path.v2', options.paths.projectRoot),
+    directoryPathIdentity('comet.native.workspace-native-root-path.v2', options.paths.nativeRoot),
   ]);
   const capturedAt = (options.now ?? new Date()).toISOString();
   const identity: NativeWorkspaceIdentity = {
@@ -204,6 +255,8 @@ export async function inspectNativeWorkspaceIdentity(
     nativeRootRef,
     projectRootId,
     nativeRootId,
+    projectRootPathId,
+    nativeRootPathId,
     ...(options.sessionId
       ? {
           sessionHash: identityHash(
@@ -252,10 +305,7 @@ export async function migrateLegacyNativeWorkspaceIdentity(options: {
   revision: number;
   now?: Date;
 }): Promise<NativeWorkspaceIdentity | null> {
-  if (
-    (await inspectNativeWorkspaceSchema(options.paths, options.name)) !==
-    'comet.native.workspace.v1'
-  ) {
+  if (!(await nativeWorkspaceIdentityNeedsMigration(options.paths, options.name))) {
     return null;
   }
   return writeNativeWorkspaceIdentity(options);
@@ -271,13 +321,46 @@ export async function inspectNativeWorkspaceAdvisory(options: {
     name: 'workspace-advisory',
     revision: options.identity.capturedRevision,
   });
+  const driftComponents: NativeWorkspaceDriftComponent[] = [];
   const codes: NativeWorkspaceFindingCode[] = [];
-  if (
-    current.nativeRootRef !== options.identity.nativeRootRef ||
-    current.projectRootId !== options.identity.projectRootId ||
-    current.nativeRootId !== options.identity.nativeRootId
-  ) {
+  if (current.nativeRootRef !== options.identity.nativeRootRef) {
+    driftComponents.push('native-root-ref');
+  }
+  if (options.identity.projectRootPathId && options.identity.nativeRootPathId) {
+    if (current.projectRootPathId !== options.identity.projectRootPathId) {
+      driftComponents.push('project-root-path');
+    }
+    if (current.nativeRootPathId !== options.identity.nativeRootPathId) {
+      driftComponents.push('native-root-path');
+    }
+  } else {
+    if (current.projectRootId !== options.identity.projectRootId) {
+      driftComponents.push('project-root-legacy-identity');
+    }
+    if (current.nativeRootId !== options.identity.nativeRootId) {
+      driftComponents.push('native-root-legacy-identity');
+    }
+  }
+  const onlyUnstableWindowsLegacyHashes =
+    process.platform === 'win32' &&
+    driftComponents.length > 0 &&
+    driftComponents.every(
+      (component) =>
+        component === 'project-root-legacy-identity' || component === 'native-root-legacy-identity',
+    );
+  if (onlyUnstableWindowsLegacyHashes) {
+    codes.push('workspace-inspection-unavailable');
+  } else if (driftComponents.length > 0) {
     codes.push('workspace-root-changed');
   }
-  return { state: codes.length > 0 ? 'drifted' : 'aligned', findingCodes: codes };
+  return {
+    state:
+      codes.length === 0
+        ? 'aligned'
+        : codes.includes('workspace-root-changed')
+          ? 'drifted'
+          : 'unknown',
+    findingCodes: codes,
+    driftComponents,
+  };
 }

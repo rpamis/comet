@@ -369,7 +369,7 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('snapshots language from .comet/config.yaml when initializing a change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: zh-CN\n');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-zh', 'full']);
     const yaml = await fs.readFile(
@@ -384,9 +384,34 @@ describe('comet scripts', () => {
     expect(get.stdout.trim()).toBe('zh-CN');
   }, 20_000);
 
+  it('ignores legacy top-level Classic settings until init or update migrates them', async () => {
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'language: zh-CN',
+        'context_compression: beta',
+        'review_mode: thorough',
+        'auto_transition: false',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runNode(tmpDir, stateScript, ['init', 'legacy-config-ignored', 'full']);
+    const yaml = await fs.readFile(
+      path.join(tmpDir, 'openspec', 'changes', 'legacy-config-ignored', '.comet.yaml'),
+      'utf-8',
+    );
+
+    expect(result.status).toBe(0);
+    expect(yaml).toContain('language: en');
+    expect(yaml).toContain('context_compression: off');
+    expect(yaml).toContain('review_mode: standard');
+    expect(yaml).toContain('auto_transition: true');
+  }, 20_000);
+
   it('falls back to the global Comet language when project config is absent', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
-    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: zh-CN\n');
+    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-global-zh', 'full'], {
       HOME: fakeHome,
@@ -403,8 +428,8 @@ describe('comet scripts', () => {
 
   it('lets project language override the global Comet language', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
-    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: zh-CN\n');
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: en\n');
+    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: en\n');
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-project-over-global', 'full'], {
       HOME: fakeHome,
@@ -421,7 +446,7 @@ describe('comet scripts', () => {
 
   it('rejects an invalid global Comet language when project config is absent', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
-    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: pirate\n');
+    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'classic:\n  language: pirate\n');
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-global-invalid', 'full'], {
       HOME: fakeHome,
@@ -435,7 +460,7 @@ describe('comet scripts', () => {
   it('ignores an unrelated malformed field elsewhere in .comet/config.yaml', async () => {
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'language: en\nunrelated_field: [unterminated\n',
+      'classic:\n  language: en\nunrelated_field: [unterminated\n',
     );
 
     const result = runNode(tmpDir, stateScript, ['init', 'unrelated-malformed-field', 'full'], {});
@@ -449,7 +474,7 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('rejects an explicit empty review_mode instead of silently defaulting', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'review_mode: ""\n');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  review_mode: ""\n');
 
     const result = runNode(tmpDir, stateScript, ['init', 'empty-review-mode', 'full'], {});
 
@@ -458,7 +483,7 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('rejects zh as an invalid project language when initializing a change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: zh\n');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: zh\n');
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-legacy-zh', 'full']);
 
@@ -468,7 +493,7 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('lets COMET_LANGUAGE override the project language default', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: zh-CN\n');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-env', 'full'], {
       COMET_LANGUAGE: 'en',
@@ -483,7 +508,7 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('rejects invalid language from .comet/config.yaml when initializing a change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: pirate\n');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: pirate\n');
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-invalid', 'full']);
 
@@ -570,7 +595,10 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('snapshots beta context compression from .comet/config.yaml when initializing a change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'context_compression: beta\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'classic:\n  context_compression: beta\n',
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'context-beta', 'full']);
     const yaml = await fs.readFile(
@@ -583,7 +611,10 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('snapshots review_mode from .comet/config.yaml when initializing a full change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'review_mode: standard\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'classic:\n  review_mode: standard\n',
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'review-standard', 'full']);
     const yaml = await fs.readFile(
@@ -596,7 +627,7 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('rejects invalid review_mode from .comet/config.yaml when initializing a change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'review_mode: noisy\n');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  review_mode: noisy\n');
 
     const result = runNode(tmpDir, stateScript, ['init', 'review-invalid', 'full']);
 
@@ -606,7 +637,10 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('lets COMET_CONTEXT_COMPRESSION override the project context compression default', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'context_compression: beta\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'classic:\n  context_compression: beta\n',
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'context-env', 'full'], {
       COMET_CONTEXT_COMPRESSION: 'off',
@@ -642,7 +676,7 @@ describe('comet scripts', () => {
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'context_compression: off\nauto_transition: false\n',
+      'classic:\n  context_compression: off\n  auto_transition: false\n',
     );
 
     const result = runNode(tmpDir, stateScript, ['init', 'auto-transition-config-false', 'full']);
@@ -1200,7 +1234,7 @@ describe('comet scripts', () => {
 
   it('uses the global Comet language in guards when change and project values are absent', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
-    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'language: zh-CN\n');
+    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
     await createChange(
       tmpDir,
       'global-zh-english-artifacts',
@@ -1249,7 +1283,7 @@ describe('comet scripts', () => {
   it('does not block the language check when .comet/config.yaml has an unrelated malformed field', async () => {
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'language: en\nunrelated_field: [unterminated\n',
+      'classic:\n  language: en\nunrelated_field: [unterminated\n',
     );
     await createChange(
       tmpDir,
@@ -1420,7 +1454,7 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('fails closed in guard when project config has an invalid language value', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: fr\n');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: fr\n');
     await createChange(
       tmpDir,
       'invalid-project-language',

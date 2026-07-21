@@ -83,6 +83,7 @@ language: zh-CN
 phase: shape
 brief: brief.md
 approval: null
+approved_contract_hash: null
 spec_changes:
   - capability: sentence-counting
     operation: create
@@ -98,7 +99,7 @@ created_at: 2026-07-14
 run_id: null
 ```
 
-不要直接编辑 runtime 管理字段。`phase`、`revision`、`approval`、`spec_changes`、operation、`base_hash`、三个 evidence ref、`run_id` 和 `archived` 都由 runtime 管理。需要改变需求时只更新 brief 和 `specs/<capability>/spec.md`；删除 capability 使用 `comet native spec remove`，再由命令检查并推进。旧 schema 由 `doctor --repair` 通过可恢复迁移升级，不能手工补字段。v2 的 Verify/Archive 状态没有 v3 所需的 scope/evidence 绑定，迁移时会受控退回 Build 重新采集，而不是把旧 pass 冒充为当前证据。
+不要直接编辑 runtime 管理字段。`phase`、`revision`、`approval`、`approved_contract_hash`、`spec_changes`、operation、`base_hash`、三个 evidence ref、`run_id` 和 `archived` 都由 runtime 管理。`approved_contract_hash` 把 approval 绑定到当时的 brief/spec contract；后续 contract 漂移必须由用户重新确认。需要改变需求时只更新 brief 和 `specs/<capability>/spec.md`；删除 capability 使用 `comet native spec remove`，再由命令检查并推进。旧 schema 由 `doctor --repair` 通过可恢复迁移升级，不能手工补字段。v2 的 Verify/Archive 状态没有 v3 所需的 scope/evidence 绑定，迁移时会受控退回 Build 重新采集，而不是把旧 pass 冒充为当前证据。
 
 ## Brief
 
@@ -170,8 +171,8 @@ Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出�
 
 ## 内容寻址证据
 
-- `baseline-manifest.json`：change 创建时的有界项目快照；只记录项目相对路径、size、hash 和省略事实，不保存文件内容。
-- `evidence/scopes/`：Build 离开时由 baseline、当前快照、声明产物和 contract 派生的 implementation scope。scope 不完整时 Runtime 停止；用户显式接受后才生成 `allowances/`。
+- `baseline-manifest.json`：change 创建时的有界项目快照；只记录项目相对路径、size、hash、capture provider 和省略事实，不保存文件内容。Git provider 只纳入 tracked 与未被 ignore 的 untracked 文件，并把 submodule/gitlink 作为原子条目；非 Git 项目使用带前后枚举围栏的有界物理树 provider。创建时若项目所有范围内仍有省略项，`new` 会立即失败并清理未完成 change，避免到 Build 才发现基线不可用。`git-selection-changed` 表示枚举期间 Git index 变化，必须等 Git 写入稳定后重试，绝不能按 partial scope 授权。`git-enumeration-limit` 表示项目所有范围超过 Git 枚举安全预算。baseline 创建或 migration cutover 没有 partial 授权，必须先缩小/清理范围或等待产品预算调整；仅在之后的 current snapshot 中恢复确实不可行、Runtime 返回带计数和内容 hash 的可授权 scope，且用户理解未知尾部风险时，才可按精确 hash、理由与 `--confirmed` 使用普通 partial 协议。`physical-selection-changed` 与 `physical-enumeration-limit` 分别表示物理项目树在捕获期间变化或枚举/协作式执行预算耗尽；由于未知尾部无法稳定绑定，两者在 current snapshot 中也不能授权，必须稳定或缩小项目树后重试。任何情况都不能手改 evidence 或猜测未枚举路径。
+- `evidence/scopes/`：Build 离开时由 baseline、当前快照、声明产物和 contract 派生的 implementation scope。当前快照不完整时不会猜测删除；变化过多时只展开有界明细，其余由带数量与内容 hash 的 `scope-detail-overflow` 表示。scope 不完整时 Runtime 停止；用户显式接受后才生成 `allowances/`。
 - `evidence/verifications/`：Verify 结论的 envelope，绑定 Runtime 身份、change revision、contract、acceptance coverage、scope、报告 hash 和可选 check receipt。任一绑定事实变化都会 stale。
 - `evidence/check-receipts/`：`comet native check` 的内置策略结果。它只保存 policy/version、scope/snapshot 绑定、有界 issue 与计数，不保存文件内容，也不是测试完整性的证明。
 - `checkpoints/`：阶段内恢复摘要与真实产物 manifest。checkpoint 会递增 revision，但不改变 phase，也不能代替 brief、规格、scope 或 verification。

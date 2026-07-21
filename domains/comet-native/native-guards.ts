@@ -9,6 +9,10 @@ import {
 import { nativeChangeDir } from './native-change.js';
 import { isInsidePath } from './native-paths.js';
 import { inspectNativeRunConsistency } from './native-run-consistency.js';
+import {
+  filterNativeContentSnapshotToProjectScope,
+  readNativeBaselineManifest,
+} from './native-snapshot.js';
 import type {
   NativeAdvanceEvidence,
   NativeArtifactValidation,
@@ -92,6 +96,26 @@ export async function inspectNativeGuard(options: {
     });
   }
   findings.push(...(await inspectNativeRunConsistency(options.paths, options.state)));
+  if (options.state.phase === 'shape' || options.state.phase === 'build') {
+    const capturedBaseline = await readNativeBaselineManifest(options.paths, options.state.name);
+    if (capturedBaseline === null) {
+      findings.push({
+        code: 'baseline-snapshot-missing',
+        message: 'Native baseline is missing; restore a trusted baseline before advancing',
+      });
+    } else {
+      const baseline = await filterNativeContentSnapshotToProjectScope(
+        options.paths,
+        capturedBaseline,
+      );
+      if (!baseline.complete) {
+        findings.push({
+          code: 'baseline-snapshot-incomplete',
+          message: `Native baseline is incomplete within the project-owned scope (${baseline.omittedCount} omitted entries); resolve the omissions before advancing`,
+        });
+      }
+    }
+  }
   if (options.state.phase === 'shape') {
     const brief = await validateNativeBrief(changeDir, options.state.brief);
     const specs = await validateNativeSpecChanges(options.paths, options.state);

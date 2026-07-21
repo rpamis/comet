@@ -48,9 +48,15 @@ comet native doctor <change-name> --repair
 
 迁移会保护旧状态、Run/checkpoint/trajectory 绑定，并在中断后确定性续做。v2 的 pending evidence transition 会被明确 supersede；即使没有 pending transition，处于 Verify 或 Archive 的 v2 change 也会连同 Run、trajectory 与 checkpoint 受控退回 Build，因为旧状态没有 v3 所需的 implementation scope 与 verification envelope。不要手工把 `comet.native.v1/v2` 改成 v3，也不要自行补 revision 或 evidence ref。比当前 Runtime 更高的 `minimum_runtime_version` 不是可迁移旧格式，应升级 Comet 后再处理。
 
+## Baseline 缺失或不完整
+
+新 change 在创建时就要求 baseline 完整；Git 项目只评估 tracked 与未被 ignore 的 untracked 文件，因此 ignored 缓存和嵌套仓库内容不会制造省略。旧物理树 baseline 会先投影到同一项目所有范围。对于已经是 `comet.native.v3` 的 change，若投影后仍返回 `baseline-snapshot-missing` 或 `baseline-snapshot-incomplete`，不要用当前文件重新生成 baseline，也不要把它当成 doctor 可自动修复的问题——那会丢失从 change 创建以来的历史差异。只能从可信备份恢复原 baseline，或在保留用户编写的 brief/spec 与实现事实后新建 change、重新建立完整 baseline。
+
+显式的 v1/v2 schema 迁移是唯一例外：旧 schema 本来没有这份 v3 baseline，`doctor --repair` 会先在任何状态写入前建立完整的 journal 时间点 cutover baseline；捕获不完整时迁移保持原状态并停止。迁移后的 implementation evidence 只证明这个 cutover 之后的变化，不能把迁移前聊天或旧 pass 当成新 scope 的证据。
+
 ## 证据失效与受控回退
 
-进入 Archive 后，brief、拟议规格、implementation scope、verification report 或 check receipt 任一绑定事实变化，status 会报告 stale 并把 continuation 指向受控回退。运行返回的 `next` 命令回到 Build，重新生成 scope、验证报告和 evidence envelope；不要删除 finding、沿用旧 pass 或手工替换 hash ref。
+进入 Verify 后，若 brief、拟议规格或项目快照变化，status 会先把失效的 implementation scope 指向受控回退；运行返回的仅含摘要的 `next` 命令回到 Build，再为变化后的 contract 取得重新确认并生成新 scope。进入 Archive 后，implementation scope、verification report 或 check receipt 等任一绑定事实变化也会触发同一回退。不要删除 finding、沿用旧 pass 或手工替换 hash ref。
 
 Archive 必须使用两步预演，不能把一次旧的 ready 判断当作提交授权：
 
@@ -87,7 +93,7 @@ Verify fail 会诚实回到 Build。提交稳定、非敏感的 `--failure-categ
 
 status/Archive 会比较当前 Native root 中可见 change 的 capability、operation、base hash 和声明产物：确定冲突必须先解决；可能重叠也会在归档前阻塞。它不能看到未集成 worktree、远端分支或其他机器，因此不是分布式锁。
 
-`workspace-root-changed` 和 `workspace-inspection-unavailable` 是显式 advisory，只帮助解释当前物理 root 的事实来源，不单独阻止推进或归档。Native 默认不读取 Git branch、HEAD 或 worktree changed paths。旧 Git-backed `comet.native.workspace.v1` 在普通只读路径中不会被信任；doctor 会报告 `workspace-identity-migration-required`，`doctor --repair` 才把它重建为 process-free v2 身份。不要把任意 `workspace-*` 都当成提示；未知 workspace 完整性 finding 仍按错误处理。
+`workspace-root-changed` 和 `workspace-inspection-unavailable` 是显式 advisory，只帮助解释当前 root 的事实来源，不单独阻止推进或归档；finding 会列出 `native-root-ref`、`project-root-path`、`native-root-path` 等具体漂移组件。Native 默认不读取 Git branch、HEAD 或 worktree changed paths。旧 Git-backed `comet.native.workspace.v1` 与缺少稳定 path identity 的早期 v2 在普通只读路径中不会被当作可靠路径漂移证据；doctor 会报告 `workspace-identity-migration-required`，`doctor --repair` 才把它重建为带稳定路径身份的 process-free v2。不要把任意 `workspace-*` 都当成提示；未知 workspace 完整性 finding 仍按错误处理。
 
 ## Archive 事务
 

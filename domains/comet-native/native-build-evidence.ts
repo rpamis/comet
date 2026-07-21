@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { nativeChangeDir } from './native-change.js';
+import { NativeBaselineIncompleteError, nativeChangeDir } from './native-change.js';
 import {
   collectNativeContractFiles,
   type NativeCollectedContract,
@@ -13,7 +13,11 @@ import {
 } from './native-evidence-storage.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import { nativeSensitiveArtifactReason } from './native-sensitive-paths.js';
-import { createNativeContentSnapshot, readNativeBaselineManifest } from './native-snapshot.js';
+import {
+  createNativeContentSnapshot,
+  filterNativeContentSnapshotToProjectScope,
+  readNativeBaselineManifest,
+} from './native-snapshot.js';
 import type {
   NativeChangeState,
   NativeContentSnapshotManifest,
@@ -24,6 +28,7 @@ import {
   buildNativeImplementationScopeBundle,
   type NativeDeclaredArtifact,
   type NativeImplementationScopeBundle,
+  type NativeSnapshotProjection,
   type NativeUnresolvedScope,
 } from './native-verification-scope.js';
 import {
@@ -56,6 +61,67 @@ export interface NativeBuildEvidenceOptions {
   confirmedSummary?: string | null;
   confirmed?: boolean;
   now?: Date;
+}
+
+function assertStableNativeSelection(
+  snapshot: NativeContentSnapshotManifest,
+  source: 'baseline projection' | 'current snapshot',
+): void {
+  if (snapshot.omitted.some((omission) => omission.reason === 'git-selection-changed')) {
+    throw new Error(
+      `Native Git selection changed while capturing the ${source}; stabilize the Git index and retry Build evidence`,
+    );
+  }
+  if (
+    snapshot.omitted.some(
+      (omission) =>
+        omission.reason === 'physical-enumeration-limit' ||
+        omission.reason === 'physical-selection-changed',
+    )
+  ) {
+    throw new Error(
+      `Native physical selection was incomplete or changed while capturing the ${source}; retry Build evidence with a stable bounded project tree`,
+    );
+  }
+}
+
+function nativeBaselineIncompleteError(
+  change: string,
+  baseline: NativeContentSnapshotManifest,
+): NativeBaselineIncompleteError {
+  const samplePaths = baseline.omitted.slice(0, 20).map((omission) => omission.path);
+  const omittedByReason = baseline.omitted.reduce<Record<string, number>>((counts, item) => {
+    counts[item.reason] = (counts[item.reason] ?? 0) + 1;
+    return counts;
+  }, {});
+  const overflowCount = baseline.omissionOverflow?.count ?? 0;
+  if (overflowCount > 0) omittedByReason.overflow = overflowCount;
+  return new NativeBaselineIncompleteError(
+    change,
+    baseline.omittedCount,
+    omittedByReason,
+    samplePaths,
+    baseline.omitted.length > samplePaths.length || overflowCount > 0,
+  );
+}
+
+function nativeBaselineProjectionIncompleteError(
+  change: string,
+  baseline: NativeContentSnapshotManifest,
+  projection: NativeSnapshotProjection,
+): NativeBaselineIncompleteError {
+  const retained = new Set(projection.entries.map((entry) => entry.path));
+  const removedPaths = baseline.entries
+    .filter((entry) => !retained.has(entry.path))
+    .slice(0, 20)
+    .map((entry) => entry.path);
+  return new NativeBaselineIncompleteError(
+    change,
+    projection.omittedCount,
+    { 'manifest-size': projection.omittedCount },
+    removedPaths,
+    projection.omittedCount > removedPaths.length,
+  );
 }
 
 function normalizeProjectRef(value: string, label: string): string {
@@ -181,8 +247,13 @@ export async function inspectNativeBuildEvidence(
   if ((options.noCodeReason ?? '').trim().length > 0 && options.artifactRefs.length > 0) {
     throw new Error('Native build evidence cannot combine artifacts with a no-code reason');
   }
-  const baseline = await readNativeBaselineManifest(options.paths, options.state.name);
-  if (baseline === null) throw new Error('Native change has no baseline content snapshot');
+  const storedBaseline = await readNativeBaselineManifest(options.paths, options.state.name);
+  if (storedBaseline === null) throw new Error('Native change has no baseline content snapshot');
+  const baseline = await filterNativeContentSnapshotToProjectScope(options.paths, storedBaseline);
+  assertStableNativeSelection(baseline, 'baseline projection');
+  if (!baseline.complete) {
+    throw nativeBaselineIncompleteError(options.state.name, baseline);
+  }
   const contract = await collectNativeContractFiles({
     changeDir: nativeChangeDir(options.paths, options.state.name),
     briefRef: options.state.brief,
@@ -197,6 +268,7 @@ export async function inspectNativeBuildEvidence(
     origin: 'explicit',
     now: options.now,
   });
+  assertStableNativeSelection(current, 'current snapshot');
   const bundle = buildNativeImplementationScopeBundle({
     baseline,
     current,
@@ -204,6 +276,9 @@ export async function inspectNativeBuildEvidence(
     declaredArtifacts,
     noCodeReason: options.noCodeReason ?? null,
   });
+  if (!bundle.baseline.complete) {
+    throw nativeBaselineProjectionIncompleteError(options.state.name, baseline, bundle.baseline);
+  }
   const scopeRef = nativeEvidenceRef('scopes', bundle.scope.scopeHash);
   if (bundle.scope.complete) {
     if (

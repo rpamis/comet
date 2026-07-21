@@ -10,7 +10,11 @@ import { withNativeMutationLock } from './native-mutation-lock.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import { readNativeProtectedDirectory } from './native-protected-file.js';
 import { compareAndSwapNativeRevision } from './native-revision.js';
-import { createNativeContentSnapshot, writeNativeBaselineManifest } from './native-snapshot.js';
+import {
+  createNativeContentSnapshot,
+  inspectNativeContentSnapshotHealth,
+  writeNativeBaselineManifest,
+} from './native-snapshot.js';
 import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
 import { writeNativeWorkspaceIdentity } from './native-workspace.js';
 import type {
@@ -50,6 +54,7 @@ const LEGACY_CHANGE_KEYS = new Set<string>(CHANGE_KEYS);
 const V2_CHANGE_KEYS = new Set<string>([...CHANGE_KEYS, 'minimum_runtime_version', 'revision']);
 const CURRENT_CHANGE_KEYS = new Set<string>([
   ...V2_CHANGE_KEYS,
+  'approved_contract_hash',
   'implementation_scope',
   'verification_evidence',
   'partial_allowance',
@@ -107,6 +112,23 @@ export class NativeChangeRevisionConflictError extends Error {
       `Native change ${change} revision conflict: expected ${expectedRevision}, actual ${actualRevision}`,
     );
     this.name = 'NativeChangeRevisionConflictError';
+  }
+}
+
+export class NativeBaselineIncompleteError extends Error {
+  readonly code = 'native-baseline-incomplete';
+
+  constructor(
+    readonly change: string,
+    readonly omittedCount: number,
+    readonly omittedByReason: Record<string, number>,
+    readonly samplePaths: string[],
+    readonly sampleTruncated: boolean,
+  ) {
+    super(
+      `Native change ${change} baseline is incomplete (${omittedCount} omitted entr${omittedCount === 1 ? 'y' : 'ies'})`,
+    );
+    this.name = 'NativeBaselineIncompleteError';
   }
 }
 
@@ -298,6 +320,16 @@ function contentAddressedRef(
   return value as NativeContentAddressedRef;
 }
 
+function approvedContractHash(value: unknown): string | null {
+  // Early v3 files predate approval binding. Treat the absent field as an
+  // unbound approval so status/transition guards can require confirmation.
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string' || !HASH_PATTERN.test(value)) {
+    throw new Error('Native approved_contract_hash must be null or a SHA-256 hash');
+  }
+  return value;
+}
+
 export function parseV2NativeChangeValue(value: unknown): NativeV2ChangeState {
   const root = record(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_V2_CHANGE_SCHEMA) {
@@ -346,11 +378,17 @@ export function parseNativeChangeValue(value: unknown): NativeChangeState {
     );
   }
   const revision = positiveInteger(root.revision, 'Native revision');
+  const fields = parseChangeFields(root, CURRENT_CHANGE_KEYS);
+  const approvalHash = approvedContractHash(root.approved_contract_hash);
+  if (fields.approval === null && approvalHash !== null) {
+    throw new Error('Native approved_contract_hash requires an approval');
+  }
   return {
     schema: NATIVE_CHANGE_SCHEMA,
     minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
     revision,
-    ...parseChangeFields(root, CURRENT_CHANGE_KEYS),
+    ...fields,
+    approved_contract_hash: approvalHash,
     implementation_scope: contentAddressedRef(
       root.implementation_scope,
       'Native implementation_scope',
@@ -441,6 +479,7 @@ export function nativeChangeDocument(state: NativeChangeState): Record<string, u
     phase: parsed.phase,
     brief: parsed.brief,
     approval: parsed.approval,
+    approved_contract_hash: parsed.approved_contract_hash ?? null,
     spec_changes: parsed.spec_changes.map((change) => ({
       capability: change.capability,
       operation: change.operation,
@@ -574,6 +613,7 @@ async function createNativeChangeLocked(options: {
       phase: 'shape',
       brief: 'brief.md',
       approval: null,
+      approved_contract_hash: null,
       spec_changes: [],
       verification_result: 'pending',
       verification_report: null,
@@ -593,6 +633,22 @@ async function createNativeChangeLocked(options: {
       now: options.now,
       origin: 'change-created',
     });
+    if (!baseline.complete) {
+      const health = inspectNativeContentSnapshotHealth(baseline);
+      const omittedByReason = baseline.omitted.reduce<Record<string, number>>((counts, item) => {
+        counts[item.reason] = (counts[item.reason] ?? 0) + 1;
+        return counts;
+      }, {});
+      const overflowCount = baseline.omissionOverflow?.count ?? 0;
+      if (overflowCount > 0) omittedByReason.overflow = overflowCount;
+      throw new NativeBaselineIncompleteError(
+        state.name,
+        baseline.omittedCount,
+        omittedByReason,
+        health.samplePaths,
+        health.sampleTruncated,
+      );
+    }
     await writeNativeBaselineManifest(options.paths, state.name, baseline);
     await createNativeChangeFile(options.paths, state);
     await writeNativeWorkspaceIdentity({

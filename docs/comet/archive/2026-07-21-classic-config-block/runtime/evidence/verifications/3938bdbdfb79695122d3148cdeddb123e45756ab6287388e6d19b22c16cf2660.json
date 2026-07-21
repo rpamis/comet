@@ -1,0 +1,84 @@
+{
+  "schema": "comet.native.verification-evidence.v1",
+  "change": "classic-config-block",
+  "sourceRevision": 5,
+  "result": "pass",
+  "freshness": "complete",
+  "contractHash": "cb56cd5c5f526dc2ba569d078643580c0a6905b71f0cd3907b167eb19f373ede",
+  "acceptanceCriteriaHash": "678d1fa98f5ca0235aa6afa4a24fe9aeedec7db57bf417ec066d579cb3e2e208",
+  "implementationScopeRef": "runtime/evidence/scopes/34679e7b98bdb51e22cf807f93ba3cb79c4427af866fdb97171548d224970945.json",
+  "implementationScopeHash": "34679e7b98bdb51e22cf807f93ba3cb79c4427af866fdb97171548d224970945",
+  "reportRef": "verification.md",
+  "reportHash": "4ca1ffcef53cf5b8bc0d7ae9d8cf6fcf528a19bd21a3edd73e095e240d17f26f",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v1",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "678d1fa98f5ca0235aa6afa4a24fe9aeedec7db57bf417ec066d579cb3e2e208",
+    "total": 5,
+    "evidenced": 5,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-27e27a9aa8c815d2dfb0bf9661907de30e985b2aec8edb054aea12dcf9b4452f",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-classic/classic-project-config.ts",
+          "test/domains/comet-classic/classic-project-config.test.ts",
+          "test/domains/comet-classic/comet-scripts.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-6d8abf07d9f4b6c0ca6ba42290c029ab81cad69839de0ace2fa264f1b0b9ed1f",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-classic/classic-project-config.ts",
+          "test/domains/comet-classic/classic-project-config.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-a59556148ce681d04cf326136046af305da0cde2cd84b2d5e2ac862b63d48f7f",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/skill/platform-install.ts",
+          "domains/workflow-contract/project-config.ts",
+          "test/app/init.test.ts",
+          "test/domains/skill/skills.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-e1c24895325450edc3ec4ce30b10689270179d375223dc72fd65b1a7d79a441c",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/skill/platform-install.ts",
+          "test/app/update.test.ts",
+          "test/domains/skill/skills.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f46e668c41a31be17c0bfdf1736ab9e902fd23a57778d07866143d59b269d0d4",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/workflow-contract/project-config.ts",
+          "test/app/init.test.ts",
+          "test/domains/skill/skills.test.ts"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "fc0b32ec590c4fb9c9c1ebf928aedae486441f9f0609bbaeb7a79fad406b314d"
+  },
+  "partialAllowanceRef": null,
+  "partialAllowanceHash": null,
+  "receiptRef": "runtime/evidence/check-receipts/468d987764ca7e1490d67b7cf8d946be11cd502581e91da4708275fb3bc62f61.json",
+  "createdAt": "2026-07-21T02:19:04.452Z",
+  "envelopeHash": "3938bdbdfb79695122d3148cdeddb123e45756ab6287388e6d19b22c16cf2660"
+}

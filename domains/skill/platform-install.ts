@@ -1612,9 +1612,6 @@ async function mergeProjectConfig(
   }
   await ensureDir(path.dirname(configPath));
 
-  const resolvedLanguage = language ?? existing.language ?? 'en';
-  const fields = getManagedConfigFields(resolvedLanguage);
-
   // Preserve the full parsed structure (e.g. the `native:` block) plus any legacy top-level
   // Classic fields pending migration. Falling back to an empty mapping keeps this idempotent
   // for a missing or unparseable config.
@@ -1624,30 +1621,32 @@ async function mergeProjectConfig(
     parsedRoot && typeof parsedRoot === 'object' && !Array.isArray(parsedRoot)
       ? { ...(parsedRoot as Record<string, unknown>) }
       : {};
+  const prevClassic =
+    root.classic && typeof root.classic === 'object' && !Array.isArray(root.classic)
+      ? { ...(root.classic as Record<string, unknown>) }
+      : {};
+  const existingClassicLanguage =
+    typeof prevClassic.language === 'string' ? prevClassic.language : undefined;
+  const resolvedLanguage = language ?? existingClassicLanguage ?? existing.language ?? 'en';
+  const fields = getManagedConfigFields(resolvedLanguage);
 
   // Top-level managed field (ambient_resume).
   for (const f of fields.top) {
     root[f.key] = coerceConfigScalar(existing[f.key] ?? f.def);
   }
 
-  // Classic block: migrate legacy top-level values first, then any existing classic values,
-  // then defaults. `classic.language` follows the resolved language like the legacy field did.
-  const prevClassic =
-    root.classic && typeof root.classic === 'object' && !Array.isArray(root.classic)
-      ? { ...(root.classic as Record<string, unknown>) }
-      : {};
+  // Classic block: preserve explicit new-format values, then migrate legacy top-level values,
+  // then apply defaults. An explicit language argument still represents the caller's requested
+  // install/update language and therefore overrides both stored forms.
   const classicBlock: Record<string, unknown> = {};
   for (const f of fields.classic) {
-    // `language` always follows the resolved language (init/update pass the user's explicit
-    // selection); other fields migrate legacy top-level values, then existing classic values,
-    // then defaults.
     let value: unknown;
     if (f.key === 'language') {
       value = resolvedLanguage;
     } else {
       const legacyTop = root[f.key];
-      if (legacyTop !== undefined) value = legacyTop;
-      else if (prevClassic[f.key] !== undefined) value = prevClassic[f.key];
+      if (prevClassic[f.key] !== undefined) value = prevClassic[f.key];
+      else if (legacyTop !== undefined) value = legacyTop;
       else value = f.def;
     }
     classicBlock[f.key] = coerceConfigScalar(value);

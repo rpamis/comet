@@ -52,6 +52,7 @@ function legacyDocument(state: NativeChangeState): Record<string, unknown> {
   const fields: Record<string, unknown> = { ...state };
   delete fields.minimum_runtime_version;
   delete fields.revision;
+  delete fields.approved_contract_hash;
   delete fields.implementation_scope;
   delete fields.verification_evidence;
   delete fields.partial_allowance;
@@ -60,6 +61,7 @@ function legacyDocument(state: NativeChangeState): Record<string, unknown> {
 
 function v2Document(state: NativeChangeState): Record<string, unknown> {
   const fields: Record<string, unknown> = { ...state };
+  delete fields.approved_contract_hash;
   delete fields.implementation_scope;
   delete fields.verification_evidence;
   delete fields.partial_allowance;
@@ -219,6 +221,31 @@ describe('Native schema compatibility and journalized migration', () => {
     expect(await readNativeBaselineManifest(paths, 'legacy-change')).toMatchObject({
       origin: 'legacy-migration',
     });
+  });
+
+  it('rejects an incomplete migration baseline before changing legacy state', async () => {
+    const file = await seedLegacyChange('incomplete-migration-baseline');
+    const originalState = await fs.readFile(file, 'utf8');
+    await fs.writeFile(
+      path.join(projectRoot, 'oversized-migration.bin'),
+      Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
+    );
+
+    await expect(
+      migrateNativeChange({ paths, name: 'incomplete-migration-baseline' }),
+    ).rejects.toMatchObject({
+      name: 'NativeBaselineIncompleteError',
+      code: 'native-baseline-incomplete',
+      omittedCount: 1,
+      samplePaths: ['oversized-migration.bin'],
+    });
+    await expect(fs.readFile(file, 'utf8')).resolves.toBe(originalState);
+    await expect(
+      readNativeBaselineManifest(paths, 'incomplete-migration-baseline'),
+    ).resolves.toBeNull();
+    await expect(
+      inspectPendingNativeSchemaMigration(paths, 'incomplete-migration-baseline'),
+    ).resolves.toMatchObject({ fromSchema: NATIVE_LEGACY_CHANGE_SCHEMA });
   });
 
   it('projects a v2 change as migration-required in status and show without rewriting it', async () => {
@@ -408,11 +435,13 @@ describe('Native schema compatibility and journalized migration', () => {
         evidence: {
           summary: 'implementation scope was re-established under the current runtime',
           artifacts: [`${name}.ts`],
+          confirmed: true,
         },
         now: new Date('2026-07-17T02:31:00.000Z'),
       });
       expect(rebuilt.change).toMatchObject({
         phase: 'verify',
+        approved_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
         implementation_scope: expect.stringMatching(
           /^runtime\/evidence\/scopes\/[a-f0-9]{64}\.json$/u,
         ),
@@ -623,7 +652,10 @@ describe('Native schema compatibility and journalized migration', () => {
     expect(
       await fs.stat(nativeSchemaMigrationJournalFile(paths, 'interrupted-migration')),
     ).toBeDefined();
-    expect(await readNativeBaselineManifest(paths, 'interrupted-migration')).toBeNull();
+    expect(await readNativeBaselineManifest(paths, 'interrupted-migration')).toMatchObject({
+      origin: 'legacy-migration',
+      complete: true,
+    });
     const pending = (await inspectPendingNativeSchemaMigration(paths, 'interrupted-migration'))!;
     await expect(
       compareAndSwapNativeChange(

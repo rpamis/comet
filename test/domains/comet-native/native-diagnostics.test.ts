@@ -133,6 +133,40 @@ describe('Native status diagnostics', () => {
     expect(JSON.stringify(statuses)).not.toMatch(/openspec|superpowers|comet classic/iu);
   });
 
+  it('reports contract drift after approval and requires a fresh confirmation', async () => {
+    await validChange('contract-drift');
+    const changeDir = nativeChangeDir(paths, 'contract-drift');
+    await advanceNativeChange({
+      paths,
+      name: 'contract-drift',
+      evidence: { summary: 'shape approved' },
+    });
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      brief.replace('The behavior works.', 'The changed behavior works.'),
+    );
+
+    const status = await inspectNativeStatus(paths, 'contract-drift', { details: true });
+    expect(status).toMatchObject({
+      phase: 'build',
+      findingSummary: {
+        errors: 1,
+        requiresUserDecision: true,
+        codes: expect.arrayContaining(['contract-changed-after-approval']),
+      },
+      continuation: {
+        disposition: 'await-user',
+        requiredInputs: ['re-confirm-contract'],
+      },
+      findings: [
+        expect.objectContaining({
+          code: 'contract-changed-after-approval',
+          retryCommand: 'comet native next contract-drift --summary "<summary>" --confirmed',
+        }),
+      ],
+    });
+  });
+
   it('pages a bounded status list and rejects stale or tampered cursors', async () => {
     for (let index = 0; index < NATIVE_STATUS_PAGE_LIMITS.maxItems + 2; index += 1) {
       const name = `page-change-${String(index).padStart(2, '0')}`;

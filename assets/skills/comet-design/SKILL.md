@@ -44,7 +44,7 @@ openspec/changes/<name>/.comet/handoff/design-context.json
 openspec/changes/<name>/.comet/handoff/design-context.md
 ```
 
-Beta mode (`context_compression: beta` in project `.comet/config.yaml`, snapshotted into `.comet.yaml` when the change is created) generates:
+Beta mode (`classic.context_compression: beta` in project `.comet/config.yaml`, snapshotted into `.comet.yaml` when the change is created) generates:
 
 ```
 openspec/changes/<name>/.comet/handoff/spec-context.json

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import { parse } from 'yaml';
 
 const { readJsonMock, readFileMock, writeFileMock } = vi.hoisted(() => ({
   readJsonMock: vi.fn(),
@@ -2932,10 +2933,16 @@ describe('skills', () => {
     it('creates config with defaults when no file exists', async () => {
       await mergeProjectConfig(tmpDir);
       const content = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
-      expect(content).toContain('language: en');
-      expect(content).toContain('context_compression: off');
-      expect(content).toContain('review_mode: standard');
-      expect(content).toContain('auto_transition: true');
+      expect(parse(content)).toMatchObject({
+        ambient_resume: true,
+        classic: {
+          language: 'en',
+          context_compression: 'off',
+          review_mode: 'standard',
+          auto_transition: true,
+        },
+      });
+      expect(content).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
     });
 
     it('preserves existing user values and fills missing managed fields', async () => {
@@ -2949,10 +2956,15 @@ describe('skills', () => {
 
       await mergeProjectConfig(tmpDir);
       const content = await fs.readFile(path.join(configDir, 'config.yaml'), 'utf-8');
-      expect(content).toContain('language: en');
-      expect(content).toContain('context_compression: beta');
-      expect(content).toContain('review_mode: standard');
-      expect(content).toContain('auto_transition: true');
+      expect(parse(content)).toMatchObject({
+        classic: {
+          language: 'en',
+          context_compression: 'beta',
+          review_mode: 'standard',
+          auto_transition: true,
+        },
+      });
+      expect(content).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
     });
 
     it('preserves extra user fields', async () => {
@@ -2997,6 +3009,46 @@ describe('skills', () => {
       await mergeProjectConfig(tmpDir, null);
       const content = await fs.readFile(path.join(configDir, 'config.yaml'), 'utf-8');
       expect(content).toContain('language: zh-CN');
+    });
+
+    it('preserves new-format values when legacy top-level fields conflict', async () => {
+      const configDir = path.join(tmpDir, '.comet');
+      const configPath = path.join(configDir, 'config.yaml');
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        configPath,
+        [
+          'language: en',
+          'review_mode: off',
+          'classic:',
+          '  language: zh-CN',
+          '  context_compression: beta',
+          '  review_mode: thorough',
+          '  auto_transition: false',
+          'native:',
+          '  artifact_root: docs',
+          '  language: en',
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
+
+      await mergeProjectConfig(tmpDir, null);
+      const first = await fs.readFile(configPath, 'utf-8');
+      await mergeProjectConfig(tmpDir, null);
+      const second = await fs.readFile(configPath, 'utf-8');
+
+      expect(parse(second)).toMatchObject({
+        classic: {
+          language: 'zh-CN',
+          context_compression: 'beta',
+          review_mode: 'thorough',
+          auto_transition: false,
+        },
+        native: { artifact_root: 'docs', language: 'en' },
+      });
+      expect(second).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
+      expect(second).toBe(first);
     });
   });
 

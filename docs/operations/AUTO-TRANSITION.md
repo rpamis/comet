@@ -1,6 +1,6 @@
 # 自动流转（Auto Transition）
 
-> 版本状态：Stable（`.comet/config.yaml` 中 `auto_transition: true` 为默认值）
+> 版本状态：Stable（`.comet/config.yaml` 的 `classic.auto_transition: true` 为默认值）
 
 ## 概述
 
@@ -31,9 +31,9 @@ HINT: <message>           # 仅 manual 时输出
 
 ### 两种模式
 
-| 值 | 行为 | 适用场景 |
-|------|------|----------|
-| `true` | 阶段推进后自动调用下一个 Skill，无需用户干预 | 连续执行、熟悉流程的用户 |
+| 值      | 行为                                               | 适用场景                           |
+| ------- | -------------------------------------------------- | ---------------------------------- |
+| `true`  | 阶段推进后自动调用下一个 Skill，无需用户干预       | 连续执行、熟悉流程的用户           |
 | `false` | 阶段推进后暂停，输出提示让用户手动运行下一个 Skill | 需要在阶段间审查、调试或介入的场景 |
 
 ### 模式对比
@@ -58,16 +58,16 @@ auto_transition: false
 
 `auto_transition` 支持三层配置，优先级从高到低：
 
-| 层级 | 位置 | 说明 |
-|------|------|------|
-| 环境变量 | `COMET_AUTO_TRANSITION` | 最高优先级，适合 CI/CD 或临时覆盖 |
-| 项目级 | `.comet/config.yaml` | 项目默认值，所有 change 继承 |
-| Change 级 | `openspec/changes/<name>/.comet.yaml` | 单个 change 的覆盖值，最高运行时优先级 |
+| 层级      | 位置                                              | 说明                                   |
+| --------- | ------------------------------------------------- | -------------------------------------- |
+| 环境变量  | `COMET_AUTO_TRANSITION`                           | 最高优先级，适合 CI/CD 或临时覆盖      |
+| 项目级    | `.comet/config.yaml` 的 `classic.auto_transition` | 项目默认值，所有 change 继承           |
+| Change 级 | `openspec/changes/<name>/.comet.yaml`             | 单个 change 的覆盖值，最高运行时优先级 |
 
 解析逻辑：
 
 1. 读取 change 的 `.comet.yaml` 中的 `auto_transition`
-2. 若为 `null` 或空，回退到 `.comet/config.yaml` 的项目级默认
+2. 若为 `null` 或空，回退到 `.comet/config.yaml` 的 `classic.auto_transition` 项目级默认
 3. 若项目级也未设置，回退到 `true`
 
 ### 配置示例
@@ -75,8 +75,9 @@ auto_transition: false
 #### 项目级配置（`.comet/config.yaml`）
 
 ```yaml
-auto_transition: false        # 本项目所有 change 默认手动转场
-context_compression: off
+classic:
+  auto_transition: false # 本项目所有 change 默认手动转场
+  context_compression: off
 ```
 
 #### Change 级配置（`openspec/changes/<name>/.comet.yaml`）
@@ -84,7 +85,7 @@ context_compression: off
 ```yaml
 workflow: full
 phase: design
-auto_transition: true         # 覆盖项目级，此 change 使用自动转场
+auto_transition: true # 覆盖项目级，此 change 使用自动转场
 ```
 
 #### 环境变量覆盖
@@ -102,31 +103,31 @@ export COMET_AUTO_TRANSITION=true
 
 `comet-state next` 根据当前 phase 和 workflow 类型决定下一个 Skill：
 
-| Phase | Full 工作流 | Hotfix 工作流 | Tweak 工作流 |
-|-------|------------|--------------|-------------|
-| `open` | comet-open | comet-open | comet-open |
-| `design` | comet-design | — | — |
-| `build` | comet-build | comet-hotfix | comet-tweak |
-| `verify` | comet-verify | comet-verify | comet-verify |
+| Phase     | Full 工作流   | Hotfix 工作流 | Tweak 工作流  |
+| --------- | ------------- | ------------- | ------------- |
+| `open`    | comet-open    | comet-open    | comet-open    |
+| `design`  | comet-design  | —             | —             |
+| `build`   | comet-build   | comet-hotfix  | comet-tweak   |
+| `verify`  | comet-verify  | comet-verify  | comet-verify  |
 | `archive` | comet-archive | comet-archive | comet-archive |
 
 ## 与上下文压缩的关系
 
-`auto_transition` 和 `context_compression` 是独立的配置项，存储在同一配置文件中但互不影响：
+`auto_transition` 和 `context_compression` 是独立的配置项，都存储在同一配置文件的 `classic:` 块中但互不影响：
 
-| 配置项 | 控制内容 | 有效值 |
-|--------|----------|--------|
-| `auto_transition` | 阶段间是否自动调用下一个 Skill | `true` / `false` |
-| `context_compression` | Design → Build 交接时的 token 压缩策略 | `off` / `beta` |
+| 配置项                | 控制内容                               | 有效值           |
+| --------------------- | -------------------------------------- | ---------------- |
+| `auto_transition`     | 阶段间是否自动调用下一个 Skill         | `true` / `false` |
+| `context_compression` | Design → Build 交接时的 token 压缩策略 | `off` / `beta`   |
 
 两者可以自由组合：
 
-| 组合 | 效果 |
-|------|------|
-| `auto_transition: true` + `context_compression: off` | 全自动 + 完整上下文 |
-| `auto_transition: true` + `context_compression: beta` | 全自动 + 压缩上下文（token 节省 25–30%） |
-| `auto_transition: false` + `context_compression: off` | 手动控制 + 完整上下文 |
-| `auto_transition: false` + `context_compression: beta` | 手动控制 + 压缩上下文 |
+| 组合                                                   | 效果                                     |
+| ------------------------------------------------------ | ---------------------------------------- |
+| `auto_transition: true` + `context_compression: off`   | 全自动 + 完整上下文                      |
+| `auto_transition: true` + `context_compression: beta`  | 全自动 + 压缩上下文（token 节省 25–30%） |
+| `auto_transition: false` + `context_compression: off`  | 手动控制 + 完整上下文                    |
+| `auto_transition: false` + `context_compression: beta` | 手动控制 + 压缩上下文                    |
 
 ## 常见问题
 

@@ -41,8 +41,8 @@ import {
   repairNativeTrajectoryTail,
 } from './native-trajectory-recovery.js';
 import {
-  inspectNativeWorkspaceSchema,
   migrateLegacyNativeWorkspaceIdentity,
+  nativeWorkspaceIdentityNeedsMigration,
   nativeWorkspaceFile,
 } from './native-workspace.js';
 import type {
@@ -502,14 +502,14 @@ async function inspectWorkspaceIdentityMigrations(
         .sort();
   for (const name of names) {
     try {
-      if ((await inspectNativeWorkspaceSchema(paths, name)) !== 'comet.native.workspace.v1') {
+      if (!(await nativeWorkspaceIdentityNeedsMigration(paths, name))) {
         continue;
       }
       if (!options.repair) {
         findings.push({
           severity: 'warning',
           code: 'workspace-identity-migration-required',
-          message: `Native workspace identity for ${name} uses legacy external-probe metadata`,
+          message: `Native workspace identity for ${name} uses legacy external-probe or hash-only metadata`,
           path: nativeWorkspaceFile(paths, name),
           repair: 'migrate',
         });

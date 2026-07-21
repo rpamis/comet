@@ -178,6 +178,81 @@ describe('Native evidence-bound phase transitions', () => {
     });
   });
 
+  it('retreats a stale Verify scope to Build before requiring contract re-confirmation', async () => {
+    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 2;\n');
+    const built = await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: { summary: 'Implemented the approved contract.', artifacts: ['src/feature.ts'] },
+    });
+    const approvedHash = built.change.approved_contract_hash;
+    expect(built.change.phase).toBe('verify');
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      brief.replace('Ship evidence-bound behavior.', 'Ship the revised evidence-bound behavior.'),
+    );
+
+    const status = await inspectNativeStatus(paths, 'evidence-change', { details: true });
+    expect(status).toMatchObject({
+      phase: 'verify',
+      nextCommand: 'comet native next evidence-change --summary "<summary>"',
+      continuation: {
+        disposition: 'continue',
+        action: 'advance-phase',
+        command: 'comet native next evidence-change --summary "<summary>"',
+        requiresUserDecision: false,
+      },
+      findings: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'verification-contract-stale',
+          retryCommand: 'comet native next evidence-change --summary "<summary>"',
+          requiresUserDecision: false,
+        }),
+      ]),
+    });
+    expect(status.findingSummary.codes).not.toContain('contract-changed-after-approval');
+
+    const retreated = await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: { summary: 'Return the changed contract to Build for fresh evidence.' },
+    });
+    expect(retreated.change).toMatchObject({
+      phase: 'build',
+      approved_contract_hash: approvedHash,
+      implementation_scope: null,
+      verification_evidence: null,
+      partial_allowance: null,
+    });
+
+    const blocked = await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: {
+        summary: 'Attempt the revised contract without confirmation.',
+        artifacts: ['src/feature.ts'],
+      },
+    });
+    expect(blocked).toMatchObject({
+      next: 'manual',
+      change: { phase: 'build', approved_contract_hash: approvedHash },
+      findings: [expect.objectContaining({ code: 'contract-changed-after-approval' })],
+    });
+
+    const confirmed = await advanceNativeChange({
+      paths,
+      name: 'evidence-change',
+      evidence: {
+        summary: 'The revised contract is explicitly re-confirmed.',
+        artifacts: ['src/feature.ts'],
+        confirmed: true,
+      },
+    });
+    expect(confirmed.change).toMatchObject({ phase: 'verify', approval: 'confirmed' });
+    expect(confirmed.change.approved_contract_hash).not.toBe(approvedHash);
+  });
+
   it('continues an active v1 Run through the compatible v2 iteration-budget upgrade', async () => {
     const run = await readNativeRunState(changeDir);
     expect(run).not.toBeNull();

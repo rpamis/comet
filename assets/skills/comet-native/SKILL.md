@@ -81,7 +81,7 @@ Then provide a verifiable summary and run:
 comet native next <change-name> --summary <summary>
 ```
 
-Append `--confirmed` only when the user has just answered a previously surfaced blocking question and the summary records that answer. The initial feature request is not this kind of explicit confirmation. Otherwise omit it. The Runtime records `approval`; never edit it manually.
+Append `--confirmed` only when the user has just answered a previously surfaced blocking question and the summary records that answer. The initial feature request is not this kind of explicit confirmation. After Shape, the Runtime binds approval to the brief/spec contract hash from that moment. If the contract changes during Build, status requires the user to reconfirm the current contract; retry with the returned `--confirmed` only after obtaining that confirmation. Otherwise omit it. The Runtime records both `approval` and `approved_contract_hash`; never edit either manually.
 
 ## Build
 
@@ -95,9 +95,13 @@ When complete, provide real artifact references. If no code changed, provide an 
 comet native next <change-name> --summary <summary> --artifact <project-relative-path> [--confirmed]
 ```
 
-The Runtime returns the current implementation scope and the first `acceptancePage`. Preserve these Runtime-derived acceptance IDs. If the response is lost, retrieve them in Verify with `comet native status <change-name> --details`. Text and context within a page may be explicitly truncated, but IDs are never silently omitted. Follow `nextCursor` until every page has been read; never calculate IDs yourself.
+The Runtime returns the current implementation scope and the first `acceptancePage`. A Git project snapshot contains only tracked and non-ignored untracked files, with each submodule/gitlink represented as one atomic entry; only non-Git projects use the bounded physical-tree provider. Preserve these Runtime-derived acceptance IDs. If the response is lost, retrieve them in Verify with `comet native status <change-name> --details`. Text and context within a page may be explicitly truncated, but IDs are never silently omitted. Follow `nextCursor` until every page has been read; never calculate IDs yourself.
 
-If the Runtime cannot prove that the scope is complete, it stays in Build and returns a partial scope hash with unresolved items. First add real artifacts or eliminate the unowned changes. If the scope must remain partial and the user needs to accept that risk, explain the exact gap and obtain confirmation, then follow the command reference with the same scope hash, a reason, and `--confirmed`. Never silently describe a partial scope as complete.
+Git selection is itself bounded and requires one stable view. `git-selection-changed` means the index changed during enumeration: stop progression, wait for every Git write to finish, then rerun so the Runtime captures a new view. It is never a user-authorizable partial scope. `git-enumeration-limit` means the project-owned set exceeds the Git enumeration safety budget and is structurally incomplete. First reduce or clean the tracked / non-ignored untracked project-owned set, or use a later product version that adjusts the budget; never bypass it by default. If recovery is genuinely impossible, proceed through the ordinary partial protocol only when the Runtime returns an authorizable scope bound to a count and content hash and the user understands the unknown-tail risk, using the exact scope hash, a reason, and `--confirmed`. Neither the user nor the model may edit snapshot/evidence or guess unenumerated paths.
+
+For non-Git projects, physical selection uses bounded, order-independent before/after enumeration fences. `physical-selection-changed` means the project tree changed during capture. `physical-enumeration-limit` means the node, path, byte, or cooperative execution budget was exhausted. Neither condition can bind an unknown tail to a stable scope, so neither is authorizable as partial scope. Wait for filesystem activity to settle, reduce the project tree, or move non-project content outside the project-owned set, then retry.
+
+If the Runtime cannot prove that the scope is complete, it stays in Build and returns a partial scope hash with unresolved items. An incomplete current snapshot never turns a missing path into a guessed deletion. When there are too many change details, the Runtime preserves a bounded sample and represents the remainder with a `scope-detail-overflow` count and content hash. First add real artifacts or eliminate the unowned changes. If the scope must remain partial and the user needs to accept that risk, explain the exact gap and obtain confirmation, then follow the command reference with the same scope hash, a reason, and `--confirmed`. Never silently describe a partial scope as complete.
 
 ## Verify
 

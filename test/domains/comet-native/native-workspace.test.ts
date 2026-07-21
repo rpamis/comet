@@ -43,6 +43,8 @@ describe('Native workspace identity', () => {
       capturedAt: '2026-07-17T00:00:00.000Z',
       projectRootId: expect.stringMatching(/^[a-f0-9]{64}$/u),
       nativeRootId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      projectRootPathId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      nativeRootPathId: expect.stringMatching(/^[a-f0-9]{64}$/u),
       sessionHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
     expect(serialized).not.toContain(projectRoot);
@@ -62,6 +64,7 @@ describe('Native workspace identity', () => {
     await expect(inspectNativeWorkspaceAdvisory({ paths, identity: written })).resolves.toEqual({
       state: 'aligned',
       findingCodes: [],
+      driftComponents: [],
     });
   });
 
@@ -81,10 +84,53 @@ describe('Native workspace identity', () => {
       ).resolves.toEqual({
         state: 'drifted',
         findingCodes: ['workspace-root-changed'],
+        driftComponents: ['project-root-path', 'native-root-path'],
       });
     } finally {
       await fs.rm(otherRoot, { recursive: true, force: true });
     }
+  });
+
+  it('identifies native-root-ref drift separately from physical root drift', async () => {
+    const originalPaths = await nativeProjectPaths(projectRoot, 'docs');
+    const identity = await inspectNativeWorkspaceIdentity({
+      paths: originalPaths,
+      name: 'example',
+      revision: 1,
+    });
+    await fs.mkdir(path.join(projectRoot, 'other', 'comet'), { recursive: true });
+    const movedPaths = await nativeProjectPaths(projectRoot, 'other');
+
+    await expect(
+      inspectNativeWorkspaceAdvisory({ paths: movedPaths, identity }),
+    ).resolves.toMatchObject({
+      state: 'drifted',
+      findingCodes: ['workspace-root-changed'],
+      driftComponents: ['native-root-ref', 'native-root-path'],
+    });
+  });
+
+  it('does not report Windows root drift from legacy physical hashes alone', async () => {
+    if (process.platform !== 'win32') return;
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const identity = await inspectNativeWorkspaceIdentity({
+      paths,
+      name: 'example',
+      revision: 1,
+    });
+    const legacy = { ...identity } as Record<string, unknown>;
+    delete legacy.projectRootPathId;
+    delete legacy.nativeRootPathId;
+    legacy.projectRootId = 'a'.repeat(64);
+    legacy.nativeRootId = 'b'.repeat(64);
+
+    await expect(
+      inspectNativeWorkspaceAdvisory({ paths, identity: legacy as never }),
+    ).resolves.toEqual({
+      state: 'unknown',
+      findingCodes: ['workspace-inspection-unavailable'],
+      driftComponents: ['project-root-legacy-identity', 'native-root-legacy-identity'],
+    });
   });
 
   it('rejects non-portable refs and unknown fields', async () => {

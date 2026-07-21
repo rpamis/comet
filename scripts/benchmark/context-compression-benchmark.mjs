@@ -267,7 +267,10 @@ async function createFixture(root, mode, tier = 'small') {
   await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await fs.mkdir(path.join(changeDir, 'specs', 'note-board'), { recursive: true });
   await fs.mkdir(path.join(root, '.comet'), { recursive: true });
-  await fs.writeFile(path.join(root, '.comet', 'config.yaml'), `context_compression: ${mode}\n`);
+  await fs.writeFile(
+    path.join(root, '.comet', 'config.yaml'),
+    `classic:\n  context_compression: ${mode}\n`,
+  );
   await fs.writeFile(
     path.join(changeDir, '.comet.yaml'),
     [

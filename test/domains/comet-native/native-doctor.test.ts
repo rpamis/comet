@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { execFileSync } from 'node:child_process';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -49,7 +50,7 @@ describe('Native doctor', () => {
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-doctor-'));
-    await fs.mkdir(path.join(projectRoot, '.git'));
+    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
     paths = await nativeProjectPaths(projectRoot, '.');
   });
 
@@ -148,6 +149,33 @@ describe('Native doctor', () => {
         (finding) => finding.code === 'workspace-identity-migration-required',
       ),
     ).toBe(false);
+  });
+
+  it('upgrades hash-only v2 workspace metadata to stable path identities', async () => {
+    const state = await createNativeChange({ paths, name: 'hash-only-workspace', language: 'en' });
+    const file = nativeWorkspaceFile(paths, state.name);
+    const identity = (await readNativeWorkspaceIdentity(paths, state.name))!;
+    const hashOnly = { ...identity } as Record<string, unknown>;
+    delete hashOnly.projectRootPathId;
+    delete hashOnly.nativeRootPathId;
+    await fs.writeFile(file, JSON.stringify(hashOnly));
+
+    const inspected = await doctorNativeProject({ paths, name: state.name });
+    expect(inspected.findings).toContainEqual(
+      expect.objectContaining({
+        code: 'workspace-identity-migration-required',
+        severity: 'warning',
+      }),
+    );
+
+    const repaired = await doctorNativeProject({ paths, name: state.name, repair: true });
+    expect(repaired.findings).toContainEqual(
+      expect.objectContaining({ code: 'workspace-identity-migrated', severity: 'info' }),
+    );
+    await expect(readNativeWorkspaceIdentity(paths, state.name)).resolves.toMatchObject({
+      projectRootPathId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      nativeRootPathId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
   });
 
   it('reports an interrupted phase transition and only continues it explicitly', async () => {

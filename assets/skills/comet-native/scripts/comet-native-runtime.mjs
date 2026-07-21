@@ -9991,6 +9991,7 @@ async function compareAndSwapNativeRevision(options) {
 
 // domains/comet-native/native-snapshot.ts
 import { createHash as createHash5 } from "crypto";
+import { spawn } from "node:child_process";
 import { promises as fs9 } from "fs";
 import path10 from "path";
 
@@ -10019,6 +10020,7 @@ var CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 var MANIFEST_KEYS = /* @__PURE__ */ new Set([
   "schema",
   "origin",
+  "capture",
   "createdAt",
   "complete",
   "limits",
@@ -10028,6 +10030,35 @@ var MANIFEST_KEYS = /* @__PURE__ */ new Set([
   "omissionOverflow"
 ]);
 var LIMIT_KEYS = /* @__PURE__ */ new Set(["maxFiles", "maxFileBytes", "maxTotalBytes", "maxManifestBytes"]);
+var CAPTURE_KEYS = /* @__PURE__ */ new Set(["provider", "gitSelection", "physicalSelection", "projection"]);
+var GIT_PROJECTION_KEYS = /* @__PURE__ */ new Set(["provider", "selection"]);
+var GIT_SELECTION_KEYS = /* @__PURE__ */ new Set([
+  "schema",
+  "status",
+  "stageBefore",
+  "combined",
+  "stageAfter",
+  "finalStageBefore",
+  "finalCombined",
+  "finalStageAfter"
+]);
+var GIT_SELECTION_STREAM_KEYS = /* @__PURE__ */ new Set([
+  "hash",
+  "recordCount",
+  "storedRecordCount",
+  "stdoutBytes",
+  "overflow"
+]);
+var PHYSICAL_SELECTION_KEYS = /* @__PURE__ */ new Set(["schema", "status", "before", "after"]);
+var PHYSICAL_SELECTION_STREAM_KEYS = /* @__PURE__ */ new Set([
+  "hash",
+  "visitedNodeCount",
+  "recordCount",
+  "storedRecordCount",
+  "encodedBytes",
+  "overflow",
+  "unstable"
+]);
 var ENTRY_KEYS = /* @__PURE__ */ new Set(["path", "hash", "size", "type"]);
 var OMISSION_KEYS = /* @__PURE__ */ new Set(["path", "size", "type", "reason"]);
 var OMISSION_OVERFLOW_KEYS = /* @__PURE__ */ new Set(["ref", "hash", "count"]);
@@ -10043,10 +10074,855 @@ var OMISSION_REASONS = /* @__PURE__ */ new Set([
   "total-size",
   "manifest-size",
   "changed-during-read",
-  "unreadable"
+  "unreadable",
+  "gitlink-unavailable",
+  "gitlink-dirty",
+  "gitlink-changed",
+  "legacy-gitlink-boundary",
+  "git-enumeration-limit",
+  "git-selection-changed",
+  "physical-enumeration-limit",
+  "physical-selection-changed"
 ]);
 var HASH_PATTERN = /^[a-f0-9]{64}$/u;
+var GIT_OBJECT_ID_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 var UNREADABLE_ERROR_CODES = /* @__PURE__ */ new Set(["EACCES", "EPERM"]);
+var GIT_LIST_STDERR_LIMIT = 64 * 1024;
+var GIT_TEXT_STDOUT_LIMIT = 64 * 1024;
+var DEFAULT_NATIVE_SNAPSHOT_EXECUTION_BUDGET_MS = 6e4;
+var WINDOWS_TASKKILL_ATTEMPT_MS = 1e3;
+var WINDOWS_TASKKILL_ATTEMPTS = 2;
+var DEFAULT_NATIVE_GIT_SELECTION_LIMITS = {
+  maxRecords: 2e4,
+  maxBytes: 8 * 1024 * 1024,
+  maxRecordBytes: 64 * 1024
+};
+var DEFAULT_NATIVE_PHYSICAL_SELECTION_LIMITS = {
+  maxNodes: 2e4,
+  maxBytes: 8 * 1024 * 1024,
+  maxPathBytes: 64 * 1024
+};
+function createNativeSnapshotExecution(options) {
+  const deadlineMs = options.deadlineMs ?? DEFAULT_NATIVE_SNAPSHOT_EXECUTION_BUDGET_MS;
+  if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 1) {
+    throw new Error("Native snapshot execution budget must be a positive integer");
+  }
+  return {
+    deadlineAt: Date.now() + deadlineMs,
+    gitProcess: options.gitProcess ?? { command: "git" }
+  };
+}
+function remainingNativeSnapshotTime(execution) {
+  return Math.max(0, execution.deadlineAt - Date.now());
+}
+function nativeSnapshotExecutionHasBudget(execution) {
+  return remainingNativeSnapshotTime(execution) >= 1;
+}
+function nativeGitSnapshotTimeoutError(cause) {
+  const error = cause === void 0 ? new Error("Native snapshot deadline exceeded while waiting for Git") : new Error("Native snapshot deadline exceeded while waiting for Git", { cause });
+  return Object.assign(error, { code: "GIT_SNAPSHOT_TIMEOUT" });
+}
+function isNativeGitSnapshotTimeout(error) {
+  return error.code === "GIT_SNAPSHOT_TIMEOUT";
+}
+function resolveNativePhysicalSelectionLimits(values) {
+  const limits = { ...DEFAULT_NATIVE_PHYSICAL_SELECTION_LIMITS, ...values };
+  if (!Number.isSafeInteger(limits.maxNodes) || limits.maxNodes < 1 || !Number.isSafeInteger(limits.maxBytes) || limits.maxBytes < 1 || !Number.isSafeInteger(limits.maxPathBytes) || limits.maxPathBytes < 1 || limits.maxPathBytes > limits.maxBytes) {
+    throw new Error("Native physical selection limits must be positive bounded integers");
+  }
+  return limits;
+}
+async function terminateNativeProcessTree(child, adapter) {
+  if (adapter.terminateTree) {
+    await adapter.terminateTree(child);
+    return;
+  }
+  const pid = child.pid;
+  if (pid === void 0) {
+    child.kill("SIGKILL");
+    return;
+  }
+  if (process.platform === "win32") {
+    const configuredSystemRoot = process.env.SystemRoot ?? process.env.WINDIR;
+    const systemRoot = configuredSystemRoot && path10.win32.isAbsolute(configuredSystemRoot) ? path10.win32.resolve(configuredSystemRoot) : "C:\\Windows";
+    const taskkill = path10.win32.join(systemRoot, "System32", "taskkill.exe");
+    if (!path10.win32.isAbsolute(taskkill)) {
+      child.kill("SIGKILL");
+      child.stdin?.destroy();
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      throw Object.assign(new Error("Native Git taskkill path is not trusted"), {
+        code: "GIT_SNAPSHOT_TERMINATION_UNCONFIRMED"
+      });
+    }
+    const runTaskkillAttempt = () => new Promise((resolve) => {
+      let finished = false;
+      let killer = null;
+      let fallbackTimer = null;
+      const finish = (confirmed, terminateKiller = false) => {
+        if (finished) return;
+        finished = true;
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+        if (terminateKiller) killer?.kill("SIGKILL");
+        resolve(confirmed);
+      };
+      try {
+        killer = spawn(taskkill, ["/pid", String(pid), "/t", "/f"], {
+          stdio: "ignore",
+          windowsHide: true
+        });
+        killer.once("error", () => finish(false));
+        killer.once("close", (code) => finish(code === 0));
+        fallbackTimer = setTimeout(() => finish(false, true), WINDOWS_TASKKILL_ATTEMPT_MS);
+        fallbackTimer.unref();
+      } catch {
+        finish(false);
+      }
+    });
+    for (let attempt = 0; attempt < WINDOWS_TASKKILL_ATTEMPTS; attempt += 1) {
+      if (await runTaskkillAttempt()) {
+        child.kill("SIGKILL");
+        return;
+      }
+    }
+    child.kill("SIGKILL");
+    child.stdin?.destroy();
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    throw Object.assign(
+      new Error("Native Git process-tree termination could not be confirmed on Windows"),
+      { code: "GIT_SNAPSHOT_TERMINATION_UNCONFIRMED" }
+    );
+  }
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error;
+  }
+  child.kill("SIGKILL");
+}
+function startNativeGitProcess(execution, projectRoot, args, input) {
+  const remaining = remainingNativeSnapshotTime(execution);
+  if (remaining < 1) throw nativeGitSnapshotTimeoutError();
+  const adapter = execution.gitProcess;
+  const child = spawn(
+    adapter.command,
+    [...adapter.argsPrefix ?? [], "-C", projectRoot, ...args],
+    {
+      stdio: [input ? "pipe" : "ignore", "pipe", "pipe"],
+      windowsHide: true,
+      detached: process.platform !== "win32"
+    }
+  );
+  let spawnError = null;
+  let timedOut = false;
+  let termination = null;
+  child.once("error", (error) => {
+    spawnError = error;
+  });
+  const close = new Promise((resolve) => {
+    child.once("close", resolve);
+  });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    termination = terminateNativeProcessTree(child, adapter).then(
+      () => ({ error: null }),
+      (error) => ({ error })
+    );
+  }, remaining);
+  timer.unref();
+  const completion = close.then(async (code) => {
+    clearTimeout(timer);
+    if (timedOut) {
+      const result2 = await termination;
+      if (result2?.error) throw nativeGitSnapshotTimeoutError(result2.error);
+      throw nativeGitSnapshotTimeoutError();
+    }
+    return { code, spawnError };
+  });
+  return { child, completion };
+}
+function resolveNativeGitSelectionLimits(values) {
+  const limits = { ...DEFAULT_NATIVE_GIT_SELECTION_LIMITS, ...values };
+  if (!Number.isSafeInteger(limits.maxRecords) || limits.maxRecords < 1 || !Number.isSafeInteger(limits.maxBytes) || limits.maxBytes < 1 || !Number.isSafeInteger(limits.maxRecordBytes) || limits.maxRecordBytes < 1 || limits.maxRecordBytes > limits.maxBytes) {
+    throw new Error("Native Git selection limits must be positive bounded integers");
+  }
+  return limits;
+}
+async function runGitBoundedOutput(execution, projectRoot, args, maxBytes = GIT_TEXT_STDOUT_LIMIT) {
+  const { child, completion } = startNativeGitProcess(execution, projectRoot, args, false);
+  const stdout = [];
+  const stderr = [];
+  let stderrBytes = 0;
+  let stdoutBytes = 0;
+  let stdoutOverflow = false;
+  child.stdout.on("data", (chunk) => {
+    const remaining = Math.max(0, maxBytes - stdoutBytes);
+    if (remaining > 0) stdout.push(Buffer.from(chunk).subarray(0, remaining));
+    stdoutBytes += chunk.byteLength;
+    if (stdoutBytes > maxBytes) stdoutOverflow = true;
+  });
+  child.stderr.on("data", (chunk) => {
+    if (stderrBytes >= GIT_LIST_STDERR_LIMIT) return;
+    const remaining = GIT_LIST_STDERR_LIMIT - stderrBytes;
+    const bounded = Buffer.from(chunk).subarray(0, remaining);
+    stderr.push(bounded);
+    stderrBytes += bounded.byteLength;
+  });
+  const { code, spawnError } = await completion;
+  if (code === 0 && spawnError === null && !stdoutOverflow) return Buffer.concat(stdout);
+  throw Object.assign(
+    new Error(
+      `git ${args.join(" ")} failed${spawnError ? `: ${spawnError.message}` : stderr.length > 0 ? `: ${Buffer.concat(stderr).toString("utf8").trim()}` : ""}`
+    ),
+    { code: "GIT_SNAPSHOT_UNAVAILABLE" }
+  );
+}
+function gitSelectionStreamEvidence(result2) {
+  return {
+    hash: result2.digest,
+    recordCount: result2.recordCount,
+    storedRecordCount: result2.records.length,
+    stdoutBytes: result2.stdoutBytes,
+    overflow: result2.overflow
+  };
+}
+function runGitNullRecords(execution, projectRoot, args, options) {
+  if (options.outputChunkBytes !== void 0 && (!Number.isSafeInteger(options.outputChunkBytes) || options.outputChunkBytes < 1)) {
+    throw new Error("Native Git output chunk size must be a positive integer");
+  }
+  return new Promise((resolve, reject) => {
+    const { child, completion } = startNativeGitProcess(
+      execution,
+      projectRoot,
+      args,
+      options.stdin !== void 0
+    );
+    const records = [];
+    const digest = createHash5("sha256");
+    const stderr = [];
+    let stderrBytes = 0;
+    let stdoutBytes = 0;
+    let storedBytes = 0;
+    let recordCount = 0;
+    let pending = Buffer.alloc(0);
+    let droppingRecord = false;
+    let overflow = false;
+    let malformed = false;
+    const consumeChunk = (chunk) => {
+      let offset = 0;
+      while (offset < chunk.byteLength) {
+        const separator = chunk.indexOf(0, offset);
+        const end = separator < 0 ? chunk.byteLength : separator;
+        const part = chunk.subarray(offset, end);
+        if (!droppingRecord && part.byteLength > 0) {
+          if (pending.byteLength + part.byteLength > options.maxRecordBytes) {
+            pending = Buffer.alloc(0);
+            droppingRecord = true;
+            overflow = true;
+          } else {
+            pending = Buffer.concat([pending, part]);
+          }
+        }
+        if (separator < 0) break;
+        recordCount += 1;
+        if (pending.byteLength === 0 && !droppingRecord) malformed = true;
+        const recordBytes = pending.byteLength + 1;
+        if (!droppingRecord && recordCount <= options.maxRecords && storedBytes + recordBytes <= options.maxBytes) {
+          records.push(pending);
+          storedBytes += recordBytes;
+        } else {
+          overflow = true;
+        }
+        pending = Buffer.alloc(0);
+        droppingRecord = false;
+        offset = separator + 1;
+      }
+    };
+    child.stdout.on("data", (chunk) => {
+      digest.update(chunk);
+      stdoutBytes += chunk.byteLength;
+      if (stdoutBytes > options.maxBytes) overflow = true;
+      const outputChunkBytes = options.outputChunkBytes;
+      if (outputChunkBytes === void 0) {
+        consumeChunk(chunk);
+        return;
+      }
+      for (let offset = 0; offset < chunk.byteLength; offset += outputChunkBytes) {
+        consumeChunk(chunk.subarray(offset, Math.min(chunk.byteLength, offset + outputChunkBytes)));
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      if (stderrBytes >= GIT_LIST_STDERR_LIMIT) return;
+      const remaining = GIT_LIST_STDERR_LIMIT - stderrBytes;
+      const bounded = Buffer.from(chunk).subarray(0, remaining);
+      stderr.push(bounded);
+      stderrBytes += bounded.byteLength;
+    });
+    child.stdin?.on("error", () => {
+    });
+    void completion.then(({ code, spawnError }) => {
+      const acceptedExitCodes = options.acceptedExitCodes ?? [0];
+      if (code !== null && acceptedExitCodes.includes(code) && spawnError === null && !malformed && pending.byteLength === 0 && !droppingRecord) {
+        resolve({
+          records,
+          digest: digest.digest("hex"),
+          overflow,
+          recordCount,
+          stdoutBytes
+        });
+        return;
+      }
+      reject(
+        new Error(
+          `git ${args.join(" ")} failed${spawnError ? `: ${spawnError.message}` : malformed || pending.byteLength > 0 || droppingRecord ? ": malformed NUL-delimited output" : stderr.length > 0 ? `: ${Buffer.concat(stderr).toString("utf8").trim()}` : ""}`
+        )
+      );
+    }, reject);
+    if (options.stdin) child.stdin?.end(options.stdin);
+  });
+}
+function decodeGitRecord(value) {
+  const decoded = value.toString("utf8");
+  if (!Buffer.from(decoded, "utf8").equals(value)) {
+    throw new Error("Native Git snapshot provider returned non-UTF-8 path data");
+  }
+  return decoded;
+}
+async function runGitCheckIgnore(execution, projectRoot, paths) {
+  if (paths.length === 0) return /* @__PURE__ */ new Set();
+  const result2 = await runGitNullRecords(
+    execution,
+    projectRoot,
+    ["check-ignore", "--no-index", "-z", "--stdin"],
+    {
+      ...DEFAULT_NATIVE_GIT_SELECTION_LIMITS,
+      maxRecords: Math.max(1, paths.length),
+      acceptedExitCodes: [0, 1],
+      stdin: Buffer.from(`${paths.join("\0")}\0`, "utf8")
+    }
+  );
+  if (result2.overflow) {
+    throw new Error("Native Git check-ignore output exceeded its safety budget");
+  }
+  return new Set(
+    result2.records.map((record8) => {
+      const value = decodeGitRecord(record8);
+      return value.endsWith("/") ? value.slice(0, -1) : value;
+    })
+  );
+}
+async function runGitHasOutput(execution, projectRoot, args) {
+  const { child, completion } = startNativeGitProcess(execution, projectRoot, args, false);
+  const stderr = [];
+  let stderrBytes = 0;
+  let hasOutput = false;
+  child.stdout.on("data", (chunk) => {
+    if (chunk.byteLength > 0) hasOutput = true;
+  });
+  child.stderr.on("data", (chunk) => {
+    if (stderrBytes >= GIT_LIST_STDERR_LIMIT) return;
+    const remaining = GIT_LIST_STDERR_LIMIT - stderrBytes;
+    const bounded = Buffer.from(chunk).subarray(0, remaining);
+    stderr.push(bounded);
+    stderrBytes += bounded.byteLength;
+  });
+  const { code, spawnError } = await completion;
+  if (code === 0 && spawnError === null) return hasOutput;
+  throw new Error(
+    `git ${args.join(" ")} failed${spawnError ? `: ${spawnError.message}` : stderr.length > 0 ? `: ${Buffer.concat(stderr).toString("utf8").trim()}` : ""}`
+  );
+}
+function safeGitProjectPath(value) {
+  const withoutDirectoryMarker = value.endsWith("/") ? value.slice(0, -1) : value;
+  if (withoutDirectoryMarker.length === 0 || withoutDirectoryMarker.includes("\\") || path10.posix.isAbsolute(withoutDirectoryMarker) || /^[A-Za-z]:/u.test(withoutDirectoryMarker) || path10.posix.normalize(withoutDirectoryMarker) !== withoutDirectoryMarker || withoutDirectoryMarker === ".." || withoutDirectoryMarker.startsWith("../") || withoutDirectoryMarker.includes("\0")) {
+    return null;
+  }
+  return withoutDirectoryMarker;
+}
+function requireSafeGitProjectPaths(values, source) {
+  return values.map((value) => {
+    const relative = safeGitProjectPath(value);
+    if (relative === null) {
+      throw new Error(`Native Git snapshot provider returned an unsafe ${source} path`);
+    }
+    return relative;
+  });
+}
+async function hasGitMetadataBoundary(projectRoot) {
+  let cursor = path10.resolve(projectRoot);
+  while (true) {
+    try {
+      await fs9.lstat(path10.join(cursor, ".git"));
+      return true;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const parent = path10.dirname(cursor);
+    if (parent === cursor) return false;
+    cursor = parent;
+  }
+}
+async function readNativeGitSelectionResults(execution, projectRoot, limits, hooks = {}) {
+  const options = {
+    ...limits,
+    ...hooks.outputChunkBytes === void 0 ? {} : { outputChunkBytes: hooks.outputChunkBytes }
+  };
+  const stagedBefore = await runGitNullRecords(
+    execution,
+    projectRoot,
+    ["ls-files", "--stage", "-z"],
+    options
+  );
+  await hooks.afterStageBefore?.();
+  const combined = await runGitNullRecords(
+    execution,
+    projectRoot,
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    options
+  );
+  await hooks.afterCombined?.();
+  const stagedAfter = await runGitNullRecords(
+    execution,
+    projectRoot,
+    ["ls-files", "--stage", "-z"],
+    options
+  );
+  return { stagedBefore, combined, stagedAfter };
+}
+function gitSelectionFence(results) {
+  return {
+    stageBefore: gitSelectionStreamEvidence(results.stagedBefore),
+    combined: gitSelectionStreamEvidence(results.combined),
+    stageAfter: gitSelectionStreamEvidence(results.stagedAfter)
+  };
+}
+async function nativeGitSnapshotSelection(execution, projectRoot, limits = DEFAULT_NATIVE_GIT_SELECTION_LIMITS, hooks = {}) {
+  if (!await hasGitMetadataBoundary(projectRoot)) return null;
+  let insideWorktree;
+  try {
+    insideWorktree = await runGitBoundedOutput(execution, projectRoot, [
+      "rev-parse",
+      "--is-inside-work-tree"
+    ]);
+  } catch (error) {
+    if (isNativeGitSnapshotTimeout(error)) throw error;
+    throw new Error("Native Git snapshot provider could not inspect the repository boundary", {
+      cause: error
+    });
+  }
+  if (insideWorktree.toString("utf8").trim() !== "true") {
+    throw new Error("Native Git snapshot provider found .git metadata outside a working tree");
+  }
+  let results;
+  try {
+    results = await readNativeGitSelectionResults(execution, projectRoot, limits, hooks);
+  } catch (error) {
+    if (isNativeGitSnapshotTimeout(error)) throw error;
+    throw new Error("Native Git snapshot provider failed after repository detection", {
+      cause: error
+    });
+  }
+  const { stagedBefore, combined, stagedAfter } = results;
+  const tracked = /* @__PURE__ */ new Set();
+  const gitlinks = /* @__PURE__ */ new Set();
+  const addStagedRecords = (records) => {
+    for (const encoded of records) {
+      const record8 = decodeGitRecord(encoded);
+      const separator = record8.indexOf("	");
+      if (separator < 0) {
+        throw new Error("Native Git snapshot provider returned a malformed staged record");
+      }
+      const header = /^(?<mode>[0-7]{6}) (?<objectId>[a-f0-9]{40}|[a-f0-9]{64}) (?<stage>[0-3])$/u.exec(
+        record8.slice(0, separator)
+      )?.groups;
+      if (!header) {
+        throw new Error("Native Git snapshot provider returned a malformed staged header");
+      }
+      const relative = safeGitProjectPath(record8.slice(separator + 1));
+      if (relative === null) {
+        throw new Error("Native Git snapshot provider returned an unsafe staged path");
+      }
+      tracked.add(relative);
+      if (header.mode === "160000" && header.stage === "0") gitlinks.add(relative);
+    }
+  };
+  addStagedRecords(stagedBefore.records);
+  addStagedRecords(stagedAfter.records);
+  const combinedRecords = combined.records.map(decodeGitRecord);
+  const combinedPaths = requireSafeGitProjectPaths(combinedRecords, "combined");
+  const untracked = new Set(combinedPaths.filter((relative) => !tracked.has(relative)));
+  const nestedRepositories = new Set(
+    combinedPaths.filter(
+      (relative, index) => !tracked.has(relative) && combinedRecords[index].endsWith("/")
+    )
+  );
+  for (const gitlink of gitlinks) nestedRepositories.delete(gitlink);
+  return {
+    tracked,
+    untracked,
+    gitlinks,
+    nestedRepositories,
+    omissions: [],
+    overflow: null,
+    evidence: null,
+    initialFence: gitSelectionFence(results)
+  };
+}
+function sameGitSelectionStream(left, right) {
+  return left.hash === right.hash && left.recordCount === right.recordCount && left.storedRecordCount === right.storedRecordCount && left.stdoutBytes === right.stdoutBytes && left.overflow === right.overflow;
+}
+function gitSelectionFenceOverflow(fence) {
+  return fence.stageBefore.overflow || fence.combined.overflow || fence.stageAfter.overflow;
+}
+function gitSelectionChanged(initial, final) {
+  return !sameGitSelectionStream(initial.stageBefore, initial.stageAfter) || !sameGitSelectionStream(initial.stageAfter, final.stageBefore) || !sameGitSelectionStream(initial.combined, final.combined) || !sameGitSelectionStream(final.stageBefore, final.stageAfter);
+}
+async function finalizeNativeGitSnapshotSelection(execution, projectRoot, limits, selection, outputChunkBytes) {
+  let finalResults;
+  try {
+    finalResults = await readNativeGitSelectionResults(execution, projectRoot, limits, {
+      ...outputChunkBytes === void 0 ? {} : { outputChunkBytes }
+    });
+  } catch (error) {
+    if (isNativeGitSnapshotTimeout(error)) throw error;
+    throw new Error("Native Git snapshot provider failed during its final selection fence", {
+      cause: error
+    });
+  }
+  const initial = selection.initialFence;
+  const final = gitSelectionFence(finalResults);
+  const hasOverflow = gitSelectionFenceOverflow(initial) || gitSelectionFenceOverflow(final);
+  const changed = gitSelectionChanged(initial, final);
+  if (hasOverflow) {
+    selection.omissions.push({
+      path: ".",
+      size: null,
+      type: "directory",
+      reason: "git-enumeration-limit"
+    });
+  }
+  if (changed) {
+    selection.omissions.push({
+      path: ".",
+      size: null,
+      type: "directory",
+      reason: "git-selection-changed"
+    });
+  }
+  selection.evidence = hasOverflow || changed ? {
+    schema: "comet.native.git-selection.v1",
+    status: hasOverflow && changed ? "overflow-and-changed" : hasOverflow ? "overflow" : "changed",
+    ...initial,
+    finalStageBefore: final.stageBefore,
+    finalCombined: final.combined,
+    finalStageAfter: final.stageAfter
+  } : null;
+  if (initial.combined.overflow || final.combined.overflow) {
+    selection.overflow = {
+      count: Math.max(
+        1,
+        initial.combined.recordCount - initial.combined.storedRecordCount,
+        final.combined.recordCount - final.combined.storedRecordCount
+      ),
+      hash: sha256Text(
+        `comet.native.git-selection-overflow.v2
+${JSON.stringify({
+          initial: initial.combined,
+          final: final.combined
+        })}`
+      )
+    };
+  }
+}
+var PHYSICAL_SELECTION_SUM_MASK = (1n << 256n) - 1n;
+function physicalSelectionRecordType(stat) {
+  if (stat.isFile()) return "file";
+  if (stat.isDirectory()) return "directory";
+  if (stat.isSymbolicLink()) return "symlink";
+  return "other";
+}
+async function nativePhysicalSnapshotSelection(options) {
+  const projectRoot = path10.resolve(options.paths.projectRoot);
+  const nativeRoot = path10.resolve(options.paths.nativeRoot);
+  const configFile = path10.resolve(options.paths.configFile);
+  const selectionFile = path10.join(projectRoot, ".comet", "current-change.json");
+  const records = [];
+  const omissions = [];
+  const xor = Buffer.alloc(32);
+  let sum = 0n;
+  let visitedNodeCount = 0;
+  let recordCount = 0;
+  let encodedBytes = 0;
+  let overflow = false;
+  let unstable = false;
+  let stopped = false;
+  const hasExecutionBudget = () => {
+    if (remainingNativeSnapshotTime(options.execution) >= 1) return true;
+    overflow = true;
+    stopped = true;
+    return false;
+  };
+  const addRecord = (record8) => {
+    const encoded = Buffer.from(`${record8.type}\0${record8.path}`, "utf8");
+    const digest = createHash5("sha256").update("comet.native.physical-selection-record.v1\0").update(encoded).digest();
+    for (let index = 0; index < xor.length; index += 1) xor[index] ^= digest[index];
+    sum = sum + BigInt(`0x${digest.toString("hex")}`) & PHYSICAL_SELECTION_SUM_MASK;
+    recordCount += 1;
+    encodedBytes += encoded.byteLength;
+    if (Buffer.byteLength(record8.path, "utf8") > options.limits.maxPathBytes || encodedBytes > options.limits.maxBytes) {
+      overflow = true;
+      stopped = true;
+      return;
+    }
+    records.push(record8);
+  };
+  const visit = async (directory) => {
+    if (stopped) return;
+    if (!hasExecutionBudget()) return;
+    let handle;
+    try {
+      handle = await fs9.opendir(directory);
+    } catch (error) {
+      if (!hasExecutionBudget()) return;
+      if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+      if (directory === projectRoot && isUnreadableError(error)) throw error;
+      unstable ||= isChangedDuringReadError(error);
+      overflow ||= isUnreadableError(error);
+      stopped = true;
+      return;
+    }
+    if (!hasExecutionBudget()) {
+      try {
+        await handle.close();
+      } catch (error) {
+        if (error.code !== "ERR_DIR_CLOSED") throw error;
+      }
+      return;
+    }
+    let traversalFailed = false;
+    let traversalError;
+    try {
+      while (!stopped) {
+        if (!hasExecutionBudget()) break;
+        let child;
+        try {
+          child = await handle.read();
+        } catch (error) {
+          if (!hasExecutionBudget()) break;
+          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+          if (directory === projectRoot && isUnreadableError(error)) throw error;
+          unstable ||= isChangedDuringReadError(error);
+          overflow ||= isUnreadableError(error);
+          stopped = true;
+          break;
+        }
+        if (!hasExecutionBudget() || child === null) break;
+        visitedNodeCount += 1;
+        if (visitedNodeCount > options.limits.maxNodes) {
+          overflow = true;
+          stopped = true;
+          break;
+        }
+        const target = path10.join(directory, child.name);
+        const relative = portableRelative(projectRoot, target);
+        if (target === configFile || target === selectionFile || sameOrInside(nativeRoot, target) || options.denylist.some((denied) => sameOrInside(denied, target)) || nativeSensitiveRelativePathReason(relative) !== null) {
+          continue;
+        }
+        if (!hasExecutionBudget()) break;
+        let stat;
+        try {
+          stat = await fs9.lstat(target);
+        } catch (error) {
+          if (!hasExecutionBudget()) break;
+          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+          unstable = true;
+          addRecord({ path: relative, type: "other" });
+          omissions.push({
+            path: relative,
+            size: null,
+            type: "file",
+            reason: isUnreadableError(error) ? "unreadable" : "changed-during-read"
+          });
+          await options.hooks?.afterNode?.(relative);
+          if (stopped) break;
+          if (!hasExecutionBudget()) break;
+          continue;
+        }
+        if (!hasExecutionBudget()) break;
+        const type = physicalSelectionRecordType(stat);
+        if (type === "directory") {
+          if (!hasExecutionBudget()) break;
+          let realDirectory;
+          try {
+            realDirectory = await fs9.realpath(target);
+          } catch (error) {
+            if (!hasExecutionBudget()) break;
+            if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+            unstable = true;
+            addRecord({ path: relative, type });
+            omissions.push({
+              path: relative,
+              size: null,
+              type: "directory",
+              reason: isUnreadableError(error) ? "unreadable" : "changed-during-read"
+            });
+            await options.hooks?.afterNode?.(relative);
+            if (stopped) break;
+            if (!hasExecutionBudget()) break;
+            continue;
+          }
+          if (!hasExecutionBudget()) break;
+          if (!isInsidePath(options.physicalProjectRoot, realDirectory) || sameOrInside(options.physicalNativeRoot, realDirectory)) {
+            continue;
+          }
+          addRecord({ path: relative, type });
+          await options.hooks?.afterNode?.(relative);
+          if (!hasExecutionBudget()) break;
+          await visit(target);
+          if (stopped) break;
+          continue;
+        }
+        addRecord({ path: relative, type });
+        await options.hooks?.afterNode?.(relative);
+        if (!hasExecutionBudget()) break;
+        if (stopped) break;
+      }
+    } catch (error) {
+      traversalFailed = true;
+      traversalError = error;
+    }
+    let closeError;
+    try {
+      await handle.close();
+    } catch (error) {
+      closeError = error;
+    }
+    const withinBudget = hasExecutionBudget();
+    if (traversalFailed) throw traversalError;
+    if (withinBudget && closeError !== void 0 && closeError.code !== "ERR_DIR_CLOSED") {
+      throw closeError;
+    }
+  };
+  await visit(projectRoot);
+  hasExecutionBudget();
+  if (overflow) {
+    records.length = 0;
+    recordCount = 0;
+    encodedBytes = 0;
+  }
+  const hash6 = overflow ? sha256Text(
+    `comet.native.physical-selection-incomplete.v1
+${JSON.stringify({
+      maxNodes: options.limits.maxNodes,
+      maxBytes: options.limits.maxBytes,
+      maxPathBytes: options.limits.maxPathBytes
+    })}`
+  ) : sha256Text(
+    `comet.native.physical-selection.v1
+${JSON.stringify({
+      visitedNodeCount,
+      recordCount,
+      encodedBytes,
+      xor: xor.toString("hex"),
+      sum: sum.toString(16).padStart(64, "0")
+    })}`
+  );
+  return {
+    records,
+    omissions,
+    evidence: {
+      hash: hash6,
+      visitedNodeCount,
+      recordCount,
+      storedRecordCount: records.length,
+      encodedBytes,
+      overflow,
+      unstable
+    }
+  };
+}
+function samePhysicalSelectionStream(left, right) {
+  return left.hash === right.hash && left.visitedNodeCount === right.visitedNodeCount && left.recordCount === right.recordCount && left.storedRecordCount === right.storedRecordCount && left.encodedBytes === right.encodedBytes && left.overflow === right.overflow && left.unstable === right.unstable;
+}
+function finalizeNativePhysicalSelection(before, after) {
+  const hasOverflow = before.overflow || after.overflow;
+  const changed = before.unstable || after.unstable || !samePhysicalSelectionStream(before, after);
+  const omissions = [];
+  if (hasOverflow) {
+    omissions.push({
+      path: ".",
+      size: null,
+      type: "directory",
+      reason: "physical-enumeration-limit"
+    });
+  }
+  if (changed) {
+    omissions.push({
+      path: ".",
+      size: null,
+      type: "directory",
+      reason: "physical-selection-changed"
+    });
+  }
+  return {
+    omissions,
+    evidence: hasOverflow || changed ? {
+      schema: "comet.native.physical-selection.v1",
+      status: hasOverflow && changed ? "overflow-and-changed" : hasOverflow ? "overflow" : "changed",
+      before,
+      after
+    } : null
+  };
+}
+function selectionPaths(selection) {
+  return [.../* @__PURE__ */ new Set([...selection.tracked, ...selection.untracked])].sort(
+    (left, right) => left.localeCompare(right, "en")
+  );
+}
+async function readGitlinkWorkingTreeHeadHash(execution, target) {
+  const output = await runGitBoundedOutput(execution, target, ["rev-parse", "--verify", "HEAD"]);
+  const objectId = output.toString("utf8").trim().toLowerCase();
+  if (!GIT_OBJECT_ID_PATTERN.test(objectId)) {
+    throw new Error("Native Git snapshot provider received an invalid submodule HEAD");
+  }
+  return sha256Text(`gitlink:${objectId}`);
+}
+async function inspectGitlinkWorkingTree(execution, target) {
+  const before = await readGitlinkWorkingTreeHeadHash(execution, target);
+  const dirty = await runGitHasOutput(execution, target, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=normal"
+  ]);
+  const after = await readGitlinkWorkingTreeHeadHash(execution, target);
+  if (after !== before) {
+    throw new Error("Native Git snapshot provider observed a changing submodule HEAD");
+  }
+  return { hash: after, dirty };
+}
+function isSnapshotProjectRef(paths, relative) {
+  if (nativeSensitiveRelativePathReason(relative) !== null) return false;
+  const target = path10.resolve(paths.projectRoot, ...relative.split("/"));
+  return !sameOrInside(path10.resolve(paths.nativeRoot), target);
+}
+function inspectNativeContentSnapshotHealth(value, options = {}) {
+  const manifest = parseNativeContentSnapshotManifest(value);
+  const maxRecordedPaths = options.maxRecordedPaths ?? 20;
+  if (!Number.isSafeInteger(maxRecordedPaths) || maxRecordedPaths < 0) {
+    throw new Error("Native snapshot health maxRecordedPaths must be a non-negative integer");
+  }
+  const samplePaths = manifest.omitted.slice(0, maxRecordedPaths).map((omission) => omission.path);
+  return {
+    complete: manifest.complete,
+    omittedCount: manifest.omittedCount,
+    recordedOmissionCount: manifest.omitted.length,
+    overflowCount: manifest.omissionOverflow?.count ?? 0,
+    samplePaths,
+    sampleTruncated: samplePaths.length < manifest.omittedCount
+  };
+}
 function portableRelative(root, target) {
   return path10.relative(root, target).split(path10.sep).join("/");
 }
@@ -10067,26 +10943,65 @@ function isChangedDuringReadError(error) {
 function serializedManifestBytes(manifest) {
   return Buffer.byteLength(JSON.stringify(manifest, null, 2) + "\n");
 }
+function foldSnapshotOverflowHash(previous, kind, value) {
+  const payload = JSON.stringify(value);
+  return sha256Text(
+    `${previous}
+${Buffer.byteLength(kind)}:${kind}
+${Buffer.byteLength(payload)}:${payload}`
+  );
+}
+function isSelectionIntegrityOmission(omission) {
+  return omission.reason === "git-enumeration-limit" || omission.reason === "git-selection-changed" || omission.reason === "physical-enumeration-limit" || omission.reason === "physical-selection-changed";
+}
+function takeLastCompactableOmission(omissions) {
+  for (let index = omissions.length - 1; index >= 0; index -= 1) {
+    const omission = omissions[index];
+    if (isSelectionIntegrityOmission(omission)) continue;
+    omissions.splice(index, 1);
+    return omission;
+  }
+  return null;
+}
 function sameFileIdentity4(left, right) {
   if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
     return left.dev === right.dev && left.ino === right.ino;
   }
   return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
-async function sha256FileBounded(file, maxBytes, expected) {
-  const handle = await fs9.open(file, "r");
+async function sha256FileBounded(file, maxBytes, expected, execution) {
+  if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
+  let handle;
+  try {
+    handle = await fs9.open(file, "r");
+  } catch (error) {
+    if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
+    throw error;
+  }
+  if (!nativeSnapshotExecutionHasBudget(execution)) {
+    await handle.close();
+    return { status: "budget-exhausted" };
+  }
   const hash6 = createHash5("sha256");
   const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
   let bytes = 0;
   try {
+    if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
     const opened = await handle.stat();
+    if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
     if (!opened.isFile() || !sameFileIdentity4(expected, opened)) return { status: "changed" };
     while (true) {
+      if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
       const remaining = maxBytes + 1 - bytes;
       if (remaining < 1) return { status: "changed" };
       const result2 = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+      if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
       if (result2.bytesRead === 0) {
+        if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
         const finalStat = await handle.stat();
+        if (!nativeSnapshotExecutionHasBudget(execution)) {
+          return { status: "budget-exhausted" };
+        }
         if (!finalStat.isFile() || !sameFileIdentity4(opened, finalStat)) {
           return { status: "changed" };
         }
@@ -10099,11 +11014,6 @@ async function sha256FileBounded(file, maxBytes, expected) {
   } finally {
     await handle.close();
   }
-}
-function omissionType(child) {
-  if (child.isFile()) return "file";
-  if (child.isDirectory()) return "directory";
-  return "other";
 }
 function record3(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -10128,7 +11038,7 @@ function nonNegativeInteger(value, label) {
   return value;
 }
 function snapshotPath(value, label) {
-  if (typeof value !== "string" || value.length === 0 || value.includes("\\")) {
+  if (typeof value !== "string" || value.length === 0 || value.includes("\\") || value.includes("\0")) {
     throw new Error(`${label} must be a normalized project-relative path`);
   }
   const normalized = path10.posix.normalize(value);
@@ -10184,6 +11094,154 @@ function parseOmissionOverflow(value) {
     count: positiveInteger(overflow.count, "Native snapshot omission overflow count")
   };
 }
+function parseGitSelectionStreamEvidence(value, label) {
+  const stream = record3(value, label);
+  rejectUnknown3(stream, GIT_SELECTION_STREAM_KEYS, label);
+  if (typeof stream.hash !== "string" || !HASH_PATTERN.test(stream.hash)) {
+    throw new Error(`${label} hash is invalid`);
+  }
+  if (typeof stream.overflow !== "boolean") {
+    throw new Error(`${label} overflow flag is invalid`);
+  }
+  const recordCount = nonNegativeInteger(stream.recordCount, `${label} recordCount`);
+  const storedRecordCount = nonNegativeInteger(
+    stream.storedRecordCount,
+    `${label} storedRecordCount`
+  );
+  const stdoutBytes = nonNegativeInteger(stream.stdoutBytes, `${label} stdoutBytes`);
+  if (storedRecordCount > recordCount || !stream.overflow && storedRecordCount !== recordCount) {
+    throw new Error(`${label} stored record count is inconsistent`);
+  }
+  return {
+    hash: stream.hash,
+    recordCount,
+    storedRecordCount,
+    stdoutBytes,
+    overflow: stream.overflow
+  };
+}
+function parseGitSelectionEvidence(value) {
+  const selection = record3(value, "Native Git selection evidence");
+  rejectUnknown3(selection, GIT_SELECTION_KEYS, "Native Git selection evidence");
+  if (selection.schema !== "comet.native.git-selection.v1") {
+    throw new Error("Native Git selection evidence schema is invalid");
+  }
+  if (selection.status !== "overflow" && selection.status !== "changed" && selection.status !== "overflow-and-changed") {
+    throw new Error("Native Git selection evidence status is invalid");
+  }
+  const stageBefore = parseGitSelectionStreamEvidence(
+    selection.stageBefore,
+    "Native Git selection stageBefore"
+  );
+  const combined = parseGitSelectionStreamEvidence(
+    selection.combined,
+    "Native Git selection combined"
+  );
+  const stageAfter = parseGitSelectionStreamEvidence(
+    selection.stageAfter,
+    "Native Git selection stageAfter"
+  );
+  const finalStageBefore = parseGitSelectionStreamEvidence(
+    selection.finalStageBefore,
+    "Native Git selection finalStageBefore"
+  );
+  const finalCombined = parseGitSelectionStreamEvidence(
+    selection.finalCombined,
+    "Native Git selection finalCombined"
+  );
+  const finalStageAfter = parseGitSelectionStreamEvidence(
+    selection.finalStageAfter,
+    "Native Git selection finalStageAfter"
+  );
+  const hasOverflow = [
+    stageBefore,
+    combined,
+    stageAfter,
+    finalStageBefore,
+    finalCombined,
+    finalStageAfter
+  ].some((stream) => stream.overflow);
+  const changed = !sameGitSelectionStream(stageBefore, stageAfter) || !sameGitSelectionStream(stageAfter, finalStageBefore) || !sameGitSelectionStream(combined, finalCombined) || !sameGitSelectionStream(finalStageBefore, finalStageAfter);
+  const expectedStatus = hasOverflow && changed ? "overflow-and-changed" : hasOverflow ? "overflow" : "changed";
+  if (!hasOverflow && !changed) {
+    throw new Error("Native Git selection evidence must describe an exceptional selection");
+  }
+  if (selection.status !== expectedStatus) {
+    throw new Error("Native Git selection evidence status is inconsistent");
+  }
+  return {
+    schema: "comet.native.git-selection.v1",
+    status: expectedStatus,
+    stageBefore,
+    combined,
+    stageAfter,
+    finalStageBefore,
+    finalCombined,
+    finalStageAfter
+  };
+}
+function parsePhysicalSelectionStreamEvidence(value, label) {
+  const stream = record3(value, label);
+  rejectUnknown3(stream, PHYSICAL_SELECTION_STREAM_KEYS, label);
+  if (typeof stream.hash !== "string" || !HASH_PATTERN.test(stream.hash)) {
+    throw new Error(`${label} hash is invalid`);
+  }
+  if (typeof stream.overflow !== "boolean" || typeof stream.unstable !== "boolean") {
+    throw new Error(`${label} flags are invalid`);
+  }
+  const visitedNodeCount = nonNegativeInteger(stream.visitedNodeCount, `${label} visitedNodeCount`);
+  const recordCount = nonNegativeInteger(stream.recordCount, `${label} recordCount`);
+  const storedRecordCount = nonNegativeInteger(
+    stream.storedRecordCount,
+    `${label} storedRecordCount`
+  );
+  const encodedBytes = nonNegativeInteger(stream.encodedBytes, `${label} encodedBytes`);
+  if (storedRecordCount > recordCount || !stream.overflow && storedRecordCount !== recordCount) {
+    throw new Error(`${label} stored record count is inconsistent`);
+  }
+  return {
+    hash: stream.hash,
+    visitedNodeCount,
+    recordCount,
+    storedRecordCount,
+    encodedBytes,
+    overflow: stream.overflow,
+    unstable: stream.unstable
+  };
+}
+function parsePhysicalSelectionEvidence(value) {
+  const selection = record3(value, "Native physical selection evidence");
+  rejectUnknown3(selection, PHYSICAL_SELECTION_KEYS, "Native physical selection evidence");
+  if (selection.schema !== "comet.native.physical-selection.v1") {
+    throw new Error("Native physical selection evidence schema is invalid");
+  }
+  if (selection.status !== "overflow" && selection.status !== "changed" && selection.status !== "overflow-and-changed") {
+    throw new Error("Native physical selection evidence status is invalid");
+  }
+  const before = parsePhysicalSelectionStreamEvidence(
+    selection.before,
+    "Native physical selection before"
+  );
+  const after = parsePhysicalSelectionStreamEvidence(
+    selection.after,
+    "Native physical selection after"
+  );
+  const hasOverflow = before.overflow || after.overflow;
+  const changed = before.unstable || after.unstable || !samePhysicalSelectionStream(before, after);
+  if (!hasOverflow && !changed) {
+    throw new Error("Native physical selection evidence must describe an exceptional selection");
+  }
+  const expectedStatus = hasOverflow && changed ? "overflow-and-changed" : hasOverflow ? "overflow" : "changed";
+  if (selection.status !== expectedStatus) {
+    throw new Error("Native physical selection evidence status is inconsistent");
+  }
+  return {
+    schema: "comet.native.physical-selection.v1",
+    status: expectedStatus,
+    before,
+    after
+  };
+}
 function parseNativeContentSnapshotManifest(value) {
   const manifest = record3(value, "Native content snapshot manifest");
   rejectUnknown3(manifest, MANIFEST_KEYS, "Native content snapshot manifest");
@@ -10192,6 +11250,48 @@ function parseNativeContentSnapshotManifest(value) {
   }
   if (!SNAPSHOT_ORIGINS.has(manifest.origin)) {
     throw new Error("Native content snapshot origin is invalid");
+  }
+  let capture;
+  if (manifest.capture !== void 0) {
+    const captureValue = record3(manifest.capture, "Native content snapshot capture");
+    rejectUnknown3(captureValue, CAPTURE_KEYS, "Native content snapshot capture");
+    if (captureValue.provider !== "git" && captureValue.provider !== "physical-tree") {
+      throw new Error("Native content snapshot capture provider is invalid");
+    }
+    const gitSelection2 = captureValue.gitSelection === void 0 ? void 0 : parseGitSelectionEvidence(captureValue.gitSelection);
+    const physicalSelection2 = captureValue.physicalSelection === void 0 ? void 0 : parsePhysicalSelectionEvidence(captureValue.physicalSelection);
+    let projection = null;
+    if (captureValue.projection !== void 0) {
+      const projectionValue = record3(captureValue.projection, "Native content snapshot projection");
+      rejectUnknown3(projectionValue, GIT_PROJECTION_KEYS, "Native content snapshot projection");
+      if (projectionValue.provider !== "git") {
+        throw new Error("Native content snapshot projection provider is invalid");
+      }
+      projection = {
+        provider: "git",
+        ...projectionValue.selection === void 0 ? {} : { selection: parseGitSelectionEvidence(projectionValue.selection) }
+      };
+    }
+    if (captureValue.provider === "git") {
+      if (physicalSelection2 || projection) {
+        throw new Error("Native Git capture cannot include physical or projection evidence");
+      }
+      capture = {
+        provider: "git",
+        ...gitSelection2 ? { gitSelection: gitSelection2 } : {}
+      };
+    } else {
+      if (gitSelection2) {
+        throw new Error("Native physical-tree capture cannot include direct Git evidence");
+      }
+      if (physicalSelection2 && projection) {
+        throw new Error("Native physical-tree capture cannot combine selection and projection");
+      }
+      capture = projection ? { provider: "physical-tree", projection } : {
+        provider: "physical-tree",
+        ...physicalSelection2 ? { physicalSelection: physicalSelection2 } : {}
+      };
+    }
   }
   if (typeof manifest.createdAt !== "string" || Number.isNaN(Date.parse(manifest.createdAt))) {
     throw new Error("Native content snapshot timestamp is invalid");
@@ -10239,9 +11339,56 @@ function parseNativeContentSnapshotManifest(value) {
   if (manifest.complete !== (omittedCount === 0)) {
     throw new Error("Native content snapshot completeness is inconsistent");
   }
+  const enumerationOmissions = omitted.filter(
+    (omission) => omission.reason === "git-enumeration-limit"
+  );
+  const selectionChangedOmissions = omitted.filter(
+    (omission) => omission.reason === "git-selection-changed"
+  );
+  for (const omission of [...enumerationOmissions, ...selectionChangedOmissions]) {
+    if (omission.path !== "." || omission.size !== null || omission.type !== "directory") {
+      throw new Error("Native Git selection omission must use the project-root sentinel");
+    }
+  }
+  if (enumerationOmissions.length > 1 || selectionChangedOmissions.length > 1) {
+    throw new Error("Native Git selection omissions must not be duplicated");
+  }
+  const gitSelection = capture?.provider === "git" ? capture.gitSelection : capture?.projection?.selection;
+  const evidenceHasOverflow = gitSelection?.status === "overflow" || gitSelection?.status === "overflow-and-changed";
+  const evidenceHasSelectionChange = gitSelection?.status === "changed" || gitSelection?.status === "overflow-and-changed";
+  if (evidenceHasOverflow !== (enumerationOmissions.length === 1)) {
+    throw new Error("Native Git enumeration omission and selection evidence are inconsistent");
+  }
+  if (evidenceHasSelectionChange !== (selectionChangedOmissions.length === 1)) {
+    throw new Error("Native Git selection-change omission and selection evidence are inconsistent");
+  }
+  const physicalEnumerationOmissions = omitted.filter(
+    (omission) => omission.reason === "physical-enumeration-limit"
+  );
+  const physicalChangedOmissions = omitted.filter(
+    (omission) => omission.reason === "physical-selection-changed"
+  );
+  for (const omission of [...physicalEnumerationOmissions, ...physicalChangedOmissions]) {
+    if (omission.path !== "." || omission.size !== null || omission.type !== "directory") {
+      throw new Error("Native physical selection omission must use the project-root sentinel");
+    }
+  }
+  if (physicalEnumerationOmissions.length > 1 || physicalChangedOmissions.length > 1) {
+    throw new Error("Native physical selection omissions must not be duplicated");
+  }
+  const physicalSelection = capture?.physicalSelection;
+  const physicalEvidenceHasOverflow = physicalSelection?.status === "overflow" || physicalSelection?.status === "overflow-and-changed";
+  const physicalEvidenceHasChange = physicalSelection?.status === "changed" || physicalSelection?.status === "overflow-and-changed";
+  if (physicalEvidenceHasOverflow !== (physicalEnumerationOmissions.length === 1)) {
+    throw new Error("Native physical enumeration omission and evidence are inconsistent");
+  }
+  if (physicalEvidenceHasChange !== (physicalChangedOmissions.length === 1)) {
+    throw new Error("Native physical selection-change omission and evidence are inconsistent");
+  }
   const parsed = {
     schema: "comet.native.content-snapshot.v1",
     origin: manifest.origin,
+    ...capture ? { capture } : {},
     createdAt: manifest.createdAt,
     complete: manifest.complete,
     limits,
@@ -10255,6 +11402,129 @@ function parseNativeContentSnapshotManifest(value) {
   }
   return parsed;
 }
+async function filterNativeContentSnapshotToProjectScope(paths, value, options = {}) {
+  const manifest = parseNativeContentSnapshotManifest(value);
+  if (manifest.capture?.provider === "git" || manifest.capture?.projection || manifest.capture?.physicalSelection) {
+    return manifest;
+  }
+  const projectRoot = path10.resolve(paths.projectRoot);
+  const execution = createNativeSnapshotExecution(options);
+  const gitSelectionLimits = resolveNativeGitSelectionLimits(options.gitSelectionLimits);
+  const selection = await nativeGitSnapshotSelection(
+    execution,
+    projectRoot,
+    gitSelectionLimits,
+    options.gitSelectionHooks
+  );
+  if (selection === null) return manifest;
+  const selected = new Set(
+    selectionPaths(selection).filter((relative) => isSnapshotProjectRef(paths, relative))
+  );
+  const gitlinkPaths = [...selection.gitlinks].filter((relative) => selected.has(relative));
+  const nestedRepositoryPaths = [...selection.nestedRepositories].filter(
+    (relative) => isSnapshotProjectRef(paths, relative)
+  );
+  const atOrBeneath = (relative, boundaries) => boundaries.some((boundary) => relative === boundary || relative.startsWith(`${boundary}/`));
+  const beneathGitlink = (relative) => atOrBeneath(relative, gitlinkPaths);
+  const beneathNestedRepository = (relative) => atOrBeneath(relative, nestedRepositoryPaths);
+  const ignoredCandidates = [
+    ...manifest.entries.map((entry2) => entry2.path),
+    ...manifest.omitted.flatMap(
+      (omission) => omission.type === "directory" ? [omission.path, `${omission.path}/`] : [omission.path]
+    )
+  ].filter(
+    (relative) => !selected.has(relative) && !beneathGitlink(relative) && !beneathNestedRepository(relative)
+  );
+  const ignored = await runGitCheckIgnore(execution, projectRoot, ignoredCandidates);
+  const entries = manifest.entries.filter(
+    (entry2) => !beneathGitlink(entry2.path) && !beneathNestedRepository(entry2.path) && isSnapshotProjectRef(paths, entry2.path) && (selected.has(entry2.path) || !ignored.has(entry2.path))
+  );
+  await finalizeNativeGitSnapshotSelection(
+    execution,
+    projectRoot,
+    gitSelectionLimits,
+    selection,
+    options.gitSelectionHooks?.outputChunkBytes
+  );
+  const boundaryOmissions = [...selection.omissions];
+  for (const gitlink of gitlinkPaths) {
+    boundaryOmissions.push({
+      path: gitlink,
+      size: null,
+      type: "directory",
+      reason: "legacy-gitlink-boundary"
+    });
+  }
+  entries.sort((left, right) => left.path.localeCompare(right.path, "en"));
+  const omitted = manifest.omitted.filter((omission) => {
+    if (beneathGitlink(omission.path)) return false;
+    if (beneathNestedRepository(omission.path)) return false;
+    if (!isSnapshotProjectRef(paths, omission.path)) return false;
+    if (!ignored.has(omission.path)) return true;
+    return selected.has(omission.path) || [...selected].some((relative) => relative.startsWith(`${omission.path}/`));
+  });
+  for (const omission of boundaryOmissions) {
+    if (!omitted.some(
+      (current) => current.path === omission.path && current.reason === omission.reason
+    )) {
+      omitted.push(omission);
+    }
+  }
+  omitted.sort((left, right) => left.path.localeCompare(right.path, "en"));
+  let overflowCount = manifest.omissionOverflow?.count ?? 0;
+  let overflowHash = manifest.omissionOverflow?.hash ?? sha256Text("comet.native.snapshot-omission-overflow.v1");
+  if (selection.overflow) {
+    overflowCount += selection.overflow.count;
+    overflowHash = foldSnapshotOverflowHash(overflowHash, "git-selection", {
+      source: "git-selection",
+      ...selection.overflow
+    });
+  }
+  const foldOverflow = (omission) => {
+    overflowCount += 1;
+    overflowHash = foldSnapshotOverflowHash(overflowHash, "omission", omission);
+  };
+  while (omitted.length > MAX_RECORDED_OMISSIONS) {
+    const omission = takeLastCompactableOmission(omitted);
+    if (omission === null) {
+      throw new Error(
+        "Projected Native snapshot has too many required selection-integrity omissions"
+      );
+    }
+    foldOverflow(omission);
+  }
+  const buildProjection = () => ({
+    ...manifest,
+    capture: {
+      provider: "physical-tree",
+      projection: {
+        provider: "git",
+        ...selection.evidence ? { selection: selection.evidence } : {}
+      }
+    },
+    complete: omitted.length + overflowCount === 0,
+    entries,
+    omitted,
+    omittedCount: omitted.length + overflowCount,
+    ...overflowCount > 0 ? {
+      omissionOverflow: {
+        ref: `native-snapshot://omitted-overflow/${overflowHash}`,
+        hash: overflowHash,
+        count: overflowCount
+      }
+    } : {}
+  });
+  let projected = buildProjection();
+  while (serializedManifestBytes(projected) > manifest.limits.maxManifestBytes) {
+    const omission = takeLastCompactableOmission(omitted);
+    if (omission === null) {
+      throw new Error("Projected Native snapshot cannot fit its manifest byte limit");
+    }
+    foldOverflow(omission);
+    projected = buildProjection();
+  }
+  return parseNativeContentSnapshotManifest(projected);
+}
 function nativeBaselineManifestFile(paths, name) {
   if (!CHANGE_NAME_PATTERN.test(name)) throw new Error(`Invalid Native change name: ${name}`);
   const changeDir = path10.join(paths.changesDir, name);
@@ -10262,12 +11532,17 @@ function nativeBaselineManifestFile(paths, name) {
   return path10.join(changeDir, "runtime", "baseline-manifest.json");
 }
 async function createNativeContentSnapshot(paths, options = {}) {
+  const execution = createNativeSnapshotExecution(options);
   const limits = {
     maxFiles: options.limits?.maxFiles ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFiles,
     maxFileBytes: options.limits?.maxFileBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFileBytes,
     maxTotalBytes: options.limits?.maxTotalBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxTotalBytes,
     maxManifestBytes: options.limits?.maxManifestBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxManifestBytes
   };
+  const gitSelectionLimits = resolveNativeGitSelectionLimits(options.gitSelectionLimits);
+  const physicalSelectionLimits = resolveNativePhysicalSelectionLimits(
+    options.physicalSelectionLimits
+  );
   if (limits.maxFiles < 1 || limits.maxFileBytes < 1 || limits.maxTotalBytes < 1 || limits.maxManifestBytes < 1) {
     throw new Error("Native snapshot limits must be positive");
   }
@@ -10280,14 +11555,17 @@ async function createNativeContentSnapshot(paths, options = {}) {
   const denylist = normalizedDenylist(projectRoot, options.denylist ?? []);
   const entries = [];
   const omitted = [];
+  const capturedEntryValidations = /* @__PURE__ */ new Map();
+  const capturedTrackedAbsences = /* @__PURE__ */ new Map();
   let omittedCount = 0;
   let overflowCount = 0;
   let overflowHash = sha256Text("comet.native.snapshot-omission-overflow.v1");
   let totalBytes = 0;
+  let notifiedFirstEntry = false;
+  let physicalSelectionEvidence = null;
   const foldOverflow = (value) => {
     overflowCount += 1;
-    overflowHash = sha256Text(`${overflowHash}
-${JSON.stringify(value)}`);
+    overflowHash = foldSnapshotOverflowHash(overflowHash, "omission", value);
   };
   const omit = (value) => {
     omittedCount += 1;
@@ -10295,142 +11573,507 @@ ${JSON.stringify(value)}`);
       omitted.push(value);
       return;
     }
+    if (isSelectionIntegrityOmission(value)) {
+      const displaced = takeLastCompactableOmission(omitted);
+      if (displaced === null) {
+        throw new Error("Native snapshot has too many required selection-integrity omissions");
+      }
+      foldOverflow(displaced);
+      omitted.push(value);
+      return;
+    }
     foldOverflow(value);
   };
-  const visit = async (directory) => {
-    let children;
+  const foldGitSelectionOverflow = (value) => {
+    omittedCount += value.count;
+    overflowCount += value.count;
+    overflowHash = foldSnapshotOverflowHash(overflowHash, "git-selection", {
+      source: "git-selection",
+      ...value
+    });
+  };
+  const foldManifestEntryOverflow = (entry2) => {
+    overflowCount += 1;
+    overflowHash = foldSnapshotOverflowHash(overflowHash, "manifest-entry", {
+      reason: "manifest-size",
+      entry: entry2
+    });
+  };
+  const recordCapturedEntry = async (entry2, validation2) => {
+    entries.push(entry2);
+    totalBytes += entry2.size;
+    capturedEntryValidations.set(entry2.path, validation2);
+    if (!notifiedFirstEntry) {
+      notifiedFirstEntry = true;
+      await options.gitSelectionHooks?.afterFirstEntryCaptured?.(entry2.path);
+    }
+  };
+  const invalidateCapturedEntry = (relative, omission) => {
+    const index = entries.findIndex((entry3) => entry3.path === relative);
+    if (index < 0) return;
+    const [entry2] = entries.splice(index, 1);
+    totalBytes -= entry2.size;
+    capturedEntryValidations.delete(relative);
+    omit(omission);
+  };
+  const captureFile = async (target, relative, before) => {
+    if (!before.isFile() || before.isSymbolicLink()) return;
+    if (!nativeSnapshotExecutionHasBudget(execution)) return;
+    let realTarget;
     try {
-      children = (await fs9.readdir(directory, { withFileTypes: true })).sort(
-        (left, right) => left.name.localeCompare(right.name, "en")
-      );
+      realTarget = await fs9.realpath(target);
     } catch (error) {
-      if (directory === projectRoot) throw error;
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
       omit({
-        path: portableRelative(projectRoot, directory),
-        size: null,
-        type: "directory",
+        path: relative,
+        size: before.size,
+        type: "file",
         reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
       });
       return;
     }
-    for (const child of children) {
-      const target = path10.join(directory, child.name);
-      const relative = portableRelative(projectRoot, target);
-      if (target === configFile || target === selectionFile || sameOrInside(nativeRoot, target) || denylist.some((denied) => sameOrInside(denied, target)) || isNativeEnvFileName(child.name) || child.name.toLowerCase() === ".git") {
+    if (!nativeSnapshotExecutionHasBudget(execution)) return;
+    if (!isInsidePath(physicalProjectRoot, realTarget) || sameOrInside(physicalNativeRoot, realTarget)) {
+      return;
+    }
+    if (entries.length >= limits.maxFiles) {
+      omit({ path: relative, size: before.size, type: "file", reason: "file-count" });
+      return;
+    }
+    if (before.size > limits.maxFileBytes) {
+      omit({ path: relative, size: before.size, type: "file", reason: "file-size" });
+      return;
+    }
+    if (totalBytes + before.size > limits.maxTotalBytes) {
+      omit({ path: relative, size: before.size, type: "file", reason: "total-size" });
+      return;
+    }
+    let boundedHash;
+    let after;
+    let afterRealTarget;
+    try {
+      boundedHash = await sha256FileBounded(realTarget, before.size, before, execution);
+      if (boundedHash.status === "budget-exhausted" || !nativeSnapshotExecutionHasBudget(execution)) {
+        return;
+      }
+      if (boundedHash.status === "changed") {
+        omit({ path: relative, size: null, type: "file", reason: "changed-during-read" });
+        return;
+      }
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      afterRealTarget = await fs9.realpath(target);
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      after = await fs9.lstat(target);
+    } catch (error) {
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+      omit({
+        path: relative,
+        size: before.size,
+        type: "file",
+        reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
+      });
+      return;
+    }
+    if (!nativeSnapshotExecutionHasBudget(execution)) return;
+    if (boundedHash.bytes !== before.size || afterRealTarget !== realTarget || !sameFileIdentity4(before, boundedHash.finalStat) || !sameFileIdentity4(boundedHash.finalStat, after) || !after.isFile() || after.isSymbolicLink() || after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) {
+      omit({
+        path: relative,
+        size: after.isFile() ? after.size : null,
+        type: after.isFile() ? "file" : "other",
+        reason: "changed-during-read"
+      });
+      return;
+    }
+    if (!nativeSnapshotExecutionHasBudget(execution)) return;
+    await recordCapturedEntry(
+      { path: relative, hash: boundedHash.hash, size: after.size, type: "file" },
+      { kind: "file", target, realTarget, stat: after }
+    );
+  };
+  const captureSymbolicLink = async (target, relative, before) => {
+    if (!nativeSnapshotExecutionHasBudget(execution)) return;
+    let firstTarget;
+    let secondTarget;
+    let after;
+    try {
+      firstTarget = await fs9.readlink(target, { encoding: "buffer" });
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      after = await fs9.lstat(target);
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      secondTarget = await fs9.readlink(target, { encoding: "buffer" });
+    } catch (error) {
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+      omit({
+        path: relative,
+        size: null,
+        type: "other",
+        reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
+      });
+      return;
+    }
+    if (!nativeSnapshotExecutionHasBudget(execution)) return;
+    if (!after.isSymbolicLink() || !sameFileIdentity4(before, after) || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs || !firstTarget.equals(secondTarget)) {
+      omit({ path: relative, size: null, type: "other", reason: "changed-during-read" });
+      return;
+    }
+    const size = firstTarget.byteLength;
+    if (entries.length >= limits.maxFiles) {
+      omit({ path: relative, size, type: "other", reason: "file-count" });
+      return;
+    }
+    if (size > limits.maxFileBytes) {
+      omit({ path: relative, size, type: "other", reason: "file-size" });
+      return;
+    }
+    if (totalBytes + size > limits.maxTotalBytes) {
+      omit({ path: relative, size, type: "other", reason: "total-size" });
+      return;
+    }
+    const hash6 = createHash5("sha256").update("symlink\0").update(firstTarget).digest("hex");
+    if (!nativeSnapshotExecutionHasBudget(execution)) return;
+    await recordCapturedEntry(
+      { path: relative, hash: hash6, size, type: "file" },
+      { kind: "symlink", target, rawTarget: firstTarget, stat: after }
+    );
+  };
+  const revalidateCapturedEntries = async () => {
+    for (const [relative, validation2] of [...capturedEntryValidations]) {
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      if (validation2.kind === "file") {
+        let realTarget2;
+        let stat2;
+        try {
+          realTarget2 = await fs9.realpath(validation2.target);
+          if (!nativeSnapshotExecutionHasBudget(execution)) return;
+          stat2 = await fs9.lstat(validation2.target);
+        } catch (error) {
+          if (!nativeSnapshotExecutionHasBudget(execution)) return;
+          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+          invalidateCapturedEntry(relative, {
+            path: relative,
+            size: null,
+            type: "file",
+            reason: isUnreadableError(error) ? "unreadable" : "changed-during-read"
+          });
+          continue;
+        }
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        if (realTarget2 !== validation2.realTarget || !stat2.isFile() || stat2.isSymbolicLink() || !sameFileIdentity4(validation2.stat, stat2) || stat2.size !== validation2.stat.size || stat2.mtimeMs !== validation2.stat.mtimeMs || stat2.ctimeMs !== validation2.stat.ctimeMs) {
+          invalidateCapturedEntry(relative, {
+            path: relative,
+            size: stat2.isFile() ? stat2.size : null,
+            type: stat2.isFile() ? "file" : "other",
+            reason: "changed-during-read"
+          });
+        }
+        continue;
+      }
+      if (validation2.kind === "symlink") {
+        let stat2;
+        let rawTarget;
+        try {
+          stat2 = await fs9.lstat(validation2.target);
+          if (!nativeSnapshotExecutionHasBudget(execution)) return;
+          rawTarget = await fs9.readlink(validation2.target, { encoding: "buffer" });
+        } catch (error) {
+          if (!nativeSnapshotExecutionHasBudget(execution)) return;
+          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+          invalidateCapturedEntry(relative, {
+            path: relative,
+            size: null,
+            type: "other",
+            reason: isUnreadableError(error) ? "unreadable" : "changed-during-read"
+          });
+          continue;
+        }
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        if (!stat2.isSymbolicLink() || !sameFileIdentity4(validation2.stat, stat2) || stat2.mtimeMs !== validation2.stat.mtimeMs || stat2.ctimeMs !== validation2.stat.ctimeMs || !validation2.rawTarget.equals(rawTarget)) {
+          invalidateCapturedEntry(relative, {
+            path: relative,
+            size: null,
+            type: "other",
+            reason: "changed-during-read"
+          });
+        }
+        continue;
+      }
+      let realTarget;
+      let stat;
+      try {
+        realTarget = await fs9.realpath(validation2.target);
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        stat = await fs9.lstat(validation2.target);
+      } catch {
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        invalidateCapturedEntry(relative, {
+          path: relative,
+          size: null,
+          type: "directory",
+          reason: "gitlink-unavailable"
+        });
+        continue;
+      }
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      const validBoundary = realTarget === validation2.realTarget && stat.isDirectory() && !stat.isSymbolicLink() && sameFileIdentity4(validation2.stat, stat) && isInsidePath(physicalProjectRoot, realTarget) && !sameOrInside(physicalNativeRoot, realTarget);
+      if (!validBoundary) {
+        invalidateCapturedEntry(relative, {
+          path: relative,
+          size: null,
+          type: "directory",
+          reason: "gitlink-changed"
+        });
+        continue;
+      }
+      let workingTree;
+      try {
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        workingTree = await inspectGitlinkWorkingTree(execution, realTarget);
+      } catch (error) {
+        if (isNativeGitSnapshotTimeout(error)) throw error;
+        invalidateCapturedEntry(relative, {
+          path: relative,
+          size: null,
+          type: "directory",
+          reason: "gitlink-unavailable"
+        });
+        continue;
+      }
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      if (workingTree.dirty) {
+        invalidateCapturedEntry(relative, {
+          path: relative,
+          size: null,
+          type: "directory",
+          reason: "gitlink-dirty"
+        });
+      } else if (workingTree.hash !== validation2.hash) {
+        invalidateCapturedEntry(relative, {
+          path: relative,
+          size: null,
+          type: "directory",
+          reason: "gitlink-changed"
+        });
+      }
+    }
+    for (const [relative, target] of capturedTrackedAbsences) {
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      try {
+        const stat = await fs9.lstat(target);
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        omit({
+          path: relative,
+          size: stat.isFile() ? stat.size : null,
+          type: stat.isFile() ? "file" : stat.isDirectory() ? "directory" : "other",
+          reason: "changed-during-read"
+        });
+      } catch (error) {
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        if (isChangedDuringReadError(error)) continue;
+        if (!isUnreadableError(error)) throw error;
+        omit({ path: relative, size: null, type: "file", reason: "unreadable" });
+      }
+    }
+  };
+  const gitSelection = await nativeGitSnapshotSelection(
+    execution,
+    projectRoot,
+    gitSelectionLimits,
+    options.gitSelectionHooks
+  );
+  if (gitSelection === null) {
+    const before = await nativePhysicalSnapshotSelection({
+      execution,
+      paths,
+      physicalProjectRoot,
+      physicalNativeRoot,
+      denylist,
+      limits: physicalSelectionLimits,
+      hooks: options.physicalSelectionHooks
+    });
+    await options.physicalSelectionHooks?.afterInitialSelection?.();
+    for (const record8 of before.records) {
+      if (record8.type !== "file" && record8.type !== "symlink") continue;
+      if (remainingNativeSnapshotTime(execution) < 1) break;
+      const target = path10.resolve(projectRoot, ...record8.path.split("/"));
+      let stat;
+      try {
+        stat = await fs9.lstat(target);
+      } catch (error) {
+        if (!nativeSnapshotExecutionHasBudget(execution)) break;
+        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+        omit({
+          path: record8.path,
+          size: null,
+          type: "file",
+          reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
+        });
+        continue;
+      }
+      if (remainingNativeSnapshotTime(execution) < 1) break;
+      if (record8.type === "symlink" && stat.isSymbolicLink()) {
+        await captureSymbolicLink(target, record8.path, stat);
+        if (remainingNativeSnapshotTime(execution) < 1) break;
+        continue;
+      }
+      if (record8.type !== "file" || !stat.isFile() || stat.isSymbolicLink()) {
+        omit({
+          path: record8.path,
+          size: stat.isFile() ? stat.size : null,
+          type: stat.isDirectory() ? "directory" : stat.isFile() ? "file" : "other",
+          reason: "changed-during-read"
+        });
+        continue;
+      }
+      await captureFile(target, record8.path, stat);
+      if (remainingNativeSnapshotTime(execution) < 1) break;
+    }
+    if (remainingNativeSnapshotTime(execution) >= 1) await revalidateCapturedEntries();
+    const after = await nativePhysicalSnapshotSelection({
+      execution,
+      paths,
+      physicalProjectRoot,
+      physicalNativeRoot,
+      denylist,
+      limits: physicalSelectionLimits
+    });
+    const finalized = finalizeNativePhysicalSelection(before.evidence, after.evidence);
+    physicalSelectionEvidence = finalized.evidence;
+    for (const omission of [...before.omissions, ...after.omissions, ...finalized.omissions]) {
+      if (omitted.some(
+        (current) => current.path === omission.path && current.reason === omission.reason
+      )) {
+        continue;
+      }
+      omit(omission);
+    }
+  } else {
+    await options.gitSelectionHooks?.afterInitialSelection?.();
+    for (const relative of selectionPaths(gitSelection)) {
+      if (!isSnapshotProjectRef(paths, relative)) continue;
+      const target = path10.resolve(projectRoot, ...relative.split("/"));
+      if (target === configFile || target === selectionFile || denylist.some((denied) => sameOrInside(denied, target))) {
+        continue;
+      }
+      if (gitSelection.gitlinks.has(relative)) {
+        if (entries.length >= limits.maxFiles) {
+          omit({ path: relative, size: 0, type: "file", reason: "file-count" });
+          continue;
+        }
+        let realGitlink;
+        let gitlinkStat;
+        try {
+          [realGitlink, gitlinkStat] = await Promise.all([fs9.realpath(target), fs9.lstat(target)]);
+        } catch {
+          omit({
+            path: relative,
+            size: null,
+            type: "directory",
+            reason: "gitlink-unavailable"
+          });
+          continue;
+        }
+        if (gitlinkStat.isSymbolicLink() || !gitlinkStat.isDirectory() || !isInsidePath(physicalProjectRoot, realGitlink) || sameOrInside(physicalNativeRoot, realGitlink)) {
+          omit({
+            path: relative,
+            size: null,
+            type: "directory",
+            reason: "gitlink-unavailable"
+          });
+          continue;
+        }
+        try {
+          const workingTree = await inspectGitlinkWorkingTree(execution, realGitlink);
+          if (workingTree.dirty) {
+            omit({
+              path: relative,
+              size: null,
+              type: "directory",
+              reason: "gitlink-dirty"
+            });
+            continue;
+          }
+          await recordCapturedEntry(
+            {
+              path: relative,
+              hash: workingTree.hash,
+              size: 0,
+              type: "file"
+            },
+            {
+              kind: "gitlink",
+              target,
+              realTarget: realGitlink,
+              stat: gitlinkStat,
+              hash: workingTree.hash
+            }
+          );
+        } catch (error) {
+          if (isNativeGitSnapshotTimeout(error)) throw error;
+          omit({
+            path: relative,
+            size: null,
+            type: "directory",
+            reason: "gitlink-unavailable"
+          });
+        }
         continue;
       }
       let before;
       try {
         before = await fs9.lstat(target);
       } catch (error) {
+        if (isChangedDuringReadError(error) && gitSelection.tracked.has(relative)) {
+          capturedTrackedAbsences.set(relative, target);
+          continue;
+        }
         if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
         omit({
           path: relative,
           size: null,
-          type: omissionType(child),
-          reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
-        });
-        continue;
-      }
-      if (child.isSymbolicLink() || before.isSymbolicLink()) continue;
-      if (child.isDirectory()) {
-        if (!before.isDirectory()) continue;
-        if (NATIVE_EXCLUDED_DIRECTORY_NAMES.has(child.name.toLowerCase())) continue;
-        let realDirectory;
-        try {
-          realDirectory = await fs9.realpath(target);
-        } catch (error) {
-          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
-          omit({
-            path: relative,
-            size: null,
-            type: "directory",
-            reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
-          });
-          continue;
-        }
-        if (!isInsidePath(physicalProjectRoot, realDirectory) || sameOrInside(physicalNativeRoot, realDirectory)) {
-          continue;
-        }
-        await visit(target);
-        continue;
-      }
-      if (!child.isFile()) continue;
-      if (!before.isFile() || before.isSymbolicLink()) continue;
-      let realTarget;
-      try {
-        realTarget = await fs9.realpath(target);
-      } catch (error) {
-        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
-        omit({
-          path: relative,
-          size: before.size,
           type: "file",
           reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
         });
         continue;
       }
-      if (!isInsidePath(physicalProjectRoot, realTarget) || sameOrInside(physicalNativeRoot, realTarget)) {
+      if (before.isSymbolicLink()) {
+        await captureSymbolicLink(target, relative, before);
         continue;
       }
-      if (entries.length >= limits.maxFiles) {
-        omit({ path: relative, size: before.size, type: "file", reason: "file-count" });
-        continue;
-      }
-      if (before.size > limits.maxFileBytes) {
-        omit({ path: relative, size: before.size, type: "file", reason: "file-size" });
-        continue;
-      }
-      if (totalBytes + before.size > limits.maxTotalBytes) {
-        omit({ path: relative, size: before.size, type: "file", reason: "total-size" });
-        continue;
-      }
-      let boundedHash;
-      let after;
-      let afterRealTarget;
-      try {
-        boundedHash = await sha256FileBounded(realTarget, before.size, before);
-        if (boundedHash.status === "changed") {
-          omit({
-            path: relative,
-            size: null,
-            type: "file",
-            reason: "changed-during-read"
-          });
-          continue;
+      if (!before.isFile()) {
+        if (!gitSelection.nestedRepositories.has(relative)) {
+          omit({ path: relative, size: null, type: "other", reason: "changed-during-read" });
         }
-        afterRealTarget = await fs9.realpath(target);
-        after = await fs9.lstat(target);
-      } catch (error) {
-        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
-        omit({
-          path: relative,
-          size: before.size,
-          type: "file",
-          reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
-        });
         continue;
       }
-      if (boundedHash.bytes !== before.size || afterRealTarget !== realTarget || !sameFileIdentity4(before, boundedHash.finalStat) || !sameFileIdentity4(boundedHash.finalStat, after) || !after.isFile() || after.isSymbolicLink() || after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
-        omit({
-          path: relative,
-          size: after.isFile() ? after.size : null,
-          type: after.isFile() ? "file" : "other",
-          reason: "changed-during-read"
-        });
-        continue;
-      }
-      entries.push({ path: relative, hash: boundedHash.hash, size: after.size, type: "file" });
-      totalBytes += after.size;
+      await captureFile(target, relative, before);
     }
-  };
-  await visit(projectRoot);
+    await revalidateCapturedEntries();
+    await finalizeNativeGitSnapshotSelection(
+      execution,
+      projectRoot,
+      gitSelectionLimits,
+      gitSelection,
+      options.gitSelectionHooks?.outputChunkBytes
+    );
+    for (const omission of gitSelection.omissions) omit(omission);
+    if (gitSelection.overflow) foldGitSelectionOverflow(gitSelection.overflow);
+  }
   entries.sort((left, right) => left.path.localeCompare(right.path, "en"));
   omitted.sort((left, right) => left.path.localeCompare(right.path, "en"));
+  const capture = gitSelection === null ? {
+    provider: "physical-tree",
+    ...physicalSelectionEvidence ? { physicalSelection: physicalSelectionEvidence } : {}
+  } : {
+    provider: "git",
+    ...gitSelection.evidence ? { gitSelection: gitSelection.evidence } : {}
+  };
   const buildManifest = () => ({
     schema: "comet.native.content-snapshot.v1",
     origin: options.origin ?? "explicit",
+    capture,
     createdAt: (options.now ?? /* @__PURE__ */ new Date()).toISOString(),
     complete: omittedCount === 0,
     limits,
@@ -10447,19 +12090,21 @@ ${JSON.stringify(value)}`);
   });
   let manifest = buildManifest();
   while (serializedManifestBytes(manifest) > limits.maxManifestBytes) {
-    if (omitted.length > 0) {
+    const compactableOmissionCount = omitted.filter(
+      (omission) => !isSelectionIntegrityOmission(omission)
+    ).length;
+    if (compactableOmissionCount > 0) {
       const removeCount = Math.max(1, Math.ceil(omitted.length / 4));
-      for (const value of omitted.splice(-removeCount)) foldOverflow(value);
+      for (let removed = 0; removed < removeCount; removed += 1) {
+        const omission = takeLastCompactableOmission(omitted);
+        if (omission === null) break;
+        foldOverflow(omission);
+      }
     } else if (entries.length > 0) {
       const removeCount = Math.max(1, Math.ceil(entries.length / 4));
       for (const entry2 of entries.splice(-removeCount)) {
         omittedCount += 1;
-        foldOverflow({
-          path: entry2.path,
-          size: entry2.size,
-          type: "file",
-          reason: "manifest-size"
-        });
+        foldManifestEntryOverflow(entry2);
       }
     } else {
       throw new Error("Native snapshot manifest byte limit is too small for its metadata");
@@ -11235,6 +12880,15 @@ ${stat.dev}
 ${stat.ino}
 ${stat.birthtimeMs}`);
 }
+async function directoryPathIdentity(tag, value) {
+  const realPath = await fs11.realpath(value);
+  const stat = await fs11.lstat(realPath);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error("Native workspace identity requires a real directory");
+  }
+  const normalizedPath = process.platform === "win32" ? path15.normalize(realPath).toLowerCase() : realPath;
+  return identityHash(tag, normalizedPath);
+}
 function isoTimestamp(value) {
   if (typeof value !== "string") throw new Error("Native workspace capturedAt is invalid");
   const parsed = new Date(value);
@@ -11255,6 +12909,8 @@ function assertIdentity(value) {
     "nativeRootRef",
     "projectRootId",
     "nativeRootId",
+    "projectRootPathId",
+    "nativeRootPathId",
     "sessionHash"
   ]);
   const unknown = Object.keys(root).filter((key) => !allowed.has(key));
@@ -11269,6 +12925,14 @@ function assertIdentity(value) {
   }
   isoTimestamp(root.capturedAt);
   normalizedPortableRef(root.nativeRootRef, "Native workspace root ref");
+  const hasProjectPathId = root.projectRootPathId !== void 0;
+  const hasNativePathId = root.nativeRootPathId !== void 0;
+  if (hasProjectPathId !== hasNativePathId) {
+    throw new Error("Native workspace path identities must be provided together");
+  }
+  if (hasProjectPathId && !HASH_PATTERN2.test(String(root.projectRootPathId)) || hasNativePathId && !HASH_PATTERN2.test(String(root.nativeRootPathId))) {
+    throw new Error("Native workspace path identity is invalid");
+  }
   if (root.sessionHash !== void 0 && !HASH_PATTERN2.test(String(root.sessionHash))) {
     throw new Error("Native workspace session hash is invalid");
   }
@@ -11294,18 +12958,15 @@ async function readNativeWorkspaceValue(paths, name) {
     throw error;
   }
 }
-async function inspectNativeWorkspaceSchema(paths, name) {
+async function nativeWorkspaceIdentityNeedsMigration(paths, name) {
   const value = await readNativeWorkspaceValue(paths, name);
-  if (value === null) return null;
+  if (value === null) return false;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Native workspace identity must be an object");
   }
-  const schema = value.schema;
-  if (schema === "comet.native.workspace.v1" || schema === "comet.native.workspace.v2") {
-    if (schema === "comet.native.workspace.v2") assertIdentity(value);
-    return schema;
-  }
-  throw new Error("Unsupported Native workspace identity");
+  if (value.schema === "comet.native.workspace.v1") return true;
+  assertIdentity(value);
+  return value.projectRootPathId === void 0 || value.nativeRootPathId === void 0;
 }
 async function inspectNativeWorkspaceIdentity(options) {
   if (!Number.isSafeInteger(options.revision) || options.revision < 1) {
@@ -11313,9 +12974,11 @@ async function inspectNativeWorkspaceIdentity(options) {
   }
   const nativeRootRef3 = portableRelative2(options.paths.projectRoot, options.paths.nativeRoot);
   if (!nativeRootRef3) throw new Error("Native root is outside the project root");
-  const [projectRootId, nativeRootId] = await Promise.all([
+  const [projectRootId, nativeRootId, projectRootPathId, nativeRootPathId] = await Promise.all([
     physicalDirectoryIdentity("comet.native.workspace-project-root.v2", options.paths.projectRoot),
-    physicalDirectoryIdentity("comet.native.workspace-native-root.v2", options.paths.nativeRoot)
+    physicalDirectoryIdentity("comet.native.workspace-native-root.v2", options.paths.nativeRoot),
+    directoryPathIdentity("comet.native.workspace-project-root-path.v2", options.paths.projectRoot),
+    directoryPathIdentity("comet.native.workspace-native-root-path.v2", options.paths.nativeRoot)
   ]);
   const capturedAt = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
   const identity = {
@@ -11325,6 +12988,8 @@ async function inspectNativeWorkspaceIdentity(options) {
     nativeRootRef: nativeRootRef3,
     projectRootId,
     nativeRootId,
+    projectRootPathId,
+    nativeRootPathId,
     ...options.sessionId ? {
       sessionHash: identityHash(
         "comet.native.workspace-session.v2",
@@ -11354,7 +13019,7 @@ async function readNativeWorkspaceIdentity(paths, name) {
   return value;
 }
 async function migrateLegacyNativeWorkspaceIdentity(options) {
-  if (await inspectNativeWorkspaceSchema(options.paths, options.name) !== "comet.native.workspace.v1") {
+  if (!await nativeWorkspaceIdentityNeedsMigration(options.paths, options.name)) {
     return null;
   }
   return writeNativeWorkspaceIdentity(options);
@@ -11366,11 +13031,39 @@ async function inspectNativeWorkspaceAdvisory(options) {
     name: "workspace-advisory",
     revision: options.identity.capturedRevision
   });
+  const driftComponents = [];
   const codes = [];
-  if (current.nativeRootRef !== options.identity.nativeRootRef || current.projectRootId !== options.identity.projectRootId || current.nativeRootId !== options.identity.nativeRootId) {
+  if (current.nativeRootRef !== options.identity.nativeRootRef) {
+    driftComponents.push("native-root-ref");
+  }
+  if (options.identity.projectRootPathId && options.identity.nativeRootPathId) {
+    if (current.projectRootPathId !== options.identity.projectRootPathId) {
+      driftComponents.push("project-root-path");
+    }
+    if (current.nativeRootPathId !== options.identity.nativeRootPathId) {
+      driftComponents.push("native-root-path");
+    }
+  } else {
+    if (current.projectRootId !== options.identity.projectRootId) {
+      driftComponents.push("project-root-legacy-identity");
+    }
+    if (current.nativeRootId !== options.identity.nativeRootId) {
+      driftComponents.push("native-root-legacy-identity");
+    }
+  }
+  const onlyUnstableWindowsLegacyHashes = process.platform === "win32" && driftComponents.length > 0 && driftComponents.every(
+    (component) => component === "project-root-legacy-identity" || component === "native-root-legacy-identity"
+  );
+  if (onlyUnstableWindowsLegacyHashes) {
+    codes.push("workspace-inspection-unavailable");
+  } else if (driftComponents.length > 0) {
     codes.push("workspace-root-changed");
   }
-  return { state: codes.length > 0 ? "drifted" : "aligned", findingCodes: codes };
+  return {
+    state: codes.length === 0 ? "aligned" : codes.includes("workspace-root-changed") ? "drifted" : "unknown",
+    findingCodes: codes,
+    driftComponents
+  };
 }
 
 // domains/comet-native/native-types.ts
@@ -11401,6 +13094,7 @@ var LEGACY_CHANGE_KEYS = new Set(CHANGE_KEYS);
 var V2_CHANGE_KEYS = /* @__PURE__ */ new Set([...CHANGE_KEYS, "minimum_runtime_version", "revision"]);
 var CURRENT_CHANGE_KEYS = /* @__PURE__ */ new Set([
   ...V2_CHANGE_KEYS,
+  "approved_contract_hash",
   "implementation_scope",
   "verification_evidence",
   "partial_allowance"
@@ -11453,6 +13147,25 @@ var NativeChangeRevisionConflictError = class extends Error {
   expectedRevision;
   actualRevision;
   code = "native-change-revision-conflict";
+};
+var NativeBaselineIncompleteError = class extends Error {
+  constructor(change, omittedCount, omittedByReason, samplePaths, sampleTruncated) {
+    super(
+      `Native change ${change} baseline is incomplete (${omittedCount} omitted entr${omittedCount === 1 ? "y" : "ies"})`
+    );
+    this.change = change;
+    this.omittedCount = omittedCount;
+    this.omittedByReason = omittedByReason;
+    this.samplePaths = samplePaths;
+    this.sampleTruncated = sampleTruncated;
+    this.name = "NativeBaselineIncompleteError";
+  }
+  change;
+  omittedCount;
+  omittedByReason;
+  samplePaths;
+  sampleTruncated;
+  code = "native-baseline-incomplete";
 };
 var NATIVE_BRIEF_TEMPLATE = [
   "# Outcome",
@@ -11611,6 +13324,13 @@ function contentAddressedRef(value, label, kind) {
   }
   return value;
 }
+function approvedContractHash(value) {
+  if (value === void 0 || value === null) return null;
+  if (typeof value !== "string" || !HASH_PATTERN3.test(value)) {
+    throw new Error("Native approved_contract_hash must be null or a SHA-256 hash");
+  }
+  return value;
+}
 function parseV2NativeChangeValue(value) {
   const root = record4(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_V2_CHANGE_SCHEMA) {
@@ -11655,11 +13375,17 @@ function parseNativeChangeValue(value) {
     );
   }
   const revision = positiveInteger2(root.revision, "Native revision");
+  const fields = parseChangeFields(root, CURRENT_CHANGE_KEYS);
+  const approvalHash = approvedContractHash(root.approved_contract_hash);
+  if (fields.approval === null && approvalHash !== null) {
+    throw new Error("Native approved_contract_hash requires an approval");
+  }
   return {
     schema: NATIVE_CHANGE_SCHEMA,
     minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
     revision,
-    ...parseChangeFields(root, CURRENT_CHANGE_KEYS),
+    ...fields,
+    approved_contract_hash: approvalHash,
     implementation_scope: contentAddressedRef(
       root.implementation_scope,
       "Native implementation_scope",
@@ -11744,6 +13470,7 @@ function nativeChangeDocument(state) {
     phase: parsed.phase,
     brief: parsed.brief,
     approval: parsed.approval,
+    approved_contract_hash: parsed.approved_contract_hash ?? null,
     spec_changes: parsed.spec_changes.map((change) => ({
       capability: change.capability,
       operation: change.operation,
@@ -11857,6 +13584,7 @@ async function createNativeChangeLocked(options) {
       phase: "shape",
       brief: "brief.md",
       approval: null,
+      approved_contract_hash: null,
       spec_changes: [],
       verification_result: "pending",
       verification_report: null,
@@ -11876,6 +13604,22 @@ async function createNativeChangeLocked(options) {
       now: options.now,
       origin: "change-created"
     });
+    if (!baseline.complete) {
+      const health = inspectNativeContentSnapshotHealth(baseline);
+      const omittedByReason = baseline.omitted.reduce((counts, item) => {
+        counts[item.reason] = (counts[item.reason] ?? 0) + 1;
+        return counts;
+      }, {});
+      const overflowCount = baseline.omissionOverflow?.count ?? 0;
+      if (overflowCount > 0) omittedByReason.overflow = overflowCount;
+      throw new NativeBaselineIncompleteError(
+        state.name,
+        baseline.omittedCount,
+        omittedByReason,
+        health.samplePaths,
+        health.sampleTruncated
+      );
+    }
     await writeNativeBaselineManifest(options.paths, state.name, baseline);
     await createNativeChangeFile(options.paths, state);
     await writeNativeWorkspaceIdentity({
@@ -12770,18 +14514,24 @@ function buildNativeConflictRadar(input) {
 }
 
 // domains/comet-native/native-evidence-storage.ts
-import { createHash as createHash11 } from "node:crypto";
+import { createHash as createHash12 } from "node:crypto";
 import { promises as fs14 } from "node:fs";
 import path22 from "node:path";
 
 // domains/comet-native/native-verification-scope.ts
+import { createHash as createHash11 } from "node:crypto";
 import path20 from "path";
 var NATIVE_IMPLEMENTATION_SCOPE_SCHEMA = "comet.native.implementation-scope.v2";
 var NATIVE_SNAPSHOT_PROJECTION_SCHEMA = "comet.native.content-snapshot-projection.v1";
 var SNAPSHOT_PROJECTION_HASH_TAG = "comet.native.content-snapshot-projection.v1";
 var IMPLEMENTATION_SCOPE_HASH_TAG = "comet.native.implementation-scope.v2";
 var UNRESOLVED_SCOPE_ID_TAG = "comet.native.unresolved-scope-id.v1";
+var SCOPE_DETAIL_OVERFLOW_HASH_TAG = "comet.native.scope-detail-overflow.v1";
+var SNAPSHOT_PROJECTION_OVERFLOW_HASH_TAG = "comet.native.snapshot-projection-overflow.v2";
 var SHA256_HASH_PATTERN = /^[a-f0-9]{64}$/u;
+var MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES = 1024 * 1024;
+var MAX_NATIVE_DETAILED_SCOPE_CHANGES = 128;
+var MAX_NATIVE_DETAILED_UNRESOLVED_SCOPES = 128;
 function compareText3(left, right) {
   if (left < right) return -1;
   if (left > right) return 1;
@@ -12809,6 +14559,9 @@ function projectRelativePath(value, label) {
   }
   return value;
 }
+function snapshotOmissionPath(value, label) {
+  return value === "." ? value : projectRelativePath(value, label);
+}
 function nonNegativeSafeInteger(value, label) {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} must be a non-negative safe integer`);
@@ -12829,7 +14582,7 @@ function normalizeEntry(entry2, label) {
 }
 function normalizeOmission(omission, label) {
   return {
-    path: projectRelativePath(omission.path, `${label} path`),
+    path: snapshotOmissionPath(omission.path, `${label} path`),
     size: omission.size === null ? null : nonNegativeSafeInteger(omission.size, `${label} size`),
     type: omission.type,
     reason: omission.reason
@@ -12840,6 +14593,94 @@ function compareEntries(left, right) {
 }
 function compareOmissions(left, right) {
   return compareText3(left.path, right.path) || compareText3(left.reason, right.reason) || compareText3(left.type, right.type) || (left.size ?? -1) - (right.size ?? -1);
+}
+function serializedEvidenceBytes(value) {
+  return Buffer.byteLength(JSON.stringify(value, null, 2) + "\n", "utf8");
+}
+function updateFramedHash(hash6, kind, value) {
+  const encoded = `${kind}
+${canonicalJson(value)}`;
+  hash6.update(`${Buffer.byteLength(encoded, "utf8")}:`);
+  hash6.update(encoded);
+}
+function fitSnapshotProjectionBudget(value) {
+  if (serializedEvidenceBytes(value) <= MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES) {
+    return value;
+  }
+  const entries = [...value.entries];
+  const omitted = [...value.omitted];
+  let omittedCount = value.omittedCount;
+  let overflowCount = value.omissionOverflow?.count ?? 0;
+  const overflowHash = createHash11("sha256");
+  overflowHash.update(`${SNAPSHOT_PROJECTION_OVERFLOW_HASH_TAG}
+`);
+  if (value.omissionOverflow) {
+    updateFramedHash(overflowHash, "existing-overflow", value.omissionOverflow);
+  }
+  const foldOmission = (omission, alreadyCounted) => {
+    if (!alreadyCounted) omittedCount += 1;
+    overflowCount += 1;
+    updateFramedHash(overflowHash, "omission", omission);
+  };
+  const foldEntry = (entry2) => {
+    omittedCount += 1;
+    overflowCount += 1;
+    updateFramedHash(overflowHash, "entry", entry2);
+  };
+  const takeCompactableOmission = () => {
+    for (let index = omitted.length - 1; index >= 0; index -= 1) {
+      const omission = omitted[index];
+      if (omission.reason === "git-enumeration-limit" || omission.reason === "git-selection-changed" || omission.reason === "physical-enumeration-limit" || omission.reason === "physical-selection-changed") {
+        continue;
+      }
+      omitted.splice(index, 1);
+      return omission;
+    }
+    return null;
+  };
+  const candidate = () => ({
+    ...value,
+    complete: omittedCount === 0,
+    entries,
+    omitted,
+    omittedCount,
+    omissionOverflow: {
+      ref: `native-snapshot://omitted-overflow/${"0".repeat(64)}`,
+      hash: "0".repeat(64),
+      count: overflowCount
+    }
+  });
+  let projection = candidate();
+  while (serializedEvidenceBytes(projection) > MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES) {
+    const compactableOmissionCount = omitted.filter(
+      (omission) => omission.reason !== "git-enumeration-limit" && omission.reason !== "git-selection-changed" && omission.reason !== "physical-enumeration-limit" && omission.reason !== "physical-selection-changed"
+    ).length;
+    if (compactableOmissionCount > 0) {
+      const removeCount = Math.max(1, Math.ceil(omitted.length / 4));
+      for (let removed = 0; removed < removeCount; removed += 1) {
+        const omission = takeCompactableOmission();
+        if (omission === null) break;
+        foldOmission(omission, true);
+      }
+    } else if (entries.length > 0) {
+      const removeCount = Math.max(1, Math.ceil(entries.length / 4));
+      for (const entry2 of entries.splice(-removeCount)) {
+        foldEntry(entry2);
+      }
+    } else {
+      throw new Error("Native snapshot projection metadata exceeds its evidence byte budget");
+    }
+    projection = candidate();
+  }
+  const digest = overflowHash.digest("hex");
+  return {
+    ...projection,
+    omissionOverflow: {
+      ref: `native-snapshot://omitted-overflow/${digest}`,
+      hash: digest,
+      count: overflowCount
+    }
+  };
 }
 function snapshotProjection(manifest) {
   const parsed = parseNativeContentSnapshotManifest(manifest);
@@ -12854,9 +14695,10 @@ function snapshotProjection(manifest) {
     (omission, index) => normalizeOmission(omission, `Snapshot omission ${index}`)
   );
   omitted.sort(compareOmissions);
-  return {
+  return fitSnapshotProjectionBudget({
     schema: NATIVE_SNAPSHOT_PROJECTION_SCHEMA,
     origin: parsed.origin,
+    ...parsed.capture ? { capture: parsed.capture } : {},
     complete: parsed.complete,
     limits: {
       maxFiles: parsed.limits.maxFiles,
@@ -12874,7 +14716,7 @@ function snapshotProjection(manifest) {
         count: parsed.omissionOverflow.count
       }
     } : {}
-  };
+  });
 }
 function normalizeDeclaredArtifacts(artifacts) {
   const byPath = /* @__PURE__ */ new Map();
@@ -12903,24 +14745,34 @@ function artifactOwnsPath(artifact, changedPath) {
 function fileIdentity(entry2) {
   return entry2 ? { hash: entry2.hash, size: entry2.size } : null;
 }
-function deriveChanges(baseline, current, declaredArtifacts) {
-  const beforeByPath = new Map(baseline.entries.map((entry2) => [entry2.path, entry2]));
-  const afterByPath = new Map(current.entries.map((entry2) => [entry2.path, entry2]));
-  const paths = [.../* @__PURE__ */ new Set([...beforeByPath.keys(), ...afterByPath.keys()])].sort(compareText3);
-  const changes = [];
-  for (const changedPath of paths) {
-    const before = beforeByPath.get(changedPath);
-    const after = afterByPath.get(changedPath);
+function visitDerivedChanges(baseline, current, visitor) {
+  let beforeIndex = 0;
+  let afterIndex = 0;
+  while (beforeIndex < baseline.entries.length || afterIndex < current.entries.length) {
+    const beforeCandidate = baseline.entries[beforeIndex];
+    const afterCandidate = current.entries[afterIndex];
+    const order = beforeCandidate === void 0 ? 1 : afterCandidate === void 0 ? -1 : compareText3(beforeCandidate.path, afterCandidate.path);
+    const before = order <= 0 ? beforeCandidate : void 0;
+    const after = order >= 0 ? afterCandidate : void 0;
+    if (order <= 0) beforeIndex += 1;
+    if (order >= 0) afterIndex += 1;
     if (before && after && before.hash === after.hash && before.size === after.size) continue;
-    changes.push({
+    if (before && !after && !current.complete) continue;
+    const changedPath = before?.path ?? after?.path;
+    if (changedPath === void 0) continue;
+    visitor({
       path: changedPath,
       kind: before ? after ? "modified" : "removed" : "added",
       before: fileIdentity(before),
-      after: fileIdentity(after),
-      attributedTo: declaredArtifacts.filter((artifact) => artifactOwnsPath(artifact, changedPath))
+      after: fileIdentity(after)
     });
   }
-  return changes;
+}
+function materializeChange(core, declaredArtifacts) {
+  return {
+    ...core,
+    attributedTo: declaredArtifacts.filter((artifact) => artifactOwnsPath(artifact, core.path))
+  };
 }
 function unresolvedScope(identity, reason) {
   return {
@@ -12979,6 +14831,11 @@ function omissionScopes(source, projection) {
   }
   return scopes;
 }
+function omissionSummaryScopes(source, projection) {
+  return omissionScopes(source, { ...projection, omitted: [] }).filter(
+    (scope) => scope.kind !== "snapshot-omission"
+  );
+}
 function compareUnresolvedScopes(left, right) {
   return compareText3(left.kind, right.kind) || compareText3(left.source, right.source) || compareNullableText(left.path, right.path) || compareText3(left.id, right.id);
 }
@@ -13002,33 +14859,143 @@ function normalizeScopeAuthority(input) {
     ...input.gitChangedPaths === void 0 ? {} : { gitChangedPaths: normalizeGitChangedPaths(input.gitChangedPaths) }
   };
 }
+function scanScopeChanges(baseline, current, declaredArtifacts, gitChangedPaths) {
+  const candidates = [];
+  const gitChangedPathSet = gitChangedPaths === void 0 ? null : new Set(gitChangedPaths);
+  const gitPathsPresentInChanges = [];
+  let candidateBytes = 0;
+  let candidateBudgetExhausted = false;
+  let totalChanges = 0;
+  let totalUnattributed = 0;
+  visitDerivedChanges(baseline, current, (core) => {
+    const attributed = declaredArtifacts.some((artifact) => artifactOwnsPath(artifact, core.path));
+    totalChanges += 1;
+    if (!attributed) totalUnattributed += 1;
+    if (gitChangedPathSet?.has(core.path)) gitPathsPresentInChanges.push(core.path);
+    if (!candidateBudgetExhausted && candidates.length < MAX_NATIVE_DETAILED_SCOPE_CHANGES) {
+      const candidate = materializeChange(core, declaredArtifacts);
+      const nextBytes = serializedEvidenceBytes(candidate);
+      if (candidateBytes + nextBytes <= MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES) {
+        candidates.push(candidate);
+        candidateBytes += nextBytes;
+      } else {
+        candidateBudgetExhausted = true;
+      }
+    }
+  });
+  return { candidates, gitPathsPresentInChanges, totalChanges, totalUnattributed };
+}
+function scopeDetailOverflow(hash6, counts) {
+  return unresolvedScope(
+    {
+      kind: "scope-detail-overflow",
+      source: "implementation-scope",
+      path: null,
+      evidence: {
+        changeCount: counts.changes,
+        hash: hash6,
+        unattributedCount: counts.unattributed,
+        unresolvedCount: counts.unresolved
+      }
+    },
+    `Implementation scope summarized ${counts.changes} additional change details and ${counts.unresolved} unresolved details (${counts.unattributed} unattributed); overflow hash ${hash6}`
+  );
+}
+function parseScopeDetailOverflow(scope) {
+  const match = /^Implementation scope summarized ([0-9]+) additional change details and ([0-9]+) unresolved details \(([0-9]+) unattributed\); overflow hash ([a-f0-9]{64})$/u.exec(
+    scope.reason
+  );
+  if (!match) throw new Error("Implementation scope detail overflow is invalid");
+  const counts = {
+    changes: nonNegativeSafeInteger(Number(match[1]), "Scope overflow change count"),
+    unresolved: nonNegativeSafeInteger(Number(match[2]), "Scope overflow unresolved count"),
+    unattributed: nonNegativeSafeInteger(Number(match[3]), "Scope overflow unattributed count")
+  };
+  const hash6 = scopeHashValue(match[4], "Scope detail overflow hash");
+  if (JSON.stringify(scope) !== JSON.stringify(scopeDetailOverflow(hash6, counts))) {
+    throw new Error("Implementation scope detail overflow is inconsistent");
+  }
+  return { ...counts, hash: hash6 };
+}
+function hashScopeDetailOverflow(options) {
+  const hash6 = createHash11("sha256");
+  hash6.update(`${SCOPE_DETAIL_OVERFLOW_HASH_TAG}
+`);
+  let changeIndex = 0;
+  visitDerivedChanges(options.baseline, options.current, (core) => {
+    if (changeIndex >= options.detailedChangeCount) {
+      updateFramedHash(hash6, "change", core);
+      let attributionCount = 0;
+      for (const artifact of options.declaredArtifacts) {
+        if (!artifactOwnsPath(artifact, core.path)) continue;
+        attributionCount += 1;
+        updateFramedHash(hash6, "change-attribution", artifact);
+      }
+      updateFramedHash(hash6, "change-end", { attributionCount });
+      if (attributionCount === 0) {
+        updateFramedHash(hash6, "unattributed-change", {
+          after: core.after,
+          before: core.before,
+          changeKind: core.kind,
+          path: core.path
+        });
+      }
+    }
+    changeIndex += 1;
+  });
+  let omissionIndex = 0;
+  for (const [source, projection] of [
+    ["baseline", options.baseline],
+    ["current", options.current]
+  ]) {
+    for (const omission of projection.omitted) {
+      if (omissionIndex >= options.detailedOmissionCount) {
+        updateFramedHash(hash6, "snapshot-omission", { source, ...omission });
+      }
+      omissionIndex += 1;
+    }
+  }
+  return hash6.digest("hex");
+}
 function buildScopeFromProjections(baseline, current, authority) {
   const { contractHash, declaredArtifacts, noCodeReason } = authority;
-  const changes = deriveChanges(baseline, current, declaredArtifacts);
-  const unattributed = changes.filter((change) => change.attributedTo.length === 0);
+  const changeScan = scanScopeChanges(
+    baseline,
+    current,
+    declaredArtifacts,
+    authority.gitChangedPaths
+  );
   const baselineProjectionHash = canonicalHash(SNAPSHOT_PROJECTION_HASH_TAG, baseline);
   const currentProjectionHash2 = canonicalHash(SNAPSHOT_PROJECTION_HASH_TAG, current);
-  const unresolved = [
-    ...unattributed.map(
-      (change) => unresolvedScope(
-        {
-          kind: "unattributed-change",
-          source: "implementation-scope",
-          path: change.path,
-          evidence: {
-            after: change.after,
-            before: change.before,
-            changeKind: change.kind
-          }
-        },
-        `Changed path is not covered by a declared artifact: ${change.path}`
-      )
-    ),
-    ...omissionScopes("baseline", baseline),
-    ...omissionScopes("current", current)
-  ];
-  if (changes.length === 0 && noCodeReason === null) {
-    unresolved.push(
+  const omissionCandidates = [];
+  for (const [source, projection] of [
+    ["baseline", baseline],
+    ["current", current]
+  ]) {
+    for (const omission of projection.omitted) {
+      if (omissionCandidates.length >= MAX_NATIVE_DETAILED_UNRESOLVED_SCOPES) break;
+      omissionCandidates.push(
+        unresolvedScope(
+          {
+            kind: "snapshot-omission",
+            source,
+            path: omission.path,
+            evidence: {
+              reason: omission.reason,
+              size: omission.size,
+              type: omission.type
+            }
+          },
+          `${source} snapshot omitted ${omission.path}: ${omission.reason}`
+        )
+      );
+    }
+  }
+  const totalOmissionDetails = baseline.omitted.length + current.omitted.length;
+  const essentialScopes = [
+    ...omissionSummaryScopes("baseline", baseline),
+    ...omissionSummaryScopes("current", current),
+    ...changeScan.totalChanges === 0 && noCodeReason === null ? [
       unresolvedScope(
         {
           kind: "missing-no-code-reason",
@@ -13041,40 +15008,124 @@ function buildScopeFromProjections(baseline, current, authority) {
         },
         "A non-empty no-code reason is required when the snapshots contain no changes"
       )
-    );
+    ] : []
+  ];
+  const buildGitAdvisory = () => {
+    if (authority.gitChangedPaths === void 0) return void 0;
+    const snapshotChangePaths = new Set(changeScan.gitPathsPresentInChanges);
+    return {
+      advisoryOnly: true,
+      changedPaths: authority.gitChangedPaths,
+      pathsPresentInSnapshotChanges: authority.gitChangedPaths.filter(
+        (value) => snapshotChangePaths.has(value)
+      ),
+      pathsAbsentFromSnapshotChanges: authority.gitChangedPaths.filter(
+        (value) => !snapshotChangePaths.has(value)
+      )
+    };
+  };
+  const buildScopeContent = (options) => {
+    const changes = changeScan.candidates.slice(0, options.detailedChangeCount);
+    const unattributed = changes.filter((change) => change.attributedTo.length === 0);
+    const overflowChanges = changeScan.totalChanges - changes.length;
+    const overflowUnattributed = changeScan.totalUnattributed - unattributed.length;
+    const overflowOmissions = totalOmissionDetails - options.detailedOmissionCount;
+    const overflowUnresolved = overflowUnattributed + overflowOmissions;
+    const unresolved = [
+      ...unattributed.map(
+        (change) => unresolvedScope(
+          {
+            kind: "unattributed-change",
+            source: "implementation-scope",
+            path: change.path,
+            evidence: {
+              after: change.after,
+              before: change.before,
+              changeKind: change.kind
+            }
+          },
+          `Changed path is not covered by a declared artifact: ${change.path}`
+        )
+      ),
+      ...omissionCandidates.slice(0, options.detailedOmissionCount),
+      ...essentialScopes,
+      ...overflowChanges > 0 || overflowUnresolved > 0 ? [
+        scopeDetailOverflow(options.overflowHash, {
+          changes: overflowChanges,
+          unattributed: overflowUnattributed,
+          unresolved: overflowUnresolved
+        })
+      ] : []
+    ];
+    const unresolvedScopes = uniqueUnresolvedScopes(unresolved);
+    const gitAdvisory = options.includeGitAdvisory ? buildGitAdvisory() : void 0;
+    return {
+      schema: NATIVE_IMPLEMENTATION_SCOPE_SCHEMA,
+      contractHash,
+      baselineProjectionRef: nativeSnapshotProjectionRef(baselineProjectionHash),
+      baselineProjectionHash,
+      currentProjectionRef: nativeSnapshotProjectionRef(currentProjectionHash2),
+      currentProjectionHash: currentProjectionHash2,
+      complete: unresolvedScopes.length === 0,
+      declaredArtifacts,
+      changes,
+      unattributed,
+      unresolvedScopes,
+      noCodeReason,
+      ...gitAdvisory ? { gitAdvisory } : {}
+    };
+  };
+  let detailedChangeCount = changeScan.candidates.length;
+  let detailedOmissionCount = omissionCandidates.length;
+  let includeGitAdvisory = authority.gitChangedPaths !== void 0;
+  const placeholderHash = "0".repeat(64);
+  while (true) {
+    const candidate = buildScopeContent({
+      detailedChangeCount,
+      detailedOmissionCount,
+      includeGitAdvisory,
+      overflowHash: placeholderHash
+    });
+    if (serializedEvidenceBytes({ ...candidate, scopeHash: placeholderHash }) <= MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES) {
+      break;
+    }
+    if (includeGitAdvisory) {
+      includeGitAdvisory = false;
+      continue;
+    }
+    if (detailedOmissionCount > 0) {
+      detailedOmissionCount -= Math.max(1, Math.ceil(detailedOmissionCount / 4));
+      continue;
+    }
+    if (detailedChangeCount > 0) {
+      const removable = detailedChangeCount;
+      detailedChangeCount -= Math.max(1, Math.ceil(removable / 4));
+      continue;
+    }
+    throw new Error("Native implementation scope metadata exceeds its evidence byte budget");
   }
-  const unresolvedScopes = uniqueUnresolvedScopes(unresolved);
-  const gitChangedPaths = authority.gitChangedPaths;
-  const snapshotChangePaths = new Set(changes.map((change) => change.path));
-  const gitAdvisory = gitChangedPaths === void 0 ? void 0 : {
-    advisoryOnly: true,
-    changedPaths: gitChangedPaths,
-    pathsPresentInSnapshotChanges: gitChangedPaths.filter(
-      (value) => snapshotChangePaths.has(value)
-    ),
-    pathsAbsentFromSnapshotChanges: gitChangedPaths.filter(
-      (value) => !snapshotChangePaths.has(value)
-    )
-  };
-  const scopeContent = {
-    schema: NATIVE_IMPLEMENTATION_SCOPE_SCHEMA,
-    contractHash,
-    baselineProjectionRef: nativeSnapshotProjectionRef(baselineProjectionHash),
-    baselineProjectionHash,
-    currentProjectionRef: nativeSnapshotProjectionRef(currentProjectionHash2),
-    currentProjectionHash: currentProjectionHash2,
-    complete: unresolvedScopes.length === 0,
+  const hasOverflow = changeScan.totalChanges > detailedChangeCount || totalOmissionDetails > detailedOmissionCount;
+  const overflowHash = hasOverflow ? hashScopeDetailOverflow({
+    baseline,
+    current,
     declaredArtifacts,
-    changes,
-    unattributed,
-    unresolvedScopes,
-    noCodeReason,
-    ...gitAdvisory ? { gitAdvisory } : {}
-  };
-  return {
+    detailedChangeCount,
+    detailedOmissionCount
+  }) : placeholderHash;
+  const scopeContent = buildScopeContent({
+    detailedChangeCount,
+    detailedOmissionCount,
+    includeGitAdvisory,
+    overflowHash
+  });
+  const scope = {
     ...scopeContent,
     scopeHash: canonicalHash(IMPLEMENTATION_SCOPE_HASH_TAG, scopeContent)
   };
+  if (serializedEvidenceBytes(scope) > MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES) {
+    throw new Error("Native implementation scope exceeded its evidence byte budget after fitting");
+  }
+  return scope;
 }
 function buildNativeImplementationScopeBundle(input) {
   const baseline = snapshotProjection(input.baseline);
@@ -13132,7 +15183,7 @@ function parseNativeSnapshotProjection(value, expectedHash) {
   exactScopeKeys(
     root,
     ["schema", "origin", "complete", "limits", "entries", "omitted", "omittedCount"],
-    ["omissionOverflow"],
+    ["capture", "omissionOverflow"],
     "Native snapshot projection"
   );
   if (root.schema !== NATIVE_SNAPSHOT_PROJECTION_SCHEMA) {
@@ -13141,6 +15192,7 @@ function parseNativeSnapshotProjection(value, expectedHash) {
   const parsedManifest = parseNativeContentSnapshotManifest({
     schema: "comet.native.content-snapshot.v1",
     origin: root.origin,
+    ...root.capture === void 0 ? {} : { capture: root.capture },
     createdAt: "1970-01-01T00:00:00.000Z",
     complete: root.complete,
     limits: root.limits,
@@ -13224,6 +15276,7 @@ function parseUnresolvedScope(value, index) {
     "snapshot-omission",
     "snapshot-incomplete",
     "snapshot-omission-overflow",
+    "scope-detail-overflow",
     "missing-no-code-reason"
   ]);
   if (typeof scope.kind !== "string" || !kinds.has(scope.kind)) {
@@ -13245,7 +15298,7 @@ function parseUnresolvedScope(value, index) {
     id: scope.id,
     kind: scope.kind,
     source: scope.source,
-    path: scope.path === null ? null : projectRelativePath(scope.path, `Unresolved scope ${index} path`),
+    path: scope.path === null ? null : scope.kind === "snapshot-omission" ? snapshotOmissionPath(scope.path, `Unresolved scope ${index} path`) : projectRelativePath(scope.path, `Unresolved scope ${index} path`),
     reason: scope.reason
   };
 }
@@ -13324,6 +15377,16 @@ function parseNativeImplementationScope(value) {
     throw new Error("Implementation scope unattributed changes are inconsistent");
   }
   const unresolvedScopes = root.unresolvedScopes.map(parseUnresolvedScope);
+  const detailOverflowScopes = unresolvedScopes.filter(
+    (scope) => scope.kind === "scope-detail-overflow"
+  );
+  if (detailOverflowScopes.length > 1) {
+    throw new Error("Implementation scope has multiple detail overflow records");
+  }
+  const detailOverflow = detailOverflowScopes[0] === void 0 ? null : parseScopeDetailOverflow(detailOverflowScopes[0]);
+  if (detailOverflow && (detailOverflow.changes + detailOverflow.unresolved === 0 || detailOverflow.unattributed > detailOverflow.changes || detailOverflow.unattributed > detailOverflow.unresolved)) {
+    throw new Error("Implementation scope detail overflow counts are inconsistent");
+  }
   const noCodeReason = root.noCodeReason;
   const expectedDerivedScopes = [
     ...expectedUnattributed.map(
@@ -13341,7 +15404,7 @@ function parseNativeImplementationScope(value) {
         `Changed path is not covered by a declared artifact: ${change.path}`
       )
     ),
-    ...changes.length === 0 && noCodeReason === null ? [
+    ...changes.length + (detailOverflow?.changes ?? 0) === 0 && noCodeReason === null ? [
       unresolvedScope(
         {
           kind: "missing-no-code-reason",
@@ -13391,11 +15454,8 @@ function parseNativeImplementationScope(value) {
     const partition = [...pathsPresentInSnapshotChanges, ...pathsAbsentFromSnapshotChanges].sort(
       compareText3
     );
-    if (JSON.stringify(partition) !== JSON.stringify(changedPaths) || pathsPresentInSnapshotChanges.some(
-      (entry2) => !changes.some((change) => change.path === entry2)
-    ) || pathsAbsentFromSnapshotChanges.some(
-      (entry2) => changes.some((change) => change.path === entry2)
-    )) {
+    const detailedChangePaths = new Set(changes.map((change) => change.path));
+    if (JSON.stringify(partition) !== JSON.stringify(changedPaths) || (detailOverflow?.changes ?? 0) === 0 && pathsPresentInSnapshotChanges.some((entry2) => !detailedChangePaths.has(entry2)) || pathsAbsentFromSnapshotChanges.some((entry2) => detailedChangePaths.has(entry2))) {
       throw new Error("Implementation scope Git advisory partition is invalid");
     }
     gitAdvisory = {
@@ -13952,7 +16012,7 @@ function parseNativeVerificationEvidenceEnvelope(value) {
 
 // domains/comet-native/native-evidence-storage.ts
 var HASH_PATTERN7 = /^[a-f0-9]{64}$/u;
-var MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES = 1024 * 1024;
+var MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES = MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES;
 var MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES = 3 * MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES;
 function isInside5(parent, target) {
   const relative = path22.relative(parent, target);
@@ -14076,7 +16136,7 @@ function nativeReportEvidenceRef(hash6) {
 }
 async function writeNativeVerificationReportSnapshot(options) {
   const encoded = Buffer.from(options.text, "utf8");
-  if (encoded.byteLength > MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES || createHash11("sha256").update(encoded).digest("hex") !== options.hash) {
+  if (encoded.byteLength > MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES || createHash12("sha256").update(encoded).digest("hex") !== options.hash) {
     throw new Error("Native verification report snapshot hash or size is invalid");
   }
   return writeEvidenceDocument({
@@ -14098,7 +16158,7 @@ async function readNativeVerificationReportSnapshot(paths, name, hash6) {
     throw new Error("Native report evidence must be an object");
   }
   const report = value;
-  if (Object.keys(report).sort().join(",") !== "content,reportHash,schema" || report.schema !== "comet.native.verification-report.v1" || report.reportHash !== hash6 || typeof report.content !== "string" || createHash11("sha256").update(Buffer.from(report.content, "utf8")).digest("hex") !== hash6) {
+  if (Object.keys(report).sort().join(",") !== "content,reportHash,schema" || report.schema !== "comet.native.verification-report.v1" || report.reportHash !== hash6 || typeof report.content !== "string" || createHash12("sha256").update(Buffer.from(report.content, "utf8")).digest("hex") !== hash6) {
     throw new Error("Native report evidence does not match its hash");
   }
   return report.content;
@@ -14141,19 +16201,12 @@ async function writeEvidenceDocument(options) {
   return nativeEvidenceRef(options.kind, options.hash);
 }
 function assertEvidenceDocumentBudget(value) {
-  if (serializedEvidenceBytes(value) > MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES) {
+  if (serializedEvidenceBytes2(value) > MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES) {
     throw new Error(`Native evidence document exceeds ${MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES} bytes`);
   }
 }
-function serializedEvidenceBytes(value) {
+function serializedEvidenceBytes2(value) {
   return Buffer.byteLength(JSON.stringify(value, null, 2) + "\n", "utf8");
-}
-function assertImplementationScopeBundleBudget(bundle) {
-  if (serializedEvidenceBytes(bundle) > MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES) {
-    throw new Error(
-      `Native implementation scope bundle exceeds ${MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES} bytes`
-    );
-  }
 }
 function parseSnapshot(value, expectedHash) {
   return parseNativeSnapshotProjection(value, expectedHash);
@@ -14196,7 +16249,6 @@ async function assertEnvelopeDependencies(paths, name, evidence, requireReportSn
 async function writeNativeImplementationScope(options) {
   const bundle = parseNativeImplementationScopeBundle(options.bundle);
   const { baseline, current, scope } = bundle;
-  assertImplementationScopeBundleBudget(bundle);
   assertEvidenceDocumentBudget(baseline);
   assertEvidenceDocumentBudget(current);
   assertEvidenceDocumentBudget(scope);
@@ -15395,9 +17447,10 @@ function validateTransitionStateSemantics(previousState, nextState, envelope, op
     throw new Error("Native transition journal cannot mutate an archived change");
   }
   if (operation === "evidence-retreat") {
-    const sameIdentity2 = previousState.name === nextState.name && previousState.language === nextState.language && previousState.brief === nextState.brief && previousState.approval === nextState.approval && previousState.created_at === nextState.created_at && previousState.run_id === nextState.run_id && isDeepStrictEqual(previousState.spec_changes, nextState.spec_changes);
+    const sameIdentity2 = previousState.name === nextState.name && previousState.language === nextState.language && previousState.brief === nextState.brief && previousState.approval === nextState.approval && ("approved_contract_hash" in previousState ? "approved_contract_hash" in nextState && previousState.approved_contract_hash === nextState.approved_contract_hash : !("approved_contract_hash" in nextState)) && previousState.created_at === nextState.created_at && previousState.run_id === nextState.run_id && isDeepStrictEqual(previousState.spec_changes, nextState.spec_changes);
     const expectedHash = nativeAdvanceEvidenceHash({ summary: event.summary });
-    if (previousState.phase !== "archive" || previousState.verification_result !== "pass" || nextState.phase !== "build" || nextState.verification_result !== "pending" || nextState.verification_report !== null || event.verificationResult !== null || event.artifacts.length !== 0 || event.noCodeReason !== null || envelope.evidenceHash !== expectedHash || !sameIdentity2 || previousRefs === null || nextRefs === null || nextRefs.implementation_scope !== null || nextRefs.verification_evidence !== null || nextRefs.partial_allowance !== null) {
+    const validSourcePhase = previousState.phase === "archive" && previousState.verification_result === "pass" || previousState.phase === "verify" && previousState.verification_result === "pending";
+    if (!validSourcePhase || nextState.phase !== "build" || nextState.verification_result !== "pending" || nextState.verification_report !== null || event.verificationResult !== null || event.artifacts.length !== 0 || event.noCodeReason !== null || envelope.evidenceHash !== expectedHash || !sameIdentity2 || previousRefs === null || nextRefs === null || nextRefs.implementation_scope !== null || nextRefs.verification_evidence !== null || nextRefs.partial_allowance !== null) {
       throw new Error("Native transition journal evidence retreat semantics are invalid");
     }
     return;
@@ -17052,6 +19105,21 @@ async function inspectCurrentScopeFacts(options) {
     acceptanceHash: contract.contract.acceptanceHash,
     findingCodes
   };
+}
+async function inspectNativeImplementationScopeFreshness(options) {
+  if (!options.state.implementation_scope) {
+    return { freshness: "missing", findingCodes: ["verification-evidence-missing"] };
+  }
+  try {
+    const facts = await inspectCurrentScopeFacts(options);
+    const findingCodes = [...new Set(facts.findingCodes)].sort();
+    return {
+      freshness: findingCodes.length === 0 ? "fresh" : "stale",
+      findingCodes
+    };
+  } catch {
+    return { freshness: "invalid", findingCodes: ["verification-evidence-invalid"] };
+  }
 }
 async function reportEvidence(options) {
   const report = await readNativeBoundedTextFile({
@@ -20092,6 +22160,30 @@ var EXACT_METADATA = {
     retry: "status",
     repair: "none"
   },
+  "contract-changed-after-approval": {
+    severity: "error",
+    requiredAction: "re-confirm-contract",
+    retry: "next",
+    repair: "none"
+  },
+  "baseline-snapshot-incomplete": {
+    severity: "error",
+    requiredAction: "resolve-native-baseline",
+    retry: "none",
+    repair: "none"
+  },
+  "baseline-snapshot-missing": {
+    severity: "error",
+    requiredAction: "resolve-native-baseline",
+    retry: "none",
+    repair: "none"
+  },
+  "workspace-inspection-unavailable": {
+    severity: "info",
+    requiredAction: "migrate-workspace-identity",
+    retry: "status",
+    repair: "doctor"
+  },
   "repair-stagnation-warning": {
     severity: "warning",
     requiredAction: "change-repair-approach",
@@ -20189,8 +22281,10 @@ function projectRelativePath3(paths, state, finding) {
   const relative = path36.relative(paths.projectRoot, target).replaceAll("\\", "/");
   return relative === "" ? "." : relative;
 }
-function retryCommand(retry, state) {
-  if (retry === "next") return `comet native next ${state.name} --summary "<summary>"`;
+function retryCommand(retry, state, code) {
+  if (retry === "next") {
+    return `comet native next ${state.name} --summary "<summary>"${code === "contract-changed-after-approval" ? " --confirmed" : ""}`;
+  }
   if (retry === "status") return `comet native status ${state.name} --details`;
   return null;
 }
@@ -20203,11 +22297,11 @@ function structureNativeFindings(options) {
       severity: metadata.severity,
       path: projectRelativePath3(options.paths, options.state, finding),
       requiredAction: metadata.requiredAction,
-      retryCommand: retryCommand(metadata.retry, options.state),
+      retryCommand: retryCommand(metadata.retry, options.state, finding.code),
       repairCommand: metadata.repair === "doctor" ? `comet native doctor ${options.state.name} --repair${finding.code.startsWith("transition-") ? " --strategy continue" : ""}` : null,
       // This is intentionally code-based, not severity-based. Model-actionable
       // missing data must never be presented as a user decision.
-      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "verification-scope-partial" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
+      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "contract-changed-after-approval" || finding.code === "verification-scope-partial" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
     };
   }).sort((left, right) => {
     const severityRank = { error: 0, warning: 1, info: 2 };
@@ -20534,6 +22628,50 @@ async function statusFindings(paths, state) {
     ...(await validateNativeSpecChanges(paths, state)).findings,
     ...await inspectNativeRunConsistency(paths, state)
   ];
+  if (state.phase === "shape" || state.phase === "build") {
+    try {
+      const capturedBaseline = await readNativeBaselineManifest(paths, state.name);
+      if (capturedBaseline === null) {
+        findings.push({
+          code: "baseline-snapshot-missing",
+          message: "Native baseline is missing; restore a trusted baseline before advancing"
+        });
+      } else {
+        const baseline = await filterNativeContentSnapshotToProjectScope(paths, capturedBaseline);
+        if (!baseline.complete) {
+          findings.push({
+            code: "baseline-snapshot-incomplete",
+            message: `Native baseline is incomplete within the project-owned scope (${baseline.omittedCount} omitted entries); resolve the omissions before advancing`
+          });
+        }
+      }
+    } catch (error) {
+      findings.push({
+        code: "baseline-snapshot-invalid",
+        message: `Native baseline could not be inspected safely: ${error.message}`
+      });
+    }
+  }
+  if (state.phase === "build") {
+    try {
+      const current = await collectNativeContractFiles({
+        changeDir,
+        briefRef: state.brief,
+        specChanges: state.spec_changes
+      });
+      if ((state.approved_contract_hash ?? null) !== current.contract.contractHash) {
+        findings.push({
+          code: "contract-changed-after-approval",
+          message: state.approval === null || state.approved_contract_hash === null || state.approved_contract_hash === void 0 ? "Native approval is not bound to a contract hash; re-confirm the current contract" : "Native contract changed after approval; re-confirm the current contract"
+        });
+      }
+    } catch (error) {
+      findings.push({
+        code: "contract-inspection-invalid",
+        message: `Native approved contract could not be inspected safely: ${error.message}`
+      });
+    }
+  }
   try {
     if (await inspectPendingNativeTransition(paths, state.name)) {
       findings.unshift({
@@ -20711,7 +22849,7 @@ async function inspectNativeStatus(paths, name, options) {
       workspaceFindings.push(
         ...workspace.findingCodes.map((code) => ({
           code,
-          message: `Native workspace advisory changed: ${code}`
+          message: `Native workspace advisory changed: ${code} (${workspace.driftComponents.join(", ") || "no-component"})`
         }))
       );
     }
@@ -20720,6 +22858,18 @@ async function inspectNativeStatus(paths, name, options) {
       code: "workspace-inspection-unavailable",
       message: "Native workspace advisory could not be recomputed safely"
     });
+  }
+  const verifyScopeFindings = [];
+  let verifyEvidenceRetreat = false;
+  if (state.phase === "verify") {
+    const freshness = await inspectNativeImplementationScopeFreshness({ paths, state });
+    verifyEvidenceRetreat = freshness.freshness !== "fresh";
+    verifyScopeFindings.push(
+      ...freshness.findingCodes.map((code) => ({
+        code,
+        message: `Native Verify implementation scope is not current: ${code}`
+      }))
+    );
   }
   let repair = null;
   const repairFindings = [];
@@ -20763,6 +22913,7 @@ async function inspectNativeStatus(paths, name, options) {
     ...resume.findings,
     ...conflictFindings,
     ...workspaceFindings,
+    ...verifyScopeFindings,
     ...repairFindings,
     ...archiveFindings
   ].filter(
@@ -20775,7 +22926,7 @@ async function inspectNativeStatus(paths, name, options) {
     (finding) => !isNativeWorkspaceAdvisoryCode(finding.code)
   );
   const archiveReady = state.phase === "archive" && archivePreflight?.ready === true && archiveBlockingFindings.length === 0;
-  const evidenceRetreat = state.phase === "archive" && (archivePreflight?.findingCodes ?? []).some(
+  const evidenceRetreat = verifyEvidenceRetreat || state.phase === "archive" && (archivePreflight?.findingCodes ?? []).some(
     (code) => (/* @__PURE__ */ new Set([
       "verification-evidence-stale",
       "verification-evidence-invalid",
@@ -20929,7 +23080,7 @@ import { promises as fs27 } from "fs";
 import path41 from "path";
 
 // domains/comet-native/native-evidence-retention.ts
-import { createHash as createHash12, randomUUID as randomUUID8 } from "node:crypto";
+import { createHash as createHash13, randomUUID as randomUUID8 } from "node:crypto";
 import { constants as fsConstants4, promises as fs25 } from "node:fs";
 import path39 from "node:path";
 
@@ -21010,6 +23161,7 @@ function upgradeV2StateToV3(state, options) {
     phase: retreat ? "build" : state.phase,
     verification_result: retreat ? "pending" : state.verification_result,
     verification_report: retreat ? null : state.verification_report,
+    approved_contract_hash: null,
     implementation_scope: null,
     verification_evidence: null,
     partial_allowance: null,
@@ -21289,12 +23441,28 @@ async function inspectPendingNativeSchemaMigration(paths, name) {
   }
 }
 async function ensureMigrationBaseline(paths, name, createdAt) {
-  if (await readNativeBaselineManifest(paths, name)) return;
-  const baseline = await createNativeContentSnapshot(paths, {
+  const stored = await readNativeBaselineManifest(paths, name);
+  const baseline = stored ? await filterNativeContentSnapshotToProjectScope(paths, stored) : await createNativeContentSnapshot(paths, {
     now: new Date(createdAt),
     origin: "legacy-migration"
   });
-  await writeNativeBaselineManifest(paths, name, baseline);
+  if (!baseline.complete) {
+    const health = inspectNativeContentSnapshotHealth(baseline);
+    const omittedByReason = baseline.omitted.reduce((counts, item) => {
+      counts[item.reason] = (counts[item.reason] ?? 0) + 1;
+      return counts;
+    }, {});
+    const overflowCount = baseline.omissionOverflow?.count ?? 0;
+    if (overflowCount > 0) omittedByReason.overflow = overflowCount;
+    throw new NativeBaselineIncompleteError(
+      name,
+      baseline.omittedCount,
+      omittedByReason,
+      health.samplePaths,
+      health.sampleTruncated
+    );
+  }
+  if (stored === null) await writeNativeBaselineManifest(paths, name, baseline);
 }
 async function optionalFileHash(file) {
   try {
@@ -21459,6 +23627,7 @@ async function continueNativeSchemaMigrationLocked(paths, name, hooks) {
   const changeFile = path38.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
   const actualHash = await sha256File(changeFile);
   await assertSupersedeSourceBeforeMutation(paths, journal, actualHash === journal.targetHash);
+  await ensureMigrationBaseline(paths, name, journal.createdAt);
   if (actualHash !== journal.targetHash) {
     if (actualHash !== journal.sourceHash) {
       throw new Error(
@@ -21483,7 +23652,6 @@ async function continueNativeSchemaMigrationLocked(paths, name, hooks) {
   }
   await continueTransitionSupersede(paths, journal, hooks);
   await continueRunRetreat(paths, journal, hooks);
-  await ensureMigrationBaseline(paths, name, journal.createdAt);
   await fs24.rm(nativeSchemaMigrationJournalFile(paths, name), { force: true });
   return journal.nextState;
 }
@@ -21910,7 +24078,7 @@ function parseDocument4(kind, hash6, value, expectedChange) {
       throw new Error("Native report evidence must be an object");
     }
     const report = value;
-    if (Object.keys(report).sort().join(",") !== "content,reportHash,schema" || report.schema !== "comet.native.verification-report.v1" || report.reportHash !== hash6 || typeof report.content !== "string" || createHash12("sha256").update(Buffer.from(report.content, "utf8")).digest("hex") !== hash6) {
+    if (Object.keys(report).sort().join(",") !== "content,reportHash,schema" || report.schema !== "comet.native.verification-report.v1" || report.reportHash !== hash6 || typeof report.content !== "string" || createHash13("sha256").update(Buffer.from(report.content, "utf8")).digest("hex") !== hash6) {
       throw new Error("Native report evidence filename/hash does not match its content");
     }
     return { canonical: report, dependencies: [] };
@@ -22565,7 +24733,7 @@ async function inspectNativeEvidenceRetention(options) {
 }
 
 // domains/comet-native/native-root-move.ts
-import { createHash as createHash13, randomUUID as randomUUID9 } from "crypto";
+import { createHash as createHash14, randomUUID as randomUUID9 } from "crypto";
 import { promises as fs26 } from "fs";
 import path40 from "path";
 var NATIVE_ROOT_MOVE_MAX_FILE_BYTES = 64 * 1024 * 1024;
@@ -22778,7 +24946,7 @@ function cleanupManifestSource(manifest) {
   return JSON.stringify(manifest, null, 2) + "\n";
 }
 function cleanupManifestHash(source) {
-  return createHash13("sha256").update(source).digest("hex");
+  return createHash14("sha256").update(source).digest("hex");
 }
 function parseCleanupManifestEntry(value, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -23746,14 +25914,14 @@ async function inspectWorkspaceIdentityMigrations(paths, options) {
   const names = options.name ? [options.name] : (await directoryEntries(paths, paths.changesDir, NATIVE_DOCTOR_MAX_CHANGE_ENTRIES)).filter((entry2) => entry2.isDirectory() && !entry2.isSymbolicLink()).map((entry2) => entry2.name).sort();
   for (const name of names) {
     try {
-      if (await inspectNativeWorkspaceSchema(paths, name) !== "comet.native.workspace.v1") {
+      if (!await nativeWorkspaceIdentityNeedsMigration(paths, name)) {
         continue;
       }
       if (!options.repair) {
         findings.push({
           severity: "warning",
           code: "workspace-identity-migration-required",
-          message: `Native workspace identity for ${name} uses legacy external-probe metadata`,
+          message: `Native workspace identity for ${name} uses legacy external-probe or hash-only metadata`,
           path: nativeWorkspaceFile(paths, name),
           repair: "migrate"
         });
@@ -24064,7 +26232,7 @@ async function doctorNativeProject(options) {
 }
 
 // domains/comet-native/native-check-receipt.ts
-import { createHash as createHash14 } from "node:crypto";
+import { createHash as createHash15 } from "node:crypto";
 import { constants as fsConstants5, promises as fs28 } from "node:fs";
 import path42 from "node:path";
 import { TextDecoder as TextDecoder5 } from "node:util";
@@ -24087,6 +26255,7 @@ function projectionManifest2(projection) {
   return {
     schema: "comet.native.content-snapshot.v1",
     origin: projection.origin,
+    ...projection.capture ? { capture: projection.capture } : {},
     createdAt: "1970-01-01T00:00:00.000Z",
     complete: projection.complete,
     limits: projection.limits,
@@ -24271,7 +26440,7 @@ async function readScopedFile(options) {
       throw new ScopedFileError("unsafe-file", "Scoped file changed while opening");
     }
     const chunks = [];
-    const digest = createHash14("sha256");
+    const digest = createHash15("sha256");
     const buffer = Buffer.allocUnsafe(64 * 1024);
     let total = 0;
     while (true) {
@@ -24368,7 +26537,17 @@ async function executeNativeCheckReceipt(options) {
   };
   let candidates = selected.files;
   const selectedCount = selected.files.length + selected.mismatches.length;
-  if (selectedCount > NATIVE_CHECK_LIMITS.maxFiles) {
+  const scopeDetailOverflow2 = scope.scope.unresolvedScopes.some(
+    (unresolved) => unresolved.kind === "scope-detail-overflow"
+  );
+  if (scopeDetailOverflow2) {
+    const overflowPath = scope.scope.changes.at(-1)?.path ?? scope.current.entries.at(-1)?.path ?? scope.baseline.entries.at(-1)?.path;
+    if (!overflowPath) {
+      throw new Error("Native implementation scope overflow has no bounded diagnostic path");
+    }
+    addIssue({ path: overflowPath, line: 1, kind: "scan-limit" });
+    candidates = [];
+  } else if (selectedCount > NATIVE_CHECK_LIMITS.maxFiles) {
     const selectedPaths = [...selected.files.map((file) => file.path), ...selected.mismatches].sort(
       (left, right) => left.localeCompare(right, "en")
     );
@@ -24920,6 +27099,26 @@ async function inspectNativeGuard(options) {
     });
   }
   findings.push(...await inspectNativeRunConsistency(options.paths, options.state));
+  if (options.state.phase === "shape" || options.state.phase === "build") {
+    const capturedBaseline = await readNativeBaselineManifest(options.paths, options.state.name);
+    if (capturedBaseline === null) {
+      findings.push({
+        code: "baseline-snapshot-missing",
+        message: "Native baseline is missing; restore a trusted baseline before advancing"
+      });
+    } else {
+      const baseline = await filterNativeContentSnapshotToProjectScope(
+        options.paths,
+        capturedBaseline
+      );
+      if (!baseline.complete) {
+        findings.push({
+          code: "baseline-snapshot-incomplete",
+          message: `Native baseline is incomplete within the project-owned scope (${baseline.omittedCount} omitted entries); resolve the omissions before advancing`
+        });
+      }
+    }
+  }
   if (options.state.phase === "shape") {
     const brief = await validateNativeBrief(changeDir, options.state.brief);
     const specs = await validateNativeSpecChanges(options.paths, options.state);
@@ -24963,6 +27162,47 @@ var NATIVE_BUILD_EVIDENCE_LIMITS = {
   maxDeclaredArtifacts: 128,
   maxArtifactPathBytes: 512
 };
+function assertStableNativeSelection(snapshot2, source) {
+  if (snapshot2.omitted.some((omission) => omission.reason === "git-selection-changed")) {
+    throw new Error(
+      `Native Git selection changed while capturing the ${source}; stabilize the Git index and retry Build evidence`
+    );
+  }
+  if (snapshot2.omitted.some(
+    (omission) => omission.reason === "physical-enumeration-limit" || omission.reason === "physical-selection-changed"
+  )) {
+    throw new Error(
+      `Native physical selection was incomplete or changed while capturing the ${source}; retry Build evidence with a stable bounded project tree`
+    );
+  }
+}
+function nativeBaselineIncompleteError(change, baseline) {
+  const samplePaths = baseline.omitted.slice(0, 20).map((omission) => omission.path);
+  const omittedByReason = baseline.omitted.reduce((counts, item) => {
+    counts[item.reason] = (counts[item.reason] ?? 0) + 1;
+    return counts;
+  }, {});
+  const overflowCount = baseline.omissionOverflow?.count ?? 0;
+  if (overflowCount > 0) omittedByReason.overflow = overflowCount;
+  return new NativeBaselineIncompleteError(
+    change,
+    baseline.omittedCount,
+    omittedByReason,
+    samplePaths,
+    baseline.omitted.length > samplePaths.length || overflowCount > 0
+  );
+}
+function nativeBaselineProjectionIncompleteError(change, baseline, projection) {
+  const retained = new Set(projection.entries.map((entry2) => entry2.path));
+  const removedPaths = baseline.entries.filter((entry2) => !retained.has(entry2.path)).slice(0, 20).map((entry2) => entry2.path);
+  return new NativeBaselineIncompleteError(
+    change,
+    projection.omittedCount,
+    { "manifest-size": projection.omittedCount },
+    removedPaths,
+    projection.omittedCount > removedPaths.length
+  );
+}
 function normalizeProjectRef(value, label) {
   const normalized = value.replaceAll("\\", "/").trim();
   if (normalized.length === 0 || normalized !== value.replaceAll("\\", "/") || path45.posix.isAbsolute(normalized) || /^(?:[A-Za-z]:|~)/u.test(normalized) || normalized.split("/").includes("..") || path45.posix.normalize(normalized) !== normalized || normalized === "." || normalized.endsWith("/") || Buffer.byteLength(normalized, "utf8") > NATIVE_BUILD_EVIDENCE_LIMITS.maxArtifactPathBytes || Array.from(normalized).some((character) => {
@@ -25050,8 +27290,13 @@ async function inspectNativeBuildEvidence(options) {
   if ((options.noCodeReason ?? "").trim().length > 0 && options.artifactRefs.length > 0) {
     throw new Error("Native build evidence cannot combine artifacts with a no-code reason");
   }
-  const baseline = await readNativeBaselineManifest(options.paths, options.state.name);
-  if (baseline === null) throw new Error("Native change has no baseline content snapshot");
+  const storedBaseline = await readNativeBaselineManifest(options.paths, options.state.name);
+  if (storedBaseline === null) throw new Error("Native change has no baseline content snapshot");
+  const baseline = await filterNativeContentSnapshotToProjectScope(options.paths, storedBaseline);
+  assertStableNativeSelection(baseline, "baseline projection");
+  if (!baseline.complete) {
+    throw nativeBaselineIncompleteError(options.state.name, baseline);
+  }
   const contract = await collectNativeContractFiles({
     changeDir: nativeChangeDir(options.paths, options.state.name),
     briefRef: options.state.brief,
@@ -25066,6 +27311,7 @@ async function inspectNativeBuildEvidence(options) {
     origin: "explicit",
     now: options.now
   });
+  assertStableNativeSelection(current, "current snapshot");
   const bundle = buildNativeImplementationScopeBundle({
     baseline,
     current,
@@ -25073,6 +27319,9 @@ async function inspectNativeBuildEvidence(options) {
     declaredArtifacts,
     noCodeReason: options.noCodeReason ?? null
   });
+  if (!bundle.baseline.complete) {
+    throw nativeBaselineProjectionIncompleteError(options.state.name, baseline, bundle.baseline);
+  }
   const scopeRef = nativeEvidenceRef("scopes", bundle.scope.scopeHash);
   if (bundle.scope.complete) {
     if (options.allowPartialScopeHash !== void 0 && options.allowPartialScopeHash !== null || options.partialReason !== void 0 && options.partialReason !== null) {
@@ -25219,34 +27468,44 @@ async function retreatStaleNativeEvidence(options) {
   if (hasEvidenceRetreatExtras(options.transition.evidence)) {
     throw new Error("Native evidence retreat only accepts a transition summary");
   }
-  if (options.run.currentStep !== "archive" || options.run.pending !== null) {
-    throw new Error("Native Archive Run cannot retreat evidence safely");
+  const previousPhase = options.state.phase;
+  if (previousPhase !== "verify" && previousPhase !== "archive" || options.run.currentStep !== previousPhase || options.run.pending !== null) {
+    throw new Error("Native Verify/Archive Run cannot retreat evidence safely");
   }
-  const freshness = await inspectNativeVerificationFreshness({
+  const evidenceIsFresh = previousPhase === "archive" ? ["complete", "partial"].includes(
+    (await inspectNativeVerificationFreshness({
+      paths: options.transition.paths,
+      state: options.state,
+      now: options.transition.now
+    })).freshness
+  ) : (await inspectNativeImplementationScopeFreshness({
     paths: options.transition.paths,
     state: options.state,
     now: options.transition.now
-  });
-  if (freshness.freshness === "complete" || freshness.freshness === "partial") {
+  })).freshness === "fresh";
+  if (evidenceIsFresh) {
     const findings = structureNativeFindings({
       paths: options.transition.paths,
       state: options.state,
       findings: [
-        {
+        previousPhase === "archive" ? {
           code: "archive-command-required",
           message: "Current verification evidence is fresh; use Native Archive preview"
+        } : {
+          code: "verification-result-missing",
+          message: "Current implementation scope is fresh; complete Verify with a result and report"
         }
       ]
     });
     return {
       change: options.state,
-      previousPhase: "archive",
+      previousPhase,
       next: "manual",
-      nextCommand: `comet native archive ${options.state.name} --dry-run`,
+      nextCommand: previousPhase === "archive" ? `comet native archive ${options.state.name} --dry-run` : null,
       findings,
       continuation: nativeContinuation({
         state: options.state,
-        archiveReady: true
+        archiveReady: previousPhase === "archive"
       })
     };
   }
@@ -25268,7 +27527,7 @@ async function retreatStaleNativeEvidence(options) {
     status: "running"
   };
   const eventData = {
-    previousPhase: "archive",
+    previousPhase,
     nextPhase: "build",
     evidenceHash: options.evidenceHash,
     summary: options.transition.evidence.summary,
@@ -25297,7 +27556,7 @@ async function retreatStaleNativeEvidence(options) {
   if (!persisted) throw new Error("Native evidence retreat journal disappeared before completion");
   return {
     change: persisted,
-    previousPhase: "archive",
+    previousPhase,
     next: "auto",
     nextCommand: null,
     findings: [],
@@ -25363,6 +27622,22 @@ async function advanceNativeChangeLocked(options) {
       evidenceHash: hash6
     });
   }
+  if (state.phase === "verify" && !hasEvidenceRetreatExtras(options.evidence)) {
+    if (!existingRun) throw new Error("Native Verify Run state is missing");
+    const freshness = await inspectNativeImplementationScopeFreshness({
+      paths: options.paths,
+      state,
+      now: options.now
+    });
+    if (freshness.freshness !== "fresh") {
+      return retreatStaleNativeEvidence({
+        transition: options,
+        state,
+        run: existingRun,
+        evidenceHash: hash6
+      });
+    }
+  }
   const candidate = {
     ...state,
     spec_changes: await reconcileNativeSpecChanges(options.paths, state)
@@ -25388,6 +27663,11 @@ async function advanceNativeChangeLocked(options) {
       continuation: nativeContinuation({ state, findings })
     };
   }
+  const shapeContract = state.phase === "shape" ? await collectNativeContractFiles({
+    changeDir,
+    briefRef: candidate.brief,
+    specChanges: candidate.spec_changes
+  }) : null;
   if (state.phase !== "build" && (options.evidence.allowPartialScopeHash !== void 0 || options.evidence.partialReason !== void 0)) {
     throw new Error("Native partial scope allowance is only valid while leaving Build");
   }
@@ -25402,6 +27682,26 @@ async function advanceNativeChangeLocked(options) {
     confirmed: options.evidence.confirmed ?? false,
     now: options.now
   }) : null;
+  if (buildEvidence && (state.approved_contract_hash ?? null) !== buildEvidence.contract.contract.contractHash && !options.evidence.confirmed) {
+    const findings = structureNativeFindings({
+      paths: options.paths,
+      state,
+      findings: [
+        {
+          code: "contract-changed-after-approval",
+          message: "Native contract changed after approval; re-confirm the current contract before leaving Build"
+        }
+      ]
+    });
+    return {
+      change: state,
+      previousPhase,
+      next: "manual",
+      nextCommand: null,
+      findings,
+      continuation: nativeContinuation({ state, findings })
+    };
+  }
   const preparedScope = buildEvidence ? {
     scopeHash: buildEvidence.bundle.scope.scopeHash,
     scopeRef: buildEvidence.scopeRef,
@@ -25561,6 +27861,7 @@ async function advanceNativeChangeLocked(options) {
     revision: state.revision + 1,
     phase: advanced.currentStep,
     approval: options.evidence.confirmed ? "confirmed" : state.phase === "shape" && state.approval === null ? "implicit" : state.approval,
+    approved_contract_hash: state.phase === "shape" ? shapeContract.contract.contractHash : state.phase === "build" && options.evidence.confirmed ? buildEvidence.contract.contract.contractHash : state.approved_contract_hash ?? null,
     run_id: run.runId,
     ...state.phase === "build" ? {
       verification_result: "pending",
@@ -26480,6 +28781,22 @@ function errorResult(command, error) {
         outcome: "revision-conflict"
       },
       error: { code: "conflict", message: error.message }
+    };
+  }
+  if (error instanceof NativeBaselineIncompleteError) {
+    return {
+      command,
+      exitCode: 65,
+      data: {
+        change: error.change,
+        complete: false,
+        omittedCount: error.omittedCount,
+        omittedByReason: error.omittedByReason,
+        samplePaths: error.samplePaths,
+        sampleTruncated: error.sampleTruncated,
+        requiredAction: "resolve-native-baseline"
+      },
+      error: { code: "baseline-incomplete", message: error.message }
     };
   }
   if (error instanceof Error) {

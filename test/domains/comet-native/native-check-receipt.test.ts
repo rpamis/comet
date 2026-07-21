@@ -350,7 +350,7 @@ describe('Native scoped check receipts', () => {
     });
   });
 
-  it('fails closed when the scoped file count exceeds the checker budget', async () => {
+  it('fails closed when scope detail overflow prevents a complete bounded check', async () => {
     await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
     for (let index = 0; index <= NATIVE_CHECK_LIMITS.maxFiles; index += 1) {
       await fs.writeFile(path.join(projectRoot, 'src', `file-${index}.txt`), '');
@@ -376,13 +376,17 @@ describe('Native scoped check receipts', () => {
       approval: 'implicit',
       implementation_scope: build.scopeRef,
     };
+    expect(build.bundle.scope.unresolvedScopes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'scope-detail-overflow' })]),
+    );
+    const detailedSelected = build.bundle.scope.changes.filter((change) => change.after).length;
 
     const { receipt } = await executeNativeCheckReceipt({ paths, state });
 
     expect(receipt).toMatchObject({
       status: 'failed',
       counts: {
-        filesSelected: NATIVE_CHECK_LIMITS.maxFiles + 1,
+        filesSelected: detailedSelected,
         filesScanned: 0,
         bytesScanned: 0,
         issueCount: 1,

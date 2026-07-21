@@ -83,6 +83,7 @@ language: en
 phase: shape
 brief: brief.md
 approval: null
+approved_contract_hash: null
 spec_changes:
   - capability: sentence-counting
     operation: create
@@ -98,7 +99,7 @@ created_at: 2026-07-14
 run_id: null
 ```
 
-Do not edit runtime-managed fields directly. The runtime owns `approval`, `spec_changes`, operation, and `base_hash`; it also owns `phase`, `revision`, all three evidence refs, `run_id`, and `archived`. To change requirements, edit only the brief and `specs/<capability>/spec.md`; remove a capability with `comet native spec remove`, then let the command validate and advance the state. Upgrade old schemas through a recoverable `doctor --repair` migration, never by adding fields manually. A v2 Verify/Archive state lacks the scope/evidence binding required by v3, so migration deliberately returns it to Build for fresh evidence instead of presenting an old pass as current.
+Do not edit runtime-managed fields directly. The runtime owns `approval`, `approved_contract_hash`, `spec_changes`, operation, and `base_hash`; it also owns `phase`, `revision`, all three evidence refs, `run_id`, and `archived`. `approved_contract_hash` binds approval to the brief/spec contract from that moment; later contract drift requires fresh user confirmation. To change requirements, edit only the brief and `specs/<capability>/spec.md`; remove a capability with `comet native spec remove`, then let the command validate and advance the state. Upgrade old schemas through a recoverable `doctor --repair` migration, never by adding fields manually. A v2 Verify/Archive state lacks the scope/evidence binding required by v3, so migration deliberately returns it to Build for fresh evidence instead of presenting an old pass as current.
 
 ## Brief
 
@@ -170,8 +171,8 @@ The array is sorted by `acceptance_id`, and every `evidence_refs` list is sorted
 
 ## Content-addressed evidence
 
-- `baseline-manifest.json`: a bounded project snapshot captured when the change is created. It records only project-relative paths, sizes, hashes, and omission facts, never file contents.
-- `evidence/scopes/`: implementation scope derived from the baseline, current snapshot, declared artifacts, and contract when leaving Build. The runtime stops when scope is incomplete; it creates an `allowances/` record only after explicit user acceptance.
+- `baseline-manifest.json`: a bounded project snapshot captured when the change is created. It records only project-relative paths, sizes, hashes, the capture provider, and omission facts, never file contents. The Git provider includes tracked plus non-ignored untracked files and treats each submodule/gitlink as an atomic entry; non-Git projects use a bounded physical-tree provider with before/after enumeration fences. If any project-owned entries are still omitted, `new` fails immediately and removes the unfinished change rather than discovering an unusable baseline during Build. `git-selection-changed` means the Git index changed during enumeration and requires a retry after Git writes settle; it can never be authorized as partial scope. `git-enumeration-limit` means the project-owned set exceeds the Git enumeration safety budget. Baseline creation and a migration cutover have no partial authorization, so first reduce or clean the set or use a later product version that adjusts the budget. For a later current snapshot, `git-enumeration-limit` may use the ordinary partial protocol with the exact hash, a reason, and `--confirmed` only when recovery is genuinely impossible, the Runtime returns an authorizable scope bound to a count and content hash, and the user understands the unknown-tail risk. `physical-selection-changed` and `physical-enumeration-limit` mean that the physical project tree changed during capture or exhausted its enumeration/cooperative execution budget. Because their unknown tail cannot be bound stably, neither is authorizable in a current snapshot; stabilize or reduce the project tree and retry. Never edit evidence or guess unenumerated paths.
+- `evidence/scopes/`: implementation scope derived from the baseline, current snapshot, declared artifacts, and contract when leaving Build. An incomplete current snapshot never guesses deletions. When changes exceed the detail budget, only bounded details are expanded and the remainder is represented by a `scope-detail-overflow` count and content hash. The runtime stops when scope is incomplete; it creates an `allowances/` record only after explicit user acceptance.
 - `evidence/verifications/`: the Verify conclusion envelope, bound to runtime identity, change revision, contract, acceptance coverage, scope, report hash, and an optional check receipt. Any bound fact change makes it stale.
 - `evidence/check-receipts/`: built-in policy results from `comet native check`. A receipt records only policy/version, scope/snapshot binding, bounded issues, and counts. It stores no file contents and does not prove test completeness.
 - `checkpoints/`: in-phase recovery summaries and manifests of real artifacts. A checkpoint increments revision without changing phase and cannot replace the brief, specifications, scope, or verification.

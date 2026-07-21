@@ -234,7 +234,10 @@ async function createL1Fixture(root, mode, tier) {
   const changeDir = path.join(root, 'openspec', 'changes', CHANGE_NAME);
   await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await fs.mkdir(path.join(root, '.comet'), { recursive: true });
-  await fs.writeFile(path.join(root, '.comet', 'config.yaml'), `context_compression: ${mode}\n`);
+  await fs.writeFile(
+    path.join(root, '.comet', 'config.yaml'),
+    `classic:\n  context_compression: ${mode}\n`,
+  );
   await createChangeFixture(changeDir, mode, tier);
 }
 
@@ -248,7 +251,10 @@ async function createL2Fixture(root, mode, tier) {
   await fs.mkdir(path.join(root, '.comet'), { recursive: true });
   await fs.mkdir(path.join(root, 'src'), { recursive: true });
   await fs.mkdir(path.join(root, 'tests'), { recursive: true });
-  await fs.writeFile(path.join(root, '.comet', 'config.yaml'), `context_compression: ${mode}\n`);
+  await fs.writeFile(
+    path.join(root, '.comet', 'config.yaml'),
+    `classic:\n  context_compression: ${mode}\n`,
+  );
   await createChangeFixture(changeDir, mode, tier);
 
   await fs.writeFile(
@@ -1356,7 +1362,10 @@ async function createL3Fixture(root, mode, tier) {
   await fs.mkdir(path.join(root, 'src'), { recursive: true });
   await fs.mkdir(path.join(root, 'tests'), { recursive: true });
   await fs.mkdir(path.join(changeDir, 'specs', 'dictionary'), { recursive: true });
-  await fs.writeFile(path.join(root, '.comet', 'config.yaml'), `context_compression: ${mode}\n`);
+  await fs.writeFile(
+    path.join(root, '.comet', 'config.yaml'),
+    `classic:\n  context_compression: ${mode}\n`,
+  );
 
   // OpenSpec change artifacts
   await fs.writeFile(

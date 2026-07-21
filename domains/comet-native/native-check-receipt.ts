@@ -94,6 +94,7 @@ function projectionManifest(projection: NativeSnapshotProjection): NativeContent
   return {
     schema: 'comet.native.content-snapshot.v1',
     origin: projection.origin,
+    ...(projection.capture ? { capture: projection.capture } : {}),
     createdAt: '1970-01-01T00:00:00.000Z',
     complete: projection.complete,
     limits: projection.limits,
@@ -458,7 +459,20 @@ export async function executeNativeCheckReceipt(options: {
   };
   let candidates = selected.files;
   const selectedCount = selected.files.length + selected.mismatches.length;
-  if (selectedCount > NATIVE_CHECK_LIMITS.maxFiles) {
+  const scopeDetailOverflow = scope.scope.unresolvedScopes.some(
+    (unresolved) => unresolved.kind === 'scope-detail-overflow',
+  );
+  if (scopeDetailOverflow) {
+    const overflowPath =
+      scope.scope.changes.at(-1)?.path ??
+      scope.current.entries.at(-1)?.path ??
+      scope.baseline.entries.at(-1)?.path;
+    if (!overflowPath) {
+      throw new Error('Native implementation scope overflow has no bounded diagnostic path');
+    }
+    addIssue({ path: overflowPath, line: 1, kind: 'scan-limit' });
+    candidates = [];
+  } else if (selectedCount > NATIVE_CHECK_LIMITS.maxFiles) {
     const selectedPaths = [...selected.files.map((file) => file.path), ...selected.mismatches].sort(
       (left, right) => left.localeCompare(right, 'en'),
     );

@@ -10,7 +10,6 @@ import {
 } from '../../../domains/comet-native/native-change.js';
 import {
   MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES,
-  MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES,
   readNativeImplementationScope,
   readNativePartialAllowance,
   readNativeVerificationEvidence,
@@ -282,7 +281,7 @@ describe('Native evidence storage', () => {
     );
   });
 
-  it('rejects oversized evidence before creating its content-addressed file', async () => {
+  it('drops oversized Git-only advisory detail before returning a persistable scope', async () => {
     const { contract } = fixtures();
     const largeBundle = buildNativeImplementationScopeBundle({
       baseline: snapshot([]),
@@ -295,21 +294,143 @@ describe('Native evidence storage', () => {
       ),
     });
     const { scope: largeScope } = largeBundle;
-    expect(Buffer.byteLength(JSON.stringify(largeScope, null, 2) + '\n')).toBeGreaterThan(
-      MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES,
-    );
+    expect(serializedBytes(largeScope)).toBeLessThanOrEqual(MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES);
+    expect(largeScope.gitAdvisory).toBeUndefined();
 
     await expect(
       writeNativeImplementationScope({ paths, name: 'secure-login', bundle: largeBundle }),
-    ).rejects.toThrow('exceeds');
+    ).resolves.toMatch(/^runtime\/evidence\/scopes\//u);
     const file = path.join(
       nativeChangeDir(paths, 'secure-login'),
       ...`runtime/evidence/scopes/${largeScope.scopeHash}.json`.split('/'),
     );
-    await expect(fs.lstat(file)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.lstat(file)).resolves.toMatchObject({ isFile: expect.any(Function) });
   });
 
-  it('applies the one-megabyte budget to each snapshot projection before writing', async () => {
+  it('persists a scope whose oversized derived change set is represented by bounded overflow evidence', async () => {
+    const { contract } = fixtures();
+    const entries = Array.from({ length: 2_000 }, (_, index) => ({
+      path: `generated/${String(index).padStart(5, '0')}-${'x'.repeat(80)}.ts`,
+      hash: 'a'.repeat(64),
+      size: 1,
+      type: 'file' as const,
+    }));
+    const largeSnapshot: NativeContentSnapshotManifest = {
+      ...snapshot([]),
+      limits: {
+        maxFiles: 3_000,
+        maxFileBytes: 1_024,
+        maxTotalBytes: 10_000,
+        maxManifestBytes: MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES,
+      },
+      entries,
+    };
+    const bundle = buildNativeImplementationScopeBundle({
+      baseline: snapshot([]),
+      current: largeSnapshot,
+      contractHash: contract.contractHash,
+      declaredArtifacts: [],
+    });
+
+    expect(bundle.scope.unresolvedScopes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'scope-detail-overflow' })]),
+    );
+    const ref = await writeNativeImplementationScope({
+      paths,
+      name: 'secure-login',
+      bundle,
+    });
+    await expect(readNativeImplementationScope(paths, 'secure-login', ref)).resolves.toEqual(
+      bundle.scope,
+    );
+  });
+
+  it('streams overflow for ten thousand changes owned by 128 overlapping artifacts', async () => {
+    const { contract } = fixtures();
+    const segments = Array.from({ length: 128 }, () => 'a');
+    const artifactPaths = segments.map((_, index) => segments.slice(0, index + 1).join('/'));
+    const generatedRoot = artifactPaths.at(-1)!;
+    const entries = Array.from({ length: 10_000 }, (_, index) => ({
+      path: `${generatedRoot}/${String(index).padStart(5, '0')}.ts`,
+      hash: 'a'.repeat(64),
+      size: 1,
+      type: 'file' as const,
+    }));
+    const current: NativeContentSnapshotManifest = {
+      ...snapshot([]),
+      limits: {
+        maxFiles: 10_000,
+        maxFileBytes: 1_024,
+        maxTotalBytes: 20_000,
+        maxManifestBytes: 8 * 1024 * 1024,
+      },
+      entries,
+    };
+    const bundle = buildNativeImplementationScopeBundle({
+      baseline: snapshot([]),
+      current,
+      contractHash: contract.contractHash,
+      declaredArtifacts: artifactPaths.map((artifactPath) => ({
+        path: artifactPath,
+        kind: 'directory' as const,
+      })),
+    });
+
+    expect(bundle.scope.changes.length).toBeGreaterThan(0);
+    expect(bundle.scope.changes.length).toBeLessThan(128);
+    expect(bundle.scope.changes[0]?.attributedTo).toHaveLength(128);
+    expect(bundle.scope.unresolvedScopes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'scope-detail-overflow' })]),
+    );
+    expect(
+      [bundle.baseline, bundle.current, bundle.scope].every(
+        (document) => serializedBytes(document) <= MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES,
+      ),
+    ).toBe(true);
+
+    const ref = await writeNativeImplementationScope({ paths, name: 'secure-login', bundle });
+    await expect(readNativeImplementationScope(paths, 'secure-login', ref)).resolves.toEqual(
+      bundle.scope,
+    );
+  });
+
+  it('persists one huge unattributed change entirely as scope overflow', async () => {
+    const { contract } = fixtures();
+    const hugePath = `generated/${'x'.repeat(400_000)}.ts`;
+    const current: NativeContentSnapshotManifest = {
+      ...snapshot([]),
+      limits: {
+        maxFiles: 10,
+        maxFileBytes: 1_024,
+        maxTotalBytes: 10_000,
+        maxManifestBytes: 8 * 1024 * 1024,
+      },
+      entries: [{ path: hugePath, hash: 'a'.repeat(64), size: 1, type: 'file' }],
+    };
+    const bundle = buildNativeImplementationScopeBundle({
+      baseline: snapshot([]),
+      current,
+      contractHash: contract.contractHash,
+      declaredArtifacts: [],
+    });
+
+    expect(bundle.scope.changes).toEqual([]);
+    expect(bundle.scope.unattributed).toEqual([]);
+    expect(bundle.scope.unresolvedScopes).toEqual([
+      expect.objectContaining({
+        kind: 'scope-detail-overflow',
+        reason: expect.stringContaining('1 additional change details'),
+      }),
+    ]);
+    expect(serializedBytes(bundle.scope)).toBeLessThanOrEqual(MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES);
+
+    const ref = await writeNativeImplementationScope({ paths, name: 'secure-login', bundle });
+    await expect(readNativeImplementationScope(paths, 'secure-login', ref)).resolves.toEqual(
+      bundle.scope,
+    );
+  });
+
+  it('fits each snapshot projection to one megabyte before writing', async () => {
     const { contract } = fixtures();
     const entries = Array.from({ length: 6_500 }, (_, index) => ({
       path: `src/generated/${String(index).padStart(5, '0')}-${'x'.repeat(32)}.ts`,
@@ -334,21 +455,32 @@ describe('Native evidence storage', () => {
       declaredArtifacts: [],
       noCodeReason: 'Generated tree is unchanged.',
     });
-    expect(Buffer.byteLength(JSON.stringify(bundle.baseline, null, 2) + '\n')).toBeGreaterThan(
+    expect(serializedBytes(bundle.baseline)).toBeLessThanOrEqual(
       MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES,
     );
+    expect(bundle.baseline.omissionOverflow).toEqual(
+      expect.objectContaining({
+        count: expect.any(Number),
+        hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      }),
+    );
 
-    await expect(
-      writeNativeImplementationScope({ paths, name: 'secure-login', bundle }),
-    ).rejects.toThrow('exceeds');
+    const ref = await writeNativeImplementationScope({
+      paths,
+      name: 'secure-login',
+      bundle,
+    });
+    await expect(readNativeImplementationScope(paths, 'secure-login', ref)).resolves.toEqual(
+      bundle.scope,
+    );
     const file = path.join(
       nativeChangeDir(paths, 'secure-login'),
       ...bundle.scope.baselineProjectionRef.split('/'),
     );
-    await expect(fs.lstat(file)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.lstat(file)).resolves.toMatchObject({ isFile: expect.any(Function) });
   });
 
-  it('rejects an authority bundle over the aggregate budget before writing any document', async () => {
+  it('persists bounded documents even when the transient authority bundle exceeds three megabytes', async () => {
     const { contract } = fixtures();
     const entries = Array.from({ length: 4_000 }, (_, index) => ({
       path: `src/generated/${String(index).padStart(5, '0')}-${'x'.repeat(36)}.ts`,
@@ -381,14 +513,12 @@ describe('Native evidence storage', () => {
       documentSizes.every((size) => size <= MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES),
       `document sizes: ${documentSizes.join(', ')}`,
     ).toBe(true);
-    expect(serializedBytes(bundle)).toBeGreaterThan(MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES);
+    expect(serializedBytes(bundle)).toBeGreaterThan(3 * MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES);
 
-    await expect(
-      writeNativeImplementationScope({ paths, name: 'secure-login', bundle }),
-    ).rejects.toThrow('bundle exceeds');
-    await expect(
-      fs.lstat(path.join(nativeChangeDir(paths, 'secure-login'), 'runtime', 'evidence')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    const ref = await writeNativeImplementationScope({ paths, name: 'secure-login', bundle });
+    await expect(readNativeImplementationScope(paths, 'secure-login', ref)).resolves.toEqual(
+      bundle.scope,
+    );
   });
 
   it('detects replacement of an evidence parent after its identity is captured', async () => {

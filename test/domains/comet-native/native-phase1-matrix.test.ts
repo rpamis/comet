@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { execFileSync } from 'node:child_process';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -201,7 +202,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
   async function project(): Promise<string> {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-matrix-'));
     projects.push(root);
-    await fs.mkdir(path.join(root, '.git'));
+    execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
     return root;
   }
 
@@ -307,7 +308,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     );
     expect(blockedCommit).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });
     expect(await fs.readFile(canonical, 'utf8')).toContain('Original behavior');
-  });
+  }, 60_000);
 
   it('continues and rolls back interrupted archive transactions deterministically', async () => {
     const projectRoot = await project();

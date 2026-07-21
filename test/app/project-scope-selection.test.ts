@@ -44,6 +44,13 @@ describe('project scope selection', () => {
     expect(mockedSelect).not.toHaveBeenCalled();
   });
 
+  it('keeps an explicit global scope on the current target without prompting', async () => {
+    await expect(resolveProjectScopeMode('update', { scope: 'global' }, 3)).resolves.toBe(
+      'current-project',
+    );
+    expect(mockedSelect).not.toHaveBeenCalled();
+  });
+
   it('returns current-project for force mode unless all-projects is explicit', async () => {
     await expect(resolveProjectScopeMode('uninstall', { force: true }, 3)).resolves.toBe(
       'current-project',

@@ -11,6 +11,10 @@ import { inspectNativeChange, nativeChangeDir } from './native-change.js';
 import { collectNativeContractFiles } from './native-contract-files.js';
 import { readNativeSelectionRecord } from './native-selection.js';
 import { inspectNativeRunConsistency } from './native-run-consistency.js';
+import {
+  filterNativeContentSnapshotToProjectScope,
+  readNativeBaselineManifest,
+} from './native-snapshot.js';
 import { inspectPendingNativeTransition } from './native-transition-journal.js';
 import { nativeContinuation } from './native-continuation.js';
 import { structureNativeFindings, summarizeNativeFindings } from './native-findings.js';
@@ -21,6 +25,7 @@ import {
 import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
 import { inspectNativeChangeConflicts } from './native-conflict-inspection.js';
 import { inspectNativeRepairStatus } from './native-repair-integration.js';
+import { inspectNativeImplementationScopeFreshness } from './native-verification-runtime.js';
 import {
   inspectNativeWorkspaceAdvisory,
   isNativeWorkspaceAdvisoryCode,
@@ -77,6 +82,55 @@ async function statusFindings(
     ...(await validateNativeSpecChanges(paths, state)).findings,
     ...(await inspectNativeRunConsistency(paths, state)),
   ];
+  if (state.phase === 'shape' || state.phase === 'build') {
+    try {
+      const capturedBaseline = await readNativeBaselineManifest(paths, state.name);
+      if (capturedBaseline === null) {
+        findings.push({
+          code: 'baseline-snapshot-missing',
+          message: 'Native baseline is missing; restore a trusted baseline before advancing',
+        });
+      } else {
+        const baseline = await filterNativeContentSnapshotToProjectScope(paths, capturedBaseline);
+        if (!baseline.complete) {
+          findings.push({
+            code: 'baseline-snapshot-incomplete',
+            message: `Native baseline is incomplete within the project-owned scope (${baseline.omittedCount} omitted entries); resolve the omissions before advancing`,
+          });
+        }
+      }
+    } catch (error) {
+      findings.push({
+        code: 'baseline-snapshot-invalid',
+        message: `Native baseline could not be inspected safely: ${(error as Error).message}`,
+      });
+    }
+  }
+  if (state.phase === 'build') {
+    try {
+      const current = await collectNativeContractFiles({
+        changeDir,
+        briefRef: state.brief,
+        specChanges: state.spec_changes,
+      });
+      if ((state.approved_contract_hash ?? null) !== current.contract.contractHash) {
+        findings.push({
+          code: 'contract-changed-after-approval',
+          message:
+            state.approval === null ||
+            state.approved_contract_hash === null ||
+            state.approved_contract_hash === undefined
+              ? 'Native approval is not bound to a contract hash; re-confirm the current contract'
+              : 'Native contract changed after approval; re-confirm the current contract',
+        });
+      }
+    } catch (error) {
+      findings.push({
+        code: 'contract-inspection-invalid',
+        message: `Native approved contract could not be inspected safely: ${(error as Error).message}`,
+      });
+    }
+  }
   try {
     if (await inspectPendingNativeTransition(paths, state.name)) {
       findings.unshift({
@@ -263,7 +317,7 @@ export async function inspectNativeStatus(
       workspaceFindings.push(
         ...workspace.findingCodes.map((code) => ({
           code,
-          message: `Native workspace advisory changed: ${code}`,
+          message: `Native workspace advisory changed: ${code} (${workspace.driftComponents.join(', ') || 'no-component'})`,
         })),
       );
     }
@@ -272,6 +326,18 @@ export async function inspectNativeStatus(
       code: 'workspace-inspection-unavailable',
       message: 'Native workspace advisory could not be recomputed safely',
     });
+  }
+  const verifyScopeFindings: NativeFinding[] = [];
+  let verifyEvidenceRetreat = false;
+  if (state.phase === 'verify') {
+    const freshness = await inspectNativeImplementationScopeFreshness({ paths, state });
+    verifyEvidenceRetreat = freshness.freshness !== 'fresh';
+    verifyScopeFindings.push(
+      ...freshness.findingCodes.map((code) => ({
+        code,
+        message: `Native Verify implementation scope is not current: ${code}`,
+      })),
+    );
   }
   let repair: Awaited<ReturnType<typeof inspectNativeRepairStatus>> = null;
   const repairFindings: NativeFinding[] = [];
@@ -320,6 +386,7 @@ export async function inspectNativeStatus(
     ...resume.findings,
     ...conflictFindings,
     ...workspaceFindings,
+    ...verifyScopeFindings,
     ...repairFindings,
     ...archiveFindings,
   ].filter(
@@ -337,18 +404,19 @@ export async function inspectNativeStatus(
     archivePreflight?.ready === true &&
     archiveBlockingFindings.length === 0;
   const evidenceRetreat =
-    state.phase === 'archive' &&
-    (archivePreflight?.findingCodes ?? []).some((code) =>
-      new Set([
-        'verification-evidence-stale',
-        'verification-evidence-invalid',
-        'verification-evidence-missing',
-        'verification-contract-stale',
-        'verification-implementation-stale',
-        'verification-report-stale',
-        'verification-state-mismatch',
-      ]).has(code),
-    );
+    verifyEvidenceRetreat ||
+    (state.phase === 'archive' &&
+      (archivePreflight?.findingCodes ?? []).some((code) =>
+        new Set([
+          'verification-evidence-stale',
+          'verification-evidence-invalid',
+          'verification-evidence-missing',
+          'verification-contract-stale',
+          'verification-implementation-stale',
+          'verification-report-stale',
+          'verification-state-mismatch',
+        ]).has(code),
+      ));
   const mutationBlocked = findings.some(
     (finding) =>
       finding.code === 'trajectory-tail-incomplete' || finding.code === 'trajectory-invalid',

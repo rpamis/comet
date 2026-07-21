@@ -81,7 +81,7 @@ Shape 只有在满足冷启动可执行标准时才完成：另一个没有当�
 comet native next <change-name> --summary <摘要>
 ```
 
-只有用户刚刚回答了先前已经提出的阻塞问题，且摘要记录了该答案时，才追加 `--confirmed`；用户最初提出功能不算这类显式确认。否则不加；`approval` 由 runtime 记录，不能手工修改。
+只有用户刚刚回答了先前已经提出的阻塞问题，且摘要记录了该答案时，才追加 `--confirmed`；用户最初提出功能不算这类显式确认。Shape 离开后，Runtime 会把 approval 绑定到当时的 brief/spec contract hash；若 Build 中 contract 发生变化，status 会要求用户重新确认当前 contract，只有取得该确认后才可用返回的 `--confirmed` 重试。否则不加；`approval` 与 `approved_contract_hash` 都由 runtime 记录，不能手工修改。
 
 ## Build
 
@@ -95,9 +95,13 @@ comet native next <change-name> --summary <摘要>
 comet native next <change-name> --summary <摘要> --artifact <项目内路径> [--confirmed]
 ```
 
-Runtime 会返回本次 implementation scope 和首个 `acceptancePage`。保留这些由 Runtime 派生的验收 ID；若响应丢失，进入 Verify 后用 `comet native status <change-name> --details` 重新取得。页内文字和 context 可能显式截断，但 ID 不会静默丢失；按 `nextCursor` 取完所有页，不自行计算 ID。
+Runtime 会返回本次 implementation scope 和首个 `acceptancePage`。Git 项目的快照只包含 tracked 与未被 ignore 的 untracked 文件，submodule/gitlink 作为单个原子条目；非 Git 项目才使用有界物理树快照。保留这些由 Runtime 派生的验收 ID；若响应丢失，进入 Verify 后用 `comet native status <change-name> --details` 重新取得。页内文字和 context 可能显式截断，但 ID 不会静默丢失；按 `nextCursor` 取完所有页，不自行计算 ID。
 
-若 Runtime 无法证明 scope 完整，它会停在 Build 并返回 partial scope hash 与未归属项。先补充真实 artifact 或消除未归属变化；确实只能 partial 且用户需要接受该风险时，说明具体缺口并取得确认，再按命令参考使用同一个 scope hash、理由与 `--confirmed`。不能把 partial 静默写成 complete。
+Git selection 本身也有界并要求一次稳定视图。`git-selection-changed` 表示枚举期间 index 发生变化：停止推进，等待所有 Git 写入结束后重新运行，由 Runtime 重新捕获；绝不能把它当作用户可接受的 partial scope。`git-enumeration-limit` 表示项目所有范围超过 Git 枚举安全预算，是结构化不完整；应优先缩小或清理 tracked / 未忽略 untracked 的项目所有范围，或通过后续产品版本调整预算，不能默认越过。若确实无法恢复，只有 Runtime 返回已用计数与内容 hash 绑定的可授权 scope，且用户理解未枚举尾部的具体风险时，才可按普通 partial 协议使用精确 scope hash、理由与 `--confirmed`。用户与模型都不能手改 snapshot/evidence 或猜测未枚举路径。
+
+非 Git 项目的 physical selection 使用有界、顺序无关的前后枚举围栏。`physical-selection-changed` 表示项目树在捕获期间变化；`physical-enumeration-limit` 表示节点、路径、字节或协作式执行预算耗尽。两者都无法为未知尾部建立稳定 scope，不能通过 partial scope 授权；等待文件系统操作稳定、缩小项目树或把非项目内容移出项目所有范围后重试。
+
+若 Runtime 无法证明 scope 完整，它会停在 Build 并返回 partial scope hash 与未归属项。当前快照不完整时不会把缺失路径猜成删除；变化明细过多时会保留有界样本，并用带数量与内容 hash 的 `scope-detail-overflow` 表示其余变化。先补充真实 artifact 或消除未归属变化；确实只能 partial 且用户需要接受该风险时，说明具体缺口并取得确认，再按命令参考使用同一个 scope hash、理由与 `--confirmed`。不能把 partial 静默写成 complete。
 
 ## Verify
 

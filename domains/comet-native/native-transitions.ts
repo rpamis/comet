@@ -4,6 +4,7 @@ import { decideWithResolver, recordOutcomeWithResolver } from '../engine/loop.js
 import { inspectNativeGuard } from './native-guards.js';
 import { projectNativeAcceptancePage } from './native-acceptance.js';
 import { nativeChangeDir, readNativeChange } from './native-change.js';
+import { collectNativeContractFiles } from './native-contract-files.js';
 import { inspectNativeBuildEvidence, persistNativeBuildEvidence } from './native-build-evidence.js';
 import { nativeContinuation } from './native-continuation.js';
 import { structureNativeFindings } from './native-findings.js';
@@ -32,6 +33,7 @@ import {
 import { readNativeRunState, readNativeTrajectory, startNativeRun } from './native-run-store.js';
 import { reconcileNativeSpecChanges } from './native-specs.js';
 import {
+  inspectNativeImplementationScopeFreshness,
   inspectNativeVerificationEvidence,
   inspectNativeVerificationFreshness,
   persistNativeVerificationEvidence,
@@ -173,34 +175,59 @@ async function retreatStaleNativeEvidence(options: {
   if (hasEvidenceRetreatExtras(options.transition.evidence)) {
     throw new Error('Native evidence retreat only accepts a transition summary');
   }
-  if (options.run.currentStep !== 'archive' || options.run.pending !== null) {
-    throw new Error('Native Archive Run cannot retreat evidence safely');
+  const previousPhase = options.state.phase;
+  if (
+    (previousPhase !== 'verify' && previousPhase !== 'archive') ||
+    options.run.currentStep !== previousPhase ||
+    options.run.pending !== null
+  ) {
+    throw new Error('Native Verify/Archive Run cannot retreat evidence safely');
   }
-  const freshness = await inspectNativeVerificationFreshness({
-    paths: options.transition.paths,
-    state: options.state,
-    now: options.transition.now,
-  });
-  if (freshness.freshness === 'complete' || freshness.freshness === 'partial') {
+  const evidenceIsFresh =
+    previousPhase === 'archive'
+      ? ['complete', 'partial'].includes(
+          (
+            await inspectNativeVerificationFreshness({
+              paths: options.transition.paths,
+              state: options.state,
+              now: options.transition.now,
+            })
+          ).freshness,
+        )
+      : (
+          await inspectNativeImplementationScopeFreshness({
+            paths: options.transition.paths,
+            state: options.state,
+            now: options.transition.now,
+          })
+        ).freshness === 'fresh';
+  if (evidenceIsFresh) {
     const findings = structureNativeFindings({
       paths: options.transition.paths,
       state: options.state,
       findings: [
-        {
-          code: 'archive-command-required',
-          message: 'Current verification evidence is fresh; use Native Archive preview',
-        },
+        previousPhase === 'archive'
+          ? {
+              code: 'archive-command-required',
+              message: 'Current verification evidence is fresh; use Native Archive preview',
+            }
+          : {
+              code: 'verification-result-missing',
+              message:
+                'Current implementation scope is fresh; complete Verify with a result and report',
+            },
       ],
     });
     return {
       change: options.state,
-      previousPhase: 'archive',
+      previousPhase,
       next: 'manual',
-      nextCommand: `comet native archive ${options.state.name} --dry-run`,
+      nextCommand:
+        previousPhase === 'archive' ? `comet native archive ${options.state.name} --dry-run` : null,
       findings,
       continuation: nativeContinuation({
         state: options.state,
-        archiveReady: true,
+        archiveReady: previousPhase === 'archive',
       }),
     };
   }
@@ -222,7 +249,7 @@ async function retreatStaleNativeEvidence(options: {
     status: 'running' as const,
   };
   const eventData = {
-    previousPhase: 'archive',
+    previousPhase,
     nextPhase: 'build',
     evidenceHash: options.evidenceHash,
     summary: options.transition.evidence.summary,
@@ -251,7 +278,7 @@ async function retreatStaleNativeEvidence(options: {
   if (!persisted) throw new Error('Native evidence retreat journal disappeared before completion');
   return {
     change: persisted,
-    previousPhase: 'archive',
+    previousPhase,
     next: 'auto',
     nextCommand: null,
     findings: [],
@@ -332,6 +359,22 @@ async function advanceNativeChangeLocked(
       evidenceHash: hash,
     });
   }
+  if (state.phase === 'verify' && !hasEvidenceRetreatExtras(options.evidence)) {
+    if (!existingRun) throw new Error('Native Verify Run state is missing');
+    const freshness = await inspectNativeImplementationScopeFreshness({
+      paths: options.paths,
+      state,
+      now: options.now,
+    });
+    if (freshness.freshness !== 'fresh') {
+      return retreatStaleNativeEvidence({
+        transition: options,
+        state,
+        run: existingRun,
+        evidenceHash: hash,
+      });
+    }
+  }
 
   const candidate = {
     ...state,
@@ -360,6 +403,15 @@ async function advanceNativeChangeLocked(
     };
   }
 
+  const shapeContract =
+    state.phase === 'shape'
+      ? await collectNativeContractFiles({
+          changeDir,
+          briefRef: candidate.brief,
+          specChanges: candidate.spec_changes,
+        })
+      : null;
+
   if (
     state.phase !== 'build' &&
     (options.evidence.allowPartialScopeHash !== undefined ||
@@ -382,6 +434,31 @@ async function advanceNativeChangeLocked(
           now: options.now,
         })
       : null;
+  if (
+    buildEvidence &&
+    (state.approved_contract_hash ?? null) !== buildEvidence.contract.contract.contractHash &&
+    !options.evidence.confirmed
+  ) {
+    const findings = structureNativeFindings({
+      paths: options.paths,
+      state,
+      findings: [
+        {
+          code: 'contract-changed-after-approval',
+          message:
+            'Native contract changed after approval; re-confirm the current contract before leaving Build',
+        },
+      ],
+    });
+    return {
+      change: state,
+      previousPhase,
+      next: 'manual',
+      nextCommand: null,
+      findings,
+      continuation: nativeContinuation({ state, findings }),
+    };
+  }
   const preparedScope = buildEvidence
     ? {
         scopeHash: buildEvidence.bundle.scope.scopeHash,
@@ -575,6 +652,12 @@ async function advanceNativeChangeLocked(
       : state.phase === 'shape' && state.approval === null
         ? ('implicit' as const)
         : state.approval,
+    approved_contract_hash:
+      state.phase === 'shape'
+        ? shapeContract!.contract.contractHash
+        : state.phase === 'build' && options.evidence.confirmed
+          ? buildEvidence!.contract.contract.contractHash
+          : (state.approved_contract_hash ?? null),
     run_id: run.runId,
     ...(state.phase === 'build'
       ? {

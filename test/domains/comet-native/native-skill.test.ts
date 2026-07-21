@@ -216,7 +216,7 @@ describe('Chinese Comet Native Skill', () => {
     expect(source).toContain('不调用 Git、shell、项目脚本或任何外部进程');
     expect(source).not.toContain('记录正确的 canonical base hash');
     expect(artifacts).toContain(
-      '`phase`、`revision`、`approval`、`spec_changes`、operation、`base_hash`',
+      '`phase`、`revision`、`approval`、`approved_contract_hash`、`spec_changes`、operation、`base_hash`',
     );
     expect(commands).toContain('comet native spec remove <change-name> <capability>');
     expect(commands).toContain('comet native spec rebase <change-name> --summary <text>');
@@ -320,7 +320,9 @@ describe('Chinese Comet Native Skill', () => {
       'The initial feature request is not this kind of explicit confirmation',
     );
     expect(files).toContain('reopens the change in Build');
-    expect(files).toContain('runtime owns `approval`, `spec_changes`, operation, and `base_hash`');
+    expect(files).toContain(
+      'runtime owns `approval`, `approved_contract_hash`, `spec_changes`, operation, and `base_hash`',
+    );
     expect(files).toContain('runtime/transition.json');
     expect(files).toContain('<artifact-root>/comet/');
     expect(files).not.toMatch(

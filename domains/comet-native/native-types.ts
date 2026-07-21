@@ -101,6 +101,8 @@ export interface NativeChangeState extends NativeChangeStateFields {
   schema: typeof NATIVE_CHANGE_SCHEMA;
   minimum_runtime_version: typeof NATIVE_RUNTIME_PROTOCOL_VERSION;
   revision: number;
+  /** Hash of the brief/spec contract that the current approval applies to. */
+  approved_contract_hash: string | null;
   implementation_scope: NativeContentAddressedRef | null;
   verification_evidence: NativeContentAddressedRef | null;
   partial_allowance: NativeContentAddressedRef | null;
@@ -136,7 +138,15 @@ export interface NativeSnapshotOmission {
     | 'total-size'
     | 'manifest-size'
     | 'changed-during-read'
-    | 'unreadable';
+    | 'unreadable'
+    | 'gitlink-unavailable'
+    | 'gitlink-dirty'
+    | 'gitlink-changed'
+    | 'legacy-gitlink-boundary'
+    | 'git-enumeration-limit'
+    | 'git-selection-changed'
+    | 'physical-enumeration-limit'
+    | 'physical-selection-changed';
 }
 
 export interface NativeSnapshotOmissionOverflow {
@@ -145,9 +155,71 @@ export interface NativeSnapshotOmissionOverflow {
   count: number;
 }
 
+export interface NativeGitSelectionStreamEvidence {
+  hash: string;
+  recordCount: number;
+  storedRecordCount: number;
+  stdoutBytes: number;
+  overflow: boolean;
+}
+
+export interface NativeGitSelectionEvidence {
+  schema: 'comet.native.git-selection.v1';
+  status: 'overflow' | 'changed' | 'overflow-and-changed';
+  stageBefore: NativeGitSelectionStreamEvidence;
+  combined: NativeGitSelectionStreamEvidence;
+  stageAfter: NativeGitSelectionStreamEvidence;
+  finalStageBefore: NativeGitSelectionStreamEvidence;
+  finalCombined: NativeGitSelectionStreamEvidence;
+  finalStageAfter: NativeGitSelectionStreamEvidence;
+}
+
+export interface NativePhysicalSelectionStreamEvidence {
+  hash: string;
+  visitedNodeCount: number;
+  recordCount: number;
+  storedRecordCount: number;
+  encodedBytes: number;
+  overflow: boolean;
+  unstable: boolean;
+}
+
+export interface NativePhysicalSelectionEvidence {
+  schema: 'comet.native.physical-selection.v1';
+  status: 'overflow' | 'changed' | 'overflow-and-changed';
+  before: NativePhysicalSelectionStreamEvidence;
+  after: NativePhysicalSelectionStreamEvidence;
+}
+
+export interface NativeGitProjectionEvidence {
+  provider: 'git';
+  selection?: NativeGitSelectionEvidence;
+}
+
+export type NativeContentSnapshotCapture =
+  | {
+      provider: 'git';
+      gitSelection?: NativeGitSelectionEvidence;
+      physicalSelection?: never;
+      projection?: never;
+    }
+  | {
+      provider: 'physical-tree';
+      gitSelection?: never;
+      physicalSelection?: NativePhysicalSelectionEvidence;
+      projection?: never;
+    }
+  | {
+      provider: 'physical-tree';
+      gitSelection?: never;
+      physicalSelection?: never;
+      projection: NativeGitProjectionEvidence;
+    };
+
 export interface NativeContentSnapshotManifest {
   schema: 'comet.native.content-snapshot.v1';
   origin: 'change-created' | 'legacy-migration' | 'explicit';
+  capture?: NativeContentSnapshotCapture;
   createdAt: string;
   complete: boolean;
   limits: {

@@ -12,6 +12,11 @@ import {
   readNativeChange,
 } from '../../../domains/comet-native/native-change.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  readNativeBaselineManifest,
+  writeNativeBaselineManifest,
+} from '../../../domains/comet-native/native-snapshot.js';
+import { readNativeImplementationScopeBundle } from '../../../domains/comet-native/native-evidence-storage.js';
 import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
@@ -73,6 +78,39 @@ describe('Native guarded transitions', () => {
     });
   });
 
+  it('blocks Shape before Build when a legacy baseline is incomplete', async () => {
+    const baseline = await readNativeBaselineManifest(paths, 'advance-change');
+    await writeNativeBaselineManifest(paths, 'advance-change', {
+      ...baseline,
+      complete: false,
+      omitted: [
+        {
+          path: 'oversized.bin',
+          size: baseline.limits.maxFileBytes + 1,
+          type: 'file',
+          reason: 'file-size',
+        },
+      ],
+      omittedCount: 1,
+    });
+
+    const result = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'shape done' },
+    });
+    expect(result).toMatchObject({
+      next: 'manual',
+      change: { phase: 'shape' },
+      findings: [
+        expect.objectContaining({
+          code: 'baseline-snapshot-incomplete',
+          requiredAction: 'resolve-native-baseline',
+        }),
+      ],
+    });
+  });
+
   it('advances Shape and Build with Engine state and idempotent evidence', async () => {
     const first = await advanceNativeChange({
       paths,
@@ -85,6 +123,7 @@ describe('Native guarded transitions', () => {
       revision: 2,
       phase: 'build',
       approval: 'implicit',
+      approved_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
       run_id: 'native-run-1',
     });
     expect((await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))?.currentStep).toBe('build');
@@ -111,6 +150,58 @@ describe('Native guarded transitions', () => {
     });
     expect(build.change.phase).toBe('verify');
     expect(build.change.revision).toBe(3);
+  });
+
+  it('blocks a changed approved contract until Build explicitly re-confirms it', async () => {
+    const shaped = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'shape is approved' },
+    });
+    const approvedHash = shaped.change.approved_contract_hash;
+    expect(approvedHash).toMatch(/^[a-f0-9]{64}$/u);
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      brief.replace('The feature works.', 'The changed feature works.'),
+    );
+    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+
+    const blocked = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'implemented changed contract', artifacts: ['feature.ts'] },
+    });
+    expect(blocked).toMatchObject({
+      next: 'manual',
+      change: { phase: 'build', approved_contract_hash: approvedHash },
+      findings: [
+        expect.objectContaining({
+          code: 'contract-changed-after-approval',
+          requiresUserDecision: true,
+          requiredAction: 're-confirm-contract',
+        }),
+      ],
+    });
+
+    const confirmed = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: {
+        summary: 'implemented and re-confirmed changed contract',
+        artifacts: ['feature.ts'],
+        confirmed: true,
+      },
+    });
+    expect(confirmed.change).toMatchObject({ phase: 'verify', approval: 'confirmed' });
+    expect(confirmed.change.approved_contract_hash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(confirmed.change.approved_contract_hash).not.toBe(approvedHash);
+    const scope = await readNativeImplementationScopeBundle(
+      paths,
+      confirmed.change.name,
+      confirmed.change.implementation_scope!,
+    );
+    expect(confirmed.change.approved_contract_hash).toBe(scope.scope.contractHash);
   });
 
   it('records explicit confirmation from Shape or an agile Build decision', async () => {

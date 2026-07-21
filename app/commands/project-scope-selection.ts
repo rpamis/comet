@@ -35,6 +35,7 @@ export async function resolveProjectScopeMode(
 
   if (options.allProjects) return 'all-projects';
   if (options.currentProject) return 'current-project';
+  if (options.scope === 'global') return 'current-project';
   if (options.force) return 'current-project';
   if (options.json) return 'current-project';
   if (indexedProjectCount === 0) return 'current-project';

@@ -44,7 +44,7 @@ openspec/changes/<name>/.comet/handoff/design-context.json
 openspec/changes/<name>/.comet/handoff/design-context.md
 ```
 
-启用 beta（项目 `.comet/config.yaml` 中 `context_compression: beta`，创建 change 时快照进入 `.comet.yaml`）时生成：
+启用 beta（项目 `.comet/config.yaml` 中 `classic.context_compression: beta`，创建 change 时快照进入 `.comet.yaml`）时生成：
 
 ```text
 openspec/changes/<name>/.comet/handoff/spec-context.json

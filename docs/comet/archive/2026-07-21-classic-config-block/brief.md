@@ -40,6 +40,7 @@
 
 - 字段范围：完整集——`language` + `context_compression` + `review_mode` + `auto_transition` 全部归入 `classic:` 块。依据：运行时这四项只被 Classic 读取，Native 有独立 `native.language`，不读其余三项。用户已确认。
 - 迁移策略：仅自动迁移，不兼容旧格式——Classic 运行时只读 `classic.*`；用户需跑一次 `comet init` / `update` 迁移，否则旧顶层值被忽略并回退默认。用户已确认。
+- 冲突优先级：同一配置同时含旧顶层字段和新 `classic:` 块内同名字段时，保留新的 `classic.*` 值并删除旧顶层字段，避免陈旧旧值覆盖新格式中的明确配置。用户已确认。
 
 # Open questions
 

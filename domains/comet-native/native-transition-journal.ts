@@ -517,13 +517,19 @@ function validateTransitionStateSemantics(
       previousState.language === nextState.language &&
       previousState.brief === nextState.brief &&
       previousState.approval === nextState.approval &&
+      ('approved_contract_hash' in previousState
+        ? 'approved_contract_hash' in nextState &&
+          previousState.approved_contract_hash === nextState.approved_contract_hash
+        : !('approved_contract_hash' in nextState)) &&
       previousState.created_at === nextState.created_at &&
       previousState.run_id === nextState.run_id &&
       isDeepStrictEqual(previousState.spec_changes, nextState.spec_changes);
     const expectedHash = nativeAdvanceEvidenceHash({ summary: event.summary });
+    const validSourcePhase =
+      (previousState.phase === 'archive' && previousState.verification_result === 'pass') ||
+      (previousState.phase === 'verify' && previousState.verification_result === 'pending');
     if (
-      previousState.phase !== 'archive' ||
-      previousState.verification_result !== 'pass' ||
+      !validSourcePhase ||
       nextState.phase !== 'build' ||
       nextState.verification_result !== 'pending' ||
       nextState.verification_report !== null ||

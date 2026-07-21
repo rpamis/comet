@@ -137,7 +137,7 @@ describe('Native project configuration', () => {
     await expect(readProjectConfig(projectRoot)).rejects.toBeInstanceOf(Error);
   });
 
-  it('preserves Classic fields in the shared project config', async () => {
+  it('does not migrate legacy Classic fields during Native config writes', async () => {
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
       'language: zh-CN\nreview_mode: thorough\ncustom_setting: keep\n',
@@ -149,6 +149,33 @@ describe('Native project configuration', () => {
     expect(source).toContain('review_mode: thorough');
     expect(source).toContain('custom_setting: keep');
     expect(source).toContain('artifact_root: docs');
+  });
+
+  it('preserves the nested Classic block during Native config writes', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: .',
+        '  language: en',
+        'classic:',
+        '  language: zh-CN',
+        '  context_compression: beta',
+        '  review_mode: thorough',
+        '  auto_transition: false',
+        '',
+      ].join('\n'),
+    );
+
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'zh-CN'));
+
+    const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
+    expect(source).toContain('classic:');
+    expect(source).toContain('context_compression: beta');
+    expect(source).toContain('review_mode: thorough');
+    expect(source).toContain('auto_transition: false');
   });
 
   it('rejects an oversized project config before parsing it', async () => {

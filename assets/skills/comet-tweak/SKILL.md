@@ -23,7 +23,7 @@ Applicable for OpenSpec-chained lightweight changes, such as configuration adjus
 
 ### 0. Output Language Constraint
 
-Streamlined OpenSpec artifacts must use the configured Comet artifact language. Before `.comet.yaml` exists, read `language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after initialization, use `comet state get <name> language`.
+Streamlined OpenSpec artifacts must use the configured Comet artifact language. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after initialization, use `comet state get <name> language`.
 
 Execution chain: open → OpenSpec apply → verify → archive. Tweak provides default decisions for each phase: streamlined open, direct build through OpenSpec apply, scale- and delta-spec-driven verification weight, and final archive confirmation after verification passes.
 
