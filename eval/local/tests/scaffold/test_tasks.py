@@ -477,7 +477,7 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
     runtime = get_tasks_dir().parents[2] / "assets/skills/comet-native/scripts/comet-native-runtime.mjs"
     change = workspace / "docs/comet/changes/add-character-counting"
 
-    def run_native(*args: str) -> dict:
+    def run_native(*args: str, expected_exit: int = 0) -> dict:
         result = subprocess.run(
             [
                 "node",
@@ -492,7 +492,7 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
             text=True,
             timeout=30,
         )
-        assert result.returncode == 0, result.stdout or result.stderr
+        assert result.returncode == expected_exit, result.stdout or result.stderr
         return json.loads(result.stdout)
 
     status = run_native("status", "add-character-counting")
@@ -507,11 +507,13 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
         "--repair",
         "--strategy",
         "continue",
+        expected_exit=65,
     )
 
     assert {finding["code"] for finding in repaired["data"]["findings"]} >= {
         "schema-migrated",
         "transition-recovered",
+        "contract-changed-after-approval",
     }
     state = yaml.safe_load((change / "comet-state.yaml").read_text(encoding="utf-8"))
     assert state["phase"] == "build"
@@ -524,6 +526,7 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
         "--repair",
         "--strategy",
         "continue",
+        expected_exit=65,
     )
 
     events = [

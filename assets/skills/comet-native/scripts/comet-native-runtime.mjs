@@ -10828,6 +10828,9 @@ async function nativePhysicalSnapshotSelection(options) {
     records.length = 0;
     recordCount = 0;
     encodedBytes = 0;
+  } else {
+    records.sort((left, right) => left.path.localeCompare(right.path, "en"));
+    omissions.sort((left, right) => left.path.localeCompare(right.path, "en"));
   }
   const hash6 = overflow ? sha256Text(
     `comet.native.physical-selection-incomplete.v1
@@ -11714,13 +11717,19 @@ async function createNativeContentSnapshot(paths, options = {}) {
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
     let firstTarget;
     let secondTarget;
+    let firstRealTarget;
+    let secondRealTarget;
     let after;
     try {
       firstTarget = await fs9.readlink(target, { encoding: "buffer" });
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      firstRealTarget = await fs9.realpath(target);
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
       after = await fs9.lstat(target);
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       secondTarget = await fs9.readlink(target, { encoding: "buffer" });
+      if (!nativeSnapshotExecutionHasBudget(execution)) return;
+      secondRealTarget = await fs9.realpath(target);
     } catch (error) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -11733,8 +11742,11 @@ async function createNativeContentSnapshot(paths, options = {}) {
       return;
     }
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
-    if (!after.isSymbolicLink() || !sameFileIdentity4(before, after) || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs || !firstTarget.equals(secondTarget)) {
+    if (!after.isSymbolicLink() || !sameFileIdentity4(before, after) || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs || !firstTarget.equals(secondTarget) || firstRealTarget !== secondRealTarget) {
       omit({ path: relative, size: null, type: "other", reason: "changed-during-read" });
+      return;
+    }
+    if (!isInsidePath(physicalProjectRoot, firstRealTarget) || sameOrInside(physicalNativeRoot, firstRealTarget)) {
       return;
     }
     const size = firstTarget.byteLength;

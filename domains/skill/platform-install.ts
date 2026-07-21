@@ -279,7 +279,8 @@ async function lstatOrNull(filePath: string): Promise<Awaited<ReturnType<typeof 
   try {
     return await lstat(filePath);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
     throw err;
   }
 }

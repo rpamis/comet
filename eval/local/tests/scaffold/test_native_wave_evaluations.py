@@ -1367,7 +1367,7 @@ def test_wave_d_validator_requires_third_stop_one_override_and_twelfth_hard_stop
     (tmp_path / "docs/comet/archive").mkdir(parents=True)
     for name in ("wordcount.py", "test_wordcount.py"):
         source = TASKS_ROOT / "comet-native-wave-d-stagnation-stop/environment" / name
-        (tmp_path / name).write_bytes(source.read_bytes())
+        (tmp_path / name).write_bytes(source.read_bytes().replace(b"\r\n", b"\n"))
     state = {
         "name": "stalled-average",
         "phase": "build",

@@ -4,8 +4,8 @@ import importlib.util
 import hashlib
 import json
 import os
-import msvcrt
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +13,11 @@ import conftest
 import pytest
 from scaffold.python.tasks import load_task
 from scaffold.python.treatments import build_treatment_skills, load_treatments
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    msvcrt = None
 
 
 def test_file_lock_context_manager_allows_exclusive_writes(tmp_path: Path):
@@ -25,6 +30,7 @@ def test_file_lock_context_manager_allows_exclusive_writes(tmp_path: Path):
     assert data_file.read_text() == "held"
 
 
+@pytest.mark.skipif(msvcrt is None, reason="Windows locking API only")
 def test_file_lock_waits_when_windows_lock_is_temporarily_busy(tmp_path: Path, monkeypatch):
     lock_file = tmp_path / "coordination.lock"
     real_locking = msvcrt.locking
@@ -43,6 +49,7 @@ def test_file_lock_waits_when_windows_lock_is_temporarily_busy(tmp_path: Path, m
         assert attempts == 2
 
 
+@pytest.mark.skipif(msvcrt is None, reason="Windows locking API only")
 def test_file_lock_does_not_retry_non_contention_windows_errors(tmp_path: Path, monkeypatch):
     lock_file = tmp_path / "coordination.lock"
     attempts = 0

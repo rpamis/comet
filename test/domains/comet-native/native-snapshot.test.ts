@@ -128,7 +128,7 @@ describe('Native VCS-independent content snapshots', () => {
       await execFileAsync('git', ['add', '--', unsafeName], { cwd: projectRoot });
 
       await expect(createNativeContentSnapshot(paths)).rejects.toThrow(
-        'Native Git snapshot provider returned an unsafe tracked path',
+        'Native Git snapshot provider returned an unsafe staged path',
       );
     },
   );

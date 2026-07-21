@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
 import {
   extractToc,
   renderJsonPreview,
@@ -8,24 +9,7 @@ import {
 } from '../../../domains/dashboard/web/src/markdown-preview.js';
 
 function containerFromHtml(html) {
-  const headings = [...html.matchAll(/<(h[123])\s+id="([^"]*)"[^>]*>([\s\S]*?)<\/\1>/gi)].map(
-    (match) => ({
-      tagName: match[1].toUpperCase(),
-      id: match[2],
-      textContent: match[3].replace(/<[^>]+>/g, ''),
-    }),
-  );
-  return {
-    querySelectorAll(selector) {
-      const allowed = new Set(
-        selector
-          .split(',')
-          .map((part) => part.trim().toUpperCase())
-          .filter(Boolean),
-      );
-      return headings.filter((heading) => allowed.has(heading.tagName));
-    },
-  };
+  return new JSDOM(`<body>${html}</body>`).window.document;
 }
 
 describe('dashboard markdown-preview', () => {
