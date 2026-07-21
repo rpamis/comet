@@ -148,10 +148,10 @@ classic:
   auto_transition: true
 ```
 
-Native 产物也可以放在项目内指定根目录，例如 `docs/comet/`：
+Native 默认把产物放在 `docs/comet/`。如需使用其他项目内根目录，可以显式指定；例如下面会改为 `artifacts/comet/`：
 
 ```bash
-comet init --workflow native --root docs
+comet init --workflow native --root artifacts
 ```
 
 ## 对OpenClaw和Hermes、或其他AI平台的支持

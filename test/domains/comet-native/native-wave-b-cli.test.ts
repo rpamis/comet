@@ -56,7 +56,7 @@ describe('Native Wave B CLI contract', () => {
         change: { phase: 'shape', revision: 2 },
         checkpoint: {
           manifestRef: expect.stringMatching(
-            /^comet\/changes\/cold-resume\/runtime\/checkpoints\/manifests\//u,
+            /^docs\/comet\/changes\/cold-resume\/runtime\/checkpoints\/manifests\//u,
           ),
         },
         expectedRevision: 1,
@@ -144,7 +144,7 @@ describe('Native Wave B CLI contract', () => {
       error: { code: 'conflict' },
     });
 
-    const paths = await nativeProjectPaths(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     const briefFile = path.join(paths.changesDir, 'cold-resume', 'brief.md');
     const source = await fs.readFile(briefFile, 'utf8');
     await fs.writeFile(
@@ -173,7 +173,7 @@ describe('Native Wave B CLI contract', () => {
           {
             code: 'brief-blocking-question',
             severity: 'error',
-            path: 'comet/changes/cold-resume/brief.md',
+            path: 'docs/comet/changes/cold-resume/brief.md',
             requiredAction: 'answer-blocking-question',
             retryCommand: 'comet native next cold-resume --summary "<summary>"',
             repairCommand: null,

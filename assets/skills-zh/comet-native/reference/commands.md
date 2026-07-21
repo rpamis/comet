@@ -16,7 +16,7 @@ comet native root show
 comet native root move <artifact-root>
 ```
 
-`artifact-root` 必须是项目内相对路径。`.` 生成 `<project>/comet/`，`docs` 生成 `<project>/docs/comet/`。`init --language` 会把项目的 Native 默认语言持久化到 `.comet/config.yaml`；后续 `new` 未显式传入 `--language` 时继承该值。再次运行 `init --language` 可以改变以后新建 change 的默认语言，不改写已有 change。已有配置拒绝冲突的 `--root`；改变根目录必须使用 `root move`，不能直接改配置。
+`artifact-root` 必须是项目内相对路径，默认值是 `docs`。`.` 生成 `<project>/comet/`，`docs` 生成 `<project>/docs/comet/`。`init --language` 会把项目的 Native 默认语言持久化到 `.comet/config.yaml`；后续 `new` 未显式传入 `--language` 时继承该值。再次运行 `init --language` 可以改变以后新建 change 的默认语言，不改写已有 change。已有配置拒绝冲突的 `--root`；改变根目录必须使用 `root move`，不能直接改配置。
 
 ## Change 管理
 
@@ -31,7 +31,7 @@ comet native status <change-name> [--details [--acceptance-cursor <token>]]
 comet native select <change-name>
 ```
 
-`new` 在配置缺失时创建默认配置和 `<project>/comet/`。完整目标规格写入 `specs/<capability>/spec.md`；`next` 自动推断 create/replace 并冻结 canonical hash。删除 capability 使用 `spec remove`，不要手工编辑 `spec_changes`。canonical 并发变化导致冲突时，先重读并改写完整目标规格，再用 `spec rebase` 刷新 operation/hash、回到 Build 并清除旧验证结论。`show` 返回状态、brief 和拟议完整规格；`status` 返回有预算的阶段、证据新鲜度、finding 摘要、checkpoint、repair 状态和 continuation。`status <change-name> --details` 额外返回最多 50 条详细 findings、`findingsTruncated` 标记、恢复细节和首个 `acceptancePage`；findings 被截断时先处理已返回项，再重新读取 details，不能把未展示项当作不存在。若 `nextCursor` 非空，用 `--acceptance-cursor` 读取下一页，直至为 null。acceptance cursor 只允许与具体 change 和 `--details` 同用，并绑定当前 acceptance hash。`status` 与 `show` 始终只读；恢复已确认的目标 change 时显式运行 `select`，不要新增 `resume` 命令。`new` 与 `select` 都会写项目级共享 `.comet/current-change.json`，并把 `workflow` 固定为 `native`；它们不会修改 Classic change。
+`new` 在配置缺失时创建默认配置和 `<project>/docs/comet/`。完整目标规格写入 `specs/<capability>/spec.md`；`next` 自动推断 create/replace 并冻结 canonical hash。删除 capability 使用 `spec remove`，不要手工编辑 `spec_changes`。canonical 并发变化导致冲突时，先重读并改写完整目标规格，再用 `spec rebase` 刷新 operation/hash、回到 Build 并清除旧验证结论。`show` 返回状态、brief 和拟议完整规格；`status` 返回有预算的阶段、证据新鲜度、finding 摘要、checkpoint、repair 状态和 continuation。`status <change-name> --details` 额外返回最多 50 条详细 findings、`findingsTruncated` 标记、恢复细节和首个 `acceptancePage`；findings 被截断时先处理已返回项，再重新读取 details，不能把未展示项当作不存在。若 `nextCursor` 非空，用 `--acceptance-cursor` 读取下一页，直至为 null。acceptance cursor 只允许与具体 change 和 `--details` 同用，并绑定当前 acceptance hash。`status` 与 `show` 始终只读；恢复已确认的目标 change 时显式运行 `select`，不要新增 `resume` 命令。`new` 与 `select` 都会写项目级共享 `.comet/current-change.json`，并把 `workflow` 固定为 `native`；它们不会修改 Classic change。
 
 `list` 与不带 change 的 `status` 返回同一种只读分页投影，每页最多 24 个 change；`nextCursor` 非空时原样传给 `--cursor`。cursor 绑定当前完整名称集合，change 增删后旧 cursor 会明确失效，不会错位分页。最多接受 4096 个可见 change，整页序列化结果不超过 512 KiB。`show` 还会限制规格数量、单文件、累计读取和最终输出大小；超限时拒绝，不截断需求正文。
 

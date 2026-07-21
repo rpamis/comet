@@ -121,7 +121,7 @@ describe('resumeProbe command', () => {
     expect(initialized.status, initialized.stderr).toBe(0);
     const created = runCli(tmpDir, ['native', 'new', 'native-resume']);
     expect(created.status, created.stderr).toBe(0);
-    const changeDir = path.join(tmpDir, 'comet', 'changes', 'native-resume');
+    const changeDir = path.join(tmpDir, 'docs', 'comet', 'changes', 'native-resume');
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
       [

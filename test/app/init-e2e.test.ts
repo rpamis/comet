@@ -190,7 +190,7 @@ describe('comet init E2E', () => {
         workflow: 'native',
         workflowSource: 'new-project-default',
         projectConfigCreated: true,
-        nativeArtifactRoot: '.',
+        nativeArtifactRoot: 'docs',
       });
 
       const claudeResult = (
@@ -211,9 +211,10 @@ describe('comet init E2E', () => {
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }
 
-      await expect(fs.stat(path.join(tmpDir, 'comet', 'specs'))).resolves.toBeDefined();
-      await expect(fs.stat(path.join(tmpDir, 'comet', 'changes'))).resolves.toBeDefined();
-      await expect(fs.stat(path.join(tmpDir, 'comet', 'archive'))).resolves.toBeDefined();
+      await expect(fs.stat(path.join(tmpDir, 'docs', 'comet', 'specs'))).resolves.toBeDefined();
+      await expect(fs.stat(path.join(tmpDir, 'docs', 'comet', 'changes'))).resolves.toBeDefined();
+      await expect(fs.stat(path.join(tmpDir, 'docs', 'comet', 'archive'))).resolves.toBeDefined();
+      await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toThrow();
       await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers'))).rejects.toThrow();
       await expect(fs.stat(path.join(tmpDir, '.comet', 'config.yaml'))).resolves.toBeDefined();
       await expect(
@@ -225,7 +226,7 @@ describe('comet init E2E', () => {
 
       const projectConfig = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
       expect(projectConfig).toContain('default_workflow: native');
-      expect(projectConfig).toContain('artifact_root: .');
+      expect(projectConfig).toContain('artifact_root: docs');
       expect(mockedExecFileSync.mock.calls.some((call) => String(call[0]) === 'openspec')).toBe(
         false,
       );
@@ -309,13 +310,13 @@ describe('comet init E2E', () => {
     expect(result).toMatchObject({
       workflow: 'native',
       initializedWorkflows: ['native', 'classic'],
-      nativeArtifactRoot: '.',
+      nativeArtifactRoot: 'docs',
     });
     const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
     expect(config).toContain('default_workflow: native');
     expect(config).toContain('- native');
     expect(config).toContain('- classic');
-    await expect(fs.stat(path.join(tmpDir, 'comet', 'changes'))).resolves.toBeDefined();
+    await expect(fs.stat(path.join(tmpDir, 'docs', 'comet', 'changes'))).resolves.toBeDefined();
     await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers', 'specs'))).resolves.toBeDefined();
     await expect(
       fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md')),
@@ -324,6 +325,59 @@ describe('comet init E2E', () => {
       fs.access(path.join(tmpDir, '.comet', 'current-change.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it.each([
+    {
+      label: 'Native',
+      workflow: 'native' as const,
+      artifactRoot: undefined,
+      included: ['docs/comet/'],
+      excluded: ['docs/superpowers/'],
+    },
+    {
+      label: 'Native with a custom root',
+      workflow: 'native' as const,
+      artifactRoot: 'artifacts',
+      included: ['artifacts/comet/'],
+      excluded: ['docs/comet/', 'docs/superpowers/'],
+    },
+    {
+      label: 'Classic',
+      workflow: 'classic' as const,
+      artifactRoot: undefined,
+      included: ['docs/superpowers/specs/', 'docs/superpowers/plans/'],
+      excluded: ['docs/comet/'],
+    },
+    {
+      label: 'Both',
+      workflow: 'both' as const,
+      artifactRoot: undefined,
+      included: ['docs/comet/', 'docs/superpowers/specs/', 'docs/superpowers/plans/'],
+      excluded: [],
+    },
+  ])(
+    'prints only the actual $label workspace paths in the text summary',
+    async ({ workflow, artifactRoot, included, excluded }) => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      const output = (
+        await captureTextOutput(() =>
+          initCommand(tmpDir, {
+            yes: true,
+            workflow,
+            artifactRoot,
+            language: 'en',
+          }),
+        )
+      ).replaceAll('\\', '/');
+
+      for (const expected of included) expect(output).toContain(expected);
+      for (const unexpected of excluded) expect(output).not.toContain(unexpected);
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
 
   it.each([
     { workflow: 'classic' as const, migrated: true },

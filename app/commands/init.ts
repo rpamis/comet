@@ -374,6 +374,7 @@ function displaySummary(
   scope: InstallScope,
   lang: string,
   workflowSelection: InitWorkflowSelection,
+  nativeArtifactRoot: string | null,
 ): void {
   const scopeLabel = scope === 'global' ? os.homedir() : 'project';
   const componentStatuses: Array<[keyof Omit<PlatformResult, 'platform'>, string]> = [
@@ -418,8 +419,21 @@ function displaySummary(
     }
   }
 
-  if (scope === 'project') {
+  const showNativeWorkspace =
+    scope === 'project' &&
+    includesWorkflow(workflowSelection, 'native') &&
+    nativeArtifactRoot !== null;
+  const showClassicWorkspace =
+    scope === 'project' && includesWorkflow(workflowSelection, 'classic');
+  if (showNativeWorkspace || showClassicWorkspace) {
     console.log(`\n  ${t(lang, 'workingDirs')}`);
+    if (showNativeWorkspace) {
+      const root = nativeArtifactRoot === '.' ? '' : `${nativeArtifactRoot}/`;
+      console.log(`    ${t(lang, 'nativeWorkingDir')} ${root}comet/`);
+    }
+    if (showClassicWorkspace) {
+      console.log(`    ${t(lang, 'classicWorkingDirs')}`);
+    }
   }
 
   if (failures.length === 0) {
@@ -1008,7 +1022,7 @@ export async function initCommand(
     return { status: completionStatus };
   }
 
-  displaySummary(results, scope, lang, workflowSelection);
+  displaySummary(results, scope, lang, workflowSelection, nativeArtifactRoot);
   return { status: completionStatus };
 }
 

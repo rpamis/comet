@@ -54,6 +54,22 @@ describe('Native runtime release asset', () => {
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
   });
 
+  it('documents the docs-based default artifact root bilingually', async () => {
+    const english = await fs.readFile(
+      path.resolve('assets', 'skills', 'comet-native', 'reference', 'commands.md'),
+      'utf8',
+    );
+    const chinese = await fs.readFile(
+      path.resolve('assets', 'skills-zh', 'comet-native', 'reference', 'commands.md'),
+      'utf8',
+    );
+
+    expect(english).toContain(
+      '`new` creates default configuration and `<project>/docs/comet/` when configuration is absent.',
+    );
+    expect(chinese).toContain('`new` 在配置缺失时创建默认配置和 `<project>/docs/comet/`。');
+  });
+
   it('detects a stale generated runtime', async () => {
     const original = await fs.readFile(runtime);
     try {

@@ -176,7 +176,7 @@ async function configuredPaths(projectRoot: string): Promise<{
 
 async function doctorPaths(projectRoot: string): Promise<NativeProjectPaths> {
   const config = await readProjectConfig(projectRoot);
-  return nativeProjectPaths(projectRoot, config?.native.artifact_root ?? '.');
+  return nativeProjectPaths(projectRoot, config?.native.artifact_root ?? 'docs');
 }
 
 function success(command: string, data: unknown, text?: string): DispatchResult {
@@ -230,7 +230,7 @@ async function dispatch(
       throw new Error(`Native root move ${existing.native.pending_root_move.id} is incomplete`);
     }
     const artifactRoot = normalizeArtifactRootRef(
-      requestedRoot ?? existing?.native.artifact_root ?? '.',
+      requestedRoot ?? existing?.native.artifact_root ?? 'docs',
     );
     if (existing && requestedRoot && existing.native.artifact_root !== artifactRoot) {
       throw new Error(
@@ -284,7 +284,7 @@ async function dispatch(
     assertNoArguments(rawArgs);
     const shouldWriteConfig = config === null;
     if (!config) {
-      config = defaultProjectConfig('.', language);
+      config = defaultProjectConfig('docs', language);
     }
     if (config.native.pending_root_move) {
       throw new Error(`Native root move ${config.native.pending_root_move.id} is incomplete`);

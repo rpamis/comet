@@ -26,7 +26,7 @@ describe('Comet init workflow policy', () => {
     await expect(resolveInitWorkflow(projectRoot)).resolves.toEqual({
       workflow: 'native',
       source: 'new-project-default',
-      artifactRoot: '.',
+      artifactRoot: 'docs',
       writeProjectConfig: true,
       legacyEvidence: [],
     });
@@ -132,7 +132,7 @@ describe('Comet init workflow policy', () => {
     await expect(resolveInitWorkflow(projectRoot, { workflow: 'classic' })).resolves.toEqual({
       workflow: 'classic',
       source: 'explicit-option',
-      artifactRoot: '.',
+      artifactRoot: 'docs',
       writeProjectConfig: true,
       legacyEvidence: [],
     });

@@ -52,6 +52,25 @@ describe('Comet Native CLI dispatcher', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('initializes docs as the default Native artifact root', async () => {
+    const initialized = json(await runNativeCli(['init', '--json', ...projectArgs()]));
+
+    expect(initialized).toMatchObject({
+      command: 'init',
+      exitCode: 0,
+      data: { artifactRoot: 'docs', language: 'en' },
+    });
+    await expect(
+      fs.stat(path.join(projectRoot, 'docs', 'comet', 'changes')),
+    ).resolves.toBeDefined();
+    await expect(fs.access(path.join(projectRoot, 'comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(
+      fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),
+    ).resolves.toContain('artifact_root: docs');
+  });
+
   it('returns structured baseline diagnostics when change creation cannot capture a complete baseline', async () => {
     await fs.writeFile(
       path.join(projectRoot, 'oversized-baseline.bin'),
@@ -280,7 +299,7 @@ Pass.
 
   it('pages every Runtime-derived acceptance ID through the public status command', async () => {
     await runNativeCli(['new', 'paged-acceptance', ...projectArgs()]);
-    const paths = await nativeProjectPaths(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'paged-acceptance');
     const acceptanceExamples = Array.from(
       { length: 17 },
@@ -403,8 +422,14 @@ Pass.
     expect(result.exitCode).toBe(0);
     expect(json(result)).toMatchObject({ data: { name: 'default-root', phase: 'shape' } });
     expect(await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8')).toContain(
-      'artifact_root: .',
+      'artifact_root: docs',
     );
+    await expect(
+      fs.stat(path.join(projectRoot, 'docs', 'comet', 'changes', 'default-root')),
+    ).resolves.toBeDefined();
+    await expect(fs.access(path.join(projectRoot, 'comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
     await expect(fs.access(path.join(projectRoot, '.comet'))).resolves.toBeUndefined();
     await expect(fs.access(path.join(projectRoot, 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -429,7 +454,7 @@ Pass.
     expect(missing.exitCode).toBe(65);
     expect(json(missing)).toMatchObject({ error: { code: 'invalid-data' } });
 
-    await runNativeCli(['init', ...projectArgs()]);
+    await runNativeCli(['init', '--root', '.', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, '.');
     const lock = await acquireNativeLock(paths, 'root-move', 'archive concurrent-change');
     try {
@@ -461,7 +486,7 @@ Pass.
 
   it('records explicit confirmation through Shape next without editing change state', async () => {
     await runNativeCli(['new', 'confirmed-shape', ...projectArgs()]);
-    const paths = await nativeProjectPaths(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'confirmed-shape');
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
 
@@ -485,7 +510,7 @@ Pass.
 
   it('records a remove intent and canonical hash through the spec command', async () => {
     await runNativeCli(['new', 'remove-capability', ...projectArgs()]);
-    const paths = await nativeProjectPaths(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     const canonical = path.join(paths.specsDir, 'legacy-capability', 'spec.md');
     await fs.mkdir(path.dirname(canonical), { recursive: true });
     await fs.writeFile(canonical, '# Legacy capability\nRemove this behavior.\n');
@@ -517,7 +542,7 @@ Pass.
 
   it('rejects show when the brief exceeds its bounded-read budget', async () => {
     await runNativeCli(['new', 'oversized-brief', ...projectArgs()]);
-    const paths = await nativeProjectPaths(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     await fs.writeFile(
       path.join(paths.changesDir, 'oversized-brief', 'brief.md'),
       Buffer.alloc(NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes + 1, 0x61),
@@ -533,7 +558,7 @@ Pass.
 
   it('rejects show when proposed specs exceed the count budget', async () => {
     await runNativeCli(['new', 'too-many-specs', ...projectArgs()]);
-    const paths = await nativeProjectPaths(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     const specsDir = path.join(paths.changesDir, 'too-many-specs', 'specs');
     await Promise.all(
       Array.from({ length: NATIVE_CONTRACT_FILE_LIMITS.maxSpecs + 1 }, async (_, index) => {
@@ -553,7 +578,7 @@ Pass.
 
   it('rejects show when proposed specs exceed the aggregate byte budget', async () => {
     await runNativeCli(['new', 'oversized-spec-set', ...projectArgs()]);
-    const paths = await nativeProjectPaths(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     const specsDir = path.join(paths.changesDir, 'oversized-spec-set', 'specs');
     const fileBytes = NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes - 1024;
     await Promise.all(
@@ -574,7 +599,7 @@ Pass.
 
   it('repairs a stale selection without requiring a transaction strategy', async () => {
     await runNativeCli(['init', ...projectArgs()]);
-    const paths = await nativeProjectPaths(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'current-change.json'),
       JSON.stringify({

@@ -130,7 +130,7 @@ function parseConfig(value: unknown): CometProjectConfig {
 }
 
 export function defaultProjectConfig(
-  artifactRoot = '.',
+  artifactRoot = 'docs',
   language: 'en' | 'zh-CN' = 'en',
 ): CometProjectConfig {
   return {
@@ -301,7 +301,7 @@ export async function resolveNativeProject(options: {
       `Configured Native artifact root is ${existing.native.artifact_root}; refusing conflicting root ${explicit}`,
     );
   }
-  const config = existing ?? defaultProjectConfig(explicit ?? '.');
+  const config = existing ?? defaultProjectConfig(explicit ?? 'docs');
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   return { config, paths, configured: existing !== null };
 }

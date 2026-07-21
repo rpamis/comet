@@ -8628,7 +8628,7 @@ function parseConfig(value) {
     }
   };
 }
-function defaultProjectConfig(artifactRoot = ".", language = "en") {
+function defaultProjectConfig(artifactRoot = "docs", language = "en") {
   return {
     schema: "comet.project.v1",
     default_workflow: "native",
@@ -8767,7 +8767,7 @@ async function resolveNativeProject(options) {
       `Configured Native artifact root is ${existing.native.artifact_root}; refusing conflicting root ${explicit}`
     );
   }
-  const config = existing ?? defaultProjectConfig(explicit ?? ".");
+  const config = existing ?? defaultProjectConfig(explicit ?? "docs");
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   return { config, paths, configured: existing !== null };
 }
@@ -25383,7 +25383,7 @@ async function finishForwardMove(options) {
   return committed;
 }
 async function moveNativeRoot(options) {
-  const current = await readProjectConfig(options.projectRoot) ?? defaultProjectConfig(".");
+  const current = await readProjectConfig(options.projectRoot) ?? defaultProjectConfig("docs");
   if (current.native.pending_root_move) {
     throw new Error(
       `Native root move ${current.native.pending_root_move.id} is already incomplete`
@@ -28306,7 +28306,7 @@ async function configuredPaths(projectRoot) {
 }
 async function doctorPaths(projectRoot) {
   const config = await readProjectConfig(projectRoot);
-  return nativeProjectPaths(projectRoot, config?.native.artifact_root ?? ".");
+  return nativeProjectPaths(projectRoot, config?.native.artifact_root ?? "docs");
 }
 function success(command, data, text) {
   return { command, exitCode: 0, data, text: text ?? JSON.stringify(data, null, 2) + "\n" };
@@ -28352,7 +28352,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       throw new Error(`Native root move ${existing.native.pending_root_move.id} is incomplete`);
     }
     const artifactRoot = normalizeArtifactRootRef(
-      requestedRoot ?? existing?.native.artifact_root ?? "."
+      requestedRoot ?? existing?.native.artifact_root ?? "docs"
     );
     if (existing && requestedRoot && existing.native.artifact_root !== artifactRoot) {
       throw new Error(
@@ -28406,7 +28406,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     assertNoArguments(rawArgs);
     const shouldWriteConfig = config === null;
     if (!config) {
-      config = defaultProjectConfig(".", language);
+      config = defaultProjectConfig("docs", language);
     }
     if (config.native.pending_root_move) {
       throw new Error(`Native root move ${config.native.pending_root_move.id} is incomplete`);

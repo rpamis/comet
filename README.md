@@ -165,10 +165,10 @@ classic:
   auto_transition: true
 ```
 
-Native artifacts can also live under a project-relative root such as `docs/comet/`:
+Native stores artifacts under `docs/comet/` by default. To use another project-relative root, specify it explicitly; for example, this uses `artifacts/comet/`:
 
 ```bash
-comet init --workflow native --root docs
+comet init --workflow native --root artifacts
 ```
 
 ## Support for OpenClaw and Hermes, and other AI platforms

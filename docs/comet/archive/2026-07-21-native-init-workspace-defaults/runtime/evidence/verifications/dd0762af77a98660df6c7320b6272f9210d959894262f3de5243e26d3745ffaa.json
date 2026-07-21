@@ -1,0 +1,89 @@
+{
+  "schema": "comet.native.verification-evidence.v1",
+  "change": "native-init-workspace-defaults",
+  "sourceRevision": 5,
+  "result": "pass",
+  "freshness": "complete",
+  "contractHash": "57d0cb3ddb31d7858481fb36a7f1b3aafb383d0c178539b46e68832ddd359e1f",
+  "acceptanceCriteriaHash": "9f79947714d045cf8c44f7ec79b53f582ab60f4c2517e20ec1c7f3d2ed6165ba",
+  "implementationScopeRef": "runtime/evidence/scopes/390395d5dcdfb41d4d60a23d9dc19c5aa4eb33ea8a4653aea841d2be25115f1f.json",
+  "implementationScopeHash": "390395d5dcdfb41d4d60a23d9dc19c5aa4eb33ea8a4653aea841d2be25115f1f",
+  "reportRef": "verification.md",
+  "reportHash": "9489f206493a86b47461579bd342fe7cb422625ac3a65cee9fec11649aafd16c",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v1",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "9f79947714d045cf8c44f7ec79b53f582ab60f4c2517e20ec1c7f3d2ed6165ba",
+    "total": 6,
+    "evidenced": 6,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-134dd14adf0d73e111e3ea7d1a5df878acad997c2af708b90ff86af6547fc9a7",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-classic/classic-project-config.ts",
+          "test/domains/comet-classic/classic-project-config.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-4b09059f600af2a45aa9f72fdec6291e6926eb4d43a2a31af1ccd3da91d71a43",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "app/commands/init.ts",
+          "test/app/init-e2e.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-52c0ff472c399de3fd8ceb2e63dae6d3b7edcac2d655a7d6fb64b4a855e1a10f",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-entry/init-workflow.ts",
+          "test/app/resume-probe.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-97ae3932ec2afce91d07e866335cb07fd1e9623dfd11e30385c63aa2025f1503",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-native/native-cli.ts",
+          "test/domains/comet-native/native-cli.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-99ce6f42e9562a3a9106d77aff12b7145ef9cfb98d752d9f5321dc5714d4b231",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-entry/init-workflow.ts",
+          "test/domains/comet-entry/init-workflow.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-acf5cb881b9f3cd04f61cc0860e02d7734aece817a86ca0ad0e7575f0cb722c0",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "app/commands/init.ts",
+          "test/app/init-e2e.test.ts"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "6f38f7bbe9440fa2a20dfaa38f6700500f48b2e5c02ef8fad20d40059cf9bee2"
+  },
+  "partialAllowanceRef": null,
+  "partialAllowanceHash": null,
+  "receiptRef": null,
+  "createdAt": "2026-07-21T04:33:49.807Z",
+  "envelopeHash": "dd0762af77a98660df6c7320b6272f9210d959894262f3de5243e26d3745ffaa"
+}

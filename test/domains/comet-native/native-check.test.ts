@@ -62,7 +62,7 @@ describe('Native check public seam', () => {
   }> {
     const created = await runNativeCli(['new', changeName, '--json', ...projectArgs()]);
     expect(created.exitCode, created.stderr).toBe(0);
-    const paths = await nativeProjectPaths(projectRoot, '.');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = nativeChangeDir(paths, changeName);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
     await fs.mkdir(path.join(changeDir, 'specs', changeName), { recursive: true });

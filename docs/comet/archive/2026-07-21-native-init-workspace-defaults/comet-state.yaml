@@ -1,0 +1,22 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 7
+name: native-init-workspace-defaults
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: implicit
+approved_contract_hash: 57d0cb3ddb31d7858481fb36a7f1b3aafb383d0c178539b46e68832ddd359e1f
+spec_changes:
+  - capability: native-init-workspace-defaults
+    operation: create
+    source: specs/native-init-workspace-defaults/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/390395d5dcdfb41d4d60a23d9dc19c5aa4eb33ea8a4653aea841d2be25115f1f.json
+verification_evidence: runtime/evidence/verifications/dd0762af77a98660df6c7320b6272f9210d959894262f3de5243e26d3745ffaa.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-21
+run_id: 8403666e-43f0-42f0-b397-5842022c14a7

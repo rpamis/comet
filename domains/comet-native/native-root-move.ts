@@ -859,7 +859,7 @@ export async function moveNativeRoot(options: {
   now?: Date;
   hooks?: NativeTransactionHooks;
 }): Promise<{ fromNativeRoot: string; toNativeRoot: string; transactionId: string }> {
-  const current = (await readProjectConfig(options.projectRoot)) ?? defaultProjectConfig('.');
+  const current = (await readProjectConfig(options.projectRoot)) ?? defaultProjectConfig('docs');
   if (current.native.pending_root_move) {
     throw new Error(
       `Native root move ${current.native.pending_root_move.id} is already incomplete`,

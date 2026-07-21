@@ -108,7 +108,7 @@ export async function resolveInitWorkflow(
     return {
       workflow: requestedWorkflow,
       source: 'explicit-option',
-      artifactRoot: requestedArtifactRoot ?? '.',
+      artifactRoot: requestedArtifactRoot ?? 'docs',
       writeProjectConfig: true,
       legacyEvidence,
     };
@@ -117,7 +117,7 @@ export async function resolveInitWorkflow(
     return {
       workflow: 'classic',
       source: 'legacy-project',
-      artifactRoot: '.',
+      artifactRoot: 'docs',
       writeProjectConfig: false,
       legacyEvidence,
     };
@@ -125,7 +125,7 @@ export async function resolveInitWorkflow(
   return {
     workflow: 'native',
     source: 'new-project-default',
-    artifactRoot: '.',
+    artifactRoot: 'docs',
     writeProjectConfig: true,
     legacyEvidence: [],
   };

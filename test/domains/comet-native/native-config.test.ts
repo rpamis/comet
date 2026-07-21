@@ -23,6 +23,10 @@ describe('Native project configuration', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('builds the shared default project config with docs as the Native artifact root', () => {
+    expect(defaultProjectConfig().native.artifact_root).toBe('docs');
+  });
+
   it('round-trips a custom artifact root with stable YAML fields', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
 
@@ -103,14 +107,14 @@ describe('Native project configuration', () => {
     expect(resolved.configured).toBe(true);
   });
 
-  it('uses the repository root and default comet directory without config', async () => {
+  it('uses docs as the default artifact root without config', async () => {
     const nested = path.join(projectRoot, 'src');
     await fs.mkdir(nested);
 
     const resolved = await resolveNativeProject({ startPath: nested });
 
-    expect(resolved.config.native.artifact_root).toBe('.');
-    expect(resolved.paths.nativeRoot).toBe(path.join(projectRoot, 'comet'));
+    expect(resolved.config.native.artifact_root).toBe('docs');
+    expect(resolved.paths.nativeRoot).toBe(path.join(projectRoot, 'docs', 'comet'));
     expect(resolved.configured).toBe(false);
   });
 
