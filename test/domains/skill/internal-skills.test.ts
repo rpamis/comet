@@ -82,4 +82,31 @@ describe('internal Skill assets', () => {
     expect(getUserFacingSkillNames(shipped)).not.toContain('runtime');
     expect(await getManifestSkills()).toEqual(getManagedSkillPaths(shipped));
   });
+
+  it('selects Native, Classic, and shared comet-any assets by workflow', async () => {
+    const shipped = await readManifest();
+    const native = await getManifestSkills('native');
+    const classic = await getManifestSkills('classic');
+    const both = await getManifestSkills('both');
+
+    expect(native).toEqual(
+      getManagedSkillPaths(shipped).filter(
+        (skillPath) =>
+          skillPath === 'comet/SKILL.md' ||
+          skillPath === 'comet/scripts/comet-entry-runtime.mjs' ||
+          skillPath === 'comet/scripts/comet-hook-router.mjs' ||
+          skillPath.startsWith('comet-native/') ||
+          skillPath.startsWith('comet-any/'),
+      ),
+    );
+    expect(native).toContain('comet-any/SKILL.md');
+    expect(native).not.toContain('comet-classic/SKILL.md');
+    expect(native).not.toContain('comet-open/SKILL.md');
+
+    expect(classic).toContain('comet-any/SKILL.md');
+    expect(classic).toContain('comet-classic/SKILL.md');
+    expect(classic).toContain('comet-open/SKILL.md');
+    expect(classic).not.toContain('comet-native/SKILL.md');
+    expect(both).toEqual(getManagedSkillPaths(shipped));
+  });
 });

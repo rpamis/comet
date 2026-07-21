@@ -46,6 +46,11 @@ const LEGACY_HOOK_SCRIPTS = [
   'comet-native/scripts/comet-native-hook-guard.mjs',
 ] as const;
 const LEGACY_RULE_FILES = ['comet-phase-guard.md', 'comet-native-phase-guard.md'] as const;
+const NATIVE_SHARED_SKILL_PATHS = new Set([
+  'comet/SKILL.md',
+  'comet/scripts/comet-entry-runtime.mjs',
+  'comet/scripts/comet-hook-router.mjs',
+]);
 
 interface HookCommandContext {
   platformId: string;
@@ -88,14 +93,48 @@ function getManagedSkillPaths(manifest: Manifest): string[] {
   return [...new Set([...manifest.skills, ...(manifest.internalSkills ?? [])])];
 }
 
+function isManagedSkillPathForSelection(
+  skillPath: string,
+  workflowSelection: InitWorkflowSelection,
+): boolean {
+  if (workflowSelection === 'both') return true;
+  if (workflowSelection === 'classic') return !skillPath.startsWith('comet-native/');
+  return (
+    NATIVE_SHARED_SKILL_PATHS.has(skillPath) ||
+    skillPath.startsWith('comet-native/') ||
+    skillPath.startsWith('comet-any/')
+  );
+}
+
+function getManagedSkillPathsForSelection(
+  manifest: Manifest,
+  workflowSelection: InitWorkflowSelection,
+): string[] {
+  return getManagedSkillPaths(manifest).filter((skillPath) =>
+    isManagedSkillPathForSelection(skillPath, workflowSelection),
+  );
+}
+
+function getUserFacingSkillPathsForSelection(
+  manifest: Manifest,
+  workflowSelection: InitWorkflowSelection,
+): string[] {
+  return manifest.skills.filter((skillPath) =>
+    isManagedSkillPathForSelection(skillPath, workflowSelection),
+  );
+}
+
 function getUserFacingSkillNames(manifest: Manifest): string[] {
   return getTopLevelSkillNames(manifest.skills);
 }
 
-function getManagedSkillReplacementPaths(manifest: Manifest): Set<string> {
+function getManagedSkillReplacementPaths(
+  manifest: Manifest,
+  workflowSelection: InitWorkflowSelection = 'both',
+): Set<string> {
   const allowed = new Set<string>();
 
-  for (const skillPath of getManagedSkillPaths(manifest)) {
+  for (const skillPath of getManagedSkillPathsForSelection(manifest, workflowSelection)) {
     const parts = skillPath.split('/').filter(Boolean);
     for (let depth = 1; depth <= parts.length; depth++) {
       allowed.add(parts.slice(0, depth).join('/'));
@@ -105,10 +144,13 @@ function getManagedSkillReplacementPaths(manifest: Manifest): Set<string> {
   return allowed;
 }
 
-function getManagedSkillTopLevelEntries(manifest: Manifest): string[] {
+function getManagedSkillTopLevelEntries(
+  manifest: Manifest,
+  workflowSelection: InitWorkflowSelection = 'both',
+): string[] {
   const entries = new Set<string>();
 
-  for (const skillPath of getManagedSkillPaths(manifest)) {
+  for (const skillPath of getManagedSkillPathsForSelection(manifest, workflowSelection)) {
     const [topLevel] = skillPath.split('/').filter(Boolean);
     if (topLevel) entries.add(topLevel);
   }
@@ -246,9 +288,10 @@ async function prepareManagedSkillCopyTarget(
   baseDir: string,
   platform: Platform,
   scope: InstallScope = 'project',
+  workflowSelection: InitWorkflowSelection = 'both',
 ): Promise<void> {
   const manifest = await readManifest();
-  const managedEntries = new Set(getManagedSkillTopLevelEntries(manifest));
+  const managedEntries = new Set(getManagedSkillTopLevelEntries(manifest, workflowSelection));
   const skillsRoot = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
   const rootStat = await lstatOrNull(skillsRoot);
   if (!rootStat) return;
@@ -289,7 +332,7 @@ async function prepareNativeSkillInstallTarget(
   action: 'overwrite' | 'fill' | 'skip',
 ): Promise<void> {
   if (action !== 'skip') {
-    await prepareManagedSkillCopyTarget(baseDir, platform, scope);
+    await prepareManagedSkillCopyTarget(baseDir, platform, scope, 'native');
   }
   if (action === 'overwrite') return;
 
@@ -301,6 +344,8 @@ async function prepareNativeSkillInstallTarget(
       (relativePath) =>
         relativePath === 'comet/SKILL.md' ||
         relativePath === 'comet/scripts/comet-entry-runtime.mjs' ||
+        relativePath === 'comet/scripts/comet-hook-router.mjs' ||
+        relativePath.startsWith('comet-any/') ||
         relativePath.startsWith('comet-native/'),
     )
     .map((relativePath) => {
@@ -380,6 +425,7 @@ async function installSkillsAsSymlink(
   overwrite: boolean,
   languageSkillsDir: string = 'skills',
   scope: InstallScope = 'project',
+  workflowSelection: InitWorkflowSelection = 'both',
 ): Promise<{ copied: number; skipped: number; failed: number }> {
   const centralDir = getCentralSkillsDir(baseDir, scope);
   const assetsDir = getAssetsDir();
@@ -393,15 +439,17 @@ async function installSkillsAsSymlink(
   if (!manifest || !Array.isArray(manifest.skills)) {
     throw new Error(`Invalid manifest at ${manifestPath}: "skills" must be an array`);
   }
-  const managedSkillReplacementPaths = getManagedSkillReplacementPaths(manifest);
-  const managedSkillTopLevelEntries = getManagedSkillTopLevelEntries(manifest);
+  const managedSkillPaths = getManagedSkillPathsForSelection(manifest, workflowSelection);
+  const userFacingSkillPaths = getUserFacingSkillPathsForSelection(manifest, workflowSelection);
+  const managedSkillReplacementPaths = getManagedSkillReplacementPaths(manifest, workflowSelection);
+  const managedSkillTopLevelEntries = getManagedSkillTopLevelEntries(manifest, workflowSelection);
 
   // Step 1: Copy skills to central store
   let copied = 0;
   let skippedCount = 0;
   let failedCount = 0;
 
-  for (const skillRelPath of getManagedSkillPaths(manifest)) {
+  for (const skillRelPath of managedSkillPaths) {
     const isScript = skillRelPath.includes('/scripts/');
     const sourceDir = isScript ? 'skills' : languageSkillsDir;
     const src = path.join(assetsDir, sourceDir, skillRelPath);
@@ -445,7 +493,7 @@ async function installSkillsAsSymlink(
     const result = await createOpenCodeCommands(
       baseDir,
       platform,
-      manifest.skills,
+      userFacingSkillPaths,
       overwrite,
       scope,
       languageSkillsDir,
@@ -460,7 +508,7 @@ async function installSkillsAsSymlink(
     const result = await createPiCommandExtension(
       baseDir,
       platform,
-      manifest.skills,
+      userFacingSkillPaths,
       overwrite,
       scope,
     );
@@ -479,9 +527,17 @@ async function copyCometSkillsForPlatform(
   languageSkillsDir: string = 'skills',
   scope: InstallScope = 'project',
   installMode: InstallMode = 'copy',
+  workflowSelection: InitWorkflowSelection = 'both',
 ): Promise<{ copied: number; skipped: number; failed: number }> {
   if (installMode === 'symlink') {
-    return installSkillsAsSymlink(baseDir, platform, overwrite, languageSkillsDir, scope);
+    return installSkillsAsSymlink(
+      baseDir,
+      platform,
+      overwrite,
+      languageSkillsDir,
+      scope,
+      workflowSelection,
+    );
   }
 
   const assetsDir = getAssetsDir();
@@ -498,8 +554,10 @@ async function copyCometSkillsForPlatform(
   let copied = 0;
   let skippedCount = 0;
   let failedCount = 0;
+  const managedSkillPaths = getManagedSkillPathsForSelection(manifest, workflowSelection);
+  const userFacingSkillPaths = getUserFacingSkillPathsForSelection(manifest, workflowSelection);
 
-  for (const skillRelPath of getManagedSkillPaths(manifest)) {
+  for (const skillRelPath of managedSkillPaths) {
     const isScript = skillRelPath.includes('/scripts/');
     const sourceDir = isScript ? 'skills' : languageSkillsDir;
 
@@ -527,7 +585,7 @@ async function copyCometSkillsForPlatform(
     const result = await createOpenCodeCommands(
       baseDir,
       platform,
-      manifest.skills,
+      userFacingSkillPaths,
       overwrite,
       scope,
       languageSkillsDir,
@@ -541,7 +599,7 @@ async function copyCometSkillsForPlatform(
     const result = await createPiCommandExtension(
       baseDir,
       platform,
-      manifest.skills,
+      userFacingSkillPaths,
       overwrite,
       scope,
     );
@@ -712,9 +770,11 @@ async function readManifest(): Promise<Manifest> {
   return readJson<Manifest>(manifestPath);
 }
 
-async function getManifestSkills(): Promise<string[]> {
+async function getManifestSkills(
+  workflowSelection: InitWorkflowSelection = 'both',
+): Promise<string[]> {
   const manifest = await readManifest();
-  return getManagedSkillPaths(manifest);
+  return getManagedSkillPathsForSelection(manifest, workflowSelection);
 }
 
 /**
@@ -1711,6 +1771,7 @@ export {
   installCometHooksForPlatform,
   readManifest,
   getManagedSkillPaths,
+  getManagedSkillPathsForSelection,
   getManifestSkills,
   getUserFacingSkillNames,
   createWorkingDirs,

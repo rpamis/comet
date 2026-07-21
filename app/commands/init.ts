@@ -708,6 +708,7 @@ export async function initCommand(
         language.skillsDir,
         scope,
         installMode,
+        workflowSelection,
       );
       skillFailed = failed > 0;
       cmStatus = failed > 0 ? 'failed' : copied > 0 ? 'installed' : 'skipped';

@@ -1898,6 +1898,12 @@ describe('update command helpers', () => {
       fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet-native', 'SKILL.md'), 'utf8'),
     ).resolves.toContain('name: comet-native');
     await expect(
+      fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet-any', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('name: comet-any');
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'SKILL.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(
       fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'keep.md'), 'utf8'),
     ).resolves.toBe('keep classic history\n');
     await expect(fs.access(path.join(tmpDir, '.comet', 'skills'))).rejects.toMatchObject({

@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { doctorCommand } from '../../app/commands/doctor.js';
 import {
+  copyCometSkillsForPlatform,
   copyCometRulesForPlatform,
   installCometHooksForPlatform,
 } from '../../domains/skill/platform-install.js';
@@ -183,6 +184,27 @@ describe('doctor command', () => {
     expect(output).toContain('skills: Claude Code (project): partial');
     expect(output).toContain('run: comet update --scope project');
     expect(output).not.toContain('missing 31:');
+  });
+
+  it('treats a workflow-scoped Native Skill install as complete without Classic assets', async () => {
+    const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
+    await copyCometSkillsForPlatform(tmpDir, claude, true, 'skills', 'project', 'copy', 'native');
+    await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
+
+    const results = await collectDoctorResults(tmpDir);
+    expect(results).toContainEqual(
+      expect.objectContaining({
+        check: 'skills: Claude Code (project)',
+        status: 'pass',
+        message: expect.stringContaining('complete'),
+      }),
+    );
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'skills', 'comet-any', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'SKILL.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('warns when a detected complete Skill install is missing its Rule and Hook', async () => {

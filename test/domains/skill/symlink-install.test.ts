@@ -177,6 +177,29 @@ describe('symlink install mode', () => {
       expect(linkedPath).toBe(expectedTarget);
     });
 
+    it('links only Classic plus shared comet-any assets for a Classic install', async () => {
+      const result = await copyCometSkillsForPlatform(
+        tmpDir,
+        mockPlatform,
+        true,
+        'skills',
+        'project',
+        'symlink',
+        'classic',
+      );
+
+      expect(result.failed).toBe(0);
+      await expect(
+        readFile(path.join(tmpDir, '.claude', 'skills', 'comet-any', 'SKILL.md'), 'utf8'),
+      ).resolves.toContain('name: comet-any');
+      await expect(
+        readFile(path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'SKILL.md'), 'utf8'),
+      ).resolves.toContain('name: comet-classic');
+      await expect(
+        lstat(path.join(tmpDir, '.claude', 'skills', 'comet-native')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
     it('skips existing files in central store when overwrite is false', async () => {
       // First install
       await copyCometSkillsForPlatform(tmpDir, mockPlatform, false, 'skills', 'project', 'symlink');

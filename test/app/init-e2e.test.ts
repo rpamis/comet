@@ -44,6 +44,25 @@ async function readManifest() {
   return JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
 }
 
+function isNativeInstallSkillPath(skillPath: string): boolean {
+  return (
+    skillPath === 'comet/SKILL.md' ||
+    skillPath === 'comet/scripts/comet-entry-runtime.mjs' ||
+    skillPath === 'comet/scripts/comet-hook-router.mjs' ||
+    skillPath.startsWith('comet-native/') ||
+    skillPath.startsWith('comet-any/')
+  );
+}
+
+function skillPathsForWorkflow(
+  manifest: { skills: string[] },
+  workflow: 'native' | 'classic' | 'both',
+): string[] {
+  if (workflow === 'both') return manifest.skills;
+  if (workflow === 'native') return manifest.skills.filter(isNativeInstallSkillPath);
+  return manifest.skills.filter((skillPath) => !skillPath.startsWith('comet-native/'));
+}
+
 function mockExternalSuccess() {
   mockedExecFileSync.mockImplementation((command: unknown, args?: unknown, opts?: unknown) => {
     const cmd = String(command);
@@ -206,9 +225,19 @@ describe('comet init E2E', () => {
       expect(claudeResult?.superpowers).toBe('skipped');
 
       const manifest = await readManifest();
-      for (const skillPath of manifest.skills) {
+      const managedSkillPaths = [
+        ...manifest.skills,
+        ...(manifest.internalSkills ?? []),
+      ] as string[];
+      for (const skillPath of managedSkillPaths.filter(isNativeInstallSkillPath)) {
         const dest = path.join(tmpDir, '.claude', 'skills', skillPath);
         await expect(fs.access(dest)).resolves.toBeUndefined();
+      }
+      for (const skillPath of managedSkillPaths.filter(
+        (skillPath) => !isNativeInstallSkillPath(skillPath),
+      )) {
+        const dest = path.join(tmpDir, '.claude', 'skills', skillPath);
+        await expect(fs.access(dest)).rejects.toMatchObject({ code: 'ENOENT' });
       }
 
       await expect(fs.stat(path.join(tmpDir, 'docs', 'comet', 'specs'))).resolves.toBeDefined();
@@ -323,6 +352,11 @@ describe('comet init E2E', () => {
     await expect(
       fs.stat(path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md')),
     ).resolves.toBeDefined();
+    for (const skill of ['comet-any', 'comet-native', 'comet-classic', 'comet-open']) {
+      await expect(
+        fs.access(path.join(tmpDir, '.claude', 'skills', skill, 'SKILL.md')),
+      ).resolves.toBeUndefined();
+    }
     await expect(
       fs.access(path.join(tmpDir, '.comet', 'current-change.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
@@ -476,10 +510,18 @@ describe('comet init E2E', () => {
       expect(claudeResult?.comet).toBe('installed');
 
       const manifest = await readManifest();
-      for (const skillPath of manifest.skills) {
+      for (const skillPath of skillPathsForWorkflow(manifest, workflow)) {
         await expect(
           fs.access(path.join(tmpDir, '.claude', 'skills', skillPath)),
         ).resolves.toBeUndefined();
+      }
+      const excludedPaths = manifest.skills.filter(
+        (skillPath: string) => !skillPathsForWorkflow(manifest, workflow).includes(skillPath),
+      );
+      for (const skillPath of excludedPaths) {
+        await expect(
+          fs.access(path.join(tmpDir, '.claude', 'skills', skillPath)),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
       }
     },
   );
@@ -515,7 +557,7 @@ describe('comet init E2E', () => {
     ).resolves.toBeUndefined();
     await expect(
       fs.access(path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'SKILL.md')),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('does not activate Native with --skip-existing when required Native assets are missing', async () => {
@@ -538,7 +580,7 @@ describe('comet init E2E', () => {
         workflow: 'native',
         skipExisting: true,
       }),
-    ).rejects.toThrow(/required Native asset comet-native\/SKILL\.md is missing/u);
+    ).rejects.toThrow(/required Native asset comet-any\/SKILL\.md is missing/u);
 
     await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -777,10 +819,13 @@ describe('comet init E2E', () => {
       expect(config).toContain('language: en');
 
       const manifest = await readManifest();
-      for (const skillPath of manifest.skills) {
+      for (const skillPath of skillPathsForWorkflow(manifest, 'classic')) {
         const dest = path.join(fakeHome, '.claude', 'skills', skillPath);
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }
+      await expect(
+        fs.access(path.join(fakeHome, '.claude', 'skills', 'comet-native', 'SKILL.md')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
 
       await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers', 'specs'))).rejects.toThrow();
     },
@@ -1258,7 +1303,7 @@ describe('comet init E2E', () => {
           '.mimocode',
         ];
         for (const platform of platformDirs) {
-          for (const skillPath of manifest.skills) {
+          for (const skillPath of skillPathsForWorkflow(manifest, 'native')) {
             const dest = path.join(tmpDir, platform, 'skills', skillPath);
             await expect(fs.access(dest)).resolves.toBeUndefined();
           }
@@ -1269,11 +1314,14 @@ describe('comet init E2E', () => {
         ).rejects.toThrow();
 
         await expect(
-          fs.access(path.join(tmpDir, '.opencode', 'commands', 'comet-open.md')),
+          fs.access(path.join(tmpDir, '.opencode', 'commands', 'comet-any.md')),
         ).resolves.toBeUndefined();
         await expect(
-          fs.access(path.join(tmpDir, '.mimocode', 'commands', 'comet-open.md')),
+          fs.access(path.join(tmpDir, '.mimocode', 'commands', 'comet-any.md')),
         ).resolves.toBeUndefined();
+        await expect(
+          fs.access(path.join(tmpDir, '.opencode', 'commands', 'comet-open.md')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
         await expect(
           fs.access(path.join(tmpDir, '.pi', 'extensions', 'comet-commands.ts')),
         ).resolves.toBeUndefined();
@@ -1304,7 +1352,7 @@ describe('comet init E2E', () => {
         expect(result.selectedPlatforms).toEqual(['antigravity', 'antigravity2']);
 
         const manifest = await readManifest();
-        for (const skillPath of manifest.skills) {
+        for (const skillPath of skillPathsForWorkflow(manifest, 'classic')) {
           const dest = path.join(fakeHome, '.gemini', 'antigravity', 'skills', skillPath);
           await expect(fs.access(dest)).resolves.toBeUndefined();
 
@@ -1337,7 +1385,7 @@ describe('comet init E2E', () => {
       expect(result.selectedPlatforms).toEqual(['opencode']);
 
       const manifest = await readManifest();
-      for (const skillPath of manifest.skills) {
+      for (const skillPath of skillPathsForWorkflow(manifest, 'classic')) {
         const dest = path.join(fakeHome, '.config', 'opencode', 'skills', skillPath);
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }
@@ -1374,7 +1422,7 @@ describe('comet init E2E', () => {
       expect(result.selectedPlatforms).toEqual(['mimocode']);
 
       const manifest = await readManifest();
-      for (const skillPath of manifest.skills) {
+      for (const skillPath of skillPathsForWorkflow(manifest, 'classic')) {
         const dest = path.join(fakeHome, '.config', 'mimocode', 'skills', skillPath);
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }
@@ -1445,7 +1493,7 @@ describe('comet init E2E', () => {
       expect(result.selectedPlatforms).toEqual(['lingma']);
 
       const manifest = await readManifest();
-      for (const skillPath of manifest.skills) {
+      for (const skillPath of skillPathsForWorkflow(manifest, 'classic')) {
         const dest = path.join(fakeHome, '.lingma', 'skills', skillPath);
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }
@@ -1476,7 +1524,7 @@ describe('comet init E2E', () => {
       expect(result.selectedPlatforms).toEqual(['kimicode']);
 
       const manifest = await readManifest();
-      for (const skillPath of manifest.skills) {
+      for (const skillPath of skillPathsForWorkflow(manifest, 'classic')) {
         const dest = path.join(fakeHome, '.kimi-code', 'skills', skillPath);
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }
@@ -1507,7 +1555,7 @@ describe('comet init E2E', () => {
       expect(result.selectedPlatforms).toEqual(['zcode']);
 
       const manifest = await readManifest();
-      for (const skillPath of manifest.skills) {
+      for (const skillPath of skillPathsForWorkflow(manifest, 'classic')) {
         const dest = path.join(fakeHome, '.zcode', 'skills', skillPath);
         await expect(fs.access(dest)).resolves.toBeUndefined();
       }

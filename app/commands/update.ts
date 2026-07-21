@@ -1276,9 +1276,17 @@ async function updateSingleProject(
     );
   }
 
-  log(
-    `\n  ${t(lang, 'copyingSkillsFiles')} ${(await getManifestSkills()).length} skill files...\n`,
+  const targetWorkflowSelections = targets.map((target) =>
+    target.scope === 'global' ? 'classic' : projectWorkflowSelection,
   );
+  const updateSkillPaths = new Set(
+    (
+      await Promise.all(
+        [...new Set(targetWorkflowSelections)].map((selection) => getManifestSkills(selection)),
+      )
+    ).flat(),
+  );
+  log(`\n  ${t(lang, 'copyingSkillsFiles')} ${updateSkillPaths.size} skill files...\n`);
 
   let totalCopied = 0;
   let totalFailed = 0;
@@ -1297,8 +1305,15 @@ async function updateSingleProject(
     const languageSkillsDir = languageToSkillsDir(languageId);
     const targetInstallMode = installModeFor(target);
     const nativeProjectTarget = nativeProject && target.scope === 'project';
+    const targetWorkflowSelection =
+      target.scope === 'global' ? 'classic' : projectWorkflowSelection;
     if (nativeProjectTarget) {
-      await prepareManagedSkillCopyTarget(baseDir, target.platform, target.scope);
+      await prepareManagedSkillCopyTarget(
+        baseDir,
+        target.platform,
+        target.scope,
+        targetWorkflowSelection,
+      );
     }
     const { copied, skipped, failed } = await copyCometSkillsForPlatform(
       baseDir,
@@ -1307,6 +1322,7 @@ async function updateSingleProject(
       languageSkillsDir,
       target.scope,
       targetInstallMode,
+      targetWorkflowSelection,
     );
     const cleanupResult =
       failed === 0

@@ -17,6 +17,7 @@ import {
   readManifest,
   getAssetsDir,
   getManagedSkillPaths,
+  getManagedSkillPathsForSelection,
   installCometHooksForPlatform,
 } from '../../domains/skill/platform-install.js';
 import {
@@ -336,8 +337,6 @@ async function checkSkillCompleteness(
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const manifest = await readManifest();
-  const managedSkills = getManagedSkillPaths(manifest);
-  const total = managedSkills.length;
 
   let anyCometInstall = false;
   const scopeState: Record<InstallScope, { hasInstall: boolean; hasComplete: boolean }> = {
@@ -345,6 +344,11 @@ async function checkSkillCompleteness(
     global: { hasInstall: false, hasComplete: false },
   };
   for (const base of getScopeBases(projectPath, scope, context)) {
+    const managedSkills = getManagedSkillPathsForSelection(
+      manifest,
+      base.scope === 'global' ? 'classic' : workflowSelection,
+    );
+    const total = managedSkills.length;
     const platforms = await getPlatformsForSkillInspection(base.baseDir, base.scope, scope);
     for (const { platform, inspectComponents } of platforms) {
       const skillsDirs = getPlatformSkillsDirs(platform, base.scope);
