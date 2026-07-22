@@ -1577,6 +1577,70 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[PASS] Design Doc declares OpenSpec as canonical spec');
   }, 20_000);
 
+  it('accepts handoff source paths containing regular expression metacharacters', async () => {
+    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+    await createChange(
+      tmpDir,
+      'regex-source-path',
+      [
+        'workflow: full',
+        'phase: design',
+        'build_mode: null',
+        'build_pause: null',
+        'tdd_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        'auto_transition: true',
+        '',
+      ].join('\n'),
+      '- [ ] verify escaped source paths\n',
+    );
+    await writeFile(
+      path.join(
+        tmpDir,
+        'openspec',
+        'changes',
+        'regex-source-path',
+        'specs',
+        'capability[',
+        'spec.md',
+      ),
+      'delta spec\n',
+    );
+
+    const handoff = runNode(tmpDir, handoffScript, ['regex-source-path', 'design', '--write']);
+    expect(handoff.status).toBe(0);
+
+    await writeFile(
+      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'regex-source-path.md'),
+      [
+        '---',
+        'comet_change: regex-source-path',
+        'role: technical-design',
+        'canonical_spec: openspec',
+        '---',
+        '',
+      ].join('\n'),
+    );
+    const state = runNode(tmpDir, stateScript, [
+      'set',
+      'regex-source-path',
+      'design_doc',
+      'docs/superpowers/specs/regex-source-path.md',
+    ]);
+    expect(state.status).toBe(0);
+
+    const result = runNode(tmpDir, guardScript, ['regex-source-path', 'design']);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
+  }, 20_000);
+
   it('generates a beta spec projection handoff with verbatim spec content', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
     await createChange(

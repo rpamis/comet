@@ -133,11 +133,7 @@ function scriptDestination(
   bundleName: string,
   script: BundleCompilerIr['scripts'][number],
 ): string {
-  return path.join(
-    target.layout.scriptsRoot!,
-    bundleName,
-    ...script.path.replace(/^scripts\//, 'scripts/').split('/'),
-  );
+  return path.join(target.layout.scriptsRoot!, bundleName, ...script.path.split('/'));
 }
 
 function scriptCommand(script: BundleCompilerIr['scripts'][number], destination: string): string {

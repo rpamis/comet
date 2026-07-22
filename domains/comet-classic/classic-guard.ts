@@ -657,6 +657,7 @@ async function designHandoffMarkdownTraceable(changeDir: string): Promise<CheckR
   if (!(await nonempty(markdown)))
     return fail(`design handoff markdown is missing or empty: ${markdown}`);
   const source = await fs.readFile(markdown, 'utf8');
+  const lines = new Set(source.split(/\r?\n/u));
   const problems: string[] = [];
   if (!/^Generated-by: comet-handoff\.sh$/mu.test(source)) {
     problems.push('handoff markdown is missing Generated-by marker');
@@ -666,10 +667,10 @@ async function designHandoffMarkdownTraceable(changeDir: string): Promise<CheckR
   }
   for (const file of await handoffSourceFiles(changeDir)) {
     if (!(await exists(file))) continue;
-    if (!new RegExp(`^- Source: ${file}$`, 'mu').test(source)) {
+    if (!lines.has(`- Source: ${file}`)) {
       problems.push(`handoff markdown is missing source reference: ${file}`);
     }
-    if (!new RegExp(`^- SHA256: ${hashFile(file)}$`, 'mu').test(source)) {
+    if (!lines.has(`- SHA256: ${hashFile(file)}`)) {
       problems.push(`handoff markdown is missing current sha256 for: ${file}`);
     }
   }

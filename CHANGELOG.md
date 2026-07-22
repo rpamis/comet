@@ -11,6 +11,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Security
 
 - **Development dependency hardening**: Pins `brace-expansion` to the patched 5.0.7 release across npm and pnpm resolution, preventing malicious brace patterns from causing exponential CPU consumption in the development toolchain.
+- **Classic handoff validation**: Validates recorded handoff source paths with exact line matching instead of project-controlled regular expressions, preventing malformed spec directory names from crashing or stalling the Classic design guard.
 
 ## What's Changed [0.4.0-beta.7] - 2026-07-20
 
