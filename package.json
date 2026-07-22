@@ -91,7 +91,14 @@
   },
   "packageManager": "pnpm@10.18.3",
   "overrides": {
+    "brace-expansion": "5.0.7",
     "esbuild": "0.28.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion": "5.0.7",
+      "esbuild": "0.28.1"
+    }
   },
   "engines": {
     "node": ">=22"

@@ -8,6 +8,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Windows Native file validation**: Native commands now accept stable files when Windows path and handle metadata expose different availability for device or inode identifiers, preventing `comet status`, `comet doctor`, and other Native reads from incorrectly failing with `changed while opening` while preserving replacement and mutation checks.
 
+### Security
+
+- **Development dependency hardening**: Pins `brace-expansion` to the patched 5.0.7 release across npm and pnpm resolution, preventing malicious brace patterns from causing exponential CPU consumption in the development toolchain.
+
 ## What's Changed [0.4.0-beta.7] - 2026-07-20
 
 ### Added
