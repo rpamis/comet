@@ -51,10 +51,6 @@ It allows you to use a toolchain to handle everything from requirements to archi
 >
 > **0.3.9** — Review mode (`off|standard|thorough`) controls Build/Verify code review with project defaults; init/update now use optional dependency prompts, broader CLI i18n, stronger phase guards, and macOS executable bits.
 >
-> **0.3.8** — Adds Kimi Code support, safe multi-platform `comet uninstall`, extended subagent dispatch, shared progressive-loading references, update checks, and pre-commit formatting.
->
-> **0.3.7** — Adds CodeGraph semantic indexing, Beta context compression, active context compression, token optimizations, `auto_transition`, phase guards, optional TDD, and safer archive/verification flow.
->
 > See the website [Changelog](https://docs.comet.rpamis.com/en/changelog) for details.
 
 > Native and Classic are not lightweight and heavyweight tiers, and neither upgrades into the other. Native is for strong models that can plan and verify autonomously; Classic is for scenarios that benefit from a complete phased methodology and stronger constraints.

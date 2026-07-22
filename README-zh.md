@@ -40,20 +40,16 @@
 
 **Comet 是一个面向Coding的可恢复长程任务工作流与 Skill 平台。**
 
-它提供两套彼此独立的需求工作流：面向强模型、只依赖 Comet 自有 runtime 的 Native，以及保留 OpenSpec + Superpowers 完整阶段治理的 Classic；同时覆盖 Skill 创建、评估与发布。
+它提供两套彼此独立的需求工作流：面向强模型、只依赖 Comet 原生 runtime 的 Native，以及保留 OpenSpec + Superpowers 完整阶段治理的 Classic；同时覆盖 Skill 创建、评估与发布。
 
 让你可以用一个工具链处理需求到归档、中断后恢复，将任意Skill组合得像Comet一样，基于科学的**Rubric**、**Pass@k**、**Pass^k**评分演进你的Skill
 
 > [!IMPORTANT]
-> **0.4.0-beta.7** — 新增面向强模型、自包含且可恢复的 Native 工作流，并让 Native 与 Classic 通过统一配置、状态、Guard、Dashboard 和 Eval 入口保持独立协作。
+> **0.4.0-beta.7** — 新增面向强模型、原生且可恢复的 Native 工作流，并让 Native 与 Classic 通过统一配置、状态、Guard、Dashboard 和 Eval 入口保持独立协作。
 >
 > **0.4.0-beta.1** — Comet 升级为纯 Node runtime（不再依赖 Bash/WSL），并带来三大核心能力：用 `/comet-any` 把**任意** Skill 组合成自定义工作流、用 `comet eval` 评估**任意** Skill 并接入 LangSmith、用 `comet dashboard` 在浏览器里可视化每一个 change。
 >
 > **0.3.9** — `review_mode: off|standard|thorough` 控制 Build/Verify 自动代码审查并支持项目级默认；init/update 改为可选依赖安装，补齐 CLI 国际化、阶段守护加固和 macOS 可执行权限。
->
-> **0.3.8** — 新增 Kimi Code 支持、安全的多平台 `comet uninstall`、子代理调度扩展、按需加载共享参考、版本更新检查和 pre-commit 格式化。
->
-> **0.3.7** — 新增 CodeGraph 语义索引、Beta 上下文压缩、主动式上下文压缩、Token 优化、`auto_transition`、阶段守护、可选 TDD 和更稳的归档/验证流程。
 >
 > 详见官网 [Changelog](https://docs.comet.rpamis.com/zh/changelog)。
 
@@ -429,7 +425,7 @@ comet eval ./generated-skill/comet/eval.yaml --suite langsmith --html
 
 ## 技能
 
-`comet init` 会按所选工作流安装技能：Native 只依赖 Comet 自有技能，Classic 会额外安装 OpenSpec 与 Superpowers。
+`comet init` 会按所选工作流安装技能：Native 只依赖 Comet 原生技能，Classic 会额外安装 OpenSpec 与 Superpowers。
 
 ### Comet 技能
 
