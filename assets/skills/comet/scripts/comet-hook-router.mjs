@@ -9054,6 +9054,22 @@ function nativeSensitiveRelativePathReason(relativeRef) {
   return null;
 }
 
+// domains/comet-native/native-file-identity.ts
+function hasPlatformIdentity(value) {
+  return value !== 0 && value !== 0n && value !== "0";
+}
+function hasComparableNativeFileObject(left, right) {
+  return hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev) && hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
+}
+function sameNativeFileObject(left, right) {
+  const comparableDevice = hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev);
+  if (comparableDevice && left.dev !== right.dev) return false;
+  const comparableInode = hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
+  if (comparableInode && left.ino !== right.ino) return false;
+  if (comparableDevice && comparableInode) return true;
+  return left.birthtime === right.birthtime;
+}
+
 // domains/comet-native/native-bounded-file.ts
 var DEFAULT_NATIVE_ARTIFACT_MAX_BYTES = 1024 * 1024;
 function isInside(parent, target) {
@@ -9084,16 +9100,21 @@ function positiveLimit(value) {
   return value;
 }
 function sameDirectoryIdentity(identity, stat) {
-  if (identity.dev !== 0 || identity.ino !== 0 || stat.dev !== 0 || stat.ino !== 0) {
-    return identity.dev === stat.dev && identity.ino === stat.ino;
-  }
-  return identity.birthtimeMs === stat.birthtimeMs;
+  return sameNativeFileObject(
+    { ...identity, birthtime: identity.birthtimeMs },
+    {
+      ...stat,
+      birthtime: stat.birthtimeMs
+    }
+  );
 }
 function sameFileIdentity(left, right) {
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return left.dev === right.dev && left.ino === right.ino;
+  const leftObject = { ...left, birthtime: left.birthtimeMs };
+  const rightObject = { ...right, birthtime: right.birthtimeMs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
-  return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
+  return sameNativeFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function directoryIdentity(directory) {
   const stat = await fs8.lstat(directory);
@@ -9224,10 +9245,13 @@ function positiveLimit2(value) {
   return value;
 }
 function sameDirectoryIdentity2(expected, actual) {
-  if (expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0) {
-    return expected.dev === actual.dev && expected.ino === actual.ino;
-  }
-  return expected.birthtimeMs === actual.birthtimeMs;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs
+    }
+  );
 }
 function asFileIdentity(stat) {
   return {
@@ -9240,8 +9264,13 @@ function asFileIdentity(stat) {
   };
 }
 function sameFileIdentity2(expected, actual) {
-  const sameObject = expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0 ? expected.dev === actual.dev && expected.ino === actual.ino : expected.birthtimeMs === actual.birthtimeMs;
-  return sameObject && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs
+    }
+  ) && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
 }
 async function captureDirectoryIdentity(directory, label) {
   const stat = await fs9.lstat(directory);

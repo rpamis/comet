@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 
 import { resolveContainedNativePath } from './native-paths.js';
+import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 const NATIVE_LOCK_MAX_BYTES = 16 * 1024;
@@ -101,10 +102,12 @@ function sameNativeLockObject(
   left: NativeLockFileIdentity,
   right: NativeLockFileIdentity,
 ): boolean {
-  if (left.device !== '0' || left.inode !== '0' || right.device !== '0' || right.inode !== '0') {
-    return left.device === right.device && left.inode === right.inode;
+  const leftObject = { dev: left.device, ino: left.inode, birthtime: left.birthtimeNs };
+  const rightObject = { dev: right.device, ino: right.inode, birthtime: right.birthtimeNs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
-  return left.birthtimeNs === right.birthtimeNs && left.size === right.size;
+  return sameNativeFileObject(leftObject, rightObject) && left.size === right.size;
 }
 
 function sameNativeLockVersion(

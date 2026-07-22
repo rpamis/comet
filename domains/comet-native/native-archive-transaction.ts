@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
+import { sameNativeFileObject } from './native-file-identity.js';
 import {
   inspectNativeArchiveContent,
   type NativeArchiveContentIdentity,
@@ -189,14 +190,15 @@ function sameFileObject(
   expected: NativeArchiveFileObjectIdentity,
   actual: NativeArchiveFileObjectIdentity,
 ): boolean {
-  if (expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0) {
-    return (
-      expected.dev === actual.dev &&
-      expected.ino === actual.ino &&
-      expected.birthtimeMs === actual.birthtimeMs
-    );
-  }
-  return expected.birthtimeMs === actual.birthtimeMs;
+  return (
+    sameNativeFileObject(
+      { ...expected, birthtime: expected.birthtimeMs },
+      {
+        ...actual,
+        birthtime: actual.birthtimeMs,
+      },
+    ) && expected.birthtimeMs === actual.birthtimeMs
+  );
 }
 
 function sameFileVersion(

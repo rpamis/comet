@@ -16,6 +16,7 @@ import {
 import { writeNativeCheckReceipt } from './native-check-receipt-storage.js';
 import { collectNativeContractFiles } from './native-contract-files.js';
 import { readNativeImplementationScopeBundle } from './native-evidence-storage.js';
+import { sameNativeFileObject } from './native-file-identity.js';
 import { isInsidePath } from './native-paths.js';
 import { createNativeContentSnapshot } from './native-snapshot.js';
 import type {
@@ -177,10 +178,16 @@ function sameDirectoryIdentity(
 ): boolean {
   const stableMetadata =
     identity.birthtimeMs === stat.birthtimeMs && identity.ctimeMs === stat.ctimeMs;
-  if (identity.dev !== 0 || identity.ino !== 0 || stat.dev !== 0 || stat.ino !== 0) {
-    return stableMetadata && identity.dev === stat.dev && identity.ino === stat.ino;
-  }
-  return stableMetadata;
+  return (
+    stableMetadata &&
+    sameNativeFileObject(
+      { ...identity, birthtime: identity.birthtimeMs },
+      {
+        ...stat,
+        birthtime: stat.birthtimeMs,
+      },
+    )
+  );
 }
 
 function sameFileIdentity(left: import('node:fs').Stats, right: import('node:fs').Stats): boolean {
@@ -189,10 +196,16 @@ function sameFileIdentity(left: import('node:fs').Stats, right: import('node:fs'
     left.ctimeMs === right.ctimeMs &&
     left.mtimeMs === right.mtimeMs &&
     left.size === right.size;
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return stableMetadata && left.dev === right.dev && left.ino === right.ino;
-  }
-  return stableMetadata;
+  return (
+    stableMetadata &&
+    sameNativeFileObject(
+      { ...left, birthtime: left.birthtimeMs },
+      {
+        ...right,
+        birthtime: right.birthtimeMs,
+      },
+    )
+  );
 }
 
 async function captureProjectDirectoryChain(

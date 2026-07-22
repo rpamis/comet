@@ -4,6 +4,7 @@ import path from 'node:path';
 import { TextDecoder } from 'node:util';
 
 import { atomicWriteBytes } from './native-atomic-file.js';
+import { sameNativeFileObject } from './native-file-identity.js';
 
 export interface NativeProtectedFileHooks {
   afterParentChainCaptured?: () => void | Promise<void>;
@@ -59,10 +60,13 @@ function sameDirectoryIdentity(
   expected: DirectoryIdentity,
   actual: import('node:fs').Stats,
 ): boolean {
-  if (expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0) {
-    return expected.dev === actual.dev && expected.ino === actual.ino;
-  }
-  return expected.birthtimeMs === actual.birthtimeMs;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs,
+    },
+  );
 }
 
 function asFileIdentity(stat: import('node:fs').Stats): FileIdentity {
@@ -77,12 +81,14 @@ function asFileIdentity(stat: import('node:fs').Stats): FileIdentity {
 }
 
 function sameFileIdentity(expected: FileIdentity, actual: import('node:fs').Stats): boolean {
-  const sameObject =
-    expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0
-      ? expected.dev === actual.dev && expected.ino === actual.ino
-      : expected.birthtimeMs === actual.birthtimeMs;
   return (
-    sameObject &&
+    sameNativeFileObject(
+      { ...expected, birthtime: expected.birthtimeMs },
+      {
+        ...actual,
+        birthtime: actual.birthtimeMs,
+      },
+    ) &&
     expected.birthtimeMs === actual.birthtimeMs &&
     expected.ctimeMs === actual.ctimeMs &&
     expected.mtimeMs === actual.mtimeMs &&

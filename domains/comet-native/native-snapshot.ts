@@ -5,6 +5,7 @@ import path from 'path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
 import { sha256Text } from './native-hash.js';
+import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import { readNativeProtectedTextFile } from './native-protected-file.js';
 import { nativeSensitiveRelativePathReason } from './native-sensitive-paths.js';
@@ -1362,10 +1363,13 @@ function takeLastCompactableOmission(
 }
 
 function sameFileIdentity(left: import('fs').Stats, right: import('fs').Stats): boolean {
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return left.dev === right.dev && left.ino === right.ino;
+  const leftObject = { ...left, birthtime: left.birthtimeMs };
+  const rightObject = { ...right, birthtime: right.birthtimeMs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
   return (
+    sameNativeFileObject(leftObject, rightObject) &&
     left.birthtimeMs === right.birthtimeMs &&
     left.ctimeMs === right.ctimeMs &&
     left.size === right.size

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { atomicWriteJson } from './native-atomic-file.js';
 import { nativeChangeDir } from './native-change.js';
 import { resolveContainedNativePath } from './native-paths.js';
+import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import type { NativeProjectPaths } from './native-types.js';
 import {
   parseNativeImplementationScopeBundle,
@@ -61,17 +62,23 @@ function sameDirectoryIdentity(
   identity: DirectoryIdentity,
   stat: import('node:fs').Stats,
 ): boolean {
-  if (identity.dev !== 0 || identity.ino !== 0 || stat.dev !== 0 || stat.ino !== 0) {
-    return identity.dev === stat.dev && identity.ino === stat.ino;
-  }
-  return identity.birthtimeMs === stat.birthtimeMs;
+  return sameNativeFileObject(
+    { ...identity, birthtime: identity.birthtimeMs },
+    {
+      ...stat,
+      birthtime: stat.birthtimeMs,
+    },
+  );
 }
 
 function sameFileIdentity(left: import('node:fs').Stats, right: import('node:fs').Stats): boolean {
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return left.dev === right.dev && left.ino === right.ino;
+  const leftObject = { ...left, birthtime: left.birthtimeMs };
+  const rightObject = { ...right, birthtime: right.birthtimeMs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
   return (
+    sameNativeFileObject(leftObject, rightObject) &&
     left.birthtimeMs === right.birthtimeMs &&
     left.ctimeMs === right.ctimeMs &&
     left.size === right.size

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { readNativeBoundedTextFile } from '../../../domains/comet-native/native-bounded-file.js';
 
@@ -14,7 +14,28 @@ describe('Native bounded artifact reader', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('rejects a partial Windows identity when the available inode differs', async () => {
+    const file = path.join(root, 'report.md');
+    await fs.writeFile(file, 'stable');
+    const originalLstat = fs.lstat.bind(fs);
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      const stat = await originalLstat(...args);
+      if (path.resolve(args[0].toString()) === file) {
+        Object.defineProperties(stat, {
+          dev: { value: 0 },
+          ino: { value: stat.ino + 1_000_000 },
+        });
+      }
+      return stat;
+    });
+
+    await expect(readNativeBoundedTextFile({ root, ref: 'report.md' })).rejects.toThrow(
+      'changed while opening',
+    );
   });
 
   it('returns only a normalized ref, bounded content identity, and UTF-8 text', async () => {

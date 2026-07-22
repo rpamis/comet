@@ -96,6 +96,43 @@ async function makeMinimalRepository(): Promise<string> {
 }
 
 describe('architecture lint', () => {
+  it('ignores LangSmith experiment logs without excluding LangSmith source', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', 'logs\n');
+    await writeFile(
+      root,
+      'eval/langsmith/logs/experiments/run/artifacts/skill/scripts/runtime.mjs',
+      'export {};\n',
+    );
+
+    const ignoredLog = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs')],
+      {
+        cwd: root,
+        encoding: 'utf8',
+      },
+    );
+
+    expect(ignoredLog.stderr).toBe('');
+    expect(ignoredLog.status).toBe(0);
+
+    await writeFile(root, 'eval/langsmith/source.mjs', 'export {};\n');
+    const realSource = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs')],
+      {
+        cwd: root,
+        encoding: 'utf8',
+      },
+    );
+
+    expect(realSource.status).toBe(1);
+    expect(realSource.stderr).toContain(
+      'eval/langsmith/source.mjs is code outside an approved code root',
+    );
+  });
+
   it('ignores nested local cache directories listed in .gitignore', async () => {
     const root = await makeMinimalRepository();
     await writeFile(root, '.gitignore', 'eval/.cache/\neval/**/.cache/\neval/**/.pytest*/\n');

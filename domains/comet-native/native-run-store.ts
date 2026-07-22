@@ -8,6 +8,7 @@ import { parseStoredRunStateValue, startRunWithStorage } from '../engine/storage
 import type { Checkpoint, EngineAction, RunState, TrajectoryEvent } from '../engine/types.js';
 import type { SkillPackage } from '../skill/types.js';
 import { atomicWriteText } from './native-atomic-file.js';
+import { sameNativeFileObject } from './native-file-identity.js';
 
 export const NATIVE_RUN_IO_LIMITS = {
   runStateBytes: 256 * 1024,
@@ -86,12 +87,14 @@ function asIdentity(stat: import('node:fs').Stats): FileIdentity {
 }
 
 function sameFileIdentity(expected: FileIdentity, actual: import('node:fs').Stats): boolean {
-  const samePlatformIdentity =
-    expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0
-      ? expected.dev === actual.dev && expected.ino === actual.ino
-      : expected.birthtimeMs === actual.birthtimeMs;
   return (
-    samePlatformIdentity &&
+    sameNativeFileObject(
+      { ...expected, birthtime: expected.birthtimeMs },
+      {
+        ...actual,
+        birthtime: actual.birthtimeMs,
+      },
+    ) &&
     expected.birthtimeMs === actual.birthtimeMs &&
     expected.ctimeMs === actual.ctimeMs &&
     expected.mtimeMs === actual.mtimeMs &&
@@ -103,10 +106,13 @@ function sameDirectoryIdentity(
   expected: DirectoryIdentity,
   actual: import('node:fs').Stats,
 ): boolean {
-  if (expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0) {
-    return expected.dev === actual.dev && expected.ino === actual.ino;
-  }
-  return expected.birthtimeMs === actual.birthtimeMs;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs,
+    },
+  );
 }
 
 function runFile(changeDir: string, kind: NativeRunFileKind, relativePath?: string): string {

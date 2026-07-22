@@ -7375,6 +7375,19 @@ import path3 from "path";
 // domains/workflow-contract/project-config.ts
 var import_yaml = __toESM(require_dist(), 1);
 
+// domains/comet-native/native-file-identity.ts
+function hasPlatformIdentity(value) {
+  return value !== 0 && value !== 0n && value !== "0";
+}
+function sameNativeFileObject(left, right) {
+  const comparableDevice = hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev);
+  if (comparableDevice && left.dev !== right.dev) return false;
+  const comparableInode = hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
+  if (comparableInode && left.ino !== right.ino) return false;
+  if (comparableDevice && comparableInode) return true;
+  return left.birthtime === right.birthtime;
+}
+
 // domains/comet-native/native-protected-file.ts
 import { createHash } from "node:crypto";
 import { constants as fsConstants, promises as fs } from "node:fs";
@@ -7391,10 +7404,13 @@ function positiveLimit(value) {
   return value;
 }
 function sameDirectoryIdentity(expected, actual) {
-  if (expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0) {
-    return expected.dev === actual.dev && expected.ino === actual.ino;
-  }
-  return expected.birthtimeMs === actual.birthtimeMs;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs
+    }
+  );
 }
 function asFileIdentity(stat) {
   return {
@@ -7407,8 +7423,13 @@ function asFileIdentity(stat) {
   };
 }
 function sameFileIdentity(expected, actual) {
-  const sameObject = expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0 ? expected.dev === actual.dev && expected.ino === actual.ino : expected.birthtimeMs === actual.birthtimeMs;
-  return sameObject && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs
+    }
+  ) && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
 }
 async function captureDirectoryIdentity(directory, label) {
   const stat = await fs.lstat(directory);

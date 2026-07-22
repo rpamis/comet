@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   copyNativeProtectedFile,
@@ -29,7 +29,33 @@ describe('Native protected file I/O', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(sandbox, { recursive: true, force: true });
+  });
+
+  it('reads a stable file when Windows path stats omit the device id', async () => {
+    const source = path.join(sourceRoot, 'nested', 'spec.md');
+    await fs.writeFile(source, 'trusted source\n');
+    const originalLstat = fs.lstat.bind(fs);
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      const stat = await originalLstat(...args);
+      if (path.resolve(args[0].toString()) === source) {
+        Object.defineProperty(stat, 'dev', { value: 0 });
+      }
+      return stat;
+    });
+
+    await expect(
+      readNativeProtectedFile({
+        root: sourceRoot,
+        file: source,
+        maxBytes: 1024,
+        label: 'Windows protected file',
+      }),
+    ).resolves.toMatchObject({
+      bytes: Buffer.from('trusted source\n'),
+      size: 15,
+    });
   });
 
   it('stops protected directory enumeration at its entry budget', async () => {

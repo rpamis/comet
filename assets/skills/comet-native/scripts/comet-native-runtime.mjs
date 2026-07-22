@@ -7586,6 +7586,22 @@ function nativeSensitiveArtifactReason(paths, relativeRef) {
   return null;
 }
 
+// domains/comet-native/native-file-identity.ts
+function hasPlatformIdentity(value) {
+  return value !== 0 && value !== 0n && value !== "0";
+}
+function hasComparableNativeFileObject(left, right) {
+  return hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev) && hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
+}
+function sameNativeFileObject(left, right) {
+  const comparableDevice = hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev);
+  if (comparableDevice && left.dev !== right.dev) return false;
+  const comparableInode = hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
+  if (comparableInode && left.ino !== right.ino) return false;
+  if (comparableDevice && comparableInode) return true;
+  return left.birthtime === right.birthtime;
+}
+
 // domains/comet-native/native-bounded-file.ts
 var DEFAULT_NATIVE_ARTIFACT_MAX_BYTES = 1024 * 1024;
 function isInside(parent, target) {
@@ -7616,16 +7632,21 @@ function positiveLimit(value) {
   return value;
 }
 function sameDirectoryIdentity(identity, stat) {
-  if (identity.dev !== 0 || identity.ino !== 0 || stat.dev !== 0 || stat.ino !== 0) {
-    return identity.dev === stat.dev && identity.ino === stat.ino;
-  }
-  return identity.birthtimeMs === stat.birthtimeMs;
+  return sameNativeFileObject(
+    { ...identity, birthtime: identity.birthtimeMs },
+    {
+      ...stat,
+      birthtime: stat.birthtimeMs
+    }
+  );
 }
 function sameFileIdentity(left, right) {
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return left.dev === right.dev && left.ino === right.ino;
+  const leftObject = { ...left, birthtime: left.birthtimeMs };
+  const rightObject = { ...right, birthtime: right.birthtimeMs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
-  return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
+  return sameNativeFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function directoryIdentity(directory) {
   const stat = await fs.lstat(directory);
@@ -7741,16 +7762,21 @@ function isInside2(parent, target) {
   return relative === "" || !path3.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path3.sep}`);
 }
 function sameDirectoryIdentity2(identity, stat) {
-  if (identity.dev !== 0 || identity.ino !== 0 || stat.dev !== 0 || stat.ino !== 0) {
-    return identity.dev === stat.dev && identity.ino === stat.ino;
-  }
-  return identity.birthtimeMs === stat.birthtimeMs;
+  return sameNativeFileObject(
+    { ...identity, birthtime: identity.birthtimeMs },
+    {
+      ...stat,
+      birthtime: stat.birthtimeMs
+    }
+  );
 }
 function sameFileIdentity2(left, right) {
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return left.dev === right.dev && left.ino === right.ino;
+  const leftObject = { ...left, birthtime: left.birthtimeMs };
+  const rightObject = { ...right, birthtime: right.birthtimeMs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
-  return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
+  return sameNativeFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function captureDirectoryIdentity(directory) {
   const stat = await fs2.lstat(directory);
@@ -7973,10 +7999,13 @@ function positiveLimit2(value) {
   return value;
 }
 function sameDirectoryIdentity3(expected, actual) {
-  if (expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0) {
-    return expected.dev === actual.dev && expected.ino === actual.ino;
-  }
-  return expected.birthtimeMs === actual.birthtimeMs;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs
+    }
+  );
 }
 function asFileIdentity(stat) {
   return {
@@ -7989,8 +8018,13 @@ function asFileIdentity(stat) {
   };
 }
 function sameFileIdentity3(expected, actual) {
-  const sameObject = expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0 ? expected.dev === actual.dev && expected.ino === actual.ino : expected.birthtimeMs === actual.birthtimeMs;
-  return sameObject && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs
+    }
+  ) && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
 }
 async function captureDirectoryIdentity2(directory, label) {
   const stat = await fs3.lstat(directory);
@@ -8830,10 +8864,12 @@ function nativeLockFileIdentity(stat) {
   };
 }
 function sameNativeLockObject(left, right) {
-  if (left.device !== "0" || left.inode !== "0" || right.device !== "0" || right.inode !== "0") {
-    return left.device === right.device && left.inode === right.inode;
+  const leftObject = { dev: left.device, ino: left.inode, birthtime: left.birthtimeNs };
+  const rightObject = { dev: right.device, ino: right.inode, birthtime: right.birthtimeNs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
-  return left.birthtimeNs === right.birthtimeNs && left.size === right.size;
+  return sameNativeFileObject(leftObject, rightObject) && left.size === right.size;
 }
 function sameNativeLockVersion(left, right) {
   return sameNativeLockObject(left, right) && left.size === right.size && left.birthtimeNs === right.birthtimeNs && left.ctimeNs === right.ctimeNs && left.mtimeNs === right.mtimeNs;
@@ -10985,10 +11021,12 @@ function takeLastCompactableOmission(omissions) {
   return null;
 }
 function sameFileIdentity4(left, right) {
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return left.dev === right.dev && left.ino === right.ino;
+  const leftObject = { ...left, birthtime: left.birthtimeMs };
+  const rightObject = { ...right, birthtime: right.birthtimeMs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
-  return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
+  return sameNativeFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function sha256FileBounded(file, maxBytes, expected, execution) {
   if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
@@ -12371,14 +12409,22 @@ function asIdentity(stat) {
   };
 }
 function sameFileIdentity5(expected, actual) {
-  const samePlatformIdentity = expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0 ? expected.dev === actual.dev && expected.ino === actual.ino : expected.birthtimeMs === actual.birthtimeMs;
-  return samePlatformIdentity && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs
+    }
+  ) && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
 }
 function sameDirectoryIdentity4(expected, actual) {
-  if (expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0) {
-    return expected.dev === actual.dev && expected.ino === actual.ino;
-  }
-  return expected.birthtimeMs === actual.birthtimeMs;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs
+    }
+  );
 }
 function runFile(changeDir, kind, relativePath) {
   const expected = NATIVE_RUN_STORAGE[kind];
@@ -16040,16 +16086,21 @@ function isInside5(parent, target) {
   return relative === "" || !path22.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path22.sep}`);
 }
 function sameDirectoryIdentity5(identity, stat) {
-  if (identity.dev !== 0 || identity.ino !== 0 || stat.dev !== 0 || stat.ino !== 0) {
-    return identity.dev === stat.dev && identity.ino === stat.ino;
-  }
-  return identity.birthtimeMs === stat.birthtimeMs;
+  return sameNativeFileObject(
+    { ...identity, birthtime: identity.birthtimeMs },
+    {
+      ...stat,
+      birthtime: stat.birthtimeMs
+    }
+  );
 }
 function sameFileIdentity6(left, right) {
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return left.dev === right.dev && left.ino === right.ino;
+  const leftObject = { ...left, birthtime: left.birthtimeMs };
+  const rightObject = { ...right, birthtime: right.birthtimeMs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
-  return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
+  return sameNativeFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function captureDirectoryIdentity3(directory) {
   const stat = await fs14.lstat(directory);
@@ -18706,16 +18757,21 @@ var HASH_PATTERN11 = /^[a-f0-9]{64}$/u;
 var RECEIPT_REF_PATTERN = /^runtime\/evidence\/check-receipts\/([a-f0-9]{64})\.json$/u;
 var MAX_NATIVE_CHECK_RECEIPT_BYTES = 512 * 1024;
 function sameDirectoryIdentity6(identity, stat) {
-  if (identity.dev !== 0 || identity.ino !== 0 || stat.dev !== 0 || stat.ino !== 0) {
-    return identity.dev === stat.dev && identity.ino === stat.ino;
-  }
-  return identity.birthtimeMs === stat.birthtimeMs;
+  return sameNativeFileObject(
+    { ...identity, birthtime: identity.birthtimeMs },
+    {
+      ...stat,
+      birthtime: stat.birthtimeMs
+    }
+  );
 }
 function sameFileIdentity7(left, right) {
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return left.dev === right.dev && left.ino === right.ino;
+  const leftObject = { ...left, birthtime: left.birthtimeMs };
+  const rightObject = { ...right, birthtime: right.birthtimeMs };
+  if (hasComparableNativeFileObject(leftObject, rightObject)) {
+    return sameNativeFileObject(leftObject, rightObject);
   }
-  return left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
+  return sameNativeFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function captureDirectoryChain5(root, directory) {
   const lexicalRoot = path26.resolve(root);
@@ -19656,10 +19712,13 @@ function fileVersion(stat) {
   };
 }
 function sameFileObject(expected, actual) {
-  if (expected.dev !== 0 || expected.ino !== 0 || actual.dev !== 0 || actual.ino !== 0) {
-    return expected.dev === actual.dev && expected.ino === actual.ino && expected.birthtimeMs === actual.birthtimeMs;
-  }
-  return expected.birthtimeMs === actual.birthtimeMs;
+  return sameNativeFileObject(
+    { ...expected, birthtime: expected.birthtimeMs },
+    {
+      ...actual,
+      birthtime: actual.birthtimeMs
+    }
+  ) && expected.birthtimeMs === actual.birthtimeMs;
 }
 function sameFileVersion(expected, actual) {
   return sameFileObject(expected, actual) && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
@@ -23979,7 +24038,13 @@ var MANAGED_KINDS = [
   "check-receipts"
 ];
 function sameObjectIdentity(left, right) {
-  return left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0 ? left.dev === right.dev && left.ino === right.ino : left.birthtimeMs === right.birthtimeMs;
+  return sameNativeFileObject(
+    { ...left, birthtime: left.birthtimeMs },
+    {
+      ...right,
+      birthtime: right.birthtimeMs
+    }
+  );
 }
 function sameIdentity(left, right) {
   return sameObjectIdentity(left, right) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.mtimeMs === right.mtimeMs && left.size === right.size;
@@ -26343,17 +26408,23 @@ function staleReasons(before, after, scope) {
 }
 function sameDirectoryIdentity7(identity, stat) {
   const stableMetadata = identity.birthtimeMs === stat.birthtimeMs && identity.ctimeMs === stat.ctimeMs;
-  if (identity.dev !== 0 || identity.ino !== 0 || stat.dev !== 0 || stat.ino !== 0) {
-    return stableMetadata && identity.dev === stat.dev && identity.ino === stat.ino;
-  }
-  return stableMetadata;
+  return stableMetadata && sameNativeFileObject(
+    { ...identity, birthtime: identity.birthtimeMs },
+    {
+      ...stat,
+      birthtime: stat.birthtimeMs
+    }
+  );
 }
 function sameFileIdentity8(left, right) {
   const stableMetadata = left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.mtimeMs === right.mtimeMs && left.size === right.size;
-  if (left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0) {
-    return stableMetadata && left.dev === right.dev && left.ino === right.ino;
-  }
-  return stableMetadata;
+  return stableMetadata && sameNativeFileObject(
+    { ...left, birthtime: left.birthtimeMs },
+    {
+      ...right,
+      birthtime: right.birthtimeMs
+    }
+  );
 }
 async function captureProjectDirectoryChain(projectRoot, directory) {
   const lexicalRoot = path42.resolve(projectRoot);

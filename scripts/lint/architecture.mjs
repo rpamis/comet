@@ -76,7 +76,13 @@ function walkFiles(relativePath, ignoredNames = new Set(), ignoredRelativePaths 
       const entryAbsolutePath = path.join(currentAbsolutePath, entry);
       const entryRelativePath = path.join(currentRelativePath, entry).replaceAll(path.sep, '/');
       if (ignoredRelativePaths.has(entryRelativePath)) continue;
-      if (entryRelativePath === 'eval/local/logs' || entryRelativePath === 'eval/.venv') continue;
+      if (
+        entryRelativePath === 'eval/local/logs' ||
+        entryRelativePath === 'eval/langsmith/logs' ||
+        entryRelativePath === 'eval/.venv'
+      ) {
+        continue;
+      }
       const stats = statSync(entryAbsolutePath);
       if (stats.isDirectory()) {
         visit(entryAbsolutePath, entryRelativePath);

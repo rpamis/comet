@@ -17,6 +17,7 @@ import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import { inspectPendingNativeSchemaMigration } from './native-schema-migration.js';
 import { inspectPendingNativeTransition } from './native-transition-journal.js';
 import { readNativeTransaction } from './native-transaction.js';
+import { sameNativeFileObject } from './native-file-identity.js';
 import type { NativeDoctorFinding, NativeProjectPaths } from './native-types.js';
 import {
   parseNativeImplementationScope,
@@ -113,9 +114,13 @@ function sameObjectIdentity(
   left: NativeFileIdentity,
   right: Pick<import('node:fs').Stats, keyof NativeFileIdentity>,
 ): boolean {
-  return left.dev !== 0 || left.ino !== 0 || right.dev !== 0 || right.ino !== 0
-    ? left.dev === right.dev && left.ino === right.ino
-    : left.birthtimeMs === right.birthtimeMs;
+  return sameNativeFileObject(
+    { ...left, birthtime: left.birthtimeMs },
+    {
+      ...right,
+      birthtime: right.birthtimeMs,
+    },
+  );
 }
 
 function sameIdentity(
