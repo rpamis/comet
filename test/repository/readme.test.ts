@@ -54,6 +54,26 @@ describe('README assets', () => {
     expect(readmeEn).toContain('Skill platform');
   });
 
+  it('keeps the documented Node.js requirement aligned with package engines', async () => {
+    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf-8')) as {
+      engines: { node: string };
+    };
+    const match = packageJson.engines.node.match(/^>=(\d+)/);
+    expect(match).not.toBeNull();
+    const minimumMajor = match![1];
+    const [readmeEn, readmeZh, contributingEn, contributingZh] = await Promise.all([
+      fs.readFile('README.md', 'utf-8'),
+      fs.readFile('README-zh.md', 'utf-8'),
+      fs.readFile('CONTRIBUTING.md', 'utf-8'),
+      fs.readFile('CONTRIBUTING-zh.md', 'utf-8'),
+    ]);
+
+    expect(readmeEn).toContain(`Node.js ${minimumMajor}+`);
+    expect(readmeZh).toContain(`Node.js ${minimumMajor}+`);
+    expect(contributingEn).toContain(`Node.js \`>=${minimumMajor}\``);
+    expect(contributingZh).toContain(`Node.js \`>=${minimumMajor}\``);
+  });
+
   it('highlights the current beta and links the website changelog', async () => {
     const readmeEn = await fs.readFile('README.md', 'utf-8');
     const readmeZh = await fs.readFile('README-zh.md', 'utf-8');

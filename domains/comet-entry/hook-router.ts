@@ -58,22 +58,6 @@ export async function resolveHookWorkflowOwner(
 ): Promise<HookWorkflowOwnerResolution> {
   const config = await readProjectConfig(projectRoot);
   const enabled = enabledWorkflows(config);
-  let native: ActiveHookChange[];
-  let classic: ActiveHookChange[];
-  try {
-    [native, classic] = await Promise.all([
-      enabled.includes('native') ? dependencies.listNative(projectRoot) : Promise.resolve([]),
-      enabled.includes('classic') ? dependencies.listClassic(projectRoot) : Promise.resolve([]),
-    ]);
-  } catch (error) {
-    return {
-      status: 'stale',
-      code: 'change-state-unreadable',
-      reason: `cannot safely enumerate active Comet changes: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-  const candidates: ActiveHookChange[] = [...native, ...classic];
-
   let current;
   try {
     current = await readCometCurrentSelection(projectRoot);
@@ -94,10 +78,20 @@ export async function resolveHookWorkflowOwner(
         reason: `selected workflow '${selection.workflow}' is not enabled for this project`,
       };
     }
-    const owner = candidates.find(
-      (candidate) =>
-        candidate.workflow === selection.workflow && candidate.name === selection.change,
-    );
+    let selectedCandidates: ActiveHookChange[];
+    try {
+      selectedCandidates =
+        selection.workflow === 'native'
+          ? await dependencies.listNative(projectRoot)
+          : await dependencies.listClassic(projectRoot);
+    } catch (error) {
+      return {
+        status: 'stale',
+        code: 'change-state-unreadable',
+        reason: `cannot safely enumerate active Comet changes: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    const owner = selectedCandidates.find((candidate) => candidate.name === selection.change);
     if (!owner) {
       return {
         status: 'stale',
@@ -120,6 +114,22 @@ export async function resolveHookWorkflowOwner(
     }
     return { status: 'owned', owner };
   }
+
+  let native: ActiveHookChange[];
+  let classic: ActiveHookChange[];
+  try {
+    [native, classic] = await Promise.all([
+      enabled.includes('native') ? dependencies.listNative(projectRoot) : Promise.resolve([]),
+      enabled.includes('classic') ? dependencies.listClassic(projectRoot) : Promise.resolve([]),
+    ]);
+  } catch (error) {
+    return {
+      status: 'stale',
+      code: 'change-state-unreadable',
+      reason: `cannot safely enumerate active Comet changes: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  const candidates: ActiveHookChange[] = [...native, ...classic];
 
   if (candidates.length === 0) return { status: 'none' };
   if (candidates.length === 1) return { status: 'inferred', owner: candidates[0] };

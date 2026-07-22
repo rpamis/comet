@@ -562,19 +562,24 @@ async function collectResultsWithContext(
       : workflows.includes('native')
         ? 'native'
         : 'classic';
+  const classicEnabled = workflowSelection !== 'native';
   const scopeMode = checkScopeMode(projectPath, scope, context);
   if (scopeMode) results.push(scopeMode);
   results.push(checkEnvironment(projectPath, context));
   results.push(checkCometCli());
-  results.push(await checkOpenSpecCli());
-  results.push(await checkSuperpowers(projectPath, scope, context));
-  if (scope !== 'global') {
-    results.push(await checkWorkingDirs(projectPath));
+  if (classicEnabled) {
+    results.push(await checkOpenSpecCli());
+    results.push(await checkSuperpowers(projectPath, scope, context));
+    if (scope !== 'global') {
+      results.push(await checkWorkingDirs(projectPath));
+    }
   }
   results.push(...(await checkSkillCompleteness(projectPath, scope, context, workflowSelection)));
   results.push(await checkScriptsPresent());
-  results.push(await checkCodegraph(projectPath, scope));
-  results.push(...(await checkCometYamlValidity(projectPath)));
+  if (classicEnabled) {
+    results.push(await checkCodegraph(projectPath, scope));
+    results.push(...(await checkCometYamlValidity(projectPath)));
+  }
   if (scope !== 'global') results.push(await checkCurrentSelection(projectPath));
   return results;
 }
@@ -729,9 +734,11 @@ export async function doctorCommand(
     options.homeDir === undefined
       ? await collectResults(projectPath, scope)
       : await collectResultsWithContext(projectPath, scope, context);
+  const healthy = results.every((result) => result.status !== 'fail');
+  const status = healthy ? 'passed' : 'failed';
 
   if (options.json) {
-    console.log(JSON.stringify({ scope, repaired, results }, null, 2));
+    console.log(JSON.stringify({ scope, status, healthy, repaired, results }, null, 2));
     return;
   }
 

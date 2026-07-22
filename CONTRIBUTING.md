@@ -63,7 +63,7 @@ pnpm install
 pnpm build
 ```
 
-- Node.js `>=20`. The pnpm version is pinned in `package.json`'s `packageManager`
+- Node.js `>=22`. The pnpm version is pinned in `package.json`'s `packageManager`
   field (currently `pnpm@10.18.3`).
 - If dependency installation or build behavior differs locally, mention it in
   the PR.

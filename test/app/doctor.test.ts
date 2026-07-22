@@ -36,18 +36,33 @@ async function installManagedCometSkills(baseDir: string, platformDir = '.claude
   }
 }
 
-async function collectDoctorResults(
+interface DoctorPayload {
+  scope: 'project' | 'global' | 'auto';
+  status: 'passed' | 'failed';
+  healthy: boolean;
+  repaired: string[];
+  results: Array<{ check: string; status: string; message: string }>;
+}
+
+async function collectDoctorPayload(
   targetPath: string,
   scope: 'project' | 'global' | 'auto' = 'project',
-): Promise<Array<{ check: string; status: string; message: string }>> {
+): Promise<DoctorPayload> {
   const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   try {
     await doctorCommand(targetPath, { json: true, scope, homeDir: targetPath });
     const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
-    return JSON.parse(output).results;
+    return JSON.parse(output) as DoctorPayload;
   } finally {
     log.mockRestore();
   }
+}
+
+async function collectDoctorResults(
+  targetPath: string,
+  scope: 'project' | 'global' | 'auto' = 'project',
+): Promise<DoctorPayload['results']> {
+  return (await collectDoctorPayload(targetPath, scope)).results;
 }
 
 function state(cwd: string, ...args: string[]) {
@@ -191,7 +206,9 @@ describe('doctor command', () => {
     await copyCometSkillsForPlatform(tmpDir, claude, true, 'skills', 'project', 'copy', 'native');
     await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
 
-    const results = await collectDoctorResults(tmpDir);
+    const payload = await collectDoctorPayload(tmpDir);
+    const results = payload.results;
+    expect(payload).toMatchObject({ status: 'passed', healthy: true });
     expect(results).toContainEqual(
       expect.objectContaining({
         check: 'skills: Claude Code (project)',
@@ -199,12 +216,29 @@ describe('doctor command', () => {
         message: expect.stringContaining('complete'),
       }),
     );
+    expect(results.map((result) => result.check)).not.toEqual(
+      expect.arrayContaining(['openspec CLI', 'Superpowers', 'working directories']),
+    );
+    expect(results.some((result) => result.check.startsWith('CodeGraph'))).toBe(false);
     await expect(
       fs.access(path.join(tmpDir, '.claude', 'skills', 'comet-any', 'SKILL.md')),
     ).resolves.toBeUndefined();
     await expect(
       fs.access(path.join(tmpDir, '.claude', 'skills', 'comet-classic', 'SKILL.md')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('marks JSON output unhealthy when a diagnostic fails', async () => {
+    await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.comet', 'current-change.json'), '{invalid', 'utf8');
+
+    const payload = await collectDoctorPayload(tmpDir);
+
+    expect(payload).toMatchObject({ status: 'failed', healthy: false });
+    expect(payload.results).toContainEqual(
+      expect.objectContaining({ check: 'current selection', status: 'fail' }),
+    );
   });
 
   it('warns when a detected complete Skill install is missing its Rule and Hook', async () => {

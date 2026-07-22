@@ -61,6 +61,32 @@ describe('Comet Hook Router', () => {
     expect(inspectClassic).not.toHaveBeenCalled();
   });
 
+  it('does not enumerate Classic state when Native owns the current selection', async () => {
+    await configureBoth();
+    await writeCometCurrentSelection(root, {
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'native-change',
+      branch: null,
+    });
+    const listClassic = vi.fn(async () => {
+      throw new Error('unrelated Classic state is unreadable');
+    });
+
+    await expect(
+      resolveHookWorkflowOwner(root, {
+        listNative: async () => [
+          { workflow: 'native', name: 'native-change', phase: 'build' as const },
+        ],
+        listClassic,
+      }),
+    ).resolves.toEqual({
+      status: 'owned',
+      owner: { workflow: 'native', name: 'native-change', phase: 'build' },
+    });
+    expect(listClassic).not.toHaveBeenCalled();
+  });
+
   it('routes one event to only the selected Classic Guard', async () => {
     await configureBoth();
     const changeDir = path.join(root, 'openspec', 'changes', 'classic-change');
@@ -108,6 +134,50 @@ describe('Comet Hook Router', () => {
     expect(decision).toEqual({ allowed: true, reason: 'classic' });
     expect(inspectClassic).toHaveBeenCalledOnce();
     expect(inspectNative).not.toHaveBeenCalled();
+  });
+
+  it('does not enumerate Native state when Classic owns the current selection', async () => {
+    await configureBoth();
+    const changeDir = path.join(root, 'openspec', 'changes', 'classic-change');
+    await fs.mkdir(changeDir, { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, '.comet.yaml'),
+      [
+        'workflow: full',
+        'phase: build',
+        'design_doc: docs/superpowers/specs/design.md',
+        'plan: null',
+        'build_mode: executing-plans',
+        'isolation: branch',
+        'verify_mode: null',
+        'verify_result: pending',
+        'verified_at: null',
+        'archived: false',
+        '',
+      ].join('\n'),
+    );
+    await writeCometCurrentSelection(root, {
+      schema: 'comet.selection.v2',
+      workflow: 'classic',
+      change: 'classic-change',
+      branch: null,
+    });
+    const listNative = vi.fn(async () => {
+      throw new Error('unrelated Native state is unreadable');
+    });
+
+    await expect(
+      resolveHookWorkflowOwner(root, {
+        listNative,
+        listClassic: async () => [
+          { workflow: 'classic', name: 'classic-change', phase: 'build' as const },
+        ],
+      }),
+    ).resolves.toEqual({
+      status: 'owned',
+      owner: { workflow: 'classic', name: 'classic-change', phase: 'build' },
+    });
+    expect(listNative).not.toHaveBeenCalled();
   });
 
   it('fails closed when multiple workflows have active changes without a selection', async () => {
