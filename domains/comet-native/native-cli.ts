@@ -1,4 +1,4 @@
-import { promises as fs, readFileSync } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 
 import {
@@ -43,6 +43,7 @@ import {
 } from './native-specs.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
+import { MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES } from './native-verification-scope.js';
 import { advanceNativeChange } from './native-transitions.js';
 import { inspectNativeHookGuard, readNativeHookRequest } from './native-hook-guard.js';
 import type {
@@ -184,6 +185,28 @@ async function doctorPaths(projectRoot: string): Promise<NativeProjectPaths> {
 
 function success(command: string, data: unknown, text?: string): DispatchResult {
   return { command, exitCode: 0, data, text: text ?? JSON.stringify(data, null, 2) + '\n' };
+}
+
+async function readBoundedEvidenceFile(filePath: string, maxBytes: number): Promise<string> {
+  const stat = await fs.stat(filePath);
+  if (stat.size > maxBytes) {
+    throw new Error(`Acceptance evidence entries file exceeds ${maxBytes} bytes: ${filePath}`);
+  }
+  return fs.readFile(filePath, 'utf8');
+}
+
+async function readBoundedEvidenceStdin(maxBytes: number): Promise<string> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of process.stdin) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    total += buffer.byteLength;
+    if (total > maxBytes) {
+      throw new Error(`Acceptance evidence entries on stdin exceed ${maxBytes} bytes`);
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 async function dispatch(
@@ -481,14 +504,17 @@ async function dispatch(
       assertNoArguments(rawArgs);
       let raw: string;
       if (entriesPath) {
-        raw = await fs.readFile(path.resolve(entriesPath), 'utf8');
+        raw = await readBoundedEvidenceFile(
+          path.resolve(entriesPath),
+          MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES,
+        );
       } else {
         if (process.stdin.isTTY) {
           throw new NativeUsageError(
             'evidence format requires acceptance evidence entries JSON on stdin, or --entries <path>',
           );
         }
-        raw = readFileSync(0, 'utf8');
+        raw = await readBoundedEvidenceStdin(MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES);
       }
       let entries: unknown;
       try {

@@ -7368,7 +7368,7 @@ var require_dist = __commonJS({
 import { pathToFileURL } from "url";
 
 // domains/comet-native/native-cli.ts
-import { promises as fs33, readFileSync as readFileSync2 } from "fs";
+import { promises as fs33 } from "fs";
 import path47 from "path";
 
 // domains/comet-native/native-archive.ts
@@ -28414,6 +28414,26 @@ async function doctorPaths(projectRoot) {
 function success(command, data, text) {
   return { command, exitCode: 0, data, text: text ?? JSON.stringify(data, null, 2) + "\n" };
 }
+async function readBoundedEvidenceFile(filePath, maxBytes) {
+  const stat = await fs33.stat(filePath);
+  if (stat.size > maxBytes) {
+    throw new Error(`Acceptance evidence entries file exceeds ${maxBytes} bytes: ${filePath}`);
+  }
+  return fs33.readFile(filePath, "utf8");
+}
+async function readBoundedEvidenceStdin(maxBytes) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of process.stdin) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    total += buffer.byteLength;
+    if (total > maxBytes) {
+      throw new Error(`Acceptance evidence entries on stdin exceed ${maxBytes} bytes`);
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
 async function dispatch(rawArgs, explicitProjectRoot) {
   if (rawArgs.length === 0 || rawArgs[0] === "--help" || rawArgs[0] === "help") {
     return { command: rawArgs[0] ?? null, exitCode: 0, data: { usage: USAGE }, text: USAGE };
@@ -28704,14 +28724,17 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       assertNoArguments(rawArgs);
       let raw;
       if (entriesPath) {
-        raw = await fs33.readFile(path47.resolve(entriesPath), "utf8");
+        raw = await readBoundedEvidenceFile(
+          path47.resolve(entriesPath),
+          MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES
+        );
       } else {
         if (process.stdin.isTTY) {
           throw new NativeUsageError(
             "evidence format requires acceptance evidence entries JSON on stdin, or --entries <path>"
           );
         }
-        raw = readFileSync2(0, "utf8");
+        raw = await readBoundedEvidenceStdin(MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES);
       }
       let entries;
       try {

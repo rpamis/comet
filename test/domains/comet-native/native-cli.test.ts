@@ -12,6 +12,7 @@ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from '../../../domains/comet-native/native-contract-files.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES } from '../../../domains/comet-native/native-verification-scope.js';
 
 const brief = `# Outcome
 Add sentence counting.
@@ -754,5 +755,27 @@ Pass.
 
     expect(result.exitCode).toBe(65);
     expect(json(result)).toMatchObject({ error: { code: 'invalid-data' } });
+  });
+
+  it('rejects an entries file larger than the Native evidence document limit', async () => {
+    const entriesPath = path.join(projectRoot, 'entries.json');
+    await fs.writeFile(
+      entriesPath,
+      'x'.repeat(MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES + 1),
+    );
+
+    const result = await runNativeCli([
+      'evidence',
+      'format',
+      '--entries',
+      entriesPath,
+      '--json',
+      ...projectArgs(),
+    ]);
+
+    expect(result.exitCode).toBe(65);
+    expect(json(result)).toMatchObject({
+      error: { code: 'invalid-data', message: expect.stringContaining('exceeds') },
+    });
   });
 });
