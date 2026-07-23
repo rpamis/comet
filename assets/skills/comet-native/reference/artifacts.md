@@ -53,9 +53,18 @@ native:
   artifact_root: docs
   language: en
   clarification_mode: sequential
+  snapshot:
+    include:
+      - '**/*'
+    exclude: []
+    max_files: 10000
+    max_total_bytes: 268435456
+    max_duration_ms: 60000
 ```
 
 `clarification_mode` controls how Native organizes user decisions and which confirmation contract applies before leaving Shape. `sequential` asks one most-upstream question per round, while `batch` asks every question whose prerequisites are settled. The default is `sequential` when the field is absent. It does not change the change schema, lifecycle, safety confirmations, or caller-defined stop points.
+
+`snapshot` defines the explicit content-snapshot scope and bounded resource budget. `include` and `exclude` use project-relative `/` paths with `*`, `**`, and `?`; the normalized policy and its hash are persisted in each new change baseline. Later current snapshots keep using the baseline policy, so changing configuration mid-change cannot hide implementation changes. `max_files`, `max_total_bytes`, and `max_duration_ms` bound capture work and can be raised for larger repositories. File content uses streaming SHA-256, does not depend on Git object hashes, and has no separate 5 MiB per-file limit.
 
 During an artifact-root move, the runtime-managed `pending_root_move` field is present. Ordinary write commands must stop while it exists; never choose the old or new root yourself.
 

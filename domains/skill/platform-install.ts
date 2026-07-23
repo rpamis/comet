@@ -1721,6 +1721,15 @@ async function mergeProjectConfig(
       }
       nativeBlock[f.key] = coerceConfigScalar(value);
     }
+    if (nativeBlock.snapshot === undefined) {
+      nativeBlock.snapshot = {
+        include: ['**/*'],
+        exclude: [],
+        max_files: 10_000,
+        max_total_bytes: 256 * 1024 * 1024,
+        max_duration_ms: 60_000,
+      };
+    }
     root.native = nativeBlock;
   }
 

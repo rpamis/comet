@@ -16,17 +16,94 @@ import type {
   CometProjectConfig,
   NativePendingRootMove,
   NativeProjectPaths,
+  NativeSnapshotConfig,
 } from './native-types.js';
 
 const NATIVE_KEYS = new Set([
   'artifact_root',
   'language',
   'clarification_mode',
+  'snapshot',
   'pending_root_move',
+]);
+const SNAPSHOT_KEYS = new Set([
+  'include',
+  'exclude',
+  'max_files',
+  'max_total_bytes',
+  'max_duration_ms',
 ]);
 const PENDING_KEYS = new Set(['id', 'from_artifact_root', 'to_artifact_root', 'stage', 'cleanup']);
 const NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 const CLEANUP_KEYS = new Set(['kind', 'state', 'manifest_hash']);
+export const DEFAULT_NATIVE_SNAPSHOT_CONFIG: NativeSnapshotConfig = {
+  include: ['**/*'],
+  exclude: [],
+  max_files: 10_000,
+  max_total_bytes: 256 * 1024 * 1024,
+  max_duration_ms: 60_000,
+};
+
+function snapshotPatterns(value: unknown, label: string, fallback: string[]): string[] {
+  if (value === undefined) return [...fallback];
+  if (
+    !Array.isArray(value) ||
+    value.some(
+      (pattern) =>
+        typeof pattern !== 'string' ||
+        pattern.length === 0 ||
+        pattern.includes('\\') ||
+        pattern.includes('\0') ||
+        pattern.startsWith('/') ||
+        pattern.split('/').includes('..'),
+    )
+  ) {
+    throw new Error(`${label} contains an unsafe pattern`);
+  }
+  return [...new Set(value as string[])].sort((left, right) => left.localeCompare(right, 'en'));
+}
+
+function positiveSnapshotInteger(value: unknown, fallback: number, label: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || (resolved as number) < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return resolved as number;
+}
+
+function parseSnapshot(value: unknown): NativeSnapshotConfig {
+  if (value === undefined)
+    return { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ['**/*'], exclude: [] };
+  const snapshot = record(value, 'native.snapshot');
+  rejectUnknown(snapshot, SNAPSHOT_KEYS, 'native.snapshot');
+  return {
+    include: snapshotPatterns(
+      snapshot.include,
+      'native.snapshot.include',
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.include,
+    ),
+    exclude: snapshotPatterns(
+      snapshot.exclude,
+      'native.snapshot.exclude',
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude,
+    ),
+    max_files: positiveSnapshotInteger(
+      snapshot.max_files,
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_files,
+      'native.snapshot.max_files',
+    ),
+    max_total_bytes: positiveSnapshotInteger(
+      snapshot.max_total_bytes,
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_total_bytes,
+      'native.snapshot.max_total_bytes',
+    ),
+    max_duration_ms: positiveSnapshotInteger(
+      snapshot.max_duration_ms,
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_duration_ms,
+      'native.snapshot.max_duration_ms',
+    ),
+  };
+}
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -125,6 +202,7 @@ function parseConfig(value: unknown): CometProjectConfig {
     throw new Error('native.clarification_mode must be sequential or batch');
   }
   const pending = parsePending(native.pending_root_move);
+  const snapshot = parseSnapshot(native.snapshot);
   return {
     schema: 'comet.project.v1',
     default_workflow: root.default_workflow,
@@ -134,6 +212,7 @@ function parseConfig(value: unknown): CometProjectConfig {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
       clarification_mode: clarificationMode,
+      snapshot,
       ...(pending ? { pending_root_move: pending } : {}),
     },
   };
@@ -151,6 +230,7 @@ export function defaultProjectConfig(
       artifact_root: normalizeArtifactRootRef(artifactRoot),
       language,
       clarification_mode: 'sequential',
+      snapshot: { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ['**/*'], exclude: [] },
     },
   };
 }
@@ -234,6 +314,7 @@ export async function writeProjectConfig(
       artifact_root: config.native.artifact_root,
       language: config.native.language,
       clarification_mode: config.native.clarification_mode,
+      snapshot: config.native.snapshot,
       ...(config.native.pending_root_move
         ? {
             pending_root_move: {
@@ -265,6 +346,7 @@ export async function writeProjectConfig(
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
       clarification_mode: validated.native.clarification_mode,
+      snapshot: validated.native.snapshot,
       ...(validated.native.pending_root_move
         ? {
             pending_root_move: {

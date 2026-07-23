@@ -5,6 +5,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   readProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
@@ -67,6 +68,7 @@ describe('Native artifact root moves', () => {
         artifact_root: to,
         language: 'en',
         clarification_mode: 'batch',
+        snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
       },
     });
     const workspace = await readNativeWorkspaceIdentity(destinationPaths, 'identity-change');
@@ -235,6 +237,7 @@ describe('Native artifact root moves', () => {
         artifact_root: '.',
         language: 'en',
         clarification_mode: 'sequential',
+        snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
       });
       await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({
         code: 'ENOENT',

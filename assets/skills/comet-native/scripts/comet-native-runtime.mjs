@@ -7924,6 +7924,12 @@ var COMMENTS = {
     "native.artifact_root": "# Root directory where Native stores Comet specs, changes, and runtime data.",
     "native.language": "# Artifact language used by Native workflow documents.\n# language: en | zh-CN",
     "native.clarification_mode": "# Controls whether Native asks one clarification at a time or every currently answerable question in a round.\n# clarification_mode: sequential | batch",
+    "native.snapshot": "# Controls the auditable project scope and bounded work used by Native content snapshots.",
+    "native.snapshot.include": "# Selects the project-relative paths included in Native snapshots. Patterns use / and support *, **, and ?.",
+    "native.snapshot.exclude": "# Removes paths from the included scope. Exclusions are bound into each new change baseline.",
+    "native.snapshot.max_files": "# Bounds the number of files captured by one snapshot. Increase it for large monorepos.",
+    "native.snapshot.max_total_bytes": "# Bounds the total file content hashed by one snapshot. Content is streamed and does not depend on Git hashes.",
+    "native.snapshot.max_duration_ms": "# Bounds snapshot capture time in milliseconds. Increase it together with the byte budget on slower or larger repositories.",
     classic: "# Classic workflow settings. They do not change Native state or behavior.",
     "classic.language": "# Artifact language used by Classic workflow documents.\n# language: en | zh-CN",
     "classic.context_compression": "# Controls beta context compression for new Classic changes.\n# context_compression: off | beta",
@@ -7939,6 +7945,12 @@ var COMMENTS = {
     "native.artifact_root": "# Native 产物的存放根目录，包括规格、change 和运行时数据。",
     "native.language": "# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
     "native.clarification_mode": "# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。\n# 可选值：sequential | batch",
+    "native.snapshot": "# Native 内容快照使用的可审计项目范围与有界工作预算。",
+    "native.snapshot.include": "# Native 快照纳入的项目相对路径；模式使用 /，支持 *、** 和 ?。",
+    "native.snapshot.exclude": "# 从纳入范围中排除路径；新 change 会把排除策略绑定到 baseline。",
+    "native.snapshot.max_files": "# 单次快照最多捕获的文件数；大型 monorepo 可按需提高。",
+    "native.snapshot.max_total_bytes": "# 单次快照最多哈希的文件内容总字节数；内容采用流式读取，不依赖 Git hash。",
+    "native.snapshot.max_duration_ms": "# 单次快照的最长执行时间（毫秒）；较慢或更大的仓库应与字节预算一并提高。",
     classic: "# Classic 工作流配置，不会改变 Native 的状态或行为。",
     "classic.language": "# Classic 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
     "classic.context_compression": "# 新建 Classic change 是否启用 beta 上下文压缩。\n# 可选值：off | beta",
@@ -7949,7 +7961,7 @@ var COMMENTS = {
 function projectConfigComment(key, language) {
   return COMMENTS[language][key];
 }
-function commentKey(line, block) {
+function commentKey(line, block, nativeNested) {
   const match = /^(\s*)([a-z_]+):/u.exec(line);
   if (!match) return null;
   const indent = match[1].length;
@@ -7959,13 +7971,18 @@ function commentKey(line, block) {
     const blockKey = `${block}.${key}`;
     if (blockKey in COMMENTS.en) return blockKey;
   }
+  if (indent === 4 && block === "native" && nativeNested === "snapshot") {
+    const nestedKey = `native.snapshot.${key}`;
+    if (nestedKey in COMMENTS.en) return nestedKey;
+  }
   return null;
 }
 function renderStructuredProjectConfig(value, language) {
   const output = [];
   let block = null;
+  let nativeNested = null;
   for (const line of (0, import_yaml.stringify)(value).trimEnd().split("\n")) {
-    const key = commentKey(line, block);
+    const key = commentKey(line, block, nativeNested);
     if (key) {
       const indent = line.match(/^\s*/u)?.[0] ?? "";
       for (const comment of projectConfigComment(key, language).split("\n")) {
@@ -7977,6 +7994,9 @@ function renderStructuredProjectConfig(value, language) {
       if (line.startsWith("native:")) block = "native";
       else if (line.startsWith("classic:")) block = "classic";
       else block = null;
+      nativeNested = null;
+    } else if (/^ {2}[a-z_]+:/u.test(line) && block === "native") {
+      nativeNested = line.startsWith("  snapshot:") ? "snapshot" : null;
     }
   }
   output.push("");
@@ -8571,11 +8591,75 @@ var NATIVE_KEYS = /* @__PURE__ */ new Set([
   "artifact_root",
   "language",
   "clarification_mode",
+  "snapshot",
   "pending_root_move"
+]);
+var SNAPSHOT_KEYS = /* @__PURE__ */ new Set([
+  "include",
+  "exclude",
+  "max_files",
+  "max_total_bytes",
+  "max_duration_ms"
 ]);
 var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
 var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
+var DEFAULT_NATIVE_SNAPSHOT_CONFIG = {
+  include: ["**/*"],
+  exclude: [],
+  max_files: 1e4,
+  max_total_bytes: 256 * 1024 * 1024,
+  max_duration_ms: 6e4
+};
+function snapshotPatterns(value, label, fallback) {
+  if (value === void 0) return [...fallback];
+  if (!Array.isArray(value) || value.some(
+    (pattern) => typeof pattern !== "string" || pattern.length === 0 || pattern.includes("\\") || pattern.includes("\0") || pattern.startsWith("/") || pattern.split("/").includes("..")
+  )) {
+    throw new Error(`${label} contains an unsafe pattern`);
+  }
+  return [...new Set(value)].sort((left, right) => left.localeCompare(right, "en"));
+}
+function positiveSnapshotInteger(value, fallback, label) {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return resolved;
+}
+function parseSnapshot(value) {
+  if (value === void 0)
+    return { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ["**/*"], exclude: [] };
+  const snapshot2 = record(value, "native.snapshot");
+  rejectUnknown(snapshot2, SNAPSHOT_KEYS, "native.snapshot");
+  return {
+    include: snapshotPatterns(
+      snapshot2.include,
+      "native.snapshot.include",
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.include
+    ),
+    exclude: snapshotPatterns(
+      snapshot2.exclude,
+      "native.snapshot.exclude",
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude
+    ),
+    max_files: positiveSnapshotInteger(
+      snapshot2.max_files,
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_files,
+      "native.snapshot.max_files"
+    ),
+    max_total_bytes: positiveSnapshotInteger(
+      snapshot2.max_total_bytes,
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_total_bytes,
+      "native.snapshot.max_total_bytes"
+    ),
+    max_duration_ms: positiveSnapshotInteger(
+      snapshot2.max_duration_ms,
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_duration_ms,
+      "native.snapshot.max_duration_ms"
+    )
+  };
+}
 function record(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be a mapping`);
@@ -8661,6 +8745,7 @@ function parseConfig(value) {
     throw new Error("native.clarification_mode must be sequential or batch");
   }
   const pending = parsePending(native.pending_root_move);
+  const snapshot2 = parseSnapshot(native.snapshot);
   return {
     schema: "comet.project.v1",
     default_workflow: root.default_workflow,
@@ -8670,6 +8755,7 @@ function parseConfig(value) {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
       clarification_mode: clarificationMode,
+      snapshot: snapshot2,
       ...pending ? { pending_root_move: pending } : {}
     }
   };
@@ -8682,7 +8768,8 @@ function defaultProjectConfig(artifactRoot = "docs", language = "en") {
     native: {
       artifact_root: normalizeArtifactRootRef(artifactRoot),
       language,
-      clarification_mode: "sequential"
+      clarification_mode: "sequential",
+      snapshot: { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ["**/*"], exclude: [] }
     }
   };
 }
@@ -8751,6 +8838,7 @@ async function writeProjectConfig(projectRoot, config) {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
       clarification_mode: config.native.clarification_mode,
+      snapshot: config.native.snapshot,
       ...config.native.pending_root_move ? {
         pending_root_move: {
           id: config.native.pending_root_move.id,
@@ -8778,6 +8866,7 @@ async function writeProjectConfig(projectRoot, config) {
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
       clarification_mode: validated.native.clarification_mode,
+      snapshot: validated.native.snapshot,
       ...validated.native.pending_root_move ? {
         pending_root_move: {
           id: validated.native.pending_root_move.id,
@@ -10081,9 +10170,17 @@ var MANIFEST_KEYS = /* @__PURE__ */ new Set([
   "entries",
   "omitted",
   "omittedCount",
-  "omissionOverflow"
+  "omissionOverflow",
+  "policy"
 ]);
-var LIMIT_KEYS = /* @__PURE__ */ new Set(["maxFiles", "maxFileBytes", "maxTotalBytes", "maxManifestBytes"]);
+var LIMIT_KEYS = /* @__PURE__ */ new Set([
+  "maxFiles",
+  "maxFileBytes",
+  "maxTotalBytes",
+  "maxManifestBytes",
+  "maxDurationMs"
+]);
+var POLICY_KEYS = /* @__PURE__ */ new Set(["schema", "include", "exclude", "hash"]);
 var CAPTURE_KEYS = /* @__PURE__ */ new Set(["provider", "gitSelection", "physicalSelection", "projection"]);
 var GIT_PROJECTION_KEYS = /* @__PURE__ */ new Set(["provider", "selection"]);
 var GIT_SELECTION_KEYS = /* @__PURE__ */ new Set([
@@ -11000,6 +11097,65 @@ function isChangedDuringReadError(error) {
 function serializedManifestBytes(manifest) {
   return Buffer.byteLength(JSON.stringify(manifest, null, 2) + "\n");
 }
+function normalizeSnapshotPattern(value, label) {
+  if (value.length === 0 || value.includes("\\") || value.includes("\0") || value.startsWith("/") || value.split("/").includes("..")) {
+    throw new Error(`${label} contains an unsafe pattern`);
+  }
+  return value;
+}
+function snapshotPolicyHash(include, exclude) {
+  return sha256Text(
+    `comet.native.snapshot-policy.v1
+${JSON.stringify({ include, exclude, hash: "sha256" })}`
+  );
+}
+function resolveSnapshotPolicy(value) {
+  if (value === void 0) return void 0;
+  const include = [
+    ...new Set(value.include.map((item) => normalizeSnapshotPattern(item, "include")))
+  ].sort((left, right) => left.localeCompare(right, "en"));
+  const exclude = [
+    ...new Set(value.exclude.map((item) => normalizeSnapshotPattern(item, "exclude")))
+  ].sort((left, right) => left.localeCompare(right, "en"));
+  if (include.length === 0) throw new Error("Native snapshot policy include must not be empty");
+  const hash6 = snapshotPolicyHash(include, exclude);
+  if ("hash" in value && value.hash !== hash6) {
+    throw new Error("Native snapshot policy hash is invalid");
+  }
+  return {
+    schema: "comet.native.snapshot-policy.v1",
+    include,
+    exclude,
+    hash: hash6
+  };
+}
+function globPattern(pattern) {
+  let source = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index];
+    if (character === "*" && pattern[index + 1] === "*") {
+      index += 1;
+      if (pattern[index + 1] === "/") {
+        index += 1;
+        source += "(?:.*/)?";
+      } else {
+        source += ".*";
+      }
+    } else if (character === "*") {
+      source += "[^/]*";
+    } else if (character === "?") {
+      source += "[^/]";
+    } else {
+      source += character.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    }
+  }
+  return new RegExp(`${source}$`, "u");
+}
+function snapshotPolicyIncludes(policy, relative) {
+  if (!policy) return true;
+  const included = policy.include.some((pattern) => globPattern(pattern).test(relative));
+  return included && !policy.exclude.some((pattern) => globPattern(pattern).test(relative));
+}
 function foldSnapshotOverflowHash(previous, kind, value) {
   const payload = JSON.stringify(value);
   return sha256Text(
@@ -11367,8 +11523,28 @@ function parseNativeContentSnapshotManifest(value) {
     maxManifestBytes: positiveInteger(
       limitValue.maxManifestBytes,
       "Native snapshot maxManifestBytes"
-    )
+    ),
+    ...limitValue.maxDurationMs === void 0 ? {} : {
+      maxDurationMs: positiveInteger(limitValue.maxDurationMs, "Native snapshot maxDurationMs")
+    }
   };
+  let policy;
+  if (manifest.policy !== void 0) {
+    const policyValue = record3(manifest.policy, "Native snapshot policy");
+    rejectUnknown3(policyValue, POLICY_KEYS, "Native snapshot policy");
+    if (policyValue.schema !== "comet.native.snapshot-policy.v1") {
+      throw new Error("Native snapshot policy schema is invalid");
+    }
+    if (!Array.isArray(policyValue.include) || !Array.isArray(policyValue.exclude)) {
+      throw new Error("Native snapshot policy patterns must be arrays");
+    }
+    policy = resolveSnapshotPolicy({
+      include: policyValue.include,
+      exclude: policyValue.exclude,
+      hash: policyValue.hash,
+      schema: "comet.native.snapshot-policy.v1"
+    });
+  }
   if (!Array.isArray(manifest.entries) || !Array.isArray(manifest.omitted)) {
     throw new Error("Native content snapshot entries and omissions must be arrays");
   }
@@ -11451,6 +11627,7 @@ function parseNativeContentSnapshotManifest(value) {
     createdAt: manifest.createdAt,
     complete: manifest.complete,
     limits,
+    ...policy ? { policy } : {},
     entries,
     omitted,
     omittedCount,
@@ -11591,13 +11768,18 @@ function nativeBaselineManifestFile(paths, name) {
   return path10.join(changeDir, "runtime", "baseline-manifest.json");
 }
 async function createNativeContentSnapshot(paths, options = {}) {
-  const execution = createNativeSnapshotExecution(options);
   const limits = {
     maxFiles: options.limits?.maxFiles ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFiles,
     maxFileBytes: options.limits?.maxFileBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFileBytes,
     maxTotalBytes: options.limits?.maxTotalBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxTotalBytes,
-    maxManifestBytes: options.limits?.maxManifestBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxManifestBytes
+    maxManifestBytes: options.limits?.maxManifestBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxManifestBytes,
+    ...options.limits?.maxDurationMs === void 0 ? {} : { maxDurationMs: options.limits.maxDurationMs }
   };
+  const policy = resolveSnapshotPolicy(options.policy);
+  const execution = createNativeSnapshotExecution({
+    ...options,
+    deadlineMs: options.deadlineMs ?? limits.maxDurationMs
+  });
   const gitSelectionLimits = resolveNativeGitSelectionLimits(options.gitSelectionLimits);
   const physicalSelectionLimits = resolveNativePhysicalSelectionLimits(
     options.physicalSelectionLimits
@@ -11955,6 +12137,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     await options.physicalSelectionHooks?.afterInitialSelection?.();
     for (const record8 of before.records) {
       if (record8.type !== "file" && record8.type !== "symlink") continue;
+      if (!snapshotPolicyIncludes(policy, record8.path)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path10.resolve(projectRoot, ...record8.path.split("/"));
       let stat;
@@ -12012,6 +12195,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     await options.gitSelectionHooks?.afterInitialSelection?.();
     for (const relative of selectionPaths(gitSelection)) {
       if (!isSnapshotProjectRef(paths, relative)) continue;
+      if (!snapshotPolicyIncludes(policy, relative)) continue;
       const target = path10.resolve(projectRoot, ...relative.split("/"));
       if (target === configFile || target === selectionFile || denylist.some((denied) => sameOrInside(denied, target))) {
         continue;
@@ -12136,6 +12320,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     createdAt: (options.now ?? /* @__PURE__ */ new Date()).toISOString(),
     complete: omittedCount === 0,
     limits,
+    ...policy ? { policy } : {},
     entries,
     omitted,
     omittedCount,
@@ -12171,6 +12356,21 @@ async function createNativeContentSnapshot(paths, options = {}) {
     manifest = buildManifest();
   }
   return manifest;
+}
+async function createNativeCurrentContentSnapshot(paths, baseline, options = {}) {
+  const config = await readProjectConfig(paths.projectRoot);
+  const settings = config?.native.snapshot ?? DEFAULT_NATIVE_SNAPSHOT_CONFIG;
+  return createNativeContentSnapshot(paths, {
+    ...options,
+    policy: baseline.policy,
+    limits: {
+      maxFiles: settings.max_files,
+      maxFileBytes: settings.max_total_bytes,
+      maxTotalBytes: settings.max_total_bytes,
+      maxDurationMs: settings.max_duration_ms
+    },
+    deadlineMs: settings.max_duration_ms
+  });
 }
 async function writeNativeBaselineManifest(paths, name, manifest) {
   const file = nativeBaselineManifestFile(paths, name);
@@ -13216,15 +13416,17 @@ var NativeChangeRevisionConflictError = class extends Error {
   code = "native-change-revision-conflict";
 };
 var NativeBaselineIncompleteError = class extends Error {
-  constructor(change, omittedCount, omittedByReason, samplePaths, sampleTruncated) {
+  constructor(change, omittedCount, omittedByReason, samplePaths, sampleTruncated, effectiveLimits = null, policyHash = null) {
     super(
-      `Native change ${change} baseline is incomplete (${omittedCount} omitted entr${omittedCount === 1 ? "y" : "ies"})`
+      `Native change ${change} baseline is incomplete (${omittedCount} omitted entr${omittedCount === 1 ? "y" : "ies"}). Adjust native.snapshot scope or resource budgets in .comet/config.yaml, then retry.`
     );
     this.change = change;
     this.omittedCount = omittedCount;
     this.omittedByReason = omittedByReason;
     this.samplePaths = samplePaths;
     this.sampleTruncated = sampleTruncated;
+    this.effectiveLimits = effectiveLimits;
+    this.policyHash = policyHash;
     this.name = "NativeBaselineIncompleteError";
   }
   change;
@@ -13232,6 +13434,8 @@ var NativeBaselineIncompleteError = class extends Error {
   omittedByReason;
   samplePaths;
   sampleTruncated;
+  effectiveLimits;
+  policyHash;
   code = "native-baseline-incomplete";
 };
 var NATIVE_BRIEF_TEMPLATE = [
@@ -13667,9 +13871,19 @@ async function createNativeChangeLocked(options) {
       fs12.mkdir(path16.join(changeDir, "runtime", "checkpoints"), { recursive: true }),
       atomicWriteText(path16.join(changeDir, "brief.md"), NATIVE_BRIEF_TEMPLATE)
     ]);
+    const projectConfig = await readProjectConfig(options.paths.projectRoot);
+    const snapshot2 = projectConfig?.native.snapshot ?? DEFAULT_NATIVE_SNAPSHOT_CONFIG;
     const baseline = await createNativeContentSnapshot(options.paths, {
       now: options.now,
-      origin: "change-created"
+      origin: "change-created",
+      policy: snapshot2,
+      limits: {
+        maxFiles: snapshot2.max_files,
+        maxFileBytes: snapshot2.max_total_bytes,
+        maxTotalBytes: snapshot2.max_total_bytes,
+        maxDurationMs: snapshot2.max_duration_ms
+      },
+      deadlineMs: snapshot2.max_duration_ms
     });
     if (!baseline.complete) {
       const health = inspectNativeContentSnapshotHealth(baseline);
@@ -13684,7 +13898,9 @@ async function createNativeChangeLocked(options) {
         baseline.omittedCount,
         omittedByReason,
         health.samplePaths,
-        health.sampleTruncated
+        health.sampleTruncated,
+        baseline.limits,
+        baseline.policy?.hash ?? null
       );
     }
     await writeNativeBaselineManifest(options.paths, state.name, baseline);
@@ -14771,8 +14987,10 @@ function snapshotProjection(manifest) {
       maxFiles: parsed.limits.maxFiles,
       maxFileBytes: parsed.limits.maxFileBytes,
       maxTotalBytes: parsed.limits.maxTotalBytes,
-      maxManifestBytes: parsed.limits.maxManifestBytes
+      maxManifestBytes: parsed.limits.maxManifestBytes,
+      ...parsed.limits.maxDurationMs === void 0 ? {} : { maxDurationMs: parsed.limits.maxDurationMs }
     },
+    ...parsed.policy ? { policy: parsed.policy } : {},
     entries,
     omitted,
     omittedCount: parsed.omittedCount,
@@ -15250,7 +15468,7 @@ function parseNativeSnapshotProjection(value, expectedHash) {
   exactScopeKeys(
     root,
     ["schema", "origin", "complete", "limits", "entries", "omitted", "omittedCount"],
-    ["capture", "omissionOverflow"],
+    ["capture", "omissionOverflow", "policy"],
     "Native snapshot projection"
   );
   if (root.schema !== NATIVE_SNAPSHOT_PROJECTION_SCHEMA) {
@@ -15263,6 +15481,7 @@ function parseNativeSnapshotProjection(value, expectedHash) {
     createdAt: "1970-01-01T00:00:00.000Z",
     complete: root.complete,
     limits: root.limits,
+    ...root.policy === void 0 ? {} : { policy: root.policy },
     entries: root.entries,
     omitted: root.omitted,
     omittedCount: root.omittedCount,
@@ -16280,7 +16499,7 @@ function assertEvidenceDocumentBudget(value) {
 function serializedEvidenceBytes2(value) {
   return Buffer.byteLength(JSON.stringify(value, null, 2) + "\n", "utf8");
 }
-function parseSnapshot(value, expectedHash) {
+function parseSnapshot2(value, expectedHash) {
   return parseNativeSnapshotProjection(value, expectedHash);
 }
 function parseScope(value, expectedHash) {
@@ -16356,10 +16575,10 @@ async function readNativeImplementationScopeBundle(paths, name, ref, hooks) {
   const currentHash = parseEvidenceRef(scope.currentProjectionRef, "snapshots");
   const [baseline, current] = await Promise.all([
     readEvidenceDocument({ paths, name, kind: "snapshots", hash: baselineHash }).then(
-      (value) => parseSnapshot(value, baselineHash)
+      (value) => parseSnapshot2(value, baselineHash)
     ),
     readEvidenceDocument({ paths, name, kind: "snapshots", hash: currentHash }).then(
-      (value) => parseSnapshot(value, currentHash)
+      (value) => parseSnapshot2(value, currentHash)
     )
   ]);
   return rebuildNativeImplementationScopeBundle({ baseline, current, scope });
@@ -19123,6 +19342,7 @@ function projectionManifest(projection) {
     createdAt: "1970-01-01T00:00:00.000Z",
     complete: projection.complete,
     limits: projection.limits,
+    ...projection.policy ? { policy: projection.policy } : {},
     entries: projection.entries,
     omitted: projection.omitted,
     omittedCount: projection.omittedCount,
@@ -19137,12 +19357,13 @@ function nativeRootRef2(paths) {
   return value;
 }
 async function currentProjectionHash(options) {
-  const current = await createNativeContentSnapshot(options.paths, {
+  const baseline = projectionManifest(options.bundle.baseline);
+  const current = await createNativeCurrentContentSnapshot(options.paths, baseline, {
     origin: "explicit",
     now: options.now
   });
   return buildNativeImplementationScopeBundle({
-    baseline: projectionManifest(options.bundle.baseline),
+    baseline,
     current,
     contractHash: options.bundle.scope.contractHash,
     declaredArtifacts: options.bundle.scope.declaredArtifacts,
@@ -25481,7 +25702,8 @@ async function finishForwardMove(options) {
   const stableNative = {
     artifact_root: config.native.artifact_root,
     language: config.native.language,
-    clarification_mode: config.native.clarification_mode
+    clarification_mode: config.native.clarification_mode,
+    snapshot: config.native.snapshot
   };
   const committed = {
     ...config,
@@ -25624,7 +25846,8 @@ async function recoverNativeRootMove(options) {
     const stableNative = {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
-      clarification_mode: config.native.clarification_mode
+      clarification_mode: config.native.clarification_mode,
+      snapshot: config.native.snapshot
     };
     const restored = {
       ...config,
@@ -26368,6 +26591,7 @@ function projectionManifest2(projection) {
     createdAt: "1970-01-01T00:00:00.000Z",
     complete: projection.complete,
     limits: projection.limits,
+    ...projection.policy ? { policy: projection.policy } : {},
     entries: projection.entries,
     omitted: projection.omitted,
     omittedCount: projection.omittedCount,
@@ -26375,16 +26599,17 @@ function projectionManifest2(projection) {
   };
 }
 async function collectBoundFacts(options) {
+  const baseline = projectionManifest2(options.scope.baseline);
   const [contract, snapshot2] = await Promise.all([
     collectNativeContractFiles({
       changeDir: nativeChangeDir(options.paths, options.state.name),
       briefRef: options.state.brief,
       specChanges: options.state.spec_changes
     }),
-    createNativeContentSnapshot(options.paths, { origin: "explicit" })
+    createNativeCurrentContentSnapshot(options.paths, baseline, { origin: "explicit" })
   ]);
   const currentBundle = buildNativeImplementationScopeBundle({
-    baseline: projectionManifest2(options.scope.baseline),
+    baseline,
     current: snapshot2,
     contractHash: options.scope.authority.contractHash,
     declaredArtifacts: options.scope.authority.declaredArtifacts,
@@ -27428,7 +27653,7 @@ async function inspectNativeBuildEvidence(options) {
     baseline,
     refs: options.artifactRefs
   });
-  const current = await createNativeContentSnapshot(options.paths, {
+  const current = await createNativeCurrentContentSnapshot(options.paths, baseline, {
     origin: "explicit",
     now: options.now
   });
@@ -28966,6 +29191,13 @@ function errorResult(command, error) {
         omittedByReason: error.omittedByReason,
         samplePaths: error.samplePaths,
         sampleTruncated: error.sampleTruncated,
+        effectiveLimits: error.effectiveLimits,
+        policyHash: error.policyHash,
+        configPath: ".comet/config.yaml",
+        supportedFixes: [
+          "increase native.snapshot.max_total_bytes or native.snapshot.max_duration_ms",
+          "add an explicit native.snapshot.exclude pattern for data outside implementation scope"
+        ],
         requiredAction: "resolve-native-baseline"
       },
       error: { code: "baseline-incomplete", message: error.message }

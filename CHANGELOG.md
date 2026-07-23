@@ -16,6 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Task-specific eval simulators**: Local interactive evals now support controller-owned per-decision reply queues for exact multi-round answers, while still honoring task-private simulator prompts ahead of the repository default and removing those prompt files before the first subject turn. Queue exhaustion fails closed instead of letting a generic simulator invent additional decisions.
+- **Native baselines for large repositories**: Native content snapshots now support baseline-bound include/exclude policies and configurable file-count, total-byte, and duration budgets in `.comet/config.yaml`, with a 256 MiB default total budget and no separate 5 MiB per-file cap. Runtime continues to hash actual working-tree content with streaming SHA-256, records the effective policy and limits for audit, and reports actionable configuration fixes when a complete baseline cannot be captured ([#226](https://github.com/rpamis/comet/issues/226)).
 
 ## What's Changed [0.4.0-beta.8] - 2026-07-22
 

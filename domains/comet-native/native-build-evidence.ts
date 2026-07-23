@@ -14,7 +14,7 @@ import {
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import { nativeSensitiveArtifactReason } from './native-sensitive-paths.js';
 import {
-  createNativeContentSnapshot,
+  createNativeCurrentContentSnapshot,
   filterNativeContentSnapshotToProjectScope,
   readNativeBaselineManifest,
 } from './native-snapshot.js';
@@ -264,7 +264,7 @@ export async function inspectNativeBuildEvidence(
     baseline,
     refs: options.artifactRefs,
   });
-  const current = await createNativeContentSnapshot(options.paths, {
+  const current = await createNativeCurrentContentSnapshot(options.paths, baseline, {
     origin: 'explicit',
     now: options.now,
   });

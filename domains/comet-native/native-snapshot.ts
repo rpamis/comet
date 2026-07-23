@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
+import { DEFAULT_NATIVE_SNAPSHOT_CONFIG, readProjectConfig } from './native-config.js';
 import { sha256Text } from './native-hash.js';
 import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
@@ -18,6 +19,7 @@ import type {
   NativeSnapshotEntry,
   NativeSnapshotOmission,
   NativeSnapshotOmissionOverflow,
+  NativeSnapshotPolicy,
 } from './native-types.js';
 
 export const DEFAULT_NATIVE_SNAPSHOT_LIMITS = {
@@ -41,8 +43,16 @@ const MANIFEST_KEYS = new Set([
   'omitted',
   'omittedCount',
   'omissionOverflow',
+  'policy',
 ]);
-const LIMIT_KEYS = new Set(['maxFiles', 'maxFileBytes', 'maxTotalBytes', 'maxManifestBytes']);
+const LIMIT_KEYS = new Set([
+  'maxFiles',
+  'maxFileBytes',
+  'maxTotalBytes',
+  'maxManifestBytes',
+  'maxDurationMs',
+]);
+const POLICY_KEYS = new Set(['schema', 'include', 'exclude', 'hash']);
 const CAPTURE_KEYS = new Set(['provider', 'gitSelection', 'physicalSelection', 'projection']);
 const GIT_PROJECTION_KEYS = new Set(['provider', 'selection']);
 const GIT_SELECTION_KEYS = new Set([
@@ -105,6 +115,7 @@ interface SnapshotOptions {
   now?: Date;
   origin?: NativeContentSnapshotManifest['origin'];
   limits?: Partial<NativeContentSnapshotManifest['limits']>;
+  policy?: Pick<NativeSnapshotPolicy, 'include' | 'exclude'> | NativeSnapshotPolicy;
   denylist?: readonly string[];
   gitSelectionLimits?: Partial<NativeGitSelectionLimits>;
   gitSelectionHooks?: NativeGitSelectionHooks;
@@ -1334,6 +1345,78 @@ function serializedManifestBytes(manifest: NativeContentSnapshotManifest): numbe
   return Buffer.byteLength(JSON.stringify(manifest, null, 2) + '\n');
 }
 
+function normalizeSnapshotPattern(value: string, label: string): string {
+  if (
+    value.length === 0 ||
+    value.includes('\\') ||
+    value.includes('\0') ||
+    value.startsWith('/') ||
+    value.split('/').includes('..')
+  ) {
+    throw new Error(`${label} contains an unsafe pattern`);
+  }
+  return value;
+}
+
+function snapshotPolicyHash(include: readonly string[], exclude: readonly string[]): string {
+  return sha256Text(
+    `comet.native.snapshot-policy.v1\n${JSON.stringify({ include, exclude, hash: 'sha256' })}`,
+  );
+}
+
+function resolveSnapshotPolicy(value: SnapshotOptions['policy']): NativeSnapshotPolicy | undefined {
+  if (value === undefined) return undefined;
+  const include = [
+    ...new Set(value.include.map((item) => normalizeSnapshotPattern(item, 'include'))),
+  ].sort((left, right) => left.localeCompare(right, 'en'));
+  const exclude = [
+    ...new Set(value.exclude.map((item) => normalizeSnapshotPattern(item, 'exclude'))),
+  ].sort((left, right) => left.localeCompare(right, 'en'));
+  if (include.length === 0) throw new Error('Native snapshot policy include must not be empty');
+  const hash = snapshotPolicyHash(include, exclude);
+  if ('hash' in value && value.hash !== hash) {
+    throw new Error('Native snapshot policy hash is invalid');
+  }
+  return {
+    schema: 'comet.native.snapshot-policy.v1',
+    include,
+    exclude,
+    hash,
+  };
+}
+
+function globPattern(pattern: string): RegExp {
+  let source = '^';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index]!;
+    if (character === '*' && pattern[index + 1] === '*') {
+      index += 1;
+      if (pattern[index + 1] === '/') {
+        index += 1;
+        source += '(?:.*/)?';
+      } else {
+        source += '.*';
+      }
+    } else if (character === '*') {
+      source += '[^/]*';
+    } else if (character === '?') {
+      source += '[^/]';
+    } else {
+      source += character.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    }
+  }
+  return new RegExp(`${source}$`, 'u');
+}
+
+function snapshotPolicyIncludes(
+  policy: NativeSnapshotPolicy | undefined,
+  relative: string,
+): boolean {
+  if (!policy) return true;
+  const included = policy.include.some((pattern) => globPattern(pattern).test(relative));
+  return included && !policy.exclude.some((pattern) => globPattern(pattern).test(relative));
+}
+
 function foldSnapshotOverflowHash(previous: string, kind: string, value: unknown): string {
   const payload = JSON.stringify(value);
   return sha256Text(
@@ -1781,7 +1864,29 @@ export function parseNativeContentSnapshotManifest(value: unknown): NativeConten
       limitValue.maxManifestBytes,
       'Native snapshot maxManifestBytes',
     ),
+    ...(limitValue.maxDurationMs === undefined
+      ? {}
+      : {
+          maxDurationMs: positiveInteger(limitValue.maxDurationMs, 'Native snapshot maxDurationMs'),
+        }),
   };
+  let policy: NativeSnapshotPolicy | undefined;
+  if (manifest.policy !== undefined) {
+    const policyValue = record(manifest.policy, 'Native snapshot policy');
+    rejectUnknown(policyValue, POLICY_KEYS, 'Native snapshot policy');
+    if (policyValue.schema !== 'comet.native.snapshot-policy.v1') {
+      throw new Error('Native snapshot policy schema is invalid');
+    }
+    if (!Array.isArray(policyValue.include) || !Array.isArray(policyValue.exclude)) {
+      throw new Error('Native snapshot policy patterns must be arrays');
+    }
+    policy = resolveSnapshotPolicy({
+      include: policyValue.include as string[],
+      exclude: policyValue.exclude as string[],
+      hash: policyValue.hash as string,
+      schema: 'comet.native.snapshot-policy.v1',
+    });
+  }
   if (!Array.isArray(manifest.entries) || !Array.isArray(manifest.omitted)) {
     throw new Error('Native content snapshot entries and omissions must be arrays');
   }
@@ -1879,6 +1984,7 @@ export function parseNativeContentSnapshotManifest(value: unknown): NativeConten
     createdAt: manifest.createdAt,
     complete: manifest.complete,
     limits,
+    ...(policy ? { policy } : {}),
     entries,
     omitted,
     omittedCount,
@@ -2065,14 +2171,21 @@ export async function createNativeContentSnapshot(
   paths: NativeProjectPaths,
   options: SnapshotOptions = {},
 ): Promise<NativeContentSnapshotManifest> {
-  const execution = createNativeSnapshotExecution(options);
   const limits = {
     maxFiles: options.limits?.maxFiles ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFiles,
     maxFileBytes: options.limits?.maxFileBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFileBytes,
     maxTotalBytes: options.limits?.maxTotalBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxTotalBytes,
     maxManifestBytes:
       options.limits?.maxManifestBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxManifestBytes,
+    ...(options.limits?.maxDurationMs === undefined
+      ? {}
+      : { maxDurationMs: options.limits.maxDurationMs }),
   };
+  const policy = resolveSnapshotPolicy(options.policy);
+  const execution = createNativeSnapshotExecution({
+    ...options,
+    deadlineMs: options.deadlineMs ?? limits.maxDurationMs,
+  });
   const gitSelectionLimits = resolveNativeGitSelectionLimits(options.gitSelectionLimits);
   const physicalSelectionLimits = resolveNativePhysicalSelectionLimits(
     options.physicalSelectionLimits,
@@ -2501,6 +2614,7 @@ export async function createNativeContentSnapshot(
     await options.physicalSelectionHooks?.afterInitialSelection?.();
     for (const record of before.records) {
       if (record.type !== 'file' && record.type !== 'symlink') continue;
+      if (!snapshotPolicyIncludes(policy, record.path)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path.resolve(projectRoot, ...record.path.split('/'));
       let stat: import('fs').Stats;
@@ -2560,6 +2674,7 @@ export async function createNativeContentSnapshot(
     await options.gitSelectionHooks?.afterInitialSelection?.();
     for (const relative of selectionPaths(gitSelection)) {
       if (!isSnapshotProjectRef(paths, relative)) continue;
+      if (!snapshotPolicyIncludes(policy, relative)) continue;
       const target = path.resolve(projectRoot, ...relative.split('/'));
       if (
         target === configFile ||
@@ -2698,6 +2813,7 @@ export async function createNativeContentSnapshot(
     createdAt: (options.now ?? new Date()).toISOString(),
     complete: omittedCount === 0,
     limits,
+    ...(policy ? { policy } : {}),
     entries,
     omitted,
     omittedCount,
@@ -2736,6 +2852,26 @@ export async function createNativeContentSnapshot(
     manifest = buildManifest();
   }
   return manifest;
+}
+
+export async function createNativeCurrentContentSnapshot(
+  paths: NativeProjectPaths,
+  baseline: NativeContentSnapshotManifest,
+  options: Pick<SnapshotOptions, 'origin' | 'now'> = {},
+): Promise<NativeContentSnapshotManifest> {
+  const config = await readProjectConfig(paths.projectRoot);
+  const settings = config?.native.snapshot ?? DEFAULT_NATIVE_SNAPSHOT_CONFIG;
+  return createNativeContentSnapshot(paths, {
+    ...options,
+    policy: baseline.policy,
+    limits: {
+      maxFiles: settings.max_files,
+      maxFileBytes: settings.max_total_bytes,
+      maxTotalBytes: settings.max_total_bytes,
+      maxDurationMs: settings.max_duration_ms,
+    },
+    deadlineMs: settings.max_duration_ms,
+  });
 }
 
 export async function writeNativeBaselineManifest(

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
+  defaultProjectConfig,
   readProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
@@ -76,6 +77,9 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('returns structured baseline diagnostics when change creation cannot capture a complete baseline', async () => {
+    const config = defaultProjectConfig('.');
+    config.native.snapshot.max_total_bytes = 5 * 1024 * 1024;
+    await writeProjectConfig(projectRoot, config);
     await fs.writeFile(
       path.join(projectRoot, 'oversized-baseline.bin'),
       Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),

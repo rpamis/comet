@@ -3047,8 +3047,18 @@ describe('skills', () => {
           artifact_root: 'docs',
           language: 'en',
           clarification_mode: 'sequential',
+          snapshot: {
+            include: ['**/*'],
+            exclude: [],
+            max_files: 10_000,
+            max_total_bytes: 256 * 1024 * 1024,
+            max_duration_ms: 60_000,
+          },
         },
       });
+      const source = await fs.readFile(configPath, 'utf-8');
+      expect(source).toContain('# Controls the auditable project scope');
+      expect(source).toContain('# Bounds the total file content hashed by one snapshot');
     });
 
     it('preserves batch clarification mode across idempotent config updates', async () => {

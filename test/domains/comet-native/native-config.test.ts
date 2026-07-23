@@ -26,6 +26,13 @@ describe('Native project configuration', () => {
   it('builds the shared default project config with docs as the Native artifact root', () => {
     expect(defaultProjectConfig().native.artifact_root).toBe('docs');
     expect(defaultProjectConfig().native.clarification_mode).toBe('sequential');
+    expect(defaultProjectConfig().native.snapshot).toEqual({
+      include: ['**/*'],
+      exclude: [],
+      max_files: 10_000,
+      max_total_bytes: 256 * 1024 * 1024,
+      max_duration_ms: 60_000,
+    });
   });
 
   it('round-trips a custom artifact root with stable YAML fields', async () => {
@@ -40,13 +47,25 @@ describe('Native project configuration', () => {
         artifact_root: 'docs',
         language: 'en',
         clarification_mode: 'sequential',
+        snapshot: {
+          include: ['**/*'],
+          exclude: [],
+          max_files: 10_000,
+          max_total_bytes: 256 * 1024 * 1024,
+          max_duration_ms: 60_000,
+        },
       },
     });
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
     expect(source).toContain('# Enables automatic recovery');
     expect(source).toContain('# Controls whether Native asks one clarification at a time');
+    expect(source).toContain('# Selects the project-relative paths included in Native snapshots');
+    expect(source).toContain('# Bounds the total file content hashed by one snapshot');
     expect(source).toContain('ambient_resume: true');
     expect(source).toContain('clarification_mode: sequential');
+    expect(source).toContain('include:');
+    expect(source).toContain('- "**/*"');
+    expect(source).toContain('max_total_bytes: 268435456');
   });
 
   it('reads an older project config with the missing Native defaults', async () => {
@@ -57,6 +76,9 @@ describe('Native project configuration', () => {
 
     expect((await readProjectConfig(projectRoot))?.native.language).toBe('en');
     expect((await readProjectConfig(projectRoot))?.native.clarification_mode).toBe('sequential');
+    expect((await readProjectConfig(projectRoot))?.native.snapshot).toEqual(
+      defaultProjectConfig().native.snapshot,
+    );
     expect((await readProjectConfig(projectRoot))?.ambient_resume).toBe(true);
   });
 
@@ -79,7 +101,32 @@ describe('Native project configuration', () => {
     expect(source).toContain('# 是否启用只读的环境感知恢复探针');
     expect(source).toContain('# Native 产物的存放根目录');
     expect(source).toContain('# Native 每轮询问一个问题');
+    expect(source).toContain('# Native 快照纳入的项目相对路径');
+    expect(source).toContain('# 单次快照最多哈希的文件内容总字节数');
     expect(source).not.toContain('# Enables automatic recovery');
+  });
+
+  it('rejects unsafe snapshot patterns and invalid resource budgets', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: docs',
+        '  snapshot:',
+        '    include: ["../outside/**"]',
+        '    exclude: []',
+        '    max_files: 0',
+        '    max_total_bytes: 1024',
+        '    max_duration_ms: 1000',
+        '',
+      ].join('\n'),
+    );
+
+    await expect(readProjectConfig(projectRoot)).rejects.toThrow(
+      'native.snapshot.include contains an unsafe pattern',
+    );
   });
 
   it('rejects a non-boolean Ambient Resume setting', async () => {

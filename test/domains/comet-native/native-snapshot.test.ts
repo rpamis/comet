@@ -1457,6 +1457,67 @@ describe('Native VCS-independent content snapshots', () => {
     expect(manifest.omittedCount).toBe(2);
   });
 
+  it('accepts an exact total-byte boundary and omits the first byte beyond it', async () => {
+    await Promise.all([
+      fs.writeFile(path.join(projectRoot, 'a.bin'), Buffer.alloc(4, 0x61)),
+      fs.writeFile(path.join(projectRoot, 'b.bin'), Buffer.alloc(1, 0x62)),
+    ]);
+
+    const exact = await createNativeContentSnapshot(paths, {
+      limits: { maxFileBytes: 5, maxTotalBytes: 5 },
+    });
+    const exceeded = await createNativeContentSnapshot(paths, {
+      limits: { maxFileBytes: 5, maxTotalBytes: 4 },
+    });
+
+    expect(exact).toMatchObject({
+      complete: true,
+      omittedCount: 0,
+    });
+    expect(exact.entries.map((entry) => [entry.path, entry.size])).toEqual([
+      ['a.bin', 4],
+      ['b.bin', 1],
+    ]);
+    expect(exceeded).toMatchObject({
+      complete: false,
+      omittedCount: 1,
+      omitted: [expect.objectContaining({ path: 'b.bin', reason: 'total-size', size: 1 })],
+    });
+  });
+
+  it('applies an auditable snapshot policy without treating excluded files as omissions', async () => {
+    await Promise.all([
+      fs.mkdir(path.join(projectRoot, 'src'), { recursive: true }),
+      fs.mkdir(path.join(projectRoot, 'data'), { recursive: true }),
+    ]);
+    await Promise.all([
+      fs.writeFile(path.join(projectRoot, 'src', 'app.ts'), 'export {};\n'),
+      fs.writeFile(path.join(projectRoot, 'data', 'dataset.bin'), Buffer.alloc(1024, 0x61)),
+    ]);
+
+    const manifest = await createNativeContentSnapshot(paths, {
+      policy: {
+        include: ['**/*'],
+        exclude: ['data/**'],
+      },
+      limits: {
+        maxFileBytes: 2048,
+        maxTotalBytes: 2048,
+        maxDurationMs: 60_000,
+      },
+    });
+
+    expect(manifest.complete).toBe(true);
+    expect(manifest.entries.map((entry) => entry.path)).toEqual(['src/app.ts']);
+    expect(manifest.omitted).toEqual([]);
+    expect(manifest.policy).toMatchObject({
+      schema: 'comet.native.snapshot-policy.v1',
+      include: ['**/*'],
+      exclude: ['data/**'],
+      hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
+  });
+
   it('retains a deterministic hash/ref for omissions beyond the recorded output budget', async () => {
     await Promise.all(
       Array.from({ length: 1_003 }, (_, index) =>

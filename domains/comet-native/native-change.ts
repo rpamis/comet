@@ -5,7 +5,11 @@ import { parseDocument, stringify } from 'yaml';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 
 import { atomicWriteText } from './native-atomic-file.js';
-import { assertNoPendingNativeRootMove } from './native-config.js';
+import {
+  assertNoPendingNativeRootMove,
+  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+  readProjectConfig,
+} from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import { readNativeProtectedDirectory } from './native-protected-file.js';
@@ -21,6 +25,7 @@ import type {
   NativeApproval,
   NativeChangeSchemaInspection,
   NativeChangeState,
+  NativeContentSnapshotManifest,
   NativeContentAddressedRef,
   NativeLegacyChangeState,
   NativePhase,
@@ -124,9 +129,11 @@ export class NativeBaselineIncompleteError extends Error {
     readonly omittedByReason: Record<string, number>,
     readonly samplePaths: string[],
     readonly sampleTruncated: boolean,
+    readonly effectiveLimits: NativeContentSnapshotManifest['limits'] | null = null,
+    readonly policyHash: string | null = null,
   ) {
     super(
-      `Native change ${change} baseline is incomplete (${omittedCount} omitted entr${omittedCount === 1 ? 'y' : 'ies'})`,
+      `Native change ${change} baseline is incomplete (${omittedCount} omitted entr${omittedCount === 1 ? 'y' : 'ies'}). Adjust native.snapshot scope or resource budgets in .comet/config.yaml, then retry.`,
     );
     this.name = 'NativeBaselineIncompleteError';
   }
@@ -629,9 +636,19 @@ async function createNativeChangeLocked(options: {
       fs.mkdir(path.join(changeDir, 'runtime', 'checkpoints'), { recursive: true }),
       atomicWriteText(path.join(changeDir, 'brief.md'), NATIVE_BRIEF_TEMPLATE),
     ]);
+    const projectConfig = await readProjectConfig(options.paths.projectRoot);
+    const snapshot = projectConfig?.native.snapshot ?? DEFAULT_NATIVE_SNAPSHOT_CONFIG;
     const baseline = await createNativeContentSnapshot(options.paths, {
       now: options.now,
       origin: 'change-created',
+      policy: snapshot,
+      limits: {
+        maxFiles: snapshot.max_files,
+        maxFileBytes: snapshot.max_total_bytes,
+        maxTotalBytes: snapshot.max_total_bytes,
+        maxDurationMs: snapshot.max_duration_ms,
+      },
+      deadlineMs: snapshot.max_duration_ms,
     });
     if (!baseline.complete) {
       const health = inspectNativeContentSnapshotHealth(baseline);
@@ -647,6 +664,8 @@ async function createNativeChangeLocked(options: {
         omittedByReason,
         health.samplePaths,
         health.sampleTruncated,
+        baseline.limits,
+        baseline.policy?.hash ?? null,
       );
     }
     await writeNativeBaselineManifest(options.paths, state.name, baseline);

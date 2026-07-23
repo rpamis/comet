@@ -22,7 +22,7 @@ import {
   writeNativeVerificationReportSnapshot,
   writeNativeVerificationEvidence,
 } from './native-evidence-storage.js';
-import { createNativeContentSnapshot } from './native-snapshot.js';
+import { createNativeCurrentContentSnapshot } from './native-snapshot.js';
 import type {
   NativeChangeState,
   NativeContentSnapshotManifest,
@@ -72,6 +72,7 @@ function projectionManifest(projection: NativeSnapshotProjection): NativeContent
     createdAt: '1970-01-01T00:00:00.000Z',
     complete: projection.complete,
     limits: projection.limits,
+    ...(projection.policy ? { policy: projection.policy } : {}),
     entries: projection.entries,
     omitted: projection.omitted,
     omittedCount: projection.omittedCount,
@@ -92,12 +93,13 @@ async function currentProjectionHash(options: {
   bundle: NativeImplementationScopeBundle;
   now?: Date;
 }): Promise<string> {
-  const current = await createNativeContentSnapshot(options.paths, {
+  const baseline = projectionManifest(options.bundle.baseline);
+  const current = await createNativeCurrentContentSnapshot(options.paths, baseline, {
     origin: 'explicit',
     now: options.now,
   });
   return buildNativeImplementationScopeBundle({
-    baseline: projectionManifest(options.bundle.baseline),
+    baseline,
     current,
     contractHash: options.bundle.scope.contractHash,
     declaredArtifacts: options.bundle.scope.declaredArtifacts,

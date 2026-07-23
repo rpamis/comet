@@ -710,6 +710,13 @@ function errorResult(command: string | null, error: unknown): DispatchResult {
         omittedByReason: error.omittedByReason,
         samplePaths: error.samplePaths,
         sampleTruncated: error.sampleTruncated,
+        effectiveLimits: error.effectiveLimits,
+        policyHash: error.policyHash,
+        configPath: '.comet/config.yaml',
+        supportedFixes: [
+          'increase native.snapshot.max_total_bytes or native.snapshot.max_duration_ms',
+          'add an explicit native.snapshot.exclude pattern for data outside implementation scope',
+        ],
         requiredAction: 'resolve-native-baseline',
       },
       error: { code: 'baseline-incomplete', message: error.message },

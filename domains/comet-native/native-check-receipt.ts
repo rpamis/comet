@@ -18,7 +18,7 @@ import { collectNativeContractFiles } from './native-contract-files.js';
 import { readNativeImplementationScopeBundle } from './native-evidence-storage.js';
 import { sameNativeFileObject } from './native-file-identity.js';
 import { isInsidePath } from './native-paths.js';
-import { createNativeContentSnapshot } from './native-snapshot.js';
+import { createNativeCurrentContentSnapshot } from './native-snapshot.js';
 import type {
   NativeChangeState,
   NativeContentSnapshotManifest,
@@ -99,6 +99,7 @@ function projectionManifest(projection: NativeSnapshotProjection): NativeContent
     createdAt: '1970-01-01T00:00:00.000Z',
     complete: projection.complete,
     limits: projection.limits,
+    ...(projection.policy ? { policy: projection.policy } : {}),
     entries: projection.entries,
     omitted: projection.omitted,
     omittedCount: projection.omittedCount,
@@ -111,16 +112,17 @@ async function collectBoundFacts(options: {
   state: NativeChangeState;
   scope: NativeImplementationScopeBundle;
 }): Promise<BoundFacts> {
+  const baseline = projectionManifest(options.scope.baseline);
   const [contract, snapshot] = await Promise.all([
     collectNativeContractFiles({
       changeDir: nativeChangeDir(options.paths, options.state.name),
       briefRef: options.state.brief,
       specChanges: options.state.spec_changes,
     }),
-    createNativeContentSnapshot(options.paths, { origin: 'explicit' }),
+    createNativeCurrentContentSnapshot(options.paths, baseline, { origin: 'explicit' }),
   ]);
   const currentBundle = buildNativeImplementationScopeBundle({
-    baseline: projectionManifest(options.scope.baseline),
+    baseline,
     current: snapshot,
     contractHash: options.scope.authority.contractHash,
     declaredArtifacts: options.scope.authority.declaredArtifacts,

@@ -5,6 +5,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   readProjectConfig,
   resolveNativeProject,
   writeProjectConfig,
@@ -78,6 +79,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: 'docs',
       language: 'en',
       clarification_mode: 'batch',
+      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
     await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
     const destinationPaths = await nativeProjectPaths(projectRoot, 'docs');
@@ -112,6 +114,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: '.',
       language: 'en',
       clarification_mode: 'batch',
+      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
     expect(
       (await readNativeTransaction(await nativeProjectPaths(projectRoot, '.'), transactionId))
@@ -192,6 +195,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: 'docs',
       language: 'en',
       clarification_mode: 'sequential',
+      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
   });
 
@@ -222,6 +226,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: 'docs',
       language: 'en',
       clarification_mode: 'sequential',
+      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
   });
@@ -309,6 +314,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: '.',
       language: 'en',
       clarification_mode: 'sequential',
+      snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
   });

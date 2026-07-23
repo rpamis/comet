@@ -32,6 +32,21 @@ export interface NativePendingRootMove {
   cleanup?: NativeRootMoveCleanup;
 }
 
+export interface NativeSnapshotConfig {
+  include: string[];
+  exclude: string[];
+  max_files: number;
+  max_total_bytes: number;
+  max_duration_ms: number;
+}
+
+export interface NativeSnapshotPolicy {
+  schema: 'comet.native.snapshot-policy.v1';
+  include: string[];
+  exclude: string[];
+  hash: string;
+}
+
 export interface CometProjectConfig {
   schema: 'comet.project.v1';
   default_workflow: 'native' | 'classic';
@@ -41,6 +56,7 @@ export interface CometProjectConfig {
     artifact_root: string;
     language: 'en' | 'zh-CN';
     clarification_mode: NativeClarificationMode;
+    snapshot: NativeSnapshotConfig;
     pending_root_move?: NativePendingRootMove;
   };
   classic?: {
@@ -229,7 +245,9 @@ export interface NativeContentSnapshotManifest {
     maxFileBytes: number;
     maxTotalBytes: number;
     maxManifestBytes: number;
+    maxDurationMs?: number;
   };
+  policy?: NativeSnapshotPolicy;
   entries: NativeSnapshotEntry[];
   omitted: NativeSnapshotOmission[];
   omittedCount: number;

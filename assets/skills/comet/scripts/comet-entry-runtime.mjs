@@ -7625,11 +7625,75 @@ var NATIVE_KEYS = /* @__PURE__ */ new Set([
   "artifact_root",
   "language",
   "clarification_mode",
+  "snapshot",
   "pending_root_move"
+]);
+var SNAPSHOT_KEYS = /* @__PURE__ */ new Set([
+  "include",
+  "exclude",
+  "max_files",
+  "max_total_bytes",
+  "max_duration_ms"
 ]);
 var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
 var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
+var DEFAULT_NATIVE_SNAPSHOT_CONFIG = {
+  include: ["**/*"],
+  exclude: [],
+  max_files: 1e4,
+  max_total_bytes: 256 * 1024 * 1024,
+  max_duration_ms: 6e4
+};
+function snapshotPatterns(value, label, fallback) {
+  if (value === void 0) return [...fallback];
+  if (!Array.isArray(value) || value.some(
+    (pattern) => typeof pattern !== "string" || pattern.length === 0 || pattern.includes("\\") || pattern.includes("\0") || pattern.startsWith("/") || pattern.split("/").includes("..")
+  )) {
+    throw new Error(`${label} contains an unsafe pattern`);
+  }
+  return [...new Set(value)].sort((left, right) => left.localeCompare(right, "en"));
+}
+function positiveSnapshotInteger(value, fallback, label) {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return resolved;
+}
+function parseSnapshot(value) {
+  if (value === void 0)
+    return { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ["**/*"], exclude: [] };
+  const snapshot = record(value, "native.snapshot");
+  rejectUnknown(snapshot, SNAPSHOT_KEYS, "native.snapshot");
+  return {
+    include: snapshotPatterns(
+      snapshot.include,
+      "native.snapshot.include",
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.include
+    ),
+    exclude: snapshotPatterns(
+      snapshot.exclude,
+      "native.snapshot.exclude",
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude
+    ),
+    max_files: positiveSnapshotInteger(
+      snapshot.max_files,
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_files,
+      "native.snapshot.max_files"
+    ),
+    max_total_bytes: positiveSnapshotInteger(
+      snapshot.max_total_bytes,
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_total_bytes,
+      "native.snapshot.max_total_bytes"
+    ),
+    max_duration_ms: positiveSnapshotInteger(
+      snapshot.max_duration_ms,
+      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_duration_ms,
+      "native.snapshot.max_duration_ms"
+    )
+  };
+}
 function record(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be a mapping`);
@@ -7715,6 +7779,7 @@ function parseConfig(value) {
     throw new Error("native.clarification_mode must be sequential or batch");
   }
   const pending = parsePending(native.pending_root_move);
+  const snapshot = parseSnapshot(native.snapshot);
   return {
     schema: "comet.project.v1",
     default_workflow: root.default_workflow,
@@ -7724,6 +7789,7 @@ function parseConfig(value) {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
       clarification_mode: clarificationMode,
+      snapshot,
       ...pending ? { pending_root_move: pending } : {}
     }
   };

@@ -7,6 +7,7 @@ import type {
   NativeContentSnapshotManifest,
   NativeSnapshotEntry,
   NativeSnapshotOmission,
+  NativeSnapshotPolicy,
 } from './native-types.js';
 
 export const NATIVE_IMPLEMENTATION_SCOPE_SCHEMA = 'comet.native.implementation-scope.v2' as const;
@@ -98,6 +99,7 @@ export interface NativeSnapshotProjection {
   capture?: NativeContentSnapshotManifest['capture'];
   complete: boolean;
   limits: NativeContentSnapshotManifest['limits'];
+  policy?: NativeSnapshotPolicy;
   entries: NativeSnapshotEntry[];
   omitted: NativeSnapshotOmission[];
   omittedCount: number;
@@ -362,7 +364,11 @@ function snapshotProjection(manifest: NativeContentSnapshotManifest): NativeSnap
       maxFileBytes: parsed.limits.maxFileBytes,
       maxTotalBytes: parsed.limits.maxTotalBytes,
       maxManifestBytes: parsed.limits.maxManifestBytes,
+      ...(parsed.limits.maxDurationMs === undefined
+        ? {}
+        : { maxDurationMs: parsed.limits.maxDurationMs }),
     },
+    ...(parsed.policy ? { policy: parsed.policy } : {}),
     entries,
     omitted,
     omittedCount: parsed.omittedCount,
@@ -986,7 +992,7 @@ export function parseNativeSnapshotProjection(
   exactScopeKeys(
     root,
     ['schema', 'origin', 'complete', 'limits', 'entries', 'omitted', 'omittedCount'],
-    ['capture', 'omissionOverflow'],
+    ['capture', 'omissionOverflow', 'policy'],
     'Native snapshot projection',
   );
   if (root.schema !== NATIVE_SNAPSHOT_PROJECTION_SCHEMA) {
@@ -999,6 +1005,7 @@ export function parseNativeSnapshotProjection(
     createdAt: '1970-01-01T00:00:00.000Z',
     complete: root.complete,
     limits: root.limits,
+    ...(root.policy === undefined ? {} : { policy: root.policy }),
     entries: root.entries,
     omitted: root.omitted,
     omittedCount: root.omittedCount,

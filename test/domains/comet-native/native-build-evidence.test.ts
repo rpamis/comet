@@ -34,15 +34,15 @@ vi.mock('../../../domains/comet-native/native-snapshot.js', async (importOrigina
     await importOriginal<typeof import('../../../domains/comet-native/native-snapshot.js')>();
   return {
     ...actual,
-    createNativeContentSnapshot: async (
-      ...args: Parameters<typeof actual.createNativeContentSnapshot>
+    createNativeCurrentContentSnapshot: async (
+      ...args: Parameters<typeof actual.createNativeCurrentContentSnapshot>
     ) => {
       if (snapshotMock.next !== null) {
         const next = snapshotMock.next;
         snapshotMock.next = null;
         return next;
       }
-      return actual.createNativeContentSnapshot(...args);
+      return actual.createNativeCurrentContentSnapshot(...args);
     },
     filterNativeContentSnapshotToProjectScope: async (
       ...args: Parameters<typeof actual.filterNativeContentSnapshotToProjectScope>
