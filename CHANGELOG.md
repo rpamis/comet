@@ -2,6 +2,17 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.9] - 2026-07-23
+
+### Added
+
+- **`comet native evidence format`**: New command that serializes acceptance evidence entries into the exact canonical Markdown block `verification.md` requires, so evidence blocks no longer need to be hand-formatted to match byte-for-byte and no longer trigger spurious "canonical serialization" rejections during Verify.
+
+### Fixed
+
+- **Plugin marketplace superpowers detection**: `comet init` no longer crashes with an `ENOTDIR` error when `~/.claude/plugins/cache/` (or the Codex equivalent) contains a stray file where a marketplace directory was expected.
+- **First-contributor greeting workflow**: Welcome messages for pull requests from forks now run with the base repository's scoped token, preventing the greeting check from failing with a permissions error while continuing to avoid executing pull request code.
+
 ## What's Changed [0.4.0-beta.8] - 2026-07-22
 
 ### Fixed
@@ -45,13 +56,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Windows interactive evals**: Interactive Docker evals now prefer Git Bash over WSL, preserve container prompt-file paths through MSYS argument conversion, count real driver turns for interaction limits, support deterministic task-supplied decision replies, distinguish user decisions from completion before ending a workflow, avoid false environment-failure flags from successful result text, and surface failed subject turns with their real exit status plus preserved stdout/stderr instead of treating them as natural completion.
 - **Parallel eval coordination**: Windows xdist workers now wait for shared Docker build locks instead of failing concurrent samples with a resource-deadlock error.
 - **npm publish cache pruning**: Package preflight now excludes nested and platform-specific pytest caches before filesystem inspection, so inaccessible local Eval byproducts cannot block publishing and cannot enter the npm package.
-
-## What's Changed [0.4.0-beta.9] - 2026-07-23
-
-### Fixed
-
-- **Native acceptance evidence formatting**: `comet native evidence format` now serializes acceptance evidence entries into the exact canonical Markdown block `verification.md` requires, so evidence blocks no longer need to be hand-formatted to match byte-for-byte and no longer trigger spurious "canonical serialization" rejections during Verify.
-- **Plugin marketplace superpowers detection**: `comet init` no longer crashes with an `ENOTDIR` error when `~/.claude/plugins/cache/` (or the Codex equivalent) contains a stray file where a marketplace directory was expected.
 
 ## What's Changed [0.4.0-beta.6] - 2026-07-18
 
