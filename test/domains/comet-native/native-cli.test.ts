@@ -4,6 +4,10 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER,
+  parseNativeVerificationMachineBlock,
+} from '../../../domains/comet-native/native-acceptance.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from '../../../domains/comet-native/native-contract-files.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
@@ -686,4 +690,69 @@ Pass.
       expect(json(retried)).toMatchObject({ data: { name: 'storage-failure' } });
     },
   );
+
+  it('formats acceptance evidence entries into the exact canonical verification.md block', async () => {
+    const acceptanceId = `acceptance-${'a'.repeat(64)}`;
+    const entriesPath = path.join(projectRoot, 'entries.json');
+    await fs.writeFile(
+      entriesPath,
+      JSON.stringify([{ acceptance_id: acceptanceId, evidence_refs: ['b.ts', 'a.ts'] }]),
+    );
+
+    const result = await runNativeCli([
+      'evidence',
+      'format',
+      '--entries',
+      entriesPath,
+      '--json',
+      ...projectArgs(),
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const { block } = json(result).data as { block: string };
+    expect(block).toContain(NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER);
+    expect(parseNativeVerificationMachineBlock(block)).toEqual([
+      { acceptance_id: acceptanceId, evidence_refs: ['a.ts', 'b.ts'] },
+    ]);
+
+    const handWritten = block.replace('  {', ' {');
+    expect(() => parseNativeVerificationMachineBlock(handWritten)).toThrow(
+      'canonical serialization',
+    );
+  });
+
+  it('rejects evidence format with no entries source when stdin is a TTY', async () => {
+    const originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    try {
+      const result = await runNativeCli(['evidence', 'format', '--json', ...projectArgs()]);
+      expect(result.exitCode).toBe(64);
+      expect(json(result)).toMatchObject({ error: { code: 'usage' } });
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', {
+        value: originalIsTTY,
+        configurable: true,
+      });
+    }
+  });
+
+  it.each([
+    ['malformed JSON', '{not json'],
+    ['a non-array JSON value', '{}'],
+  ])('rejects %s as invalid acceptance evidence entries', async (_label, contents) => {
+    const entriesPath = path.join(projectRoot, 'entries.json');
+    await fs.writeFile(entriesPath, contents);
+
+    const result = await runNativeCli([
+      'evidence',
+      'format',
+      '--entries',
+      entriesPath,
+      '--json',
+      ...projectArgs(),
+    ]);
+
+    expect(result.exitCode).toBe(65);
+    expect(json(result)).toMatchObject({ error: { code: 'invalid-data' } });
+  });
 });

@@ -1,3 +1,4 @@
+import { promises as fs, readFileSync } from 'fs';
 import path from 'path';
 
 import {
@@ -5,6 +6,7 @@ import {
   NativeArchivePreflightError,
   NativeSpecConflictError,
 } from './native-archive.js';
+import { serializeNativeVerificationMachineBlock } from './native-acceptance.js';
 import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
 import {
   createNativeChange,
@@ -88,6 +90,7 @@ Commands:
   select <change-name>
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   check <change-name>
+  evidence format [--entries <path>]
   next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <change-relative-ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
   archive <change-name> --expect-preflight <sha256>
@@ -470,6 +473,39 @@ async function dispatch(
       data,
       text: `Native check ${passed ? 'passed' : 'failed'}: ${checked.ref}\n`,
     };
+  }
+  if (command === 'evidence') {
+    const subcommand = requiredPositional(rawArgs, 'evidence subcommand');
+    if (subcommand === 'format') {
+      const entriesPath = takeOption(rawArgs, '--entries');
+      assertNoArguments(rawArgs);
+      let raw: string;
+      if (entriesPath) {
+        raw = await fs.readFile(path.resolve(entriesPath), 'utf8');
+      } else {
+        if (process.stdin.isTTY) {
+          throw new NativeUsageError(
+            'evidence format requires acceptance evidence entries JSON on stdin, or --entries <path>',
+          );
+        }
+        raw = readFileSync(0, 'utf8');
+      }
+      let entries: unknown;
+      try {
+        entries = JSON.parse(raw);
+      } catch (error) {
+        throw new Error(
+          `Acceptance evidence entries must be valid JSON: ${(error as Error).message}`,
+          { cause: error },
+        );
+      }
+      if (!Array.isArray(entries)) {
+        throw new Error('Acceptance evidence entries must be a JSON array');
+      }
+      const block = serializeNativeVerificationMachineBlock(entries);
+      return success('evidence format', { block }, `${block}\n`);
+    }
+    throw new NativeUsageError(`Unknown evidence command: ${subcommand}`);
   }
   if (command === 'next') {
     const name = requiredPositional(rawArgs, 'change name');

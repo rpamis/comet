@@ -6915,14 +6915,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs33 = this.flowScalar(this.type);
+              const fs34 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs33, sep: [] });
+                map.items.push({ start, key: fs34, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs33);
+                this.stack.push(fs34);
               } else {
-                Object.assign(it, { key: fs33, sep: [] });
+                Object.assign(it, { key: fs34, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7050,13 +7050,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs33 = this.flowScalar(this.type);
+              const fs34 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs33, sep: [] });
+                fc.items.push({ start: [], key: fs34, sep: [] });
               else if (it.sep)
-                this.stack.push(fs33);
+                this.stack.push(fs34);
               else
-                Object.assign(it, { key: fs33, sep: [] });
+                Object.assign(it, { key: fs34, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7368,6 +7368,7 @@ var require_dist = __commonJS({
 import { pathToFileURL } from "url";
 
 // domains/comet-native/native-cli.ts
+import { promises as fs33, readFileSync as readFileSync2 } from "fs";
 import path47 from "path";
 
 // domains/comet-native/native-archive.ts
@@ -18406,6 +18407,13 @@ function canonicalEvidencePayload(entries) {
   const validated = validateEvidenceEntries([...entries]).map((entry2) => ({ ...entry2, evidence_refs: [...entry2.evidence_refs].sort() })).sort((left, right) => left.acceptance_id.localeCompare(right.acceptance_id));
   return JSON.stringify(validated, null, 2);
 }
+function serializeNativeVerificationMachineBlock(entries) {
+  return [
+    NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER,
+    canonicalEvidencePayload(entries),
+    NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER
+  ].join("\n");
+}
 
 // domains/comet-native/native-check-receipt-storage.ts
 import { constants as fsConstants3, promises as fs16 } from "node:fs";
@@ -28325,6 +28333,7 @@ Commands:
   select <change-name>
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   check <change-name>
+  evidence format [--entries <path>]
   next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <change-relative-ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
   archive <change-name> --expect-preflight <sha256>
@@ -28687,6 +28696,40 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       text: `Native check ${passed ? "passed" : "failed"}: ${checked.ref}
 `
     };
+  }
+  if (command === "evidence") {
+    const subcommand = requiredPositional(rawArgs, "evidence subcommand");
+    if (subcommand === "format") {
+      const entriesPath = takeOption(rawArgs, "--entries");
+      assertNoArguments(rawArgs);
+      let raw;
+      if (entriesPath) {
+        raw = await fs33.readFile(path47.resolve(entriesPath), "utf8");
+      } else {
+        if (process.stdin.isTTY) {
+          throw new NativeUsageError(
+            "evidence format requires acceptance evidence entries JSON on stdin, or --entries <path>"
+          );
+        }
+        raw = readFileSync2(0, "utf8");
+      }
+      let entries;
+      try {
+        entries = JSON.parse(raw);
+      } catch (error) {
+        throw new Error(
+          `Acceptance evidence entries must be valid JSON: ${error.message}`,
+          { cause: error }
+        );
+      }
+      if (!Array.isArray(entries)) {
+        throw new Error("Acceptance evidence entries must be a JSON array");
+      }
+      const block = serializeNativeVerificationMachineBlock(entries);
+      return success("evidence format", { block }, `${block}
+`);
+    }
+    throw new NativeUsageError(`Unknown evidence command: ${subcommand}`);
   }
   if (command === "next") {
     const name = requiredPositional(rawArgs, "change name");
