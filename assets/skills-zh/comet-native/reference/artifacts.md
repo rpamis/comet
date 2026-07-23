@@ -155,7 +155,7 @@ Sequential 模式的 Open questions 同时保存一个最上游阻塞问题。Ba
 
 Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出就拒绝继续，不会先构造无界列表再截断。`acceptancePage` 每页最多 16 项；单项文字最多 512 UTF-8 字节、context 最多 4 项且每项最多 256 字节，整页最多 32 KiB。文字或 context 截断会显式标记，验收 ID 不会因分页或截断而丢失；cursor 绑定当前 acceptance hash，契约变化后旧 cursor 会失效。
 
-`# Acceptance evidence` 下必须恰好有一个固定机器块。ID 由 Runtime 从 brief/spec 派生，通过 Build 结果或 `status --details` 返回；不要自行计算或改写：
+`# Acceptance evidence` 下必须恰好有一个固定机器块。ID 由 Runtime 从 brief/spec 派生，通过 Build 结果或 `status --details` 返回；不要自行计算或改写。生成这个块时用 `comet native evidence format` 把条目序列化成规范文本再粘贴进去，不要手工排版 JSON——手写几乎不可能逐字节匹配规范序列化规则，会被拒绝并报 "canonical serialization" 错误：
 
 ```text
 <!-- comet-native:acceptance-evidence:start -->
@@ -176,6 +176,12 @@ Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出�
 ```
 
 数组按 `acceptance_id` 排序，`evidence_refs` 也排序。每项只能二选一：至少一个项目相对 evidence ref，或空数组加非空 `skipped_reason`。不能同时给证据和跳过理由，也不能引用绝对路径、Native 外部路径、`.git` 或 `.env*`。
+
+```text
+comet native evidence format [--entries <path>]
+```
+
+把上面这份条目数组（不带 markers）以 JSON 通过 stdin 传入，或用 `--entries <path>` 指定一个 JSON 文件；命令输出的文本已经包含 start/end markers 和规范排序、缩进，原样粘贴到 verification.md 的 `# Acceptance evidence` 一节即可。
 
 ## 内容寻址证据
 

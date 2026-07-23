@@ -205,7 +205,7 @@ Never edit snapshots or evidence, guess unenumerated paths, or present partial s
 
 Run verification appropriate to the Acceptance examples, complete target specifications, and risk. Record actual commands, results, skipped checks, specification consistency, known limitations, and the conclusion. Never record an unrun check as passed.
 
-In the fixed acceptance evidence block of `verification.md`, use every Runtime-provided `acceptance_id`. Each item must contain either project-relative evidence refs or an honest `skipped_reason`. See the artifact reference for the exact format.
+In the fixed acceptance evidence block of `verification.md`, use every Runtime-provided `acceptance_id`. Each item must contain either project-relative evidence refs or an honest `skipped_reason`. Serialize the entries with `comet native evidence format` and paste the result; never hand-format this JSON — a hand-typed block can almost never match the canonical serialization byte-for-byte. See the artifact reference for the exact format.
 
 When you need reproducible text-hygiene evidence, run the built-in read-only check:
 

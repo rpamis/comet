@@ -62,6 +62,12 @@ comet native check <change-name>
 
 `checkpoint` stores only an in-phase summary, next action, and content-addressed artifact manifest. It uses revision/CAS to prevent overwrites and does not change the phase. `check` is available only in Verify after an implementation scope exists. It runs Comet's built-in bounded, read-only text scan. It does not invoke Git, a shell, project scripts, external Skills, or any external process; it accepts no arbitrary command, path, environment, or timeout options and does not modify project files, the change, Run, or trajectory. Results, issue counts, and scope freshness are written to an independent content-addressed receipt. A check that finds issues or becomes stale exits with 1, but still writes the receipt.
 
+```text
+comet native evidence format [--entries <path>]
+```
+
+Before writing the `# Acceptance evidence` machine block in verification.md, use this command to serialize the entry array into the canonical Markdown text and paste that, rather than hand-formatting the JSON yourself. It reads entries JSON from stdin by default, or from a file with `--entries <path>`; the output already includes the start/end markers plus the fixed order and indentation, so pasting it as-is satisfies `next --result`'s canonical-serialization check.
+
 ## Phase progression
 
 ```text

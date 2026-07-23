@@ -62,6 +62,12 @@ comet native check <change-name>
 
 `checkpoint` 只保存同阶段摘要、下一动作和内容寻址的产物 manifest；它通过 revision/CAS 防止覆盖，不改变 phase。`check` 只允许在 Verify 且已有 implementation scope 时运行 Comet 内置的有界只读文本扫描。它不调用 Git、shell、项目脚本、外部 Skill 或任何外部进程，不接受任意命令、路径、环境或超时参数，也不修改项目文件或 change/Run/trajectory；结果、issue 计数和 scope 新鲜度会写入独立的内容寻址 receipt。检查发现问题或 stale 返回 1，但 receipt 仍会落盘。
 
+```text
+comet native evidence format [--entries <path>]
+```
+
+写 verification.md 的 `# Acceptance evidence` 机器块前，用这个命令把条目数组序列化成规范 Markdown 文本再粘贴，不要手工排版 JSON。默认从 stdin 读取条目 JSON，也可用 `--entries <path>` 指定文件；输出已包含 start/end markers、固定排序与缩进，原样粘贴即可通过 `next --result` 的规范序列化校验。
+
 ## 阶段推进
 
 ```text

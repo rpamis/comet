@@ -155,7 +155,7 @@ Persist reviewable facts, not hidden reasoning. Put unrun checks under Skipped c
 
 The runtime derives at most 1024 acceptance items from the brief and proposed specifications. It rejects overflow rather than first creating an unbounded list and truncating it. Each `acceptancePage` contains at most 16 items. Text is capped at 512 UTF-8 bytes, context at four entries of at most 256 bytes each, and a full page at 32 KiB. Text or context truncation is marked explicitly, while acceptance IDs are never lost to paging or truncation. Cursors bind to the current acceptance hash and fail after the contract changes.
 
-`# Acceptance evidence` must contain exactly one fixed machine block. The runtime derives IDs from the brief/specifications and returns them through Build or `status --details`; never calculate or rewrite them yourself:
+`# Acceptance evidence` must contain exactly one fixed machine block. The runtime derives IDs from the brief/specifications and returns them through Build or `status --details`; never calculate or rewrite them yourself. Generate this block with `comet native evidence format` and paste the result; never hand-format the JSON — a hand-typed block can almost never match the canonical serialization byte-for-byte and will be rejected with a "canonical serialization" error:
 
 ```text
 <!-- comet-native:acceptance-evidence:start -->
@@ -176,6 +176,12 @@ The runtime derives at most 1024 acceptance items from the brief and proposed sp
 ```
 
 The array is sorted by `acceptance_id`, and every `evidence_refs` list is sorted. Each item chooses exactly one path: at least one project-relative evidence ref, or an empty array plus a non-empty `skipped_reason`. Never provide both evidence and a skip reason, and never reference an absolute path, a path outside Native, `.git`, or `.env*`.
+
+```text
+comet native evidence format [--entries <path>]
+```
+
+Pass the entry array above (without the markers) as JSON on stdin, or point `--entries <path>` at a JSON file. The command's output already includes the start/end markers plus the canonical order and indentation, so paste it as-is into the `# Acceptance evidence` section of verification.md.
 
 ## Content-addressed evidence
 

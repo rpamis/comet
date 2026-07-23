@@ -205,7 +205,7 @@ Runtime 无法证明 scope 完整时会停在 Build，返回 partial scope hash 
 
 根据 Acceptance examples、完整目标规格和风险运行验证。记录实际命令、结果、跳过项、规格一致性、已知限制和结论；未运行的检查不能写成通过。
 
-在 `verification.md` 的固定 acceptance evidence 块中逐项使用 Runtime 返回的 `acceptance_id`。每项只能记录项目相对 evidence refs，或记录诚实的 `skipped_reason`。格式见产物参考。
+在 `verification.md` 的固定 acceptance evidence 块中逐项使用 Runtime 返回的 `acceptance_id`。每项只能记录项目相对 evidence refs，或记录诚实的 `skipped_reason`。用 `comet native evidence format` 把条目序列化成规范文本再粘贴，不要手工排版这段 JSON——手写几乎不可能逐字节匹配规范序列化规则。格式见产物参考。
 
 需要一份可重建的文本卫生证据时，可运行内置只读检查：
 
