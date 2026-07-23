@@ -232,10 +232,34 @@ describe('file-system utils', () => {
       }
     });
 
+    it('propagates removeFile ENOTDIR errors instead of treating them as already gone', async () => {
+      const error = Object.assign(new Error('not a directory'), { code: 'ENOTDIR' });
+      const unlinkSpy = vi.spyOn(fs, 'unlink').mockRejectedValue(error);
+
+      try {
+        await expect(removeFile(path.join(tmpDir, 'blocked.txt'))).rejects.toBe(error);
+      } finally {
+        unlinkSpy.mockRestore();
+      }
+    });
+
     it('propagates removeDir permission errors', async () => {
       const dirPath = path.join(tmpDir, 'blocked');
       await fs.mkdir(dirPath);
       const error = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      const rmSpy = vi.spyOn(fs, 'rm').mockRejectedValue(error);
+
+      try {
+        await expect(removeDir(dirPath)).rejects.toBe(error);
+      } finally {
+        rmSpy.mockRestore();
+      }
+    });
+
+    it('propagates removeDir ENOTDIR errors instead of treating them as already gone', async () => {
+      const dirPath = path.join(tmpDir, 'blocked');
+      await fs.mkdir(dirPath);
+      const error = Object.assign(new Error('not a directory'), { code: 'ENOTDIR' });
       const rmSpy = vi.spyOn(fs, 'rm').mockRejectedValue(error);
 
       try {

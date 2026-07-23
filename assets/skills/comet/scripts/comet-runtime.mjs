@@ -10590,7 +10590,7 @@ async function fileExists3(filePath) {
     await fs16.access(filePath);
     return true;
   } catch (error) {
-    if (isNotFoundError(error)) return false;
+    if (isMissingPathError(error)) return false;
     throw error;
   }
 }
@@ -10605,8 +10605,9 @@ async function readDir(dirPath) {
     throw error;
   }
 }
-function isNotFoundError(error) {
-  return error?.code === "ENOENT";
+function isMissingPathError(error) {
+  const code = error?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
 }
 
 // domains/comet-classic/classic-project-config.ts
