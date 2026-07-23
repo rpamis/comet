@@ -67,6 +67,142 @@ def _extract_loop_interaction(stderr: str | None) -> dict[str, int | None]:
     }
 
 
+def _bounded_command_evidence(command: str, matches: list[re.Match[str]]) -> str:
+    chunks: list[str] = []
+    remaining = 4000
+    last_end = -1
+    for match in matches:
+        start = max(0, match.start() - 300)
+        end = min(len(command), match.end() + 300)
+        if start <= last_end and chunks:
+            overlap = max(0, last_end - start)
+            addition = command[start + overlap : end]
+            addition = addition[:remaining]
+            chunks[-1] += addition
+            remaining -= len(addition)
+            last_end = max(last_end, end)
+        else:
+            chunk = command[start:end][:remaining]
+            if chunks:
+                separator = "\n...[truncated]...\n"
+                if len(separator) > remaining:
+                    break
+                chunks.append(separator)
+                remaining -= len(separator)
+            chunks.append(chunk)
+            remaining -= len(chunk)
+            last_end = end
+        if remaining <= 0:
+            break
+    excerpt = "".join(chunks)
+    return re.sub(
+        r"(?i)\b(api[_-]?key|auth[_-]?token|password|secret)\s*=\s*"
+        r"(?:\"[^\"]*\"|'[^']*'|[^\s;]+)",
+        r"\1=[REDACTED]",
+        excerpt,
+    )
+
+
+def _tool_result_succeeded(item: dict[str, Any]) -> bool:
+    is_error = item.get("is_error")
+    if is_error is True or str(is_error).strip().lower() == "true" or item.get("error"):
+        return False
+    status = str(item.get("status") or "").strip().lower()
+    if status in {"error", "failed", "failure", "cancelled", "canceled"}:
+        return False
+    content = item.get("content", "")
+    if isinstance(content, list):
+        content = " ".join(
+            str(block.get("text") or "") if isinstance(block, dict) else str(block)
+            for block in content
+        )
+    return not bool(
+        re.search(
+            r"(?i)^\s*(?:error|failed|failure|tool[_ -]?error)\b|"
+            r"\b(?:exit|exited with)(?:\s+code)?\s*[1-9]\d*\b",
+            str(content),
+        )
+    )
+
+
+def _extract_subject_turn_evidence(stdout: str | None) -> list[dict[str, Any]]:
+    """Group safe assistant result text and bounded tool evidence by subject turn."""
+    turns: list[dict[str, Any]] = []
+    tool_calls: list[dict[str, Any]] = []
+    tool_calls_by_id: dict[str, dict[str, Any]] = {}
+    last_assistant_text = ""
+    for line in (stdout or "").splitlines():
+        try:
+            event = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "assistant":
+            content = (event.get("message") or {}).get("content") or []
+            assistant_text = " ".join(
+                str(block.get("text") or "")
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            ).strip()
+            if assistant_text:
+                last_assistant_text = assistant_text
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    name = block.get("name")
+                    if isinstance(name, str) and name:
+                        evidence: dict[str, Any] = {"name": name, "success": False}
+                        tool_input = block.get("input")
+                        if isinstance(tool_input, dict):
+                            for key in ("file_path", "path", "notebook_path"):
+                                value = tool_input.get(key)
+                                if isinstance(value, str) and value:
+                                    evidence["path"] = value[:500]
+                                    break
+                            command = tool_input.get("command")
+                            if isinstance(command, str) and command:
+                                target_matches = list(
+                                    re.finditer(
+                                        r"(?i)(?:[a-z]:)?[./\\\w-]*\.py\b|"
+                                        r"\bbrief\.md\b|"
+                                        r"\bspec\.md\b",
+                                        command,
+                                    )
+                                )
+                                if target_matches:
+                                    evidence["command"] = _bounded_command_evidence(
+                                        command, target_matches
+                                    )
+                        tool_calls.append(evidence)
+                        tool_id = block.get("id")
+                        if isinstance(tool_id, str) and tool_id:
+                            tool_calls_by_id[tool_id] = evidence
+            continue
+        if event.get("type") == "user":
+            content = (event.get("message") or {}).get("content") or []
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                tool_use_id = block.get("tool_use_id")
+                if isinstance(tool_use_id, str) and tool_use_id in tool_calls_by_id:
+                    tool_calls_by_id[tool_use_id]["success"] = _tool_result_succeeded(block)
+            continue
+        if event.get("type") != "result":
+            continue
+        result = event.get("result")
+        turns.append(
+            {
+                "turn": len(turns) + 1,
+                "result": result if isinstance(result, str) and result else last_assistant_text,
+                "tool_calls": tool_calls,
+            }
+        )
+        tool_calls = []
+        tool_calls_by_id = {}
+        last_assistant_text = ""
+    return turns
+
+
 # =============================================================================
 # CONSTANTS
 # =============================================================================
@@ -695,6 +831,7 @@ def _resolve_interaction_config(task, profile_name: str, config):
         task_interaction.decision_patterns or profile_default.decision_patterns
     )
     decision_reply = task_interaction.decision_reply or profile_default.decision_reply
+    decision_replies = list(task_interaction.decision_replies or profile_default.decision_replies)
     continue_prompt = task_interaction.continue_prompt or profile_default.continue_prompt
     fresh_resume_marker = task_interaction.fresh_resume_marker
 
@@ -712,7 +849,7 @@ def _resolve_interaction_config(task, profile_name: str, config):
     prompt_path = Path(prompt_file) if prompt_file else (EVAL_ROOT / "simulator-instruction.md")
     if not prompt_path.is_absolute():
         prompt_path = EVAL_ROOT / prompt_path
-    if prompt_path.exists():
+    if prompt_path.exists() and (prompt_file or not task_interaction.simulator_prompt):
         simulator_prompt = prompt_path.read_text(encoding="utf-8")
 
     if simulator_prompt_override:
@@ -724,6 +861,7 @@ def _resolve_interaction_config(task, profile_name: str, config):
         simulator_prompt=simulator_prompt,
         decision_patterns=decision_patterns,
         decision_reply=decision_reply,
+        decision_replies=decision_replies,
         continue_prompt=continue_prompt,
         fresh_resume_marker=fresh_resume_marker,
     )
@@ -1137,12 +1275,18 @@ def run_claude(test_dir, experiment_logger, request):
                 loop_args += ["--decision-pattern", pattern]
             if interaction.decision_reply:
                 loop_args += ["--decision-reply", interaction.decision_reply]
+            for decision_reply_step in interaction.decision_replies:
+                loop_args += ["--decision-reply-step", decision_reply_step]
             if interaction.fresh_resume_marker:
                 loop_args += ["--fresh-resume-marker", interaction.fresh_resume_marker]
 
             prompt_file = None
             try:
-                if interaction.simulator_prompt and not interaction.decision_reply:
+                if (
+                    interaction.simulator_prompt
+                    and not interaction.decision_reply
+                    and not interaction.decision_replies
+                ):
                     prompt_file = test_dir / ".eval-simulator-prompt.txt"
                     prompt_file.write_text(interaction.simulator_prompt, encoding="utf-8")
                     loop_args += [

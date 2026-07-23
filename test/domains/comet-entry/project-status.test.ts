@@ -91,13 +91,34 @@ describe('Comet project status', () => {
             {
               name: 'native-only',
               phase: 'shape',
-              nextCommand: 'comet native next native-only --summary "<summary>"',
+              nextCommand: 'comet native next native-only --summary "<summary>" --confirmed',
             },
           ],
         },
         classic: { changes: [] },
       },
       unmanagedOpenSpec: [],
+    });
+
+    await writeProjectConfig(projectRoot, {
+      ...defaultProjectConfig('.'),
+      native: {
+        ...defaultProjectConfig('.').native,
+        clarification_mode: 'batch',
+      },
+    });
+    await expect(inspectCometProjectStatus(projectRoot)).resolves.toMatchObject({
+      workflows: {
+        native: {
+          changes: [
+            {
+              name: 'native-only',
+              phase: 'shape',
+              nextCommand: 'comet native next native-only --summary "<summary>"',
+            },
+          ],
+        },
+      },
     });
   });
 

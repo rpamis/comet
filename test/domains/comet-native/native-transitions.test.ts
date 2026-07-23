@@ -152,6 +152,64 @@ describe('Native guarded transitions', () => {
     expect(build.change.revision).toBe(3);
   });
 
+  it('requires explicit shared-understanding confirmation only in Sequential mode', async () => {
+    const blocked = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'shape is ready' },
+      clarificationMode: 'sequential',
+    });
+    expect(blocked).toMatchObject({
+      next: 'manual',
+      change: { phase: 'shape', approval: null },
+      findings: [
+        expect.objectContaining({
+          code: 'shape-confirmation-required',
+          requiredAction: 'confirm-shared-understanding',
+          retryCommand: 'comet native next advance-change --summary "<summary>" --confirmed',
+          requiresUserDecision: true,
+        }),
+      ],
+    });
+
+    const confirmed = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'shared understanding confirmed', confirmed: true },
+      clarificationMode: 'sequential',
+    });
+    expect(confirmed.change).toMatchObject({
+      phase: 'build',
+      approval: 'confirmed',
+    });
+  });
+
+  it('preserves implicit Shape progression in Batch mode', async () => {
+    const result = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'batch clarification complete' },
+      clarificationMode: 'batch',
+    });
+
+    expect(result.change).toMatchObject({
+      phase: 'build',
+      approval: 'implicit',
+    });
+
+    await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
+    const build = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: { summary: 'implemented', artifacts: ['feature.ts'] },
+      clarificationMode: 'sequential',
+    });
+    expect(build.change).toMatchObject({
+      phase: 'verify',
+      approval: 'implicit',
+    });
+  });
+
   it('blocks a changed approved contract until Build explicitly re-confirms it', async () => {
     const shaped = await advanceNativeChange({
       paths,

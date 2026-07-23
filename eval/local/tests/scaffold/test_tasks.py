@@ -88,6 +88,7 @@ max_turns = 7
 simulator_prompt = "Answer as a concise developer user."
 decision_patterns = ["confirm", "choose"]
 decision_reply = "Use the recommended option."
+decision_replies = ["First reply.", "Second reply."]
 continue_prompt = "Please continue."
 fresh_resume_marker = "COLD_RESUME_READY"
 """
@@ -105,6 +106,7 @@ fresh_resume_marker = "COLD_RESUME_READY"
     assert task.config.interaction.simulator_prompt == "Answer as a concise developer user."
     assert task.config.interaction.decision_patterns == ["confirm", "choose"]
     assert task.config.interaction.decision_reply == "Use the recommended option."
+    assert task.config.interaction.decision_replies == ["First reply.", "Second reply."]
     assert task.config.interaction.continue_prompt == "Please continue."
     assert task.config.interaction.fresh_resume_marker == "COLD_RESUME_READY"
 
@@ -153,7 +155,7 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
-    assert len(names) == 30
+    assert len(names) == 31
     assert set(names) == {
         "authoring-skill-smoke",
         "comet-agent-memory-routing",
@@ -173,6 +175,7 @@ def test_comet_task_index_lists_real_tasks():
         "comet-noise-distractor",
         "comet-native-workflow",
         "comet-native-clarification",
+        "comet-native-clarification-depth",
         "comet-native-clarification-modes",
         "comet-native-repository-fact",
         "comet-native-interrupted-transition",
@@ -237,10 +240,429 @@ def test_native_clarification_modes_task_compares_batch_and_sequential():
     assert "Do not choose the clarification mode" in prompt
 
 
+def test_native_clarification_depth_task_keeps_answers_private_and_sequential():
+    task = load_task("comet-native-clarification-depth")
+
+    assert task.default_treatments == ["COMET_NATIVE_SEQUENTIAL"]
+    assert task.config.evaluation.profile == "generic"
+    assert task.config.evaluation.required_skills == ["comet-native"]
+    assert task.config.interaction.mode == "auto_user"
+    assert task.config.interaction.max_turns == 8
+    assert task.config.timeout_sec == 2400
+    assert task.config.interaction.decision_reply is None
+    assert task.config.interaction.simulator_prompt is None
+    assert task.config.interaction.decision_replies == [
+        "It prints Sentences: 0.",
+        "They count as one sentence boundary.",
+        (
+            "Recognized abbreviations such as e.g. and Dr. always suppress their periods, "
+            "including at end-of-input; every other occurrence of ., !, or ? remains a "
+            "sentence boundary, and the non-empty fallback still makes an "
+            "abbreviation-only input one sentence."
+        ),
+        "Use a small explicit list. Ask me for the exact entries separately.",
+        (
+            "Use exactly Dr., Mr., Mrs., Ms., Prof., Sr., Jr., e.g., i.e., etc., "
+            "vs., Inc., Ltd., Corp., St., and Ave., matched case-sensitively exactly "
+            "as written."
+        ),
+        "confirmed",
+    ]
+
+    prompt = task.render_prompt().lower()
+    assert "sentences: 0" not in prompt
+    assert "small explicit list" not in prompt
+    assert "e.g." not in prompt
+    assert "follow the already configured native sequential clarification protocol" in prompt
+    assert "resolve every undefined user-visible behavior" in prompt
+    for leaked_protocol_step in (
+        "one decision per turn",
+        "recommendation",
+        "rescan",
+        "shared-understanding",
+        "explicit confirmation",
+    ):
+        assert leaked_protocol_step not in prompt
+
+    task_root = get_tasks_dir() / "comet-native-clarification-depth"
+    forbidden = "gr" + "ill"
+    for path in task_root.rglob("*"):
+        assert forbidden not in path.name.lower()
+        if path.is_file() and path.suffix in {".md", ".toml", ".py", ".txt", ".yaml", ".yml"}:
+            assert forbidden not in path.read_text(encoding="utf-8").lower()
+
+
+def test_native_clarification_depth_validator_requires_five_questions_then_confirmation(
+    tmp_path: Path,
+):
+    validator_path = (
+        get_tasks_dir()
+        / "comet-native-clarification-depth"
+        / "validation"
+        / "test_native_clarification_depth.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "native_clarification_depth_validator", validator_path
+    )
+    assert spec and spec.loader
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.WORKSPACE = tmp_path
+    brief_path = "/workspace/docs/comet/changes/add-sentence-counting/brief.md"
+    spec_path = (
+        "/workspace/docs/comet/changes/add-sentence-counting/specs/sentence-counting/spec.md"
+    )
+
+    config = tmp_path / ".comet" / "config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        "schema: comet.project.v1\nnative:\n  clarification_mode: sequential\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "_test_context.json").write_text(
+        json.dumps(
+            {
+                "treatment_name": "COMET_NATIVE_SEQUENTIAL",
+                "interaction": {
+                    "mode": "auto_user",
+                    "actual_turns": 7,
+                    "decision_points": 6,
+                    "deterministic_replies": 6,
+                    "subject_turns": [
+                        {
+                            "turn": 1,
+                            "result": (
+                                "Question: What should empty input print?\n"
+                                "Recommendation: print zero. Impact: keeps output numeric."
+                            ),
+                            "tool_calls": [
+                                {
+                                    "name": "Read",
+                                    "success": True,
+                                    "path": "/workspace/wordcount.py",
+                                }
+                            ],
+                        },
+                        {
+                            "turn": 2,
+                            "result": (
+                                "Question: Should consecutive terminators such as ?! "
+                                "form one boundary?\nRecommendation: count one boundary. "
+                                "Impact: avoids double counting."
+                            ),
+                            "tool_calls": [
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": brief_path,
+                                },
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": spec_path,
+                                },
+                            ],
+                        },
+                        {
+                            "turn": 3,
+                            "result": (
+                                "**Question:** Should abbreviations such as Dr. end a "
+                                "sentence?\n**Recommendation:** do not treat recognized "
+                                "abbreviations as boundaries. **Impact:** avoids false boundaries."
+                            ),
+                            "tool_calls": [
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": brief_path,
+                                },
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": spec_path,
+                                },
+                            ],
+                        },
+                        {
+                            "turn": 4,
+                            "result": (
+                                "Question: How should the recognized abbreviation collection "
+                                "be maintained?\nRecommendation: use a small explicit list. "
+                                "Impact: keeps exceptions reviewable."
+                            ),
+                            "tool_calls": [
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": brief_path,
+                                },
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": spec_path,
+                                },
+                            ],
+                        },
+                        {
+                            "turn": 5,
+                            "result": (
+                                "Question: Which exact abbreviation entries should the list "
+                                "contain?\nRecommendation: include common titles and prose "
+                                "short forms. Impact: fixes the compatibility boundary."
+                            ),
+                            "tool_calls": [
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": brief_path,
+                                },
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": spec_path,
+                                },
+                            ],
+                        },
+                        {
+                            "turn": 6,
+                            "result": (
+                                "My understanding:\nGoal / outcome: add reliable sentence counting."
+                                "\nScope: the --sentences CLI flag and focused tests."
+                                "\nExplicit non-goals: changing existing word or line counts."
+                                "\nAcceptance criteria: common CLI inputs return the agreed counts."
+                                "\nDecisions: abbreviations do not end sentences; use a small "
+                                "explicit abbreviation list containing Dr., Mr., Mrs., Ms., Prof., "
+                                "Sr., Jr., e.g., i.e., etc., vs., Inc., Ltd., Corp., St., and Ave.; "
+                                "empty input "
+                                "prints Sentences: 0; consecutive terminators form one boundary. "
+                                "Please confirm."
+                            ),
+                            "tool_calls": [
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": brief_path,
+                                },
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": spec_path,
+                                },
+                            ],
+                        },
+                        {
+                            "turn": 7,
+                            "result": "Completed through all phases and archived.",
+                            "tool_calls": [
+                                {
+                                    "name": "Edit",
+                                    "success": True,
+                                    "path": "/workspace/wordcount.py",
+                                },
+                                {
+                                    "name": "Bash",
+                                    "success": True,
+                                    "command": "python wordcount.py --sentences",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    protocol = validator.check_clarification_protocol()
+    assert protocol["status"] == "passed", protocol
+    assert validator.contradictory_decisions(
+        "Abbreviations do not end sentences. Abbreviations are ordinary prose "
+        "tokens with no special-casing."
+    ) == ["abbreviation behavior"]
+    assert (
+        validator.contradictory_decisions(
+            "Abbreviations do not end sentences and use a fixed explicit list."
+        )
+        == []
+    )
+
+    context = json.loads((tmp_path / "_test_context.json").read_text(encoding="utf-8"))
+    context["interaction"]["subject_turns"][0]["tool_calls"].append(
+        {
+            "name": "Edit",
+            "success": False,
+            "path": "/workspace/sentence.py",
+        }
+    )
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    protocol = validator.check_clarification_protocol()
+    assert protocol["status"] == "passed", protocol
+
+    context["interaction"]["subject_turns"][0]["tool_calls"].pop()
+    context["interaction"]["subject_turns"][0]["tool_calls"].append(
+        {
+            "name": "Write",
+            "success": True,
+            "path": "/tmp/evidence.py",
+        }
+    )
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    protocol = validator.check_clarification_protocol()
+    assert protocol["status"] == "passed", protocol
+
+    context["interaction"]["subject_turns"][0]["tool_calls"].pop()
+    context["interaction"]["subject_turns"][0]["tool_calls"].append(
+        {
+            "name": "Write",
+            "success": True,
+            "path": ("/workspace/docs/comet/changes/add-sentence-counting/runtime/evidence.py"),
+        }
+    )
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "before explicit confirmation" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][0]["tool_calls"].pop()
+    context["interaction"]["subject_turns"][0]["tool_calls"].append(
+        {
+            "name": "Edit",
+            "success": True,
+            "path": "/workspace/sentence.py",
+        }
+    )
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "before explicit confirmation" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][0]["tool_calls"].pop()
+    context["interaction"]["subject_turns"][0]["tool_calls"].append(
+        {
+            "name": "Bash",
+            "success": True,
+            "command": "cat > test_wordcount.py",
+        }
+    )
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "before explicit confirmation" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][0]["tool_calls"].pop()
+    investigation = context["interaction"]["subject_turns"][0]["tool_calls"]
+    context["interaction"]["subject_turns"][0]["tool_calls"] = [
+        {
+            **investigation[0],
+            "success": False,
+        }
+    ]
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "not investigated" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][0]["tool_calls"] = investigation
+    persistence = context["interaction"]["subject_turns"][1]["tool_calls"]
+    context["interaction"]["subject_turns"][1]["tool_calls"] = [
+        {
+            **persistence[0],
+            "success": False,
+        },
+        persistence[1],
+    ]
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "persistence evidence" in result["reason"].lower()
+    assert "brief" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][1]["tool_calls"] = [
+        {
+            **persistence[0],
+            "path": "/workspace/brief.md",
+        },
+        persistence[1],
+    ]
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "brief" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][1]["tool_calls"] = persistence
+    implementation = context["interaction"]["subject_turns"][6]["tool_calls"]
+    context["interaction"]["subject_turns"][6]["tool_calls"] = [
+        {
+            "name": "Bash",
+            "success": True,
+            "command": "python wordcount.py --sentences",
+        }
+    ]
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "after explicit confirmation" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][6]["tool_calls"] = implementation
+    confirmation = context["interaction"]["subject_turns"][5]["result"]
+    context["interaction"]["subject_turns"][5]["result"] = (
+        "Our understanding summary:\nGoal: add sentence counting.\nScope: the CLI."
+        "\nNon-goals: existing counters.\nAcceptance criteria: agreed counts are printed."
+        "\nDecisions: abbreviation behavior, empty input, and terminator runs. Please confirm."
+    )
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "confirmation summary is incomplete" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][5]["result"] = (
+        "Our understanding: abbreviations do not end sentences; use a small explicit "
+        "abbreviation list including e.g. and Dr.; empty input prints Sentences: 0; "
+        "consecutive terminators form one boundary. Please confirm."
+    )
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "goal/outcome" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][5]["result"] = confirmation
+    upstream = context["interaction"]["subject_turns"][3]["result"]
+    downstream = context["interaction"]["subject_turns"][4]["result"]
+    context["interaction"]["subject_turns"][3]["result"] = downstream
+    context["interaction"]["subject_turns"][4]["result"] = upstream
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "hidden and dependent decisions in order" in result["reason"].lower()
+
+    context["interaction"]["subject_turns"][3]["result"] = upstream
+    context["interaction"]["subject_turns"][4]["result"] = downstream
+    context["interaction"]["subject_turns"][0]["result"] += (
+        "\nQuestion: What should empty input print?"
+    )
+    (tmp_path / "_test_context.json").write_text(json.dumps(context), encoding="utf-8")
+
+    result = validator.check_clarification_protocol()
+    assert result["status"] == "failed"
+    assert "exactly one" in result["reason"].lower()
+
+
 @pytest.mark.parametrize(
     ("treatment", "mode", "decision_points"),
     [
-        ("COMET_NATIVE_SEQUENTIAL", "sequential", 3),
+        ("COMET_NATIVE_SEQUENTIAL", "sequential", 4),
         ("COMET_NATIVE_BATCH", "batch", 2),
     ],
 )
@@ -320,7 +742,10 @@ A contiguous run of terminal punctuation (`.`, `!`, `?`) counts as exactly one b
 
 def test_native_clarification_validator_rejects_multiple_archives(tmp_path: Path):
     validator_path = (
-        get_tasks_dir() / "comet-native-clarification" / "validation" / "test_native_clarification.py"
+        get_tasks_dir()
+        / "comet-native-clarification"
+        / "validation"
+        / "test_native_clarification.py"
     )
     spec = importlib.util.spec_from_file_location("native_clarification_validator", validator_path)
     assert spec and spec.loader
@@ -346,7 +771,10 @@ def test_native_clarification_validator_rejects_multiple_archives(tmp_path: Path
 
 def test_native_clarification_validator_accepts_one_semantic_canonical_spec(tmp_path: Path):
     validator_path = (
-        get_tasks_dir() / "comet-native-clarification" / "validation" / "test_native_clarification.py"
+        get_tasks_dir()
+        / "comet-native-clarification"
+        / "validation"
+        / "test_native_clarification.py"
     )
     spec = importlib.util.spec_from_file_location("native_clarification_validator", validator_path)
     assert spec and spec.loader
@@ -431,7 +859,10 @@ archived: true
 
 def test_native_clarification_validator_rejects_leftover_active_change(tmp_path: Path):
     validator_path = (
-        get_tasks_dir() / "comet-native-clarification" / "validation" / "test_native_clarification.py"
+        get_tasks_dir()
+        / "comet-native-clarification"
+        / "validation"
+        / "test_native_clarification.py"
     )
     spec = importlib.util.spec_from_file_location("native_clarification_validator", validator_path)
     assert spec and spec.loader
@@ -474,7 +905,9 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
     task = load_task("comet-native-interrupted-transition")
     workspace = tmp_path / "workspace"
     shutil.copytree(task.environment_dir, workspace)
-    runtime = get_tasks_dir().parents[2] / "assets/skills/comet-native/scripts/comet-native-runtime.mjs"
+    runtime = (
+        get_tasks_dir().parents[2] / "assets/skills/comet-native/scripts/comet-native-runtime.mjs"
+    )
     change = workspace / "docs/comet/changes/add-character-counting"
 
     def run_native(*args: str, expected_exit: int = 0) -> dict:
@@ -538,7 +971,6 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
         event
         for event in events
         if event.get("type") == "state_transitioned"
-        and event.get("data", {}).get("transitionId")
-        == "11111111-2222-4333-8444-555555555555"
+        and event.get("data", {}).get("transitionId") == "11111111-2222-4333-8444-555555555555"
     ]
     assert len(recovered) == 1

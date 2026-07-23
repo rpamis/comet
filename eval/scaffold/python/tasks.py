@@ -100,6 +100,7 @@ class InteractionConfig:
     simulator_prompt: str | None = None
     decision_patterns: list[str] = field(default_factory=list)
     decision_reply: str | None = None
+    decision_replies: list[str] = field(default_factory=list)
     continue_prompt: str = "Please continue with the next phase of the workflow."
     fresh_resume_marker: str | None = None
 
@@ -287,6 +288,7 @@ def load_task(name: str, tasks_dir: Path | None = None) -> Task:
         simulator_prompt=interaction.get("simulator_prompt"),
         decision_patterns=interaction.get("decision_patterns", []),
         decision_reply=interaction.get("decision_reply"),
+        decision_replies=interaction.get("decision_replies", []),
         continue_prompt=interaction.get(
             "continue_prompt",
             "Please continue with the next phase of the workflow.",

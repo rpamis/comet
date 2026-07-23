@@ -232,6 +232,10 @@ def test_claude_loop_applies_plugin_args_to_subject_turns_only():
     assert 'claude -p "$USER_REPLY" "${PLUGIN_ARGS[@]}"' in loop_sh
     assert "fresh resume boundary detected" in loop_sh
     assert 'claude -p "$sim_prompt" "${PLUGIN_ARGS[@]}"' not in loop_sh
+    assert 'if ! rm -f -- "$SIMULATOR_PROMPT_FILE"; then' in loop_sh
+    assert loop_sh.index('rm -f -- "$SIMULATOR_PROMPT_FILE"') < loop_sh.index(
+        'RAW=$(claude -p "$SUBJECT_PROMPT"'
+    )
 
 
 def test_claude_loop_surfaces_subject_resume_failure(tmp_path: Path):
@@ -282,6 +286,113 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","re
     assert "resume failed stdout diagnostic" in result.stderr
     assert "resume failed diagnostic" in result.stderr
     assert "subject turn 2 failed" in result.stderr
+
+
+def test_claude_loop_consumes_deterministic_reply_steps_in_order(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_claude = fake_bin / "claude"
+    fake_claude.write_text(
+        """#!/usr/bin/env bash
+prompt=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "-p" ]]; then
+    prompt="$2"
+    break
+  fi
+  shift
+done
+printf '%s\n' '{"type":"system","session_id":"session-1"}'
+case "$prompt" in
+  "First reply.")
+    printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","result":"Question: Which second choice should be used? Recommendation: B. Impact: changes output."}'
+    ;;
+  "Second reply.")
+    printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","result":"Workflow completed through all phases and archived."}'
+    ;;
+  *)
+    printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","result":"Question: Which first choice should be used? Recommendation: A. Impact: changes output."}'
+    ;;
+esac
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake_claude.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{utils._to_bash_path(fake_bin)}:{env.get('PATH', '')}"
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            utils._to_bash_path(utils.SHELL_DIR / "run-claude-loop.sh"),
+            "Implement the requested change.",
+            "--max-turns",
+            "3",
+            "--decision-reply-step",
+            "First reply.",
+            "--decision-reply-step",
+            "Second reply.",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=10,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr.count("deterministic decision reply applied") == 2
+    assert "workflow completion detected" in result.stderr
+
+
+def test_claude_loop_removes_private_simulator_prompt_before_subject_run(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_claude = fake_bin / "claude"
+    fake_claude.write_text(
+        """#!/usr/bin/env bash
+if [[ -e "$SIMULATOR_LEAK_PATH" ]]; then
+  echo "private simulator prompt leaked to subject" >&2
+  exit 43
+fi
+printf '%s\n' '{"type":"system","session_id":"session-1"}'
+printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","result":"Workflow completed through all phases and archived."}'
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake_claude.chmod(0o755)
+    simulator_prompt = tmp_path / ".eval-simulator-prompt.txt"
+    simulator_prompt.write_text("private fixed decisions", encoding="utf-8")
+
+    env = os.environ.copy()
+    env["PATH"] = f"{utils._to_bash_path(fake_bin)}:{env.get('PATH', '')}"
+    env["SIMULATOR_LEAK_PATH"] = utils._to_bash_path(simulator_prompt)
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            utils._to_bash_path(utils.SHELL_DIR / "run-claude-loop.sh"),
+            "Implement the requested change.",
+            "--max-turns",
+            "1",
+            "--simulator-prompt-file",
+            utils._to_bash_path(simulator_prompt),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=10,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "private simulator prompt leaked" not in result.stderr
+    assert not simulator_prompt.exists()
 
 
 def test_decision_point_detector_rejects_completion_statements():
@@ -373,7 +484,9 @@ def test_completion_point_detector_requires_explicit_non_negated_workflow_comple
         "completion-point.sh", "Change add-counting completed through Archive.", check=False
     )
     archived_to = utils.run_shell(
-        "completion-point.sh", "- **Archived to**: docs/comet/archive/2026-07-19-add-counting/", check=False
+        "completion-point.sh",
+        "- **Archived to**: docs/comet/archive/2026-07-19-add-counting/",
+        check=False,
     )
     completed_all_phases = utils.run_shell(
         "completion-point.sh",

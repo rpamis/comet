@@ -75,6 +75,7 @@ describe('Native check public seam', () => {
       changeName,
       '--summary',
       'Requirements are ready',
+      '--confirmed',
       '--json',
       ...projectArgs(),
     ]);

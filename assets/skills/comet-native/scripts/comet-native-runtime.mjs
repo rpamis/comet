@@ -22035,8 +22035,10 @@ async function inspectNativeRunConsistency(paths, state) {
 
 // domains/comet-native/native-continuation.ts
 var REPAIR_CODES = /^(?:run-|trajectory-|checkpoint-(?:missing|mismatch|invalid|progress-invalid)|transition-(?:incomplete|invalid))/u;
-function requiredPhaseInputs(state) {
-  if (state.phase === "shape") return ["summary"];
+function requiredPhaseInputs(state, clarificationMode) {
+  if (state.phase === "shape") {
+    return clarificationMode === "sequential" ? ["summary", "shared-understanding-confirmation"] : ["summary"];
+  }
   if (state.phase === "build") return ["summary", "artifact-or-no-code-reason"];
   if (state.phase === "verify") return ["summary", "verification-result", "verification-report"];
   return [];
@@ -22168,6 +22170,7 @@ function nativeContinuation(options) {
       requiredInputs: options.archiveReady ? [] : ["archive-readiness"]
     };
   }
+  const shapeConfirmationSuffix = options.state.phase === "shape" && options.clarificationMode === "sequential" ? " --confirmed" : "";
   return {
     schema: "comet.native.continuation.v1",
     skill: "comet-native",
@@ -22176,9 +22179,9 @@ function nativeContinuation(options) {
     revision: options.state.revision,
     disposition: "continue",
     action: "advance-phase",
-    command: `comet native next ${options.state.name} --summary "<summary>"`,
+    command: `comet native next ${options.state.name} --summary "<summary>"${shapeConfirmationSuffix}`,
     requiresUserDecision: false,
-    requiredInputs: requiredPhaseInputs(options.state)
+    requiredInputs: requiredPhaseInputs(options.state, options.clarificationMode)
   };
 }
 
@@ -22189,6 +22192,12 @@ var EXACT_METADATA = {
   "brief-blocking-question": {
     severity: "error",
     requiredAction: "answer-blocking-question",
+    retry: "next",
+    repair: "none"
+  },
+  "shape-confirmation-required": {
+    severity: "error",
+    requiredAction: "confirm-shared-understanding",
     retry: "next",
     repair: "none"
   },
@@ -22363,7 +22372,7 @@ function projectRelativePath3(paths, state, finding) {
 }
 function retryCommand(retry, state, code) {
   if (retry === "next") {
-    return `comet native next ${state.name} --summary "<summary>"${code === "contract-changed-after-approval" ? " --confirmed" : ""}`;
+    return `comet native next ${state.name} --summary "<summary>"${code === "contract-changed-after-approval" || code === "shape-confirmation-required" ? " --confirmed" : ""}`;
   }
   if (retry === "status") return `comet native status ${state.name} --details`;
   return null;
@@ -22381,7 +22390,7 @@ function structureNativeFindings(options) {
       repairCommand: metadata.repair === "doctor" ? `comet native doctor ${options.state.name} --repair${finding.code.startsWith("transition-") ? " --strategy continue" : ""}` : null,
       // This is intentionally code-based, not severity-based. Model-actionable
       // missing data must never be presented as a user decision.
-      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "contract-changed-after-approval" || finding.code === "verification-scope-partial" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
+      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "shape-confirmation-required" || finding.code === "contract-changed-after-approval" || finding.code === "verification-scope-partial" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
     };
   }).sort((left, right) => {
     const severityRank = { error: 0, warning: 1, info: 2 };
@@ -22695,11 +22704,11 @@ async function selectedName(paths) {
     return null;
   }
 }
-function nativeNextCommand(state, archiveReady, evidenceRetreat = false) {
+function nativeNextCommand(state, archiveReady, evidenceRetreat = false, clarificationMode) {
   if (state.phase === "archive") {
     return archiveReady ? `comet native archive ${state.name} --dry-run` : evidenceRetreat ? `comet native next ${state.name} --summary "<summary>"` : null;
   }
-  return `comet native next ${state.name} --summary "<summary>"`;
+  return `comet native next ${state.name} --summary "<summary>"${state.phase === "shape" && clarificationMode === "sequential" ? " --confirmed" : ""}`;
 }
 async function statusFindings(paths, state) {
   const changeDir = nativeChangeDir(paths, state.name);
@@ -23030,13 +23039,19 @@ async function inspectNativeStatus(paths, name, options) {
     verificationResult: state.verification_result,
     specChanges: state.spec_changes.length,
     selected,
-    nextCommand: mutationBlocked || repairBlocked ? null : nativeNextCommand(state, archiveReady, evidenceRetreat),
+    nextCommand: mutationBlocked || repairBlocked ? null : nativeNextCommand(state, archiveReady, evidenceRetreat, options?.clarificationMode),
     archiveReady,
     inspection: resume.inspection,
     findingSummary: summarizeNativeFindings(findings),
     detailsCommand: `comet native status ${state.name} --details`,
     checkpoint: resume.checkpoint,
-    continuation: nativeContinuation({ state, findings, archiveReady, evidenceRetreat }),
+    continuation: nativeContinuation({
+      state,
+      findings,
+      archiveReady,
+      evidenceRetreat,
+      clarificationMode: options?.clarificationMode
+    }),
     repair,
     ...options?.details ? {
       ...acceptancePage ? { acceptancePage } : {},
@@ -23119,7 +23134,11 @@ async function listNativeStatusPage(paths, options) {
     cursor: options?.cursor
   });
   const candidates = await Promise.all(
-    names.slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems).map((name) => inspectNativeStatus(paths, name))
+    names.slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems).map(
+      (name) => inspectNativeStatus(paths, name, {
+        clarificationMode: options?.clarificationMode
+      })
+    )
   );
   const items = [];
   for (const candidate of candidates) {
@@ -23151,8 +23170,10 @@ async function listNativeStatusPage(paths, options) {
     limits: { ...NATIVE_STATUS_PAGE_LIMITS }
   };
 }
-async function listNativeStatus(paths) {
-  return (await listNativeStatusPage(paths)).items;
+async function listNativeStatus(paths, options) {
+  return (await listNativeStatusPage(paths, {
+    clarificationMode: options?.clarificationMode
+  })).items;
 }
 
 // domains/comet-native/native-doctor.ts
@@ -27217,6 +27238,12 @@ async function inspectNativeGuard(options) {
     const brief = await validateNativeBrief(changeDir, options.state.brief);
     const specs = await validateNativeSpecChanges(options.paths, options.state);
     findings.push(...brief.findings, ...specs.findings);
+    if (findings.length === 0 && options.clarificationMode === "sequential" && !options.evidence.confirmed) {
+      findings.push({
+        code: "shape-confirmation-required",
+        message: "Sequential clarification requires explicit user confirmation of the shared understanding before Build"
+      });
+    }
   } else if (options.state.phase === "build") {
     findings.push(
       ...(await validateNativeBrief(changeDir, options.state.brief)).findings,
@@ -27599,7 +27626,8 @@ async function retreatStaleNativeEvidence(options) {
       findings,
       continuation: nativeContinuation({
         state: options.state,
-        archiveReady: previousPhase === "archive"
+        archiveReady: previousPhase === "archive",
+        clarificationMode: options.transition.clarificationMode
       })
     };
   }
@@ -27654,7 +27682,10 @@ async function retreatStaleNativeEvidence(options) {
     next: "auto",
     nextCommand: null,
     findings: [],
-    continuation: nativeContinuation({ state: persisted })
+    continuation: nativeContinuation({
+      state: persisted,
+      clarificationMode: options.transition.clarificationMode
+    })
   };
 }
 async function advanceNativeChange(options) {
@@ -27701,7 +27732,8 @@ async function advanceNativeChangeLocked(options) {
         continuation: nativeContinuation({
           state,
           findings: repairFindings2,
-          archiveReady: state.phase === "archive" && state.verification_result === "pass"
+          archiveReady: state.phase === "archive" && state.verification_result === "pass",
+          clarificationMode: options.clarificationMode
         }),
         ...repair ? { repair } : {}
       };
@@ -27740,7 +27772,8 @@ async function advanceNativeChangeLocked(options) {
   const guard = await inspectNativeGuard({
     paths: options.paths,
     state: candidate,
-    evidence: options.evidence
+    evidence: options.evidence,
+    clarificationMode: options.clarificationMode
   });
   if (!guard.valid) {
     const findings = structureNativeFindings({
@@ -27754,7 +27787,11 @@ async function advanceNativeChangeLocked(options) {
       next: "manual",
       nextCommand: null,
       findings,
-      continuation: nativeContinuation({ state, findings })
+      continuation: nativeContinuation({
+        state,
+        findings,
+        clarificationMode: options.clarificationMode
+      })
     };
   }
   const shapeContract = state.phase === "shape" ? await collectNativeContractFiles({
@@ -27793,7 +27830,11 @@ async function advanceNativeChangeLocked(options) {
       next: "manual",
       nextCommand: null,
       findings,
-      continuation: nativeContinuation({ state, findings })
+      continuation: nativeContinuation({
+        state,
+        findings,
+        clarificationMode: options.clarificationMode
+      })
     };
   }
   const preparedScope = buildEvidence ? {
@@ -27825,7 +27866,11 @@ async function advanceNativeChangeLocked(options) {
       next: "manual",
       nextCommand: null,
       findings,
-      continuation: nativeContinuation({ state, findings }),
+      continuation: nativeContinuation({
+        state,
+        findings,
+        clarificationMode: options.clarificationMode
+      }),
       preparedScope
     };
   }
@@ -27870,7 +27915,11 @@ async function advanceNativeChangeLocked(options) {
         next: "manual",
         nextCommand: null,
         findings,
-        continuation: nativeContinuation({ state, findings }),
+        continuation: nativeContinuation({
+          state,
+          findings,
+          clarificationMode: options.clarificationMode
+        }),
         preparedScope: preparedScope ? { ...preparedScope, partialAllowanceRef: null } : preparedScope
       };
     }
@@ -27899,7 +27948,11 @@ async function advanceNativeChangeLocked(options) {
       next: "manual",
       nextCommand: null,
       findings,
-      continuation: nativeContinuation({ state, findings })
+      continuation: nativeContinuation({
+        state,
+        findings,
+        clarificationMode: options.clarificationMode
+      })
     };
   }
   let repairDecision = null;
@@ -28031,7 +28084,8 @@ async function advanceNativeChangeLocked(options) {
     continuation: nativeContinuation({
       state: persisted,
       findings: repairFindings,
-      archiveReady: persisted.phase === "archive" && persisted.verification_result === "pass"
+      archiveReady: persisted.phase === "archive" && persisted.verification_result === "pass",
+      clarificationMode: options.clarificationMode
     }),
     ...preparedScope ? { preparedScope } : {},
     ...repairDecision ? { repair: repairDecision } : {}
@@ -28510,7 +28564,9 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     await ensureNativeDirectories(paths);
     const state = await createNativeChange({ paths, name, language });
     await selectNativeChange(paths, state.name);
-    const status = await inspectNativeStatus(paths, state.name);
+    const status = await inspectNativeStatus(paths, state.name, {
+      clarificationMode: config.native.clarification_mode
+    });
     return success(
       "new",
       { ...state, continuation: status.continuation },
@@ -28524,9 +28580,11 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       const name = requiredPositional(rawArgs, "change name");
       const capability = requiredPositional(rawArgs, "capability");
       assertNoArguments(rawArgs);
-      const { paths } = await configuredPaths(projectRoot);
+      const { config, paths } = await configuredPaths(projectRoot);
       const state = await markNativeSpecRemoval(paths, name, capability);
-      const status = await inspectNativeStatus(paths, state.name);
+      const status = await inspectNativeStatus(paths, state.name, {
+        clarificationMode: config.native.clarification_mode
+      });
       return success(
         "spec remove",
         { ...state, continuation: status.continuation },
@@ -28539,9 +28597,11 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       const summary = takeOption(rawArgs, "--summary");
       if (!summary) throw new NativeUsageError("--summary is required");
       assertNoArguments(rawArgs);
-      const { paths } = await configuredPaths(projectRoot);
+      const { config, paths } = await configuredPaths(projectRoot);
       const state = await rebaseNativeSpecChanges({ paths, name, summary });
-      const status = await inspectNativeStatus(paths, state.name);
+      const status = await inspectNativeStatus(paths, state.name, {
+        clarificationMode: config.native.clarification_mode
+      });
       return success(
         "spec rebase",
         { ...state, continuation: status.continuation },
@@ -28554,8 +28614,11 @@ async function dispatch(rawArgs, explicitProjectRoot) {
   if (command === "list") {
     const cursor = takeOption(rawArgs, "--cursor");
     assertNoArguments(rawArgs);
-    const { paths } = await configuredPaths(projectRoot);
-    const page = await listNativeStatusPage(paths, cursor ? { cursor } : void 0);
+    const { config, paths } = await configuredPaths(projectRoot);
+    const page = await listNativeStatusPage(paths, {
+      ...cursor ? { cursor } : {},
+      clarificationMode: config.native.clarification_mode
+    });
     return success("list", page);
   }
   if (command === "show") {
@@ -28611,19 +28674,25 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       throw new NativeUsageError("--acceptance-cursor requires a change name");
     }
     assertNoArguments(rawArgs);
-    const { paths } = await configuredPaths(projectRoot);
+    const { config, paths } = await configuredPaths(projectRoot);
     const data = name ? await inspectNativeStatus(paths, name, {
       details,
-      ...acceptanceCursor2 ? { acceptanceCursor: acceptanceCursor2 } : {}
-    }) : await listNativeStatusPage(paths, cursor ? { cursor } : void 0);
+      ...acceptanceCursor2 ? { acceptanceCursor: acceptanceCursor2 } : {},
+      clarificationMode: config.native.clarification_mode
+    }) : await listNativeStatusPage(paths, {
+      ...cursor ? { cursor } : {},
+      clarificationMode: config.native.clarification_mode
+    });
     return success("status", data);
   }
   if (command === "select") {
     const name = requiredPositional(rawArgs, "change name");
     assertNoArguments(rawArgs);
-    const { paths } = await configuredPaths(projectRoot);
+    const { config, paths } = await configuredPaths(projectRoot);
     await selectNativeChange(paths, name);
-    const status = await inspectNativeStatus(paths, name);
+    const status = await inspectNativeStatus(paths, name, {
+      clarificationMode: config.native.clarification_mode
+    });
     return success(
       "select",
       { selected: name, continuation: status.continuation },
@@ -28640,7 +28709,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const artifacts = takeMany(rawArgs, "--artifact");
     const expectedRevision = revisionOption(rawArgs);
     assertNoArguments(rawArgs);
-    const { paths } = await configuredPaths(projectRoot);
+    const { config, paths } = await configuredPaths(projectRoot);
     const result2 = await checkpointNativeChange({
       paths,
       name,
@@ -28649,7 +28718,9 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       artifacts,
       expectedRevision
     });
-    const status = await inspectNativeStatus(paths, name);
+    const status = await inspectNativeStatus(paths, name, {
+      clarificationMode: config.native.clarification_mode
+    });
     const manifestRef = path47.relative(
       paths.projectRoot,
       path47.join(nativeChangeDir(paths, name), ...result2.checkpoint.manifestRef.split("/"))
@@ -28736,7 +28807,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       throw new NativeUsageError("--override-repair cannot be combined with --result");
     }
     assertNoArguments(rawArgs);
-    const { paths } = await configuredPaths(projectRoot);
+    const { config, paths } = await configuredPaths(projectRoot);
     const evidence = {
       summary,
       ...confirmed ? { confirmed: true } : {},
@@ -28752,7 +28823,12 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       ...repairOverrideSignature ? { repairOverrideSignature } : {},
       ...repairOverrideSummary ? { repairOverrideSummary } : {}
     };
-    const result2 = await advanceNativeChange({ paths, name, evidence });
+    const result2 = await advanceNativeChange({
+      paths,
+      name,
+      evidence,
+      clarificationMode: config.native.clarification_mode
+    });
     if (result2.next === "manual") {
       const repairBlocked = result2.repair?.disposition === "manual-stop" || result2.repair?.disposition === "hard-stop" || result2.findings.some(
         (finding) => [
@@ -28771,7 +28847,9 @@ async function dispatch(rawArgs, explicitProjectRoot) {
         }
       };
     }
-    const status = await inspectNativeStatus(paths, name);
+    const status = await inspectNativeStatus(paths, name, {
+      clarificationMode: config.native.clarification_mode
+    });
     return success("next", { ...result2, continuation: status.continuation });
   }
   if (command === "archive") {

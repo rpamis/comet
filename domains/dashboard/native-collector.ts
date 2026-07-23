@@ -281,7 +281,10 @@ export async function collectNativeDashboardProjection(
   let statusCursor: string | null = null;
   let totalStatusCount: number | undefined;
   do {
-    const page = await listNativeStatusPage(paths, { cursor: statusCursor });
+    const page = await listNativeStatusPage(paths, {
+      cursor: statusCursor,
+      clarificationMode: config.native.clarification_mode,
+    });
     totalStatusCount ??= page.total;
     if (page.total !== totalStatusCount) {
       throw new Error('Native status total changed during Dashboard pagination');

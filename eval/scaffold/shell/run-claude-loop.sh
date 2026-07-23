@@ -11,6 +11,7 @@
 #   --model MODEL             Model for both subject and simulator
 #   --simulator-prompt-file   File containing the simulator system prompt
 #   --decision-reply TEXT     Deterministic reply for each detected decision point
+#   --decision-reply-step TEXT  Queue one deterministic reply for the next decision point
 #   --continue-prompt TEXT    Nudge used when the workflow should continue
 #   --decision-pattern TEXT   Extra case-insensitive substring to treat as a decision point
 #   --fresh-resume-marker TEXT  Start the following turn in a new subject session
@@ -37,6 +38,7 @@ MAX_TURNS=12
 MODEL="${ANTHROPIC_MODEL:-}"
 SIMULATOR_PROMPT=""
 DECISION_REPLY=""
+DECISION_REPLY_STEPS=()
 CONTINUE_PROMPT="Please continue with the next phase of the comet workflow."
 FRESH_RESUME_MARKER=""
 DECISION_PATTERNS=()
@@ -50,10 +52,22 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --simulator-prompt-file)
-            SIMULATOR_PROMPT="$(cat "$2")"
+            SIMULATOR_PROMPT_FILE="$2"
+            if ! SIMULATOR_PROMPT="$(cat -- "$SIMULATOR_PROMPT_FILE")"; then
+                echo "[loop] unable to read private simulator prompt" >&2
+                exit 2
+            fi
+            if ! rm -f -- "$SIMULATOR_PROMPT_FILE"; then
+                echo "[loop] unable to remove private simulator prompt" >&2
+                exit 2
+            fi
             shift 2
             ;;
         --decision-reply) DECISION_REPLY="$2"; shift 2 ;;
+        --decision-reply-step)
+            DECISION_REPLY_STEPS+=("$2")
+            shift 2
+            ;;
         --continue-prompt) CONTINUE_PROMPT="$2"; shift 2 ;;
         --fresh-resume-marker) FRESH_RESUME_MARKER="$2"; shift 2 ;;
         --decision-pattern)
@@ -107,6 +121,7 @@ SESSION_ID=""
 FRESH_PROMPT=""
 COMBINED_OUT=""
 TURN=0
+DECISION_REPLY_STEP_INDEX=0
 
 while [[ $TURN -lt $MAX_TURNS ]]; do
     TURN=$((TURN + 1))
@@ -187,7 +202,15 @@ except: print('')
 
     if bash "$SCRIPT_DIR/decision-point.sh" "$RESULT_TEXT" "${DECISION_PATTERNS[@]}"; then
         echo "[loop] decision point detected; simulating user reply" >&2
-        if [[ -n "$DECISION_REPLY" ]]; then
+        if [[ ${#DECISION_REPLY_STEPS[@]} -gt 0 ]]; then
+            if [[ $DECISION_REPLY_STEP_INDEX -ge ${#DECISION_REPLY_STEPS[@]} ]]; then
+                echo "[loop] deterministic decision reply queue exhausted" >&2
+                exit 3
+            fi
+            USER_REPLY="${DECISION_REPLY_STEPS[$DECISION_REPLY_STEP_INDEX]}"
+            DECISION_REPLY_STEP_INDEX=$((DECISION_REPLY_STEP_INDEX + 1))
+            echo "[loop] deterministic decision reply applied" >&2
+        elif [[ -n "$DECISION_REPLY" ]]; then
             USER_REPLY="$DECISION_REPLY"
             echo "[loop] deterministic decision reply applied" >&2
         else

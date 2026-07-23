@@ -19,7 +19,7 @@ When Shape or Build contains `[blocking]` items, recover the current open decisi
 
 Continue investigating facts available from the repository, tools, or runtime environment yourself. Independent facts may be investigated in parallel when the host supports it, but recovery must not depend on any optional parallel capabilities. A fact still under investigation delays only the questions that depend on it.
 
-In Batch mode, unanswered questions remain `[blocking]`. After all questions are resolved, recover or establish the final shared-understanding confirmation. Remove that blocking item and enter Build only after explicit user confirmation. This process adds no phase, change-state field, or separate decision-tree file.
+Sequential mode recovers the current most-upstream question, while Batch mode recovers every unanswered numbered question; both remain `[blocking]`. After all questions are resolved, recover or establish the final shared-understanding confirmation. Remove that blocking item and enter Build only after explicit user confirmation. This process adds no phase, change-state field, or separate decision-tree file.
 
 Before interrupting a long task within the same phase, write a checkpoint when useful:
 

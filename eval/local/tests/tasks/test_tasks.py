@@ -388,6 +388,7 @@ def test_task_treatment(task_name, treatment_name):
 
     events = extract_events(parse_output(result.stdout))
     loop_interaction = conftest._extract_loop_interaction(result.stderr)
+    subject_turns = conftest._extract_subject_turn_evidence(result.stdout)
     outputs = {
         "run_id": run_id,
         "treatment_name": treatment_name,
@@ -418,6 +419,7 @@ def test_task_treatment(task_name, treatment_name):
             "mode": interaction.mode,
             "max_turns": interaction.max_turns,
             **loop_interaction,
+            "subject_turns": subject_turns,
         },
         "case_manifest": case_manifest,
     }

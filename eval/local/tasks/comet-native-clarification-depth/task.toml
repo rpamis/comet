@@ -1,0 +1,47 @@
+[metadata]
+name = "comet-native-clarification-depth"
+description = "Measure whether Native Sequential discovers hidden user-owned decisions before implementation"
+difficulty = "hard"
+category = "comet-native"
+tags = ["comet-native", "clarification", "sequential", "multi-turn", "decision-depth"]
+default_treatments = ["COMET_NATIVE_SEQUENTIAL"]
+
+[template]
+required = []
+
+[environment]
+description = "Python word-count workspace with only the self-contained Comet Native Skill available."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 2400
+
+[validation]
+test_scripts = "test_native_clarification_depth.py"
+target_artifacts = [".comet/config.yaml", "docs/comet/archive", "docs/comet/specs"]
+timeout = 120
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet-native"]
+expected_artifacts = [".comet/config.yaml", "docs/comet/archive", "docs/comet/specs"]
+require_skill_invocation = true
+rubric_criteria = [
+  "Investigates repository-owned facts without asking the user",
+  "Discovers all hidden user-owned behavior decisions one at a time",
+  "Provides a recommendation and practical impact for each decision",
+  "Obtains explicit shared-understanding confirmation before Build",
+  "Completes Build, Verify, and Archive using only the Comet Native Skill and bundled runtime",
+]
+
+[interaction]
+mode = "auto_user"
+max_turns = 8
+decision_replies = [
+  "It prints Sentences: 0.",
+  "They count as one sentence boundary.",
+  "Recognized abbreviations such as e.g. and Dr. always suppress their periods, including at end-of-input; every other occurrence of ., !, or ? remains a sentence boundary, and the non-empty fallback still makes an abbreviation-only input one sentence.",
+  "Use a small explicit list. Ask me for the exact entries separately.",
+  "Use exactly Dr., Mr., Mrs., Ms., Prof., Sr., Jr., e.g., i.e., etc., vs., Inc., Ltd., Corp., St., and Ave., matched case-sensitively exactly as written.",
+  "confirmed",
+]
+decision_patterns = ["Question:", "Recommendation:", "Impact:", "shared understanding", "Please confirm"]
+continue_prompt = "Please read the persisted Native state and continue the same confirmed change through verification and archive."

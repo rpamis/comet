@@ -55,7 +55,7 @@ native:
   clarification_mode: sequential
 ```
 
-`clarification_mode` controls only how Native organizes user decisions. `sequential` asks one most-upstream question per round, while `batch` asks every question whose prerequisites are settled. The default is `sequential` when the field is absent. It does not change the change schema, lifecycle, Guards, safety confirmations, or caller-defined stop points.
+`clarification_mode` controls how Native organizes user decisions and which confirmation contract applies before leaving Shape. `sequential` asks one most-upstream question per round, while `batch` asks every question whose prerequisites are settled. The default is `sequential` when the field is absent. It does not change the change schema, lifecycle, safety confirmations, or caller-defined stop points.
 
 During an artifact-root move, the runtime-managed `pending_root_move` field is present. Ordinary write commands must stop while it exists; never choose the old or new root yourself.
 
@@ -122,7 +122,7 @@ Do not edit Runtime-managed fields directly. The Runtime owns `phase`, `revision
 
 The first four sections require substantive content. Prefix unresolved implementation-blocking questions under Open questions with `- [blocking]`; ordinary notes do not block Shape.
 
-In Sequential mode, Open questions holds one most-upstream blocking question at a time. In Batch mode, persist the current ready question set as `- [blocking] Q1: <question>`, `- [blocking] Q2: <question>`, and so on. This unordered-list prefix is the fixed form recognized by the Runtime and must not be replaced with a Markdown ordered list. Unanswered items remain `[blocking]`. After the round is resolved and the completeness review passes, Batch mode persists the shared-understanding confirmation as `- [blocking] CONFIRM: <confirmation>`. Build cannot begin before explicit confirmation.
+In Sequential mode, Open questions holds one most-upstream blocking question at a time. In Batch mode, persist the current ready question set as `- [blocking] Q1: <question>`, `- [blocking] Q2: <question>`, and so on. This unordered-list prefix is the fixed form recognized by the Runtime and must not be replaced with a Markdown ordered list. Unanswered items remain `[blocking]`. After all questions for the current mode are resolved and the completeness review passes, both modes persist the shared-understanding confirmation as `- [blocking] CONFIRM: <confirmation>`. Build cannot begin before explicit confirmation.
 
 Question numbers apply only to the current clarification round. Write confirmed answers into Decisions and the complete target specifications. Do not add a decision-tree artifact or persist hidden reasoning in the brief.
 

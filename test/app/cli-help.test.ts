@@ -35,9 +35,9 @@ describe('CLI help text', () => {
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain(tagline);
     expect(packageJson.description).toBe(tagline);
-    expect(packageJson.version).toBe('0.4.0-beta.8');
-    expect(packageLock.version).toBe('0.4.0-beta.8');
-    expect(packageLock.packages[''].version).toBe('0.4.0-beta.8');
+    expect(packageJson.version).toBe('0.4.0-beta.9');
+    expect(packageLock.version).toBe('0.4.0-beta.9');
+    expect(packageLock.packages[''].version).toBe('0.4.0-beta.9');
     expect(assetsManifest.version).toBe('0.4.0-beta.8');
   });
 

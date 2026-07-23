@@ -17,6 +17,7 @@ import type {
   NativeAdvanceEvidence,
   NativeArtifactValidation,
   NativeChangeState,
+  NativeClarificationMode,
   NativeFinding,
   NativeProjectPaths,
 } from './native-types.js';
@@ -76,6 +77,7 @@ export async function inspectNativeGuard(options: {
   paths: NativeProjectPaths;
   state: NativeChangeState;
   evidence: NativeAdvanceEvidence;
+  clarificationMode: NativeClarificationMode;
 }): Promise<NativeArtifactValidation> {
   const findings: NativeFinding[] = [];
   const changeDir = nativeChangeDir(options.paths, options.state.name);
@@ -120,6 +122,17 @@ export async function inspectNativeGuard(options: {
     const brief = await validateNativeBrief(changeDir, options.state.brief);
     const specs = await validateNativeSpecChanges(options.paths, options.state);
     findings.push(...brief.findings, ...specs.findings);
+    if (
+      findings.length === 0 &&
+      options.clarificationMode === 'sequential' &&
+      !options.evidence.confirmed
+    ) {
+      findings.push({
+        code: 'shape-confirmation-required',
+        message:
+          'Sequential clarification requires explicit user confirmation of the shared understanding before Build',
+      });
+    }
   } else if (options.state.phase === 'build') {
     findings.push(
       ...(await validateNativeBrief(changeDir, options.state.brief)).findings,

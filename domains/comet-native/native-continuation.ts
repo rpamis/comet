@@ -1,5 +1,6 @@
 import type {
   NativeChangeState,
+  NativeClarificationMode,
   NativeContinuation,
   NativeStructuredFinding,
 } from './native-types.js';
@@ -8,8 +9,15 @@ import { isNativeWorkspaceAdvisoryCode } from './native-workspace.js';
 const REPAIR_CODES =
   /^(?:run-|trajectory-|checkpoint-(?:missing|mismatch|invalid|progress-invalid)|transition-(?:incomplete|invalid))/u;
 
-function requiredPhaseInputs(state: NativeChangeState): string[] {
-  if (state.phase === 'shape') return ['summary'];
+function requiredPhaseInputs(
+  state: NativeChangeState,
+  clarificationMode: NativeClarificationMode | undefined,
+): string[] {
+  if (state.phase === 'shape') {
+    return clarificationMode === 'sequential'
+      ? ['summary', 'shared-understanding-confirmation']
+      : ['summary'];
+  }
   if (state.phase === 'build') return ['summary', 'artifact-or-no-code-reason'];
   if (state.phase === 'verify') return ['summary', 'verification-result', 'verification-report'];
   return [];
@@ -21,6 +29,7 @@ export function nativeContinuation(options: {
   archiveReady?: boolean;
   evidenceRetreat?: boolean;
   done?: boolean;
+  clarificationMode?: NativeClarificationMode;
 }): NativeContinuation {
   const findings = options.findings ?? [];
   const actionableFindings = findings.filter(
@@ -149,6 +158,10 @@ export function nativeContinuation(options: {
       requiredInputs: options.archiveReady ? [] : ['archive-readiness'],
     };
   }
+  const shapeConfirmationSuffix =
+    options.state.phase === 'shape' && options.clarificationMode === 'sequential'
+      ? ' --confirmed'
+      : '';
   return {
     schema: 'comet.native.continuation.v1',
     skill: 'comet-native',
@@ -157,8 +170,8 @@ export function nativeContinuation(options: {
     revision: options.state.revision,
     disposition: 'continue',
     action: 'advance-phase',
-    command: `comet native next ${options.state.name} --summary "<summary>"`,
+    command: `comet native next ${options.state.name} --summary "<summary>"${shapeConfirmationSuffix}`,
     requiresUserDecision: false,
-    requiredInputs: requiredPhaseInputs(options.state),
+    requiredInputs: requiredPhaseInputs(options.state, options.clarificationMode),
   };
 }

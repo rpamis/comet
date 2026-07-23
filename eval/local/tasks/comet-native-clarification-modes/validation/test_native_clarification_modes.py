@@ -134,7 +134,7 @@ def check_mode_and_interaction():
     if interaction.get("mode") != "auto_user" or interaction.get("deterministic_replies") != 0:
         return failed("clarification_mode_protocol", "Interactive simulator metadata is invalid")
     decision_points = interaction.get("decision_points")
-    expected_points = 2 if expected_mode == "batch" else 3
+    expected_points = 2 if expected_mode == "batch" else 4
     if decision_points != expected_points:
         return failed(
             "clarification_mode_protocol",

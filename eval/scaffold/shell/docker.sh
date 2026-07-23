@@ -456,7 +456,7 @@ docker_run_claude_loop() {
                 expected_image_id="$2"
                 shift 2
                 ;;
-            --max-turns|--model|--simulator-prompt-file|--decision-reply|--continue-prompt|--decision-pattern|--fresh-resume-marker)
+            --max-turns|--model|--simulator-prompt-file|--decision-reply|--decision-reply-step|--continue-prompt|--decision-pattern|--fresh-resume-marker)
                 loop_args+=("$1" "$2")
                 shift 2
                 ;;

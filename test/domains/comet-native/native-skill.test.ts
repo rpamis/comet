@@ -32,7 +32,14 @@ describe('Comet Native Skills', () => {
           '同一决定的某种合理解释',
           '一次只问最上游的一个问题',
           '问题 / 推荐 / 影响',
-          '不增加通用的最终确认',
+          '把当前目标视为一棵用户可见结果的决策树',
+          '逐一遍历所有合理可达的用户可见分支',
+          '不能在得到第一个可行解释后停止',
+          '每轮只询问这一个用户决定',
+          '立即把确认内容写入 Decisions 和完整目标规格',
+          '再从目标开始重新遍历整棵决策树',
+          '仍不能直接进入 Build',
+          '主动寻找被遗漏或静默假设的用户可见分支',
           '本轮可回答问题集',
           '前置决定都已确定',
           '答案不依赖本轮其他问题',
@@ -69,7 +76,14 @@ describe('Comet Native Skills', () => {
           'reasonable interpretation of that same decision',
           'Ask only the most upstream question',
           'Question / Recommendation / Impact',
-          'without adding a generic final confirmation',
+          'Treat the current goal as a decision tree of user-visible results',
+          'Traverse every reasonably reachable user-visible branch',
+          'Do not stop after finding the first workable interpretation',
+          'each round asks exactly this one user decision',
+          'immediately write the confirmed content into Decisions and the complete target specifications',
+          'traverse the entire decision tree again from the goal',
+          'do not enter Build directly',
+          'actively look for omitted or silently assumed user-visible branches',
           'ready question set',
           'all prerequisite decisions settled',
           'does not depend on another question in the same round',
@@ -181,16 +195,14 @@ describe('Comet Native Skills', () => {
     const zh = await read('zh', 'SKILL.md');
     expect(zh).toContain('能从环境取得的事实不要询问用户');
     expect(zh).toContain('实现方式、是否保存计划、测试粒度、调试方法和审查强度由你根据风险决定');
-    expect(zh).toContain('Sequential 模式直接继续；Batch 模式先完成最终共享理解确认');
+    expect(zh).toContain('两种模式都先完成最终共享理解确认');
     expect(zh).toContain('Batch 模式需要重新计算问题集');
     expect(zh).toContain('用户明确给出的 lowercase kebab-case capability ID 必须原样');
 
     const en = await read('en', 'SKILL.md');
     expect(en).toContain('Do not ask the user for facts available from the environment');
     expect(en).toContain('Decide implementation details');
-    expect(en).toContain(
-      'Sequential mode continues directly. Batch mode first completes its final shared-understanding confirmation',
-    );
+    expect(en).toContain('both modes first complete the final shared-understanding confirmation');
     expect(en).toContain('Batch mode must recompute the ready question set');
     expect(en).toContain('Preserve a user-provided lowercase kebab-case capability ID exactly');
   });

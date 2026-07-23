@@ -58,7 +58,7 @@ cp .env.example .env
 | ----------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`                                               | ✅\* | Anthropic API 密钥；也可以由系统环境变量提供                                                        |
 | `BENCH_CC_MODEL`                                                  | ❌   | Claude 模型覆盖（默认用 CLI 配置）                                                                  |
-| `BENCH_SIMULATOR_PROMPT_FILE`                                     | ❌   | 自定义用户模拟器提示词文件（默认 `eval/simulator-instruction.md`）                                  |
+| `BENCH_SIMULATOR_PROMPT_FILE`                                     | ❌   | 显式覆盖任务级用户模拟器提示词；任务未配置时回退到 `eval/simulator-instruction.md`                    |
 | `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` | ❌   | 用 Anthropic 兼容代理时的认证与模型配置；设置 `ANTHROPIC_AUTH_TOKEN` 后可不设置 `ANTHROPIC_API_KEY` |
 | `BENCH_LLM_JUDGE`                                                 | ❌   | 设为 `1` 启用 LLM-as-judge 评分                                                                     |
 | `BENCH_JUDGE_MODEL`                                               | ❌   | Judge 模型；启用 `BENCH_LLM_JUDGE=1` 时必须显式设置，不能复用主模型                                  |

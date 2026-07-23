@@ -269,6 +269,7 @@ def build_execution_identity(
         "simulator_prompt": getattr(interaction, "simulator_prompt", None),
         "decision_patterns": list(getattr(interaction, "decision_patterns", ()) or ()),
         "decision_reply": getattr(interaction, "decision_reply", None),
+        "decision_replies": list(getattr(interaction, "decision_replies", []) or []),
         "continue_prompt": getattr(interaction, "continue_prompt", None),
         "fresh_resume_marker": getattr(interaction, "fresh_resume_marker", None),
     }

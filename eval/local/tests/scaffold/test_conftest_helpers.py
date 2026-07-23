@@ -101,6 +101,154 @@ def test_extract_loop_turns_reads_driver_completion_line():
     assert conftest._extract_loop_turns("ordinary stderr") is None
 
 
+def test_extract_subject_turn_evidence_groups_results_and_tool_calls():
+    stdout = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {"type": "text", "text": "Investigating."},
+                            {
+                                "type": "tool_use",
+                                "id": "read-1",
+                                "name": "Read",
+                                "input": {"file_path": "x"},
+                            },
+                            {
+                                "type": "tool_use",
+                                "id": "bash-1",
+                                "name": "Bash",
+                                "input": {"command": "AUTH_TOKEN=topsecret cat > wordcount.py"},
+                            },
+                            {
+                                "type": "tool_use",
+                                "id": "edit-failed",
+                                "name": "Edit",
+                                "input": {"file_path": "sentence.py"},
+                            },
+                            {
+                                "type": "tool_use",
+                                "id": "bash-failed",
+                                "name": "Bash",
+                                "input": {"command": "cat > fallback.py"},
+                            },
+                        ]
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "read-1",
+                                "content": "source",
+                            },
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "bash-1",
+                                "content": "updated",
+                            },
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "edit-failed",
+                                "content": "permission denied",
+                                "is_error": True,
+                            },
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "bash-failed",
+                                "content": "Process exited with code 1",
+                            },
+                        ]
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "result": "[blocking] QUESTION\nShould empty input return zero?",
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "write-1",
+                                "name": "Write",
+                                "input": {"file_path": "y"},
+                            },
+                            {
+                                "type": "text",
+                                "text": "Implementation completed through archive.",
+                            },
+                        ]
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "write-1",
+                                "content": "created",
+                            }
+                        ]
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "result": "",
+                }
+            ),
+        ]
+    )
+
+    assert conftest._extract_subject_turn_evidence(stdout) == [
+        {
+            "turn": 1,
+            "result": "[blocking] QUESTION\nShould empty input return zero?",
+            "tool_calls": [
+                {"name": "Read", "success": True, "path": "x"},
+                {
+                    "name": "Bash",
+                    "success": True,
+                    "command": "AUTH_TOKEN=[REDACTED] cat > wordcount.py",
+                },
+                {
+                    "name": "Edit",
+                    "success": False,
+                    "path": "sentence.py",
+                },
+                {
+                    "name": "Bash",
+                    "success": False,
+                    "command": "cat > fallback.py",
+                },
+            ],
+        },
+        {
+            "turn": 2,
+            "result": "Implementation completed through archive.",
+            "tool_calls": [{"name": "Write", "success": True, "path": "y"}],
+        },
+    ]
+
+
 def test_capture_execution_identity_separates_runtime_image_from_safe_report(
     tmp_path: Path, monkeypatch
 ):
@@ -201,7 +349,8 @@ def test_auto_user_prompt_paths_bypass_msys_path_conversion():
 
     assert '"@//workspace/.eval-task-prompt.txt"' in source
     assert '"//workspace/.eval-simulator-prompt.txt"' in source
-    assert "interaction.simulator_prompt and not interaction.decision_reply" in source
+    assert "and not interaction.decision_reply" in source
+    assert "and not interaction.decision_replies" in source
 
 
 def test_dynamic_treatment_config_from_skill_path(tmp_path: Path):
@@ -270,6 +419,44 @@ def test_resolve_interaction_config_uses_profile_default_prompt():
     assert interaction.mode == "auto_user"
     assert interaction.max_turns == 12
     assert interaction.simulator_prompt is not None
+
+
+def test_resolve_interaction_config_preserves_task_simulator_prompt(monkeypatch):
+    task = load_task("comet-native-clarification-modes")
+    monkeypatch.delenv("BENCH_SIMULATOR_PROMPT_FILE", raising=False)
+
+    class Config:
+        def getoption(self, name):
+            return {
+                "--interaction-mode": None,
+                "--max-turns": None,
+                "--simulator-prompt": None,
+            }.get(name)
+
+    interaction = conftest._resolve_interaction_config(task, "generic", Config())
+
+    assert interaction.simulator_prompt == task.config.interaction.simulator_prompt
+
+
+def test_resolve_interaction_config_allows_explicit_prompt_file_override(
+    tmp_path: Path, monkeypatch
+):
+    task = load_task("comet-native-clarification-modes")
+    prompt_file = tmp_path / "simulator.md"
+    prompt_file.write_text("Use the explicit simulator.", encoding="utf-8")
+    monkeypatch.setenv("BENCH_SIMULATOR_PROMPT_FILE", str(prompt_file))
+
+    class Config:
+        def getoption(self, name):
+            return {
+                "--interaction-mode": None,
+                "--max-turns": None,
+                "--simulator-prompt": None,
+            }.get(name)
+
+    interaction = conftest._resolve_interaction_config(task, "generic", Config())
+
+    assert interaction.simulator_prompt == "Use the explicit simulator."
 
 
 def test_build_eval_claude_md_injects_comet_workflow_contract():

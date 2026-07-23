@@ -55,7 +55,7 @@ native:
   clarification_mode: sequential
 ```
 
-`clarification_mode` 只控制 Native 如何组织用户决定：`sequential` 每轮询问一个最上游问题，`batch` 每轮询问所有前置条件已经确定的问题。字段缺失时使用 `sequential`。它不改变 change schema、生命周期、Guard、安全确认或调用方停点。
+`clarification_mode` 控制 Native 如何组织用户决定，以及离开 Shape 前采用哪条确认契约：`sequential` 每轮询问一个最上游问题，`batch` 每轮询问所有前置条件已经确定的问题。字段缺失时使用 `sequential`。它不改变 change schema、生命周期、安全确认或调用方停点。
 
 根目录迁移期间会出现 runtime 管理的 `pending_root_move`。存在该字段时普通写命令必须停止，不能自行选择旧根或新根。
 
@@ -122,7 +122,7 @@ run_id: null
 
 前四节必须有实质内容。仍阻塞实现的问题在 Open questions 下以 `- [blocking]` 开头；普通备注不会阻塞 Shape。
 
-Sequential 模式的 Open questions 同时保存一个最上游阻塞问题。Batch 模式使用 `- [blocking] Q1: <问题>`、`- [blocking] Q2: <问题>` 保存本轮全部可回答问题；该无序列表前缀是 Runtime 识别阻塞的固定格式，不能改成 Markdown 有序列表。未回答项继续保持 `[blocking]`。本轮问题处理完且完整性复核通过后，Batch 模式使用 `- [blocking] CONFIRM: <确认内容>` 保存共享理解确认，明确确认前不能进入 Build。
+Sequential 模式的 Open questions 同时保存一个最上游阻塞问题。Batch 模式使用 `- [blocking] Q1: <问题>`、`- [blocking] Q2: <问题>` 保存本轮全部可回答问题；该无序列表前缀是 Runtime 识别阻塞的固定格式，不能改成 Markdown 有序列表。未回答项继续保持 `[blocking]`。当前模式的全部问题处理完且完整性复核通过后，两种模式都使用 `- [blocking] CONFIRM: <确认内容>` 保存共享理解确认，明确确认前不能进入 Build。
 
 问题编号只服务于当前澄清轮次。已确认答案应写入 Decisions 和完整目标规格；不要新增决策树产物，也不要把隐藏推理写入 brief。
 

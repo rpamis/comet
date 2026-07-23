@@ -34,6 +34,7 @@ import {
 import { captureNativeProtectedDirectoryGuard } from './native-protected-file.js';
 import type {
   NativeChangeState,
+  NativeClarificationMode,
   NativeFinding,
   NativeProjectPaths,
   NativeStatusPageProjection,
@@ -61,6 +62,7 @@ export function nativeNextCommand(
   state: NativeChangeState,
   archiveReady: boolean,
   evidenceRetreat = false,
+  clarificationMode?: NativeClarificationMode,
 ): string | null {
   if (state.phase === 'archive') {
     return archiveReady
@@ -69,7 +71,9 @@ export function nativeNextCommand(
         ? `comet native next ${state.name} --summary "<summary>"`
         : null;
   }
-  return `comet native next ${state.name} --summary "<summary>"`;
+  return `comet native next ${state.name} --summary "<summary>"${
+    state.phase === 'shape' && clarificationMode === 'sequential' ? ' --confirmed' : ''
+  }`;
 }
 
 async function statusFindings(
@@ -164,7 +168,11 @@ async function statusFindings(
 export async function inspectNativeStatus(
   paths: NativeProjectPaths,
   name: string,
-  options?: { details?: boolean; acceptanceCursor?: string },
+  options?: {
+    details?: boolean;
+    acceptanceCursor?: string;
+    clarificationMode?: NativeClarificationMode;
+  },
 ): Promise<NativeStatusProjection> {
   const selected = (await selectedName(paths)) === name;
   let state: NativeChangeState;
@@ -434,13 +442,19 @@ export async function inspectNativeStatus(
     nextCommand:
       mutationBlocked || repairBlocked
         ? null
-        : nativeNextCommand(state, archiveReady, evidenceRetreat),
+        : nativeNextCommand(state, archiveReady, evidenceRetreat, options?.clarificationMode),
     archiveReady,
     inspection: resume.inspection,
     findingSummary: summarizeNativeFindings(findings),
     detailsCommand: `comet native status ${state.name} --details`,
     checkpoint: resume.checkpoint,
-    continuation: nativeContinuation({ state, findings, archiveReady, evidenceRetreat }),
+    continuation: nativeContinuation({
+      state,
+      findings,
+      archiveReady,
+      evidenceRetreat,
+      clarificationMode: options?.clarificationMode,
+    }),
     repair,
     ...(options?.details
       ? {
@@ -531,7 +545,7 @@ function nativeStatusOffset(options: {
 
 export async function listNativeStatusPage(
   paths: NativeProjectPaths,
-  options?: { cursor?: string | null },
+  options?: { cursor?: string | null; clarificationMode?: NativeClarificationMode },
 ): Promise<NativeStatusPageProjection> {
   const names = await boundedNativeChangeNames(paths);
   const namesHash = canonicalHash('comet.native.status-names.v1', names);
@@ -541,9 +555,11 @@ export async function listNativeStatusPage(
     cursor: options?.cursor,
   });
   const candidates = await Promise.all(
-    names
-      .slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems)
-      .map((name) => inspectNativeStatus(paths, name)),
+    names.slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems).map((name) =>
+      inspectNativeStatus(paths, name, {
+        clarificationMode: options?.clarificationMode,
+      }),
+    ),
   );
   const items: NativeStatusProjection[] = [];
   for (const candidate of candidates) {
@@ -582,8 +598,13 @@ export async function listNativeStatusPage(
 /** Compatibility projection for in-process callers; CLI consumers receive the resumable page. */
 export async function listNativeStatus(
   paths: NativeProjectPaths,
+  options?: { clarificationMode?: NativeClarificationMode },
 ): Promise<NativeStatusProjection[]> {
-  return (await listNativeStatusPage(paths)).items;
+  return (
+    await listNativeStatusPage(paths, {
+      clarificationMode: options?.clarificationMode,
+    })
+  ).items;
 }
 
 export async function inspectNativeArtifactFindings(
