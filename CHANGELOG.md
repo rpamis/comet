@@ -6,16 +6,14 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
-- **Sequential clarification depth evaluation**: Adds a multi-turn Native task with controller-owned turn evidence that checks whether an agent investigates repository facts, resolves dependent user-visible decisions one at a time without receiving their expected answers, records each answer, confirms a complete shared understanding before implementation, and finishes the verified workflow.
+- **Sequential clarification evaluation**: Adds a repeatable multi-turn Native evaluation that checks whether Sequential investigates repository facts, resolves dependent user-owned decisions one at a time, records each answer, confirms a complete shared understanding before Build, and finishes verified implementation. Task-defined reply sequences keep decision paths reproducible instead of allowing the simulated user to invent additional choices.
 
 ### Changed
 
-- **Sequential Native clarification**: Sequential mode now re-traverses every reachable user-visible decision branch after each answer, asks exactly one most-upstream decision with a recommendation and impact per round, audits parsing and boundary counterexamples, and requires every behavior in the final shared-understanding summary to trace to the request, a confirmed answer, or an applicable published contract before Build. Batch question grouping and progression remain unchanged.
-- **Native confirmation diagnostics**: Sequential Shape status and continuation output now advertise the required `--confirmed` transition and shared-understanding input, while the Runtime blocks an unconfirmed Shape-to-Build transition without changing legacy or Batch `implicit` states.
+- **Sequential Native clarification**: Sequential mode now recalculates remaining user-visible decisions after each answer, asks exactly one most-upstream decision with a recommendation and impact per round, and requires every behavior in the final shared-understanding summary to trace to the request, a confirmed answer, or an applicable published contract. Status and continuation output identify the required confirmation, and Runtime blocks an unconfirmed transition into Build. Batch question grouping and progression remain unchanged.
 
 ### Fixed
 
-- **Task-specific eval simulators**: Local interactive evals now support controller-owned per-decision reply queues for exact multi-round answers, while still honoring task-private simulator prompts ahead of the repository default and removing those prompt files before the first subject turn. Queue exhaustion fails closed instead of letting a generic simulator invent additional decisions.
 - **Native baselines for large repositories**: Native content snapshots now support baseline-bound include/exclude policies and configurable file-count, total-byte, and duration budgets in `.comet/config.yaml`, with a 256 MiB default total budget and no separate 5 MiB per-file cap. Runtime continues to hash actual working-tree content with streaming SHA-256, records the effective policy and limits for audit, and reports actionable configuration fixes when a complete baseline cannot be captured ([#226](https://github.com/rpamis/comet/issues/226)).
 
 ## What's Changed [0.4.0-beta.8] - 2026-07-22
