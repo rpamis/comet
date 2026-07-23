@@ -37,7 +37,6 @@ import {
 } from '../../../domains/comet-native/native-transition-journal.js';
 import { appendNativeTrajectoryEvent } from '../../../domains/comet-native/native-trajectory.js';
 import { repairNativeTrajectoryTail } from '../../../domains/comet-native/native-trajectory-recovery.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type {
   NativeChangeState,
   NativeProjectPaths,
@@ -45,6 +44,7 @@ import type {
   NativeTransitionHooks,
   NativeTransitionJournal,
 } from '../../../domains/comet-native/native-types.js';
+import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 import { readyNativeArchivePreflight } from '../../helpers/native-archive.js';
 import {

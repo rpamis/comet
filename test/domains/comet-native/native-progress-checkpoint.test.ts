@@ -20,11 +20,11 @@ import {
 } from '../../../domains/comet-native/native-checkpoint-storage.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { checkpointNativeChange } from '../../../domains/comet-native/native-progress-checkpoint.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import { markNativeSpecRemoval } from '../../../domains/comet-native/native-specs.js';
 import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 
 describe('Native progress checkpoints', () => {
   let projectRoot: string;

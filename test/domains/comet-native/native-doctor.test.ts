@@ -19,12 +19,12 @@ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.j
 import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
 import { nativeSelectionFile } from '../../../domains/comet-native/native-selection.js';
 import { createNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import {
   nativeWorkspaceFile,
   readNativeWorkspaceIdentity,
 } from '../../../domains/comet-native/native-workspace.js';
+import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 
 const validBrief = `# Outcome
 Ship the feature.

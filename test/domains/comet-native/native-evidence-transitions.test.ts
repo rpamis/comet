@@ -19,10 +19,10 @@ import {
   writeNativeRunState,
 } from '../../../domains/comet-native/native-run-store.js';
 import { NATIVE_LEGACY_RUNTIME_IDENTITIES } from '../../../domains/comet-native/native-runtime-package.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { inspectNativeVerificationFreshness } from '../../../domains/comet-native/native-verification-runtime.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 
 const brief = `# Outcome
 Ship evidence-bound behavior.

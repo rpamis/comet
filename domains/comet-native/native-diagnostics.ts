@@ -62,7 +62,7 @@ export function nativeNextCommand(
   state: NativeChangeState,
   archiveReady: boolean,
   evidenceRetreat = false,
-  clarificationMode?: NativeClarificationMode,
+  _clarificationMode?: NativeClarificationMode,
 ): string | null {
   if (state.phase === 'archive') {
     return archiveReady
@@ -72,7 +72,9 @@ export function nativeNextCommand(
         : null;
   }
   return `comet native next ${state.name} --summary "<summary>"${
-    state.phase === 'shape' && clarificationMode === 'sequential' ? ' --confirmed' : ''
+    state.phase === 'shape' || (state.phase === 'build' && state.approval !== 'confirmed')
+      ? ' --confirmed'
+      : ''
   }`;
 }
 

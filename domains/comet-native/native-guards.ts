@@ -122,15 +122,11 @@ export async function inspectNativeGuard(options: {
     const brief = await validateNativeBrief(changeDir, options.state.brief);
     const specs = await validateNativeSpecChanges(options.paths, options.state);
     findings.push(...brief.findings, ...specs.findings);
-    if (
-      findings.length === 0 &&
-      options.clarificationMode === 'sequential' &&
-      !options.evidence.confirmed
-    ) {
+    if (findings.length === 0 && !options.evidence.confirmed) {
       findings.push({
         code: 'shape-confirmation-required',
         message:
-          'Sequential clarification requires explicit user confirmation of the shared understanding before Build',
+          'Native clarification requires explicit user confirmation of the shared understanding before Build',
       });
     }
   } else if (options.state.phase === 'build') {
@@ -139,6 +135,17 @@ export async function inspectNativeGuard(options: {
       ...(await validateNativeSpecChanges(options.paths, options.state)).findings,
     );
     findings.push(...(await validateBuildArtifacts(options.paths, options.evidence)));
+    if (
+      findings.length === 0 &&
+      options.state.approval !== 'confirmed' &&
+      !options.evidence.confirmed
+    ) {
+      findings.push({
+        code: 'approval-confirmation-required',
+        message:
+          'Native approval is implicit; confirm the current shared understanding before leaving Build',
+      });
+    }
   } else if (options.state.phase === 'verify') {
     const report = options.evidence.verificationReport ?? options.state.verification_report;
     if (!report) {

@@ -101,13 +101,34 @@ describe('Native phase guards', () => {
     });
   });
 
+  it('requires explicit shared-understanding confirmation in Batch mode', async () => {
+    await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
+    const result = await inspectNativeGuard({
+      paths,
+      state,
+      evidence: { summary: 'batch frontier is complete' },
+      clarificationMode: 'batch',
+    });
+
+    expect(result).toMatchObject({
+      valid: false,
+      findings: [
+        expect.objectContaining({
+          code: 'shape-confirmation-required',
+          message:
+            'Native clarification requires explicit user confirmation of the shared understanding before Build',
+        }),
+      ],
+    });
+  });
+
   it('requires a real artifact or a no-code reason in Build', async () => {
     await fs.writeFile(path.join(changeDir, 'brief.md'), completeBrief);
     state = (
       await advanceNativeChange({
         paths,
         name: state.name,
-        evidence: { summary: 'shape is ready' },
+        evidence: { summary: 'shape is ready', confirmed: true },
         clarificationMode: 'batch',
       })
     ).change;
@@ -137,7 +158,7 @@ describe('Native phase guards', () => {
       await advanceNativeChange({
         paths,
         name: state.name,
-        evidence: { summary: 'shape is ready' },
+        evidence: { summary: 'shape is ready', confirmed: true },
         clarificationMode: 'batch',
       })
     ).change;

@@ -9,16 +9,15 @@ import { isNativeWorkspaceAdvisoryCode } from './native-workspace.js';
 const REPAIR_CODES =
   /^(?:run-|trajectory-|checkpoint-(?:missing|mismatch|invalid|progress-invalid)|transition-(?:incomplete|invalid))/u;
 
-function requiredPhaseInputs(
-  state: NativeChangeState,
-  clarificationMode: NativeClarificationMode | undefined,
-): string[] {
+function requiredPhaseInputs(state: NativeChangeState): string[] {
   if (state.phase === 'shape') {
-    return clarificationMode === 'sequential'
-      ? ['summary', 'shared-understanding-confirmation']
-      : ['summary'];
+    return ['summary', 'shared-understanding-confirmation'];
   }
-  if (state.phase === 'build') return ['summary', 'artifact-or-no-code-reason'];
+  if (state.phase === 'build') {
+    return state.approval === 'confirmed'
+      ? ['summary', 'artifact-or-no-code-reason']
+      : ['summary', 'artifact-or-no-code-reason', 'shared-understanding-confirmation'];
+  }
   if (state.phase === 'verify') return ['summary', 'verification-result', 'verification-report'];
   return [];
 }
@@ -158,8 +157,9 @@ export function nativeContinuation(options: {
       requiredInputs: options.archiveReady ? [] : ['archive-readiness'],
     };
   }
-  const shapeConfirmationSuffix =
-    options.state.phase === 'shape' && options.clarificationMode === 'sequential'
+  const confirmationSuffix =
+    options.state.phase === 'shape' ||
+    (options.state.phase === 'build' && options.state.approval !== 'confirmed')
       ? ' --confirmed'
       : '';
   return {
@@ -170,8 +170,8 @@ export function nativeContinuation(options: {
     revision: options.state.revision,
     disposition: 'continue',
     action: 'advance-phase',
-    command: `comet native next ${options.state.name} --summary "<summary>"${shapeConfirmationSuffix}`,
+    command: `comet native next ${options.state.name} --summary "<summary>"${confirmationSuffix}`,
     requiresUserDecision: false,
-    requiredInputs: requiredPhaseInputs(options.state, options.clarificationMode),
+    requiredInputs: requiredPhaseInputs(options.state),
   };
 }

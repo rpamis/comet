@@ -114,7 +114,7 @@ describe('Comet project status', () => {
             {
               name: 'native-only',
               phase: 'shape',
-              nextCommand: 'comet native next native-only --summary "<summary>"',
+              nextCommand: 'comet native next native-only --summary "<summary>" --confirmed',
             },
           ],
         },

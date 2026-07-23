@@ -15,8 +15,8 @@ import {
   reconcileNativeSpecChanges,
 } from '../../../domains/comet-native/native-specs.js';
 import { nativeTransitionJournalFile } from '../../../domains/comet-native/native-transition-journal.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 
 const brief = `# Outcome
 Ship the feature.

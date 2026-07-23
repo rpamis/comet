@@ -675,11 +675,7 @@ async function advanceNativeChangeLocked(
     ...candidate,
     revision: state.revision + 1,
     phase: advanced.currentStep as NativePhase,
-    approval: options.evidence.confirmed
-      ? ('confirmed' as const)
-      : state.phase === 'shape' && state.approval === null
-        ? ('implicit' as const)
-        : state.approval,
+    approval: options.evidence.confirmed ? ('confirmed' as const) : state.approval,
     approved_contract_hash:
       state.phase === 'shape'
         ? shapeContract!.contract.contractHash

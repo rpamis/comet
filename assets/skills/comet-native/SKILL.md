@@ -48,9 +48,11 @@ When no unresolved user decision remains, do not enter Build directly. Perform o
 
 ### Batch mode
 
-Organize unresolved user decisions by their prerequisite relationships. Maintain only reviewable open items, dependency summaries, and formal artifacts; do not persist hidden reasoning or a complete internal exploration.
+Treat the current goal as a decision tree of user-visible results and organize unresolved user decisions by their prerequisite relationships. Maintain only reviewable open items, dependency summaries, and formal artifacts; do not persist hidden reasoning or a complete internal exploration.
 
-For each round, compute the ready question set. Every question in the set must have all prerequisite decisions settled, all required environment facts established, and an answer that does not depend on another question in the same round. Defer questions that depend on an unresolved decision or a fact still under investigation.
+For each round, compute the ready question set. Every question in the set must have all prerequisite decisions settled, all required environment facts established, and an answer that does not depend on another question in the same round. These questions form the current frontier. Defer questions that depend on an unresolved decision or a fact still under investigation.
+
+When a candidate branch needs an environment fact, investigating it remains your responsibility. When the host supports sub-agents or other parallel work, you must start independent fact investigations in parallel. A fact under investigation defers only its downstream questions; other frontier questions must still be asked in the current round. When the host does not support parallel work, investigate directly. Parallel capability is not a workflow prerequisite, and facts available from the environment must never be delegated to the user.
 
 For the ready question set:
 
@@ -72,7 +74,7 @@ Use this format:
 
 After the user answers, write confirmed content into Decisions and the complete target specifications, then remove the corresponding `[blocking]` items. Keep unanswered or ambiguous items `[blocking]`; never fill them from the recommendation. Recompute the ready question set from the new answers and continue round by round as new branches become available.
 
-When the ready question set is empty, all relevant facts are established, and every identified user decision is resolved, perform one completeness review. Recheck that no user-visible branch remains unaddressed or silently assumed. Present a shared-understanding summary that covers the outcome, scope, key decisions, acceptance criteria, and explicit non-goals, then persist the final confirmation as `- [blocking] CONFIRM: <confirmation>` in the brief. Until the user confirms explicitly, do not enter Build or call `next`. If the user adds or rejects anything, update the affected branches and continue with another round. After explicit confirmation, remove the blocking item, record the confirmation, and follow the normal transition.
+When the ready question set is empty, all relevant facts are established, and every identified user decision is resolved, perform one completeness review. Recheck that no user-visible branch remains unaddressed or silently assumed. Present a shared-understanding summary that covers the outcome, scope, key decisions, acceptance criteria, and explicit non-goals, then persist the final confirmation as `- [blocking] CONFIRM: <confirmation>` in the brief. Until the user confirms explicitly, do not enter Build or call `next`. If the user adds or rejects anything, update the affected branches and continue with another round. After explicit confirmation, remove the blocking item, record the confirmation, and advance with `--confirmed`.
 
 For text “normalization,” for example, cover case folding, surrounding punctuation, preservation of internal punctuation or apostrophes, and use counterexamples to show how each choice changes output.
 

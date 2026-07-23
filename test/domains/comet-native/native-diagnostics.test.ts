@@ -16,12 +16,12 @@ import {
 import { nativeContinuation } from '../../../domains/comet-native/native-continuation.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { selectNativeChange } from '../../../domains/comet-native/native-selection.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type {
   NativeChangeState,
   NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 
 const brief = `# Outcome
 Ship a focused outcome.
@@ -127,7 +127,7 @@ describe('Native status diagnostics', () => {
     expect(statuses[0]).toMatchObject({
       phase: 'shape',
       selected: false,
-      nextCommand: 'comet native next alpha-change --summary "<summary>"',
+      nextCommand: 'comet native next alpha-change --summary "<summary>" --confirmed',
     });
     expect(statuses[1]).toMatchObject({ selected: true });
     expect(JSON.stringify(statuses)).not.toMatch(/openspec|superpowers|comet classic/iu);

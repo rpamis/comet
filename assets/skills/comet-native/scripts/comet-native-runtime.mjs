@@ -22256,11 +22256,13 @@ async function inspectNativeRunConsistency(paths, state) {
 
 // domains/comet-native/native-continuation.ts
 var REPAIR_CODES = /^(?:run-|trajectory-|checkpoint-(?:missing|mismatch|invalid|progress-invalid)|transition-(?:incomplete|invalid))/u;
-function requiredPhaseInputs(state, clarificationMode) {
+function requiredPhaseInputs(state) {
   if (state.phase === "shape") {
-    return clarificationMode === "sequential" ? ["summary", "shared-understanding-confirmation"] : ["summary"];
+    return ["summary", "shared-understanding-confirmation"];
   }
-  if (state.phase === "build") return ["summary", "artifact-or-no-code-reason"];
+  if (state.phase === "build") {
+    return state.approval === "confirmed" ? ["summary", "artifact-or-no-code-reason"] : ["summary", "artifact-or-no-code-reason", "shared-understanding-confirmation"];
+  }
   if (state.phase === "verify") return ["summary", "verification-result", "verification-report"];
   return [];
 }
@@ -22391,7 +22393,7 @@ function nativeContinuation(options) {
       requiredInputs: options.archiveReady ? [] : ["archive-readiness"]
     };
   }
-  const shapeConfirmationSuffix = options.state.phase === "shape" && options.clarificationMode === "sequential" ? " --confirmed" : "";
+  const confirmationSuffix = options.state.phase === "shape" || options.state.phase === "build" && options.state.approval !== "confirmed" ? " --confirmed" : "";
   return {
     schema: "comet.native.continuation.v1",
     skill: "comet-native",
@@ -22400,9 +22402,9 @@ function nativeContinuation(options) {
     revision: options.state.revision,
     disposition: "continue",
     action: "advance-phase",
-    command: `comet native next ${options.state.name} --summary "<summary>"${shapeConfirmationSuffix}`,
+    command: `comet native next ${options.state.name} --summary "<summary>"${confirmationSuffix}`,
     requiresUserDecision: false,
-    requiredInputs: requiredPhaseInputs(options.state, options.clarificationMode)
+    requiredInputs: requiredPhaseInputs(options.state)
   };
 }
 
@@ -22417,6 +22419,12 @@ var EXACT_METADATA = {
     repair: "none"
   },
   "shape-confirmation-required": {
+    severity: "error",
+    requiredAction: "confirm-shared-understanding",
+    retry: "next",
+    repair: "none"
+  },
+  "approval-confirmation-required": {
     severity: "error",
     requiredAction: "confirm-shared-understanding",
     retry: "next",
@@ -22593,7 +22601,7 @@ function projectRelativePath3(paths, state, finding) {
 }
 function retryCommand(retry, state, code) {
   if (retry === "next") {
-    return `comet native next ${state.name} --summary "<summary>"${code === "contract-changed-after-approval" || code === "shape-confirmation-required" ? " --confirmed" : ""}`;
+    return `comet native next ${state.name} --summary "<summary>"${code === "contract-changed-after-approval" || code === "shape-confirmation-required" || code === "approval-confirmation-required" ? " --confirmed" : ""}`;
   }
   if (retry === "status") return `comet native status ${state.name} --details`;
   return null;
@@ -22611,7 +22619,7 @@ function structureNativeFindings(options) {
       repairCommand: metadata.repair === "doctor" ? `comet native doctor ${options.state.name} --repair${finding.code.startsWith("transition-") ? " --strategy continue" : ""}` : null,
       // This is intentionally code-based, not severity-based. Model-actionable
       // missing data must never be presented as a user decision.
-      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "shape-confirmation-required" || finding.code === "contract-changed-after-approval" || finding.code === "verification-scope-partial" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
+      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "shape-confirmation-required" || finding.code === "approval-confirmation-required" || finding.code === "contract-changed-after-approval" || finding.code === "verification-scope-partial" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
     };
   }).sort((left, right) => {
     const severityRank = { error: 0, warning: 1, info: 2 };
@@ -22925,11 +22933,11 @@ async function selectedName(paths) {
     return null;
   }
 }
-function nativeNextCommand(state, archiveReady, evidenceRetreat = false, clarificationMode) {
+function nativeNextCommand(state, archiveReady, evidenceRetreat = false, _clarificationMode) {
   if (state.phase === "archive") {
     return archiveReady ? `comet native archive ${state.name} --dry-run` : evidenceRetreat ? `comet native next ${state.name} --summary "<summary>"` : null;
   }
-  return `comet native next ${state.name} --summary "<summary>"${state.phase === "shape" && clarificationMode === "sequential" ? " --confirmed" : ""}`;
+  return `comet native next ${state.name} --summary "<summary>"${state.phase === "shape" || state.phase === "build" && state.approval !== "confirmed" ? " --confirmed" : ""}`;
 }
 async function statusFindings(paths, state) {
   const changeDir = nativeChangeDir(paths, state.name);
@@ -27463,10 +27471,10 @@ async function inspectNativeGuard(options) {
     const brief = await validateNativeBrief(changeDir, options.state.brief);
     const specs = await validateNativeSpecChanges(options.paths, options.state);
     findings.push(...brief.findings, ...specs.findings);
-    if (findings.length === 0 && options.clarificationMode === "sequential" && !options.evidence.confirmed) {
+    if (findings.length === 0 && !options.evidence.confirmed) {
       findings.push({
         code: "shape-confirmation-required",
-        message: "Sequential clarification requires explicit user confirmation of the shared understanding before Build"
+        message: "Native clarification requires explicit user confirmation of the shared understanding before Build"
       });
     }
   } else if (options.state.phase === "build") {
@@ -27475,6 +27483,12 @@ async function inspectNativeGuard(options) {
       ...(await validateNativeSpecChanges(options.paths, options.state)).findings
     );
     findings.push(...await validateBuildArtifacts(options.paths, options.evidence));
+    if (findings.length === 0 && options.state.approval !== "confirmed" && !options.evidence.confirmed) {
+      findings.push({
+        code: "approval-confirmation-required",
+        message: "Native approval is implicit; confirm the current shared understanding before leaving Build"
+      });
+    }
   } else if (options.state.phase === "verify") {
     const report = options.evidence.verificationReport ?? options.state.verification_report;
     if (!report) {
@@ -28232,7 +28246,7 @@ async function advanceNativeChangeLocked(options) {
     ...candidate,
     revision: state.revision + 1,
     phase: advanced.currentStep,
-    approval: options.evidence.confirmed ? "confirmed" : state.phase === "shape" && state.approval === null ? "implicit" : state.approval,
+    approval: options.evidence.confirmed ? "confirmed" : state.approval,
     approved_contract_hash: state.phase === "shape" ? shapeContract.contract.contractHash : state.phase === "build" && options.evidence.confirmed ? buildEvidence.contract.contract.contractHash : state.approved_contract_hash ?? null,
     run_id: run.runId,
     ...state.phase === "build" ? {

@@ -353,7 +353,7 @@ describe('Comet entry resume probe v2', () => {
         const advanced = await advanceNativeChange({
           paths,
           name: 'phase-routing',
-          evidence: { summary: 'Shape is complete.' },
+          evidence: { summary: 'Shape is complete.', confirmed: true },
         });
         expect(advanced.findings).toEqual([]);
       } else if (phase === 'build') {

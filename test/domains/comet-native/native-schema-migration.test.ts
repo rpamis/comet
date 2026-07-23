@@ -35,7 +35,6 @@ import {
   nativeBaselineManifestFile,
   readNativeBaselineManifest,
 } from '../../../domains/comet-native/native-snapshot.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import {
   NATIVE_CHANGE_SCHEMA,
   NATIVE_LEGACY_CHANGE_SCHEMA,
@@ -46,6 +45,7 @@ import {
   type NativeProjectPaths,
   type NativeSchemaMigrationHooks,
 } from '../../../domains/comet-native/native-types.js';
+import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 
 function legacyDocument(state: NativeChangeState): Record<string, unknown> {

@@ -112,7 +112,7 @@ run_id: null
 
 Do not edit Runtime-managed fields directly. The Runtime owns `phase`, `revision`, `approval`, `approved_contract_hash`, `spec_changes`, operation, `base_hash`, all three evidence refs, `run_id`, and `archived`.
 
-`approved_contract_hash` binds approval to the brief/spec contract from that moment. Later contract drift requires fresh user confirmation. To change requirements, edit only the brief and `specs/<capability>/spec.md`; remove a capability with `comet native spec remove`, then let the command validate and advance state.
+`approval: confirmed` means the Runtime recorded explicit user confirmation of the current shared understanding. `implicit` exists only for compatibility with older changes and does not prove confirmation; an older `implicit` change in Build must be confirmed before Verify. `approved_contract_hash` binds approval to the brief/spec contract from that moment, and later contract drift also requires fresh user confirmation. To change requirements, edit only the brief and `specs/<capability>/spec.md`; remove a capability with `comet native spec remove`, then let the command validate and advance state.
 
 ## Brief
 

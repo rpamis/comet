@@ -15,10 +15,10 @@ import {
   markNativeSpecRemoval,
   rebaseNativeSpecChanges,
 } from '../../../domains/comet-native/native-specs.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 import { readyNativeArchivePreflight } from '../../helpers/native-archive.js';
+import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 
 const brief = `# Outcome
 Ship the feature.

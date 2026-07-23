@@ -112,7 +112,7 @@ run_id: null
 
 不要直接编辑 Runtime 管理字段。`phase`、`revision`、`approval`、`approved_contract_hash`、`spec_changes`、operation、`base_hash`、三个 evidence ref、`run_id` 和 `archived` 都由 Runtime 管理。
 
-`approved_contract_hash` 把 approval 绑定到当时的 brief/spec contract。contract 发生变化后，必须由用户重新确认。需要改变需求时，只更新 brief 和 `specs/<capability>/spec.md`；删除 capability 使用 `comet native spec remove`，再由命令检查并推进。
+`approval: confirmed` 表示 Runtime 已记录用户对当前共享理解的明确确认。`implicit` 只用于兼容旧 change，不代表用户已经确认；处于 Build 的旧 `implicit` change 必须确认后才能进入 Verify。`approved_contract_hash` 把 approval 绑定到当时的 brief/spec contract，contract 发生变化后也必须由用户重新确认。需要改变需求时，只更新 brief 和 `specs/<capability>/spec.md`；删除 capability 使用 `comet native spec remove`，再由命令检查并推进。
 
 ## Brief
 

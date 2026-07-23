@@ -15,13 +15,13 @@ import {
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { inspectNativeRepairHistory } from '../../../domains/comet-native/native-repair-integration.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import { NATIVE_TRAJECTORY_MAX_TEXT_CHARACTERS } from '../../../domains/comet-native/native-trajectory-limits.js';
 import type {
   NativeProjectPaths,
   NativeTransitionHooks,
 } from '../../../domains/comet-native/native-types.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 
 const brief = `# Outcome
 Ship a repairable behavior.

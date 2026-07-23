@@ -518,7 +518,7 @@ Pass.
     });
   });
 
-  it('enforces Sequential confirmation while preserving Batch progression', async () => {
+  it('enforces shared-understanding confirmation in Sequential and Batch modes', async () => {
     await runNativeCli(['init', '--root', 'docs', ...projectArgs()]);
     await runNativeCli(['new', 'mode-boundary', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
@@ -572,15 +572,15 @@ Pass.
     );
     expect(batchStatus).toMatchObject({
       data: {
-        nextCommand: 'comet native next mode-boundary --summary "<summary>"',
+        nextCommand: 'comet native next mode-boundary --summary "<summary>" --confirmed',
         continuation: {
-          command: 'comet native next mode-boundary --summary "<summary>"',
-          requiredInputs: ['summary'],
+          command: 'comet native next mode-boundary --summary "<summary>" --confirmed',
+          requiredInputs: ['summary', 'shared-understanding-confirmation'],
         },
       },
     });
 
-    const advanced = json(
+    const batchBlocked = json(
       await runNativeCli([
         'next',
         'mode-boundary',
@@ -590,9 +590,28 @@ Pass.
         ...projectArgs(),
       ]),
     );
+    expect(batchBlocked).toMatchObject({
+      exitCode: 65,
+      data: {
+        change: { phase: 'shape', approval: null },
+        findings: [expect.objectContaining({ code: 'shape-confirmation-required' })],
+      },
+    });
+
+    const advanced = json(
+      await runNativeCli([
+        'next',
+        'mode-boundary',
+        '--summary',
+        'Batch shared understanding is confirmed',
+        '--confirmed',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
     expect(advanced).toMatchObject({
       exitCode: 0,
-      data: { change: { phase: 'build', approval: 'implicit' } },
+      data: { change: { phase: 'build', approval: 'confirmed' } },
     });
   });
 

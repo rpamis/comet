@@ -10,7 +10,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Sequential Native clarification**: Sequential mode now recalculates remaining user-visible decisions after each answer, asks exactly one most-upstream decision with a recommendation and impact per round, and requires every behavior in the final shared-understanding summary to trace to the request, a confirmed answer, or an applicable published contract. Status and continuation output identify the required confirmation, and Runtime blocks an unconfirmed transition into Build. Batch question grouping and progression remain unchanged.
+- **Native clarification modes**: Sequential mode now recalculates remaining user-visible decisions after each answer and asks exactly one most-upstream decision with a recommendation and impact per round. Batch maintains a prerequisite-aware decision tree, asks the entire ready frontier each round, and keeps environment-fact investigations from delaying other ready questions when parallel work is available. Both modes require every behavior in the final shared-understanding summary to be traceable, and Runtime enforces explicit confirmation before Build; older `implicit` changes must also confirm before leaving Build.
 
 ### Fixed
 
