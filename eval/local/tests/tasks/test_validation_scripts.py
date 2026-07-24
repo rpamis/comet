@@ -178,3 +178,14 @@ def test_workflow_phases_accepts_verification_report_name(monkeypatch, tmp_path:
 
     assert result["status"] == "passed"
     assert "verify" in result["message"]
+
+
+def test_claude_eval_task_images_install_claude_code():
+    task_root = ROOT / "local/tasks"
+    missing = []
+    for dockerfile in task_root.glob("*/environment/Dockerfile"):
+        text = dockerfile.read_text(encoding="utf-8").lower()
+        if "@anthropic-ai/claude-code" not in text:
+            missing.append(str(dockerfile.relative_to(ROOT)))
+
+    assert missing == []
