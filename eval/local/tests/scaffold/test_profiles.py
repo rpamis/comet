@@ -897,3 +897,28 @@ def test_generic_llm_judge_parses_custom_dimensions(tmp_path: Path):
     assert "custom_0" in scores
     assert "custom_1" in scores
     assert scores["custom_0"] == (0.90, "handles edge cases well")
+
+
+def test_generic_rubric_scores_structured_expected_artifact_paths(tmp_path: Path):
+    artifact = tmp_path / ".comet" / "runs" / "fix-from-issues" / "state.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+
+    passed, failed = run_profile_rubric(
+        "generic",
+        tmp_path,
+        {
+            "completion": {"passed": ["workflow completed"], "failed": []},
+            "expected_artifacts": [
+                {
+                    "node": "prepare",
+                    "schema": "fix-from-issues.prepare.v1",
+                    "artifact": "workflow-run-state",
+                    "paths": [".comet/runs/fix-from-issues/state.json"],
+                }
+            ],
+        },
+    )
+
+    assert failed == []
+    assert any("[RUBRIC] artifact_presence: 1.00 - 1/1 passed" in item for item in passed)

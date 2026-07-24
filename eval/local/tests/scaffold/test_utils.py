@@ -523,3 +523,28 @@ def test_completion_point_detector_requires_explicit_non_negated_workflow_comple
     assert phase_done.returncode == 1
     assert negated.returncode == 1
     assert negated_through_archive.returncode == 1
+
+
+def test_copied_scaffold_is_importable_by_validator_script(tmp_path: Path):
+    validation_dir = tmp_path / "validation"
+    validation_dir.mkdir()
+    (validation_dir / "check.py").write_text(
+        "from comet_checks import run_comet_checks\n"
+        "from scaffold.python.validation.core import load_test_context\n"
+        "print('ok')\n",
+        encoding="utf-8",
+    )
+
+    utils._copy_scaffold_to_docker(tmp_path)
+
+    result = subprocess.run(
+        [os.sys.executable, str(validation_dir / "check.py")],
+        cwd=tmp_path,
+        env={"PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "ok\n"

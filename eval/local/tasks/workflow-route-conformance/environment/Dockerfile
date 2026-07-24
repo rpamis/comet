@@ -9,3 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm config set registry https://registry.npmmirror.com && \
     npm install -g @anthropic-ai/claude-code@latest && \
     npm config delete registry
+
+RUN useradd --create-home --shell /bin/bash agent && \
+    chown -R agent:agent /workspace
+USER agent
+ENV HOME=/home/agent

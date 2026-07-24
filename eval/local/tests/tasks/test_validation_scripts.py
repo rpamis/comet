@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import types
@@ -182,10 +183,15 @@ def test_workflow_phases_accepts_verification_report_name(monkeypatch, tmp_path:
 
 def test_claude_eval_task_images_install_claude_code():
     task_root = ROOT / "local/tasks"
-    missing = []
+    missing_claude = []
+    root_images = []
     for dockerfile in task_root.glob("*/environment/Dockerfile"):
         text = dockerfile.read_text(encoding="utf-8").lower()
+        relative = str(dockerfile.relative_to(ROOT))
         if "@anthropic-ai/claude-code" not in text:
-            missing.append(str(dockerfile.relative_to(ROOT)))
+            missing_claude.append(relative)
+        if not re.search(r"^user\s+(?!root\b)\S+", text, re.MULTILINE):
+            root_images.append(relative)
 
-    assert missing == []
+    assert missing_claude == []
+    assert root_images == []

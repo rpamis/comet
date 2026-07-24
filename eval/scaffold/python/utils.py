@@ -236,27 +236,33 @@ def run_claude_loop_in_docker(test_dir, loop_args, timeout=600):
 
 
 def _copy_scaffold_to_docker(test_dir):
-    scaffold_dir = test_dir / "scaffold"
-    scaffold_dir.mkdir(parents=True, exist_ok=True)
-    (scaffold_dir / "__init__.py").write_text("", encoding="utf-8")
-    py_dest = scaffold_dir / "python"
-    py_dest.mkdir(exist_ok=True)
-    # The repository package initializer imports host-only orchestration
-    # dependencies.  Validator containers need only the copied helper modules,
-    # so always replace a stale/full initializer with a minimal package stub.
-    (py_dest / "__init__.py").write_text("", encoding="utf-8")
-    shutil.copy(SCAFFOLD_PYTHON_DIR / "utils.py", py_dest / "utils.py")
     py_validation = SCAFFOLD_PYTHON_DIR / "validation"
-    if py_validation.is_dir():
-        shutil.copytree(py_validation, py_dest / "validation", dirs_exist_ok=True)
 
-    # Copy the shared comet-workflow checks as a TOP-LEVEL module (comet_checks)
-    # so validators can `from comet_checks import ...` without triggering the
-    # scaffold package __init__ chain (which depends on host-side libs like
-    # dotenv that are absent in the validator container).
-    comet_checks_src = py_validation / "comet_workflow.py"
-    if comet_checks_src.exists():
-        shutil.copy(comet_checks_src, test_dir / "comet_checks.py")
+    def copy_validator_runtime(destination):
+        scaffold_dir = destination / "scaffold"
+        scaffold_dir.mkdir(parents=True, exist_ok=True)
+        (scaffold_dir / "__init__.py").write_text("", encoding="utf-8")
+        py_dest = scaffold_dir / "python"
+        py_dest.mkdir(exist_ok=True)
+        # The repository package initializer imports host-only orchestration
+        # dependencies. Validator containers need only the copied helper modules,
+        # so always replace a stale/full initializer with a minimal package stub.
+        (py_dest / "__init__.py").write_text("", encoding="utf-8")
+        shutil.copy(SCAFFOLD_PYTHON_DIR / "utils.py", py_dest / "utils.py")
+        if py_validation.is_dir():
+            shutil.copytree(py_validation, py_dest / "validation", dirs_exist_ok=True)
+
+        # Copy the shared comet-workflow checks as a TOP-LEVEL module so validators
+        # can import it without loading the host-side scaffold package initializer.
+        comet_checks_src = py_validation / "comet_workflow.py"
+        if comet_checks_src.exists():
+            shutil.copy(comet_checks_src, destination / "comet_checks.py")
+
+    copy_validator_runtime(test_dir)
+    # Python executes validation/<script>.py with validation/ as sys.path[0],
+    # not /workspace. Mirror the lightweight runtime beside the scripts so both
+    # scaffold and comet_checks remain importable inside the benchmark container.
+    copy_validator_runtime(test_dir / "validation")
 
 
 def _parse_json_output(output):
