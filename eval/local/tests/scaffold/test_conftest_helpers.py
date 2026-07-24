@@ -899,3 +899,66 @@ def test_build_report_payload_marks_timeout_as_excluded():
     assert report["sample_quality"]["status"] == "excluded"
     assert report["sample_quality"]["reason_code"] == "runner_timeout"
     assert report["sample_quality"]["include_in_analysis"] is False
+
+
+def test_prebuild_docker_image_allows_a_cold_image_build_to_run_for_fifteen_minutes(
+    tmp_path: Path, monkeypatch
+):
+    environment = tmp_path / "environment"
+    environment.mkdir()
+    (environment / "Dockerfile").write_text("FROM python:3.11-slim\n", encoding="utf-8")
+    calls = []
+
+    def fake_run_shell(*args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, "skillbench:test\n", "")
+
+    monkeypatch.setattr(conftest, "run_shell", fake_run_shell)
+    monkeypatch.setattr(conftest, "DOCKER_BUILD_LOCK", tmp_path / "docker-build.lock")
+
+    assert conftest._build_docker_image_with_lock(environment) == "skillbench:test"
+    assert calls == [
+        (
+            ("docker.sh", "build", str(environment)),
+            {"timeout": 900, "check": False},
+        )
+    ]
+
+
+def test_docker_prebuild_uses_only_the_tasks_selected_by_an_eval_manifest(
+    tmp_path: Path,
+):
+    tasks_dir = tmp_path / "tasks"
+    for task_name in ("authoring-skill-smoke", "workflow-route-conformance", "unrelated"):
+        environment = tasks_dir / task_name / "environment"
+        environment.mkdir(parents=True)
+        (environment / "Dockerfile").write_text("FROM python:3.11-slim\n", encoding="utf-8")
+
+    manifest = tmp_path / "eval.yaml"
+    manifest.write_text(
+        """
+apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata:
+  name: selected-tasks
+skill:
+  name: selected-tasks
+  source: .
+evaluation:
+  recommendedTasks:
+    - authoring-skill-smoke
+    - workflow-route-conformance
+""",
+        encoding="utf-8",
+    )
+
+    class Config:
+        def getoption(self, name):
+            return {"--task": None, "--eval-manifest": str(manifest)}[name]
+
+    request = SimpleNamespace(config=Config())
+
+    assert conftest._docker_environment_dirs_for_request(request, tasks_dir) == [
+        tasks_dir / "authoring-skill-smoke" / "environment",
+        tasks_dir / "workflow-route-conformance" / "environment",
+    ]

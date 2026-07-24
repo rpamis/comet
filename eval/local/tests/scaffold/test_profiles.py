@@ -328,6 +328,30 @@ def test_generic_profile_scores_completion_skill_artifact_and_efficiency(tmp_pat
     assert any("[RUBRIC] weighted_score:" in msg for msg in passed)
 
 
+def test_generic_profile_rejects_artifacts_outside_the_test_directory(tmp_path: Path):
+    outside = tmp_path.parent / "outside-artifact.txt"
+    outside.write_text("outside", encoding="utf-8")
+    (tmp_path / "outside-link.txt").symlink_to(outside)
+    (tmp_path / "outside-dir").symlink_to(outside.parent, target_is_directory=True)
+
+    outputs = {
+        "completion": {"passed": ["validator ok"], "failed": []},
+        "events": {"skills_invoked": [], "commands_run": []},
+        "expected_artifacts": [
+            str(outside),
+            "../outside-artifact.txt",
+            "outside-link.txt",
+            "outside-dir/*.txt",
+        ],
+        "interaction": {"mode": "none"},
+    }
+
+    passed, failed = run_profile_rubric("generic", tmp_path, outputs)
+
+    assert failed == []
+    assert any("[RUBRIC] artifact_presence: 0.00 - 0/4 passed" in msg for msg in passed)
+
+
 def test_generic_profile_can_fail_required_skill_invocation(tmp_path: Path):
     outputs = {
         "completion": {"passed": [], "failed": ["validator failed"]},

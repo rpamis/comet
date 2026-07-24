@@ -1083,6 +1083,31 @@ def verify_environment(project_root, request):
         pytest.skip("Claude CLI not available")
 
 
+def _docker_environment_dirs_for_request(request, tasks_dir: Path) -> list[Path]:
+    """Return only task environments selected by the current eval invocation."""
+    if not tasks_dir.exists():
+        return []
+
+    all_task_names = sorted(task_dir.name for task_dir in tasks_dir.iterdir() if task_dir.is_dir())
+    task_filter = request.config.getoption("--task")
+    manifest_path = request.config.getoption("--eval-manifest")
+    if task_filter:
+        task_names = [task_filter]
+    elif manifest_path:
+        from scaffold.python.manifests import load_eval_manifest
+
+        task_names = load_eval_manifest(manifest_path).recommended_tasks or all_task_names
+    else:
+        task_names = all_task_names
+
+    return [
+        environment_dir
+        for task_name in task_names
+        if (environment_dir := tasks_dir / task_name / "environment").is_dir()
+        and (environment_dir / "Dockerfile").is_file()
+    ]
+
+
 @pytest.fixture(scope="session", autouse=True)
 def prebuild_docker_image(request):
     """Pre-build Docker image once per session to avoid race conditions."""
@@ -1091,14 +1116,10 @@ def prebuild_docker_image(request):
         return
 
     tasks_dir = PROJECT_ROOT / "tasks"
-    if tasks_dir.exists():
-        for task_dir in tasks_dir.iterdir():
-            if task_dir.is_dir():
-                env_dir = task_dir / "environment"
-                if env_dir.exists() and (env_dir / "Dockerfile").exists():
-                    image = _build_docker_image_with_lock(env_dir)
-                    if image:
-                        print(f"\nPre-built Docker image: {image}")
+    for env_dir in _docker_environment_dirs_for_request(request, tasks_dir):
+        image = _build_docker_image_with_lock(env_dir)
+        if image:
+            print(f"\nPre-built Docker image: {image}")
 
     yield
 
@@ -1538,7 +1559,9 @@ def _build_docker_image_with_lock(environment_dir: Path) -> str | None:
         return None
 
     with file_lock(DOCKER_BUILD_LOCK):
-        result = run_shell("docker.sh", "build", str(environment_dir), timeout=300, check=False)
+        # A cold image build downloads Debian packages and installs the Claude CLI.
+        # Five minutes is insufficient after cache cleanup or on a proxied connection.
+        result = run_shell("docker.sh", "build", str(environment_dir), timeout=900, check=False)
         if result.returncode == 0:
             return result.stdout.strip()
         return None

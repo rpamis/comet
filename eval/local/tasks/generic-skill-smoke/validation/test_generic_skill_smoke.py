@@ -24,7 +24,12 @@ def main():
     else:
         failed.append(f"result.md bullet count was {len(bullets)}")
 
-    if "approach" in text.lower() or "used" in text.lower():
+    summary_lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and line.strip() != "# Skill Smoke Result" and not line.startswith("- ")
+    ]
+    if summary_lines:
         passed.append("result.md describes approach")
     else:
         failed.append("result.md approach summary missing")

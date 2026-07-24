@@ -114,6 +114,33 @@ def _load_validator(path: Path, workspace: Path):
             sys.modules["comet_checks"] = previous
 
 
+def test_generic_skill_smoke_accepts_plain_language_approach_summary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    (tmp_path / "result.md").write_text(
+        """# Skill Smoke Result
+
+Created this file directly with a single write, since the task only required producing a small markdown document with a fixed structure — no code exploration or additional tooling was needed.
+
+- Wrote `result.md` at the workspace root
+- Included the required `# Skill Smoke Result` heading and a short summary
+- Verified the bullet list contains exactly three bullets
+""",
+        encoding="utf-8",
+    )
+    module = _load_validator(
+        ROOT / "local/tasks/generic-skill-smoke/validation/test_generic_skill_smoke.py",
+        tmp_path,
+    )
+    captured = {}
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(module, "write_test_results", captured.update)
+
+    module.main()
+
+    assert "result.md describes approach" in captured["passed"]
+
+
 def test_refactor_counter_accepts_annotated_wrappers(tmp_path: Path):
     (tmp_path / "text_processor.py").write_text(
         """
