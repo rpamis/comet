@@ -6,9 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git nodejs npm ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @anthropic-ai/claude-code@latest && \
-    npm config delete registry
+RUN npm install -g @anthropic-ai/claude-code@latest
 
 RUN pip install --no-cache-dir pyyaml pytest
 

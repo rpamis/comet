@@ -66,9 +66,21 @@ def _artifact_paths(artifact: Any) -> list[str]:
 
 
 def _path_exists(test_dir: Path, path: str) -> bool:
-    if any(character in path for character in "*?["):
-        return bool(list(test_dir.glob(path)))
-    return (test_dir / path).exists()
+    requested = Path(path)
+    if requested.is_absolute() or ".." in requested.parts:
+        return False
+
+    resolved_test_dir = test_dir.resolve()
+    candidates = test_dir.glob(path) if any(character in path for character in "*?[") else [test_dir / path]
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            candidate.resolve().relative_to(resolved_test_dir)
+        except ValueError:
+            continue
+        return True
+    return False
 
 
 def _score_artifact_presence(test_dir: Path, outputs: dict[str, Any]) -> tuple[float | None, str]:

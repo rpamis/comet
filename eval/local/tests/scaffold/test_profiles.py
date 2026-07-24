@@ -900,9 +900,10 @@ def test_generic_llm_judge_parses_custom_dimensions(tmp_path: Path):
 
 
 def test_generic_rubric_scores_structured_expected_artifact_paths(tmp_path: Path):
-    artifact = tmp_path / ".comet" / "runs" / "fix-from-issues" / "state.json"
-    artifact.parent.mkdir(parents=True)
-    artifact.write_text("{}\n", encoding="utf-8")
+    artifact_dir = tmp_path / ".comet" / "runs" / "fix-from-issues"
+    artifact_dir.mkdir(parents=True)
+    for name in ("state.json", "plan.json", "verification.json"):
+        (artifact_dir / name).write_text("{}\n", encoding="utf-8")
 
     passed, failed = run_profile_rubric(
         "generic",
@@ -915,10 +916,55 @@ def test_generic_rubric_scores_structured_expected_artifact_paths(tmp_path: Path
                     "schema": "fix-from-issues.prepare.v1",
                     "artifact": "workflow-run-state",
                     "paths": [".comet/runs/fix-from-issues/state.json"],
-                }
+                },
+                {
+                    "node": "plan",
+                    "schema": "fix-from-issues.plan.v1",
+                    "artifact": "repair-plan",
+                    "path": ".comet/runs/fix-from-issues/plan.json",
+                },
+                {
+                    "node": "verify",
+                    "schema": "fix-from-issues.implementation.v1",
+                    "artifact": "verification",
+                    "paths": [
+                        ".comet/runs/fix-from-issues/state.json",
+                        ".comet/runs/fix-from-issues/verification.json",
+                    ],
+                },
+                {
+                    "node": "watch",
+                    "schema": "fix-from-issues.watch.v1",
+                    "artifact": "run-records",
+                    "path": ".comet/runs/fix-from-issues/*.json",
+                },
             ],
         },
     )
 
     assert failed == []
-    assert any("[RUBRIC] artifact_presence: 1.00 - 1/1 passed" in item for item in passed)
+    assert any("[RUBRIC] artifact_presence: 1.00 - 4/4 passed" in item for item in passed)
+
+
+def test_generic_rubric_rejects_artifact_paths_outside_task_directory(tmp_path: Path):
+    outside = tmp_path.parent / "outside-artifact.json"
+    outside.write_text("{}\n", encoding="utf-8")
+    escaped_link = tmp_path / "escaped-artifact.json"
+    escaped_link.symlink_to(outside)
+
+    passed, failed = run_profile_rubric(
+        "generic",
+        tmp_path,
+        {
+            "completion": {"passed": ["workflow completed"], "failed": []},
+            "expected_artifacts": [
+                {"path": "../outside-artifact.json"},
+                {"path": str(outside)},
+                {"path": "escaped-artifact.json"},
+                {"path": "escaped-*.json"},
+            ],
+        },
+    )
+
+    assert failed == []
+    assert any("[RUBRIC] artifact_presence: 0.00 - 0/4 passed" in item for item in passed)

@@ -10,8 +10,42 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def _final_dockerfile_user_is_non_root(dockerfile: str) -> bool:
+    user = None
+    for line in dockerfile.splitlines():
+        if re.match(r"^\s*FROM\s+", line, re.IGNORECASE):
+            user = None
+            continue
+        match = re.match(r"^\s*USER\s+(\S+)", line, re.IGNORECASE)
+        if match:
+            user = match.group(1).lower()
+
+    if user is None:
+        return False
+    return user.split(":", 1)[0] not in {"root", "0"}
+
+
+@pytest.mark.parametrize(
+    ("dockerfile", "expected"),
+    [
+        ("FROM python:3.12-slim\nUSER agent\n", True),
+        ("FROM python:3.12-slim\nUSER agent\nUSER root\n", False),
+        ("FROM python:3.12-slim\nUSER 0:0\n", False),
+        (
+            "FROM python:3.12-slim AS builder\nUSER agent\n"
+            "FROM python:3.12-slim\n",
+            False,
+        ),
+    ],
+)
+def test_final_dockerfile_user_must_be_non_root(dockerfile: str, expected: bool):
+    assert _final_dockerfile_user_is_non_root(dockerfile) is expected
 
 
 def test_native_wave_validator_import_does_not_load_host_docker_helpers(tmp_path: Path):
@@ -146,6 +180,17 @@ def test_pytest_task_images_install_pytest():
     assert missing == []
 
 
+def test_claude_eval_task_images_do_not_use_unapproved_npm_registry():
+    task_root = ROOT / "local/tasks"
+    mirror_images = []
+    for dockerfile in task_root.glob("*/environment/Dockerfile"):
+        text = dockerfile.read_text(encoding="utf-8").lower()
+        if "@anthropic-ai/claude-code" in text and "registry.npmmirror.com" in text:
+            mirror_images.append(str(dockerfile.relative_to(ROOT)))
+
+    assert mirror_images == []
+
+
 def test_comet_state_accepts_archived_change_without_active_state(monkeypatch, tmp_path: Path):
     from scaffold.python.validation import comet_workflow
 
@@ -190,7 +235,7 @@ def test_claude_eval_task_images_install_claude_code():
         relative = str(dockerfile.relative_to(ROOT))
         if "@anthropic-ai/claude-code" not in text:
             missing_claude.append(relative)
-        if not re.search(r"^user\s+(?!root\b)\S+", text, re.MULTILINE):
+        if not _final_dockerfile_user_is_non_root(text):
             root_images.append(relative)
 
     assert missing_claude == []
