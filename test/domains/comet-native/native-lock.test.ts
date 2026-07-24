@@ -61,14 +61,17 @@ describe('Native operation locks', () => {
     await fs.rm(displaced, { force: true });
   });
 
-  it('rejects a symlinked lock file instead of following it', async () => {
-    const lock = await acquireNativeLock(paths, 'archive', 'archive example');
-    const displaced = `${lock.file}.real`;
-    await fs.rename(lock.file, displaced);
-    await fs.symlink(displaced, lock.file);
+  it.skipIf(process.platform === 'win32')(
+    'rejects a symlinked lock file instead of following it',
+    async () => {
+      const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+      const displaced = `${lock.file}.real`;
+      await fs.rename(lock.file, displaced);
+      await fs.symlink(displaced, lock.file);
 
-    await expect(readNativeLock(lock.file)).rejects.toThrow(/regular file/u);
-  });
+      await expect(readNativeLock(lock.file)).rejects.toThrow(/regular file/u);
+    },
+  );
 
   it.skipIf(process.platform === 'win32')(
     'rejects a FIFO at the lock path without blocking on open',

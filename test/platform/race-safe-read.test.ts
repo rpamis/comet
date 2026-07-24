@@ -32,18 +32,21 @@ describe('race-safe bounded file read', () => {
     expect(result.stat.isFile()).toBe(true);
   });
 
-  it('rejects a pre-existing symlink before opening it', async () => {
-    const target = path.join(root, 'target.txt');
-    await fs.writeFile(target, 'secret');
-    const file = path.join(root, 'link.txt');
-    await fs.symlink(target, file);
+  it.skipIf(process.platform === 'win32')(
+    'rejects a pre-existing symlink before opening it',
+    async () => {
+      const target = path.join(root, 'target.txt');
+      await fs.writeFile(target, 'secret');
+      const file = path.join(root, 'link.txt');
+      await fs.symlink(target, file);
 
-    await expect(readFileRaceSafe(file, 1024, { label: 'test file' })).rejects.toMatchObject({
-      name: 'RaceSafeReadError',
-      reason: 'not-regular-file',
-      message: 'test file must be a regular file',
-    });
-  });
+      await expect(readFileRaceSafe(file, 1024, { label: 'test file' })).rejects.toMatchObject({
+        name: 'RaceSafeReadError',
+        reason: 'not-regular-file',
+        message: 'test file must be a regular file',
+      });
+    },
+  );
 
   it('rejects a directory path', async () => {
     const dir = path.join(root, 'subdir');
@@ -110,46 +113,52 @@ describe('race-safe bounded file read', () => {
     ).rejects.toThrow('chain violated');
   });
 
-  it('rejects a same-path replacement made while the file is open', async () => {
-    const file = path.join(root, 'data.txt');
-    await fs.writeFile(file, 'original');
-    const replacement = path.join(root, 'replacement.txt');
-    await fs.writeFile(replacement, 'replaced');
+  it.skipIf(process.platform === 'win32')(
+    'rejects a same-path replacement made while the file is open',
+    async () => {
+      const file = path.join(root, 'data.txt');
+      await fs.writeFile(file, 'original');
+      const replacement = path.join(root, 'replacement.txt');
+      await fs.writeFile(replacement, 'replaced');
 
-    await expect(
-      readFileRaceSafe(file, 1024, {
-        label: 'test file',
-        hooks: {
-          afterOpen: async () => {
-            await fs.rename(replacement, file);
+      await expect(
+        readFileRaceSafe(file, 1024, {
+          label: 'test file',
+          hooks: {
+            afterOpen: async () => {
+              await fs.rename(replacement, file);
+            },
           },
-        },
-      }),
-    ).rejects.toMatchObject({
-      reason: 'changed',
-      message: 'test file changed while reading',
-    });
-  });
+        }),
+      ).rejects.toMatchObject({
+        reason: 'changed',
+        message: 'test file changed while reading',
+      });
+    },
+  );
 
-  it('does not follow a symlink swapped in after the pre-open check', async () => {
-    const file = path.join(root, 'data.txt');
-    await fs.writeFile(file, 'original');
-    const outside = path.join(root, 'outside.txt');
-    await fs.writeFile(outside, 'outside-content');
+  it.skipIf(process.platform === 'win32')(
+    'does not follow a symlink swapped in after the pre-open check',
+    async () => {
+      const file = path.join(root, 'data.txt');
+      await fs.writeFile(file, 'original');
+      const outside = path.join(root, 'outside.txt');
+      await fs.writeFile(outside, 'outside-content');
 
-    // Start the read (its first lstat is dispatched asynchronously), then swap
-    // in a symlink synchronously before yielding back to the event loop.
-    const pending = readFileRaceSafe(file, 1024);
-    unlinkSync(file);
-    symlinkSync(outside, file);
+      // Start the read (its first lstat is dispatched asynchronously), then swap
+      // in a symlink synchronously before yielding back to the event loop.
+      const pending = readFileRaceSafe(file, 1024);
+      unlinkSync(file);
+      symlinkSync(outside, file);
 
-    const result = await pending.catch((error: unknown) => error as Error);
-    if (result instanceof Error) {
-      expect(result.message).toMatch(/regular file|changed/);
-    } else {
-      expect(result.bytes.toString('utf8')).not.toBe('outside-content');
-    }
-  });
+      const result = await pending.catch((error: unknown) => error as Error);
+      if (result instanceof Error) {
+        expect(result.message).toMatch(/regular file|changed/);
+      } else {
+        expect(result.bytes.toString('utf8')).not.toBe('outside-content');
+      }
+    },
+  );
 
   it('enforces the byte limit against growth through the same descriptor after open', async () => {
     const file = path.join(root, 'grow.txt');

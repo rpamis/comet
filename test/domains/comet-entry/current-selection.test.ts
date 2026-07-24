@@ -105,24 +105,27 @@ describe('shared Comet current selection', () => {
     await expect(readCometCurrentSelection(root)).rejects.toThrow('regular file');
   });
 
-  it('rejects a symlink at the selection path instead of following it', async () => {
-    const outside = path.join(root, 'outside-secret.json');
-    await fs.writeFile(
-      outside,
-      JSON.stringify({
-        schema: 'comet.selection.v2',
-        workflow: 'native',
-        change: 'not-the-real-selection',
-        branch: null,
-      }),
-    );
+  it.skipIf(process.platform === 'win32')(
+    'rejects a symlink at the selection path instead of following it',
+    async () => {
+      const outside = path.join(root, 'outside-secret.json');
+      await fs.writeFile(
+        outside,
+        JSON.stringify({
+          schema: 'comet.selection.v2',
+          workflow: 'native',
+          change: 'not-the-real-selection',
+          branch: null,
+        }),
+      );
 
-    const file = cometCurrentSelectionFile(root);
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.symlink(outside, file);
+      const file = cometCurrentSelectionFile(root);
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.symlink(outside, file);
 
-    await expect(readCometCurrentSelection(root)).rejects.toThrow(/regular file|symbolic link/);
-  });
+      await expect(readCometCurrentSelection(root)).rejects.toThrow(/regular file|symbolic link/);
+    },
+  );
 
   it.skipIf(process.platform === 'win32')(
     'rejects a FIFO at the selection path without blocking on open',
@@ -184,42 +187,45 @@ describe('shared Comet current selection', () => {
     }
   });
 
-  it('does not follow a symlink swapped in after the regular-file check', async () => {
-    const file = cometCurrentSelectionFile(root);
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(
-      file,
-      JSON.stringify({
-        schema: 'comet.selection.v2',
-        workflow: 'native',
-        change: 'small-before-swap',
-        branch: null,
-      }),
-    );
+  it.skipIf(process.platform === 'win32')(
+    'does not follow a symlink swapped in after the regular-file check',
+    async () => {
+      const file = cometCurrentSelectionFile(root);
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          schema: 'comet.selection.v2',
+          workflow: 'native',
+          change: 'small-before-swap',
+          branch: null,
+        }),
+      );
 
-    const outside = path.join(root, 'outside-secret.json');
-    await fs.writeFile(
-      outside,
-      JSON.stringify({
-        schema: 'comet.selection.v2',
-        workflow: 'native',
-        change: 'read-through-symlink',
-        branch: null,
-      }),
-    );
+      const outside = path.join(root, 'outside-secret.json');
+      await fs.writeFile(
+        outside,
+        JSON.stringify({
+          schema: 'comet.selection.v2',
+          workflow: 'native',
+          change: 'read-through-symlink',
+          branch: null,
+        }),
+      );
 
-    const pending = readCometCurrentSelection(root);
-    unlinkSync(file);
-    symlinkSync(outside, file);
+      const pending = readCometCurrentSelection(root);
+      unlinkSync(file);
+      symlinkSync(outside, file);
 
-    const result = await pending.catch((error: unknown) => error as Error);
-    if (result instanceof Error) {
-      expect(result.message).toMatch(/regular file|symbolic link|changed/);
-    } else {
-      expect(result).not.toMatchObject({
-        status: 'selected',
-        selection: { change: 'read-through-symlink' },
-      });
-    }
-  });
+      const result = await pending.catch((error: unknown) => error as Error);
+      if (result instanceof Error) {
+        expect(result.message).toMatch(/regular file|symbolic link|changed/);
+      } else {
+        expect(result).not.toMatchObject({
+          status: 'selected',
+          selection: { change: 'read-through-symlink' },
+        });
+      }
+    },
+  );
 });
