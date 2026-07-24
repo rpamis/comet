@@ -7368,7 +7368,7 @@ var require_dist = __commonJS({
 import { pathToFileURL } from "url";
 
 // domains/comet-native/native-cli.ts
-import { constants as fsConstants6, promises as fs33 } from "fs";
+import { constants as fsConstants7, promises as fs33 } from "fs";
 import path47 from "path";
 
 // domains/comet-native/native-archive.ts
@@ -21394,7 +21394,7 @@ async function settleNativeChangeJournalsLocked(paths, name) {
 
 // domains/comet-entry/current-selection.ts
 import { randomUUID as randomUUID5 } from "crypto";
-import { promises as fs21 } from "fs";
+import { constants as fsConstants4, promises as fs21 } from "fs";
 import path33 from "path";
 var COMET_CURRENT_SELECTION_SCHEMA = "comet.selection.v2";
 var COMET_CURRENT_SELECTION_MAX_BYTES = 16 * 1024;
@@ -21454,21 +21454,45 @@ function parseSelection(source) {
   }
   return { selection: value, legacy: false };
 }
+async function readHandleBounded3(handle, maxBytes) {
+  const chunks = [];
+  let total = 0;
+  const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+  for (; ; ) {
+    const remaining = maxBytes + 1 - total;
+    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+    if (bytesRead === 0) break;
+    total += bytesRead;
+    if (total > maxBytes) {
+      throw new Error(`current change selection exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+  }
+  return Buffer.concat(chunks, total);
+}
 async function readCometCurrentSelection(projectRoot) {
   let source;
   try {
-    const stat = await fs21.lstat(cometCurrentSelectionFile(projectRoot));
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw new Error("current change selection must be a regular file");
+    const file = cometCurrentSelectionFile(projectRoot);
+    const flags = process.platform === "win32" ? fsConstants4.O_RDONLY : fsConstants4.O_RDONLY | fsConstants4.O_NOFOLLOW | fsConstants4.O_NONBLOCK;
+    const handle = await fs21.open(file, flags);
+    try {
+      const opened = await handle.stat();
+      if (!opened.isFile()) {
+        throw new Error("current change selection must be a regular file");
+      }
+      const bytes = await readHandleBounded3(handle, COMET_CURRENT_SELECTION_MAX_BYTES);
+      source = bytes.toString("utf8");
+    } finally {
+      await handle.close();
     }
-    if (stat.size > COMET_CURRENT_SELECTION_MAX_BYTES) {
-      throw new Error(
-        `current change selection exceeds ${COMET_CURRENT_SELECTION_MAX_BYTES} bytes`
-      );
-    }
-    source = await fs21.readFile(cometCurrentSelectionFile(projectRoot), "utf8");
   } catch (error) {
     if (error.code === "ENOENT") return { status: "missing" };
+    if (error.code === "ELOOP") {
+      throw new Error("cannot read current change selection: must be a regular file", {
+        cause: error
+      });
+    }
     throw new Error(
       `cannot read current change selection: ${error instanceof Error ? error.message : String(error)}`,
       { cause: error }
@@ -23169,7 +23193,7 @@ import path41 from "path";
 
 // domains/comet-native/native-evidence-retention.ts
 import { createHash as createHash13, randomUUID as randomUUID8 } from "node:crypto";
-import { constants as fsConstants4, promises as fs25 } from "node:fs";
+import { constants as fsConstants5, promises as fs25 } from "node:fs";
 import path39 from "node:path";
 
 // domains/comet-native/native-schema-migration.ts
@@ -24196,7 +24220,7 @@ async function readCanonicalDocument(options) {
   if (!isInsidePath(options.directoryChain[0].realPath, beforeRealPath)) {
     throw new Error(`Native evidence entry resolves outside its change: ${options.ref}`);
   }
-  const openFlags = process.platform === "win32" ? "r" : fsConstants4.O_RDONLY | fsConstants4.O_NOFOLLOW | fsConstants4.O_NONBLOCK;
+  const openFlags = process.platform === "win32" ? "r" : fsConstants5.O_RDONLY | fsConstants5.O_NOFOLLOW | fsConstants5.O_NONBLOCK;
   const handle = await fs25.open(options.file, openFlags).catch((error) => {
     if (error.code === "ELOOP" || error.code === "ENXIO") {
       throw new Error(`Native evidence entry became unsafe while opening: ${options.ref}`);
@@ -26329,7 +26353,7 @@ async function doctorNativeProject(options) {
 
 // domains/comet-native/native-check-receipt.ts
 import { createHash as createHash15 } from "node:crypto";
-import { constants as fsConstants5, promises as fs28 } from "node:fs";
+import { constants as fsConstants6, promises as fs28 } from "node:fs";
 import path42 from "node:path";
 import { TextDecoder as TextDecoder5 } from "node:util";
 var ISSUE_KIND_RANK = {
@@ -26521,7 +26545,7 @@ async function readScopedFile(options) {
   if (!isInsidePath(physicalRoot, beforeRealPath)) {
     throw new ScopedFileError("unsafe-file", "Scoped file resolves outside the project root");
   }
-  const openFlags = process.platform === "win32" ? "r" : fsConstants5.O_RDONLY | fsConstants5.O_NOFOLLOW | fsConstants5.O_NONBLOCK;
+  const openFlags = process.platform === "win32" ? "r" : fsConstants6.O_RDONLY | fsConstants6.O_NOFOLLOW | fsConstants6.O_NONBLOCK;
   const handle = await fs28.open(lexicalFile, openFlags).catch((error) => {
     if (error.code === "ENOENT") {
       throw new ScopedFileError("scope-mismatch", "Scoped file no longer exists");
@@ -28415,7 +28439,7 @@ function success(command, data, text) {
   return { command, exitCode: 0, data, text: text ?? JSON.stringify(data, null, 2) + "\n" };
 }
 async function readBoundedEvidenceFile(filePath, maxBytes) {
-  const flags = process.platform === "win32" ? "r" : fsConstants6.O_RDONLY | fsConstants6.O_NONBLOCK;
+  const flags = process.platform === "win32" ? "r" : fsConstants7.O_RDONLY | fsConstants7.O_NONBLOCK;
   const handle = await fs33.open(filePath, flags);
   try {
     const opened = await handle.stat();

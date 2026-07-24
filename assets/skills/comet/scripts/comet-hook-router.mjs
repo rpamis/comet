@@ -7964,7 +7964,7 @@ import { promises as fs6 } from "fs";
 import path6 from "path";
 
 // domains/comet-entry/current-selection.ts
-import { promises as fs3 } from "fs";
+import { constants as fsConstants, promises as fs3 } from "fs";
 import path3 from "path";
 var COMET_CURRENT_SELECTION_SCHEMA = "comet.selection.v2";
 var COMET_CURRENT_SELECTION_MAX_BYTES = 16 * 1024;
@@ -8024,21 +8024,45 @@ function parseSelection(source) {
   }
   return { selection: value, legacy: false };
 }
+async function readHandleBounded(handle, maxBytes) {
+  const chunks = [];
+  let total = 0;
+  const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+  for (; ; ) {
+    const remaining = maxBytes + 1 - total;
+    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+    if (bytesRead === 0) break;
+    total += bytesRead;
+    if (total > maxBytes) {
+      throw new Error(`current change selection exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+  }
+  return Buffer.concat(chunks, total);
+}
 async function readCometCurrentSelection(projectRoot) {
   let source;
   try {
-    const stat = await fs3.lstat(cometCurrentSelectionFile(projectRoot));
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw new Error("current change selection must be a regular file");
+    const file = cometCurrentSelectionFile(projectRoot);
+    const flags = process.platform === "win32" ? fsConstants.O_RDONLY : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+    const handle = await fs3.open(file, flags);
+    try {
+      const opened = await handle.stat();
+      if (!opened.isFile()) {
+        throw new Error("current change selection must be a regular file");
+      }
+      const bytes = await readHandleBounded(handle, COMET_CURRENT_SELECTION_MAX_BYTES);
+      source = bytes.toString("utf8");
+    } finally {
+      await handle.close();
     }
-    if (stat.size > COMET_CURRENT_SELECTION_MAX_BYTES) {
-      throw new Error(
-        `current change selection exceeds ${COMET_CURRENT_SELECTION_MAX_BYTES} bytes`
-      );
-    }
-    source = await fs3.readFile(cometCurrentSelectionFile(projectRoot), "utf8");
   } catch (error) {
     if (error.code === "ENOENT") return { status: "missing" };
+    if (error.code === "ELOOP") {
+      throw new Error("cannot read current change selection: must be a regular file", {
+        cause: error
+      });
+    }
     throw new Error(
       `cannot read current change selection: ${error instanceof Error ? error.message : String(error)}`,
       { cause: error }
@@ -9231,7 +9255,7 @@ var import_yaml3 = __toESM(require_dist(), 1);
 
 // domains/comet-native/native-protected-file.ts
 import { createHash as createHash2 } from "node:crypto";
-import { constants as fsConstants, promises as fs9 } from "node:fs";
+import { constants as fsConstants2, promises as fs9 } from "node:fs";
 import path9 from "node:path";
 import { TextDecoder as TextDecoder2 } from "node:util";
 function isInside2(parent, target) {
@@ -9313,7 +9337,7 @@ async function verifyDirectoryChain2(chain, label) {
     }
   }
 }
-async function readHandleBounded(handle, maxBytes, label) {
+async function readHandleBounded2(handle, maxBytes, label) {
   const chunks = [];
   let total = 0;
   const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
@@ -9351,7 +9375,7 @@ async function readNativeProtectedFile(options) {
   if (forbidden.some((identity) => isInside2(identity.realPath, beforeRealPath))) {
     throw new Error(`${options.label} resolves inside an excluded root`);
   }
-  const flags = process.platform === "win32" ? fsConstants.O_RDONLY : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+  const flags = process.platform === "win32" ? fsConstants2.O_RDONLY : fsConstants2.O_RDONLY | fsConstants2.O_NOFOLLOW | fsConstants2.O_NONBLOCK;
   const handle = await fs9.open(file, flags);
   try {
     const opened = await handle.stat();
@@ -9366,7 +9390,7 @@ async function readNativeProtectedFile(options) {
       throw new Error(`${options.label} changed while opening`);
     }
     await options.hooks?.beforeRead?.();
-    const bytes = await readHandleBounded(handle, maxBytes, options.label);
+    const bytes = await readHandleBounded2(handle, maxBytes, options.label);
     await options.hooks?.beforeFinalCheck?.();
     const [afterHandle, afterPath, afterRealPath] = await Promise.all([
       handle.stat(),

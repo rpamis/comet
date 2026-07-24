@@ -9536,7 +9536,7 @@ import path14 from "path";
 
 // domains/comet-entry/current-selection.ts
 import { randomUUID as randomUUID6 } from "crypto";
-import { promises as fs11 } from "fs";
+import { constants as fsConstants, promises as fs11 } from "fs";
 import path12 from "path";
 var COMET_CURRENT_SELECTION_SCHEMA = "comet.selection.v2";
 var COMET_CURRENT_SELECTION_MAX_BYTES = 16 * 1024;
@@ -9596,21 +9596,45 @@ function parseSelection(source) {
   }
   return { selection: value, legacy: false };
 }
+async function readHandleBounded(handle, maxBytes) {
+  const chunks = [];
+  let total = 0;
+  const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+  for (; ; ) {
+    const remaining = maxBytes + 1 - total;
+    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+    if (bytesRead === 0) break;
+    total += bytesRead;
+    if (total > maxBytes) {
+      throw new Error(`current change selection exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+  }
+  return Buffer.concat(chunks, total);
+}
 async function readCometCurrentSelection(projectRoot2) {
   let source;
   try {
-    const stat = await fs11.lstat(cometCurrentSelectionFile(projectRoot2));
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw new Error("current change selection must be a regular file");
+    const file = cometCurrentSelectionFile(projectRoot2);
+    const flags = process.platform === "win32" ? fsConstants.O_RDONLY : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+    const handle = await fs11.open(file, flags);
+    try {
+      const opened = await handle.stat();
+      if (!opened.isFile()) {
+        throw new Error("current change selection must be a regular file");
+      }
+      const bytes = await readHandleBounded(handle, COMET_CURRENT_SELECTION_MAX_BYTES);
+      source = bytes.toString("utf8");
+    } finally {
+      await handle.close();
     }
-    if (stat.size > COMET_CURRENT_SELECTION_MAX_BYTES) {
-      throw new Error(
-        `current change selection exceeds ${COMET_CURRENT_SELECTION_MAX_BYTES} bytes`
-      );
-    }
-    source = await fs11.readFile(cometCurrentSelectionFile(projectRoot2), "utf8");
   } catch (error) {
     if (error.code === "ENOENT") return { status: "missing" };
+    if (error.code === "ELOOP") {
+      throw new Error("cannot read current change selection: must be a regular file", {
+        cause: error
+      });
+    }
     throw new Error(
       `cannot read current change selection: ${error instanceof Error ? error.message : String(error)}`,
       { cause: error }

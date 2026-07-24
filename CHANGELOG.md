@@ -12,6 +12,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Plugin marketplace superpowers detection**: `comet init` no longer crashes with an `ENOTDIR` error when `~/.claude/plugins/cache/` (or the Codex equivalent) contains a stray file where a marketplace directory was expected.
 
+### Security
+
+- **Current change selection read hardening**: The shared current-change selection read used by the Hook Router, `comet doctor`, `comet resume-probe`, and Native/Classic change selection now checks and reads `.comet/current-change.json` through a single opened file descriptor instead of a separate `stat` followed by a path-based `readFile`, closing a race where the file could be grown past its byte limit or swapped for a symlink between the check and the read.
+
 ## What's Changed [0.4.0-beta.8] - 2026-07-22
 
 ### Fixed
