@@ -55,10 +55,10 @@ archived: false
 | `verify_result` | `pending`, `pass`, or `fail` |
 | `verify_failures` | Machine-owned consecutive verification failure count. `verify-fail` increments it; `verify-pass` or `archive-reopen` resets it to `0`. At `3`, the next failure requires the retry-limit strategy decision |
 | `verification_report` | Verification report file path; must point to an existing file before verify passes |
-| `branch_status` | `pending` or `handled`; keep pending through verify/archive, then set handled after the archive commit and selected branch handling complete |
+| `branch_status` | `pending` or `handled`; keep `pending` through verify. After the user confirms immediate remote delivery before archive, set `handled` when archive finishes and include it in the only archive commit. `handled` means only that the delivery method is confirmed, not that push or PR creation succeeded; clear current selection and report workflow completion only after remote operations succeed |
 | `created_at` | Change creation date (auto-written at init), format `YYYY-MM-DD` |
 | `verified_at` | Verification pass timestamp; may be empty |
-| `archive_confirmation` | `null`, `pending`, or `confirmed`. `verify-pass` writes `pending` when entering the archive phase; after the user selects "Confirm archive" in `/comet-archive`, the `archive-confirm` transition writes `confirmed`; `archive-reopen` clears the field so an earlier confirmation cannot be reused |
+| `archive_confirmation` | `null`, `pending`, or `confirmed`. `verify-pass` writes `pending` when entering the archive phase; after the user selects either "confirm archive and deliver remotely now" choice in `/comet-archive`, the `archive-confirm` transition writes `confirmed`; `archive-reopen` clears the field so an earlier confirmation cannot be reused |
 | `archived` | Whether the change has been archived |
 
 ## Optional Fields

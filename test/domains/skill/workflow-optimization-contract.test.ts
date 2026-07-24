@@ -101,16 +101,87 @@ describe('Comet workflow optimization contracts', () => {
     ['中文', zhSkillRoot, '接受所有偏差'],
     ['English', skillRoot, 'accept all deviations'],
   ])(
-    '%s verification keeps non-waivable failures in verify and moves branch handling after archive',
+    '%s verification keeps non-waivable failures in verify and lets archive own final delivery state',
     async (_language, root, forbiddenWaiver) => {
       const verify = await readSkill(root, 'comet-verify');
       const archive = await readSkill(root, 'comet-archive');
 
       expect(verify).not.toContain(forbiddenWaiver);
       expect(verify).not.toContain('finishing-a-development-branch');
-      expect(archive).toContain('finishing-a-development-branch');
       expect(archive).toContain('comet state set <change-name> branch_status handled');
       expect(archive).not.toContain('git add -A');
+    },
+  );
+
+  it.each([
+    [
+      'Chinese',
+      zhSkillRoot,
+      '### 1. 归档与交付前最终确认（阻塞点）',
+      '### 2. 执行归档',
+      '### 5. 交付归档提交并完成',
+      '「确认归档并立即推送」',
+      '「确认归档、立即推送并创建 PR」',
+      '不执行 `archive-confirm` 或归档命令',
+      '保留 active change、`phase: archive` 和 `branch_status: pending`',
+      '`handled` 只表示用户已经确认如何远端交付这次完整归档提交，不表示 push 或 PR 创建已经成功',
+      '归档阶段不再调用 Superpowers `finishing-a-development-branch`',
+      '使用 Skill 工具加载 Superpowers',
+    ],
+    [
+      'English',
+      skillRoot,
+      '### 1. Final Archive and Delivery Confirmation (Blocking Point)',
+      '### 2. Execute Archive',
+      '### 5. Deliver the Archive Commit and Complete',
+      '"Confirm archive and push now"',
+      '"Confirm archive, push now, and create a PR"',
+      'do not run `archive-confirm` or the archive command',
+      'keep the active change, `phase: archive`, and `branch_status: pending`',
+      '`handled` means only that the user confirmed how to deliver this complete archive commit remotely. It does not mean that push or PR creation has succeeded',
+      'Archive no longer invokes Superpowers `finishing-a-development-branch`',
+      'use the Skill tool to load Superpowers',
+    ],
+  ])(
+    '%s archive persists the confirmed delivery choice in its only commit',
+    async (
+      _language,
+      root,
+      confirmationHeading,
+      executionHeading,
+      deliveryHeading,
+      pushChoice,
+      prChoice,
+      deferMarker,
+      activeMarker,
+      handledMeaning,
+      noFinishingMarker,
+      forbiddenLoadMarker,
+    ) => {
+      const archive = await readSkill(root, 'comet-archive');
+      const confirmation = archive.indexOf(confirmationHeading);
+      const execution = archive.indexOf(executionHeading);
+      const handled = archive.indexOf(
+        'comet state set <change-name> branch_status handled',
+        execution,
+      );
+      const commit = archive.indexOf('git commit -m "chore: archive <change-name>"', handled);
+      const delivery = archive.indexOf(deliveryHeading, commit);
+      const clearSelection = archive.indexOf('comet state clear-selection', delivery);
+
+      expect(confirmation).toBeGreaterThan(-1);
+      expect(confirmation).toBeLessThan(execution);
+      expect(archive).toContain(pushChoice);
+      expect(archive).toContain(prChoice);
+      expect(archive).toContain(deferMarker);
+      expect(archive).toContain(activeMarker);
+      expect(handled).toBeGreaterThan(execution);
+      expect(handled).toBeLessThan(commit);
+      expect(commit).toBeLessThan(delivery);
+      expect(clearSelection).toBeGreaterThan(delivery);
+      expect(archive).toContain(handledMeaning);
+      expect(archive).toContain(noFinishingMarker);
+      expect(archive).not.toContain(forbiddenLoadMarker);
     },
   );
 

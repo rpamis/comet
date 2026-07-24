@@ -30,28 +30,30 @@ comet state check <name> archive
 
 若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
-### 1. 归档前最终确认（阻塞点）
+### 1. 归档与交付前最终确认（阻塞点）
 
-入口验证通过后，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认是否立即归档**。不得在用户确认前运行 `comet archive "<change-name>"`。
+入口验证通过后，先读取 `comet state get <change-name> isolation`，再**按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认是否立即归档和远端交付**。不得在用户确认前运行 `comet state transition <change-name> archive-confirm` 或 `comet archive "<change-name>"`。
 
 确认前必须向用户展示简短摘要：
 - change 名称
 - 验证报告路径和结论
 - 当前分支/工作区和未提交改动归因摘要
 - 本次归档将执行的不可逆动作：按 OpenSpec delta 语义合并主 spec、标注 design doc / plan、移动 change 到 archive 目录
+- 归档完成后将执行的远端交付：只推送当前绑定分支，或推送后创建 PR
 
 用户确认问题必须以单选题形式呈现，包含以下选项：
-- 「确认归档」— 写入最终确认状态后执行归档脚本，完成 spec 合并和 change 移动
+- 「确认归档并立即推送」— 完成归档、创建唯一归档提交并推送当前绑定分支
+- 「确认归档、立即推送并创建 PR」— 完成归档、创建唯一归档提交、推送当前绑定分支并创建 PR
 - 「需要调整或重新验证」— 不执行归档；运行 `comet state transition <change-name> archive-reopen` 回到 `phase: verify`，再调用 `/comet-verify`。若验证阶段确认需要修复，再按 `/comet-verify` 的验证失败决策回到 `/comet-build`
-- 「暂不归档」— 不执行归档，保留当前 `phase: archive` 状态，等待用户稍后再次调用 `/comet-archive`
+- 「暂不归档」— 不执行 `archive-confirm` 或归档命令，保留 active change、`phase: archive` 和 `branch_status: pending`，等待用户稍后再次调用 `/comet-archive`
 
-用户选择「确认归档」后，立即执行：
+只有用户选择前两个立即交付选项之一后，才记录其选择并立即执行：
 
 ```bash
 comet state transition <change-name> archive-confirm
 ```
 
-如 transition 返回非零退出码，报告错误并停止。只有 transition 成功后，才允许继续 Step 2。用户选择「需要调整或重新验证」后，必须先执行 `archive-reopen` 状态回退，不得手动编辑 `.comet.yaml`。
+如 transition 返回非零退出码，报告错误并停止。只有 transition 成功后，才允许继续 Step 2。用户选择「需要调整或重新验证」后，必须先执行 `archive-reopen` 状态回退，不得手动编辑 `.comet.yaml`。用户选择「暂不归档」后直接停止，不得归档、提交、推送或把 `branch_status` 设为 `handled`。
 
 ### 2. 执行归档
 
@@ -92,7 +94,16 @@ brainstorming → delta spec → 实施 → 验证 → 主 spec 合并 → desig
 - 主 spec 按 delta 语义合并的内容
 - design doc / plan 的归档元数据标注
 
-归档后先读取 `git status --short`，并以归档前的 dirty-worktree 归因记录为基线。只允许暂存可归因于当前 change 的路径：原 active change 路径、脚本输出的实际 archive 路径、被本次 delta 更新的 main specs，以及当前 Design Doc/Plan 的归档元数据。存在无法归因的路径时停止并请求用户处理。
+先把已确认的交付方式持久化到归档状态，再运行最终 archive guard：
+
+```bash
+comet state set <change-name> branch_status handled
+comet guard <change-name> archive
+```
+
+这里的 `handled` 只表示用户已经确认如何远端交付这次完整归档提交，不表示 push 或 PR 创建已经成功。状态写入或 guard 失败时停止，不得提交或执行远端操作。
+
+归档后读取 `git status --short`，并以归档前的 dirty-worktree 归因记录为基线。只允许暂存可归因于当前 change 的路径：原 active change 路径、脚本输出的实际 archive 路径、归档目录中已更新为 `branch_status: handled` 的 `.comet.yaml`、被本次 delta 更新的 main specs，以及当前 Design Doc/Plan 的归档元数据。存在无法归因的路径时停止并请求用户处理。
 
 使用显式 pathspec 暂存核对后的路径，再检查 staged diff；不得使用全仓库暂存，也不得把用户已有改动混入归档提交：
 
@@ -104,30 +115,28 @@ git commit -m "chore: archive <change-name>"
 
 提交失败或 staged diff 含无关路径时停止，不得继续分支处理。
 
-### 5. 归档提交后的分支处理
+### 5. 交付归档提交并完成
 
-归档提交成功后，先读取 `comet state get <change-name> isolation`，按隔离方式分流：
+归档提交成功后，只执行 Step 1 中用户已经确认的远端交付方式：
 
-- `isolation !== current`：**立即执行：** 使用 Skill 工具加载 Superpowers `finishing-a-development-branch` 技能。该步骤必须位于归档与归档提交之后，确保最终分支/PR 包含 spec 合并和归档元数据。如该技能不可用，停止流程并提示安装或启用；不得把 `branch_status` 标记为完成。技能加载后，按 `comet/reference/decision-point.md` 暂停让用户选择：本地合并到主分支、推送并创建 PR、保持当前分支稍后处理。
-- `isolation === current`：跳过 Superpowers `finishing-a-development-branch`。按 `comet/reference/decision-point.md` 暂停让用户二选一：推送当前分支，或暂不推送并保留本地状态。
+- 「确认归档并立即推送」：推送当前绑定分支一次。
+- 「确认归档、立即推送并创建 PR」：先推送当前绑定分支一次，再使用当前平台可用的 GitHub 能力创建 PR；Step 1 的明确选择就是创建 PR 的授权，不得再次改成其他分支处置方式。
 
-归档已经完成，因此这里不提供“丢弃工作”选项。只有用户选择的操作成功完成、明确选择保持分支，或在 `current` 模式下明确选择暂不推送后，才运行：
+push 失败时报告错误，保留 current selection 记录，不得清除选择或宣告完成；当前任务中只重试同一个 push。PR 创建失败时分支已经包含完整归档提交，报告错误并保留 current selection 记录；当前任务中只重试创建 PR。不得在失败后自动切换、删除、变基或改写分支。
 
-```bash
-comet state set <change-name> branch_status handled
-comet guard <change-name> archive
-```
+只有用户选择的远端交付操作全部成功后，才运行 `comet state clear-selection` 并宣告 Classic workflow 完成。
 
-archive guard 必须同时确认归档产物完整且 `branch_status: handled`；失败时流程仍未完成。
+归档阶段不再调用 Superpowers `finishing-a-development-branch`。本地合并、保留分支稍后处理或暂不推送都不会立即形成远端最终状态，必须在 Step 1 选择「暂不归档」，不能在归档后再选择。
 
 ## 退出条件
 
 - 归档脚本执行成功（退出码 0）
 - 归档目录 `openspec/changes/archive/YYYY-MM-DD-<change-name>/` 存在
 - 归档后的 `.comet.yaml` 中 `archived: true`
-- 归档改动已通过精确 pathspec 提交
-- 用户选择的分支处理已完成，归档状态中的 `branch_status: handled`
+- 归档状态中的 `branch_status: handled` 已包含在唯一归档提交中
 - `comet guard <change-name> archive` 通过
+- 唯一归档提交已按用户在归档前确认的方式成功推送；若用户选择创建 PR，PR 已成功创建
+- current selection 已在远端交付成功后清除
 
 归档脚本会把 `openspec/changes/<name>/` 移动到 `openspec/changes/archive/YYYY-MM-DD-<name>/`。
 
@@ -139,4 +148,4 @@ Comet Classic 流程全部完成。如需开始新的 Classic 工作，调用 `/
 
 ## 上下文压缩恢复
 
-按 `comet/reference/context-recovery.md` 执行，phase 参数为 `archive`。若 `archived: true` 且归档目录存在，归档已完成，无需再次执行归档操作。
+按 `comet/reference/context-recovery.md` 执行，phase 参数为 `archive`。若 `archived: true` 且归档目录存在，不得再次执行归档操作；只有当前任务的上下文已明确记录 Step 1 选择的远端交付方式时，才能重试同一个 push 或 PR 创建操作。本 Skill 不承诺用户脱离流程、自行改变分支拓扑后的自动恢复。

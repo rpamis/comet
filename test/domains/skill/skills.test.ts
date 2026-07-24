@@ -1550,15 +1550,23 @@ describe('skills', () => {
       );
       expect(zhVerify).toContain('不要在 verify 阶段处理、合并或丢弃分支');
       expect(zhVerify).toContain('不要写入 `branch_status: handled`');
-      expect(zhArchive).toContain('### 5. 归档提交后的分支处理');
+      expect(zhArchive).toContain('### 5. 交付归档提交并完成');
       expect(zhArchive).toContain('comet state set <change-name> branch_status handled');
-      expect(zhArchive).toContain('### 1. 归档前最终确认（阻塞点）');
-      expect(zhArchive).toContain('不得在用户确认前运行 `comet archive "<change-name>"`');
+      expect(zhArchive).toContain('### 1. 归档与交付前最终确认（阻塞点）');
+      expect(zhArchive).toContain(
+        '不得在用户确认前运行 `comet state transition <change-name> archive-confirm` 或 `comet archive "<change-name>"`',
+      );
       expect(zhArchive).toContain('`comet/reference/decision-point.md`');
-      expect(zhArchive).toContain('「确认归档」');
+      expect(zhArchive).toContain('「确认归档并立即推送」');
+      expect(zhArchive).toContain('「确认归档、立即推送并创建 PR」');
       expect(zhArchive).toContain('「需要调整或重新验证」');
       expect(zhArchive).toContain('「暂不归档」');
       expect(zhArchive).toContain('`comet state transition <change-name> archive-reopen`');
+      expect(zhArchive).toContain(
+        '`handled` 只表示用户已经确认如何远端交付这次完整归档提交，不表示 push 或 PR 创建已经成功',
+      );
+      expect(zhArchive).toContain('归档阶段不再调用 Superpowers `finishing-a-development-branch`');
+      expect(zhArchive).not.toContain('使用 Skill 工具加载 Superpowers');
       expect(zhArchive).toContain('调用 `/comet-classic` 或 `/comet-open`');
       expect(zhArchive).not.toContain('调用 `/comet` 或 `/comet-open`');
       expect(zhVerify).toContain('不得因为验证已通过就自动归档');
@@ -1938,7 +1946,7 @@ describe('skills', () => {
       );
       expect(enVerify).toContain('Do not handle, merge, or discard branches in verify');
       expect(enVerify).toContain('do not write `branch_status: handled`');
-      expect(enArchive).toContain('### 5. Handle the Branch After the Archive Commit');
+      expect(enArchive).toContain('### 5. Deliver the Archive Commit and Complete');
       expect(enArchive).toContain('comet state set <change-name> branch_status handled');
       expect(enTweak).toContain('Use the Skill tool to load the `openspec-apply-change` skill');
       expect(enTweak).toContain('This apply path belongs only to tweak');
@@ -1948,15 +1956,25 @@ describe('skills', () => {
       expect(enTweak).toContain('single OpenSpec change');
       expect(enTweak).not.toContain('No new capability');
       expect(enBuild).not.toContain('openspec-apply-change');
-      expect(enArchive).toContain('### 1. Final Archive Confirmation (Blocking Point)');
       expect(enArchive).toContain(
-        'Must not run `comet archive "<change-name>"` before user confirmation',
+        '### 1. Final Archive and Delivery Confirmation (Blocking Point)',
+      );
+      expect(enArchive).toContain(
+        'Must not run `comet state transition <change-name> archive-confirm` or `comet archive "<change-name>"` before user confirmation',
       );
       expect(enArchive).toContain('`comet/reference/decision-point.md`');
-      expect(enArchive).toContain('Confirm archive');
+      expect(enArchive).toContain('"Confirm archive and push now"');
+      expect(enArchive).toContain('"Confirm archive, push now, and create a PR"');
       expect(enArchive).toContain('Needs adjustment or re-verification');
       expect(enArchive).toContain('Do not archive yet');
       expect(enArchive).toContain('`comet state transition <change-name> archive-reopen`');
+      expect(enArchive).toContain(
+        '`handled` means only that the user confirmed how to deliver this complete archive commit remotely. It does not mean that push or PR creation has succeeded',
+      );
+      expect(enArchive).toContain(
+        'Archive no longer invokes Superpowers `finishing-a-development-branch`',
+      );
+      expect(enArchive).not.toContain('use the Skill tool to load Superpowers');
       expect(enArchive).toContain('invoke `/comet-classic` or `/comet-open`');
       expect(enArchive).not.toContain('invoke `/comet` or `/comet-open`');
       expect(enVerify).toContain('Must not automatically archive just because verification passed');

@@ -54,10 +54,10 @@ archived: false
 | `verify_result` | `pending`、`pass` 或 `fail` |
 | `verify_failures` | 机器维护的连续验证失败次数；`verify-fail` 自动加一，`verify-pass` 或 `archive-reopen` 重置为 `0`。达到 `3` 后下一次失败必须进入超限策略决策 |
 | `verification_report` | 验证报告文件路径，verify 通过前必须指向已存在文件 |
-| `branch_status` | `pending` 或 `handled`。verify 和 archive 执行期间保持 `pending`；归档改动提交且用户选择的分支处理完成后设为 `handled` |
+| `branch_status` | `pending` 或 `handled`。verify 阶段保持 `pending`；用户在归档前确认立即远端交付后，归档完成时设为 `handled` 并包含在唯一归档提交中。`handled` 只表示交付方式已经确认，不表示 push 或 PR 创建已经成功；只有远端操作成功后才能清除 current selection 并宣告 workflow 完成 |
 | `created_at` | change 创建日期（init 时自动写入），格式 `YYYY-MM-DD` |
 | `verified_at` | 验证通过时间，可为空 |
-| `archive_confirmation` | `null`、`pending` 或 `confirmed`。`verify-pass` 进入 archive 阶段时写入 `pending`；用户在 `/comet-archive` 最终确认选择「确认归档」后，`archive-confirm` transition 写入 `confirmed`；`archive-reopen` 会清空该字段，防止复用旧确认 |
+| `archive_confirmation` | `null`、`pending` 或 `confirmed`。`verify-pass` 进入 archive 阶段时写入 `pending`；用户在 `/comet-archive` 最终确认选择任一“确认归档并立即远端交付”选项后，`archive-confirm` transition 写入 `confirmed`；`archive-reopen` 会清空该字段，防止复用旧确认 |
 | `archived` | change 是否已归档 |
 
 ## 可选字段
