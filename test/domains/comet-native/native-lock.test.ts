@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -59,6 +60,26 @@ describe('Native operation locks', () => {
     expect(await readNativeLock(lock.file)).toMatchObject({ id: lock.owner.id });
     await fs.rm(displaced, { force: true });
   });
+
+  it('rejects a symlinked lock file instead of following it', async () => {
+    const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+    const displaced = `${lock.file}.real`;
+    await fs.rename(lock.file, displaced);
+    await fs.symlink(displaced, lock.file);
+
+    await expect(readNativeLock(lock.file)).rejects.toThrow(/regular file/u);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'rejects a FIFO at the lock path without blocking on open',
+    async () => {
+      const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+      await fs.rm(lock.file);
+      execFileSync('mkfifo', [lock.file]);
+
+      await expect(readNativeLock(lock.file)).rejects.toThrow(/regular file/u);
+    },
+  );
 
   it.each([
     {

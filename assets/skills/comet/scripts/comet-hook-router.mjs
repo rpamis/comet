@@ -7964,8 +7964,127 @@ import { promises as fs6 } from "fs";
 import path6 from "path";
 
 // domains/comet-entry/current-selection.ts
-import { promises as fs3 } from "fs";
 import path3 from "path";
+
+// platform/fs/race-safe-read.ts
+import { constants as fsConstants, promises as fs3 } from "fs";
+
+// platform/fs/file-identity.ts
+function hasPlatformIdentity(value) {
+  return value !== 0 && value !== 0n && value !== "0";
+}
+function hasComparableFileObject(left, right) {
+  return hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev) && hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
+}
+function sameFileObject(left, right) {
+  const comparableDevice = hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev);
+  if (comparableDevice && left.dev !== right.dev) return false;
+  const comparableInode = hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
+  if (comparableInode && left.ino !== right.ino) return false;
+  if (comparableDevice && comparableInode) return true;
+  return left.birthtime === right.birthtime;
+}
+
+// platform/fs/race-safe-read.ts
+var RaceSafeReadError = class extends Error {
+  reason;
+  constructor(reason, message, options) {
+    super(message, options);
+    this.name = "RaceSafeReadError";
+    this.reason = reason;
+  }
+};
+function birthtimeOf(stat) {
+  return "birthtimeNs" in stat && typeof stat.birthtimeNs === "bigint" ? stat.birthtimeNs : stat.birthtimeMs;
+}
+function ctimeOf(stat) {
+  return "ctimeNs" in stat && typeof stat.ctimeNs === "bigint" ? stat.ctimeNs : stat.ctimeMs;
+}
+function identityOf(stat) {
+  return { dev: stat.dev, ino: stat.ino, birthtime: birthtimeOf(stat) };
+}
+function sameStatIdentity(left, right) {
+  const leftObject = identityOf(left);
+  const rightObject = identityOf(right);
+  if (hasComparableFileObject(leftObject, rightObject)) {
+    return sameFileObject(leftObject, rightObject);
+  }
+  return sameFileObject(leftObject, rightObject) && birthtimeOf(left) === birthtimeOf(right) && ctimeOf(left) === ctimeOf(right) && left.size === right.size;
+}
+async function readFileRaceSafe(file, maxBytes, options = {}) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new Error("race-safe read byte limit must be a positive integer");
+  }
+  const label = options.label ?? "file";
+  const bigint = options.bigint === true;
+  const before = await fs3.lstat(file, { bigint });
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new RaceSafeReadError("not-regular-file", `${label} must be a regular file`);
+  }
+  if (BigInt(before.size) > BigInt(maxBytes)) {
+    throw new RaceSafeReadError("too-large", `${label} exceeds ${maxBytes} bytes`);
+  }
+  const beforeRealPath = await fs3.realpath(file);
+  await options.verify?.("pre-open", { realPath: beforeRealPath, identity: identityOf(before) });
+  const flags = process.platform === "win32" ? fsConstants.O_RDONLY : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+  let handle;
+  try {
+    handle = await fs3.open(file, flags);
+  } catch (error) {
+    if (error.code === "ELOOP") {
+      throw new RaceSafeReadError("not-regular-file", `${label} must be a regular file`, {
+        cause: error
+      });
+    }
+    throw error;
+  }
+  try {
+    const [opened, pathAfterOpen, realPathAfterOpen] = await Promise.all([
+      handle.stat({ bigint }),
+      fs3.lstat(file, { bigint }),
+      fs3.realpath(file)
+    ]);
+    if (!opened.isFile() || !pathAfterOpen.isFile() || pathAfterOpen.isSymbolicLink() || realPathAfterOpen !== beforeRealPath || !sameStatIdentity(before, opened) || !sameStatIdentity(before, pathAfterOpen)) {
+      throw new RaceSafeReadError("changed", `${label} changed while opening`);
+    }
+    await options.verify?.("post-open", {
+      realPath: realPathAfterOpen,
+      identity: identityOf(opened)
+    });
+    await options.hooks?.afterOpen?.();
+    const chunks = [];
+    let total = 0;
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    for (; ; ) {
+      const remaining = maxBytes + 1 - total;
+      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > maxBytes) {
+        throw new RaceSafeReadError("too-large", `${label} exceeds ${maxBytes} bytes`);
+      }
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
+    await options.hooks?.beforeFinalCheck?.();
+    const [afterHandle, afterPath, afterRealPath] = await Promise.all([
+      handle.stat({ bigint }),
+      fs3.lstat(file, { bigint }),
+      fs3.realpath(file)
+    ]);
+    if (!afterPath.isFile() || afterPath.isSymbolicLink() || afterRealPath !== beforeRealPath || !sameStatIdentity(before, afterHandle) || !sameStatIdentity(before, afterPath)) {
+      throw new RaceSafeReadError("changed", `${label} changed while reading`);
+    }
+    await options.verify?.("post-read", {
+      realPath: afterRealPath,
+      identity: identityOf(afterHandle)
+    });
+    return { bytes: Buffer.concat(chunks, total), stat: afterHandle, realPath: afterRealPath };
+  } finally {
+    await handle.close();
+  }
+}
+
+// domains/comet-entry/current-selection.ts
 var COMET_CURRENT_SELECTION_SCHEMA = "comet.selection.v2";
 var COMET_CURRENT_SELECTION_MAX_BYTES = 16 * 1024;
 function cometCurrentSelectionFile(projectRoot) {
@@ -8027,16 +8146,11 @@ function parseSelection(source) {
 async function readCometCurrentSelection(projectRoot) {
   let source;
   try {
-    const stat = await fs3.lstat(cometCurrentSelectionFile(projectRoot));
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw new Error("current change selection must be a regular file");
-    }
-    if (stat.size > COMET_CURRENT_SELECTION_MAX_BYTES) {
-      throw new Error(
-        `current change selection exceeds ${COMET_CURRENT_SELECTION_MAX_BYTES} bytes`
-      );
-    }
-    source = await fs3.readFile(cometCurrentSelectionFile(projectRoot), "utf8");
+    const file = cometCurrentSelectionFile(projectRoot);
+    const { bytes } = await readFileRaceSafe(file, COMET_CURRENT_SELECTION_MAX_BYTES, {
+      label: "current change selection"
+    });
+    source = bytes.toString("utf8");
   } catch (error) {
     if (error.code === "ENOENT") return { status: "missing" };
     throw new Error(
@@ -9054,22 +9168,6 @@ function nativeSensitiveRelativePathReason(relativeRef) {
   return null;
 }
 
-// domains/comet-native/native-file-identity.ts
-function hasPlatformIdentity(value) {
-  return value !== 0 && value !== 0n && value !== "0";
-}
-function hasComparableNativeFileObject(left, right) {
-  return hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev) && hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
-}
-function sameNativeFileObject(left, right) {
-  const comparableDevice = hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev);
-  if (comparableDevice && left.dev !== right.dev) return false;
-  const comparableInode = hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
-  if (comparableInode && left.ino !== right.ino) return false;
-  if (comparableDevice && comparableInode) return true;
-  return left.birthtime === right.birthtime;
-}
-
 // domains/comet-native/native-bounded-file.ts
 var DEFAULT_NATIVE_ARTIFACT_MAX_BYTES = 1024 * 1024;
 function isInside(parent, target) {
@@ -9100,7 +9198,7 @@ function positiveLimit(value) {
   return value;
 }
 function sameDirectoryIdentity(identity, stat) {
-  return sameNativeFileObject(
+  return sameFileObject(
     { ...identity, birthtime: identity.birthtimeMs },
     {
       ...stat,
@@ -9111,10 +9209,10 @@ function sameDirectoryIdentity(identity, stat) {
 function sameFileIdentity(left, right) {
   const leftObject = { ...left, birthtime: left.birthtimeMs };
   const rightObject = { ...right, birthtime: right.birthtimeMs };
-  if (hasComparableNativeFileObject(leftObject, rightObject)) {
-    return sameNativeFileObject(leftObject, rightObject);
+  if (hasComparableFileObject(leftObject, rightObject)) {
+    return sameFileObject(leftObject, rightObject);
   }
-  return sameNativeFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
+  return sameFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function directoryIdentity(directory) {
   const stat = await fs8.lstat(directory);
@@ -9231,7 +9329,7 @@ var import_yaml3 = __toESM(require_dist(), 1);
 
 // domains/comet-native/native-protected-file.ts
 import { createHash as createHash2 } from "node:crypto";
-import { constants as fsConstants, promises as fs9 } from "node:fs";
+import { constants as fsConstants2, promises as fs9 } from "node:fs";
 import path9 from "node:path";
 import { TextDecoder as TextDecoder2 } from "node:util";
 function isInside2(parent, target) {
@@ -9245,7 +9343,7 @@ function positiveLimit2(value) {
   return value;
 }
 function sameDirectoryIdentity2(expected, actual) {
-  return sameNativeFileObject(
+  return sameFileObject(
     { ...expected, birthtime: expected.birthtimeMs },
     {
       ...actual,
@@ -9264,7 +9362,7 @@ function asFileIdentity(stat) {
   };
 }
 function sameFileIdentity2(expected, actual) {
-  return sameNativeFileObject(
+  return sameFileObject(
     { ...expected, birthtime: expected.birthtimeMs },
     {
       ...actual,
@@ -9351,7 +9449,7 @@ async function readNativeProtectedFile(options) {
   if (forbidden.some((identity) => isInside2(identity.realPath, beforeRealPath))) {
     throw new Error(`${options.label} resolves inside an excluded root`);
   }
-  const flags = process.platform === "win32" ? fsConstants.O_RDONLY : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+  const flags = process.platform === "win32" ? fsConstants2.O_RDONLY : fsConstants2.O_RDONLY | fsConstants2.O_NOFOLLOW | fsConstants2.O_NONBLOCK;
   const handle = await fs9.open(file, flags);
   try {
     const opened = await handle.stat();

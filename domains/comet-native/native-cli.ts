@@ -1,10 +1,13 @@
 import path from 'path';
 
+import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+
 import {
   archiveNativeChange,
   NativeArchivePreflightError,
   NativeSpecConflictError,
 } from './native-archive.js';
+import { serializeNativeVerificationMachineBlock } from './native-acceptance.js';
 import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
 import {
   createNativeChange,
@@ -41,6 +44,7 @@ import {
 } from './native-specs.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
+import { MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES } from './native-verification-scope.js';
 import { advanceNativeChange } from './native-transitions.js';
 import { inspectNativeHookGuard, readNativeHookRequest } from './native-hook-guard.js';
 import type {
@@ -88,6 +92,7 @@ Commands:
   select <change-name>
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   check <change-name>
+  evidence format [--entries <path>]
   next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <change-relative-ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
   archive <change-name> --expect-preflight <sha256>
@@ -181,6 +186,46 @@ async function doctorPaths(projectRoot: string): Promise<NativeProjectPaths> {
 
 function success(command: string, data: unknown, text?: string): DispatchResult {
   return { command, exitCode: 0, data, text: text ?? JSON.stringify(data, null, 2) + '\n' };
+}
+
+async function readBoundedEvidenceFile(filePath: string, maxBytes: number): Promise<string> {
+  try {
+    const { bytes } = await readFileRaceSafe(filePath, maxBytes, {
+      label: 'Acceptance evidence entries file',
+    });
+    return bytes.toString('utf8');
+  } catch (error) {
+    if (error instanceof RaceSafeReadError) {
+      if (error.reason === 'not-regular-file') {
+        throw new Error(`Acceptance evidence entries path is not a regular file: ${filePath}`, {
+          cause: error,
+        });
+      }
+      if (error.reason === 'too-large') {
+        throw new Error(`Acceptance evidence entries file exceeds ${maxBytes} bytes: ${filePath}`, {
+          cause: error,
+        });
+      }
+      throw new Error(`Acceptance evidence entries file changed while reading: ${filePath}`, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
+
+async function readBoundedEvidenceStdin(maxBytes: number): Promise<string> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of process.stdin) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    total += buffer.byteLength;
+    if (total > maxBytes) {
+      throw new Error(`Acceptance evidence entries on stdin exceed ${maxBytes} bytes`);
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 async function dispatch(
@@ -487,6 +532,42 @@ async function dispatch(
       data,
       text: `Native check ${passed ? 'passed' : 'failed'}: ${checked.ref}\n`,
     };
+  }
+  if (command === 'evidence') {
+    const subcommand = requiredPositional(rawArgs, 'evidence subcommand');
+    if (subcommand === 'format') {
+      const entriesPath = takeOption(rawArgs, '--entries');
+      assertNoArguments(rawArgs);
+      let raw: string;
+      if (entriesPath) {
+        raw = await readBoundedEvidenceFile(
+          path.resolve(entriesPath),
+          MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES,
+        );
+      } else {
+        if (process.stdin.isTTY) {
+          throw new NativeUsageError(
+            'evidence format requires acceptance evidence entries JSON on stdin, or --entries <path>',
+          );
+        }
+        raw = await readBoundedEvidenceStdin(MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES);
+      }
+      let entries: unknown;
+      try {
+        entries = JSON.parse(raw);
+      } catch (error) {
+        throw new Error(
+          `Acceptance evidence entries must be valid JSON: ${(error as Error).message}`,
+          { cause: error },
+        );
+      }
+      if (!Array.isArray(entries)) {
+        throw new Error('Acceptance evidence entries must be a JSON array');
+      }
+      const block = serializeNativeVerificationMachineBlock(entries);
+      return success('evidence format', { block }, `${block}\n`);
+    }
+    throw new NativeUsageError(`Unknown evidence command: ${subcommand}`);
   }
   if (command === 'next') {
     const name = requiredPositional(rawArgs, 'change name');

@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 
+import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+
 import type { CometWorkflow } from './types.js';
 
 export const COMET_CURRENT_SELECTION_SCHEMA = 'comet.selection.v2' as const;
@@ -91,16 +93,11 @@ export async function readCometCurrentSelection(
 ): Promise<CometCurrentSelectionRead> {
   let source: string;
   try {
-    const stat = await fs.lstat(cometCurrentSelectionFile(projectRoot));
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw new Error('current change selection must be a regular file');
-    }
-    if (stat.size > COMET_CURRENT_SELECTION_MAX_BYTES) {
-      throw new Error(
-        `current change selection exceeds ${COMET_CURRENT_SELECTION_MAX_BYTES} bytes`,
-      );
-    }
-    source = await fs.readFile(cometCurrentSelectionFile(projectRoot), 'utf8');
+    const file = cometCurrentSelectionFile(projectRoot);
+    const { bytes } = await readFileRaceSafe(file, COMET_CURRENT_SELECTION_MAX_BYTES, {
+      label: 'current change selection',
+    });
+    source = bytes.toString('utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { status: 'missing' };
     throw new Error(

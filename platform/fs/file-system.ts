@@ -60,7 +60,7 @@ export async function fileExists(filePath: string): Promise<boolean> {
     await fs.access(filePath);
     return true;
   } catch (error) {
-    if (isNotFoundError(error)) return false;
+    if (isMissingPathError(error)) return false;
     throw error;
   }
 }
@@ -100,13 +100,17 @@ export async function readDir(dirPath: string): Promise<string[]> {
 }
 
 /**
- * Returns true when an error means the path was simply not found. ENOENT is
- * the only non-fatal outcome for the removal helpers below; all other errors
- * (permissions, IO) are reported as failures instead of being masked as
- * "already gone".
+ * Returns true when an error means a path lookup found a file where it
+ * expected to be able to descend into a directory (ENOTDIR) — e.g. a stray
+ * `.DS_Store` sitting where a plugin marketplace directory was expected —
+ * treated the same as the path simply not being there (ENOENT). Only for
+ * read-only existence checks: a removal call hitting ENOTDIR means the
+ * on-disk shape is not what the caller expected, which is a real anomaly
+ * worth surfacing rather than masking as "already gone".
  */
-function isNotFoundError(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+function isMissingPathError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
 }
 
 /**
@@ -119,7 +123,7 @@ export async function removeFile(filePath: string): Promise<boolean> {
     await fs.unlink(filePath);
     return true;
   } catch (error) {
-    if (isNotFoundError(error)) return false;
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return false;
     throw error;
   }
 }
@@ -140,7 +144,7 @@ export async function removeDir(dirPath: string): Promise<boolean> {
     await fs.rm(dirPath, { recursive: true, force: false });
     return true;
   } catch (error) {
-    if (isNotFoundError(error)) return false;
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return false;
     throw error;
   }
 }

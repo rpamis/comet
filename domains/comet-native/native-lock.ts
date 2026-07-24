@@ -4,6 +4,8 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
+import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+
 import { resolveContainedNativePath } from './native-paths.js';
 import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import type { NativeProjectPaths } from './native-types.js';
@@ -132,41 +134,35 @@ function sameNativeLockDiagnosis(left: NativeLockDiagnosis, right: NativeLockDia
 }
 
 async function readNativeLockSnapshot(file: string): Promise<NativeLockSnapshot | null> {
-  let handle: Awaited<ReturnType<typeof fs.open>>;
+  let bytes: Buffer;
+  let stat: import('fs').BigIntStats;
   try {
-    handle = await fs.open(file, 'r');
+    const result = await readFileRaceSafe(file, NATIVE_LOCK_MAX_BYTES, {
+      bigint: true,
+      label: 'Native lock',
+    });
+    bytes = result.bytes;
+    stat = result.stat as import('fs').BigIntStats;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if (error instanceof RaceSafeReadError) {
+      if (error.reason === 'too-large') {
+        throw new Error(`Native lock metadata exceeds ${NATIVE_LOCK_MAX_BYTES} bytes: ${file}`, {
+          cause: error,
+        });
+      }
+      if (error.reason === 'not-regular-file') {
+        throw new Error(`Native lock must be a regular file: ${file}`, { cause: error });
+      }
+      throw new Error(`Native lock changed while reading: ${file}`, { cause: error });
+    }
     throw error;
   }
-  try {
-    const stat = await handle.stat({ bigint: true });
-    if (!stat.isFile() || stat.isSymbolicLink()) {
-      throw new Error(`Native lock must be a regular file: ${file}`);
-    }
-    if (stat.size > BigInt(NATIVE_LOCK_MAX_BYTES)) {
-      throw new Error(`Native lock metadata exceeds ${NATIVE_LOCK_MAX_BYTES} bytes: ${file}`);
-    }
-    const source = await handle.readFile({ encoding: 'utf8' });
-    const pathStat = await fs.lstat(file, { bigint: true });
-    if (pathStat.isSymbolicLink() || !pathStat.isFile()) {
-      throw new Error(`Native lock must be a regular file: ${file}`);
-    }
-    const identity = nativeLockFileIdentity(stat);
-    if (!sameNativeLockObject(identity, nativeLockFileIdentity(pathStat))) {
-      throw new Error(`Native lock changed while reading: ${file}`);
-    }
-    return {
-      file,
-      owner: parseNativeLockOwner(JSON.parse(source) as unknown, file),
-      identity,
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
-  } finally {
-    await handle.close();
-  }
+  return {
+    file,
+    owner: parseNativeLockOwner(JSON.parse(bytes.toString('utf8')) as unknown, file),
+    identity: nativeLockFileIdentity(stat),
+  };
 }
 
 export async function readNativeLock(file: string): Promise<NativeLockOwner | null> {
