@@ -1527,6 +1527,22 @@ describe('Native VCS-independent content snapshots', () => {
     expect(performance.now() - startedAt).toBeLessThan(100);
   });
 
+  it('stops snapshot glob matching cooperatively when its budget expires', () => {
+    const matcher = compileNativeSnapshotPattern('**') as (
+      relative: string,
+      hasBudget?: () => boolean,
+    ) => boolean;
+    let budgetChecks = 0;
+
+    expect(
+      matcher('x'.repeat(4_096), () => {
+        budgetChecks += 1;
+        return budgetChecks === 1;
+      }),
+    ).toBe(false);
+    expect(budgetChecks).toBeGreaterThan(1);
+  });
+
   it.each([
     ['src/**/*.ts', 'src/index.ts', true],
     ['src/**/*.ts', 'src/nested/index.ts', true],

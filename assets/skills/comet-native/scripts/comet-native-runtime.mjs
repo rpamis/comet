@@ -11224,10 +11224,11 @@ function snapshotPolicyHash(include, exclude) {
 ${JSON.stringify({ include, exclude, hash: "sha256" })}`
   );
 }
-function epsilonClosure(tokens, positions) {
+function epsilonClosure(tokens, positions, checkpoint) {
   const closure = new Set(positions);
   const pending = [...positions];
   while (pending.length > 0) {
+    if (checkpoint && !checkpoint()) return null;
     const position = pending.pop();
     const token = tokens[position];
     if (token && (token.kind === "star" || token.kind === "globstar" || token.kind === "globstar-slash") && !closure.has(position + 1)) {
@@ -11236,6 +11237,18 @@ function epsilonClosure(tokens, positions) {
     }
   }
   return closure;
+}
+function cooperativePatternCheckpoint(hasBudget) {
+  let operationsUntilCheck = 0;
+  return () => {
+    if (operationsUntilCheck > 0) {
+      operationsUntilCheck -= 1;
+      return true;
+    }
+    if (!hasBudget()) return false;
+    operationsUntilCheck = 63;
+    return true;
+  };
 }
 function compileNativeSnapshotPattern(pattern) {
   const normalized = normalizeNativeSnapshotPattern(pattern, "Native snapshot pattern");
@@ -11258,11 +11271,16 @@ function compileNativeSnapshotPattern(pattern) {
       tokens.push({ kind: "literal", value: character });
     }
   }
-  return (relative) => {
-    let positions = epsilonClosure(tokens, /* @__PURE__ */ new Set([0]));
+  return (relative, hasBudget) => {
+    const checkpoint = hasBudget ? cooperativePatternCheckpoint(hasBudget) : void 0;
+    if (checkpoint && !checkpoint()) return false;
+    let positions = epsilonClosure(tokens, /* @__PURE__ */ new Set([0]), checkpoint);
+    if (positions === null) return false;
     for (const character of relative) {
+      if (checkpoint && !checkpoint()) return false;
       const next = /* @__PURE__ */ new Set();
       for (const position of positions) {
+        if (checkpoint && !checkpoint()) return false;
         const token = tokens[position];
         if (!token) continue;
         if (token.kind === "literal" && token.value === character) {
@@ -11278,10 +11296,11 @@ function compileNativeSnapshotPattern(pattern) {
           if (character === "/") next.add(position + 1);
         }
       }
-      positions = epsilonClosure(tokens, next);
+      positions = epsilonClosure(tokens, next, checkpoint);
+      if (positions === null) return false;
       if (positions.size === 0) return false;
     }
-    return epsilonClosure(tokens, positions).has(tokens.length);
+    return epsilonClosure(tokens, positions, checkpoint)?.has(tokens.length) ?? false;
   };
 }
 function resolveSnapshotPolicy(value) {
@@ -11308,10 +11327,23 @@ function resolveSnapshotPolicy(value) {
     excludeMatchers: exclude.map(compileNativeSnapshotPattern)
   };
 }
-function snapshotPolicyIncludes(policy, relative) {
+function snapshotPolicyIncludes(policy, relative, execution) {
   if (!policy) return true;
-  const included = policy.includeMatchers.some((matcher) => matcher(relative));
-  return included && !policy.excludeMatchers.some((matcher) => matcher(relative));
+  const hasBudget = () => nativeSnapshotExecutionHasBudget(execution);
+  let included = false;
+  for (const matcher of policy.includeMatchers) {
+    if (!hasBudget()) return false;
+    if (matcher(relative, hasBudget)) {
+      included = true;
+      break;
+    }
+  }
+  if (!included) return false;
+  for (const matcher of policy.excludeMatchers) {
+    if (!hasBudget()) return false;
+    if (matcher(relative, hasBudget)) return false;
+  }
+  return true;
 }
 function foldSnapshotOverflowHash(previous, kind, value) {
   const payload = JSON.stringify(value);
@@ -12295,7 +12327,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     for (const record8 of before.records) {
       if (record8.type !== "file" && record8.type !== "symlink") continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
-      if (!snapshotPolicyIncludes(policy, record8.path)) continue;
+      if (!snapshotPolicyIncludes(policy, record8.path, execution)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path10.resolve(projectRoot, ...record8.path.split("/"));
       let stat;
@@ -12354,7 +12386,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     for (const relative of selectionPaths(gitSelection)) {
       if (!isSnapshotProjectRef(paths, relative)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
-      if (!snapshotPolicyIncludes(policy, relative)) continue;
+      if (!snapshotPolicyIncludes(policy, relative, execution)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path10.resolve(projectRoot, ...relative.split("/"));
       if (target === configFile || target === selectionFile || denylist.some((denied) => sameOrInside(denied, target))) {

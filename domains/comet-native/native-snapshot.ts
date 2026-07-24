@@ -1359,7 +1359,7 @@ type SnapshotPatternToken =
   | { kind: 'literal'; value: string }
   | { kind: 'question' | 'star' | 'globstar' | 'globstar-slash' };
 
-type SnapshotPatternMatcher = (relative: string) => boolean;
+type SnapshotPatternMatcher = (relative: string, hasBudget?: () => boolean) => boolean;
 
 interface ResolvedSnapshotPolicy {
   manifest: NativeSnapshotPolicy;
@@ -1370,10 +1370,12 @@ interface ResolvedSnapshotPolicy {
 function epsilonClosure(
   tokens: readonly SnapshotPatternToken[],
   positions: ReadonlySet<number>,
-): Set<number> {
+  checkpoint?: () => boolean,
+): Set<number> | null {
   const closure = new Set(positions);
   const pending = [...positions];
   while (pending.length > 0) {
+    if (checkpoint && !checkpoint()) return null;
     const position = pending.pop()!;
     const token = tokens[position];
     if (
@@ -1386,6 +1388,19 @@ function epsilonClosure(
     }
   }
   return closure;
+}
+
+function cooperativePatternCheckpoint(hasBudget: () => boolean): () => boolean {
+  let operationsUntilCheck = 0;
+  return (): boolean => {
+    if (operationsUntilCheck > 0) {
+      operationsUntilCheck -= 1;
+      return true;
+    }
+    if (!hasBudget()) return false;
+    operationsUntilCheck = 63;
+    return true;
+  };
 }
 
 export function compileNativeSnapshotPattern(pattern: string): SnapshotPatternMatcher {
@@ -1410,11 +1425,16 @@ export function compileNativeSnapshotPattern(pattern: string): SnapshotPatternMa
     }
   }
 
-  return (relative: string): boolean => {
-    let positions = epsilonClosure(tokens, new Set([0]));
+  return (relative: string, hasBudget?: () => boolean): boolean => {
+    const checkpoint = hasBudget ? cooperativePatternCheckpoint(hasBudget) : undefined;
+    if (checkpoint && !checkpoint()) return false;
+    let positions = epsilonClosure(tokens, new Set([0]), checkpoint);
+    if (positions === null) return false;
     for (const character of relative) {
+      if (checkpoint && !checkpoint()) return false;
       const next = new Set<number>();
       for (const position of positions) {
+        if (checkpoint && !checkpoint()) return false;
         const token = tokens[position];
         if (!token) continue;
         if (token.kind === 'literal' && token.value === character) {
@@ -1430,10 +1450,11 @@ export function compileNativeSnapshotPattern(pattern: string): SnapshotPatternMa
           if (character === '/') next.add(position + 1);
         }
       }
-      positions = epsilonClosure(tokens, next);
+      positions = epsilonClosure(tokens, next, checkpoint);
+      if (positions === null) return false;
       if (positions.size === 0) return false;
     }
-    return epsilonClosure(tokens, positions).has(tokens.length);
+    return epsilonClosure(tokens, positions, checkpoint)?.has(tokens.length) ?? false;
   };
 }
 
@@ -1467,10 +1488,24 @@ function resolveSnapshotPolicy(
 function snapshotPolicyIncludes(
   policy: ResolvedSnapshotPolicy | undefined,
   relative: string,
+  execution: NativeSnapshotExecution,
 ): boolean {
   if (!policy) return true;
-  const included = policy.includeMatchers.some((matcher) => matcher(relative));
-  return included && !policy.excludeMatchers.some((matcher) => matcher(relative));
+  const hasBudget = (): boolean => nativeSnapshotExecutionHasBudget(execution);
+  let included = false;
+  for (const matcher of policy.includeMatchers) {
+    if (!hasBudget()) return false;
+    if (matcher(relative, hasBudget)) {
+      included = true;
+      break;
+    }
+  }
+  if (!included) return false;
+  for (const matcher of policy.excludeMatchers) {
+    if (!hasBudget()) return false;
+    if (matcher(relative, hasBudget)) return false;
+  }
+  return true;
 }
 
 function foldSnapshotOverflowHash(previous: string, kind: string, value: unknown): string {
@@ -2671,7 +2706,7 @@ export async function createNativeContentSnapshot(
     for (const record of before.records) {
       if (record.type !== 'file' && record.type !== 'symlink') continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
-      if (!snapshotPolicyIncludes(policy, record.path)) continue;
+      if (!snapshotPolicyIncludes(policy, record.path, execution)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path.resolve(projectRoot, ...record.path.split('/'));
       let stat: import('fs').Stats;
@@ -2732,7 +2767,7 @@ export async function createNativeContentSnapshot(
     for (const relative of selectionPaths(gitSelection)) {
       if (!isSnapshotProjectRef(paths, relative)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
-      if (!snapshotPolicyIncludes(policy, relative)) continue;
+      if (!snapshotPolicyIncludes(policy, relative, execution)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path.resolve(projectRoot, ...relative.split('/'));
       if (
