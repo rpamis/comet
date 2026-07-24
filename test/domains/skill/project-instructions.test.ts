@@ -58,6 +58,28 @@ describe('Comet project instructions', () => {
     expect(content).not.toContain('`.comet.yaml`');
   });
 
+  it.each([
+    [
+      'zh' as const,
+      '用户通过宿主明确调用任意 Comet Skill',
+      '不要运行 resume probe',
+      '当前请求未明确调用 Comet Skill',
+    ],
+    [
+      'en' as const,
+      'user explicitly invokes any Comet Skill through the host',
+      'do not run the resume probe',
+      'current request did not explicitly invoke a Comet Skill',
+    ],
+  ])('gives explicit Comet Skill invocation precedence in %s', async (language, ...markers) => {
+    await installCometProjectInstructions(tmpDir, language);
+
+    const content = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+    for (const marker of markers) {
+      expect(content).toContain(marker);
+    }
+  });
+
   it('removes only the managed block', async () => {
     const agents = path.join(tmpDir, 'AGENTS.md');
     await fs.writeFile(agents, '# User\n\nKeep me.\n', 'utf8');
