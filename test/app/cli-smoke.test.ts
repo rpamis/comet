@@ -83,8 +83,8 @@ describe('built CLI smoke', () => {
       projectRoot,
       '--scope',
       'global',
-      '--workflow',
-      'native',
+      '--root',
+      'docs',
       '--language',
       'en',
       '--json',
@@ -93,9 +93,9 @@ describe('built CLI smoke', () => {
     expect(result.status).toBe(1);
     expect(JSON.parse(result.stdout)).toMatchObject({
       status: 'failed',
-      error: expect.stringContaining('only valid for project-scope initialization'),
+      error: expect.stringContaining('--root is only valid for project-scope initialization'),
     });
-    expect(result.stderr).toContain('only valid for project-scope initialization');
+    expect(result.stderr).toContain('--root is only valid for project-scope initialization');
     expect(result.stderr).not.toContain('at initCommand');
   });
 
