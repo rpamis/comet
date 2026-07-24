@@ -461,23 +461,49 @@ async function resultMatchesCurrentDraft(
   );
 }
 
+function projectRelativeReport(projectRoot: string, report: string): string | null {
+  const relative = path.relative(path.resolve(projectRoot), path.resolve(projectRoot, report));
+  if (
+    relative === '' ||
+    relative === '..' ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    return null;
+  }
+  return `./${relative}`;
+}
+
+function portableEvalEvidence(
+  projectRoot: string,
+  result: BundleEvalEvidenceResult,
+): BundleEvalEvidenceResult {
+  return {
+    ...result,
+    reports: result.reports
+      .map((report) => projectRelativeReport(projectRoot, report))
+      .filter((report): report is string => report !== null),
+  };
+}
+
 async function writeEvidence(
   projectRoot: string,
   name: string,
   result: BundleEvalEvidenceResult,
 ): Promise<string> {
+  const persistedResult = portableEvalEvidence(projectRoot, result);
   const directory = path.resolve(
     projectRoot,
     '.comet',
     'bundle-evals',
     name,
-    ...evalEvidencePathSegments(result),
+    ...evalEvidencePathSegments(persistedResult),
   );
   const destination = path.join(directory, 'result.json');
   const temporary = path.join(directory, `.result.${randomUUID()}.tmp`);
   await fs.mkdir(directory, { recursive: true });
   try {
-    await fs.writeFile(temporary, JSON.stringify(result, null, 2) + '\n', {
+    await fs.writeFile(temporary, JSON.stringify(persistedResult, null, 2) + '\n', {
       encoding: 'utf8',
       flag: 'wx',
     });

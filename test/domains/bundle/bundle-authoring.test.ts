@@ -119,6 +119,41 @@ describe('Bundle authoring lifecycle', () => {
     ]);
   });
 
+  it('serializes project paths relatively while rehydrating them for runtime operations', async () => {
+    const state = await createBundleDraft({
+      projectRoot,
+      name: 'portable-state',
+      candidates: [
+        {
+          name: 'brainstorming',
+          preferenceIndex: 0,
+          platform: 'codex',
+          scope: 'project',
+          origin: 'project',
+          factory: { query: 'brainstorming' },
+          root: path.join(projectRoot, '.agents', 'skills', 'brainstorming'),
+          description: 'Explore intent.',
+          skillMd: '# Brainstorming\n',
+          hash: 'c'.repeat(64),
+        },
+      ],
+      defaultLocale: 'zh',
+      locales: ['zh'],
+      engineEnabled: true,
+    });
+
+    const persisted = JSON.parse(
+      await fs.readFile(
+        path.join(projectRoot, '.comet', 'bundle-authoring', 'portable-state.json'),
+        'utf8',
+      ),
+    );
+    expect(persisted.draftPath).toBe('./.comet/bundle-drafts/portable-state');
+    expect(persisted.candidates[0].root).toBe('./.agents/skills/brainstorming');
+    expect(JSON.stringify(persisted)).not.toContain(projectRoot);
+    await expect(readBundleAuthoringState(projectRoot, 'portable-state')).resolves.toEqual(state);
+  });
+
   it('persists Skill Creator metadata with ordered preferences and deviation reasons', async () => {
     const resolvedSource = {
       name: 'brainstorming',

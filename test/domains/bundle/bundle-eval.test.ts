@@ -441,6 +441,26 @@ describe('Bundle eval planning and evidence', () => {
     );
   });
 
+  it('records only project-relative Eval reports in committed evidence', async () => {
+    const projectReport = path.join(projectRoot, '.comet', 'eval-reports', 'summary.html');
+    await fs.mkdir(path.dirname(projectReport), { recursive: true });
+    await fs.writeFile(projectReport, '<html></html>');
+    const recorded = await recordBundleEval(
+      projectRoot,
+      'eval-bundle',
+      await writeResult(
+        result(stateHash, {
+          reports: [path.join(root, 'external-report.html'), projectReport],
+        }),
+        'reports.json',
+      ),
+    );
+
+    const persisted = JSON.parse(await fs.readFile(recorded.eval!.resultPath, 'utf8'));
+    expect(persisted.reports).toEqual(['./.comet/eval-reports/summary.html']);
+    expect(JSON.stringify(persisted)).not.toContain(root);
+  });
+
   it('keeps failed Eval in draft while retaining its evidence', async () => {
     const failed = result(stateHash, {
       failures: ['entry failed'],

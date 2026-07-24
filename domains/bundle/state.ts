@@ -16,6 +16,40 @@ function statePath(projectRoot: string, name: string): string {
   return path.resolve(projectRoot, '.comet', 'bundle-authoring', `${name}.json`);
 }
 
+function portableProjectPath(projectRoot: string, value: string): string | null {
+  if (!path.isAbsolute(value)) return null;
+  const relative = path.relative(path.resolve(projectRoot), path.resolve(value));
+  if (
+    relative === '' ||
+    relative === '..' ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    return null;
+  }
+  return `./${relative}`;
+}
+
+function serializeProjectPaths(projectRoot: string, value: unknown): unknown {
+  if (typeof value === 'string') return portableProjectPath(projectRoot, value) ?? value;
+  if (Array.isArray(value)) return value.map((item) => serializeProjectPaths(projectRoot, item));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, serializeProjectPaths(projectRoot, item)]),
+  );
+}
+
+function hydrateProjectPaths(projectRoot: string, value: unknown): unknown {
+  if (typeof value === 'string') {
+    return value.startsWith('./') ? path.resolve(projectRoot, value) : value;
+  }
+  if (Array.isArray(value)) return value.map((item) => hydrateProjectPaths(projectRoot, item));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, hydrateProjectPaths(projectRoot, item)]),
+  );
+}
+
 function assertState(value: unknown, file: string): asserts value is BundleAuthoringState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Invalid Bundle authoring state at ${file}: document must be an object`);
@@ -59,7 +93,7 @@ export async function readBundleAuthoringState(
   if (value.name !== name) {
     throw new Error(`Invalid Bundle authoring state at ${file}: name must be ${name}`);
   }
-  return value;
+  return hydrateProjectPaths(projectRoot, value) as BundleAuthoringState;
 }
 
 export async function listBundleAuthoringStates(
@@ -109,10 +143,14 @@ export async function writeBundleAuthoringState(
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temporary = path.join(path.dirname(file), `.${state.name}.${randomUUID()}.tmp`);
   try {
-    await fs.writeFile(temporary, JSON.stringify(state, null, 2) + '\n', {
-      encoding: 'utf8',
-      flag: 'wx',
-    });
+    await fs.writeFile(
+      temporary,
+      JSON.stringify(serializeProjectPaths(projectRoot, state), null, 2) + '\n',
+      {
+        encoding: 'utf8',
+        flag: 'wx',
+      },
+    );
     await fs.rename(temporary, file);
   } finally {
     await fs.rm(temporary, { force: true });
