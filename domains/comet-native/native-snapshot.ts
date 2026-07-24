@@ -4,7 +4,11 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
-import { DEFAULT_NATIVE_SNAPSHOT_CONFIG, readProjectConfig } from './native-config.js';
+import {
+  DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+  normalizeNativeSnapshotPattern,
+  readProjectConfig,
+} from './native-config.js';
 import { sha256Text } from './native-hash.js';
 import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
@@ -1345,32 +1349,103 @@ function serializedManifestBytes(manifest: NativeContentSnapshotManifest): numbe
   return Buffer.byteLength(JSON.stringify(manifest, null, 2) + '\n');
 }
 
-function normalizeSnapshotPattern(value: string, label: string): string {
-  if (
-    value.length === 0 ||
-    value.includes('\\') ||
-    value.includes('\0') ||
-    value.startsWith('/') ||
-    value.split('/').includes('..')
-  ) {
-    throw new Error(`${label} contains an unsafe pattern`);
-  }
-  return value;
-}
-
 function snapshotPolicyHash(include: readonly string[], exclude: readonly string[]): string {
   return sha256Text(
     `comet.native.snapshot-policy.v1\n${JSON.stringify({ include, exclude, hash: 'sha256' })}`,
   );
 }
 
-function resolveSnapshotPolicy(value: SnapshotOptions['policy']): NativeSnapshotPolicy | undefined {
+type SnapshotPatternToken =
+  | { kind: 'literal'; value: string }
+  | { kind: 'question' | 'star' | 'globstar' | 'globstar-slash' };
+
+type SnapshotPatternMatcher = (relative: string) => boolean;
+
+interface ResolvedSnapshotPolicy {
+  manifest: NativeSnapshotPolicy;
+  includeMatchers: SnapshotPatternMatcher[];
+  excludeMatchers: SnapshotPatternMatcher[];
+}
+
+function epsilonClosure(
+  tokens: readonly SnapshotPatternToken[],
+  positions: ReadonlySet<number>,
+): Set<number> {
+  const closure = new Set(positions);
+  const pending = [...positions];
+  while (pending.length > 0) {
+    const position = pending.pop()!;
+    const token = tokens[position];
+    if (
+      token &&
+      (token.kind === 'star' || token.kind === 'globstar' || token.kind === 'globstar-slash') &&
+      !closure.has(position + 1)
+    ) {
+      closure.add(position + 1);
+      pending.push(position + 1);
+    }
+  }
+  return closure;
+}
+
+export function compileNativeSnapshotPattern(pattern: string): SnapshotPatternMatcher {
+  const normalized = normalizeNativeSnapshotPattern(pattern, 'Native snapshot pattern');
+  const tokens: SnapshotPatternToken[] = [];
+  for (let index = 0; index < normalized.length; index += 1) {
+    const character = normalized[index]!;
+    if (character === '*' && normalized[index + 1] === '*') {
+      index += 1;
+      if (normalized[index + 1] === '/') {
+        index += 1;
+        tokens.push({ kind: 'globstar-slash' });
+      } else {
+        tokens.push({ kind: 'globstar' });
+      }
+    } else if (character === '*') {
+      tokens.push({ kind: 'star' });
+    } else if (character === '?') {
+      tokens.push({ kind: 'question' });
+    } else {
+      tokens.push({ kind: 'literal', value: character });
+    }
+  }
+
+  return (relative: string): boolean => {
+    let positions = epsilonClosure(tokens, new Set([0]));
+    for (const character of relative) {
+      const next = new Set<number>();
+      for (const position of positions) {
+        const token = tokens[position];
+        if (!token) continue;
+        if (token.kind === 'literal' && token.value === character) {
+          next.add(position + 1);
+        } else if (token.kind === 'question' && character !== '/') {
+          next.add(position + 1);
+        } else if (token.kind === 'star' && character !== '/') {
+          next.add(position);
+        } else if (token.kind === 'globstar') {
+          next.add(position);
+        } else if (token.kind === 'globstar-slash') {
+          next.add(position);
+          if (character === '/') next.add(position + 1);
+        }
+      }
+      positions = epsilonClosure(tokens, next);
+      if (positions.size === 0) return false;
+    }
+    return epsilonClosure(tokens, positions).has(tokens.length);
+  };
+}
+
+function resolveSnapshotPolicy(
+  value: SnapshotOptions['policy'],
+): ResolvedSnapshotPolicy | undefined {
   if (value === undefined) return undefined;
   const include = [
-    ...new Set(value.include.map((item) => normalizeSnapshotPattern(item, 'include'))),
+    ...new Set(value.include.map((item) => normalizeNativeSnapshotPattern(item, 'include'))),
   ].sort((left, right) => left.localeCompare(right, 'en'));
   const exclude = [
-    ...new Set(value.exclude.map((item) => normalizeSnapshotPattern(item, 'exclude'))),
+    ...new Set(value.exclude.map((item) => normalizeNativeSnapshotPattern(item, 'exclude'))),
   ].sort((left, right) => left.localeCompare(right, 'en'));
   if (include.length === 0) throw new Error('Native snapshot policy include must not be empty');
   const hash = snapshotPolicyHash(include, exclude);
@@ -1378,43 +1453,24 @@ function resolveSnapshotPolicy(value: SnapshotOptions['policy']): NativeSnapshot
     throw new Error('Native snapshot policy hash is invalid');
   }
   return {
-    schema: 'comet.native.snapshot-policy.v1',
-    include,
-    exclude,
-    hash,
+    manifest: {
+      schema: 'comet.native.snapshot-policy.v1',
+      include,
+      exclude,
+      hash,
+    },
+    includeMatchers: include.map(compileNativeSnapshotPattern),
+    excludeMatchers: exclude.map(compileNativeSnapshotPattern),
   };
 }
 
-function globPattern(pattern: string): RegExp {
-  let source = '^';
-  for (let index = 0; index < pattern.length; index += 1) {
-    const character = pattern[index]!;
-    if (character === '*' && pattern[index + 1] === '*') {
-      index += 1;
-      if (pattern[index + 1] === '/') {
-        index += 1;
-        source += '(?:.*/)?';
-      } else {
-        source += '.*';
-      }
-    } else if (character === '*') {
-      source += '[^/]*';
-    } else if (character === '?') {
-      source += '[^/]';
-    } else {
-      source += character.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-    }
-  }
-  return new RegExp(`${source}$`, 'u');
-}
-
 function snapshotPolicyIncludes(
-  policy: NativeSnapshotPolicy | undefined,
+  policy: ResolvedSnapshotPolicy | undefined,
   relative: string,
 ): boolean {
   if (!policy) return true;
-  const included = policy.include.some((pattern) => globPattern(pattern).test(relative));
-  return included && !policy.exclude.some((pattern) => globPattern(pattern).test(relative));
+  const included = policy.includeMatchers.some((matcher) => matcher(relative));
+  return included && !policy.excludeMatchers.some((matcher) => matcher(relative));
 }
 
 function foldSnapshotOverflowHash(previous: string, kind: string, value: unknown): string {
@@ -1885,7 +1941,7 @@ export function parseNativeContentSnapshotManifest(value: unknown): NativeConten
       exclude: policyValue.exclude as string[],
       hash: policyValue.hash as string,
       schema: 'comet.native.snapshot-policy.v1',
-    });
+    })!.manifest;
   }
   if (!Array.isArray(manifest.entries) || !Array.isArray(manifest.omitted)) {
     throw new Error('Native content snapshot entries and omissions must be arrays');
@@ -2614,6 +2670,7 @@ export async function createNativeContentSnapshot(
     await options.physicalSelectionHooks?.afterInitialSelection?.();
     for (const record of before.records) {
       if (record.type !== 'file' && record.type !== 'symlink') continue;
+      if (remainingNativeSnapshotTime(execution) < 1) break;
       if (!snapshotPolicyIncludes(policy, record.path)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path.resolve(projectRoot, ...record.path.split('/'));
@@ -2674,7 +2731,9 @@ export async function createNativeContentSnapshot(
     await options.gitSelectionHooks?.afterInitialSelection?.();
     for (const relative of selectionPaths(gitSelection)) {
       if (!isSnapshotProjectRef(paths, relative)) continue;
+      if (remainingNativeSnapshotTime(execution) < 1) break;
       if (!snapshotPolicyIncludes(policy, relative)) continue;
+      if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path.resolve(projectRoot, ...relative.split('/'));
       if (
         target === configFile ||
@@ -2813,7 +2872,7 @@ export async function createNativeContentSnapshot(
     createdAt: (options.now ?? new Date()).toISOString(),
     complete: omittedCount === 0,
     limits,
-    ...(policy ? { policy } : {}),
+    ...(policy ? { policy: policy.manifest } : {}),
     entries,
     omitted,
     omittedCount,

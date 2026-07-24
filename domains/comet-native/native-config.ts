@@ -36,6 +36,8 @@ const SNAPSHOT_KEYS = new Set([
 const PENDING_KEYS = new Set(['id', 'from_artifact_root', 'to_artifact_root', 'stage', 'cleanup']);
 const NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 const CLEANUP_KEYS = new Set(['kind', 'state', 'manifest_hash']);
+export const MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH = 1024;
+export const MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS = 64;
 export const DEFAULT_NATIVE_SNAPSHOT_CONFIG: NativeSnapshotConfig = {
   include: ['**/*'],
   exclude: [],
@@ -44,23 +46,45 @@ export const DEFAULT_NATIVE_SNAPSHOT_CONFIG: NativeSnapshotConfig = {
   max_duration_ms: 60_000,
 };
 
-function snapshotPatterns(value: unknown, label: string, fallback: string[]): string[] {
-  if (value === undefined) return [...fallback];
+export function normalizeNativeSnapshotPattern(value: unknown, label: string): string {
   if (
-    !Array.isArray(value) ||
-    value.some(
-      (pattern) =>
-        typeof pattern !== 'string' ||
-        pattern.length === 0 ||
-        pattern.includes('\\') ||
-        pattern.includes('\0') ||
-        pattern.startsWith('/') ||
-        pattern.split('/').includes('..'),
-    )
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.includes('\\') ||
+    value.includes('\0') ||
+    value.startsWith('/') ||
+    value.split('/').includes('..')
   ) {
     throw new Error(`${label} contains an unsafe pattern`);
   }
-  return [...new Set(value as string[])].sort((left, right) => left.localeCompare(right, 'en'));
+  if (value.length > MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH) {
+    throw new Error(`${label} exceeds ${MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH} characters`);
+  }
+  let wildcardTokens = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === '?') {
+      wildcardTokens += 1;
+    } else if (value[index] === '*') {
+      wildcardTokens += 1;
+      if (value[index + 1] === '*') index += 1;
+    }
+  }
+  if (wildcardTokens > MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS) {
+    throw new Error(
+      `${label} contains more than ${MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS} wildcard tokens`,
+    );
+  }
+  return value;
+}
+
+function snapshotPatterns(value: unknown, label: string, fallback: string[]): string[] {
+  if (value === undefined) return [...fallback];
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} contains an unsafe pattern`);
+  }
+  return [...new Set(value.map((pattern) => normalizeNativeSnapshotPattern(pattern, label)))].sort(
+    (left, right) => left.localeCompare(right, 'en'),
+  );
 }
 
 function positiveSnapshotInteger(value: unknown, fallback: number, label: string): number {

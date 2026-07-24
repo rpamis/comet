@@ -7638,6 +7638,8 @@ var SNAPSHOT_KEYS = /* @__PURE__ */ new Set([
 var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
 var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
+var MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH = 1024;
+var MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS = 64;
 var DEFAULT_NATIVE_SNAPSHOT_CONFIG = {
   include: ["**/*"],
   exclude: [],
@@ -7645,14 +7647,37 @@ var DEFAULT_NATIVE_SNAPSHOT_CONFIG = {
   max_total_bytes: 256 * 1024 * 1024,
   max_duration_ms: 6e4
 };
-function snapshotPatterns(value, label, fallback) {
-  if (value === void 0) return [...fallback];
-  if (!Array.isArray(value) || value.some(
-    (pattern) => typeof pattern !== "string" || pattern.length === 0 || pattern.includes("\\") || pattern.includes("\0") || pattern.startsWith("/") || pattern.split("/").includes("..")
-  )) {
+function normalizeNativeSnapshotPattern(value, label) {
+  if (typeof value !== "string" || value.length === 0 || value.includes("\\") || value.includes("\0") || value.startsWith("/") || value.split("/").includes("..")) {
     throw new Error(`${label} contains an unsafe pattern`);
   }
-  return [...new Set(value)].sort((left, right) => left.localeCompare(right, "en"));
+  if (value.length > MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH) {
+    throw new Error(`${label} exceeds ${MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH} characters`);
+  }
+  let wildcardTokens = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === "?") {
+      wildcardTokens += 1;
+    } else if (value[index] === "*") {
+      wildcardTokens += 1;
+      if (value[index + 1] === "*") index += 1;
+    }
+  }
+  if (wildcardTokens > MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS) {
+    throw new Error(
+      `${label} contains more than ${MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS} wildcard tokens`
+    );
+  }
+  return value;
+}
+function snapshotPatterns(value, label, fallback) {
+  if (value === void 0) return [...fallback];
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} contains an unsafe pattern`);
+  }
+  return [...new Set(value.map((pattern) => normalizeNativeSnapshotPattern(pattern, label)))].sort(
+    (left, right) => left.localeCompare(right, "en")
+  );
 }
 function positiveSnapshotInteger(value, fallback, label) {
   const resolved = value ?? fallback;

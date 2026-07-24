@@ -941,7 +941,7 @@ describe('Native transition recovery', () => {
           name: 'recover-transition',
           evidence: { summary: 'must fail closed before doctor migration' },
         }),
-      ).rejects.toThrow('requires doctor migration');
+      ).rejects.toThrow('run comet native doctor recover-transition --repair before mutating it');
       const inspected = await doctorNativeProject({ paths, name: 'recover-transition' });
       expect(inspected.findings).toContainEqual(
         expect.objectContaining({ code: 'schema-migration-required', repair: 'migrate' }),

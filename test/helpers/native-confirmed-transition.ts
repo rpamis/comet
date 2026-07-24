@@ -17,7 +17,8 @@ export async function advanceNativeChange(options: AdvanceOptions) {
   let state;
   try {
     state = await readNativeChange(options.paths, options.name);
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     return advanceRuntimeNativeChange({
       ...options,
       clarificationMode: options.clarificationMode ?? 'sequential',

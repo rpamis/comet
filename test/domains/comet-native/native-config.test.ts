@@ -106,7 +106,7 @@ describe('Native project configuration', () => {
     expect(source).not.toContain('# Enables automatic recovery');
   });
 
-  it('rejects unsafe snapshot patterns and invalid resource budgets', async () => {
+  it('rejects unsafe snapshot patterns', async () => {
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
       [
@@ -117,9 +117,6 @@ describe('Native project configuration', () => {
         '  snapshot:',
         '    include: ["../outside/**"]',
         '    exclude: []',
-        '    max_files: 0',
-        '    max_total_bytes: 1024',
-        '    max_duration_ms: 1000',
         '',
       ].join('\n'),
     );
@@ -127,6 +124,47 @@ describe('Native project configuration', () => {
     await expect(readProjectConfig(projectRoot)).rejects.toThrow(
       'native.snapshot.include contains an unsafe pattern',
     );
+  });
+
+  it.each([
+    ['max_files', 0],
+    ['max_total_bytes', 0],
+    ['max_duration_ms', 0],
+  ])('rejects invalid snapshot budget %s', async (field, value) => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: docs',
+        '  snapshot:',
+        `    ${field}: ${value}`,
+        '',
+      ].join('\n'),
+    );
+
+    await expect(readProjectConfig(projectRoot)).rejects.toThrow(`native.snapshot.${field}`);
+  });
+
+  it.each([
+    ['a'.repeat(1025), 'exceeds 1024 characters'],
+    ['*a'.repeat(65), 'contains more than 64 wildcard tokens'],
+  ])('rejects overly complex snapshot pattern', async (pattern, expected) => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: docs',
+        '  snapshot:',
+        `    include: ["${pattern}"]`,
+        '',
+      ].join('\n'),
+    );
+
+    await expect(readProjectConfig(projectRoot)).rejects.toThrow(expected);
   });
 
   it('rejects a non-boolean Ambient Resume setting', async () => {

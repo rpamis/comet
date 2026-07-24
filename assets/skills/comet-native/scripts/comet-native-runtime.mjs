@@ -8706,6 +8706,8 @@ var SNAPSHOT_KEYS = /* @__PURE__ */ new Set([
 var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
 var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
+var MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH = 1024;
+var MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS = 64;
 var DEFAULT_NATIVE_SNAPSHOT_CONFIG = {
   include: ["**/*"],
   exclude: [],
@@ -8713,14 +8715,37 @@ var DEFAULT_NATIVE_SNAPSHOT_CONFIG = {
   max_total_bytes: 256 * 1024 * 1024,
   max_duration_ms: 6e4
 };
-function snapshotPatterns(value, label, fallback) {
-  if (value === void 0) return [...fallback];
-  if (!Array.isArray(value) || value.some(
-    (pattern) => typeof pattern !== "string" || pattern.length === 0 || pattern.includes("\\") || pattern.includes("\0") || pattern.startsWith("/") || pattern.split("/").includes("..")
-  )) {
+function normalizeNativeSnapshotPattern(value, label) {
+  if (typeof value !== "string" || value.length === 0 || value.includes("\\") || value.includes("\0") || value.startsWith("/") || value.split("/").includes("..")) {
     throw new Error(`${label} contains an unsafe pattern`);
   }
-  return [...new Set(value)].sort((left, right) => left.localeCompare(right, "en"));
+  if (value.length > MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH) {
+    throw new Error(`${label} exceeds ${MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH} characters`);
+  }
+  let wildcardTokens = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === "?") {
+      wildcardTokens += 1;
+    } else if (value[index] === "*") {
+      wildcardTokens += 1;
+      if (value[index + 1] === "*") index += 1;
+    }
+  }
+  if (wildcardTokens > MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS) {
+    throw new Error(
+      `${label} contains more than ${MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS} wildcard tokens`
+    );
+  }
+  return value;
+}
+function snapshotPatterns(value, label, fallback) {
+  if (value === void 0) return [...fallback];
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} contains an unsafe pattern`);
+  }
+  return [...new Set(value.map((pattern) => normalizeNativeSnapshotPattern(pattern, label)))].sort(
+    (left, right) => left.localeCompare(right, "en")
+  );
 }
 function positiveSnapshotInteger(value, fallback, label) {
   const resolved = value ?? fallback;
@@ -11193,25 +11218,79 @@ function isChangedDuringReadError(error) {
 function serializedManifestBytes(manifest) {
   return Buffer.byteLength(JSON.stringify(manifest, null, 2) + "\n");
 }
-function normalizeSnapshotPattern(value, label) {
-  if (value.length === 0 || value.includes("\\") || value.includes("\0") || value.startsWith("/") || value.split("/").includes("..")) {
-    throw new Error(`${label} contains an unsafe pattern`);
-  }
-  return value;
-}
 function snapshotPolicyHash(include, exclude) {
   return sha256Text(
     `comet.native.snapshot-policy.v1
 ${JSON.stringify({ include, exclude, hash: "sha256" })}`
   );
 }
+function epsilonClosure(tokens, positions) {
+  const closure = new Set(positions);
+  const pending = [...positions];
+  while (pending.length > 0) {
+    const position = pending.pop();
+    const token = tokens[position];
+    if (token && (token.kind === "star" || token.kind === "globstar" || token.kind === "globstar-slash") && !closure.has(position + 1)) {
+      closure.add(position + 1);
+      pending.push(position + 1);
+    }
+  }
+  return closure;
+}
+function compileNativeSnapshotPattern(pattern) {
+  const normalized = normalizeNativeSnapshotPattern(pattern, "Native snapshot pattern");
+  const tokens = [];
+  for (let index = 0; index < normalized.length; index += 1) {
+    const character = normalized[index];
+    if (character === "*" && normalized[index + 1] === "*") {
+      index += 1;
+      if (normalized[index + 1] === "/") {
+        index += 1;
+        tokens.push({ kind: "globstar-slash" });
+      } else {
+        tokens.push({ kind: "globstar" });
+      }
+    } else if (character === "*") {
+      tokens.push({ kind: "star" });
+    } else if (character === "?") {
+      tokens.push({ kind: "question" });
+    } else {
+      tokens.push({ kind: "literal", value: character });
+    }
+  }
+  return (relative) => {
+    let positions = epsilonClosure(tokens, /* @__PURE__ */ new Set([0]));
+    for (const character of relative) {
+      const next = /* @__PURE__ */ new Set();
+      for (const position of positions) {
+        const token = tokens[position];
+        if (!token) continue;
+        if (token.kind === "literal" && token.value === character) {
+          next.add(position + 1);
+        } else if (token.kind === "question" && character !== "/") {
+          next.add(position + 1);
+        } else if (token.kind === "star" && character !== "/") {
+          next.add(position);
+        } else if (token.kind === "globstar") {
+          next.add(position);
+        } else if (token.kind === "globstar-slash") {
+          next.add(position);
+          if (character === "/") next.add(position + 1);
+        }
+      }
+      positions = epsilonClosure(tokens, next);
+      if (positions.size === 0) return false;
+    }
+    return epsilonClosure(tokens, positions).has(tokens.length);
+  };
+}
 function resolveSnapshotPolicy(value) {
   if (value === void 0) return void 0;
   const include = [
-    ...new Set(value.include.map((item) => normalizeSnapshotPattern(item, "include")))
+    ...new Set(value.include.map((item) => normalizeNativeSnapshotPattern(item, "include")))
   ].sort((left, right) => left.localeCompare(right, "en"));
   const exclude = [
-    ...new Set(value.exclude.map((item) => normalizeSnapshotPattern(item, "exclude")))
+    ...new Set(value.exclude.map((item) => normalizeNativeSnapshotPattern(item, "exclude")))
   ].sort((left, right) => left.localeCompare(right, "en"));
   if (include.length === 0) throw new Error("Native snapshot policy include must not be empty");
   const hash6 = snapshotPolicyHash(include, exclude);
@@ -11219,38 +11298,20 @@ function resolveSnapshotPolicy(value) {
     throw new Error("Native snapshot policy hash is invalid");
   }
   return {
-    schema: "comet.native.snapshot-policy.v1",
-    include,
-    exclude,
-    hash: hash6
+    manifest: {
+      schema: "comet.native.snapshot-policy.v1",
+      include,
+      exclude,
+      hash: hash6
+    },
+    includeMatchers: include.map(compileNativeSnapshotPattern),
+    excludeMatchers: exclude.map(compileNativeSnapshotPattern)
   };
-}
-function globPattern(pattern) {
-  let source = "^";
-  for (let index = 0; index < pattern.length; index += 1) {
-    const character = pattern[index];
-    if (character === "*" && pattern[index + 1] === "*") {
-      index += 1;
-      if (pattern[index + 1] === "/") {
-        index += 1;
-        source += "(?:.*/)?";
-      } else {
-        source += ".*";
-      }
-    } else if (character === "*") {
-      source += "[^/]*";
-    } else if (character === "?") {
-      source += "[^/]";
-    } else {
-      source += character.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-    }
-  }
-  return new RegExp(`${source}$`, "u");
 }
 function snapshotPolicyIncludes(policy, relative) {
   if (!policy) return true;
-  const included = policy.include.some((pattern) => globPattern(pattern).test(relative));
-  return included && !policy.exclude.some((pattern) => globPattern(pattern).test(relative));
+  const included = policy.includeMatchers.some((matcher) => matcher(relative));
+  return included && !policy.excludeMatchers.some((matcher) => matcher(relative));
 }
 function foldSnapshotOverflowHash(previous, kind, value) {
   const payload = JSON.stringify(value);
@@ -11639,7 +11700,7 @@ function parseNativeContentSnapshotManifest(value) {
       exclude: policyValue.exclude,
       hash: policyValue.hash,
       schema: "comet.native.snapshot-policy.v1"
-    });
+    }).manifest;
   }
   if (!Array.isArray(manifest.entries) || !Array.isArray(manifest.omitted)) {
     throw new Error("Native content snapshot entries and omissions must be arrays");
@@ -12233,6 +12294,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     await options.physicalSelectionHooks?.afterInitialSelection?.();
     for (const record8 of before.records) {
       if (record8.type !== "file" && record8.type !== "symlink") continue;
+      if (remainingNativeSnapshotTime(execution) < 1) break;
       if (!snapshotPolicyIncludes(policy, record8.path)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path10.resolve(projectRoot, ...record8.path.split("/"));
@@ -12291,7 +12353,9 @@ async function createNativeContentSnapshot(paths, options = {}) {
     await options.gitSelectionHooks?.afterInitialSelection?.();
     for (const relative of selectionPaths(gitSelection)) {
       if (!isSnapshotProjectRef(paths, relative)) continue;
+      if (remainingNativeSnapshotTime(execution) < 1) break;
       if (!snapshotPolicyIncludes(policy, relative)) continue;
+      if (remainingNativeSnapshotTime(execution) < 1) break;
       const target = path10.resolve(projectRoot, ...relative.split("/"));
       if (target === configFile || target === selectionFile || denylist.some((denied) => sameOrInside(denied, target))) {
         continue;
@@ -12416,7 +12480,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     createdAt: (options.now ?? /* @__PURE__ */ new Date()).toISOString(),
     complete: omittedCount === 0,
     limits,
-    ...policy ? { policy } : {},
+    ...policy ? { policy: policy.manifest } : {},
     entries,
     omitted,
     omittedCount,

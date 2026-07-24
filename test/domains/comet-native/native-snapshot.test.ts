@@ -13,6 +13,7 @@ import {
 import { sha256Text } from '../../../domains/comet-native/native-hash.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
+  compileNativeSnapshotPattern,
   createNativeContentSnapshot,
   filterNativeContentSnapshotToProjectScope,
   inspectNativeContentSnapshotHealth,
@@ -1516,6 +1517,25 @@ describe('Native VCS-independent content snapshots', () => {
       exclude: ['data/**'],
       hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
+  });
+
+  it('matches snapshot globs without catastrophic backtracking', () => {
+    const matcher = compileNativeSnapshotPattern(`${'**/'.repeat(8)}target.ts`);
+    const startedAt = performance.now();
+
+    expect(matcher(`${'nested/'.repeat(80)}missing.ts`)).toBe(false);
+    expect(performance.now() - startedAt).toBeLessThan(100);
+  });
+
+  it.each([
+    ['src/**/*.ts', 'src/index.ts', true],
+    ['src/**/*.ts', 'src/nested/index.ts', true],
+    ['src/**/*.ts', 'src/nested/index.js', false],
+    ['assets/**', 'assets/icons/logo.svg', true],
+    ['?.md', 'a.md', true],
+    ['?.md', 'docs/a.md', false],
+  ])('matches snapshot glob %s against %s', (pattern, relativePath, expected) => {
+    expect(compileNativeSnapshotPattern(pattern)(relativePath)).toBe(expected);
   });
 
   it('retains a deterministic hash/ref for omissions beyond the recorded output budget', async () => {
