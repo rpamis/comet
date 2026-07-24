@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
-import { constants as fsConstants, promises as fs } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
+
+import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 
 import type { CometWorkflow } from './types.js';
 
@@ -86,58 +88,18 @@ function parseSelection(source: string): { selection: CometCurrentSelection; leg
   return { selection: value as unknown as CometCurrentSelection, legacy: false };
 }
 
-async function readHandleBounded(
-  handle: Awaited<ReturnType<typeof fs.open>>,
-  maxBytes: number,
-): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
-  for (;;) {
-    const remaining = maxBytes + 1 - total;
-    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
-    if (bytesRead === 0) break;
-    total += bytesRead;
-    if (total > maxBytes) {
-      throw new Error(`current change selection exceeds ${maxBytes} bytes`);
-    }
-    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
-  }
-  return Buffer.concat(chunks, total);
-}
-
 export async function readCometCurrentSelection(
   projectRoot: string,
 ): Promise<CometCurrentSelectionRead> {
   let source: string;
   try {
     const file = cometCurrentSelectionFile(projectRoot);
-    // Open once and check/read through the same fd: a path-based stat()
-    // followed by a separate readFile() by path would leave a window where
-    // the file at that path could be swapped (grown past the byte limit, or
-    // replaced with a symlink) between the check and the read.
-    const flags =
-      process.platform === 'win32'
-        ? fsConstants.O_RDONLY
-        : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
-    const handle = await fs.open(file, flags);
-    try {
-      const opened = await handle.stat();
-      if (!opened.isFile()) {
-        throw new Error('current change selection must be a regular file');
-      }
-      const bytes = await readHandleBounded(handle, COMET_CURRENT_SELECTION_MAX_BYTES);
-      source = bytes.toString('utf8');
-    } finally {
-      await handle.close();
-    }
+    const { bytes } = await readFileRaceSafe(file, COMET_CURRENT_SELECTION_MAX_BYTES, {
+      label: 'current change selection',
+    });
+    source = bytes.toString('utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { status: 'missing' };
-    if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
-      throw new Error('cannot read current change selection: must be a regular file', {
-        cause: error,
-      });
-    }
     throw new Error(
       `cannot read current change selection: ${error instanceof Error ? error.message : String(error)}`,
       { cause: error },

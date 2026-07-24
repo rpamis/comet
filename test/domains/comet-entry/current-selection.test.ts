@@ -169,7 +169,10 @@ describe('shared Comet current selection', () => {
 
     const result = await pending.catch((error: unknown) => error as Error);
     if (result instanceof Error) {
-      expect(result.message).toMatch(/exceeds 16384 bytes/);
+      // Depending on where the swap lands relative to the pre-open lstat,
+      // the read is rejected either for size or because the file identity
+      // changed between checkpoints. Both refuse the oversized content.
+      expect(result.message).toMatch(/exceeds 16384 bytes|changed while (opening|reading)/);
     } else {
       // If the open/read happened to land on the swapped-in file entirely
       // (rather than racing mid-read), that is fine too, as long as it was
