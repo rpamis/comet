@@ -778,4 +778,26 @@ Pass.
       error: { code: 'invalid-data', message: expect.stringContaining('exceeds') },
     });
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'rejects a FIFO entries source without blocking on open',
+    async () => {
+      const fifoPath = path.join(projectRoot, 'entries.fifo');
+      execFileSync('mkfifo', [fifoPath]);
+
+      const result = await runNativeCli([
+        'evidence',
+        'format',
+        '--entries',
+        fifoPath,
+        '--json',
+        ...projectArgs(),
+      ]);
+
+      expect(result.exitCode).toBe(65);
+      expect(json(result)).toMatchObject({
+        error: { code: 'invalid-data', message: expect.stringContaining('not a regular file') },
+      });
+    },
+  );
 });

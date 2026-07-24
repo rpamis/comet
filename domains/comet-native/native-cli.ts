@@ -1,4 +1,4 @@
-import { promises as fs } from 'fs';
+import { constants as fsConstants, promises as fs } from 'fs';
 import path from 'path';
 
 import {
@@ -188,11 +188,30 @@ function success(command: string, data: unknown, text?: string): DispatchResult 
 }
 
 async function readBoundedEvidenceFile(filePath: string, maxBytes: number): Promise<string> {
-  const stat = await fs.stat(filePath);
-  if (stat.size > maxBytes) {
-    throw new Error(`Acceptance evidence entries file exceeds ${maxBytes} bytes: ${filePath}`);
+  const flags = process.platform === 'win32' ? 'r' : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK;
+  const handle = await fs.open(filePath, flags);
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile()) {
+      throw new Error(`Acceptance evidence entries path is not a regular file: ${filePath}`);
+    }
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    for (;;) {
+      const remaining = maxBytes + 1 - total;
+      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > maxBytes) {
+        throw new Error(`Acceptance evidence entries file exceeds ${maxBytes} bytes: ${filePath}`);
+      }
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
+    return Buffer.concat(chunks, total).toString('utf8');
+  } finally {
+    await handle.close();
   }
-  return fs.readFile(filePath, 'utf8');
 }
 
 async function readBoundedEvidenceStdin(maxBytes: number): Promise<string> {

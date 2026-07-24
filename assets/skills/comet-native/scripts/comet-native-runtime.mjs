@@ -7368,7 +7368,7 @@ var require_dist = __commonJS({
 import { pathToFileURL } from "url";
 
 // domains/comet-native/native-cli.ts
-import { promises as fs33 } from "fs";
+import { constants as fsConstants6, promises as fs33 } from "fs";
 import path47 from "path";
 
 // domains/comet-native/native-archive.ts
@@ -28415,11 +28415,30 @@ function success(command, data, text) {
   return { command, exitCode: 0, data, text: text ?? JSON.stringify(data, null, 2) + "\n" };
 }
 async function readBoundedEvidenceFile(filePath, maxBytes) {
-  const stat = await fs33.stat(filePath);
-  if (stat.size > maxBytes) {
-    throw new Error(`Acceptance evidence entries file exceeds ${maxBytes} bytes: ${filePath}`);
+  const flags = process.platform === "win32" ? "r" : fsConstants6.O_RDONLY | fsConstants6.O_NONBLOCK;
+  const handle = await fs33.open(filePath, flags);
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile()) {
+      throw new Error(`Acceptance evidence entries path is not a regular file: ${filePath}`);
+    }
+    const chunks = [];
+    let total = 0;
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    for (; ; ) {
+      const remaining = maxBytes + 1 - total;
+      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > maxBytes) {
+        throw new Error(`Acceptance evidence entries file exceeds ${maxBytes} bytes: ${filePath}`);
+      }
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
+    return Buffer.concat(chunks, total).toString("utf8");
+  } finally {
+    await handle.close();
   }
-  return fs33.readFile(filePath, "utf8");
 }
 async function readBoundedEvidenceStdin(maxBytes) {
   const chunks = [];

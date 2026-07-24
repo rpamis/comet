@@ -11,7 +11,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Plugin marketplace superpowers detection**: `comet init` no longer crashes with an `ENOTDIR` error when `~/.claude/plugins/cache/` (or the Codex equivalent) contains a stray file where a marketplace directory was expected.
-- **First-contributor greeting workflow**: Welcome messages for pull requests from forks now run with the base repository's scoped token, preventing the greeting check from failing with a permissions error while continuing to avoid executing pull request code.
 
 ## What's Changed [0.4.0-beta.8] - 2026-07-22
 
