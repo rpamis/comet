@@ -655,22 +655,101 @@ describe('comet init E2E', () => {
     expect(platformSelectPrompt).not.toHaveBeenCalled();
   });
 
-  it.each([{ workflow: 'native' as const }, { artifactRoot: 'docs' }])(
-    'rejects project workflow options at global scope without writes',
-    async (selection) => {
+  it('rejects project artifact roots at global scope without writes', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    await expect(
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'global',
+        artifactRoot: 'docs',
+      }),
+    ).rejects.toThrow(/--root is only valid for project-scope initialization/u);
+
+    await expect(fs.access(path.join(os.homedir(), '.comet'))).rejects.toThrow();
+    await expect(fs.access(path.join(os.homedir(), '.claude'))).rejects.toThrow();
+    await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it(
+    'initializes both Native and Classic skills at global scope when explicitly selected',
+    async () => {
       mockExternalSuccess();
       await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(fakeHome, { recursive: true });
 
       const { initCommand } = await import('../../app/commands/init.js');
-      await expect(
-        initCommand(tmpDir, { yes: true, json: true, scope: 'global', ...selection }),
-      ).rejects.toThrow(/only valid for project-scope initialization/u);
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          scope: 'global',
+          workflow: 'both',
+          language: 'en',
+        }),
+      );
 
-      await expect(fs.access(path.join(os.homedir(), '.comet'))).rejects.toThrow();
-      await expect(fs.access(path.join(os.homedir(), '.claude'))).rejects.toThrow();
-      await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toThrow();
-      expect(mockedExecFileSync).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        scope: 'global',
+        workflow: 'native',
+        initializedWorkflows: ['native', 'classic'],
+        workingDirsCreated: false,
+      });
+      for (const skill of ['comet-native', 'comet-classic']) {
+        await expect(
+          fs.access(path.join(fakeHome, '.claude', 'skills', skill, 'SKILL.md')),
+        ).resolves.toBeUndefined();
+      }
     },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
+    'offers Native, Classic, and Both during interactive global initialization',
+    async () => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const fakeHome = path.join(tmpDir, 'fake-home');
+      await fs.mkdir(fakeHome, { recursive: true });
+
+      const { checkbox, select } = await import('@inquirer/prompts');
+      const { platformSelectPrompt } = await import('../../app/commands/platform-select-prompt.js');
+      vi.mocked(select).mockResolvedValueOnce('both').mockResolvedValueOnce('copy');
+      vi.mocked(platformSelectPrompt).mockResolvedValue(['codex']);
+      vi.mocked(checkbox).mockResolvedValue([]);
+
+      const { initCommand } = await import('../../app/commands/init.js');
+      await captureTextOutput(() =>
+        initCommand(tmpDir, {
+          scope: 'global',
+          language: 'en',
+        }),
+      );
+
+      expect(select).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          message: 'Select Comet workflow(s):',
+          choices: [
+            expect.objectContaining({ value: 'native' }),
+            expect.objectContaining({ value: 'classic' }),
+            expect.objectContaining({ value: 'both' }),
+          ],
+          default: 'classic',
+        }),
+      );
+      for (const skill of ['comet-native', 'comet-classic']) {
+        await expect(
+          fs.access(path.join(fakeHome, '.agents', 'skills', skill, 'SKILL.md')),
+        ).resolves.toBeUndefined();
+      }
+    },
+    INIT_E2E_TIMEOUT_MS,
   );
 
   it('leaves project workflow state untouched when every Comet asset copy fails', async () => {

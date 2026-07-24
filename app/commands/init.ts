@@ -466,11 +466,8 @@ export async function initCommand(
 
   const detected = await detectPlatforms(projectPath);
   const scope = await selectScope(options, lang);
-  if (
-    scope === 'global' &&
-    (options.workflow !== undefined || options.artifactRoot !== undefined)
-  ) {
-    throw new Error('--workflow and --root are only valid for project-scope initialization');
+  if (scope === 'global' && options.artifactRoot !== undefined) {
+    throw new Error('--root is only valid for project-scope initialization');
   }
   if (scope === 'project') {
     await readProjectRegistry({ strict: true });
@@ -482,10 +479,11 @@ export async function initCommand(
           artifactRoot: options.artifactRoot,
         })
       : null;
-  const workflowSelection =
-    scope === 'project'
-      ? await selectWorkflow(options, lang, suggestedWorkflowDecision?.workflow ?? 'native')
-      : 'classic';
+  const workflowSelection = await selectWorkflow(
+    options,
+    lang,
+    suggestedWorkflowDecision?.workflow ?? 'classic',
+  );
   const workflow: CometWorkflow = workflowSelection === 'both' ? 'native' : workflowSelection;
   const workflowDecision =
     scope === 'project'
