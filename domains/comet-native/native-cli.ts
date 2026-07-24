@@ -1,5 +1,6 @@
-import { constants as fsConstants, promises as fs } from 'fs';
 import path from 'path';
+
+import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 
 import {
   archiveNativeChange,
@@ -188,29 +189,28 @@ function success(command: string, data: unknown, text?: string): DispatchResult 
 }
 
 async function readBoundedEvidenceFile(filePath: string, maxBytes: number): Promise<string> {
-  const flags = process.platform === 'win32' ? 'r' : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK;
-  const handle = await fs.open(filePath, flags);
   try {
-    const opened = await handle.stat();
-    if (!opened.isFile()) {
-      throw new Error(`Acceptance evidence entries path is not a regular file: ${filePath}`);
-    }
-    const chunks: Buffer[] = [];
-    let total = 0;
-    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
-    for (;;) {
-      const remaining = maxBytes + 1 - total;
-      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
-      if (bytesRead === 0) break;
-      total += bytesRead;
-      if (total > maxBytes) {
-        throw new Error(`Acceptance evidence entries file exceeds ${maxBytes} bytes: ${filePath}`);
+    const { bytes } = await readFileRaceSafe(filePath, maxBytes, {
+      label: 'Acceptance evidence entries file',
+    });
+    return bytes.toString('utf8');
+  } catch (error) {
+    if (error instanceof RaceSafeReadError) {
+      if (error.reason === 'not-regular-file') {
+        throw new Error(`Acceptance evidence entries path is not a regular file: ${filePath}`, {
+          cause: error,
+        });
       }
-      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+      if (error.reason === 'too-large') {
+        throw new Error(`Acceptance evidence entries file exceeds ${maxBytes} bytes: ${filePath}`, {
+          cause: error,
+        });
+      }
+      throw new Error(`Acceptance evidence entries file changed while reading: ${filePath}`, {
+        cause: error,
+      });
     }
-    return Buffer.concat(chunks, total).toString('utf8');
-  } finally {
-    await handle.close();
+    throw error;
   }
 }
 

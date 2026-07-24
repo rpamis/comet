@@ -800,4 +800,25 @@ Pass.
       });
     },
   );
+
+  it('rejects a symlink entries source instead of following it', async () => {
+    const target = path.join(projectRoot, 'entries-target.json');
+    await fs.writeFile(target, JSON.stringify([]));
+    const linkPath = path.join(projectRoot, 'entries-link.json');
+    await fs.symlink(target, linkPath);
+
+    const result = await runNativeCli([
+      'evidence',
+      'format',
+      '--entries',
+      linkPath,
+      '--json',
+      ...projectArgs(),
+    ]);
+
+    expect(result.exitCode).toBe(65);
+    expect(json(result)).toMatchObject({
+      error: { code: 'invalid-data', message: expect.stringContaining('not a regular file') },
+    });
+  });
 });
