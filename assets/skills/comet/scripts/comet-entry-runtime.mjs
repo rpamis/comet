@@ -7375,11 +7375,11 @@ import path3 from "path";
 // domains/workflow-contract/project-config.ts
 var import_yaml = __toESM(require_dist(), 1);
 
-// domains/comet-native/native-file-identity.ts
+// platform/fs/file-identity.ts
 function hasPlatformIdentity(value) {
   return value !== 0 && value !== 0n && value !== "0";
 }
-function sameNativeFileObject(left, right) {
+function sameFileObject(left, right) {
   const comparableDevice = hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev);
   if (comparableDevice && left.dev !== right.dev) return false;
   const comparableInode = hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
@@ -7404,7 +7404,7 @@ function positiveLimit(value) {
   return value;
 }
 function sameDirectoryIdentity(expected, actual) {
-  return sameNativeFileObject(
+  return sameFileObject(
     { ...expected, birthtime: expected.birthtimeMs },
     {
       ...actual,
@@ -7423,7 +7423,7 @@ function asFileIdentity(stat) {
   };
 }
 function sameFileIdentity(expected, actual) {
-  return sameNativeFileObject(
+  return sameFileObject(
     { ...expected, birthtime: expected.birthtimeMs },
     {
       ...actual,

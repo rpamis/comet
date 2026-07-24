@@ -14,7 +14,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Security
 
-- **Current change selection read hardening**: The shared current-change selection read used by the Hook Router, `comet doctor`, `comet resume-probe`, and Native/Classic change selection now checks and reads `.comet/current-change.json` through a single opened file descriptor instead of a separate `stat` followed by a path-based `readFile`, closing a race where the file could be grown past its byte limit or swapped for a symlink between the check and the read.
+- **Race-safe guarded file reads**: The shared current-change selection read used by the Hook Router, `comet doctor`, `comet resume-probe`, and Native/Classic change selection - plus Native lock metadata reads and `comet native evidence format --entries` input - now goes through one shared race-safe read primitive that opens a single descriptor, rejects symlinks, FIFOs, and other non-regular files before opening, and re-verifies file identity and resolved path after open and after read. This closes symlink-following and check-to-read replacement races on every platform, including Windows where `O_NOFOLLOW` is unavailable.
 
 ## What's Changed [0.4.0-beta.8] - 2026-07-22
 
