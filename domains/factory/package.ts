@@ -259,6 +259,11 @@ ${bindings || '- No Skill bindings.'}
 
 ${guardrails || '- No explicit guardrails.'}
 
+## Workflow References
+
+- Route, Output Schemas, required Skill calls, and recovery state: \`reference/workflow-protocol.json\`.
+- Resolved source Skill evidence and composition provenance: \`reference/resolved-skills.json\`.
+
 ## Runtime And Recovery
 
 ### Startup Protocol
@@ -1295,7 +1300,7 @@ function workflowContractEvalManifest(
         'comet-refactor-counter',
         'comet-api-cache-ttl',
       ]
-    : ['generic-skill-smoke', 'authoring-skill-smoke', 'workflow-route-conformance'];
+    : ['authoring-skill-smoke', 'workflow-route-conformance'];
   const activeOutputSchemas = uniqueStrings(activeNodes.flatMap((node) => node.outputSchemas));
   const activeOutputSchemaSet = new Set(activeOutputSchemas);
   const evalRequiredOutputSchemas = protocol.evals[0]?.requiredOutputSchemas ?? [];
@@ -1530,6 +1535,17 @@ function workflowContractArtifacts(plan: FactorySkillPackagePlan): FactoryPackag
     jsonArtifact('reference/resolved-skills.json', {
       schemaVersion: 1,
       resolvedSkills: plan.resolvedSkills ?? [],
+      sourceSummaries: (plan.resolvedSkills ?? []).flatMap((resolved) =>
+        resolved.sources.map((source) => ({
+          name: source.name,
+          query: resolved.query,
+          description: source.description,
+          platform: source.platform,
+          scope: source.scope,
+          origin: source.origin,
+          references: source.references ?? [],
+        })),
+      ),
       workflow: {
         kind: protocol.kind,
         nodes: protocol.nodes.map((node) => ({
@@ -1578,13 +1594,12 @@ function workflowContractArtifacts(plan: FactorySkillPackagePlan): FactoryPackag
       schemaVersion: 1,
       protocolHash,
       lanes: [
-        'workflow-entry',
-        'skill-core',
-        'script-contract',
-        'platform-agent',
-        'reference',
-        'eval',
-        'skill-review',
+        { lane: 'script' },
+        { lane: 'reference' },
+        { lane: 'pause-points' },
+        { lane: 'workflow-entry' },
+        { lane: 'skill-core' },
+        { lane: 'skill-review' },
       ],
       review: authoringLanesReview(plan),
     }),

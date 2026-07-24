@@ -194,11 +194,13 @@ def _check_authoring_lanes(package: Path | None) -> tuple[float, str, list[str]]
             "authoring-lanes.json missing or invalid"
         ]
     present = {
-        lane.get("lane")
+        lane
+        if isinstance(lane, str)
+        else lane.get("lane")
         for lane in data.get("lanes") or []
-        if isinstance(lane, dict)
+        if isinstance(lane, (str, dict))
     }
-    required = {"skill-core", "script-contract", "reference", "pause-points", "eval", "skill-review"}
+    required = {"script", "reference", "pause-points", "workflow-entry", "skill-core", "skill-review"}
     missing = sorted(required - present)
     review_passed = bool((data.get("review") or {}).get("passed"))
     checks = [not missing, review_passed]
@@ -218,7 +220,7 @@ def _check_review_gate(package: Path | None) -> tuple[float, str, list[str]]:
     if not review.exists():
         return 0.0, "skill-review.md missing", ["skill-review.md missing"]
     text = review.read_text(encoding="utf-8")
-    markdown_passed = bool(re.search(r"Review passed|审查通过|通过", text, re.I))
+    markdown_passed = bool(re.search(r"Review passed|Passed:\s*yes\b|审查通过|通过", text, re.I))
     lanes_passed = bool((lanes.get("review") or {}).get("passed"))
     blockers = (lanes.get("review") or {}).get("blockingFindings") or []
     checks = [markdown_passed, lanes_passed, len(blockers) == 0]

@@ -367,11 +367,11 @@ def test_authoring_profile_scores_generated_package_and_engine_contract(tmp_path
         encoding="utf-8",
     )
     (package / "reference" / "authoring-lanes.json").write_text(
-        '{"lanes":[{"lane":"skill-core"},{"lane":"script-contract"},{"lane":"reference"},{"lane":"pause-points"},{"lane":"eval"},{"lane":"skill-review"}],"review":{"passed":true,"blockingFindings":[]}}',
+        '{"lanes":[{"lane":"script"},{"lane":"reference"},{"lane":"pause-points"},{"lane":"workflow-entry"},{"lane":"skill-core"},{"lane":"skill-review"}],"review":{"passed":true,"blockingFindings":[]}}',
         encoding="utf-8",
     )
     (package / "reference" / "skill-review.md").write_text(
-        "# Skill Review\n\nStatus: Review passed\n",
+        "# Skill Review\n\nPassed: yes.\n",
         encoding="utf-8",
     )
     for name in ("skill.yaml", "guardrails.yaml", "checks.yaml"):
@@ -440,11 +440,11 @@ def test_authoring_profile_allows_lightweight_package_without_engine_files(tmp_p
         encoding="utf-8",
     )
     (package / "reference" / "authoring-lanes.json").write_text(
-        '{"lanes":[{"lane":"skill-core"},{"lane":"script-contract"},{"lane":"reference"},{"lane":"pause-points"},{"lane":"eval"},{"lane":"skill-review"}],"review":{"passed":true,"blockingFindings":[]}}',
+        '{"lanes":[{"lane":"script"},{"lane":"reference"},{"lane":"pause-points"},{"lane":"workflow-entry"},{"lane":"skill-core"},{"lane":"skill-review"}],"review":{"passed":true,"blockingFindings":[]}}',
         encoding="utf-8",
     )
     (package / "reference" / "skill-review.md").write_text(
-        "# Skill Review\n\nStatus: Review passed\n",
+        "# Skill Review\n\nPassed: yes.\n",
         encoding="utf-8",
     )
 
