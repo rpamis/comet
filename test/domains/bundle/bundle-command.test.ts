@@ -1533,7 +1533,6 @@ prefer:
       'rules',
       'hooks',
       'references',
-      'agents',
     ]);
     expect(bundle.manifest.resources.rules).toEqual([
       {
@@ -1601,14 +1600,7 @@ prefer:
         runtime: 'node',
       },
     ]);
-    expect(bundle.manifest.resources.agents).toEqual([
-      {
-        id: 'comet-any-script-author',
-        path: 'skills/factory-bundle/agents/claude/comet-any-script-author.md',
-        platform: 'claude',
-        required: true,
-      },
-    ]);
+    expect(bundle.manifest.resources.agents).toEqual([]);
     await expect(
       fs.access(path.join(draftRoot, 'rules', 'factory-bundle-orchestration.md')),
     ).resolves.toBeUndefined();
@@ -1639,7 +1631,7 @@ prefer:
           'comet-any-script-author.md',
         ),
       ),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(
       fs.readFile(
         path.join(draftRoot, 'skills', 'factory-bundle', 'reference', 'skill-review.md'),

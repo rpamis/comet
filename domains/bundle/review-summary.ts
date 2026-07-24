@@ -293,7 +293,7 @@ async function buildReadiness(
       ...(generatedPackage
         ? { wrapperClassification: generatedPackage.wrapperClassification ?? 'unknown' }
         : {}),
-      ...(generatedPackage?.platformAgents
+      ...(generatedPackage?.platformAgents?.length
         ? { agent: `${generatedPackage.platformAgents.length} platform agent(s)` }
         : {}),
       ...(state.factory?.composition
