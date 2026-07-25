@@ -214,6 +214,8 @@ REPOSITORY_ROOT = EVAL_ROOT.parent
 # Shared files for xdist worker coordination
 XDIST_EXPERIMENT_FILE = PROJECT_ROOT / ".pytest_experiment_id"
 DOCKER_BUILD_LOCK = PROJECT_ROOT / ".pytest_docker_build.lock"
+EXPERIMENT_ID_ENV = "COMET_EVAL_EXPERIMENT_ID"
+EXPERIMENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 # Global plugin instance (set during pytest_configure)
 _plugin: "ExperimentPlugin | None" = None
@@ -915,6 +917,14 @@ def _ensure_claude_pre_tool_hook(test_dir: Path, command: str | None) -> None:
 
 def _get_or_create_experiment_id(name: str, use_coordination: bool) -> str:
     """Get shared experiment ID or create new one."""
+    requested = os.environ.get(EXPERIMENT_ID_ENV)
+    if requested is not None:
+        if not EXPERIMENT_ID_RE.fullmatch(requested):
+            raise ValueError(
+                f"{EXPERIMENT_ID_ENV} must contain only letters, digits, dot, underscore, or hyphen"
+            )
+        return requested
+
     if not use_coordination:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"{name}_{timestamp}"

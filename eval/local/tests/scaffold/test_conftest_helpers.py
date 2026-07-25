@@ -81,6 +81,22 @@ def test_unit_test_detection_keeps_task_runs_as_experiments():
     assert conftest._is_unit_tests_only(Config()) is False
 
 
+
+
+def test_experiment_id_uses_explicit_comet_eval_run_id(monkeypatch):
+    monkeypatch.setenv("COMET_EVAL_EXPERIMENT_ID", "comet-eval-1234")
+
+    assert conftest._get_or_create_experiment_id("ignored", False) == "comet-eval-1234"
+    assert conftest._get_or_create_experiment_id("ignored", True) == "comet-eval-1234"
+
+
+def test_experiment_id_rejects_unsafe_explicit_value(monkeypatch):
+    monkeypatch.setenv("COMET_EVAL_EXPERIMENT_ID", "../escape")
+
+    with pytest.raises(ValueError, match="COMET_EVAL_EXPERIMENT_ID"):
+        conftest._get_or_create_experiment_id("ignored", False)
+
+
 def test_extract_loop_turns_reads_driver_completion_line():
     stderr = (
         "[loop] turn 1/4\n"

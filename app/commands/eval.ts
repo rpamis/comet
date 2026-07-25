@@ -1,8 +1,10 @@
 import { execFileSync } from 'child_process';
+import { randomUUID } from 'crypto';
 import { existsSync, promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { recordRepositoryEvalExperiment } from '../../domains/bundle/eval-run-result.js';
 import { prepareEvalManifest } from '../../domains/bundle/eval-manifest-runtime.js';
 
 type EvalSuite = 'local' | 'langsmith';
@@ -177,11 +179,12 @@ async function buildLaunchDetails(
 ): Promise<EvalLaunchDetails> {
   const suite = resolveSuite(options);
   const reportConfig = await resolveReportConfig(options);
+  const experimentId = `comet-eval-${randomUUID()}`;
   return {
     mode: collectOnly ? 'collect' : 'run',
     suite,
     evalRoot: root,
-    experimentId: `comet-eval-${Date.now()}`,
+    experimentId,
     profile: resolveProfile(options),
     task: resolveTask(options),
     reportConfig,
@@ -190,7 +193,7 @@ async function buildLaunchDetails(
       suite,
       'logs',
       'experiments',
-      '<experiment-id>',
+      experimentId,
       reportConfig ? 'summary.html' : 'summary.md',
     ),
     target: options.manifest
@@ -229,12 +232,13 @@ function assertUvAvailable(): void {
   }
 }
 
-function runEval(args: string[], root: string, suite: EvalSuite): void {
+function runEval(args: string[], root: string, suite: EvalSuite, experimentId: string): void {
   assertEvalHarness(root, suite);
   assertUvAvailable();
   execFileSync('uv', args, {
     cwd: root,
     stdio: 'inherit',
+    env: { ...process.env, COMET_EVAL_EXPERIMENT_ID: experimentId },
   });
 }
 
@@ -251,7 +255,14 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
     const runtimeOptions = prepared ? { ...options, manifest: prepared.path } : options;
     const args = await buildEvalArgs(runtimeOptions, collectOnly, details.reportConfig);
     printLaunchDetails(details);
-    runEval(args, root, details.suite);
+    runEval(args, root, details.suite, details.experimentId);
+    if (!collectOnly && prepared?.context && details.suite === 'local') {
+      await recordRepositoryEvalExperiment({
+        context: prepared.context,
+        experimentDir: path.join(root, details.suite, 'logs', 'experiments', details.experimentId),
+        level: options.quick === false ? 'full' : 'quick',
+      });
+    }
   } catch (error) {
     bodyFailed = true;
     bodyError = error;
