@@ -204,13 +204,112 @@ describe('Bundle authoring lifecycle', () => {
       factory: {
         goal: 'Create a portable bundle.',
         preferredSkills: [],
-        resolvedSkills: [],
+        resolvedSkills: [
+          {
+            query: 'brainstorming',
+            preferenceIndex: 0,
+            status: 'available',
+            sources: [sourceState.candidates[0]],
+          },
+        ],
         callChain: [],
         deviations: [],
         engineMode: 'none',
         runnerMode: 'standalone',
         preferencePath: path.join(projectRoot, '.comet', 'preferences.json'),
         planPath: path.join(projectRoot, '.comet', 'bundle-drafts', 'relocated-state', 'plan.json'),
+        generatedSkillPackage: {
+          entrySkill: 'relocated-state',
+          internalSkills: [],
+          packageRoot: path.join(
+            projectRoot,
+            '.comet',
+            'bundle-drafts',
+            'relocated-state',
+            'skills',
+            'relocated-state',
+          ),
+          enginePath: path.join(
+            projectRoot,
+            '.comet',
+            'bundle-drafts',
+            'relocated-state',
+            'skills',
+            'relocated-state',
+            'comet',
+          ),
+          evalManifestPath: path.join(
+            projectRoot,
+            '.comet',
+            'bundle-drafts',
+            'relocated-state',
+            'skills',
+            'relocated-state',
+            'comet',
+            'eval.yaml',
+          ),
+          controlPlane: {
+            checksPath: path.join(
+              projectRoot,
+              '.comet',
+              'bundle-drafts',
+              'relocated-state',
+              'skills',
+              'relocated-state',
+              'comet',
+              'checks.yaml',
+            ),
+            evalManifestPath: path.join(
+              projectRoot,
+              '.comet',
+              'bundle-drafts',
+              'relocated-state',
+              'skills',
+              'relocated-state',
+              'comet',
+              'eval.yaml',
+            ),
+            compositionReportPath: path.join(
+              projectRoot,
+              '.comet',
+              'bundle-drafts',
+              'relocated-state',
+              'skills',
+              'relocated-state',
+              'reference',
+              'composition-report.md',
+            ),
+            scripts: [
+              path.join(
+                projectRoot,
+                '.comet',
+                'bundle-drafts',
+                'relocated-state',
+                'skills',
+                'relocated-state',
+                'scripts',
+                'comet-plan.mjs',
+              ),
+            ],
+          },
+          platformAgents: [
+            {
+              id: 'relocated-state-author',
+              platform: 'claude',
+              path: path.join(
+                projectRoot,
+                '.comet',
+                'bundle-drafts',
+                'relocated-state',
+                'skills',
+                'relocated-state',
+                'agents',
+                'claude',
+                'author.md',
+              ),
+            },
+          ],
+        },
         authoringContent: { artifactReference: './reports/*.json' },
       },
     };
@@ -225,7 +324,14 @@ describe('Bundle authoring lifecycle', () => {
     const persisted = JSON.parse(await fs.readFile(sourceStatePath, 'utf8'));
     expect(persisted.draftPath).toBe('./.comet/bundle-drafts/relocated-state');
     expect(persisted.eval.resultPath).toBe('./.comet/bundle-evals/relocated-state/result.json');
+    expect(persisted.factory.resolvedSkills[0].sources[0].root).toBe(
+      './.agents/skills/brainstorming',
+    );
+    expect(persisted.factory.generatedSkillPackage.controlPlane.scripts).toEqual([
+      './.comet/bundle-drafts/relocated-state/skills/relocated-state/scripts/comet-plan.mjs',
+    ]);
     expect(persisted.factory.authoringContent.artifactReference).toBe('./reports/*.json');
+    expect(JSON.stringify(persisted)).not.toContain(projectRoot);
 
     const legacyWindowsPortablePath = (value: string) =>
       `./${value.slice(2).replaceAll('/', '\\')}`;
@@ -236,6 +342,24 @@ describe('Bundle authoring lifecycle', () => {
     persisted.ready.path = legacyWindowsPortablePath(persisted.ready.path);
     persisted.factory.preferencePath = legacyWindowsPortablePath(persisted.factory.preferencePath);
     persisted.factory.planPath = legacyWindowsPortablePath(persisted.factory.planPath);
+    persisted.factory.resolvedSkills[0].sources[0].root = legacyWindowsPortablePath(
+      persisted.factory.resolvedSkills[0].sources[0].root,
+    );
+    const generated = persisted.factory.generatedSkillPackage;
+    generated.packageRoot = legacyWindowsPortablePath(generated.packageRoot);
+    generated.enginePath = legacyWindowsPortablePath(generated.enginePath);
+    generated.evalManifestPath = legacyWindowsPortablePath(generated.evalManifestPath);
+    generated.controlPlane.checksPath = legacyWindowsPortablePath(
+      generated.controlPlane.checksPath,
+    );
+    generated.controlPlane.evalManifestPath = legacyWindowsPortablePath(
+      generated.controlPlane.evalManifestPath,
+    );
+    generated.controlPlane.compositionReportPath = legacyWindowsPortablePath(
+      generated.controlPlane.compositionReportPath,
+    );
+    generated.controlPlane.scripts = generated.controlPlane.scripts.map(legacyWindowsPortablePath);
+    generated.platformAgents[0].path = legacyWindowsPortablePath(generated.platformAgents[0].path);
     await fs.writeFile(sourceStatePath, `${JSON.stringify(persisted, null, 2)}\n`, 'utf8');
 
     const recoveredStatePath = path.join(
@@ -272,6 +396,54 @@ describe('Bundle authoring lifecycle', () => {
           'relocated-state',
           'plan.json',
         ),
+        resolvedSkills: [
+          {
+            sources: [
+              {
+                root: path.join(recoveredProjectRoot, '.agents', 'skills', 'brainstorming'),
+              },
+            ],
+          },
+        ],
+        generatedSkillPackage: {
+          packageRoot: path.join(
+            recoveredProjectRoot,
+            '.comet',
+            'bundle-drafts',
+            'relocated-state',
+            'skills',
+            'relocated-state',
+          ),
+          controlPlane: {
+            scripts: [
+              path.join(
+                recoveredProjectRoot,
+                '.comet',
+                'bundle-drafts',
+                'relocated-state',
+                'skills',
+                'relocated-state',
+                'scripts',
+                'comet-plan.mjs',
+              ),
+            ],
+          },
+          platformAgents: [
+            {
+              path: path.join(
+                recoveredProjectRoot,
+                '.comet',
+                'bundle-drafts',
+                'relocated-state',
+                'skills',
+                'relocated-state',
+                'agents',
+                'claude',
+                'author.md',
+              ),
+            },
+          ],
+        },
         authoringContent: { artifactReference: './reports/*.json' },
       },
     });

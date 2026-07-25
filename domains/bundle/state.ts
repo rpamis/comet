@@ -50,6 +50,17 @@ function mapFactoryProjectPaths(
   const generated = state.generatedSkillPackage;
   return {
     ...state,
+    ...(state.resolvedSkills === undefined
+      ? {}
+      : {
+          resolvedSkills: state.resolvedSkills.map((skill) => ({
+            ...skill,
+            sources: skill.sources.map((source) => ({
+              ...source,
+              root: transform(source.root),
+            })),
+          })),
+        }),
     ...(state.preferencePath === undefined
       ? {}
       : { preferencePath: transform(state.preferencePath) }),
@@ -76,6 +87,7 @@ function mapFactoryProjectPaths(
                       transform,
                     ),
                     compositionReportPath: transform(generated.controlPlane.compositionReportPath),
+                    scripts: generated.controlPlane.scripts.map(transform),
                   },
                 }),
             ...(generated.platformAgents === undefined
