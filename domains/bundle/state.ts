@@ -27,27 +27,123 @@ function portableProjectPath(projectRoot: string, value: string): string | null 
   ) {
     return null;
   }
-  return `./${relative}`;
+  return `./${relative.split(path.sep).join('/')}`;
 }
 
-function serializeProjectPaths(projectRoot: string, value: unknown): unknown {
-  if (typeof value === 'string') return portableProjectPath(projectRoot, value) ?? value;
-  if (Array.isArray(value)) return value.map((item) => serializeProjectPaths(projectRoot, item));
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, serializeProjectPaths(projectRoot, item)]),
-  );
+function hydrateProjectPath(projectRoot: string, value: string): string {
+  if (!value.startsWith('./')) return value;
+  return path.resolve(projectRoot, ...value.slice(2).split(/[\\/]/u));
 }
 
-function hydrateProjectPaths(projectRoot: string, value: unknown): unknown {
-  if (typeof value === 'string') {
-    return value.startsWith('./') ? path.resolve(projectRoot, value) : value;
-  }
-  if (Array.isArray(value)) return value.map((item) => hydrateProjectPaths(projectRoot, item));
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, hydrateProjectPaths(projectRoot, item)]),
-  );
+function mapNullableProjectPath(
+  value: string | null,
+  transform: (value: string) => string,
+): string | null {
+  return value === null ? null : transform(value);
+}
+
+function mapFactoryProjectPaths(
+  state: BundleAuthoringState['factory'],
+  transform: (value: string) => string,
+): BundleAuthoringState['factory'] {
+  if (!state) return state;
+  const generated = state.generatedSkillPackage;
+  return {
+    ...state,
+    ...(state.preferencePath === undefined
+      ? {}
+      : { preferencePath: transform(state.preferencePath) }),
+    ...(state.planPath === undefined ? {} : { planPath: transform(state.planPath) }),
+    ...(generated === undefined
+      ? {}
+      : {
+          generatedSkillPackage: {
+            ...generated,
+            packageRoot: transform(generated.packageRoot),
+            enginePath: mapNullableProjectPath(generated.enginePath, transform),
+            evalManifestPath: mapNullableProjectPath(generated.evalManifestPath, transform),
+            ...(generated.controlPlane === undefined
+              ? {}
+              : {
+                  controlPlane: {
+                    ...generated.controlPlane,
+                    checksPath: mapNullableProjectPath(
+                      generated.controlPlane.checksPath,
+                      transform,
+                    ),
+                    evalManifestPath: mapNullableProjectPath(
+                      generated.controlPlane.evalManifestPath,
+                      transform,
+                    ),
+                    compositionReportPath: transform(generated.controlPlane.compositionReportPath),
+                  },
+                }),
+            ...(generated.platformAgents === undefined
+              ? {}
+              : {
+                  platformAgents: generated.platformAgents.map((agent) => ({
+                    ...agent,
+                    path: transform(agent.path),
+                  })),
+                }),
+          },
+        }),
+  };
+}
+
+function mapProjectPaths(
+  state: BundleAuthoringState,
+  transform: (value: string) => string,
+): BundleAuthoringState {
+  return {
+    ...state,
+    draftPath: transform(state.draftPath),
+    ...(state.base === undefined
+      ? {}
+      : {
+          base: {
+            ...state.base,
+            root: transform(state.base.root),
+          },
+        }),
+    candidates: state.candidates.map((candidate) => ({
+      ...candidate,
+      root: transform(candidate.root),
+    })),
+    ...(state.eval === undefined
+      ? {}
+      : {
+          eval: {
+            ...state.eval,
+            resultPath: transform(state.eval.resultPath),
+          },
+        }),
+    ...(state.ready === undefined
+      ? {}
+      : {
+          ready: {
+            ...state.ready,
+            path: transform(state.ready.path),
+          },
+        }),
+    ...(state.factory === undefined
+      ? {}
+      : { factory: mapFactoryProjectPaths(state.factory, transform) }),
+  };
+}
+
+function serializeProjectPaths(
+  projectRoot: string,
+  state: BundleAuthoringState,
+): BundleAuthoringState {
+  return mapProjectPaths(state, (value) => portableProjectPath(projectRoot, value) ?? value);
+}
+
+function hydrateProjectPaths(
+  projectRoot: string,
+  state: BundleAuthoringState,
+): BundleAuthoringState {
+  return mapProjectPaths(state, (value) => hydrateProjectPath(projectRoot, value));
 }
 
 function assertState(value: unknown, file: string): asserts value is BundleAuthoringState {

@@ -331,8 +331,11 @@ def test_generic_profile_scores_completion_skill_artifact_and_efficiency(tmp_pat
 def test_generic_profile_rejects_artifacts_outside_the_test_directory(tmp_path: Path):
     outside = tmp_path.parent / "outside-artifact.txt"
     outside.write_text("outside", encoding="utf-8")
-    (tmp_path / "outside-link.txt").symlink_to(outside)
-    (tmp_path / "outside-dir").symlink_to(outside.parent, target_is_directory=True)
+    try:
+        (tmp_path / "outside-link.txt").symlink_to(outside)
+        (tmp_path / "outside-dir").symlink_to(outside.parent, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"Symbolic links are unavailable: {error}")
 
     outputs = {
         "completion": {"passed": ["validator ok"], "failed": []},
@@ -492,7 +495,10 @@ def test_authoring_profile_allows_lightweight_package_without_engine_files(tmp_p
     passed, failed = run_profile_rubric("authoring-skill", tmp_path, outputs)
 
     assert failed == []
-    assert any("[RUBRIC] engine_contract: 1.00 - Engine disabled for lightweight package" in msg for msg in passed)
+    assert any(
+        "[RUBRIC] engine_contract: 1.00 - Engine disabled for lightweight package" in msg
+        for msg in passed
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -612,8 +618,7 @@ def test_generic_interaction_compliance_uses_driver_turns(tmp_path: Path):
     passed, _ = run_profile_rubric("generic", tmp_path, outputs)
 
     assert any(
-        "[RUBRIC] interaction_compliance: 1.00 - turns=4, max=4" in message
-        for message in passed
+        "[RUBRIC] interaction_compliance: 1.00 - turns=4, max=4" in message for message in passed
     )
 
 
@@ -974,7 +979,10 @@ def test_generic_rubric_rejects_artifact_paths_outside_task_directory(tmp_path: 
     outside = tmp_path.parent / "outside-artifact.json"
     outside.write_text("{}\n", encoding="utf-8")
     escaped_link = tmp_path / "escaped-artifact.json"
-    escaped_link.symlink_to(outside)
+    try:
+        escaped_link.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"Symbolic links are unavailable: {error}")
 
     passed, failed = run_profile_rubric(
         "generic",

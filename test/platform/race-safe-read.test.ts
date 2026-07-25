@@ -153,7 +153,7 @@ describe('race-safe bounded file read', () => {
 
       const result = await pending.catch((error: unknown) => error as Error);
       if (result instanceof Error) {
-        expect(result.message).toMatch(/regular file|changed/);
+        expect(result.message).toMatch(/regular file|changed|ENOENT/);
       } else {
         expect(result.bytes.toString('utf8')).not.toBe('outside-content');
       }

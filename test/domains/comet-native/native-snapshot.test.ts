@@ -1406,11 +1406,12 @@ describe('Native VCS-independent content snapshots', () => {
     const outside = path.join(outsideRoot, 'outside-secret.txt');
     await fs.writeFile(target, 'project content\n');
     await fs.writeFile(outside, 'outside secret\n');
+    const physicalTarget = await fs.realpath(target);
     const originalOpen = fs.open.bind(fs);
     let redirected = false;
     let readSpy: ReturnType<typeof vi.spyOn> | undefined;
     const openSpy = vi.spyOn(fs, 'open').mockImplementation(async (file, flags, mode) => {
-      if (!redirected && path.resolve(String(file)) === path.resolve(target)) {
+      if (!redirected && String(file) === physicalTarget) {
         redirected = true;
         const handle = await originalOpen(outside, flags, mode);
         readSpy = vi.spyOn(handle, 'read');

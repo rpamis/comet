@@ -31,6 +31,50 @@ def _final_dockerfile_user_is_non_root(dockerfile: str) -> bool:
     return user.split(":", 1)[0] not in {"root", "0"}
 
 
+def _dockerfile_runs_claude_code_install(dockerfile: str) -> bool:
+    instructions = []
+    current = []
+    for raw_line in dockerfile.splitlines():
+        line = raw_line.strip()
+        if not current:
+            if line.startswith("#") or not re.match(r"^RUN\s+", line, re.IGNORECASE):
+                continue
+            current.append(line)
+        else:
+            current.append(line)
+
+        if line.endswith("\\"):
+            continue
+        instructions.append(" ".join(current).replace("\\", " "))
+        current = []
+
+    return any(
+        re.search(
+            r"\bnpm\s+install\s+-g\s+@anthropic-ai/claude-code(?:@[^\s;&]+)?(?=\s|$|&&|;)",
+            instruction,
+            re.IGNORECASE,
+        )
+        for instruction in instructions
+    )
+
+
+@pytest.mark.parametrize(
+    ("dockerfile", "expected"),
+    [
+        ("# RUN npm install -g @anthropic-ai/claude-code@latest\n", False),
+        ("RUN echo @anthropic-ai/claude-code@latest\n", False),
+        ("RUN npm install -g @anthropic-ai/claude-code@latest\n", True),
+        (
+            "RUN npm install -g @fission-ai/openspec@1.3.1 && \\\n"
+            "    npm install -g @anthropic-ai/claude-code@latest\n",
+            True,
+        ),
+    ],
+)
+def test_dockerfile_detects_real_claude_code_installation(dockerfile: str, expected: bool):
+    assert _dockerfile_runs_claude_code_install(dockerfile) is expected
+
+
 @pytest.mark.parametrize(
     ("dockerfile", "expected"),
     [
@@ -38,8 +82,7 @@ def _final_dockerfile_user_is_non_root(dockerfile: str) -> bool:
         ("FROM python:3.12-slim\nUSER agent\nUSER root\n", False),
         ("FROM python:3.12-slim\nUSER 0:0\n", False),
         (
-            "FROM python:3.12-slim AS builder\nUSER agent\n"
-            "FROM python:3.12-slim\n",
+            "FROM python:3.12-slim AS builder\nUSER agent\nFROM python:3.12-slim\n",
             False,
         ),
     ],
@@ -198,7 +241,10 @@ def test_pytest_task_images_install_pytest():
     missing = []
     for dockerfile in task_root.glob("*/environment/Dockerfile"):
         environment = dockerfile.parent
-        if not any("import pytest" in test.read_text(encoding="utf-8") for test in environment.glob("test_*.py")):
+        if not any(
+            "import pytest" in test.read_text(encoding="utf-8")
+            for test in environment.glob("test_*.py")
+        ):
             continue
         text = dockerfile.read_text(encoding="utf-8").lower()
         if "pytest" not in text:
@@ -255,15 +301,17 @@ def test_workflow_phases_accepts_verification_report_name(monkeypatch, tmp_path:
 
 def test_claude_eval_task_images_install_claude_code():
     task_root = ROOT / "local/tasks"
+    dockerfiles = sorted(task_root.glob("*/environment/Dockerfile"))
     missing_claude = []
     root_images = []
-    for dockerfile in task_root.glob("*/environment/Dockerfile"):
-        text = dockerfile.read_text(encoding="utf-8").lower()
+    for dockerfile in dockerfiles:
+        text = dockerfile.read_text(encoding="utf-8")
         relative = str(dockerfile.relative_to(ROOT))
-        if "@anthropic-ai/claude-code" not in text:
+        if not _dockerfile_runs_claude_code_install(text):
             missing_claude.append(relative)
         if not _final_dockerfile_user_is_non_root(text):
             root_images.append(relative)
 
+    assert dockerfiles != []
     assert missing_claude == []
     assert root_images == []

@@ -423,7 +423,7 @@ describe('Native scoped check receipts', () => {
     const open = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
       if (path.resolve(String(args[0])) === path.resolve(target)) {
         targetOpens += 1;
-        if (targetOpens === 2) await fs.rename(replacement, target);
+        if (targetOpens === 1) await fs.rename(replacement, target);
       }
       return originalOpen(...args);
     });
