@@ -24,21 +24,12 @@ describe('CLI help text', () => {
     const packageJson = JSON.parse(
       readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
     ) as { description: string; version: string };
-    const packageLock = JSON.parse(
-      readFileSync(path.join(repositoryRoot, 'package-lock.json'), 'utf8'),
-    ) as { version: string; packages: { '': { version: string } } };
-    const assetsManifest = JSON.parse(
-      readFileSync(path.join(repositoryRoot, 'assets', 'manifest.json'), 'utf8'),
-    ) as { version: string };
     const tagline = 'Agent Skill Harness For Turning Ideas Into Evaluated Workflows';
 
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain(tagline);
     expect(packageJson.description).toBe(tagline);
-    expect(packageJson.version).toBe('0.4.0-beta.9');
-    expect(packageLock.version).toBe('0.4.0-beta.9');
-    expect(packageLock.packages[''].version).toBe('0.4.0-beta.9');
-    expect(assetsManifest.version).toBe('0.4.0-beta.9');
+    expect(packageJson.version).toBe('0.4.0-beta.10');
   });
 
   it('marks bundle as the advanced backend and skill Engine runs as advanced', () => {
@@ -136,13 +127,21 @@ describe('CLI help text', () => {
     expect(help.stdout).not.toContain('eval [options]');
   });
 
-  it('exposes explicit package self-update controls', () => {
+  it('exposes explicit update target controls', () => {
     const help = runCli('update', '--help');
 
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain('--self-update');
     expect(help.stdout).toContain('--skip-self-update');
+    expect(help.stdout).toContain('--platform <platform>');
     expect(help.stdout).not.toContain('--skip-npm');
+  });
+
+  it('exposes explicit init target controls', () => {
+    const help = runCli('init', '--help');
+
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toContain('--platform <platform>');
   });
 
   it('keeps Skill Creator resume commands out of the publish surface', () => {

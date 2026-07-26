@@ -36,7 +36,10 @@ import {
   mergeProjectConfig,
 } from '../../../domains/skill/platform-install.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
-import { resolveArtifactLanguage } from '../../../domains/skill/languages.js';
+import {
+  artifactLanguageToSkillLanguage,
+  resolveArtifactLanguage,
+} from '../../../domains/skill/languages.js';
 
 describe('skills', () => {
   let tmpDir: string;
@@ -89,6 +92,12 @@ describe('skills', () => {
     it('rejects zh and en-US as artifact language values', () => {
       expect(() => resolveArtifactLanguage('zh')).toThrow('Invalid artifact language');
       expect(() => resolveArtifactLanguage('en-US')).toThrow('Invalid artifact language');
+    });
+
+    it('maps persisted artifact languages to skill language ids', () => {
+      expect(artifactLanguageToSkillLanguage('zh-CN')).toBe('zh');
+      expect(artifactLanguageToSkillLanguage('en')).toBe('en');
+      expect(artifactLanguageToSkillLanguage(undefined)).toBe('en');
     });
 
     it('does not route Comet artifact language through the current user request language', async () => {

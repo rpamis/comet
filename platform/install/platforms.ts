@@ -41,6 +41,12 @@ export interface Platform {
   legacyHookConfigFiles?: string[];
 }
 
+const PLATFORM_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+
+export function isValidPlatformId(platformId: string): boolean {
+  return PLATFORM_ID_PATTERN.test(platformId);
+}
+
 export function getPlatformSkillsDir(platform: Platform, scope: InstallScope): string {
   if (scope === 'global' && platform.globalSkillsDir) {
     return platform.globalSkillsDir;

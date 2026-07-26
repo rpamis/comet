@@ -8,6 +8,10 @@ import {
   type Platform,
 } from '../../platform/install/platforms.js';
 import {
+  resolvePlatformTarget,
+  type PlatformTargetResolution,
+} from '../../platform/install/platform-targets.js';
+import {
   detectPlatforms,
   hasSkills,
   getBaseDir,
@@ -63,6 +67,7 @@ type InitOptions = {
   installMode?: InstallMode;
   workflow?: InitWorkflowSelection;
   artifactRoot?: string;
+  platform?: string;
 };
 
 function workflowChoiceNames(lang: string): Array<{
@@ -498,8 +503,14 @@ export async function initCommand(
   const installMode =
     workflowSelection === 'native' ? 'copy' : await selectInstallMode(options, lang);
 
-  const selectedPlatformIds = await selectPlatforms(detected, options, lang);
-  if (selectedPlatformIds.length === 0) {
+  const selectedPlatformTargets: PlatformTargetResolution[] = options.platform
+    ? [resolvePlatformTarget(options.platform, scope)]
+    : (await selectPlatforms(detected, options, lang)).map((platformId) => ({
+        platform: PLATFORMS.find((platform) => platform.id === platformId)!,
+        native: true,
+      }));
+  const selectedPlatformIds = selectedPlatformTargets.map((target) => target.platform.id);
+  if (selectedPlatformTargets.length === 0) {
     if (options.json) {
       console.log(
         JSON.stringify(
@@ -530,11 +541,12 @@ export async function initCommand(
     return { status: 'incomplete' };
   }
 
-  const selectedPlatforms = PLATFORMS.filter((p) => selectedPlatformIds.includes(p.id));
+  const selectedPlatforms = selectedPlatformTargets.map((target) => target.platform);
   const baseDir = getBaseDir(scope, projectPath);
 
   type PlatformPlan = ComponentPlan & {
     platform: Platform;
+    native: boolean;
     hasOS: boolean;
     hasSP: boolean;
     hasCM: boolean;
@@ -542,23 +554,28 @@ export async function initCommand(
 
   const plans: PlatformPlan[] = [];
 
-  for (const platform of selectedPlatforms) {
-    const hasOS = includesWorkflow(workflowSelection, 'classic')
-      ? await hasSkills(baseDir, platform, 'openspec', selectedPlatforms, scope)
-      : false;
-    const hasSP = includesWorkflow(workflowSelection, 'classic')
-      ? await hasSkills(baseDir, platform, 'superpowers', selectedPlatforms, scope)
-      : false;
+  for (const target of selectedPlatformTargets) {
+    const { platform, native } = target;
+    const hasOS =
+      native && includesWorkflow(workflowSelection, 'classic')
+        ? await hasSkills(baseDir, platform, 'openspec', selectedPlatforms, scope)
+        : false;
+    const hasSP =
+      native && includesWorkflow(workflowSelection, 'classic')
+        ? await hasSkills(baseDir, platform, 'superpowers', selectedPlatforms, scope)
+        : false;
     const hasCM = await hasSkills(baseDir, platform, 'comet', selectedPlatforms, scope, {
       includeGlobalFallback: false,
     });
 
-    let osAction = includesWorkflow(workflowSelection, 'classic')
-      ? resolveAction(hasOS, options)
-      : 'skip';
-    let spAction = includesWorkflow(workflowSelection, 'classic')
-      ? resolveAction(hasSP, options)
-      : 'skip';
+    let osAction =
+      native && includesWorkflow(workflowSelection, 'classic')
+        ? resolveAction(hasOS, options)
+        : 'skip';
+    let spAction =
+      native && includesWorkflow(workflowSelection, 'classic')
+        ? resolveAction(hasSP, options)
+        : 'skip';
     let cmAction =
       workflowSelection === 'classic'
         ? resolveCometAction(hasCM, options)
@@ -602,7 +619,7 @@ export async function initCommand(
       }
     }
 
-    plans.push({ platform, osAction, spAction, cmAction, hasOS, hasSP, hasCM });
+    plans.push({ platform, native, osAction, spAction, cmAction, hasOS, hasSP, hasCM });
   }
 
   if (includesWorkflow(workflowSelection, 'native') && scope === 'project') {
@@ -917,9 +934,6 @@ export async function initCommand(
         await installCometProjectInstructions(projectPath, language.id);
       }
 
-      const projectTargets = await detectInstalledCometTargets(projectPath, {
-        scopes: ['project'],
-      });
       const successfulCometPlatforms = new Set(
         results
           .filter(
@@ -931,9 +945,42 @@ export async function initCommand(
           )
           .map((result) => result.platform.id),
       );
-      const completeProjectTargets = projectTargets.filter((target) =>
-        successfulCometPlatforms.has(target.platform.id),
-      );
+      const completeProjectTargets = options.platform
+        ? (
+            await Promise.all(
+              plans
+                .filter(
+                  (plan) =>
+                    plan.cmAction !== 'skip' && successfulCometPlatforms.has(plan.platform.id),
+                )
+                .map(async (plan) => {
+                  if (plan.cmAction !== 'reuse') {
+                    return {
+                      platform: plan.platform,
+                      language: language.id,
+                    };
+                  }
+                  const existing = (
+                    await detectInstalledCometTargets(projectPath, {
+                      scopes: ['project'],
+                    })
+                  ).find((target) => target.platform.id === plan.platform.id);
+                  return existing
+                    ? {
+                        platform: plan.platform,
+                        language: existing.language,
+                      }
+                    : null;
+                }),
+            )
+          ).filter((target): target is { platform: Platform; language: 'en' | 'zh' } =>
+            Boolean(target),
+          )
+        : (
+            await detectInstalledCometTargets(projectPath, {
+              scopes: ['project'],
+            })
+          ).filter((target) => successfulCometPlatforms.has(target.platform.id));
       if (completeProjectTargets.length > 0) {
         await upsertProjectInstallation(
           projectPath,

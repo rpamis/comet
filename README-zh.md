@@ -194,13 +194,14 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 <details>
 <summary><code>comet init [path]</code> — 初始化 Comet 工作流</summary>
 
-为选定的 AI 编码平台初始化 Comet。交互模式可选择 Native、Classic 或两者；新的非交互项目默认使用自包含 Native，检测到既有 Classic 状态时保持 Classic。两套工作流拥有独立入口、状态、产物与 Guard；每个平台只安装一份 `comet-workflow-guard` Rule，支持 Hook 的平台只安装一个 `comet-hook-router.mjs`。Router 根据 `.comet/current-change.json`，一次只把写入路由给当前 Native 或 Classic Guard。只有 Classic 安装 OpenSpec 和 Superpowers，Native 不依赖外部 Skill。
+为选定的 AI 编码平台初始化 Comet。交互模式可选择 Native、Classic 或两者；新的非交互项目默认使用自包含 Native，检测到既有 Classic 状态时保持 Classic。传入 `--platform` 时只初始化该平台；未知但合法的平台 id 会作为项目内自定义平台安装到 `.<platform>/`，包含所选 workflow 的 skills、scripts、rules 与 hooks。两套工作流拥有独立入口、状态、产物与 Guard；每个平台只安装一份 `comet-workflow-guard` Rule，支持 Hook 的平台只安装一个 `comet-hook-router.mjs`。Router 根据 `.comet/current-change.json`，一次只把写入路由给当前 Native 或 Classic Guard。只有 Classic 安装 OpenSpec 和 Superpowers，Native 不依赖外部 Skill。
 
 | 选项                | 描述                                                 |
 | ------------------- | ---------------------------------------------------- |
 | `--yes`             | 非交互模式，自动选择已检测平台（未检测到则选择全部） |
 | `--scope <scope>`   | 安装范围：`project` 或 `global`                      |
 | `--language <lang>` | 技能语言：`en` 或 `zh`（跳过交互式语言选择）         |
+| `--platform <platform>` | 只初始化指定平台；项目范围内可使用自定义平台 id |
 | `--workflow <mode>` | 初始化工作流：`native`、`classic` 或 `both`          |
 | `--root <path>`     | Native 的项目内产物根目录，例如 `docs`               |
 | `--skip-existing`   | 跳过已安装的组件                                     |
@@ -267,12 +268,13 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 <details>
 <summary><code>comet update [path]</code> — 更新 Comet 包和技能</summary>
 
-刷新已检测到的项目级/全局 Comet 技能。仅刷新当前项目时默认不会修改任何 npm 安装（包括全局包和项目级包）；需要同时升级 CLI 时必须显式传入 `--self-update`。显式 `--scope global` 会确定性走 current-project 资产范围，不会进入 all-projects 选择，也不会隐式更新 npm 包。自更新会先比较完整 semver（包括预发布版本），拒绝降级，并在安装前隔离验证候选包的版本、Workflow 与 Native 命令；安装失败时尝试恢复精确的当前版本。
+刷新已检测到的项目级/全局 Comet 技能；传入 `--platform` 时只刷新该平台，也可在项目范围内刷新自定义平台。仅刷新当前项目时默认不会修改任何 npm 安装（包括全局包和项目级包）；需要同时升级 CLI 时必须显式传入 `--self-update`。显式 `--scope global` 会确定性走 current-project 资产范围，不会进入 all-projects 选择，也不会隐式更新 npm 包。自更新会先比较完整 semver（包括预发布版本），拒绝降级，并在安装前隔离验证候选包的版本、Workflow 与 Native 命令；安装失败时尝试恢复精确的当前版本。
 
 | 选项                 | 描述                                      |
 | -------------------- | ----------------------------------------- |
 | `--json`             | 以 JSON 输出 npm 和 skill 更新结果        |
 | `--language <lang>`  | 覆盖自动检测到的 skill 语言 (`en`, `zh`)  |
+| `--platform <platform>` | 只刷新指定平台；项目范围内可使用自定义平台 id |
 | `--scope <scope>`    | 仅更新 `global` 或 `project` 安装范围     |
 | `--current-project`  | 只刷新当前项目                            |
 | `--all-projects`     | 刷新登记的所有项目级安装                  |

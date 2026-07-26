@@ -70,6 +70,7 @@ program
   .option('--skip-existing', 'Never overwrite existing components')
   .option('--overwrite', 'Overwrite manifest-managed files')
   .option('--json', 'Output as JSON')
+  .option('--platform <platform>', 'Platform target to initialize')
   .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
   .addOption(new Option('--language <lang>', 'Language for skills').choices(['en', 'zh']))
   .addOption(
@@ -153,6 +154,7 @@ program
   .command('update [path]')
   .description('Update comet skill files to latest version')
   .option('--json', 'Output as JSON')
+  .option('--platform <platform>', 'Platform target to update')
   .addOption(new Option('--language <lang>', 'Language for skills').choices(['en', 'zh']))
   .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
   .option('--all-projects', 'Update all indexed project-scope Comet installs')

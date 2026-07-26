@@ -16,12 +16,17 @@ import {
 } from '../../domains/skill/platform-install.js';
 import { removeLegacyCometSkillsForPlatform } from '../../domains/skill/uninstall.js';
 import { installCometProjectInstructions } from '../../domains/skill/project-instructions.js';
-import { LANGUAGES } from '../../domains/skill/languages.js';
+import {
+  artifactLanguageToSkillLanguage,
+  LANGUAGES,
+  type SkillLanguageId,
+} from '../../domains/skill/languages.js';
 import {
   getPlatformSkillsDir,
   getPlatformSkillsDirs,
   type Platform,
 } from '../../platform/install/platforms.js';
+import { resolvePlatformTarget } from '../../platform/install/platform-targets.js';
 import { resolveCanonicalSkillRootOwners } from '../../platform/install/skill-root-owner.js';
 import {
   listProjectRegistryEntries,
@@ -62,9 +67,10 @@ interface UpdateOptions {
   failOnNpmFailure?: boolean;
   npmSkipReason?: string;
   skipPackageSelfUpdate?: boolean;
+  platform?: string;
 }
 
-type SkillLanguage = 'en' | 'zh';
+type SkillLanguage = SkillLanguageId;
 type NpmStatus = 'updated' | 'failed' | 'skipped';
 type CodegraphStatus = 'installed' | 'failed' | 'skipped';
 
@@ -1228,10 +1234,34 @@ async function updateSingleProject(
     }
   }
 
-  const targets = await detectInstalledCometTargets(projectPath, {
-    scopes: options.targetScopes ?? (options.scope ? [options.scope] : undefined),
-    respectDetectionPaths: options.scope === undefined,
-  });
+  const targets = options.platform
+    ? await Promise.all(
+        (options.targetScopes ?? [options.scope ?? 'project']).map(async (scope) => {
+          const existing = options.language
+            ? null
+            : (
+                await detectInstalledCometTargets(projectPath, {
+                  scopes: [scope],
+                  respectDetectionPaths: scope === 'project' && options.scope === undefined,
+                })
+              ).find((candidate) => candidate.platform.id === options.platform);
+          const fallbackLanguage =
+            existing?.language ??
+            (scope === 'project'
+              ? artifactLanguageToSkillLanguage(projectConfig?.native.language)
+              : 'en');
+          const target = resolvePlatformTarget(options.platform!, scope);
+          return {
+            scope,
+            platform: target.platform,
+            language: resolveTargetLanguage(options.language, fallbackLanguage),
+          };
+        }),
+      )
+    : await detectInstalledCometTargets(projectPath, {
+        scopes: options.targetScopes ?? (options.scope ? [options.scope] : undefined),
+        respectDetectionPaths: options.scope === undefined,
+      });
 
   if (targets.length === 0) {
     return {
@@ -1864,6 +1894,9 @@ export async function updateCommand(
   const lang = options.language ?? 'en';
 
   assertProjectScopeOptions(options);
+  if (options.platform && options.allProjects) {
+    throw new Error('--platform cannot be combined with --all-projects');
+  }
   const registryProjects = await listProjectRegistryEntries({ strict: true });
 
   log(`\n  ${t(lang, 'updateTitle')}`);

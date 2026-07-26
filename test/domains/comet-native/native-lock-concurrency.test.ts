@@ -34,6 +34,20 @@ async function waitFor(file: string): Promise<void> {
   throw new Error(`Timed out waiting for ${file}`);
 }
 
+async function waitForText(file: string): Promise<string> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    try {
+      const text = await fs.readFile(file, 'utf8');
+      if (text.length > 0) return text;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`Timed out waiting for content in ${file}`);
+}
+
 function collect(child: ChildProcessWithoutNullStreams): Promise<WorkerResult> {
   let stdout = '';
   let stderr = '';
@@ -173,8 +187,7 @@ describe('Native lock process concurrency', () => {
     await waitFor(ready);
     await fs.writeFile(`${go}.primary`, 'replacement-ready\n');
     await fs.writeFile(go, 'go\n');
-    await waitFor(status);
-    expect(await fs.readFile(status, 'utf8')).toMatch(/^blocked:/u);
+    await expect(waitForText(status)).resolves.toMatch(/^blocked:/u);
     expect(await fs.readFile(replacement.file, 'utf8')).toContain(replacement.owner.id);
     await expect(workerProcess.result).resolves.toMatchObject({ code: 0, stderr: '' });
     await releaseNativeLock(replacement);
@@ -194,11 +207,7 @@ describe('Native lock process concurrency', () => {
 
     await Promise.all([waitFor(readyA), waitFor(readyB)]);
     await fs.writeFile(go, 'go\n');
-    await Promise.all([waitFor(statusA), waitFor(statusB)]);
-    const statuses = await Promise.all([
-      fs.readFile(statusA, 'utf8'),
-      fs.readFile(statusB, 'utf8'),
-    ]);
+    const statuses = await Promise.all([waitForText(statusA), waitForText(statusB)]);
     expect(statuses.filter((status) => status.startsWith('acquired:'))).toHaveLength(1);
     expect(statuses.filter((status) => status.startsWith('blocked:'))).toHaveLength(1);
     expect(statuses.join('\n')).not.toContain('coordinator is busy');

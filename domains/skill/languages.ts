@@ -38,5 +38,17 @@ function resolveArtifactLanguage(language: string | undefined): ArtifactLanguage
   return match;
 }
 
-export { ARTIFACT_LANGUAGES, LANGUAGES, resolveArtifactLanguage, formatSupportedArtifactLanguages };
+function artifactLanguageToSkillLanguage(
+  language: ArtifactLanguageId | undefined,
+): SkillLanguageId {
+  return language === 'zh-CN' ? 'zh' : 'en';
+}
+
+export {
+  ARTIFACT_LANGUAGES,
+  LANGUAGES,
+  artifactLanguageToSkillLanguage,
+  resolveArtifactLanguage,
+  formatSupportedArtifactLanguages,
+};
 export type { ArtifactLanguageId, ArtifactLanguageConfig, LanguageConfig, SkillLanguageId };

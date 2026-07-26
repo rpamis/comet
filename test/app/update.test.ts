@@ -64,6 +64,12 @@ const claudePlatform: Platform = {
   openspecToolId: 'claude',
 };
 
+const manifestPath = path.resolve('assets', 'manifest.json');
+
+async function readManifest() {
+  return JSON.parse(await fs.readFile(manifestPath, 'utf-8')) as { skills: string[] };
+}
+
 type ComponentFailure = 'Skill' | 'Rule' | 'Hook';
 
 async function writeFakeCometPackage(packageRoot: string, version: string): Promise<void> {
@@ -1757,6 +1763,123 @@ describe('update command helpers', () => {
     expect(registry.projects[0].lastSource).toBe('update');
   });
 
+  it('updates only the explicit native platform target', async () => {
+    const fakeHome = path.join(tmpDir, 'explicit-native-home');
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Stale Claude Comet\n',
+      'utf8',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        platform: 'codex',
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.skills.targets).toEqual([
+      expect.objectContaining({ scope: 'project', platform: 'codex' }),
+    ]);
+    await expect(
+      fs.readFile(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+    ).resolves.toContain('comet workflow resolve . --json');
+    await expect(
+      fs.readFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+    ).resolves.toBe('# Stale Claude Comet\n');
+  });
+
+  it('updates project-scoped custom platform workflow assets', async () => {
+    const fakeHome = path.join(tmpDir, 'explicit-custom-home');
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        platform: 'test',
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.skills.targets).toEqual([
+      expect.objectContaining({ scope: 'project', platform: 'test' }),
+    ]);
+    await expect(
+      fs.access(path.join(tmpDir, '.test', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.test', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.test', 'rules', 'comet-workflow-guard.md')),
+    ).resolves.toBeUndefined();
+    const settings = JSON.parse(
+      await fs.readFile(path.join(tmpDir, '.test', 'settings.local.json'), 'utf8'),
+    ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
+    expect(JSON.stringify(settings.hooks)).toContain('comet-hook-router.mjs');
+  });
+
+  it('applies the project workflow selection to an explicit custom update target', async () => {
+    const fakeHome = path.join(tmpDir, 'explicit-custom-both-home');
+    const config = defaultProjectConfig('docs');
+    config.workflows = ['native', 'classic'];
+    config.default_workflow = 'native';
+    await writeProjectConfig(tmpDir, config);
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        platform: 'test',
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.skills.targets).toEqual([
+      expect.objectContaining({ scope: 'project', platform: 'test' }),
+    ]);
+    const manifest = await readManifest();
+    for (const skillPath of manifest.skills) {
+      await expect(
+        fs.access(path.join(tmpDir, '.test', 'skills', skillPath)),
+      ).resolves.toBeUndefined();
+    }
+  });
+
+  it('rejects custom platform targets for global update', async () => {
+    await expect(
+      updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'global',
+        platform: 'test',
+      }),
+    ).rejects.toThrow('custom --platform targets are only supported with project scope');
+  });
+
   it('returns stable JSON summary when no installed targets are found', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-instructions');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
@@ -2364,6 +2487,39 @@ describe('update command helpers', () => {
     const config = await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf-8');
     expect(config).toContain('language: zh-CN');
     await expect(fs.stat(path.join(fakeHome, 'docs', 'superpowers'))).rejects.toThrow();
+  });
+
+  it('preserves installed language for an explicit global platform update', async () => {
+    const fakeHome = path.join(tmpDir, 'fake-home-explicit-global-language');
+    await fs.mkdir(path.join(fakeHome, '.codex', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(fakeHome, '.codex', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n\n当用户提出需求时使用这个技能。',
+      'utf-8',
+    );
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+
+    try {
+      await updateCommand(tmpDir, {
+        json: true,
+        skipNpm: true,
+        scope: 'global',
+        platform: 'codex',
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.skills.targets).toEqual([
+      expect.objectContaining({ scope: 'global', platform: 'codex', language: 'zh' }),
+    ]);
+    const config = await fs.readFile(path.join(fakeHome, '.comet', 'config.yaml'), 'utf-8');
+    expect(config).toContain('language: zh-CN');
   });
 
   it('re-persists an explicitly requested language even when the config already has a different one', async () => {

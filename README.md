@@ -212,13 +212,14 @@ Comet Eval's automated dual-agent architecture can integrate online with LangSmi
 <details>
 <summary><code>comet init [path]</code> — Initialize Comet workflow</summary>
 
-Initializes Comet for selected AI coding platforms. Interactive setup selects Native, Classic, or both; new non-interactive projects default to self-contained Native, while projects with existing Classic state remain Classic. The workflows keep independent entries, state, artifacts, and Guards. Each platform installs one `comet-workflow-guard` Rule, and platforms with Hook support install only `comet-hook-router.mjs`. The Router uses `.comet/current-change.json` to send each write to exactly one current Native or Classic Guard. Only Classic installs OpenSpec and Superpowers; Native depends on no external Skill.
+Initializes Comet for selected AI coding platforms. Interactive setup selects Native, Classic, or both; new non-interactive projects default to self-contained Native, while projects with existing Classic state remain Classic. Pass `--platform` to initialize only that platform; unknown but valid platform ids are treated as project-scoped custom platforms installed under `.<platform>/` with the selected workflow's skills, scripts, rules, and hooks. The workflows keep independent entries, state, artifacts, and Guards. Each platform installs one `comet-workflow-guard` Rule, and platforms with Hook support install only `comet-hook-router.mjs`. The Router uses `.comet/current-change.json` to send each write to exactly one current Native or Classic Guard. Only Classic installs OpenSpec and Superpowers; Native depends on no external Skill.
 
 | Option              | Description                                                                    |
 | ------------------- | ------------------------------------------------------------------------------ |
 | `--yes`             | Non-interactive mode, auto-select detected platforms (or all if none detected) |
 | `--scope <scope>`   | Install scope: `project` or `global`                                           |
 | `--language <lang>` | Skill language: `en` or `zh` (skips interactive language prompt)               |
+| `--platform <platform>` | Initialize only this platform; project scope accepts custom platform ids    |
 | `--workflow <mode>` | Workflows to initialize: `native`, `classic`, or `both`                        |
 | `--root <path>`     | Project-relative Native artifact root, such as `docs`                          |
 | `--skip-existing`   | Skip already installed components                                              |
@@ -286,12 +287,13 @@ for valid changes, and runtime evidence gaps that block safe resume.
 <details>
 <summary><code>comet update [path]</code> — Update Comet package and skills</summary>
 
-Refreshes installed Comet skills in detected project/global targets. A current-project refresh does not mutate any npm installation, whether global or project-local, by default; pass `--self-update` explicitly when the CLI should be upgraded too. Explicit `--scope global` deterministically uses the current-project asset scope, never opens the all-projects selector, and still does not update the npm package implicitly. Self-update compares full semver values, including prereleases, refuses downgrades, and validates the candidate package's version, Workflow command, and Native command in isolation before installation. A failed install attempts to restore the exact installed version.
+Refreshes installed Comet skills in detected project/global targets. Pass `--platform` to refresh only that platform, including project-scoped custom platforms. A current-project refresh does not mutate any npm installation, whether global or project-local, by default; pass `--self-update` explicitly when the CLI should be upgraded too. Explicit `--scope global` deterministically uses the current-project asset scope, never opens the all-projects selector, and still does not update the npm package implicitly. Self-update compares full semver values, including prereleases, refuses downgrades, and validates the candidate package's version, Workflow command, and Native command in isolation before installation. A failed install attempts to restore the exact installed version.
 
 | Option               | Description                                      |
 | -------------------- | ------------------------------------------------ |
 | `--json`             | Output npm and skill update results as JSON      |
 | `--language <lang>`  | Override detected skill language (`en`, `zh`)    |
+| `--platform <platform>` | Refresh only this platform; project scope accepts custom platform ids |
 | `--scope <scope>`    | Update only the `global` or `project` install scope |
 | `--current-project`  | Refresh only the current project                 |
 | `--all-projects`     | Refresh all registered project installations     |

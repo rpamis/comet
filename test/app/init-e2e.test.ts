@@ -655,6 +655,108 @@ describe('comet init E2E', () => {
     expect(platformSelectPrompt).not.toHaveBeenCalled();
   });
 
+  it('initializes only the explicit native platform target', async () => {
+    mockExternalSuccess();
+    const { platformSelectPrompt } = await import('../../app/commands/platform-select-prompt.js');
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        platform: 'codex',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'complete',
+      selectedPlatforms: ['codex'],
+      results: [expect.objectContaining({ platform: 'codex', comet: 'installed' })],
+    });
+    expect(platformSelectPrompt).not.toHaveBeenCalled();
+    await expect(
+      fs.access(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('initializes project-scoped custom platform workflow assets', async () => {
+    mockExternalSuccess();
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        platform: 'test',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'complete',
+      selectedPlatforms: ['test'],
+      results: [expect.objectContaining({ platform: 'test', comet: 'installed' })],
+    });
+    await expect(
+      fs.access(path.join(tmpDir, '.test', 'skills', 'comet', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.test', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(tmpDir, '.test', 'rules', 'comet-workflow-guard.md')),
+    ).resolves.toBeUndefined();
+    const settings = JSON.parse(
+      await fs.readFile(path.join(tmpDir, '.test', 'settings.local.json'), 'utf8'),
+    ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
+    expect(JSON.stringify(settings.hooks)).toContain('comet-hook-router.mjs');
+  });
+
+  it('applies workflow selection to an explicit custom platform target', async () => {
+    mockExternalSuccess();
+    const manifest = await readManifest();
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        platform: 'test',
+        workflow: 'native',
+      }),
+    );
+
+    expect(result).toMatchObject({ status: 'complete', selectedPlatforms: ['test'] });
+    for (const skillPath of skillPathsForWorkflow(manifest, 'native')) {
+      await expect(
+        fs.access(path.join(tmpDir, '.test', 'skills', skillPath)),
+      ).resolves.toBeUndefined();
+    }
+    const excludedPaths = manifest.skills.filter(
+      (skillPath: string) => !skillPathsForWorkflow(manifest, 'native').includes(skillPath),
+    );
+    for (const skillPath of excludedPaths) {
+      await expect(
+        fs.access(path.join(tmpDir, '.test', 'skills', skillPath)),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+  });
+
+  it('rejects custom platform targets for global init', async () => {
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await expect(
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'global',
+        platform: 'test',
+      }),
+    ).rejects.toThrow('custom --platform targets are only supported with project scope');
+  });
+
   it('rejects project artifact roots at global scope without writes', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
@@ -1251,6 +1353,40 @@ describe('comet init E2E', () => {
       lastSource: 'init',
     });
     expect(registry.projects[0].lastTargets.length).toBeGreaterThan(0);
+  });
+
+  it('preserves the installed language when reusing an explicit project target', async () => {
+    mockExternalSuccess();
+    const fakeHome = path.join(tmpDir, 'fake-home-explicit-reuse-language');
+    await fs.mkdir(path.join(tmpDir, '.agents', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n\n当用户提出需求时使用这个技能。',
+      'utf-8',
+    );
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+
+    try {
+      const { initCommand } = await import('../../app/commands/init.js');
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, {
+          yes: true,
+          scope: 'project',
+          json: true,
+          workflow: 'classic',
+          platform: 'codex',
+          language: 'en',
+        }),
+      );
+    } finally {
+      homedirSpy.mockRestore();
+    }
+
+    const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8'));
+    expect(registry.projects[0].lastTargets).toContainEqual({
+      platform: 'codex',
+      language: 'zh',
+    });
   });
 
   it('does not record global-scope installs in the user project registry', async () => {
