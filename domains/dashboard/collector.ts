@@ -1,13 +1,19 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { fileExists, readDir } from '../../platform/fs/file-system.js';
 import { collectGitSnapshot } from './git.js';
 import { collectNativeDashboardProjection } from './native-collector.js';
 import { recommendNextAction } from './next-action.js';
 import { buildChangeRisks, buildProjectRisks } from './risk.js';
 import { parseTasksMarkdown } from './task-parser.js';
-import { readCometYaml, type CometYaml } from './yaml.js';
+import { parseCometYaml, type CometYaml } from './yaml.js';
 import { resolveVerify } from './verify-parser.js';
+import { assertClassicLayoutReadable } from '../comet-classic/classic-layout.js';
+import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
+import {
+  inspectProtectedProjectPath,
+  protectedProjectFileExists,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import type {
   ArchiveInfo,
   ArtifactPreview,
@@ -29,10 +35,10 @@ const VALID_PHASES: ReadonlySet<ChangePhase> = new Set([
   'unknown',
 ]);
 
-const CHANGES_DIR = path.join('openspec', 'changes');
 const ARCHIVE_SEGMENT = 'archive';
 const ARCHIVE_NAME_PATTERN = /^(\d{4}-\d{2}-\d{2})-(.+)$/u;
 const ARTIFACT_PREVIEW_LIMIT_BYTES = 256 * 1024;
+const ARTIFACT_READ_LIMIT_BYTES = 2 * 1024 * 1024;
 
 /**
  * Build a full dashboard snapshot for the project rooted at `projectPath`.
@@ -45,11 +51,38 @@ export async function collectDashboardSnapshot(
   options: { now?: Date; projectName?: string } = {},
 ): Promise<DashboardSnapshot> {
   const resolvedRoot = path.resolve(projectPath);
-  const changesRoot = path.join(resolvedRoot, CHANGES_DIR);
+  let changesRoot: string | null = null;
+  let classicError: string | null = null;
+  try {
+    const config = await readWorkflowProjectConfig(resolvedRoot);
+    const workflows = config?.workflows ?? (config ? [config.default_workflow] : ['classic']);
+    if (workflows.includes('classic')) {
+      const layout = await assertClassicLayoutReadable(resolvedRoot);
+      await inspectProtectedProjectPath(
+        resolvedRoot,
+        projectRelative(resolvedRoot, layout.changesDir),
+        {
+          label: 'Classic changes root',
+          expected: 'directory',
+        },
+      );
+      await inspectProtectedProjectPath(
+        resolvedRoot,
+        projectRelative(resolvedRoot, layout.archiveDir),
+        {
+          label: 'Classic archive root',
+          expected: 'directory',
+        },
+      );
+      changesRoot = layout.changesDir;
+    }
+  } catch (error) {
+    classicError = error instanceof Error ? error.message : String(error);
+  }
 
   const [activeChanges, archivedChanges, git, nativeResult] = await Promise.all([
-    collectActiveChanges(changesRoot),
-    collectArchivedChanges(changesRoot),
+    changesRoot ? collectActiveChanges(changesRoot, resolvedRoot) : Promise.resolve([]),
+    changesRoot ? collectArchivedChanges(changesRoot, resolvedRoot) : Promise.resolve([]),
     collectGitSnapshot(resolvedRoot),
     collectNativeDashboardProjection(resolvedRoot, { now: options.now })
       .then((projection) => ({ projection, failed: false as const }))
@@ -91,42 +124,76 @@ export async function collectDashboardSnapshot(
     ...(nativeResult.failed
       ? { nativeError: { code: 'native-dashboard-unavailable' as const } }
       : {}),
+    ...(classicError
+      ? {
+          classicError: {
+            code: 'classic-dashboard-unavailable' as const,
+            message: classicError,
+          },
+        }
+      : {}),
   };
 }
 
-async function collectActiveChanges(changesRoot: string): Promise<ChangeDashboardItem[]> {
-  if (!(await fileExists(changesRoot))) return [];
-
-  const entries = await readDir(changesRoot);
+async function collectActiveChanges(
+  changesRoot: string,
+  projectRoot: string,
+): Promise<ChangeDashboardItem[]> {
+  const inspection = await inspectProtectedProjectPath(
+    projectRoot,
+    projectRelative(projectRoot, changesRoot),
+    {
+      label: 'Classic changes root',
+      expected: 'directory',
+    },
+  );
+  if (!inspection.exists) return [];
+  const entries = await fs.readdir(inspection.target);
+  await inspectProtectedProjectPath(projectRoot, projectRelative(projectRoot, changesRoot), {
+    label: 'Classic changes root',
+    expected: 'directory',
+  });
   const items: ChangeDashboardItem[] = [];
 
   for (const entry of entries) {
     if (entry === ARCHIVE_SEGMENT) continue;
 
     const dir = path.join(changesRoot, entry);
-    const stat = await safeStat(dir);
-    if (!stat?.isDirectory()) continue;
+    if (!(await safeProjectDirectoryExists(projectRoot, dir, `Classic change ${entry}`))) continue;
 
-    const item = await tryBuildChangeItem({ name: entry, dir, status: 'active' });
+    const item = await tryBuildChangeItem({ name: entry, dir, status: 'active', projectRoot });
     if (item) items.push(item);
   }
 
   return items;
 }
 
-async function collectArchivedChanges(changesRoot: string): Promise<ChangeDashboardItem[]> {
+async function collectArchivedChanges(
+  changesRoot: string,
+  projectRoot: string,
+): Promise<ChangeDashboardItem[]> {
   const archiveRoot = path.join(changesRoot, ARCHIVE_SEGMENT);
-  if (!(await fileExists(archiveRoot))) return [];
-
-  const entries = await readDir(archiveRoot);
+  const inspection = await inspectProtectedProjectPath(
+    projectRoot,
+    projectRelative(projectRoot, archiveRoot),
+    {
+      label: 'Classic archive root',
+      expected: 'directory',
+    },
+  );
+  if (!inspection.exists) return [];
+  const entries = await fs.readdir(inspection.target);
+  await inspectProtectedProjectPath(projectRoot, projectRelative(projectRoot, archiveRoot), {
+    label: 'Classic archive root',
+    expected: 'directory',
+  });
   const items: ChangeDashboardItem[] = [];
 
   for (const entry of entries) {
     const dir = path.join(archiveRoot, entry);
-    const stat = await safeStat(dir);
-    if (!stat?.isDirectory()) continue;
+    if (!(await safeProjectDirectoryExists(projectRoot, dir, `Classic archive ${entry}`))) continue;
 
-    const item = await tryBuildChangeItem({ name: entry, dir, status: 'archived' });
+    const item = await tryBuildChangeItem({ name: entry, dir, status: 'archived', projectRoot });
     if (item) items.push(item);
   }
 
@@ -153,18 +220,30 @@ interface BuildChangeInput {
   name: string;
   dir: string;
   status: 'active' | 'archived';
+  projectRoot: string;
 }
 
 async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboardItem> {
+  const changeInspection = await inspectProtectedProjectPath(
+    input.projectRoot,
+    projectRelative(input.projectRoot, input.dir),
+    {
+      label: `Classic change ${input.name}`,
+      expected: 'directory',
+    },
+  );
+  if (!changeInspection.exists) {
+    throw new Error(`Classic change ${input.name} disappeared during collection`);
+  }
   const yamlPath = path.join(input.dir, '.comet.yaml');
   const tasksPath = path.join(input.dir, 'tasks.md');
   const designPath = path.join(input.dir, 'design.md');
   const proposalPath = path.join(input.dir, 'proposal.md');
   const localPlanPath = path.join(input.dir, 'plan.md');
 
-  const yaml: CometYaml = (await readCometYaml(yamlPath)) ?? {};
+  const yaml: CometYaml = (await readProjectCometYaml(input.projectRoot, yamlPath)) ?? {};
 
-  const projectRoot = resolveProjectRoot(input.dir);
+  const projectRoot = input.projectRoot;
 
   // Read yaml path-pointers for Superpowers artifacts
   const yamlPlanPath = stripNullish(yaml.plan);
@@ -172,19 +251,24 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
   const yamlDesignDocPath = stripNullish(yaml.design_doc ?? yaml.designDoc);
 
   // Resolve Superpowers artifact paths (yaml paths are relative to project root)
-  const resolvedPlanPath = yamlPlanPath ? path.resolve(projectRoot, yamlPlanPath) : localPlanPath;
-  const resolvedVerifyPath = yamlVerifyPath
-    ? path.resolve(projectRoot, yamlVerifyPath)
-    : path.join(input.dir, '.comet', 'verify-result.md');
+  const resolvedPlanPath =
+    (yamlPlanPath
+      ? await resolveArtifactPointer(projectRoot, yamlPlanPath, 'Classic plan artifact')
+      : null) ?? localPlanPath;
+  const resolvedVerifyPath =
+    (yamlVerifyPath
+      ? await resolveArtifactPointer(projectRoot, yamlVerifyPath, 'Classic verification artifact')
+      : null) ?? path.join(input.dir, '.comet', 'verify-result.md');
   const resolvedDesignDocPath = yamlDesignDocPath
-    ? path.resolve(projectRoot, yamlDesignDocPath)
+    ? ((await resolveArtifactPointer(projectRoot, yamlDesignDocPath, 'Classic design artifact')) ??
+      '')
     : '';
 
-  const tasks = await readTasks(tasksPath);
+  const tasks = await readTasks(projectRoot, tasksPath);
   const verify = await resolveVerify({ changeDir: input.dir, yaml, projectRoot });
 
   // Detect delta specs in change directory
-  const deltaSpecPath = await findDeltaSpec(input.dir);
+  const deltaSpecPath = await findDeltaSpec(projectRoot, input.dir);
 
   // Comet intermediate artifacts
   const handoffPath = path.join(input.dir, '.comet', 'handoff', 'design-context.json');
@@ -205,17 +289,19 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
     brainstormExists,
     subagentProgressExists,
   ] = await Promise.all([
-    fileExists(proposalPath),
-    fileExists(designPath),
-    fileExists(tasksPath),
-    fileExists(localPlanPath),
-    fileExists(resolvedPlanPath),
-    resolvedDesignDocPath ? fileExists(resolvedDesignDocPath) : Promise.resolve(false),
-    fileExists(yamlPath),
-    fileExists(handoffPath),
-    fileExists(checkpointPath),
-    fileExists(brainstormPath),
-    fileExists(subagentProgressPath),
+    safeProjectFileExists(projectRoot, proposalPath, 'Classic proposal artifact'),
+    safeProjectFileExists(projectRoot, designPath, 'Classic design artifact'),
+    safeProjectFileExists(projectRoot, tasksPath, 'Classic tasks artifact'),
+    safeProjectFileExists(projectRoot, localPlanPath, 'Classic local plan artifact'),
+    safeProjectFileExists(projectRoot, resolvedPlanPath, 'Classic plan artifact'),
+    resolvedDesignDocPath
+      ? safeProjectFileExists(projectRoot, resolvedDesignDocPath, 'Classic design artifact')
+      : Promise.resolve(false),
+    safeProjectFileExists(projectRoot, yamlPath, 'Classic state artifact'),
+    safeProjectFileExists(projectRoot, handoffPath, 'Classic handoff artifact'),
+    safeProjectFileExists(projectRoot, checkpointPath, 'Classic checkpoint artifact'),
+    safeProjectFileExists(projectRoot, brainstormPath, 'Classic brainstorm artifact'),
+    safeProjectFileExists(projectRoot, subagentProgressPath, 'Classic progress artifact'),
   ]);
 
   const artifacts: ArtifactsSummary = {
@@ -254,7 +340,7 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
     }),
   };
 
-  const artifactPreviews = await readArtifactPreviews([
+  const artifactPreviews = await readArtifactPreviews(projectRoot, [
     ['proposal', '提案', proposalPath],
     ['design', '设计文档', designPath],
     ['tasks', '任务清单', tasksPath],
@@ -285,7 +371,7 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
   const displayName =
     input.status === 'archived' && archive?.originalName ? archive.originalName : input.name;
 
-  const updatedAt = await readMtime(input.dir);
+  const updatedAt = await readMtime(projectRoot, input.dir);
 
   const risks: DashboardRisk[] = buildChangeRisks({
     status: input.status,
@@ -303,6 +389,7 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
     displayName,
     status: input.status,
     path: input.dir,
+    relativePath: path.relative(projectRoot, input.dir).replaceAll('\\', '/'),
     workflow: yaml.workflow ?? null,
     phase,
     updatedAt,
@@ -322,6 +409,7 @@ async function buildChangeItem(input: BuildChangeInput): Promise<ChangeDashboard
 }
 
 async function readArtifactPreviews(
+  projectRoot: string,
   files: Array<[string, string, string]>,
 ): Promise<ArtifactPreview[]> {
   return Promise.all(
@@ -334,21 +422,19 @@ async function readArtifactPreviews(
       };
 
       try {
-        const stat = await fs.stat(filePath);
-        if (!stat.isFile()) return preview;
+        const relative = path.relative(projectRoot, filePath).replaceAll('\\', '/');
+        const result = await readProtectedProjectFile(
+          projectRoot,
+          relative,
+          ARTIFACT_READ_LIMIT_BYTES,
+          { label: `${label} preview` },
+        );
+        const stat = result.stat;
         preview.exists = true;
-        preview.size = stat.size;
+        preview.size = Number(stat.size);
         preview.updatedAt = stat.mtime.toISOString();
-        const bytesToRead = Math.min(stat.size, ARTIFACT_PREVIEW_LIMIT_BYTES);
-        const handle = await fs.open(filePath, 'r');
-        try {
-          const buffer = Buffer.alloc(bytesToRead);
-          const { bytesRead } = await handle.read(buffer, 0, bytesToRead, 0);
-          preview.content = buffer.subarray(0, bytesRead).toString('utf-8');
-          preview.truncated = stat.size > ARTIFACT_PREVIEW_LIMIT_BYTES;
-        } finally {
-          await handle.close();
-        }
+        preview.content = result.bytes.subarray(0, ARTIFACT_PREVIEW_LIMIT_BYTES).toString('utf-8');
+        preview.truncated = Number(stat.size) > ARTIFACT_PREVIEW_LIMIT_BYTES;
       } catch {
         // Missing or unreadable artifacts are represented as absent previews.
       }
@@ -358,10 +444,84 @@ async function readArtifactPreviews(
   );
 }
 
-async function readTasks(tasksPath: string): Promise<TasksSummary> {
+async function resolveArtifactPointer(
+  projectRoot: string,
+  candidate: string,
+  label: string,
+): Promise<string | null> {
   try {
-    const content = await fs.readFile(tasksPath, 'utf-8');
-    return parseTasksMarkdown(content);
+    return (
+      await inspectProtectedProjectPath(projectRoot, candidate, {
+        label,
+        expected: 'file',
+      })
+    ).target;
+  } catch {
+    return null;
+  }
+}
+
+async function safeProjectFileExists(
+  projectRoot: string,
+  file: string,
+  label: string,
+): Promise<boolean> {
+  try {
+    return await protectedProjectFileExists(
+      projectRoot,
+      path.relative(projectRoot, file).replaceAll('\\', '/'),
+      { label },
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function safeProjectDirectoryExists(
+  projectRoot: string,
+  directory: string,
+  label: string,
+): Promise<boolean> {
+  try {
+    return (
+      await inspectProtectedProjectPath(projectRoot, projectRelative(projectRoot, directory), {
+        label,
+        expected: 'directory',
+      })
+    ).exists;
+  } catch {
+    return false;
+  }
+}
+
+async function readProjectCometYaml(
+  projectRoot: string,
+  yamlPath: string,
+): Promise<CometYaml | null> {
+  try {
+    const result = await readProtectedProjectFile(
+      projectRoot,
+      projectRelative(projectRoot, yamlPath),
+      ARTIFACT_READ_LIMIT_BYTES,
+      { label: 'Classic state artifact' },
+    );
+    return parseCometYaml(result.bytes.toString('utf8'));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    throw error;
+  }
+}
+
+async function readTasks(projectRoot: string, tasksPath: string): Promise<TasksSummary> {
+  try {
+    const result = await readProtectedProjectFile(
+      projectRoot,
+      projectRelative(projectRoot, tasksPath),
+      ARTIFACT_READ_LIMIT_BYTES,
+      { label: 'Classic tasks artifact' },
+    );
+    return parseTasksMarkdown(result.bytes.toString('utf8'));
   } catch {
     return { completed: 0, total: 0, incomplete: [], sections: [] };
   }
@@ -386,17 +546,18 @@ function buildArchiveInfo(input: BuildChangeInput): ArchiveInfo {
   return info;
 }
 
-async function safeStat(target: string): Promise<{ isDirectory(): boolean } | null> {
+async function readMtime(projectRoot: string, target: string): Promise<string | undefined> {
   try {
-    return await fs.stat(target);
-  } catch {
-    return null;
-  }
-}
-
-async function readMtime(target: string): Promise<string | undefined> {
-  try {
-    const stat = await fs.stat(target);
+    const inspection = await inspectProtectedProjectPath(
+      projectRoot,
+      projectRelative(projectRoot, target),
+      {
+        label: 'Classic change directory',
+        expected: 'directory',
+      },
+    );
+    if (!inspection.exists) return undefined;
+    const stat = await fs.lstat(inspection.target);
     return stat.mtime.toISOString();
   } catch {
     return undefined;
@@ -410,28 +571,38 @@ function stripNullish(raw: string | undefined): string | undefined {
   return value;
 }
 
-function resolveProjectRoot(changeDir: string): string {
-  let cursor = path.resolve(changeDir);
-  while (path.dirname(cursor) !== cursor) {
-    if (path.basename(cursor) === 'openspec') return path.dirname(cursor);
-    cursor = path.dirname(cursor);
-  }
-  throw new Error(`Dashboard change is not inside an openspec directory: ${changeDir}`);
-}
-
-async function findDeltaSpec(changeDir: string): Promise<string | undefined> {
+async function findDeltaSpec(projectRoot: string, changeDir: string): Promise<string | undefined> {
   const specsDir = path.join(changeDir, 'specs');
   try {
-    const entries = await fs.readdir(specsDir, { withFileTypes: true });
+    const specsInspection = await inspectProtectedProjectPath(
+      projectRoot,
+      projectRelative(projectRoot, specsDir),
+      {
+        label: 'Classic delta spec root',
+        expected: 'directory',
+      },
+    );
+    if (!specsInspection.exists) return undefined;
+    const entries = await fs.readdir(specsInspection.target, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
       const specFile = path.join(specsDir, entry.name, 'spec.md');
-      if (await fileExists(specFile)) return specFile;
+      if (
+        await protectedProjectFileExists(projectRoot, projectRelative(projectRoot, specFile), {
+          label: `Classic delta spec ${entry.name}`,
+        })
+      ) {
+        return specFile;
+      }
     }
   } catch {
     // specs/ directory doesn't exist
   }
   return undefined;
+}
+
+function projectRelative(projectRoot: string, target: string): string {
+  return path.relative(projectRoot, target).replaceAll('\\', '/');
 }
 
 interface GroupedInput {

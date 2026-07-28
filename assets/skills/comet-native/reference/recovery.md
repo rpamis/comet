@@ -12,6 +12,10 @@ comet native doctor [<change-name>]
 
 Act only on facts returned by doctor or the continuation. Do not edit state, hashes, evidence, locks, or transaction files manually. When the Runtime cannot prove an automatic repair is safe, preserve the scene and wait for the user.
 
+## Workspace advisories
+
+`workspace-root-changed` and `workspace-inspection-unavailable` explain where the current root facts came from; they do not independently block progression or Archive. Do not treat every `workspace-*` finding as advisory: unknown workspace-integrity findings remain errors. When the Runtime requires workspace identity repair, run read-only doctor first and follow its report with explicit `doctor --repair`.
+
 ## Unfinished phase transition
 
 When status or doctor reports an unfinished transition, first retry the original action as directed by the continuation. When explicit repair is required:

@@ -9,6 +9,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const classicRuntimeRoot = path.resolve('assets', 'skills', 'comet', 'runtime', 'classic');
@@ -63,8 +64,19 @@ function hookStdin(filePath: string): string {
   });
 }
 
-async function createChange(tmpDir: string, name: string, yaml: string, tasks = '- [x] done\n') {
-  const changeDir = path.join(tmpDir, 'openspec', 'changes', name);
+async function createChange(
+  tmpDir: string,
+  name: string,
+  yaml: string,
+  tasks = '- [x] done\n',
+  artifactLayout: 'legacy' | 'docs' = 'legacy',
+) {
+  const changeDir = path.join(
+    tmpDir,
+    ...(artifactLayout === 'docs' ? ['docs', 'openspec'] : ['openspec']),
+    'changes',
+    name,
+  );
   await fs.mkdir(changeDir, { recursive: true });
   await writeFile(path.join(changeDir, '.comet.yaml'), yaml);
   await writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
@@ -78,6 +90,7 @@ describe('hook guard', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-guard-'));
+    await prepareClassicLegacyProject(tmpDir);
     hookGuardScript = path.resolve(scriptsDir, 'comet-hook-guard.mjs');
     execFileSync('git', ['init'], { cwd: tmpDir, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
@@ -86,6 +99,80 @@ describe('hook guard', () => {
     execFileSync('git', ['add', '.'], { cwd: tmpDir });
     execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
   });
+
+  it('derives all governed Superpowers artifact directories from the Classic layout resolver', async () => {
+    const source = await fs.readFile(
+      path.resolve('domains', 'comet-classic', 'classic-hook-guard.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain('layout.superpowersRoot');
+    expect(source).toContain('layout.superpowersSpecsDir');
+    expect(source).toContain('layout.superpowersPlansDir');
+    expect(source).toContain('layout.superpowersReportsDir');
+    expect(source).not.toMatch(/prefix:\s*['"]docs\/superpowers\//u);
+    expect(source).not.toMatch(/startsWith\(['"]docs\/superpowers\//u);
+  });
+
+  it.each(['legacy', 'docs'] as const)(
+    'governs a resolved Superpowers design artifact in the %s layout',
+    async (artifactLayout) => {
+      if (artifactLayout === 'docs') {
+        await fs.rm(path.join(tmpDir, 'openspec'), { recursive: true, force: true });
+        await writeFile(
+          path.join(tmpDir, '.comet', 'config.yaml'),
+          [
+            'schema: comet.project.v1',
+            'default_workflow: classic',
+            'workflows: [classic]',
+            'classic:',
+            '  artifact_layout: docs',
+            '',
+          ].join('\n'),
+        );
+        await writeFile(
+          path.join(tmpDir, 'docs', 'openspec', 'config.yaml'),
+          'schema: spec-driven\n',
+        );
+      }
+      await createChange(
+        tmpDir,
+        'layout-design',
+        [
+          'workflow: full',
+          'phase: design',
+          'context_compression: off',
+          'build_mode: null',
+          'build_pause: null',
+          'subagent_dispatch: null',
+          'tdd_mode: null',
+          'isolation: null',
+          'verify_mode: null',
+          'base_ref: null',
+          'design_doc: null',
+          'plan: null',
+          'verify_result: pending',
+          'verification_report: null',
+          'branch_status: pending',
+          'created_at: 2026-07-28',
+          'verified_at: null',
+          'archived: false',
+          'handoff_context: null',
+          'handoff_hash: null',
+          '',
+        ].join('\n'),
+        '- [x] done\n',
+        artifactLayout,
+      );
+      const targetFile = path.join(tmpDir, 'docs', 'superpowers', 'specs', 'layout-design.md');
+
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain('(phase: design, superpowers)');
+    },
+    20_000,
+  );
 
   describe('blocks source writes during non-build phases', () => {
     it('blocks source writes during open phase', async () => {

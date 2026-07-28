@@ -104,6 +104,27 @@ async function resetScenario(workspace, name) {
   const directory = path.join(workspace, name);
   await fs.rm(directory, { recursive: true, force: true });
   await fs.mkdir(directory, { recursive: true });
+  const openSpecRoot = path.join(directory, 'openspec');
+  await fs.mkdir(path.join(directory, '.comet'), { recursive: true });
+  await fs.mkdir(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
+  await fs.mkdir(path.join(openSpecRoot, 'specs'), { recursive: true });
+  await fs.writeFile(
+    path.join(directory, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows:',
+      '  - classic',
+      'classic:',
+      '  artifact_layout: legacy',
+      '  language: en',
+      '  context_compression: off',
+      '  review_mode: standard',
+      '  auto_transition: true',
+      '',
+    ].join('\n'),
+  );
+  await fs.writeFile(path.join(openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
   return directory;
 }
 

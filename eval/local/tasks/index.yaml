@@ -75,6 +75,13 @@ tasks:
       - COMET_FULL_039
     description: Full open-design-build-verify-archive workflow on a sentence-counting feature. The canonical 5-phase task.
 
+  - name: comet-classic-layout-lifecycle
+    category: comet
+    default_treatments:
+      - COMET_CLASSIC_DOCS_LAYOUT
+      - COMET_CLASSIC_LEGACY_LAYOUT
+    description: Current-checkout Classic lifecycle across the docs and explicit legacy artifact layouts.
+
   # ── Dimension coverage tasks (bug fix / refactor / perf / api / robustness) ──
   - name: comet-fix-median
     category: comet

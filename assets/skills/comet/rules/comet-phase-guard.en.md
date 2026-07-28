@@ -8,7 +8,7 @@
 
 ### Phase Awareness (Highest Priority)
 
-When there is an active comet change (`openspec/changes/<name>/.comet.yaml` exists), **before starting any operation** you must read the `phase` field to confirm the current phase.
+When there is an active comet change (`<classic-change-dir>/.comet.yaml` bound by the Classic layout resolver exists), **before starting any operation** you must read the `phase` field to confirm the current phase.
 
 When multiple active changes exist, resolve the current change first, then run:
 
@@ -28,7 +28,7 @@ Ordinary source writes are governed only by the selected change phase. With mult
 | `verify` | Verification, record verification report | Skip failure handling, handle the branch early |
 | `archive` | Confirm archive, run archive script, commit archive changes, handle the branch | Write source code |
 
-The hook hard interception allowlist includes workflow and platform workspaces such as `openspec/*`, `docs/superpowers/*`, `.superpowers/*`, `.claude/*`, and `.comet/*`; write access to these paths does not allow skipping the current phase's artifacts or confirmation requirements.
+The hook hard interception allowlist includes the OpenSpec and Superpowers roots returned by the Classic layout resolver, plus workflow and platform workspaces such as `.superpowers/*`, `.claude/*`, and `.comet/*`; write access to these paths does not allow skipping the current phase's artifacts or confirmation requirements.
 
 ### Phase-Entry Self-Consistency Check (Before Writing Source Code)
 
@@ -113,7 +113,7 @@ After recovery, first re-run the "Phase-Entry Self-Consistency Check" table: if 
 **Special attention to `build_mode`**: If recovery script outputs `build_mode: subagent-driven-development`, you are the coordinator, not the executor. Must:
 1. Use the Skill tool to reload the Superpowers `subagent-driven-development` skill
 2. Re-read `comet/reference/subagent-dispatch.md` for Comet-specific extensions
-3. Read `openspec/changes/<name>/.comet/subagent-progress.md` to recover the exact stage, evidence, and review-fix round
+3. Read `<classic-change-dir>/.comet/subagent-progress.md` to recover the exact stage, evidence, and review-fix round
 4. Do not execute tasks directly in the main session
 5. Resume from the checkpoint; start from the first unchecked task only when it is missing or mismatched
 6. Tasks already committed but not yet validated according to `review_mode` remain unchecked; continue the corresponding validation/review/fix loop

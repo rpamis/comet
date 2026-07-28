@@ -487,6 +487,11 @@ def test_current_cli_snapshot_helper_source_builds_checkout(monkeypatch, tmp_pat
     (checkout / "bin").mkdir(parents=True)
     (checkout / "bin/comet.js").write_text("import '../dist/index.js';\n", encoding="utf-8")
     (checkout / "package.json").write_text('{"type":"module"}\n', encoding="utf-8")
+    (checkout / "assets/skills/comet").mkdir(parents=True)
+    (checkout / "assets/manifest.json").write_text(
+        '{"skills":["comet/SKILL.md"]}\n', encoding="utf-8"
+    )
+    (checkout / "assets/skills/comet/SKILL.md").write_text("# Comet\n", encoding="utf-8")
     environment = tmp_path / "environment"
     environment.mkdir()
     (environment / ".include-current-comet-cli").write_text("include\n", encoding="utf-8")
@@ -511,11 +516,16 @@ def test_current_cli_snapshot_helper_source_builds_checkout(monkeypatch, tmp_pat
     assert (snapshot / "bin/comet.js").is_file()
     assert (snapshot / "dist/app/cli/index.js").is_file()
     assert (snapshot / "dist/domains/dashboard/native-adapter.js").is_file()
+    assert (snapshot / "assets/manifest.json").is_file()
+    assert (snapshot / "assets/skills/comet/SKILL.md").is_file()
     assert (snapshot / "package.json").is_file()
     identity = json.loads((snapshot / "build-identity.json").read_text(encoding="utf-8"))
     assert identity["schema"] == "comet.eval.current-comet-build.v1"
-    assert identity["sourceFileCount"] >= 2
-    assert identity["snapshotFileCount"] >= 4
+    assert identity["sourceFileCount"] >= 4
+    assert identity["snapshotFileCount"] >= 6
+    assert identity["assetsFileCount"] == 2
+    assert identity["assetsHash"]
+    assert identity["manifestHash"]
 
 
 def test_controller_snapshots_native_runtime_for_readonly_oracle(tmp_path: Path):

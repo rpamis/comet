@@ -5,6 +5,8 @@ description: "Use when the user explicitly invokes /comet-classic, asks to start
 
 # Comet Classic — OpenSpec + Superpowers Dual-Star Development Workflow
 
+Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+
 OpenSpec and Superpowers orbit the same goal like a binary star system.
 
 ```
@@ -22,14 +24,14 @@ Agents need only read this section for decision-making. Refer to the Reference A
 
 ### Output Language Rule
 
-Use the configured Comet artifact language as the output language for every OpenSpec and Superpowers artifact. The configured value is a normalized language id, `en` or `zh-CN`. For an existing change, read `language` from `openspec/changes/<name>/.comet.yaml` using `comet state get <name> language`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; if neither exists, fall back to the current user request language. Include the resolved language explicitly in every prompt or ARGUMENTS passed to external OpenSpec/Superpowers skills.
+Use the configured Comet artifact language as the output language for every OpenSpec and Superpowers artifact. The configured value is a normalized language id, `en` or `zh-CN`. For an existing change, read `language` from `<classic-change-dir>/.comet.yaml` using `comet state get <name> language`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; if neither exists, fall back to the current user request language. Include the resolved language explicitly in every prompt or ARGUMENTS passed to external OpenSpec/Superpowers skills.
 
 ### Automatic Phase Detection
 
 **Step 0: Active Change Discovery and Intent Resolution**
 
 1. First load script locations through `comet/reference/scripts.md` and ensure `$COMET_INTENT` is available.
-2. Run `openspec list --json` to collect active changes.
+2. Run `comet classic openspec -- list --json` to collect active changes.
 3. Fill a `CometIntentFrame` from the user request, active change list, and necessary repository state.
 4. Prefer `node "$COMET_INTENT" route --stdin` to pass the frame JSON and get the runtime-normalized route. `CometIntentFrame + runtime scorer` is the source of truth; this prose is only for intent recognition slot extraction.
 5. Handle the runtime route:
@@ -120,7 +122,7 @@ Calling `/opsx:new` directly leaves `.comet.yaml` missing and breaks later phase
 
 **Step 1: Read `.comet.yaml` state metadata**
 
-Prefer reading `openspec/changes/<name>/.comet.yaml`. If not available, fall back to `openspec status --change "<name>" --json`, `tasks.md`, and `docs/superpowers/` file checks.
+Prefer reading `<classic-change-dir>/.comet.yaml`. If not available, fall back to `comet classic openspec -- status --change "<name>" --json`, `<classic-change-dir>/tasks.md`, and `<classic-superpowers-root>/` file checks.
 
 **Resume rules**:
 - On every context resume, rerun Step 0 and Step 1; do not trust conversation history for phase detection
@@ -168,7 +170,7 @@ See the "Upgrade Assessment" section of each `comet-hotfix` / `comet-tweak` for 
 
 | Scenario | Handling |
 |----------|----------|
-| `openspec list --json` fails | Check if openspec is installed, prompt user to run `openspec init` |
+| `comet classic openspec -- list --json` fails | Check whether OpenSpec is installed; if the artifact root is missing or damaged, prompt the user to run `comet update --scope project` or rerun `comet init --scope project` |
 | Sub-skill unavailable | Stop workflow, prompt to install or enable the corresponding skill |
 | `.comet.yaml` missing | Enter the relevant preset's `/comet-open` initialization, then run `comet state select`; never skip initialization |
 | `.comet.yaml` malformed | Stop and report the parse error; repair from version control, backup, or verifiable artifacts, never overwrite it with `comet state set` |

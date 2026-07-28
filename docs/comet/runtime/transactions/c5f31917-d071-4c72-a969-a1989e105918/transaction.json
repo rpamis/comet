@@ -1,0 +1,46 @@
+{
+  "schema": "comet.native.transaction.v2",
+  "id": "c5f31917-d071-4c72-a969-a1989e105918",
+  "kind": "archive",
+  "status": "committed",
+  "change": "complete-unified-product-catalogue",
+  "createdAt": "2026-07-28T00:21:45.444Z",
+  "preflightHash": "cf52965788f08019cae7fcc824ed93440baad4e9109f8cd98055a7bdba1791af",
+  "operations": [
+    {
+      "id": "spec-1-classic-config-block",
+      "type": "write",
+      "target": "specs/classic-config-block/spec.md",
+      "staged": "runtime/transactions/c5f31917-d071-4c72-a969-a1989e105918/staged/specs/classic-config-block/spec.md",
+      "backup": "runtime/transactions/c5f31917-d071-4c72-a969-a1989e105918/backups/specs/classic-config-block/spec.md",
+      "expectedTargetHash": "8708f29ee01675c277f03be111651b4a73de71ce54a7f59ad6bed0ed9b871a68",
+      "stagedHash": "82af3cac2ef0ccfe701d44787b0b6187816606c36a68ff2f73d0f6185c57fad4"
+    },
+    {
+      "id": "spec-2-native-init-workspace-defaults",
+      "type": "write",
+      "target": "specs/native-init-workspace-defaults/spec.md",
+      "staged": "runtime/transactions/c5f31917-d071-4c72-a969-a1989e105918/staged/specs/native-init-workspace-defaults/spec.md",
+      "backup": "runtime/transactions/c5f31917-d071-4c72-a969-a1989e105918/backups/specs/native-init-workspace-defaults/spec.md",
+      "expectedTargetHash": "a650ccd65f017d0d47ade5df26d1016de83ad5beb5480166c393d902765e3116",
+      "stagedHash": "d571b00896f5465672169268230f58ae87aa423d22aae16f09914411a299c310"
+    },
+    {
+      "id": "spec-3-unified-product-catalogue",
+      "type": "write",
+      "target": "specs/unified-product-catalogue/spec.md",
+      "staged": "runtime/transactions/c5f31917-d071-4c72-a969-a1989e105918/staged/specs/unified-product-catalogue/spec.md",
+      "backup": "runtime/transactions/c5f31917-d071-4c72-a969-a1989e105918/backups/specs/unified-product-catalogue/spec.md",
+      "expectedTargetHash": "6f27dc7a98b2cf99695b3334f078033bd349def37f35108cf90d994ee20214b1",
+      "stagedHash": "0e29202606970725761e1288dde707020f0c40a4419307825ca3abf387db8e57"
+    },
+    {
+      "id": "archive-change",
+      "type": "move",
+      "source": "changes/complete-unified-product-catalogue",
+      "target": "archive/2026-07-28-complete-unified-product-catalogue",
+      "expectedSourceHash": "b87783a48d993cd4225e0ebacebb1d51ea090b4c9e13da4c820adfad933a0a99",
+      "expectedTargetHash": null
+    }
+  ]
+}

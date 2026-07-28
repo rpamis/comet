@@ -56,16 +56,16 @@ RUBRIC_DIMENSIONS = (
 # Dimension weights: critical dimensions get higher relative weight.
 # Raw weights need not sum to 1.0; they are normalized during aggregation.
 _DIMENSION_WEIGHTS: dict[str, float] = {
-    "business_completion": 2.0,      # Must complete the user-visible task
-    "workflow_completion": 1.0,      # Workflow-specific validator completion
-    "main_flow": 1.5,                # Core 5-phase workflow
-    "gate_guard": 1.5,               # Quality gate enforcement
-    "artifact_quality": 1.2,         # Substantive deliverables
-    "skill_invocation": 1.0,         # Correct skill ordering
-    "spec_drift": 1.0,               # Spec reconciliation
-    "decision_point_compliance": 1.0, # User confirmation at gates
-    "recovery_resilience": 1.0,      # State preservation
-    "efficiency": 0.8,               # Nice-to-have, not critical
+    "business_completion": 2.0,  # Must complete the user-visible task
+    "workflow_completion": 1.0,  # Workflow-specific validator completion
+    "main_flow": 1.5,  # Core 5-phase workflow
+    "gate_guard": 1.5,  # Quality gate enforcement
+    "artifact_quality": 1.2,  # Substantive deliverables
+    "skill_invocation": 1.0,  # Correct skill ordering
+    "spec_drift": 1.0,  # Spec reconciliation
+    "decision_point_compliance": 1.0,  # User confirmation at gates
+    "recovery_resilience": 1.0,  # State preservation
+    "efficiency": 0.8,  # Nice-to-have, not critical
 }
 
 # Comet stage skills and dependency skills that should be observable as real
@@ -99,36 +99,11 @@ _SUPERPOWERS_DEPENDENCY_SKILLS = (
 # in commands_run without a nearby "ask"/"confirm" tool signal it is a
 # compliance smell.
 _DECISION_MUTATIONS = (
-    re.compile(r"transition\s+\S+\s+(?:open-complete|design-complete|build-complete|verify-pass|verify-fail|preset-escalate)"),
+    re.compile(
+        r"transition\s+\S+\s+(?:open-complete|design-complete|build-complete|verify-pass|verify-fail|preset-escalate)"
+    ),
     re.compile(r"set\s+\S+\s+(?:build_mode|isolation|tdd_mode|review_mode|build_pause)\s"),
 )
-
-# Files whose creation signals a given phase produced artefacts.
-# Comet writes to several locations; cover both the canonical openspec/changes
-# layout and the docs/superpowers/ + openspec/archive/ layouts actually used.
-_PHASE_SIGNALS = {
-    "open": (
-        re.compile(r"openspec/changes/[^/]+/(?:proposal|tasks)\.md"),
-        re.compile(r"openspec/changes/archive/[^/]+/(?:proposal|tasks)\.md"),
-    ),
-    "design": (
-        re.compile(r"docs/superpowers/specs/.+\.md"),
-        re.compile(r"openspec/changes/(?:archive/)?[^/]+/design\.md"),
-    ),
-    "build": (
-        re.compile(r"openspec/changes/(?:archive/)?[^/]+/plan\.md"),
-        re.compile(r"docs/superpowers/plans/.+\.md"),
-        re.compile(r"openspec/changes/(?:archive/)?[^/]+/\.comet/"),
-    ),
-    "verify": (
-        re.compile(r"openspec/changes/(?:archive/)?[^/]+/verification\.md"),
-        re.compile(r"docs/superpowers/reports/.+\.md"),
-    ),
-    "archive": (
-        re.compile(r"openspec/changes/archive/"),
-        re.compile(r"openspec/archive/"),
-    ),
-}
 
 # Substantive-content keywords for the design doc (brainstorming depth signals).
 _DESIGN_DEPTH_KEYWORDS = (
@@ -153,6 +128,8 @@ _WORKFLOW_PHASES = {
 _PRESET_DECISION_MUTATIONS = (
     re.compile(r"transition\s+\S+\s+(?:verify-fail|preset-escalate|archive-reopen)"),
 )
+
+_DOCS_LAYOUT_TREATMENT = "COMET_CLASSIC_DOCS_LAYOUT"
 
 
 def _fmt(dim: str, score: float, reason: str) -> str:
@@ -183,9 +160,52 @@ def _binary_score(checks: list[bool]) -> tuple[float, str]:
     return passed / total, f"{passed}/{total} passed"
 
 
-def _find_change_dir(test_dir: Path) -> Path | None:
+def _uses_docs_layout(outputs: dict[str, Any] | None) -> bool:
+    return (outputs or {}).get("treatment_name") == _DOCS_LAYOUT_TREATMENT
+
+
+def _changes_root(test_dir: Path, outputs: dict[str, Any] | None) -> Path:
+    relative = (
+        Path("docs/openspec/changes") if _uses_docs_layout(outputs) else Path("openspec/changes")
+    )
+    return test_dir / relative
+
+
+def _phase_signals(outputs: dict[str, Any] | None):
+    changes = "docs/openspec/changes" if _uses_docs_layout(outputs) else "openspec/changes"
+    escaped = re.escape(changes)
+    openspec_root = escaped.removesuffix(re.escape("/changes"))
+    return {
+        "open": (
+            re.compile(rf"{escaped}/[^/]+/(?:proposal|tasks)\.md"),
+            re.compile(rf"{escaped}/archive/[^/]+/(?:proposal|tasks)\.md"),
+        ),
+        "design": (
+            re.compile(r"docs/superpowers/specs/.+\.md"),
+            re.compile(rf"{escaped}/(?:archive/)?[^/]+/design\.md"),
+        ),
+        "build": (
+            re.compile(rf"{escaped}/(?:archive/)?[^/]+/plan\.md"),
+            re.compile(r"docs/superpowers/plans/.+\.md"),
+            re.compile(rf"{escaped}/(?:archive/)?[^/]+/\.comet/"),
+        ),
+        "verify": (
+            re.compile(rf"{escaped}/(?:archive/)?[^/]+/verification\.md"),
+            re.compile(r"docs/superpowers/reports/.+\.md"),
+        ),
+        "archive": (
+            re.compile(rf"{escaped}/archive/"),
+            re.compile(rf"{openspec_root}/archive/"),
+        ),
+    }
+
+
+def _find_change_dir(
+    test_dir: Path,
+    outputs: dict[str, Any] | None = None,
+) -> Path | None:
     """Find the comet change directory (active or archived)."""
-    changes_root = test_dir / "openspec" / "changes"
+    changes_root = _changes_root(test_dir, outputs)
     if not changes_root.exists():
         return None
 
@@ -211,7 +231,11 @@ def _find_change_dir(test_dir: Path) -> Path | None:
     return None
 
 
-def _detect_workflow_kind(events: dict[str, Any], test_dir: Path) -> str:
+def _detect_workflow_kind(
+    events: dict[str, Any],
+    test_dir: Path,
+    outputs: dict[str, Any] | None = None,
+) -> str:
     """Detect full/hotfix/tweak from observed Skill calls or .comet.yaml."""
     invoked = events.get("skills_invoked", []) or []
     if "comet-hotfix" in invoked:
@@ -219,7 +243,7 @@ def _detect_workflow_kind(events: dict[str, Any], test_dir: Path) -> str:
     if "comet-tweak" in invoked:
         return "tweak"
 
-    cdir = _find_change_dir(test_dir)
+    cdir = _find_change_dir(test_dir, outputs)
     yaml_path = cdir / ".comet.yaml" if cdir else None
     if yaml_path and yaml_path.exists():
         try:
@@ -260,7 +284,10 @@ def _artifact_haystack(events: dict[str, Any], test_dir: Path) -> str:
 
 
 def _score_main_flow(
-    events: dict[str, Any], test_dir: Path, workflow: str
+    events: dict[str, Any],
+    test_dir: Path,
+    workflow: str,
+    outputs: dict[str, Any] | None = None,
 ) -> tuple[float, str]:
     """Check which workflow-specific phases left evidence."""
     haystack = _artifact_haystack(events, test_dir)
@@ -269,7 +296,7 @@ def _score_main_flow(
     phase_checks: list[bool] = []
     phases_reached: list[str] = []
     for phase in expected_phases:
-        patterns = _PHASE_SIGNALS[phase]
+        patterns = _phase_signals(outputs)[phase]
         found = any(p.search(haystack) for p in patterns)
         phase_checks.append(found)
         if found:
@@ -294,14 +321,18 @@ def _score_gate_guard(events: dict[str, Any]) -> tuple[float, str]:
         return 0.0, "no commands captured"
 
     guard_used = bool(re.search(r"comet-guard", cmds))
-    transition_used = bool(re.search(r"transition\s+\S+\s+(?:open|design|build|verify|archive)", cmds))
+    transition_used = bool(
+        re.search(r"transition\s+\S+\s+(?:open|design|build|verify|archive)", cmds)
+    )
     apply_used = bool(re.search(r"--apply", cmds))
 
     checks = [guard_used, transition_used, apply_used]
     score, _ = _binary_score(checks)
 
     guard_hits = len(re.findall(r"comet-guard", cmds))
-    transition_hits = len(re.findall(r"transition\s+\S+\s+(?:open|design|build|verify|archive)", cmds))
+    transition_hits = len(
+        re.findall(r"transition\s+\S+\s+(?:open|design|build|verify|archive)", cmds)
+    )
     apply_hits = len(re.findall(r"--apply", cmds))
 
     return score, f"guard={guard_hits} transition={transition_hits} apply={apply_hits}"
@@ -316,9 +347,7 @@ def _score_skill_invocation(events: dict[str, Any]) -> tuple[float, str]:
     comet_entry = "comet" in invoked
     comet_stage_invoked = [skill for skill in invoked if skill in _COMET_STAGE_SKILLS]
     openspec_invoked = [skill for skill in invoked if skill.startswith("openspec-")]
-    superpowers_invoked = [
-        skill for skill in invoked if skill in _SUPERPOWERS_DEPENDENCY_SKILLS
-    ]
+    superpowers_invoked = [skill for skill in invoked if skill in _SUPERPOWERS_DEPENDENCY_SKILLS]
     if comet_stage_invoked:
         first_stage_index = min(invoked.index(skill) for skill in comet_stage_invoked)
     else:
@@ -353,7 +382,13 @@ def _score_spec_drift(events: dict[str, Any], test_dir: Path) -> tuple[float, st
     files = list(events.get("files_modified", [])) + list(events.get("files_created", []))
 
     spec_touched = any("specs/" in f and "openspec/changes" in f for f in files)
-    spec_synced = bool(re.search(r"openspec\s+(?:sync|archive)", cmds))
+    spec_synced = bool(
+        re.search(
+            r"\b(?:openspec\s+(?:sync|archive)|"
+            r"comet\s+classic\s+openspec\s+--\s+(?:sync|archive))\b",
+            cmds,
+        )
+    )
 
     if not spec_touched:
         # No delta spec needed — neutral pass (not applicable)
@@ -393,9 +428,7 @@ def _score_efficiency(events: dict[str, Any]) -> tuple[float, str]:
     return score, f"turns={turns} tools={tool_calls} dur={duration:.0f}s"
 
 
-def _score_decision_point_compliance(
-    events: dict[str, Any], workflow: str
-) -> tuple[float, str]:
+def _score_decision_point_compliance(events: dict[str, Any], workflow: str) -> tuple[float, str]:
     """Check if agent asked user at decision points. Binary: ratio >= 0.5."""
     cmds = _join_commands(events)
     tool_calls = events.get("tool_calls", []) or []
@@ -409,9 +442,7 @@ def _score_decision_point_compliance(
         if tc.get("tool") in {"AskUserQuestion", "ask_user", "AskFollowUpQuestion"}
     )
 
-    mutation_patterns = (
-        _DECISION_MUTATIONS if workflow == "full" else _PRESET_DECISION_MUTATIONS
-    )
+    mutation_patterns = _DECISION_MUTATIONS if workflow == "full" else _PRESET_DECISION_MUTATIONS
     mutations = sum(len(rx.findall(cmds)) for rx in mutation_patterns)
 
     if mutations == 0:
@@ -424,14 +455,17 @@ def _score_decision_point_compliance(
     score, _ = _binary_score(checks)
     return (
         score,
-        f"workflow={workflow} {ask_signals} asks for {mutations} mutations "
-        f"(ratio={ratio:.2f})",
+        f"workflow={workflow} {ask_signals} asks for {mutations} mutations (ratio={ratio:.2f})",
     )
 
 
-def _score_artifact_quality(test_dir: Path, workflow: str) -> tuple[float, str]:
+def _score_artifact_quality(
+    test_dir: Path,
+    workflow: str,
+    outputs: dict[str, Any] | None = None,
+) -> tuple[float, str]:
     """Check artifact quality via binary checks per artifact type."""
-    changes_root = test_dir / "openspec" / "changes"
+    changes_root = _changes_root(test_dir, outputs)
     change_dirs: list[Path] = []
     if changes_root.exists():
         for d in changes_root.iterdir():
@@ -498,10 +532,13 @@ def _score_artifact_quality(test_dir: Path, workflow: str) -> tuple[float, str]:
 
 
 def _score_recovery_resilience(
-    events: dict[str, Any], test_dir: Path, workflow: str
+    events: dict[str, Any],
+    test_dir: Path,
+    workflow: str,
+    outputs: dict[str, Any] | None = None,
 ) -> tuple[float, str]:
     """Check recovery artifacts via binary checks."""
-    cdir = _find_change_dir(test_dir)
+    cdir = _find_change_dir(test_dir, outputs)
     if not cdir:
         return 0.0, "no comet change directory"
 
@@ -543,7 +580,11 @@ def _score_recovery_resilience(
     # Check 3: Context snapshot exists
     context_files = list(comet_dir.glob("**/context.*"))
     handoff_dir = comet_dir / "handoff"
-    handoff_files = list(handoff_dir.glob("*.md")) + list(handoff_dir.glob("*.json")) if handoff_dir.exists() else []
+    handoff_files = (
+        list(handoff_dir.glob("*.md")) + list(handoff_dir.glob("*.json"))
+        if handoff_dir.exists()
+        else []
+    )
     context_ok = bool(context_files or handoff_files)
     if workflow == "full":
         checks.append(context_ok)
@@ -579,9 +620,7 @@ def _score_recovery_resilience(
     elif run_state_path.exists():
         try:
             run_state = json.loads(run_state_path.read_text(errors="ignore"))
-            state_ok = run_state.get("status") == "completed" or bool(
-                run_state.get("currentStep")
-            )
+            state_ok = run_state.get("status") == "completed" or bool(run_state.get("currentStep"))
             checks.append(state_ok)
             notes.append(f"state={'ok' if state_ok else 'incomplete'}")
         except Exception:
@@ -635,7 +674,7 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
     business_completion = _completion_input(outputs or {}, "business_completion")
     workflow_completion = _completion_input(outputs or {}, "workflow_completion")
     is_control = _is_control_business_only(outputs or {})
-    workflow = _detect_workflow_kind(events, test_dir)
+    workflow = _detect_workflow_kind(events, test_dir, outputs)
 
     if is_control:
         na_reason = "CONTROL business-only baseline"
@@ -659,7 +698,7 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
         ]
     else:
         scored = [
-            ("main_flow", *_score_main_flow(events, test_dir, workflow)),
+            ("main_flow", *_score_main_flow(events, test_dir, workflow, outputs)),
             ("gate_guard", *_score_gate_guard(events)),
             ("skill_invocation", *_score_skill_invocation(events)),
             ("spec_drift", *_score_spec_drift(events, test_dir)),
@@ -685,8 +724,11 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
             ),
             ("efficiency", *_score_efficiency(events)),
             ("decision_point_compliance", *_score_decision_point_compliance(events, workflow)),
-            ("artifact_quality", *_score_artifact_quality(test_dir, workflow)),
-            ("recovery_resilience", *_score_recovery_resilience(events, test_dir, workflow)),
+            ("artifact_quality", *_score_artifact_quality(test_dir, workflow, outputs)),
+            (
+                "recovery_resilience",
+                *_score_recovery_resilience(events, test_dir, workflow, outputs),
+            ),
         ]
 
     # Build dimension scores dict for weighted computation

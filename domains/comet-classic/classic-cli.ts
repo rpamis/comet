@@ -4,7 +4,9 @@ import { classicGuardCommand } from './classic-guard.js';
 import { classicHandoffCommand } from './classic-handoff.js';
 import { classicHookGuardCommand } from './classic-hook-guard.js';
 import { classicIntentCommand } from './classic-intent-command.js';
+import { classicOpenSpecCommand } from './classic-openspec-command.js';
 import { classicResumeProbeCommand } from './classic-resume-probe-command.js';
+import { classicRootCommand } from './classic-root-command.js';
 import { classicStateCommand } from './classic-state-command.js';
 import { classicValidateCommand } from './classic-validate-command.js';
 
@@ -16,6 +18,8 @@ export interface ClassicCommandResult {
 
 export interface ClassicCommandOptions {
   json: boolean;
+  invocationCwd?: string;
+  projectRoot?: string;
 }
 
 export type ClassicCommandHandler = (
@@ -34,6 +38,8 @@ export const CLASSIC_COMMANDS = [
   'hook-guard',
   'intent',
   'resume-probe',
+  'openspec',
+  'root',
 ] as const;
 
 export type ClassicCommandName = (typeof CLASSIC_COMMANDS)[number];
@@ -47,6 +53,8 @@ const DEFAULT_HANDLERS: ClassicCommandHandlers = {
   'hook-guard': classicHookGuardCommand,
   intent: classicIntentCommand,
   'resume-probe': classicResumeProbeCommand,
+  openspec: classicOpenSpecCommand,
+  root: classicRootCommand,
 };
 
 function isClassicCommand(value: string): value is ClassicCommandName {
@@ -111,10 +119,10 @@ export async function runClassicCli(
   argv: readonly string[],
   handlers: ClassicCommandHandlers = DEFAULT_HANDLERS,
 ): Promise<ClassicCommandResult> {
-  const json = argv.includes('--json');
-  const args = argv.filter((argument) => argument !== '--json');
+  const json = argv[0] !== 'openspec' && argv.includes('--json');
+  const args = json ? argv.filter((argument) => argument !== '--json') : [...argv];
   const command = args.shift();
-  const result = await dispatch(command, args, { json }, handlers);
+  const result = await dispatch(command, args, { json, invocationCwd: process.cwd() }, handlers);
   return json ? jsonResult(command, result) : result;
 }
 

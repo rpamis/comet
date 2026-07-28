@@ -23,6 +23,8 @@ import {
   readSkillSnapshot,
 } from '../../domains/skill/snapshot.js';
 import type { SkillPackage } from '../../domains/skill/types.js';
+import { discoverClassicProject } from './classic-layout.js';
+import { readClassicProjectFile } from './classic-protected-path.js';
 
 export interface ClassicRunContext {
   classic: ClassicState;
@@ -36,6 +38,10 @@ export interface EnsureClassicRunOptions {
   skillPackage: SkillPackage;
   now?: () => Date;
   runId?: () => string;
+  handoffReadHooks?: {
+    afterOpen?: () => void | Promise<void>;
+    beforeFinalCheck?: () => void | Promise<void>;
+  };
 }
 
 async function pathExists(target: string): Promise<boolean> {
@@ -46,15 +52,6 @@ async function pathExists(target: string): Promise<boolean> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
   }
-}
-
-function projectRootFor(changeDir: string): string {
-  let cursor = path.resolve(changeDir);
-  while (path.dirname(cursor) !== cursor) {
-    if (path.basename(cursor) === 'openspec') return path.dirname(cursor);
-    cursor = path.dirname(cursor);
-  }
-  throw new Error(`Classic change is not inside an openspec directory: ${changeDir}`);
 }
 
 function sha256(content: string): string {
@@ -79,7 +76,7 @@ async function migrationArtifacts(
   changeDir: string,
   evidence: readonly ClassicEvidence[],
 ): Promise<Record<string, string>> {
-  const projectRoot = projectRootFor(changeDir);
+  const projectRoot = await discoverClassicProject(changeDir);
   const artifacts = Object.fromEntries(
     evidence
       .filter((item) => item.satisfied && item.source)
@@ -195,11 +192,18 @@ export async function ensureClassicRun(
       classicMigration: CLASSIC_MIGRATION_VERSION,
     };
     const artifacts = await migrationArtifacts(changeDir, evidence);
-    const projectRoot = projectRootFor(changeDir);
+    const projectRoot = await discoverClassicProject(changeDir);
     const handoff = evidence.find((item) => item.code === 'design.handoff' && item.satisfied);
     let context: string | null = null;
     if (handoff?.source) {
-      context = await fs.readFile(path.resolve(projectRoot, handoff.source), 'utf8');
+      context = await readClassicProjectFile(
+        projectRoot,
+        handoff.resolvedSource ?? handoff.source,
+        {
+          label: 'Classic migration handoff context',
+          hooks: options.handoffReadHooks,
+        },
+      );
       await writeContext(changeDir, run.contextRef, context);
       createdFiles.push(path.resolve(changeDir, run.contextRef));
     }

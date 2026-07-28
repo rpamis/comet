@@ -62,7 +62,7 @@ Field rules:
 
 `comet-five-phase-overlay` includes these Workflow Nodes:
 
-- `comet-five-phase-overlay` primary state comes only from `openspec/changes/<name>/.comet.yaml`; no active change or multiple active changes must block and ask the user to choose.
+- `comet-five-phase-overlay` primary state comes only from `<classic-change-dir>/.comet.yaml` bound by the Classic layout resolver; no active change or multiple active changes must block and ask the user to choose.
 - The overlay must not create `.comet/runs/<workflow>/state.json` as the Comet overlay primary state; overlay scripts only read and advance `.comet.yaml`, while other files may be draft, eval, or publish evidence.
 - `open`: control, preserves Comet intake and `.comet.yaml` initialization.
 - `design`: producer, may be overridden only when it satisfies `comet.design.v1`.

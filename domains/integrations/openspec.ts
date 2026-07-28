@@ -5,6 +5,11 @@ import path from 'path';
 import { PLATFORMS, getPlatformSkillsDir } from '../../platform/install/platforms.js';
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
 import { quoteArgsForShell } from '../../platform/process/shell-quote.js';
+import { atomicWriteContainedBytes } from '../workflow-contract/contained-atomic-write.js';
+import {
+  ensureProtectedProjectDirectory,
+  inspectProtectedProjectPath,
+} from '../workflow-contract/protected-project-path.js';
 
 import type { InstallScope } from '../../platform/install/types.js';
 
@@ -24,6 +29,17 @@ const ALL_OPENSPEC_WORKFLOWS = [
   'onboard',
 ] as const;
 
+type ProjectMutationGuard = () => void | Promise<void>;
+type OpenSpecFailureObserver = (error: Error) => void;
+
+class ProjectMutationGuardError extends Error {
+  override readonly name = 'ProjectMutationGuardError';
+}
+
+function isProjectMutationGuardError(error: unknown): error is ProjectMutationGuardError {
+  return error instanceof ProjectMutationGuardError;
+}
+
 function getNpmExecutable(platform: NodeJS.Platform = process.platform): string {
   return platform === 'win32' ? 'npm.cmd' : 'npm';
 }
@@ -41,6 +57,223 @@ function buildOpenSpecInitInvocation(
     args.push('--profile', 'custom');
   }
   return { command: 'openspec', args };
+}
+
+async function assertProjectMutationAllowed(
+  guard: ProjectMutationGuard | undefined,
+  checkpoint: 'before' | 'after-external',
+  partialMutationPossible = false,
+): Promise<void> {
+  if (!guard) return;
+  try {
+    await guard();
+  } catch (error) {
+    const detail = (error as Error).message;
+    if (checkpoint === 'after-external' || partialMutationPossible) {
+      throw new ProjectMutationGuardError(
+        `OpenSpec project update partial failure: project mutation guard rejected the update after project mutation may have started: ${detail}`,
+      );
+    }
+    throw new ProjectMutationGuardError(
+      `Project mutation guard failed before OpenSpec project mutation: ${detail}`,
+    );
+  }
+}
+
+async function runOpenSpecInit(
+  targetPath: string,
+  toolIds: string[],
+  env: NodeJS.ProcessEnv,
+  projectMutationGuard?: ProjectMutationGuard,
+  projectMutationAlreadyStarted = false,
+  commandMayMutateProject = true,
+): Promise<void> {
+  const useShell = process.platform === 'win32';
+  const invocation = buildOpenSpecInitInvocation(targetPath, toolIds, 'project');
+  try {
+    await assertProjectMutationAllowed(
+      projectMutationGuard,
+      'before',
+      projectMutationAlreadyStarted,
+    );
+    const initArgs = useShell ? quoteArgsForShell(invocation.args) : invocation.args;
+    execFileSync(invocation.command, initArgs, {
+      cwd: targetPath,
+      env,
+      stdio: ['inherit', 'inherit', 'pipe'],
+      timeout: 120_000,
+      shell: useShell,
+    });
+    await assertProjectMutationAllowed(
+      projectMutationGuard,
+      'after-external',
+      projectMutationAlreadyStarted || commandMayMutateProject,
+    );
+  } catch (firstError) {
+    const stderrText = (firstError as { stderr?: Buffer }).stderr?.toString() ?? '';
+    if (!stderrText.includes('unknown option') || !stderrText.includes('--profile')) {
+      throw firstError;
+    }
+    await assertProjectMutationAllowed(
+      projectMutationGuard,
+      'after-external',
+      projectMutationAlreadyStarted || commandMayMutateProject,
+    );
+    console.warn('    OpenSpec does not support --profile flag, retrying without it...');
+    const fallbackInvocation = buildOpenSpecInitInvocation(
+      targetPath,
+      toolIds,
+      'project',
+      os.homedir(),
+      false,
+    );
+    const fallbackArgs = useShell
+      ? quoteArgsForShell(fallbackInvocation.args)
+      : fallbackInvocation.args;
+    await assertProjectMutationAllowed(
+      projectMutationGuard,
+      'before',
+      projectMutationAlreadyStarted || commandMayMutateProject,
+    );
+    execFileSync(fallbackInvocation.command, fallbackArgs, {
+      cwd: targetPath,
+      env,
+      stdio: 'inherit',
+      timeout: 120_000,
+      shell: useShell,
+    });
+    await assertProjectMutationAllowed(
+      projectMutationGuard,
+      'after-external',
+      projectMutationAlreadyStarted || commandMayMutateProject,
+    );
+  }
+}
+
+function projectRelativePath(projectPath: string, target: string, label: string): string {
+  const root = path.resolve(projectPath);
+  const resolved = path.resolve(target);
+  const relative = path.relative(root, resolved);
+  if (
+    relative === '' ||
+    path.isAbsolute(relative) ||
+    relative === '..' ||
+    relative.startsWith(`..${path.sep}`)
+  ) {
+    throw new Error(`${label} must stay inside the project root`);
+  }
+  return relative.split(path.sep).join('/');
+}
+
+async function copyGeneratedToolDirectory(
+  stagingProject: string,
+  source: string,
+  projectPath: string,
+  destination: string,
+  projectMutationGuard?: ProjectMutationGuard,
+): Promise<void> {
+  const destinationRelative = projectRelativePath(
+    projectPath,
+    destination,
+    'OpenSpec generated tool directory',
+  );
+  await assertProjectMutationAllowed(projectMutationGuard, 'before', true);
+  await ensureProtectedProjectDirectory(projectPath, destinationRelative, {
+    label: 'OpenSpec generated tool directory',
+  });
+  const entries = await fs.promises.readdir(source, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) {
+      throw new Error(`OpenSpec generated tool source must not contain links: ${entry.name}`);
+    }
+    const sourceEntry = path.join(source, entry.name);
+    const destinationEntry = path.join(destination, entry.name);
+    if (entry.isDirectory()) {
+      await copyGeneratedToolDirectory(
+        stagingProject,
+        sourceEntry,
+        projectPath,
+        destinationEntry,
+        projectMutationGuard,
+      );
+      continue;
+    }
+    if (!entry.isFile()) {
+      throw new Error(`OpenSpec generated tool source must contain only files: ${entry.name}`);
+    }
+    const sourceRelative = path.relative(stagingProject, sourceEntry);
+    if (
+      path.isAbsolute(sourceRelative) ||
+      sourceRelative === '..' ||
+      sourceRelative.startsWith(`..${path.sep}`)
+    ) {
+      throw new Error('OpenSpec generated tool source escaped its staging root');
+    }
+    const destinationFileRelative = projectRelativePath(
+      projectPath,
+      destinationEntry,
+      'OpenSpec generated tool file',
+    );
+    await assertProjectMutationAllowed(projectMutationGuard, 'before', true);
+    await inspectProtectedProjectPath(projectPath, destinationFileRelative, {
+      label: 'OpenSpec generated tool file',
+      expected: 'file',
+    });
+    const bytes = await fs.promises.readFile(sourceEntry);
+    await atomicWriteContainedBytes(destinationEntry, bytes, {
+      containedRoot: projectPath,
+      beforeCommit: async () => {
+        await assertProjectMutationAllowed(projectMutationGuard, 'before', true);
+        await inspectProtectedProjectPath(projectPath, destinationFileRelative, {
+          label: 'OpenSpec generated tool file',
+          expected: 'file',
+        });
+      },
+    });
+  }
+}
+
+async function mergeGeneratedToolDirectories(
+  stagingProject: string,
+  projectPath: string,
+  toolIds: readonly string[],
+  mirrorOpenCodePlatformIds: readonly string[],
+  projectMutationGuard?: ProjectMutationGuard,
+): Promise<void> {
+  const skillDirs = new Set(
+    toolIds.flatMap((toolId) => {
+      const platform = PLATFORMS.find((candidate) => candidate.openspecToolId === toolId);
+      return platform ? [platform.skillsDir] : [];
+    }),
+  );
+  for (const skillsDir of skillDirs) {
+    const source = path.join(stagingProject, skillsDir);
+    if (!fs.existsSync(source)) continue;
+    await copyGeneratedToolDirectory(
+      stagingProject,
+      source,
+      projectPath,
+      path.join(projectPath, skillsDir),
+      projectMutationGuard,
+    );
+  }
+
+  if (!toolIds.includes('opencode') || mirrorOpenCodePlatformIds.length === 0) return;
+  const opencodePlatform = PLATFORMS.find((platform) => platform.id === 'opencode');
+  if (!opencodePlatform) return;
+  const source = path.join(stagingProject, opencodePlatform.skillsDir);
+  if (!fs.existsSync(source)) return;
+  for (const platformId of new Set(mirrorOpenCodePlatformIds)) {
+    const platform = PLATFORMS.find((candidate) => candidate.id === platformId);
+    if (!platform || platform.id === 'opencode') continue;
+    await copyGeneratedToolDirectory(
+      stagingProject,
+      source,
+      projectPath,
+      path.join(projectPath, getPlatformSkillsDir(platform, 'project')),
+      projectMutationGuard,
+    );
+  }
 }
 
 const ALL_WORKFLOWS_CONFIG =
@@ -375,7 +608,18 @@ async function installOpenSpec(
   scope: InstallScope,
   shouldInstallCli = true,
   mirrorOpenCodePlatformIds: string[] = [],
+  artifactLayout: 'legacy' | 'docs' = 'legacy',
+  projectMutationGuard?: ProjectMutationGuard,
+  failureObserver?: OpenSpecFailureObserver,
 ): Promise<'installed' | 'failed' | 'skipped'> {
+  if (scope === 'project') {
+    try {
+      await assertProjectMutationAllowed(projectMutationGuard, 'before');
+    } catch (error) {
+      console.error(`    OpenSpec init failed: ${(error as Error).message}`);
+      throw error;
+    }
+  }
   const cliStatus = await ensureOpenSpecCli(projectPath, shouldInstallCli);
   if (cliStatus === 'failed' || cliStatus === 'incompatible') {
     return 'failed';
@@ -391,52 +635,54 @@ async function installOpenSpec(
 
   let configHome: string | undefined;
   let configBackup: ConfigBackup | null = null;
+  let stagingProject: string | undefined;
   try {
     const openspecEnv = createOpenSpecAllWorkflowsEnv();
     configHome = openspecEnv.configHome;
 
     configBackup = writeAllWorkflowsToDefaultConfig();
 
-    // Windows 上 openspec 是 .cmd shim，必须经 shell 解析才能执行。
-    // shell:true 时 Node.js 不对含空格的参数加引号，会导致形如
-    // "C:\Users\Test User\project" 的路径被拆成多个参数（issue #123），
-    // 因此在启用 shell 时对参数逐个引用。
-    const useShell = process.platform === 'win32';
-
-    const invocation = buildOpenSpecInitInvocation(projectPath, toolIds, scope);
-    try {
-      const initArgs = useShell ? quoteArgsForShell(invocation.args) : invocation.args;
-      execFileSync(invocation.command, initArgs, {
-        cwd: projectPath,
-        env: openspecEnv.env,
-        stdio: ['inherit', 'inherit', 'pipe'],
-        timeout: 120_000,
-        shell: useShell,
-      });
-    } catch (firstError) {
-      const stderrText = (firstError as { stderr?: Buffer }).stderr?.toString() ?? '';
-      if (stderrText.includes('unknown option') && stderrText.includes('--profile')) {
-        console.warn('    OpenSpec does not support --profile flag, retrying without it...');
-        const fallbackInvocation = buildOpenSpecInitInvocation(
-          projectPath,
+    if (scope === 'project') {
+      if (toolIds.length > 0) {
+        stagingProject = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-tools-'));
+        await runOpenSpecInit(
+          stagingProject,
           toolIds,
-          scope,
-          os.homedir(),
+          openspecEnv.env,
+          projectMutationGuard,
+          false,
           false,
         );
-        const fallbackArgs = useShell
-          ? quoteArgsForShell(fallbackInvocation.args)
-          : fallbackInvocation.args;
-        execFileSync(fallbackInvocation.command, fallbackArgs, {
-          cwd: projectPath,
-          env: openspecEnv.env,
-          stdio: 'inherit',
-          timeout: 120_000,
-          shell: useShell,
-        });
-      } else {
-        throw firstError;
       }
+      await assertProjectMutationAllowed(projectMutationGuard, 'before');
+      const artifactBase = artifactLayout === 'docs' ? path.join(projectPath, 'docs') : projectPath;
+      let artifactMutationGuard = projectMutationGuard;
+      if (artifactLayout === 'docs') {
+        await ensureProtectedProjectDirectory(projectPath, 'docs', {
+          label: 'OpenSpec docs artifact base',
+        });
+        artifactMutationGuard = async () => {
+          await projectMutationGuard?.();
+          await inspectProtectedProjectPath(projectPath, 'docs', {
+            label: 'OpenSpec docs artifact base',
+            expected: 'directory',
+          });
+        };
+      }
+      await runOpenSpecInit(artifactBase, ['none'], openspecEnv.env, artifactMutationGuard, true);
+      if (stagingProject) {
+        await assertProjectMutationAllowed(projectMutationGuard, 'before', true);
+        await mergeGeneratedToolDirectories(
+          stagingProject,
+          projectPath,
+          toolIds,
+          mirrorOpenCodePlatformIds,
+          projectMutationGuard,
+        );
+      }
+      await assertProjectMutationAllowed(projectMutationGuard, 'after-external', true);
+    } else {
+      await runOpenSpecInit(os.homedir(), toolIds, openspecEnv.env);
     }
 
     const openspecWritesGlobal = scope === 'global';
@@ -444,7 +690,11 @@ async function installOpenSpec(
 
     // Mirror OpenCode-compatible platforms first, before the opencode global
     // migration potentially moves the source away.
-    if (mirrorOpenCodePlatformIds.length > 0 && toolIds.includes('opencode')) {
+    if (
+      scope === 'global' &&
+      mirrorOpenCodePlatformIds.length > 0 &&
+      toolIds.includes('opencode')
+    ) {
       mirrorOpenCodeCompatibleOpenSpecPaths(openspecTargetBase, scope, mirrorOpenCodePlatformIds);
     }
 
@@ -454,13 +704,20 @@ async function installOpenSpec(
 
     return 'installed';
   } catch (error) {
+    failureObserver?.(error as Error);
     console.error(`    OpenSpec init failed: ${(error as Error).message}`);
     printCommandErrorDetails(error);
+    if (error instanceof ProjectMutationGuardError) {
+      throw error;
+    }
     return 'failed';
   } finally {
     restoreDefaultConfig(configBackup);
     if (configHome) {
       fs.rmSync(configHome, { recursive: true, force: true });
+    }
+    if (stagingProject) {
+      fs.rmSync(stagingProject, { recursive: true, force: true });
     }
   }
 }
@@ -476,4 +733,6 @@ export {
   migrateOpenCodeOpenSpecPaths,
   migrateZCodeOpenSpecPaths,
   mirrorOpenCodeCompatibleOpenSpecPaths,
+  isProjectMutationGuardError,
 };
+export type { ProjectMutationGuard };

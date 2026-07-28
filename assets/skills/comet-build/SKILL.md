@@ -5,6 +5,8 @@ description: "Use only when explicitly invoked as /comet-build or routed by the 
 
 # Comet Phase 3: Plan and Build (Build)
 
+Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+
 ## Prerequisites
 
 - Design Doc has been created (Phase 2 complete)
@@ -37,7 +39,7 @@ You are an implementation planning expert. Create an implementation plan based o
 
 1. **Immediately execute:** Use the Skill tool to load the Superpowers `writing-plans` skill. Skipping this step is prohibited. After the skill loads, ARGUMENTS must include: `Language: Use the configured Comet artifact language from comet state get <name> language`
 2. Read the Design Doc (technical design document under `docs/superpowers/specs/`)
-3. Read `openspec/changes/<name>/tasks.md` (task boundaries)
+3. Read `<classic-change-dir>/tasks.md` (task boundaries)
 4. Follow the skill's guidance to create the plan
 
 Plan requirements:

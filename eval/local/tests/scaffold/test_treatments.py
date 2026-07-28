@@ -11,7 +11,7 @@ from scaffold.python.treatments import (
     load_treatments,
     load_treatments_yaml,
 )
-from scaffold.python.paths import get_skills_dir
+from scaffold.python.paths import EVAL_ROOT, get_skills_dir
 
 
 BASIC_TREATMENT_YAML = """
@@ -100,6 +100,8 @@ def test_load_treatments_keeps_comet_core_categories_only():
 
     assert set(treatments) == {
         "CONTROL",
+        "COMET_CLASSIC_DOCS_LAYOUT",
+        "COMET_CLASSIC_LEGACY_LAYOUT",
         "COMET_FULL_040_BETA",
         "COMET_FULL_039",
         "COMET_NATIVE_BATCH",
@@ -132,6 +134,65 @@ def test_comet_full_040_beta_includes_openspec_and_superpowers_dependencies():
     )
     assert names.issuperset(_benchmark_child_names("dependency", "openspec"))
     assert names.issuperset(_benchmark_child_names("dependency", "superpowers"))
+
+
+@pytest.mark.parametrize(
+    ("treatment_name", "layout"),
+    [
+        ("COMET_CLASSIC_DOCS_LAYOUT", "docs"),
+        ("COMET_CLASSIC_LEGACY_LAYOUT", "legacy"),
+    ],
+)
+def test_current_comet_classic_layouts_use_current_skills_and_dependency_benchmarks(
+    treatment_name: str,
+    layout: str,
+):
+    treatment = load_treatments()[treatment_name]
+    names = {skill["name"] for skill in treatment.skills}
+
+    assert names.issuperset(
+        {
+            "comet",
+            "comet-classic",
+            "comet-open",
+            "comet-design",
+            "comet-build",
+            "comet-verify",
+            "comet-archive",
+            "comet-hotfix",
+            "comet-tweak",
+        }
+    )
+    assert names.issuperset(
+        {
+            "openspec-explore",
+            "openspec-new-change",
+            "openspec-continue-change",
+            "openspec-apply-change",
+            "openspec-sync-specs",
+            "openspec-archive-change",
+            "openspec-verify-change",
+            "brainstorming",
+            "writing-plans",
+            "executing-plans",
+            "subagent-driven-development",
+            "test-driven-development",
+            "systematic-debugging",
+            "verification-before-completion",
+            "using-git-worktrees",
+            "requesting-code-review",
+            "receiving-code-review",
+            "finishing-a-development-branch",
+        }
+    )
+    assert f"classic.artifact_layout `{layout}`" in treatment.claude_md
+    assert "comet classic openspec --" in treatment.claude_md
+
+    skills = build_treatment_skills(treatment.skills)
+    assert skills["comet"]["source_dir"] == EVAL_ROOT.parent / "assets" / "skills" / "comet"
+    assert skills["comet-classic"]["source_dir"] == (
+        EVAL_ROOT.parent / "assets" / "skills" / "comet-classic"
+    )
 
 
 def test_comet_full_039_includes_same_dependency_snapshot():
@@ -281,6 +342,8 @@ def test_comet_full_040_beta_dependency_paths_are_loadable():
 
 def test_list_treatments_is_sorted_for_stable_cli_output():
     assert list_treatments() == [
+        "COMET_CLASSIC_DOCS_LAYOUT",
+        "COMET_CLASSIC_LEGACY_LAYOUT",
         "COMET_FULL_039",
         "COMET_FULL_040_BETA",
         "COMET_NATIVE_BATCH",

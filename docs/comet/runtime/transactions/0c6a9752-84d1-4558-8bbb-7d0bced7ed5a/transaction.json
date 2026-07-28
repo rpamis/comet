@@ -1,0 +1,45 @@
+{
+  "schema": "comet.native.transaction.v2",
+  "id": "0c6a9752-84d1-4558-8bbb-7d0bced7ed5a",
+  "kind": "archive",
+  "status": "committed",
+  "change": "unified-product-catalogue",
+  "createdAt": "2026-07-27T15:16:59.600Z",
+  "preflightHash": "4a6fa1c91ea5c0eff53776504b71518d80670410abbca1a6c3a4087bd3a8d5ff",
+  "operations": [
+    {
+      "id": "spec-1-classic-config-block",
+      "type": "write",
+      "target": "specs/classic-config-block/spec.md",
+      "staged": "runtime/transactions/0c6a9752-84d1-4558-8bbb-7d0bced7ed5a/staged/specs/classic-config-block/spec.md",
+      "backup": "runtime/transactions/0c6a9752-84d1-4558-8bbb-7d0bced7ed5a/backups/specs/classic-config-block/spec.md",
+      "expectedTargetHash": "3d08889c13a8e003b0e3ec896436a87aaf98f18144bc2ab37c372004b28da4ab",
+      "stagedHash": "8708f29ee01675c277f03be111651b4a73de71ce54a7f59ad6bed0ed9b871a68"
+    },
+    {
+      "id": "spec-2-native-init-workspace-defaults",
+      "type": "write",
+      "target": "specs/native-init-workspace-defaults/spec.md",
+      "staged": "runtime/transactions/0c6a9752-84d1-4558-8bbb-7d0bced7ed5a/staged/specs/native-init-workspace-defaults/spec.md",
+      "backup": "runtime/transactions/0c6a9752-84d1-4558-8bbb-7d0bced7ed5a/backups/specs/native-init-workspace-defaults/spec.md",
+      "expectedTargetHash": "a143c42c9588d6d727ab8b0cdb8e15cd852e17f4615361bbf28dd545fa2b15d5",
+      "stagedHash": "a650ccd65f017d0d47ade5df26d1016de83ad5beb5480166c393d902765e3116"
+    },
+    {
+      "id": "spec-3-unified-product-catalogue",
+      "type": "write",
+      "target": "specs/unified-product-catalogue/spec.md",
+      "staged": "runtime/transactions/0c6a9752-84d1-4558-8bbb-7d0bced7ed5a/staged/specs/unified-product-catalogue/spec.md",
+      "expectedTargetHash": null,
+      "stagedHash": "6f27dc7a98b2cf99695b3334f078033bd349def37f35108cf90d994ee20214b1"
+    },
+    {
+      "id": "archive-change",
+      "type": "move",
+      "source": "changes/unified-product-catalogue",
+      "target": "archive/2026-07-27-unified-product-catalogue",
+      "expectedSourceHash": "f1c4319e4a63fae703f738fd3499854975123d6d50f9b1196aa13e7efcb28e14",
+      "expectedTargetHash": null
+    }
+  ]
+}

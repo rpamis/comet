@@ -9,6 +9,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const classicRuntimeRoot = path.resolve('assets', 'skills', 'comet', 'runtime', 'classic');
@@ -63,6 +64,7 @@ describe('check --recover', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-recovery-'));
+    await prepareClassicLegacyProject(tmpDir);
     const tmpScriptsDir = path.join(tmpDir, 'scripts');
     await fs.mkdir(tmpScriptsDir, { recursive: true });
     for (const name of [

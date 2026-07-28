@@ -12,6 +12,10 @@ comet native doctor [<change-name>]
 
 只根据 doctor 或 continuation 返回的事实采取动作。不要手改状态、hash、证据、锁或事务文件；Runtime 无法证明自动修复安全时，保留现场并等待用户。
 
+## 工作区提示
+
+`workspace-root-changed` 与 `workspace-inspection-unavailable` 只用于解释当前 root 事实的来源，不单独阻止推进或 Archive。不要把任意 `workspace-*` finding 都当作提示：未知的 workspace 完整性 finding 仍是错误。Runtime 要求修复工作区身份时，先运行只读 doctor，再按报告执行显式 `doctor --repair`。
+
 ## 未完成的阶段推进
 
 status 或 doctor 报告未完成 transition 时，优先按 continuation 重试原动作。需要显式修复时：

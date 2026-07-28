@@ -10,8 +10,37 @@ import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const stateScript = path.join(scriptsDir, 'comet-state.mjs');
 const validateScript = path.join(scriptsDir, 'comet-yaml-validate.mjs');
+const guardScript = path.join(scriptsDir, 'comet-guard.mjs');
+const handoffScript = path.join(scriptsDir, 'comet-handoff.mjs');
+const resumeProbeScript = path.join(scriptsDir, 'comet-resume-probe.mjs');
 const buildScript = path.resolve('scripts', 'build', 'build-classic-runtime.mjs');
 const temporaryDirectories: string[] = [];
+
+async function seedClassicProject(
+  projectRoot: string,
+  artifactLayout: 'legacy' | 'docs' = 'legacy',
+): Promise<void> {
+  await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });
+  await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(projectRoot, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      `  artifact_layout: ${artifactLayout}`,
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  await fs.mkdir(
+    artifactLayout === 'docs'
+      ? path.join(projectRoot, 'docs', 'openspec')
+      : path.join(projectRoot, 'openspec'),
+    { recursive: true },
+  );
+}
 
 async function snapshotChange(changeDir: string): Promise<{ files: string[]; yaml: Buffer }> {
   const files: string[] = [];
@@ -37,6 +66,227 @@ afterEach(async () => {
 });
 
 describe('Classic runtime CLI adapter', () => {
+  it.each(['docs', 'legacy'] as const)(
+    'discovers the %s project from a nested cwd across all Classic launchers',
+    async (artifactLayout) => {
+      const directory = await fs.mkdtemp(
+        path.join(os.tmpdir(), `comet-classic-nested-${artifactLayout}-`),
+      );
+      temporaryDirectories.push(directory);
+      await seedClassicProject(directory, artifactLayout);
+      const nested = path.join(directory, 'packages', 'app');
+      await fs.mkdir(nested, { recursive: true });
+      const changesRoot =
+        artifactLayout === 'docs'
+          ? path.join(directory, 'docs', 'openspec', 'changes')
+          : path.join(directory, 'openspec', 'changes');
+      const run = (script: string, args: string[]) =>
+        spawnSync(process.execPath, [script, ...args], {
+          cwd: nested,
+          encoding: 'utf8',
+        });
+
+      const initialized = run(stateScript, ['init', 'nested-layout', 'full']);
+      expect(initialized.status, initialized.stderr).toBe(0);
+      const changeDir = path.join(changesRoot, 'nested-layout');
+      await fs.writeFile(
+        path.join(changeDir, 'proposal.md'),
+        '# Proposal\nAdd nested project discovery for Classic commands.\n',
+      );
+      await fs.writeFile(
+        path.join(changeDir, 'design.md'),
+        '# Design\nResolve repository artifacts from the configured project root.\n',
+      );
+      await fs.writeFile(
+        path.join(changeDir, 'tasks.md'),
+        '- [x] Exercise every Classic launcher from a nested cwd\n',
+      );
+
+      const state = run(stateScript, ['get', 'nested-layout', 'phase']);
+      expect(state.status, state.stderr).toBe(0);
+      expect(state.stdout).toBe('open\n');
+
+      await ensureClassicRuntimeRun(changeDir);
+      const recorded = run(stateScript, [
+        'record-check',
+        'nested-layout',
+        'build',
+        '--command',
+        'pnpm build',
+        '--exit-code',
+        '0',
+      ]);
+      expect(recorded.status, recorded.stderr).toBe(0);
+      expect(recorded.stderr).toContain(
+        '[RECORDED] build exit=0 cwd=packages/app command=pnpm build',
+      );
+
+      const validated = run(validateScript, ['nested-layout']);
+      expect(validated.status, validated.stderr).toBe(0);
+      expect(validated.stderr).toContain('validation PASSED');
+
+      const guarded = run(guardScript, ['nested-layout', 'open']);
+      expect(guarded.status, guarded.stderr).toBe(0);
+      expect(guarded.stderr).toContain('ALL CHECKS PASSED');
+
+      const handoff = run(handoffScript, ['nested-layout', '--hash-only']);
+      expect(handoff.status, handoff.stderr).toBe(0);
+      expect(handoff.stdout.trim()).toMatch(/^[a-f0-9]{64}$/u);
+
+      const probeInput = JSON.stringify({
+        schema_version: 'comet.resume_probe.v1',
+        utterance: 'continue nested-layout',
+        locale: 'en',
+        agent_context: { non_trivial_work: true, already_in_comet_flow: false },
+      });
+      const probe = run(resumeProbeScript, ['probe', probeInput]);
+      expect(probe.status, probe.stderr).toBe(0);
+      expect(JSON.parse(probe.stdout)).toMatchObject({
+        action: 'auto_resume',
+        changeName: 'nested-layout',
+        phase: 'open',
+      });
+
+      const alternateRoot =
+        artifactLayout === 'docs'
+          ? path.join(directory, 'openspec')
+          : path.join(directory, 'docs', 'openspec');
+      await expect(fs.access(alternateRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
+  it('rejects state initialization when project config is missing', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-no-config-state-'));
+    temporaryDirectories.push(directory);
+    await fs.mkdir(path.join(directory, '.git'));
+
+    const previous = process.cwd();
+    process.chdir(directory);
+    try {
+      const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
+      const result = await runClassicCli(['state', 'init', 'demo', 'full']);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('Classic artifact layout is unavailable');
+      await expect(fs.access(path.join(directory, 'openspec'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it('rejects state initialization when both Classic roots exist without changing either root', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-dual-root-state-'));
+    temporaryDirectories.push(directory);
+    await fs.mkdir(path.join(directory, '.git'));
+    await fs.mkdir(path.join(directory, '.comet'));
+    await fs.writeFile(
+      path.join(directory, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '',
+      ].join('\n'),
+    );
+    await fs.mkdir(path.join(directory, 'openspec', 'changes'), { recursive: true });
+    await fs.mkdir(path.join(directory, 'docs', 'openspec', 'changes'), { recursive: true });
+
+    const previous = process.cwd();
+    process.chdir(directory);
+    try {
+      const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
+      const result = await runClassicCli(['state', 'init', 'demo', 'full']);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('Classic layout conflict');
+      await expect(
+        fs.stat(path.join(directory, 'openspec', 'changes', 'demo')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(
+        fs.stat(path.join(directory, 'docs', 'openspec', 'changes', 'demo')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it('blocks Hook Guard writes when both Classic roots exist', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-dual-root-hook-'));
+    temporaryDirectories.push(directory);
+    await fs.mkdir(path.join(directory, '.git'));
+    await fs.mkdir(path.join(directory, '.comet'));
+    await fs.writeFile(
+      path.join(directory, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '',
+      ].join('\n'),
+    );
+    const legacyChange = path.join(directory, 'openspec', 'changes', 'demo');
+    await fs.mkdir(legacyChange, { recursive: true });
+    await fs.writeFile(
+      path.join(legacyChange, '.comet.yaml'),
+      ['workflow: hotfix', 'phase: build', 'design_doc: null', 'archived: false', ''].join('\n'),
+    );
+    await fs.mkdir(path.join(directory, 'docs', 'openspec', 'changes'), { recursive: true });
+
+    const { inspectClassicHookGuard } =
+      await import('../../../domains/comet-classic/classic-hook-guard.js');
+    const result = await inspectClassicHookGuard(directory, 'demo', {
+      intent: 'write',
+      targets: [path.join(directory, 'src', 'feature.ts')],
+      toolName: 'Write',
+    });
+
+    expect(result).toMatchObject({ allowed: false, workflow: 'classic', change: 'demo' });
+    expect(result.reason).toContain('Classic layout conflict');
+  });
+
+  it('creates and reads Classic state from a configured docs layout', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-docs-runtime-'));
+    temporaryDirectories.push(directory);
+    await fs.mkdir(path.join(directory, '.git'));
+    await fs.mkdir(path.join(directory, '.comet'));
+    await fs.writeFile(
+      path.join(directory, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'native:',
+        '  artifact_root: docs',
+        'classic:',
+        '  artifact_layout: docs',
+        '  language: zh-CN',
+        '',
+      ].join('\n'),
+    );
+    await fs.mkdir(path.join(directory, 'docs', 'openspec'), { recursive: true });
+    const previous = process.cwd();
+    process.chdir(directory);
+    try {
+      const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
+      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      expect((await runClassicCli(['state', 'get', 'demo', 'phase'])).stdout).toBe('open\n');
+      await expect(
+        fs.stat(path.join(directory, 'docs', 'openspec', 'changes', 'demo', '.comet.yaml')),
+      ).resolves.toBeDefined();
+      await expect(fs.stat(path.join(directory, 'openspec'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
   it('ignores a user-facing comet-classic wrapper when discovering the internal runtime package', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-wrapper-'));
     temporaryDirectories.push(directory);
@@ -47,6 +297,7 @@ describe('Classic runtime CLI adapter', () => {
       '---\nname: comet-classic\n---\n\n# User-facing wrapper\n',
       'utf8',
     );
+    await seedClassicProject(directory);
     const previousRoot = process.env.COMET_RUNTIME_CLASSIC_ROOT;
     const previous = process.cwd();
     process.env.COMET_RUNTIME_CLASSIC_ROOT = wrapper;
@@ -68,6 +319,7 @@ describe('Classic runtime CLI adapter', () => {
   it('records current-Run command checks through the state dispatcher', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-record-check-'));
     temporaryDirectories.push(directory);
+    await seedClassicProject(directory);
     const previous = process.cwd();
     process.chdir(directory);
     try {
@@ -97,6 +349,7 @@ describe('Classic runtime CLI adapter', () => {
   it('rejects record-check without a current Run without changing any files', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-record-check-legacy-'));
     temporaryDirectories.push(directory);
+    await seedClassicProject(directory);
     const previous = process.cwd();
     process.chdir(directory);
     try {
@@ -134,6 +387,7 @@ describe('Classic runtime CLI adapter', () => {
   ])('rejects record-check with %s without changing any files', async (_label, fault, error) => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), `comet-record-check-${fault}-`));
     temporaryDirectories.push(directory);
+    await seedClassicProject(directory);
     const previous = process.cwd();
     process.chdir(directory);
     try {
@@ -183,6 +437,7 @@ describe('Classic runtime CLI adapter', () => {
   ])('rejects invalid record-check arguments %#', async (tail, message) => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-record-check-invalid-'));
     temporaryDirectories.push(directory);
+    await seedClassicProject(directory);
     const previous = process.cwd();
     process.chdir(directory);
     try {
@@ -391,6 +646,7 @@ describe('Classic script bundles', () => {
   it('executes state and validation commands from a standalone project', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-script-state-'));
     temporaryDirectories.push(directory);
+    await seedClassicProject(directory);
 
     const init = spawnSync(process.execPath, [stateScript, 'init', 'demo', 'full'], {
       cwd: directory,
@@ -471,6 +727,7 @@ describe('Classic script bundles', () => {
   it('rejects direct writes to machine-owned Run fields', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-script-owned-'));
     temporaryDirectories.push(directory);
+    await seedClassicProject(directory);
     spawnSync(process.execPath, [stateScript, 'init', 'demo', 'full'], {
       cwd: directory,
       encoding: 'utf8',
@@ -489,6 +746,7 @@ describe('Classic script bundles', () => {
   it('re-resolves the Run step when migrated Classic configuration changes', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-script-sync-'));
     temporaryDirectories.push(directory);
+    await seedClassicProject(directory);
     spawnSync(process.execPath, [stateScript, 'init', 'demo', 'full'], {
       cwd: directory,
       encoding: 'utf8',

@@ -1,5 +1,5 @@
-import { promises as fs } from 'fs';
 import path from 'path';
+import { appendEngineRunText } from '../engine/protected-run-file.js';
 import type { ClassicState } from './classic-state.js';
 import type { ClassicTransitionEffect, ClassicTransitionEvent } from './classic-transitions.js';
 
@@ -20,6 +20,7 @@ export interface ClassicStateEventRecord extends ClassicStateEventInput {
 }
 
 export const CLASSIC_STATE_EVENT_LOG = path.join('.comet', 'state-events.jsonl');
+const CLASSIC_STATE_EVENT_MAX_BYTES = 8 * 1024 * 1024;
 
 export async function appendClassicStateEvent(
   changeDir: string,
@@ -30,8 +31,12 @@ export async function appendClassicStateEvent(
     timestamp: new Date().toISOString(),
     ...input,
   };
-  const file = path.join(changeDir, CLASSIC_STATE_EVENT_LOG);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.appendFile(file, `${JSON.stringify(record)}\n`, 'utf8');
+  await appendEngineRunText(
+    changeDir,
+    CLASSIC_STATE_EVENT_LOG,
+    `${JSON.stringify(record)}\n`,
+    CLASSIC_STATE_EVENT_MAX_BYTES,
+    'Classic state event log',
+  );
   return record;
 }

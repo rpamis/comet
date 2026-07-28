@@ -1,0 +1,126 @@
+{
+  "schema": "comet.native.verification-evidence.v1",
+  "change": "unified-product-catalogue",
+  "sourceRevision": 3,
+  "result": "pass",
+  "freshness": "complete",
+  "contractHash": "3dca1611a65f1b760de0822aac6ec4a8f4d7fe7b1b20857e13c5110c93f585c2",
+  "acceptanceCriteriaHash": "c314b2404c55caa43be3f223124e40056eca623fd60e36f7dee0ffef7570df13",
+  "implementationScopeRef": "runtime/evidence/scopes/000e60bceaf8df795aea7b71e2ee84d7a281591e1e4c84fdbc4bf9c51e6b6abe.json",
+  "implementationScopeHash": "000e60bceaf8df795aea7b71e2ee84d7a281591e1e4c84fdbc4bf9c51e6b6abe",
+  "reportRef": "verification.md",
+  "reportHash": "c38ca641ea7cb06799f800bcf1eb6f3614ae319f134df59a21d35f27c1f57e24",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v1",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "c314b2404c55caa43be3f223124e40056eca623fd60e36f7dee0ffef7570df13",
+    "total": 9,
+    "evidenced": 9,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-05c1ef6f32b3e94c19ba8797fc73c473f1c1a67600b6cf05da4b8ba5e54dd2bb",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "eval/local/tests/scaffold/test_treatments.py",
+          "eval/local/treatments/comet/comet_classic_docs_layout.yaml"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-2ef1a2aa3bd6db7b1aaac6845a400ea7556c73448532cb038251d56c84481fc6",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-classic/classic-layout.ts",
+          "domains/skill/platform-install.ts",
+          "test/domains/comet-native/native-config.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-398d626c908fe46b01669daf8e2d57b7566d9f8a9f77dd11ac66ee990732ecdc",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "app/commands/init.ts",
+          "domains/comet-entry/init-workflow.ts",
+          "test/app/init.test.ts",
+          "test/domains/integrations/openspec.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-43312a6eecd487f150c46632a3748dfd475809e841c062092eddabbab7d1073e",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/skill/uninstall.ts",
+          "test/domains/skill/skills.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-afc3b0019abae72437f0009a5fa61b2d3d5888b82695d325b8818f2b2816c966",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "app/commands/doctor.ts",
+          "domains/comet-classic/classic-root-move.ts",
+          "test/domains/comet-classic/classic-root-move.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-bcd2ec42e0a1d63cc141f3ce7d48bd40b957f9f32cbcb3865642612b43b71d10",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "app/commands/init.ts",
+          "test/app/init-e2e.test.ts",
+          "test/domains/comet-entry/init-workflow.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-eb5b298ee935d5f0a093041ee9502f1c807e8ff53621259705afa13ff5d47fa4",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-classic/classic-openspec-command.ts",
+          "test/domains/comet-classic/classic-openspec-command.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-eb69f96bb011c22ac04f7cec9da54b77facdf6f17d424817ce5468723193c733",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-classic/classic-layout.ts",
+          "domains/comet-entry/hook-router-entry.ts",
+          "domains/dashboard/collector.ts",
+          "domains/workflow-contract/builtins.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-ffdac7f7092a78634c4fee47197804ab91b21df3dfac5ae9a968f07e1b784de5",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-classic/classic-root-move.ts",
+          "test/domains/comet-classic/classic-root-move.test.ts"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "0bf4f4c3058491e6413d284e8f01358e3440cac2b8f6152bf105222611ff3118"
+  },
+  "partialAllowanceRef": null,
+  "partialAllowanceHash": null,
+  "receiptRef": null,
+  "createdAt": "2026-07-27T15:16:41.775Z",
+  "envelopeHash": "4affb588d8a36b4a8a3f28d2093d760ec7b2982780942f1b4890352edae71755"
+}

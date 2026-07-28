@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import { execFile } from 'child_process';
 import os from 'os';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { promisify } from 'util';
 import { parse } from 'yaml';
 import { generateFactorySkillPackage } from '../../../domains/factory/package.js';
@@ -89,6 +90,241 @@ function customWorkflow(name: string): WorkflowDefinitionInput {
       },
     ],
   };
+}
+
+async function writeGeneratedProtocol(
+  packageRoot: string,
+  update: (protocol: {
+    state: { statePath: string };
+    outputSchemas: Array<{
+      artifacts: Array<{ pathBase?: string; paths: string[] }>;
+    }>;
+  }) => void,
+): Promise<void> {
+  const protocolPath = path.join(packageRoot, 'reference', 'workflow-protocol.json');
+  const protocol = JSON.parse(await fs.readFile(protocolPath, 'utf8')) as {
+    state: { statePath: string };
+    outputSchemas: Array<{
+      artifacts: Array<{ pathBase?: string; paths: string[] }>;
+    }>;
+  };
+  update(protocol);
+  await fs.writeFile(protocolPath, `${JSON.stringify(protocol, null, 2)}\n`, 'utf8');
+}
+
+async function writeClassicProjectConfig(
+  projectRoot: string,
+  layout: 'legacy' | 'docs' = 'legacy',
+): Promise<void> {
+  await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(projectRoot, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      `  artifact_layout: ${layout}`,
+      '  language: en',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+}
+
+type GeneratedRaceMode =
+  | 'file-after-realpath'
+  | 'parent-after-realpath'
+  | 'parent-after-missing-lstat'
+  | 'parent-after-read';
+
+async function writeGeneratedRacePreload(
+  directory: string,
+  options: {
+    mode: GeneratedRaceMode;
+    target: string;
+    outsideFile?: string;
+    outsideDirectory?: string;
+  },
+): Promise<{ preloadPath: string; accessLog: string }> {
+  const preloadPath = path.join(directory, `factory-race-${options.mode}.mjs`);
+  const accessLog = path.join(directory, `factory-race-${options.mode}.log`);
+  const target = path.resolve(options.target);
+  const parent = path.dirname(target);
+  const held =
+    options.mode === 'file-after-realpath'
+      ? `${target}.held`
+      : path.join(path.dirname(parent), `${path.basename(parent)}.held`);
+  await fs.writeFile(
+    preloadPath,
+    `
+import { promises as fs } from 'fs';
+import path from 'path';
+
+const mode = ${JSON.stringify(options.mode)};
+const target = ${JSON.stringify(target)};
+const parent = ${JSON.stringify(parent)};
+const held = ${JSON.stringify(held)};
+const outsideFile = ${JSON.stringify(options.outsideFile ?? '')};
+const outsideDirectory = ${JSON.stringify(options.outsideDirectory ?? '')};
+const accessLog = ${JSON.stringify(accessLog)};
+const originalLstat = fs.lstat.bind(fs);
+const originalRealpath = fs.realpath.bind(fs);
+const originalReadFile = fs.readFile.bind(fs);
+const originalOpen = fs.open.bind(fs);
+const originalWriteFile = fs.writeFile.bind(fs);
+const originalMkdir = fs.mkdir.bind(fs);
+const originalRename = fs.rename.bind(fs);
+const originalSymlink = fs.symlink.bind(fs);
+const originalAppendFile = fs.appendFile.bind(fs);
+let triggered = false;
+
+function isTarget(candidate) {
+  return path.resolve(String(candidate)) === target;
+}
+
+async function recordAccess(kind) {
+  await originalAppendFile(accessLog, kind + '\\n', 'utf8');
+}
+
+async function replaceFile() {
+  if (triggered) return;
+  triggered = true;
+  await originalRename(target, held);
+  await originalSymlink(outsideFile, target, 'file');
+}
+
+async function replaceParent() {
+  if (triggered) return;
+  triggered = true;
+  await originalRename(parent, held);
+  await originalSymlink(
+    outsideDirectory,
+    parent,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+}
+
+async function resolvesInsideOutside(candidate) {
+  if (!outsideDirectory) return false;
+  let resolved;
+  try {
+    resolved = await originalRealpath(candidate);
+  } catch {
+    try {
+      const resolvedParent = await originalRealpath(path.dirname(String(candidate)));
+      resolved = path.join(resolvedParent, path.basename(String(candidate)));
+    } catch {
+      return false;
+    }
+  }
+  const relative = path.relative(outsideDirectory, resolved);
+  return (
+    relative === '' ||
+    (!path.isAbsolute(relative) &&
+      relative !== '..' &&
+      !relative.startsWith('..' + path.sep))
+  );
+}
+
+fs.realpath = async (candidate, ...rest) => {
+  const resolved = await originalRealpath(candidate, ...rest);
+  if (mode === 'file-after-realpath' && isTarget(candidate)) {
+    await replaceFile();
+  } else if (mode === 'parent-after-realpath' && isTarget(candidate)) {
+    await replaceParent();
+  }
+  return resolved;
+};
+
+fs.lstat = async (candidate, ...rest) => {
+  try {
+    return await originalLstat(candidate, ...rest);
+  } catch (error) {
+    if (
+      mode === 'parent-after-missing-lstat' &&
+      isTarget(candidate) &&
+      error &&
+      typeof error === 'object' &&
+      error.code === 'ENOENT'
+    ) {
+      await replaceParent();
+    }
+    throw error;
+  }
+};
+
+fs.readFile = async (candidate, ...rest) => {
+  if (triggered && isTarget(candidate)) {
+    await recordAccess('readFile');
+  }
+  const result = await originalReadFile(candidate, ...rest);
+  if (mode === 'parent-after-read' && isTarget(candidate)) {
+    await replaceParent();
+  }
+  return result;
+};
+
+fs.open = async (candidate, ...rest) => {
+  if (triggered && (isTarget(candidate) || (await resolvesInsideOutside(candidate)))) {
+    await recordAccess('open');
+  }
+  const handle = await originalOpen(candidate, ...rest);
+  if (mode === 'parent-after-read' && isTarget(candidate)) {
+    const originalClose = handle.close.bind(handle);
+    handle.close = async () => {
+      const result = await originalClose();
+      await replaceParent();
+      return result;
+    };
+  }
+  return handle;
+};
+
+fs.writeFile = async (candidate, ...rest) => {
+  if (triggered && (isTarget(candidate) || (await resolvesInsideOutside(candidate)))) {
+    await recordAccess('writeFile');
+  }
+  return originalWriteFile(candidate, ...rest);
+};
+
+fs.mkdir = async (candidate, ...rest) => {
+  if (triggered && (isTarget(candidate) || (await resolvesInsideOutside(candidate)))) {
+    await recordAccess('mkdir');
+  }
+  return originalMkdir(candidate, ...rest);
+};
+`,
+    'utf8',
+  );
+  return { preloadPath, accessLog };
+}
+
+function envWithGeneratedRacePreload(runRoot: string, preloadPath: string): NodeJS.ProcessEnv {
+  const nodeOptions = [process.env.NODE_OPTIONS, `--import=${pathToFileURL(preloadPath).href}`]
+    .filter(Boolean)
+    .join(' ');
+  return { ...process.env, COMET_RUN_ROOT: runRoot, NODE_OPTIONS: nodeOptions };
+}
+
+async function canCreateGeneratedRaceLink(
+  projectRoot: string,
+  target: string,
+  kind: 'file' | 'directory',
+): Promise<boolean> {
+  const probe = path.join(projectRoot, `factory-link-probe-${kind}`);
+  try {
+    await fs.symlink(
+      target,
+      probe,
+      kind === 'file' ? 'file' : process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    await fs.rm(probe, { force: true });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EPERM') return false;
+    throw error;
+  }
 }
 
 describe('Factory skill package generation', () => {
@@ -236,6 +472,8 @@ describe('Factory skill package generation', () => {
     const guardScript = path.join(output.packageRoot, 'scripts', 'workflow-guard.mjs');
     const hookGuardScript = path.join(output.packageRoot, 'scripts', 'comet-hook-guard.mjs');
     try {
+      await writeClassicProjectConfig(runRoot);
+      await fs.mkdir(path.join(runRoot, 'openspec'), { recursive: true });
       await expect(
         execFileAsync(process.execPath, [hookGuardScript, 'before_write'], { env }),
       ).rejects.toThrow(/permanent \/comet-classic entry/iu);
@@ -333,6 +571,828 @@ describe('Factory skill package generation', () => {
     }
   });
 
+  it('rejects a generated overlay evidence directory junction before reading or writing outside', async () => {
+    const workflow = normalizeWorkflowDefinition(
+      builtinCometFivePhaseWorkflow({
+        name: 'evidence-boundary',
+        goal: 'Keep generated evidence inside the project.',
+      }),
+    );
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'evidence-boundary', workflow }),
+    );
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-evidence-boundary-'));
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-evidence-outside-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    try {
+      await writeClassicProjectConfig(runRoot);
+      const changeRoot = path.join(runRoot, 'openspec', 'changes', 'demo');
+      await fs.mkdir(changeRoot, { recursive: true });
+      await fs.writeFile(path.join(changeRoot, '.comet.yaml'), 'phase: open\n', 'utf8');
+      await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+      try {
+        await fs.symlink(
+          outsideRoot,
+          path.join(runRoot, '.comet', 'workflow-evidence'),
+          'junction',
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [
+            path.join(output.packageRoot, 'scripts', 'workflow-state.mjs'),
+            'record',
+            'open',
+            '{"intake-summary":"done"}',
+          ],
+          { env },
+        ),
+      ).rejects.toThrow(/symbolic link or junction/iu);
+      await expect(
+        fs.access(path.join(outsideRoot, 'demo', 'evidence-boundary.json')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a generated overlay active-state file symlink before reading it', async () => {
+    const workflow = normalizeWorkflowDefinition(
+      builtinCometFivePhaseWorkflow({
+        name: 'state-boundary',
+        goal: 'Read only a real active Classic state file.',
+      }),
+    );
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'state-boundary', workflow }),
+    );
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-state-boundary-'));
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-state-outside-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    try {
+      await writeClassicProjectConfig(runRoot);
+      const changeRoot = path.join(runRoot, 'openspec', 'changes', 'demo');
+      await fs.mkdir(changeRoot, { recursive: true });
+      const outsideState = path.join(outsideRoot, 'state.yaml');
+      await fs.writeFile(outsideState, 'phase: open\n', 'utf8');
+      try {
+        await fs.symlink(outsideState, path.join(changeRoot, '.comet.yaml'), 'file');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [path.join(output.packageRoot, 'scripts', 'workflow-state.mjs'), 'next'],
+          { env },
+        ),
+      ).rejects.toThrow(/symbolic link or junction/iu);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['state', 'file symlink', 'workflow-state.mjs', ['status'], 'file-after-realpath'],
+    ['hook', 'file symlink', 'comet-hook-guard.mjs', ['before_tool'], 'file-after-realpath'],
+    ['guard', 'file symlink', 'workflow-guard.mjs', ['entry', 'research'], 'file-after-realpath'],
+    ['state', 'parent junction', 'workflow-state.mjs', ['status'], 'parent-after-realpath'],
+    ['hook', 'parent junction', 'comet-hook-guard.mjs', ['before_tool'], 'parent-after-realpath'],
+    [
+      'guard',
+      'parent junction',
+      'workflow-guard.mjs',
+      ['entry', 'research'],
+      'parent-after-realpath',
+    ],
+  ])(
+    'rejects a generated generic %s state %s replacement after inspection',
+    async (_label, replacement, scriptName, args, mode) => {
+      const name = `generic-read-${scriptName.replace(/[^a-z]+/gu, '-')}`;
+      const workflow = normalizeWorkflowDefinition(customWorkflow(name));
+      const output = await generateFactorySkillPackage(packagePlan({ root, name, workflow }));
+      const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-factory-read-race-'));
+      const outsideRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'comet-factory-read-race-outside-'),
+      );
+      const statePath = path.join(runRoot, '.comet', 'runs', name, 'state.json');
+      const outsideState = path.join(outsideRoot, 'state.json');
+      try {
+        await execFileAsync(
+          process.execPath,
+          [path.join(output.packageRoot, 'scripts', 'workflow-state.mjs'), 'init'],
+          { env: { ...process.env, COMET_RUN_ROOT: runRoot } },
+        );
+        await fs.writeFile(
+          outsideState,
+          `${JSON.stringify({
+            schemaVersion: 1,
+            workflow: name,
+            status: 'running',
+            currentNode: 'research',
+            completedNodes: [],
+            evidence: {},
+            history: [],
+            outsideSecret: 'must-not-be-read',
+          })}\n`,
+          'utf8',
+        );
+        if (
+          !(await canCreateGeneratedRaceLink(
+            runRoot,
+            replacement === 'file symlink' ? outsideState : outsideRoot,
+            replacement === 'file symlink' ? 'file' : 'directory',
+          ))
+        ) {
+          return;
+        }
+        const { preloadPath, accessLog } = await writeGeneratedRacePreload(runRoot, {
+          mode: mode as GeneratedRaceMode,
+          target: statePath,
+          outsideFile: outsideState,
+          outsideDirectory: outsideRoot,
+        });
+
+        await expect(
+          execFileAsync(
+            process.execPath,
+            [path.join(output.packageRoot, 'scripts', scriptName), ...args],
+            { env: envWithGeneratedRacePreload(runRoot, preloadPath) },
+          ),
+        ).rejects.toThrow(/symbolic link|real file|changed while opening/iu);
+        await expect(fs.access(accessLog)).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(fs.readFile(outsideState, 'utf8')).resolves.toContain('must-not-be-read');
+      } finally {
+        await fs.rm(runRoot, { recursive: true, force: true });
+        await fs.rm(outsideRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('rejects a generic state parent replaced by an external junction after statePath inspection', async () => {
+    const name = 'generic-init-parent-race';
+    const workflow = normalizeWorkflowDefinition(customWorkflow(name));
+    const output = await generateFactorySkillPackage(packagePlan({ root, name, workflow }));
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-factory-init-race-'));
+    const outsideRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'comet-factory-init-race-outside-'),
+    );
+    const statePath = path.join(runRoot, '.comet', 'runs', name, 'state.json');
+    try {
+      await fs.mkdir(path.dirname(statePath), { recursive: true });
+      if (!(await canCreateGeneratedRaceLink(runRoot, outsideRoot, 'directory'))) return;
+      const { preloadPath, accessLog } = await writeGeneratedRacePreload(runRoot, {
+        mode: 'parent-after-missing-lstat',
+        target: statePath,
+        outsideDirectory: outsideRoot,
+      });
+
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [path.join(output.packageRoot, 'scripts', 'workflow-state.mjs'), 'init'],
+          { env: envWithGeneratedRacePreload(runRoot, preloadPath) },
+        ),
+      ).rejects.toThrow(/symbolic link|junction|outside|changed/iu);
+      await expect(fs.access(path.join(outsideRoot, 'state.json'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      await expect(fs.access(accessLog)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(fs.readdir(outsideRoot)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['state record', 'workflow-state.mjs', ['record', 'research', '{"summary":"done"}']],
+    ['guard apply', 'workflow-guard.mjs', ['exit', 'research', '--apply']],
+  ])(
+    'rejects an external parent replacement after a generated generic %s read',
+    async (_label, scriptName, args) => {
+      const name = `generic-write-${scriptName.replace(/[^a-z]+/gu, '-')}`;
+      const workflow = normalizeWorkflowDefinition(customWorkflow(name));
+      const output = await generateFactorySkillPackage(packagePlan({ root, name, workflow }));
+      const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-factory-write-race-'));
+      const outsideRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'comet-factory-write-race-outside-'),
+      );
+      const statePath = path.join(runRoot, '.comet', 'runs', name, 'state.json');
+      const normalEnv = { ...process.env, COMET_RUN_ROOT: runRoot };
+      try {
+        const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+        await execFileAsync(process.execPath, [stateScript, 'init'], { env: normalEnv });
+        if (scriptName === 'workflow-guard.mjs') {
+          await execFileAsync(
+            process.execPath,
+            [stateScript, 'record', 'research', '{"summary":"done"}'],
+            { env: normalEnv },
+          );
+          await fs.mkdir(path.join(runRoot, 'notes'), { recursive: true });
+          await fs.writeFile(path.join(runRoot, 'notes', 'research.md'), '# Done\n', 'utf8');
+        }
+        if (!(await canCreateGeneratedRaceLink(runRoot, outsideRoot, 'directory'))) return;
+        const { preloadPath, accessLog } = await writeGeneratedRacePreload(runRoot, {
+          mode: 'parent-after-read',
+          target: statePath,
+          outsideDirectory: outsideRoot,
+        });
+
+        await expect(
+          execFileAsync(
+            process.execPath,
+            [path.join(output.packageRoot, 'scripts', scriptName), ...args],
+            { env: envWithGeneratedRacePreload(runRoot, preloadPath) },
+          ),
+        ).rejects.toThrow(/symbolic link|junction|outside|changed/iu);
+        await expect(fs.access(path.join(outsideRoot, 'state.json'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+        await expect(fs.access(accessLog)).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(fs.readdir(outsideRoot)).resolves.toEqual([]);
+      } finally {
+        await fs.rm(runRoot, { recursive: true, force: true });
+        await fs.rm(outsideRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('rejects an overlay evidence parent replaced by an external junction after inspection', async () => {
+    const name = 'overlay-evidence-parent-race';
+    const workflow = normalizeWorkflowDefinition(
+      builtinCometFivePhaseWorkflow({
+        name,
+        goal: 'Keep overlay evidence writes inside the project.',
+      }),
+    );
+    const output = await generateFactorySkillPackage(packagePlan({ root, name, workflow }));
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-overlay-evidence-race-'));
+    const outsideRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'comet-overlay-evidence-race-outside-'),
+    );
+    const evidencePath = path.join(runRoot, '.comet', 'workflow-evidence', 'demo', `${name}.json`);
+    try {
+      await writeClassicProjectConfig(runRoot);
+      const changeRoot = path.join(runRoot, 'openspec', 'changes', 'demo');
+      await fs.mkdir(changeRoot, { recursive: true });
+      await fs.writeFile(path.join(changeRoot, '.comet.yaml'), 'phase: open\n', 'utf8');
+      if (!(await canCreateGeneratedRaceLink(runRoot, outsideRoot, 'directory'))) return;
+      const { preloadPath, accessLog } = await writeGeneratedRacePreload(runRoot, {
+        mode: 'parent-after-missing-lstat',
+        target: evidencePath,
+        outsideDirectory: outsideRoot,
+      });
+
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [
+            path.join(output.packageRoot, 'scripts', 'workflow-state.mjs'),
+            'record',
+            'open',
+            '{"intake-summary":"done"}',
+          ],
+          { env: envWithGeneratedRacePreload(runRoot, preloadPath) },
+        ),
+      ).rejects.toThrow(/symbolic link|junction|outside|changed/iu);
+      await expect(fs.access(path.join(outsideRoot, `${name}.json`))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      await expect(fs.access(accessLog)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(fs.readdir(outsideRoot)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['a missing project config', null],
+    [
+      'a Native-only project config',
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+    ],
+  ])('does not scan legacy OpenSpec state for %s', async (_label, configSource) => {
+    const workflow = normalizeWorkflowDefinition(
+      builtinCometFivePhaseWorkflow({
+        name: 'classic-ownership-boundary',
+        goal: 'Require explicit Classic workflow ownership.',
+      }),
+    );
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'classic-ownership-boundary', workflow }),
+    );
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-ownership-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    try {
+      const legacyChange = path.join(runRoot, 'openspec', 'changes', 'must-not-be-scanned');
+      await fs.mkdir(legacyChange, { recursive: true });
+      await fs.writeFile(path.join(legacyChange, '.comet.yaml'), 'phase: open\n', 'utf8');
+      if (configSource !== null) {
+        await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+        await fs.writeFile(path.join(runRoot, '.comet', 'config.yaml'), configSource, 'utf8');
+      }
+
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [path.join(output.packageRoot, 'scripts', 'workflow-state.mjs'), 'next'],
+          { env },
+        ),
+      ).rejects.toThrow(/Classic workflow is not enabled by \.comet\/config\.yaml/iu);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a configured Classic docs root that does not exist', async () => {
+    const workflow = normalizeWorkflowDefinition(
+      builtinCometFivePhaseWorkflow({
+        name: 'classic-missing-root',
+        goal: 'Require the configured Classic catalogue to exist.',
+      }),
+    );
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'classic-missing-root', workflow }),
+    );
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-missing-root-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    try {
+      await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(runRoot, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: classic',
+          'workflows: [classic]',
+          'classic:',
+          '  artifact_layout: docs',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      await fs.mkdir(path.join(runRoot, 'openspec'), { recursive: true });
+
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [path.join(output.packageRoot, 'scripts', 'workflow-state.mjs'), 'next'],
+          { env },
+        ),
+      ).rejects.toThrow(/Configured Classic OpenSpec root does not exist/iu);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects generated Classic routing when configured and alternate roots both exist', async () => {
+    const workflow = normalizeWorkflowDefinition(
+      builtinCometFivePhaseWorkflow({
+        name: 'classic-dual-root',
+        goal: 'Reject ambiguous Classic catalogues.',
+      }),
+    );
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'classic-dual-root', workflow }),
+    );
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-dual-root-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    try {
+      await writeClassicProjectConfig(runRoot);
+      await fs.mkdir(path.join(runRoot, 'openspec'), { recursive: true });
+      await fs.mkdir(path.join(runRoot, 'docs', 'openspec'), { recursive: true });
+
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [path.join(output.packageRoot, 'scripts', 'workflow-state.mjs'), 'next'],
+          { env },
+        ),
+      ).rejects.toThrow(/Classic layout conflict/iu);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a configured Native artifact root that does not exist', async () => {
+    const workflow = normalizeWorkflowDefinition(customWorkflow('native-missing-root'));
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'native-missing-root', workflow }),
+    );
+    await writeGeneratedProtocol(output.packageRoot, (protocol) => {
+      protocol.outputSchemas[0].artifacts[0].pathBase = 'native-root';
+      protocol.outputSchemas[0].artifacts[0].paths = ['notes.md'];
+    });
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-missing-root-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+    const guardScript = path.join(output.packageRoot, 'scripts', 'workflow-guard.mjs');
+    try {
+      await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(runRoot, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'workflows: [native]',
+          'native:',
+          '  artifact_root: docs',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      await execFileAsync(process.execPath, [stateScript, 'init'], { env });
+      await execFileAsync(
+        process.execPath,
+        [stateScript, 'record', 'research', '{"summary":"done"}'],
+        { env },
+      );
+
+      await expect(
+        execFileAsync(process.execPath, [guardScript, 'exit', 'research'], { env }),
+      ).rejects.toThrow(/Configured Native artifact root does not exist/iu);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['../outside-native', '/absolute-native', 'docs//native', 'docs/./native'])(
+    'rejects native.artifact_root outside the project: %s',
+    async (artifactRoot) => {
+      const workflow = normalizeWorkflowDefinition(customWorkflow('native-root-boundary'));
+      const output = await generateFactorySkillPackage(
+        packagePlan({ root, name: 'native-root-boundary', workflow }),
+      );
+      await writeGeneratedProtocol(output.packageRoot, (protocol) => {
+        protocol.outputSchemas[0].artifacts[0].pathBase = 'native-root';
+        protocol.outputSchemas[0].artifacts[0].paths = ['notes.md'];
+      });
+
+      const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-root-boundary-'));
+      const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+      const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+      const guardScript = path.join(output.packageRoot, 'scripts', 'workflow-guard.mjs');
+      try {
+        await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+        await fs.writeFile(
+          path.join(runRoot, '.comet', 'config.yaml'),
+          [
+            'schema: comet.project.v1',
+            'default_workflow: native',
+            'native:',
+            `  artifact_root: ${JSON.stringify(artifactRoot)}`,
+            '',
+          ].join('\n'),
+          'utf8',
+        );
+        await execFileAsync(process.execPath, [stateScript, 'init'], { env });
+        await execFileAsync(
+          process.execPath,
+          [stateScript, 'record', 'research', '{"summary":"done"}'],
+          { env },
+        );
+        const currentlyResolvedRoot = path.join(
+          runRoot,
+          ...artifactRoot.split('/').filter(Boolean),
+        );
+        await fs.mkdir(currentlyResolvedRoot, { recursive: true });
+        await fs.writeFile(path.join(currentlyResolvedRoot, 'notes.md'), '# Notes\n', 'utf8');
+
+        await expect(
+          execFileAsync(process.execPath, [guardScript, 'exit', 'research'], { env }),
+        ).rejects.toThrow(
+          /native\.artifact_root must (?:be a project-relative path|stay inside|not contain empty or dot path segments)/iu,
+        );
+      } finally {
+        await fs.rm(runRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('rejects an invalid Classic artifact layout instead of treating it as legacy', async () => {
+    const workflow = normalizeWorkflowDefinition(
+      builtinCometFivePhaseWorkflow({
+        name: 'classic-layout-boundary',
+        goal: 'Reject invalid Classic layout configuration.',
+      }),
+    );
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'classic-layout-boundary', workflow }),
+    );
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-layout-boundary-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+    try {
+      await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(runRoot, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: classic',
+          'classic:',
+          '  artifact_layout: elsewhere',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      const changeRoot = path.join(runRoot, 'openspec', 'changes', 'invalid-layout');
+      await fs.mkdir(changeRoot, { recursive: true });
+      await fs.writeFile(path.join(changeRoot, '.comet.yaml'), 'phase: open\n', 'utf8');
+
+      await expect(execFileAsync(process.execPath, [stateScript, 'next'], { env })).rejects.toThrow(
+        /classic\.artifact_layout must be legacy or docs/iu,
+      );
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts complex legal project YAML through the shared generated config helper', async () => {
+    const workflow = normalizeWorkflowDefinition(customWorkflow('complex-project-config'));
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'complex-project-config', workflow }),
+    );
+    await writeGeneratedProtocol(output.packageRoot, (protocol) => {
+      protocol.outputSchemas[0].artifacts[0].pathBase = 'native-root';
+      protocol.outputSchemas[0].artifacts[0].paths = ['notes.md'];
+    });
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-complex-project-config-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    try {
+      await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(runRoot, '.comet', 'config.yaml'),
+        [
+          '---',
+          'schema: "comet.project.v1"',
+          'default_workflow: native',
+          'workflows:',
+          '  - native',
+          '  - classic',
+          'ambient_resume: true',
+          'native:',
+          '  artifact_root: "docs/native" # quoted path',
+          '  language: en',
+          '  clarification_mode: batch',
+          '  snapshot:',
+          '    include: ["**/*.ts", "packages/**"]',
+          '    exclude:',
+          '      - "dist/**"',
+          '    max_files: 12000',
+          '    max_total_bytes: 268435456',
+          '    max_duration_ms: 90000',
+          'classic: { artifact_layout: docs, language: zh-CN }',
+          'extension:',
+          '  owners: [platform, workflow]',
+          '  note: "value: with # content"',
+          '...',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+
+      const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+      await execFileAsync(process.execPath, [stateScript, 'init'], { env });
+      await execFileAsync(
+        process.execPath,
+        [stateScript, 'record', 'research', '{"summary":"done"}'],
+        { env },
+      );
+      await fs.mkdir(path.join(runRoot, 'docs', 'native'), { recursive: true });
+      await fs.writeFile(path.join(runRoot, 'docs', 'native', 'notes.md'), '# Notes\n');
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [path.join(output.packageRoot, 'scripts', 'workflow-guard.mjs'), 'exit', 'research'],
+          { env },
+        ),
+      ).resolves.toBeDefined();
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [
+      'duplicate keys',
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\nextension: one\nextension: two\n',
+    ],
+    [
+      'malformed unrelated YAML',
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\nextension: [unterminated\n',
+    ],
+    [
+      'invalid managed fields',
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\nclassic:\n  review_mode: casual\n',
+    ],
+  ])('fails closed in generated runtimes for %s', async (_label, source) => {
+    const workflow = normalizeWorkflowDefinition(customWorkflow('invalid-project-config'));
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'invalid-project-config', workflow }),
+    );
+    await writeGeneratedProtocol(output.packageRoot, (protocol) => {
+      protocol.outputSchemas[0].artifacts[0].pathBase = 'native-root';
+      protocol.outputSchemas[0].artifacts[0].paths = ['notes.md'];
+    });
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-invalid-project-config-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    try {
+      await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+      await fs.writeFile(path.join(runRoot, '.comet', 'config.yaml'), source, 'utf8');
+
+      const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+      await execFileAsync(process.execPath, [stateScript, 'init'], { env });
+      await execFileAsync(
+        process.execPath,
+        [stateScript, 'record', 'research', '{"summary":"done"}'],
+        { env },
+      );
+      await expect(
+        execFileAsync(
+          process.execPath,
+          [path.join(output.packageRoot, 'scripts', 'workflow-guard.mjs'), 'exit', 'research'],
+          { env },
+        ),
+      ).rejects.toThrow(/(?:Invalid \.comet\/config\.yaml|classic\.review_mode must be)/iu);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a Native artifact path base that crosses a junction outside the project', async () => {
+    const workflow = normalizeWorkflowDefinition(customWorkflow('native-physical-boundary'));
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'native-physical-boundary', workflow }),
+    );
+    await writeGeneratedProtocol(output.packageRoot, (protocol) => {
+      protocol.outputSchemas[0].artifacts[0].pathBase = 'native-root';
+      protocol.outputSchemas[0].artifacts[0].paths = ['notes.md'];
+    });
+
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-physical-'));
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-outside-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+    const guardScript = path.join(output.packageRoot, 'scripts', 'workflow-guard.mjs');
+    try {
+      await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(runRoot, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'native:',
+          '  artifact_root: docs',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      await execFileAsync(process.execPath, [stateScript, 'init'], { env });
+      await execFileAsync(
+        process.execPath,
+        [stateScript, 'record', 'research', '{"summary":"done"}'],
+        { env },
+      );
+      await fs.writeFile(path.join(outsideRoot, 'notes.md'), '# Outside\n', 'utf8');
+      try {
+        await fs.symlink(outsideRoot, path.join(runRoot, 'docs'), 'junction');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(
+        execFileAsync(process.execPath, [guardScript, 'exit', 'research'], { env }),
+      ).rejects.toThrow(/symbolic link or junction/iu);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a Classic docs catalogue that crosses a junction outside the project', async () => {
+    const workflow = normalizeWorkflowDefinition(
+      builtinCometFivePhaseWorkflow({
+        name: 'classic-physical-boundary',
+        goal: 'Reject an unsafe Classic catalogue.',
+      }),
+    );
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'classic-physical-boundary', workflow }),
+    );
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-physical-'));
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-outside-'));
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+    try {
+      await fs.mkdir(path.join(runRoot, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(runRoot, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: classic',
+          'classic:',
+          '  artifact_layout: docs',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      await fs.mkdir(path.join(runRoot, 'docs'), { recursive: true });
+      await fs.mkdir(path.join(outsideRoot, 'changes', 'outside-change'), { recursive: true });
+      await fs.writeFile(
+        path.join(outsideRoot, 'changes', 'outside-change', '.comet.yaml'),
+        'phase: open\narchived: false\n',
+        'utf8',
+      );
+      try {
+        await fs.symlink(outsideRoot, path.join(runRoot, 'docs', 'openspec'), 'junction');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(execFileAsync(process.execPath, [stateScript, 'next'], { env })).rejects.toThrow(
+        /symbolic link or junction/iu,
+      );
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a generated workflow state path that escapes the project root', async () => {
+    const workflow = normalizeWorkflowDefinition(customWorkflow('state-path-boundary'));
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'state-path-boundary', workflow }),
+    );
+    const escapedName = `${path.basename(root)}-escaped-state.json`;
+    await writeGeneratedProtocol(output.packageRoot, (protocol) => {
+      protocol.state.statePath = `../${escapedName}`;
+    });
+
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-state-path-boundary-'));
+    const escapedPath = path.join(runRoot, '..', escapedName);
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+    try {
+      await expect(execFileAsync(process.execPath, [stateScript, 'init'], { env })).rejects.toThrow(
+        /workflow-run statePath must stay inside the project root/iu,
+      );
+      await expect(fs.access(escapedPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+      await fs.rm(escapedPath, { force: true });
+    }
+  });
+
+  it('rejects an artifact pattern that escapes its declared path base', async () => {
+    const workflowInput = customWorkflow('artifact-path-boundary');
+    workflowInput.outputSchemas![0]!.artifacts[0]!.paths = ['../outside-artifact.md'];
+    const workflow = normalizeWorkflowDefinition(workflowInput);
+    const output = await generateFactorySkillPackage(
+      packagePlan({ root, name: 'artifact-path-boundary', workflow }),
+    );
+
+    const runRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-artifact-path-boundary-'));
+    const outsideArtifact = path.join(runRoot, '..', 'outside-artifact.md');
+    const env = { ...process.env, COMET_RUN_ROOT: runRoot };
+    const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
+    const guardScript = path.join(output.packageRoot, 'scripts', 'workflow-guard.mjs');
+    try {
+      await fs.writeFile(outsideArtifact, '# Outside\n', 'utf8');
+      await execFileAsync(process.execPath, [stateScript, 'init'], { env });
+      await execFileAsync(
+        process.execPath,
+        [stateScript, 'record', 'research', '{"summary":"done"}'],
+        { env },
+      );
+
+      await expect(
+        execFileAsync(process.execPath, [guardScript, 'exit', 'research'], { env }),
+      ).rejects.toThrow(/artifact path must stay inside its declared path base/iu);
+    } finally {
+      await fs.rm(runRoot, { recursive: true, force: true });
+      await fs.rm(outsideArtifact, { force: true });
+    }
+  });
+
   it('uses .comet.yaml for comet-five-phase-overlay state routing and sidecar evidence', async () => {
     const workflow = normalizeWorkflowDefinition(
       builtinCometFivePhaseWorkflow({
@@ -349,6 +1409,7 @@ describe('Factory skill package generation', () => {
     const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
     const guardScript = path.join(output.packageRoot, 'scripts', 'workflow-guard.mjs');
     try {
+      await writeClassicProjectConfig(runRoot);
       const changeRoot = path.join(runRoot, 'openspec', 'changes', 'stateful-change');
       await fs.mkdir(changeRoot, { recursive: true });
       await fs.writeFile(
@@ -387,6 +1448,7 @@ describe('Factory skill package generation', () => {
     async function createOverlayRun(changeName: string, stateYaml: string, evidence?: unknown) {
       const caseRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-overlay-state-case-'));
       const caseEnv = { ...process.env, COMET_RUN_ROOT: caseRoot };
+      await writeClassicProjectConfig(caseRoot);
       const caseChangeRoot = path.join(caseRoot, 'openspec', 'changes', changeName);
       await fs.mkdir(caseChangeRoot, { recursive: true });
       await fs.writeFile(path.join(caseChangeRoot, '.comet.yaml'), stateYaml, 'utf8');
@@ -529,6 +1591,7 @@ describe('Factory skill package generation', () => {
     const stateScript = path.join(output.packageRoot, 'scripts', 'workflow-state.mjs');
     const guardScript = path.join(output.packageRoot, 'scripts', 'workflow-guard.mjs');
     try {
+      await writeClassicProjectConfig(runRoot);
       const changeRoot = path.join(runRoot, 'openspec', 'changes', 'augmentation-test');
       await fs.mkdir(changeRoot, { recursive: true });
       await fs.writeFile(

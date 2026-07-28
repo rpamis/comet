@@ -25,9 +25,11 @@ const state = (): RunState => ({
 
 describe('engine state projection', () => {
   let changeDir: string;
+  let outsideRoot: string;
 
   beforeEach(async () => {
     changeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-engine-state-'));
+    outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-engine-state-outside-'));
     await fs.writeFile(
       path.join(changeDir, '.comet.yaml'),
       'workflow: full\nphase: build\ncustom_user_field: keep-me\n',
@@ -35,7 +37,11 @@ describe('engine state projection', () => {
   });
 
   afterEach(async () => {
-    await fs.rm(changeDir, { recursive: true, force: true });
+    await Promise.all([
+      fs.rm(changeDir, { recursive: true, force: true }),
+      fs.rm(`${changeDir}-held`, { recursive: true, force: true }),
+      fs.rm(outsideRoot, { recursive: true, force: true }),
+    ]);
   });
 
   it('round-trips run fields and preserves legacy and unknown fields', async () => {
@@ -52,6 +58,87 @@ describe('engine state projection', () => {
     await writeRunState(changeDir, state());
 
     expect(await readRunState(changeDir)).toEqual(state());
+  });
+
+  it('does not commit Run state through a parent replaced before commit', async () => {
+    await writeRunState(changeDir, state());
+    const parent = path.join(changeDir, '.comet');
+    const held = `${changeDir}-held`;
+    const writeWithHook = writeRunState as unknown as (
+      changeDir: string,
+      state: RunState,
+      options: { beforeCommit: () => void | Promise<void> },
+    ) => Promise<void>;
+    try {
+      await expect(
+        writeWithHook(
+          changeDir,
+          { ...state(), iteration: 1 },
+          {
+            beforeCommit: async () => {
+              const temporaryName = (await fs.readdir(parent)).find(
+                (entry) => entry.includes('run-state') && entry.endsWith('.tmp'),
+              );
+              expect(temporaryName).toBeDefined();
+              await fs.rename(parent, held);
+              await fs.writeFile(
+                path.join(outsideRoot, 'run-state.json'),
+                '{"keep":true}\n',
+                'utf8',
+              );
+              await fs.writeFile(
+                path.join(outsideRoot, temporaryName!),
+                '{"outside":true}\n',
+                'utf8',
+              );
+              await fs.symlink(
+                outsideRoot,
+                parent,
+                process.platform === 'win32' ? 'junction' : 'dir',
+              );
+            },
+          },
+        ),
+      ).rejects.toThrow(/changed|junction|outside|managed parent/iu);
+      await expect(fs.readFile(path.join(outsideRoot, 'run-state.json'), 'utf8')).resolves.toBe(
+        '{"keep":true}\n',
+      );
+    } finally {
+      await restoreParent(parent, held);
+    }
+  });
+
+  it('rejects Run state when its parent changes during the bounded read', async () => {
+    await writeRunState(changeDir, state());
+    const parent = path.join(changeDir, '.comet');
+    const held = `${changeDir}-held`;
+    const readWithHooks = readRunState as unknown as (
+      changeDir: string,
+      options: { hooks: { afterOpen: () => void | Promise<void> } },
+    ) => Promise<RunState | null>;
+    try {
+      await expect(
+        readWithHooks(changeDir, {
+          hooks: {
+            afterOpen: async () => {
+              await fs.rename(parent, held);
+              await fs.writeFile(
+                path.join(outsideRoot, 'run-state.json'),
+                JSON.stringify({ ...state(), runId: 'outside' }),
+                'utf8',
+              );
+              await fs.symlink(
+                outsideRoot,
+                parent,
+                process.platform === 'win32' ? 'junction' : 'dir',
+              );
+            },
+          },
+        }),
+      ).rejects.toThrow(/changed|junction|outside|regular file|operation not permitted|EPERM/iu);
+    } finally {
+      await restoreParent(parent, held);
+    }
   });
 
   it('does not replace .comet/run-state.json when writing fails', async () => {
@@ -105,3 +192,22 @@ describe('engine state projection', () => {
     );
   });
 });
+
+async function restoreParent(parent: string, held: string): Promise<void> {
+  try {
+    if ((await fs.lstat(parent)).isSymbolicLink()) {
+      if (process.platform === 'win32') await fs.rmdir(parent);
+      else await fs.unlink(parent);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  if (
+    await fs.stat(held).then(
+      () => true,
+      () => false,
+    )
+  ) {
+    await fs.rename(held, parent);
+  }
+}

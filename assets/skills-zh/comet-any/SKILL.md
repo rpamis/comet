@@ -32,7 +32,7 @@ description: "仅在用户明确调用 /comet-any，或明确要求定制 /comet
 
 `comet-five-phase-overlay` 保留 Comet Classic 五阶段主流程和 `.comet.yaml` 状态语义。普通模式下：
 
-- `comet-five-phase-overlay` 的主状态只来自 `openspec/changes/<name>/.comet.yaml`；没有 active change 或多个 active changes 时必须阻塞并请用户选择。
+- `comet-five-phase-overlay` 的主状态只来自 Classic layout resolver 绑定的 `<classic-change-dir>/.comet.yaml`；没有 active change 或多个 active changes 时必须阻塞并请用户选择。
 - 不得创建 `.comet/runs/<workflow>/state.json` 作为 Comet overlay 主状态。Bundle 草稿、eval evidence 和 publish readiness 可以有自己的证据文件，但不能替代 `.comet.yaml`。
 - `control` Node 不允许 override：`open`、`execute`、`verify`、`archive`。
 - `producer` Node 可以 override：`design`、`plan`，但必须满足对应 Output Schema。

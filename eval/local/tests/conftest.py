@@ -372,6 +372,8 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
     target.mkdir(parents=True)
     package_file = REPOSITORY_ROOT / "package.json"
     bin_dir = REPOSITORY_ROOT / "bin"
+    assets_dir = REPOSITORY_ROOT / "assets"
+    assets_manifest = assets_dir / "manifest.json"
     source_roots = [
         REPOSITORY_ROOT / "app",
         REPOSITORY_ROOT / "domains",
@@ -392,7 +394,15 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
         )
         if path.is_file()
     )
-    if not package_file.is_file() or not bin_dir.is_dir() or not source_files:
+    asset_files = _regular_tree_files(assets_dir) if assets_dir.is_dir() else []
+    source_files.extend(asset_files)
+    if (
+        not package_file.is_file()
+        or not bin_dir.is_dir()
+        or not assets_manifest.is_file()
+        or not asset_files
+        or not source_files
+    ):
         raise FileNotFoundError("Current Comet source snapshot is incomplete")
     source_hash, source_count = _tree_digest(REPOSITORY_ROOT, sorted(set(source_files)))
     with tempfile.TemporaryDirectory(prefix="comet-eval-source-build-") as temporary:
@@ -400,9 +410,12 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
         compiler_version = _build_current_comet_dist(REPOSITORY_ROOT, built_dist)
         shutil.copytree(built_dist, target / "dist")
     shutil.copytree(bin_dir, target / "bin")
+    shutil.copytree(assets_dir, target / "assets")
     shutil.copy2(package_file, target / "package.json")
     snapshot_files = [
-        path for relative in ("bin", "dist") for path in _regular_tree_files(target / relative)
+        path
+        for relative in ("assets", "bin", "dist")
+        for path in _regular_tree_files(target / relative)
     ] + [target / "package.json"]
     snapshot_hash, snapshot_count = _tree_digest(target, sorted(snapshot_files))
     identity = {
@@ -412,6 +425,9 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
         "snapshotHash": snapshot_hash,
         "snapshotFileCount": snapshot_count,
         "packageHash": hashlib.sha256((target / "package.json").read_bytes()).hexdigest(),
+        "assetsHash": _tree_digest(target, _regular_tree_files(target / "assets"))[0],
+        "assetsFileCount": len(_regular_tree_files(target / "assets")),
+        "manifestHash": hashlib.sha256((target / "assets/manifest.json").read_bytes()).hexdigest(),
         "entryHash": hashlib.sha256((target / "dist/app/cli/index.js").read_bytes()).hexdigest(),
         "nativeAdapterHash": hashlib.sha256(
             (target / "dist/domains/dashboard/native-adapter.js").read_bytes()

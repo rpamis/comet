@@ -5,6 +5,8 @@ description: "Use only when explicitly invoked as /comet-verify or routed by the
 
 # Comet Phase 4: Verify
 
+Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+
 ## Prerequisites
 
 - Code committed (Phase 3 complete)
@@ -152,9 +154,12 @@ When scale assessment result is "large":
 
 **Immediately execute:** Use the Skill tool to load the `openspec-verify-change` skill. Skipping this step is prohibited.
 
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** Use only its verification semantics. Replace every direct official CLI, fixed-cwd, or fixed physical OpenSpec path instruction with `comet classic openspec -- <args...>` and the resolver-returned `<classic-*>` logical roots.
+
 After the skill loads, follow its guidance to verify. Check items:
 1. All tasks.md tasks completed (`[x]`)
-2. Implementation matches `openspec/changes/<name>/design.md` high-level design decisions
+2. Implementation matches `<classic-change-dir>/design.md` high-level design decisions
 3. Implementation matches Design Doc (technical design documents under `docs/superpowers/specs/`)
 4. All capability spec scenarios pass
 5. proposal.md goals are satisfied

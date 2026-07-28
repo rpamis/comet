@@ -572,11 +572,11 @@ Classic 使用解耦状态架构，文件独立管理：
 | 文件                                      | 归属     | 用途                           |
 | ----------------------------------------- | -------- | ------------------------------ |
 | `.openspec.yaml`                          | OpenSpec | Spec 生命周期、变更元数据      |
-| `openspec/changes/<name>/.comet.yaml`     | Comet    | 工作流阶段、执行模式、验证状态 |
+| `<classic-change-dir>/.comet.yaml`        | Comet    | 工作流阶段、执行模式、验证状态 |
 | `.comet/run-state.json`                   | Engine   | Run 身份和执行状态（机器所有） |
 | `.comet/state-events.jsonl`               | Comet    | 追加式状态转移审计日志         |
 
-每个 change 目录下的 `.comet.yaml` 保存 Classic 工作流状态，只保留 `run_id` 指向 Engine Run。Engine 的机器状态放在
+每个 change 目录下的 `.comet.yaml` 保存 Classic 工作流状态，只保留 `run_id` 指向 Engine Run。`<classic-change-dir>` 由项目的 `classic.artifact_layout` 解析；可用 `comet classic root show` 查看当前 OpenSpec 根。Engine 的机器状态放在
 该 change 的 `.comet/run-state.json`，使用 `currentStep`、`status`、`iteration` 等 camelCase 字段；旧 YAML 中残留的 Run 字段会在兼容读取后迁移出去，`skill` 不再是当前 `.comet.yaml` 的合法字段。项目级默认配置只放在 `.comet/config.yaml`。
 
 阶段推进由 TypeScript transition table、`comet-state transition`、`comet-guard --apply` 和归档命令统一处理。

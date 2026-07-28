@@ -5,6 +5,8 @@ description: "仅在用户明确调用 /comet-tweak，或由 Comet 根 Skill/run
 
 # Comet 预设路径：Tweak
 
+开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+
 Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程。它串联 OpenSpec 的核心流程，复用 open、build、verify、archive 能力，仅跳过 Superpowers brainstorming 和完整 plan。
 
 适用于串联 OpenSpec 的轻量改动，例如配置调整、文档或 prompt 优化，以及需 spec 驱动（含 delta spec）但不需要完整 `/comet-classic` 深度设计流程的中等变更。delta spec 在 tweak 中是一等公民正常产物，需要 delta spec 本身不构成升级理由。
@@ -36,6 +38,9 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 复用 Comet open 能力创建 change，但使用 tweak 默认值：不执行 `openspec-explore` 长探索，直接进入精简 change 创建。
 
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
+
+<!-- external-openspec-skill-override -->
+**外部 OpenSpec Skill 覆写：** 加载后不得执行其中直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径的指令；所有 OpenSpec 命令改用 `comet classic openspec -- <args...>`，所有 change 与 artifact 路径改用本轮绑定的 `<classic-*>` 逻辑根。
 
 技能加载后，按其指引创建精简版产物：
   - `proposal.md` — 变更动机 + 目标 + 范围
@@ -88,10 +93,13 @@ comet guard <change-name> open --apply
 
 **立即执行：** 使用 Skill 工具加载 `openspec-apply-change` 技能。禁止跳过此步骤。
 
+<!-- external-openspec-skill-override -->
+**外部 OpenSpec Skill 覆写：** 加载后只采用其 apply 语义；其中任何直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径都必须替换为 `comet classic openspec -- <args...>` 与 `<classic-*>` 逻辑根。
+
 技能加载后，以当前 `<change-name>` 作为输入，按 `openspec-apply-change` 的指引执行 OpenSpec apply 流程：
 
-1. 运行或遵循 `openspec status --change "<name>" --json`，确认 schema 和任务 artifact
-2. 运行或遵循 `openspec instructions apply --change "<name>" --json`，读取 OpenSpec 返回的 apply 指令、`contextFiles`、任务进度和动态 instruction
+1. 运行或遵循 `comet classic openspec -- status --change "<name>" --json`，确认 schema 和任务 artifact
+2. 运行或遵循 `comet classic openspec -- instructions apply --change "<name>" --json`，读取 OpenSpec 返回的 apply 指令、`contextFiles`、任务进度和动态 instruction
 3. 读取 apply 指令列出的所有 context files，不得只凭旧对话或手写 tasks 循环实现
 4. 按 apply 指令逐个完成未勾选任务，保持改动最小且聚焦
 5. 每完成一个任务后：

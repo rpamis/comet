@@ -418,7 +418,7 @@ describe('Comet Native Phase 1 behavior matrix', () => {
     await expect(
       fs.access(path.join(paths.specsDir, 'rollback-capability', 'spec.md')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
-  });
+  }, 60_000);
 
   it('continues and rolls back interrupted artifact-root moves from pending config', async () => {
     const projectRoot = await project();

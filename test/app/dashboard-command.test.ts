@@ -3,6 +3,10 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { dashboardCommand } from '../../app/commands/dashboard.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../domains/comet-native/native-config.js';
 
 describe('dashboardCommand --json', () => {
   let tmpDir: string;
@@ -16,7 +20,22 @@ describe('dashboardCommand --json', () => {
   });
 
   it('prints a single dashboard snapshot and returns', async () => {
-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'sample');
+    const config = defaultProjectConfig('docs', 'en');
+    config.default_workflow = 'classic';
+    config.workflows = ['classic'];
+    config.classic = {
+      artifact_layout: 'docs',
+      language: 'en',
+      context_compression: 'off',
+      review_mode: 'standard',
+      auto_transition: true,
+    };
+    await writeProjectConfig(tmpDir, config);
+    const openSpecRoot = path.join(tmpDir, 'docs', 'openspec');
+    await fs.mkdir(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
+    await fs.mkdir(path.join(openSpecRoot, 'specs'), { recursive: true });
+    await fs.writeFile(path.join(openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
+    const changeDir = path.join(openSpecRoot, 'changes', 'sample');
     await fs.mkdir(changeDir, { recursive: true });
     await fs.writeFile(
       path.join(changeDir, '.comet.yaml'),

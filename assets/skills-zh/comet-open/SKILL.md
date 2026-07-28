@@ -5,6 +5,8 @@ description: "仅在用户明确调用 /comet-open，或由 Comet 根 Skill/runt
 
 # Comet 阶段 1：开启（Open）
 
+开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+
 ## 前置条件
 
 - 无活跃 change，或用户希望创建新 change
@@ -17,7 +19,7 @@ description: "仅在用户明确调用 /comet-open，或由 Comet 根 Skill/runt
 
 ### 0a. 当前 change 绑定
 
-恢复已有 change 时先检查 `openspec/changes/<change-name>/.comet.yaml`：
+恢复已有 change 时先检查 `<classic-change-dir>/.comet.yaml`：
 
 - 状态文件存在且可解析：第一项状态操作是选择 change
 - 状态文件缺失但 change 目录有效：先运行 `comet state init <change-name> full`，再选择 change
@@ -34,7 +36,7 @@ comet state select <change-name>
 在任何 OpenSpec 状态或指令命令前运行：
 
 ```bash
-openspec --version
+comet classic openspec -- --version
 ```
 
 本流程要求 **OpenSpec >= 1.5.0**。版本低于 1.5.0、无法解析版本、命令不可用或返回非零退出码时立即停止，并提示运行 `npm install -g @fission-ai/openspec@latest` 后重试；不得继续使用缺少 `applyRequires`、`artifactPaths`、`changeRoot` 或 `resolvedOutputPath` 契约的旧 CLI。
@@ -42,6 +44,9 @@ openspec --version
 ### 1. 探索想法与需求澄清
 
 **立即执行：** 使用 Skill 工具加载 `openspec-explore` 技能。禁止跳过此步骤。
+
+<!-- external-openspec-skill-override -->
+**外部 OpenSpec Skill 覆写：** 加载后只采用其探索方法；其中任何直接运行官方 CLI、切换到固定 cwd 或读写固定物理 OpenSpec 路径的指令都不得执行。所有 CLI 调用改用 `comet classic openspec -- <args...>`，所有文件路径改用本轮绑定的 `<classic-*>` 逻辑根。
 
 技能加载后，按其指引探索问题空间，但不得把一次问答视为足够澄清。必须围绕下列内容继续提问、对齐并形成澄清摘要：
 - 目标：用户真正要解决的问题和期望结果
@@ -90,12 +95,12 @@ openspec --version
 **批量完成硬性检查（不得跳过）**：全部拆分项完成各自的 open 阶段后，对用户确认清单中的每个 `<name>` 逐个运行：
 
 ```bash
-openspec status --change "<name>" --json
+comet classic openspec -- status --change "<name>" --json
 comet state check <name> design
 ```
 
 解析 OpenSpec JSON 时必须同时确认：
-- `changeRoot` 解析后必须等于仓库内 `openspec/changes/<name>`；不匹配时停止，Classic runtime 不支持仓库外 change root
+- `changeRoot` 解析后必须等于 resolver 绑定的 `<classic-change-dir>`；不匹配时停止，Classic runtime 不支持仓库外 change root
 - schema 必须包含核心 artifact ID `proposal`、`design`、`tasks`；允许存在额外 artifacts，但核心 ID 缺失时停止并报告不兼容 schema
 - `applyRequires` 列出的每个 artifact 在 `artifacts` 中都必须为 `done`
 - `artifactPaths.<artifact-id>.existingOutputPaths`（或 instructions 返回的 `resolvedOutputPath`）对应的实际输出必须存在且非空
@@ -118,13 +123,19 @@ comet state check <name> design
 
 OpenSpec change 名称必须是 kebab-case 英文（小写字母、数字、单连字符）。若名称冲突但目标仍明确，派生一个不冲突且语义稳定的名称并继续；只有无法判断应复用现有 change 还是创建新 change 时才交给用户选择。
 
-resolved brief 或 change 名称仍不明确时不得运行 `openspec new change`，也不得创建 proposal/design/tasks；继续澄清或处理真正的用户决策后再进入 Step 2。
+resolved brief 或 change 名称仍不明确时不得运行 `comet classic openspec -- new change`，也不得创建 proposal/design/tasks；继续澄清或处理真正的用户决策后再进入 Step 2。
 
 ### 2. 创建 Change 结构 + 初始化状态
 
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
 
+<!-- external-openspec-skill-override -->
+**外部 OpenSpec Skill 覆写：** 加载后只采用其 change 创建语义；其中任何直接运行官方 CLI、切换到固定 cwd 或把 change 写到固定物理 OpenSpec 根的指令都不得执行。创建、status 与 instructions 全部改用 `comet classic openspec -- <args...>`，文件路径全部改用 `<classic-change-dir>` 等本轮逻辑根。
+
 完整 `/comet-classic` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能；只有用户明确要求一次性生成提案和 artifacts 时才允许加载。
+
+<!-- external-openspec-skill-override -->
+**外部 OpenSpec Skill 覆写：** 对 `openspec-propose` 同样不得采用其直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径；命令必须通过 adapter，产物必须写入 resolver 返回的 `<classic-*>` 逻辑根。
 
 技能加载后，按其指引创建 change 骨架；当 Step 1b 已形成范围明确的 resolved brief 时，覆盖其"STOP and wait for user direction"行为，避免重复询问。
 
@@ -138,9 +149,9 @@ comet state select <name>
 comet state check <name> open
 ```
 
-任一命令失败都停止。随后运行一次 `openspec status --change "<name>" --json` 并执行兼容性预检：
+任一命令失败都停止。随后运行一次 `comet classic openspec -- status --change "<name>" --json` 并执行兼容性预检：
 
-- `changeRoot` 解析后必须等于当前仓库的 `openspec/changes/<name>`，`planningHome`（如存在）也必须位于当前仓库；不支持仓库外 artifact 路径
+- `changeRoot` 解析后必须等于 resolver 绑定的 `<classic-change-dir>`，`planningHome`（如存在）也必须位于当前仓库；不支持仓库外 artifact 路径
 - `artifacts` 必须包含核心 ID `proposal`、`design`、`tasks`，额外 artifacts 允许存在
 - `applyRequires` 必须是可解析的 artifact ID 列表，且每个 ID 都存在于 `artifacts`
 - 载荷缺字段、路径越界或核心 ID 缺失时立即停止，不能回退为猜测的固定模板
@@ -149,13 +160,13 @@ comet state check <name> open
 
 **OpenSpec 状态驱动产物循环**：
 
-1. 运行 `openspec status --change "<name>" --json` 并解析完整 JSON。
+1. 运行 `comet classic openspec -- status --change "<name>" --json` 并解析完整 JSON。
 2. 若 `applyRequires` 中每一项都已是 `done`，退出循环；`isComplete` 只记录为诊断信息，不作为阶段阻塞条件。
 3. 从尚未完成且为 `status: "ready"` 的 artifacts 中，优先选择能够推进 `applyRequires` 依赖闭包的项，并按 CLI 返回顺序处理。不得硬编码生成顺序，也不得假设 schema 只有 proposal/design/tasks。
 4. 对每个 ready 的 `<artifact-id>` 获取实时指令：
 
    ```bash
-   openspec instructions <artifact-id> --change "<name>" --json
+   comet classic openspec -- instructions <artifact-id> --change "<name>" --json
    ```
 
 5. 对返回的 JSON 指令载荷，必须：
@@ -167,14 +178,14 @@ comet state check <name> open
    - 验证 CLI 返回的实际输出文件存在且非空
 6. 每创建一个 artifact 后，重新运行 status，并再次校验 `changeRoot`、核心 ID 和 `applyRequires`。已经变为 `done` 的项不得重复生成；新变为 `ready` 的项进入下一轮。
 
-**阻塞与失败处理**：`applyRequires` 尚未全部完成但没有任何可推进其依赖闭包的 ready artifact 时，必须报告相关 `blocked` artifact 的 `missingDeps` 并停止，不得猜测顺序或跳过依赖。如果 `openspec status` / `openspec instructions` 失败、返回无效 JSON、路径逃逸仓库、或未提供可用的 `resolvedOutputPath`，也必须立即停止并报告 OpenSpec 错误。不得回退为硬编码文档结构。
+**阻塞与失败处理**：`applyRequires` 尚未全部完成但没有任何可推进其依赖闭包的 ready artifact 时，必须报告相关 `blocked` artifact 的 `missingDeps` 并停止，不得猜测顺序或跳过依赖。如果 adapter 的 `status` / `instructions` 调用失败、返回无效 JSON、路径逃逸仓库、或未提供可用的 `resolvedOutputPath`，也必须立即停止并报告 OpenSpec 错误。不得回退为硬编码文档结构。
 
 **命名与范围守卫**：change name 必须使用 Step 1b 解析出的 kebab-case 英文名，不得使用非 kebab-case（如中文）名称。变更范围必须与 resolved brief 和用户描述一致，不得自行扩大或缩小。
 
 确认以下产物已创建：
 
 ```
-openspec/changes/<name>/
+<classic-change-dir>/
 ├── .openspec.yaml
 ├── .comet.yaml
 ├── proposal.md       # Why + What：问题、目标、范围
@@ -195,9 +206,9 @@ comet state check <name> open
 **幂等恢复算法**：open 阶段所有操作可安全重复执行。恢复时按以下顺序处理：
 
 1. 状态文件缺失时先运行 `comet state init <name> full`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `comet state check <name> open`。
-2. 运行 `openspec status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
+2. 运行 `comet classic openspec -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
 3. `done`：该 artifact 已完成，保持原文件不变，不重复生成。
-4. `ready`：依赖已经满足，可以生成。先运行该 artifact 的 `openspec instructions`，按返回内容写入；写完后立刻重新运行 status。
+4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后立刻重新运行 status。
 5. `blocked`：读取 `missingDeps`，先完成属于 `applyRequires` 依赖闭包的依赖 artifact；每完成一个依赖都重新运行 status，不能直接生成 blocked artifact。
 6. 重复上述处理，直到 `applyRequires` 全部为 `done`。
 
@@ -205,7 +216,7 @@ comet state check <name> open
 
 ### 4. 内容完整性检查
 
-再次运行 `openspec status --change "<name>" --json`，确认核心 ID 存在、`applyRequires` 每项均为 `done`，且这些必需 artifacts 的 `artifactPaths.<id>.existingOutputPaths` 返回的实际输出文件存在且非空。任一条件不满足时，不得进入 Step 5 或执行阶段守卫。
+再次运行 `comet classic openspec -- status --change "<name>" --json`，确认核心 ID 存在、`applyRequires` 每项均为 `done`，且这些必需 artifacts 的 `artifactPaths.<id>.existingOutputPaths` 返回的实际输出文件存在且非空。任一条件不满足时，不得进入 Step 5 或执行阶段守卫。
 
 随后检查关键 artifact 内容：proposal 覆盖问题、目标、范围和非目标；design 覆盖高层决策与数据流；tasks 包含明确任务；schema 返回 specs 等其他 artifact 时，也必须按其 instructions 检查内容，不能因固定三件套存在而跳过。
 
@@ -232,7 +243,7 @@ comet state check <name> open
 
 ## 退出条件
 
-- `openspec status --change "<name>" --json` 的兼容性预检通过，`applyRequires` 全部为 `done` 且必需输出非空
+- `comet classic openspec -- status --change "<name>" --json` 的兼容性预检通过，`applyRequires` 全部为 `done` 且必需输出非空
 - **用户已确认** 全部 OpenSpec artifacts 内容符合预期
 - **阶段守卫**：运行 `comet guard <change-name> open --apply`，全部 PASS 后由守卫推进到下一阶段（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 

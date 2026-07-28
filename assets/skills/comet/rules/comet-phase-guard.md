@@ -8,7 +8,7 @@
 
 ### 阶段感知（最高优先级）
 
-有活跃 comet change 时（`openspec/changes/<name>/.comet.yaml` 存在），**每次开始执行操作前**必须读取 `phase` 字段确认当前阶段。
+有活跃 comet change 时（Classic layout resolver 绑定的 `<classic-change-dir>/.comet.yaml` 存在），**每次开始执行操作前**必须读取 `phase` 字段确认当前阶段。
 
 当存在多个 active change 时，必须先明确当前 change，再运行：
 
@@ -28,7 +28,7 @@ comet state select <change-name>
 | `verify` | 验证、记录验证报告 | 跳过失败处理、提前处理分支 |
 | `archive` | 确认归档、运行归档脚本、提交归档改动、分支处理 | 写源代码 |
 
-Hook 硬拦截白名单包括 `openspec/*`、`docs/superpowers/*`、`.superpowers/*`、`.claude/*` 和 `.comet/*` 等流程/平台工作区；这些路径可写不代表可以跳过当前阶段的产物和确认要求。
+Hook 硬拦截白名单包括 Classic layout resolver 返回的 OpenSpec 与 Superpowers roots，以及 `.superpowers/*`、`.claude/*` 和 `.comet/*` 等流程/平台工作区；这些路径可写不代表可以跳过当前阶段的产物和确认要求。
 
 ### 阶段进入自洽性校验（写源代码前必查）
 
@@ -113,7 +113,7 @@ comet state check <name> <phase> --recover
 **特别注意 `build_mode`**：若恢复脚本输出 `build_mode: subagent-driven-development`，你是协调者，不是执行者。必须：
 1. 使用 Skill 工具重新加载 Superpowers `subagent-driven-development` 技能 (Use the Skill tool to reload the Superpowers `subagent-driven-development` skill)
 2. 读取 `comet/reference/subagent-dispatch.md` 获取 Comet 专属扩展 (re-read `comet/reference/subagent-dispatch.md` for Comet-specific extensions)
-3. 读取 `openspec/changes/<name>/.comet/subagent-progress.md` 恢复精确阶段、证据和审查-修复轮次 (Read `openspec/changes/<name>/.comet/subagent-progress.md` to recover the exact stage, evidence, and review-fix round)
+3. 读取 `<classic-change-dir>/.comet/subagent-progress.md` 恢复精确阶段、证据和审查-修复轮次 (Read `<classic-change-dir>/.comet/subagent-progress.md` to recover the exact stage, evidence, and review-fix round)
 4. 禁止在主会话中直接执行 task (Do not execute the pending task directly in the main window)
 5. 按检查点恢复；缺失或不匹配时才从第一个未勾选 task 开始
 6. 已提交但未按 `review_mode` 完成验收的 task 保持未勾选，继续对应的验证/审查/修复循环

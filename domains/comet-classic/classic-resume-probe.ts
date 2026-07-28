@@ -1,10 +1,15 @@
-import path from 'path';
-import { promises as fs } from 'fs';
+import { assertClassicLayoutReadable } from './classic-layout.js';
 import { spawn } from 'child_process';
-import { fileExists, readDir } from '../../platform/fs/file-system.js';
+import { readDir } from '../../platform/fs/file-system.js';
 import type { ClassicDiagnostic } from './classic-diagnostics.js';
 import { readClassicState } from './classic-store.js';
 import type { ClassicStateProjection } from './classic-state.js';
+import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
+import {
+  classicProjectTargetExists,
+  inspectClassicProjectTarget,
+  readClassicProjectFile,
+} from './classic-protected-path.js';
 
 export const COMET_RESUME_PROBE_SCHEMA_VERSION = 'comet.resume_probe.v1' as const;
 
@@ -99,16 +104,33 @@ function result(
   };
 }
 
-async function readIfExists(filePath: string): Promise<string> {
-  if (!(await fileExists(filePath))) return '';
-  return fs.readFile(filePath, 'utf8');
+async function readIfExists(projectRoot: string, filePath: string, label: string): Promise<string> {
+  if (
+    !(await classicProjectTargetExists(projectRoot, filePath, {
+      label,
+      expected: 'file',
+    }))
+  ) {
+    return '';
+  }
+  return readClassicProjectFile(projectRoot, filePath, { label });
 }
 
-async function changeSearchText(changeDir: string, classic: ActiveProbeChange): Promise<string> {
+async function changeSearchText(
+  projectRoot: string,
+  changeDir: string,
+  classic: ActiveProbeChange,
+): Promise<string> {
   const files = ['proposal.md', 'design.md', 'tasks.md'];
   const parts = [classic.name, classic.workflow, classic.phase];
   for (const file of files) {
-    parts.push(await readIfExists(path.join(changeDir, file)));
+    parts.push(
+      await readIfExists(
+        projectRoot,
+        `${changeDir}/${file}`,
+        `Classic change ${classic.name} ${file}`,
+      ),
+    );
   }
   return parts.join('\n').toLowerCase();
 }
@@ -178,28 +200,42 @@ function diagnosticFromProjection(
   };
 }
 
-async function hasOpenSpecChangeFiles(changeDir: string): Promise<boolean> {
+async function hasOpenSpecChangeFiles(projectRoot: string, changeDir: string): Promise<boolean> {
   return (
-    (await fileExists(path.join(changeDir, 'proposal.md'))) ||
-    (await fileExists(path.join(changeDir, 'design.md'))) ||
-    (await fileExists(path.join(changeDir, 'tasks.md')))
+    (await classicProjectTargetExists(projectRoot, `${changeDir}/proposal.md`, {
+      label: 'Classic proposal',
+      expected: 'file',
+    })) ||
+    (await classicProjectTargetExists(projectRoot, `${changeDir}/design.md`, {
+      label: 'Classic design',
+      expected: 'file',
+    })) ||
+    (await classicProjectTargetExists(projectRoot, `${changeDir}/tasks.md`, {
+      label: 'Classic tasks',
+      expected: 'file',
+    }))
   );
 }
 
 async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeChange[]> {
-  const changesDir = path.join(projectRoot, 'openspec', 'changes');
-  if (!(await fileExists(changesDir))) return [];
+  const changesDir = (await assertClassicLayoutReadable(projectRoot)).changesDir;
+  const changesInspection = await inspectClassicProjectTarget(projectRoot, changesDir, {
+    label: 'Classic changes directory',
+    expected: 'directory',
+  });
+  if (!changesInspection.exists) return [];
 
   const entries = await readDir(changesDir);
   const changes: ActiveProbeChange[] = [];
   for (const entry of entries) {
     if (entry === 'archive') continue;
-    const changeDir = path.join(changesDir, entry);
-    const stat = await fs.stat(changeDir).catch(() => null);
-    if (!stat?.isDirectory()) continue;
-    const hasCometState = await fileExists(path.join(changeDir, '.comet.yaml'));
+    if (openSpecChangeNameError(entry)) continue;
+    const active = await inspectClassicActiveChangeDirectory(entry, projectRoot);
+    if (!active.exists) continue;
+    const changeDir = active.directory;
+    const hasCometState = active.stateExists;
     if (!hasCometState) {
-      if (!(await hasOpenSpecChangeFiles(changeDir))) continue;
+      if (!(await hasOpenSpecChangeFiles(projectRoot, changeDir))) continue;
       const missingStateChange: ActiveProbeChange = {
         name: entry,
         workflow: 'unknown',
@@ -223,7 +259,7 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
         text: '',
         missingCometState: true,
       };
-      missingStateChange.text = await changeSearchText(changeDir, missingStateChange);
+      missingStateChange.text = await changeSearchText(projectRoot, changeDir, missingStateChange);
       changes.push(missingStateChange);
       continue;
     }
@@ -248,7 +284,7 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
       text: '',
       missingCometState: false,
     };
-    change.text = await changeSearchText(changeDir, change);
+    change.text = await changeSearchText(projectRoot, changeDir, change);
     changes.push(change);
   }
   return changes;

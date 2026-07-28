@@ -27,6 +27,7 @@ describe('Comet init workflow policy', () => {
       workflow: 'native',
       source: 'new-project-default',
       artifactRoot: 'docs',
+      classicArtifactLayout: 'docs',
       writeProjectConfig: true,
       legacyEvidence: [],
     });
@@ -98,6 +99,55 @@ describe('Comet init workflow policy', () => {
     });
   });
 
+  it('does not scan legacy change evidence through a junction', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-workflow-outside-'));
+    try {
+      await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+      await fs.mkdir(path.join(outsideRoot, 'external-change'), { recursive: true });
+      await fs.writeFile(
+        path.join(outsideRoot, 'external-change', '.comet.yaml'),
+        'workflow: full\n',
+        'utf8',
+      );
+      try {
+        await fs.symlink(
+          outsideRoot,
+          path.join(projectRoot, 'openspec', 'changes'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(resolveInitWorkflow(projectRoot)).rejects.toThrow(/symbolic link or junction/iu);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not read Ambient Resume evidence through a linked file', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-resume-outside-'));
+    const outsideFile = path.join(outsideRoot, 'AGENTS.md');
+    try {
+      await fs.writeFile(
+        outsideFile,
+        '<comet-ambient-resume>\nold guidance\n</comet-ambient-resume>\n',
+        'utf8',
+      );
+      try {
+        await fs.symlink(outsideFile, path.join(projectRoot, 'AGENTS.md'), 'file');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(resolveInitWorkflow(projectRoot)).rejects.toThrow(/symbolic link or junction/iu);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
   it('lets an explicit Native choice override legacy fallback and select a custom root', async () => {
     const state = path.join(projectRoot, 'openspec', 'changes', 'legacy', '.comet.yaml');
     await fs.mkdir(path.dirname(state), { recursive: true });
@@ -109,6 +159,7 @@ describe('Comet init workflow policy', () => {
       workflow: 'native',
       source: 'explicit-option',
       artifactRoot: 'docs',
+      classicArtifactLayout: 'legacy',
       writeProjectConfig: true,
       legacyEvidence: ['openspec/changes/legacy/.comet.yaml'],
     });
@@ -123,6 +174,7 @@ describe('Comet init workflow policy', () => {
         workflow: 'native',
         source: 'explicit-option',
         artifactRoot: 'docs',
+        classicArtifactLayout: 'legacy',
         writeProjectConfig: true,
       },
     );
@@ -133,6 +185,7 @@ describe('Comet init workflow policy', () => {
       workflow: 'classic',
       source: 'explicit-option',
       artifactRoot: 'docs',
+      classicArtifactLayout: 'docs',
       writeProjectConfig: true,
       legacyEvidence: [],
     });
@@ -149,11 +202,24 @@ describe('Comet init workflow policy', () => {
         workflow,
         source: 'project-config',
         artifactRoot: 'docs',
+        classicArtifactLayout: workflow === 'classic' ? 'legacy' : 'docs',
         writeProjectConfig: false,
         legacyEvidence: [],
       });
     },
   );
+
+  it('chooses docs when a Native-only project enables Classic for the first time', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+
+    await expect(resolveInitWorkflow(projectRoot, { workflow: 'classic' })).resolves.toMatchObject({
+      workflow: 'classic',
+      source: 'explicit-option',
+      artifactRoot: 'docs',
+      classicArtifactLayout: 'docs',
+      writeProjectConfig: true,
+    });
+  });
 
   it('lets an explicit workflow change only the configured default entry', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
@@ -162,8 +228,21 @@ describe('Comet init workflow policy', () => {
       workflow: 'classic',
       source: 'explicit-option',
       artifactRoot: '.',
+      classicArtifactLayout: 'docs',
       writeProjectConfig: true,
       legacyEvidence: [],
+    });
+  });
+
+  it('preserves an explicit dormant Classic layout when a Native-only project enables Classic', async () => {
+    const config = defaultProjectConfig('docs');
+    config.classic = { artifact_layout: 'legacy' };
+    await writeProjectConfig(projectRoot, config);
+
+    await expect(resolveInitWorkflow(projectRoot, { workflow: 'classic' })).resolves.toMatchObject({
+      workflow: 'classic',
+      classicArtifactLayout: 'legacy',
+      writeProjectConfig: true,
     });
   });
 

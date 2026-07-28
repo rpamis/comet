@@ -1,6 +1,12 @@
-import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
 import path from 'path';
+import {
+  readOptionalEngineRunText,
+  removeEngineRunFile,
+  writeEngineRunText,
+  type EngineRunReadOptions,
+  type EngineRunRemoveOptions,
+  type EngineRunWriteOptions,
+} from './protected-run-file.js';
 import type { RunState } from './types.js';
 
 export type StateDocument = Record<string, unknown>;
@@ -104,6 +110,7 @@ export function applyRunStateToDocument(doc: StateDocument, state: RunState | nu
 }
 
 export const RUN_STATE_FILE = '.comet/run-state.json';
+const RUN_STATE_MAX_BYTES = 256 * 1024;
 
 interface RunStateJson {
   runId: string;
@@ -165,27 +172,40 @@ function runStateFromJson(json: RunStateJson): RunState {
   return runStateFromDocument(doc)!;
 }
 
-export async function readRunState(changeDir: string): Promise<RunState | null> {
-  const file = path.join(changeDir, RUN_STATE_FILE);
-  let raw: string;
-  try {
-    raw = await fs.readFile(file, 'utf8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
-  }
+export async function readRunState(
+  changeDir: string,
+  options: EngineRunReadOptions = {},
+): Promise<RunState | null> {
+  const raw = await readOptionalEngineRunText(
+    changeDir,
+    RUN_STATE_FILE,
+    RUN_STATE_MAX_BYTES,
+    'Run state',
+    options,
+  );
+  if (raw === null) return null;
   const json = JSON.parse(raw) as RunStateJson;
   return runStateFromJson(json);
 }
 
-export async function writeRunState(changeDir: string, state: RunState): Promise<void> {
-  await fs.mkdir(path.join(changeDir, '.comet'), { recursive: true });
-  const file = path.join(changeDir, RUN_STATE_FILE);
-  const temporary = path.join(changeDir, '.comet', `run-state.${randomUUID()}.tmp`);
-  await fs.writeFile(temporary, JSON.stringify(runStateToJson(state), null, 2), 'utf8');
-  await fs.rename(temporary, file);
+export async function writeRunState(
+  changeDir: string,
+  state: RunState,
+  options: EngineRunWriteOptions = {},
+): Promise<void> {
+  await writeEngineRunText(
+    changeDir,
+    RUN_STATE_FILE,
+    JSON.stringify(runStateToJson(state), null, 2),
+    RUN_STATE_MAX_BYTES,
+    'Run state',
+    options,
+  );
 }
 
-export async function removeRunState(changeDir: string): Promise<void> {
-  await fs.rm(path.join(changeDir, RUN_STATE_FILE), { force: true });
+export async function removeRunState(
+  changeDir: string,
+  options: EngineRunRemoveOptions = {},
+): Promise<void> {
+  await removeEngineRunFile(changeDir, RUN_STATE_FILE, 'Run state', options);
 }

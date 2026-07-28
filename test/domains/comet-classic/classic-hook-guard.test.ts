@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readRunState } from '../../../domains/engine/state.js';
+import { inspectClassicHookGuard } from '../../../domains/comet-classic/classic-hook-guard.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
@@ -23,6 +24,19 @@ afterEach(async () => {
 async function makeProject(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-hook-'));
   temporary.push(dir);
+  await fs.mkdir(path.join(dir, '.comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      '  artifact_layout: legacy',
+      '',
+    ].join('\n'),
+  );
+  await fs.mkdir(path.join(dir, 'openspec', 'changes'), { recursive: true });
   return dir;
 }
 
@@ -111,6 +125,32 @@ async function seedChange(
 }
 
 describe('Classic hook guard command', () => {
+  it('blocks a selected active change junction without reading external state', async () => {
+    const dir = await makeProject();
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-hook-outside-'));
+    temporary.push(outside);
+    await fs.writeFile(
+      path.join(outside, '.comet.yaml'),
+      ['workflow: full', 'phase: build', 'archived: false', ''].join('\n'),
+    );
+    await fs.writeFile(path.join(outside, 'marker.txt'), 'unchanged\n');
+    await fs.symlink(
+      outside,
+      path.join(dir, 'openspec', 'changes', 'demo'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    const result = await inspectClassicHookGuard(dir, 'demo', {
+      intent: 'write',
+      targets: [path.join(dir, 'src', 'feature.ts')],
+      toolName: 'Write',
+    });
+
+    expect(result).toMatchObject({ allowed: false, workflow: 'classic', change: 'demo' });
+    expect(result.reason).toMatch(/symbolic link or junction/iu);
+    expect(await fs.readFile(path.join(outside, 'marker.txt'), 'utf8')).toBe('unchanged\n');
+  });
+
   describe('standard Superpowers artifact first writes', () => {
     it.each([
       {

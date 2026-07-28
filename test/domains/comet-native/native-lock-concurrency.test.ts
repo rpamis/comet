@@ -74,6 +74,12 @@ describe('Native lock process concurrency', () => {
       platform: 'node',
       format: 'esm',
       target: 'node20',
+      banner: {
+        js: [
+          "import { createRequire as __cometCreateRequire } from 'module';",
+          'const require = __cometCreateRequire(import.meta.url);',
+        ].join('\n'),
+      },
     });
   });
 

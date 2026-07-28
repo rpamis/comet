@@ -11,12 +11,16 @@ import {
   type CometResumeProbeInput as ClassicResumeProbeInput,
 } from '../comet-classic/classic-resume-probe.js';
 import { nativeChangeDir, readNativeChange } from '../comet-native/native-change.js';
-import { assertNoPendingNativeRootMove, readProjectConfig } from '../comet-native/native-config.js';
+import { assertNoPendingNativeRootMove } from '../comet-native/native-config.js';
 import {
   inspectNativeArtifactFindings,
   listNativeStatus,
 } from '../comet-native/native-diagnostics.js';
 import { discoverNativeProject, nativeProjectPaths } from '../comet-native/native-paths.js';
+import {
+  readWorkflowAmbientResumeEnabled,
+  readWorkflowProjectConfig,
+} from '../workflow-contract/project-config-reader.js';
 import { resolveSelectedNativeChange } from '../comet-native/native-selection.js';
 import { readNativeProposedSpecs } from '../comet-native/native-specs.js';
 import type {
@@ -27,7 +31,6 @@ import type {
 } from '../comet-native/native-types.js';
 import { resolveCometEntry } from './resolve-entry.js';
 import type { CometEntryResolutionSource, CometEntrySkill, CometWorkflow } from './types.js';
-import { readAmbientResumeEnabled } from '../workflow-contract/project-config.js';
 
 export const COMET_RESUME_PROBE_SCHEMA_VERSION = 'comet.resume_probe.v2' as const;
 
@@ -295,8 +298,10 @@ async function resolveNativeResumeProbe(
   input: CometEntryResumeProbeInput,
   entrySource: CometEntryResolutionSource,
 ): Promise<CometEntryResumeProbeResult> {
-  const config = await readProjectConfig(projectRoot);
-  if (!config) throw new Error('.comet/config.yaml was not found after resolving Native entry');
+  const config = await readWorkflowProjectConfig(projectRoot);
+  if (!config?.native) {
+    throw new Error('.comet/config.yaml has no Native configuration after resolving Native entry');
+  }
   await assertNoPendingNativeRootMove(projectRoot);
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   const statuses = await listNativeStatus(paths, {
@@ -509,7 +514,7 @@ export async function resolveCometEntryResumeProbe(
   let entry: Awaited<ReturnType<typeof resolveCometEntry>>;
   try {
     projectRoot = await discoverNativeProject(startPath);
-    if (!(await readAmbientResumeEnabled(projectRoot))) {
+    if (!(await readWorkflowAmbientResumeEnabled(projectRoot))) {
       return result({
         action: 'out_of_scope',
         confidence: 'none',

@@ -2,7 +2,6 @@ import path from 'path';
 import { existsSync } from 'fs';
 import { readFile, writeFile, lstat, unlink, symlink, rm, readdir } from 'fs/promises';
 import { fileURLToPath } from 'url';
-import { parseDocument } from 'yaml';
 
 import { fileExists, readJson, copyFile, ensureDir } from '../../platform/fs/file-system.js';
 import {
@@ -17,9 +16,18 @@ import { installCometProjectInstructions } from './project-instructions.js';
 import { readJsonObjectFile } from './json-object.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
 import {
+  assertClassicLayoutInitializationSafe,
+  checkpointClassicLayoutInitialization,
+  type ClassicLayoutInitializationPermit,
+} from '../comet-classic/classic-layout-initialization.js';
+import {
+  parseWorkflowProjectConfigDocument,
   projectConfigComment,
   renderStructuredProjectConfig,
 } from '../workflow-contract/project-config.js';
+import { readWorkflowProjectConfigSnapshot } from '../workflow-contract/project-config-reader.js';
+import { writeWorkflowProjectConfigSource } from '../workflow-contract/project-config-writer.js';
+import { ensureProtectedProjectDirectory } from '../workflow-contract/protected-project-path.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1579,6 +1587,11 @@ function managedConfigFields(language: string = 'en'): ManagedConfigFields {
   ];
   const classic: ManagedConfigField[] = [
     {
+      key: 'artifact_layout',
+      def: 'legacy',
+      comment: projectConfigComment('classic.artifact_layout', commentLanguage),
+    },
+    {
       key: 'language',
       def: artifactLanguage.id,
       comment: projectConfigComment('classic.language', commentLanguage),
@@ -1615,20 +1628,22 @@ function getManagedConfigFields(language: string = 'en'): ManagedConfigFields {
   return language === 'en' ? MANAGED_CONFIG_FIELDS : managedConfigFields(language);
 }
 
-function parseProjectConfigOverrides(content: string): Record<string, string> {
-  if (!content.trim()) return {};
-  const doc = parseDocument(content, { uniqueKeys: false });
-  if (doc.errors.length > 0) return {};
-  const js = doc.toJS();
-  if (!js || typeof js !== 'object' || Array.isArray(js)) return {};
+function projectConfigOverrides(value: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(js as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(value)) {
     if (v === null || v === undefined) continue;
     if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
       out[k] = String(v);
     }
   }
   return out;
+}
+
+function parseProjectConfigOverrides(content: string): Record<string, string> {
+  if (!content.trim()) return {};
+  return projectConfigOverrides(
+    parseWorkflowProjectConfigDocument(content, { allowPartialProject: true }).value,
+  );
 }
 
 // Coerce the string forms captured by `parseProjectConfigOverrides` back into YAML scalars
@@ -1673,25 +1688,39 @@ function renderProjectConfig(
 async function mergeProjectConfig(
   projectPath: string,
   language: string | null = null,
+  artifactLayoutDefault: 'legacy' | 'docs' = 'legacy',
+  completeProjectConfig = false,
+  enableClassicWorkflow = completeProjectConfig,
 ): Promise<void> {
-  const configPath = path.join(projectPath, '.comet', 'config.yaml');
   let existing: Record<string, string> = {};
-  let existingSource = '';
-  if (await fileExists(configPath)) {
-    existingSource = await readFile(configPath, 'utf-8');
-    existing = parseProjectConfigOverrides(existingSource);
+  let parsedRoot: Record<string, unknown> = {};
+  const snapshot = await readWorkflowProjectConfigSnapshot(projectPath, {
+    allowPartialProject: true,
+  });
+  const parsed = snapshot.document;
+  if (parsed) {
+    parsedRoot = parsed.value;
+    existing = projectConfigOverrides(parsedRoot);
   }
-  await ensureDir(path.dirname(configPath));
 
-  // Preserve the full parsed structure (e.g. the `native:` block) plus any legacy top-level
-  // Classic fields pending migration. Falling back to an empty mapping keeps this idempotent
-  // for a missing or unparseable config.
-  const document = parseDocument(existingSource, { uniqueKeys: false });
-  const parsedRoot = document.errors.length === 0 ? document.toJS() : null;
-  const root: Record<string, unknown> =
-    parsedRoot && typeof parsedRoot === 'object' && !Array.isArray(parsedRoot)
-      ? { ...(parsedRoot as Record<string, unknown>) }
-      : {};
+  // Preserve the full shared-parser value (including unknown extensions) plus
+  // legacy top-level Classic fields pending migration.
+  const root: Record<string, unknown> = { ...parsedRoot };
+  if (completeProjectConfig) {
+    root.schema = 'comet.project.v1';
+    const inferredDefault =
+      root.default_workflow === 'native' || root.default_workflow === 'classic'
+        ? root.default_workflow
+        : root.native && typeof root.native === 'object' && !Array.isArray(root.native)
+          ? 'native'
+          : 'classic';
+    root.default_workflow = inferredDefault;
+    const workflows = Array.isArray(root.workflows)
+      ? root.workflows.filter((workflow) => workflow === 'native' || workflow === 'classic')
+      : [inferredDefault];
+    if (enableClassicWorkflow && !workflows.includes('classic')) workflows.push('classic');
+    root.workflows = workflows;
+  }
   const prevClassic =
     root.classic && typeof root.classic === 'object' && !Array.isArray(root.classic)
       ? { ...(root.classic as Record<string, unknown>) }
@@ -1733,47 +1762,69 @@ async function mergeProjectConfig(
     root.native = nativeBlock;
   }
 
-  // Classic block: preserve explicit new-format values, then migrate legacy top-level values,
+  // Classic block: preserve explicit new-format values and unknown extension fields, then migrate legacy top-level values,
   // then apply defaults. An explicit language argument still represents the caller's requested
   // install/update language and therefore overrides both stored forms.
-  const classicBlock: Record<string, unknown> = {};
-  for (const f of fields.classic) {
-    let value: unknown;
-    if (f.key === 'language') {
-      value = resolvedLanguage;
-    } else {
-      const legacyTop = root[f.key];
-      if (prevClassic[f.key] !== undefined) value = prevClassic[f.key];
-      else if (legacyTop !== undefined) value = legacyTop;
-      else value = f.def;
+  const shouldMergeClassic = !completeProjectConfig || enableClassicWorkflow || root.classic;
+  if (shouldMergeClassic) {
+    const classicBlock: Record<string, unknown> = { ...prevClassic };
+    for (const f of fields.classic) {
+      let value: unknown;
+      if (f.key === 'language') {
+        value = resolvedLanguage;
+      } else if (f.key === 'artifact_layout') {
+        value = prevClassic[f.key] ?? artifactLayoutDefault;
+      } else {
+        const legacyTop = root[f.key];
+        if (prevClassic[f.key] !== undefined) value = prevClassic[f.key];
+        else if (legacyTop !== undefined) value = legacyTop;
+        else value = f.def;
+      }
+      classicBlock[f.key] = coerceConfigScalar(value);
     }
-    classicBlock[f.key] = coerceConfigScalar(value);
+    root.classic = classicBlock;
+    // Remove migrated legacy top-level Classic fields so they don't linger at the root.
+    for (const f of fields.classic) {
+      delete root[f.key];
+    }
   }
-  // Remove migrated legacy top-level Classic fields so they don't linger at the root.
-  for (const f of fields.classic) {
-    delete root[f.key];
-  }
-  root.classic = classicBlock;
 
-  await writeFile(
-    configPath,
-    renderStructuredProjectConfig(root, resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en'),
-    'utf-8',
-  );
+  const output = renderStructuredProjectConfig(root, resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en');
+  parseWorkflowProjectConfigDocument(output, { allowPartialProject: true });
+  await writeWorkflowProjectConfigSource(projectPath, output, {
+    allowPartialProject: !completeProjectConfig,
+    expectedIdentity: snapshot.identity,
+  });
 }
 
-async function createWorkingDirs(projectPath: string, language: string = 'en'): Promise<void> {
+async function createWorkingDirs(
+  projectPath: string,
+  language: string = 'en',
+  artifactLayout: 'legacy' | 'docs' = 'docs',
+  initializationPermit?: ClassicLayoutInitializationPermit,
+): Promise<void> {
+  const layout = await assertClassicLayoutInitializationSafe(
+    projectPath,
+    artifactLayout,
+    initializationPermit,
+  );
   const dirs = [
-    path.join(projectPath, 'docs', 'superpowers', 'specs'),
-    path.join(projectPath, 'docs', 'superpowers', 'plans'),
+    layout.archiveDir,
+    layout.specsDir,
+    layout.superpowersSpecsDir,
+    layout.superpowersPlansDir,
+    layout.superpowersReportsDir,
     path.join(projectPath, '.comet'),
   ];
 
   for (const dir of dirs) {
-    await ensureDir(dir);
+    const relative = path.relative(layout.projectRoot, dir).replaceAll('\\', '/');
+    await ensureProtectedProjectDirectory(layout.projectRoot, relative, {
+      label: `Classic working directory ${relative}`,
+    });
   }
+  await checkpointClassicLayoutInitialization(projectPath, layout.initializationPermit);
 
-  await mergeProjectConfig(projectPath, language);
   await installCometProjectInstructions(projectPath, language === 'zh-CN' ? 'zh' : 'en');
 }
 

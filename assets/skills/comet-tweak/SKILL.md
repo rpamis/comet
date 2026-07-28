@@ -5,6 +5,8 @@ description: "Use only when explicitly invoked as /comet-tweak or routed by the 
 
 # Comet Preset Path: Tweak
 
+Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+
 Tweak is a preset workflow of Comet's five-phase capabilities, not an independent parallel process. It chains OpenSpec's core flow, reusing open, build, verify, archive capabilities, only skipping Superpowers brainstorming and full plan.
 
 Applicable for OpenSpec-chained lightweight changes, such as configuration adjustments, documentation or prompt optimization, and spec-driven (including delta spec) medium changes that do not need the full `/comet-classic` deep design workflow. Delta spec is a first-class normal artifact in tweak; needing delta spec alone does not constitute an upgrade reason.
@@ -36,6 +38,9 @@ When resuming an existing tweak change, the first state operation must be `comet
 Reuse Comet open capability to create change, but use tweak defaults: do not execute `openspec-explore` long exploration, directly enter streamlined change creation.
 
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
+
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** Do not execute its direct official CLI, fixed-cwd, or fixed physical OpenSpec path instructions. Route every OpenSpec command through `comet classic openspec -- <args...>` and use the `<classic-*>` logical roots bound for this run for every change and artifact path.
 
 After the skill loads, follow its guidance to create streamlined artifacts:
   - `proposal.md` — change motivation + goals + scope
@@ -88,10 +93,13 @@ Before continuing or starting changes, handle uncommitted changes through `comet
 
 **Immediately execute:** Use the Skill tool to load the `openspec-apply-change` skill. Skipping this step is prohibited.
 
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** Use only its apply semantics. Replace every direct official CLI, fixed-cwd, or fixed physical OpenSpec path instruction with `comet classic openspec -- <args...>` and the `<classic-*>` logical roots.
+
 After the skill loads, use the current `<change-name>` as input and follow `openspec-apply-change` to execute the OpenSpec apply flow:
 
-1. Run or follow `openspec status --change "<name>" --json` to confirm the schema and task artifact
-2. Run or follow `openspec instructions apply --change "<name>" --json` to read OpenSpec's apply instructions, `contextFiles`, task progress, and dynamic instruction
+1. Run or follow `comet classic openspec -- status --change "<name>" --json` to confirm the schema and task artifact
+2. Run or follow `comet classic openspec -- instructions apply --change "<name>" --json` to read OpenSpec's apply instructions, `contextFiles`, task progress, and dynamic instruction
 3. Read every context file listed by the apply instructions; do not implement from stale conversation context or a handwritten tasks loop alone
 4. Complete unchecked tasks one by one according to the apply instructions, keeping changes minimal and focused
 5. After each completed task:

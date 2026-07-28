@@ -1,0 +1,4167 @@
+{
+  "schema": "comet.native.implementation-scope.v2",
+  "contractHash": "efd20a585dc21457e2e6999a9c317e494045881431f3b02523d1a4bf951829e9",
+  "baselineProjectionRef": "runtime/evidence/snapshots/303f4c917baa55fd19fb1a306f6074e9fbd7365702bc29ed5248aacaf3ff17db.json",
+  "baselineProjectionHash": "303f4c917baa55fd19fb1a306f6074e9fbd7365702bc29ed5248aacaf3ff17db",
+  "currentProjectionRef": "runtime/evidence/snapshots/adc07c33cf00e9d11d3a2bbdd9a864bf95b264b640881b0cb1c7c964d9a94ad7.json",
+  "currentProjectionHash": "adc07c33cf00e9d11d3a2bbdd9a864bf95b264b640881b0cb1c7c964d9a94ad7",
+  "complete": false,
+  "declaredArtifacts": [
+    {
+      "path": "CHANGELOG.md",
+      "kind": "file"
+    }
+  ],
+  "changes": [
+    {
+      "path": "CHANGELOG.md",
+      "kind": "modified",
+      "before": {
+        "hash": "2b36479b7401935b4418fc8b6881d8b8920623d97675faede06f960e88c87459",
+        "size": 135992
+      },
+      "after": {
+        "hash": "19d107a649773751471169f7bc6a2f038e72aabda45e48c54df7e1b30416b375",
+        "size": 135966
+      },
+      "attributedTo": [
+        {
+          "path": "CHANGELOG.md",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "path": "app/cli/index.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "31bea3890d0d8f5f24a8ecb4a56a3aed73541df1660d5efbda05be11e63df907",
+        "size": 23864
+      },
+      "after": {
+        "hash": "c4a25c899ed4482a64e37ea5e79519b223eedb641aed94a88ce1a86dab69d66d",
+        "size": 24015
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/classic.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a5c8e3fba194c8c942a197d2f390abeb1e867c0b962cf2d69491f12c8c87a57b",
+        "size": 846
+      },
+      "after": {
+        "hash": "afb07e10a80c5d61c2c8495a7bbc3f2787f4a0d99d7acd37f02aecaaf1da5116",
+        "size": 1398
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/doctor.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d14b213cda33e92e80d58113261ff5064db7464cb925ce3ce3b75add3bd13efb",
+        "size": 27745
+      },
+      "after": {
+        "hash": "45b6073bab701d1f82c5a37891dcd223a13251ecc6f92c57c57f7c02bc6153ea",
+        "size": 41936
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/init.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "596a67546223c928dd1364b2f3c78ec9f1b0ff11cfe429c6d9a1a8265e6d0df1",
+        "size": 37605
+      },
+      "after": {
+        "hash": "798eaeacd02d95829df726b9e29b60f1b2abe70cc130f37b4afebd4613b398d7",
+        "size": 42283
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/resume-probe.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a3097d88189528b969d459fd1ec35fb694a7ea6db44cd24baaf238c02466e0dd",
+        "size": 2914
+      },
+      "after": {
+        "hash": "e2f339b130ae078e887b7c03e62c0cde7afbe696e7bdf0a49b9bee518818c5d0",
+        "size": 2912
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/update.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "52949ebb3bdef0b45fd314f0e99837ee29f9d5ab1a8277590b36652b4cb0d216",
+        "size": 64390
+      },
+      "after": {
+        "hash": "4af388e344abd0b919bf34d59b13cc27cc877a942e5efa3a0be79c8da53d0e60",
+        "size": 72578
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-any/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "49d907f2813e5912159022d0c58d5db9c43843f70f655b527cd4026cea924245",
+        "size": 7986
+      },
+      "after": {
+        "hash": "c21b0fb427294e4f70e9b8c5cb64c0bf7566c5ce509d18d9430273de77a9d6e1",
+        "size": 8017
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-any/reference/bundle-authoring.md",
+      "kind": "modified",
+      "before": {
+        "hash": "5c3199221e608b20f70e4ebc06c44b1a82b848af3740c069aa1c8a29ee77e500",
+        "size": 6432
+      },
+      "after": {
+        "hash": "80e1bf26c217af6a57716581dbaa932cf4dd928579765fa1af0f7e6f2539a39e",
+        "size": 6463
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-any/reference/subagents/script-author.md",
+      "kind": "modified",
+      "before": {
+        "hash": "c54904e095445b02ba8ef0e6ca21253aa980193a7feaf7c715b1eea85550b4aa",
+        "size": 3785
+      },
+      "after": {
+        "hash": "6bb99f9950c0cb64eeab35eb40aa7cfea44530b887900cc2ec2184aa10954e80",
+        "size": 3816
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-archive/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "2dc271a0ad04636f9df7068d21e4dc774fbe4ea90632db1f547becea8efe8fab",
+        "size": 8820
+      },
+      "after": {
+        "hash": "617aed5b378b5ce77e93955dc0498be57d81e01a583c8185b04c72113467ed3f",
+        "size": 8852
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-build/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "3f63ee20082073564d1b062275b217abd019a3ae44520815067e0f57b476f4ef",
+        "size": 22896
+      },
+      "after": {
+        "hash": "afcdc12c99404357afb1b8f3c2b69c63fba615c7a995d442ff76cf432c18475c",
+        "size": 22940
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-classic/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "60eea4fb197043d6db7b174d570bd9b1d147fa7f0ef2c493a69dc8850aee3f84",
+        "size": 18764
+      },
+      "after": {
+        "hash": "bf4ac21ec938c6b7b7466aab89775a260cd7aa12e0296f752e2678565da4b987",
+        "size": 18904
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-design/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "88107de36521a951b499edf4b7a73b5eb1a342286ef0780962bd3b6673f049ac",
+        "size": 12325
+      },
+      "after": {
+        "hash": "68fb6b17f70d7fb99cda1122778e11a589fc1e606a4b08bd49b145d51a33e6f9",
+        "size": 12330
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-hotfix/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "7c730ea599a04b43f31e7c4930453e3e082651e4f5b4f26c2d9dd814ddae75d7",
+        "size": 12867
+      },
+      "after": {
+        "hash": "4c8497f675c6f625186c39321c0ed2bdbd39ffacd6f3ae7a2b4d96b0574fb60b",
+        "size": 12908
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-open/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "7b8bbe14709a065a08cb9678aba4422d505c4abc19ffed322f431708ec4acbce",
+        "size": 17538
+      },
+      "after": {
+        "hash": "5c80477fa35d5990057c4fbdb45f0c8770c33014d4489a825008a26970f2ec7e",
+        "size": 17773
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-tweak/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "96c42ff6d77a9f0b55fd44f8d5be4dc464f8effa7829e8c9393736035cfd450d",
+        "size": 13382
+      },
+      "after": {
+        "hash": "7ae403284c56a7da2b6d7d6783210da7115573a178e02161840e4939b52763f3",
+        "size": 13463
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-verify/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "288e12c5dddab2f8cb978ee5bec7a8299c0b0e510e3ad1883f784c47ca9ac3b2",
+        "size": 13333
+      },
+      "after": {
+        "hash": "f69b3526dedc2c5f72f9eed2868abd360db016d1e6d4bfaa5ade37292b21289e",
+        "size": 13377
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/classic-layout.md",
+      "kind": "modified",
+      "before": {
+        "hash": "1d1d20587d4a74312cdd40dfe9655b309ea6956d9c5251574b952bf500e44212",
+        "size": 1933
+      },
+      "after": {
+        "hash": "0663ad934af3f41281467859965a16cb5bda026ae71858e38dd387ec1ce3b7e0",
+        "size": 2159
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/comet-yaml-fields.md",
+      "kind": "modified",
+      "before": {
+        "hash": "77ef2ae795260ebffa35060801ea4a4b88db6bbbfcd7c1d66b1dc57553c6af82",
+        "size": 6967
+      },
+      "after": {
+        "hash": "ba05abe106d04c8953b3752d9206bd93d64b90fd6c58dbe094c607dd3433cee4",
+        "size": 7052
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/context-recovery.md",
+      "kind": "modified",
+      "before": {
+        "hash": "28b7846948dee6f4617a278f9fa8ee95aa85af842429cbf1200dee933dc6ba97",
+        "size": 2922
+      },
+      "after": {
+        "hash": "843fb3ca3f05c4d44132bac70be46980833b4b570858c0c297a4c8c0d5f229ef",
+        "size": 2919
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/file-structure.md",
+      "kind": "modified",
+      "before": {
+        "hash": "21a9c52cdb3224036b1c6f627246af655be33316d7879d87f64fedbc74fc3de1",
+        "size": 1312
+      },
+      "after": {
+        "hash": "75b721ecb68fe51b695df054b8faa271ae13ee92a3b8ae9d9fa571d299303a02",
+        "size": 1386
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/intent-frame.md",
+      "kind": "modified",
+      "before": {
+        "hash": "390ba9afeac5242485d0869bd4e30c273aac9caeac3395558a9bd4f84b3f4f4e",
+        "size": 4629
+      },
+      "after": {
+        "hash": "b3d587f4724f12160cb819901f0969c40dce053d7887256a26ab0871f1e333a7",
+        "size": 4646
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/subagent-dispatch.md",
+      "kind": "modified",
+      "before": {
+        "hash": "f3d8d580f5ea75d62b2bb77a90a4d7fc8c552a67875835d00207fee463e8e428",
+        "size": 17193
+      },
+      "after": {
+        "hash": "1fe96ef9cc9192040724c8fa9932da1e6b1bf3e9a2fa7be4657c8f77bbd13631",
+        "size": 17184
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-any/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "3fa4ffcf774c03da0423262e8f58c6a07c243bcf4537efc63447091994322f1b",
+        "size": 8254
+      },
+      "after": {
+        "hash": "e91587c9973564f3867bb24c25b5e99d5d92baed0ee21d7d2a8bb85a706ac695",
+        "size": 8288
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-any/reference/bundle-authoring.md",
+      "kind": "modified",
+      "before": {
+        "hash": "fc357fed7da3edc1e73009542575ecf814d53f7292d81e7a59cfb51f63b54d82",
+        "size": 6630
+      },
+      "after": {
+        "hash": "bddd72e11d5ea56acded93a4dca868e3d15e97c0f23885f62d525bfbc5b46704",
+        "size": 6664
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-any/reference/subagents/script-author.md",
+      "kind": "modified",
+      "before": {
+        "hash": "1e141b50ec74c658f738345e786396a44e0abdb1cb1fb861ffef2c79d10f32c3",
+        "size": 4149
+      },
+      "after": {
+        "hash": "7d4a9f5b65064a4fdf023809dae106a78184e8c35187c934d998dcf0925977ea",
+        "size": 4183
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-archive/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "f09380614e3ce7aa98f7382bd0bb161988156a3fd9cc571cb6f14e217463a0fb",
+        "size": 9758
+      },
+      "after": {
+        "hash": "7636d1cf11f65189cba013b7ee0247852916eae08de0d03cfebbd61bed853a73",
+        "size": 9797
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-build/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "6ef64f9a284cc4ef182f8a7ee28b21ee78607b0efac0ffaefbf87f7d8062979b",
+        "size": 25058
+      },
+      "after": {
+        "hash": "759030eeb560ed7fa69c917b5b55ea179eb6b99c158a6e8adce5d83f3fca6349",
+        "size": 25109
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-classic/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "739576f12fe67d566009d5a4c503f064d1407e9221b215fa0938da52db87dbb7",
+        "size": 20394
+      },
+      "after": {
+        "hash": "b773d778945d50f203c32265f87cf71e9c754f8e3be9746f5a698d5459695d40",
+        "size": 20550
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-design/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "0c81c1237ad44ddbf19b3274052a6defd36538c58954b19dbe374c5322016bf8",
+        "size": 13519
+      },
+      "after": {
+        "hash": "2fa3a9e4e27abf40966333ba72380c18ef336ef856b17fd95dbbc20fa120a0a8",
+        "size": 13531
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-hotfix/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "1f3765dc2632c189e4e1af5a76fef0f56c77831e715486c55db9d99ef16f186a",
+        "size": 14397
+      },
+      "after": {
+        "hash": "cf4d5dbba881bdef3055113c92e21103ad487b66a0fd1bbdbe15ee456172014a",
+        "size": 14445
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "60e9b2439c76a020a7a205f209d0924eafb40eaba985e7dfb8a87e2169a4fbae",
+        "size": 1148533
+      },
+      "after": {
+        "hash": "149136e8f205900eee6df457b63b66967a9fe441a056a78ca20515ed09c01575",
+        "size": 1156442
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-open/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "76e0f853374298d44a40286f9dfe941d1e862a50e4d7af79514799d39f43f36e",
+        "size": 18811
+      },
+      "after": {
+        "hash": "8e7c1e1e5349d8d3c9222eeb38b6fa783dae7e61dcfcb1fb25e7977c1acd07dd",
+        "size": 18952
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-tweak/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "88692218f9f0d280e3d9f2cb01fb45e32a35250fb8208d653049b6894af141e5",
+        "size": 14906
+      },
+      "after": {
+        "hash": "9aebd1d7ccc33f345bfc9d09b733570d4ae52227eac879835de102a310a542d0",
+        "size": 14994
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-verify/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "d1bbf7d1c3f9ecbd03bcfc07b858389aabab4df51f321c97bb329fb6ec317f5f",
+        "size": 14467
+      },
+      "after": {
+        "hash": "f9343d5b97f68aebe546e79ecb794e7c265dcd6560363d4806e21e7fbdca9eb1",
+        "size": 14518
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/classic-layout.md",
+      "kind": "modified",
+      "before": {
+        "hash": "ad4e02db8c89d7f77601f2125b8908f8a73944bcb4559aa49febedb1890c4dfe",
+        "size": 2095
+      },
+      "after": {
+        "hash": "2b44754000ddd111d0edbabfc5b5e3544c5387713de3f5c2a4ce3a6cf8963663",
+        "size": 2345
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/comet-yaml-fields.md",
+      "kind": "modified",
+      "before": {
+        "hash": "42fcb98803a9b1bd408c63047230ca5b2cb034560e64a760fdc202467e54cc1f",
+        "size": 7386
+      },
+      "after": {
+        "hash": "9c3c9ede6ba28ecd871931e3a5c9ed87adfa12b48b876725bfda672848f1e907",
+        "size": 7478
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/context-recovery.md",
+      "kind": "modified",
+      "before": {
+        "hash": "fd1526f86a8923c76695e2ebf8d0e9cee75385b1f1d96556c692803befbac2d9",
+        "size": 3255
+      },
+      "after": {
+        "hash": "ea69d61d5ddfaac47fe215b608ec012bf14a4de693c906b04052cc3d979c5717",
+        "size": 3252
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/file-structure.md",
+      "kind": "modified",
+      "before": {
+        "hash": "323b64baccd60966ffcc35529291649ad5da6834224a8bfbc9bb40be5b2d0e8d",
+        "size": 1379
+      },
+      "after": {
+        "hash": "81c31cc77f3ed04aae5ad4733e9cf77df7c550e053df3f0861f9dc12a8f3e27d",
+        "size": 1461
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/intent-frame.md",
+      "kind": "modified",
+      "before": {
+        "hash": "f941a883e26418da98419f55960b43394262de8661942f909cad415fca33da68",
+        "size": 5057
+      },
+      "after": {
+        "hash": "f5f40690e517957a90c9350cbb9f9d4dfb747d9842e5816f93d98a26e4f64b38",
+        "size": 5074
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/subagent-dispatch.md",
+      "kind": "modified",
+      "before": {
+        "hash": "b2a05a066fd22be070ab92cdebba0ac54971bd904dbf967a6161a7f163e60364",
+        "size": 19072
+      },
+      "after": {
+        "hash": "d2cc6a4291badbf490f9477b304ee9378e7184029683996a594e6ea832eaede8",
+        "size": 19063
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/rules/comet-phase-guard.en.md",
+      "kind": "modified",
+      "before": {
+        "hash": "25b101c8a89689130b677630f226a2712c3a59e0d046bd3794ee06fe4026a7db",
+        "size": 10736
+      },
+      "after": {
+        "hash": "8da45b6703bbdebef3e20a4f3b790433ccce05668f7d0ab23153ea35d2105261",
+        "size": 10812
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/rules/comet-phase-guard.md",
+      "kind": "modified",
+      "before": {
+        "hash": "e47f664b1441c1284e243505a5cefd9635f9ad736c03238876e5c071eebd0756",
+        "size": 9600
+      },
+      "after": {
+        "hash": "7fb4aa8a993f14d737e4a4efb47fafffdfba876ee1822667407e2f3c23d5a758",
+        "size": 9661
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/scripts/comet-entry-runtime.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "77f6d949ba9f48a2b48af7909f314d8d539cfa015bc2146f8639de342906d588",
+        "size": 290379
+      },
+      "after": {
+        "hash": "a2bd718f82a17f5a4260800041bd80195d55e4621fe16fd7a217ba840ea15577",
+        "size": 294590
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/scripts/comet-hook-router.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "45306e0c7914eec5608ce0dd0a10baccd0894574576f1946a39c6126f85dbf3c",
+        "size": 391824
+      },
+      "after": {
+        "hash": "a09a0da53e4f1d7b7816df97f2ac4c498a3984d1b6e211f45aa0045f13062c5e",
+        "size": 411156
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/scripts/comet-runtime.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "e5e7eb8e0154d39ff251879cf3d91cdb5c550e62c85686952c061ebb90efeb29",
+        "size": 570476
+      },
+      "after": {
+        "hash": "65d251ec98f45974e2fdd009e3ec5aec595d95982f2999599afa1c98e0baff54",
+        "size": 675634
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-archive-pointer.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "a56ab757d1871994aff85bcd970d32a48116011b9435e88bad02ca39df58c38d",
+        "size": 2512
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-archive.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "29c4d4e7f427258ba7078799629bbd1958ce5ea763746fc42cf720154786fac2",
+        "size": 16904
+      },
+      "after": {
+        "hash": "d38a49c6043ba662d9715500863cd3d0b60874e88efaa94334be50e6ad788451",
+        "size": 18724
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-current-change.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4091fcead5fe80bd863486f2bae2de466efaed7093afb10177d86858e59e728e",
+        "size": 5012
+      },
+      "after": {
+        "hash": "cb14d446b059eb62556a21ad7e2e11ad314693aeaf38b2a212e6f762fa6fbc08",
+        "size": 4569
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-evidence.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2f55327792c4b9d51c156452858f69a27ac2d9ad2cbaf3b6f9dda7fc698ecc7c",
+        "size": 4701
+      },
+      "after": {
+        "hash": "a0c319963607e463b14c9c40070abd871868030a3b61cebb3e68c8c2450819d0",
+        "size": 7555
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-guard.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4a6a83ef5c43613736c8e5479349e898143c33d9009a53140182271ce755e3ec",
+        "size": 40758
+      },
+      "after": {
+        "hash": "f62af7f4e6b8cd57c82e155784a7b8c9787cb682b43707f596407918916ce715",
+        "size": 41718
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-handoff.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a0c45dd4e4c9b588806839511189268e14fccb9a6ec78afddeb24d60519aea39",
+        "size": 20812
+      },
+      "after": {
+        "hash": "a6cbc131ac33a0f62d969f8e3e804f3d89b677857283e2feb72daca9097e4324",
+        "size": 25012
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-hook-guard.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2ea4130b31b4b702eb7b9728ec3d3a0225db84e368ac24083736db017b8f6f5f",
+        "size": 27007
+      },
+      "after": {
+        "hash": "9e72ee0a7f347a33ea367747a5b2c42c13045010ceeb9f8e67bb3ecd0ad0014b",
+        "size": 28203
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-layout-initialization.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "07ebb84f64b94ec81813f6400612cd346e89406b0a0b237e01b5411990fb1be4",
+        "size": 6737
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-layout.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "c10c4050f8362818987d3c588a2ca2bcb3e92817df75078c82582e31edf11c3b",
+        "size": 8807
+      },
+      "after": {
+        "hash": "625e049e78dd970a3e9c6bc732c2184d6dc6fb0974a1d1d0d4d06fb42b4b6e17",
+        "size": 11337
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-migrate.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4de1af61b825f77862cbb744f5309f9dffb2abf089c47c3d46bf42badaa8ca36",
+        "size": 7819
+      },
+      "after": {
+        "hash": "a3c8797e8d726b08a8f49a776a62f04c3d0c36a98fe81980fcf57bd4a9677934",
+        "size": 8170
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-openspec-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b4baa9c71a432c048093299b58afdbecf71c8d4ae5d7d7a9e5686981b0f79633",
+        "size": 1577
+      },
+      "after": {
+        "hash": "751200e5c5eee1403a2f59faa0fa94edcd86a58e21a2e0bbe8bbafeb880bf105",
+        "size": 1916
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-openspec-root.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "9182b465f30defab3ae9f7deb1c0ec0427e5416912f2ba61524c866f170630a4",
+        "size": 2599
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-paths.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4c5e9f25574088dc699bffe3fe60ba985a846b78270f398cf81a33c5816fd201",
+        "size": 2733
+      },
+      "after": {
+        "hash": "430ccd9114769582ee389b2b0740165af46430dfb7305c10f010331f769aea0b",
+        "size": 6451
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-project-config.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "35597ff35bea2593c590a7745fb5e609d1f3480ccca72a0e631382e788f13721",
+        "size": 2353
+      },
+      "after": {
+        "hash": "6c693588fb9e5432fb54e085c63bbfa49ccd4ecba6998772054bfe5923155a04",
+        "size": 1882
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-protected-path.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "8ce6631e27159eb7eb1d4a32350ca4022aad1eb6628f87f52a9febe608677800",
+        "size": 4418
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-resume-probe.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "3fec0f8fcbdc8ad6328d1ed1ea94fcdf998a163b595d13e5a5723b5cb3f8169a",
+        "size": 13961
+      },
+      "after": {
+        "hash": "7934020fd7c83b3d78b8c00ffd66a0b6d60b4c4f97aadc076d093dcdc64429f3",
+        "size": 14904
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-root-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "5e7d550c190d9c9c643a2065841f3dfd04e00787ccf0fbd68a0ac75114e1d448",
+        "size": 1967
+      },
+      "after": {
+        "hash": "a2d5105888e27d5a8b7172a07124b21a0993a749fe14ac27ec7e6c50adebbfb3",
+        "size": 3271
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-root-move.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "8310e9307c42d6301ba45d01cf70234689d340021fde38094b6639c7c11cf5ac",
+        "size": 14069
+      },
+      "after": {
+        "hash": "54b2e318bc9cd3bf47401be947b0879af3a8e6a228c4a1d7b948d4ca7f2baab0",
+        "size": 65027
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-state-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "6b18121971ad6553b83e1a9dce2226ce7224bb7b7cd22cd906202a3d05d811cc",
+        "size": 56967
+      },
+      "after": {
+        "hash": "64550f396c07daa4425eccd384c2d082a0a375668816a7204a900a5139b682bc",
+        "size": 58629
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-state-events.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "5ee2f92ea67dc71055798153d35c22e49c73cac9bc4bbfadbe197ce473da502a",
+        "size": 1200
+      },
+      "after": {
+        "hash": "fc13f6810b5aa2fda25504a09149520bbf6332602f99b819bd394c22afdfa452",
+        "size": 1279
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-store.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "8329e74d1f013274f8966528dc3476728865381e848622f5c2d0d81c3af967aa",
+        "size": 5342
+      },
+      "after": {
+        "hash": "8eeec2b57c9f4afae9c6164c956f29485a8420d457f8c4f5923ebfc434f56f50",
+        "size": 5489
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-validate-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a588f8b13c63dfcb5fbd1655f4fe965a1daffb17b345a99e6f72536846fadbe8",
+        "size": 5728
+      },
+      "after": {
+        "hash": "1de9dfbfe8ea03521855a5a63b3c9193581bf07b98198f7edf5e6c0d9aa969ca",
+        "size": 6165
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/hook-router-entry.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "faeaac347de8db4fbbe1ee54a6f756504c511c00f83198ad0c09bf54a637e2c5",
+        "size": 3280
+      },
+      "after": {
+        "hash": "984b99924245291112a85cf6018c1dd5f76a91b357c460b7b4917b8ab2669df9",
+        "size": 3299
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/hook-router.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "89c727ddebbd410d9c86b0fd6dd5fbe6230eaa6f91804420a7e08e7f5d4336cb",
+        "size": 6126
+      },
+      "after": {
+        "hash": "3a02a9d3b515272cb6ab564b55210a6d148e8294f14023ef4196d6e5d964bab6",
+        "size": 6168
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/init-workflow.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b2b45b2fa65766cc88d92defab4381292bc2bbb11528cafd8b361f1edad8439f",
+        "size": 4693
+      },
+      "after": {
+        "hash": "93c4cc929c1d9f58dc4838f35e860f557c865032bc1504e90242cd1890885b06",
+        "size": 5751
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/project-status.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ef2c26f5f25a97774baba12bc78ab3ace03e8e170599ac2b7a3bd417b934c72d",
+        "size": 8860
+      },
+      "after": {
+        "hash": "0fd9a1cd850acefaffb6d6ce66f7a7a98ed646ce9a664ad3302683425e4040da",
+        "size": 10222
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/resolve-entry.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "cbe6591a23f1a58d65b861439a3162986edf15de181aa42deffd23b75aa98d85",
+        "size": 824
+      },
+      "after": {
+        "hash": "f448df62ca48e5cd2dc60830c0d98c0663681840d12071f4f41bce1c0db49ffe",
+        "size": 841
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/resume-probe.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "62e55313c7c8da0f06ad8ca8c4bb2a40e5634aaabc74c68a8f0174aa060faea0",
+        "size": 18026
+      },
+      "after": {
+        "hash": "1985bc31c5ca92dfbe8fc80672b5a04b32e6ea6be6869a85a37d6911e6fb8e01",
+        "size": 18102
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "34b9c239ec6a8a306829992978c45fc77c171aa62001479c1894a17bc1f1cb6a",
+        "size": 1639
+      },
+      "after": {
+        "hash": "c268ae7bd22e89f8b0c32da81c701a6a6e6a0feb104953fec515e9e6868500fc",
+        "size": 1655
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-native/native-config.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "70f013531ef9f5ad05771c8257eedd46a254f361fcb342b38df804485dabb4e4",
+        "size": 18237
+      },
+      "after": {
+        "hash": "298dfb66e7365cc6db594b603ebd72459a0fc0dbaa9fb228702706633bb5509b",
+        "size": 4119
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-native/native-paths.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "148e02090a91fb08ea896134814958352aa1eaa5737bd3e0ebe25ff114d05a74",
+        "size": 6428
+      },
+      "after": {
+        "hash": "c1b09b833bc2441020ab87c9daa1a9daca25b46f07ff1edc14a3f1e5a6462a43",
+        "size": 5883
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-native/native-types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "11ca677b3558f3e65b2de19fe41c300f75dea82147dfe26ba5818f6078be519d",
+        "size": 19454
+      },
+      "after": {
+        "hash": "3c1e7e703a9c5125ae5b2ae1f57051e2b75f4d7658d5ac0ed0b15e0eeb10d1de",
+        "size": 18831
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/collector.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "99f7f24cf5eb80923eabfd3824d93e840a0286ee0e546dafa1de381b6a98c7c7",
+        "size": 17796
+      },
+      "after": {
+        "hash": "8e6024b0e1d39af7fd928a1daa95991d190f1bc6d09abe178d1eadb7c3563302",
+        "size": 23320
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/native-collector.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "6ffcd6a5deb3c3234e4ce2310a402b9eeac053d2ec729f5c5690244a751f277f",
+        "size": 12323
+      },
+      "after": {
+        "hash": "660a8ad227355fcab8860281dc5d5a9d68301bae174ac56aaa1bc93ae84ba3b5",
+        "size": 12360
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "e0bf5abe05d4404de7ea807904cd0ca4dd44d54a97850ea7955cd9e8e8aaabc4",
+        "size": 3171
+      },
+      "after": {
+        "hash": "f06da6e1c9c34dc621894f65309f501dca0ed6fd96df39e26abbeadcd18c51d5",
+        "size": 3272
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/verify-parser.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "461b9ccddbd5e3dfce9ed8726388185f74b9807b28715d12fc66d8437a5bd966",
+        "size": 3659
+      },
+      "after": {
+        "hash": "ed9045aa28081401fb325f6a4801b11a7e0d669f8918de1d5e4f9f8c28c30717",
+        "size": 4029
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/web/src/main.jsx",
+      "kind": "modified",
+      "before": {
+        "hash": "8495d688cc7734a5702fe2a397cd3a3b421259897b5bb150e4339880e0a72405",
+        "size": 52681
+      },
+      "after": {
+        "hash": "befb7f4a278617285ad2490b63ba590fbb48e9660fd7a3bd81db14f25bc8c350",
+        "size": 52350
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/engine/protected-run-file.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "7bca63f93f1d7c9e4093cbdfb0d7d6ef35cef22a76ddcc58f21edc4fb3035115",
+        "size": 4118
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/engine/run-store.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a979ba7dc68406b4b789ff402a73560441d8132d941aac48561c5fc95c62b61f",
+        "size": 4349
+      },
+      "after": {
+        "hash": "01c354010ca420c0871b717869718623e2d2c282581ca6626b9d21bf80408f3c",
+        "size": 5455
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/engine/state.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "3c565e1a81c7f7e0f7f37568a307127659cee2bc5b2678a6b34136174da94133",
+        "size": 6295
+      },
+      "after": {
+        "hash": "45dbe5df9171cc30bcd96386d9c4a02b9589135b9a7a0b84ba277a933d7e4920",
+        "size": 6389
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/factory/package.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "8f47eb29d07e239014aa3e71f0145be8731d90f7923c1300f024cd191d1c3287",
+        "size": 63981
+      },
+      "after": {
+        "hash": "bb6623429169a4cd54333eb99b7b47378b6aaf41c46b8bfe7769341da0a51c0a",
+        "size": 74780
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/integrations/openspec.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b6235704d6a71a7a9893cc15e7997c066a9137221949281eee31f09ae9061d77",
+        "size": 16534
+      },
+      "after": {
+        "hash": "ea1693e36b4eb8b906f0c72f51c6610239af6e201666ddb17b9e67a51fb53901",
+        "size": 24241
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/skill/platform-install.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ed4b9dba885f16f3f2c9530f1aa9c4d70151d66f8bf2620f303c6e2196a76631",
+        "size": 59962
+      },
+      "after": {
+        "hash": "6292f27d3b831f0853e121955870618cdb8b6df254e61e653f47f9b5df670240",
+        "size": 61274
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/skill/uninstall.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "14c35153fdbd279f028b9f420fddbffda0a5362386b3e0b13da4f8ca1f61c8ae",
+        "size": 17204
+      },
+      "after": {
+        "hash": "20d9e72c3ab22b1fc631c24f8522a4c8f913058f542d9a1c91ff5963b1c4b497",
+        "size": 38453
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/contained-atomic-write.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "26a36a16b31affffd929992205d6208c24b95e25310209d16da8fa7ad7823796",
+        "size": 9917
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/index.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "aa6794451f30a7c7569380b293aac0b2c3da3516a19f70e2d75870888ff906ce",
+        "size": 495
+      },
+      "after": {
+        "hash": "7f5b198a60fc05fce079e416f099a74290394169ecf00f34cb8d5fdc898f984a",
+        "size": 2057
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/project-config-reader.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "1ab7632dc64c7998e3f2aa5a28fa2c7db31bd897206e940876169f848dbeb783",
+        "size": 3258
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/project-config-writer.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "8ff0240724af6901e6f1cc21a06488e94cc84c0b0ea9abb0c773d94d94b672df",
+        "size": 3322
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/project-config.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "70b3c1836f4ba1e8660424d280e68af7d50ac37ed86a9f6dfd86024d7248eae7",
+        "size": 8939
+      },
+      "after": {
+        "hash": "c4de794d47574b0a120f950837e3ee9182994761a661bc8f674de6a2d15d49b8",
+        "size": 59349
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/protected-project-path.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "3aaebe06a9cbab74d0ba9fe7165980ba845fbc68bc49cdc752fa9e599586f1d4",
+        "size": 7101
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "663138de3c76412eb6b8821117a80a20f694d21322a1506ef6985873f63e1c4c",
+        "size": 4310
+      },
+      "after": {
+        "hash": "db1903fb537f5b5a354651e08a36c5fbc78fe9635f74ce214ed9d73c97b909d4",
+        "size": 6526
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/environment/.include-current-comet-cli",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "bc586f3c9d3a4231b93043c84a474a1608f32d78e5764c2393daab8005752841",
+        "size": 8
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/environment/Dockerfile",
+      "kind": "modified",
+      "before": {
+        "hash": "d997d8e1973bb9504c6bd4c2403f03cdd6f65e1129e55718e77e7c5f88e31405",
+        "size": 2190
+      },
+      "after": {
+        "hash": "920687cbb43d796cb7370622fd5ded93b8efe934818bcd4187e02734ffd1e312",
+        "size": 1938
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/environment/current-comet-package.json",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "c0bfd1421aabe461270d69e253e9c422c9c9d20bce8bce338520cea42da8f60d",
+        "size": 433
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/environment/current-comet.sh",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "d5848d6673bfd4ca1860986b21302247042748ec62a42e1875a4e12204126540",
+        "size": 441
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/task.toml",
+      "kind": "modified",
+      "before": {
+        "hash": "c34cb810aceb6f7cdcfc8e22b2b615c8430fddfada62cae5d43b3bb9ddff357f",
+        "size": 712
+      },
+      "after": {
+        "hash": "e46caf50a1f054ca220e3960562c3dcd879b9b9e24e6415ba582d11abd571103",
+        "size": 775
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+      "kind": "modified",
+      "before": {
+        "hash": "65c440fc613cc416641cf8f7029392b37b75390ebbdcda1198f073405e8d6ea1",
+        "size": 6029
+      },
+      "after": {
+        "hash": "bd49ddbc29229adb7303d1efe9deae0895a3c280a00249aeb5f8cdb32276627e",
+        "size": 21325
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/index.yaml",
+      "kind": "modified",
+      "before": {
+        "hash": "f72c691221a1b529a6c185dfadb370c251534159f8557cc8dc4c6deb4b75c068",
+        "size": 8489
+      },
+      "after": {
+        "hash": "b2ea3e386aa50ef630c93fcb01489bb682edfe689938b96b2e2de5912508572f",
+        "size": 8559
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/conftest.py",
+      "kind": "modified",
+      "before": {
+        "hash": "f319b761f45b60623349bfcb59da0989961aa1918ca36a916e0100e05e297ec6",
+        "size": 64193
+      },
+      "after": {
+        "hash": "089d5ce1b9d7a0e6d07fb66f70d6e636aba13e85239bde02f533c280a878381a",
+        "size": 64825
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/scaffold/test_native_wave_evaluations.py",
+      "kind": "modified",
+      "before": {
+        "hash": "9fe89d14ca40df14271df6e7f3f9433bc23f5c71a2cbdc592b6b647726640978",
+        "size": 73241
+      },
+      "after": {
+        "hash": "6a1e336a1b9067a1c99c6883b0f1d950be1665d08d0cb6b654273fa72beeb944",
+        "size": 73736
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/scaffold/test_profiles.py",
+      "kind": "modified",
+      "before": {
+        "hash": "dccbde10f9d97ce8513ea66691889b351492543c784547886fb13aa314ae8b43",
+        "size": 36482
+      },
+      "after": {
+        "hash": "85c9e48592f3616c746a915bdbbc91b42c8e5b121834c2f2651415d50c0268b7",
+        "size": 39990
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/scaffold/test_tasks.py",
+      "kind": "modified",
+      "before": {
+        "hash": "9fbfc9ff82018d26a87f1e451d15247d02bbc9bb87e35d4babb0ac1009c7cf5a",
+        "size": 38967
+      },
+      "after": {
+        "hash": "4027c18a09eed06a7af22f42113300f7abc69f68f73c678247ab44c00b45f4a9",
+        "size": 40035
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/scaffold/test_treatments.py",
+      "kind": "modified",
+      "before": {
+        "hash": "65ef484d6d63bc7876ba7ed27652017aa4914dc8d25830e6f161f2f5e75c4fe3",
+        "size": 12265
+      },
+      "after": {
+        "hash": "45112deb71bb2c29e8fcac5c91109069b412a948f62a1e3e9beb2a1c4e56c18d",
+        "size": 12627
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/tasks/test_validation_scripts.py",
+      "kind": "modified",
+      "before": {
+        "hash": "8a92740e06c21b771576f4f5c33a77463526b603265bc407ec25caa8393ef8d4",
+        "size": 5896
+      },
+      "after": {
+        "hash": "604b9e24faf1967fc90b027536e308b4c9c6ce10c88d4e050fa9d4522ca6b167",
+        "size": 22217
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/treatments/comet/comet_classic_docs_layout.yaml",
+      "kind": "modified",
+      "before": {
+        "hash": "6081c6e2ce9caebe5830012edfe7e37cb3f6e08a501ba0a1383589aa6cc7a483",
+        "size": 3776
+      },
+      "after": {
+        "hash": "232f0b019bf25d88607130d04640e609cb676bc2bdb4f670541a896d9d630b31",
+        "size": 4397
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/scaffold/python/validation/comet_workflow.py",
+      "kind": "modified",
+      "before": {
+        "hash": "cff5c4d50270b0be9e54bd30174a084f690a3eec2069a3b6b0e66cad5a7dc98c",
+        "size": 7542
+      },
+      "after": {
+        "hash": "2ff71f13b2732509e8505fb33f7df8ae2cce4728be4eeb5b5021b5a50c4f59c4",
+        "size": 8290
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/scaffold/python/validation/rubric.py",
+      "kind": "modified",
+      "before": {
+        "hash": "ec411492624c19cebb26a5845a8737b9ad63a1b524ebd1470fddd32249d7439f",
+        "size": 28686
+      },
+      "after": {
+        "hash": "260ace00aed36593911bfadc606eaa1ab59aa18c94fa0fc567fa5d1f78c7bef8",
+        "size": 29501
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "scripts/benchmark/classic-baseline-regression.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "115ee6279a61d60787bb0d2b910a62a29dbf28a4e4c42c4e45f931c0c5229480",
+        "size": 16266
+      },
+      "after": {
+        "hash": "8879d3dbedbd0447dede1fa5e2f3c73f3a09c2f9eac8f836c9fa71e4e12f5de9",
+        "size": 17041
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/cli-help.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d723c9d740de3b4d9f52f1f82b939c52894009b8712eacb6e580cdbc1aa7f603",
+        "size": 8821
+      },
+      "after": {
+        "hash": "cd292a517330f3c3112411532dea596b9954b016c5be7aedb0b56d6b3d716ad7",
+        "size": 9366
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/dashboard-command.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "9d4ddd5097428a73d46927926a1fde0b6584a13f5aa59006fa245f4da57749b1",
+        "size": 1846
+      },
+      "after": {
+        "hash": "99e55a875e5fdcb0049becdf16d90b5a1b095cbe6c460a15d539383337c6f4b1",
+        "size": 2620
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/doctor.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "5c1abed464db35e625317bff068a2d7d48b2d4e6ef9c464dfe045863d2e1942d",
+        "size": 28350
+      },
+      "after": {
+        "hash": "2f17ee5cdbb7aa08a7cf4552ce35963ceb70d3f95b692c3cfe08142f98db6833",
+        "size": 50227
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/init-e2e.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2b3d249298a1803e0f98bd68690f8e84622963330c50f8b147ef7236d3d48dfc",
+        "size": 73303
+      },
+      "after": {
+        "hash": "b7c1bcb7da9b6ff1b43d2e31e0a5b945eeb61dd425b3875936dc3469ee48a59b",
+        "size": 92060
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/init.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d5ef8f9dd25e111de6dfe2b44a4f3e57e3d1074c0cfe651989968bb943cc7e47",
+        "size": 8614
+      },
+      "after": {
+        "hash": "540432f64d49a60d2e47d9df2f54e878d83e3261511f774b9b87c3b9525d9e7c",
+        "size": 8647
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/resume-probe.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "9a93cd34ec75eb4168ce5476800e62489cde5267d45dd37d01fef988668c9fe2",
+        "size": 7253
+      },
+      "after": {
+        "hash": "b5c4c30b404abe30432341a11a89c3f3a0f6b460fc05a0e62df9d6e7a119a2f7",
+        "size": 8023
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/status.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "684145b27b456d43f8ad723beeff155b847f23c334f74a2dcbd2d0f7394336fe",
+        "size": 21468
+      },
+      "after": {
+        "hash": "55f055c0a936d069fa35ad8e21c3ac892305947ccf998f30916d5f348ff36333",
+        "size": 22383
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/uninstall.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "887db18a7c0b7251134672b51a783552de2bee28bde127e7a86bd3041a4c7af2",
+        "size": 81268
+      },
+      "after": {
+        "hash": "4e1ba7f3997865c6ae5635651f3039475482292b3d1793caa6583791755f3bec",
+        "size": 95406
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/update.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "7207365b702835caa9d233a4ef1d26d110d0059d304f7b1f9b7a874c45ba5507",
+        "size": 105581
+      },
+      "after": {
+        "hash": "a6abcda19500f4f43edb4580b46bc53d2319af408b0ddc73f45247eece65caa4",
+        "size": 125081
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/workflow-command.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a3e7849da43ebdc5525fb2e0a48383bc2327cf31cfc87fb6c9ed59f029f52ad1",
+        "size": 2372
+      },
+      "after": {
+        "hash": "f9919e60f8ae5b4aa2eb3adc345f6f6898a923ccb89199fa8fb101a14d4a9472",
+        "size": 2339
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/domains/comet-classic/classic-archive.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4fd4ea401a011397759c233e3cbda26a4d44f60d88be734266d2d3208a449ced",
+        "size": 14110
+      },
+      "after": {
+        "hash": "dc81885f7c4bae685235e9bc3902ca2468347196a60dffc6d4517ce32166b286",
+        "size": 16901
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/domains/comet-classic/classic-current-change.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d04227f996b0e74a0eacda0a096f1248ba33059df7e0a362a4e545e695a24867",
+        "size": 10123
+      },
+      "after": {
+        "hash": "36b497847c7a0b55da11d3a0d7f5591d6231b7576d4a91c2c4321e081a0f4b11",
+        "size": 11410
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/domains/comet-classic/classic-diagnostics.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ee14fcc8cc2ed3755ddad2271338b0e3abd3808425cacef50257d6dee5178a14",
+        "size": 2273
+      },
+      "after": {
+        "hash": "8cd175034c5df1ae7cbb16c632a315cf14624310add3b227acc79a6ca9ea7480",
+        "size": 2405
+      },
+      "attributedTo": []
+    }
+  ],
+  "unattributed": [
+    {
+      "path": "app/cli/index.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "31bea3890d0d8f5f24a8ecb4a56a3aed73541df1660d5efbda05be11e63df907",
+        "size": 23864
+      },
+      "after": {
+        "hash": "c4a25c899ed4482a64e37ea5e79519b223eedb641aed94a88ce1a86dab69d66d",
+        "size": 24015
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/classic.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a5c8e3fba194c8c942a197d2f390abeb1e867c0b962cf2d69491f12c8c87a57b",
+        "size": 846
+      },
+      "after": {
+        "hash": "afb07e10a80c5d61c2c8495a7bbc3f2787f4a0d99d7acd37f02aecaaf1da5116",
+        "size": 1398
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/doctor.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d14b213cda33e92e80d58113261ff5064db7464cb925ce3ce3b75add3bd13efb",
+        "size": 27745
+      },
+      "after": {
+        "hash": "45b6073bab701d1f82c5a37891dcd223a13251ecc6f92c57c57f7c02bc6153ea",
+        "size": 41936
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/init.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "596a67546223c928dd1364b2f3c78ec9f1b0ff11cfe429c6d9a1a8265e6d0df1",
+        "size": 37605
+      },
+      "after": {
+        "hash": "798eaeacd02d95829df726b9e29b60f1b2abe70cc130f37b4afebd4613b398d7",
+        "size": 42283
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/resume-probe.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a3097d88189528b969d459fd1ec35fb694a7ea6db44cd24baaf238c02466e0dd",
+        "size": 2914
+      },
+      "after": {
+        "hash": "e2f339b130ae078e887b7c03e62c0cde7afbe696e7bdf0a49b9bee518818c5d0",
+        "size": 2912
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "app/commands/update.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "52949ebb3bdef0b45fd314f0e99837ee29f9d5ab1a8277590b36652b4cb0d216",
+        "size": 64390
+      },
+      "after": {
+        "hash": "4af388e344abd0b919bf34d59b13cc27cc877a942e5efa3a0be79c8da53d0e60",
+        "size": 72578
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-any/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "49d907f2813e5912159022d0c58d5db9c43843f70f655b527cd4026cea924245",
+        "size": 7986
+      },
+      "after": {
+        "hash": "c21b0fb427294e4f70e9b8c5cb64c0bf7566c5ce509d18d9430273de77a9d6e1",
+        "size": 8017
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-any/reference/bundle-authoring.md",
+      "kind": "modified",
+      "before": {
+        "hash": "5c3199221e608b20f70e4ebc06c44b1a82b848af3740c069aa1c8a29ee77e500",
+        "size": 6432
+      },
+      "after": {
+        "hash": "80e1bf26c217af6a57716581dbaa932cf4dd928579765fa1af0f7e6f2539a39e",
+        "size": 6463
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-any/reference/subagents/script-author.md",
+      "kind": "modified",
+      "before": {
+        "hash": "c54904e095445b02ba8ef0e6ca21253aa980193a7feaf7c715b1eea85550b4aa",
+        "size": 3785
+      },
+      "after": {
+        "hash": "6bb99f9950c0cb64eeab35eb40aa7cfea44530b887900cc2ec2184aa10954e80",
+        "size": 3816
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-archive/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "2dc271a0ad04636f9df7068d21e4dc774fbe4ea90632db1f547becea8efe8fab",
+        "size": 8820
+      },
+      "after": {
+        "hash": "617aed5b378b5ce77e93955dc0498be57d81e01a583c8185b04c72113467ed3f",
+        "size": 8852
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-build/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "3f63ee20082073564d1b062275b217abd019a3ae44520815067e0f57b476f4ef",
+        "size": 22896
+      },
+      "after": {
+        "hash": "afcdc12c99404357afb1b8f3c2b69c63fba615c7a995d442ff76cf432c18475c",
+        "size": 22940
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-classic/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "60eea4fb197043d6db7b174d570bd9b1d147fa7f0ef2c493a69dc8850aee3f84",
+        "size": 18764
+      },
+      "after": {
+        "hash": "bf4ac21ec938c6b7b7466aab89775a260cd7aa12e0296f752e2678565da4b987",
+        "size": 18904
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-design/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "88107de36521a951b499edf4b7a73b5eb1a342286ef0780962bd3b6673f049ac",
+        "size": 12325
+      },
+      "after": {
+        "hash": "68fb6b17f70d7fb99cda1122778e11a589fc1e606a4b08bd49b145d51a33e6f9",
+        "size": 12330
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-hotfix/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "7c730ea599a04b43f31e7c4930453e3e082651e4f5b4f26c2d9dd814ddae75d7",
+        "size": 12867
+      },
+      "after": {
+        "hash": "4c8497f675c6f625186c39321c0ed2bdbd39ffacd6f3ae7a2b4d96b0574fb60b",
+        "size": 12908
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-open/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "7b8bbe14709a065a08cb9678aba4422d505c4abc19ffed322f431708ec4acbce",
+        "size": 17538
+      },
+      "after": {
+        "hash": "5c80477fa35d5990057c4fbdb45f0c8770c33014d4489a825008a26970f2ec7e",
+        "size": 17773
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-tweak/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "96c42ff6d77a9f0b55fd44f8d5be4dc464f8effa7829e8c9393736035cfd450d",
+        "size": 13382
+      },
+      "after": {
+        "hash": "7ae403284c56a7da2b6d7d6783210da7115573a178e02161840e4939b52763f3",
+        "size": 13463
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet-verify/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "288e12c5dddab2f8cb978ee5bec7a8299c0b0e510e3ad1883f784c47ca9ac3b2",
+        "size": 13333
+      },
+      "after": {
+        "hash": "f69b3526dedc2c5f72f9eed2868abd360db016d1e6d4bfaa5ade37292b21289e",
+        "size": 13377
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/classic-layout.md",
+      "kind": "modified",
+      "before": {
+        "hash": "1d1d20587d4a74312cdd40dfe9655b309ea6956d9c5251574b952bf500e44212",
+        "size": 1933
+      },
+      "after": {
+        "hash": "0663ad934af3f41281467859965a16cb5bda026ae71858e38dd387ec1ce3b7e0",
+        "size": 2159
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/comet-yaml-fields.md",
+      "kind": "modified",
+      "before": {
+        "hash": "77ef2ae795260ebffa35060801ea4a4b88db6bbbfcd7c1d66b1dc57553c6af82",
+        "size": 6967
+      },
+      "after": {
+        "hash": "ba05abe106d04c8953b3752d9206bd93d64b90fd6c58dbe094c607dd3433cee4",
+        "size": 7052
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/context-recovery.md",
+      "kind": "modified",
+      "before": {
+        "hash": "28b7846948dee6f4617a278f9fa8ee95aa85af842429cbf1200dee933dc6ba97",
+        "size": 2922
+      },
+      "after": {
+        "hash": "843fb3ca3f05c4d44132bac70be46980833b4b570858c0c297a4c8c0d5f229ef",
+        "size": 2919
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/file-structure.md",
+      "kind": "modified",
+      "before": {
+        "hash": "21a9c52cdb3224036b1c6f627246af655be33316d7879d87f64fedbc74fc3de1",
+        "size": 1312
+      },
+      "after": {
+        "hash": "75b721ecb68fe51b695df054b8faa271ae13ee92a3b8ae9d9fa571d299303a02",
+        "size": 1386
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/intent-frame.md",
+      "kind": "modified",
+      "before": {
+        "hash": "390ba9afeac5242485d0869bd4e30c273aac9caeac3395558a9bd4f84b3f4f4e",
+        "size": 4629
+      },
+      "after": {
+        "hash": "b3d587f4724f12160cb819901f0969c40dce053d7887256a26ab0871f1e333a7",
+        "size": 4646
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills-zh/comet/reference/subagent-dispatch.md",
+      "kind": "modified",
+      "before": {
+        "hash": "f3d8d580f5ea75d62b2bb77a90a4d7fc8c552a67875835d00207fee463e8e428",
+        "size": 17193
+      },
+      "after": {
+        "hash": "1fe96ef9cc9192040724c8fa9932da1e6b1bf3e9a2fa7be4657c8f77bbd13631",
+        "size": 17184
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-any/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "3fa4ffcf774c03da0423262e8f58c6a07c243bcf4537efc63447091994322f1b",
+        "size": 8254
+      },
+      "after": {
+        "hash": "e91587c9973564f3867bb24c25b5e99d5d92baed0ee21d7d2a8bb85a706ac695",
+        "size": 8288
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-any/reference/bundle-authoring.md",
+      "kind": "modified",
+      "before": {
+        "hash": "fc357fed7da3edc1e73009542575ecf814d53f7292d81e7a59cfb51f63b54d82",
+        "size": 6630
+      },
+      "after": {
+        "hash": "bddd72e11d5ea56acded93a4dca868e3d15e97c0f23885f62d525bfbc5b46704",
+        "size": 6664
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-any/reference/subagents/script-author.md",
+      "kind": "modified",
+      "before": {
+        "hash": "1e141b50ec74c658f738345e786396a44e0abdb1cb1fb861ffef2c79d10f32c3",
+        "size": 4149
+      },
+      "after": {
+        "hash": "7d4a9f5b65064a4fdf023809dae106a78184e8c35187c934d998dcf0925977ea",
+        "size": 4183
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-archive/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "f09380614e3ce7aa98f7382bd0bb161988156a3fd9cc571cb6f14e217463a0fb",
+        "size": 9758
+      },
+      "after": {
+        "hash": "7636d1cf11f65189cba013b7ee0247852916eae08de0d03cfebbd61bed853a73",
+        "size": 9797
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-build/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "6ef64f9a284cc4ef182f8a7ee28b21ee78607b0efac0ffaefbf87f7d8062979b",
+        "size": 25058
+      },
+      "after": {
+        "hash": "759030eeb560ed7fa69c917b5b55ea179eb6b99c158a6e8adce5d83f3fca6349",
+        "size": 25109
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-classic/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "739576f12fe67d566009d5a4c503f064d1407e9221b215fa0938da52db87dbb7",
+        "size": 20394
+      },
+      "after": {
+        "hash": "b773d778945d50f203c32265f87cf71e9c754f8e3be9746f5a698d5459695d40",
+        "size": 20550
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-design/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "0c81c1237ad44ddbf19b3274052a6defd36538c58954b19dbe374c5322016bf8",
+        "size": 13519
+      },
+      "after": {
+        "hash": "2fa3a9e4e27abf40966333ba72380c18ef336ef856b17fd95dbbc20fa120a0a8",
+        "size": 13531
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-hotfix/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "1f3765dc2632c189e4e1af5a76fef0f56c77831e715486c55db9d99ef16f186a",
+        "size": 14397
+      },
+      "after": {
+        "hash": "cf4d5dbba881bdef3055113c92e21103ad487b66a0fd1bbdbe15ee456172014a",
+        "size": 14445
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "60e9b2439c76a020a7a205f209d0924eafb40eaba985e7dfb8a87e2169a4fbae",
+        "size": 1148533
+      },
+      "after": {
+        "hash": "149136e8f205900eee6df457b63b66967a9fe441a056a78ca20515ed09c01575",
+        "size": 1156442
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-open/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "76e0f853374298d44a40286f9dfe941d1e862a50e4d7af79514799d39f43f36e",
+        "size": 18811
+      },
+      "after": {
+        "hash": "8e7c1e1e5349d8d3c9222eeb38b6fa783dae7e61dcfcb1fb25e7977c1acd07dd",
+        "size": 18952
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-tweak/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "88692218f9f0d280e3d9f2cb01fb45e32a35250fb8208d653049b6894af141e5",
+        "size": 14906
+      },
+      "after": {
+        "hash": "9aebd1d7ccc33f345bfc9d09b733570d4ae52227eac879835de102a310a542d0",
+        "size": 14994
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet-verify/SKILL.md",
+      "kind": "modified",
+      "before": {
+        "hash": "d1bbf7d1c3f9ecbd03bcfc07b858389aabab4df51f321c97bb329fb6ec317f5f",
+        "size": 14467
+      },
+      "after": {
+        "hash": "f9343d5b97f68aebe546e79ecb794e7c265dcd6560363d4806e21e7fbdca9eb1",
+        "size": 14518
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/classic-layout.md",
+      "kind": "modified",
+      "before": {
+        "hash": "ad4e02db8c89d7f77601f2125b8908f8a73944bcb4559aa49febedb1890c4dfe",
+        "size": 2095
+      },
+      "after": {
+        "hash": "2b44754000ddd111d0edbabfc5b5e3544c5387713de3f5c2a4ce3a6cf8963663",
+        "size": 2345
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/comet-yaml-fields.md",
+      "kind": "modified",
+      "before": {
+        "hash": "42fcb98803a9b1bd408c63047230ca5b2cb034560e64a760fdc202467e54cc1f",
+        "size": 7386
+      },
+      "after": {
+        "hash": "9c3c9ede6ba28ecd871931e3a5c9ed87adfa12b48b876725bfda672848f1e907",
+        "size": 7478
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/context-recovery.md",
+      "kind": "modified",
+      "before": {
+        "hash": "fd1526f86a8923c76695e2ebf8d0e9cee75385b1f1d96556c692803befbac2d9",
+        "size": 3255
+      },
+      "after": {
+        "hash": "ea69d61d5ddfaac47fe215b608ec012bf14a4de693c906b04052cc3d979c5717",
+        "size": 3252
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/file-structure.md",
+      "kind": "modified",
+      "before": {
+        "hash": "323b64baccd60966ffcc35529291649ad5da6834224a8bfbc9bb40be5b2d0e8d",
+        "size": 1379
+      },
+      "after": {
+        "hash": "81c31cc77f3ed04aae5ad4733e9cf77df7c550e053df3f0861f9dc12a8f3e27d",
+        "size": 1461
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/intent-frame.md",
+      "kind": "modified",
+      "before": {
+        "hash": "f941a883e26418da98419f55960b43394262de8661942f909cad415fca33da68",
+        "size": 5057
+      },
+      "after": {
+        "hash": "f5f40690e517957a90c9350cbb9f9d4dfb747d9842e5816f93d98a26e4f64b38",
+        "size": 5074
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/reference/subagent-dispatch.md",
+      "kind": "modified",
+      "before": {
+        "hash": "b2a05a066fd22be070ab92cdebba0ac54971bd904dbf967a6161a7f163e60364",
+        "size": 19072
+      },
+      "after": {
+        "hash": "d2cc6a4291badbf490f9477b304ee9378e7184029683996a594e6ea832eaede8",
+        "size": 19063
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/rules/comet-phase-guard.en.md",
+      "kind": "modified",
+      "before": {
+        "hash": "25b101c8a89689130b677630f226a2712c3a59e0d046bd3794ee06fe4026a7db",
+        "size": 10736
+      },
+      "after": {
+        "hash": "8da45b6703bbdebef3e20a4f3b790433ccce05668f7d0ab23153ea35d2105261",
+        "size": 10812
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/rules/comet-phase-guard.md",
+      "kind": "modified",
+      "before": {
+        "hash": "e47f664b1441c1284e243505a5cefd9635f9ad736c03238876e5c071eebd0756",
+        "size": 9600
+      },
+      "after": {
+        "hash": "7fb4aa8a993f14d737e4a4efb47fafffdfba876ee1822667407e2f3c23d5a758",
+        "size": 9661
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/scripts/comet-entry-runtime.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "77f6d949ba9f48a2b48af7909f314d8d539cfa015bc2146f8639de342906d588",
+        "size": 290379
+      },
+      "after": {
+        "hash": "a2bd718f82a17f5a4260800041bd80195d55e4621fe16fd7a217ba840ea15577",
+        "size": 294590
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/scripts/comet-hook-router.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "45306e0c7914eec5608ce0dd0a10baccd0894574576f1946a39c6126f85dbf3c",
+        "size": 391824
+      },
+      "after": {
+        "hash": "a09a0da53e4f1d7b7816df97f2ac4c498a3984d1b6e211f45aa0045f13062c5e",
+        "size": 411156
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "assets/skills/comet/scripts/comet-runtime.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "e5e7eb8e0154d39ff251879cf3d91cdb5c550e62c85686952c061ebb90efeb29",
+        "size": 570476
+      },
+      "after": {
+        "hash": "65d251ec98f45974e2fdd009e3ec5aec595d95982f2999599afa1c98e0baff54",
+        "size": 675634
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-archive-pointer.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "a56ab757d1871994aff85bcd970d32a48116011b9435e88bad02ca39df58c38d",
+        "size": 2512
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-archive.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "29c4d4e7f427258ba7078799629bbd1958ce5ea763746fc42cf720154786fac2",
+        "size": 16904
+      },
+      "after": {
+        "hash": "d38a49c6043ba662d9715500863cd3d0b60874e88efaa94334be50e6ad788451",
+        "size": 18724
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-current-change.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4091fcead5fe80bd863486f2bae2de466efaed7093afb10177d86858e59e728e",
+        "size": 5012
+      },
+      "after": {
+        "hash": "cb14d446b059eb62556a21ad7e2e11ad314693aeaf38b2a212e6f762fa6fbc08",
+        "size": 4569
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-evidence.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2f55327792c4b9d51c156452858f69a27ac2d9ad2cbaf3b6f9dda7fc698ecc7c",
+        "size": 4701
+      },
+      "after": {
+        "hash": "a0c319963607e463b14c9c40070abd871868030a3b61cebb3e68c8c2450819d0",
+        "size": 7555
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-guard.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4a6a83ef5c43613736c8e5479349e898143c33d9009a53140182271ce755e3ec",
+        "size": 40758
+      },
+      "after": {
+        "hash": "f62af7f4e6b8cd57c82e155784a7b8c9787cb682b43707f596407918916ce715",
+        "size": 41718
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-handoff.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a0c45dd4e4c9b588806839511189268e14fccb9a6ec78afddeb24d60519aea39",
+        "size": 20812
+      },
+      "after": {
+        "hash": "a6cbc131ac33a0f62d969f8e3e804f3d89b677857283e2feb72daca9097e4324",
+        "size": 25012
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-hook-guard.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2ea4130b31b4b702eb7b9728ec3d3a0225db84e368ac24083736db017b8f6f5f",
+        "size": 27007
+      },
+      "after": {
+        "hash": "9e72ee0a7f347a33ea367747a5b2c42c13045010ceeb9f8e67bb3ecd0ad0014b",
+        "size": 28203
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-layout-initialization.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "07ebb84f64b94ec81813f6400612cd346e89406b0a0b237e01b5411990fb1be4",
+        "size": 6737
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-layout.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "c10c4050f8362818987d3c588a2ca2bcb3e92817df75078c82582e31edf11c3b",
+        "size": 8807
+      },
+      "after": {
+        "hash": "625e049e78dd970a3e9c6bc732c2184d6dc6fb0974a1d1d0d4d06fb42b4b6e17",
+        "size": 11337
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-migrate.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4de1af61b825f77862cbb744f5309f9dffb2abf089c47c3d46bf42badaa8ca36",
+        "size": 7819
+      },
+      "after": {
+        "hash": "a3c8797e8d726b08a8f49a776a62f04c3d0c36a98fe81980fcf57bd4a9677934",
+        "size": 8170
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-openspec-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b4baa9c71a432c048093299b58afdbecf71c8d4ae5d7d7a9e5686981b0f79633",
+        "size": 1577
+      },
+      "after": {
+        "hash": "751200e5c5eee1403a2f59faa0fa94edcd86a58e21a2e0bbe8bbafeb880bf105",
+        "size": 1916
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-openspec-root.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "9182b465f30defab3ae9f7deb1c0ec0427e5416912f2ba61524c866f170630a4",
+        "size": 2599
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-paths.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4c5e9f25574088dc699bffe3fe60ba985a846b78270f398cf81a33c5816fd201",
+        "size": 2733
+      },
+      "after": {
+        "hash": "430ccd9114769582ee389b2b0740165af46430dfb7305c10f010331f769aea0b",
+        "size": 6451
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-project-config.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "35597ff35bea2593c590a7745fb5e609d1f3480ccca72a0e631382e788f13721",
+        "size": 2353
+      },
+      "after": {
+        "hash": "6c693588fb9e5432fb54e085c63bbfa49ccd4ecba6998772054bfe5923155a04",
+        "size": 1882
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-protected-path.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "8ce6631e27159eb7eb1d4a32350ca4022aad1eb6628f87f52a9febe608677800",
+        "size": 4418
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-resume-probe.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "3fec0f8fcbdc8ad6328d1ed1ea94fcdf998a163b595d13e5a5723b5cb3f8169a",
+        "size": 13961
+      },
+      "after": {
+        "hash": "7934020fd7c83b3d78b8c00ffd66a0b6d60b4c4f97aadc076d093dcdc64429f3",
+        "size": 14904
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-root-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "5e7d550c190d9c9c643a2065841f3dfd04e00787ccf0fbd68a0ac75114e1d448",
+        "size": 1967
+      },
+      "after": {
+        "hash": "a2d5105888e27d5a8b7172a07124b21a0993a749fe14ac27ec7e6c50adebbfb3",
+        "size": 3271
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-root-move.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "8310e9307c42d6301ba45d01cf70234689d340021fde38094b6639c7c11cf5ac",
+        "size": 14069
+      },
+      "after": {
+        "hash": "54b2e318bc9cd3bf47401be947b0879af3a8e6a228c4a1d7b948d4ca7f2baab0",
+        "size": 65027
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-state-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "6b18121971ad6553b83e1a9dce2226ce7224bb7b7cd22cd906202a3d05d811cc",
+        "size": 56967
+      },
+      "after": {
+        "hash": "64550f396c07daa4425eccd384c2d082a0a375668816a7204a900a5139b682bc",
+        "size": 58629
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-state-events.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "5ee2f92ea67dc71055798153d35c22e49c73cac9bc4bbfadbe197ce473da502a",
+        "size": 1200
+      },
+      "after": {
+        "hash": "fc13f6810b5aa2fda25504a09149520bbf6332602f99b819bd394c22afdfa452",
+        "size": 1279
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-store.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "8329e74d1f013274f8966528dc3476728865381e848622f5c2d0d81c3af967aa",
+        "size": 5342
+      },
+      "after": {
+        "hash": "8eeec2b57c9f4afae9c6164c956f29485a8420d457f8c4f5923ebfc434f56f50",
+        "size": 5489
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-classic/classic-validate-command.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a588f8b13c63dfcb5fbd1655f4fe965a1daffb17b345a99e6f72536846fadbe8",
+        "size": 5728
+      },
+      "after": {
+        "hash": "1de9dfbfe8ea03521855a5a63b3c9193581bf07b98198f7edf5e6c0d9aa969ca",
+        "size": 6165
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/hook-router-entry.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "faeaac347de8db4fbbe1ee54a6f756504c511c00f83198ad0c09bf54a637e2c5",
+        "size": 3280
+      },
+      "after": {
+        "hash": "984b99924245291112a85cf6018c1dd5f76a91b357c460b7b4917b8ab2669df9",
+        "size": 3299
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/hook-router.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "89c727ddebbd410d9c86b0fd6dd5fbe6230eaa6f91804420a7e08e7f5d4336cb",
+        "size": 6126
+      },
+      "after": {
+        "hash": "3a02a9d3b515272cb6ab564b55210a6d148e8294f14023ef4196d6e5d964bab6",
+        "size": 6168
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/init-workflow.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b2b45b2fa65766cc88d92defab4381292bc2bbb11528cafd8b361f1edad8439f",
+        "size": 4693
+      },
+      "after": {
+        "hash": "93c4cc929c1d9f58dc4838f35e860f557c865032bc1504e90242cd1890885b06",
+        "size": 5751
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/project-status.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ef2c26f5f25a97774baba12bc78ab3ace03e8e170599ac2b7a3bd417b934c72d",
+        "size": 8860
+      },
+      "after": {
+        "hash": "0fd9a1cd850acefaffb6d6ce66f7a7a98ed646ce9a664ad3302683425e4040da",
+        "size": 10222
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/resolve-entry.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "cbe6591a23f1a58d65b861439a3162986edf15de181aa42deffd23b75aa98d85",
+        "size": 824
+      },
+      "after": {
+        "hash": "f448df62ca48e5cd2dc60830c0d98c0663681840d12071f4f41bce1c0db49ffe",
+        "size": 841
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/resume-probe.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "62e55313c7c8da0f06ad8ca8c4bb2a40e5634aaabc74c68a8f0174aa060faea0",
+        "size": 18026
+      },
+      "after": {
+        "hash": "1985bc31c5ca92dfbe8fc80672b5a04b32e6ea6be6869a85a37d6911e6fb8e01",
+        "size": 18102
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-entry/types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "34b9c239ec6a8a306829992978c45fc77c171aa62001479c1894a17bc1f1cb6a",
+        "size": 1639
+      },
+      "after": {
+        "hash": "c268ae7bd22e89f8b0c32da81c701a6a6e6a0feb104953fec515e9e6868500fc",
+        "size": 1655
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-native/native-config.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "70f013531ef9f5ad05771c8257eedd46a254f361fcb342b38df804485dabb4e4",
+        "size": 18237
+      },
+      "after": {
+        "hash": "298dfb66e7365cc6db594b603ebd72459a0fc0dbaa9fb228702706633bb5509b",
+        "size": 4119
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-native/native-paths.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "148e02090a91fb08ea896134814958352aa1eaa5737bd3e0ebe25ff114d05a74",
+        "size": 6428
+      },
+      "after": {
+        "hash": "c1b09b833bc2441020ab87c9daa1a9daca25b46f07ff1edc14a3f1e5a6462a43",
+        "size": 5883
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/comet-native/native-types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "11ca677b3558f3e65b2de19fe41c300f75dea82147dfe26ba5818f6078be519d",
+        "size": 19454
+      },
+      "after": {
+        "hash": "3c1e7e703a9c5125ae5b2ae1f57051e2b75f4d7658d5ac0ed0b15e0eeb10d1de",
+        "size": 18831
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/collector.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "99f7f24cf5eb80923eabfd3824d93e840a0286ee0e546dafa1de381b6a98c7c7",
+        "size": 17796
+      },
+      "after": {
+        "hash": "8e6024b0e1d39af7fd928a1daa95991d190f1bc6d09abe178d1eadb7c3563302",
+        "size": 23320
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/native-collector.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "6ffcd6a5deb3c3234e4ce2310a402b9eeac053d2ec729f5c5690244a751f277f",
+        "size": 12323
+      },
+      "after": {
+        "hash": "660a8ad227355fcab8860281dc5d5a9d68301bae174ac56aaa1bc93ae84ba3b5",
+        "size": 12360
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "e0bf5abe05d4404de7ea807904cd0ca4dd44d54a97850ea7955cd9e8e8aaabc4",
+        "size": 3171
+      },
+      "after": {
+        "hash": "f06da6e1c9c34dc621894f65309f501dca0ed6fd96df39e26abbeadcd18c51d5",
+        "size": 3272
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/verify-parser.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "461b9ccddbd5e3dfce9ed8726388185f74b9807b28715d12fc66d8437a5bd966",
+        "size": 3659
+      },
+      "after": {
+        "hash": "ed9045aa28081401fb325f6a4801b11a7e0d669f8918de1d5e4f9f8c28c30717",
+        "size": 4029
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/dashboard/web/src/main.jsx",
+      "kind": "modified",
+      "before": {
+        "hash": "8495d688cc7734a5702fe2a397cd3a3b421259897b5bb150e4339880e0a72405",
+        "size": 52681
+      },
+      "after": {
+        "hash": "befb7f4a278617285ad2490b63ba590fbb48e9660fd7a3bd81db14f25bc8c350",
+        "size": 52350
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/engine/protected-run-file.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "7bca63f93f1d7c9e4093cbdfb0d7d6ef35cef22a76ddcc58f21edc4fb3035115",
+        "size": 4118
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/engine/run-store.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a979ba7dc68406b4b789ff402a73560441d8132d941aac48561c5fc95c62b61f",
+        "size": 4349
+      },
+      "after": {
+        "hash": "01c354010ca420c0871b717869718623e2d2c282581ca6626b9d21bf80408f3c",
+        "size": 5455
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/engine/state.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "3c565e1a81c7f7e0f7f37568a307127659cee2bc5b2678a6b34136174da94133",
+        "size": 6295
+      },
+      "after": {
+        "hash": "45dbe5df9171cc30bcd96386d9c4a02b9589135b9a7a0b84ba277a933d7e4920",
+        "size": 6389
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/factory/package.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "8f47eb29d07e239014aa3e71f0145be8731d90f7923c1300f024cd191d1c3287",
+        "size": 63981
+      },
+      "after": {
+        "hash": "bb6623429169a4cd54333eb99b7b47378b6aaf41c46b8bfe7769341da0a51c0a",
+        "size": 74780
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/integrations/openspec.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "b6235704d6a71a7a9893cc15e7997c066a9137221949281eee31f09ae9061d77",
+        "size": 16534
+      },
+      "after": {
+        "hash": "ea1693e36b4eb8b906f0c72f51c6610239af6e201666ddb17b9e67a51fb53901",
+        "size": 24241
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/skill/platform-install.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ed4b9dba885f16f3f2c9530f1aa9c4d70151d66f8bf2620f303c6e2196a76631",
+        "size": 59962
+      },
+      "after": {
+        "hash": "6292f27d3b831f0853e121955870618cdb8b6df254e61e653f47f9b5df670240",
+        "size": 61274
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/skill/uninstall.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "14c35153fdbd279f028b9f420fddbffda0a5362386b3e0b13da4f8ca1f61c8ae",
+        "size": 17204
+      },
+      "after": {
+        "hash": "20d9e72c3ab22b1fc631c24f8522a4c8f913058f542d9a1c91ff5963b1c4b497",
+        "size": 38453
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/contained-atomic-write.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "26a36a16b31affffd929992205d6208c24b95e25310209d16da8fa7ad7823796",
+        "size": 9917
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/index.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "aa6794451f30a7c7569380b293aac0b2c3da3516a19f70e2d75870888ff906ce",
+        "size": 495
+      },
+      "after": {
+        "hash": "7f5b198a60fc05fce079e416f099a74290394169ecf00f34cb8d5fdc898f984a",
+        "size": 2057
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/project-config-reader.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "1ab7632dc64c7998e3f2aa5a28fa2c7db31bd897206e940876169f848dbeb783",
+        "size": 3258
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/project-config-writer.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "8ff0240724af6901e6f1cc21a06488e94cc84c0b0ea9abb0c773d94d94b672df",
+        "size": 3322
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/project-config.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "70b3c1836f4ba1e8660424d280e68af7d50ac37ed86a9f6dfd86024d7248eae7",
+        "size": 8939
+      },
+      "after": {
+        "hash": "c4de794d47574b0a120f950837e3ee9182994761a661bc8f674de6a2d15d49b8",
+        "size": 59349
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/protected-project-path.ts",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "3aaebe06a9cbab74d0ba9fe7165980ba845fbc68bc49cdc752fa9e599586f1d4",
+        "size": 7101
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "domains/workflow-contract/types.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "663138de3c76412eb6b8821117a80a20f694d21322a1506ef6985873f63e1c4c",
+        "size": 4310
+      },
+      "after": {
+        "hash": "db1903fb537f5b5a354651e08a36c5fbc78fe9635f74ce214ed9d73c97b909d4",
+        "size": 6526
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/environment/.include-current-comet-cli",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "bc586f3c9d3a4231b93043c84a474a1608f32d78e5764c2393daab8005752841",
+        "size": 8
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/environment/Dockerfile",
+      "kind": "modified",
+      "before": {
+        "hash": "d997d8e1973bb9504c6bd4c2403f03cdd6f65e1129e55718e77e7c5f88e31405",
+        "size": 2190
+      },
+      "after": {
+        "hash": "920687cbb43d796cb7370622fd5ded93b8efe934818bcd4187e02734ffd1e312",
+        "size": 1938
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/environment/current-comet-package.json",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "c0bfd1421aabe461270d69e253e9c422c9c9d20bce8bce338520cea42da8f60d",
+        "size": 433
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/environment/current-comet.sh",
+      "kind": "added",
+      "before": null,
+      "after": {
+        "hash": "d5848d6673bfd4ca1860986b21302247042748ec62a42e1875a4e12204126540",
+        "size": 441
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/task.toml",
+      "kind": "modified",
+      "before": {
+        "hash": "c34cb810aceb6f7cdcfc8e22b2b615c8430fddfada62cae5d43b3bb9ddff357f",
+        "size": 712
+      },
+      "after": {
+        "hash": "e46caf50a1f054ca220e3960562c3dcd879b9b9e24e6415ba582d11abd571103",
+        "size": 775
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+      "kind": "modified",
+      "before": {
+        "hash": "65c440fc613cc416641cf8f7029392b37b75390ebbdcda1198f073405e8d6ea1",
+        "size": 6029
+      },
+      "after": {
+        "hash": "bd49ddbc29229adb7303d1efe9deae0895a3c280a00249aeb5f8cdb32276627e",
+        "size": 21325
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tasks/index.yaml",
+      "kind": "modified",
+      "before": {
+        "hash": "f72c691221a1b529a6c185dfadb370c251534159f8557cc8dc4c6deb4b75c068",
+        "size": 8489
+      },
+      "after": {
+        "hash": "b2ea3e386aa50ef630c93fcb01489bb682edfe689938b96b2e2de5912508572f",
+        "size": 8559
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/conftest.py",
+      "kind": "modified",
+      "before": {
+        "hash": "f319b761f45b60623349bfcb59da0989961aa1918ca36a916e0100e05e297ec6",
+        "size": 64193
+      },
+      "after": {
+        "hash": "089d5ce1b9d7a0e6d07fb66f70d6e636aba13e85239bde02f533c280a878381a",
+        "size": 64825
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/scaffold/test_native_wave_evaluations.py",
+      "kind": "modified",
+      "before": {
+        "hash": "9fe89d14ca40df14271df6e7f3f9433bc23f5c71a2cbdc592b6b647726640978",
+        "size": 73241
+      },
+      "after": {
+        "hash": "6a1e336a1b9067a1c99c6883b0f1d950be1665d08d0cb6b654273fa72beeb944",
+        "size": 73736
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/scaffold/test_profiles.py",
+      "kind": "modified",
+      "before": {
+        "hash": "dccbde10f9d97ce8513ea66691889b351492543c784547886fb13aa314ae8b43",
+        "size": 36482
+      },
+      "after": {
+        "hash": "85c9e48592f3616c746a915bdbbc91b42c8e5b121834c2f2651415d50c0268b7",
+        "size": 39990
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/scaffold/test_tasks.py",
+      "kind": "modified",
+      "before": {
+        "hash": "9fbfc9ff82018d26a87f1e451d15247d02bbc9bb87e35d4babb0ac1009c7cf5a",
+        "size": 38967
+      },
+      "after": {
+        "hash": "4027c18a09eed06a7af22f42113300f7abc69f68f73c678247ab44c00b45f4a9",
+        "size": 40035
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/scaffold/test_treatments.py",
+      "kind": "modified",
+      "before": {
+        "hash": "65ef484d6d63bc7876ba7ed27652017aa4914dc8d25830e6f161f2f5e75c4fe3",
+        "size": 12265
+      },
+      "after": {
+        "hash": "45112deb71bb2c29e8fcac5c91109069b412a948f62a1e3e9beb2a1c4e56c18d",
+        "size": 12627
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/tests/tasks/test_validation_scripts.py",
+      "kind": "modified",
+      "before": {
+        "hash": "8a92740e06c21b771576f4f5c33a77463526b603265bc407ec25caa8393ef8d4",
+        "size": 5896
+      },
+      "after": {
+        "hash": "604b9e24faf1967fc90b027536e308b4c9c6ce10c88d4e050fa9d4522ca6b167",
+        "size": 22217
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/local/treatments/comet/comet_classic_docs_layout.yaml",
+      "kind": "modified",
+      "before": {
+        "hash": "6081c6e2ce9caebe5830012edfe7e37cb3f6e08a501ba0a1383589aa6cc7a483",
+        "size": 3776
+      },
+      "after": {
+        "hash": "232f0b019bf25d88607130d04640e609cb676bc2bdb4f670541a896d9d630b31",
+        "size": 4397
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/scaffold/python/validation/comet_workflow.py",
+      "kind": "modified",
+      "before": {
+        "hash": "cff5c4d50270b0be9e54bd30174a084f690a3eec2069a3b6b0e66cad5a7dc98c",
+        "size": 7542
+      },
+      "after": {
+        "hash": "2ff71f13b2732509e8505fb33f7df8ae2cce4728be4eeb5b5021b5a50c4f59c4",
+        "size": 8290
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "eval/scaffold/python/validation/rubric.py",
+      "kind": "modified",
+      "before": {
+        "hash": "ec411492624c19cebb26a5845a8737b9ad63a1b524ebd1470fddd32249d7439f",
+        "size": 28686
+      },
+      "after": {
+        "hash": "260ace00aed36593911bfadc606eaa1ab59aa18c94fa0fc567fa5d1f78c7bef8",
+        "size": 29501
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "scripts/benchmark/classic-baseline-regression.mjs",
+      "kind": "modified",
+      "before": {
+        "hash": "115ee6279a61d60787bb0d2b910a62a29dbf28a4e4c42c4e45f931c0c5229480",
+        "size": 16266
+      },
+      "after": {
+        "hash": "8879d3dbedbd0447dede1fa5e2f3c73f3a09c2f9eac8f836c9fa71e4e12f5de9",
+        "size": 17041
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/cli-help.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d723c9d740de3b4d9f52f1f82b939c52894009b8712eacb6e580cdbc1aa7f603",
+        "size": 8821
+      },
+      "after": {
+        "hash": "cd292a517330f3c3112411532dea596b9954b016c5be7aedb0b56d6b3d716ad7",
+        "size": 9366
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/dashboard-command.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "9d4ddd5097428a73d46927926a1fde0b6584a13f5aa59006fa245f4da57749b1",
+        "size": 1846
+      },
+      "after": {
+        "hash": "99e55a875e5fdcb0049becdf16d90b5a1b095cbe6c460a15d539383337c6f4b1",
+        "size": 2620
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/doctor.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "5c1abed464db35e625317bff068a2d7d48b2d4e6ef9c464dfe045863d2e1942d",
+        "size": 28350
+      },
+      "after": {
+        "hash": "2f17ee5cdbb7aa08a7cf4552ce35963ceb70d3f95b692c3cfe08142f98db6833",
+        "size": 50227
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/init-e2e.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "2b3d249298a1803e0f98bd68690f8e84622963330c50f8b147ef7236d3d48dfc",
+        "size": 73303
+      },
+      "after": {
+        "hash": "b7c1bcb7da9b6ff1b43d2e31e0a5b945eeb61dd425b3875936dc3469ee48a59b",
+        "size": 92060
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/init.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d5ef8f9dd25e111de6dfe2b44a4f3e57e3d1074c0cfe651989968bb943cc7e47",
+        "size": 8614
+      },
+      "after": {
+        "hash": "540432f64d49a60d2e47d9df2f54e878d83e3261511f774b9b87c3b9525d9e7c",
+        "size": 8647
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/resume-probe.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "9a93cd34ec75eb4168ce5476800e62489cde5267d45dd37d01fef988668c9fe2",
+        "size": 7253
+      },
+      "after": {
+        "hash": "b5c4c30b404abe30432341a11a89c3f3a0f6b460fc05a0e62df9d6e7a119a2f7",
+        "size": 8023
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/status.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "684145b27b456d43f8ad723beeff155b847f23c334f74a2dcbd2d0f7394336fe",
+        "size": 21468
+      },
+      "after": {
+        "hash": "55f055c0a936d069fa35ad8e21c3ac892305947ccf998f30916d5f348ff36333",
+        "size": 22383
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/uninstall.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "887db18a7c0b7251134672b51a783552de2bee28bde127e7a86bd3041a4c7af2",
+        "size": 81268
+      },
+      "after": {
+        "hash": "4e1ba7f3997865c6ae5635651f3039475482292b3d1793caa6583791755f3bec",
+        "size": 95406
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/update.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "7207365b702835caa9d233a4ef1d26d110d0059d304f7b1f9b7a874c45ba5507",
+        "size": 105581
+      },
+      "after": {
+        "hash": "a6abcda19500f4f43edb4580b46bc53d2319af408b0ddc73f45247eece65caa4",
+        "size": 125081
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/app/workflow-command.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "a3e7849da43ebdc5525fb2e0a48383bc2327cf31cfc87fb6c9ed59f029f52ad1",
+        "size": 2372
+      },
+      "after": {
+        "hash": "f9919e60f8ae5b4aa2eb3adc345f6f6898a923ccb89199fa8fb101a14d4a9472",
+        "size": 2339
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/domains/comet-classic/classic-archive.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "4fd4ea401a011397759c233e3cbda26a4d44f60d88be734266d2d3208a449ced",
+        "size": 14110
+      },
+      "after": {
+        "hash": "dc81885f7c4bae685235e9bc3902ca2468347196a60dffc6d4517ce32166b286",
+        "size": 16901
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/domains/comet-classic/classic-current-change.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "d04227f996b0e74a0eacda0a096f1248ba33059df7e0a362a4e545e695a24867",
+        "size": 10123
+      },
+      "after": {
+        "hash": "36b497847c7a0b55da11d3a0d7f5591d6231b7576d4a91c2c4321e081a0f4b11",
+        "size": 11410
+      },
+      "attributedTo": []
+    },
+    {
+      "path": "test/domains/comet-classic/classic-diagnostics.test.ts",
+      "kind": "modified",
+      "before": {
+        "hash": "ee14fcc8cc2ed3755ddad2271338b0e3abd3808425cacef50257d6dee5178a14",
+        "size": 2273
+      },
+      "after": {
+        "hash": "8cd175034c5df1ae7cbb16c632a315cf14624310add3b227acc79a6ca9ea7480",
+        "size": 2405
+      },
+      "attributedTo": []
+    }
+  ],
+  "unresolvedScopes": [
+    {
+      "id": "scope:93561a940fea5b3fa3d1944c04f8b5c67ba421c4b61f3307affe356a1cbe19d5",
+      "kind": "scope-detail-overflow",
+      "source": "implementation-scope",
+      "path": null,
+      "reason": "Implementation scope summarized 40 additional change details and 40 unresolved details (40 unattributed); overflow hash 8088228fc25252678e6436dba1f57b3afee0a8c1ab7173b222b8f0e3913c436a"
+    },
+    {
+      "id": "scope:3970e12be69c3ecdbb7468d34226ca040c83288d743ee521c143220f269227a7",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "app/cli/index.ts",
+      "reason": "Changed path is not covered by a declared artifact: app/cli/index.ts"
+    },
+    {
+      "id": "scope:18794e11df55d1e8446630a412ca4ab458f24752cfa3d92d60db0a6be33f92a7",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "app/commands/classic.ts",
+      "reason": "Changed path is not covered by a declared artifact: app/commands/classic.ts"
+    },
+    {
+      "id": "scope:eccc0134f69b1963e3ddf9f9bf8d6e708be06c865b90d475316d3f84a468c77f",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "app/commands/doctor.ts",
+      "reason": "Changed path is not covered by a declared artifact: app/commands/doctor.ts"
+    },
+    {
+      "id": "scope:8a570b1ec8282c26db438d93f8f9315e1f6b4836a539e3e60e241b27eb81f121",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "app/commands/init.ts",
+      "reason": "Changed path is not covered by a declared artifact: app/commands/init.ts"
+    },
+    {
+      "id": "scope:0b30792c7dcb78d1a5fb27eb494bac7e8198d639bf730f27c19d75002eff40d4",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "app/commands/resume-probe.ts",
+      "reason": "Changed path is not covered by a declared artifact: app/commands/resume-probe.ts"
+    },
+    {
+      "id": "scope:8a7c081cc5e91087c850762c6e12e460e7ab48c95b85a1d820fd8589df638d22",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "app/commands/update.ts",
+      "reason": "Changed path is not covered by a declared artifact: app/commands/update.ts"
+    },
+    {
+      "id": "scope:788347aca31f01b21c40a40d6827dab9194d9808c6a8788cf4698c9334744688",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-any/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-any/SKILL.md"
+    },
+    {
+      "id": "scope:1c04202397e40d8b78e381a204aaf50229a86eccfc7cf4af19a9e8f56d1d58fd",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-any/reference/bundle-authoring.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-any/reference/bundle-authoring.md"
+    },
+    {
+      "id": "scope:81c2d4a6dd3b3f4cdf7ba5da4e9d865f71f92756368f5b518a4034401d82fccb",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-any/reference/subagents/script-author.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-any/reference/subagents/script-author.md"
+    },
+    {
+      "id": "scope:0b09ef915679a712f6b907851d951675327c73e4c6f4e60f1f11b446712a1c9c",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-archive/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-archive/SKILL.md"
+    },
+    {
+      "id": "scope:5f3d4ffbb54ddd69742d1cf587937e148d96c6c08df459c1bff40fea023923bd",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-build/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-build/SKILL.md"
+    },
+    {
+      "id": "scope:f41cac94bcae57bb76119d6216e1c1dd9feedfd2858e1175d3b6eb50f6c20643",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-classic/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-classic/SKILL.md"
+    },
+    {
+      "id": "scope:29cab29a64d24362d0952239a0b513b9a56ddd923f1e750f3ab87f6860c47d20",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-design/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-design/SKILL.md"
+    },
+    {
+      "id": "scope:2549f20853bc7a30e29233add47b47f023b90dcdf31b6bcb0fc9e098d42c2eb4",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-hotfix/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-hotfix/SKILL.md"
+    },
+    {
+      "id": "scope:d4170b6601a6fde77f5ad77ca62d7a9ca07eb81cfc2e104adaf4518dd41b0e2a",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-open/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-open/SKILL.md"
+    },
+    {
+      "id": "scope:d71215bc494964b4f04e7513391dd2fd271af1eee00f64224b55c4a2d3438e34",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-tweak/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-tweak/SKILL.md"
+    },
+    {
+      "id": "scope:8f24f654fe55f1d5685732cef06dc648859cc3b6101a5701e62e4fd1a1495bdb",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet-verify/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet-verify/SKILL.md"
+    },
+    {
+      "id": "scope:e7bc4a6eaf25d9b67c1f708eff1b0ebe1a27f5e9607d1243df23c63f49e43aab",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet/reference/classic-layout.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet/reference/classic-layout.md"
+    },
+    {
+      "id": "scope:68e58b416b16139bd5276fb9f01badea9f0e39eedbed5ece90103a7af0446d3e",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet/reference/comet-yaml-fields.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet/reference/comet-yaml-fields.md"
+    },
+    {
+      "id": "scope:ea302230c15f7451ca6354b2d842b4c492ef25ed4d91156a1a855c1cd70e570f",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet/reference/context-recovery.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet/reference/context-recovery.md"
+    },
+    {
+      "id": "scope:329773009b5d0aa2d5a6f09c0f2a2cc1e82e5b759a09b9af2a2f927e6469a159",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet/reference/file-structure.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet/reference/file-structure.md"
+    },
+    {
+      "id": "scope:bef2722d07684721c06fbd070e875ee72214bf432b4a575fcd53dce44d95c2fc",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet/reference/intent-frame.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet/reference/intent-frame.md"
+    },
+    {
+      "id": "scope:c21c27995a53b4df4fdd4cd17abcea6fab4031b0b3920a0b0c420b0379dce78c",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills-zh/comet/reference/subagent-dispatch.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills-zh/comet/reference/subagent-dispatch.md"
+    },
+    {
+      "id": "scope:a9cab3246bd855f10e52018b4f1f613fec4c73d3648b0e3eaa18be7959e9ba5d",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-any/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-any/SKILL.md"
+    },
+    {
+      "id": "scope:fcb0923482dc5f9ee34f2f276a06cf8fd1a82d67ac5e0026f6cf2bcf54356480",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-any/reference/bundle-authoring.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-any/reference/bundle-authoring.md"
+    },
+    {
+      "id": "scope:89aa6d1ddfece6f455bf703c55dfc497e959985146a7aa8e543ee29cce72514b",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-any/reference/subagents/script-author.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-any/reference/subagents/script-author.md"
+    },
+    {
+      "id": "scope:41d6480386ccf1655e88d4c1894ecb80aa671c057cf6330ab92a39b6181f5bcd",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-archive/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-archive/SKILL.md"
+    },
+    {
+      "id": "scope:9573cbaa0ea4518637401fef9b0a3b4f137c2b5a9e979b79473c9374f760acf9",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-build/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-build/SKILL.md"
+    },
+    {
+      "id": "scope:6dc4ed743a400091b3c5dd0ed9e393bb67b92efe8a833e23becba8e97bacecd6",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-classic/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-classic/SKILL.md"
+    },
+    {
+      "id": "scope:00008b443076c046cae695ccf2161581b28b88bf7c490dfc09ec729d1d960ecd",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-design/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-design/SKILL.md"
+    },
+    {
+      "id": "scope:cfba0038440a20073cf83f3dca217413c5ef2e89fa8c1891f89d2f833639251e",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-hotfix/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-hotfix/SKILL.md"
+    },
+    {
+      "id": "scope:df0aa7105a408515a0d1a1f51831fc5948f9e3c9a5e82235050e4f86a1df314f",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-native/scripts/comet-native-runtime.mjs"
+    },
+    {
+      "id": "scope:c5a99ac659be4d78775781e54b8f9bdb9496331902b9942dfa5a42c5670cca80",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-open/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-open/SKILL.md"
+    },
+    {
+      "id": "scope:853119e9e8840a92232ba6b1c7907756d9a6e1c9dab9e5542ea850a3623e7d25",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-tweak/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-tweak/SKILL.md"
+    },
+    {
+      "id": "scope:446a9b12e3676291476be2985bce0c7f22116ed08401643d34bafbcf856b194c",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet-verify/SKILL.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet-verify/SKILL.md"
+    },
+    {
+      "id": "scope:587aa4ee5a2c1567ebec2df5fa1302566b70eb86d2607105913c32f7305a8c7c",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/reference/classic-layout.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/reference/classic-layout.md"
+    },
+    {
+      "id": "scope:d27ab4654e96a65bdd161c7b3be02b6c779ca2b5376e7f36485f5a8be55fa0c3",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/reference/comet-yaml-fields.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/reference/comet-yaml-fields.md"
+    },
+    {
+      "id": "scope:12b4b1fdeb5a1af546ab31092c2d7d1b7b54cda84eec5e9f1b752c87b9da648c",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/reference/context-recovery.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/reference/context-recovery.md"
+    },
+    {
+      "id": "scope:c20aeae72bdf173025a2ff1171a4b43e49f681aab783de1fd5fae814b5907baa",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/reference/file-structure.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/reference/file-structure.md"
+    },
+    {
+      "id": "scope:7d0bf3ad82d3c6a2e046eefad6cbe4dff8133eec8e9478188b94afd0677356f1",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/reference/intent-frame.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/reference/intent-frame.md"
+    },
+    {
+      "id": "scope:f36918848be3740c4077c0170ef51a57ff92c1b046aabfe61ea42ba9c7e211db",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/reference/subagent-dispatch.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/reference/subagent-dispatch.md"
+    },
+    {
+      "id": "scope:3bbc3993d9a3c201a97f7183aea546c2151b0a9676a792c31e29c4aef5845d5d",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/rules/comet-phase-guard.en.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/rules/comet-phase-guard.en.md"
+    },
+    {
+      "id": "scope:b374f2aa8caec7cf27948a16b38e2efb5c7641a561165db37ed6ea3ac93a21de",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/rules/comet-phase-guard.md",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/rules/comet-phase-guard.md"
+    },
+    {
+      "id": "scope:8405907f4bb4c87606b0f52c19c390666c3cd77d4d1474c14153d2b4bfc4bc0d",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/scripts/comet-entry-runtime.mjs",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/scripts/comet-entry-runtime.mjs"
+    },
+    {
+      "id": "scope:f12de1a49362c646826b83a99934f52f7184addad5927eccb664fc4aaf7fe4d5",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/scripts/comet-hook-router.mjs",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/scripts/comet-hook-router.mjs"
+    },
+    {
+      "id": "scope:978120c2b8fe2a8c9541848170efc945d65787753b94241d79d803a32aecdfe4",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "assets/skills/comet/scripts/comet-runtime.mjs",
+      "reason": "Changed path is not covered by a declared artifact: assets/skills/comet/scripts/comet-runtime.mjs"
+    },
+    {
+      "id": "scope:6d745ebc94917f13e7f59cb8ebd1fc8b8ca6f48d50b59471dbd1e71a3bcc3840",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-archive-pointer.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-archive-pointer.ts"
+    },
+    {
+      "id": "scope:0bb32b1c0b27deaadc181fd13a9d08d988a65ec9d84dc975caf20832737db2ef",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-archive.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-archive.ts"
+    },
+    {
+      "id": "scope:b0073774f4af52f528f6cbfeeebc7d8674e04f3e3084ffe1ca424d5073d7bfef",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-current-change.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-current-change.ts"
+    },
+    {
+      "id": "scope:3ebae727ce0cead46b4b0021d356a9dc095e7ce0f3ddc00d313d374fb208d7a7",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-evidence.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-evidence.ts"
+    },
+    {
+      "id": "scope:b82cc225aa74f8c156e84506d4770dae3bd3dafa7dee9eab80fc00cc46c0fe17",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-guard.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-guard.ts"
+    },
+    {
+      "id": "scope:cb426f2870966dc82565e6e0c9bbc20466c5cb9514e1139f37edc8f9fd2eae93",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-handoff.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-handoff.ts"
+    },
+    {
+      "id": "scope:3bde15fe6c9a96f1d0ad7adb5de66567f5dfe19815de84bd8d514bf72100c1f1",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-hook-guard.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-hook-guard.ts"
+    },
+    {
+      "id": "scope:634a955b633d78af8a2ae7673936d64ad51ae14be7b2932f57aea17dc635b719",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-layout-initialization.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-layout-initialization.ts"
+    },
+    {
+      "id": "scope:35692b19bca896b159451e3f12307614b89df2f170d7dc2dcc9e9de8762d48c0",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-layout.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-layout.ts"
+    },
+    {
+      "id": "scope:d60107bae078b633dcba3213021b797977fe4f35ec080c73eeab471064e71f23",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-migrate.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-migrate.ts"
+    },
+    {
+      "id": "scope:337d5257214860560ff3b8b5b6621e03b9c1d96ac6f624ed09a4732797350805",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-openspec-command.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-openspec-command.ts"
+    },
+    {
+      "id": "scope:0824c1c65031baa8c234266baa96bddc38d556a0257797baa2940873df3d4cf4",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-openspec-root.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-openspec-root.ts"
+    },
+    {
+      "id": "scope:cc2b44012fb88ec6987e40831c4ee9f72507c123366d5f7c05b9ce0ac3a0940c",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-paths.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-paths.ts"
+    },
+    {
+      "id": "scope:84ebe7096d092639c180c9a454439a456ab60ebf080d614208cfdc88e9577940",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-project-config.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-project-config.ts"
+    },
+    {
+      "id": "scope:d7610ce4d483809adbbe8193b5d965ec9bfc3ee091b266e5d5983c59b4919e94",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-protected-path.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-protected-path.ts"
+    },
+    {
+      "id": "scope:75a593b9637f7a7e2d0c73ba441ad2610697accfe67ded41b570974a582a67a4",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-resume-probe.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-resume-probe.ts"
+    },
+    {
+      "id": "scope:69d5c27975b3368141a655b4414584e471dc89a39aa0a5590a8c70bff30639fb",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-root-command.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-root-command.ts"
+    },
+    {
+      "id": "scope:9799b299363302179eabda8c1032b32a2bb9469bbedbb195a416847335d0ca3d",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-root-move.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-root-move.ts"
+    },
+    {
+      "id": "scope:6c550a3c9e95bc5259f212d90a9d9ef3f5d45f3229edab663e08430549fab90f",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-state-command.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-state-command.ts"
+    },
+    {
+      "id": "scope:3caac5df4e23b1474867d68336a8c53dbaf4a55be2c5ee4cc141fd8831c9128a",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-state-events.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-state-events.ts"
+    },
+    {
+      "id": "scope:14e9028b7f7c17c02b0699fa5fd3c245032c6ae7bb6ba33ca9091704f75977cd",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-store.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-store.ts"
+    },
+    {
+      "id": "scope:4e0d4f06926b9026d1b498cffa8a25a921422482767e1e7bdaf3d2adbaa9fc96",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-classic/classic-validate-command.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-classic/classic-validate-command.ts"
+    },
+    {
+      "id": "scope:0122dcff818d4091ee3e3c0a2762d7f4c4a2897c98f2aaef281ba60d1d9e916b",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-entry/hook-router-entry.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-entry/hook-router-entry.ts"
+    },
+    {
+      "id": "scope:b0a744f6ac9cef1a31a36cd0acd7c65d751d90b08df1f5bebe9f63e47ccb2afe",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-entry/hook-router.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-entry/hook-router.ts"
+    },
+    {
+      "id": "scope:e6e265ba44eead50488d3b5854f8ff472718eb2c25021b8efd9c0dae608949d4",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-entry/init-workflow.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-entry/init-workflow.ts"
+    },
+    {
+      "id": "scope:f67c80def883e64a7dfb071064491d2ddc3e646496714ffcccebd8fdd10af0e2",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-entry/project-status.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-entry/project-status.ts"
+    },
+    {
+      "id": "scope:df578fff468a4fbc0404c3f3e514458bc46d4ef6deed32c0960162f15a5c0d10",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-entry/resolve-entry.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-entry/resolve-entry.ts"
+    },
+    {
+      "id": "scope:7b1a7aa363559d40583c2bd1d93f881fb0fae79898a6cc34a31365d3d89add41",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-entry/resume-probe.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-entry/resume-probe.ts"
+    },
+    {
+      "id": "scope:3df9b3d0e801e9fad8accc180343ca5c528ff12b0153fac78dd9666085ec95c1",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-entry/types.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-entry/types.ts"
+    },
+    {
+      "id": "scope:fb88de692ec3fe7e78296accf0ea0f2d1fcd90fca260090e233446a05a99b5e2",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-native/native-config.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-native/native-config.ts"
+    },
+    {
+      "id": "scope:97a76a6b09ccae1f5af877cdc5a83a0851e7ef719e91c970102c6ecb8314c667",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-native/native-paths.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-native/native-paths.ts"
+    },
+    {
+      "id": "scope:438f38bd9745e45c0e32ee0cbda5efd822406d53baefc3046bf3b13cb7e784d6",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/comet-native/native-types.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/comet-native/native-types.ts"
+    },
+    {
+      "id": "scope:a8df81b56b25ceefd5c9afabc2c1bbfe79e5edb59ee9529a617489e91a6a71c4",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/dashboard/collector.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/dashboard/collector.ts"
+    },
+    {
+      "id": "scope:aa39ae40ceea0fd2a9080df1409900f7d270dba532d0619d4ae911e79d62e2c7",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/dashboard/native-collector.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/dashboard/native-collector.ts"
+    },
+    {
+      "id": "scope:fcb3d38343391b873298501768d2a74ca40bb9e32324d9131a954b7e696fbd0e",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/dashboard/types.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/dashboard/types.ts"
+    },
+    {
+      "id": "scope:e21d2a5f29ac787a33013baeb6286424546563b2905bf77271b2990f65b14fcf",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/dashboard/verify-parser.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/dashboard/verify-parser.ts"
+    },
+    {
+      "id": "scope:33415db2b3d6f535f73edd1c70ec838f6b9b04799133aa9af735a7c73f4befe0",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/dashboard/web/src/main.jsx",
+      "reason": "Changed path is not covered by a declared artifact: domains/dashboard/web/src/main.jsx"
+    },
+    {
+      "id": "scope:f1099ff60c06381c31848c3a0ff5d2dd7661647566524ce637707065610b12ee",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/engine/protected-run-file.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/engine/protected-run-file.ts"
+    },
+    {
+      "id": "scope:5410ce60a009945330ec18e11f061c478d451f2500ec7172ba22339e1eb40f9b",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/engine/run-store.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/engine/run-store.ts"
+    },
+    {
+      "id": "scope:89d910222eb82de0bfda3c43fba8f69d50baa08c311082cd50ccd09a01ab686e",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/engine/state.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/engine/state.ts"
+    },
+    {
+      "id": "scope:c730be279683a3b8674c2579b6c3afd1c48aebae4e3df514ba3da598c871e179",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/factory/package.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/factory/package.ts"
+    },
+    {
+      "id": "scope:a5fefb795c5be8a24d589e71c692a4f7d7004ce2fef96d1123d89df67ba31423",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/integrations/openspec.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/integrations/openspec.ts"
+    },
+    {
+      "id": "scope:7a755a6f21e65bd7a966dfb0f05511e6e618e885d101e73908a740196b558fb5",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/skill/platform-install.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/skill/platform-install.ts"
+    },
+    {
+      "id": "scope:017a4f6a990f3b673094b4f877b4634b8ead9f36c832c49486b08bfb2008dc4b",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/skill/uninstall.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/skill/uninstall.ts"
+    },
+    {
+      "id": "scope:95a1cdcd30d9a8df6c2ebea3d859b791668b6e32a6652acc0d9a20bb773c6e27",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/workflow-contract/contained-atomic-write.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/workflow-contract/contained-atomic-write.ts"
+    },
+    {
+      "id": "scope:bdcced64941817a7ac05ea293189aa0c5b695237acbed52831d08264339469cb",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/workflow-contract/index.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/workflow-contract/index.ts"
+    },
+    {
+      "id": "scope:4e82322edcbe0c9ea05d52a82bf66b4060ffc62f067a7b904b8872f50dd848c1",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/workflow-contract/project-config-reader.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/workflow-contract/project-config-reader.ts"
+    },
+    {
+      "id": "scope:327e6140210fb2006150653604d84de84a93592340dda015ea35c44418c14aee",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/workflow-contract/project-config-writer.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/workflow-contract/project-config-writer.ts"
+    },
+    {
+      "id": "scope:3564adcdbbe45807e5d4b2b8a712da985319e88fdd686b3a1c372936c37eeed1",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/workflow-contract/project-config.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/workflow-contract/project-config.ts"
+    },
+    {
+      "id": "scope:ecfe885a3aab0bfe9d11a730171ff4b23d15e522dd2f481e3a21175cf787f5fb",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/workflow-contract/protected-project-path.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/workflow-contract/protected-project-path.ts"
+    },
+    {
+      "id": "scope:9f606ca0e6a08e29b3432bf73c6e03098acd714fbc299606fedb734e22aca678",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "domains/workflow-contract/types.ts",
+      "reason": "Changed path is not covered by a declared artifact: domains/workflow-contract/types.ts"
+    },
+    {
+      "id": "scope:8bdaec30a13ba22d548721e06aeaf33d835005a3bf4552841782e5afc3966e78",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tasks/comet-full-workflow/environment/.include-current-comet-cli",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tasks/comet-full-workflow/environment/.include-current-comet-cli"
+    },
+    {
+      "id": "scope:385da4d51096f55bfd64446af532ca8628fa4bb9daf945c704a3b849abdef73b",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tasks/comet-full-workflow/environment/Dockerfile",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tasks/comet-full-workflow/environment/Dockerfile"
+    },
+    {
+      "id": "scope:e3354d98282f9cd66d957275c234e1c5b7a1405cb230713738a590eebc179c81",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tasks/comet-full-workflow/environment/current-comet-package.json",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tasks/comet-full-workflow/environment/current-comet-package.json"
+    },
+    {
+      "id": "scope:9a525ba3015a66c1970f9720bb4aa3b694b0e45076319553a9cc1883ac2abeaf",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tasks/comet-full-workflow/environment/current-comet.sh",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tasks/comet-full-workflow/environment/current-comet.sh"
+    },
+    {
+      "id": "scope:62cdf556cb40e51f062980f7380b837e58e992db52806b7b39d863dab3f95cc3",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tasks/comet-full-workflow/task.toml",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tasks/comet-full-workflow/task.toml"
+    },
+    {
+      "id": "scope:4e38537d5285639d1df2e939169876315e2dc9c73637f551c1e0a54d4a51e8e2",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tasks/comet-full-workflow/validation/test_full_workflow.py"
+    },
+    {
+      "id": "scope:8e7707d164edd70ab6712f56dc94f4c24cda70e2d21038fe524e1ea28dfb8185",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tasks/index.yaml",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tasks/index.yaml"
+    },
+    {
+      "id": "scope:02ece64d212b341e8a9fca295d11d86827ffd997e3e41d75507ee1679d3ffe18",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tests/conftest.py",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tests/conftest.py"
+    },
+    {
+      "id": "scope:be203d479d438e08794b723eb84e96c4b9f02be7e930e9678d3a0196f4f243df",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tests/scaffold/test_native_wave_evaluations.py",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tests/scaffold/test_native_wave_evaluations.py"
+    },
+    {
+      "id": "scope:97fe955b59d18879a1cd410c5fedf0a2a97e0621fcffc8adeff5cf14929aeb3e",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tests/scaffold/test_profiles.py",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tests/scaffold/test_profiles.py"
+    },
+    {
+      "id": "scope:c5c45d0f256e54d0bc8863f6d0011c4a44ebec84f5358e9c51d8cf8646bfab03",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tests/scaffold/test_tasks.py",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tests/scaffold/test_tasks.py"
+    },
+    {
+      "id": "scope:b8790dc5e769c17020ef57e2abb0c6169f73ce6f059dbc3d2dfbd69ad06283f8",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tests/scaffold/test_treatments.py",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tests/scaffold/test_treatments.py"
+    },
+    {
+      "id": "scope:835209fa1a89fb9e378f010f09099abd85ba9104a9d6fb5cd9a6cc56841fbb39",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/tests/tasks/test_validation_scripts.py",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/tests/tasks/test_validation_scripts.py"
+    },
+    {
+      "id": "scope:95b82d241e6f4596fdf3b78a4a5405059d2706a3c91dae98069af1c1b59eab77",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/local/treatments/comet/comet_classic_docs_layout.yaml",
+      "reason": "Changed path is not covered by a declared artifact: eval/local/treatments/comet/comet_classic_docs_layout.yaml"
+    },
+    {
+      "id": "scope:b120c5f1b544b99cf0874ecf0bb1cb4c69d415497c56743adbb1270d5901da07",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/scaffold/python/validation/comet_workflow.py",
+      "reason": "Changed path is not covered by a declared artifact: eval/scaffold/python/validation/comet_workflow.py"
+    },
+    {
+      "id": "scope:0189ec1d695757835ef4176305b6890bdf950932730783f07e54dec1691596c9",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "eval/scaffold/python/validation/rubric.py",
+      "reason": "Changed path is not covered by a declared artifact: eval/scaffold/python/validation/rubric.py"
+    },
+    {
+      "id": "scope:78093009d443fdd068bd5d6f36052a6f69e6b0391218fbbfb3d76b9faa8c69e4",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "scripts/benchmark/classic-baseline-regression.mjs",
+      "reason": "Changed path is not covered by a declared artifact: scripts/benchmark/classic-baseline-regression.mjs"
+    },
+    {
+      "id": "scope:dd0397bdc135d11a52239fd197ac77014e2166e0e20d57731197f764a44b6ea8",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/cli-help.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/cli-help.test.ts"
+    },
+    {
+      "id": "scope:d8174d193550008692896181b7aa70764cd44b1b2f7af79dadfda94c7e359b10",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/dashboard-command.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/dashboard-command.test.ts"
+    },
+    {
+      "id": "scope:9d5dcee725fd69f38f32c8b15888b07d91b75c43d58aa6297872d9c4018b0f4a",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/doctor.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/doctor.test.ts"
+    },
+    {
+      "id": "scope:5653d8542616b8f10e0af22ff14a81136df93d9f58be8d295090393552c86019",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/init-e2e.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/init-e2e.test.ts"
+    },
+    {
+      "id": "scope:9125386cecaa4b2e2f81f0bd33350aafe4426df6fe948a6058a9b9842b7f061e",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/init.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/init.test.ts"
+    },
+    {
+      "id": "scope:16dbbaa3220c5105da6c4a36c8c7142efe0b27dc84d69f2ba9c19bc04e7cd059",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/resume-probe.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/resume-probe.test.ts"
+    },
+    {
+      "id": "scope:a16172ae279a22a69f207c95e145b2d2f85885491c35a5b7bf6f9738d43e3a44",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/status.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/status.test.ts"
+    },
+    {
+      "id": "scope:8eb4f6237ca25349ab0eaacd941612c327fb1c87e63811c5b930dcc59142a14b",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/uninstall.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/uninstall.test.ts"
+    },
+    {
+      "id": "scope:3292c2b94cf0e4746eb53d7219508765c60b26cc27176e82515a5f4f959c8094",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/update.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/update.test.ts"
+    },
+    {
+      "id": "scope:907421f45a76ad276b30e86db22d005b41cdbc0685bec2395e30c7b902d4cb1c",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/app/workflow-command.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/app/workflow-command.test.ts"
+    },
+    {
+      "id": "scope:2dad85fe89b260e5400d211584a3caefd6985d4d8a9aa4961c0107bf2ab900e2",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/domains/comet-classic/classic-archive.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/domains/comet-classic/classic-archive.test.ts"
+    },
+    {
+      "id": "scope:c1df47daaa0b150e44d5b7d4a5c9ebe922ee2ed0280875c99f517137305d4949",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/domains/comet-classic/classic-current-change.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/domains/comet-classic/classic-current-change.test.ts"
+    },
+    {
+      "id": "scope:ccd2bf8a891b53a1873fbfc6e4ce7d45f3e0d4e7add7874227e0bee8d48ec3f0",
+      "kind": "unattributed-change",
+      "source": "implementation-scope",
+      "path": "test/domains/comet-classic/classic-diagnostics.test.ts",
+      "reason": "Changed path is not covered by a declared artifact: test/domains/comet-classic/classic-diagnostics.test.ts"
+    }
+  ],
+  "noCodeReason": null,
+  "scopeHash": "dcf8a8a9e7581ea73183caecede24036a38112ecb7e22387d030b4f6813ee972"
+}

@@ -5,6 +5,8 @@ description: "Use only when explicitly invoked as /comet-open or routed by the r
 
 # Comet Phase 1: Open
 
+Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+
 ## Prerequisites
 
 - No active change, or user wants to create a new change
@@ -17,7 +19,7 @@ Every prompt and artifact request passed to OpenSpec must include the resolved C
 
 ### 0a. Current Change Binding
 
-When resuming an existing change, inspect `openspec/changes/<change-name>/.comet.yaml` first:
+When resuming an existing change, inspect `<classic-change-dir>/.comet.yaml` first:
 
 - If it exists and parses, select the change as the first state operation
 - If it is missing but the change directory is valid, run `comet state init <change-name> full`, then select the change
@@ -34,7 +36,7 @@ When creating a new change, initialize `.comet.yaml` first, then immediately run
 Before any OpenSpec status or instructions command, run:
 
 ```bash
-openspec --version
+comet classic openspec -- --version
 ```
 
 This flow requires **OpenSpec >= 1.5.0**. Stop immediately if the version is older than 1.5.0, cannot be parsed, the command is unavailable, or it exits non-zero. Ask the user to run `npm install -g @fission-ai/openspec@latest` and retry. Never continue with an older CLI that lacks the `applyRequires`, `artifactPaths`, `changeRoot`, or `resolvedOutputPath` contracts.
@@ -42,6 +44,9 @@ This flow requires **OpenSpec >= 1.5.0**. Stop immediately if the version is old
 ### 1. Explore Ideas and Clarify Requirements
 
 **Immediately execute:** Use the Skill tool to load the `openspec-explore` skill. Skipping this step is prohibited.
+
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** After loading, use only its exploration method. Do not execute any instruction that invokes the official CLI directly, changes to a fixed cwd, or reads or writes a fixed physical OpenSpec path. Route every CLI call through `comet classic openspec -- <args...>` and replace every file path with the `<classic-*>` logical roots bound for this run.
 
 After the skill loads, explore the problem space following its guidance, but do not treat one Q&A turn as sufficient clarification. You must continue asking, align with the user, and form a clarification summary covering:
 - Goals: the problem the user truly wants to solve and the expected outcome
@@ -90,12 +95,12 @@ In batch split mode, a single split item must not auto-advance to `/comet-design
 **Batch completion hard check (must not be skipped)**: after every split item completes its own open phase, run the following for each `<name>` in the user-confirmed list:
 
 ```bash
-openspec status --change "<name>" --json
+comet classic openspec -- status --change "<name>" --json
 comet state check <name> design
 ```
 
 The OpenSpec JSON must satisfy all of these conditions:
-- Resolved `changeRoot` must equal repository-local `openspec/changes/<name>`; stop if it does not, because Classic runtime does not support an external change root
+- Resolved `changeRoot` must equal the resolver-bound `<classic-change-dir>`; stop if it does not, because Classic runtime does not support an external change root
 - The schema must include core artifact ids `proposal`, `design`, and `tasks`; extra artifacts are allowed, but a missing core id is an incompatible schema
 - Every artifact listed in `applyRequires` must be `done` in `artifacts`
 - Concrete outputs in `artifactPaths.<artifact-id>.existingOutputPaths` (or `resolvedOutputPath` from instructions) must exist and be non-empty
@@ -118,13 +123,19 @@ Before creating OpenSpec artifacts, turn Step 1 clarification into a resolved br
 
 OpenSpec names must be kebab-case English using lowercase letters, digits, and single hyphens. When a collision exists but the target remains clear, derive a stable non-conflicting name and continue. Ask only when Comet cannot determine whether to reuse the existing change or create a new one.
 
-Do not run `openspec new change` or create proposal/design/tasks while the resolved brief or name remains ambiguous. Continue clarification or resolve the genuine user decision before Step 2.
+Do not run `comet classic openspec -- new change` or create proposal/design/tasks while the resolved brief or name remains ambiguous. Continue clarification or resolve the genuine user decision before Step 2.
 
 ### 2. Create Change Structure + Initialize State
 
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
 
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** After loading, use only its change-creation semantics. Do not execute any instruction that invokes the official CLI directly, changes to a fixed cwd, or writes the change under a fixed physical OpenSpec root. Run create, status, and instructions through `comet classic openspec -- <args...>`, and use `<classic-change-dir>` and the other logical roots for every file path.
+
 Full `/comet-classic` workflow must not use the Skill tool to load the `openspec-propose` skill by default; only load it when the user explicitly requests generating the proposal and artifacts in one pass.
+
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** Apply the same rule to `openspec-propose`: ignore direct official CLI, fixed-cwd, and fixed physical OpenSpec path instructions; use the adapter and resolver-returned `<classic-*>` logical roots.
 
 After the skill loads, follow its guidance to create the change skeleton. When Step 1b has produced an unambiguous resolved brief, override its "STOP and wait for user direction" behavior to avoid a duplicate question.
 
@@ -138,9 +149,9 @@ comet state select <name>
 comet state check <name> open
 ```
 
-Stop if any command fails. Then run `openspec status --change "<name>" --json` once and perform compatibility preflight:
+Stop if any command fails. Then run `comet classic openspec -- status --change "<name>" --json` once and perform compatibility preflight:
 
-- Resolved `changeRoot` must equal repository-local `openspec/changes/<name>`, and `planningHome` (when present) must remain inside the current repository
+- Resolved `changeRoot` must equal the resolver-bound `<classic-change-dir>`, and `planningHome` (when present) must remain inside the current repository
 - `artifacts` must contain core ids `proposal`, `design`, and `tasks`; extra artifacts are allowed
 - `applyRequires` must be a parseable list of artifact ids and every id must exist in `artifacts`
 - Stop on missing fields, escaping paths, or missing core ids; never fall back to a guessed fixed template
@@ -149,13 +160,13 @@ After preflight, generate the implementation-required artifacts from the OpenSpe
 
 **OpenSpec status-driven artifact loop**:
 
-1. Run `openspec status --change "<name>" --json` and parse the complete JSON.
+1. Run `comet classic openspec -- status --change "<name>" --json` and parse the complete JSON.
 2. Exit when every item in `applyRequires` is `done`; record `isComplete` as diagnostic only and do not use it as a phase blocker.
 3. From unfinished `ready` artifacts, prioritize items that advance the `applyRequires` dependency closure and process them in CLI-returned order. Must not hard-code generation order or assume the schema contains only proposal/design/tasks.
 4. Fetch current instructions for each ready `<artifact-id>`:
 
    ```bash
-   openspec instructions <artifact-id> --change "<name>" --json
+   comet classic openspec -- instructions <artifact-id> --change "<name>" --json
    ```
 
 5. For the returned JSON instruction payload, you must:
@@ -174,7 +185,7 @@ After preflight, generate the implementation-required artifacts from the OpenSpe
 Confirm the following artifacts have been created:
 
 ```
-openspec/changes/<name>/
+<classic-change-dir>/
 ├── .openspec.yaml
 ├── .comet.yaml
 ├── proposal.md       # Why + What: problem, goals, scope

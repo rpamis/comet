@@ -40,6 +40,22 @@ async function writeFile(filePath: string, content: string) {
   await fs.writeFile(filePath, content);
 }
 
+function canonicalProjectConfig(
+  classicFields: readonly string[] = [],
+  topLevelFields: readonly string[] = [],
+): string {
+  return [
+    'schema: comet.project.v1',
+    'default_workflow: classic',
+    'workflows: [classic]',
+    'classic:',
+    '  artifact_layout: legacy',
+    ...classicFields.map((field) => `  ${field}`),
+    ...topLevelFields,
+    '',
+  ].join('\n');
+}
+
 function runHookGuard(cwd: string, script: string, stdin: string, env: NodeJS.ProcessEnv = {}) {
   return spawnSync(process.execPath, [script], {
     cwd,
@@ -207,6 +223,8 @@ describe('comet scripts', () => {
     stateScript = path.join(tmpScriptsDir, 'comet-state.mjs');
     validateScript = path.join(tmpScriptsDir, 'comet-yaml-validate.mjs');
     hookGuardScript = path.join(tmpScriptsDir, 'comet-hook-guard.mjs');
+    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), canonicalProjectConfig());
+    await writeFile(path.join(tmpDir, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
   });
 
   afterEach(async () => {
@@ -369,7 +387,10 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('snapshots language from .comet/config.yaml when initializing a change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      canonicalProjectConfig(['language: zh-CN']),
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-zh', 'full']);
     const yaml = await fs.readFile(
@@ -387,13 +408,15 @@ describe('comet scripts', () => {
   it('ignores legacy top-level Classic settings until init or update migrates them', async () => {
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      [
-        'language: zh-CN',
-        'context_compression: beta',
-        'review_mode: thorough',
-        'auto_transition: false',
-        '',
-      ].join('\n'),
+      canonicalProjectConfig(
+        [],
+        [
+          'language: zh-CN',
+          'context_compression: beta',
+          'review_mode: thorough',
+          'auto_transition: false',
+        ],
+      ),
     );
 
     const result = runNode(tmpDir, stateScript, ['init', 'legacy-config-ignored', 'full']);
@@ -409,7 +432,7 @@ describe('comet scripts', () => {
     expect(yaml).toContain('auto_transition: true');
   }, 20_000);
 
-  it('falls back to the global Comet language when project config is absent', async () => {
+  it('falls back to the global Comet language when project config omits language', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
 
@@ -429,7 +452,10 @@ describe('comet scripts', () => {
   it('lets project language override the global Comet language', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: en\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      canonicalProjectConfig(['language: en']),
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-project-over-global', 'full'], {
       HOME: fakeHome,
@@ -444,7 +470,7 @@ describe('comet scripts', () => {
     expect(yaml).toContain('language: en');
   }, 20_000);
 
-  it('rejects an invalid global Comet language when project config is absent', async () => {
+  it('rejects an invalid global Comet language when project config omits language', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
     await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'classic:\n  language: pirate\n');
 
@@ -453,47 +479,54 @@ describe('comet scripts', () => {
       USERPROFILE: fakeHome,
     });
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Invalid language from ~/.comet/config.yaml: 'pirate'");
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('classic.language must be en or zh-CN');
   }, 20_000);
 
-  it('ignores an unrelated malformed field elsewhere in .comet/config.yaml', async () => {
+  it('fails closed when .comet/config.yaml contains malformed unrelated YAML', async () => {
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'classic:\n  language: en\nunrelated_field: [unterminated\n',
+      `${canonicalProjectConfig(['language: en'])}unrelated_field: [unterminated\n`,
     );
 
     const result = runNode(tmpDir, stateScript, ['init', 'unrelated-malformed-field', 'full'], {});
-    const yaml = await fs.readFile(
-      path.join(tmpDir, 'openspec', 'changes', 'unrelated-malformed-field', '.comet.yaml'),
-      'utf-8',
-    );
 
-    expect(result.status).toBe(0);
-    expect(yaml).toContain('language: en');
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/invalid YAML|flow sequence/iu);
+    await expect(
+      fs.access(path.join(tmpDir, 'openspec', 'changes', 'unrelated-malformed-field')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   }, 20_000);
 
   it('rejects an explicit empty review_mode instead of silently defaulting', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  review_mode: ""\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      canonicalProjectConfig(['review_mode: ""']),
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'empty-review-mode', 'full'], {});
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Invalid review_mode: ''");
+    expect(result.stderr).toContain('classic.review_mode must be off, standard, or thorough');
   }, 20_000);
 
   it('rejects zh as an invalid project language when initializing a change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: zh\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      canonicalProjectConfig(['language: zh']),
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-legacy-zh', 'full']);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Invalid language from .comet/config.yaml: 'zh'");
-    expect(result.stderr).toContain('Valid values: en, zh-CN');
+    expect(result.stderr).toContain('classic.language must be en or zh-CN');
   }, 20_000);
 
   it('lets COMET_LANGUAGE override the project language default', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      canonicalProjectConfig(['language: zh-CN']),
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-env', 'full'], {
       COMET_LANGUAGE: 'en',
@@ -508,13 +541,15 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('rejects invalid language from .comet/config.yaml when initializing a change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: pirate\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      canonicalProjectConfig(['language: pirate']),
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'language-invalid', 'full']);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Invalid language from .comet/config.yaml: 'pirate'");
-    expect(result.stderr).toContain('Valid values: en, zh-CN');
+    expect(result.stderr).toContain('classic.language must be en or zh-CN');
   }, 20_000);
 
   it('initializes build_pause as null for new changes', async () => {
@@ -597,7 +632,7 @@ describe('comet scripts', () => {
   it('snapshots beta context compression from .comet/config.yaml when initializing a change', async () => {
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'classic:\n  context_compression: beta\n',
+      canonicalProjectConfig(['context_compression: beta']),
     );
 
     const result = runNode(tmpDir, stateScript, ['init', 'context-beta', 'full']);
@@ -613,7 +648,7 @@ describe('comet scripts', () => {
   it('snapshots review_mode from .comet/config.yaml when initializing a full change', async () => {
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'classic:\n  review_mode: standard\n',
+      canonicalProjectConfig(['review_mode: standard']),
     );
 
     const result = runNode(tmpDir, stateScript, ['init', 'review-standard', 'full']);
@@ -627,19 +662,21 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('rejects invalid review_mode from .comet/config.yaml when initializing a change', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  review_mode: noisy\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      canonicalProjectConfig(['review_mode: noisy']),
+    );
 
     const result = runNode(tmpDir, stateScript, ['init', 'review-invalid', 'full']);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Invalid review_mode: 'noisy'");
-    expect(result.stderr).toContain('Valid values: off, standard, thorough');
+    expect(result.stderr).toContain('classic.review_mode must be off, standard, or thorough');
   }, 20_000);
 
   it('lets COMET_CONTEXT_COMPRESSION override the project context compression default', async () => {
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'classic:\n  context_compression: beta\n',
+      canonicalProjectConfig(['context_compression: beta']),
     );
 
     const result = runNode(tmpDir, stateScript, ['init', 'context-env', 'full'], {
@@ -676,7 +713,7 @@ describe('comet scripts', () => {
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'classic:\n  context_compression: off\n  auto_transition: false\n',
+      canonicalProjectConfig(['context_compression: off', 'auto_transition: false']),
     );
 
     const result = runNode(tmpDir, stateScript, ['init', 'auto-transition-config-false', 'full']);
@@ -1280,10 +1317,10 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('configured language is zh-CN');
   }, 20_000);
 
-  it('does not block the language check when .comet/config.yaml has an unrelated malformed field', async () => {
+  it('fails closed before language checks when .comet/config.yaml is malformed', async () => {
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'classic:\n  language: en\nunrelated_field: [unterminated\n',
+      `${canonicalProjectConfig(['language: en'])}unrelated_field: [unterminated\n`,
     );
     await createChange(
       tmpDir,
@@ -1312,7 +1349,8 @@ describe('comet scripts', () => {
 
     const result = runNode(tmpDir, guardScript, ['unrelated-malformed-config', 'open']);
 
-    expect(result.status).toBe(0);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/invalid YAML|flow sequence/iu);
   }, 20_000);
 
   it('allows Chinese workflow artifacts with English technical terms', async () => {
@@ -1454,7 +1492,10 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('fails closed in guard when project config has an invalid language value', async () => {
-    await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'classic:\n  language: fr\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      canonicalProjectConfig(['language: fr']),
+    );
     await createChange(
       tmpDir,
       'invalid-project-language',
@@ -1487,7 +1528,7 @@ describe('comet scripts', () => {
     const result = runNode(tmpDir, guardScript, ['invalid-project-language', 'open']);
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("configured language 'fr' is invalid");
+    expect(result.stderr).toContain('classic.language must be en or zh-CN');
   }, 20_000);
 
   it('generates a design handoff and requires minimal design doc linkage before leaving design', async () => {
@@ -3094,7 +3135,7 @@ describe('comet scripts', () => {
     await writeFile(path.join(tmpDir, 'reports', 'verification.md'), '# Verification\n\nPassed.\n');
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'verify_command: node legacy-verify.js\n',
+      canonicalProjectConfig([], ['verify_command: node legacy-verify.js']),
     );
     await writeFile(
       path.join(tmpDir, 'legacy-verify.js'),
@@ -3143,7 +3184,7 @@ describe('comet scripts', () => {
     // must not silently fall through to the inferred build check (which would pass).
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'verify_command: node legacy-verify.js\nbroken: [unclosed\n',
+      `${canonicalProjectConfig([], ['verify_command: node legacy-verify.js'])}broken: [unclosed\n`,
     );
     await writeFile(
       path.join(tmpDir, 'package.json'),
@@ -3154,7 +3195,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).not.toContain('[PASS] Verification passes');
-    expect(result.stderr).toContain('.comet/config.yaml is invalid YAML');
+    expect(result.stderr).toContain('Invalid .comet/config.yaml');
   }, 20_000);
 
   it('validates archive completeness after the change has moved into archive', async () => {
@@ -3440,7 +3481,7 @@ describe('comet scripts', () => {
       'utf-8',
     );
 
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr || result.stdout).toBe(0);
     expect(design).toContain('archived-with: 2026-05-20-utc-archive-date');
     expect(plan).toContain('archived-with: 2026-05-20-utc-archive-date');
     await expect(
@@ -6582,7 +6623,10 @@ describe('comet scripts', () => {
 
       execFileSync('git', ['switch', '-c', 'feature-B'], { cwd: tmpDir, stdio: 'ignore' });
 
-      await fs.rm(path.join(tmpDir, '.comet'), { recursive: true, force: true });
+      await fs.rm(path.join(tmpDir, 'openspec', 'changes', 'check-drift-no-sidecar', '.comet'), {
+        recursive: true,
+        force: true,
+      });
 
       const result = runNode(tmpDir, stateScript, ['check', 'check-drift-no-sidecar', 'verify']);
 

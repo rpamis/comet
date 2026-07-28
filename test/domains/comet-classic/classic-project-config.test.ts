@@ -52,7 +52,7 @@ describe('Classic project config', () => {
     ).resolves.toBeNull();
   });
 
-  it('still reads the nested setting when another field is malformed', async () => {
+  it('fails closed when another project-config field is malformed', async () => {
     await writeConfig(
       projectRoot,
       'classic:\n  context_compression: beta\nunrelated: [unterminated\n',
@@ -60,6 +60,35 @@ describe('Classic project config', () => {
 
     await expect(
       readClassicConfigValue('context_compression', { cwd: projectRoot, homeDir }),
-    ).resolves.toEqual({ value: 'beta', source: '.comet/config.yaml' });
+    ).rejects.toThrow('Invalid .comet/config.yaml');
+  });
+
+  it('fails closed for duplicate keys instead of selecting one value', async () => {
+    await writeConfig(projectRoot, 'classic:\n  review_mode: standard\n  review_mode: thorough\n');
+
+    await expect(
+      readClassicConfigValue('review_mode', { cwd: projectRoot, homeDir }),
+    ).rejects.toThrow('Invalid .comet/config.yaml');
+  });
+
+  it('rejects a linked project config instead of following it', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-config-outside-'));
+    try {
+      await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+      const outsideConfig = path.join(outsideRoot, 'config.yaml');
+      await fs.writeFile(outsideConfig, 'classic:\n  review_mode: thorough\n', 'utf8');
+      try {
+        await fs.symlink(outsideConfig, path.join(projectRoot, '.comet', 'config.yaml'), 'file');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(
+        readClassicConfigValue('review_mode', { cwd: projectRoot, homeDir }),
+      ).rejects.toThrow(/symbolic link or junction/iu);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
   });
 });

@@ -62,7 +62,7 @@
 
 `comet-five-phase-overlay` 内置这些 Workflow Node：
 
-- `comet-five-phase-overlay` 的主状态只来自 `openspec/changes/<name>/.comet.yaml`；没有 active change 或多个 active changes 时必须阻塞并请用户选择。
+- `comet-five-phase-overlay` 的主状态只来自 Classic layout resolver 绑定的 `<classic-change-dir>/.comet.yaml`；没有 active change 或多个 active changes 时必须阻塞并请用户选择。
 - 不得创建 `.comet/runs/<workflow>/state.json` 作为 Comet overlay 主状态；overlay 脚本只能读取并推进 `.comet.yaml`，其他文件只能作为 draft、eval 或 publish evidence。
 - `open`: control，保留 Comet intake 和 `.comet.yaml` 初始化。
 - `design`: producer，可 override，但必须满足 `comet.design.v1`。

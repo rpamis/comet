@@ -76,6 +76,117 @@ describe('Native project configuration', () => {
     expect(source).toContain('max_total_bytes: 268435456');
   });
 
+  it('does not write Native project config through a linked .comet directory', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-config-outside-'));
+    try {
+      await fs.rm(path.join(projectRoot, '.comet'), { recursive: true });
+      try {
+        await fs.symlink(
+          outsideRoot,
+          path.join(projectRoot, '.comet'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(writeProjectConfig(projectRoot, defaultProjectConfig('docs'))).rejects.toThrow(
+        /symbolic link or junction|real directory/iu,
+      );
+      await expect(fs.access(path.join(outsideRoot, 'config.yaml'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not replace a Native project config symlink', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-link-outside-'));
+    const outsideConfig = path.join(outsideRoot, 'config.yaml');
+    try {
+      await fs.writeFile(outsideConfig, 'keep: true\n', 'utf8');
+      try {
+        await fs.symlink(outsideConfig, path.join(projectRoot, '.comet', 'config.yaml'), 'file');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(writeProjectConfig(projectRoot, defaultProjectConfig('docs'))).rejects.toThrow(
+        /symbolic link or junction/iu,
+      );
+      await expect(fs.readFile(outsideConfig, 'utf8')).resolves.toBe('keep: true\n');
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not overwrite a concurrent project config change before commit', async () => {
+    const configPath = path.join(projectRoot, '.comet', 'config.yaml');
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    const concurrentSource = [
+      'schema: comet.project.v1',
+      'default_workflow: native',
+      'workflows: [native]',
+      'ambient_resume: true',
+      'native:',
+      '  artifact_root: concurrent-root',
+      '  language: en',
+      '  clarification_mode: sequential',
+      'concurrent_extension: keep',
+      '',
+    ].join('\n');
+
+    await expect(
+      writeProjectConfig(projectRoot, defaultProjectConfig('updated-root'), {
+        beforeCommit: () => fs.writeFile(configPath, concurrentSource, 'utf8'),
+      }),
+    ).rejects.toThrow('Project config changed before commit');
+    await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(concurrentSource);
+  });
+
+  it('round-trips Classic layout settings in the shared project config', async () => {
+    const value = defaultProjectConfig('docs', 'zh-CN');
+    value.default_workflow = 'classic';
+    value.workflows = ['classic'];
+    value.classic = {
+      artifact_layout: 'docs',
+      language: 'zh-CN',
+      context_compression: 'off',
+      review_mode: 'standard',
+      auto_transition: true,
+    };
+
+    await writeProjectConfig(projectRoot, value);
+
+    await expect(readProjectConfig(projectRoot)).resolves.toEqual(value);
+    await expect(
+      fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),
+    ).resolves.toContain('artifact_layout: docs');
+  });
+
+  it('normalizes a missing Classic layout to legacy without changing the schema version', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'native:',
+        '  artifact_root: docs',
+        'classic:',
+        '  language: zh-CN',
+        '',
+      ].join('\n'),
+    );
+
+    const value = await readProjectConfig(projectRoot);
+    expect(value?.classic?.artifact_layout).toBe('legacy');
+    expect(value?.schema).toBe('comet.project.v1');
+  });
+
   it('reads an older project config with the missing Native defaults', async () => {
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
@@ -358,6 +469,43 @@ describe('Native project configuration', () => {
     expect(source).toContain('context_compression: beta');
     expect(source).toContain('review_mode: thorough');
     expect(source).toContain('auto_transition: false');
+  });
+
+  it('round-trips unknown top-level and nested workflow extension fields', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native, classic]',
+        'native:',
+        '  artifact_root: .',
+        '  custom_extension:',
+        '    owner: user',
+        '  snapshot:',
+        '    include: ["**/*"]',
+        '    snapshot_extension: keep',
+        'classic:',
+        '  artifact_layout: legacy',
+        '  classic_extension: keep',
+        'top_extension:',
+        '  enabled: true',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const config = await readProjectConfig(projectRoot);
+    expect(config).not.toBeNull();
+    config!.native.artifact_root = 'docs';
+    await writeProjectConfig(projectRoot, config!);
+
+    const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
+    expect(source).toContain('artifact_root: docs');
+    expect(source).toContain('custom_extension:');
+    expect(source).toContain('snapshot_extension: keep');
+    expect(source).toContain('classic_extension: keep');
+    expect(source).toContain('top_extension:');
   });
 
   it('rejects an oversized project config before parsing it', async () => {

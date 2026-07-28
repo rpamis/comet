@@ -116,6 +116,34 @@ def test_comet_tasks_default_to_comet_workflow_profile():
 
     assert task.config.evaluation.profile == "comet-workflow"
     assert task.config.interaction.mode == "auto_user"
+    assert task.default_treatments == [
+        "CONTROL",
+        "COMET_FULL_040_BETA",
+        "COMET_FULL_039",
+    ]
+
+
+def test_classic_layout_lifecycle_uses_current_cli_and_compatible_openspec():
+    task = load_task("comet-classic-layout-lifecycle")
+    environment = get_tasks_dir() / "comet-classic-layout-lifecycle/environment"
+    dockerfile = (environment / "Dockerfile").read_text(encoding="utf-8")
+    wrapper = (environment / "current-comet.sh").read_text(encoding="utf-8")
+    package = json.loads((Path(__file__).resolve().parents[4] / "package.json").read_text())
+    dependency_snapshot = json.loads(
+        (environment / "current-comet-package.json").read_text(encoding="utf-8")
+    )
+
+    assert (environment / ".include-current-comet-cli").is_file()
+    assert "FROM node:22" in dockerfile
+    assert "@fission-ai/openspec@1.5.0" in dockerfile
+    assert "mkdir -p openspec/changes" not in dockerfile
+    assert "/workspace/_eval_current_comet" in wrapper
+    assert 'runtime="$(mktemp -d)"' in wrapper
+    assert dependency_snapshot["dependencies"] == package["dependencies"]
+    assert task.default_treatments == [
+        "COMET_CLASSIC_DOCS_LAYOUT",
+        "COMET_CLASSIC_LEGACY_LAYOUT",
+    ]
 
 
 def test_comet_task_prompt_requires_real_comet_invocation():
@@ -155,11 +183,12 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
-    assert len(names) == 31
+    assert len(names) == 32
     assert set(names) == {
         "authoring-skill-smoke",
         "comet-agent-memory-routing",
         "comet-api-cache-ttl",
+        "comet-classic-layout-lifecycle",
         "comet-cross-file-refactor",
         "comet-dependency-confusion",
         "comet-fix-median",

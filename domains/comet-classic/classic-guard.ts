@@ -1,6 +1,6 @@
 import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
-import { existsSync, promises as fs, readFileSync } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument } from 'yaml';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
@@ -10,6 +10,7 @@ import {
   type RecordedCommandCheck,
 } from './classic-command-checks.js';
 import { inspectClassicChange } from './classic-diagnostics.js';
+import { assertClassicLayoutWritable, classicProjectRelative } from './classic-layout.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import type { ClassicRunContext } from './classic-migrate.js';
@@ -19,12 +20,25 @@ import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classi
 import { classicValidateCommand } from './classic-validate-command.js';
 import { readClassicState } from './classic-store.js';
 import { readClassicConfigValue } from './classic-project-config.js';
+import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
+import {
+  classicProjectFileNonempty,
+  classicProjectTargetExists,
+  inspectClassicProjectTarget,
+  readClassicProjectBytes,
+  readClassicProjectFile,
+} from './classic-protected-path.js';
 import {
   driftBlockedMessage,
   resolveBranchBinding,
   unboundDetachedMessage,
   type BranchBindingOutcome,
 } from './classic-branch-binding.js';
+import {
+  classicCommandInvocationCwd,
+  classicCommandProjectRoot,
+  withClassicCommandContext,
+} from './classic-command-context.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -100,22 +114,19 @@ class GuardOutput {
 }
 
 async function exists(file: string): Promise<boolean> {
-  try {
-    await fs.access(file);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
+  const projectRoot = classicCommandProjectRoot();
+  return classicProjectTargetExists(projectRoot, file, {
+    label: `Classic guard path ${path.relative(projectRoot, path.resolve(projectRoot, file)).replaceAll('\\', '/')}`,
+  });
 }
 
 async function nonempty(file: string): Promise<boolean> {
-  try {
-    return (await fs.stat(file)).size > 0;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
+  const projectRoot = classicCommandProjectRoot();
+  return classicProjectFileNonempty(
+    projectRoot,
+    file,
+    `Classic guard file ${path.relative(projectRoot, path.resolve(projectRoot, file)).replaceAll('\\', '/')}`,
+  );
 }
 
 function validateChangeName(name: string): void {
@@ -123,17 +134,20 @@ function validateChangeName(name: string): void {
   if (error) throw new GuardFailure(red(`ERROR: ${error}`));
 }
 
-// Resolve the change directory the way the frozen guard does: prefer the active
-// `openspec/changes/<name>` path, fall back to the archive copy. Returns the
-// RELATIVE path (cwd is the project root) so handoff-hash inputs and check
-// output match the frozen `openspec/changes/...` form byte-for-byte.
+// Resolve an absolute change directory for filesystem and runtime consumers.
+// Frozen relative provenance strings are derived separately from projectRoot.
 async function resolveChangeDir(name: string): Promise<string> {
-  return (await resolveClassicChangeDirectory(name)).label;
+  return (await resolveClassicChangeDirectory(name, classicCommandProjectRoot())).directory;
 }
 
 async function readField(changeDir: string, field: string): Promise<string> {
   const file = path.join(changeDir, '.comet.yaml');
-  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: false });
+  const document = parseDocument(
+    await readClassicProjectFile(classicCommandProjectRoot(), file, {
+      label: `Classic state ${changeDir}/.comet.yaml`,
+    }),
+    { uniqueKeys: false },
+  );
   if (document.errors.length > 0) {
     throw new GuardFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
   }
@@ -147,7 +161,7 @@ async function readField(changeDir: string, field: string): Promise<string> {
 async function projectConfigValue(field: string, changeDir: string): Promise<string> {
   const changeValue = await readField(changeDir, field);
   if (changeValue && changeValue !== 'null') return changeValue;
-  return (await readClassicConfigValue(field))?.value ?? '';
+  return (await readClassicConfigValue(field, { cwd: classicCommandProjectRoot() }))?.value ?? '';
 }
 
 async function configuredLanguage(changeDir: string): Promise<'en' | 'zh-CN'> {
@@ -183,7 +197,11 @@ async function documentLanguageMatchesConfigured(
   file: string,
 ): Promise<CheckResult> {
   const language = await configuredLanguage(changeDir);
-  const source = stripFencedCodeBlocks(await fs.readFile(file, 'utf8'));
+  const source = stripFencedCodeBlocks(
+    await readClassicProjectFile(classicCommandProjectRoot(), file, {
+      label: `Classic language-check artifact ${file}`,
+    }),
+  );
   const cjk = countCjkChars(source);
   const englishWords = countEnglishWords(source);
 
@@ -200,8 +218,14 @@ async function documentLanguageMatchesConfigured(
   return pass();
 }
 
-function hashFile(file: string): string {
-  return createHash('sha256').update(readFileSync(file)).digest('hex');
+async function hashFile(file: string): Promise<string> {
+  return createHash('sha256')
+    .update(
+      await readClassicProjectBytes(classicCommandProjectRoot(), file, {
+        label: `Classic handoff source ${file}`,
+      }),
+    )
+    .digest('hex');
 }
 
 async function handoffSourceFiles(changeDir: string): Promise<string[]> {
@@ -209,9 +233,14 @@ async function handoffSourceFiles(changeDir: string): Promise<string[]> {
   // so the handoff-hash input and markdown `Source:` references match the frozen
   // shell + comet-handoff provenance byte-for-byte. changeDir is a relative forward-slash
   // path (openspec/changes/<name>); forward slashes are readable on Windows too.
-  const files = [`${changeDir}/proposal.md`, `${changeDir}/design.md`, `${changeDir}/tasks.md`];
-  const specs = `${changeDir}/specs`;
+  const changeRef = classicProjectRelative(classicCommandProjectRoot(), changeDir);
+  const files = [`${changeRef}/proposal.md`, `${changeRef}/design.md`, `${changeRef}/tasks.md`];
+  const specs = `${changeRef}/specs`;
   if (await exists(specs)) {
+    await inspectClassicProjectTarget(classicCommandProjectRoot(), specs, {
+      label: `Classic delta-spec directory ${specs}`,
+      expected: 'directory',
+    });
     for (const entry of (await fs.readdir(specs)).sort()) {
       const spec = `${specs}/${entry}/spec.md`;
       if (await exists(spec)) files.push(spec);
@@ -224,7 +253,7 @@ async function computeHandoffHash(changeDir: string): Promise<string> {
   const lines: string[] = [];
   for (const file of await handoffSourceFiles(changeDir)) {
     if (await exists(file)) {
-      lines.push(`path:${file}`, `sha256:${hashFile(file)}`);
+      lines.push(`path:${file}`, `sha256:${await hashFile(file)}`);
     }
   }
   // Match the frozen shell: command substitution $(...) strips the trailing
@@ -239,6 +268,10 @@ async function preflight(changeDir: string, name: string): Promise<void> {
   if (!(await exists(path.join(changeDir, '.comet.yaml')))) {
     throw new GuardFailure(red(`FATAL: .comet.yaml not found in ${changeDir}`));
   }
+  await inspectClassicProjectTarget(classicCommandProjectRoot(), path.join(changeDir, '.comet'), {
+    label: `Classic runtime directory for ${name}`,
+    expected: 'directory',
+  });
   const result = await classicValidateCommand([name], { json: false });
   if (result.exitCode !== 0) {
     if (result.stderr)
@@ -328,27 +361,18 @@ const INFERRED_COMMAND_SOURCES = [
 ] as const;
 
 async function removedProjectCommandField(field: 'build_command' | 'verify_command') {
-  const config = path.join('.comet', 'config.yaml');
-  if (!(await exists(config))) return false;
-  const document = parseDocument(await fs.readFile(config, 'utf8'));
-  if (document.errors.length > 0) {
-    // A malformed project config must not be treated as "no removed field
-    // present": that would let an upgraded project silently fall through to the
-    // inferred build check even though it may still declare a removed
-    // build_command/verify_command. Surface the parse error instead. Both call
-    // sites (buildPasses / verificationCommandPasses) run inside a check()
-    // wrapper, so this throw becomes a FAIL outcome that blocks the guard.
+  try {
+    const document = await readWorkflowProjectConfigDocument(classicCommandProjectRoot(), {
+      allowPartialProject: true,
+    });
+    if (!document) return false;
+    return Object.prototype.hasOwnProperty.call(document.value, field);
+  } catch (error) {
     throw new Error(
-      `.comet/config.yaml is invalid YAML (${document.errors[0].message}); cannot check for removed "${field}" field. Fix the config and retry.`,
+      `.comet/config.yaml is invalid YAML (${error instanceof Error ? error.message : String(error)}); cannot check for removed "${field}" field. Fix the config and retry.`,
+      { cause: error },
     );
   }
-  const value = document.toJS() as unknown;
-  return (
-    Boolean(value) &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.prototype.hasOwnProperty.call(value, field)
-  );
 }
 
 function removedProjectCommandRun(field: 'build_command' | 'verify_command'): CommandRun {
@@ -362,34 +386,43 @@ function runInferred(command: string): CommandRun {
   // Inferred build/verify commands (npm run build, mvn, cargo, …) run through
   // the platform's default shell so .cmd shims resolve on Windows without
   // requiring bash. Output is returned raw (no `+ ` prefix).
-  const result = spawnSync(command, { shell: true, encoding: 'utf8', timeout: 300_000 });
+  const result = spawnSync(command, {
+    shell: true,
+    cwd: classicCommandInvocationCwd(),
+    encoding: 'utf8',
+    timeout: 300_000,
+  });
   return {
     status: result.status ?? 1,
     output: `${result.stdout ?? ''}${result.stderr ?? ''}`.replace(/\n+$/u, ''),
   };
 }
 
+function invocationTarget(relative: string): string {
+  return path.resolve(classicCommandInvocationCwd(), relative);
+}
+
 async function inferredBuildCommand(): Promise<string | null> {
-  if (
-    (await exists('package.json')) &&
-    (() => {
-      const parsed = JSON.parse(readFileSync('package.json', 'utf8')) as {
-        scripts?: Record<string, unknown>;
-      };
-      return typeof parsed.scripts?.build === 'string';
-    })()
-  ) {
-    return 'npm run build';
+  const packageJson = invocationTarget('package.json');
+  if (await exists(packageJson)) {
+    const parsed = JSON.parse(
+      await readClassicProjectFile(classicCommandProjectRoot(), packageJson, {
+        label: 'package.json',
+      }),
+    ) as {
+      scripts?: Record<string, unknown>;
+    };
+    if (typeof parsed.scripts?.build === 'string') return 'npm run build';
   }
-  if (await exists('pom.xml')) {
+  if (await exists(invocationTarget('pom.xml'))) {
     if (process.platform === 'win32') {
-      if (existsSync('mvnw.cmd')) return 'mvnw.cmd compile -q';
+      if (await exists(invocationTarget('mvnw.cmd'))) return 'mvnw.cmd compile -q';
       return 'mvn.cmd compile -q';
     }
-    if (existsSync('mvnw')) return './mvnw compile -q';
+    if (await exists(invocationTarget('mvnw'))) return './mvnw compile -q';
     return 'mvn compile -q';
   }
-  if (await exists('Cargo.toml')) return 'cargo build';
+  if (await exists(invocationTarget('Cargo.toml'))) return 'cargo build';
   return null;
 }
 
@@ -420,7 +453,7 @@ async function commandCheckPasses(
   const inferred = scope === 'build' ? await inferredBuildCommand() : null;
   if (inferred) return runInferred(inferred);
 
-  const recorded = await latestCommandCheck(changeDir, run, scope);
+  const recorded = await latestCommandCheck(classicCommandProjectRoot(), changeDir, run, scope);
   if (!recorded) {
     return {
       status: 1,
@@ -446,7 +479,9 @@ async function tasksAllDone(changeDir: string): Promise<CheckResult> {
       `tasks.md is missing at ${tasks}\nNext: restore or create tasks.md for this change before leaving build.`,
     );
   }
-  const source = await fs.readFile(tasks, 'utf8');
+  const source = await readClassicProjectFile(classicCommandProjectRoot(), tasks, {
+    label: `Classic tasks ${tasks}`,
+  });
   if (!/- \[x\]/u.test(source)) {
     return fail(
       "tasks.md has no completed tasks.\nNext: complete implementation tasks and mark them with '- [x]'.",
@@ -467,7 +502,11 @@ async function tasksAllDone(changeDir: string): Promise<CheckResult> {
 async function tasksHasAny(changeDir: string): Promise<boolean> {
   const tasks = path.join(changeDir, 'tasks.md');
   if (!(await exists(tasks))) return false;
-  return /- \[/u.test(await fs.readFile(tasks, 'utf8'));
+  return /- \[/u.test(
+    await readClassicProjectFile(classicCommandProjectRoot(), tasks, {
+      label: `Classic tasks ${tasks}`,
+    }),
+  );
 }
 
 async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
@@ -478,7 +517,9 @@ async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
       `plan file is missing at ${plan}\nNext: restore the Superpowers plan file or update .comet.yaml plan before leaving build.`,
     );
   }
-  const source = await fs.readFile(plan, 'utf8');
+  const source = await readClassicProjectFile(classicCommandProjectRoot(), plan, {
+    label: `Classic plan ${plan}`,
+  });
   const unfinished = source
     .split(/\r?\n/u)
     .map((line, index) => ({ line, number: index + 1 }))
@@ -494,7 +535,10 @@ async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
 async function boundBranchMatches(changeDir: string, change: string): Promise<CheckResult> {
   let outcome: BranchBindingOutcome;
   try {
-    outcome = await resolveBranchBinding(changeDir, { heal: true, cwd: process.cwd() });
+    outcome = await resolveBranchBinding(changeDir, {
+      heal: true,
+      cwd: classicCommandInvocationCwd(),
+    });
   } catch (error) {
     throw new GuardFailure(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -580,7 +624,7 @@ async function reviewModeSelected(changeDir: string, change: string): Promise<Ch
 
 async function verificationReportExists(changeDir: string): Promise<boolean> {
   const report = await readField(changeDir, 'verification_report');
-  return Boolean(report) && report !== 'null' && existsSync(report);
+  return Boolean(report) && report !== 'null' && (await exists(report));
 }
 
 async function branchStatusHandled(changeDir: string): Promise<boolean> {
@@ -596,7 +640,11 @@ async function designDocFrontmatterHas(
   field: string,
   expected: string,
 ): Promise<boolean> {
-  const source = (await fs.readFile(designDoc, 'utf8')).replace(/^\uFEFF/u, '');
+  const source = (
+    await readClassicProjectFile(classicCommandProjectRoot(), designDoc, {
+      label: `Classic Design Doc ${designDoc}`,
+    })
+  ).replace(/^\uFEFF/u, '');
   let inFrontmatter = false;
   for (const line of source.split(/\r?\n/u)) {
     if (!inFrontmatter) {
@@ -611,7 +659,7 @@ async function designDocFrontmatterHas(
 
 async function designDocRecorded(changeDir: string, change: string): Promise<CheckResult> {
   const designDoc = await readField(changeDir, 'design_doc');
-  if (designDoc && designDoc !== 'null' && existsSync(designDoc)) return pass();
+  if (designDoc && designDoc !== 'null' && (await exists(designDoc))) return pass();
   return fail(
     `design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design.\nNext: create the Design Doc and run: comet state set ${change} design_doc <path>`,
   );
@@ -656,7 +704,9 @@ async function designHandoffMarkdownTraceable(changeDir: string): Promise<CheckR
   const markdown = `${context.replace(/\.json$/u, '')}.md`;
   if (!(await nonempty(markdown)))
     return fail(`design handoff markdown is missing or empty: ${markdown}`);
-  const source = await fs.readFile(markdown, 'utf8');
+  const source = await readClassicProjectFile(classicCommandProjectRoot(), markdown, {
+    label: `Classic handoff markdown ${markdown}`,
+  });
   const lines = new Set(source.split(/\r?\n/u));
   const problems: string[] = [];
   if (!/^Generated-by: comet-handoff\.sh$/mu.test(source)) {
@@ -670,7 +720,7 @@ async function designHandoffMarkdownTraceable(changeDir: string): Promise<CheckR
     if (!lines.has(`- Source: ${file}`)) {
       problems.push(`handoff markdown is missing source reference: ${file}`);
     }
-    if (!lines.has(`- SHA256: ${hashFile(file)}`)) {
+    if (!lines.has(`- SHA256: ${await hashFile(file)}`)) {
       problems.push(`handoff markdown is missing current sha256 for: ${file}`);
     }
   }
@@ -686,7 +736,9 @@ async function betaSpecJsonStructurallyValid(changeDir: string): Promise<CheckRe
   const context = await readField(changeDir, 'handoff_context');
   if (!context || context === 'null') return fail('handoff_context is missing from .comet.yaml');
   if (!(await nonempty(context))) return fail(`spec-context.json is missing or empty: ${context}`);
-  const source = await fs.readFile(context, 'utf8');
+  const source = await readClassicProjectFile(classicCommandProjectRoot(), context, {
+    label: `Classic handoff context ${context}`,
+  });
   const problems: string[] = [];
   let parsed: unknown;
   try {
@@ -955,55 +1007,57 @@ async function applyStateUpdate(
   output.stderr.push(green(message));
 }
 
-export const classicGuardCommand: ClassicCommandHandler = async (args, options) => {
-  const output = new GuardOutput();
-  const [change, phase, flag] = args;
-  try {
-    validateChangeName(change);
-    if (!phase || !PHASES.includes(phase as (typeof PHASES)[number])) {
-      throw new GuardFailure(
-        `${red(`Unknown phase: ${phase ?? ''}`)}\nValid phases: open, design, build, verify, archive`,
-      );
-    }
-    const changeDir = await resolveChangeDir(change);
-    await preflight(changeDir, change);
-    const runContext = await ensureClassicRuntimeRun(changeDir);
-    const diagnostic = await inspectClassicChange(changeDir, change);
-    if (options.json) {
-      output.diagnostics = {
-        change,
-        phase,
-        currentStep: diagnostic.currentStep,
-        runtimeEval: diagnostic.runtimeEval,
-      };
-    }
-    output.stderr.push(PHASE_HEADER[phase]);
+export const classicGuardCommand: ClassicCommandHandler = async (args, options) =>
+  withClassicCommandContext(options, async () => {
+    const output = new GuardOutput();
+    const [change, phase, flag] = args;
+    try {
+      validateChangeName(change);
+      if (!phase || !PHASES.includes(phase as (typeof PHASES)[number])) {
+        throw new GuardFailure(
+          `${red(`Unknown phase: ${phase ?? ''}`)}\nValid phases: open, design, build, verify, archive`,
+        );
+      }
+      await assertClassicLayoutWritable(classicCommandProjectRoot());
+      const changeDir = await resolveChangeDir(change);
+      await preflight(changeDir, change);
+      const runContext = await ensureClassicRuntimeRun(changeDir);
+      const diagnostic = await inspectClassicChange(changeDir, change);
+      if (options.json) {
+        output.diagnostics = {
+          change,
+          phase,
+          currentStep: diagnostic.currentStep,
+          runtimeEval: diagnostic.runtimeEval,
+        };
+      }
+      output.stderr.push(PHASE_HEADER[phase]);
 
-    let blocked: boolean;
-    if (phase === 'open') blocked = await guardOpenChecks(output, changeDir);
-    else if (phase === 'design') blocked = await guardDesignChecks(output, changeDir, change);
-    else if (phase === 'build')
-      blocked = await guardBuildChecks(output, changeDir, change, runContext.run);
-    else if (phase === 'verify')
-      blocked = await guardVerifyChecks(output, changeDir, change, runContext.run);
-    else blocked = await guardArchiveChecks(output, changeDir, change);
+      let blocked: boolean;
+      if (phase === 'open') blocked = await guardOpenChecks(output, changeDir);
+      else if (phase === 'design') blocked = await guardDesignChecks(output, changeDir, change);
+      else if (phase === 'build')
+        blocked = await guardBuildChecks(output, changeDir, change, runContext.run);
+      else if (phase === 'verify')
+        blocked = await guardVerifyChecks(output, changeDir, change, runContext.run);
+      else blocked = await guardArchiveChecks(output, changeDir, change);
 
-    if (blocked) {
+      if (blocked) {
+        output.stderr.push('');
+        output.stderr.push(red('BLOCKED — fix failing checks before proceeding to next phase'));
+        return output.toResult(1);
+      }
       output.stderr.push('');
-      output.stderr.push(red('BLOCKED — fix failing checks before proceeding to next phase'));
-      return output.toResult(1);
+      output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
+      if (flag === '--apply') {
+        await applyStateUpdate(output, change, changeDir, phase);
+      }
+      return output.toResult(0);
+    } catch (error) {
+      if (error instanceof GuardFailure) {
+        for (const line of error.message.split('\n')) output.stderr.push(line);
+        return output.toResult(error.exitCode);
+      }
+      throw error;
     }
-    output.stderr.push('');
-    output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
-    if (flag === '--apply') {
-      await applyStateUpdate(output, change, changeDir, phase);
-    }
-    return output.toResult(0);
-  } catch (error) {
-    if (error instanceof GuardFailure) {
-      for (const line of error.message.split('\n')) output.stderr.push(line);
-      return output.toResult(error.exitCode);
-    }
-    throw error;
-  }
-};
+  });

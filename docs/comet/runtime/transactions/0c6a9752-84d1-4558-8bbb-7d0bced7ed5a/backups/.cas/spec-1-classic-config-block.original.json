@@ -1,0 +1,11 @@
+{
+  "schema": "comet.native.archive-cas.v1",
+  "operationId": "spec-1-classic-config-block",
+  "role": "original",
+  "hash": "3d08889c13a8e003b0e3ec896436a87aaf98f18144bc2ab37c372004b28da4ab",
+  "identity": {
+    "dev": 1986195787,
+    "ino": 6755399441573309,
+    "birthtimeMs": 1785159902369.7764
+  }
+}

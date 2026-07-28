@@ -1,0 +1,30 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+name: complete-unified-product-catalogue
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: efd20a585dc21457e2e6999a9c317e494045881431f3b02523d1a4bf951829e9
+spec_changes:
+  - capability: classic-config-block
+    operation: replace
+    source: specs/classic-config-block/spec.md
+    base_hash: 8708f29ee01675c277f03be111651b4a73de71ce54a7f59ad6bed0ed9b871a68
+  - capability: native-init-workspace-defaults
+    operation: replace
+    source: specs/native-init-workspace-defaults/spec.md
+    base_hash: a650ccd65f017d0d47ade5df26d1016de83ad5beb5480166c393d902765e3116
+  - capability: unified-product-catalogue
+    operation: replace
+    source: specs/unified-product-catalogue/spec.md
+    base_hash: 6f27dc7a98b2cf99695b3334f078033bd349def37f35108cf90d994ee20214b1
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/dcf8a8a9e7581ea73183caecede24036a38112ecb7e22387d030b4f6813ee972.json
+verification_evidence: runtime/evidence/verifications/1368a8071c401be01c65eb7aea6d3c62ed09dcaa04c63e92d23a9d01ffdfadcf.json
+partial_allowance: runtime/evidence/allowances/76feacc71e768ad5c54c8b54e46ddfedab86277583174d4ad96a3ed2c99924a4.json
+archived: true
+created_at: 2026-07-27
+run_id: 2f6e3e00-f384-43b8-ad90-77706d82eb87

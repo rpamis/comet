@@ -76,8 +76,58 @@ describe('comet guard', () => {
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
     execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
     await writeFile(path.join(tmpDir, '.openspec', 'config.yaml'), 'name: test\n');
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '',
+      ].join('\n'),
+    );
+    await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
     execFileSync('git', ['add', '.'], { cwd: tmpDir });
     execFileSync('git', ['commit', '-m', 'init'], { cwd: tmpDir, stdio: 'ignore' });
+  });
+
+  it('fails closed before migrating state when both Classic roots exist', async () => {
+    await createChange(
+      tmpDir,
+      'dual-root',
+      [
+        'workflow: full',
+        'phase: open',
+        'build_mode: null',
+        'build_pause: null',
+        'subagent_dispatch: null',
+        'tdd_mode: null',
+        'isolation: null',
+        'verify_mode: null',
+        'design_doc: null',
+        'plan: null',
+        'base_ref: null',
+        'verify_result: pending',
+        'verification_report: null',
+        'branch_status: pending',
+        'created_at: 2026-07-28',
+        'verified_at: null',
+        'archived: false',
+        'handoff_context: null',
+        'handoff_hash: null',
+        '',
+      ].join('\n'),
+    );
+    await fs.mkdir(path.join(tmpDir, 'docs', 'openspec'), { recursive: true });
+
+    const result = runNode(tmpDir, guardScript, ['dual-root', 'open'], {}, 15000);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Classic layout conflict');
+    await expect(
+      fs.stat(path.join(tmpDir, 'openspec', 'changes', 'dual-root', '.comet')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   describe('guard_open skips design.md for hotfix/tweak workflows', () => {
@@ -434,7 +484,18 @@ describe('comet guard', () => {
         path.join(tmpDir, 'reports', 'verification.md'),
         '# Verification\n\nPassed.\n',
       );
-      await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'build_command: npm test\n');
+      await writeFile(
+        path.join(tmpDir, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: classic',
+          'workflows: [classic]',
+          'classic:',
+          '  artifact_layout: legacy',
+          'build_command: npm test',
+          '',
+        ].join('\n'),
+      );
       await writeFile(
         path.join(tmpDir, 'package.json'),
         JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
@@ -518,6 +579,31 @@ describe('comet guard', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).not.toContain('recorded command-check');
+    });
+
+    it('detects and executes an inferred npm build from the nested invocation cwd', async () => {
+      await createChange(tmpDir, 'nested-inferred-build', buildYaml);
+      await writeFile(
+        path.join(tmpDir, 'package.json'),
+        JSON.stringify({ scripts: { build: 'node -e "process.exit(23)"' } }),
+      );
+      const nested = path.join(tmpDir, 'packages', 'app');
+      await writeFile(
+        path.join(nested, 'package.json'),
+        JSON.stringify({
+          scripts: {
+            build: "node -e \"require('fs').writeFileSync('nested-build-ran', 'ok')\"",
+          },
+        }),
+      );
+
+      const result = runNode(nested, guardScript, ['nested-inferred-build', 'build']);
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(await fs.readFile(path.join(nested, 'nested-build-ran'), 'utf8')).toBe('ok');
+      await expect(fs.access(path.join(tmpDir, 'nested-build-ran'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
     });
 
     it('makes COMET_SKIP_BUILD visible instead of reporting an ordinary silent pass', async () => {

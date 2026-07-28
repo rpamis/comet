@@ -1,0 +1,18 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fission-ai/openspec": "^1.5.0",
+    "@inquirer/ansi": "^2.0.5",
+    "@inquirer/core": "^11.1.10",
+    "@inquirer/figures": "^2.0.5",
+    "@inquirer/prompts": "^8.4.3",
+    "@inquirer/type": "^4.0.5",
+    "commander": "^14.0.0",
+    "dompurify": "^3.4.12",
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.4",
+    "mermaid": "11.15.0",
+    "yaml": "^2.9.0"
+  }
+}

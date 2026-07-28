@@ -35,16 +35,27 @@ import { LANGUAGES, type LanguageConfig } from '../../domains/skill/languages.js
 import { resolveInitWorkflow } from '../../domains/comet-entry/init-workflow.js';
 import type { CometWorkflow, InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import { migrateLegacyClassicSelection } from '../../domains/comet-entry/current-selection.js';
-import {
-  defaultProjectConfig,
-  readProjectConfig,
-  writeProjectConfig,
-} from '../../domains/comet-native/native-config.js';
+import { defaultProjectConfig } from '../../domains/comet-native/native-config.js';
 import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../domains/comet-native/native-paths.js';
 import { installOpenSpec, isCommandAvailable } from '../../domains/integrations/openspec.js';
+import {
+  assertClassicLayoutInitializationSafe,
+  beginClassicLayoutInitialization,
+  checkpointClassicLayoutInitialization,
+  completeClassicLayoutInitialization,
+  type ClassicLayoutInitializationPermit,
+} from '../../domains/comet-classic/classic-layout-initialization.js';
+import { classicLayoutPaths } from '../../domains/comet-classic/classic-layout.js';
+import { assertClassicOpenSpecRootHealthy } from '../../domains/comet-classic/classic-openspec-root.js';
+import {
+  readWorkflowProjectConfigDocument,
+  readWorkflowProjectConfigSnapshot,
+} from '../../domains/workflow-contract/project-config-reader.js';
+import { writeWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-writer.js';
+import type { WorkflowProjectConfig } from '../../domains/workflow-contract/types.js';
 import { installSuperpowersForPlatforms } from '../../domains/integrations/superpowers.js';
 import {
   hasCodegraphProjectIndex,
@@ -109,7 +120,7 @@ function workflowChoiceNames(lang: string): Array<{
 async function selectWorkflow(
   options: InitOptions,
   lang: string,
-  suggested: CometWorkflow,
+  suggested: InitWorkflowSelection,
 ): Promise<InitWorkflowSelection> {
   if (options.workflow) return options.workflow;
   if (options.yes || options.json) return suggested;
@@ -380,6 +391,7 @@ function displaySummary(
   lang: string,
   workflowSelection: InitWorkflowSelection,
   nativeArtifactRoot: string | null,
+  classicArtifactLayout: 'legacy' | 'docs' | null,
 ): void {
   const scopeLabel = scope === 'global' ? os.homedir() : 'project';
   const componentStatuses: Array<[keyof Omit<PlatformResult, 'platform'>, string]> = [
@@ -437,7 +449,11 @@ function displaySummary(
       console.log(`    ${t(lang, 'nativeWorkingDir')} ${root}comet/`);
     }
     if (showClassicWorkspace) {
-      console.log(`    ${t(lang, 'classicWorkingDirs')}`);
+      const openSpecRoot = classicArtifactLayout === 'docs' ? 'docs/openspec/' : 'openspec/';
+      console.log(`    ${lang === 'zh' ? 'Classic：' : 'Classic: '}${openSpecRoot}`);
+      console.log(
+        '    Superpowers: docs/superpowers/specs/, docs/superpowers/plans/, docs/superpowers/reports/',
+      );
     }
   }
 
@@ -477,28 +493,46 @@ export async function initCommand(
   if (scope === 'project') {
     await readProjectRegistry({ strict: true });
   }
-  const suggestedWorkflowDecision =
+  const initialProjectConfigSnapshot =
     scope === 'project'
-      ? await resolveInitWorkflow(projectPath, {
-          workflow: options.workflow === 'both' ? 'native' : options.workflow,
-          artifactRoot: options.artifactRoot,
+      ? await readWorkflowProjectConfigSnapshot(projectPath, {
+          allowPartialProject: true,
         })
       : null;
-  const workflowSelection = await selectWorkflow(
-    options,
-    lang,
-    suggestedWorkflowDecision?.workflow ?? 'classic',
-  );
+  const suggestedWorkflowDecision =
+    scope === 'project'
+      ? await resolveInitWorkflow(
+          projectPath,
+          {
+            workflow: options.workflow === 'both' ? 'native' : options.workflow,
+            artifactRoot: options.artifactRoot,
+          },
+          initialProjectConfigSnapshot!,
+        )
+      : null;
+  const configuredWorkflows = initialProjectConfigSnapshot?.document?.config?.workflows ?? [];
+  const suggestedWorkflowSelection: InitWorkflowSelection =
+    options.workflow === undefined &&
+    configuredWorkflows.includes('native') &&
+    configuredWorkflows.includes('classic')
+      ? 'both'
+      : (suggestedWorkflowDecision?.workflow ?? 'classic');
+  const workflowSelection = await selectWorkflow(options, lang, suggestedWorkflowSelection);
   const workflow: CometWorkflow = workflowSelection === 'both' ? 'native' : workflowSelection;
   const workflowDecision =
     scope === 'project'
       ? options.workflow === undefined && (options.yes || options.json)
         ? suggestedWorkflowDecision
-        : await resolveInitWorkflow(projectPath, {
-            workflow,
-            artifactRoot: options.artifactRoot,
-          })
+        : await resolveInitWorkflow(
+            projectPath,
+            {
+              workflow,
+              artifactRoot: options.artifactRoot,
+            },
+            initialProjectConfigSnapshot!,
+          )
       : null;
+  const initialProjectConfigDocument = initialProjectConfigSnapshot?.document ?? null;
   const workflowSource = workflowDecision?.source ?? 'global-install';
   const installMode =
     workflowSelection === 'native' ? 'copy' : await selectInstallMode(options, lang);
@@ -661,17 +695,89 @@ export async function initCommand(
   const shouldInstallOpenSpecCli = selectedNpmDeps.has('openspec');
   const shouldInstallSuperpowers = selectedNpmDeps.has('superpowers');
   const shouldInstallCodegraphCli = selectedNpmDeps.has('codegraph');
+  const requiresClassicArtifactRoot =
+    scope === 'project' &&
+    workflowDecision !== null &&
+    includesWorkflow(workflowSelection, 'classic');
 
   let osGlobalStatus: InstallStatus = 'skipped';
-  if (osToolIds.length > 0) {
-    log(`\n  ${t(lang, 'installingOS')} ${osToolIds.join(', ')}`);
-    osGlobalStatus = await installOpenSpec(
-      projectPath,
-      osToolIds,
-      scope,
-      shouldInstallOpenSpecCli,
-      mirrorOpenCodePlatformIds,
+  let osFailureReason: string | undefined;
+  let classicOpenSpecRootReady = !requiresClassicArtifactRoot;
+  let classicLayoutInitializationPermit: ClassicLayoutInitializationPermit | undefined;
+  if (requiresClassicArtifactRoot) {
+    try {
+      let initialization = await assertClassicLayoutInitializationSafe(
+        projectPath,
+        workflowDecision!.classicArtifactLayout,
+        undefined,
+        initialProjectConfigSnapshot?.identity,
+      );
+      initialization = await beginClassicLayoutInitialization(projectPath, initialization);
+      classicLayoutInitializationPermit = initialization.initializationPermit;
+    } catch (error) {
+      osGlobalStatus = 'failed';
+      osFailureReason = (error as Error).message;
+      log(`  Classic layout initialization: failed (${osFailureReason})`);
+    }
+  }
+  const assertClassicProjectMutationAllowed =
+    scope === 'project' &&
+    workflowDecision &&
+    classicLayoutInitializationPermit &&
+    includesWorkflow(workflowSelection, 'classic')
+      ? async () => {
+          await assertClassicLayoutInitializationSafe(
+            projectPath,
+            workflowDecision.classicArtifactLayout,
+            classicLayoutInitializationPermit,
+          );
+        }
+      : undefined;
+  if ((osToolIds.length > 0 || requiresClassicArtifactRoot) && !osFailureReason) {
+    log(
+      `\n  ${t(lang, 'installingOS')} ${
+        osToolIds.length > 0 ? osToolIds.join(', ') : 'artifact root'
+      }`,
     );
+    try {
+      osGlobalStatus = await installOpenSpec(
+        projectPath,
+        osToolIds,
+        scope,
+        shouldInstallOpenSpecCli,
+        mirrorOpenCodePlatformIds,
+        scope === 'project' ? workflowDecision?.classicArtifactLayout : 'legacy',
+        assertClassicProjectMutationAllowed,
+        (error) => {
+          osFailureReason = error.message;
+        },
+      );
+      if (osGlobalStatus === 'installed' && requiresClassicArtifactRoot) {
+        await assertClassicProjectMutationAllowed?.();
+        await assertClassicOpenSpecRootHealthy(
+          projectPath,
+          classicLayoutPaths(projectPath, workflowDecision!.classicArtifactLayout),
+        );
+        await assertClassicProjectMutationAllowed?.();
+        if (classicLayoutInitializationPermit) {
+          await checkpointClassicLayoutInitialization(
+            projectPath,
+            classicLayoutInitializationPermit,
+          );
+        }
+        classicOpenSpecRootReady = true;
+      } else if (requiresClassicArtifactRoot) {
+        osFailureReason ??=
+          osGlobalStatus === 'skipped'
+            ? 'Classic OpenSpec artifact root initialization skipped because a compatible OpenSpec CLI is unavailable'
+            : 'Classic OpenSpec artifact root initialization failed';
+        osGlobalStatus = 'failed';
+      }
+    } catch (error) {
+      osGlobalStatus = 'failed';
+      osFailureReason = (error as Error).message;
+      log(`  OpenSpec: failed (${osFailureReason})`);
+    }
     if (osGlobalStatus === 'skipped' && !shouldInstallOpenSpecCli) {
       log(`  OpenSpec: ${t(lang, 'osSkippedNoCli')}`);
     } else {
@@ -840,18 +946,24 @@ export async function initCommand(
 
     results.push({
       platform,
-      openspec: osToolIds.includes(platform.openspecToolId) ? osGlobalStatus : 'skipped',
+      openspec:
+        osToolIds.includes(platform.openspecToolId) || requiresClassicArtifactRoot
+          ? osGlobalStatus
+          : 'skipped',
       superpowers: plan.spAction !== 'skip' ? spGlobalStatus : 'skipped',
       comet: cmStatus,
       codegraph: 'skipped',
       failures: [
-        ...(osToolIds.includes(platform.openspecToolId) && osGlobalStatus === 'failed'
+        ...((osToolIds.includes(platform.openspecToolId) || requiresClassicArtifactRoot) &&
+        osGlobalStatus === 'failed'
           ? [
               {
                 platform: platform.id,
                 platformName: platform.name,
                 component: 'OpenSpec' as const,
-                reason: 'OpenSpec installation failed; see the preceding diagnostic for details',
+                reason:
+                  osFailureReason ??
+                  'OpenSpec installation failed; see the preceding diagnostic for details',
               },
             ]
           : []),
@@ -906,11 +1018,12 @@ export async function initCommand(
   let finalizationFailure: string | undefined;
   const cometInstallComplete =
     results.length > 0 && results.every((result) => result.comet !== 'failed');
+  const projectInitializationComplete = cometInstallComplete && classicOpenSpecRootReady;
 
   if (
     scope === 'project' &&
     projectRouterInstalled &&
-    cometInstallComplete &&
+    projectInitializationComplete &&
     includesWorkflow(workflowSelection, 'classic')
   ) {
     if (await migrateLegacyClassicSelection(projectPath)) {
@@ -919,14 +1032,19 @@ export async function initCommand(
   }
 
   try {
-    if (scope === 'project' && workflowDecision && cometInstallComplete) {
+    if (scope === 'project' && workflowDecision && projectInitializationComplete) {
       if (includesWorkflow(workflowSelection, 'native')) {
         const paths = await nativeProjectPaths(projectPath, workflowDecision.artifactRoot);
         await ensureNativeDirectories(paths);
         nativeArtifactRoot = workflowDecision.artifactRoot;
       }
       if (includesWorkflow(workflowSelection, 'classic')) {
-        await createWorkingDirs(projectPath, language.artifactLanguage);
+        await createWorkingDirs(
+          projectPath,
+          language.artifactLanguage,
+          workflowDecision.classicArtifactLayout,
+          classicLayoutInitializationPermit,
+        );
       }
       workingDirsCreated = true;
 
@@ -995,23 +1113,57 @@ export async function initCommand(
       // The project config activates the selected workflow. Commit it only after
       // every required project artifact has been written successfully so a
       // partial initialization cannot route later commands into Native.
-      const existing = await readProjectConfig(projectPath);
+      const existingDocument = await readWorkflowProjectConfigDocument(projectPath, {
+        allowPartialProject: true,
+      });
+      const existing = existingDocument?.config ?? null;
       const selectedWorkflows =
         workflowSelection === 'both' ? (['native', 'classic'] as const) : [workflowSelection];
-      const configuredWorkflows =
-        existing?.workflows ?? (existing ? [existing.default_workflow] : []);
-      const workflowsChanged =
-        configuredWorkflows.length !== selectedWorkflows.length ||
-        selectedWorkflows.some((selected) => !configuredWorkflows.includes(selected));
-      if (workflowDecision.writeProjectConfig || (existing !== null && workflowsChanged)) {
-        const config =
-          existing ??
-          defaultProjectConfig(workflowDecision.artifactRoot, language.artifactLanguage);
+      {
+        const defaults = defaultProjectConfig(
+          workflowDecision.artifactRoot,
+          language.artifactLanguage,
+        );
+        const config: WorkflowProjectConfig = existing
+          ? {
+              ...existing,
+              ...(existing.native ? { native: { ...existing.native } } : {}),
+              ...(existing.classic ? { classic: { ...existing.classic } } : {}),
+            }
+          : {
+              schema: 'comet.project.v1',
+              default_workflow: workflowDecision.workflow,
+              ambient_resume: existingDocument?.ambient_resume ?? true,
+              ...(existingDocument?.classic ? { classic: { ...existingDocument.classic } } : {}),
+            };
+        if (includesWorkflow(workflowSelection, 'native') && !config.native) {
+          config.native = defaults.native;
+        }
         config.default_workflow = workflowDecision.workflow;
         config.workflows = [...selectedWorkflows];
-        await writeProjectConfig(projectPath, config);
-        projectConfigCreated = existing === null;
-        projectConfigUpdated = existing !== null;
+        if (includesWorkflow(workflowSelection, 'classic')) {
+          config.classic = {
+            ...config.classic,
+            artifact_layout: workflowDecision.classicArtifactLayout,
+            language: language.artifactLanguage,
+            context_compression: config.classic?.context_compression ?? 'off',
+            review_mode: config.classic?.review_mode ?? 'standard',
+            auto_transition: config.classic?.auto_transition ?? true,
+          };
+          await assertClassicLayoutInitializationSafe(
+            projectPath,
+            workflowDecision.classicArtifactLayout,
+            classicLayoutInitializationPermit,
+          );
+        }
+        await writeWorkflowProjectConfig(projectPath, config, {
+          expectedIdentity: initialProjectConfigSnapshot?.identity,
+        });
+        if (classicLayoutInitializationPermit) {
+          await completeClassicLayoutInitialization(projectPath, classicLayoutInitializationPermit);
+        }
+        projectConfigCreated = initialProjectConfigDocument === null;
+        projectConfigUpdated = initialProjectConfigDocument !== null;
       }
     } else if (scope === 'global') {
       await mergeProjectConfig(baseDir, language.artifactLanguage);
@@ -1050,6 +1202,7 @@ export async function initCommand(
           projectConfigCreated,
           projectConfigUpdated,
           nativeArtifactRoot,
+          classicArtifactLayout: workflowDecision?.classicArtifactLayout ?? null,
           selectedPlatforms: selectedPlatformIds,
           results: results.map((result) => ({
             platform: result.platform.id,
@@ -1068,7 +1221,14 @@ export async function initCommand(
     return { status: completionStatus };
   }
 
-  displaySummary(results, scope, lang, workflowSelection, nativeArtifactRoot);
+  displaySummary(
+    results,
+    scope,
+    lang,
+    workflowSelection,
+    nativeArtifactRoot,
+    workflowDecision?.classicArtifactLayout ?? null,
+  );
   return { status: completionStatus };
 }
 

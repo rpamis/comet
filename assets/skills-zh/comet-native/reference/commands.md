@@ -140,8 +140,8 @@ comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 
 - Shape：只有用户确认最终共享理解后才传 `--confirmed`。
 - Build：提供真实 `--artifact`；确实没有项目文件变化时使用 `--no-code-reason`。
-- Partial scope：先向用户说明 Runtime 返回的具体缺口和风险；只有用户接受后才使用完全匹配的 scope hash、理由和 `--confirmed`。
-- Verify：提供 `--result` 和完整报告。pass 需要 Runtime 要求的当前 receipts；fail 使用稳定、非敏感的失败分类和检查 ID。
+- Partial scope：先向用户说明 Runtime 返回的具体缺口和风险。超出已返回明细预算的变化由 `scope-detail-overflow` 数量和内容 hash 汇总；只有用户接受后才使用完全匹配的 scope hash、理由和 `--confirmed`。
+- Verify：提供 `--result` 和完整报告。标准报告路径提交为 `comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md`；pass 需要 Runtime 要求的当前 receipts，fail 使用稳定、非敏感的失败分类和检查 ID。
 - Repair override：只使用 status 返回的 signature，并且只在有一个明确新修复假设时执行。
 - Archive：先 dry-run，再使用本次预演返回的精确 preflight hash；`required` 模式还需要用户明确确认。
 

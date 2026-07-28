@@ -1,0 +1,30 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 5
+name: unified-product-catalogue
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: 3dca1611a65f1b760de0822aac6ec4a8f4d7fe7b1b20857e13c5110c93f585c2
+spec_changes:
+  - capability: classic-config-block
+    operation: replace
+    source: specs/classic-config-block/spec.md
+    base_hash: 3d08889c13a8e003b0e3ec896436a87aaf98f18144bc2ab37c372004b28da4ab
+  - capability: native-init-workspace-defaults
+    operation: replace
+    source: specs/native-init-workspace-defaults/spec.md
+    base_hash: a143c42c9588d6d727ab8b0cdb8e15cd852e17f4615361bbf28dd545fa2b15d5
+  - capability: unified-product-catalogue
+    operation: create
+    source: specs/unified-product-catalogue/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/000e60bceaf8df795aea7b71e2ee84d7a281591e1e4c84fdbc4bf9c51e6b6abe.json
+verification_evidence: runtime/evidence/verifications/4affb588d8a36b4a8a3f28d2093d760ec7b2982780942f1b4890352edae71755.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-27
+run_id: bcfe33e8-fde9-4dad-a621-c07688d065d5

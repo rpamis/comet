@@ -1,9 +1,9 @@
 import { createHash } from 'crypto';
-import { promises as fs, readFileSync } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument } from 'yaml';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
-import { openSpecChangeNameError } from './classic-paths.js';
+import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import { readClassicState, writeClassicState } from './classic-store.js';
 import {
@@ -20,6 +20,16 @@ import {
   writePendingAction,
 } from '../../domains/engine/run-store.js';
 import type { Checkpoint, EngineAction, RunState } from '../../domains/engine/types.js';
+import { assertClassicLayoutWritable, classicProjectRelative } from './classic-layout.js';
+import {
+  classicProjectFileNonempty,
+  classicProjectTargetExists,
+  ensureClassicProjectDirectory,
+  inspectClassicProjectTarget,
+  readClassicProjectFile,
+  writeClassicProjectText,
+} from './classic-protected-path.js';
+import { classicCommandProjectRoot, withClassicCommandContext } from './classic-command-context.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -60,32 +70,34 @@ class HandoffOutput {
   }
 }
 
-async function exists(file: string): Promise<boolean> {
-  try {
-    await fs.access(file);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
+async function readProtectedIfExists(
+  projectRoot: string,
+  file: string,
+  label: string,
+): Promise<string | null> {
+  if (
+    !(await classicProjectTargetExists(projectRoot, file, {
+      label,
+      expected: 'file',
+    }))
+  ) {
+    return null;
   }
+  return readClassicProjectFile(projectRoot, file, { label });
 }
 
-async function nonempty(file: string): Promise<boolean> {
-  try {
-    return (await fs.stat(file)).size > 0;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
+async function writeProtectedText(
+  projectRoot: string,
+  file: string,
+  content: string,
+  label: string,
+): Promise<void> {
+  await writeClassicProjectText(projectRoot, file, content, { label });
 }
 
 function validateChangeName(name: string): void {
   const error = openSpecChangeNameError(name);
   if (error) throw new HandoffFailure(red(`ERROR: ${error}`));
-}
-
-function hashFile(file: string): string {
-  return createHash('sha256').update(readFileSync(file)).digest('hex');
 }
 
 function hashText(content: string): string {
@@ -102,26 +114,64 @@ function artifactsHash(artifacts: Record<string, string>): string {
   );
 }
 
-// Forward-slash paths so hash inputs + markdown Source/SHA256 references match
-// the frozen shell byte-for-byte. changeDir is relative (openspec/changes/<name>).
-async function handoffSourceFiles(changeDir: string): Promise<string[]> {
+// Forward-slash references keep hash inputs + markdown Source/SHA256 references
+// compatible with the frozen shell while changeDir remains an absolute filesystem path.
+async function handoffSourceFiles(projectRoot: string, changeDir: string): Promise<string[]> {
   const files = [`${changeDir}/proposal.md`, `${changeDir}/design.md`, `${changeDir}/tasks.md`];
   const specs = `${changeDir}/specs`;
-  if (await exists(specs)) {
-    for (const entry of (await fs.readdir(specs)).sort()) {
-      const spec = `${specs}/${entry}/spec.md`;
-      if (await exists(spec)) files.push(spec);
+  const specsInspection = await inspectClassicProjectTarget(projectRoot, specs, {
+    label: 'Classic handoff specs directory',
+    expected: 'directory',
+  });
+  if (specsInspection.exists) {
+    const entries = (await fs.readdir(specs, { withFileTypes: true })).sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+    for (const entry of entries) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      const spec = `${specs}/${entry.name}/spec.md`;
+      const specDirectory = await inspectClassicProjectTarget(
+        projectRoot,
+        `${specs}/${entry.name}`,
+        {
+          label: `Classic handoff spec directory ${entry.name}`,
+          expected: 'directory',
+        },
+      );
+      if (!specDirectory.exists) continue;
+      if (
+        await classicProjectTargetExists(projectRoot, spec, {
+          label: `Classic handoff spec ${entry.name}`,
+          expected: 'file',
+        })
+      ) {
+        files.push(spec);
+      }
     }
   }
   return files;
 }
 
-async function computeContextHash(changeDir: string): Promise<string> {
+function handoffSourceReference(changeDir: string, changeRef: string, file: string): string {
+  const relative = path.relative(changeDir, file).replaceAll('\\', '/');
+  return `${changeRef}/${relative}`;
+}
+
+async function computeContextHash(
+  projectRoot: string,
+  changeDir: string,
+  changeRef: string,
+): Promise<string> {
   const lines: string[] = [];
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (await exists(file)) {
-      lines.push(`path:${file}`, `sha256:${hashFile(file)}`);
-    }
+  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
+    const reference = handoffSourceReference(changeDir, changeRef, file);
+    const content = await readProtectedIfExists(
+      projectRoot,
+      file,
+      `Classic handoff source ${reference}`,
+    );
+    if (content === null) continue;
+    lines.push(`path:${reference}`, `sha256:${hashText(content)}`);
   }
   // Command substitution $(...) strips the trailing newline; mirror that exactly.
   return createHash('sha256').update(lines.join('\n')).digest('hex');
@@ -147,9 +197,10 @@ function firstLines(content: string, max: number): string {
   }
   return content;
 }
-
 async function writeMarkdownContext(
+  projectRoot: string,
   changeDir: string,
+  changeRef: string,
   change: string,
   mode: string,
   contextHash: string,
@@ -168,16 +219,21 @@ async function writeMarkdownContext(
     'OpenSpec remains the canonical capability spec. This handoff is a deterministic, source-traceable context pack, not an agent-authored summary.',
     '',
   ];
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (!(await exists(file))) continue;
-    const content = await fs.readFile(file, 'utf8');
+  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
+    const reference = handoffSourceReference(changeDir, changeRef, file);
+    const content = await readProtectedIfExists(
+      projectRoot,
+      file,
+      `Classic handoff source ${reference}`,
+    );
+    if (content === null) continue;
     const total = lineCount(content);
     lines.push(
-      `## ${file}`,
+      `## ${reference}`,
       '',
-      `- Source: ${file}`,
+      `- Source: ${reference}`,
       `- Lines: 1-${total}`,
-      `- SHA256: ${hashFile(file)}`,
+      `- SHA256: ${hashText(content)}`,
       '',
     );
     if (mode === 'full' || total <= 80) {
@@ -190,25 +246,38 @@ async function writeMarkdownContext(
         firstLines(content, 80),
         '```',
         '',
-        `Full source: ${file}`,
+        `Full source: ${reference}`,
       );
     }
     lines.push('');
   }
-  await fs.writeFile(output, lines.join('\n'));
+  await writeProtectedText(
+    projectRoot,
+    output,
+    lines.join('\n'),
+    'Classic handoff markdown output',
+  );
 }
 
 async function writeJsonContext(
+  projectRoot: string,
   changeDir: string,
+  changeRef: string,
   change: string,
   mode: string,
   contextHash: string,
   output: string,
 ): Promise<void> {
   const entries: string[] = [];
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (!(await exists(file))) continue;
-    entries.push(`    { "path": "${jsonEscape(file)}", "sha256": "${hashFile(file)}" }`);
+  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
+    const reference = handoffSourceReference(changeDir, changeRef, file);
+    const content = await readProtectedIfExists(
+      projectRoot,
+      file,
+      `Classic handoff source ${reference}`,
+    );
+    if (content === null) continue;
+    entries.push(`    { "path": "${jsonEscape(reference)}", "sha256": "${hashText(content)}" }`);
   }
   const filesBlock = entries.join(',\n');
   const document = [
@@ -225,16 +294,16 @@ async function writeJsonContext(
     '}',
     '',
   ].join('\n');
-  await fs.writeFile(output, document);
+  await writeProtectedText(projectRoot, output, document, 'Classic handoff JSON output');
 }
 
-async function writeSpecProjectionForFile(file: string, content: string): Promise<string[]> {
+async function writeSpecProjectionForFile(reference: string, content: string): Promise<string[]> {
   return [
-    `## ${file}`,
+    `## ${reference}`,
     '',
-    `- Source: ${file}`,
+    `- Source: ${reference}`,
     `- Lines: 1-${lineCount(content)}`,
-    `- SHA256: ${hashFile(file)}`,
+    `- SHA256: ${hashText(content)}`,
     '',
     '```md',
     content,
@@ -244,7 +313,9 @@ async function writeSpecProjectionForFile(file: string, content: string): Promis
 }
 
 async function writeSpecMarkdownContext(
+  projectRoot: string,
   changeDir: string,
+  changeRef: string,
   change: string,
   contextHash: string,
   output: string,
@@ -264,19 +335,43 @@ async function writeSpecMarkdownContext(
     '## Source References',
     '',
   ];
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (!(await exists(file))) continue;
-    lines.push(`- Source: ${file}`, `- SHA256: ${hashFile(file)}`);
+  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
+    const reference = handoffSourceReference(changeDir, changeRef, file);
+    const content = await readProtectedIfExists(
+      projectRoot,
+      file,
+      `Classic handoff source ${reference}`,
+    );
+    if (content === null) continue;
+    lines.push(`- Source: ${reference}`, `- SHA256: ${hashText(content)}`);
   }
   lines.push('', '## Acceptance Projection', '');
   const specs = `${changeDir}/specs`;
   let projected = false;
-  if (await exists(specs)) {
-    for (const entry of (await fs.readdir(specs)).sort()) {
-      const spec = `${specs}/${entry}/spec.md`;
-      if (!(await exists(spec))) continue;
+  const specsInspection = await inspectClassicProjectTarget(projectRoot, specs, {
+    label: 'Classic handoff specs directory',
+    expected: 'directory',
+  });
+  if (specsInspection.exists) {
+    const entries = (await fs.readdir(specs, { withFileTypes: true })).sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+    for (const entry of entries) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      const spec = `${specs}/${entry.name}/spec.md`;
+      const content = await readProtectedIfExists(
+        projectRoot,
+        spec,
+        `Classic handoff spec ${entry.name}`,
+      );
+      if (content === null) continue;
       projected = true;
-      lines.push(...(await writeSpecProjectionForFile(spec, await fs.readFile(spec, 'utf8'))));
+      lines.push(
+        ...(await writeSpecProjectionForFile(
+          handoffSourceReference(changeDir, changeRef, spec),
+          content,
+        )),
+      );
     }
   }
   if (!projected) {
@@ -285,22 +380,36 @@ async function writeSpecMarkdownContext(
   lines.push(
     'Full source files remain canonical. If a required heading or scenario is missing here, regenerate the handoff or read the source spec directly. Supporting files (proposal, design, tasks) are referenced by hash only.',
   );
-  await fs.writeFile(output, lines.join('\n'));
+  await writeProtectedText(
+    projectRoot,
+    output,
+    lines.join('\n'),
+    'Classic handoff spec markdown output',
+  );
 }
 
 async function writeSpecJsonContext(
+  projectRoot: string,
   changeDir: string,
+  changeRef: string,
   change: string,
   contextHash: string,
   output: string,
 ): Promise<void> {
   const entries: Array<{ path: string; sha256: string; role: 'spec' | 'supporting' }> = [];
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (!(await exists(file))) continue;
-    const role = /\/specs\/[^/]+\/spec\.md$/u.test(file) ? 'spec' : 'supporting';
-    entries.push({ path: file, sha256: hashFile(file), role });
+  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
+    const reference = handoffSourceReference(changeDir, changeRef, file);
+    const content = await readProtectedIfExists(
+      projectRoot,
+      file,
+      `Classic handoff source ${reference}`,
+    );
+    if (content === null) continue;
+    const role = /\/specs\/[^/]+\/spec\.md$/u.test(reference) ? 'spec' : 'supporting';
+    entries.push({ path: reference, sha256: hashText(content), role });
   }
-  await fs.writeFile(
+  await writeProtectedText(
+    projectRoot,
     output,
     `${JSON.stringify(
       {
@@ -315,12 +424,16 @@ async function writeSpecJsonContext(
       null,
       2,
     )}\n`,
+    'Classic handoff spec JSON output',
   );
 }
 
-async function readField(changeDir: string, field: string): Promise<string> {
+async function readField(projectRoot: string, changeDir: string, field: string): Promise<string> {
   const file = path.join(changeDir, '.comet.yaml');
-  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: false });
+  const document = parseDocument(
+    await readClassicProjectFile(projectRoot, file, { label: 'Classic change state' }),
+    { uniqueKeys: false },
+  );
   if (document.errors.length > 0) {
     throw new HandoffFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
   }
@@ -357,20 +470,27 @@ async function appendRecoveryEvent(
 }
 
 async function completedHandoffIsCurrent(
+  projectRoot: string,
   changeDir: string,
   run: RunState,
   contextHash: string,
   contextJson: string,
   contextMd: string,
+  contextJsonRef: string,
+  contextMdRef: string,
 ): Promise<boolean> {
   const [context, artifacts, checkpoint] = await Promise.all([
     readContext(changeDir, run.contextRef),
     readArtifacts(changeDir, run.artifactsRef),
     readCheckpoint(changeDir, run.checkpointRef),
   ]);
-  if (!(await exists(contextJson)) || !(await exists(contextMd))) return false;
-  if (context !== (await fs.readFile(contextMd, 'utf8'))) return false;
-  if (artifacts.handoff_context !== contextJson || artifacts.handoff_markdown !== contextMd) {
+  const [contextJsonContent, contextMdContent] = await Promise.all([
+    readProtectedIfExists(projectRoot, contextJson, 'Classic handoff JSON output'),
+    readProtectedIfExists(projectRoot, contextMd, 'Classic handoff markdown output'),
+  ]);
+  if (contextJsonContent === null || contextMdContent === null) return false;
+  if (context !== contextMdContent) return false;
+  if (artifacts.handoff_context !== contextJsonRef || artifacts.handoff_markdown !== contextMdRef) {
     return false;
   }
   return (
@@ -381,214 +501,290 @@ async function completedHandoffIsCurrent(
   );
 }
 
-export const classicHandoffCommand: ClassicCommandHandler = async (args) => {
-  const output = new HandoffOutput();
-  const [change, phase, mode, fullFlag] = args;
-  try {
-    validateChangeName(change);
-    const changeDir = `openspec/changes/${change}`;
+export const classicHandoffCommand: ClassicCommandHandler = async (args, options) =>
+  withClassicCommandContext(options, async () => {
+    const output = new HandoffOutput();
+    const [change, phase, mode, fullFlag] = args;
+    try {
+      validateChangeName(change);
+      const layout = await assertClassicLayoutWritable(classicCommandProjectRoot());
+      const active = await inspectClassicActiveChangeDirectory(change, layout.projectRoot);
+      const changeDir = active.directory;
+      const changeRef = classicProjectRelative(layout.projectRoot, changeDir);
 
-    if (phase === '--hash-only') {
-      if (!(await exists(changeDir))) {
-        throw new HandoffFailure(red(`ERROR: change directory not found: ${changeDir}`));
+      if (phase === '--hash-only') {
+        if (!active.exists) {
+          throw new HandoffFailure(red(`ERROR: change directory not found: ${changeRef}`));
+        }
+        for (const required of ['proposal.md', 'design.md', 'tasks.md']) {
+          if (
+            !(await classicProjectFileNonempty(
+              layout.projectRoot,
+              `${changeDir}/${required}`,
+              `Classic handoff source ${required}`,
+            ))
+          ) {
+            throw new HandoffFailure(
+              red(`ERROR: required file missing or empty: ${changeRef}/${required}`),
+            );
+          }
+        }
+        output.stdout.push(await computeContextHash(layout.projectRoot, changeDir, changeRef));
+        return output.toResult(0);
+      }
+
+      if (phase !== 'design' || mode !== '--write') {
+        throw new HandoffFailure(
+          red('Usage: comet-handoff.mjs <change-name> design --write [--full]'),
+        );
+      }
+      let handoffMode: string;
+      if (fullFlag === undefined || fullFlag === '') handoffMode = 'compact';
+      else if (fullFlag === '--full') handoffMode = 'full';
+      else
+        throw new HandoffFailure(
+          red('Usage: comet-handoff.mjs <change-name> design --write [--full]'),
+        );
+
+      if (!active.exists) {
+        throw new HandoffFailure(red(`ERROR: change directory not found: ${changeRef}`));
+      }
+      if (!active.stateExists) {
+        throw new HandoffFailure(red(`ERROR: .comet.yaml not found at ${changeRef}/.comet.yaml`));
+      }
+      if ((await readField(layout.projectRoot, changeDir, 'phase')) !== 'design') {
+        throw new HandoffFailure(red('ERROR: design handoff requires phase: design'));
       }
       for (const required of ['proposal.md', 'design.md', 'tasks.md']) {
-        if (!(await nonempty(`${changeDir}/${required}`))) {
+        if (
+          !(await classicProjectFileNonempty(
+            layout.projectRoot,
+            `${changeDir}/${required}`,
+            `Classic handoff source ${required}`,
+          ))
+        ) {
           throw new HandoffFailure(
-            red(`ERROR: required file missing or empty: ${changeDir}/${required}`),
+            red(`ERROR: required OpenSpec artifact missing or empty: ${changeRef}/${required}`),
           );
         }
       }
-      output.stdout.push(await computeContextHash(changeDir));
-      return output.toResult(0);
-    }
 
-    if (phase !== 'design' || mode !== '--write') {
-      throw new HandoffFailure(
-        red('Usage: comet-handoff.mjs <change-name> design --write [--full]'),
-      );
-    }
-    let handoffMode: string;
-    if (fullFlag === undefined || fullFlag === '') handoffMode = 'compact';
-    else if (fullFlag === '--full') handoffMode = 'full';
-    else
-      throw new HandoffFailure(
-        red('Usage: comet-handoff.mjs <change-name> design --write [--full]'),
-      );
-
-    const yaml = `${changeDir}/.comet.yaml`;
-    if (!(await exists(changeDir))) {
-      throw new HandoffFailure(red(`ERROR: change directory not found: ${changeDir}`));
-    }
-    if (!(await exists(yaml))) {
-      throw new HandoffFailure(red(`ERROR: .comet.yaml not found at ${yaml}`));
-    }
-    if ((await readField(changeDir, 'phase')) !== 'design') {
-      throw new HandoffFailure(red('ERROR: design handoff requires phase: design'));
-    }
-    for (const required of ['proposal.md', 'design.md', 'tasks.md']) {
-      if (!(await nonempty(`${changeDir}/${required}`))) {
+      const handoffDir = `${changeDir}/.comet/handoff`;
+      await inspectClassicProjectTarget(layout.projectRoot, `${changeDir}/.comet`, {
+        label: 'Classic change runtime directory',
+        expected: 'directory',
+      });
+      await inspectClassicProjectTarget(layout.projectRoot, handoffDir, {
+        label: 'Classic handoff directory',
+        expected: 'directory',
+      });
+      const contextCompression =
+        (await readField(layout.projectRoot, changeDir, 'context_compression')) || 'off';
+      let contextJson: string;
+      let contextMd: string;
+      if (contextCompression === 'off') {
+        contextJson = `${handoffDir}/design-context.json`;
+        contextMd = `${handoffDir}/design-context.md`;
+      } else if (contextCompression === 'beta') {
+        if (handoffMode === 'full') {
+          output.stderr.push(
+            yellow('[HANDOFF] --full is ignored in beta mode; spec files are projected verbatim'),
+          );
+        }
+        handoffMode = 'beta';
+        contextJson = `${handoffDir}/spec-context.json`;
+        contextMd = `${handoffDir}/spec-context.md`;
+      } else {
         throw new HandoffFailure(
-          red(`ERROR: required OpenSpec artifact missing or empty: ${changeDir}/${required}`),
+          [
+            red(`ERROR: invalid context_compression: ${contextCompression}`),
+            red('Valid values: off, beta'),
+          ].join('\n'),
         );
       }
-    }
-
-    const handoffDir = `${changeDir}/.comet/handoff`;
-    const contextCompression = (await readField(changeDir, 'context_compression')) || 'off';
-    let contextJson: string;
-    let contextMd: string;
-    if (contextCompression === 'off') {
-      contextJson = `${handoffDir}/design-context.json`;
-      contextMd = `${handoffDir}/design-context.md`;
-    } else if (contextCompression === 'beta') {
-      if (handoffMode === 'full') {
-        output.stderr.push(
-          yellow('[HANDOFF] --full is ignored in beta mode; spec files are projected verbatim'),
+      const contextJsonRef = classicProjectRelative(layout.projectRoot, contextJson);
+      const contextMdRef = classicProjectRelative(layout.projectRoot, contextMd);
+      const contextHash = await computeContextHash(layout.projectRoot, changeDir, changeRef);
+      const actionId = `classic-handoff:${contextHash}`;
+      const initialProjection = await readClassicState(changeDir);
+      if (!initialProjection.classic) {
+        throw new HandoffFailure(red('ERROR: design handoff requires Classic state'));
+      }
+      const initialPending = initialProjection.run
+        ? await readPendingAction(changeDir, initialProjection.run.pendingRef)
+        : null;
+      const recovering =
+        initialPending?.id === actionId &&
+        initialPending.type === 'handoff' &&
+        initialPending.ref === contextHash;
+      if (
+        initialProjection.classic.handoffHash &&
+        initialProjection.classic.handoffHash !== contextHash &&
+        !recovering
+      ) {
+        throw new HandoffFailure(
+          red(
+            `ERROR: stale handoff detected: source hash ${contextHash} does not match completed hash ${initialProjection.classic.handoffHash}`,
+          ),
         );
       }
-      handoffMode = 'beta';
-      contextJson = `${handoffDir}/spec-context.json`;
-      contextMd = `${handoffDir}/spec-context.md`;
-    } else {
-      throw new HandoffFailure(
-        [
-          red(`ERROR: invalid context_compression: ${contextCompression}`),
-          red('Valid values: off, beta'),
-        ].join('\n'),
-      );
-    }
-    const contextHash = await computeContextHash(changeDir);
-    const actionId = `classic-handoff:${contextHash}`;
-    const initialProjection = await readClassicState(changeDir);
-    if (!initialProjection.classic) {
-      throw new HandoffFailure(red('ERROR: design handoff requires Classic state'));
-    }
-    const initialPending = initialProjection.run
-      ? await readPendingAction(changeDir, initialProjection.run.pendingRef)
-      : null;
-    const recovering =
-      initialPending?.id === actionId &&
-      initialPending.type === 'handoff' &&
-      initialPending.ref === contextHash;
-    if (
-      initialProjection.classic.handoffHash &&
-      initialProjection.classic.handoffHash !== contextHash &&
-      !recovering
-    ) {
-      throw new HandoffFailure(
-        red(
-          `ERROR: stale handoff detected: source hash ${contextHash} does not match completed hash ${initialProjection.classic.handoffHash}`,
-        ),
-      );
-    }
 
-    const runtime = await ensureClassicRuntimeRun(changeDir);
-    const pendingAction = await readPendingAction(changeDir, runtime.run.pendingRef);
-    const resumesPending =
-      pendingAction?.id === actionId &&
-      pendingAction.type === 'handoff' &&
-      pendingAction.ref === contextHash;
-    if (runtime.run.pending && runtime.run.pending !== actionId) {
-      throw new HandoffFailure(red(`ERROR: another action is pending: ${runtime.run.pending}`));
-    }
-    if (
-      runtime.classic.handoffHash === contextHash &&
-      runtime.classic.handoffContext === contextJson &&
-      !runtime.run.pending &&
-      !pendingAction &&
-      (await completedHandoffIsCurrent(changeDir, runtime.run, contextHash, contextJson, contextMd))
-    ) {
-      output.stderr.push(green(`[HANDOFF] wrote ${contextJson}`));
-      output.stderr.push(green(`[HANDOFF] wrote ${contextMd}`));
+      await ensureClassicProjectDirectory(
+        layout.projectRoot,
+        `${changeDir}/.comet`,
+        'Classic change runtime directory',
+      );
+      await ensureClassicProjectDirectory(
+        layout.projectRoot,
+        handoffDir,
+        'Classic handoff directory',
+      );
+      const runtime = await ensureClassicRuntimeRun(changeDir);
+      const pendingAction = await readPendingAction(changeDir, runtime.run.pendingRef);
+      const resumesPending =
+        pendingAction?.id === actionId &&
+        pendingAction.type === 'handoff' &&
+        pendingAction.ref === contextHash;
+      if (runtime.run.pending && runtime.run.pending !== actionId) {
+        throw new HandoffFailure(red(`ERROR: another action is pending: ${runtime.run.pending}`));
+      }
+      if (
+        runtime.classic.handoffHash === contextHash &&
+        runtime.classic.handoffContext === contextJsonRef &&
+        !runtime.run.pending &&
+        !pendingAction &&
+        (await completedHandoffIsCurrent(
+          layout.projectRoot,
+          changeDir,
+          runtime.run,
+          contextHash,
+          contextJson,
+          contextMd,
+          contextJsonRef,
+          contextMdRef,
+        ))
+      ) {
+        output.stderr.push(green(`[HANDOFF] wrote ${contextJsonRef}`));
+        output.stderr.push(green(`[HANDOFF] wrote ${contextMdRef}`));
+        output.stderr.push(green(`[HANDOFF] handoff_hash=${contextHash}`));
+        return output.toResult(0);
+      }
+
+      const action: EngineAction = {
+        id: actionId,
+        stepId: runtime.run.currentStep,
+        type: 'handoff',
+        ref: contextHash,
+      };
+      await writePendingAction(changeDir, runtime.run.pendingRef, action);
+      const pendingRun: RunState = {
+        ...runtime.run,
+        pending: actionId,
+        status: 'waiting',
+      };
+      await writeClassicState(changeDir, {
+        classic: runtime.classic,
+        run: pendingRun,
+        unknownKeys: (await readClassicState(changeDir)).unknownKeys,
+      });
+
+      if (handoffMode === 'beta') {
+        await writeSpecMarkdownContext(
+          layout.projectRoot,
+          changeDir,
+          changeRef,
+          change,
+          contextHash,
+          contextMd,
+        );
+        await writeSpecJsonContext(
+          layout.projectRoot,
+          changeDir,
+          changeRef,
+          change,
+          contextHash,
+          contextJson,
+        );
+      } else {
+        await writeMarkdownContext(
+          layout.projectRoot,
+          changeDir,
+          changeRef,
+          change,
+          handoffMode,
+          contextHash,
+          contextMd,
+        );
+        await writeJsonContext(
+          layout.projectRoot,
+          changeDir,
+          changeRef,
+          change,
+          handoffMode,
+          contextHash,
+          contextJson,
+        );
+      }
+
+      const context = await readClassicProjectFile(layout.projectRoot, contextMd, {
+        label: 'Classic handoff markdown output',
+      });
+      await writeContext(changeDir, pendingRun.contextRef, context);
+      const artifacts = {
+        ...(await readArtifacts(changeDir, pendingRun.artifactsRef)),
+        handoff_context: contextJsonRef,
+        handoff_markdown: contextMdRef,
+      };
+      await writeArtifacts(changeDir, pendingRun.artifactsRef, artifacts);
+      const completedClassic = {
+        ...runtime.classic,
+        handoffContext: contextJsonRef,
+        handoffHash: contextHash,
+      };
+      const transitionedRun =
+        pendingRun.currentStep === 'full.design.handoff'
+          ? await transitionClassicRuntimeRun(changeDir, completedClassic, pendingRun, {
+              actionId,
+              kind: 'classic-handoff',
+            })
+          : pendingRun;
+      const completedRun: RunState = {
+        ...transitionedRun,
+        pending: null,
+        status: 'running',
+      };
+      if (recovering || resumesPending) {
+        await appendRecoveryEvent(changeDir, completedRun, actionId);
+      }
+      const trajectory = await readTrajectory(changeDir, completedRun.trajectoryRef);
+      const checkpoint: Checkpoint = {
+        runId: completedRun.runId,
+        stateVersion: completedRun.iteration,
+        trajectoryOffset: trajectory.length,
+        contextHash: hashText(context),
+        artifactsHash: artifactsHash(artifacts),
+        createdAt: new Date().toISOString(),
+      };
+      await writeCheckpoint(changeDir, completedRun.checkpointRef, checkpoint);
+      await writeClassicState(changeDir, {
+        classic: completedClassic,
+        run: completedRun,
+        unknownKeys: (await readClassicState(changeDir)).unknownKeys,
+      });
+      await clearPendingAction(changeDir, completedRun.pendingRef);
+
+      output.stderr.push(green(`[SET] handoff_context=${contextJson}`));
+      output.stderr.push(green(`[SET] handoff_hash=${contextHash}`));
+
+      output.stderr.push(green(`[HANDOFF] wrote ${contextJsonRef}`));
+      output.stderr.push(green(`[HANDOFF] wrote ${contextMdRef}`));
       output.stderr.push(green(`[HANDOFF] handoff_hash=${contextHash}`));
       return output.toResult(0);
+    } catch (error) {
+      if (error instanceof HandoffFailure) {
+        for (const line of error.message.split('\n')) output.stderr.push(line);
+        return output.toResult(error.exitCode);
+      }
+      throw error;
     }
-
-    const action: EngineAction = {
-      id: actionId,
-      stepId: runtime.run.currentStep,
-      type: 'handoff',
-      ref: contextHash,
-    };
-    await writePendingAction(changeDir, runtime.run.pendingRef, action);
-    const pendingRun: RunState = {
-      ...runtime.run,
-      pending: actionId,
-      status: 'waiting',
-    };
-    await writeClassicState(changeDir, {
-      classic: runtime.classic,
-      run: pendingRun,
-      unknownKeys: (await readClassicState(changeDir)).unknownKeys,
-    });
-
-    await fs.mkdir(handoffDir, { recursive: true });
-    if (handoffMode === 'beta') {
-      await writeSpecMarkdownContext(changeDir, change, contextHash, contextMd);
-      await writeSpecJsonContext(changeDir, change, contextHash, contextJson);
-    } else {
-      await writeMarkdownContext(changeDir, change, handoffMode, contextHash, contextMd);
-      await writeJsonContext(changeDir, change, handoffMode, contextHash, contextJson);
-    }
-
-    const context = await fs.readFile(contextMd, 'utf8');
-    await writeContext(changeDir, pendingRun.contextRef, context);
-    const artifacts = {
-      ...(await readArtifacts(changeDir, pendingRun.artifactsRef)),
-      handoff_context: contextJson,
-      handoff_markdown: contextMd,
-    };
-    await writeArtifacts(changeDir, pendingRun.artifactsRef, artifacts);
-    const completedClassic = {
-      ...runtime.classic,
-      handoffContext: contextJson,
-      handoffHash: contextHash,
-    };
-    const transitionedRun =
-      pendingRun.currentStep === 'full.design.handoff'
-        ? await transitionClassicRuntimeRun(changeDir, completedClassic, pendingRun, {
-            actionId,
-            kind: 'classic-handoff',
-          })
-        : pendingRun;
-    const completedRun: RunState = {
-      ...transitionedRun,
-      pending: null,
-      status: 'running',
-    };
-    if (recovering || resumesPending) {
-      await appendRecoveryEvent(changeDir, completedRun, actionId);
-    }
-    const trajectory = await readTrajectory(changeDir, completedRun.trajectoryRef);
-    const checkpoint: Checkpoint = {
-      runId: completedRun.runId,
-      stateVersion: completedRun.iteration,
-      trajectoryOffset: trajectory.length,
-      contextHash: hashText(context),
-      artifactsHash: artifactsHash(artifacts),
-      createdAt: new Date().toISOString(),
-    };
-    await writeCheckpoint(changeDir, completedRun.checkpointRef, checkpoint);
-    await writeClassicState(changeDir, {
-      classic: completedClassic,
-      run: completedRun,
-      unknownKeys: (await readClassicState(changeDir)).unknownKeys,
-    });
-    await clearPendingAction(changeDir, completedRun.pendingRef);
-
-    output.stderr.push(green(`[SET] handoff_context=${contextJson}`));
-    output.stderr.push(green(`[SET] handoff_hash=${contextHash}`));
-
-    output.stderr.push(green(`[HANDOFF] wrote ${contextJson}`));
-    output.stderr.push(green(`[HANDOFF] wrote ${contextMd}`));
-    output.stderr.push(green(`[HANDOFF] handoff_hash=${contextHash}`));
-    return output.toResult(0);
-  } catch (error) {
-    if (error instanceof HandoffFailure) {
-      for (const line of error.message.split('\n')) output.stderr.push(line);
-      return output.toResult(error.exitCode);
-    }
-    throw error;
-  }
-};
+  });

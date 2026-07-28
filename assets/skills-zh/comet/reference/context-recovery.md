@@ -38,7 +38,7 @@ comet state check <change-name> <phase> --recover
 
 1. 使用 Skill 工具重新加载 Superpowers `subagent-driven-development` 技能
 2. 重新阅读 `comet/reference/subagent-dispatch.md` 获取 Comet 专属扩展
-3. 读取 `openspec/changes/<name>/.comet/subagent-progress.md`，恢复当前 task 或 final review、实现提交、RED/GREEN 证据、已通过审查、未解决反馈和审查-修复轮次
+3. 读取 `<classic-change-dir>/.comet/subagent-progress.md`，恢复当前 task 或 final review、实现提交、RED/GREEN 证据、已通过审查、未解决反馈和审查-修复轮次
 4. 禁止在主会话中直接执行 task
 5. 按检查点记录的精确阶段恢复；检查点缺失或不匹配时才从第一个未勾选 task 的 implementer 派发开始
 6. task 按 `review_mode` 完成验收并完成定向勾选验证后，立即继续下一个 task，不得总结或询问是否继续

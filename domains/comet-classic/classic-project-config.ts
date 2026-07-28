@@ -1,8 +1,6 @@
 import os from 'os';
-import { promises as fs } from 'fs';
 import path from 'path';
-import { parseDocument } from 'yaml';
-import { fileExists } from '../../platform/fs/file-system.js';
+import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
 
 type ClassicConfigValue = {
   value: string;
@@ -38,18 +36,16 @@ async function readClassicConfigValue(
   options: ClassicConfigOptions = {},
 ): Promise<ClassicConfigValue | null> {
   for (const candidate of configCandidates(options)) {
-    if (!(await fileExists(candidate.file))) continue;
-    // Classic 配置收纳在 `classic:` 嵌套块下（comet.project.v1）。这里只从该块读取，
-    // 不回退旧的顶层平铺格式——旧 config.yaml 由 `comet init`/`update` 迁移。
-    // parseDocument 对文件他处的语法错误容错（仍能构建可用树），因此别处损坏字段
-    // 不会阻断本次读取；被读字段本身的类型/枚举校验由下游各自的处理函数
-    // （validateLanguage、contextCompression 等）以规范错误报出，而非在此抛原始异常。
-    const document = parseDocument(await fs.readFile(candidate.file, 'utf8'), {
-      uniqueKeys: false,
-    });
-    const root = document.toJS();
-    if (!root || typeof root !== 'object' || Array.isArray(root)) continue;
-    const classic = (root as Record<string, unknown>).classic;
+    // 合法文档中的缺字段继续回退默认值或下一个候选；语法损坏、重复键和
+    // 已出现的托管字段非法则由共享 project-config seam 统一失败关闭。
+    const document = await readWorkflowProjectConfigDocument(
+      path.dirname(path.dirname(candidate.file)),
+      {
+        allowPartialProject: true,
+      },
+    );
+    if (!document) continue;
+    const classic = document.value.classic;
     if (!classic || typeof classic !== 'object' || Array.isArray(classic)) continue;
     const value = (classic as Record<string, unknown>)[field];
     if (value === null || value === undefined) continue;

@@ -35,7 +35,32 @@ Run focused checks.
 
 const classicStateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
-function initializeClassicChange(projectRoot: string, name: string): void {
+function bothProjectConfig(nativeRoot: string) {
+  const config = defaultProjectConfig(nativeRoot);
+  config.workflows = ['native', 'classic'];
+  config.classic = { artifact_layout: 'legacy', language: 'en' };
+  return config;
+}
+
+async function writeClassicOnlyConfig(projectRoot: string): Promise<void> {
+  await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(projectRoot, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      '  artifact_layout: legacy',
+      '  language: en',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+}
+
+async function initializeClassicChange(projectRoot: string, name: string): Promise<void> {
+  await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
   const result = spawnSync(process.execPath, [classicStateScript, 'init', name, 'full'], {
     cwd: projectRoot,
     encoding: 'utf8',
@@ -78,7 +103,8 @@ describe('Comet project status', () => {
     const state = await createNativeChange({ paths, name: 'native-only', language: 'en' });
     await fs.writeFile(path.join(nativeChangeDir(paths, state.name), state.brief), VALID_BRIEF);
 
-    await expect(inspectCometProjectStatus(projectRoot)).resolves.toMatchObject({
+    const status = await inspectCometProjectStatus(projectRoot);
+    expect(status).toMatchObject({
       schema: 'comet.status.v2',
       defaultEntry: {
         workflow: 'native',
@@ -99,6 +125,8 @@ describe('Comet project status', () => {
       },
       unmanagedOpenSpec: [],
     });
+    expect(status.workflows.classic).toEqual({ changes: [] });
+    expect(status.workflows.classic.error).toBeUndefined();
 
     await writeProjectConfig(projectRoot, {
       ...defaultProjectConfig('.'),
@@ -123,6 +151,7 @@ describe('Comet project status', () => {
   });
 
   it('keeps plain OpenSpec changes outside both Comet workflows', async () => {
+    await writeClassicOnlyConfig(projectRoot);
     const changeDir = path.join(projectRoot, 'openspec', 'changes', 'plain-change');
     await fs.mkdir(changeDir, { recursive: true });
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] done\n');
@@ -132,7 +161,7 @@ describe('Comet project status', () => {
     expect(status.defaultEntry).toEqual({
       workflow: 'classic',
       skill: 'comet-classic',
-      source: 'legacy-fallback',
+      source: 'project-config',
     });
     expect(status.workflows.native.changes).toEqual([]);
     expect(status.workflows.classic.changes).toEqual([]);
@@ -141,14 +170,82 @@ describe('Comet project status', () => {
         name: 'plain-change',
         cometManaged: false,
         archiveReady: true,
+        recommendedArchiveCommand: 'comet classic openspec -- archive plain-change -y',
         tasksCompleted: 1,
         tasksTotal: 1,
       }),
     ]);
   });
 
+  it('fails closed for a valid Classic change name backed by a directory link', async () => {
+    await writeClassicOnlyConfig(projectRoot);
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-project-status-outside-'));
+    try {
+      await fs.writeFile(path.join(outsideRoot, 'tasks.md'), '- [x] outside task\n', 'utf8');
+      await fs.mkdir(path.join(projectRoot, 'openspec', 'changes'), { recursive: true });
+      await fs.symlink(
+        outsideRoot,
+        path.join(projectRoot, 'openspec', 'changes', 'unsafe-change'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      const status = await inspectCometProjectStatus(projectRoot);
+
+      expect(status.unmanagedOpenSpec).toEqual([]);
+      expect(status.workflows.classic.changes).toEqual([
+        expect.objectContaining({
+          name: 'unsafe-change',
+          phase: 'invalid',
+          tasksCompleted: 0,
+          tasksTotal: 0,
+          error: expect.stringMatching(/symbolic link or junction/iu),
+        }),
+      ]);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed when a Classic runtime directory is a directory link', async () => {
+    await writeClassicOnlyConfig(projectRoot);
+    await initializeClassicChange(projectRoot, 'unsafe-runtime');
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-project-runtime-outside-'));
+    try {
+      await fs.symlink(
+        outsideRoot,
+        path.join(projectRoot, 'openspec', 'changes', 'unsafe-runtime', '.comet'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      const status = await inspectCometProjectStatus(projectRoot);
+
+      expect(status.workflows.classic.changes).toEqual([
+        expect.objectContaining({
+          name: 'unsafe-runtime',
+          phase: 'invalid',
+          error: expect.stringMatching(/symbolic link or junction/iu),
+        }),
+      ]);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('reports configured Classic as unavailable when its root is missing', async () => {
+    await writeClassicOnlyConfig(projectRoot);
+
+    const status = await inspectCometProjectStatus(projectRoot);
+
+    expect(status.workflows.classic).toEqual({
+      changes: [],
+      error: expect.stringContaining('Configured Classic OpenSpec root is missing'),
+    });
+    expect(status.unmanagedOpenSpec).toEqual([]);
+  });
+
   it('reports Classic-managed changes only in the Classic workflow', async () => {
-    initializeClassicChange(projectRoot, 'classic-only');
+    await writeClassicOnlyConfig(projectRoot);
+    await initializeClassicChange(projectRoot, 'classic-only');
 
     const status = await inspectCometProjectStatus(projectRoot);
 
@@ -165,8 +262,9 @@ describe('Comet project status', () => {
     expect(status.unmanagedOpenSpec).toEqual([]);
   });
 
-  it('keeps Classic and unmanaged OpenSpec visible when project config is malformed', async () => {
-    initializeClassicChange(projectRoot, 'classic-survives');
+  it('reports Classic unavailable without guessing a legacy root when project config is malformed', async () => {
+    await writeClassicOnlyConfig(projectRoot);
+    await initializeClassicChange(projectRoot, 'classic-survives');
     const unmanagedDir = path.join(projectRoot, 'openspec', 'changes', 'plain-survives');
     await fs.mkdir(unmanagedDir, { recursive: true });
     await fs.writeFile(path.join(unmanagedDir, 'tasks.md'), '- [ ] todo\n');
@@ -180,18 +278,106 @@ describe('Comet project status', () => {
       changes: [],
       error: expect.stringContaining('Invalid'),
     });
-    expect(status.workflows.classic.changes.map((change) => change.name)).toEqual([
-      'classic-survives',
+    expect(status.workflows.classic).toEqual({
+      changes: [],
+      error: expect.stringContaining('Invalid'),
+    });
+    expect(status.unmanagedOpenSpec).toEqual([]);
+  });
+
+  it('reports Classic unavailable without scanning either root during a dual-root conflict', async () => {
+    const config = defaultProjectConfig('docs');
+    config.default_workflow = 'classic';
+    config.workflows = ['classic'];
+    config.classic = { artifact_layout: 'docs' };
+    await writeProjectConfig(projectRoot, config);
+    await fs.mkdir(path.join(projectRoot, 'openspec', 'changes', 'legacy'), { recursive: true });
+    await fs.mkdir(path.join(projectRoot, 'docs', 'openspec', 'changes', 'configured'), {
+      recursive: true,
+    });
+
+    const status = await inspectCometProjectStatus(projectRoot);
+
+    expect(status.workflows.classic).toEqual({
+      changes: [],
+      error: expect.stringContaining('Classic layout conflict'),
+    });
+    expect(status.unmanagedOpenSpec).toEqual([]);
+  });
+
+  it.each(['changes-root', 'change-dir'] as const)(
+    'does not inspect project-external Classic state through a %s junction',
+    async (kind) => {
+      await writeClassicOnlyConfig(projectRoot);
+      const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-status-outside-'));
+      try {
+        await fs.writeFile(
+          path.join(outsideRoot, '.comet.yaml'),
+          'workflow: TOP_SECRET\nphase: build\n',
+          'utf8',
+        );
+        await fs.writeFile(path.join(outsideRoot, 'tasks.md'), '- [ ] external secret\n', 'utf8');
+        const changesRoot = path.join(projectRoot, 'openspec', 'changes');
+        const target =
+          kind === 'changes-root' ? changesRoot : path.join(changesRoot, 'external-change');
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        try {
+          await fs.symlink(outsideRoot, target, process.platform === 'win32' ? 'junction' : 'dir');
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+          throw error;
+        }
+
+        const status = await inspectCometProjectStatus(projectRoot);
+
+        if (kind === 'changes-root') {
+          expect(status.workflows.classic.changes).toEqual([]);
+          expect(status.workflows.classic.error).toMatch(/symbolic link or junction/iu);
+        } else {
+          expect(status.workflows.classic.error).toBeUndefined();
+          expect(status.workflows.classic.changes).toEqual([
+            expect.objectContaining({
+              name: 'external-change',
+              phase: 'invalid',
+              error: expect.stringMatching(/symbolic link or junction/iu),
+            }),
+          ]);
+        }
+        expect(status.unmanagedOpenSpec).toEqual([]);
+        expect(JSON.stringify(status)).not.toContain('TOP_SECRET');
+        expect(JSON.stringify(status)).not.toContain('external secret');
+      } finally {
+        await fs.rm(outsideRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('ignores unrelated invalid names but fails closed for a legal-name non-directory', async () => {
+    await writeClassicOnlyConfig(projectRoot);
+    const changesRoot = path.join(projectRoot, 'openspec', 'changes');
+    await fs.mkdir(changesRoot, { recursive: true });
+    await fs.writeFile(path.join(changesRoot, 'README.md'), 'ignore\n', 'utf8');
+    await fs.writeFile(path.join(changesRoot, 'legal-name'), 'not a change directory\n', 'utf8');
+
+    const status = await inspectCometProjectStatus(projectRoot);
+
+    expect(status.workflows.classic.error).toBeUndefined();
+    expect(status.workflows.classic.changes).toEqual([
+      expect.objectContaining({
+        name: 'legal-name',
+        phase: 'invalid',
+        error: expect.stringMatching(/must be a real directory/iu),
+      }),
     ]);
-    expect(status.unmanagedOpenSpec.map((change) => change.name)).toEqual(['plain-survives']);
+    expect(status.unmanagedOpenSpec).toEqual([]);
   });
 
   it('keeps same-name Native and Classic changes separate under a custom artifact root', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const native = await createNativeChange({ paths, name: 'shared-name', language: 'en' });
     await fs.writeFile(path.join(nativeChangeDir(paths, native.name), native.brief), VALID_BRIEF);
-    initializeClassicChange(projectRoot, 'shared-name');
+    await initializeClassicChange(projectRoot, 'shared-name');
     const unmanagedDir = path.join(projectRoot, 'openspec', 'changes', 'plain-change');
     await fs.mkdir(unmanagedDir, { recursive: true });
 
@@ -226,11 +412,11 @@ describe('Comet project status', () => {
   });
 
   it('discovers the configured project from a nested working directory', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const native = await createNativeChange({ paths, name: 'nested-native', language: 'en' });
     await fs.writeFile(path.join(nativeChangeDir(paths, native.name), native.brief), VALID_BRIEF);
-    initializeClassicChange(projectRoot, 'nested-classic');
+    await initializeClassicChange(projectRoot, 'nested-classic');
     const nested = path.join(projectRoot, 'src', 'feature');
     await fs.mkdir(nested, { recursive: true });
 
@@ -244,7 +430,7 @@ describe('Comet project status', () => {
   });
 
   it('does not let corrupt changes on either workflow hide healthy changes', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await writeProjectConfig(projectRoot, bothProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
     const healthyNative = await createNativeChange({
       paths,
@@ -259,8 +445,8 @@ describe('Comet project status', () => {
     await fs.mkdir(brokenNativeDir, { recursive: true });
     await fs.writeFile(path.join(brokenNativeDir, 'comet-state.yaml'), 'schema: [broken\n');
 
-    initializeClassicChange(projectRoot, 'classic-healthy');
-    initializeClassicChange(projectRoot, 'classic-broken');
+    await initializeClassicChange(projectRoot, 'classic-healthy');
+    await initializeClassicChange(projectRoot, 'classic-broken');
     await fs.appendFile(
       path.join(projectRoot, 'openspec', 'changes', 'classic-broken', '.comet.yaml'),
       'unknown_field: true\n',
@@ -287,11 +473,11 @@ describe('Comet project status', () => {
   });
 
   it('reads mixed Native, Classic, and OpenSpec status without changing project files', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const native = await createNativeChange({ paths, name: 'native-readonly', language: 'en' });
     await fs.writeFile(path.join(nativeChangeDir(paths, native.name), native.brief), VALID_BRIEF);
-    initializeClassicChange(projectRoot, 'classic-readonly');
+    await initializeClassicChange(projectRoot, 'classic-readonly');
     const classicState = path.join(
       projectRoot,
       'openspec',

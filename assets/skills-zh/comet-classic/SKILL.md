@@ -5,6 +5,8 @@ description: "用于用户明确调用 /comet-classic、要求启动或恢复永
 
 # Comet Classic — OpenSpec + Superpowers 双星开发流程
 
+开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+
 OpenSpec 与 Superpowers 如双星系统围绕同一目标运转。
 
 ```
@@ -22,14 +24,14 @@ agent 做决策只需读本节，参考附录按需查阅。
 
 ### 输出语言规则
 
-所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言。配置值是规范化语言 ID，`en` 或 `zh-CN`。已有 change 优先通过 `comet state get <name> language` 读取 `openspec/changes/<name>/.comet.yaml` 中的 `language`；`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；都不存在时才回退到当前用户请求语言。调用外部 OpenSpec/Superpowers skill 时，必须把解析后的语言显式写入 prompt 或 ARGUMENTS。
+所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言。配置值是规范化语言 ID，`en` 或 `zh-CN`。已有 change 优先通过 `comet state get <name> language` 读取 `<classic-change-dir>/.comet.yaml` 中的 `language`；`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；都不存在时才回退到当前用户请求语言。调用外部 OpenSpec/Superpowers skill 时，必须把解析后的语言显式写入 prompt 或 ARGUMENTS。
 
 ### 阶段自动检测
 
 **Step 0: 活跃 Change 发现与意图判定**
 
 1. 先按 `comet/reference/scripts.md` 完成脚本定位，确保 `$COMET_INTENT` 可用。
-2. 运行 `openspec list --json` 获取所有活跃 change。
+2. 运行 `comet classic openspec -- list --json` 获取所有活跃 change。
 3. 根据用户请求、active change 列表和必要仓库状态填写 `CometIntentFrame`。
 4. 优先用 `node "$COMET_INTENT" route --stdin` 传入 frame JSON，获取 runtime 规范化路由。`CometIntentFrame + runtime scorer` 是事实源；本节自然语言规则只用于意图识别槽位提取。
 5. 按 runtime route 处理：
@@ -120,7 +122,7 @@ node "$COMET_RESUME_PROBE" probe --stdin
 
 **Step 1: 读取 `.comet.yaml` 状态元数据**
 
-优先读取 `openspec/changes/<name>/.comet.yaml`。不存在时回退到 `openspec status --change "<name>" --json`、`tasks.md` 和 `docs/superpowers/` 文件检查。
+优先读取 `<classic-change-dir>/.comet.yaml`。不存在时回退到 `comet classic openspec -- status --change "<name>" --json`、`<classic-change-dir>/tasks.md` 和 `<classic-superpowers-root>/` 文件检查。
 
 **断点恢复规则**：
 - 每次恢复上下文时，先重新执行 Step 0 和 Step 1，不依赖对话历史判断阶段
@@ -168,7 +170,7 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 
 | 场景 | 处理方式 |
 |------|---------|
-| `openspec list --json` 失败 | 检查 openspec 是否已安装，提示 `openspec init` |
+| `comet classic openspec -- list --json` 失败 | 检查 OpenSpec 是否已安装；若 artifact root 缺失或损坏，提示运行 `comet update --scope project` 或重新运行 `comet init --scope project` |
 | 子 skill 不可用 | 停止流程，提示安装或启用对应 skill |
 | `.comet.yaml` 缺失 | 进入对应 preset 的 `/comet-open` 初始化状态，再运行 `comet state select`；不得跳过初始化 |
 | `.comet.yaml` 格式异常 | 停止并报告解析错误；从版本控制、备份或可验证产物人工修复，不能用 `comet state set` 覆盖损坏文件 |

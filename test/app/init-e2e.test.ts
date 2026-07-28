@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { parse } from 'yaml';
 import { getProjectRegistryPath } from '../../platform/install/project-registry.js';
 
 vi.mock('child_process', () => ({
@@ -63,7 +64,8 @@ function skillPathsForWorkflow(
   return manifest.skills.filter((skillPath) => !skillPath.startsWith('comet-native/'));
 }
 
-function mockExternalSuccess() {
+function mockExternalSuccess(options: { openSpecConfig?: 'healthy' | 'missing' | 'corrupt' } = {}) {
+  const openSpecConfig = options.openSpecConfig ?? 'healthy';
   mockedExecFileSync.mockImplementation((command: unknown, args?: unknown, opts?: unknown) => {
     const cmd = String(command);
     const cmdArgs = Array.isArray(args) ? args.map((arg) => String(arg)) : [];
@@ -88,6 +90,16 @@ function mockExternalSuccess() {
       return Buffer.from('1.5.0');
     }
     if (cmd === 'openspec' && cmdArgs[0] === 'init') {
+      const targetPath = cmdArgs[1];
+      if (targetPath) {
+        const openSpecRoot = path.join(targetPath, 'openspec');
+        mkdirSync(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
+        if (openSpecConfig === 'healthy') {
+          writeFileSync(path.join(openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
+        } else if (openSpecConfig === 'corrupt') {
+          writeFileSync(path.join(openSpecRoot, 'config.yaml'), 'schema: [broken\n');
+        }
+      }
       return Buffer.from('ok');
     }
     if ((cmd === 'npx' || cmd === 'npx.cmd') && cmdArgs[0] === 'skills') {
@@ -360,6 +372,564 @@ describe('comet init E2E', () => {
     await expect(
       fs.access(path.join(tmpDir, '.comet', 'current-change.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('adds Classic with the docs layout when a Native-only project is reinitialized as Both', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'native', language: 'en' }),
+    );
+    mockedExecFileSync.mockClear();
+    mockExternalSuccess();
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'both', language: 'en' }),
+    );
+    const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')) as {
+      workflows?: string[];
+      classic?: { artifact_layout?: string };
+    };
+
+    expect(result).toMatchObject({
+      status: 'complete',
+      projectConfigCreated: false,
+      projectConfigUpdated: true,
+    });
+    expect(config.workflows).toEqual(['native', 'classic']);
+    expect(config.classic?.artifact_layout).toBe('docs');
+    await expect(fs.stat(path.join(tmpDir, 'docs', 'openspec'))).resolves.toBeDefined();
+    await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('preserves both configured workflows when non-interactive init is repeated without --workflow', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'both', language: 'en' }),
+    );
+    mockedExecFileSync.mockClear();
+    mockExternalSuccess();
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, language: 'en', overwrite: true }),
+    );
+    const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')) as {
+      default_workflow?: string;
+      workflows?: string[];
+      native?: unknown;
+      classic?: unknown;
+    };
+
+    expect(result).toMatchObject({
+      status: 'complete',
+      initializedWorkflows: ['native', 'classic'],
+    });
+    expect(config).toMatchObject({
+      default_workflow: 'native',
+      workflows: ['native', 'classic'],
+      native: expect.any(Object),
+      classic: expect.any(Object),
+    });
+  });
+
+  it('uninstalls Comet-owned directories after real Classic init while preserving the OpenSpec root', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+    const { removeWorkingDirs } = await import('../../domains/skill/uninstall.js');
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'classic', language: 'en' }),
+    );
+    const openSpecConfig = path.join(tmpDir, 'docs', 'openspec', 'config.yaml');
+    await expect(fs.readFile(openSpecConfig, 'utf8')).resolves.toContain('schema: spec-driven');
+
+    await expect(removeWorkingDirs(tmpDir)).resolves.toEqual({ removed: 1, failed: 0 });
+
+    await expect(fs.readFile(openSpecConfig, 'utf8')).resolves.toContain('schema: spec-driven');
+    await expect(fs.stat(path.join(tmpDir, '.comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('keeps a Classic-only config lossless when reinitializing it as Both', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'classic', language: 'en' }),
+    );
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+    const classicOnly = await fs.readFile(configPath, 'utf8');
+    expect(parse(classicOnly)).toMatchObject({
+      default_workflow: 'classic',
+      workflows: ['classic'],
+      classic: { artifact_layout: 'docs' },
+    });
+    expect(parse(classicOnly)).not.toHaveProperty('native');
+    await fs.writeFile(
+      configPath,
+      classicOnly
+        .replace('classic:\n', 'classic:\n  custom_classic: keep-classic\n')
+        .concat('custom_top: keep-top\n'),
+      'utf8',
+    );
+
+    mockedExecFileSync.mockClear();
+    mockExternalSuccess();
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'both',
+        language: 'en',
+        overwrite: true,
+      }),
+    );
+    const updated = parse(await fs.readFile(configPath, 'utf8'));
+
+    expect(result).toMatchObject({
+      status: 'complete',
+      projectConfigCreated: false,
+      projectConfigUpdated: true,
+    });
+    expect(updated).toMatchObject({
+      default_workflow: 'native',
+      workflows: ['native', 'classic'],
+      native: { artifact_root: 'docs' },
+      classic: {
+        artifact_layout: 'docs',
+        custom_classic: 'keep-classic',
+      },
+      custom_top: 'keep-top',
+    });
+  });
+
+  it('keeps the prior Classic-only config when the final Both config write fails', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'classic', language: 'en' }),
+    );
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+    const classicOnly = await fs.readFile(configPath, 'utf8');
+    expect(parse(classicOnly)).toMatchObject({
+      default_workflow: 'classic',
+      workflows: ['classic'],
+    });
+
+    const configWriter = await import('../../domains/workflow-contract/project-config-writer.js');
+    vi.spyOn(configWriter, 'writeWorkflowProjectConfig').mockRejectedValueOnce(
+      new Error('config commit failed'),
+    );
+    mockedExecFileSync.mockClear();
+    mockExternalSuccess();
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'both',
+        language: 'en',
+        overwrite: true,
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      projectConfigCreated: false,
+      projectConfigUpdated: false,
+      failures: [
+        expect.objectContaining({
+          component: 'Finalization',
+          reason: 'config commit failed',
+        }),
+      ],
+    });
+    expect(await fs.readFile(configPath, 'utf8')).toBe(classicOnly);
+  });
+
+  it('preserves the owned Classic root and journal when a fresh config commit fails', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'docs', 'keep.txt'), 'keep\n');
+    const configWriter = await import('../../domains/workflow-contract/project-config-writer.js');
+    vi.spyOn(configWriter, 'writeWorkflowProjectConfig').mockRejectedValueOnce(
+      new Error('config commit failed'),
+    );
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'classic',
+        language: 'en',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      projectConfigCreated: false,
+      projectConfigUpdated: false,
+    });
+    await expect(fs.readFile(path.join(tmpDir, 'docs', 'keep.txt'), 'utf8')).resolves.toBe(
+      'keep\n',
+    );
+    await expect(fs.stat(path.join(tmpDir, 'docs', 'openspec'))).resolves.toBeDefined();
+    await expect(
+      fs.stat(path.join(tmpDir, '.comet', 'classic-init-ownership.json')),
+    ).resolves.toBeDefined();
+  });
+
+  it('does not overwrite config drift introduced after Classic directories are created', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'native', language: 'en' }),
+    );
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+    const projectInstructions = await import('../../domains/skill/project-instructions.js');
+    const installInstructions = projectInstructions.installCometProjectInstructions;
+    let drifted = false;
+    vi.spyOn(projectInstructions, 'installCometProjectInstructions').mockImplementation(
+      async (...args) => {
+        await installInstructions(...args);
+        if (!drifted) {
+          const source = await fs.readFile(configPath, 'utf8');
+          await fs.writeFile(
+            configPath,
+            source.replace('artifact_root: docs', 'artifact_root: artifacts'),
+            'utf8',
+          );
+          drifted = true;
+        }
+      },
+    );
+    mockedExecFileSync.mockClear();
+    mockExternalSuccess();
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'both',
+        language: 'en',
+        overwrite: true,
+      }),
+    );
+    const driftedConfig = parse(await fs.readFile(configPath, 'utf8'));
+
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      projectConfigCreated: false,
+      projectConfigUpdated: false,
+      failures: [
+        expect.objectContaining({
+          component: 'Finalization',
+          reason: expect.stringMatching(
+            /project config changed during Classic layout initialization/iu,
+          ),
+        }),
+      ],
+    });
+    expect(driftedConfig).toMatchObject({
+      default_workflow: 'native',
+      workflows: ['native'],
+      native: { artifact_root: 'artifacts' },
+    });
+    expect(driftedConfig).not.toHaveProperty('classic');
+  });
+
+  it('does not use a stale workflow decision when config changes before Classic preflight', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'native', language: 'en' }),
+    );
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+    const platformInstall = await import('../../domains/skill/platform-install.js');
+    const prepareNativeTarget = platformInstall.prepareNativeSkillInstallTarget;
+    let drifted = false;
+    vi.spyOn(platformInstall, 'prepareNativeSkillInstallTarget').mockImplementation(
+      async (...args) => {
+        await prepareNativeTarget(...args);
+        if (!drifted) {
+          const source = await fs.readFile(configPath, 'utf8');
+          await fs.writeFile(
+            configPath,
+            source.replace('artifact_root: docs', 'artifact_root: artifacts'),
+            'utf8',
+          );
+          drifted = true;
+        }
+      },
+    );
+    mockedExecFileSync.mockClear();
+    mockExternalSuccess();
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'both',
+        language: 'en',
+        overwrite: true,
+      }),
+    );
+    const driftedConfig = parse(await fs.readFile(configPath, 'utf8'));
+
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      projectConfigCreated: false,
+      projectConfigUpdated: false,
+    });
+    expect(result.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: expect.stringMatching(
+            /project config changed (?:after the workflow decision|before commit)/iu,
+          ),
+        }),
+      ]),
+    );
+    expect(driftedConfig).toMatchObject({
+      default_workflow: 'native',
+      workflows: ['native'],
+      native: { artifact_root: 'artifacts' },
+    });
+    expect(driftedConfig).not.toHaveProperty('classic');
+    expect(
+      mockedExecFileSync.mock.calls.filter(
+        ([command, args]) =>
+          String(command) === 'openspec' && Array.isArray(args) && args.map(String)[0] === 'init',
+      ),
+    ).toHaveLength(0);
+    await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('does not update an existing config when artifact-root OpenSpec init fails', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'native', language: 'en' }),
+    );
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+    const configBefore = await fs.readFile(configPath);
+    const externalSuccess = mockedExecFileSync.getMockImplementation();
+    mockedExecFileSync.mockImplementation((command, args, options) => {
+      const commandArgs = Array.isArray(args) ? args.map(String) : [];
+      const toolsIndex = commandArgs.indexOf('--tools');
+      if (
+        String(command) === 'openspec' &&
+        commandArgs[0] === 'init' &&
+        toolsIndex >= 0 &&
+        commandArgs[toolsIndex + 1] === 'none'
+      ) {
+        throw new Error('artifact root init failed');
+      }
+      return externalSuccess?.(command, args, options);
+    });
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'both',
+        language: 'en',
+        overwrite: true,
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      projectConfigCreated: false,
+      projectConfigUpdated: false,
+      failures: [
+        expect.objectContaining({
+          component: 'OpenSpec',
+          reason: expect.stringContaining('artifact root init failed'),
+        }),
+      ],
+    });
+    await expect(fs.readFile(configPath)).resolves.toEqual(configBefore);
+  });
+
+  it('reuses the Classic permit and reports a partial failure when config drifts during OpenSpec init', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'native', language: 'en' }),
+    );
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+    const externalSuccess = mockedExecFileSync.getMockImplementation();
+    let drifted = false;
+    mockedExecFileSync.mockImplementation((command, args, options) => {
+      const commandArgs = Array.isArray(args) ? args.map(String) : [];
+      if (String(command) === 'openspec' && commandArgs[0] === 'init' && !drifted) {
+        const source = readFileSync(configPath, 'utf8');
+        writeFileSync(
+          configPath,
+          source.replace('artifact_root: docs', 'artifact_root: artifacts'),
+          'utf8',
+        );
+        drifted = true;
+      }
+      return externalSuccess?.(command, args, options);
+    });
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'both',
+        language: 'en',
+        overwrite: true,
+      }),
+    );
+    const driftedConfig = parse(await fs.readFile(configPath, 'utf8'));
+
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      projectConfigCreated: false,
+      projectConfigUpdated: false,
+    });
+    expect(result.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          component: 'OpenSpec',
+          reason: expect.stringMatching(/partial failure.*project config changed/iu),
+        }),
+      ]),
+    );
+    expect(driftedConfig).toMatchObject({
+      default_workflow: 'native',
+      workflows: ['native'],
+      native: { artifact_root: 'artifacts' },
+    });
+    await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it.each(['missing', 'corrupt'] as const)(
+    'does not commit the project config when OpenSpec exits successfully with a %s config',
+    async (openSpecConfig) => {
+      mockExternalSuccess({ openSpecConfig });
+      await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+      const { initCommand } = await import('../../app/commands/init.js');
+
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          workflow: 'classic',
+          language: 'en',
+        }),
+      );
+
+      expect(result).toMatchObject({
+        status: 'incomplete',
+        projectConfigCreated: false,
+        projectConfigUpdated: false,
+      });
+      expect(result.failures).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            component: 'OpenSpec',
+            reason: expect.stringMatching(/OpenSpec root is unhealthy/iu),
+          }),
+        ]),
+      );
+      await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    },
+  );
+
+  it('initializes Classic with a config-bound permit when every OpenSpec asset is skipped', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'native', language: 'en' }),
+    );
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'openspec-propose'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'openspec-propose', 'SKILL.md'),
+      '# OpenSpec\n',
+      'utf8',
+    );
+    mockedExecFileSync.mockClear();
+    mockExternalSuccess();
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'both',
+        language: 'en',
+        skipExisting: true,
+      }),
+    );
+    const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'));
+
+    expect(result).toMatchObject({
+      status: 'complete',
+      projectConfigUpdated: true,
+      classicArtifactLayout: 'docs',
+    });
+    expect(config).toMatchObject({
+      workflows: ['native', 'classic'],
+      classic: { artifact_layout: 'docs' },
+    });
+    expect(
+      mockedExecFileSync.mock.calls.some(
+        ([command, args]) =>
+          String(command) === 'openspec' && Array.isArray(args) && args.map(String)[0] === 'init',
+      ),
+    ).toBe(true);
+    expect(
+      mockedExecFileSync.mock.calls.filter(
+        ([command, args]) =>
+          String(command) === 'openspec' && Array.isArray(args) && args.map(String)[0] === 'init',
+      ),
+    ).toHaveLength(1);
+    expect(
+      mockedExecFileSync.mock.calls.find(
+        ([command, args]) =>
+          String(command) === 'openspec' && Array.isArray(args) && args.map(String)[0] === 'init',
+      )?.[1],
+    ).toEqual(expect.arrayContaining(['--tools', 'none']));
+    await expect(
+      fs.readFile(path.join(tmpDir, 'docs', 'openspec', 'config.yaml'), 'utf8'),
+    ).resolves.toContain('schema: spec-driven');
   });
 
   it.each([
@@ -1117,6 +1687,58 @@ describe('comet init E2E', () => {
       };
       expect(registry.projects[0].lastTargets).toContainEqual(
         expect.objectContaining({ platform: 'codex' }),
+      );
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
+    'repeated init fails closed without invoking OpenSpec or mutating either artifact root when both roots exist',
+    async () => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      const { initCommand } = await import('../../app/commands/init.js');
+
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, language: 'en', workflow: 'classic' }),
+      );
+      await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'legacy\n', 'utf8');
+      await fs.writeFile(
+        path.join(tmpDir, 'docs', 'openspec', 'docs-marker.txt'),
+        'docs\n',
+        'utf8',
+      );
+      const configBefore = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8');
+
+      mockedExecFileSync.mockClear();
+      mockExternalSuccess();
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, language: 'en', workflow: 'classic' }),
+      );
+
+      expect(result).toMatchObject({
+        status: 'incomplete',
+        failures: expect.arrayContaining([
+          expect.objectContaining({
+            component: 'OpenSpec',
+            reason: expect.stringContaining('Classic layout conflict'),
+          }),
+        ]),
+      });
+      expect(
+        mockedExecFileSync.mock.calls.some(
+          ([command, args]) => command === 'openspec' && Array.isArray(args) && args[0] === 'init',
+        ),
+      ).toBe(false);
+      await expect(
+        fs.readFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'utf8'),
+      ).resolves.toBe('legacy\n');
+      await expect(
+        fs.readFile(path.join(tmpDir, 'docs', 'openspec', 'docs-marker.txt'), 'utf8'),
+      ).resolves.toBe('docs\n');
+      await expect(fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')).resolves.toBe(
+        configBefore,
       );
     },
     INIT_E2E_TIMEOUT_MS,

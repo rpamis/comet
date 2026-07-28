@@ -17,6 +17,14 @@ Project configuration, current selection, and change state are read inputs. Do n
 
 The Native artifact root is selected only by `.comet/config.yaml`. Do not scan another workflow's directories or create a second state root.
 
+## Scope snapshot boundaries
+
+Git snapshots contain tracked and non-ignored untracked files, with each submodule/gitlink treated atomically. Non-Git projects use a bounded physical-tree snapshot.
+
+- `git-selection-changed`: wait until Git writes are stable, then retry. It cannot be authorized as partial scope.
+- `physical-selection-changed` or `physical-enumeration-limit`: wait for a stable filesystem or reduce the project tree, then retry. Neither can be authorized as partial scope.
+- When scope details exceed the budget, the Runtime reports a `scope-detail-overflow` count and content hash instead of guessing omitted paths. Do not edit evidence or treat an incomplete snapshot as complete.
+
 ## Project configuration
 
 Configuration that directly affects Agent behavior:

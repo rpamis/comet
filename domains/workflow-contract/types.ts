@@ -1,5 +1,81 @@
 export type WorkflowKind = 'comet-five-phase-overlay' | 'comet-native' | 'workflow-kernel';
 
+export type CometProjectWorkflow = 'native' | 'classic';
+export type ClassicArtifactLayout = 'legacy' | 'docs';
+export type ProjectConfigLanguage = 'en' | 'zh-CN';
+export type WorkflowNativeClarificationMode = 'sequential' | 'batch';
+export type WorkflowNativeArchiveConfirmation = 'automatic' | 'required';
+export type WorkflowNativeRootMoveCleanupKind =
+  | 'forward-source'
+  | 'restart-staging'
+  | 'rollback-destination'
+  | 'rollback-staging';
+
+export interface WorkflowNativeRootMoveCleanup {
+  kind: WorkflowNativeRootMoveCleanupKind;
+  state: 'prepared' | 'quarantined' | 'deleting';
+  manifestHash: string;
+}
+
+export interface WorkflowNativePendingRootMove {
+  id: string;
+  fromArtifactRoot: string;
+  toArtifactRoot: string;
+  stage: 'copying' | 'ready' | 'switched';
+  cleanup?: WorkflowNativeRootMoveCleanup;
+}
+
+export interface WorkflowNativeSnapshotConfig {
+  include: string[];
+  exclude: string[];
+  max_files: number;
+  max_total_bytes: number;
+  max_duration_ms: number;
+}
+
+export interface WorkflowNativeProjectConfig {
+  artifact_root: string;
+  language: ProjectConfigLanguage;
+  clarification_mode: WorkflowNativeClarificationMode;
+  archive_confirmation: WorkflowNativeArchiveConfirmation;
+  max_verify_failures: number;
+  snapshot: WorkflowNativeSnapshotConfig;
+  pending_root_move?: WorkflowNativePendingRootMove;
+}
+
+export interface WorkflowClassicProjectConfig {
+  artifact_layout?: ClassicArtifactLayout;
+  language?: ProjectConfigLanguage;
+  context_compression?: 'off' | 'beta';
+  review_mode?: 'off' | 'standard' | 'thorough';
+  auto_transition?: boolean;
+}
+
+export interface WorkflowProjectConfig {
+  schema: 'comet.project.v1';
+  default_workflow: CometProjectWorkflow;
+  workflows?: CometProjectWorkflow[];
+  ambient_resume: boolean;
+  native?: WorkflowNativeProjectConfig;
+  classic?: WorkflowClassicProjectConfig;
+}
+
+export interface WorkflowNativeEnabledProjectConfig extends WorkflowProjectConfig {
+  native: WorkflowNativeProjectConfig;
+}
+
+/**
+ * A strict YAML document plus its normalized managed projection. `value`
+ * retains unknown extension fields for lossless read-modify-write updates.
+ */
+export interface ParsedWorkflowProjectConfigDocument {
+  value: Record<string, unknown>;
+  config: WorkflowProjectConfig | null;
+  ambient_resume: boolean;
+  native?: WorkflowNativeProjectConfig;
+  classic?: WorkflowClassicProjectConfig;
+}
+
 export type WorkflowNodeKind = 'control' | 'producer' | 'action' | 'handoff' | 'guardrail';
 
 export type WorkflowNodeOperation = 'require' | 'augment' | 'override' | 'disable';
@@ -20,7 +96,7 @@ export interface WorkflowArtifactSchema {
   kind: 'file' | 'directory' | 'state' | 'report';
   required: boolean;
   paths: string[];
-  pathBase?: 'project' | 'native-root';
+  pathBase?: 'project' | 'native-root' | 'classic-openspec-root' | 'classic-superpowers-root';
   validations: OutputValidationKind[];
 }
 
@@ -112,7 +188,7 @@ export interface WorkflowEdge {
 export interface WorkflowStateSpec {
   kind: 'comet-overlay' | 'native-change' | 'workflow-run';
   statePath: string;
-  pathBase?: 'project' | 'native-root';
+  pathBase?: 'project' | 'native-root' | 'classic-openspec-root' | 'classic-superpowers-root';
   currentNodeField: string;
   completedNodesField: string;
   evidenceField: string;

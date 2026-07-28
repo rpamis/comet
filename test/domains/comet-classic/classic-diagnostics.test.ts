@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { inspectClassicChange } from '../../../domains/comet-classic/classic-diagnostics.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 describe('Classic diagnostics', () => {
   let projectRoot: string;
@@ -13,6 +14,7 @@ describe('Classic diagnostics', () => {
   beforeEach(async () => {
     previousCwd = process.cwd();
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-diagnostics-'));
+    await prepareClassicLegacyProject(projectRoot);
     changeDir = path.join(projectRoot, 'openspec', 'changes', 'demo');
     await fs.mkdir(changeDir, { recursive: true });
     process.chdir(projectRoot);

@@ -26,6 +26,8 @@ Native 保存需求、完整目标规格、状态和证据。你负责理解、�
 
 磁盘中的 config、selection、change 状态和正式产物优先于聊天记忆。不要直接编辑 Runtime 管理的状态、证据、锁或事务文件。
 
+Native 主流程不依赖任何外部 Skill。
+
 不要接收签名私钥，也不要代替外部审批角色。缺少外部动作时，按 Runtime continuation 等待并转交所需命令。
 
 ## 开始或恢复
@@ -117,13 +119,15 @@ comet native archive <change-name> --dry-run
 
 ## Continuation 与停止条件
 
-每次 transition 后按 Runtime continuation 行动：
+Shape、Build 和 Verify 的 transition 都会返回 `next: auto | manual`、`continuation.disposition: continue | await-user | blocked | done`、所需输入与下一步动作；Archive 不通过 `next` 推进，归档成功才返回 `done`。每次 transition 后按该 Runtime continuation 行动：
 
 - `continue`：重新读取 phase 和当前所需产物后继续；
 - `await-user`：等待确实属于用户或外部角色的输入；
 - `blocked`：处理 findings，必要时读取恢复参考；
 - `done`：change 已完成。
 
-`next: auto` 只表示本次 transition 成功，不表示后续步骤已执行。调用方明确要求在某次 transition 后停止时，成功后立即结束，即使 continuation 为 `continue` 也不得继续执行后续步骤。
+`next: auto` 只表示本次 transition 成功，不表示后续步骤已执行。调用方明确要求在某次 transition 后停止时，严格按“更新正式产物 → 执行一次允许的 transition → transition 成功后不再调用工具 → 输出约定标记并结束本轮”执行；即使 continuation 为 `continue` 也不得继续执行后续步骤。
+
+`workspace-root-changed` 与 `workspace-inspection-unavailable` 是只读提示，不单独阻止推进或归档。未知的 workspace 完整性 finding、确定冲突、失效证据和 repair stop 必须处理；Runtime 要求修复工作区身份时，先运行只读 doctor，再按报告执行显式 `doctor --repair`。
 
 摘要、理由、报告和产物中不得写入 token、密码、私钥、连接串或其他凭据。

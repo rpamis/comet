@@ -5,6 +5,8 @@ description: "仅在用户明确调用 /comet-build，或由 Comet 根 Skill/run
 
 # Comet 阶段 3：计划与构建（Build）
 
+开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+
 ## 前置条件
 
 - Design Doc 已创建（阶段 2 完成）
@@ -37,7 +39,7 @@ comet state check <name> build
 
 1. **立即执行：** 使用 Skill 工具加载 Superpowers `writing-plans` 技能。禁止跳过此步骤。技能加载后，ARGUMENTS 必须包含：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`
 2. 读取 Design Doc（`docs/superpowers/specs/` 下的技术设计文档）
-3. 读取 `openspec/changes/<name>/tasks.md`（任务边界）
+3. 读取 `<classic-change-dir>/tasks.md`（任务边界）
 4. 按技能指引创建计划
 
 计划要求：

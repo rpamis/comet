@@ -5,6 +5,7 @@ import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { readRunState } from '../../../domains/engine/state.js';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
@@ -31,6 +32,7 @@ function run(cwd: string, ...args: string[]) {
 
 async function makeProject(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-guard-'));
+  await prepareClassicLegacyProject(dir);
   temporary.push(dir);
   return dir;
 }

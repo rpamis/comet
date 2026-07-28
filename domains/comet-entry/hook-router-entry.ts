@@ -3,6 +3,10 @@ import { promises as fs } from 'fs';
 
 import { discoverNativeProject } from '../comet-native/native-paths.js';
 import {
+  assertClassicLayoutReadable,
+  discoverClassicProject,
+} from '../comet-classic/classic-layout.js';
+import {
   COMET_HOOK_PLATFORM_IDS,
   readCometHookRequest,
   renderCometHookDecision,
@@ -43,7 +47,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
 export async function projectRootFrom(parsed: ParsedArgs): Promise<string | null> {
   if (parsed.projectRoot) return parsed.projectRoot;
   const discovered = await discoverNativeProject(process.cwd());
-  for (const marker of [['.comet', 'config.yaml'], ['.git'], ['openspec', 'changes']]) {
+  for (const marker of [['.comet', 'config.yaml'], ['.git']]) {
     try {
       await fs.lstat(path.join(discovered, ...marker));
       return discovered;
@@ -51,17 +55,13 @@ export async function projectRootFrom(parsed: ParsedArgs): Promise<string | null
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
-  let cursor = path.resolve(process.cwd());
-  while (true) {
-    try {
-      await fs.lstat(path.join(cursor, 'openspec', 'changes'));
-      return cursor;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
-    const parent = path.dirname(cursor);
-    if (parent === cursor) break;
-    cursor = parent;
+  const classic = await discoverClassicProject(process.cwd());
+  const layout = await assertClassicLayoutReadable(classic);
+  try {
+    await fs.lstat(layout.changesDir);
+    return classic;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   return null;
 }

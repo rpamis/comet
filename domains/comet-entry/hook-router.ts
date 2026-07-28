@@ -7,7 +7,7 @@ import {
   inspectNativeHookGuard,
   listActiveNativeHookChanges,
 } from '../comet-native/native-hook-guard.js';
-import { readProjectConfig } from '../comet-native/native-config.js';
+import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import { readCometCurrentSelection } from './current-selection.js';
 import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
@@ -47,7 +47,9 @@ const DEFAULT_DEPENDENCIES: HookRouterDependencies = {
   inspectClassic: inspectClassicHookGuard,
 };
 
-function enabledWorkflows(config: Awaited<ReturnType<typeof readProjectConfig>>): CometWorkflow[] {
+function enabledWorkflows(
+  config: Awaited<ReturnType<typeof readWorkflowProjectConfig>>,
+): CometWorkflow[] {
   if (!config) return ['classic'];
   return config.workflows ?? [config.default_workflow];
 }
@@ -56,7 +58,7 @@ export async function resolveHookWorkflowOwner(
   projectRoot: string,
   dependencies: Pick<HookRouterDependencies, 'listNative' | 'listClassic'> = DEFAULT_DEPENDENCIES,
 ): Promise<HookWorkflowOwnerResolution> {
-  const config = await readProjectConfig(projectRoot);
+  const config = await readWorkflowProjectConfig(projectRoot);
   const enabled = enabledWorkflows(config);
   let current;
   try {

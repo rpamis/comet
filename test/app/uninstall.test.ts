@@ -3,12 +3,16 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
-const { writeFileMock } = vi.hoisted(() => ({ writeFileMock: vi.fn() }));
+const { rmdirMock, writeFileMock } = vi.hoisted(() => ({
+  rmdirMock: vi.fn(),
+  writeFileMock: vi.fn(),
+}));
 
 vi.mock('fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs/promises')>();
+  rmdirMock.mockImplementation(actual.rmdir);
   writeFileMock.mockImplementation(actual.writeFile);
-  return { ...actual, writeFile: writeFileMock };
+  return { ...actual, rmdir: rmdirMock, writeFile: writeFileMock };
 });
 
 import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
@@ -34,6 +38,8 @@ describe('uninstall', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
+    rmdirMock.mockReset();
+    rmdirMock.mockImplementation(fs.rmdir);
     writeFileMock.mockReset();
     writeFileMock.mockImplementation(fs.writeFile);
     tmpDir = path.join(
@@ -775,6 +781,42 @@ describe('uninstall', () => {
   });
 
   describe('removeWorkingDirs', () => {
+    async function writeNativeProjectConfig(
+      artifactRoot: string,
+      workflows: 'native' | 'both' = 'native',
+    ): Promise<string> {
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(
+        configPath,
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          `workflows: [native${workflows === 'both' ? ', classic' : ''}]`,
+          'native:',
+          `  artifact_root: ${artifactRoot}`,
+          ...(workflows === 'both' ? ['classic:', '  artifact_layout: docs'] : []),
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      return configPath;
+    }
+
+    async function createNativeWorkingTree(artifactRoot: string): Promise<string> {
+      const nativeRoot = path.join(tmpDir, ...artifactRoot.split('/'), 'comet');
+      for (const directory of [
+        'specs',
+        'changes',
+        'archive',
+        'runtime/locks',
+        'runtime/transactions',
+      ]) {
+        await fs.mkdir(path.join(nativeRoot, ...directory.split('/')), { recursive: true });
+      }
+      return nativeRoot;
+    }
+
     it('removes .comet directory', async () => {
       const cometDir = path.join(tmpDir, '.comet');
       await fs.mkdir(cometDir, { recursive: true });
@@ -796,15 +838,326 @@ describe('uninstall', () => {
       expect(await fileExists(path.join(tmpDir, 'docs'))).toBe(false);
     });
 
+    it('removes an empty configured docs layout', async () => {
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+      const docsRoot = path.join(tmpDir, 'docs');
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(configPath, 'classic:\n  artifact_layout: docs\n', 'utf8');
+      await fs.mkdir(path.join(docsRoot, 'openspec', 'changes', 'archive'), { recursive: true });
+      await fs.mkdir(path.join(docsRoot, 'openspec', 'specs'), { recursive: true });
+      await fs.mkdir(path.join(docsRoot, 'superpowers', 'reports'), { recursive: true });
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 1, failed: 0 });
+      expect(await fileExists(path.join(tmpDir, '.comet'))).toBe(false);
+      expect(await fileExists(docsRoot)).toBe(false);
+    });
+
+    it.each(['docs', 'legacy'] as const)(
+      'preserves a real OpenSpec %s root with config.yaml while removing independent Comet-owned trees',
+      async (artifactLayout) => {
+        const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+        const openSpecRoot =
+          artifactLayout === 'docs'
+            ? path.join(tmpDir, 'docs', 'openspec')
+            : path.join(tmpDir, 'openspec');
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(
+          configPath,
+          [
+            'schema: comet.project.v1',
+            'default_workflow: classic',
+            'workflows: [classic]',
+            'classic:',
+            `  artifact_layout: ${artifactLayout}`,
+            '',
+          ].join('\n'),
+          'utf8',
+        );
+        await fs.mkdir(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
+        await fs.mkdir(path.join(openSpecRoot, 'specs'), { recursive: true });
+        await fs.writeFile(path.join(openSpecRoot, 'config.yaml'), 'schema: spec-driven\n', 'utf8');
+        await fs.writeFile(path.join(openSpecRoot, 'specs', 'user.md'), '# Keep\n', 'utf8');
+        await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'specs'), {
+          recursive: true,
+        });
+        await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'plans'), {
+          recursive: true,
+        });
+
+        const result = await removeWorkingDirs(tmpDir);
+
+        expect(result).toEqual({ removed: 1, failed: 0 });
+        await expect(fs.stat(path.join(tmpDir, '.comet'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+        await expect(fs.readFile(path.join(openSpecRoot, 'config.yaml'), 'utf8')).resolves.toBe(
+          'schema: spec-driven\n',
+        );
+        await expect(
+          fs.readFile(path.join(openSpecRoot, 'specs', 'user.md'), 'utf8'),
+        ).resolves.toBe('# Keep\n');
+        await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      },
+    );
+
+    it('removes the standard empty Native-only docs tree', async () => {
+      await writeNativeProjectConfig('docs');
+      const nativeRoot = await createNativeWorkingTree('docs');
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 1, failed: 0 });
+      expect(await fileExists(path.join(tmpDir, '.comet'))).toBe(false);
+      expect(await fileExists(nativeRoot)).toBe(false);
+      expect(await fileExists(path.join(tmpDir, 'docs'))).toBe(false);
+    });
+
+    it('removes the standard empty Native tree from an explicit artifact root', async () => {
+      await writeNativeProjectConfig('product-artifacts');
+      const nativeRoot = await createNativeWorkingTree('product-artifacts');
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 1, failed: 0 });
+      expect(await fileExists(path.join(tmpDir, '.comet'))).toBe(false);
+      expect(await fileExists(nativeRoot)).toBe(false);
+    });
+
+    it('removes the combined empty Classic and Native docs tree', async () => {
+      await writeNativeProjectConfig('docs', 'both');
+      await createNativeWorkingTree('docs');
+      await fs.mkdir(path.join(tmpDir, 'docs', 'openspec', 'changes', 'archive'), {
+        recursive: true,
+      });
+      await fs.mkdir(path.join(tmpDir, 'docs', 'openspec', 'specs'), { recursive: true });
+      await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'reports'), { recursive: true });
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 1, failed: 0 });
+      expect(await fileExists(path.join(tmpDir, '.comet'))).toBe(false);
+      expect(await fileExists(path.join(tmpDir, 'docs'))).toBe(false);
+    });
+
+    it.each(['artifact', 'unknown', 'special'] as const)(
+      'preserves every working directory when the Native tree contains %s content',
+      async (contentKind) => {
+        const configPath = await writeNativeProjectConfig('docs');
+        const nativeRoot = await createNativeWorkingTree('docs');
+        const external = path.join(tmpDir, 'external-native-content');
+        await fs.mkdir(external, { recursive: true });
+        await fs.writeFile(path.join(external, 'marker.txt'), 'external marker\n', 'utf8');
+
+        let retainedPath: string;
+        if (contentKind === 'artifact') {
+          retainedPath = path.join(nativeRoot, 'changes', 'active-change.json');
+          await fs.writeFile(retainedPath, '{}\n', 'utf8');
+        } else if (contentKind === 'unknown') {
+          retainedPath = path.join(nativeRoot, 'user-notes');
+          await fs.mkdir(retainedPath);
+        } else {
+          retainedPath = path.join(nativeRoot, 'runtime', 'locks');
+          await fs.rmdir(retainedPath);
+          await fs.symlink(
+            external,
+            retainedPath,
+            process.platform === 'win32' ? 'junction' : 'dir',
+          );
+        }
+
+        const result = await removeWorkingDirs(tmpDir);
+
+        expect(result).toEqual({ removed: 0, failed: 1 });
+        await expect(fs.stat(configPath)).resolves.toBeDefined();
+        await expect(fs.lstat(nativeRoot)).resolves.toBeDefined();
+        await expect(fs.lstat(retainedPath)).resolves.toBeDefined();
+        await expect(fs.readFile(path.join(external, 'marker.txt'), 'utf8')).resolves.toBe(
+          'external marker\n',
+        );
+      },
+    );
+
+    it('rejects a managed-directory replacement after inspection without reading the junction target', async () => {
+      const configPath = await writeNativeProjectConfig('docs');
+      const nativeRoot = await createNativeWorkingTree('docs');
+      const changesDir = path.join(nativeRoot, 'changes');
+      const preservedChanges = path.join(tmpDir, 'preserved-native-changes');
+      const external = path.join(tmpDir, 'external-replacement');
+      const marker = path.join(external, 'marker.txt');
+      await fs.mkdir(external, { recursive: true });
+      await fs.writeFile(marker, 'external marker\n', 'utf8');
+      let replaced = false;
+      const readdirSpy = vi.spyOn(fs, 'readdir');
+      let callsBeforeReplacement = 0;
+
+      try {
+        const result = await removeWorkingDirs(tmpDir, {
+          testHooks: {
+            afterPlanInspection: async () => {
+              callsBeforeReplacement = readdirSpy.mock.calls.length;
+              replaced = true;
+              await fs.rename(changesDir, preservedChanges);
+              await fs.symlink(
+                external,
+                changesDir,
+                process.platform === 'win32' ? 'junction' : 'dir',
+              );
+            },
+          },
+        });
+
+        expect(replaced).toBe(true);
+        expect(result).toEqual({ removed: 0, failed: 1 });
+        expect(
+          readdirSpy.mock.calls
+            .slice(callsBeforeReplacement)
+            .some(([target]) => path.resolve(String(target)) === path.resolve(changesDir)),
+        ).toBe(false);
+        await expect(fs.stat(configPath)).resolves.toBeDefined();
+        await expect(fs.lstat(nativeRoot)).resolves.toBeDefined();
+        expect((await fs.lstat(changesDir)).isSymbolicLink()).toBe(true);
+        await expect(fs.stat(preservedChanges)).resolves.toBeDefined();
+        await expect(fs.readFile(marker, 'utf8')).resolves.toBe('external marker\n');
+      } finally {
+        readdirSpy.mockRestore();
+      }
+    });
+
     it('preserves non-empty docs directories', async () => {
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+      const legacyRoot = path.join(tmpDir, 'openspec');
       const specsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(configPath, 'classic:\n  artifact_layout: legacy\n', 'utf8');
+      await fs.mkdir(path.join(legacyRoot, 'changes', 'archive'), { recursive: true });
+      await fs.mkdir(path.join(legacyRoot, 'specs'), { recursive: true });
       await fs.mkdir(specsDir, { recursive: true });
       await fs.writeFile(path.join(specsDir, 'important.md'), 'keep me', 'utf-8');
 
-      await removeWorkingDirs(tmpDir);
+      const result = await removeWorkingDirs(tmpDir);
 
+      expect(result).toEqual({ removed: 0, failed: 1 });
+      expect(await fileExists(configPath)).toBe(true);
+      expect(await fileExists(legacyRoot)).toBe(true);
       expect(await fileExists(path.join(tmpDir, 'docs'))).toBe(true);
       expect(await fileExists(path.join(specsDir, 'important.md'))).toBe(true);
+    });
+
+    it('preserves every working directory when legacy and docs OpenSpec roots both exist', async () => {
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+      const legacyRoot = path.join(tmpDir, 'openspec');
+      const docsRoot = path.join(tmpDir, 'docs', 'openspec');
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(configPath, 'classic:\n  artifact_layout: legacy\n', 'utf8');
+      await fs.mkdir(path.join(legacyRoot, 'changes', 'archive'), { recursive: true });
+      await fs.mkdir(path.join(docsRoot, 'changes', 'archive'), { recursive: true });
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 0, failed: 1 });
+      await expect(fs.stat(configPath)).resolves.toBeDefined();
+      await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
+      await expect(fs.stat(docsRoot)).resolves.toBeDefined();
+    });
+
+    it('preserves every working directory while a Classic root move is pending', async () => {
+      const cometDir = path.join(tmpDir, '.comet');
+      const configPath = path.join(cometDir, 'config.yaml');
+      const journalPath = path.join(cometDir, 'classic-root-move.json');
+      const legacyRoot = path.join(tmpDir, 'openspec');
+      await fs.mkdir(cometDir, { recursive: true });
+      await fs.writeFile(configPath, 'classic:\n  artifact_layout: legacy\n', 'utf8');
+      await fs.writeFile(journalPath, '{}\n', 'utf8');
+      await fs.mkdir(path.join(legacyRoot, 'changes', 'archive'), { recursive: true });
+      await fs.mkdir(path.join(legacyRoot, 'specs'), { recursive: true });
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 0, failed: 1 });
+      await expect(fs.stat(configPath)).resolves.toBeDefined();
+      await expect(fs.stat(journalPath)).resolves.toBeDefined();
+      await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
+    });
+
+    it('preserves every working directory when .comet contains unknown user content', async () => {
+      const cometDir = path.join(tmpDir, '.comet');
+      const configPath = path.join(cometDir, 'config.yaml');
+      const userFile = path.join(cometDir, 'user-notes.md');
+      const legacyRoot = path.join(tmpDir, 'openspec');
+      await fs.mkdir(cometDir, { recursive: true });
+      await fs.writeFile(configPath, 'classic:\n  artifact_layout: legacy\n', 'utf8');
+      await fs.writeFile(userFile, 'keep me\n', 'utf8');
+      await fs.mkdir(path.join(legacyRoot, 'changes', 'archive'), { recursive: true });
+      await fs.mkdir(path.join(legacyRoot, 'specs'), { recursive: true });
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 0, failed: 1 });
+      await expect(fs.stat(configPath)).resolves.toBeDefined();
+      await expect(fs.stat(userFile)).resolves.toBeDefined();
+      await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
+    });
+
+    it('preserves every working directory when Classic config is invalid', async () => {
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+      const legacyRoot = path.join(tmpDir, 'openspec');
+      const docsRoot = path.join(tmpDir, 'docs', 'openspec');
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(configPath, 'classic: invalid\n', 'utf8');
+      await fs.mkdir(legacyRoot, { recursive: true });
+      await fs.mkdir(docsRoot, { recursive: true });
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 0, failed: 1 });
+      await expect(fs.stat(configPath)).resolves.toBeDefined();
+      await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
+      await expect(fs.stat(docsRoot)).resolves.toBeDefined();
+    });
+
+    it('preserves every working directory when the full project config is malformed', async () => {
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+      const legacyRoot = path.join(tmpDir, 'openspec');
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(configPath, 'schema: [broken\n', 'utf8');
+      await fs.mkdir(legacyRoot, { recursive: true });
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 0, failed: 1 });
+      await expect(fs.stat(configPath)).resolves.toBeDefined();
+      await expect(fs.stat(legacyRoot)).resolves.toBeDefined();
+    });
+
+    it('preserves special layout objects instead of following or unlinking them', async () => {
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+      const target = path.join(tmpDir, 'user-open-spec-target');
+      const link = path.join(tmpDir, 'openspec');
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(configPath, 'classic:\n  artifact_layout: legacy\n', 'utf8');
+      await fs.mkdir(target, { recursive: true });
+      await fs.symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir');
+
+      const result = await removeWorkingDirs(tmpDir);
+
+      expect(result).toEqual({ removed: 0, failed: 1 });
+      await expect(fs.stat(configPath)).resolves.toBeDefined();
+      expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
+      await expect(fs.stat(target)).resolves.toBeDefined();
+    });
+
+    it('uses bounded bottom-up removal instead of recursive working-tree deletion', async () => {
+      const source = await fs.readFile(path.resolve('domains/skill/uninstall.ts'), 'utf8');
+      const start = source.indexOf('async function removeWorkingDirs');
+      const end = source.indexOf('\\nexport {', start);
+      const implementation = source.slice(start, end);
+
+      expect(implementation).toContain('removeManagedWorkingTree');
+      expect(implementation).not.toContain('removeDir(directory)');
     });
   });
 
@@ -1069,19 +1422,19 @@ describe('uninstallCommand interactive selection', () => {
     const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
     await copyCometSkillsForPlatform(tmpDir, claude, true, 'skills', 'project');
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
-    await fs.writeFile(path.join(tmpDir, '.comet', 'state'), 'keep\n', 'utf8');
+    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'test: true\n', 'utf8');
     await upsertProjectInstallation(tmpDir, [{ platform: 'claude', language: 'en' }], 'init', {
       homeDir: fakeHome,
     });
     homedirSpy.mockRestore();
     homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-    const rm = fs.rm.bind(fs);
+    const rmdir = fs.rmdir.bind(fs);
     const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
-    const rmSpy = vi.spyOn(fs, 'rm').mockImplementation(async (targetPath, options) => {
+    rmdirMock.mockImplementation(async (targetPath, options) => {
       if (path.resolve(String(targetPath)) === path.resolve(path.join(tmpDir, '.comet'))) {
         throw permissionError;
       }
-      await rm(targetPath, options);
+      await rmdir(targetPath, options);
     });
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -1090,7 +1443,7 @@ describe('uninstallCommand interactive selection', () => {
       const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
       expect(result.summary.totalFailures).toBe(1);
     } finally {
-      rmSpy.mockRestore();
+      rmdirMock.mockImplementation(rmdir);
       log.mockRestore();
     }
 
@@ -1098,7 +1451,9 @@ describe('uninstallCommand interactive selection', () => {
       projects: unknown[];
     };
     expect(registry.projects).toHaveLength(1);
-    await expect(fs.readFile(path.join(tmpDir, '.comet', 'state'), 'utf8')).resolves.toBe('keep\n');
+    await expect(fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')).resolves.toBe(
+      'test: true\n',
+    );
   });
 
   it('retries registered project cleanup after the Skill target was removed on the first attempt', async () => {
@@ -1106,21 +1461,21 @@ describe('uninstallCommand interactive selection', () => {
     const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
     await copyCometSkillsForPlatform(tmpDir, claude, true, 'skills', 'project');
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
-    await fs.writeFile(path.join(tmpDir, '.comet', 'state'), 'retry\n', 'utf8');
+    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'test: true\n', 'utf8');
     await upsertProjectInstallation(tmpDir, [{ platform: 'claude', language: 'en' }], 'init', {
       homeDir: fakeHome,
     });
     homedirSpy.mockRestore();
     homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
-    const rm = fs.rm.bind(fs);
+    const rmdir = fs.rmdir.bind(fs);
     let cometRemovalAttempts = 0;
     const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
-    const rmSpy = vi.spyOn(fs, 'rm').mockImplementation(async (targetPath, options) => {
+    rmdirMock.mockImplementation(async (targetPath, options) => {
       if (path.resolve(String(targetPath)) === path.resolve(path.join(tmpDir, '.comet'))) {
         cometRemovalAttempts++;
         if (cometRemovalAttempts === 1) throw permissionError;
       }
-      await rm(targetPath, options);
+      await rmdir(targetPath, options);
     });
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
@@ -1139,7 +1494,7 @@ describe('uninstallCommand interactive selection', () => {
       expect(retryResult.workingDirsRemoved).toBe(1);
     } finally {
       log.mockRestore();
-      rmSpy.mockRestore();
+      rmdirMock.mockImplementation(rmdir);
     }
 
     expect(cometRemovalAttempts).toBe(2);
@@ -1155,7 +1510,7 @@ describe('uninstallCommand interactive selection', () => {
     const realProject = path.join(tmpDir, 'canonical-real-project');
     const projectAlias = path.join(tmpDir, 'canonical-project-alias');
     await fs.mkdir(path.join(realProject, '.comet'), { recursive: true });
-    await fs.writeFile(path.join(realProject, '.comet', 'state'), 'recover\n', 'utf8');
+    await fs.writeFile(path.join(realProject, '.comet', 'config.yaml'), 'test: true\n', 'utf8');
     await fs.symlink(realProject, projectAlias, process.platform === 'win32' ? 'junction' : 'dir');
     await upsertProjectInstallation(realProject, [{ platform: 'claude', language: 'en' }], 'init', {
       homeDir: fakeHome,
@@ -1343,7 +1698,7 @@ describe('uninstallCommand interactive selection', () => {
     const fakeHome = path.join(tmpDir, 'all-projects-stale-home');
     const project = path.join(tmpDir, 'all-projects-stale-project');
     await fs.mkdir(path.join(project, '.comet'), { recursive: true });
-    await fs.writeFile(path.join(project, '.comet', 'state'), 'stale\n', 'utf8');
+    await fs.writeFile(path.join(project, '.comet', 'config.yaml'), 'test: true\n', 'utf8');
     await fs.writeFile(
       path.join(project, 'AGENTS.md'),
       '<comet-ambient-resume>\nmanaged\n</comet-ambient-resume>\n',

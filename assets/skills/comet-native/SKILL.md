@@ -26,6 +26,8 @@ Read these values from `.comet/config.yaml`:
 
 Config, selection, change state, and formal artifacts on disk take precedence over chat memory. Do not directly edit Runtime-managed state, evidence, locks, or transaction files.
 
+The Native main workflow does not depend on any external Skill.
+
 Do not receive signing private keys or impersonate an external approval role. When an external action is missing, follow the Runtime continuation, wait, and hand off the required command.
 
 ## Start or resume
@@ -117,13 +119,15 @@ Do not reuse an old preflight. If facts drift or a canonical conflict or unfinis
 
 ## Continuation and stop points
 
-After every transition, act on the Runtime continuation:
+Shape, Build, and Verify transitions return `next: auto | manual` together with `continuation.disposition: continue | await-user | blocked | done`, required inputs, and the next action. Archive does not advance through `next`; a successful archive returns `done`. After every transition, act on that Runtime continuation:
 
 - `continue`: reread the phase and currently required artifacts, then continue;
 - `await-user`: wait for input that genuinely belongs to the user or an external role;
 - `blocked`: handle the findings and read the recovery reference when needed;
 - `done`: the change is complete.
 
-`next: auto` means only that the current transition succeeded; later work has not run automatically. If the caller explicitly requests a stop after a transition, stop immediately after success even when the continuation is `continue`.
+`next: auto` means only that the current transition succeeded; later work has not run automatically. If the caller explicitly requests a stop after a transition, update the formal artifacts, run the one allowed transition, make no tool calls after the transition succeeds, then output the agreed marker and end the turn, even when the continuation is `continue`.
+
+`workspace-root-changed` and `workspace-inspection-unavailable` are read-only advisories and do not block progression or Archive by themselves. Unknown workspace-integrity findings, confirmed conflicts, stale evidence, and repair stops must be resolved; when the Runtime requires workspace identity repair, run read-only doctor and then follow its explicit `doctor --repair` report.
 
 Never place tokens, passwords, private keys, connection strings, or other credentials in summaries, reasons, reports, or artifacts.

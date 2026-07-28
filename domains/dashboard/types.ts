@@ -97,6 +97,7 @@ export interface ChangeDashboardItem {
   displayName: string;
   status: ChangeStatus;
   path: string;
+  relativePath: string;
   workflow: string | null;
   phase: ChangePhase;
   updatedAt?: string;
@@ -142,4 +143,5 @@ export interface DashboardSnapshot {
   risks: DashboardRisk[];
   native?: NativeDashboardProjection;
   nativeError?: { code: 'native-dashboard-unavailable' };
+  classicError?: { code: 'classic-dashboard-unavailable'; message: string };
 }

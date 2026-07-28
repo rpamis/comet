@@ -6,20 +6,20 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
-- **Explicit platform targeting**: `comet init` and `comet update` now accept `--platform <platform>` to initialize or refresh one registered platform, or a project-scoped custom platform such as `.test`, while preserving workflow-scoped asset installation and the existing detection fallback when the option is omitted.
-- **Native controller-backed trust**: New signed-v2 changes require a controller-owned trust root outside the project, a controller-signed public role policy, and a change-specific creation authorization. Implementation, reviewer, and waiver identities remain globally separated, so project-local edits or the implementation role cannot redefine who may approve a change.
-- **Native typed verification receipts**: `comet native receipt automated|manual|implement|review|waive` records acceptance evidence, implementation attestations, independent reviews, and structured waivers as bound, content-addressed artifacts. Implementation and review signing use prepare/sign/finalize handoffs, and high-risk reviews require typed receipts for unified I/O, adversarial paths, generated assets, and a real lifecycle Eval.
+- **Targeted platform setup**: `comet init` and `comet update` now accept `--platform <platform>` so you can install or refresh one supported platform, including a project-specific custom platform, without changing the existing automatic fallback.
+- **Classic catalogue migration**: `comet classic root show` reveals the active Classic artifact root, while `comet classic root move … --dry-run/--apply` plans and performs a safe move to the documentation catalogue ([#173](https://github.com/rpamis/comet/issues/173)).
+- **Native verification handoffs**: Native now provides receipt commands for automated checks, manual observations, implementation attestations, independent review, and approved waivers, so projects that need separated approval roles can record them in the change workflow.
 
 ### Changed
 
-- **Fail-closed Native verification**: A passing Verify result now requires a fresh Runtime check receipt and direct automated/manual evidence or a structured waiver for every acceptance item. The external reviewer replays automated/static evidence, attests manual evidence, and signs the final canonical matrix and evidence graph; Verify and Archive reject stale reports, receipts, waivers, review policy, replays, or implementation scope.
-- **Configurable Native archive confirmation**: Projects can set `native.archive_confirmation` to keep the existing automatic Archive flow or require one explicit user decision after a successful preview. The selected policy is bound into the preflight hash, so unattended completion loops do not pause by default while confirmation-required projects cannot mutate Archive state without `--confirmed`.
-- **Acceptance-gap completion loop**: Failed Native verification now returns a paginated Build view of failed or missing acceptance items and keeps the Agent repairing those gaps before advancing. Semantic gap signatures ignore code-only churn, repeated gaps stop on the third occurrence, and each confirmed contract stops after five failed Verify outcomes by default; projects can set a positive `native.max_verify_failures` without erasing failures already accumulated for that contract.
-- **Progressive Native guidance**: The Native Skill now keeps phase progression and completion-loop behavior in its main prompt, loading clarification, command, artifact, and recovery references only when needed. Runtime-only trust provisioning, storage, transaction, and retention internals no longer occupy the implementation Agent's working context.
+- **Classic documentation layout**: New Classic and dual-workflow projects store OpenSpec work in `docs/openspec/` beside `docs/comet/` and `docs/superpowers/`. Existing projects stay on their current root-level `openspec/` layout unless you explicitly migrate, and all Classic commands use the selected location.
+- **Native verification and repair**: A Verify pass now requires current evidence for each acceptance item. Failed or incomplete items return the change to Build with the gaps to address, helping the workflow keep repairing before Archive; repeated failures stop for a user decision instead of silently proceeding.
+- **Native archive confirmation**: Set `native.archive_confirmation: required` to require one explicit decision after a successful Archive preview, or keep the existing automatic archive behavior.
+- **Native guidance**: Native Skill instructions now keep the active phase and next action prominent, loading detailed clarification, command, artifact, and recovery guidance only when needed.
 
 ### Security
 
-- **Native verification trust isolation**: Controller, reviewer, and waiver private keys stay outside the implementation Agent and project artifacts; implementation/review keys enter only project-agnostic detached-signature processes, while reviewer replay/approval runs without signing secrets. Controller trust stores must be host-isolated read-only, automated commands receive a sanitized environment, and timed-out verification commands terminate their process tree.
+- **Native approval isolation**: Signed Native workflows keep approval credentials outside the project and implementation Agent, preventing a project change from granting itself approval authority.
 
 ## What's Changed [0.4.0-beta.9] - 2026-07-25
 

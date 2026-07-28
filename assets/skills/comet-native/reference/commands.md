@@ -140,8 +140,8 @@ comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 
 - Shape: pass `--confirmed` only after the user confirms the final shared understanding.
 - Build: provide a real `--artifact`; use `--no-code-reason` only when no project file changed.
-- Partial scope: explain the exact gaps and risks returned by the Runtime. Use the matching scope hash, reason, and `--confirmed` only after the user accepts them.
-- Verify: provide `--result` and a complete report. Pass requires current receipts requested by the Runtime; fail uses stable, non-sensitive failure categories and check IDs.
+- Partial scope: explain the exact gaps and risks returned by the Runtime. Changes beyond the returned detail budget are summarized by a `scope-detail-overflow` count and content hash; use the matching scope hash, reason, and `--confirmed` only after the user accepts them.
+- Verify: provide `--result` and a complete report. For the standard report path, submit `comet native next <change-name> --summary <summary> --result pass|fail --report verification.md`; pass requires current receipts requested by the Runtime, and fail uses stable, non-sensitive failure categories and check IDs.
 - Repair override: use only the signature returned by status and only for one explicit new repair hypothesis.
 - Archive: dry-run first, then use the exact preflight hash returned by that preview. `required` mode also requires explicit user confirmation.
 

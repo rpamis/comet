@@ -17,6 +17,14 @@ Agent 主要编辑：
 
 Native artifact root 只由 `.comet/config.yaml` 指定。不要扫描其他 workflow 的目录，也不要自行创建第二个状态根。
 
+## Scope 快照边界
+
+Git 快照包含 tracked 和未被 ignore 的 untracked 文件，submodule/gitlink 作为原子条目。非 Git 项目使用有界物理树快照。
+
+- `git-selection-changed`：等待 Git 写入稳定后重试，不能授权为 partial scope。
+- `physical-selection-changed` 或 `physical-enumeration-limit`：等待文件系统稳定或缩小项目树后重试，不能授权为 partial scope。
+- scope 明细超出预算时，Runtime 用 `scope-detail-overflow` 的数量与内容 hash 汇总，而不是猜测遗漏路径。不要手改证据或把不完整快照视为完整。
+
 ## 项目配置
 
 与 Agent 行为直接相关的配置：

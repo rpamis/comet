@@ -8,7 +8,6 @@ import {
   readNativeChangeFile,
 } from '../comet-native/native-change.js';
 import { inspectNativeArchivePreflight } from '../comet-native/native-archive-inspection.js';
-import { readProjectConfig } from '../comet-native/native-config.js';
 import { inspectNativeConflictRadar } from '../comet-native/native-conflict-inspection.js';
 import { collectNativeContractFiles } from '../comet-native/native-contract-files.js';
 import { listNativeStatusPage } from '../comet-native/native-diagnostics.js';
@@ -17,6 +16,7 @@ import {
   readNativeVerificationEvidence,
 } from '../comet-native/native-evidence-storage.js';
 import { nativeProjectPaths, resolveContainedNativePath } from '../comet-native/native-paths.js';
+import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import type { NativeChangeState, NativeProjectPaths } from '../comet-native/native-types.js';
 import {
   adaptNativeDashboardProjection,
@@ -274,8 +274,8 @@ export async function collectNativeDashboardProjection(
   options: { now?: Date } = {},
 ): Promise<NativeDashboardProjection | null> {
   const root = path.resolve(projectRoot);
-  const config = await readProjectConfig(root);
-  if (!config) return null;
+  const config = await readWorkflowProjectConfig(root);
+  if (!config?.native) return null;
   const paths = await nativeProjectPaths(root, config.native.artifact_root);
   const statuses = [];
   let statusCursor: string | null = null;

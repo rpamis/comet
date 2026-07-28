@@ -58,11 +58,13 @@ auto_transition: false
 
 `auto_transition` 支持三层配置，优先级从高到低：
 
+下文的 `<classic-change-dir>` 表示当前 `classic.artifact_layout` 解析出的 change 目录；可用 `comet classic root show` 查看其 OpenSpec 根。
+
 | 层级      | 位置                                              | 说明                                   |
 | --------- | ------------------------------------------------- | -------------------------------------- |
 | 环境变量  | `COMET_AUTO_TRANSITION`                           | 最高优先级，适合 CI/CD 或临时覆盖      |
 | 项目级    | `.comet/config.yaml` 的 `classic.auto_transition` | 项目默认值，所有 change 继承           |
-| Change 级 | `openspec/changes/<name>/.comet.yaml`             | 单个 change 的覆盖值，最高运行时优先级 |
+| Change 级 | `<classic-change-dir>/.comet.yaml`                | 单个 change 的覆盖值，最高运行时优先级 |
 
 解析逻辑：
 
@@ -80,7 +82,7 @@ classic:
   context_compression: off
 ```
 
-#### Change 级配置（`openspec/changes/<name>/.comet.yaml`）
+#### Change 级配置（`<classic-change-dir>/.comet.yaml`）
 
 ```yaml
 workflow: full
