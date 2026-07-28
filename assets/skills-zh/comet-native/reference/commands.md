@@ -170,14 +170,14 @@ comet native next <change-name> --summary <text> \
   [--override-repair <sha256> --override-summary <text>]
 
 comet native archive <change-name> --dry-run
-comet native archive <change-name> --expect-preflight <sha256>
+comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 ```
 
 - Shape：brief 和拟议规格通过后推进。Sequential 与 Batch 都必须取得最终共享理解确认并传 `--confirmed`。成功进入 Build 时，Runtime 会把 confirmed approval 绑定到当前 contract hash。
 - Build：重新检查 brief 和拟议规格；至少给出一个真实项目产物，或使用 `--no-code-reason`。旧 change 若仍为 `approval: implicit`，必须先确认当前共享理解；若 contract 在 approval 后变化，status/next 会要求用户重新确认当前 contract。两种情况都只有取得确认后才传 `--confirmed`。无法证明完整 scope 时，第一次调用返回 scope hash 与有界未归属明细而不推进；超出明细预算的变化由 `scope-detail-overflow` 的数量与内容 hash 表示。只有用户接受具体风险后，才可用完全匹配的 `--allow-partial-scope`、理由与 `--confirmed` 重试。
 - Verify：必须提供 `--result` 和完整 `--report`。signed-v2 pass 必须包含 fresh required receipt、与验收矩阵精确匹配的 acceptance receipt refs、signed implementation attestation 所绑定的独立 acceptance-applicability review，以及所有 waiver refs。review ref 同时放入 `--evidence-receipt` 与 `--independent-review-receipt`；required receipt 可显式传 `--receipt`，省略时 Runtime 在锁内运行内置 check。failed/skipped/blocked/scan-limit/timeout/无效 receipt 阻断 pass；高风险 review 四项检查缺一不可。fail 回到 Build，可用失败分类和检查 ID 形成无进展签名；pass 进入 Archive。
 - Repair：第三次相同失败会返回 manual stop。scope 真正变化时普通 Build `next` 会结束旧 repair episode 并继续；scope 不变时只能用 status 返回的 signature 和非空摘要 override 一次。单个 episode 的 semantic repair budget 与已耗尽 override 不可绕过；通用 Run iteration 只提供事件序号，不是长期 change 的永久停止条件。
-- Archive：只能由 `archive` 命令完成，不能用 `next` 代替。先 `--dry-run`，再把同一次预演返回的 `preflightHash` 原样传给 `--expect-preflight`；Runtime 在锁内重算，并在 spec operations 完成后、`archive-change` move 之前再次执行最终 freshness fence，发生漂移时保留 active change 并由同一事务恢复。
+- Archive：只能由 `archive` 命令完成，不能用 `next` 代替。先 `--dry-run`；预演返回绑定了 `native.archive_confirmation` 的 `preflightHash` 和 continuation。`automatic` 按 continuation 用原 hash 直接提交；`required` 返回 `await-user`，只有用户明确选择立即归档后才用原 hash 和 `--confirmed` 提交。Runtime 在锁内重算，并在 spec operations 完成后、`archive-change` move 之前再次执行最终 freshness fence，发生配置或内容漂移时保留 active change 并由同一事务恢复。
 
 ## 诊断与恢复
 

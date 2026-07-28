@@ -81,6 +81,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: 'docs',
       language: 'en',
       clarification_mode: 'batch',
+      archive_confirmation: 'automatic',
       snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
     await expect(fs.access(source)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -121,6 +122,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: '.',
       language: 'en',
       clarification_mode: 'batch',
+      archive_confirmation: 'automatic',
       snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
     expect(
@@ -203,6 +205,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: 'docs',
       language: 'en',
       clarification_mode: 'sequential',
+      archive_confirmation: 'automatic',
       snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
   });
@@ -234,6 +237,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: 'docs',
       language: 'en',
       clarification_mode: 'sequential',
+      archive_confirmation: 'automatic',
       snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -322,6 +326,7 @@ describe('Native artifact root recovery', () => {
       artifact_root: '.',
       language: 'en',
       clarification_mode: 'sequential',
+      archive_confirmation: 'automatic',
       snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
     });
     await expect(fs.access(quarantine)).rejects.toMatchObject({ code: 'ENOENT' });

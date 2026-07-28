@@ -726,12 +726,60 @@ Pass.
     const preview = json(
       await runNativeCli(['archive', 'sentence-counting', '--dry-run', '--json', ...projectArgs()]),
     );
+    expect(preview.data).toMatchObject({
+      archiveConfirmation: 'automatic',
+      continuation: {
+        disposition: 'continue',
+        action: 'archive',
+        requiresUserDecision: false,
+      },
+    });
     const preflightHash = (preview.data as { preflightHash: string }).preflightHash;
+    const config = await readProjectConfig(projectRoot);
+    expect(config).not.toBeNull();
+    config!.native.archive_confirmation = 'required';
+    await writeProjectConfig(projectRoot, config!);
+    const requiredPreview = json(
+      await runNativeCli(['archive', 'sentence-counting', '--dry-run', '--json', ...projectArgs()]),
+    );
+    expect(requiredPreview.data).toMatchObject({
+      archiveConfirmation: 'required',
+      continuation: {
+        disposition: 'await-user',
+        action: 'archive',
+        command: null,
+        requiresUserDecision: true,
+        requiredInputs: ['archive-confirmation'],
+      },
+    });
+    const requiredPreflightHash = (requiredPreview.data as { preflightHash: string }).preflightHash;
+    expect(requiredPreflightHash).not.toBe(preflightHash);
+    const unconfirmed = json(
+      await runNativeCli([
+        'archive',
+        'sentence-counting',
+        '--expect-preflight',
+        requiredPreflightHash,
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(unconfirmed).toMatchObject({
+      exitCode: 64,
+      error: {
+        code: 'usage',
+        message: 'archive requires --confirmed when native.archive_confirmation is required',
+      },
+    });
+    await expect(
+      fs.stat(path.join(projectRoot, 'docs', 'comet', 'changes', 'sentence-counting')),
+    ).resolves.toBeDefined();
     const archived = await runNativeCli([
       'archive',
       'sentence-counting',
       '--expect-preflight',
-      preflightHash,
+      requiredPreflightHash,
+      '--confirmed',
       ...projectArgs(),
     ]);
     expect(archived.exitCode, archived.stderr).toBe(0);

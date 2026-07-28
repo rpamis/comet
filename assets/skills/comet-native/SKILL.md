@@ -11,7 +11,7 @@ Run the entire workflow inside this Skill. Do not load phase Skills or impose fi
 
 ## Clarification Protocol
 
-Read `native.clarification_mode` from `.comet/config.yaml`. Allowed values are `sequential` and `batch`; use `sequential` when the field is absent. This setting determines how user questions are organized and which confirmation contract applies before leaving Shape. It does not change Native phases, the change schema, safety confirmations, or caller-defined stop points.
+Read `native.clarification_mode` and `native.archive_confirmation` from `.comet/config.yaml`. The former allows `sequential` or `batch` and defaults to `sequential`; the latter allows `automatic` or `required` and defaults to `automatic`. `clarification_mode` determines how user questions are organized and which confirmation contract applies before leaving Shape. `archive_confirmation` only determines whether a successful Archive preview commits automatically or waits for final user confirmation. Neither setting changes Native phases or the change schema.
 
 First identify undefined branches that would change user-visible results. Words such as “normalize,” “intuitive,” “standard,” and “expected” are not product contracts. Only the user's words, a confirmed answer, or a published contract that clearly applies to the current behavior can close such a branch.
 
@@ -308,11 +308,26 @@ After the state reaches Archive with a passing Verify result, preflight first:
 comet native archive <change-name> --dry-run
 ```
 
-Inspect create/replace/remove operations, evidence freshness, visible overlap with other changes in the current Native root, and recovery state. When no blocker remains, commit with the exact hash returned by this preflight:
+Inspect create/replace/remove operations, evidence freshness, visible overlap with other changes in the current Native root, and recovery state. The preview returns a `preflightHash`, `archiveConfirmation`, and continuation bound to the current configuration and facts.
+
+For `archiveConfirmation: automatic`, follow the exact continuation command and commit without creating a user stop point:
 
 ```text
 comet native archive <change-name> --expect-preflight <sha256>
 ```
+
+For `archiveConfirmation: required`, show the user the change, implementation and verification conclusion, and a create/replace/remove summary after preview, then pause for a single choice:
+
+- **Archive now** — archive only the exact hash from this preview
+- **Keep this change active** — do not archive; preserve the active change and Archive phase for adjustments or later resume
+
+Only after the user explicitly chooses **Archive now** at this decision point may you run:
+
+```text
+comet native archive <change-name> --expect-preflight <sha256> --confirmed
+```
+
+Do not treat the initial request, historical preferences, an automatic Loop, or “Verify already passed” as the final confirmation required by `required` mode. Failed Build ↔ Verify repair iterations must not trigger an archive question; apply this setting only after every acceptance converges, Verify passes, and the preview succeeds. If the user requests changes, stop this archive attempt. The edits make the old evidence and preflight stale, and Runtime continuation returns to Build. Only a newly successful cycle produces another preview and applies the then-current setting again.
 
 If the caller asks to preserve a preflight or commit envelope, the first invocation itself must use machine-readable mode and write to the target file. Commit with the hash from the saved preflight. Once validated, keep the file immutable; do not overwrite it by rerunning commands after archive.
 
@@ -323,7 +338,7 @@ For a canonical conflict, reread and rewrite the complete target specification, 
 ## Invariants
 
 - Never edit `phase`, `approval`, `spec_changes`, Run state, trajectory, locks, or transaction journals directly.
-- Never skip phase checks. Shape, Build, and Verify use `comet native next`; Archive uses the two-step preflight and commit protocol.
+- Never skip phase checks. Shape, Build, and Verify use `comet native next`; Archive uses the two-step preflight and commit protocol and follows `native.archive_confirmation`.
 - Never invoke external Skills. The Native flow depends only on the bundled Comet Runtime.
 - Do not persist hidden reasoning. Save summaries, artifact references, command results, hashes, state changes, and timestamps.
 - Do not write tokens, passwords, private keys, connection strings, or other credentials into summaries, reasons, or reports.

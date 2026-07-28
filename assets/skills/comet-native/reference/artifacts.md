@@ -59,6 +59,7 @@ native:
   artifact_root: docs
   language: en
   clarification_mode: sequential
+  archive_confirmation: automatic
   snapshot:
     include:
       - '**/*'
@@ -69,6 +70,8 @@ native:
 ```
 
 `clarification_mode` controls how Native organizes user decisions and which confirmation contract applies before leaving Shape. `sequential` asks one most-upstream question per round, while `batch` asks every question whose prerequisites are settled. The default is `sequential` when the field is absent. It does not change the change schema, lifecycle, safety confirmations, or caller-defined stop points.
+
+`archive_confirmation` controls what happens after a successful Archive preview. `automatic` commits with the preview's exact hash, while `required` returns `await-user` and requires an explicit user choice before committing with `--confirmed`. The default is `automatic` when the field is absent. The value is bound into `preflightHash`, so changing it after preview invalidates the old hash. Intermediate failed Build ↔ Verify iterations never enter Archive and therefore do not repeatedly trigger this decision point.
 
 `snapshot` defines the explicit content-snapshot scope and bounded resource budget. `include` and `exclude` use project-relative `/` paths with `*`, `**`, and `?`; the normalized policy and its hash are persisted in each new change baseline. Later current snapshots keep using the baseline policy, so changing configuration mid-change cannot hide implementation changes. `max_files`, `max_total_bytes`, and `max_duration_ms` bound capture work and can be raised for larger repositories. File content uses streaming SHA-256, does not depend on Git object hashes, and has no separate 5 MiB per-file limit.
 

@@ -57,6 +57,7 @@ export interface CometProjectConfig {
     artifact_root: string;
     language: 'en' | 'zh-CN';
     clarification_mode: NativeClarificationMode;
+    archive_confirmation: NativeArchiveConfirmation;
     snapshot: NativeSnapshotConfig;
     pending_root_move?: NativePendingRootMove;
   };
@@ -67,6 +68,8 @@ export interface CometProjectConfig {
     auto_transition?: boolean;
   };
 }
+
+export type NativeArchiveConfirmation = 'automatic' | 'required';
 
 export interface NativeProjectPaths {
   projectRoot: string;

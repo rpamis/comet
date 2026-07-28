@@ -71,7 +71,7 @@ describe('Comet Native Skills', () => {
         progression: '## Progression Contract',
         required: [
           'native.clarification_mode',
-          'use `sequential` when the field is absent',
+          'defaults to `sequential`',
           'If you cannot prove that, treat it as a user decision',
           'not to ask about implementation choices',
           'do not reclassify a product decision as an implementation choice',
@@ -247,6 +247,24 @@ describe('Comet Native Skills', () => {
           : '先把用户答案对应回已保存问题',
       );
       expect(recovery).toContain(language === 'en' ? 'explicit user confirmation' : '用户明确确认');
+    }
+  });
+
+  it('documents configurable Archive confirmation in both languages', async () => {
+    for (const language of ['en', 'zh'] as const) {
+      const skill = await read(language, 'SKILL.md');
+      const artifacts = await read(language, 'reference/artifacts.md');
+      const commands = await read(language, 'reference/commands.md');
+
+      expect(skill).toContain('native.archive_confirmation');
+      expect(skill).toContain('archiveConfirmation: automatic');
+      expect(skill).toContain('archiveConfirmation: required');
+      expect(skill).toContain('--expect-preflight <sha256> --confirmed');
+      expect(artifacts).toContain('archive_confirmation: automatic');
+      expect(artifacts).toContain('`automatic`');
+      expect(artifacts).toContain('`required`');
+      expect(commands).toContain('--expect-preflight <sha256> [--confirmed]');
+      expect(commands).toContain('await-user');
     }
   });
 

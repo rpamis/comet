@@ -11,7 +11,7 @@ Native 保存需求、完整目标规格、状态和证据。你负责理解、�
 
 ## 需求澄清协议
 
-从 `.comet/config.yaml` 读取 `native.clarification_mode`。允许值为 `sequential` 和 `batch`；字段缺失时使用 `sequential`。该配置决定用户问题的组织方式和离开 Shape 前的确认契约，不改变 Native 的阶段、change schema、安全确认或调用方停点。
+从 `.comet/config.yaml` 读取 `native.clarification_mode` 和 `native.archive_confirmation`。前者允许 `sequential` 或 `batch`，字段缺失时使用 `sequential`；后者允许 `automatic` 或 `required`，字段缺失时使用 `automatic`。`clarification_mode` 决定用户问题的组织方式和离开 Shape 前的确认契约；`archive_confirmation` 只决定成功归档预演后是自动提交，还是等待最终用户确认。两者都不改变 Native 的阶段或 change schema。
 
 先识别会改变用户可见结果、但尚未定义的分支。“规范化”“直观”“标准”“预期”等词不是产品契约；只有用户原话、用户确认的答案，或明确适用于当前行为的公开契约可以关闭这类分支。
 
@@ -308,11 +308,26 @@ fail 会回到 Build。修复后重新验证，并用 `--failure-category` 与 `
 comet native archive <change-name> --dry-run
 ```
 
-检查 create/replace/remove、证据新鲜度、当前 Native root 内的 change 重叠和恢复状态。没有阻塞时，用本次预演返回的精确 hash 提交：
+检查 create/replace/remove、证据新鲜度、当前 Native root 内的 change 重叠和恢复状态。预演会返回绑定到当前配置和事实的 `preflightHash`、`archiveConfirmation` 与 continuation。
+
+若 `archiveConfirmation: automatic`，按 continuation 返回的精确命令继续提交，不创建用户停点：
 
 ```text
 comet native archive <change-name> --expect-preflight <sha256>
 ```
+
+若 `archiveConfirmation: required`，预演后必须向用户展示 change、实现与验证结论，以及 create/replace/remove 摘要，然后暂停并让用户单选：
+
+- 「立即归档」：只对本次预演的精确 hash 执行归档
+- 「保留当前 change」：不执行归档，保持 active change 和 Archive phase，等待用户提出修改或稍后恢复
+
+只有用户在当前决策点明确选择「立即归档」后，才执行：
+
+```text
+comet native archive <change-name> --expect-preflight <sha256> --confirmed
+```
+
+不得用初始需求、历史偏好、自动 Loop 或“验证已经通过”代替 `required` 模式的最终确认。Build ↔ Verify 的失败修复循环不得触发归档问题；只有全部验收收敛、Verify pass 并完成成功预演后才应用该配置。若用户要求修改，停止本次归档；改动会使旧证据与 preflight 失效，由 Runtime continuation 回到 Build。新一轮再次成功后才生成新预演，并按当时配置决定是否再次确认。
 
 调用方要求保存预演或提交 envelope 时，首次调用本身就使用机器可读模式并写入目标文件。提交使用已保存预演中的 hash；文件验证成功后保持不可变，不得在归档后重跑命令覆盖。
 
@@ -323,7 +338,7 @@ Runtime 会在锁内重新计算事实，发生漂移就拒绝提交。成功后
 ## 不变规则
 
 - 不直接编辑 `phase`、`approval`、`spec_changes`、Run state、trajectory、锁或 transaction journal。
-- 不跳过阶段检查。Shape、Build、Verify 使用 `comet native next`；Archive 使用两步预演与提交。
+- 不跳过阶段检查。Shape、Build、Verify 使用 `comet native next`；Archive 使用两步预演与提交，并遵守 `native.archive_confirmation`。
 - 不调用外部 Skill。Native 主流程只依赖 Comet 自带 Runtime。
 - 不保存隐藏推理，只保存摘要、产物引用、命令结果、hash、状态变化和时间戳。
 - 不把 token、密码、私钥、连接串或其他凭据写入摘要、理由与报告。

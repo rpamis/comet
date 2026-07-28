@@ -14,6 +14,7 @@ const E = 'e'.repeat(64);
 function input(): NativeArchivePreflightInput {
   return {
     change: 'secure-login',
+    archiveConfirmation: 'automatic',
     stateSchema: 'comet.native.v3',
     revision: 5,
     phase: 'archive',
@@ -74,6 +75,10 @@ describe('Native Archive preflight', () => {
 
   it.each([
     ['revision', (value: NativeArchivePreflightInput) => (value.revision += 1)],
+    [
+      'archive confirmation',
+      (value: NativeArchivePreflightInput) => (value.archiveConfirmation = 'required'),
+    ],
     ['target', (value: NativeArchivePreflightInput) => (value.targetRef += '-next')],
     ['target existence', (value: NativeArchivePreflightInput) => (value.targetExists = true)],
     ['base', (value: NativeArchivePreflightInput) => (value.specs[0].actualBaseHash = C)],

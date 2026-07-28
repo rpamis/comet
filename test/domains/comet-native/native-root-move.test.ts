@@ -41,6 +41,7 @@ describe('Native artifact root moves', () => {
     const source = await seedNativeRoot(projectRoot, from);
     const config = await readProjectConfig(projectRoot);
     config!.native.clarification_mode = 'batch';
+    config!.native.archive_confirmation = 'required';
     await writeProjectConfig(projectRoot, config!);
     const sourcePaths = await nativeProjectPaths(projectRoot, from);
     await createNativeChange({
@@ -73,6 +74,7 @@ describe('Native artifact root moves', () => {
         artifact_root: to,
         language: 'en',
         clarification_mode: 'batch',
+        archive_confirmation: 'required',
         snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
       },
     });
@@ -242,6 +244,7 @@ describe('Native artifact root moves', () => {
         artifact_root: '.',
         language: 'en',
         clarification_mode: 'sequential',
+        archive_confirmation: 'automatic',
         snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
       });
       await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({

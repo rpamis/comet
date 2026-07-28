@@ -8640,6 +8640,7 @@ var COMMENTS = {
     "native.artifact_root": "# Root directory where Native stores Comet specs, changes, and runtime data.",
     "native.language": "# Artifact language used by Native workflow documents.\n# language: en | zh-CN",
     "native.clarification_mode": "# Controls whether Native asks one clarification at a time or every currently answerable question in a round.\n# clarification_mode: sequential | batch",
+    "native.archive_confirmation": "# Controls whether Native archives automatically after a successful preview or waits for explicit user confirmation.\n# archive_confirmation: automatic | required",
     "native.snapshot": "# Controls the auditable project scope and bounded work used by Native content snapshots.",
     "native.snapshot.include": "# Selects the project-relative paths included in Native snapshots. Patterns use / and support *, **, and ?.",
     "native.snapshot.exclude": "# Removes paths from the included scope. Exclusions are bound into each new change baseline.",
@@ -8661,6 +8662,7 @@ var COMMENTS = {
     "native.artifact_root": "# Native 产物的存放根目录，包括规格、change 和运行时数据。",
     "native.language": "# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
     "native.clarification_mode": "# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。\n# 可选值：sequential | batch",
+    "native.archive_confirmation": "# Native 归档预演成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required",
     "native.snapshot": "# Native 内容快照使用的可审计项目范围与有界工作预算。",
     "native.snapshot.include": "# Native 快照纳入的项目相对路径；模式使用 /，支持 *、** 和 ?。",
     "native.snapshot.exclude": "# 从纳入范围中排除路径；新 change 会把排除策略绑定到 baseline。",
@@ -9307,6 +9309,7 @@ var NATIVE_KEYS = /* @__PURE__ */ new Set([
   "artifact_root",
   "language",
   "clarification_mode",
+  "archive_confirmation",
   "snapshot",
   "pending_root_move"
 ]);
@@ -9485,6 +9488,10 @@ function parseConfig(value) {
   if (clarificationMode !== "sequential" && clarificationMode !== "batch") {
     throw new Error("native.clarification_mode must be sequential or batch");
   }
+  const archiveConfirmation = native.archive_confirmation ?? "automatic";
+  if (archiveConfirmation !== "automatic" && archiveConfirmation !== "required") {
+    throw new Error("native.archive_confirmation must be automatic or required");
+  }
   const pending = parsePending(native.pending_root_move);
   const snapshot2 = parseSnapshot(native.snapshot);
   return {
@@ -9496,6 +9503,7 @@ function parseConfig(value) {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
       clarification_mode: clarificationMode,
+      archive_confirmation: archiveConfirmation,
       snapshot: snapshot2,
       ...pending ? { pending_root_move: pending } : {}
     }
@@ -9510,6 +9518,7 @@ function defaultProjectConfig(artifactRoot = "docs", language = "en") {
       artifact_root: normalizeArtifactRootRef(artifactRoot),
       language,
       clarification_mode: "sequential",
+      archive_confirmation: "automatic",
       snapshot: { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ["**/*"], exclude: [] }
     }
   };
@@ -9579,6 +9588,7 @@ async function writeProjectConfig(projectRoot, config) {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
       clarification_mode: config.native.clarification_mode,
+      archive_confirmation: config.native.archive_confirmation,
       snapshot: config.native.snapshot,
       ...config.native.pending_root_move ? {
         pending_root_move: {
@@ -9607,6 +9617,7 @@ async function writeProjectConfig(projectRoot, config) {
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
       clarification_mode: validated.native.clarification_mode,
+      archive_confirmation: validated.native.archive_confirmation,
       snapshot: validated.native.snapshot,
       ...validated.native.pending_root_move ? {
         pending_root_move: {
@@ -15557,9 +15568,13 @@ function buildNativeArchivePreflight(input) {
   ].sort(compareText);
   const revision = positiveRevision(input.revision);
   const targetRef = normalizedRef(input.targetRef, "Native archive target");
+  if (input.archiveConfirmation !== "automatic" && input.archiveConfirmation !== "required") {
+    throw new Error("Native archive confirmation must be automatic or required");
+  }
   const facts = {
     stateSchema: input.stateSchema,
     change: input.change,
+    archiveConfirmation: input.archiveConfirmation,
     revision,
     phase: input.phase,
     archived: input.archived,
@@ -15573,6 +15588,7 @@ function buildNativeArchivePreflight(input) {
   return {
     schema: NATIVE_ARCHIVE_PREFLIGHT_SCHEMA,
     change: input.change,
+    archiveConfirmation: input.archiveConfirmation,
     revision,
     targetRef,
     ready: findingCodes.length === 0,
@@ -24341,6 +24357,7 @@ async function hasPendingTransition(paths, name) {
 async function inspectNativeArchivePreflight(options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const state = await readNativeChange(options.paths, options.name);
+  const config = await readProjectConfig(options.paths.projectRoot);
   const targetRef = archiveTargetRef(state.name, now);
   const target = path36.resolve(options.paths.nativeRoot, ...targetRef.split("/"));
   if (!isInsidePath(options.paths.nativeRoot, target)) {
@@ -24365,6 +24382,7 @@ async function inspectNativeArchivePreflight(options) {
   ]);
   return buildNativeArchivePreflight({
     change: state.name,
+    archiveConfirmation: config?.native.archive_confirmation ?? "automatic",
     stateSchema: state.schema,
     revision: state.revision,
     phase: state.phase,
@@ -26506,6 +26524,37 @@ function nativeContinuation(options) {
     };
   }
   if (options.state.phase === "archive") {
+    if (options.archiveReady && options.archivePreflightHash) {
+      if (!/^[a-f0-9]{64}$/u.test(options.archivePreflightHash)) {
+        throw new Error("Native Archive continuation preflight must be a SHA-256 hash");
+      }
+      if (options.archiveConfirmation === "required") {
+        return {
+          schema: "comet.native.continuation.v1",
+          skill: "comet-native",
+          change: options.state.name,
+          phase: options.state.phase,
+          revision: options.state.revision,
+          disposition: "await-user",
+          action: "archive",
+          command: null,
+          requiresUserDecision: true,
+          requiredInputs: ["archive-confirmation"]
+        };
+      }
+      return {
+        schema: "comet.native.continuation.v1",
+        skill: "comet-native",
+        change: options.state.name,
+        phase: options.state.phase,
+        revision: options.state.revision,
+        disposition: "continue",
+        action: "archive",
+        command: `comet native archive ${options.state.name} --expect-preflight ${options.archivePreflightHash}`,
+        requiresUserDecision: false,
+        requiredInputs: []
+      };
+    }
     return {
       schema: "comet.native.continuation.v1",
       skill: "comet-native",
@@ -29860,6 +29909,7 @@ async function finishForwardMove(options) {
     artifact_root: config.native.artifact_root,
     language: config.native.language,
     clarification_mode: config.native.clarification_mode,
+    archive_confirmation: config.native.archive_confirmation,
     snapshot: config.native.snapshot
   };
   const committed = {
@@ -30004,6 +30054,7 @@ async function recoverNativeRootMove(options) {
       artifact_root: config.native.artifact_root,
       language: config.native.language,
       clarification_mode: config.native.clarification_mode,
+      archive_confirmation: config.native.archive_confirmation,
       snapshot: config.native.snapshot
     };
     const restored = {
@@ -32518,7 +32569,7 @@ Commands:
   receipt waive <change-name> --acceptance <id> --blocked-receipt <ref> --reason <text> --risk <text> --alternative-receipt <ref> --identity <path> --private-key-env <name> --confirmed
   next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <required-ref>] [--evidence-receipt <ref>] [--waiver <ref>] [--independent-review-receipt <ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
-  archive <change-name> --expect-preflight <sha256>
+  archive <change-name> --expect-preflight <sha256> [--confirmed]
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
 `;
 function takeFlag(args, name) {
@@ -33653,8 +33704,12 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const name = requiredPositional(rawArgs, "change name");
     const dryRun = takeFlag(rawArgs, "--dry-run");
     const expectedPreflightHash = takeOption(rawArgs, "--expect-preflight");
+    const confirmed = takeFlag(rawArgs, "--confirmed");
     if (dryRun && expectedPreflightHash) {
       throw new NativeUsageError("--dry-run and --expect-preflight cannot be combined");
+    }
+    if (dryRun && confirmed) {
+      throw new NativeUsageError("--confirmed is only valid with --expect-preflight");
     }
     if (!dryRun && !expectedPreflightHash) {
       throw new NativeUsageError("archive requires --dry-run or --expect-preflight <sha256>");
@@ -33663,14 +33718,28 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       throw new NativeUsageError("--expect-preflight must be a SHA-256 hash");
     }
     assertNoArguments(rawArgs);
-    const { paths } = await configuredPaths(projectRoot);
+    const { config, paths } = await configuredPaths(projectRoot);
     if (dryRun) {
       const preview = await inspectNativeArchivePreflight({ paths, name });
+      const state2 = await readNativeChange(paths, name);
       return success(
         "archive --dry-run",
-        preview,
+        {
+          ...preview,
+          continuation: nativeContinuation({
+            state: state2,
+            archiveReady: preview.ready,
+            archiveConfirmation: preview.archiveConfirmation,
+            archivePreflightHash: preview.preflightHash
+          })
+        },
         `Native Archive preview ${preview.preflightHash}: ${preview.ready ? "ready" : "blocked"}
 `
+      );
+    }
+    if (config.native.archive_confirmation === "required" && !confirmed) {
+      throw new NativeUsageError(
+        "archive requires --confirmed when native.archive_confirmation is required"
       );
     }
     const state = await readNativeChange(paths, name);

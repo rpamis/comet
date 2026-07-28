@@ -23,6 +23,7 @@ const NATIVE_KEYS = new Set([
   'artifact_root',
   'language',
   'clarification_mode',
+  'archive_confirmation',
   'snapshot',
   'pending_root_move',
 ]);
@@ -225,6 +226,10 @@ function parseConfig(value: unknown): CometProjectConfig {
   if (clarificationMode !== 'sequential' && clarificationMode !== 'batch') {
     throw new Error('native.clarification_mode must be sequential or batch');
   }
+  const archiveConfirmation = native.archive_confirmation ?? 'automatic';
+  if (archiveConfirmation !== 'automatic' && archiveConfirmation !== 'required') {
+    throw new Error('native.archive_confirmation must be automatic or required');
+  }
   const pending = parsePending(native.pending_root_move);
   const snapshot = parseSnapshot(native.snapshot);
   return {
@@ -236,6 +241,7 @@ function parseConfig(value: unknown): CometProjectConfig {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
       clarification_mode: clarificationMode,
+      archive_confirmation: archiveConfirmation,
       snapshot,
       ...(pending ? { pending_root_move: pending } : {}),
     },
@@ -254,6 +260,7 @@ export function defaultProjectConfig(
       artifact_root: normalizeArtifactRootRef(artifactRoot),
       language,
       clarification_mode: 'sequential',
+      archive_confirmation: 'automatic',
       snapshot: { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ['**/*'], exclude: [] },
     },
   };
@@ -338,6 +345,7 @@ export async function writeProjectConfig(
       artifact_root: config.native.artifact_root,
       language: config.native.language,
       clarification_mode: config.native.clarification_mode,
+      archive_confirmation: config.native.archive_confirmation,
       snapshot: config.native.snapshot,
       ...(config.native.pending_root_move
         ? {
@@ -370,6 +378,7 @@ export async function writeProjectConfig(
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
       clarification_mode: validated.native.clarification_mode,
+      archive_confirmation: validated.native.archive_confirmation,
       snapshot: validated.native.snapshot,
       ...(validated.native.pending_root_move
         ? {

@@ -13,6 +13,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Fail-closed Native verification**: A passing Verify result now requires a fresh Runtime check receipt and direct automated/manual evidence or a structured waiver for every acceptance item. The external reviewer replays automated/static evidence, attests manual evidence, and signs the final canonical matrix and evidence graph; Verify and Archive reject stale reports, receipts, waivers, review policy, replays, or implementation scope.
+- **Configurable Native archive confirmation**: Projects can set `native.archive_confirmation` to keep the existing automatic Archive flow or require one explicit user decision after a successful preview. The selected policy is bound into the preflight hash, so unattended completion loops do not pause by default while confirmation-required projects cannot mutate Archive state without `--confirmed`.
 
 ### Security
 

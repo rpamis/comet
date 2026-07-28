@@ -26,6 +26,7 @@ describe('Native project configuration', () => {
   it('builds the shared default project config with docs as the Native artifact root', () => {
     expect(defaultProjectConfig().native.artifact_root).toBe('docs');
     expect(defaultProjectConfig().native.clarification_mode).toBe('sequential');
+    expect(defaultProjectConfig().native.archive_confirmation).toBe('automatic');
     expect(defaultProjectConfig().native.snapshot).toEqual({
       include: ['**/*'],
       exclude: [],
@@ -47,6 +48,7 @@ describe('Native project configuration', () => {
         artifact_root: 'docs',
         language: 'en',
         clarification_mode: 'sequential',
+        archive_confirmation: 'automatic',
         snapshot: {
           include: ['**/*'],
           exclude: [],
@@ -59,10 +61,12 @@ describe('Native project configuration', () => {
     const source = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
     expect(source).toContain('# Enables automatic recovery');
     expect(source).toContain('# Controls whether Native asks one clarification at a time');
+    expect(source).toContain('# Controls whether Native archives automatically');
     expect(source).toContain('# Selects the project-relative paths included in Native snapshots');
     expect(source).toContain('# Bounds the total file content hashed by one snapshot');
     expect(source).toContain('ambient_resume: true');
     expect(source).toContain('clarification_mode: sequential');
+    expect(source).toContain('archive_confirmation: automatic');
     expect(source).toContain('include:');
     expect(source).toContain('- "**/*"');
     expect(source).toContain('max_total_bytes: 268435456');
@@ -76,6 +80,7 @@ describe('Native project configuration', () => {
 
     expect((await readProjectConfig(projectRoot))?.native.language).toBe('en');
     expect((await readProjectConfig(projectRoot))?.native.clarification_mode).toBe('sequential');
+    expect((await readProjectConfig(projectRoot))?.native.archive_confirmation).toBe('automatic');
     expect((await readProjectConfig(projectRoot))?.native.snapshot).toEqual(
       defaultProjectConfig().native.snapshot,
     );
@@ -94,6 +99,18 @@ describe('Native project configuration', () => {
     ).resolves.toContain('clarification_mode: batch');
   });
 
+  it('round-trips required Native archive confirmation', async () => {
+    const config = defaultProjectConfig('docs');
+    config.native.archive_confirmation = 'required';
+
+    await writeProjectConfig(projectRoot, config);
+
+    expect((await readProjectConfig(projectRoot))?.native.archive_confirmation).toBe('required');
+    await expect(
+      fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),
+    ).resolves.toContain('archive_confirmation: required');
+  });
+
   it('renders Chinese comments for a Chinese project config', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'zh-CN'));
 
@@ -101,6 +118,7 @@ describe('Native project configuration', () => {
     expect(source).toContain('# 是否启用只读的环境感知恢复探针');
     expect(source).toContain('# Native 产物的存放根目录');
     expect(source).toContain('# Native 每轮询问一个问题');
+    expect(source).toContain('# Native 归档预演成功后自动归档');
     expect(source).toContain('# Native 快照纳入的项目相对路径');
     expect(source).toContain('# 单次快照最多哈希的文件内容总字节数');
     expect(source).not.toContain('# Enables automatic recovery');
@@ -186,6 +204,17 @@ describe('Native project configuration', () => {
 
     await expect(readProjectConfig(projectRoot)).rejects.toThrow(
       'native.clarification_mode must be sequential or batch',
+    );
+  });
+
+  it('fails closed for an invalid archive confirmation mode', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n  archive_confirmation: sometimes\n',
+    );
+
+    await expect(readProjectConfig(projectRoot)).rejects.toThrow(
+      'native.archive_confirmation must be automatic or required',
     );
   });
 

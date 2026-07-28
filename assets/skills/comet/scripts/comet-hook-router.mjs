@@ -10023,6 +10023,7 @@ var NATIVE_KEYS = /* @__PURE__ */ new Set([
   "artifact_root",
   "language",
   "clarification_mode",
+  "archive_confirmation",
   "snapshot",
   "pending_root_move"
 ]);
@@ -10201,6 +10202,10 @@ function parseConfig(value) {
   if (clarificationMode !== "sequential" && clarificationMode !== "batch") {
     throw new Error("native.clarification_mode must be sequential or batch");
   }
+  const archiveConfirmation = native.archive_confirmation ?? "automatic";
+  if (archiveConfirmation !== "automatic" && archiveConfirmation !== "required") {
+    throw new Error("native.archive_confirmation must be automatic or required");
+  }
   const pending = parsePending(native.pending_root_move);
   const snapshot = parseSnapshot(native.snapshot);
   return {
@@ -10212,6 +10217,7 @@ function parseConfig(value) {
       artifact_root: normalizeArtifactRootRef(native.artifact_root),
       language,
       clarification_mode: clarificationMode,
+      archive_confirmation: archiveConfirmation,
       snapshot,
       ...pending ? { pending_root_move: pending } : {}
     }

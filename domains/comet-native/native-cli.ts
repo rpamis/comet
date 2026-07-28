@@ -152,7 +152,7 @@ Commands:
   receipt waive <change-name> --acceptance <id> --blocked-receipt <ref> --reason <text> --risk <text> --alternative-receipt <ref> --identity <path> --private-key-env <name> --confirmed
   next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <required-ref>] [--evidence-receipt <ref>] [--waiver <ref>] [--independent-review-receipt <ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
-  archive <change-name> --expect-preflight <sha256>
+  archive <change-name> --expect-preflight <sha256> [--confirmed]
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
 `;
 
@@ -1357,8 +1357,12 @@ async function dispatch(
     const name = requiredPositional(rawArgs, 'change name');
     const dryRun = takeFlag(rawArgs, '--dry-run');
     const expectedPreflightHash = takeOption(rawArgs, '--expect-preflight');
+    const confirmed = takeFlag(rawArgs, '--confirmed');
     if (dryRun && expectedPreflightHash) {
       throw new NativeUsageError('--dry-run and --expect-preflight cannot be combined');
+    }
+    if (dryRun && confirmed) {
+      throw new NativeUsageError('--confirmed is only valid with --expect-preflight');
     }
     if (!dryRun && !expectedPreflightHash) {
       throw new NativeUsageError('archive requires --dry-run or --expect-preflight <sha256>');
@@ -1367,13 +1371,27 @@ async function dispatch(
       throw new NativeUsageError('--expect-preflight must be a SHA-256 hash');
     }
     assertNoArguments(rawArgs);
-    const { paths } = await configuredPaths(projectRoot);
+    const { config, paths } = await configuredPaths(projectRoot);
     if (dryRun) {
       const preview = await inspectNativeArchivePreflight({ paths, name });
+      const state = await readNativeChange(paths, name);
       return success(
         'archive --dry-run',
-        preview,
+        {
+          ...preview,
+          continuation: nativeContinuation({
+            state,
+            archiveReady: preview.ready,
+            archiveConfirmation: preview.archiveConfirmation,
+            archivePreflightHash: preview.preflightHash,
+          }),
+        },
         `Native Archive preview ${preview.preflightHash}: ${preview.ready ? 'ready' : 'blocked'}\n`,
+      );
+    }
+    if (config.native.archive_confirmation === 'required' && !confirmed) {
+      throw new NativeUsageError(
+        'archive requires --confirmed when native.archive_confirmation is required',
       );
     }
     const state = await readNativeChange(paths, name);

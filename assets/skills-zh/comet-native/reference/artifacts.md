@@ -59,6 +59,7 @@ native:
   artifact_root: docs
   language: zh-CN
   clarification_mode: sequential
+  archive_confirmation: automatic
   snapshot:
     include:
       - "**/*"
@@ -69,6 +70,8 @@ native:
 ```
 
 `clarification_mode` 控制 Native 如何组织用户决定，以及离开 Shape 前采用哪条确认契约：`sequential` 每轮询问一个最上游问题，`batch` 每轮询问所有前置条件已经确定的问题。字段缺失时使用 `sequential`。它不改变 change schema、生命周期、安全确认或调用方停点。
+
+`archive_confirmation` 控制成功 Archive 预演后的行为：`automatic` 使用预演返回的精确 hash 自动提交，`required` 返回 `await-user` 并要求用户明确选择后才能用 `--confirmed` 提交。字段缺失时使用 `automatic`。该值绑定进 `preflightHash`；预演后修改配置会使旧 hash 失效。Build ↔ Verify 的中间失败轮次不会进入 Archive，因此不会反复触发该决策点。
 
 `snapshot` 定义内容快照的显式范围与资源预算。`include`/`exclude` 使用项目相对 `/` 路径以及 `*`、`**`、`?`；规范化策略及 hash 会写入新 change 的 baseline。后续 current snapshot 继续使用 baseline 策略，不能靠中途修改范围隐藏实现变化。`max_files`、`max_total_bytes` 和 `max_duration_ms` 只限制捕获工作，可按仓库规模提高；文件内容使用流式 SHA-256，不依赖 Git object hash，也没有独立的 5 MiB 单文件限制。
 

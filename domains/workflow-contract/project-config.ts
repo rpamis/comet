@@ -13,6 +13,7 @@ type ProjectConfigCommentKey =
   | 'native.artifact_root'
   | 'native.language'
   | 'native.clarification_mode'
+  | 'native.archive_confirmation'
   | 'native.snapshot'
   | 'native.snapshot.include'
   | 'native.snapshot.exclude'
@@ -39,6 +40,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Artifact language used by Native workflow documents.\n# language: en | zh-CN',
     'native.clarification_mode':
       '# Controls whether Native asks one clarification at a time or every currently answerable question in a round.\n# clarification_mode: sequential | batch',
+    'native.archive_confirmation':
+      '# Controls whether Native archives automatically after a successful preview or waits for explicit user confirmation.\n# archive_confirmation: automatic | required',
     'native.snapshot':
       '# Controls the auditable project scope and bounded work used by Native content snapshots.',
     'native.snapshot.include':
@@ -72,6 +75,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'native.language': '# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN',
     'native.clarification_mode':
       '# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。\n# 可选值：sequential | batch',
+    'native.archive_confirmation':
+      '# Native 归档预演成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required',
     'native.snapshot': '# Native 内容快照使用的可审计项目范围与有界工作预算。',
     'native.snapshot.include': '# Native 快照纳入的项目相对路径；模式使用 /，支持 *、** 和 ?。',
     'native.snapshot.exclude': '# 从纳入范围中排除路径；新 change 会把排除策略绑定到 baseline。',
