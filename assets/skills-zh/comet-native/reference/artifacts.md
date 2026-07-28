@@ -1,137 +1,44 @@
 # Native 产物参考
 
-## 目录
+只在需要编辑 brief、完整目标规格、verification 或验收证据时读取本文件。
+
+## 产物边界
+
+Agent 主要编辑：
 
 ```text
-<controller-home>/.comet/native-controller-trust.json # 项目外、由 controller/owner 预置的只读 trust root
-<project>/.comet/config.yaml
-<project>/.comet/native-review-trust.json # controller 签名、change 创建前固定的公开 v2 policy
-<project>/.comet/current-change.json       # Native/Classic 共享的当前需求归属
-<artifact-root>/comet/
+<artifact-root>/comet/changes/<change-name>/
+  brief.md
   specs/<capability>/spec.md
-  changes/<change-name>/
-    comet-state.yaml
-    brief.md
-    specs/
-    verification.md
-    runtime/
-      baseline-manifest.json
-      workspace.json                 # process-free 物理 root 身份；只作提示
-      run-state.json                 # 通过 Native Protected Run I/O 读写
-      trajectory.jsonl               # 有事件数、单事件和总字节预算
-      pending-action.json            # 可选；仅在 Run 有待处理动作时存在
-      context.md                     # 可选；Run context ref
-      artifacts.json                 # 可选；Run artifact refs
-      transition.json                # 可选；未完成阶段推进日志
-      checkpoint-journal.json        # 可选；未完成 progress checkpoint 日志
-      trust/
-        review-policy-<policy-hash>.json # controller 签名的创建时 policy 快照
-      checkpoints/
-        latest.json                  # 最近阶段边界 checkpoint
-        progress.json
-        manifests/<sha256>.json
-      evidence/
-        scopes/<sha256>.json
-        snapshots/<sha256>.json
-        allowances/<sha256>.json
-        verifications/<sha256>.json
-        check-receipts/<sha256>.json
-        receipts/<sha256>.json
-        waivers/<sha256>.json
-  archive/YYYY-MM-DD-<change-name>/
-  runtime/
-    locks/
-    transactions/<transaction-id>/
-      transaction.json
-      events.jsonl
+  verification.md
 ```
 
-`artifact-root` 由项目配置唯一指定。Native 不使用隐藏的 change 目录，也不从其他需求目录发现状态。项目外的 `native-controller-trust.json` 把项目物理根 hash 绑定到 controller 公开 identity；Native 命令只读它，不创建、不修改。该文件必须处于当前 Agent 无法替换的宿主只读边界：POSIX 要求文件及父目录链由不同 UID 持有且不可写，Windows 要求宿主提供 Runtime 可验证的只读挂载能力。项目级 `.comet/config.yaml` 和公开的 `.comet/native-review-trust.json` 是持久配置例外；后者使用 `comet.native.review-trust-policy.v2`，保存 controller 签名、implementation key ID 以及预信任 reviewer/waiver signer 公开 identity，不保存任何私钥。`root move` 中断恢复期间还可能在源/目标 artifact root 旁出现 Runtime 管理的临时 staging 或 quarantine，事务收口后会清除。它们不是第二个可写 Native change 根。
+项目配置、当前 selection 和 change 状态用于读取，不要手工改变 Runtime 管理的 phase、确认、规格操作、scope、evidence、checkpoint、锁或事务字段。
+
+Native artifact root 只由 `.comet/config.yaml` 指定。不要扫描其他 workflow 的目录，也不要自行创建第二个状态根。
 
 ## 项目配置
 
+与 Agent 行为直接相关的配置：
+
 ```yaml
-schema: comet.project.v1
-default_workflow: native
-workflows:
-  - native
 native:
   artifact_root: docs
   language: zh-CN
   clarification_mode: sequential
   archive_confirmation: automatic
   max_verify_failures: 5
-  snapshot:
-    include:
-      - "**/*"
-    exclude: []
-    max_files: 10000
-    max_total_bytes: 268435456
-    max_duration_ms: 60000
 ```
 
-`clarification_mode` 控制 Native 如何组织用户决定，以及离开 Shape 前采用哪条确认契约：`sequential` 每轮询问一个最上游问题，`batch` 每轮询问所有前置条件已经确定的问题。字段缺失时使用 `sequential`。它不改变 change schema、生命周期、安全确认或调用方停点。
+- `clarification_mode`：`sequential` 或 `batch`。
+- `archive_confirmation`：`automatic` 或 `required`。
+- `max_verify_failures`：同一份已确认 contract 允许提交的 Verify fail 总数。
 
-`archive_confirmation` 控制成功 Archive 预演后的行为：`automatic` 使用预演返回的精确 hash 自动提交，`required` 返回 `await-user` 并要求用户明确选择后才能用 `--confirmed` 提交。字段缺失时使用 `automatic`。该值绑定进 `preflightHash`；预演后修改配置会使旧 hash 失效。Build ↔ Verify 的中间失败轮次不会进入 Archive，因此不会反复触发该决策点。
-
-`max_verify_failures` 是同一份已确认 contract 的 Verify-fail 总预算，必须是正整数，字段缺失时使用 `5`。每个已提交的 fail 消耗一次；普通实现变化、语义进展和配置修改不清除已累计次数。提高配置可以释放尚未超过新上限的预算，但只有用户确认的新 contract 才从零开始计数。
-
-`snapshot` 定义内容快照的显式范围与资源预算。`include`/`exclude` 使用项目相对 `/` 路径以及 `*`、`**`、`?`；规范化策略及 hash 会写入新 change 的 baseline。后续 current snapshot 继续使用 baseline 策略，不能靠中途修改范围隐藏实现变化。`max_files`、`max_total_bytes` 和 `max_duration_ms` 只限制捕获工作，可按仓库规模提高；文件内容使用流式 SHA-256，不依赖 Git object hash，也没有独立的 5 MiB 单文件限制。
-
-根目录迁移期间会出现 runtime 管理的 `pending_root_move`。存在该字段时普通写命令必须停止，不能自行选择旧根或新根。
-
-## 当前需求归属
-
-```json
-{
-  "schema": "comet.selection.v2",
-  "workflow": "native",
-  "change": "add-sentence-counting",
-  "branch": null
-}
-```
-
-`.comet/current-change.json` 是 Native 与 Classic 共用的当前需求 selection，不是 Native change 产物。Native 的 `new` 和 `select` 会写入 `workflow: native`；Hook Router 每次只把写入交给这一个 workflow 的 Guard。selection 缺失时只有全项目恰好一个 active Comet change 才能只读推断；多个候选、失效 selection 或已归档目标都会失败关闭。
-
-项目配置最多 64 KiB，selection 最多 16 KiB，change YAML 最多 256 KiB。brief 与单个拟议规格最多各 1 MiB；一个 change 最多 64 个拟议规格，contract 的 brief + specs 总读取最多 4 MiB。拟议规格目录还限制可枚举条目，`show` 的序列化载荷最多 10 MiB。超过预算时 Runtime 保留原文件并失败关闭，不以静默截断替代完整需求。
-
-## Change 状态
-
-```yaml
-schema: comet.native.v3
-minimum_runtime_version: 3
-revision: 1
-verification_protocol: signed-v2
-name: add-sentence-counting
-language: zh-CN
-phase: shape
-brief: brief.md
-approval: null
-approved_contract_hash: null
-spec_changes:
-  - capability: sentence-counting
-    operation: create
-    source: specs/sentence-counting/spec.md
-    base_hash: null
-verification_result: pending
-verification_report: null
-implementation_scope: null
-verification_evidence: null
-partial_allowance: null
-archived: false
-created_at: 2026-07-14
-run_id: null
-```
-
-不要直接编辑 Runtime 管理字段。`phase`、`revision`、`verification_protocol`、`approval`、`approved_contract_hash`、`spec_changes`、operation、`base_hash`、三个 evidence ref、`run_id` 和 `archived` 都由 Runtime 管理。
-
-新 change 固定为 `signed-v2`。创建 baseline 的 `creation` binding 保存 policy hash、`runtime/trust/review-policy-<policy-hash>.json` 的 ref/hash，以及完整 `comet.native.creation-authorization.v1`。authorization 由外部 controller 签名并绑定项目物理根 hash、policy、protocol 与 change name；读取状态、Verify 和 Archive 时都会相对 controller-owned trust root 重验。只有 controller store 明确列出的旧 change 才读取为 `legacy-v1`；schema migration 也显式保留该协议。marker、创建 binding、policy 快照或外部 trust 不一致会使 status、next 与 Archive 失败关闭，不能通过手改 YAML、baseline 或项目内 policy 绕过 signed receipt/review。
-
-`approval: confirmed` 表示 Runtime 已记录用户对当前共享理解的明确确认。`implicit` 只用于兼容旧 change，不代表用户已经确认；处于 Build 的旧 `implicit` change 必须确认后才能进入 Verify。`approved_contract_hash` 把 approval 绑定到当时的 brief/spec contract，contract 发生变化后也必须由用户重新确认。需要改变需求时，只更新 brief 和 `specs/<capability>/spec.md`；删除 capability 使用 `comet native spec remove`，再由命令检查并推进。
+字段缺失时分别使用 `sequential`、`automatic` 和 `5`。配置改变不会让旧证据继续有效，也不会自动清除已有阻塞项。
 
 ## Brief
 
-`brief.md` 固定使用八个一级标题：
+`brief.md` 使用以下一级标题：
 
 ```text
 # Outcome
@@ -144,27 +51,37 @@ run_id: null
 # Verification expectations
 ```
 
-前四节必须有实质内容。仍阻塞实现的问题在 Open questions 下以 `- [blocking]` 开头；普通备注不会阻塞 Shape。
+Outcome、Scope、Non-goals 和 Acceptance examples 必须有实质内容。
 
-Sequential 模式的 Open questions 同时保存一个最上游阻塞问题。Batch 模式使用 `- [blocking] Q1: <问题>`、`- [blocking] Q2: <问题>` 保存本轮全部可回答问题；该无序列表前缀是 Runtime 识别阻塞的固定格式，不能改成 Markdown 有序列表。未回答项继续保持 `[blocking]`。当前模式的全部问题处理完且完整性复核通过后，两种模式都使用 `- [blocking] CONFIRM: <确认内容>` 保存共享理解确认，明确确认前不能进入 Build。
+Open questions 中的阻塞项使用固定格式：
 
-问题编号只服务于当前澄清轮次。已确认答案应写入 Decisions 和完整目标规格；不要新增决策树产物，也不要把隐藏推理写入 brief。
+```text
+- [blocking] <Sequential 当前问题>
+- [blocking] Q1: <问题>
+- [blocking] CONFIRM: <最终共享理解>
+```
+
+未回答或不明确的问题继续保留。用户确认后，把决定写入 Decisions 和完整目标规格，再移除对应阻塞项。不要保存隐藏推理。
 
 ## 完整目标规格
 
-拟议规格固定写在 `changes/<change-name>/specs/<capability>/spec.md`，描述归档后 capability 应有的完整行为，不写只在旧文本上成立的增量片段。每个 capability 只能出现一次操作：
+规格写在：
 
-| operation | canonical 现状 | source | base_hash |
-| --- | --- | --- | --- |
-| `create` | 必须不存在 | 必填 | `null` |
-| `replace` | 必须存在 | 必填 | 当前 canonical 文件 SHA-256 |
-| `remove` | 必须存在 | 禁止 | 当前 canonical 文件 SHA-256 |
+```text
+changes/<change-name>/specs/<capability>/spec.md
+```
 
-`next` 首次发现 proposed spec 时推断 create/replace 并冻结 hash；`spec remove` 为 remove 冻结 hash。归档在锁内重新计算 hash，实际值与 `base_hash` 不同表示并发变化，必须重新读取并改写完整目标规格，再用 `spec rebase` 受控刷新基线、回到 Build 并重新验证，不能覆盖或手改 hash。
+它描述归档后 capability 应有的完整行为，不是相对旧文本的增量 patch。
+
+- 新 capability：创建完整规格。
+- 已有 capability：写出替换后的完整规格。
+- 删除 capability：运行 `comet native spec remove`，不要只删除文件。
+
+Runtime 负责记录 create、replace、remove 和 canonical 基线。发生 canonical 冲突时，先重读并改写完整目标规格，再使用 `spec rebase`；不要手改 Runtime 状态或 hash。
 
 ## Verification
 
-`verification.md` 固定使用六个非空一级标题：
+`verification.md` 使用以下非空一级标题：
 
 ```text
 # Acceptance evidence
@@ -175,21 +92,30 @@ Sequential 模式的 Open questions 同时保存一个最上游阻塞问题。Ba
 # Conclusion
 ```
 
-保存可复核事实，不保存隐藏推理文本。未运行的检查放在 Skipped checks，失败结果不能写成 pass。
+记录真实命令、结果和可复核事实。未运行的检查放在 Skipped checks；失败结果不能写成 pass。
 
-Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出就拒绝继续，不会先构造无界列表再截断。Build、Verify 和 Archive 的 `status --details` 都可返回 `acceptancePage`。每页最多 16 项；单项文字最多 512 UTF-8 字节、context 最多 4 项且每项最多 256 字节，整页最多 32 KiB。Build-after-fail 会为每项投影 `satisfied`、`failed`、`missing` 或 `unverified`，并在页内列出 failed/missing acceptance IDs；failed check IDs 每页最多 16 项并显式标记截断。文字或 context 截断会显式标记，验收 ID 不会因分页或截断而丢失；cursor 绑定当前 acceptance hash，契约变化后旧 cursor 会失效。
+## Acceptance evidence
 
-`# Acceptance evidence` 下必须恰好有一个固定机器块。ID 由 Runtime 从 brief/spec 派生，通过 Build 结果或 `status --details` 返回；不要自行计算或改写。生成这个块时用 `comet native evidence format` 把条目序列化成规范文本再粘贴进去，不要手工排版 JSON——手写几乎不可能逐字节匹配规范序列化规则，会被拒绝并报 "canonical serialization" 错误：
+使用 Runtime 返回的 acceptance ID，不要自行计算。先准备条目数组，再运行：
 
 ```text
-<!-- comet-native:acceptance-evidence:start -->
+comet native evidence format [--entries <path>]
+```
+
+把命令输出原样放入 `# Acceptance evidence`。输入条目的基本形式：
+
+```json
 [
   {
     "acceptance_id": "acceptance-<sha256>",
     "status": "passed",
-    "evidence_refs": [
-      "runtime/evidence/receipts/<sha256>.json"
-    ]
+    "evidence_refs": ["runtime/evidence/receipts/<sha256>.json"]
+  },
+  {
+    "acceptance_id": "acceptance-<sha256>",
+    "status": "failed",
+    "evidence_refs": [],
+    "skipped_reason": "实际失败或未完成原因"
   },
   {
     "acceptance_id": "acceptance-<sha256>",
@@ -198,43 +124,10 @@ Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出�
     "waiver_ref": "runtime/evidence/waivers/<sha256>.json"
   }
 ]
-<!-- comet-native:acceptance-evidence:end -->
 ```
 
-数组按 `acceptance_id` 排序，`evidence_refs` 也排序。`passed` 必须引用至少一个当前 typed receipt；`failed` 使用空 refs 与非空 `skipped_reason`；`waived` 使用空 refs 与一个 signed `waiver_ref`。waiver receipt 绑定 blocking receipt、原因、风险、替代 typed receipts、当前 bindings 与预信任 waiver signer。三种状态不能混用字段，也不能引用绝对路径、旧项目文件 evidence ref、`.git`、`.env*` 或其他 Native runtime 路径。
+- `passed` 引用当前有效的 typed receipt。
+- `failed` 说明真实失败或跳过原因。
+- `waived` 引用外部 signer 返回的 waiver。
 
-```text
-comet native evidence format [--entries <path>]
-```
-
-把上面这份条目数组（不带 markers）以 JSON 通过 stdin 传入，或用 `--entries <path>` 指定一个 JSON 文件；命令输出的文本已经包含 start/end markers 和规范排序、缩进，原样粘贴到 verification.md 的 `# Acceptance evidence` 一节即可。
-
-## 内容寻址证据
-
-- `baseline-manifest.json`：change 创建时的有界项目快照。它只记录项目相对路径、size、内容 hash、capture provider、规范化 scope policy、实际资源预算和省略事实，不保存文件内容。Git 只用于项目文件枚举和 gitlink 边界，不作为普通文件的内容身份；普通文件始终流式计算 SHA-256。Git provider 纳入 tracked 和未被 ignore 的 untracked 文件，并把 submodule/gitlink 作为原子条目；非 Git 项目使用带前后枚举围栏的有界物理树 provider。显式排除项属于 baseline 定义之外，不伪装成 omission；创建时若策略范围内仍有省略项，`new` 会失败并清理未完成 change，同时返回实际限制与支持的配置修复路径。
-  - `git-selection-changed`：等待 Git 写入稳定后重试，不能授权为 partial scope。
-  - `git-enumeration-limit`：先缩小或清理项目所有范围。只有 current snapshot 返回可授权 scope，且用户接受未知尾部的具体风险时，才能按精确 hash、理由与 `--confirmed` 使用 partial 协议。
-  - `physical-selection-changed` 和 `physical-enumeration-limit`：稳定或缩小项目树后重试，不能授权为 partial scope。
-  - 任何情况都不能手改 evidence 或猜测未枚举路径。
-- `evidence/scopes/`：Build 离开时由 baseline、当前快照、声明产物和 contract 派生的 implementation scope。当前快照不完整时不会猜测删除；变化过多时只展开有界明细，其余由带数量与内容 hash 的 `scope-detail-overflow` 表示。scope 不完整时 Runtime 停止；用户显式接受后才生成 `allowances/`。
-- `evidence/verifications/`：Verify 结论的 v2 envelope，绑定 change revision、contract、完整 acceptance matrix、scope、报告 hash、required receipt refs、验收 receipt refs、waiver refs 和 independent review ref。Verify 与 Archive 共用 graph validator；任一绑定事实变化都会 stale。
-- `evidence/check-receipts/`：`comet native check` 的内置策略结果。它只保存 policy/version、scope/snapshot 绑定、有界 issue 与计数，不保存文件内容，也不是测试完整性的证明。
-- `evidence/receipts/`：typed v2 receipt。`automated-check` 保存真实 executable/argv/exit/timeout、worktree 与 after-fence；`static-inspection` 绑定内置 check；`manual-evidence` 保存已确认步骤与观察；`implementation-attestation` 由预信任 implementation signer 签名。`independent-review` 引用该 attestation，由不同的外部预信任 reviewer 签署 canonical acceptance matrix 与完整 evidence graph；graph 包含 reviewed receipt/waiver refs、automated/static replay refs 和 manual attestation refs。reviewer 路径会重放 automated receipt、重跑 static inspection，并对 manual receipt 明确 attestation；review 不能充当直接 acceptance evidence。
-- `evidence/waivers/`：每个 acceptance 一份 signed waiver，绑定一个当前非 passed blocking receipt、原因、风险、替代 receipt 与预信任 signer；waiver 不能覆盖其他 acceptance，也不能让 required global check 在只覆盖部分 acceptance 时通过。
-- `checkpoints/`：阶段内恢复摘要与真实产物 manifest。checkpoint 会递增 revision，但不改变 phase，也不能代替 brief、规格、scope 或 verification。
-
-所有 hash ref 都由 Runtime 写入并在读取时重算。不要复制旧 ref 到新状态、手改 JSON 或把 receipt 当作 pass；`next`、status 和 Archive 会重新读取并检查新鲜度。
-
-Evidence retention 只能由 doctor 显式执行，不在普通工作流中后台删除文件。只读 doctor 报告候选；`doctor --repair` 只清理 active change 中至少 30 天、每种 evidence kind 最新 32 份之外，并且能从当前 state refs 及其依赖闭包证明未引用的 snapshot、scope、allowance、verification、check receipt、typed receipt 和 waiver。
-
-候选按 dependents-before-dependencies 排序。每个文件先在父链与身份复核后改名到同目录唯一 `.gc` quarantine，再复核并删除。中断的 quarantine 会由后续 doctor 发现；显式 repair 仅在原路径不存在且内容与身份有效时无覆盖恢复。
-
-出现原文件与 quarantine 冲突、多份 quarantine、归档 change、pending transition/checkpoint、缺失依赖、损坏文档、未知目录项、symlink 或其他特殊文件时，推迟或拒绝清理。不要把 retention 当作修复损坏证据的办法。
-
-Build 与 Verify 使用 inspect-then-persist：先计算并校验 contract、scope、acceptance、repair、Run 与 trajectory，再把最终证据引用写入状态和 transition。Partial Build 可先内容寻址保存候选 scope 以返回稳定 hash，但没有确认时不会生成 allowance 或推进；被后续检查阻塞的 Verify 不会留下可被误认成已提交结论的 verification evidence。
-
-Run state、trajectory、checkpoint、pending action、context 和 artifact refs 只能经过 Native Protected Run I/O。读取拒绝 symlink/junction、非普通文件、路径或文件身份变化和越界，并执行打开前后复核；写入在原子提交前复核父链和目标身份。
-
-当前预算为：Run state 256 KiB；trajectory 8 MiB、4096 个事件、单事件 256 KiB；checkpoint 与 pending action 各 256 KiB；context 与 artifact refs 各 1 MiB。通用 Engine 存储函数不是 Native 文件边界。
-
-阶段 transition journal 最多 512 KiB，baseline manifest 的硬上限为 8 MiB。Archive/root move transaction journal 最多 256 KiB；`events.jsonl` 最多 1 MiB 或 1024 个事件，单个事件最多 16 KiB。摘要、无代码理由、partial 理由、repair override 摘要与跳过理由在持久化前执行长度校验和凭据形态脱敏；不要把 token、密码、私钥或连接串写入 workflow 证据。
+不要手工排版机器块，不要复用旧 change 的 evidence ref，也不要把失败、跳过或阻塞结果写成通过。
