@@ -281,6 +281,10 @@ function nextFenceState(line: string, current: FenceState | null): FenceState | 
   return current;
 }
 
+function closesHtmlComment(line: string): boolean {
+  return line.includes('-->') || line.includes('--!>');
+}
+
 function* iterateScannedMarkdown(markdown: string): Generator<IndexedScannedMarkdownLine> {
   let fence: FenceState | null = null;
   let htmlComment = false;
@@ -299,7 +303,7 @@ function* iterateScannedMarkdown(markdown: string): Generator<IndexedScannedMark
     if (fence !== null) {
       fence = nextFenceState(line, fence);
     } else if (htmlComment) {
-      if (line.includes('-->')) htmlComment = false;
+      if (closesHtmlComment(line)) htmlComment = false;
     } else if (opaqueHtmlTag !== null) {
       if (new RegExp(`</${opaqueHtmlTag}\\s*>`, 'iu').test(line)) opaqueHtmlTag = null;
     } else {
@@ -308,7 +312,7 @@ function* iterateScannedMarkdown(markdown: string): Generator<IndexedScannedMark
         fence = nextFence;
       } else {
         const trimmed = line.trimStart();
-        if (trimmed.startsWith('<!--') && !trimmed.includes('-->')) {
+        if (trimmed.startsWith('<!--') && !closesHtmlComment(trimmed)) {
           htmlComment = true;
         } else {
           const htmlStart = /^<([A-Za-z][A-Za-z0-9-]*)\b[^>]*>/u.exec(trimmed);
@@ -553,8 +557,9 @@ export function deriveSpecMandatoryAcceptanceCriteria(
     if (
       trimmed.length === 0 ||
       nextFenceState(line, null) !== null ||
-      /^<!--(?:.*-->)?$/u.test(trimmed) ||
-      /^-->$/u.test(trimmed) ||
+      trimmed.startsWith('<!--') ||
+      trimmed === '-->' ||
+      trimmed === '--!>' ||
       /^<\/?[A-Za-z][^>]*>$/u.test(trimmed) ||
       /^<[A-Za-z][^>]*>.*<\/[A-Za-z][^>]*>$/u.test(trimmed) ||
       /^(?:[-*_]\s*){3,}$/u.test(trimmed) ||

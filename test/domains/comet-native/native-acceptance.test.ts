@@ -296,6 +296,16 @@ Another excluded sentence.
     ]);
   });
 
+  it('keeps HTML comments with alternate valid endings out of mandatory criteria', () => {
+    const spec = `# Contract
+<!-- hidden MUST not be accepted --!>
+- Runtime MUST remain visible.
+`;
+    expect(deriveSpecMandatoryAcceptanceCriteria(spec).map((entry) => entry.text)).toEqual([
+      'Runtime MUST remain visible.',
+    ]);
+  });
+
   it('keeps requirements after void HTML tags and inside semantic containers', () => {
     const spec = `# Contract
 <br>

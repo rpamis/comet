@@ -369,7 +369,11 @@ describe('workflow contract normalization', () => {
       );
     } finally {
       try {
-        await fs.rmdir(path.join(projectRoot, '.comet'));
+        const managedDirectory = path.join(projectRoot, '.comet');
+        if ((await fs.lstat(managedDirectory)).isSymbolicLink()) {
+          if (process.platform === 'win32') await fs.rmdir(managedDirectory);
+          else await fs.unlink(managedDirectory);
+        }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }

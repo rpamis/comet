@@ -84,6 +84,9 @@ BUILD_IDENTITY_KEYS = {
     "snapshotHash",
     "snapshotFileCount",
     "packageHash",
+    "assetsHash",
+    "assetsFileCount",
+    "manifestHash",
     "entryHash",
     "nativeAdapterHash",
     "compilerVersion",
@@ -132,12 +135,14 @@ def check_current_cli_build_identity() -> dict[str, str]:
             "sourceHash",
             "snapshotHash",
             "packageHash",
+            "assetsHash",
+            "manifestHash",
             "entryHash",
             "nativeAdapterHash",
         ):
             if not isinstance(identity[field], str) or not HASH.fullmatch(identity[field]):
                 raise ValueError(f"Controller source-build {field} is invalid")
-        for field in ("sourceFileCount", "snapshotFileCount"):
+        for field in ("sourceFileCount", "snapshotFileCount", "assetsFileCount"):
             if (
                 isinstance(identity[field], bool)
                 or not isinstance(identity[field], int)
@@ -149,11 +154,15 @@ def check_current_cli_build_identity() -> dict[str, str]:
         entry = snapshot / "dist/app/cli/index.js"
         adapter = snapshot / "dist/domains/dashboard/native-adapter.js"
         package = snapshot / "package.json"
-        for path in (entry, adapter, package, snapshot / "bin/comet.js"):
+        assets = snapshot / "assets"
+        manifest = assets / "manifest.json"
+        for path in (entry, adapter, package, snapshot / "bin/comet.js", manifest):
             if path.is_symlink() or not path.is_file():
                 raise ValueError(f"Controller source build omitted a real file: {path}")
         files = [
-            path for relative in ("bin", "dist") for path in _real_tree_files(snapshot / relative)
+            path
+            for relative in ("assets", "bin", "dist")
+            for path in _real_tree_files(snapshot / relative)
         ] + [package]
         snapshot_hash, snapshot_count = _tree_digest(snapshot, files)
         if (
@@ -169,6 +178,11 @@ def check_current_cli_build_identity() -> dict[str, str]:
         for path, field in bindings.items():
             if hashlib.sha256(path.read_bytes()).hexdigest() != identity[field]:
                 raise ValueError(f"Controller source-build {field} does not match {path.name}")
+        asset_hash, asset_count = _tree_digest(snapshot, _real_tree_files(assets))
+        if asset_hash != identity["assetsHash"] or asset_count != identity["assetsFileCount"]:
+            raise ValueError("Controller source-build assets identity does not match its files")
+        if hashlib.sha256(manifest.read_bytes()).hexdigest() != identity["manifestHash"]:
+            raise ValueError("Controller source-build manifest identity does not match manifest.json")
     except Exception as error:
         return failed(check, str(error))
     return passed(check)

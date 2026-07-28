@@ -13,6 +13,22 @@ const runtime = path.resolve(
 );
 const builder = path.resolve('scripts', 'build', 'build-native-runtime.mjs');
 
+async function writeRuntimeWithRetry(contents: Buffer): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await fs.writeFile(runtime, contents);
+      return;
+    } catch (error) {
+      lastError = error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'UNKNOWN' && code !== 'EPERM') throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 describe('Native runtime release asset', () => {
   it('publishes the Native Skill, references, and runtime from the manifest', () => {
     for (const relative of [
@@ -89,12 +105,12 @@ describe('Native runtime release asset', () => {
   it('detects a stale generated runtime', async () => {
     const original = await fs.readFile(runtime);
     try {
-      await fs.writeFile(runtime, Buffer.concat([original, Buffer.from('\n// stale fixture\n')]));
+      await writeRuntimeWithRetry(Buffer.concat([original, Buffer.from('\n// stale fixture\n')]));
       const result = spawnSync(process.execPath, [builder, '--check'], { encoding: 'utf8' });
       expect(result.status).toBe(1);
       expect(result.stderr).toContain('Native runtime script is stale');
     } finally {
-      await fs.writeFile(runtime, original);
+      await writeRuntimeWithRetry(original);
     }
   });
 });

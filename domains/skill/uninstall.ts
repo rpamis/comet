@@ -59,6 +59,26 @@ type ManagedWorkingTree = {
   readonly [entry: string]: 'file' | ManagedWorkingTree;
 };
 
+function managedWorkingTreeEntry(
+  tree: ManagedWorkingTree,
+  entry: string,
+): 'file' | ManagedWorkingTree | undefined {
+  return Object.prototype.hasOwnProperty.call(tree, entry) ? tree[entry] : undefined;
+}
+
+function setManagedWorkingTreeEntry(
+  tree: ManagedWorkingTree,
+  entry: string,
+  value: 'file' | ManagedWorkingTree,
+): void {
+  Object.defineProperty(tree, entry, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+}
+
 const EMPTY_MANAGED_WORKING_TREE: ManagedWorkingTree = {};
 const OPENSPEC_WORKING_TREE: ManagedWorkingTree = {
   changes: {
@@ -318,14 +338,14 @@ function mergeManagedWorkingTree(
 ): void {
   if (segments.length === 0) {
     for (const [entry, expected] of Object.entries(managedTree)) {
-      const current = target[entry];
+      const current = managedWorkingTreeEntry(target, entry);
       if (current === 'file' || expected === 'file') {
         if (current !== undefined && current !== expected) {
           throw new Error(`Conflicting managed working-tree entry: ${entry}`);
         }
-        (target as Record<string, 'file' | ManagedWorkingTree>)[entry] = expected;
+        setManagedWorkingTreeEntry(target, entry, expected);
       } else if (current === undefined) {
-        (target as Record<string, 'file' | ManagedWorkingTree>)[entry] = expected;
+        setManagedWorkingTreeEntry(target, entry, expected);
       } else {
         mergeManagedWorkingTree(current, [], expected);
       }
@@ -333,10 +353,10 @@ function mergeManagedWorkingTree(
     return;
   }
   const [head, ...tail] = segments;
-  const current = target[head];
+  const current = managedWorkingTreeEntry(target, head);
   if (current === 'file') throw new Error(`Conflicting managed working-tree entry: ${head}`);
-  const child = current ?? {};
-  (target as Record<string, 'file' | ManagedWorkingTree>)[head] = child;
+  const child = current ?? Object.create(null);
+  setManagedWorkingTreeEntry(target, head, child);
   mergeManagedWorkingTree(child, tail, managedTree);
 }
 

@@ -296,6 +296,7 @@ build_plugin_args() {
 # Nested read-only binds override the writable /workspace parent mount when present.
 build_trusted_oracle_mount_args() {
     local dir="$1"
+    local use_native_review_sidecar="${2:-false}"
     TRUSTED_ORACLE_MOUNT_ARGS=()
     if [[ -d "$dir/_eval_current_comet" ]]; then
         local current_comet_host
@@ -310,7 +311,7 @@ build_trusted_oracle_mount_args() {
         TRUSTED_ORACLE_MOUNT_ARGS+=(
             "-v" "$native_oracles_host://workspace/_eval_trusted_oracles:ro"
         )
-        if [[ -f "$dir/_eval_trusted_oracles/controller-home/native-controller-trust.json" ]]; then
+        if [[ "$use_native_review_sidecar" != "true" && -f "$dir/_eval_trusted_oracles/controller-home/native-controller-trust.json" ]]; then
             local native_controller_home_host
             native_controller_home_host=$(_winpath "$dir/_eval_trusted_oracles/controller-home")
             TRUSTED_ORACLE_MOUNT_ARGS+=(
@@ -357,7 +358,7 @@ start_native_review_sidecars() {
         -v "$oracle_host/controller-home://source:ro" \
         -v "$NATIVE_REVIEW_CONTROLLER_VOLUME://target" \
         "$image_id" \
-        sh -c 'cp /source/native-controller-trust.json /target/native-controller-trust.json && chown root:root /target/native-controller-trust.json && chmod 0444 /target/native-controller-trust.json'
+        sh -c 'mkdir -p /target/.comet && cp /source/native-controller-trust.json /target/.comet/native-controller-trust.json && chown root:root /target /target/.comet /target/.comet/native-controller-trust.json && chmod 0555 /target /target/.comet && chmod 0444 /target/.comet/native-controller-trust.json'
     docker run -d --rm --name "$signer_name" \
         --network "$NATIVE_REVIEW_NETWORK" \
         -v "$shell_host://opt/scaffold-shell:ro" \
@@ -371,7 +372,8 @@ start_native_review_sidecars() {
         -v "$oracle_host://workspace/_eval_trusted_oracles:ro" \
         -v "$shell_host://opt/scaffold-shell:ro" \
         -v "$token_host://run/native-review-signer-token:ro" \
-        -v "$NATIVE_REVIEW_CONTROLLER_VOLUME://home/agent/.comet:ro" \
+        -e "HOME=//opt/comet-controller" \
+        -v "$NATIVE_REVIEW_CONTROLLER_VOLUME://opt/comet-controller:ro" \
         -w //workspace \
         "$image_id" \
         node //opt/scaffold-shell/native-review-verifier-daemon.mjs \
@@ -379,7 +381,8 @@ start_native_review_sidecars() {
     NATIVE_REVIEW_AGENT_ARGS=(
         "--network" "$NATIVE_REVIEW_NETWORK"
         "-e" "COMET_NATIVE_REVIEW_VERIFIER_URL=http://$verifier_name:4318"
-        "-v" "$NATIVE_REVIEW_CONTROLLER_VOLUME://home/agent/.comet:ro"
+        "-e" "HOME=//opt/comet-controller"
+        "-v" "$NATIVE_REVIEW_CONTROLLER_VOLUME://opt/comet-controller:ro"
     )
 }
 
@@ -482,7 +485,7 @@ docker_run_claude() {
 
     build_env_args
     build_plugin_args
-    build_trusted_oracle_mount_args "$dir"
+    build_trusted_oracle_mount_args "$dir" true
     start_native_review_sidecars "$dir" "$image_id"
     trap stop_native_review_sidecars RETURN
 
@@ -559,7 +562,7 @@ docker_run_claude_loop() {
 
     build_env_args
     build_plugin_args
-    build_trusted_oracle_mount_args "$dir"
+    build_trusted_oracle_mount_args "$dir" true
     start_native_review_sidecars "$dir" "$image_id"
     trap stop_native_review_sidecars RETURN
 

@@ -116,6 +116,26 @@ async function copyScripts(source: string, destination: string, names: string[])
   );
 }
 
+async function configureActiveClassicLegacyLayout(
+  root: string,
+  sourceScripts: string,
+): Promise<void> {
+  if (sourceScripts !== activeScripts) return;
+  await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(root, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      '  artifact_layout: legacy',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+}
+
 function runScript(
   cwd: string,
   scripts: string,
@@ -226,6 +246,7 @@ async function observeState(
   temporaryRoots.push(root);
   const scripts = path.join(root, 'scripts');
   await copyScripts(sourceScripts, scripts, variant.names);
+  await configureActiveClassicLegacyLayout(root, sourceScripts);
 
   const name = `${profile}-change`;
   const init = runScript(
@@ -275,6 +296,7 @@ async function observeGuard(
   temporaryRoots.push(root);
   const scripts = path.join(root, 'scripts');
   await copyScripts(sourceScripts, scripts, variant.names);
+  await configureActiveClassicLegacyLayout(root, sourceScripts);
 
   const name = `${profile}-guard`;
   const init = runScript(
@@ -324,6 +346,7 @@ async function observeHandoff(
   temporaryRoots.push(root);
   const scripts = path.join(root, 'scripts');
   await copyScripts(sourceScripts, scripts, variant.names);
+  await configureActiveClassicLegacyLayout(root, sourceScripts);
 
   const name = `${profile}-handoff`;
   runScript(root, scripts, variant.state, ['init', name, profile], undefined, variant.executor);
@@ -369,6 +392,7 @@ async function observeHook(sourceScripts: string): Promise<GuardObservation> {
   temporaryRoots.push(root);
   const scripts = path.join(root, 'scripts');
   await copyScripts(sourceScripts, scripts, variant.names);
+  await configureActiveClassicLegacyLayout(root, sourceScripts);
 
   const name = 'full-hook';
   runScript(root, scripts, variant.state, ['init', name, 'full'], undefined, variant.executor);

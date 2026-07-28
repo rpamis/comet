@@ -184,7 +184,8 @@ describe.sequential('Classic protected path consumers', () => {
     await writeFile(outside, 'outside-secret\n');
     const linkProbe = path.join(projectRoot, 'directory-link-probe');
     if (!(await linkDirectory(outsideRoot, linkProbe))) return;
-    await fs.rmdir(linkProbe);
+    if (process.platform === 'win32') await fs.rmdir(linkProbe);
+    else await fs.unlink(linkProbe);
 
     try {
       await expect(

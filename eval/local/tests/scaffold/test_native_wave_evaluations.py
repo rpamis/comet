@@ -668,7 +668,8 @@ def test_controller_provisions_immutable_native_review_fixture(tmp_path: Path):
     signer_start = docker_harness.split('node //opt/scaffold-shell/native-review-signer-daemon.mjs')[0]
     assert 'workspace_host://workspace' not in signer_start.split('docker run -d --rm --name "$signer_name"')[-1]
     assert 'workspace_host://workspace' in docker_harness
-    assert 'NATIVE_REVIEW_CONTROLLER_VOLUME://home/agent/.comet:ro' in docker_harness
+    assert 'NATIVE_REVIEW_CONTROLLER_VOLUME://opt/comet-controller:ro' in docker_harness
+    assert 'HOME=//opt/comet-controller' in docker_harness
 
 
 def test_native_workflow_validator_recomputes_typed_receipt_hash(tmp_path: Path):
@@ -2062,6 +2063,8 @@ def test_wave_f_rejects_tampered_controller_source_build(monkeypatch, tmp_path: 
     (checkout / "bin").mkdir(parents=True)
     (checkout / "bin/comet.js").write_text("import '../dist/app/cli/index.js';\n", encoding="utf-8")
     (checkout / "package.json").write_text('{"type":"module"}\n', encoding="utf-8")
+    (checkout / "assets").mkdir()
+    (checkout / "assets/manifest.json").write_text('{"skills": []}\n', encoding="utf-8")
     environment = tmp_path / "environment"
     environment.mkdir()
     (environment / ".include-current-comet-cli").write_text("include\n", encoding="utf-8")
@@ -2085,7 +2088,8 @@ def test_wave_f_rejects_tampered_controller_source_build(monkeypatch, tmp_path: 
     )
     validator.WORKSPACE = workspace
 
-    assert validator.check_current_cli_build_identity()["status"] == "passed"
+    identity_check = validator.check_current_cli_build_identity()
+    assert identity_check["status"] == "passed", identity_check
     adapter = workspace / "_eval_current_comet/dist/domains/dashboard/native-adapter.js"
     adapter.write_text("export const schema = 'forged';\n", encoding="utf-8")
     assert validator.check_current_cli_build_identity()["status"] == "failed"

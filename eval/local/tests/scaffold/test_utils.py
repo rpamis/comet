@@ -209,6 +209,17 @@ def test_docker_subject_run_uses_controller_verified_immutable_image_identity():
     assert '"$image_id"' in docker_sh
 
 
+def test_native_review_agent_mounts_only_the_sidecar_controller_volume():
+    docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+
+    assert 'local use_native_review_sidecar="${2:-false}"' in docker_sh
+    assert 'if [[ "$use_native_review_sidecar" != "true"' in docker_sh
+    assert 'build_trusted_oracle_mount_args "$dir" true' in docker_sh
+    assert 'cp /source/native-controller-trust.json /target/.comet/native-controller-trust.json' in docker_sh
+    assert '"-e" "HOME=//opt/comet-controller"' in docker_sh
+    assert '"-v" "$NATIVE_REVIEW_CONTROLLER_VOLUME://opt/comet-controller:ro"' in docker_sh
+
+
 def test_run_claude_fixture_defaults_langsmith_hook_log_path():
     conftest_py = (Path(__file__).resolve().parents[1] / "conftest.py").read_text(encoding="utf-8")
 
