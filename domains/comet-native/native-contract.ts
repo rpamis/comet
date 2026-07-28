@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   deriveBriefAcceptanceCriteria,
   deriveSpecAcceptanceCriteria,
+  deriveSpecMandatoryAcceptanceCriteria,
   NATIVE_ACCEPTANCE_LIMITS,
   type NativeAcceptanceCriterion,
 } from './native-acceptance.js';
@@ -170,6 +171,13 @@ export function buildNativeContractSnapshot(input: {
     if (markdown === null || snapshot.source === null) continue;
     acceptance.push(
       ...deriveSpecAcceptanceCriteria(
+        markdown,
+        snapshot.source,
+        NATIVE_CONTRACT_LIMITS.maxAcceptanceCriteria - acceptance.length,
+      ),
+    );
+    acceptance.push(
+      ...deriveSpecMandatoryAcceptanceCriteria(
         markdown,
         snapshot.source,
         NATIVE_CONTRACT_LIMITS.maxAcceptanceCriteria - acceptance.length,

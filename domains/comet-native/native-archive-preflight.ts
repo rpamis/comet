@@ -230,6 +230,9 @@ function derivedFindings(input: {
   if (input.evidence.freshness === 'missing') findings.push('verification-evidence-missing');
   if (input.evidence.freshness === 'invalid') findings.push('verification-evidence-invalid');
   if (input.evidence.freshness === 'stale') findings.push('verification-evidence-stale');
+  if (input.evidence.skippedAcceptanceCount > 0) {
+    findings.push('verification-acceptance-skipped');
+  }
   for (const spec of input.specs) {
     if (spec.actualBaseHash !== spec.expectedBaseHash) findings.push('spec-base-conflict');
   }

@@ -81,6 +81,26 @@ def check_native_artifacts():
         return failed("native_artifacts", "Archive has no complete proposed specification")
     if any((WORKSPACE / "docs" / "comet" / "changes").iterdir()):
         return failed("native_artifacts", "An active Native change remains after archive")
+    state = yaml.safe_load((archived / "comet-state.yaml").read_text(encoding="utf-8"))
+    evidence_ref = state.get("verification_evidence")
+    if state.get("verification_result") != "pass" or not isinstance(evidence_ref, str):
+        return failed("native_artifacts", "Archive has no passing Native verification evidence")
+    evidence_file = archived / evidence_ref
+    if not evidence_file.is_file():
+        return failed("native_artifacts", "Archive verification evidence receipt is missing")
+    evidence = json.loads(evidence_file.read_text(encoding="utf-8"))
+    receipt_ref = evidence.get("receiptRef")
+    if not isinstance(receipt_ref, str):
+        return failed("native_artifacts", "Passing verification has no check receipt")
+    receipt_file = archived / receipt_ref
+    if not receipt_file.is_file():
+        return failed("native_artifacts", "Bound check receipt is missing")
+    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
+    if receipt.get("status") != "passed" or receipt.get("stale"):
+        return failed("native_artifacts", "Bound check receipt is not a current pass")
+    trace = evidence.get("acceptanceTrace", {})
+    if trace.get("skipped", 0) != 0:
+        return failed("native_artifacts", "Passing verification has skipped acceptance criteria")
     return passed("native_artifacts")
 
 

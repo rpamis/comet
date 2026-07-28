@@ -20,6 +20,7 @@ import type {
   NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
 import { prepareNativeVerificationEvidence } from '../../../domains/comet-native/native-verification-runtime.js';
+import { nativeVerificationFixtureReceipt } from '../../helpers/native-verification.js';
 
 const brief = `# Outcome
 Ship one focused behavior.
@@ -108,6 +109,10 @@ Pass.
       state: verifyState,
       result: 'pass',
       reportRef: 'verification.md',
+      receiptRef: await nativeVerificationFixtureReceipt({
+        paths,
+        name: verifyState.name,
+      }),
       now: new Date('2026-07-17T02:00:00.000Z'),
     });
     const archiveCandidate: NativeChangeState = {

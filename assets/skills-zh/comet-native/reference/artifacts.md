@@ -178,13 +178,17 @@ Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出�
   {
     "acceptance_id": "acceptance-<sha256>",
     "evidence_refs": [],
-    "skipped_reason": "该平台当前不可用。"
+    "waiver": {
+      "reason": "该平台当前不可用。",
+      "risk": "该平台路径尚未执行。",
+      "alternative_evidence_refs": ["test/platform-fallback.md"]
+    }
   }
 ]
 <!-- comet-native:acceptance-evidence:end -->
 ```
 
-数组按 `acceptance_id` 排序，`evidence_refs` 也排序。每项只能二选一：至少一个项目相对 evidence ref，或空数组加非空 `skipped_reason`。不能同时给证据和跳过理由，也不能引用绝对路径、Native 外部路径、`.git` 或 `.env*`。
+数组按 `acceptance_id` 排序，`evidence_refs` 也排序。每项要么给出至少一个项目相对 evidence ref，要么使用空数组加结构化 `waiver`；旧 `skipped_reason` 只能如实表达未完成，不能用于 pass。waiver 必须包含原因、风险与至少一条替代证据，并在 Verify 使用 `--confirmed --confirm-waiver`。不能同时给证据和 waiver，也不能引用绝对路径、Native 外部路径、`.git` 或 `.env*`。
 
 ```text
 comet native evidence format [--entries <path>]

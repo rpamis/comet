@@ -22,20 +22,21 @@ export async function checkNativeChange(options: {
   name: string;
 }): Promise<NativeCheckResult> {
   return withNativeMutationLock(options.paths, `check ${options.name}`, () =>
-    withNativeTransitionLock(options.paths, options.name, `check ${options.name}`, async () => {
-      await settleNativeChangeJournalsLocked(options.paths, options.name);
-      const state = await readNativeChange(options.paths, options.name);
-      if (state.phase !== 'verify') {
-        throw new Error(`Native check requires Verify, got ${state.phase}`);
-      }
-      if (!state.implementation_scope) {
-        throw new Error('Native check requires an implementation scope');
-      }
-      const executed = await executeNativeCheckReceipt({
-        paths: options.paths,
-        state,
-      });
-      return { change: state, receipt: executed.receipt, ref: executed.ref };
-    }),
+    withNativeTransitionLock(options.paths, options.name, `check ${options.name}`, () =>
+      checkNativeChangeLocked(options),
+    ),
   );
+}
+
+/** Run the check while the caller already owns Native's mutation and transition locks. */
+export async function checkNativeChangeLocked(options: {
+  paths: NativeProjectPaths;
+  name: string;
+}): Promise<NativeCheckResult> {
+  await settleNativeChangeJournalsLocked(options.paths, options.name);
+  const state = await readNativeChange(options.paths, options.name);
+  if (state.phase !== 'verify') throw new Error(`Native check requires Verify, got ${state.phase}`);
+  if (!state.implementation_scope) throw new Error('Native check requires an implementation scope');
+  const executed = await executeNativeCheckReceipt({ paths: options.paths, state });
+  return { change: state, receipt: executed.receipt, ref: executed.ref };
 }

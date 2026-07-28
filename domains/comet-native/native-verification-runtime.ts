@@ -9,6 +9,10 @@ import type {
   NativeVerificationFreshness,
 } from './native-archive-preflight.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import {
+  isNativeHighRiskScope,
+  parseNativeIndependentReview,
+} from './native-independent-review.js';
 import { nativeChangeDir } from './native-change.js';
 import type { NativeCheckReceipt } from './native-check-receipt.js';
 import { readNativeCheckReceipt } from './native-check-receipt-storage.js';
@@ -46,6 +50,9 @@ export type NativeVerificationFreshnessFindingCode =
   | 'verification-receipt-stale'
   | 'verification-receipt-invalid'
   | 'verification-receipt-outcome-mismatch'
+  | 'verification-independent-review-missing'
+  | 'verification-independent-review-stale'
+  | 'verification-waiver-unconfirmed'
   | 'verification-state-mismatch'
   | 'verification-evidence-missing'
   | 'verification-evidence-invalid';
@@ -245,6 +252,8 @@ export interface NativeVerificationEvidenceOptions {
   result: 'pass' | 'fail';
   reportRef: string;
   receiptRef?: string | null;
+  waiverConfirmed?: boolean;
+  independentReviewRef?: string | null;
   now?: Date;
 }
 
@@ -266,6 +275,13 @@ export async function inspectNativeVerificationEvidence(
     };
   }
   const report = await reportEvidence(options);
+  const hasWaiver = report.entries.some((entry) => entry.waiver !== undefined);
+  if (options.result === 'pass' && hasWaiver && !options.waiverConfirmed) {
+    throw new Error('Native passing verification requires explicit confirmation for every waiver');
+  }
+  if (options.result === 'pass' && !options.receiptRef) {
+    throw new Error('Native passing verification requires a Native check receipt');
+  }
   let receiptRef: string | null = null;
   if (options.receiptRef) {
     const receipt = await readNativeCheckReceipt(
@@ -285,9 +301,36 @@ export async function inspectNativeVerificationEvidence(
     }
     receiptRef = options.receiptRef;
   }
+  const highRisk = isNativeHighRiskScope(
+    facts.bundle.scope.changes
+      .filter((change) => change.after !== null)
+      .map((change) => change.path),
+  );
+  let independentReview: NativeVerificationPreparation['envelope'] extends infer T
+    ? T extends { independentReview: infer R }
+      ? R
+      : never
+    : never = null;
+  if (options.independentReviewRef) {
+    const reviewDocument = await readNativeBoundedTextFile({
+      root: nativeChangeDir(options.paths, options.state.name),
+      ref: options.independentReviewRef,
+    });
+    const review = parseNativeIndependentReview(
+      JSON.parse(reviewDocument.text) as unknown,
+      facts.contract.acceptance.map((criterion) => criterion.id),
+    );
+    independentReview = { ref: reviewDocument.ref, hash: reviewDocument.hash, review };
+  }
+  if (highRisk && independentReview === null) {
+    throw new Error('Native high-risk verification requires an independent review receipt');
+  }
   const trace = buildNativeAcceptanceEvidenceTrace(facts.contract.acceptance, report.entries, {
     nativeRootRef: nativeRootRef(options.paths),
   });
+  if (options.result === 'pass' && trace.entries.some((entry) => entry.status === 'failed')) {
+    throw new Error('Native passing verification cannot include skipped acceptance criteria');
+  }
   const allowance = options.state.partial_allowance
     ? await readNativePartialAllowance(
         options.paths,
@@ -308,6 +351,8 @@ export async function inspectNativeVerificationEvidence(
     reportRef: report.ref,
     reportHash: report.hash,
     receiptRef,
+    waiverConfirmed: options.waiverConfirmed === true,
+    independentReview,
     acceptanceTrace: trace,
     partialAllowance:
       options.state.partial_allowance && allowance
@@ -421,6 +466,9 @@ export async function inspectNativeVerificationFreshness(options: {
     if (report.hash !== envelope.reportHash || report.ref !== envelope.reportRef) {
       findingCodes.push('verification-report-stale');
     }
+    if (report.entries.some((entry) => entry.waiver !== undefined) && !envelope.waiverConfirmed) {
+      findingCodes.push('verification-waiver-unconfirmed');
+    }
     if (
       envelope.result !== options.state.verification_result ||
       envelope.implementationScopeRef !== options.state.implementation_scope ||
@@ -449,6 +497,32 @@ export async function inspectNativeVerificationFreshness(options: {
         );
       } catch {
         findingCodes.push('verification-receipt-invalid');
+      }
+    }
+    const highRisk = isNativeHighRiskScope(
+      facts.bundle.scope.changes
+        .filter((change) => change.after !== null)
+        .map((change) => change.path),
+    );
+    if (highRisk && envelope.independentReview === null) {
+      findingCodes.push('verification-independent-review-missing');
+    }
+    if (envelope.independentReview) {
+      try {
+        const document = await readNativeBoundedTextFile({
+          root: nativeChangeDir(options.paths, options.state.name),
+          ref: envelope.independentReview.ref,
+        });
+        if (document.hash !== envelope.independentReview.hash) {
+          findingCodes.push('verification-independent-review-stale');
+        } else {
+          parseNativeIndependentReview(
+            JSON.parse(document.text) as unknown,
+            facts.contract.acceptance.map((criterion) => criterion.id),
+          );
+        }
+      } catch {
+        findingCodes.push('verification-independent-review-stale');
       }
     }
     const uniqueCodes = [...new Set(findingCodes)].sort();

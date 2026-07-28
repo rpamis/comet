@@ -64,9 +64,12 @@ comet native check <change-name>
 
 ```text
 comet native evidence format [--entries <path>]
+comet native review format <change-name> [--input <path>]
 ```
 
 写 verification.md 的 `# Acceptance evidence` 机器块前，用这个命令把条目数组序列化成规范 Markdown 文本再粘贴，不要手工排版 JSON。默认从 stdin 读取条目 JSON，也可用 `--entries <path>` 指定文件；输出已包含 start/end markers、固定排序与缩进，原样粘贴即可通过 `next --result` 的规范序列化校验。
+
+高风险 change 的独立审查草稿使用 `review format` 生成带 hash 的 receipt。草稿必须写出不同于实现者的 reviewer、完整 acceptance ID 清单、统一 I/O/对抗路径/生成物/真实生命周期 Eval 四项检查，以及已处置的 findings；未解决 P0/P1 不能格式化为有效 review。
 
 ## 阶段推进
 
@@ -79,6 +82,8 @@ comet native next <change-name> --summary <text> \
   [--result pass|fail] \
   [--report <change-relative-path>] \
   [--receipt <runtime/evidence/check-receipts/...json>] \
+  [--review <change-relative-path>] \
+  [--confirm-waiver --confirmed] \
   [--failure-category <token>]... \
   [--failed-check <token>]... \
   [--override-repair <sha256> --override-summary <text>]
@@ -89,7 +94,7 @@ comet native archive <change-name> --expect-preflight <sha256>
 
 - Shape：brief 和拟议规格通过后推进。Sequential 与 Batch 都必须取得最终共享理解确认并传 `--confirmed`。成功进入 Build 时，Runtime 会把 confirmed approval 绑定到当前 contract hash。
 - Build：重新检查 brief 和拟议规格；至少给出一个真实项目产物，或使用 `--no-code-reason`。旧 change 若仍为 `approval: implicit`，必须先确认当前共享理解；若 contract 在 approval 后变化，status/next 会要求用户重新确认当前 contract。两种情况都只有取得确认后才传 `--confirmed`。无法证明完整 scope 时，第一次调用返回 scope hash 与有界未归属明细而不推进；超出明细预算的变化由 `scope-detail-overflow` 的数量与内容 hash 表示。只有用户接受具体风险后，才可用完全匹配的 `--allow-partial-scope`、理由与 `--confirmed` 重试。
-- Verify：必须提供 `--result` 和完整 `--report`；可选 `--receipt` 必须是当前 change、revision、contract 与 implementation scope 上 fresh 的内置 receipt。fail 回到 Build，可用失败分类和检查 ID 形成无进展签名；pass 进入 Archive。
+- Verify：必须提供 `--result` 和完整 `--report`；pass 必须绑定当前 change、revision、contract 与 implementation scope 上 fresh 的内置 receipt。可显式传 `--receipt`，省略时 Runtime 在锁内生成；required failed/skipped/scan-limit/timeout/无效 receipt 阻断 pass。结构化 waiver 还必须传 `--confirm-waiver --confirmed`；高风险范围必须传有效 `--review`。fail 回到 Build，可用失败分类和检查 ID 形成无进展签名；pass 进入 Archive。
 - Repair：第三次相同失败会返回 manual stop。scope 真正变化时普通 Build `next` 会结束旧 repair episode 并继续；scope 不变时只能用 status 返回的 signature 和非空摘要 override 一次。单个 episode 的 semantic repair budget 与已耗尽 override 不可绕过；通用 Run iteration 只提供事件序号，不是长期 change 的永久停止条件。
 - Archive：只能由 `archive` 命令完成，不能用 `next` 代替。先 `--dry-run`，再把同一次预演返回的 `preflightHash` 原样传给 `--expect-preflight`；Runtime 在锁内重算后才提交。
 

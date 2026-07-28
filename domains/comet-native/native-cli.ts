@@ -8,6 +8,8 @@ import {
   NativeSpecConflictError,
 } from './native-archive.js';
 import { serializeNativeVerificationMachineBlock } from './native-acceptance.js';
+import { formatNativeIndependentReview } from './native-independent-review.js';
+import { collectNativeContractFiles } from './native-contract-files.js';
 import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
 import {
   createNativeChange,
@@ -93,7 +95,8 @@ Commands:
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   check <change-name>
   evidence format [--entries <path>]
-  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <change-relative-ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
+  review format <change-name> [--input <path>]
+  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <change-relative-ref>] [--review <change-relative-ref>] [--confirm-waiver] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
   archive <change-name> --expect-preflight <sha256>
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
@@ -569,6 +572,40 @@ async function dispatch(
     }
     throw new NativeUsageError(`Unknown evidence command: ${subcommand}`);
   }
+  if (command === 'review') {
+    const subcommand = requiredPositional(rawArgs, 'review subcommand');
+    if (subcommand !== 'format')
+      throw new NativeUsageError(`Unknown review command: ${subcommand}`);
+    const name = requiredPositional(rawArgs, 'change name');
+    const inputPath = takeOption(rawArgs, '--input');
+    assertNoArguments(rawArgs);
+    const raw = inputPath
+      ? await readBoundedEvidenceFile(
+          path.resolve(inputPath),
+          MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES,
+        )
+      : await readBoundedEvidenceStdin(MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES);
+    let input: unknown;
+    try {
+      input = JSON.parse(raw) as unknown;
+    } catch (error) {
+      throw new Error(`Independent review must be valid JSON: ${(error as Error).message}`, {
+        cause: error,
+      });
+    }
+    const { paths } = await configuredPaths(projectRoot);
+    const state = await readNativeChange(paths, name);
+    const contract = await collectNativeContractFiles({
+      changeDir: nativeChangeDir(paths, name),
+      briefRef: state.brief,
+      specChanges: state.spec_changes,
+    });
+    const review = formatNativeIndependentReview(
+      input,
+      contract.contract.acceptance.map((criterion) => criterion.id),
+    );
+    return success('review format', { review }, `${JSON.stringify(review, null, 2)}\n`);
+  }
   if (command === 'next') {
     const name = requiredPositional(rawArgs, 'change name');
     const summary = takeOption(rawArgs, '--summary');
@@ -581,6 +618,8 @@ async function dispatch(
     const verificationResult = takeOption(rawArgs, '--result');
     const verificationReport = takeOption(rawArgs, '--report');
     const verificationReceipt = takeOption(rawArgs, '--receipt');
+    const independentReviewRef = takeOption(rawArgs, '--review');
+    const waiverConfirmed = takeFlag(rawArgs, '--confirm-waiver');
     const repairFailureCategories = takeMany(rawArgs, '--failure-category');
     const repairFailedCheckIds = takeMany(rawArgs, '--failed-check');
     const repairOverrideSignature = takeOption(rawArgs, '--override-repair');
@@ -612,6 +651,12 @@ async function dispatch(
     if (verificationReceipt && verificationResult === undefined) {
       throw new NativeUsageError('--receipt requires --result');
     }
+    if (independentReviewRef && verificationResult !== 'pass') {
+      throw new NativeUsageError('--review requires --result pass');
+    }
+    if (waiverConfirmed && (verificationResult !== 'pass' || !confirmed)) {
+      throw new NativeUsageError('--confirm-waiver requires --result pass and --confirmed');
+    }
     if ((repairOverrideSignature === undefined) !== (repairOverrideSummary === undefined)) {
       throw new NativeUsageError(
         '--override-repair and --override-summary must be provided together',
@@ -635,6 +680,8 @@ async function dispatch(
       ...(verificationResult ? { verificationResult } : {}),
       ...(verificationReport ? { verificationReport } : {}),
       ...(verificationReceipt ? { verificationReceipt } : {}),
+      ...(waiverConfirmed ? { waiverConfirmed: true } : {}),
+      ...(independentReviewRef ? { independentReviewRef } : {}),
       ...(repairFailureCategories.length > 0 ? { repairFailureCategories } : {}),
       ...(repairFailedCheckIds.length > 0 ? { repairFailedCheckIds } : {}),
       ...(repairOverrideSignature ? { repairOverrideSignature } : {}),

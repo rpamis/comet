@@ -8,7 +8,13 @@ import type {
 
 const ACCEPTANCE_HASH_TAG = 'comet.native.acceptance.v1';
 const ACCEPTANCE_ID_PATTERN = /^acceptance-[a-f0-9]{64}$/u;
-const EVIDENCE_ENTRY_KEYS = new Set(['acceptance_id', 'evidence_refs', 'skipped_reason']);
+const EVIDENCE_ENTRY_KEYS = new Set([
+  'acceptance_id',
+  'status',
+  'evidence_refs',
+  'skipped_reason',
+  'waiver',
+]);
 const ACCEPTANCE_HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const ACCEPTANCE_CURSOR_PATTERN =
   /^native-acceptance-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
@@ -30,7 +36,7 @@ export const NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER =
 export const NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER =
   '<!-- comet-native:acceptance-evidence:end -->';
 
-export type NativeAcceptanceKind = 'brief-example' | 'spec-scenario';
+export type NativeAcceptanceKind = 'brief-example' | 'spec-scenario' | 'spec-must';
 
 export interface NativeAcceptanceCriterion {
   id: string;
@@ -42,8 +48,15 @@ export interface NativeAcceptanceCriterion {
 
 export interface NativeAcceptanceEvidenceEntry {
   acceptance_id: string;
+  /** Omitted only when parsing legacy verification reports. */
+  status?: 'passed' | 'failed' | 'waived';
   evidence_refs: string[];
   skipped_reason?: string;
+  waiver?: {
+    reason: string;
+    risk: string;
+    alternative_evidence_refs: string[];
+  };
 }
 
 function truncateUtf8(value: string, maxBytes: number): { value: string; truncated: boolean } {
@@ -452,6 +465,46 @@ export function deriveSpecAcceptanceCriteria(
   return uniqueCriteria(criteria, 'Specification');
 }
 
+/**
+ * Derive atomic criteria from normative specification bullets in addition to Scenario blocks.
+ * Native specs in this repository are prose-first, so relying on optional Scenario headings
+ * would let a mandatory requirement disappear from the machine acceptance set.
+ */
+export function deriveSpecMandatoryAcceptanceCriteria(
+  markdown: string,
+  source = 'spec.md',
+  maxCriteria: number = NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
+): NativeAcceptanceCriterion[] {
+  if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
+    throw new Error('Native specification acceptance budget is invalid');
+  }
+  const criteria: NativeAcceptanceCriterion[] = [];
+  const ancestry: MarkdownHeading[] = [];
+  for (const { line, body } of iterateScannedMarkdown(markdown)) {
+    const heading = body ? markdownHeading(line) : null;
+    if (heading) {
+      while (ancestry.at(-1) && ancestry.at(-1)!.level >= heading.level) ancestry.pop();
+      ancestry.push(heading);
+      continue;
+    }
+    if (!body) continue;
+    const item = /^\s*[-*+][ \t]+(.+)$/u.exec(line);
+    if (!item || !/(?:\bmust\b|必须|不得)/iu.test(item[1])) continue;
+    if (criteria.length >= maxCriteria) {
+      throw new Error(`Native acceptance exceeds its ${maxCriteria}-criterion acceptance budget`);
+    }
+    criteria.push(
+      criterion(
+        'spec-must',
+        source,
+        item[1],
+        ancestry.map((entry) => entry.text),
+      ),
+    );
+  }
+  return uniqueCriteria(criteria, 'Specification mandatory requirements');
+}
+
 function normalizeEvidenceRef(value: string, acceptanceId: string): string {
   const normalized = value.trim().replaceAll('\\', '/');
   if (
@@ -520,6 +573,10 @@ function validateEvidenceEntries(value: unknown): NativeAcceptanceEvidenceEntry[
     if (new Set(evidenceRefs).size !== evidenceRefs.length) {
       throw new Error(`Acceptance evidence ${acceptanceId} has a duplicate evidence ref`);
     }
+    const status = record.status;
+    if (status !== undefined && status !== 'passed' && status !== 'failed' && status !== 'waived') {
+      throw new Error(`Acceptance evidence ${acceptanceId} status is invalid`);
+    }
 
     let skippedReason: string | undefined;
     if (Object.prototype.hasOwnProperty.call(record, 'skipped_reason')) {
@@ -530,20 +587,71 @@ function validateEvidenceEntries(value: unknown): NativeAcceptanceEvidenceEntry[
       }
       skippedReason = record.skipped_reason.trim();
     }
-    if (evidenceRefs.length === 0 && skippedReason === undefined) {
+    let waiver: NativeAcceptanceEvidenceEntry['waiver'];
+    if (Object.prototype.hasOwnProperty.call(record, 'waiver')) {
+      if (!record.waiver || typeof record.waiver !== 'object' || Array.isArray(record.waiver)) {
+        throw new Error(`Acceptance evidence ${acceptanceId} waiver is invalid`);
+      }
+      const rawWaiver = record.waiver as Record<string, unknown>;
+      const expected = new Set(['reason', 'risk', 'alternative_evidence_refs']);
+      const unknown = Object.keys(rawWaiver).filter((key) => !expected.has(key));
+      if (unknown.length > 0 || Object.keys(rawWaiver).length !== expected.size) {
+        throw new Error(`Acceptance evidence ${acceptanceId} waiver is invalid`);
+      }
+      if (
+        typeof rawWaiver.reason !== 'string' ||
+        rawWaiver.reason.trim().length === 0 ||
+        typeof rawWaiver.risk !== 'string' ||
+        rawWaiver.risk.trim().length === 0 ||
+        !Array.isArray(rawWaiver.alternative_evidence_refs)
+      ) {
+        throw new Error(`Acceptance evidence ${acceptanceId} waiver is invalid`);
+      }
+      const alternativeEvidenceRefs = rawWaiver.alternative_evidence_refs.map((reference) => {
+        if (typeof reference !== 'string' || reference.trim().length === 0) {
+          throw new Error(`Acceptance evidence ${acceptanceId} waiver evidence is invalid`);
+        }
+        return normalizeEvidenceRef(reference, acceptanceId);
+      });
+      if (
+        alternativeEvidenceRefs.length === 0 ||
+        new Set(alternativeEvidenceRefs).size !== alternativeEvidenceRefs.length
+      ) {
+        throw new Error(`Acceptance evidence ${acceptanceId} waiver evidence is invalid`);
+      }
+      waiver = {
+        reason: rawWaiver.reason.trim(),
+        risk: rawWaiver.risk.trim(),
+        alternative_evidence_refs: alternativeEvidenceRefs,
+      };
+    }
+    const effectiveStatus =
+      status ??
+      (waiver !== undefined ? 'waived' : skippedReason !== undefined ? 'failed' : 'passed');
+    if (effectiveStatus === 'passed' && evidenceRefs.length === 0) {
+      throw new Error(`Acceptance evidence ${acceptanceId} passed status requires evidence_refs`);
+    }
+    if (effectiveStatus === 'failed' && (evidenceRefs.length > 0 || skippedReason === undefined)) {
       throw new Error(
-        `Acceptance evidence ${acceptanceId} requires evidence_refs or skipped_reason`,
+        `Acceptance evidence ${acceptanceId} failed status requires a skipped_reason and no evidence`,
       );
     }
-    if (evidenceRefs.length > 0 && skippedReason !== undefined) {
+    if (effectiveStatus === 'waived' && (evidenceRefs.length > 0 || waiver === undefined)) {
       throw new Error(
-        `Acceptance evidence ${acceptanceId} must not include both evidence and a skip`,
+        `Acceptance evidence ${acceptanceId} waived status requires a waiver and no evidence`,
+      );
+    }
+    if (skippedReason !== undefined && waiver !== undefined) {
+      throw new Error(
+        `Acceptance evidence ${acceptanceId} must use either a failed status or a waiver`,
       );
     }
     return {
       acceptance_id: acceptanceId,
+      ...(status === undefined ? {} : { status }),
       evidence_refs: evidenceRefs,
       ...(skippedReason === undefined ? {} : { skipped_reason: skippedReason }),
+      ...(waiver === undefined ? {} : { waiver }),
     };
   });
 }

@@ -273,6 +273,10 @@ None.
 Pass.
 `,
     );
+    const checked = json(
+      await runNativeCli(['check', 'sentence-counting', '--json', ...projectArgs()]),
+    );
+    const receipt = (checked.data as { ref: string }).ref;
     const verified = json(
       await runNativeCli([
         'next',
@@ -283,6 +287,8 @@ Pass.
         'pass',
         '--report',
         'verification.md',
+        '--receipt',
+        receipt,
         '--json',
         ...projectArgs(),
       ]),

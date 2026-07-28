@@ -178,13 +178,17 @@ The runtime derives at most 1024 acceptance items from the brief and proposed sp
   {
     "acceptance_id": "acceptance-<sha256>",
     "evidence_refs": [],
-    "skipped_reason": "This platform is currently unavailable."
+    "waiver": {
+      "reason": "This platform is currently unavailable.",
+      "risk": "The platform path remains unexecuted.",
+      "alternative_evidence_refs": ["test/platform-fallback.md"]
+    }
   }
 ]
 <!-- comet-native:acceptance-evidence:end -->
 ```
 
-The array is sorted by `acceptance_id`, and every `evidence_refs` list is sorted. Each item chooses exactly one path: at least one project-relative evidence ref, or an empty array plus a non-empty `skipped_reason`. Never provide both evidence and a skip reason, and never reference an absolute path, a path outside Native, `.git`, or `.env*`.
+The array is sorted by `acceptance_id`, and every `evidence_refs` list is sorted. Each item either supplies at least one project-relative evidence ref or uses an empty array plus a structured `waiver`; a legacy `skipped_reason` truthfully records incompleteness and cannot produce a pass. A waiver supplies its reason, risk, and at least one alternative evidence ref, then Verify requires `--confirmed --confirm-waiver`. Never provide both evidence and a waiver, and never reference an absolute path, a path outside Native, `.git`, or `.env*`.
 
 ```text
 comet native evidence format [--entries <path>]

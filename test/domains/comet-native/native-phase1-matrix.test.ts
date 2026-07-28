@@ -171,6 +171,8 @@ async function prepareChange(options: {
       evidenceRefs: [implementation],
     }),
   );
+  const check = json(await runNativeCli(['check', options.name, '--json', ...rootArgs]));
+  const receipt = (check.data as { ref: string }).ref;
   const passed = await runNativeCli([
     'next',
     options.name,
@@ -180,6 +182,8 @@ async function prepareChange(options: {
     'pass',
     '--report',
     'verification.md',
+    '--receipt',
+    receipt,
     ...rootArgs,
   ]);
   expect(passed.exitCode, passed.stderr).toBe(0);

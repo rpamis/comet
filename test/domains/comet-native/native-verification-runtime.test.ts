@@ -12,6 +12,7 @@ import {
 import { collectNativeContractFiles } from '../../../domains/comet-native/native-contract-files.js';
 import { buildNativeCheckReceipt } from '../../../domains/comet-native/native-check-receipt-model.js';
 import { writeNativeCheckReceipt } from '../../../domains/comet-native/native-check-receipt-storage.js';
+import { formatNativeIndependentReview } from '../../../domains/comet-native/native-independent-review.js';
 import {
   readNativeImplementationScopeBundle,
   readNativeVerificationEvidence,
@@ -54,7 +55,12 @@ describe('Native verification evidence runtime', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-verification-runtime-'));
     await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
+    await fs.mkdir(path.join(projectRoot, 'domains', 'comet-native'), { recursive: true });
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 1;\n');
+    await fs.writeFile(
+      path.join(projectRoot, 'domains', 'comet-native', 'policy.ts'),
+      'export const policy = 1;\n',
+    );
     paths = await nativeProjectPaths(projectRoot, '.');
     const created = await createNativeChange({
       paths,
@@ -132,6 +138,7 @@ Pass.
     const status = options?.status ?? 'passed';
     const snapshotHash = scope.scope.currentProjectionHash;
     const failed = status === 'failed';
+    const selected = scope.scope.changes.filter((change) => change.after !== null);
     const receipt = buildNativeCheckReceipt({
       change: verifyState.name,
       sourceRevision: verifyState.revision,
@@ -150,14 +157,14 @@ Pass.
         afterSnapshotHash: snapshotHash,
       },
       counts: {
-        filesSelected: 1,
-        filesScanned: 1,
+        filesSelected: selected.length,
+        filesScanned: selected.length,
         binaryFilesSkipped: 0,
-        bytesScanned: 24,
+        bytesScanned: selected.reduce((total, change) => total + change.after!.size, 0),
         issueCount: failed ? 1 : 0,
         recordedIssueCount: failed ? 1 : 0,
       },
-      issues: failed ? [{ path: 'src/feature.ts', line: 1, kind: 'trailing-whitespace' }] : [],
+      issues: failed ? [{ path: selected[0]!.path, line: 1, kind: 'trailing-whitespace' }] : [],
       issuesTruncated: false,
       stale,
       staleReasons: stale ? ['implementation-before-does-not-match-scope'] : [],
@@ -169,12 +176,13 @@ Pass.
     state: NativeChangeState;
     evidenceRef: string;
   }> {
+    const effectiveReceiptRef = receiptRef ?? (await writeCheckReceipt());
     const prepared = await prepareNativeVerificationEvidence({
       paths,
       state: verifyState,
       result: 'pass',
       reportRef: 'verification.md',
-      receiptRef: receiptRef ?? null,
+      receiptRef: effectiveReceiptRef,
       now: new Date('2026-07-17T02:00:00.000Z'),
     });
     expect(prepared.ready).toBe(true);
@@ -298,6 +306,143 @@ Pass.
         result: 'fail',
         reportRef: 'verification.md',
         receiptRef: failedRef,
+      }),
+    ).resolves.toMatchObject({ ready: true });
+  });
+
+  it('refuses a passing result without a current Runtime receipt', async () => {
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: verifyState,
+        result: 'pass',
+        reportRef: 'verification.md',
+      }),
+    ).rejects.toThrow('passing verification requires a Native check receipt');
+  });
+
+  it('refuses a passing result when any acceptance criterion is skipped', async () => {
+    const contract = await collectNativeContractFiles({
+      changeDir,
+      briefRef: verifyState.brief,
+      specChanges: verifyState.spec_changes,
+    });
+    const skippedBlock = serializeNativeVerificationMachineBlock(
+      contract.contract.acceptance.map((criterion) => ({
+        acceptance_id: criterion.id,
+        evidence_refs: [],
+        skipped_reason: 'The required check was not run.',
+      })),
+    );
+    await fs.writeFile(changeDir + '/verification.md', `# Acceptance evidence\n${skippedBlock}\n`);
+
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: verifyState,
+        result: 'pass',
+        reportRef: 'verification.md',
+        receiptRef: await writeCheckReceipt(),
+      }),
+    ).rejects.toThrow('skipped acceptance criteria');
+  });
+
+  it('requires explicit confirmation for a structured waiver and binds its alternative evidence', async () => {
+    const contract = await collectNativeContractFiles({
+      changeDir,
+      briefRef: verifyState.brief,
+      specChanges: verifyState.spec_changes,
+    });
+    const waiverBlock = serializeNativeVerificationMachineBlock(
+      contract.contract.acceptance.map((criterion) => ({
+        acceptance_id: criterion.id,
+        evidence_refs: [],
+        waiver: {
+          reason: 'The platform dependency is unavailable.',
+          risk: 'The platform-specific path remains unexecuted.',
+          alternative_evidence_refs: ['src/feature.ts'],
+        },
+      })),
+    );
+    await fs.writeFile(changeDir + '/verification.md', `# Acceptance evidence\n${waiverBlock}\n`);
+    const receiptRef = await writeCheckReceipt();
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: verifyState,
+        result: 'pass',
+        reportRef: 'verification.md',
+        receiptRef,
+      }),
+    ).rejects.toThrow('explicit confirmation');
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: verifyState,
+        result: 'pass',
+        reportRef: 'verification.md',
+        receiptRef,
+        waiverConfirmed: true,
+      }),
+    ).resolves.toMatchObject({ ready: true });
+  });
+
+  it('requires a current independent review for high-risk Native runtime changes', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, 'domains', 'comet-native', 'policy.ts'),
+      'export const policy = 2;\n',
+    );
+    const built = await prepareNativeBuildEvidence({
+      paths,
+      state: { ...verifyState, phase: 'build' },
+      artifactRefs: ['src/feature.ts', 'domains/comet-native/policy.ts'],
+    });
+    const highRiskState = {
+      ...verifyState,
+      implementation_scope: built.scopeRef as NativeChangeState['implementation_scope'],
+    };
+    const original = verifyState;
+    verifyState = highRiskState;
+    const receiptRef = await writeCheckReceipt();
+    verifyState = original;
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: highRiskState,
+        result: 'pass',
+        reportRef: 'verification.md',
+        receiptRef,
+      }),
+    ).rejects.toThrow('high-risk verification requires an independent review');
+    const contract = await collectNativeContractFiles({
+      changeDir,
+      briefRef: highRiskState.brief,
+      specChanges: highRiskState.spec_changes,
+    });
+    const review = formatNativeIndependentReview(
+      {
+        implementation_author: 'implementation-agent',
+        reviewer: 'independent-reviewer',
+        acceptance_ids: contract.contract.acceptance.map((criterion) => criterion.id),
+        checked: {
+          unified_io: true,
+          adversarial_paths: true,
+          generated_assets: true,
+          lifecycle_eval: true,
+        },
+        findings: [],
+      },
+      contract.contract.acceptance.map((criterion) => criterion.id),
+    );
+    await fs.writeFile(path.join(changeDir, 'review.json'), JSON.stringify(review, null, 2));
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: highRiskState,
+        result: 'pass',
+        reportRef: 'verification.md',
+        receiptRef,
+        independentReviewRef: 'review.json',
       }),
     ).resolves.toMatchObject({ ready: true });
   });

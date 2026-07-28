@@ -213,7 +213,7 @@ Runtime 无法证明 scope 完整时会停在 Build，返回 partial scope hash 
 
 根据 Acceptance examples、完整目标规格和风险运行验证。记录实际命令、结果、跳过项、规格一致性、已知限制和结论；未运行的检查不能写成通过。
 
-在 `verification.md` 的固定 acceptance evidence 块中逐项使用 Runtime 返回的 `acceptance_id`。每项只能记录项目相对 evidence refs，或记录诚实的 `skipped_reason`。用 `comet native evidence format` 把条目序列化成规范文本再粘贴，不要手工排版这段 JSON——手写几乎不可能逐字节匹配规范序列化规则。格式见产物参考。
+在 `verification.md` 的固定 acceptance evidence 块中逐项使用 Runtime 返回的 `acceptance_id`。通过项记录项目相对 evidence refs；未完成项不能把 `skipped_reason` 当作通过。确需例外时，使用包含原因、风险和替代证据的结构化 `waiver`，并在 Verify 时显式确认。用 `comet native evidence format` 把条目序列化成规范文本再粘贴，不要手工排版这段 JSON——手写几乎不可能逐字节匹配规范序列化规则。格式见产物参考。
 
 需要一份可重建的文本卫生证据时，可运行内置只读检查：
 
@@ -223,17 +223,23 @@ comet native check <change-name>
 
 该命令只扫描当前 implementation scope/current snapshot 中有界的项目内普通文本文件，不调用 Git、shell、项目脚本、外部进程或外部 Skill。它不会修改项目文件、phase、Run 或 trajectory；结果写入内容寻址 receipt。它不替代按风险选择的项目测试。
 
+`pass` 必须绑定当前 scope、snapshot 和 contract 的 check receipt；若未传 `--receipt`，Runtime 会在锁内生成当前内置 check receipt。required check 的 failed、skipped、scan-limit、超时或无效 receipt 都阻断通过。高风险 change（Native/Entry runtime、路径/事务/迁移、安全边界、安装或路由等）还必须提交独立 review：reviewer 必须与实现者不同、覆盖全部 acceptance ID、检查统一读写、对抗路径、生成物和真实生命周期 Eval，且不能有未解决 P0/P1。先用 Runtime 生成 review hash：
+
+```text
+comet native review format <change-name> --input review-draft.json > review.json
+```
+
 写完报告后运行：
 
 ```text
-comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md [--receipt <ref>]
+comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md [--receipt <ref>] [--review review.json] [--confirmed --confirm-waiver]
 ```
 
 fail 会回到 Build。修复后重新验证，并用 `--failure-category` 与 `--failed-check` 提交稳定、非敏感的失败事实。
 
 同一失败第二次出现会告警；第三次且 scope 没有进展会停止。scope 发生真实变化会结束当前 repair episode。scope 未变化但有明确新假设时，可按 status 返回的 signature 使用一次 `--override-repair`；同一 signature 不得重复 override。达到停止条件后请用户决定，不要弱化检查或伪造 pass。
 
-进入 Archive 后，brief、规格、implementation scope、报告或 receipt 发生变化会使证据失效。按 Runtime continuation 回到 Build，重新封印 scope 并验证；不要沿用失效的 pass。
+进入 Archive 后，brief、规格、implementation scope、报告、receipt、waiver 或 review 发生变化会使证据失效。Archive 预演和锁内提交都会重新验证这些绑定事实；按 Runtime continuation 回到 Build，重新封印 scope 并验证；不要沿用失效的 pass。
 
 ## Archive
 

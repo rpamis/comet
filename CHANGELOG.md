@@ -7,6 +7,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **Explicit platform targeting**: `comet init` and `comet update` now accept `--platform <platform>` to initialize or refresh one registered platform, or a project-scoped custom platform such as `.test`, while preserving workflow-scoped asset installation and the existing detection fallback when the option is omitted.
+- **Native independent review receipts**: `comet native review format` creates a content-hashed review receipt that records an independent reviewer, full acceptance coverage, mandatory safety checks, and resolved findings for high-risk Native changes.
+
+### Changed
+
+- **Fail-closed Native verification**: A passing Verify result now requires a fresh Runtime check receipt, blocks skipped or scan-limited checks by default, supports only explicitly confirmed structured waivers, and rechecks high-risk review evidence before Archive commits.
 
 ## What's Changed [0.4.0-beta.9] - 2026-07-25
 

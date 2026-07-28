@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 
 import { decideWithResolver, recordOutcomeWithResolver } from '../engine/loop.js';
 import { inspectNativeGuard } from './native-guards.js';
+import { checkNativeChangeLocked } from './native-check.js';
 import { projectNativeAcceptancePage } from './native-acceptance.js';
 import { nativeChangeDir, readNativeChange } from './native-change.js';
 import { collectNativeContractFiles } from './native-contract-files.js';
@@ -77,6 +78,8 @@ function hasEvidenceRetreatExtras(evidence: NativeAdvanceEvidence): boolean {
     evidence.verificationResult !== undefined ||
     evidence.verificationReport !== undefined ||
     evidence.verificationReceipt !== undefined ||
+    evidence.waiverConfirmed !== undefined ||
+    evidence.independentReviewRef !== undefined ||
     evidence.repairFailureCategories !== undefined ||
     evidence.repairFailedCheckIds !== undefined ||
     evidence.repairOverrideSignature !== undefined ||
@@ -576,6 +579,12 @@ async function advanceNativeChangeLocked(
     repairEventProjection = repairGuard.eventProjection;
   }
 
+  const verificationReceipt =
+    state.phase === 'verify' &&
+    options.evidence.verificationResult === 'pass' &&
+    !options.evidence.verificationReceipt
+      ? (await checkNativeChangeLocked({ paths: options.paths, name: state.name })).ref
+      : (options.evidence.verificationReceipt ?? null);
   const verificationEvidence =
     state.phase === 'verify'
       ? await inspectNativeVerificationEvidence({
@@ -583,7 +592,9 @@ async function advanceNativeChangeLocked(
           state: candidate,
           result: options.evidence.verificationResult!,
           reportRef: options.evidence.verificationReport!,
-          receiptRef: options.evidence.verificationReceipt ?? null,
+          receiptRef: verificationReceipt,
+          waiverConfirmed: options.evidence.waiverConfirmed === true,
+          independentReviewRef: options.evidence.independentReviewRef ?? null,
           now: options.now,
         })
       : null;

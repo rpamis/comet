@@ -8,7 +8,10 @@ export const NATIVE_CHECK_POLICY = 'scoped-text-safety' as const;
 export const NATIVE_CHECK_POLICY_VERSION = 1 as const;
 export const NATIVE_CHECK_LIMITS = Object.freeze({
   maxFiles: 256,
-  maxFileBytes: 1024 * 1024,
+  // Generated Native runtimes are deliberately emitted as a single auditable asset and
+  // currently exceed 1 MiB. Keep the bounded checker usable for that supported asset
+  // while retaining a finite per-file limit that produces a blocking scan-limit receipt.
+  maxFileBytes: 2 * 1024 * 1024,
   maxTotalBytes: 8 * 1024 * 1024,
   maxIssues: 128,
 } as const);
@@ -34,6 +37,7 @@ export type NativeCheckIssueKind =
   | 'space-before-tab'
   | 'scope-mismatch'
   | 'unsafe-file'
+  | 'binary-skipped'
   | 'scan-limit';
 
 export type NativeCheckReceiptStaleReason =
@@ -102,6 +106,7 @@ const ISSUE_KINDS = new Set<NativeCheckIssueKind>([
   'space-before-tab',
   'scope-mismatch',
   'unsafe-file',
+  'binary-skipped',
   'scan-limit',
 ]);
 const ISSUE_KIND_ORDER: readonly NativeCheckIssueKind[] = [
@@ -110,6 +115,7 @@ const ISSUE_KIND_ORDER: readonly NativeCheckIssueKind[] = [
   'space-before-tab',
   'scope-mismatch',
   'unsafe-file',
+  'binary-skipped',
   'scan-limit',
 ];
 const STALE_REASON_ORDER: readonly NativeCheckReceiptStaleReason[] = [

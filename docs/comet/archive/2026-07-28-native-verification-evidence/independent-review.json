@@ -1,0 +1,31 @@
+{
+  "schema": "comet.native.independent-review.v1",
+  "implementation_author": "codex-implementation-agent",
+  "reviewer": "independent-native-reviewer",
+  "acceptance_ids": [
+    "acceptance-15c1243379201ee27b13aa080bb6416240facf912f5772319c074b624369def0",
+    "acceptance-179367f265afcb63c5439ef2b882ab4cc6debb8804071334835cc6fc7c1f5715",
+    "acceptance-1c2a4d3f5da003c42ff516bce6b06833a274bdf1b0af0eb64cb280779f61a540",
+    "acceptance-5079393f46c4c810397df26b42f0314323bd0c9fe6b2dec166ed78c8c99f9dd5",
+    "acceptance-61edad2b3157f704aa20810a79ac68486fb12a6173fdd200f39b5c2a11252467",
+    "acceptance-68c5ee894392b095c8cbf5be790037ea9d39b1e92dc8d9439f47e765c5cfcd0a",
+    "acceptance-7680147a700389d875c9a6ba67dada7125a06f19c5de0b182f52ddd1b0312378",
+    "acceptance-99cacdab5a820e3e0fc34d6397148a012bb49ae48b378ba7da589904dd572245",
+    "acceptance-a1f7d8af6e0fa49d3d2f4c7bb0373ea839df52c0f80dce690617a48ea277b07c",
+    "acceptance-ad9b1ae1e78f0233dc6c410aab28bda8481092e1828ef27030e401a09e424e97",
+    "acceptance-c9b563acae5ccdbc9a34f81505d7bc29ccb00acdbf97c1eb7b39f9d6e7b5656c",
+    "acceptance-cd44599d3aaaed5827a6f7cdf969fc311a98b93e01db605a4110fc15891725e0",
+    "acceptance-e0fc1166b94dfc73a7d6f979cde6c614b6ff17bf32c8d11bcd7f69bef8bb937c",
+    "acceptance-f5bb455b6ede85d4392d7a59d35f9def641ff7b2529a54bc029866896b290abb",
+    "acceptance-f925b51325f1ec97abdc7a22cec52c45e8e3a0f5f788b8ea3de0d6675e83e184",
+    "acceptance-fed73017e6fd3181a9494ee22f1903fea209f7081d7b2645dac7c468f7c42d7f"
+  ],
+  "checked": {
+    "unified_io": true,
+    "adversarial_paths": true,
+    "generated_assets": true,
+    "lifecycle_eval": true
+  },
+  "findings": [],
+  "review_hash": "4452b545479f8b80b323491afcb0d114d0020ec9bb3d7767d5a10acca0d85b35"
+}

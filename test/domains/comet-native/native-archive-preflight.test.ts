@@ -119,6 +119,16 @@ describe('Native Archive preflight', () => {
     expect(() => buildNativeArchivePreflight(partial)).toThrow('allowance state');
   });
 
+  it('blocks Archive when the accepted evidence still contains a skipped criterion', () => {
+    const skipped = input();
+    skipped.evidence.skippedAcceptanceCount = 1;
+
+    expect(buildNativeArchivePreflight(skipped)).toMatchObject({
+      ready: false,
+      findingCodes: ['verification-acceptance-skipped'],
+    });
+  });
+
   it('rejects unsafe target refs and malformed operation/base combinations', () => {
     expect(() =>
       buildNativeArchivePreflight({ ...input(), targetRef: 'C:/archive/escape' }),

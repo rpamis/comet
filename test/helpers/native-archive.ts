@@ -22,6 +22,7 @@ import type {
 import { prepareNativeVerificationEvidence } from '../../domains/comet-native/native-verification-runtime.js';
 import { NATIVE_RUN_STORAGE } from '../../domains/engine/storage-layout.js';
 import { startRunWithStorage, writeRunStateAt } from '../../domains/engine/storage-run.js';
+import { nativeVerificationFixtureReceipt } from './native-verification.js';
 
 const brief = `# Outcome
 Ship the capability.
@@ -122,6 +123,10 @@ Pass.
     state: verifyState,
     result: 'pass',
     reportRef: 'verification.md',
+    receiptRef: await nativeVerificationFixtureReceipt({
+      paths: options.paths,
+      name: options.name,
+    }),
   });
   if (!evidence.ready || !evidence.evidenceRef) {
     throw new Error(`Native Archive fixture evidence is not ready: ${evidence.findingCodes}`);

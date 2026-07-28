@@ -74,7 +74,8 @@ const ISSUE_KIND_RANK: Record<NativeCheckIssueKind, number> = {
   'space-before-tab': 2,
   'scope-mismatch': 3,
   'unsafe-file': 4,
-  'scan-limit': 5,
+  'binary-skipped': 5,
+  'scan-limit': 6,
 };
 
 class ScopedFileError extends Error {
@@ -526,6 +527,7 @@ export async function executeNativeCheckReceipt(options: {
       bytesScanned += scanned.bytes;
       if (scanned.text === null) {
         binaryFilesSkipped += 1;
+        addIssue({ path: file.path, line: 1, kind: 'binary-skipped' });
       } else {
         filesScanned += 1;
         inspectText(file.path, scanned.text, addIssue);

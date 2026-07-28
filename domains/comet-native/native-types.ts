@@ -407,6 +407,8 @@ export interface NativeAdvanceEvidence {
   verificationResult?: 'pass' | 'fail';
   verificationReport?: string;
   verificationReceipt?: string;
+  waiverConfirmed?: boolean;
+  independentReviewRef?: string;
   repairFailureCategories?: string[];
   repairFailedCheckIds?: string[];
   repairOverrideSignature?: string;
@@ -415,7 +417,7 @@ export interface NativeAdvanceEvidence {
 
 export interface NativeAcceptanceCriterionProjection {
   id: string;
-  kind: 'brief-example' | 'spec-scenario';
+  kind: 'brief-example' | 'spec-scenario' | 'spec-must';
   source: string;
   context: string[];
   text: string;

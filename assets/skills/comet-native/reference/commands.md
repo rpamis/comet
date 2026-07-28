@@ -64,9 +64,12 @@ comet native check <change-name>
 
 ```text
 comet native evidence format [--entries <path>]
+comet native review format <change-name> [--input <path>]
 ```
 
 Before writing the `# Acceptance evidence` machine block in verification.md, use this command to serialize the entry array into the canonical Markdown text and paste that, rather than hand-formatting the JSON yourself. It reads entries JSON from stdin by default, or from a file with `--entries <path>`; the output already includes the start/end markers plus the fixed order and indentation, so pasting it as-is satisfies `next --result`'s canonical-serialization check.
+
+For a high-risk change, `review format` turns an independent-review draft into a hashed receipt. The draft names a reviewer distinct from the implementation author, covers every acceptance ID, records the unified-I/O, adversarial-path, generated-asset, and lifecycle-Eval checks, and cannot contain an unresolved P0/P1 finding.
 
 ## Phase progression
 
@@ -79,6 +82,8 @@ comet native next <change-name> --summary <text> \
   [--result pass|fail] \
   [--report <change-relative-path>] \
   [--receipt <runtime/evidence/check-receipts/...json>] \
+  [--review <change-relative-path>] \
+  [--confirm-waiver --confirmed] \
   [--failure-category <token>]... \
   [--failed-check <token>]... \
   [--override-repair <sha256> --override-summary <text>]
@@ -89,7 +94,7 @@ comet native archive <change-name> --expect-preflight <sha256>
 
 - Shape: advance after the brief and proposed specifications pass. Both Sequential and Batch must obtain the final shared-understanding confirmation and pass `--confirmed`. On successful entry to Build, the Runtime binds confirmed approval to the current contract hash.
 - Build: recheck the brief and proposed specifications; provide at least one real project artifact or use `--no-code-reason`. An older change that still has `approval: implicit` must first confirm the current shared understanding. If the contract changed after approval, status/next requires the user to reconfirm the current contract. In either case, pass `--confirmed` only after obtaining confirmation. If complete scope cannot be proven, the first call returns a scope hash and bounded unattributed details without advancing; changes beyond the detail budget are represented by a `scope-detail-overflow` count and content hash. Retry only after the user accepts the specific risk, with the exact `--allow-partial-scope`, a reason, and `--confirmed`.
-- Verify: provide both `--result` and a complete `--report`. An optional `--receipt` must be fresh for the current change, revision, contract, and implementation scope. A failure returns to Build and may use failure categories and check IDs to form a no-progress signature; a pass enters Archive.
+- Verify: provide both `--result` and a complete `--report`. A pass requires a receipt fresh for the current change, revision, contract, and implementation scope. It may be supplied as `--receipt`; when omitted, Runtime creates its built-in receipt under the lock. Required failed/skipped/scan-limited/timed-out/invalid checks block a pass. A structured waiver also requires `--confirm-waiver --confirmed`, and a high-risk scope requires a valid `--review`. A failure returns to Build and may use failure categories and check IDs to form a no-progress signature; a pass enters Archive.
 - Repair: the third identical failure returns a manual stop. A genuine scope change on an ordinary Build `next` closes the old repair episode and continues. With unchanged scope, only one override is allowed, using the exact signature returned by status plus a non-empty summary. Neither a semantic repair budget nor an exhausted override can be bypassed; the generic Run iteration is only an event sequence number, not a permanent stop condition for a long-lived change.
 - Archive: only `archive` completes this phase; `next` cannot substitute for it. First run `--dry-run`, then pass the returned `preflightHash` unchanged to `--expect-preflight`. The runtime recomputes it under the mutation lock before committing.
 

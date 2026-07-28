@@ -1,0 +1,22 @@
+schema: comet.native.v3
+minimum_runtime_version: 3
+revision: 10
+name: native-verification-evidence
+language: zh-CN
+phase: archive
+brief: brief.md
+approval: confirmed
+approved_contract_hash: 48d1dbdd1df3d39bb7ee226c786580eab8e85533d1b87862f9d2e08eef9b36f6
+spec_changes:
+  - capability: native-verification-evidence
+    operation: create
+    source: specs/native-verification-evidence/spec.md
+    base_hash: null
+verification_result: pass
+verification_report: verification.md
+implementation_scope: runtime/evidence/scopes/50c0872e1900ae8bcd1335be3db90e8da72b0a8d9b77e113b8c11ffffd820b3f.json
+verification_evidence: runtime/evidence/verifications/b609b4e3bf15e44c20469b37cd2f4bf8cafc4c377c9c2ac667995af58c91bc6c.json
+partial_allowance: null
+archived: true
+created_at: 2026-07-28
+run_id: b81b3f77-e8b9-404d-b28a-17d7986d424a

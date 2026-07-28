@@ -5,6 +5,7 @@ import {
   NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER,
   deriveBriefAcceptanceCriteria,
   deriveSpecAcceptanceCriteria,
+  deriveSpecMandatoryAcceptanceCriteria,
   normalizeNativeAcceptanceText,
   parseNativeVerificationMachineBlock,
   projectNativeAcceptancePage,
@@ -156,6 +157,33 @@ Keep compatibility.
       text: expect.stringContaining('Valid credentials'),
     });
     expect(criteria[0].id).not.toBe(criteria[1].id);
+  });
+
+  it('derives mandatory specification bullets even when a spec has no Scenario headings', () => {
+    const spec = `# Capability
+
+## Contract
+
+- Runtime MUST bind each requirement to a receipt.
+- 失败检查必须阻断归档。
+- This explanatory note is not normative.
+
+\`\`\`md
+- Runtime MUST ignore this example.
+\`\`\`
+`;
+
+    expect(deriveSpecMandatoryAcceptanceCriteria(spec, 'specs/capability/spec.md')).toMatchObject([
+      {
+        kind: 'spec-must',
+        source: 'specs/capability/spec.md',
+        text: 'Runtime MUST bind each requirement to a receipt.',
+      },
+      {
+        kind: 'spec-must',
+        text: '失败检查必须阻断归档。',
+      },
+    ]);
   });
 
   it('keeps the Scenario ID set stable when Scenario blocks are reordered', () => {
@@ -382,7 +410,7 @@ ${NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER}`;
       serializeNativeVerificationMachineBlock([
         { acceptance_id: `acceptance-${'3'.repeat(64)}`, evidence_refs: [] },
       ]),
-    ).toThrow('evidence_refs or skipped_reason');
+    ).toThrow('passed status requires evidence_refs');
 
     expect(() =>
       serializeNativeVerificationMachineBlock([
@@ -392,7 +420,33 @@ ${NATIVE_ACCEPTANCE_EVIDENCE_END_MARKER}`;
           skipped_reason: 'Not run.',
         },
       ]),
-    ).toThrow('must not include both');
+    ).toThrow('failed status requires a skipped_reason and no evidence');
+  });
+
+  it('accepts only complete structured waivers in place of an acceptance check', () => {
+    const block = serializeNativeVerificationMachineBlock([
+      {
+        acceptance_id: `acceptance-${'9'.repeat(64)}`,
+        evidence_refs: [],
+        waiver: {
+          reason: 'The hardware dependency is unavailable.',
+          risk: 'The platform-specific path remains unexecuted.',
+          alternative_evidence_refs: ['test/platform-fallback.md'],
+        },
+      },
+    ]);
+    expect(parseNativeVerificationMachineBlock(block)).toMatchObject([
+      { waiver: { alternative_evidence_refs: ['test/platform-fallback.md'] } },
+    ]);
+    expect(() =>
+      serializeNativeVerificationMachineBlock([
+        {
+          acceptance_id: `acceptance-${'9'.repeat(64)}`,
+          evidence_refs: [],
+          waiver: { reason: 'missing risk', alternative_evidence_refs: ['test/fallback.md'] },
+        },
+      ]),
+    ).toThrow('waiver is invalid');
   });
 
   it('rejects empty, duplicate, or non-string evidence refs and blank skipped reasons', () => {

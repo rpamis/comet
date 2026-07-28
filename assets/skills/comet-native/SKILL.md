@@ -213,7 +213,7 @@ Never edit snapshots or evidence, guess unenumerated paths, or present partial s
 
 Run verification appropriate to the Acceptance examples, complete target specifications, and risk. Record actual commands, results, skipped checks, specification consistency, known limitations, and the conclusion. Never record an unrun check as passed.
 
-In the fixed acceptance evidence block of `verification.md`, use every Runtime-provided `acceptance_id`. Each item must contain either project-relative evidence refs or an honest `skipped_reason`. Serialize the entries with `comet native evidence format` and paste the result; never hand-format this JSON — a hand-typed block can almost never match the canonical serialization byte-for-byte. See the artifact reference for the exact format.
+In the fixed acceptance evidence block of `verification.md`, use every Runtime-provided `acceptance_id`. Passed items record project-relative evidence refs; an unfinished item cannot treat `skipped_reason` as a pass. A real exception uses a structured `waiver` with its reason, risk, and alternative evidence, then requires explicit confirmation at Verify. Serialize the entries with `comet native evidence format` and paste the result; never hand-format this JSON — a hand-typed block can almost never match the canonical serialization byte-for-byte. See the artifact reference for the exact format.
 
 When you need reproducible text-hygiene evidence, run the built-in read-only check:
 
@@ -223,17 +223,23 @@ comet native check <change-name>
 
 This command scans a bounded set of regular project text files in the current implementation scope/current snapshot. It does not invoke Git, a shell, project scripts, external processes, or external Skills. It does not modify project files, phase, Run, or trajectory; it writes a content-addressed receipt. It does not replace risk-based project tests.
 
+`pass` requires a current check receipt bound to the scope, snapshot, and contract; when `--receipt` is omitted, Runtime creates the current built-in check receipt under its lock. A required failed, skipped, scan-limited, timed-out, or invalid check blocks it. A high-risk change (Native/Entry runtime, path/transaction/migration, security boundary, installation, or routing) also requires an independent review: its reviewer differs from the implementation author, covers every acceptance ID, checks unified I/O, adversarial paths, generated assets, and a real lifecycle Eval, and has no unresolved P0/P1 finding. Generate the review hash through Runtime first:
+
+```text
+comet native review format <change-name> --input review-draft.json > review.json
+```
+
 After writing the report, run:
 
 ```text
-comet native next <change-name> --summary <summary> --result pass|fail --report verification.md [--receipt <ref>]
+comet native next <change-name> --summary <summary> --result pass|fail --report verification.md [--receipt <ref>] [--review review.json] [--confirmed --confirm-waiver]
 ```
 
 `fail` returns to Build. Fix the evidenced problem, verify again, and submit stable, non-sensitive failure facts through `--failure-category` and `--failed-check`.
 
 The second identical failure warns. The third with no scope progress stops. A real scope change ends the current repair episode. If scope has not changed but one concrete new hypothesis exists, use the signature returned by status with `--override-repair` once. Never repeat an override for the same signature. At a repair stop, ask the user to decide; do not weaken checks or fabricate a pass.
 
-After entering Archive, changes to the brief, specifications, implementation scope, report, or receipt make the evidence stale. Follow the Runtime continuation back to Build, reseal the scope, and verify again. Do not reuse a stale pass.
+After entering Archive, changes to the brief, specifications, implementation scope, report, receipt, waiver, or review make the evidence stale. Archive preview and its lock-held commit both revalidate these bound facts. Follow the Runtime continuation back to Build, reseal the scope, and verify again. Do not reuse a stale pass.
 
 ## Archive
 
