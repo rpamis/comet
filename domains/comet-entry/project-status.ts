@@ -205,8 +205,8 @@ async function inspectOpenSpecChanges(
           runtimeEval: diagnostic.runtimeEval,
           commandChecks: run
             ? {
-                build: await latestCommandCheck(changeDir, run, 'build'),
-                verify: await latestCommandCheck(changeDir, run, 'verify'),
+                build: await latestCommandCheck(projectRoot, changeDir, run, 'build'),
+                verify: await latestCommandCheck(projectRoot, changeDir, run, 'verify'),
               }
             : null,
         });
@@ -255,14 +255,20 @@ export async function inspectCometProjectStatus(startPath: string): Promise<Come
     configError = error instanceof Error ? error.message : String(error);
     defaultEntry = { error: configError };
   }
+  const configuredWorkflows =
+    config?.workflows ?? (config ? [config.default_workflow] : ['classic']);
+  const classicEnabled = configuredWorkflows.includes('classic');
+  const nativeEnabled = configuredWorkflows.includes('native');
   const openSpec = configError
     ? { classic: [], unmanaged: [], error: configError }
-    : await inspectOpenSpecChanges(projectRoot);
+    : classicEnabled
+      ? await inspectOpenSpecChanges(projectRoot)
+      : { classic: [], unmanaged: [] };
 
   let native: CometProjectStatus['workflows']['native'];
   if (configError) {
     native = { changes: [], error: configError };
-  } else if (config?.native) {
+  } else if (nativeEnabled && config?.native) {
     try {
       await assertNoPendingNativeRootMove(projectRoot);
       const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);

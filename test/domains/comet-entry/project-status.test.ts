@@ -103,7 +103,8 @@ describe('Comet project status', () => {
     const state = await createNativeChange({ paths, name: 'native-only', language: 'en' });
     await fs.writeFile(path.join(nativeChangeDir(paths, state.name), state.brief), VALID_BRIEF);
 
-    await expect(inspectCometProjectStatus(projectRoot)).resolves.toMatchObject({
+    const status = await inspectCometProjectStatus(projectRoot);
+    expect(status).toMatchObject({
       schema: 'comet.status.v2',
       defaultEntry: {
         workflow: 'native',
@@ -124,6 +125,8 @@ describe('Comet project status', () => {
       },
       unmanagedOpenSpec: [],
     });
+    expect(status.workflows.classic).toEqual({ changes: [] });
+    expect(status.workflows.classic.error).toBeUndefined();
 
     await writeProjectConfig(projectRoot, {
       ...defaultProjectConfig('.'),

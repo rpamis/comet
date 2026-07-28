@@ -95,7 +95,8 @@ describe('CLI help text', () => {
     expect(help.stdout).toContain('Usage: comet classic <command> [args]');
     expect(help.stdout).toContain('openspec -- <openspec-args...>');
     expect(help.stdout).toContain('root show');
-    expect(help.stdout).toContain('root move docs <--dry-run|--apply>');
+    expect(help.stdout).toContain('root move docs --dry-run');
+    expect(help.stdout).toContain('root move docs --apply --plan <id>');
   });
 
   it('keeps Native behind one isolated root command', () => {

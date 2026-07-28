@@ -4,6 +4,7 @@ import {
   assertClassicLayoutWritable,
   assertClassicLayoutReadable,
   classicProjectRelative,
+  type ClassicLayoutPaths,
 } from './classic-layout.js';
 import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
 import { inspectClassicProjectTarget } from './classic-protected-path.js';
@@ -189,8 +190,12 @@ export async function listActiveClassicHookChanges(
   }));
 }
 
-function isSuperpowersArtifactPath(relativePath: string): boolean {
-  return comparisonKey(relativePath).startsWith('docs/superpowers/');
+function superpowersArtifactPrefix(projectRoot: string, layout: ClassicLayoutPaths): string {
+  return `${classicProjectRelative(projectRoot, layout.superpowersRoot)}/`;
+}
+
+function isSuperpowersArtifactPath(relativePath: string, prefix: string): boolean {
+  return comparisonKey(relativePath).startsWith(comparisonKey(prefix));
 }
 
 type SuperpowersArtifactField = 'designDoc' | 'plan' | 'verificationReport';
@@ -202,32 +207,40 @@ interface SuperpowersArtifactSlot {
   phase: 'design' | 'build' | 'verify';
 }
 
-const SUPERPOWERS_ARTIFACT_SLOTS: readonly SuperpowersArtifactSlot[] = [
-  {
-    prefix: 'docs/superpowers/specs/',
-    field: 'designDoc',
-    wireField: 'design_doc',
-    phase: 'design',
-  },
-  {
-    prefix: 'docs/superpowers/plans/',
-    field: 'plan',
-    wireField: 'plan',
-    phase: 'build',
-  },
-  {
-    prefix: 'docs/superpowers/reports/',
-    field: 'verificationReport',
-    wireField: 'verification_report',
-    phase: 'verify',
-  },
-];
+function superpowersArtifactSlots(
+  projectRoot: string,
+  layout: ClassicLayoutPaths,
+): readonly SuperpowersArtifactSlot[] {
+  return [
+    {
+      prefix: `${classicProjectRelative(projectRoot, layout.superpowersSpecsDir)}/`,
+      field: 'designDoc',
+      wireField: 'design_doc',
+      phase: 'design',
+    },
+    {
+      prefix: `${classicProjectRelative(projectRoot, layout.superpowersPlansDir)}/`,
+      field: 'plan',
+      wireField: 'plan',
+      phase: 'build',
+    },
+    {
+      prefix: `${classicProjectRelative(projectRoot, layout.superpowersReportsDir)}/`,
+      field: 'verificationReport',
+      wireField: 'verification_report',
+      phase: 'verify',
+    },
+  ];
+}
 
-function standardSuperpowersArtifactSlot(relativePath: string): SuperpowersArtifactSlot | null {
+function standardSuperpowersArtifactSlot(
+  relativePath: string,
+  slots: readonly SuperpowersArtifactSlot[],
+): SuperpowersArtifactSlot | null {
   const key = comparisonKey(relativePath);
-  const slot = SUPERPOWERS_ARTIFACT_SLOTS.find((candidate) => key.startsWith(candidate.prefix));
+  const slot = slots.find((candidate) => key.startsWith(comparisonKey(candidate.prefix)));
   if (!slot) return null;
-  const fileName = key.slice(slot.prefix.length);
+  const fileName = key.slice(comparisonKey(slot.prefix).length);
   if (!fileName || fileName.includes('/') || !fileName.endsWith('.md')) return null;
   return slot;
 }
@@ -397,9 +410,9 @@ async function repoSourceGoverningChange(
 async function governingChange(
   relativePath: string,
   projectRoot: string,
+  layout: ClassicLayoutPaths,
   selectedChangeName?: string,
 ): Promise<GoverningResolution> {
-  const layout = await assertClassicLayoutReadable(projectRoot);
   const prefix = `${classicProjectRelative(projectRoot, layout.changesDir)}/`;
   if (relativePath.startsWith(prefix)) {
     const rest = relativePath.slice(prefix.length);
@@ -414,13 +427,16 @@ async function governingChange(
       return { changeDir: active.directory, phase: 'open', classic: null, archived: false };
     }
   }
-  if (isSuperpowersArtifactPath(relativePath)) {
+  if (isSuperpowersArtifactPath(relativePath, superpowersArtifactPrefix(projectRoot, layout))) {
     const superpowers = await superpowersArtifactGoverningChange(relativePath, projectRoot);
     if (superpowers?.match === 'recorded') {
       return { ...superpowers.governing, superpowersArtifact: 'matched' };
     }
 
-    const slot = standardSuperpowersArtifactSlot(relativePath);
+    const slot = standardSuperpowersArtifactSlot(
+      relativePath,
+      superpowersArtifactSlots(projectRoot, layout),
+    );
     if (superpowers) {
       return slot
         ? {
@@ -650,8 +666,9 @@ async function inspectClassicHookTarget(
   selectedChangeName?: string,
 ): Promise<ClassicCommandResult> {
   const relativePath = await projectRelative(target, projectRoot);
+  let layout: ClassicLayoutPaths;
   try {
-    await assertClassicLayoutWritable(projectRoot);
+    layout = await assertClassicLayoutWritable(projectRoot);
   } catch (error) {
     return result(
       2,
@@ -679,7 +696,7 @@ async function inspectClassicHookTarget(
 
   let governing: GoverningResolution;
   try {
-    governing = await governingChange(relativePath, projectRoot, selectedChangeName);
+    governing = await governingChange(relativePath, projectRoot, layout, selectedChangeName);
   } catch (error) {
     return result(
       2,
@@ -692,14 +709,13 @@ async function inspectClassicHookTarget(
 
   const phase = governing.phase;
 
-  const layout = await assertClassicLayoutReadable(projectRoot);
   const openSpec = openSpecAllowed(
     relativePath,
     phase,
     `${classicProjectRelative(projectRoot, layout.openSpecRoot)}/`,
   );
   if (openSpec) return allowed(openSpec);
-  if (isSuperpowersArtifactPath(relativePath)) {
+  if (isSuperpowersArtifactPath(relativePath, superpowersArtifactPrefix(projectRoot, layout))) {
     if (governing.superpowersArtifact === 'matched' && allowsSuperpowersArtifacts(governing)) {
       return allowed(`${relativePath} (phase: ${phase}, superpowers)`);
     }

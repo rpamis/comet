@@ -154,6 +154,9 @@ comet state transition <change-name> verify-fail
 
 **立即执行：** 使用 Skill 工具加载 `openspec-verify-change` 技能。禁止跳过此步骤。
 
+<!-- external-openspec-skill-override -->
+**外部 OpenSpec Skill 覆写：** 加载后只采用其验证语义；其中任何直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径都必须替换为 `comet classic openspec -- <args...>` 与 resolver 返回的 `<classic-*>` 逻辑根。
+
 技能加载后，按其指引验证。检查项：
 1. tasks.md 全部任务已完成（`[x]`）
 2. 实现符合 `<classic-change-dir>/design.md` 高层设计决策

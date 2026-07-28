@@ -27,13 +27,9 @@ function validateScope(scope: unknown): asserts scope is CommandCheckScope {
   }
 }
 
-function projectRoot(changeDir: string): string {
-  return path.resolve(changeDir, '..', '..', '..');
-}
-
-function normalizedCwd(changeDir: string, cwd = '.'): string {
+function normalizedCwd(projectRoot: string, cwd = '.'): string {
   if (cwd.trim().length === 0) throw new Error('Command check cwd cannot be blank');
-  const root = projectRoot(changeDir);
+  const root = path.resolve(projectRoot);
   const target = path.resolve(root, cwd);
   if (target !== root && !target.startsWith(root + path.sep)) {
     throw new Error(`Command check cwd must resolve within the project root: '${cwd}'`);
@@ -41,7 +37,7 @@ function normalizedCwd(changeDir: string, cwd = '.'): string {
   return path.relative(root, target).replaceAll('\\', '/') || '.';
 }
 
-function validRecord(changeDir: string, event: TrajectoryEvent): RecordedCommandCheck | null {
+function validRecord(projectRoot: string, event: TrajectoryEvent): RecordedCommandCheck | null {
   if (event.type !== 'command_check_recorded') return null;
   const data: unknown = event.data;
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
@@ -57,7 +53,7 @@ function validRecord(changeDir: string, event: TrajectoryEvent): RecordedCommand
   }
   let normalized: string;
   try {
-    normalized = normalizedCwd(changeDir, cwd);
+    normalized = normalizedCwd(projectRoot, cwd);
   } catch {
     return null;
   }
@@ -73,6 +69,7 @@ function validRecord(changeDir: string, event: TrajectoryEvent): RecordedCommand
 }
 
 export async function recordCommandCheck(
+  projectRoot: string,
   changeDir: string,
   run: RunState,
   input: RecordCommandCheckInput,
@@ -92,7 +89,7 @@ export async function recordCommandCheck(
     scope: input.scope,
     command: input.command,
     exitCode: input.exitCode,
-    cwd: normalizedCwd(changeDir, input.cwd),
+    cwd: normalizedCwd(projectRoot, input.cwd),
   };
   await appendTrajectory(changeDir, run.trajectoryRef, {
     sequence: recorded.sequence,
@@ -110,6 +107,7 @@ export async function recordCommandCheck(
 }
 
 export async function latestCommandCheck(
+  projectRoot: string,
   changeDir: string,
   run: RunState,
   scope: CommandCheckScope,
@@ -119,7 +117,7 @@ export async function latestCommandCheck(
   for (let index = trajectory.length - 1; index >= 0; index -= 1) {
     const event = trajectory[index];
     if (event.runId !== run.runId) continue;
-    const record = validRecord(changeDir, event);
+    const record = validRecord(projectRoot, event);
     if (record?.scope === scope) return record;
   }
   return null;

@@ -8650,6 +8650,9 @@ async function readWorkflowProjectConfigSnapshot(projectRoot, options = {}) {
   };
 }
 
+// domains/workflow-contract/project-config-transaction.ts
+var CONFIG_TRANSACTION_MAX_BYTES = 16 * 1024;
+
 // domains/workflow-contract/project-config-writer.ts
 async function assertWorkflowProjectConfigIdentity(projectRoot, expectedIdentity) {
   if (!expectedIdentity) return;

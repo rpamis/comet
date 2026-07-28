@@ -36,6 +36,9 @@ Reuse Comet open capability to create change, but use hotfix defaults: do not ex
 
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
 
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** Do not execute its direct official CLI, fixed-cwd, or fixed physical OpenSpec path instructions. Route every OpenSpec command through `comet classic openspec -- <args...>` and use the `<classic-*>` logical roots bound for this run for every change and artifact path.
+
 After the skill loads, create the change skeleton first, then immediately initialize recoverable state and bind the current change:
 
 ```bash

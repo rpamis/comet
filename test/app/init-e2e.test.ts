@@ -406,6 +406,61 @@ describe('comet init E2E', () => {
     });
   });
 
+  it('preserves both configured workflows when non-interactive init is repeated without --workflow', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'both', language: 'en' }),
+    );
+    mockedExecFileSync.mockClear();
+    mockExternalSuccess();
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, language: 'en', overwrite: true }),
+    );
+    const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8')) as {
+      default_workflow?: string;
+      workflows?: string[];
+      native?: unknown;
+      classic?: unknown;
+    };
+
+    expect(result).toMatchObject({
+      status: 'complete',
+      initializedWorkflows: ['native', 'classic'],
+    });
+    expect(config).toMatchObject({
+      default_workflow: 'native',
+      workflows: ['native', 'classic'],
+      native: expect.any(Object),
+      classic: expect.any(Object),
+    });
+  });
+
+  it('uninstalls Comet-owned directories after real Classic init while preserving the OpenSpec root', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+    const { removeWorkingDirs } = await import('../../domains/skill/uninstall.js');
+    await captureJsonOutput(() =>
+      initCommand(tmpDir, { yes: true, json: true, workflow: 'classic', language: 'en' }),
+    );
+    const openSpecConfig = path.join(tmpDir, 'docs', 'openspec', 'config.yaml');
+    await expect(fs.readFile(openSpecConfig, 'utf8')).resolves.toContain('schema: spec-driven');
+
+    await expect(removeWorkingDirs(tmpDir)).resolves.toEqual({ removed: 1, failed: 0 });
+
+    await expect(fs.readFile(openSpecConfig, 'utf8')).resolves.toContain('schema: spec-driven');
+    await expect(fs.stat(path.join(tmpDir, '.comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it('keeps a Classic-only config lossless when reinitializing it as Both', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
@@ -504,6 +559,40 @@ describe('comet init E2E', () => {
       ],
     });
     expect(await fs.readFile(configPath, 'utf8')).toBe(classicOnly);
+  });
+
+  it('preserves the owned Classic root and journal when a fresh config commit fails', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'docs', 'keep.txt'), 'keep\n');
+    const configWriter = await import('../../domains/workflow-contract/project-config-writer.js');
+    vi.spyOn(configWriter, 'writeWorkflowProjectConfig').mockRejectedValueOnce(
+      new Error('config commit failed'),
+    );
+    const { initCommand } = await import('../../app/commands/init.js');
+
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'classic',
+        language: 'en',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'incomplete',
+      projectConfigCreated: false,
+      projectConfigUpdated: false,
+    });
+    await expect(fs.readFile(path.join(tmpDir, 'docs', 'keep.txt'), 'utf8')).resolves.toBe(
+      'keep\n',
+    );
+    await expect(fs.stat(path.join(tmpDir, 'docs', 'openspec'))).resolves.toBeDefined();
+    await expect(
+      fs.stat(path.join(tmpDir, '.comet', 'classic-init-ownership.json')),
+    ).resolves.toBeDefined();
   });
 
   it('does not overwrite config drift introduced after Classic directories are created', async () => {

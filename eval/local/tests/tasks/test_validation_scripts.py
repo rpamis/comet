@@ -224,7 +224,7 @@ def test_current_full_workflow_layout_requires_complete_archived_lifecycle(
         tmp_path / changes_root,
     )
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 
@@ -241,10 +241,21 @@ def test_current_full_workflow_layout_requires_complete_archived_lifecycle(
     ]
 
 
-def test_current_full_workflow_smokes_init_with_the_asset_bound_snapshot(
-    monkeypatch, tmp_path: Path
+@pytest.mark.parametrize(
+    ("treatment_name", "layout", "open_spec_root"),
+    [
+        ("COMET_CLASSIC_DOCS_LAYOUT", "docs", "docs/openspec"),
+        ("COMET_CLASSIC_LEGACY_LAYOUT", "legacy", "openspec"),
+    ],
+)
+def test_classic_layout_lifecycle_smokes_init_with_the_asset_bound_snapshot(
+    monkeypatch,
+    tmp_path: Path,
+    treatment_name: str,
+    layout: str,
+    open_spec_root: str,
 ):
-    _write_full_workflow_context(tmp_path, "COMET_CLASSIC_DOCS_LAYOUT")
+    _write_full_workflow_context(tmp_path, treatment_name)
     snapshot = tmp_path / "_eval_current_comet"
     for relative in (
         "bin/comet.js",
@@ -265,7 +276,7 @@ def test_current_full_workflow_smokes_init_with_the_asset_bound_snapshot(
         encoding="utf-8",
     )
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
     calls = []
@@ -273,22 +284,10 @@ def test_current_full_workflow_smokes_init_with_the_asset_bound_snapshot(
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
         project = Path(command[2])
-        (project / ".comet").mkdir(parents=True)
-        (project / ".comet/config.yaml").write_text(
-            "\n".join(
-                [
-                    "schema: comet.project.v1",
-                    "default_workflow: classic",
-                    "workflows: [classic]",
-                    "classic:",
-                    "  artifact_layout: docs",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
-        )
-        (project / "docs/openspec").mkdir(parents=True)
-        (project / "docs/openspec/config.yaml").write_text(
+        config = (project / ".comet/config.yaml").read_text(encoding="utf-8")
+        assert f"artifact_layout: {layout}" in config
+        (project / open_spec_root).mkdir(parents=True)
+        (project / open_spec_root / "config.yaml").write_text(
             "schema: spec-driven\n", encoding="utf-8"
         )
         return types.SimpleNamespace(returncode=0, stdout='{"status":"complete"}\n', stderr="")
@@ -314,7 +313,7 @@ def test_current_full_workflow_smoke_rejects_a_snapshot_without_assets(tmp_path:
     (snapshot / "bin").mkdir(parents=True)
     (snapshot / "bin/comet.js").write_text("// incomplete\n", encoding="utf-8")
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 
@@ -329,7 +328,7 @@ def test_full_workflow_docs_layout_rejects_legacy_root(tmp_path: Path):
     _write_docs_config(tmp_path)
     _write_archived_openspec_change(tmp_path, tmp_path / "openspec/changes")
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 
@@ -344,7 +343,7 @@ def test_full_workflow_legacy_layout_rejects_docs_root(tmp_path: Path):
     _write_docs_config(tmp_path, "legacy")
     _write_archived_openspec_change(tmp_path, tmp_path / "docs/openspec/changes")
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 
@@ -378,7 +377,7 @@ def test_current_full_workflow_layout_rejects_unarchived_change(
         encoding="utf-8",
     )
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 
@@ -396,7 +395,7 @@ def test_full_workflow_docs_layout_reads_layout_from_project_config(tmp_path: Pa
         tmp_path / "docs/openspec/changes",
     )
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 
@@ -414,7 +413,7 @@ def test_full_workflow_legacy_layout_reads_layout_from_project_config(tmp_path: 
         tmp_path / "openspec/changes",
     )
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 
@@ -454,7 +453,7 @@ def test_current_full_workflow_layout_rejects_phase_keywords_without_state_traje
         encoding="utf-8",
     )
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 
@@ -496,7 +495,7 @@ def test_current_full_workflow_layout_rejects_missing_transition(
         missing_event=missing_event,
     )
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 
@@ -540,7 +539,7 @@ def test_current_full_workflow_layout_rejects_missing_phase_artifact(
         missing_artifact=missing_artifact,
     )
     module = _load_standalone_validator(
-        ROOT / "local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+        ROOT / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",
         tmp_path,
     )
 

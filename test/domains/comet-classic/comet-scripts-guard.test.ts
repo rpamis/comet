@@ -581,6 +581,31 @@ describe('comet guard', () => {
       expect(result.stderr).not.toContain('recorded command-check');
     });
 
+    it('detects and executes an inferred npm build from the nested invocation cwd', async () => {
+      await createChange(tmpDir, 'nested-inferred-build', buildYaml);
+      await writeFile(
+        path.join(tmpDir, 'package.json'),
+        JSON.stringify({ scripts: { build: 'node -e "process.exit(23)"' } }),
+      );
+      const nested = path.join(tmpDir, 'packages', 'app');
+      await writeFile(
+        path.join(nested, 'package.json'),
+        JSON.stringify({
+          scripts: {
+            build: "node -e \"require('fs').writeFileSync('nested-build-ran', 'ok')\"",
+          },
+        }),
+      );
+
+      const result = runNode(nested, guardScript, ['nested-inferred-build', 'build']);
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(await fs.readFile(path.join(nested, 'nested-build-ran'), 'utf8')).toBe('ok');
+      await expect(fs.access(path.join(tmpDir, 'nested-build-ran'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    });
+
     it('makes COMET_SKIP_BUILD visible instead of reporting an ordinary silent pass', async () => {
       await createChange(tmpDir, 'visible-skip', buildYaml);
 

@@ -45,6 +45,9 @@ comet classic openspec -- --version
 
 **立即执行：** 使用 Skill 工具加载 `openspec-explore` 技能。禁止跳过此步骤。
 
+<!-- external-openspec-skill-override -->
+**外部 OpenSpec Skill 覆写：** 加载后只采用其探索方法；其中任何直接运行官方 CLI、切换到固定 cwd 或读写固定物理 OpenSpec 路径的指令都不得执行。所有 CLI 调用改用 `comet classic openspec -- <args...>`，所有文件路径改用本轮绑定的 `<classic-*>` 逻辑根。
+
 技能加载后，按其指引探索问题空间，但不得把一次问答视为足够澄清。必须围绕下列内容继续提问、对齐并形成澄清摘要：
 - 目标：用户真正要解决的问题和期望结果
 - 非目标：本次明确不做的内容
@@ -126,7 +129,13 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
 
+<!-- external-openspec-skill-override -->
+**外部 OpenSpec Skill 覆写：** 加载后只采用其 change 创建语义；其中任何直接运行官方 CLI、切换到固定 cwd 或把 change 写到固定物理 OpenSpec 根的指令都不得执行。创建、status 与 instructions 全部改用 `comet classic openspec -- <args...>`，文件路径全部改用 `<classic-change-dir>` 等本轮逻辑根。
+
 完整 `/comet-classic` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能；只有用户明确要求一次性生成提案和 artifacts 时才允许加载。
+
+<!-- external-openspec-skill-override -->
+**外部 OpenSpec Skill 覆写：** 对 `openspec-propose` 同样不得采用其直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径；命令必须通过 adapter，产物必须写入 resolver 返回的 `<classic-*>` 逻辑根。
 
 技能加载后，按其指引创建 change 骨架；当 Step 1b 已形成范围明确的 resolved brief 时，覆盖其"STOP and wait for user direction"行为，避免重复询问。
 

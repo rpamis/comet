@@ -854,6 +854,56 @@ describe('uninstall', () => {
       expect(await fileExists(docsRoot)).toBe(false);
     });
 
+    it.each(['docs', 'legacy'] as const)(
+      'preserves a real OpenSpec %s root with config.yaml while removing independent Comet-owned trees',
+      async (artifactLayout) => {
+        const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+        const openSpecRoot =
+          artifactLayout === 'docs'
+            ? path.join(tmpDir, 'docs', 'openspec')
+            : path.join(tmpDir, 'openspec');
+        await fs.mkdir(path.dirname(configPath), { recursive: true });
+        await fs.writeFile(
+          configPath,
+          [
+            'schema: comet.project.v1',
+            'default_workflow: classic',
+            'workflows: [classic]',
+            'classic:',
+            `  artifact_layout: ${artifactLayout}`,
+            '',
+          ].join('\n'),
+          'utf8',
+        );
+        await fs.mkdir(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
+        await fs.mkdir(path.join(openSpecRoot, 'specs'), { recursive: true });
+        await fs.writeFile(path.join(openSpecRoot, 'config.yaml'), 'schema: spec-driven\n', 'utf8');
+        await fs.writeFile(path.join(openSpecRoot, 'specs', 'user.md'), '# Keep\n', 'utf8');
+        await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'specs'), {
+          recursive: true,
+        });
+        await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'plans'), {
+          recursive: true,
+        });
+
+        const result = await removeWorkingDirs(tmpDir);
+
+        expect(result).toEqual({ removed: 1, failed: 0 });
+        await expect(fs.stat(path.join(tmpDir, '.comet'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+        await expect(fs.readFile(path.join(openSpecRoot, 'config.yaml'), 'utf8')).resolves.toBe(
+          'schema: spec-driven\n',
+        );
+        await expect(
+          fs.readFile(path.join(openSpecRoot, 'specs', 'user.md'), 'utf8'),
+        ).resolves.toBe('# Keep\n');
+        await expect(fs.stat(path.join(tmpDir, 'docs', 'superpowers'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      },
+    );
+
     it('removes the standard empty Native-only docs tree', async () => {
       await writeNativeProjectConfig('docs');
       const nativeRoot = await createNativeWorkingTree('docs');

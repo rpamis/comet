@@ -45,10 +45,18 @@ import {
   inspectClassicRootMove,
   repairClassicRootMove,
 } from '../../domains/comet-classic/classic-root-move.js';
+import {
+  inspectClassicLayoutInitialization,
+  repairClassicLayoutInitialization,
+} from '../../domains/comet-classic/classic-layout-initialization.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { repairCometCurrentSelection } from '../../domains/comet-entry/current-selection-repair.js';
 import { readWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-reader.js';
 import { inspectProtectedProjectPath } from '../../domains/workflow-contract/protected-project-path.js';
+import {
+  inspectWorkflowProjectConfigTransaction,
+  repairWorkflowProjectConfigTransaction,
+} from '../../domains/workflow-contract/project-config-transaction.js';
 import type { WorkflowProjectConfig } from '../../domains/workflow-contract/types.js';
 import { resolveHookWorkflowOwner } from '../../domains/comet-entry/hook-router.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
@@ -302,6 +310,45 @@ async function checkClassicLayout(projectPath: string): Promise<CheckResult> {
       inspection.alternateRootExists ? 'present' : 'missing'
     }`,
   };
+}
+
+async function checkClassicInitialization(projectPath: string): Promise<CheckResult | null> {
+  try {
+    const initialization = await inspectClassicLayoutInitialization(projectPath);
+    if (!initialization) return null;
+    const location = initialization.quarantine ? `; preserved at ${initialization.quarantine}` : '';
+    return {
+      check: 'Classic initialization',
+      status: 'warn',
+      message: `${initialization.id} at ${initialization.stage}${location}; allowed strategies: ${initialization.allowedStrategies.join(', ')}`,
+    };
+  } catch (error) {
+    return {
+      check: 'Classic initialization',
+      status: 'fail',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function checkProjectConfigWriteTransaction(
+  projectPath: string,
+): Promise<CheckResult | null> {
+  try {
+    const transaction = await inspectWorkflowProjectConfigTransaction(projectPath);
+    if (!transaction) return null;
+    return {
+      check: 'project config write transaction',
+      status: 'warn',
+      message: `${transaction.id} at ${transaction.stage}; repair with: comet doctor --repair`,
+    };
+  } catch (error) {
+    return {
+      check: 'project config write transaction',
+      status: 'fail',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function checkClassicOpenSpecRoot(projectPath: string): Promise<CheckResult> {
@@ -986,6 +1033,10 @@ async function collectResultsWithContext(
   context: DoctorContext,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
+  if (scope !== 'global') {
+    const configTransaction = await checkProjectConfigWriteTransaction(projectPath);
+    if (configTransaction) results.push(configTransaction);
+  }
   let config = null;
   let configError: string | null = null;
   if (scope !== 'global') {
@@ -1010,6 +1061,10 @@ async function collectResultsWithContext(
   if (scopeMode) results.push(scopeMode);
   results.push(checkEnvironment(projectPath, context));
   results.push(checkCometCli());
+  if (scope !== 'global') {
+    const classicInitialization = await checkClassicInitialization(projectPath);
+    if (classicInitialization) results.push(classicInitialization);
+  }
   if (classicEnabled) {
     results.push(await checkOpenSpecCli());
     results.push(await checkSuperpowers(projectPath, scope, context));
@@ -1101,6 +1156,9 @@ async function repairDoctorState(
 ): Promise<string[]> {
   const repaired: string[] = [];
   let projectRouterReady = false;
+  if (scope !== 'global' && (await repairWorkflowProjectConfigTransaction(projectPath))) {
+    repaired.push('project config write transaction');
+  }
   const config = scope === 'global' ? null : await readWorkflowProjectConfig(projectPath);
   const workflows = configuredWorkflows(config);
   const language = configuredSkillLanguage(config, workflows);
@@ -1151,8 +1209,12 @@ async function repairDoctorState(
     if (selectionRepair.migratedLegacyClassic) repaired.push('Classic selection v1');
     if (selectionRepair.clearedStaleSelection) repaired.push('stale current selection');
   }
-  if (scope !== 'global' && strategy && (await repairClassicRootMove(projectPath, strategy))) {
-    repaired.push('Classic root move');
+  if (scope !== 'global' && strategy) {
+    if (await repairClassicLayoutInitialization(projectPath, strategy)) {
+      repaired.push('Classic initialization');
+    } else if (await repairClassicRootMove(projectPath, strategy)) {
+      repaired.push('Classic root move');
+    }
   }
 
   for (const target of targets) {

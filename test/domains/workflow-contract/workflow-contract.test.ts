@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
+import { spawnSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 import { pathToFileURL } from 'url';
@@ -18,6 +19,8 @@ import {
   inspectProtectedProjectPath,
   validateWorkflowDefinition,
   workflowProjectConfigRuntimeHelperScript,
+  inspectWorkflowProjectConfigTransaction,
+  repairWorkflowProjectConfigTransaction,
 } from '../../../domains/workflow-contract/index.js';
 import {
   writeWorkflowProjectConfig,
@@ -337,7 +340,9 @@ describe('workflow contract normalization', () => {
             beforeCommit: async () => {
               const managedDirectory = path.join(projectRoot, '.comet');
               const temporaryName = (await fs.readdir(managedDirectory)).find(
-                (entry) => entry.includes('config.yaml.') && entry.endsWith('.tmp'),
+                (entry) =>
+                  entry.includes('config.yaml.') &&
+                  (entry.endsWith('.tmp') || entry.endsWith('.next')),
               );
               expect(temporaryName).toBeDefined();
               await fs.rename(managedDirectory, path.join(projectRoot, '.comet-held'));
@@ -359,7 +364,7 @@ describe('workflow contract normalization', () => {
       await expect(fs.readdir(outsideRoot)).resolves.toEqual(
         expect.arrayContaining([
           'config.yaml',
-          expect.stringMatching(/^\.?config\.yaml\..+\.tmp$/u),
+          expect.stringMatching(/^\.?config\.yaml\..+\.(?:tmp|next)$/u),
         ]),
       );
     } finally {
@@ -444,6 +449,113 @@ describe('workflow contract normalization', () => {
       }
     },
   );
+
+  it('does not overwrite a successor config published after the expected config is quarantined', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-config-publish-race-'));
+    try {
+      await writeWorkflowProjectConfig(projectRoot, defaultWorkflowProjectConfig('initial-root'));
+      const identity = await readWorkflowProjectConfigIdentity(projectRoot);
+      const configPath = path.join(projectRoot, '.comet', 'config.yaml');
+      const successor = [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: successor-root',
+        'extension: successor',
+        '',
+      ].join('\n');
+
+      await expect(
+        writeWorkflowProjectConfig(projectRoot, defaultWorkflowProjectConfig('final-root'), {
+          expectedIdentity: identity,
+          beforePublish: async () => {
+            await fs.writeFile(configPath, successor, { encoding: 'utf8', flag: 'wx' });
+          },
+        }),
+      ).rejects.toThrow(/successor was preserved/iu);
+
+      await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(successor);
+    } finally {
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('recovers the previous config after a process exits with it quarantined', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-config-crash-recovery-'));
+    try {
+      await writeWorkflowProjectConfig(projectRoot, defaultWorkflowProjectConfig('before-crash'));
+      const previous = await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8');
+      const worker = path.resolve('test/helpers/project-config-crash-worker.mjs');
+
+      const crashed = spawnSync(process.execPath, [worker, projectRoot], {
+        cwd: path.resolve('.'),
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+
+      expect(crashed.status, crashed.stderr).toBe(73);
+      await expect(
+        fs.access(path.join(projectRoot, '.comet', 'config.yaml')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(inspectWorkflowProjectConfigTransaction(projectRoot)).resolves.toMatchObject({
+        stage: 'config-quarantined',
+        allowedRepair: 'rollback-or-cleanup',
+      });
+
+      await expect(repairWorkflowProjectConfigTransaction(projectRoot)).resolves.toBe(true);
+      await expect(
+        fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),
+      ).resolves.toBe(previous);
+      await expect(inspectWorkflowProjectConfigTransaction(projectRoot)).resolves.toBeNull();
+      expect(
+        (await fs.readdir(path.join(projectRoot, '.comet'))).filter(
+          (entry) => entry.endsWith('.next') || entry.endsWith('.quarantine'),
+        ),
+      ).toEqual([]);
+    } finally {
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not unlink a same-path successor published while an owned transaction file is cleaned', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-config-cleanup-race-'));
+    try {
+      await writeWorkflowProjectConfig(
+        projectRoot,
+        defaultWorkflowProjectConfig('before-cleanup-race'),
+      );
+      const worker = path.resolve('test/helpers/project-config-crash-worker.mjs');
+      const crashed = spawnSync(process.execPath, [worker, projectRoot], {
+        cwd: path.resolve('.'),
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+      expect(crashed.status, crashed.stderr).toBe(73);
+      const transaction = await inspectWorkflowProjectConfigTransaction(projectRoot);
+      expect(transaction).not.toBeNull();
+      const successor = 'successor candidate must be preserved\n';
+
+      await repairWorkflowProjectConfigTransaction(projectRoot, {
+        testHooks: {
+          afterOwnedFileQuarantine: async (relativePath) => {
+            if (relativePath !== transaction!.candidate) return;
+            await fs.writeFile(path.join(projectRoot, ...relativePath.split('/')), successor, {
+              encoding: 'utf8',
+              flag: 'wx',
+            });
+          },
+        },
+      });
+
+      await expect(
+        fs.readFile(path.join(projectRoot, ...transaction!.candidate.split('/')), 'utf8'),
+      ).resolves.toBe(successor);
+      await expect(inspectWorkflowProjectConfigTransaction(projectRoot)).resolves.toBeNull();
+    } finally {
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
+  });
 
   it('normalizes the self-contained Native workflow without external Skill calls', () => {
     const workflow = normalizeWorkflowDefinition(

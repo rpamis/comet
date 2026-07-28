@@ -17,6 +17,7 @@ import { readJsonObjectFile } from './json-object.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
 import {
   assertClassicLayoutInitializationSafe,
+  checkpointClassicLayoutInitialization,
   type ClassicLayoutInitializationPermit,
 } from '../comet-classic/classic-layout-initialization.js';
 import {
@@ -1822,6 +1823,7 @@ async function createWorkingDirs(
       label: `Classic working directory ${relative}`,
     });
   }
+  await checkpointClassicLayoutInitialization(projectPath, layout.initializationPermit);
 
   await installCometProjectInstructions(projectPath, language === 'zh-CN' ? 'zh' : 'en');
 }

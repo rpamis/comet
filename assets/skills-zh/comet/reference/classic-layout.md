@@ -30,5 +30,5 @@ comet classic root show
 
 - 新 Classic 项目默认使用 `docs/openspec/`。
 - 缺少 `classic.artifact_layout` 的旧项目按 `openspec/` 继续运行。
-- 普通 init/update 不移动旧产物。迁移前运行 `comet classic root move docs --dry-run`；只有用户明确授权后才运行 `--apply`。
+- 普通 init/update 不移动旧产物。迁移前运行 `comet classic root move docs --dry-run` 并记录输出的 plan ID；只有用户明确授权后才运行 `comet classic root move docs --apply --plan <id>`。
 - 首版迁移不接受任何 active 或 unmanaged OpenSpec change。

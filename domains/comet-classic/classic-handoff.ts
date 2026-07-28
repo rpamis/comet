@@ -29,6 +29,7 @@ import {
   readClassicProjectFile,
   writeClassicProjectText,
 } from './classic-protected-path.js';
+import { classicCommandProjectRoot, withClassicCommandContext } from './classic-command-context.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -500,19 +501,59 @@ async function completedHandoffIsCurrent(
   );
 }
 
-export const classicHandoffCommand: ClassicCommandHandler = async (args) => {
-  const output = new HandoffOutput();
-  const [change, phase, mode, fullFlag] = args;
-  try {
-    validateChangeName(change);
-    const layout = await assertClassicLayoutWritable(process.cwd());
-    const active = await inspectClassicActiveChangeDirectory(change, layout.projectRoot);
-    const changeDir = active.directory;
-    const changeRef = classicProjectRelative(layout.projectRoot, changeDir);
+export const classicHandoffCommand: ClassicCommandHandler = async (args, options) =>
+  withClassicCommandContext(options, async () => {
+    const output = new HandoffOutput();
+    const [change, phase, mode, fullFlag] = args;
+    try {
+      validateChangeName(change);
+      const layout = await assertClassicLayoutWritable(classicCommandProjectRoot());
+      const active = await inspectClassicActiveChangeDirectory(change, layout.projectRoot);
+      const changeDir = active.directory;
+      const changeRef = classicProjectRelative(layout.projectRoot, changeDir);
 
-    if (phase === '--hash-only') {
+      if (phase === '--hash-only') {
+        if (!active.exists) {
+          throw new HandoffFailure(red(`ERROR: change directory not found: ${changeRef}`));
+        }
+        for (const required of ['proposal.md', 'design.md', 'tasks.md']) {
+          if (
+            !(await classicProjectFileNonempty(
+              layout.projectRoot,
+              `${changeDir}/${required}`,
+              `Classic handoff source ${required}`,
+            ))
+          ) {
+            throw new HandoffFailure(
+              red(`ERROR: required file missing or empty: ${changeRef}/${required}`),
+            );
+          }
+        }
+        output.stdout.push(await computeContextHash(layout.projectRoot, changeDir, changeRef));
+        return output.toResult(0);
+      }
+
+      if (phase !== 'design' || mode !== '--write') {
+        throw new HandoffFailure(
+          red('Usage: comet-handoff.mjs <change-name> design --write [--full]'),
+        );
+      }
+      let handoffMode: string;
+      if (fullFlag === undefined || fullFlag === '') handoffMode = 'compact';
+      else if (fullFlag === '--full') handoffMode = 'full';
+      else
+        throw new HandoffFailure(
+          red('Usage: comet-handoff.mjs <change-name> design --write [--full]'),
+        );
+
       if (!active.exists) {
         throw new HandoffFailure(red(`ERROR: change directory not found: ${changeRef}`));
+      }
+      if (!active.stateExists) {
+        throw new HandoffFailure(red(`ERROR: .comet.yaml not found at ${changeRef}/.comet.yaml`));
+      }
+      if ((await readField(layout.projectRoot, changeDir, 'phase')) !== 'design') {
+        throw new HandoffFailure(red('ERROR: design handoff requires phase: design'));
       }
       for (const required of ['proposal.md', 'design.md', 'tasks.md']) {
         if (
@@ -523,266 +564,227 @@ export const classicHandoffCommand: ClassicCommandHandler = async (args) => {
           ))
         ) {
           throw new HandoffFailure(
-            red(`ERROR: required file missing or empty: ${changeRef}/${required}`),
+            red(`ERROR: required OpenSpec artifact missing or empty: ${changeRef}/${required}`),
           );
         }
       }
-      output.stdout.push(await computeContextHash(layout.projectRoot, changeDir, changeRef));
-      return output.toResult(0);
-    }
 
-    if (phase !== 'design' || mode !== '--write') {
-      throw new HandoffFailure(
-        red('Usage: comet-handoff.mjs <change-name> design --write [--full]'),
-      );
-    }
-    let handoffMode: string;
-    if (fullFlag === undefined || fullFlag === '') handoffMode = 'compact';
-    else if (fullFlag === '--full') handoffMode = 'full';
-    else
-      throw new HandoffFailure(
-        red('Usage: comet-handoff.mjs <change-name> design --write [--full]'),
-      );
-
-    if (!active.exists) {
-      throw new HandoffFailure(red(`ERROR: change directory not found: ${changeRef}`));
-    }
-    if (!active.stateExists) {
-      throw new HandoffFailure(red(`ERROR: .comet.yaml not found at ${changeRef}/.comet.yaml`));
-    }
-    if ((await readField(layout.projectRoot, changeDir, 'phase')) !== 'design') {
-      throw new HandoffFailure(red('ERROR: design handoff requires phase: design'));
-    }
-    for (const required of ['proposal.md', 'design.md', 'tasks.md']) {
+      const handoffDir = `${changeDir}/.comet/handoff`;
+      await inspectClassicProjectTarget(layout.projectRoot, `${changeDir}/.comet`, {
+        label: 'Classic change runtime directory',
+        expected: 'directory',
+      });
+      await inspectClassicProjectTarget(layout.projectRoot, handoffDir, {
+        label: 'Classic handoff directory',
+        expected: 'directory',
+      });
+      const contextCompression =
+        (await readField(layout.projectRoot, changeDir, 'context_compression')) || 'off';
+      let contextJson: string;
+      let contextMd: string;
+      if (contextCompression === 'off') {
+        contextJson = `${handoffDir}/design-context.json`;
+        contextMd = `${handoffDir}/design-context.md`;
+      } else if (contextCompression === 'beta') {
+        if (handoffMode === 'full') {
+          output.stderr.push(
+            yellow('[HANDOFF] --full is ignored in beta mode; spec files are projected verbatim'),
+          );
+        }
+        handoffMode = 'beta';
+        contextJson = `${handoffDir}/spec-context.json`;
+        contextMd = `${handoffDir}/spec-context.md`;
+      } else {
+        throw new HandoffFailure(
+          [
+            red(`ERROR: invalid context_compression: ${contextCompression}`),
+            red('Valid values: off, beta'),
+          ].join('\n'),
+        );
+      }
+      const contextJsonRef = classicProjectRelative(layout.projectRoot, contextJson);
+      const contextMdRef = classicProjectRelative(layout.projectRoot, contextMd);
+      const contextHash = await computeContextHash(layout.projectRoot, changeDir, changeRef);
+      const actionId = `classic-handoff:${contextHash}`;
+      const initialProjection = await readClassicState(changeDir);
+      if (!initialProjection.classic) {
+        throw new HandoffFailure(red('ERROR: design handoff requires Classic state'));
+      }
+      const initialPending = initialProjection.run
+        ? await readPendingAction(changeDir, initialProjection.run.pendingRef)
+        : null;
+      const recovering =
+        initialPending?.id === actionId &&
+        initialPending.type === 'handoff' &&
+        initialPending.ref === contextHash;
       if (
-        !(await classicProjectFileNonempty(
-          layout.projectRoot,
-          `${changeDir}/${required}`,
-          `Classic handoff source ${required}`,
-        ))
+        initialProjection.classic.handoffHash &&
+        initialProjection.classic.handoffHash !== contextHash &&
+        !recovering
       ) {
         throw new HandoffFailure(
-          red(`ERROR: required OpenSpec artifact missing or empty: ${changeRef}/${required}`),
+          red(
+            `ERROR: stale handoff detected: source hash ${contextHash} does not match completed hash ${initialProjection.classic.handoffHash}`,
+          ),
         );
       }
-    }
 
-    const handoffDir = `${changeDir}/.comet/handoff`;
-    await inspectClassicProjectTarget(layout.projectRoot, `${changeDir}/.comet`, {
-      label: 'Classic change runtime directory',
-      expected: 'directory',
-    });
-    await inspectClassicProjectTarget(layout.projectRoot, handoffDir, {
-      label: 'Classic handoff directory',
-      expected: 'directory',
-    });
-    const contextCompression =
-      (await readField(layout.projectRoot, changeDir, 'context_compression')) || 'off';
-    let contextJson: string;
-    let contextMd: string;
-    if (contextCompression === 'off') {
-      contextJson = `${handoffDir}/design-context.json`;
-      contextMd = `${handoffDir}/design-context.md`;
-    } else if (contextCompression === 'beta') {
-      if (handoffMode === 'full') {
-        output.stderr.push(
-          yellow('[HANDOFF] --full is ignored in beta mode; spec files are projected verbatim'),
-        );
-      }
-      handoffMode = 'beta';
-      contextJson = `${handoffDir}/spec-context.json`;
-      contextMd = `${handoffDir}/spec-context.md`;
-    } else {
-      throw new HandoffFailure(
-        [
-          red(`ERROR: invalid context_compression: ${contextCompression}`),
-          red('Valid values: off, beta'),
-        ].join('\n'),
-      );
-    }
-    const contextJsonRef = classicProjectRelative(layout.projectRoot, contextJson);
-    const contextMdRef = classicProjectRelative(layout.projectRoot, contextMd);
-    const contextHash = await computeContextHash(layout.projectRoot, changeDir, changeRef);
-    const actionId = `classic-handoff:${contextHash}`;
-    const initialProjection = await readClassicState(changeDir);
-    if (!initialProjection.classic) {
-      throw new HandoffFailure(red('ERROR: design handoff requires Classic state'));
-    }
-    const initialPending = initialProjection.run
-      ? await readPendingAction(changeDir, initialProjection.run.pendingRef)
-      : null;
-    const recovering =
-      initialPending?.id === actionId &&
-      initialPending.type === 'handoff' &&
-      initialPending.ref === contextHash;
-    if (
-      initialProjection.classic.handoffHash &&
-      initialProjection.classic.handoffHash !== contextHash &&
-      !recovering
-    ) {
-      throw new HandoffFailure(
-        red(
-          `ERROR: stale handoff detected: source hash ${contextHash} does not match completed hash ${initialProjection.classic.handoffHash}`,
-        ),
-      );
-    }
-
-    await ensureClassicProjectDirectory(
-      layout.projectRoot,
-      `${changeDir}/.comet`,
-      'Classic change runtime directory',
-    );
-    await ensureClassicProjectDirectory(
-      layout.projectRoot,
-      handoffDir,
-      'Classic handoff directory',
-    );
-    const runtime = await ensureClassicRuntimeRun(changeDir);
-    const pendingAction = await readPendingAction(changeDir, runtime.run.pendingRef);
-    const resumesPending =
-      pendingAction?.id === actionId &&
-      pendingAction.type === 'handoff' &&
-      pendingAction.ref === contextHash;
-    if (runtime.run.pending && runtime.run.pending !== actionId) {
-      throw new HandoffFailure(red(`ERROR: another action is pending: ${runtime.run.pending}`));
-    }
-    if (
-      runtime.classic.handoffHash === contextHash &&
-      runtime.classic.handoffContext === contextJsonRef &&
-      !runtime.run.pending &&
-      !pendingAction &&
-      (await completedHandoffIsCurrent(
+      await ensureClassicProjectDirectory(
         layout.projectRoot,
-        changeDir,
-        runtime.run,
-        contextHash,
-        contextJson,
-        contextMd,
-        contextJsonRef,
-        contextMdRef,
-      ))
-    ) {
+        `${changeDir}/.comet`,
+        'Classic change runtime directory',
+      );
+      await ensureClassicProjectDirectory(
+        layout.projectRoot,
+        handoffDir,
+        'Classic handoff directory',
+      );
+      const runtime = await ensureClassicRuntimeRun(changeDir);
+      const pendingAction = await readPendingAction(changeDir, runtime.run.pendingRef);
+      const resumesPending =
+        pendingAction?.id === actionId &&
+        pendingAction.type === 'handoff' &&
+        pendingAction.ref === contextHash;
+      if (runtime.run.pending && runtime.run.pending !== actionId) {
+        throw new HandoffFailure(red(`ERROR: another action is pending: ${runtime.run.pending}`));
+      }
+      if (
+        runtime.classic.handoffHash === contextHash &&
+        runtime.classic.handoffContext === contextJsonRef &&
+        !runtime.run.pending &&
+        !pendingAction &&
+        (await completedHandoffIsCurrent(
+          layout.projectRoot,
+          changeDir,
+          runtime.run,
+          contextHash,
+          contextJson,
+          contextMd,
+          contextJsonRef,
+          contextMdRef,
+        ))
+      ) {
+        output.stderr.push(green(`[HANDOFF] wrote ${contextJsonRef}`));
+        output.stderr.push(green(`[HANDOFF] wrote ${contextMdRef}`));
+        output.stderr.push(green(`[HANDOFF] handoff_hash=${contextHash}`));
+        return output.toResult(0);
+      }
+
+      const action: EngineAction = {
+        id: actionId,
+        stepId: runtime.run.currentStep,
+        type: 'handoff',
+        ref: contextHash,
+      };
+      await writePendingAction(changeDir, runtime.run.pendingRef, action);
+      const pendingRun: RunState = {
+        ...runtime.run,
+        pending: actionId,
+        status: 'waiting',
+      };
+      await writeClassicState(changeDir, {
+        classic: runtime.classic,
+        run: pendingRun,
+        unknownKeys: (await readClassicState(changeDir)).unknownKeys,
+      });
+
+      if (handoffMode === 'beta') {
+        await writeSpecMarkdownContext(
+          layout.projectRoot,
+          changeDir,
+          changeRef,
+          change,
+          contextHash,
+          contextMd,
+        );
+        await writeSpecJsonContext(
+          layout.projectRoot,
+          changeDir,
+          changeRef,
+          change,
+          contextHash,
+          contextJson,
+        );
+      } else {
+        await writeMarkdownContext(
+          layout.projectRoot,
+          changeDir,
+          changeRef,
+          change,
+          handoffMode,
+          contextHash,
+          contextMd,
+        );
+        await writeJsonContext(
+          layout.projectRoot,
+          changeDir,
+          changeRef,
+          change,
+          handoffMode,
+          contextHash,
+          contextJson,
+        );
+      }
+
+      const context = await readClassicProjectFile(layout.projectRoot, contextMd, {
+        label: 'Classic handoff markdown output',
+      });
+      await writeContext(changeDir, pendingRun.contextRef, context);
+      const artifacts = {
+        ...(await readArtifacts(changeDir, pendingRun.artifactsRef)),
+        handoff_context: contextJsonRef,
+        handoff_markdown: contextMdRef,
+      };
+      await writeArtifacts(changeDir, pendingRun.artifactsRef, artifacts);
+      const completedClassic = {
+        ...runtime.classic,
+        handoffContext: contextJsonRef,
+        handoffHash: contextHash,
+      };
+      const transitionedRun =
+        pendingRun.currentStep === 'full.design.handoff'
+          ? await transitionClassicRuntimeRun(changeDir, completedClassic, pendingRun, {
+              actionId,
+              kind: 'classic-handoff',
+            })
+          : pendingRun;
+      const completedRun: RunState = {
+        ...transitionedRun,
+        pending: null,
+        status: 'running',
+      };
+      if (recovering || resumesPending) {
+        await appendRecoveryEvent(changeDir, completedRun, actionId);
+      }
+      const trajectory = await readTrajectory(changeDir, completedRun.trajectoryRef);
+      const checkpoint: Checkpoint = {
+        runId: completedRun.runId,
+        stateVersion: completedRun.iteration,
+        trajectoryOffset: trajectory.length,
+        contextHash: hashText(context),
+        artifactsHash: artifactsHash(artifacts),
+        createdAt: new Date().toISOString(),
+      };
+      await writeCheckpoint(changeDir, completedRun.checkpointRef, checkpoint);
+      await writeClassicState(changeDir, {
+        classic: completedClassic,
+        run: completedRun,
+        unknownKeys: (await readClassicState(changeDir)).unknownKeys,
+      });
+      await clearPendingAction(changeDir, completedRun.pendingRef);
+
+      output.stderr.push(green(`[SET] handoff_context=${contextJson}`));
+      output.stderr.push(green(`[SET] handoff_hash=${contextHash}`));
+
       output.stderr.push(green(`[HANDOFF] wrote ${contextJsonRef}`));
       output.stderr.push(green(`[HANDOFF] wrote ${contextMdRef}`));
       output.stderr.push(green(`[HANDOFF] handoff_hash=${contextHash}`));
       return output.toResult(0);
+    } catch (error) {
+      if (error instanceof HandoffFailure) {
+        for (const line of error.message.split('\n')) output.stderr.push(line);
+        return output.toResult(error.exitCode);
+      }
+      throw error;
     }
-
-    const action: EngineAction = {
-      id: actionId,
-      stepId: runtime.run.currentStep,
-      type: 'handoff',
-      ref: contextHash,
-    };
-    await writePendingAction(changeDir, runtime.run.pendingRef, action);
-    const pendingRun: RunState = {
-      ...runtime.run,
-      pending: actionId,
-      status: 'waiting',
-    };
-    await writeClassicState(changeDir, {
-      classic: runtime.classic,
-      run: pendingRun,
-      unknownKeys: (await readClassicState(changeDir)).unknownKeys,
-    });
-
-    if (handoffMode === 'beta') {
-      await writeSpecMarkdownContext(
-        layout.projectRoot,
-        changeDir,
-        changeRef,
-        change,
-        contextHash,
-        contextMd,
-      );
-      await writeSpecJsonContext(
-        layout.projectRoot,
-        changeDir,
-        changeRef,
-        change,
-        contextHash,
-        contextJson,
-      );
-    } else {
-      await writeMarkdownContext(
-        layout.projectRoot,
-        changeDir,
-        changeRef,
-        change,
-        handoffMode,
-        contextHash,
-        contextMd,
-      );
-      await writeJsonContext(
-        layout.projectRoot,
-        changeDir,
-        changeRef,
-        change,
-        handoffMode,
-        contextHash,
-        contextJson,
-      );
-    }
-
-    const context = await readClassicProjectFile(layout.projectRoot, contextMd, {
-      label: 'Classic handoff markdown output',
-    });
-    await writeContext(changeDir, pendingRun.contextRef, context);
-    const artifacts = {
-      ...(await readArtifacts(changeDir, pendingRun.artifactsRef)),
-      handoff_context: contextJsonRef,
-      handoff_markdown: contextMdRef,
-    };
-    await writeArtifacts(changeDir, pendingRun.artifactsRef, artifacts);
-    const completedClassic = {
-      ...runtime.classic,
-      handoffContext: contextJsonRef,
-      handoffHash: contextHash,
-    };
-    const transitionedRun =
-      pendingRun.currentStep === 'full.design.handoff'
-        ? await transitionClassicRuntimeRun(changeDir, completedClassic, pendingRun, {
-            actionId,
-            kind: 'classic-handoff',
-          })
-        : pendingRun;
-    const completedRun: RunState = {
-      ...transitionedRun,
-      pending: null,
-      status: 'running',
-    };
-    if (recovering || resumesPending) {
-      await appendRecoveryEvent(changeDir, completedRun, actionId);
-    }
-    const trajectory = await readTrajectory(changeDir, completedRun.trajectoryRef);
-    const checkpoint: Checkpoint = {
-      runId: completedRun.runId,
-      stateVersion: completedRun.iteration,
-      trajectoryOffset: trajectory.length,
-      contextHash: hashText(context),
-      artifactsHash: artifactsHash(artifacts),
-      createdAt: new Date().toISOString(),
-    };
-    await writeCheckpoint(changeDir, completedRun.checkpointRef, checkpoint);
-    await writeClassicState(changeDir, {
-      classic: completedClassic,
-      run: completedRun,
-      unknownKeys: (await readClassicState(changeDir)).unknownKeys,
-    });
-    await clearPendingAction(changeDir, completedRun.pendingRef);
-
-    output.stderr.push(green(`[SET] handoff_context=${contextJson}`));
-    output.stderr.push(green(`[SET] handoff_hash=${contextHash}`));
-
-    output.stderr.push(green(`[HANDOFF] wrote ${contextJsonRef}`));
-    output.stderr.push(green(`[HANDOFF] wrote ${contextMdRef}`));
-    output.stderr.push(green(`[HANDOFF] handoff_hash=${contextHash}`));
-    return output.toResult(0);
-  } catch (error) {
-    if (error instanceof HandoffFailure) {
-      for (const line of error.message.split('\n')) output.stderr.push(line);
-      return output.toResult(error.exitCode);
-    }
-    throw error;
-  }
-};
+  });

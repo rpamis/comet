@@ -362,6 +362,16 @@ async function assertWorkingTreeAbsentOrRealDirectory(
   }
 }
 
+async function realWorkingFileExists(file: string): Promise<boolean> {
+  try {
+    await readWorkingObjectIdentity(file, 'file');
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 async function validateQuarantinedNode(
   directory: string,
   node: InspectedWorkingNode,
@@ -1065,6 +1075,10 @@ async function removeWorkingDirs(
     const nativeEnabled = configuredWorkflows.includes('native') || document?.native !== undefined;
     const artifactLayout = classicEnabled ? (document?.classic?.artifact_layout ?? 'legacy') : null;
     const layout = artifactLayout ? classicLayoutPaths(projectRoot, artifactLayout) : null;
+    const preserveOpenSpecRoot =
+      layout !== null &&
+      (await realWorkingFileExists(path.join(layout.openSpecRoot, 'config.yaml')));
+    const splitDocsWorkingTrees = artifactLayout === 'docs' && preserveOpenSpecRoot;
 
     if (artifactLayout) {
       const legacyRootExists = await assertWorkingTreeAbsentOrRealDirectory(
@@ -1089,7 +1103,7 @@ async function removeWorkingDirs(
       superpowers: cloneManagedWorkingTree(SUPERPOWERS_WORKING_TREE),
     };
     const legacyTree = cloneManagedWorkingTree(OPENSPEC_WORKING_TREE);
-    if (artifactLayout === 'docs') {
+    if (artifactLayout === 'docs' && !preserveOpenSpecRoot) {
       mergeManagedWorkingTree(docsTree, ['openspec'], OPENSPEC_WORKING_TREE);
     }
 
@@ -1098,11 +1112,15 @@ async function removeWorkingDirs(
       if (!document?.native) throw new Error('Native project config is incomplete');
       const nativePaths = await nativeProjectPaths(projectRoot, document.native.artifact_root);
       if (isInsideDirectory(docsDir, nativePaths.nativeRoot)) {
-        mergeManagedWorkingTree(
-          docsTree,
-          path.relative(docsDir, nativePaths.nativeRoot).split(path.sep).filter(Boolean),
-          NATIVE_WORKING_TREE,
-        );
+        if (splitDocsWorkingTrees) {
+          separateNativeRoot = nativePaths.nativeRoot;
+        } else {
+          mergeManagedWorkingTree(
+            docsTree,
+            path.relative(docsDir, nativePaths.nativeRoot).split(path.sep).filter(Boolean),
+            NATIVE_WORKING_TREE,
+          );
+        }
       } else if (isInsideDirectory(cometDir, nativePaths.nativeRoot)) {
         mergeManagedWorkingTree(
           cometTree,
@@ -1125,8 +1143,10 @@ async function removeWorkingDirs(
 
     const candidates: Array<
       readonly [directory: string, tree: ManagedWorkingTree, countRemoval: boolean]
-    > = [[docsDir, docsTree, false]];
-    if (artifactLayout === 'legacy') {
+    > = splitDocsWorkingTrees
+      ? [[path.join(docsDir, 'superpowers'), SUPERPOWERS_WORKING_TREE, false]]
+      : [[docsDir, docsTree, false]];
+    if (artifactLayout === 'legacy' && !preserveOpenSpecRoot) {
       candidates.push([layout!.openSpecRoot, legacyTree, false]);
     }
     if (separateNativeRoot) {

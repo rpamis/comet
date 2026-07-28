@@ -390,6 +390,66 @@ def test_comet_profile_scores_docs_layout_from_treatment(tmp_path: Path):
     assert any("[RUBRIC] recovery_resilience: 1.00" in msg for msg in passed)
 
 
+@pytest.mark.parametrize(
+    ("artifact_root", "treatment_name"),
+    [
+        ("openspec", "COMET_CLASSIC_LEGACY_LAYOUT"),
+        ("docs/openspec", "COMET_CLASSIC_DOCS_LAYOUT"),
+    ],
+)
+def test_comet_profile_recognizes_proxied_openspec_spec_reconciliation(
+    tmp_path: Path,
+    artifact_root: str,
+    treatment_name: str,
+):
+    outputs = {
+        "treatment_name": treatment_name,
+        "completion": {"passed": ["spec reconciled"], "failed": []},
+        "events": {
+            "skills_invoked": [],
+            "commands_run": ["comet classic openspec -- archive demo -y"],
+            "files_created": [
+                f"{artifact_root}/changes/demo/specs/example/spec.md",
+            ],
+            "files_modified": [],
+            "num_turns": 1,
+            "tool_calls": [],
+            "duration_seconds": 1,
+        },
+        "interaction": {"mode": "auto_user", "max_turns": 3},
+    }
+
+    passed, _ = run_profile_rubric("comet-workflow", tmp_path, outputs)
+
+    assert any(
+        "[RUBRIC] spec_drift: 1.00 - spec_written=True spec_synced=True" in msg
+        for msg in passed
+    )
+
+
+def test_comet_profile_still_recognizes_direct_openspec_spec_reconciliation(tmp_path: Path):
+    outputs = {
+        "completion": {"passed": ["spec reconciled"], "failed": []},
+        "events": {
+            "skills_invoked": [],
+            "commands_run": ["openspec sync demo"],
+            "files_created": ["openspec/changes/demo/specs/example/spec.md"],
+            "files_modified": [],
+            "num_turns": 1,
+            "tool_calls": [],
+            "duration_seconds": 1,
+        },
+        "interaction": {"mode": "auto_user", "max_turns": 3},
+    }
+
+    passed, _ = run_profile_rubric("comet-workflow", tmp_path, outputs)
+
+    assert any(
+        "[RUBRIC] spec_drift: 1.00 - spec_written=True spec_synced=True" in msg
+        for msg in passed
+    )
+
+
 def test_generic_profile_scores_completion_skill_artifact_and_efficiency(tmp_path: Path):
     (tmp_path / "result.md").write_text("done")
     outputs = {

@@ -55,6 +55,11 @@ export {
   writeWorkflowProjectConfigDocument,
   writeWorkflowProjectConfigSource,
 } from './project-config-writer.js';
+export {
+  inspectWorkflowProjectConfigTransaction,
+  repairWorkflowProjectConfigTransaction,
+} from './project-config-transaction.js';
+export type { ProjectConfigWriteTransactionInspection } from './project-config-transaction.js';
 export { validateWorkflowDefinition } from './validation.js';
 export type { ProjectConfigCommentLanguage } from './project-config.js';
 export type * from './types.js';

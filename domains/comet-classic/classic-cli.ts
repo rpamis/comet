@@ -18,6 +18,8 @@ export interface ClassicCommandResult {
 
 export interface ClassicCommandOptions {
   json: boolean;
+  invocationCwd?: string;
+  projectRoot?: string;
 }
 
 export type ClassicCommandHandler = (
@@ -120,7 +122,7 @@ export async function runClassicCli(
   const json = argv[0] !== 'openspec' && argv.includes('--json');
   const args = json ? argv.filter((argument) => argument !== '--json') : [...argv];
   const command = args.shift();
-  const result = await dispatch(command, args, { json }, handlers);
+  const result = await dispatch(command, args, { json, invocationCwd: process.cwd() }, handlers);
   return json ? jsonResult(command, result) : result;
 }
 

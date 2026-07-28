@@ -39,7 +39,7 @@ const HISTORICAL_POINTERS_PRESERVED = [
   'archived evidence and artifact pointers',
 ] as const;
 const APPLY_PRECONDITIONS = [
-  'configuration and source manifest still match this plan',
+  'approved plan ID still matches layout, source identity and manifest, target identity, and configuration',
   'no active, archive, or recovery blockers',
   'target remains absent or the bound empty directory',
   'source, target, staging, transaction, and config paths remain protected',
@@ -50,6 +50,7 @@ const MAX_JOURNAL_BYTES = 16 * 1024 * 1024;
 const MAX_PENDING_ACTION_BYTES = 1024 * 1024;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
+const journalClaimBrand = Symbol('ClassicRootMoveJournalClaim');
 
 export interface ClassicRootMoveFileSummary {
   path: string;
@@ -64,10 +65,8 @@ interface ClassicRootMoveManifest {
   hash: string;
 }
 
-interface ClassicRootMoveJournal {
-  schema: 'comet.classic-root-move.v1';
+interface ClassicRootMoveJournalBase {
   id: string;
-  stage: 'copying' | 'ready' | 'switched' | 'configured';
   source: string;
   target: string;
   staging: string;
@@ -75,31 +74,74 @@ interface ClassicRootMoveJournal {
   originalConfigHash: string;
   expectedConfigHash: string;
   planId: string;
-  targetInitialState: 'missing' | 'empty';
   manifest: ClassicRootMoveManifest;
+  readonly [journalClaimBrand]?: ClassicRootMoveJournalClaim;
+}
+
+interface ClassicRootMoveJournalV1 extends ClassicRootMoveJournalBase {
+  schema: 'comet.classic-root-move.v1';
+  stage: 'copying' | 'ready' | 'switched' | 'configured';
+  targetInitialState: 'missing' | 'empty';
+}
+
+interface ClassicRootMoveJournalV2 extends ClassicRootMoveJournalBase {
+  schema: 'comet.classic-root-move.v2';
+  stage: 'locked' | 'copying' | 'ready' | 'switched' | 'configured';
+  artifactLayout: 'legacy';
+  sourceIdentity: ClassicRootMovePathIdentity[];
+  targetInitialIdentity: ClassicRootMoveObjectIdentity | null;
+  approvedPlanId: string;
+  targetInitialState: 'missing' | 'empty' | 'non-empty';
+}
+
+type ClassicRootMoveJournal = ClassicRootMoveJournalV1 | ClassicRootMoveJournalV2;
+
+interface ClassicRootMoveJournalClaim {
+  fileIdentity: BigIntStats;
+  contentHash: string;
 }
 
 interface ClassicRootMoveTestHooks {
   afterSourceFileInspect?: (relativePath: string) => void | Promise<void>;
   beforeSourceFileCopy?: (relativePath: string) => void | Promise<void>;
   afterJournalInspect?: () => void | Promise<void>;
+  afterJournalQuarantine?: (operation: string) => void | Promise<void>;
   afterConfigSnapshot?: () => void | Promise<void>;
   afterDirectoryInspect?: (label: string) => void | Promise<void>;
   beforeArchivedPendingRead?: (change: string) => void | Promise<void>;
   beforeMutation?: (operation: string) => void | Promise<void>;
 }
 
-interface ClassicRootMoveOptions {
+export interface ClassicRootMoveOptions {
+  planId?: string;
   testHooks?: ClassicRootMoveTestHooks;
 }
 
 export type ClassicRootMoveRecoveryStrategy = 'continue' | 'rollback';
+
+export interface ClassicRootMoveFileObjectIdentity {
+  dev: string;
+  ino: string;
+  birthtime: string;
+}
+
+export interface ClassicRootMoveObjectIdentity extends ClassicRootMoveFileObjectIdentity {
+  ctime: string;
+  mtime: string;
+}
+
+export interface ClassicRootMovePathIdentity extends ClassicRootMoveFileObjectIdentity {
+  path: string;
+}
 
 export interface ClassicRootMovePlan {
   projectRoot: string;
   source: string;
   target: string;
   staging: string;
+  artifactLayout: 'legacy';
+  sourceIdentity: ClassicRootMovePathIdentity[];
+  targetInitialIdentity: ClassicRootMoveObjectIdentity | null;
   fileCount: number;
   directoryCount: number;
   totalBytes: number;
@@ -149,7 +191,7 @@ async function assertProtectedMovePath(
 }
 
 interface ProtectedDirectoryChain {
-  entries: Array<{ path: string; identity: FileObjectIdentity }>;
+  entries: Array<{ path: string; identity: FileObjectIdentity; stat: BigIntStats }>;
 }
 
 function sameDirectoryObject(expected: FileObjectIdentity, actual: FileObjectIdentity): boolean {
@@ -182,7 +224,7 @@ async function captureProtectedDirectoryChain(
     if (!stat.isDirectory() || stat.isSymbolicLink()) {
       throw new Error(`${label} crosses a symbolic link or junction`);
     }
-    entries.push({ path: current, identity: fileObjectIdentity(stat) });
+    entries.push({ path: current, identity: fileObjectIdentity(stat), stat });
   }
   return { entries };
 }
@@ -381,7 +423,11 @@ async function renameProtectedPath(
   target: string,
   operation: string,
   testHooks?: ClassicRootMoveTestHooks,
-  options: { replaceTarget?: boolean } = {},
+  options: {
+    replaceTarget?: boolean;
+    expectedTargetIdentity?: BigIntStats;
+    validateTarget?: () => Promise<void>;
+  } = {},
 ): Promise<void> {
   const label = `Classic root move ${operation}`;
   const sourceParent = await captureProtectedDirectoryChain(
@@ -406,11 +452,17 @@ async function renameProtectedPath(
       { label, expected: 'any' },
     );
     if (inspection.exists) throw new Error(`${label} target already exists`);
+  } else if (options.expectedTargetIdentity) {
+    await validateMutationObject(target, options.expectedTargetIdentity, label);
   }
   await testHooks?.beforeMutation?.(operation);
   await validateProtectedDirectoryChain(sourceParent, label);
   await validateProtectedDirectoryChain(targetParent, label);
   await validateMutationObject(source, sourceIdentity, label);
+  if (options.expectedTargetIdentity) {
+    await validateMutationObject(target, options.expectedTargetIdentity, label);
+  }
+  await options.validateTarget?.();
   await fs.rename(source, target);
   await validateProtectedDirectoryChain(sourceParent, label);
   await validateProtectedDirectoryChain(targetParent, label);
@@ -422,6 +474,10 @@ async function unlinkProtectedFile(
   file: string,
   operation: string,
   testHooks?: ClassicRootMoveTestHooks,
+  options: {
+    expectedIdentity?: BigIntStats;
+    validateTarget?: () => Promise<void>;
+  } = {},
 ): Promise<boolean> {
   const label = `Classic root move ${operation}`;
   let identity: BigIntStats;
@@ -431,10 +487,17 @@ async function unlinkProtectedFile(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
   }
+  if (options.expectedIdentity) {
+    await validateMutationObject(file, options.expectedIdentity, label);
+  }
   const parent = await captureProtectedDirectoryChain(projectRoot, path.dirname(file), label);
   await testHooks?.beforeMutation?.(operation);
   await validateProtectedDirectoryChain(parent, label);
   await validateMutationObject(file, identity, label);
+  if (options.expectedIdentity) {
+    await validateMutationObject(file, options.expectedIdentity, label);
+  }
+  await options.validateTarget?.();
   await fs.unlink(file);
   await validateProtectedDirectoryChain(parent, label);
   return true;
@@ -445,6 +508,7 @@ async function removeProtectedEmptyDirectory(
   directory: string,
   operation: string,
   testHooks?: ClassicRootMoveTestHooks,
+  expectedIdentity?: ClassicRootMoveObjectIdentity,
 ): Promise<boolean> {
   const label = `Classic root move ${operation}`;
   let identity: BigIntStats;
@@ -453,6 +517,15 @@ async function removeProtectedEmptyDirectory(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
+  }
+  if (
+    expectedIdentity &&
+    !sameStableIdentity(
+      stableObjectIdentity(identity, `Classic root move ${operation}`),
+      expectedIdentity,
+    )
+  ) {
+    throw new Error(`Classic root move ${operation} changed after migration preflight`);
   }
   const parent = await captureProtectedDirectoryChain(projectRoot, path.dirname(directory), label);
   await testHooks?.beforeMutation?.(operation);
@@ -500,12 +573,13 @@ async function assertRootMovePreflightBoundaries(
   }
 }
 
-async function atomicWriteJson(
+async function atomicWriteJournal(
   projectRoot: string,
-  file: string,
-  value: unknown,
+  expected: ClassicRootMoveJournal,
+  updated: ClassicRootMoveJournal,
   testHooks?: ClassicRootMoveTestHooks,
-): Promise<void> {
+): Promise<ClassicRootMoveJournal> {
+  const file = journalFile(projectRoot);
   await ensureRootMoveDirectory(
     projectRoot,
     path.dirname(file),
@@ -513,17 +587,74 @@ async function atomicWriteJson(
     testHooks,
   );
   const temporary = `${file}.${randomUUID()}.tmp`;
+  const serialized = JSON.stringify(updated, null, 2) + '\n';
+  let quarantine: QuarantinedClassicRootMoveJournal | undefined;
   try {
     await writeProtectedFileExclusive(
       projectRoot,
       temporary,
-      JSON.stringify(value, null, 2) + '\n',
+      serialized,
       'update-journal-temp',
       testHooks,
     );
-    await renameProtectedPath(projectRoot, temporary, file, 'update-journal-commit', testHooks, {
-      replaceTarget: true,
-    });
+    const temporaryIdentity = await captureMutationObject(
+      temporary,
+      'file',
+      'Classic root move updated journal',
+    );
+    quarantine = await quarantineOwnedJournal(
+      projectRoot,
+      expected,
+      'update-journal-commit',
+      testHooks,
+    );
+    try {
+      await linkProtectedFileExclusive(
+        projectRoot,
+        temporary,
+        file,
+        'update-journal-publish',
+        testHooks,
+      );
+    } catch (error) {
+      throw new Error(
+        'Classic root move journal publish failed; a successor journal was preserved',
+        { cause: error },
+      );
+    }
+    const persisted = await readJournal(projectRoot);
+    const persistedClaim = persisted ? journalClaim(persisted) : null;
+    if (
+      !persisted ||
+      persisted.id !== updated.id ||
+      persisted.stage !== updated.stage ||
+      persisted.planId !== updated.planId ||
+      persisted.schema !== updated.schema ||
+      !persistedClaim ||
+      persistedClaim.contentHash !== hashBytes(Buffer.from(serialized)) ||
+      !sameInspectedFile(temporaryIdentity, persistedClaim.fileIdentity)
+    ) {
+      throw new Error('Classic root move journal ownership changed while updating');
+    }
+    await unlinkProtectedFile(
+      projectRoot,
+      quarantine.file,
+      'cleanup-update-journal-quarantine',
+      testHooks,
+      { expectedIdentity: journalClaim(quarantine.journal).fileIdentity },
+    );
+    quarantine = undefined;
+    return persisted;
+  } catch (error) {
+    if (quarantine) {
+      await restoreQuarantinedJournal(
+        projectRoot,
+        quarantine,
+        'restore-update-journal',
+        testHooks,
+      ).catch(() => false);
+    }
+    throw error;
   } finally {
     await unlinkProtectedFile(projectRoot, temporary, 'cleanup-update-journal-temp').catch(
       () => false,
@@ -590,6 +721,9 @@ interface ClassicRootMovePlanIdentity {
   source: string;
   target: string;
   staging: string;
+  artifactLayout: 'legacy';
+  sourceIdentity: ClassicRootMovePathIdentity[];
+  targetInitialIdentity: ClassicRootMoveObjectIdentity | null;
   targetInitialState: 'missing' | 'empty' | 'non-empty';
   fileCount: number;
   directoryCount: number;
@@ -607,6 +741,40 @@ function planIdFor(plan: ClassicRootMovePlanIdentity): string {
         source: plan.source,
         target: plan.target,
         staging: plan.staging,
+        artifactLayout: plan.artifactLayout,
+        sourceIdentity: plan.sourceIdentity,
+        targetInitialIdentity: plan.targetInitialIdentity,
+        targetInitialState: plan.targetInitialState,
+        fileCount: plan.fileCount,
+        directoryCount: plan.directoryCount,
+        totalBytes: plan.totalBytes,
+        manifestHash: plan.manifestHash,
+        configPath: plan.configPath,
+        originalConfigHash: plan.originalConfigHash,
+        expectedConfigHash: plan.expectedConfigHash,
+      }),
+    )
+    .digest('hex');
+}
+
+function v1PlanIdFor(plan: {
+  source: string;
+  target: string;
+  targetInitialState: 'missing' | 'empty';
+  fileCount: number;
+  directoryCount: number;
+  totalBytes: number;
+  manifestHash: string;
+  configPath: typeof WORKFLOW_PROJECT_CONFIG_PATH;
+  originalConfigHash: string;
+  expectedConfigHash: string;
+}): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        source: plan.source,
+        target: plan.target,
+        staging: STAGING_PLAN_IDENTITY,
         targetInitialState: plan.targetInitialState,
         fileCount: plan.fileCount,
         directoryCount: plan.directoryCount,
@@ -632,8 +800,75 @@ function ctimeOf(stat: AnyStats): number | bigint {
   return 'ctimeNs' in stat && typeof stat.ctimeNs === 'bigint' ? stat.ctimeNs : stat.ctimeMs;
 }
 
+function mtimeOf(stat: AnyStats): number | bigint {
+  return 'mtimeNs' in stat && typeof stat.mtimeNs === 'bigint' ? stat.mtimeNs : stat.mtimeMs;
+}
+
 function fileObjectIdentity(stat: AnyStats): FileObjectIdentity {
   return { dev: stat.dev, ino: stat.ino, birthtime: birthtimeOf(stat) };
+}
+
+function identityScalar(value: number | bigint): string {
+  return String(value);
+}
+
+function stableObjectIdentity(stat: BigIntStats, label: string): ClassicRootMoveObjectIdentity {
+  const objectIdentity = fileObjectIdentity(stat);
+  if (!hasComparableFileObject(objectIdentity, objectIdentity)) {
+    throw new Error(
+      `${label} filesystem does not expose a stable device and file identity; refusing an auditable root move`,
+    );
+  }
+  return {
+    dev: identityScalar(stat.dev),
+    ino: identityScalar(stat.ino),
+    birthtime: identityScalar(birthtimeOf(stat)),
+    ctime: identityScalar(ctimeOf(stat)),
+    mtime: identityScalar(mtimeOf(stat)),
+  };
+}
+
+function stableChainIdentity(
+  projectRoot: string,
+  chain: ProtectedDirectoryChain,
+  label: string,
+): ClassicRootMovePathIdentity[] {
+  return chain.entries.map((entry) => {
+    const identity = stableObjectIdentity(entry.stat, label);
+    return {
+      path: projectRelative(projectRoot, entry.path) || '.',
+      dev: identity.dev,
+      ino: identity.ino,
+      birthtime: identity.birthtime,
+    };
+  });
+}
+
+function sameStableIdentity(
+  left: ClassicRootMoveFileObjectIdentity | ClassicRootMovePathIdentity,
+  right: ClassicRootMoveFileObjectIdentity | ClassicRootMovePathIdentity,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameStableChain(
+  left: ClassicRootMovePathIdentity[],
+  right: ClassicRootMovePathIdentity[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((entry, index) => sameStableIdentity(entry, right[index]))
+  );
+}
+
+async function captureStableSourceIdentity(
+  projectRoot: string,
+  directory: string,
+  label: string,
+): Promise<ClassicRootMovePathIdentity[]> {
+  const chain = await captureProtectedDirectoryChain(projectRoot, directory, label);
+  await validateProtectedDirectoryChain(chain, label);
+  return stableChainIdentity(projectRoot, chain, label);
 }
 
 function sameInspectedFile(left: AnyStats, right: AnyStats): boolean {
@@ -775,6 +1010,8 @@ async function scanTree(
   }
 
   await visit(root, '');
+  directories.sort((left, right) => left.localeCompare(right));
+  files.sort((left, right) => left.path.localeCompare(right.path));
   const normalized = { directories, files, totalBytes };
   return { ...normalized, hash: manifestHash(normalized) };
 }
@@ -790,15 +1027,36 @@ async function inspectInitialTarget(
 ): Promise<{
   state: 'missing' | 'empty' | 'non-empty';
   conflicts: string[];
+  identity: ClassicRootMoveObjectIdentity | null;
 }> {
   try {
-    if ((await readProtectedDirectory(projectRoot, target, 'docs-target', testHooks)).length > 0) {
-      return { state: 'non-empty', conflicts: ['Classic docs target is not empty'] };
+    const chain = await captureProtectedDirectoryChain(projectRoot, target, 'docs-target');
+    const initialEntry = chain.entries.at(-1);
+    if (!initialEntry) throw new Error('Classic docs target identity is unavailable');
+    const initialIdentity = stableObjectIdentity(initialEntry.stat, 'Classic docs target');
+    await testHooks?.afterDirectoryInspect?.('docs-target');
+    await validateProtectedDirectoryChain(chain, 'docs-target');
+    const entries = await fs.readdir(target, { withFileTypes: true });
+    await validateProtectedDirectoryChain(chain, 'docs-target');
+    const currentChain = await captureProtectedDirectoryChain(projectRoot, target, 'docs-target');
+    const currentEntry = currentChain.entries.at(-1);
+    const currentIdentity = currentEntry
+      ? stableObjectIdentity(currentEntry.stat, 'Classic docs target')
+      : null;
+    if (!currentIdentity || !sameStableIdentity(initialIdentity, currentIdentity)) {
+      throw new Error('Classic docs target changed after inspection');
     }
-    return { state: 'empty', conflicts: [] };
+    if (entries.length > 0) {
+      return {
+        state: 'non-empty',
+        conflicts: ['Classic docs target is not empty'],
+        identity: currentIdentity,
+      };
+    }
+    return { state: 'empty', conflicts: [], identity: currentIdentity };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { state: 'missing', conflicts: [] };
+      return { state: 'missing', conflicts: [], identity: null };
     }
     throw error;
   }
@@ -946,7 +1204,20 @@ async function preflight(
   }
   // Validate the complete source tree before reading any nested state file so
   // blocker reporting cannot follow a special object outside the migration root.
+  const sourceIdentityBefore = await captureStableSourceIdentity(
+    projectRoot,
+    legacy.openSpecRoot,
+    'Classic legacy root identity',
+  );
   const manifest = await scanTree(projectRoot, legacy.openSpecRoot, options.testHooks);
+  const sourceIdentityAfter = await captureStableSourceIdentity(
+    projectRoot,
+    legacy.openSpecRoot,
+    'Classic legacy root identity',
+  );
+  if (!sameStableChain(sourceIdentityBefore, sourceIdentityAfter)) {
+    throw new Error('Classic legacy root identity changed during migration preflight');
+  }
   const targetInspection = await inspectInitialTarget(
     projectRoot,
     docs.openSpecRoot,
@@ -971,6 +1242,9 @@ async function preflight(
     source: projectRelative(projectRoot, legacy.openSpecRoot),
     target: projectRelative(projectRoot, docs.openSpecRoot),
     staging: STAGING_PLAN_IDENTITY,
+    artifactLayout: 'legacy',
+    sourceIdentity: sourceIdentityAfter,
+    targetInitialIdentity: targetInspection.identity,
     targetInitialState: targetInspection.state,
     fileCount: manifest.files.length,
     directoryCount: manifest.directories.length,
@@ -1161,8 +1435,76 @@ function parseManifest(value: unknown): ClassicRootMoveManifest {
   return { ...normalized, hash };
 }
 
-function parseJournal(value: unknown): ClassicRootMoveJournal {
-  const journal = record(value, 'root');
+function parseFileObjectIdentity(value: unknown, label: string): ClassicRootMoveFileObjectIdentity {
+  const identity = record(value, label);
+  assertExactKeys(identity, ['dev', 'ino', 'birthtime'], label);
+  const scalarPattern = /^-?[0-9]+$/u;
+  for (const field of ['dev', 'ino', 'birthtime'] as const) {
+    if (typeof identity[field] !== 'string' || !scalarPattern.test(identity[field])) {
+      throw invalidJournal(`${label}.${field} is invalid`);
+    }
+  }
+  if (identity.dev === '0' || identity.ino === '0') {
+    throw invalidJournal(`${label} does not contain a stable filesystem identity`);
+  }
+  return {
+    dev: identity.dev,
+    ino: identity.ino,
+    birthtime: identity.birthtime,
+  } as ClassicRootMoveFileObjectIdentity;
+}
+
+function parseObjectIdentity(value: unknown, label: string): ClassicRootMoveObjectIdentity {
+  const identity = record(value, label);
+  assertExactKeys(identity, ['dev', 'ino', 'birthtime', 'ctime', 'mtime'], label);
+  const base = parseFileObjectIdentity(
+    {
+      dev: identity.dev,
+      ino: identity.ino,
+      birthtime: identity.birthtime,
+    },
+    label,
+  );
+  const scalarPattern = /^-?[0-9]+$/u;
+  if (
+    typeof identity.ctime !== 'string' ||
+    !scalarPattern.test(identity.ctime) ||
+    typeof identity.mtime !== 'string' ||
+    !scalarPattern.test(identity.mtime)
+  ) {
+    throw invalidJournal(`${label} timestamps are invalid`);
+  }
+  return {
+    ...base,
+    ctime: identity.ctime,
+    mtime: identity.mtime,
+  };
+}
+
+function parseSourceIdentity(value: unknown): ClassicRootMovePathIdentity[] {
+  if (!Array.isArray(value) || value.length !== 2) {
+    throw invalidJournal('sourceIdentity must bind the project root and openspec root');
+  }
+  const expectedPaths = ['.', 'openspec'];
+  return value.map((entry, index) => {
+    const identity = record(entry, `sourceIdentity[${index}]`);
+    assertExactKeys(identity, ['path', 'dev', 'ino', 'birthtime'], `sourceIdentity[${index}]`);
+    if (identity.path !== expectedPaths[index]) {
+      throw invalidJournal(`sourceIdentity[${index}].path is invalid`);
+    }
+    const objectIdentity = {
+      dev: identity.dev,
+      ino: identity.ino,
+      birthtime: identity.birthtime,
+    };
+    return {
+      path: expectedPaths[index],
+      ...parseFileObjectIdentity(objectIdentity, `sourceIdentity[${index}]`),
+    };
+  });
+}
+
+function parseJournalV1(journal: Record<string, unknown>): ClassicRootMoveJournalV1 {
   assertExactKeys(
     journal,
     [
@@ -1181,9 +1523,6 @@ function parseJournal(value: unknown): ClassicRootMoveJournal {
     ],
     'root',
   );
-  if (journal.schema !== 'comet.classic-root-move.v1') {
-    throw invalidJournal('schema is unsupported');
-  }
   if (typeof journal.id !== 'string' || !UUID_PATTERN.test(journal.id)) {
     throw invalidJournal('id is invalid');
   }
@@ -1214,15 +1553,14 @@ function parseJournal(value: unknown): ClassicRootMoveJournal {
   ) {
     throw invalidJournal('config path, config hashes, or planId is invalid');
   }
-  const targetInitialState = journal.targetInitialState;
-  if (targetInitialState !== 'missing' && targetInitialState !== 'empty') {
+  if (journal.targetInitialState !== 'missing' && journal.targetInitialState !== 'empty') {
     throw invalidJournal('targetInitialState is invalid');
   }
+  const targetInitialState = journal.targetInitialState;
   const manifest = parseManifest(journal.manifest);
-  const identity: ClassicRootMovePlanIdentity = {
+  const identity: Parameters<typeof v1PlanIdFor>[0] = {
     source: journal.source,
     target: journal.target,
-    staging: STAGING_PLAN_IDENTITY,
     targetInitialState,
     fileCount: manifest.files.length,
     directoryCount: manifest.directories.length,
@@ -1232,7 +1570,7 @@ function parseJournal(value: unknown): ClassicRootMoveJournal {
     originalConfigHash: journal.originalConfigHash,
     expectedConfigHash: journal.expectedConfigHash,
   };
-  if (planIdFor(identity) !== journal.planId) {
+  if (v1PlanIdFor(identity) !== journal.planId) {
     throw invalidJournal('planId does not match the bound config and tree');
   }
   return {
@@ -1251,18 +1589,159 @@ function parseJournal(value: unknown): ClassicRootMoveJournal {
   };
 }
 
+function parseJournalV2(journal: Record<string, unknown>): ClassicRootMoveJournalV2 {
+  assertExactKeys(
+    journal,
+    [
+      'schema',
+      'id',
+      'stage',
+      'source',
+      'target',
+      'staging',
+      'artifactLayout',
+      'sourceIdentity',
+      'targetInitialIdentity',
+      'configPath',
+      'originalConfigHash',
+      'expectedConfigHash',
+      'planId',
+      'approvedPlanId',
+      'targetInitialState',
+      'manifest',
+    ],
+    'root',
+  );
+  if (typeof journal.id !== 'string' || !UUID_PATTERN.test(journal.id)) {
+    throw invalidJournal('id is invalid');
+  }
+  if (
+    journal.stage !== 'locked' &&
+    journal.stage !== 'copying' &&
+    journal.stage !== 'ready' &&
+    journal.stage !== 'switched' &&
+    journal.stage !== 'configured'
+  ) {
+    throw invalidJournal('stage is invalid');
+  }
+  const expectedStaging = `.comet/transactions/classic-root-move/${journal.id}/openspec`;
+  if (
+    journal.source !== 'openspec' ||
+    journal.target !== 'docs/openspec' ||
+    journal.staging !== expectedStaging
+  ) {
+    throw invalidJournal('source, target, and staging must use the managed project paths');
+  }
+  if (journal.artifactLayout !== 'legacy') {
+    throw invalidJournal('artifactLayout must be legacy');
+  }
+  const sourceIdentity = parseSourceIdentity(journal.sourceIdentity);
+  if (
+    journal.configPath !== WORKFLOW_PROJECT_CONFIG_PATH ||
+    typeof journal.originalConfigHash !== 'string' ||
+    !HASH_PATTERN.test(journal.originalConfigHash) ||
+    typeof journal.expectedConfigHash !== 'string' ||
+    !HASH_PATTERN.test(journal.expectedConfigHash) ||
+    typeof journal.planId !== 'string' ||
+    !HASH_PATTERN.test(journal.planId) ||
+    typeof journal.approvedPlanId !== 'string' ||
+    !HASH_PATTERN.test(journal.approvedPlanId)
+  ) {
+    throw invalidJournal('config path, config hashes, planId, or approvedPlanId is invalid');
+  }
+  const targetInitialState = journal.targetInitialState;
+  if (
+    targetInitialState !== 'missing' &&
+    targetInitialState !== 'empty' &&
+    !(journal.stage === 'locked' && targetInitialState === 'non-empty')
+  ) {
+    throw invalidJournal('targetInitialState is invalid');
+  }
+  const targetInitialIdentity =
+    journal.targetInitialIdentity === null
+      ? null
+      : parseObjectIdentity(journal.targetInitialIdentity, 'targetInitialIdentity');
+  if (
+    (targetInitialState === 'missing' && targetInitialIdentity !== null) ||
+    (targetInitialState !== 'missing' && targetInitialIdentity === null)
+  ) {
+    throw invalidJournal('targetInitialIdentity does not match targetInitialState');
+  }
+  const manifest = parseManifest(journal.manifest);
+  const identity: ClassicRootMovePlanIdentity = {
+    source: journal.source,
+    target: journal.target,
+    staging: STAGING_PLAN_IDENTITY,
+    artifactLayout: 'legacy',
+    sourceIdentity,
+    targetInitialIdentity,
+    targetInitialState,
+    fileCount: manifest.files.length,
+    directoryCount: manifest.directories.length,
+    totalBytes: manifest.totalBytes,
+    manifestHash: manifest.hash,
+    configPath: journal.configPath,
+    originalConfigHash: journal.originalConfigHash,
+    expectedConfigHash: journal.expectedConfigHash,
+  };
+  if (planIdFor(identity) !== journal.planId) {
+    throw invalidJournal('planId does not match the bound config and tree');
+  }
+  if (journal.stage !== 'locked' && journal.approvedPlanId !== journal.planId) {
+    throw invalidJournal('approvedPlanId does not match the executable plan');
+  }
+  return {
+    schema: 'comet.classic-root-move.v2',
+    id: journal.id,
+    stage: journal.stage,
+    source: journal.source,
+    target: journal.target,
+    staging: journal.staging,
+    artifactLayout: 'legacy',
+    sourceIdentity,
+    targetInitialIdentity,
+    configPath: journal.configPath,
+    originalConfigHash: journal.originalConfigHash,
+    expectedConfigHash: journal.expectedConfigHash,
+    planId: journal.planId,
+    approvedPlanId: journal.approvedPlanId,
+    targetInitialState,
+    manifest,
+  };
+}
+
+function parseJournal(value: unknown): ClassicRootMoveJournal {
+  const journal = record(value, 'root');
+  if (journal.schema === 'comet.classic-root-move.v1') return parseJournalV1(journal);
+  if (journal.schema === 'comet.classic-root-move.v2') return parseJournalV2(journal);
+  throw invalidJournal('schema is unsupported');
+}
+
 async function readJournal(
   projectRoot: string,
   testHooks?: ClassicRootMoveTestHooks,
 ): Promise<ClassicRootMoveJournal | null> {
-  const file = journalFile(projectRoot);
-  await assertProtectedMovePath(projectRoot, file, JOURNAL_RELATIVE_PATH, 'file');
+  return readJournalAtPath(
+    projectRoot,
+    journalFile(projectRoot),
+    JOURNAL_RELATIVE_PATH,
+    testHooks?.afterJournalInspect,
+  );
+}
+
+async function readJournalAtPath(
+  projectRoot: string,
+  file: string,
+  label: string,
+  afterInspect?: () => void | Promise<void>,
+): Promise<ClassicRootMoveJournal | null> {
+  await assertProtectedMovePath(projectRoot, file, label, 'file');
   try {
     const stat = await fs.lstat(file, { bigint: true });
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > BigInt(MAX_JOURNAL_BYTES)) {
       throw invalidJournal('journal must be a bounded regular file');
     }
-    await testHooks?.afterJournalInspect?.();
+    await afterInspect?.();
     const bytes = await readRootMoveFile(
       projectRoot,
       file,
@@ -1270,9 +1749,209 @@ async function readJournal(
       'Classic root move journal',
       stat,
     );
-    return parseJournal(JSON.parse(bytes.toString('utf8')) as unknown);
+    const journal = parseJournal(JSON.parse(bytes.toString('utf8')) as unknown);
+    Object.defineProperty(journal, journalClaimBrand, {
+      value: {
+        fileIdentity: stat,
+        contentHash: hashBytes(bytes),
+      } satisfies ClassicRootMoveJournalClaim,
+      enumerable: false,
+    });
+    return journal;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+function journalClaim(journal: ClassicRootMoveJournal): ClassicRootMoveJournalClaim {
+  const claim = journal[journalClaimBrand];
+  if (!claim) throw new Error('Classic root move journal has no ownership claim');
+  return claim;
+}
+
+function sameJournalOwnership(
+  expected: ClassicRootMoveJournal,
+  actual: ClassicRootMoveJournal,
+): boolean {
+  const expectedClaim = journalClaim(expected);
+  const actualClaim = journalClaim(actual);
+  return (
+    sameInspectedFile(expectedClaim.fileIdentity, actualClaim.fileIdentity) &&
+    expectedClaim.contentHash === actualClaim.contentHash &&
+    expected.schema === actual.schema &&
+    expected.id === actual.id &&
+    expected.stage === actual.stage &&
+    expected.planId === actual.planId
+  );
+}
+
+async function validateOwnedJournal(
+  projectRoot: string,
+  expected: ClassicRootMoveJournal,
+): Promise<void> {
+  const current = await readJournalAtPath(
+    projectRoot,
+    journalFile(projectRoot),
+    JOURNAL_RELATIVE_PATH,
+  );
+  if (!current || !sameJournalOwnership(expected, current)) {
+    throw new Error('Classic root move journal ownership changed');
+  }
+}
+
+interface QuarantinedClassicRootMoveJournal {
+  file: string;
+  journal: ClassicRootMoveJournal;
+}
+
+async function restoreQuarantinedJournal(
+  projectRoot: string,
+  quarantine: QuarantinedClassicRootMoveJournal,
+  operation: string,
+  testHooks?: ClassicRootMoveTestHooks,
+): Promise<boolean> {
+  const file = journalFile(projectRoot);
+  try {
+    await linkProtectedFileExclusive(
+      projectRoot,
+      quarantine.file,
+      file,
+      `${operation}-publish`,
+      testHooks,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw error;
+  }
+  const restored = await readJournal(projectRoot);
+  if (!restored || !sameJournalOwnership(quarantine.journal, restored)) {
+    throw new Error('Classic root move journal ownership changed while restoring quarantine');
+  }
+  await unlinkProtectedFile(
+    projectRoot,
+    quarantine.file,
+    `${operation}-cleanup-quarantine`,
+    testHooks,
+    { expectedIdentity: journalClaim(quarantine.journal).fileIdentity },
+  );
+  return true;
+}
+
+async function quarantineOwnedJournal(
+  projectRoot: string,
+  expected: ClassicRootMoveJournal,
+  operation: string,
+  testHooks?: ClassicRootMoveTestHooks,
+): Promise<QuarantinedClassicRootMoveJournal> {
+  const file = journalFile(projectRoot);
+  const quarantineFile = `${file}.${expected.id}.${randomUUID()}.quarantine`;
+  await validateOwnedJournal(projectRoot, expected);
+  const parent = await captureProtectedDirectoryChain(
+    projectRoot,
+    path.dirname(file),
+    `Classic root move ${operation} quarantine`,
+  );
+  await testHooks?.beforeMutation?.(`${operation}-quarantine`);
+  await validateProtectedDirectoryChain(parent, `Classic root move ${operation} quarantine`);
+  await validateOwnedJournal(projectRoot, expected);
+  await fs.rename(file, quarantineFile);
+  await validateProtectedDirectoryChain(parent, `Classic root move ${operation} quarantine`);
+
+  const moved = await readJournalAtPath(
+    projectRoot,
+    quarantineFile,
+    projectRelative(projectRoot, quarantineFile),
+  ).catch(async (error) => {
+    await restoreQuarantinedPath(
+      projectRoot,
+      quarantineFile,
+      `${operation}-restore-unverified`,
+      testHooks,
+    ).catch(() => false);
+    throw new Error('Classic root move journal ownership changed while quarantining', {
+      cause: error,
+    });
+  });
+  if (!moved || !sameJournalOwnership(expected, moved)) {
+    await restoreQuarantinedPath(
+      projectRoot,
+      quarantineFile,
+      `${operation}-restore-successor`,
+      testHooks,
+    ).catch(() => false);
+    throw new Error('Classic root move journal ownership changed while quarantining');
+  }
+  await testHooks?.afterJournalQuarantine?.(operation);
+  return { file: quarantineFile, journal: moved };
+}
+
+async function restoreQuarantinedPath(
+  projectRoot: string,
+  quarantineFile: string,
+  operation: string,
+  testHooks?: ClassicRootMoveTestHooks,
+): Promise<boolean> {
+  const file = journalFile(projectRoot);
+  let identity: BigIntStats;
+  try {
+    identity = await captureMutationObject(
+      quarantineFile,
+      'file',
+      `Classic root move ${operation}`,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+  try {
+    await linkProtectedFileExclusive(
+      projectRoot,
+      quarantineFile,
+      file,
+      `${operation}-publish`,
+      testHooks,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw error;
+  }
+  await unlinkProtectedFile(
+    projectRoot,
+    quarantineFile,
+    `${operation}-cleanup-quarantine`,
+    testHooks,
+    { expectedIdentity: identity },
+  );
+  return true;
+}
+
+async function unlinkOwnedJournal(
+  projectRoot: string,
+  journal: ClassicRootMoveJournal,
+  operation: string,
+  testHooks?: ClassicRootMoveTestHooks,
+): Promise<boolean> {
+  const quarantine = await quarantineOwnedJournal(projectRoot, journal, operation, testHooks);
+  try {
+    const removed = await unlinkProtectedFile(
+      projectRoot,
+      quarantine.file,
+      `${operation}-quarantined`,
+      testHooks,
+      { expectedIdentity: journalClaim(quarantine.journal).fileIdentity },
+    );
+    if (!removed) {
+      throw new Error('Classic root move quarantined journal disappeared before removal');
+    }
+    return true;
+  } catch (error) {
+    await restoreQuarantinedJournal(
+      projectRoot,
+      quarantine,
+      `${operation}-restore`,
+      testHooks,
+    ).catch(() => false);
     throw error;
   }
 }
@@ -1283,9 +1962,11 @@ async function updateJournal(
   stage: ClassicRootMoveJournal['stage'],
   testHooks?: ClassicRootMoveTestHooks,
 ): Promise<ClassicRootMoveJournal> {
-  const updated = { ...journal, stage };
-  await atomicWriteJson(projectRoot, journalFile(projectRoot), updated, testHooks);
-  return updated;
+  if (journal.schema === 'comet.classic-root-move.v1' && stage === 'locked') {
+    throw new Error('Legacy Classic root move journals do not support the locked stage');
+  }
+  const updated = { ...journal, stage } as ClassicRootMoveJournal;
+  return atomicWriteJournal(projectRoot, journal, updated, testHooks);
 }
 
 function transactionPaths(projectRoot: string, journal: ClassicRootMoveJournal) {
@@ -1450,11 +2131,38 @@ async function consumeBoundEmptyTarget(
     return;
   }
   if (state === 'empty') {
-    await removeProtectedEmptyDirectory(projectRoot, target, 'remove-empty-target', testHooks);
+    if (journal.schema === 'comet.classic-root-move.v2' && !journal.targetInitialIdentity) {
+      throw new Error('Classic docs target identity is missing from the approved plan');
+    }
+    await removeProtectedEmptyDirectory(
+      projectRoot,
+      target,
+      'remove-empty-target',
+      testHooks,
+      journal.schema === 'comet.classic-root-move.v2'
+        ? (journal.targetInitialIdentity ?? undefined)
+        : undefined,
+    );
     return;
   }
   if (state !== 'missing') {
     throw new Error('Classic docs target changed after migration preflight');
+  }
+}
+
+async function assertBoundSourceIdentity(
+  projectRoot: string,
+  source: string,
+  journal: ClassicRootMoveJournal,
+): Promise<void> {
+  if (journal.schema === 'comet.classic-root-move.v1') return;
+  const current = await captureStableSourceIdentity(
+    projectRoot,
+    source,
+    'Classic legacy root identity',
+  );
+  if (!sameStableChain(current, journal.sourceIdentity)) {
+    throw new Error('Classic legacy root identity changed after migration preflight');
   }
 }
 
@@ -1490,6 +2198,9 @@ async function finishJournal(
   journal: ClassicRootMoveJournal,
   testHooks?: ClassicRootMoveTestHooks,
 ): Promise<void> {
+  if (journal.stage === 'locked') {
+    throw new Error('Classic root move locked preflight must be approved before execution');
+  }
   await assertRootMovePreflightBoundaries(projectRoot, journal.id);
   const { source, target, staging, quarantine, transactionRoot } = transactionPaths(
     projectRoot,
@@ -1499,6 +2210,7 @@ async function finishJournal(
 
   if (current.stage === 'copying') {
     await assertOriginalConfig(projectRoot, current);
+    await assertBoundSourceIdentity(projectRoot, source, current);
     await assertTreeMatches(
       projectRoot,
       source,
@@ -1524,6 +2236,7 @@ async function finishJournal(
 
   if (current.stage === 'ready') {
     await assertOriginalConfig(projectRoot, current);
+    await assertBoundSourceIdentity(projectRoot, source, current);
     await assertTreeMatches(
       projectRoot,
       source,
@@ -1555,6 +2268,7 @@ async function finishJournal(
   }
 
   if (current.stage === 'switched') {
+    await assertBoundSourceIdentity(projectRoot, source, current);
     await assertTreeMatches(
       projectRoot,
       source,
@@ -1594,6 +2308,7 @@ async function finishJournal(
     'Classic docs target verification failed after config switch',
   );
   if (await protectedDirectoryExists(projectRoot, source, 'Classic legacy root')) {
+    await assertBoundSourceIdentity(projectRoot, source, current);
     await assertTreeMatches(
       projectRoot,
       source,
@@ -1620,7 +2335,7 @@ async function finishJournal(
     'remove-transaction-root',
     testHooks,
   );
-  await unlinkProtectedFile(projectRoot, journalFile(projectRoot), 'remove-journal', testHooks);
+  await unlinkOwnedJournal(projectRoot, current, 'remove-journal', testHooks);
 }
 
 async function rollbackJournal(
@@ -1629,6 +2344,10 @@ async function rollbackJournal(
   testHooks?: ClassicRootMoveTestHooks,
 ): Promise<void> {
   await assertRootMovePreflightBoundaries(projectRoot, journal.id);
+  if (journal.stage === 'locked') {
+    await unlinkOwnedJournal(projectRoot, journal, 'rollback-remove-locked-journal', testHooks);
+    return;
+  }
   const { source, target, staging, quarantine, transactionRoot } = transactionPaths(
     projectRoot,
     journal,
@@ -1691,12 +2410,7 @@ async function rollbackJournal(
     'rollback-remove-transaction-root',
     testHooks,
   );
-  await unlinkProtectedFile(
-    projectRoot,
-    journalFile(projectRoot),
-    'rollback-remove-journal',
-    testHooks,
-  );
+  await unlinkOwnedJournal(projectRoot, journal, 'rollback-remove-journal', testHooks);
 }
 
 async function recoveryPolicy(
@@ -1704,6 +2418,12 @@ async function recoveryPolicy(
   journal: ClassicRootMoveJournal,
 ): Promise<{ allowedStrategies: ClassicRootMoveRecoveryStrategy[]; reason?: string }> {
   await assertRootMovePreflightBoundaries(projectRoot, journal.id);
+  if (journal.stage === 'locked') {
+    return {
+      allowedStrategies: ['rollback'],
+      reason: 'the locked apply preflight was not approved for execution',
+    };
+  }
   const { source, target, staging, quarantine } = transactionPaths(projectRoot, journal);
   const layout = await readClassicArtifactLayout(projectRoot);
   const currentConfigHash = await projectConfigHash(projectRoot);
@@ -1789,6 +2509,15 @@ export async function planClassicRootMove(
       source: journal.source,
       target: journal.target,
       staging: journal.staging,
+      artifactLayout: 'legacy',
+      sourceIdentity:
+        journal.schema === 'comet.classic-root-move.v2'
+          ? journal.sourceIdentity.map((identity) => ({ ...identity }))
+          : [],
+      targetInitialIdentity:
+        journal.schema === 'comet.classic-root-move.v2' && journal.targetInitialIdentity
+          ? { ...journal.targetInitialIdentity }
+          : null,
       fileCount: journal.manifest.files.length,
       directoryCount: journal.manifest.directories.length,
       totalBytes: journal.manifest.totalBytes,
@@ -1817,6 +2546,12 @@ export async function applyClassicRootMove(
   startPath: string,
   options: ClassicRootMoveOptions = {},
 ): Promise<ClassicRootMovePlan> {
+  const approvedPlanId = options.planId;
+  if (!approvedPlanId || !HASH_PATTERN.test(approvedPlanId)) {
+    throw new Error(
+      'Classic root move apply requires the exact dry-run plan ID: --apply --plan <id>',
+    );
+  }
   const projectRoot = await discoverClassicProject(startPath);
   const existing = await readJournal(projectRoot, options.testHooks);
   if (existing) {
@@ -1824,38 +2559,97 @@ export async function applyClassicRootMove(
       `Classic root move ${existing.id} is incomplete; use comet doctor --repair --strategy continue|rollback`,
     );
   }
-  const preflightResult = await preflight(projectRoot, options);
-  const plan = preflightResult.plan;
-  if (!plan.readyToApply) {
-    throw new Error(
-      `Classic root move apply is blocked: ${[...plan.conflicts, ...plan.blockers].join('; ')}`,
-    );
-  }
-  if (plan.targetInitialState === 'non-empty') {
-    throw new Error('Classic root move apply is blocked: Classic docs target is not empty');
-  }
+  // This pass only provides a structurally valid journal for the exclusive
+  // lock. The caller-approved plan is checked again after that lock exists.
+  const initial = await preflight(projectRoot);
   const id = randomUUID();
   await assertRootMovePreflightBoundaries(projectRoot, id);
-  const journal: ClassicRootMoveJournal = {
-    schema: 'comet.classic-root-move.v1',
+  const lockedJournal: ClassicRootMoveJournal = {
+    schema: 'comet.classic-root-move.v2',
     id,
-    stage: 'copying',
-    source: plan.source,
-    target: plan.target,
+    stage: 'locked',
+    source: initial.plan.source,
+    target: initial.plan.target,
     staging: `.comet/transactions/classic-root-move/${id}/openspec`,
+    artifactLayout: initial.plan.artifactLayout,
+    sourceIdentity: initial.plan.sourceIdentity.map((identity) => ({ ...identity })),
+    targetInitialIdentity: initial.plan.targetInitialIdentity
+      ? { ...initial.plan.targetInitialIdentity }
+      : null,
     configPath: WORKFLOW_PROJECT_CONFIG_PATH,
-    originalConfigHash: plan.originalConfigHash,
-    expectedConfigHash: plan.expectedConfigHash,
-    planId: plan.planId,
-    targetInitialState: plan.targetInitialState,
-    manifest: preflightResult.manifest,
+    originalConfigHash: initial.plan.originalConfigHash,
+    expectedConfigHash: initial.plan.expectedConfigHash,
+    planId: initial.plan.planId,
+    approvedPlanId,
+    targetInitialState: initial.plan.targetInitialState,
+    manifest: initial.manifest,
   };
-  // The exclusive journal create is the migration lock. No user tree is
-  // mutated before this succeeds, and finishJournal re-verifies the bound
-  // config/tree facts after the lock is held.
-  await createJsonExclusive(projectRoot, journalFile(projectRoot), journal, options.testHooks);
-  await finishJournal(projectRoot, journal, options.testHooks);
-  return { ...plan, staging: journal.staging };
+  await createJsonExclusive(
+    projectRoot,
+    journalFile(projectRoot),
+    lockedJournal,
+    options.testHooks,
+  );
+  const ownedLock = await readJournal(projectRoot);
+  if (!ownedLock || ownedLock.id !== id || ownedLock.stage !== 'locked') {
+    throw new Error('Classic root move lock ownership changed before locked preflight');
+  }
+
+  let executionStarted = false;
+  try {
+    const lockedPreflight = await preflight(projectRoot, options);
+    const plan = lockedPreflight.plan;
+    if (plan.planId !== approvedPlanId) {
+      throw new Error(
+        `Classic root move plan changed since dry-run: approved ${approvedPlanId}, current ${plan.planId}`,
+      );
+    }
+    if (!plan.readyToApply) {
+      throw new Error(
+        `Classic root move apply is blocked: ${[...plan.conflicts, ...plan.blockers].join('; ')}`,
+      );
+    }
+    if (plan.targetInitialState === 'non-empty') {
+      throw new Error('Classic root move apply is blocked: Classic docs target is not empty');
+    }
+    const journal: ClassicRootMoveJournal = {
+      schema: 'comet.classic-root-move.v2',
+      id,
+      stage: 'copying',
+      source: plan.source,
+      target: plan.target,
+      staging: `.comet/transactions/classic-root-move/${id}/openspec`,
+      artifactLayout: plan.artifactLayout,
+      sourceIdentity: plan.sourceIdentity.map((identity) => ({ ...identity })),
+      targetInitialIdentity: plan.targetInitialIdentity ? { ...plan.targetInitialIdentity } : null,
+      configPath: WORKFLOW_PROJECT_CONFIG_PATH,
+      originalConfigHash: plan.originalConfigHash,
+      expectedConfigHash: plan.expectedConfigHash,
+      planId: plan.planId,
+      approvedPlanId,
+      targetInitialState: plan.targetInitialState,
+      manifest: lockedPreflight.manifest,
+    };
+    const ownedJournal = await atomicWriteJournal(
+      projectRoot,
+      ownedLock,
+      journal,
+      options.testHooks,
+    );
+    executionStarted = true;
+    await finishJournal(projectRoot, ownedJournal, options.testHooks);
+    return { ...plan, staging: journal.staging };
+  } catch (error) {
+    if (!executionStarted) {
+      await unlinkOwnedJournal(
+        projectRoot,
+        ownedLock,
+        'remove-rejected-lock',
+        options.testHooks,
+      ).catch(() => false);
+    }
+    throw error;
+  }
 }
 
 export async function repairClassicRootMove(

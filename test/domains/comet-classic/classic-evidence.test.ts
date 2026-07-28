@@ -206,6 +206,28 @@ describe('Classic evidence collection', () => {
     });
   });
 
+  it('resolves a docs-layout handoff pointer inside the same configured docs archive', async () => {
+    changeDir = path.join(projectRoot, 'docs', 'openspec', 'changes', 'archive', '2026-06-14-demo');
+    await fs.rm(path.join(projectRoot, 'openspec'), { recursive: true, force: true });
+    await fs.mkdir(path.join(changeDir, '.comet', 'handoff'), { recursive: true });
+    await writeClassicConfig('docs');
+    await fs.writeFile(
+      path.join(changeDir, '.comet', 'handoff', 'context.json'),
+      '{"context":true}\n',
+      'utf8',
+    );
+    projection.classic!.handoffContext = 'docs/openspec/changes/demo/.comet/handoff/context.json';
+
+    const evidence = await collectClassicEvidence(changeDir, projection);
+    const handoff = evidence.find((item) => item.code === 'design.handoff');
+
+    expect(handoff).toMatchObject({
+      satisfied: true,
+      source: 'docs/openspec/changes/demo/.comet/handoff/context.json',
+      detail: expect.stringContaining('archived change'),
+    });
+  });
+
   it('does not satisfy a legacy handoff pointer from the alternate root during a dual-root conflict', async () => {
     changeDir = path.join(projectRoot, 'docs', 'openspec', 'changes', 'demo');
     await fs.mkdir(changeDir, { recursive: true });

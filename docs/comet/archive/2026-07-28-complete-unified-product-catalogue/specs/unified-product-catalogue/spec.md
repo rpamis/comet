@@ -82,7 +82,7 @@ Classic 提供：
 
 ```text
 comet classic root move docs --dry-run
-comet classic root move docs --apply
+comet classic root move docs --apply --plan <id>
 ```
 
 `--dry-run` 是只读操作，输出：

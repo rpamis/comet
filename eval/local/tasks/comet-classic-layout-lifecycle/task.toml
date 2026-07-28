@@ -1,0 +1,23 @@
+[metadata]
+name = "comet-classic-layout-lifecycle"
+description = "Exercise the current Comet Classic lifecycle against both docs and legacy artifact layouts"
+difficulty = "hard"
+category = "comet"
+tags = ["comet", "classic", "workflow", "openspec", "layout", "full-cycle"]
+default_treatments = [
+    "COMET_CLASSIC_DOCS_LAYOUT",
+    "COMET_CLASSIC_LEGACY_LAYOUT",
+]
+
+[template]
+required = []
+
+[environment]
+description = "Current-checkout Comet CLI with OpenSpec 1.5.0. Claude must complete and archive a full Classic workflow in the treatment-selected layout."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_classic_layout_lifecycle.py"
+target_artifacts = []
+timeout = 120

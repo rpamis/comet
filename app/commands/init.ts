@@ -43,6 +43,9 @@ import {
 import { installOpenSpec, isCommandAvailable } from '../../domains/integrations/openspec.js';
 import {
   assertClassicLayoutInitializationSafe,
+  beginClassicLayoutInitialization,
+  checkpointClassicLayoutInitialization,
+  completeClassicLayoutInitialization,
   type ClassicLayoutInitializationPermit,
 } from '../../domains/comet-classic/classic-layout-initialization.js';
 import { classicLayoutPaths } from '../../domains/comet-classic/classic-layout.js';
@@ -117,7 +120,7 @@ function workflowChoiceNames(lang: string): Array<{
 async function selectWorkflow(
   options: InitOptions,
   lang: string,
-  suggested: CometWorkflow,
+  suggested: InitWorkflowSelection,
 ): Promise<InitWorkflowSelection> {
   if (options.workflow) return options.workflow;
   if (options.yes || options.json) return suggested;
@@ -507,11 +510,14 @@ export async function initCommand(
           initialProjectConfigSnapshot!,
         )
       : null;
-  const workflowSelection = await selectWorkflow(
-    options,
-    lang,
-    suggestedWorkflowDecision?.workflow ?? 'classic',
-  );
+  const configuredWorkflows = initialProjectConfigSnapshot?.document?.config?.workflows ?? [];
+  const suggestedWorkflowSelection: InitWorkflowSelection =
+    options.workflow === undefined &&
+    configuredWorkflows.includes('native') &&
+    configuredWorkflows.includes('classic')
+      ? 'both'
+      : (suggestedWorkflowDecision?.workflow ?? 'classic');
+  const workflowSelection = await selectWorkflow(options, lang, suggestedWorkflowSelection);
   const workflow: CometWorkflow = workflowSelection === 'both' ? 'native' : workflowSelection;
   const workflowDecision =
     scope === 'project'
@@ -700,12 +706,13 @@ export async function initCommand(
   let classicLayoutInitializationPermit: ClassicLayoutInitializationPermit | undefined;
   if (requiresClassicArtifactRoot) {
     try {
-      const initialization = await assertClassicLayoutInitializationSafe(
+      let initialization = await assertClassicLayoutInitializationSafe(
         projectPath,
         workflowDecision!.classicArtifactLayout,
         undefined,
         initialProjectConfigSnapshot?.identity,
       );
+      initialization = await beginClassicLayoutInitialization(projectPath, initialization);
       classicLayoutInitializationPermit = initialization.initializationPermit;
     } catch (error) {
       osGlobalStatus = 'failed';
@@ -752,6 +759,12 @@ export async function initCommand(
           classicLayoutPaths(projectPath, workflowDecision!.classicArtifactLayout),
         );
         await assertClassicProjectMutationAllowed?.();
+        if (classicLayoutInitializationPermit) {
+          await checkpointClassicLayoutInitialization(
+            projectPath,
+            classicLayoutInitializationPermit,
+          );
+        }
         classicOpenSpecRootReady = true;
       } else if (requiresClassicArtifactRoot) {
         osFailureReason ??=
@@ -1146,6 +1159,9 @@ export async function initCommand(
         await writeWorkflowProjectConfig(projectPath, config, {
           expectedIdentity: initialProjectConfigSnapshot?.identity,
         });
+        if (classicLayoutInitializationPermit) {
+          await completeClassicLayoutInitialization(projectPath, classicLayoutInitializationPermit);
+        }
         projectConfigCreated = initialProjectConfigDocument === null;
         projectConfigUpdated = initialProjectConfigDocument !== null;
       }

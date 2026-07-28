@@ -10,6 +10,9 @@ import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const stateScript = path.join(scriptsDir, 'comet-state.mjs');
 const validateScript = path.join(scriptsDir, 'comet-yaml-validate.mjs');
+const guardScript = path.join(scriptsDir, 'comet-guard.mjs');
+const handoffScript = path.join(scriptsDir, 'comet-handoff.mjs');
+const resumeProbeScript = path.join(scriptsDir, 'comet-resume-probe.mjs');
 const buildScript = path.resolve('scripts', 'build', 'build-classic-runtime.mjs');
 const temporaryDirectories: string[] = [];
 
@@ -63,6 +66,95 @@ afterEach(async () => {
 });
 
 describe('Classic runtime CLI adapter', () => {
+  it.each(['docs', 'legacy'] as const)(
+    'discovers the %s project from a nested cwd across all Classic launchers',
+    async (artifactLayout) => {
+      const directory = await fs.mkdtemp(
+        path.join(os.tmpdir(), `comet-classic-nested-${artifactLayout}-`),
+      );
+      temporaryDirectories.push(directory);
+      await seedClassicProject(directory, artifactLayout);
+      const nested = path.join(directory, 'packages', 'app');
+      await fs.mkdir(nested, { recursive: true });
+      const changesRoot =
+        artifactLayout === 'docs'
+          ? path.join(directory, 'docs', 'openspec', 'changes')
+          : path.join(directory, 'openspec', 'changes');
+      const run = (script: string, args: string[]) =>
+        spawnSync(process.execPath, [script, ...args], {
+          cwd: nested,
+          encoding: 'utf8',
+        });
+
+      const initialized = run(stateScript, ['init', 'nested-layout', 'full']);
+      expect(initialized.status, initialized.stderr).toBe(0);
+      const changeDir = path.join(changesRoot, 'nested-layout');
+      await fs.writeFile(
+        path.join(changeDir, 'proposal.md'),
+        '# Proposal\nAdd nested project discovery for Classic commands.\n',
+      );
+      await fs.writeFile(
+        path.join(changeDir, 'design.md'),
+        '# Design\nResolve repository artifacts from the configured project root.\n',
+      );
+      await fs.writeFile(
+        path.join(changeDir, 'tasks.md'),
+        '- [x] Exercise every Classic launcher from a nested cwd\n',
+      );
+
+      const state = run(stateScript, ['get', 'nested-layout', 'phase']);
+      expect(state.status, state.stderr).toBe(0);
+      expect(state.stdout).toBe('open\n');
+
+      await ensureClassicRuntimeRun(changeDir);
+      const recorded = run(stateScript, [
+        'record-check',
+        'nested-layout',
+        'build',
+        '--command',
+        'pnpm build',
+        '--exit-code',
+        '0',
+      ]);
+      expect(recorded.status, recorded.stderr).toBe(0);
+      expect(recorded.stderr).toContain(
+        '[RECORDED] build exit=0 cwd=packages/app command=pnpm build',
+      );
+
+      const validated = run(validateScript, ['nested-layout']);
+      expect(validated.status, validated.stderr).toBe(0);
+      expect(validated.stderr).toContain('validation PASSED');
+
+      const guarded = run(guardScript, ['nested-layout', 'open']);
+      expect(guarded.status, guarded.stderr).toBe(0);
+      expect(guarded.stderr).toContain('ALL CHECKS PASSED');
+
+      const handoff = run(handoffScript, ['nested-layout', '--hash-only']);
+      expect(handoff.status, handoff.stderr).toBe(0);
+      expect(handoff.stdout.trim()).toMatch(/^[a-f0-9]{64}$/u);
+
+      const probeInput = JSON.stringify({
+        schema_version: 'comet.resume_probe.v1',
+        utterance: 'continue nested-layout',
+        locale: 'en',
+        agent_context: { non_trivial_work: true, already_in_comet_flow: false },
+      });
+      const probe = run(resumeProbeScript, ['probe', probeInput]);
+      expect(probe.status, probe.stderr).toBe(0);
+      expect(JSON.parse(probe.stdout)).toMatchObject({
+        action: 'auto_resume',
+        changeName: 'nested-layout',
+        phase: 'open',
+      });
+
+      const alternateRoot =
+        artifactLayout === 'docs'
+          ? path.join(directory, 'openspec')
+          : path.join(directory, 'docs', 'openspec');
+      await expect(fs.access(alternateRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
   it('rejects state initialization when project config is missing', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-no-config-state-'));
     temporaryDirectories.push(directory);

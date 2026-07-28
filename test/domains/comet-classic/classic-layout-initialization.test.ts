@@ -3,7 +3,13 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { assertClassicLayoutInitializationSafe } from '../../../domains/comet-classic/classic-layout-initialization.js';
+import {
+  assertClassicLayoutInitializationSafe,
+  beginClassicLayoutInitialization,
+  checkpointClassicLayoutInitialization,
+  completeClassicLayoutInitialization,
+  rollbackClassicLayoutInitialization,
+} from '../../../domains/comet-classic/classic-layout-initialization.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -47,6 +53,192 @@ describe('Classic layout initialization safety', () => {
       /cannot initialize Classic layout without.*config/iu,
     );
   });
+
+  it('recovers a prior owned initialization across processes without allowing unmanaged roots', async () => {
+    const initialization = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+    const owned = await beginClassicLayoutInitialization(projectRoot, initialization);
+    await fs.mkdir(path.join(owned.openSpecRoot, 'changes', 'archive'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(owned.openSpecRoot, 'specs'), { recursive: true });
+    await fs.writeFile(path.join(owned.openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
+
+    const resumed = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+    expect(resumed.initializationPermit.ownershipId).toBe(owned.initializationPermit.ownershipId);
+    await checkpointClassicLayoutInitialization(projectRoot, resumed.initializationPermit);
+
+    await expect(
+      fs.stat(path.join(projectRoot, '.comet', 'classic-init-ownership.json')),
+    ).resolves.toBeDefined();
+  });
+
+  it('quarantines an unchanged manifest-bound root without deleting its contents', async () => {
+    await fs.mkdir(path.join(projectRoot, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(projectRoot, 'docs', 'keep.txt'), 'keep\n');
+    const initialization = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+    const owned = await beginClassicLayoutInitialization(projectRoot, initialization);
+    await fs.mkdir(path.join(owned.openSpecRoot, 'changes', 'archive'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(owned.openSpecRoot, 'specs'), { recursive: true });
+    await fs.writeFile(path.join(owned.openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
+    await checkpointClassicLayoutInitialization(projectRoot, owned.initializationPermit);
+
+    await expect(
+      rollbackClassicLayoutInitialization(projectRoot, owned.initializationPermit),
+    ).resolves.toBe(true);
+
+    await expect(fs.stat(owned.openSpecRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.readFile(path.join(projectRoot, 'docs', 'keep.txt'), 'utf8')).resolves.toBe(
+      'keep\n',
+    );
+    const journal = JSON.parse(
+      await fs.readFile(path.join(projectRoot, '.comet', 'classic-init-ownership.json'), 'utf8'),
+    ) as { stage: string; quarantine: string };
+    expect(journal.stage).toBe('quarantined');
+    await expect(
+      fs.readFile(path.join(projectRoot, ...journal.quarantine.split('/'), 'config.yaml'), 'utf8'),
+    ).resolves.toBe('schema: spec-driven\n');
+  });
+
+  it('preserves an owned root when its checkpointed manifest drifts', async () => {
+    const initialization = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+    const owned = await beginClassicLayoutInitialization(projectRoot, initialization);
+    await fs.mkdir(path.join(owned.openSpecRoot, 'changes', 'archive'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(owned.openSpecRoot, 'specs'), { recursive: true });
+    await checkpointClassicLayoutInitialization(projectRoot, owned.initializationPermit);
+    await fs.writeFile(path.join(owned.openSpecRoot, 'user.md'), 'preserve me\n');
+
+    await expect(
+      rollbackClassicLayoutInitialization(projectRoot, owned.initializationPermit),
+    ).rejects.toThrow(/changed after the ownership checkpoint/iu);
+    await expect(fs.readFile(path.join(owned.openSpecRoot, 'user.md'), 'utf8')).resolves.toBe(
+      'preserve me\n',
+    );
+    await expect(
+      fs.stat(path.join(projectRoot, '.comet', 'classic-init-ownership.json')),
+    ).resolves.toBeDefined();
+  });
+
+  it('publishes only one ownership journal when two initializers race', async () => {
+    const first = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+    const second = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+
+    const results = await Promise.allSettled([
+      beginClassicLayoutInitialization(projectRoot, first),
+      beginClassicLayoutInitialization(projectRoot, second),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const persisted = JSON.parse(
+      await fs.readFile(path.join(projectRoot, '.comet', 'classic-init-ownership.json'), 'utf8'),
+    ) as { id: string; stage: string };
+    expect(persisted).toMatchObject({ stage: 'initializing' });
+    expect(
+      results.some(
+        (result) =>
+          result.status === 'fulfilled' &&
+          result.value.initializationPermit.ownershipId === persisted.id,
+      ),
+    ).toBe(true);
+  });
+
+  it('does not let a stale checkpoint overwrite a successor journal', async () => {
+    const initialization = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+    const owned = await beginClassicLayoutInitialization(projectRoot, initialization);
+    await fs.mkdir(path.join(owned.openSpecRoot, 'specs'), { recursive: true });
+    const successorId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    await expect(
+      checkpointClassicLayoutInitialization(projectRoot, owned.initializationPermit, {
+        testHooks: {
+          afterJournalQuarantine: async (operation) => {
+            if (operation !== 'checkpoint-journal') return;
+            await publishSuccessorJournal(successorId);
+          },
+        },
+      }),
+    ).rejects.toThrow(/successor journal was preserved/iu);
+
+    const persisted = JSON.parse(
+      await fs.readFile(path.join(projectRoot, '.comet', 'classic-init-ownership.json'), 'utf8'),
+    ) as { id: string };
+    expect(persisted.id).toBe(successorId);
+  });
+
+  it('does not let stale completion delete a successor journal', async () => {
+    const initialization = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+    const owned = await beginClassicLayoutInitialization(projectRoot, initialization);
+    await fs.mkdir(path.join(owned.openSpecRoot, 'specs'), { recursive: true });
+    await checkpointClassicLayoutInitialization(projectRoot, owned.initializationPermit);
+    const successorId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+    await expect(
+      completeClassicLayoutInitialization(projectRoot, owned.initializationPermit, {
+        testHooks: {
+          afterJournalQuarantine: async (operation) => {
+            if (operation !== 'remove-journal') return;
+            await publishSuccessorJournal(successorId);
+          },
+        },
+      }),
+    ).resolves.toBe(true);
+
+    const persisted = JSON.parse(
+      await fs.readFile(path.join(projectRoot, '.comet', 'classic-init-ownership.json'), 'utf8'),
+    ) as { id: string };
+    expect(persisted.id).toBe(successorId);
+  });
+
+  it('preserves both a replacement root and the verified rollback quarantine', async () => {
+    const initialization = await assertClassicLayoutInitializationSafe(projectRoot, 'docs');
+    const owned = await beginClassicLayoutInitialization(projectRoot, initialization);
+    await fs.mkdir(path.join(owned.openSpecRoot, 'specs'), { recursive: true });
+    await fs.writeFile(path.join(owned.openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
+    await checkpointClassicLayoutInitialization(projectRoot, owned.initializationPermit);
+
+    await expect(
+      rollbackClassicLayoutInitialization(projectRoot, owned.initializationPermit, {
+        testHooks: {
+          afterRootQuarantine: async () => {
+            await fs.mkdir(owned.openSpecRoot, { recursive: true });
+            await fs.writeFile(path.join(owned.openSpecRoot, 'user.md'), 'new root\n');
+          },
+        },
+      }),
+    ).resolves.toBe(true);
+
+    await expect(fs.readFile(path.join(owned.openSpecRoot, 'user.md'), 'utf8')).resolves.toBe(
+      'new root\n',
+    );
+    const journal = JSON.parse(
+      await fs.readFile(path.join(projectRoot, '.comet', 'classic-init-ownership.json'), 'utf8'),
+    ) as { quarantine: string; stage: string };
+    expect(journal.stage).toBe('quarantined');
+    await expect(
+      fs.readFile(path.join(projectRoot, ...journal.quarantine.split('/'), 'config.yaml'), 'utf8'),
+    ).resolves.toBe('schema: spec-driven\n');
+  });
+
+  async function publishSuccessorJournal(id: string): Promise<void> {
+    const cometDir = path.join(projectRoot, '.comet');
+    const quarantine = (await fs.readdir(cometDir)).find((entry) => entry.endsWith('.quarantine'));
+    if (!quarantine) throw new Error('expected a quarantined ownership journal');
+    const successor = JSON.parse(
+      await fs.readFile(path.join(cometDir, quarantine), 'utf8'),
+    ) as Record<string, unknown>;
+    successor.id = id;
+    successor.stage = 'initializing';
+    successor.quarantine = null;
+    await fs.writeFile(
+      path.join(cometDir, 'classic-init-ownership.json'),
+      JSON.stringify(successor, null, 2) + '\n',
+      { flag: 'wx' },
+    );
+  }
 
   it('uses the configured layout for an existing project', async () => {
     await writeClassicConfig('docs');

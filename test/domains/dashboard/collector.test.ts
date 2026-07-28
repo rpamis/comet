@@ -85,6 +85,28 @@ describe('collectDashboardSnapshot', () => {
     });
   });
 
+  it('does not report a Classic error for a Native-only project', async () => {
+    await fs.writeFile(
+      path.join(root, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: docs',
+        '  language: en',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const snap = await collectDashboardSnapshot(root);
+
+    expect(snap.changes.active).toEqual([]);
+    expect(snap.changes.archived).toEqual([]);
+    expect(snap.classicError).toBeUndefined();
+  });
+
   it('collects Classic changes from the configured docs layout', async () => {
     await fs.mkdir(path.join(root, '.comet'), { recursive: true });
     await fs.writeFile(

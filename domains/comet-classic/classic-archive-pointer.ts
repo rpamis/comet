@@ -32,12 +32,26 @@ export async function readLegacyArchivedHandoffFallback(
   });
   if (original.exists) return null;
 
-  const match = /^openspec\/changes\/([^/]+)\/\.comet\/(.+)$/u.exec(source);
-  if (!match) return null;
-  const pointerChange = match[1];
-  assertOpenSpecChangeName(pointerChange);
-
   const layout = await assertClassicLayoutReadable(projectRoot);
+  const configuredChangesPrefix = `${classicProjectRelative(projectRoot, layout.changesDir)}/`;
+  const acceptedPrefixes =
+    layout.artifactLayout === 'docs'
+      ? [configuredChangesPrefix, 'openspec/changes/']
+      : [configuredChangesPrefix];
+  const pointerPrefix = acceptedPrefixes.find((prefix) => source.startsWith(prefix));
+  if (!pointerPrefix) return null;
+  const pointerSegments = source.slice(pointerPrefix.length).split('/');
+  if (
+    pointerSegments.length < 4 ||
+    pointerSegments[1] !== '.comet' ||
+    pointerSegments.slice(2).some((segment) => segment.length === 0)
+  ) {
+    return null;
+  }
+  const pointerChange = pointerSegments[0];
+  assertOpenSpecChangeName(pointerChange);
+  const suffix = pointerSegments.slice(2);
+
   const archivedChange = path.resolve(changeDir);
   if (path.dirname(archivedChange) !== path.resolve(layout.archiveDir)) return null;
   const archivedName = path.basename(archivedChange);
@@ -52,7 +66,7 @@ export async function readLegacyArchivedHandoffFallback(
     },
   );
 
-  const mapped = path.join(archivedChange, '.comet', ...match[2].split('/'));
+  const mapped = path.join(archivedChange, '.comet', ...suffix);
   const mappedRelative = classicProjectRelative(projectRoot, mapped);
   try {
     await readProtectedProjectFile(projectRoot, mappedRelative, maxBytes, {

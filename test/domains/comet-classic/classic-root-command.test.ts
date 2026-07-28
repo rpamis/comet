@@ -86,4 +86,34 @@ describe('Classic root show', () => {
       await fs.rm(outsideRoot, { recursive: true, force: true });
     }
   });
+
+  it('requires --apply --plan <id> and keeps dry-run read-only', async () => {
+    await fs.mkdir(path.join(projectRoot, 'openspec', 'changes', 'archive'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(projectRoot, 'openspec', 'specs'), { recursive: true });
+
+    const dryRun = await runClassicCli(['root', 'move', 'docs', '--dry-run']);
+    expect(dryRun.exitCode).toBe(0);
+    const planId = dryRun.stdout?.match(/^plan: ([a-f0-9]{64})$/mu)?.[1];
+    expect(planId).toMatch(/^[a-f0-9]{64}$/u);
+    await expect(fs.stat(path.join(projectRoot, 'docs', 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+
+    const missingPlan = await runClassicCli(['root', 'move', 'docs', '--apply']);
+    expect(missingPlan.exitCode).toBe(64);
+    expect(missingPlan.stderr).toContain('--apply --plan <id>');
+
+    const applied = await runClassicCli([
+      'root',
+      'move',
+      'docs',
+      '--apply',
+      '--plan',
+      String(planId),
+    ]);
+    expect(applied.exitCode).toBe(0);
+    await expect(fs.stat(path.join(projectRoot, 'docs', 'openspec'))).resolves.toBeDefined();
+  });
 });

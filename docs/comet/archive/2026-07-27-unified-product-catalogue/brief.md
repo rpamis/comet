@@ -9,7 +9,7 @@
 - 增加 root-aware 的 `comet classic openspec -- <args...>` 适配命令，以解析后的 OpenSpec root 作为 cwd，并透传 OpenSpec 的输出与退出码。
 - 拆分 OpenSpec CLI / 平台工具资产安装和 OpenSpec artifact root 初始化，覆盖 `comet init`、`update`、`doctor`、`uninstall`。
 - 迁移 Classic runtime、Entry status、Hook Router / Guard、dashboard、workflow-contract、双语 Comet-owned Skill / Rule 和生成 runtime 的固定路径消费者。
-- 增加 `comet classic root move docs --dry-run|--apply` 的可审计、可恢复迁移；首版只迁移没有 active change / pending action 的 legacy 项目。
+- 增加 `comet classic root move docs --dry-run` 与 `--apply --plan <id>` 的可审计、可恢复迁移；首版只迁移没有 active change / pending action 的 legacy 项目。
 - 更新相关测试、当前 eval treatment、生成物、英文 Changelog，并按 master 发布基线决定版本号。
 
 # Non-goals
@@ -29,7 +29,7 @@
 - 已有配置缺少 `classic.artifact_layout` 时，Classic runtime 按 `legacy` 解析；`comet update` 将其显式补为 `legacy`，但不移动 `openspec/`。
 - docs 布局中，`comet classic openspec -- status --change demo --json` 从 `<project>/docs` 运行 OpenSpec，保持原 stdout、stderr 和退出码；不要求每台机器注册 store。
 - status、resume、state、guard、handoff、archive、dashboard 与 workflow-contract 在配置的唯一布局下解析同一个 change；legacy 与 docs 根同时存在时写操作失败关闭并给出 doctor / migration 指引。
-- `comet classic root move docs --dry-run` 只报告移动、冲突与配置变化；`--apply` 先完成并验证 staging / journal，再原子切换配置。中断后 doctor 能继续或回滚，不删除无法证明安全的目录。
+- `comet classic root move docs --dry-run` 只报告移动、冲突、配置变化和 plan ID；`--apply --plan <id>` 锁定后重新预检并验证 staging / journal，再原子切换配置。中断后 doctor 能继续或回滚，不删除无法证明安全的目录。
 - migration 遇到 active Classic / unmanaged OpenSpec change、pending action、未收口 archive、非空目标、特殊文件、路径越界或源文件漂移时不移动任何用户产物。
 - `comet uninstall` 只删除 Comet 管理且为空的布局目录，保留所有用户 specs、changes、archives 与 Superpowers 文档。
 - 当前 eval 新增 docs-layout 覆盖，冻结 benchmark 保持逐字节不变。

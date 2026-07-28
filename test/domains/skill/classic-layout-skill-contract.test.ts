@@ -37,6 +37,8 @@ const LANGUAGE_CASES = [
 const BARE_OPENSPEC_COMMAND =
   /(?<!comet classic )\bopenspec\s+(?:--version|<args\.\.\.>|[a-z][a-z0-9-]*)/u;
 const FIXED_OPENSPEC_PATH = /openspec\//u;
+const EXTERNAL_OPENSPEC_SKILL_INVOCATION = /(?:加载|load)[^`\r\n]*`openspec-[a-z0-9-]+`/iu;
+const EXTERNAL_OPENSPEC_OVERRIDE = /external-openspec-skill-override/u;
 
 async function markdownFiles(root: string): Promise<string[]> {
   const entries = await fs.readdir(root, { withFileTypes: true });
@@ -114,6 +116,26 @@ describe('Classic layout Skill contract', () => {
               )
             ) {
               violations.push(`${path.relative(process.cwd(), file)}:${lineNumber}: fixed path`);
+            }
+          });
+        }
+
+        expect(violations).toEqual([]);
+      });
+
+      it('overrides every external OpenSpec Skill command and cwd instruction locally', async () => {
+        const files = await classicGuidanceFiles(languageRoot, ruleFiles);
+        const violations: string[] = [];
+
+        for (const file of files) {
+          const lines = (await fs.readFile(file, 'utf8')).split(/\r?\n/u);
+          lines.forEach((line, index) => {
+            if (!EXTERNAL_OPENSPEC_SKILL_INVOCATION.test(line)) return;
+            const localInstructions = lines.slice(index + 1, index + 6).join('\n');
+            if (!EXTERNAL_OPENSPEC_OVERRIDE.test(localInstructions)) {
+              violations.push(
+                `${path.relative(process.cwd(), file)}:${index + 1}: missing local external Skill override`,
+              );
             }
           });
         }

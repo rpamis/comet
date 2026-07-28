@@ -8,7 +8,7 @@ import { parseTasksMarkdown } from './task-parser.js';
 import { parseCometYaml, type CometYaml } from './yaml.js';
 import { resolveVerify } from './verify-parser.js';
 import { assertClassicLayoutReadable } from '../comet-classic/classic-layout.js';
-import { assertProjectConfigDocumentValid } from '../workflow-contract/project-config-reader.js';
+import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import {
   inspectProtectedProjectPath,
   protectedProjectFileExists,
@@ -54,25 +54,28 @@ export async function collectDashboardSnapshot(
   let changesRoot: string | null = null;
   let classicError: string | null = null;
   try {
-    await assertProjectConfigDocumentValid(resolvedRoot);
-    const layout = await assertClassicLayoutReadable(resolvedRoot);
-    await inspectProtectedProjectPath(
-      resolvedRoot,
-      projectRelative(resolvedRoot, layout.changesDir),
-      {
-        label: 'Classic changes root',
-        expected: 'directory',
-      },
-    );
-    await inspectProtectedProjectPath(
-      resolvedRoot,
-      projectRelative(resolvedRoot, layout.archiveDir),
-      {
-        label: 'Classic archive root',
-        expected: 'directory',
-      },
-    );
-    changesRoot = layout.changesDir;
+    const config = await readWorkflowProjectConfig(resolvedRoot);
+    const workflows = config?.workflows ?? (config ? [config.default_workflow] : ['classic']);
+    if (workflows.includes('classic')) {
+      const layout = await assertClassicLayoutReadable(resolvedRoot);
+      await inspectProtectedProjectPath(
+        resolvedRoot,
+        projectRelative(resolvedRoot, layout.changesDir),
+        {
+          label: 'Classic changes root',
+          expected: 'directory',
+        },
+      );
+      await inspectProtectedProjectPath(
+        resolvedRoot,
+        projectRelative(resolvedRoot, layout.archiveDir),
+        {
+          label: 'Classic archive root',
+          expected: 'directory',
+        },
+      );
+      changesRoot = layout.changesDir;
+    }
   } catch (error) {
     classicError = error instanceof Error ? error.message : String(error);
   }

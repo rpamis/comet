@@ -224,7 +224,7 @@ describe('comet scripts', () => {
     validateScript = path.join(tmpScriptsDir, 'comet-yaml-validate.mjs');
     hookGuardScript = path.join(tmpScriptsDir, 'comet-hook-guard.mjs');
     await writeFile(path.join(tmpDir, '.comet', 'config.yaml'), canonicalProjectConfig());
-    await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
+    await writeFile(path.join(tmpDir, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
   });
 
   afterEach(async () => {

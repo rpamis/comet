@@ -8153,6 +8153,18 @@ var init_contained_atomic_write = __esm({
   }
 });
 
+// domains/workflow-contract/project-config-transaction.ts
+var CONFIG_TRANSACTION_MAX_BYTES;
+var init_project_config_transaction = __esm({
+  "domains/workflow-contract/project-config-transaction.ts"() {
+    "use strict";
+    init_contained_atomic_write();
+    init_project_config_reader();
+    init_protected_project_path();
+    CONFIG_TRANSACTION_MAX_BYTES = 16 * 1024;
+  }
+});
+
 // domains/workflow-contract/project-config-writer.ts
 var init_project_config_writer = __esm({
   "domains/workflow-contract/project-config-writer.ts"() {
@@ -8161,6 +8173,7 @@ var init_project_config_writer = __esm({
     init_project_config();
     init_project_config_reader();
     init_protected_project_path();
+    init_project_config_transaction();
   }
 });
 
@@ -8207,6 +8220,7 @@ var init_workflow_contract = __esm({
     init_protected_project_path();
     init_project_config_reader();
     init_project_config_writer();
+    init_project_config_transaction();
     init_validation();
   }
 });
@@ -9715,34 +9729,39 @@ async function listActiveClassicHookChanges(projectRoot) {
     phase: change.phase
   }));
 }
-function isSuperpowersArtifactPath(relativePath2) {
-  return comparisonKey(relativePath2).startsWith("docs/superpowers/");
+function superpowersArtifactPrefix(projectRoot, layout) {
+  return `${classicProjectRelative(projectRoot, layout.superpowersRoot)}/`;
 }
-var SUPERPOWERS_ARTIFACT_SLOTS = [
-  {
-    prefix: "docs/superpowers/specs/",
-    field: "designDoc",
-    wireField: "design_doc",
-    phase: "design"
-  },
-  {
-    prefix: "docs/superpowers/plans/",
-    field: "plan",
-    wireField: "plan",
-    phase: "build"
-  },
-  {
-    prefix: "docs/superpowers/reports/",
-    field: "verificationReport",
-    wireField: "verification_report",
-    phase: "verify"
-  }
-];
-function standardSuperpowersArtifactSlot(relativePath2) {
+function isSuperpowersArtifactPath(relativePath2, prefix) {
+  return comparisonKey(relativePath2).startsWith(comparisonKey(prefix));
+}
+function superpowersArtifactSlots(projectRoot, layout) {
+  return [
+    {
+      prefix: `${classicProjectRelative(projectRoot, layout.superpowersSpecsDir)}/`,
+      field: "designDoc",
+      wireField: "design_doc",
+      phase: "design"
+    },
+    {
+      prefix: `${classicProjectRelative(projectRoot, layout.superpowersPlansDir)}/`,
+      field: "plan",
+      wireField: "plan",
+      phase: "build"
+    },
+    {
+      prefix: `${classicProjectRelative(projectRoot, layout.superpowersReportsDir)}/`,
+      field: "verificationReport",
+      wireField: "verification_report",
+      phase: "verify"
+    }
+  ];
+}
+function standardSuperpowersArtifactSlot(relativePath2, slots) {
   const key = comparisonKey(relativePath2);
-  const slot = SUPERPOWERS_ARTIFACT_SLOTS.find((candidate) => key.startsWith(candidate.prefix));
+  const slot = slots.find((candidate) => key.startsWith(comparisonKey(candidate.prefix)));
   if (!slot) return null;
-  const fileName = key.slice(slot.prefix.length);
+  const fileName = key.slice(comparisonKey(slot.prefix).length);
   if (!fileName || fileName.includes("/") || !fileName.endsWith(".md")) return null;
   return slot;
 }
@@ -9864,8 +9883,7 @@ async function repoSourceGoverningChange(projectRoot, relativePath2, selectedCha
     )
   };
 }
-async function governingChange(relativePath2, projectRoot, selectedChangeName) {
-  const layout = await assertClassicLayoutReadable(projectRoot);
+async function governingChange(relativePath2, projectRoot, layout, selectedChangeName) {
   const prefix = `${classicProjectRelative(projectRoot, layout.changesDir)}/`;
   if (relativePath2.startsWith(prefix)) {
     const rest = relativePath2.slice(prefix.length);
@@ -9880,12 +9898,15 @@ async function governingChange(relativePath2, projectRoot, selectedChangeName) {
       return { changeDir: active.directory, phase: "open", classic: null, archived: false };
     }
   }
-  if (isSuperpowersArtifactPath(relativePath2)) {
+  if (isSuperpowersArtifactPath(relativePath2, superpowersArtifactPrefix(projectRoot, layout))) {
     const superpowers = await superpowersArtifactGoverningChange(relativePath2, projectRoot);
     if (superpowers?.match === "recorded") {
       return { ...superpowers.governing, superpowersArtifact: "matched" };
     }
-    const slot = standardSuperpowersArtifactSlot(relativePath2);
+    const slot = standardSuperpowersArtifactSlot(
+      relativePath2,
+      superpowersArtifactSlots(projectRoot, layout)
+    );
     if (superpowers) {
       return slot ? {
         ...superpowers.governing,
@@ -10068,8 +10089,9 @@ function blockedStaleSelection(relativePath2, reason) {
 }
 async function inspectClassicHookTarget(projectRoot, target, selectedChangeName) {
   const relativePath2 = await projectRelative(target, projectRoot);
+  let layout;
   try {
-    await assertClassicLayoutWritable(projectRoot);
+    layout = await assertClassicLayoutWritable(projectRoot);
   } catch (error) {
     return result(
       2,
@@ -10090,7 +10112,7 @@ async function inspectClassicHookTarget(projectRoot, target, selectedChangeName)
   }
   let governing;
   try {
-    governing = await governingChange(relativePath2, projectRoot, selectedChangeName);
+    governing = await governingChange(relativePath2, projectRoot, layout, selectedChangeName);
   } catch (error) {
     return result(
       2,
@@ -10101,14 +10123,13 @@ async function inspectClassicHookTarget(projectRoot, target, selectedChangeName)
   if ("blockedResult" in governing) return governing.blockedResult;
   if (governing.archived) return allowed(`${relativePath2} (own change archived)`);
   const phase = governing.phase;
-  const layout = await assertClassicLayoutReadable(projectRoot);
   const openSpec = openSpecAllowed(
     relativePath2,
     phase,
     `${classicProjectRelative(projectRoot, layout.openSpecRoot)}/`
   );
   if (openSpec) return allowed(openSpec);
-  if (isSuperpowersArtifactPath(relativePath2)) {
+  if (isSuperpowersArtifactPath(relativePath2, superpowersArtifactPrefix(projectRoot, layout))) {
     if (governing.superpowersArtifact === "matched" && allowsSuperpowersArtifacts(governing)) {
       return allowed(`${relativePath2} (phase: ${phase}, superpowers)`);
     }

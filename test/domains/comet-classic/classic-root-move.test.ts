@@ -34,6 +34,16 @@ describe('Classic root move', () => {
     return createHash('sha256').update(value).digest('hex');
   }
 
+  async function applyPlannedRootMove(
+    options: NonNullable<Parameters<typeof applyClassicRootMove>[1]> = {},
+  ) {
+    const plan = await planClassicRootMove(projectRoot);
+    return applyClassicRootMove(projectRoot, {
+      ...options,
+      planId: plan.planId,
+    } as Parameters<typeof applyClassicRootMove>[1]);
+  }
+
   async function sourceManifest() {
     const content = await fs.readFile(
       path.join(projectRoot, 'openspec', 'specs', 'demo', 'spec.md'),
@@ -53,7 +63,7 @@ describe('Classic root move', () => {
   }
 
   async function writeJournal(
-    stage: 'copying' | 'ready' | 'switched' | 'configured',
+    stage: 'locked' | 'copying' | 'ready' | 'switched' | 'configured',
     overrides: Record<string, unknown> = {},
   ) {
     const manifest =
@@ -69,10 +79,26 @@ describe('Classic root move', () => {
       overrides.staging ?? `.comet/transactions/classic-root-move/${transactionId}/openspec`,
     );
     const targetInitialState = String(overrides.targetInitialState ?? 'missing');
+    const artifactLayout = String(overrides.artifactLayout ?? 'legacy');
+    const sourceIdentity = overrides.sourceIdentity ?? planned.sourceIdentity;
+    const targetInitialIdentity =
+      overrides.targetInitialIdentity ??
+      (targetInitialState === 'missing'
+        ? null
+        : (planned.targetInitialIdentity ?? {
+            dev: planned.sourceIdentity[1].dev,
+            ino: planned.sourceIdentity[1].ino,
+            birthtime: planned.sourceIdentity[1].birthtime,
+            ctime: '1',
+            mtime: '1',
+          }));
     const planIdentity = {
       source,
       target,
       staging: '.comet/transactions/classic-root-move/<transaction-id>/openspec',
+      artifactLayout,
+      sourceIdentity,
+      targetInitialIdentity,
       targetInitialState,
       fileCount: manifest.files.length,
       directoryCount: manifest.directories.length,
@@ -83,16 +109,20 @@ describe('Classic root move', () => {
       expectedConfigHash,
     };
     const journal = {
-      schema: 'comet.classic-root-move.v1',
+      schema: 'comet.classic-root-move.v2',
       id: transactionId,
       stage,
       source,
       target,
       staging,
+      artifactLayout,
+      sourceIdentity,
+      targetInitialIdentity,
       configPath,
       originalConfigHash,
       expectedConfigHash,
       planId: digest(JSON.stringify(planIdentity)),
+      approvedPlanId: digest(JSON.stringify(planIdentity)),
       targetInitialState,
       manifest,
       ...overrides,
@@ -102,6 +132,42 @@ describe('Classic root move', () => {
       `${JSON.stringify(journal, null, 2)}\n`,
     );
     return journal;
+  }
+
+  async function writeLegacyV1Journal(stage: 'copying' | 'ready' | 'switched' | 'configured') {
+    const manifest = await sourceManifest();
+    const planned = await planClassicRootMove(projectRoot);
+    const planIdentity = {
+      source: 'openspec',
+      target: 'docs/openspec',
+      staging: '.comet/transactions/classic-root-move/<transaction-id>/openspec',
+      targetInitialState: 'missing',
+      fileCount: manifest.files.length,
+      directoryCount: manifest.directories.length,
+      totalBytes: manifest.totalBytes,
+      manifestHash: manifest.hash,
+      configPath: '.comet/config.yaml',
+      originalConfigHash: planned.configHash,
+      expectedConfigHash: planned.expectedConfigHash,
+    };
+    const journal = {
+      schema: 'comet.classic-root-move.v1',
+      id: transactionId,
+      stage,
+      source: 'openspec',
+      target: 'docs/openspec',
+      staging: `.comet/transactions/classic-root-move/${transactionId}/openspec`,
+      configPath: '.comet/config.yaml',
+      originalConfigHash: planned.configHash,
+      expectedConfigHash: planned.expectedConfigHash,
+      planId: digest(JSON.stringify(planIdentity)),
+      targetInitialState: 'missing',
+      manifest,
+    };
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'classic-root-move.json'),
+      `${JSON.stringify(journal, null, 2)}\n`,
+    );
   }
 
   async function stageSource(): Promise<void> {
@@ -234,6 +300,22 @@ describe('Classic root move', () => {
       readyToApply: true,
       allowedRecoveryStrategies: [],
       planId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      artifactLayout: 'legacy',
+      sourceIdentity: [
+        {
+          path: '.',
+          dev: expect.any(String),
+          ino: expect.any(String),
+          birthtime: expect.any(String),
+        },
+        {
+          path: 'openspec',
+          dev: expect.any(String),
+          ino: expect.any(String),
+          birthtime: expect.any(String),
+        },
+      ],
+      targetInitialIdentity: null,
       configHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
       configPath: '.comet/config.yaml',
       expectedConfigHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
@@ -243,12 +325,15 @@ describe('Classic root move', () => {
     );
     expect(plan.applyPreconditions).toEqual(
       expect.arrayContaining([
-        'configuration and source manifest still match this plan',
+        'approved plan ID still matches layout, source identity and manifest, target identity, and configuration',
         'no active, archive, or recovery blockers',
       ]),
     );
     const report = formatClassicRootMoveReport(plan, 'dry-run');
     expect(report).toContain(`staging: ${plan.staging}`);
+    expect(report).toContain('artifact layout: legacy');
+    expect(report).toContain('source identity:');
+    expect(report).toContain('target initial identity: missing');
     expect(report).toContain(`file: specs/demo/spec.md 7 ${plan.fileSummary[0].hash}`);
     expect(report).toContain('config change: legacy -> docs');
     expect(report).toContain('config path: .comet/config.yaml');
@@ -264,8 +349,179 @@ describe('Classic root move', () => {
     });
   });
 
+  it('requires the exact dry-run plan ID before apply', async () => {
+    await expect(applyClassicRootMove(projectRoot)).rejects.toThrow(/dry-run plan ID/iu);
+
+    expect((await readProjectConfig(projectRoot))?.classic?.artifact_layout).toBe('legacy');
+    await expect(fs.stat(path.join(projectRoot, 'openspec'))).resolves.toBeDefined();
+    await expect(
+      fs.stat(path.join(projectRoot, '.comet', 'classic-root-move.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects source and config drift against the approved dry-run plan', async () => {
+    const sourcePlan = await planClassicRootMove(projectRoot);
+    await fs.appendFile(path.join(projectRoot, 'openspec', 'specs', 'demo', 'spec.md'), 'drift\n');
+
+    await expect(
+      applyClassicRootMove(projectRoot, {
+        planId: sourcePlan.planId,
+      } as Parameters<typeof applyClassicRootMove>[1]),
+    ).rejects.toThrow(/plan changed since dry-run/iu);
+
+    await fs.writeFile(path.join(projectRoot, 'openspec', 'specs', 'demo', 'spec.md'), '# Demo\n');
+    const configPlan = await planClassicRootMove(projectRoot);
+    await fs.appendFile(path.join(projectRoot, '.comet', 'config.yaml'), '# drift\n');
+
+    await expect(
+      applyClassicRootMove(projectRoot, {
+        planId: configPlan.planId,
+      } as Parameters<typeof applyClassicRootMove>[1]),
+    ).rejects.toThrow(/plan changed since dry-run/iu);
+
+    expect((await readProjectConfig(projectRoot))?.classic?.artifact_layout).toBe('legacy');
+    await expect(fs.stat(path.join(projectRoot, 'openspec'))).resolves.toBeDefined();
+    await expect(fs.stat(path.join(projectRoot, 'docs', 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(
+      fs.stat(path.join(projectRoot, '.comet', 'classic-root-move.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects a same-content replacement of the source root', async () => {
+    const source = path.join(projectRoot, 'openspec');
+    const displaced = path.join(projectRoot, 'displaced-openspec');
+    const plan = await planClassicRootMove(projectRoot);
+
+    await fs.rename(source, displaced);
+    await fs.cp(displaced, source, { recursive: true });
+    const replacementPlan = await planClassicRootMove(projectRoot);
+
+    expect(replacementPlan.manifestHash).toBe(plan.manifestHash);
+    expect(replacementPlan.sourceIdentity).not.toEqual(plan.sourceIdentity);
+    expect(replacementPlan.planId).not.toBe(plan.planId);
+    await expect(
+      applyClassicRootMove(projectRoot, {
+        planId: plan.planId,
+      } as Parameters<typeof applyClassicRootMove>[1]),
+    ).rejects.toThrow(/plan changed since dry-run/iu);
+    await expect(fs.readFile(path.join(source, 'specs', 'demo', 'spec.md'), 'utf8')).resolves.toBe(
+      '# Demo\n',
+    );
+    await expect(
+      fs.readFile(path.join(displaced, 'specs', 'demo', 'spec.md'), 'utf8'),
+    ).resolves.toBe('# Demo\n');
+  });
+
+  it('does not invalidate the plan for an unrelated project-root file', async () => {
+    const plan = await planClassicRootMove(projectRoot);
+    await fs.writeFile(path.join(projectRoot, 'UNRELATED.txt'), 'keep\n');
+
+    const current = await planClassicRootMove(projectRoot);
+    expect(current.planId).toBe(plan.planId);
+    await expect(
+      applyClassicRootMove(projectRoot, {
+        planId: plan.planId,
+      }),
+    ).resolves.toMatchObject({ planId: plan.planId });
+    await expect(fs.readFile(path.join(projectRoot, 'UNRELATED.txt'), 'utf8')).resolves.toBe(
+      'keep\n',
+    );
+  });
+
+  it('does not let a stale apply replace or unlink a successor published after quarantine', async () => {
+    const plan = await planClassicRootMove(projectRoot);
+    let interleaved = false;
+    let releaseSuccessor!: () => void;
+    let reportSuccessor!: (id: string) => void;
+    const successorRelease = new Promise<void>((resolve) => {
+      releaseSuccessor = resolve;
+    });
+    const successorLocked = new Promise<string>((resolve) => {
+      reportSuccessor = resolve;
+    });
+    let successorApply: Promise<unknown> | undefined;
+    let successorPaused = false;
+
+    const staleApply = applyClassicRootMove(projectRoot, {
+      planId: plan.planId,
+      testHooks: {
+        afterJournalQuarantine: async (operation) => {
+          if (operation !== 'update-journal-commit' || interleaved) return;
+          interleaved = true;
+          await expect(
+            fs.stat(path.join(projectRoot, '.comet', 'classic-root-move.json')),
+          ).rejects.toMatchObject({ code: 'ENOENT' });
+          successorApply = applyClassicRootMove(projectRoot, {
+            planId: plan.planId,
+            testHooks: {
+              beforeMutation: async (successorOperation) => {
+                if (successorOperation !== 'update-journal-temp' || successorPaused) {
+                  return;
+                }
+                successorPaused = true;
+                const successor = JSON.parse(
+                  await fs.readFile(
+                    path.join(projectRoot, '.comet', 'classic-root-move.json'),
+                    'utf8',
+                  ),
+                ) as { id: string; stage: string };
+                expect(successor.stage).toBe('locked');
+                reportSuccessor(successor.id);
+                await successorRelease;
+              },
+            },
+          });
+          await successorLocked;
+        },
+      },
+    });
+
+    await expect(staleApply).rejects.toThrow(
+      /EEXIST|already exists|journal ownership changed|publish/iu,
+    );
+    const successorId = await successorLocked;
+    const persisted = JSON.parse(
+      await fs.readFile(path.join(projectRoot, '.comet', 'classic-root-move.json'), 'utf8'),
+    ) as { id: string; stage: string };
+    expect(persisted).toMatchObject({ id: successorId, stage: 'locked' });
+
+    releaseSuccessor();
+    await expect(successorApply).resolves.toMatchObject({ planId: plan.planId });
+  }, 15_000);
+
+  it('binds the identity of a pre-existing empty target into the plan ID', async () => {
+    const target = path.join(projectRoot, 'docs', 'openspec');
+    const displaced = path.join(projectRoot, 'docs', 'displaced-openspec');
+    await fs.mkdir(target, { recursive: true });
+    const plan = await planClassicRootMove(projectRoot);
+
+    expect(plan.targetInitialIdentity).toEqual({
+      dev: expect.any(String),
+      ino: expect.any(String),
+      birthtime: expect.any(String),
+      ctime: expect.any(String),
+      mtime: expect.any(String),
+    });
+
+    await fs.rename(target, displaced);
+    await fs.mkdir(target);
+    const replacementPlan = await planClassicRootMove(projectRoot);
+    expect(replacementPlan.targetInitialIdentity).not.toEqual(plan.targetInitialIdentity);
+    expect(replacementPlan.planId).not.toBe(plan.planId);
+
+    await expect(
+      applyClassicRootMove(projectRoot, {
+        planId: plan.planId,
+      } as Parameters<typeof applyClassicRootMove>[1]),
+    ).rejects.toThrow(/plan changed since dry-run/iu);
+    await expect(fs.readdir(target)).resolves.toEqual([]);
+    await expect(fs.readdir(displaced)).resolves.toEqual([]);
+  });
+
   it('moves a quiescent legacy root and switches config last', async () => {
-    const plan = await applyClassicRootMove(projectRoot);
+    const plan = await applyPlannedRootMove();
 
     await expect(
       fs.readFile(path.join(projectRoot, 'docs', 'openspec', 'specs', 'demo', 'spec.md'), 'utf8'),
@@ -294,7 +550,7 @@ describe('Classic root move', () => {
     const plan = await planClassicRootMove(projectRoot);
     expect(plan.readyToApply).toBe(false);
     expect(plan.blockers).toContain('active or unmanaged OpenSpec change: active');
-    await expect(applyClassicRootMove(projectRoot)).rejects.toThrow(
+    await expect(applyPlannedRootMove()).rejects.toThrow(
       'active or unmanaged OpenSpec change: active',
     );
     expect((await readProjectConfig(projectRoot))?.classic?.artifact_layout).toBe('legacy');
@@ -310,9 +566,7 @@ describe('Classic root move', () => {
     const plan = await planClassicRootMove(projectRoot);
     expect(plan.conflicts).toContain('Classic docs target is not empty');
     expect(plan.readyToApply).toBe(false);
-    await expect(applyClassicRootMove(projectRoot)).rejects.toThrow(
-      'Classic docs target is not empty',
-    );
+    await expect(applyPlannedRootMove()).rejects.toThrow('Classic docs target is not empty');
     await expect(
       fs.readFile(path.join(projectRoot, 'docs', 'openspec', 'foreign.md'), 'utf8'),
     ).resolves.toBe('keep\n');
@@ -325,7 +579,7 @@ describe('Classic root move', () => {
     expect(plan.targetInitialState).toBe('empty');
     expect(plan.readyToApply).toBe(true);
 
-    await expect(applyClassicRootMove(projectRoot)).resolves.toMatchObject({
+    await expect(applyPlannedRootMove()).resolves.toMatchObject({
       targetInitialState: 'empty',
     });
     await expect(
@@ -354,7 +608,7 @@ describe('Classic root move', () => {
       ]),
     );
     expect(plan.readyToApply).toBe(false);
-    await expect(applyClassicRootMove(projectRoot)).rejects.toThrow(
+    await expect(applyPlannedRootMove()).rejects.toThrow(
       /archived change not-archived has archived: false/u,
     );
   });
@@ -526,7 +780,7 @@ describe('Classic root move', () => {
     let replaced = false;
 
     await expect(
-      applyClassicRootMove(projectRoot, {
+      applyPlannedRootMove({
         testHooks: {
           beforeSourceFileCopy: async (relativePath) => {
             if (replaced || relativePath !== 'specs/demo/spec.md') return;
@@ -558,7 +812,7 @@ describe('Classic root move', () => {
     await fs.writeFile(path.join(externalComet, 'marker.txt'), 'external marker\n');
 
     await expect(
-      applyClassicRootMove(projectRoot, {
+      applyPlannedRootMove({
         testHooks: {
           beforeMutation: async (operation) => {
             if (operation !== 'create-journal-temp') return;
@@ -581,7 +835,7 @@ describe('Classic root move', () => {
     await fs.writeFile(path.join(externalComet, 'marker.txt'), 'external marker\n');
 
     await expect(
-      applyClassicRootMove(projectRoot, {
+      applyPlannedRootMove({
         testHooks: {
           beforeMutation: async (operation) => {
             if (operation !== 'update-journal-temp') return;
@@ -596,7 +850,7 @@ describe('Classic root move', () => {
     const persisted = JSON.parse(
       await fs.readFile(path.join(originalComet, 'classic-root-move.json'), 'utf8'),
     ) as { stage: string };
-    expect(persisted.stage).toBe('copying');
+    expect(persisted.stage).toBe('locked');
   });
 
   it('does not write a staged file through a replaced staging parent', async () => {
@@ -607,7 +861,7 @@ describe('Classic root move', () => {
     await fs.writeFile(path.join(externalParent, 'marker.txt'), 'external marker\n');
 
     await expect(
-      applyClassicRootMove(projectRoot, {
+      applyPlannedRootMove({
         testHooks: {
           beforeMutation: async (operation) => {
             if (operation !== 'copy-file:specs/demo/spec.md') return;
@@ -636,7 +890,7 @@ describe('Classic root move', () => {
     await fs.writeFile(path.join(externalDocs, 'marker.txt'), 'external marker\n');
 
     await expect(
-      applyClassicRootMove(projectRoot, {
+      applyPlannedRootMove({
         testHooks: {
           beforeMutation: async (operation) => {
             if (operation !== 'rename-staging-target') return;
@@ -661,7 +915,7 @@ describe('Classic root move', () => {
     await fs.writeFile(path.join(externalTransaction, 'marker.txt'), 'external marker\n');
 
     await expect(
-      applyClassicRootMove(projectRoot, {
+      applyPlannedRootMove({
         testHooks: {
           beforeMutation: async (operation) => {
             if (operation !== 'rename-source-quarantine') return;
@@ -693,7 +947,7 @@ describe('Classic root move', () => {
     await fs.writeFile(path.join(externalParent, 'marker.txt'), 'external marker\n');
 
     await expect(
-      applyClassicRootMove(projectRoot, {
+      applyPlannedRootMove({
         testHooks: {
           beforeMutation: async (operation) => {
             if (operation !== 'remove-quarantine-file:specs/demo/spec.md') return;
@@ -837,7 +1091,7 @@ describe('Classic root move', () => {
         staging: `.comet/transactions/classic-root-move/${transactionId}/openspec`,
       },
     });
-    await expect(applyClassicRootMove(projectRoot)).rejects.toThrow(
+    await expect(applyPlannedRootMove()).rejects.toThrow(
       /use comet doctor --repair --strategy continue\|rollback/u,
     );
     await expect(repairClassicRootMove(projectRoot)).rejects.toThrow(/strategy is required/u);
@@ -851,6 +1105,21 @@ describe('Classic root move', () => {
 
     await expect(repairClassicRootMove(projectRoot, 'continue')).resolves.toBe(true);
     expect((await readProjectConfig(projectRoot))?.classic?.artifact_layout).toBe('docs');
+  });
+
+  it('keeps legacy v1 journals explicitly recoverable after v2 is introduced', async () => {
+    await stageSource();
+    await writeLegacyV1Journal('ready');
+
+    await expect(inspectClassicRootMove(projectRoot)).resolves.toMatchObject({
+      stage: 'ready',
+      allowedStrategies: ['continue', 'rollback'],
+    });
+    await expect(repairClassicRootMove(projectRoot, 'rollback')).resolves.toBe(true);
+    await expect(fs.stat(path.join(projectRoot, 'openspec'))).resolves.toBeDefined();
+    await expect(
+      fs.stat(path.join(projectRoot, '.comet', 'classic-root-move.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('rolls back a verified ready transaction only when explicitly requested', async () => {

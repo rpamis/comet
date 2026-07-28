@@ -25,6 +25,11 @@ import {
   resolveClassicChangeDirectory,
 } from './classic-paths.js';
 import { assertClassicLayoutWritable, assertClassicLayoutReadable } from './classic-layout.js';
+import {
+  classicCommandInvocationCwd,
+  classicCommandProjectRoot,
+  withClassicCommandContext,
+} from './classic-command-context.js';
 import { resolveClassicStepId } from './classic-resolver.js';
 import { transitionClassicRuntimeRun, validateClassicRuntimeRun } from './classic-runtime-run.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
@@ -176,33 +181,36 @@ function validateRelativePath(value: string, field: string): void {
 }
 
 async function exists(file: string): Promise<boolean> {
-  return classicProjectTargetExists(process.cwd(), file, {
-    label: `Classic project path ${path.relative(process.cwd(), path.resolve(file)).replaceAll('\\', '/')}`,
+  const projectRoot = classicCommandProjectRoot();
+  return classicProjectTargetExists(projectRoot, file, {
+    label: `Classic project path ${path.relative(projectRoot, path.resolve(projectRoot, file)).replaceAll('\\', '/')}`,
   });
 }
 
 async function nonempty(file: string): Promise<boolean> {
+  const projectRoot = classicCommandProjectRoot();
   return classicProjectFileNonempty(
-    process.cwd(),
+    projectRoot,
     file,
-    `Classic project file ${path.relative(process.cwd(), path.resolve(file)).replaceAll('\\', '/')}`,
+    `Classic project file ${path.relative(projectRoot, path.resolve(projectRoot, file)).replaceAll('\\', '/')}`,
   );
 }
 
 async function changeDirectory(name: string): Promise<{ label: string; directory: string }> {
-  return resolveClassicChangeDirectory(name);
+  return resolveClassicChangeDirectory(name, classicCommandProjectRoot());
 }
 
 async function readDocument(file: string): Promise<Document> {
   let source: string;
+  const projectRoot = classicCommandProjectRoot();
   try {
-    source = await readClassicProjectFile(process.cwd(), file, {
-      label: `Classic state ${path.relative(process.cwd(), file).replaceAll('\\', '/')}`,
+    source = await readClassicProjectFile(projectRoot, file, {
+      label: `Classic state ${path.relative(projectRoot, file).replaceAll('\\', '/')}`,
     });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       fail(
-        `ERROR: .comet.yaml not found at ${path.relative(process.cwd(), file).replaceAll('\\', '/')}`,
+        `ERROR: .comet.yaml not found at ${path.relative(projectRoot, file).replaceAll('\\', '/')}`,
       );
     }
     throw error;
@@ -213,7 +221,7 @@ async function readDocument(file: string): Promise<Document> {
 }
 
 async function atomicWrite(file: string, content: string): Promise<void> {
-  await writeClassicProjectText(process.cwd(), file, content, {
+  await writeClassicProjectText(classicCommandProjectRoot(), file, content, {
     label: 'Classic state write target',
   });
 }
@@ -338,13 +346,15 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
 async function projectConfigValue(
   field: 'context_compression' | 'auto_transition' | 'review_mode' | 'language',
 ): Promise<string | null> {
-  return (await readClassicConfigValue(field))?.value ?? null;
+  return (await readClassicConfigValue(field, { cwd: classicCommandProjectRoot() }))?.value ?? null;
 }
 
 async function projectLanguageDefault(): Promise<string> {
   if (process.env.COMET_LANGUAGE)
     return validateLanguage(process.env.COMET_LANGUAGE, 'COMET_LANGUAGE');
-  const configured = await readClassicConfigValue('language');
+  const configured = await readClassicConfigValue('language', {
+    cwd: classicCommandProjectRoot(),
+  });
   if (configured) return validateLanguage(configured.value, configured.source);
   return 'en';
 }
@@ -387,10 +397,14 @@ async function stateFile(
   name: string,
 ): Promise<{ file: string; label: string; directory: string }> {
   const change = await changeDirectory(name);
-  await inspectClassicProjectTarget(process.cwd(), path.join(change.directory, '.comet'), {
-    label: `Classic runtime directory for ${name}`,
-    expected: 'directory',
-  });
+  await inspectClassicProjectTarget(
+    classicCommandProjectRoot(),
+    path.join(change.directory, '.comet'),
+    {
+      label: `Classic runtime directory for ${name}`,
+      expected: 'directory',
+    },
+  );
   return {
     ...change,
     file: path.join(change.directory, '.comet.yaml'),
@@ -432,7 +446,7 @@ async function validateSetValue(field: string, value: string): Promise<void> {
   if (PATH_FIELDS.has(field)) {
     validateRelativePath(value, field);
     if (value && value !== 'null') {
-      await inspectClassicProjectTarget(process.cwd(), value, {
+      await inspectClassicProjectTarget(classicCommandProjectRoot(), value, {
         label: `${field} artifact pointer`,
         expected: 'file',
       });
@@ -481,12 +495,13 @@ async function setField(
       // decision and re-points the binding; repeating the same mode keeps
       // the sticky binding that drift checks rely on.
       if (!alreadyBound || previousIsolation !== value) {
-        const currentBranch = liveGitBranch(process.cwd());
+        const invocationCwd = classicCommandInvocationCwd();
+        const currentBranch = liveGitBranch(invocationCwd);
         const verdict = evaluateBranchBinding({
           isolation: value,
           boundBranch: null,
           currentBranch,
-          gitWorkTree: currentBranch === null ? isGitWorkTree(process.cwd()) : true,
+          gitWorkTree: currentBranch === null ? isGitWorkTree(invocationCwd) : true,
         });
         if (verdict.status === 'needs-heal') {
           document.set('bound_branch', verdict.branch);
@@ -550,7 +565,7 @@ async function setField(
 async function init(output: CommandOutput, name: string, workflow: string): Promise<void> {
   validateChangeName(name);
   validateEnum(workflow, PROFILES);
-  const change = await ensureClassicActiveChangeDirectory(name);
+  const change = await ensureClassicActiveChangeDirectory(name, classicCommandProjectRoot());
   const { label, directory } = change;
   const file = path.join(directory, '.comet.yaml');
   if (await exists(file)) fail(`ERROR: .comet.yaml already exists at ${label}/.comet.yaml`);
@@ -829,10 +844,12 @@ async function taskCheckoff(
 ): Promise<void> {
   validateRelativePath(taskFile, 'task file');
   if (!taskText) fail('ERROR: Task text cannot be empty');
-  const file = path.resolve(taskFile);
+  const file = path.resolve(classicCommandProjectRoot(), taskFile);
   if (!(await exists(file))) fail(`ERROR: Task file not found: ${taskFile}`);
   const lines = (
-    await readClassicProjectFile(process.cwd(), file, { label: 'Classic task-checkoff file' })
+    await readClassicProjectFile(classicCommandProjectRoot(), file, {
+      label: 'Classic task-checkoff file',
+    })
   ).split(/\r?\n/u);
   const matches = lines.filter((line) =>
     [`- [ ] ${taskText}`, `- [x] ${taskText}`, `- [X] ${taskText}`].includes(line),
@@ -901,7 +918,10 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
     const archived = await readField(name, 'archived');
     (archived !== 'true' ? pass : reject)(`archived=${archived} (expected: not true)`);
   }
-  const binding = await resolveBranchBinding(directory, { heal: true, cwd: process.cwd() });
+  const binding = await resolveBranchBinding(directory, {
+    heal: true,
+    cwd: classicCommandInvocationCwd(),
+  });
   if (binding.bindingRequired) {
     switch (binding.status) {
       case 'drift':
@@ -1033,16 +1053,18 @@ async function recoverBuild(
     return;
   }
   const lines = (
-    await readClassicProjectFile(process.cwd(), tasks, { label: 'Classic change tasks' })
+    await readClassicProjectFile(classicCommandProjectRoot(), tasks, {
+      label: 'Classic change tasks',
+    })
   ).split(/\r?\n/u);
   const total = lines.filter((line) => /^\s*- \[[ xX]\] /u.test(line)).length;
   const done = lines.filter((line) => /^\s*- \[[xX]\] /u.test(line)).length;
   const pending = total - done;
   let planTotal = 0;
   let planDone = 0;
-  if (plan && plan !== 'null' && (await exists(path.resolve(plan)))) {
+  if (plan && plan !== 'null' && (await exists(plan))) {
     const planLines = (
-      await readClassicProjectFile(process.cwd(), path.resolve(plan), {
+      await readClassicProjectFile(classicCommandProjectRoot(), plan, {
         label: 'Classic build plan',
       })
     ).split(/\r?\n/u);
@@ -1218,7 +1240,7 @@ async function scale(output: CommandOutput, name: string): Promise<void> {
   const tasksFile = path.join(directory, 'tasks.md');
   const taskCount = (await exists(tasksFile))
     ? (
-        await readClassicProjectFile(process.cwd(), tasksFile, {
+        await readClassicProjectFile(classicCommandProjectRoot(), tasksFile, {
           label: 'Classic scale task file',
         })
       )
@@ -1234,9 +1256,9 @@ async function scale(output: CommandOutput, name: string): Promise<void> {
   }
   const plan = await readField(name, 'plan');
   let baseRef = '';
-  if (plan && plan !== 'null' && (await exists(path.resolve(plan)))) {
+  if (plan && plan !== 'null' && (await exists(plan))) {
     const match = (
-      await readClassicProjectFile(process.cwd(), path.resolve(plan), {
+      await readClassicProjectFile(classicCommandProjectRoot(), plan, {
         label: 'Classic scale plan',
       })
     ).match(/^base-ref:\s*(.+)$/mu);
@@ -1298,7 +1320,8 @@ async function recordCheck(
   }
   const options = parseRecordCheckOptions(args);
   const { directory, file } = await stateFile(name);
-  const activeChangesDir = (await assertClassicLayoutReadable(process.cwd())).changesDir;
+  const projectRoot = classicCommandProjectRoot();
+  const activeChangesDir = (await assertClassicLayoutReadable(projectRoot)).changesDir;
   if (path.dirname(directory) !== activeChangesDir || !(await exists(file))) {
     fail(`ERROR: command checks require an active change: ${name}`);
   }
@@ -1308,9 +1331,12 @@ async function recordCheck(
       throw new Error('command checks require an existing synchronized Classic Run');
     }
     const { run } = await validateClassicRuntimeRun(directory, projection);
-    const recorded = await recordCommandCheck(directory, run, {
+    const recorded = await recordCommandCheck(projectRoot, directory, run, {
       scope: scopeText as CommandCheckScope,
       ...options,
+      cwd:
+        options.cwd ??
+        (path.relative(projectRoot, classicCommandInvocationCwd()).replaceAll('\\', '/') || '.'),
     });
     output.stderr.push(
       green(
@@ -1345,7 +1371,7 @@ const MUTATING_STATE_COMMANDS = new Set([
 async function assertStateCommandWritable(subcommand: string | undefined): Promise<void> {
   if (!subcommand || !MUTATING_STATE_COMMANDS.has(subcommand)) return;
   try {
-    await assertClassicLayoutWritable(process.cwd());
+    await assertClassicLayoutWritable(classicCommandProjectRoot());
   } catch (error) {
     fail(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -1354,7 +1380,7 @@ async function assertStateCommandWritable(subcommand: string | undefined): Promi
 async function selectChange(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
   try {
-    const selection = await selectCurrentChange(process.cwd(), name);
+    const selection = await selectCurrentChange(classicCommandProjectRoot(), name);
     const boundBranch = await readField(name, 'bound_branch');
     const bound = boundBranch && boundBranch !== 'null' ? boundBranch : null;
     output.stderr.push(
@@ -1374,7 +1400,7 @@ async function rebind(output: CommandOutput, name: string): Promise<void> {
       `ERROR: '${name}' is not yet bound; use 'comet state set ${name} isolation <current|branch|worktree>' to establish the first binding`,
     );
   }
-  const branch = liveGitBranch(process.cwd());
+  const branch = liveGitBranch(classicCommandInvocationCwd());
   if (branch === null) {
     fail('ERROR: cannot rebind while HEAD is detached; checkout a branch first');
   }
@@ -1394,7 +1420,7 @@ async function rebind(output: CommandOutput, name: string): Promise<void> {
 }
 
 async function currentChange(output: CommandOutput): Promise<void> {
-  const resolution = await resolveCurrentChange(process.cwd());
+  const resolution = await resolveCurrentChange(classicCommandProjectRoot());
   if (resolution.status === 'selected') {
     output.stdout.push(resolution.selection.change);
     return;
@@ -1408,74 +1434,75 @@ async function currentChange(output: CommandOutput): Promise<void> {
 }
 
 async function clearSelection(output: CommandOutput): Promise<void> {
-  await clearCurrentChange(process.cwd());
+  await clearCurrentChange(classicCommandProjectRoot());
   output.stderr.push(green('[CLEARED] current change selection'));
 }
 
-export const classicStateCommand: ClassicCommandHandler = async (args) => {
-  const output = new CommandOutput();
-  try {
-    const [subcommand, ...rest] = args;
-    await assertStateCommandWritable(subcommand);
-    if (subcommand === 'init') {
-      required(rest, 2, 'Usage: comet-state.mjs init <change-name> <workflow>');
-      await init(output, rest[0], rest[1]);
-    } else if (subcommand === 'get') {
-      required(rest, 2, 'Usage: comet-state.mjs get <change-name> <field>');
-      validateChangeName(rest[0]);
-      output.stdout.push(await readField(rest[0], rest[1]));
-    } else if (subcommand === 'set') {
-      required(rest, 3, 'Usage: comet-state.mjs set <change-name> <field> <value>');
-      validateChangeName(rest[0]);
-      await setField(output, rest[0], rest[1], rest[2]);
-    } else if (subcommand === 'transition') {
-      required(rest, 2, 'Usage: comet-state.mjs transition <change-name> <event>');
-      await transition(output, rest[0], rest[1]);
-    } else if (subcommand === 'check') {
-      required(rest, 2, 'Usage: comet-state.mjs check <change-name> <phase> [--recover]');
-      if (rest[2] === '--recover') await recover(output, rest[0]);
-      else await check(output, rest[0], rest[1]);
-    } else if (subcommand === 'scale') {
-      required(rest, 1, 'Usage: comet-state.mjs scale <change-name>');
-      await scale(output, rest[0]);
-    } else if (subcommand === 'record-check') {
-      required(
-        rest,
-        2,
-        'Usage: comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]',
-      );
-      await recordCheck(output, rest[0], rest[1], rest.slice(2));
-    } else if (subcommand === 'task-checkoff') {
-      required(rest, 2, 'Usage: comet-state.mjs task-checkoff <file> <task-text>');
-      await taskCheckoff(output, rest[0], rest[1]);
-    } else if (subcommand === 'rebind') {
-      requiredExact(rest, 1, 'Usage: comet-state.mjs rebind <change-name>');
-      await rebind(output, rest[0]);
-    } else if (subcommand === 'select') {
-      requiredExact(rest, 1, 'Usage: comet-state.mjs select <change-name>');
-      await selectChange(output, rest[0]);
-    } else if (subcommand === 'current') {
-      requiredExact(rest, 0, 'Usage: comet-state.mjs current');
-      await currentChange(output);
-    } else if (subcommand === 'clear-selection') {
-      requiredExact(rest, 0, 'Usage: comet-state.mjs clear-selection');
-      await clearSelection(output);
-    } else if (subcommand === 'next') {
-      required(rest, 1, 'Usage: comet-state.mjs next <change-name>');
-      await next(output, rest[0]);
-    } else {
-      fail(`Unknown subcommand: ${subcommand ?? ''}`);
+export const classicStateCommand: ClassicCommandHandler = async (args, options) =>
+  withClassicCommandContext(options, async () => {
+    const output = new CommandOutput();
+    try {
+      const [subcommand, ...rest] = args;
+      await assertStateCommandWritable(subcommand);
+      if (subcommand === 'init') {
+        required(rest, 2, 'Usage: comet-state.mjs init <change-name> <workflow>');
+        await init(output, rest[0], rest[1]);
+      } else if (subcommand === 'get') {
+        required(rest, 2, 'Usage: comet-state.mjs get <change-name> <field>');
+        validateChangeName(rest[0]);
+        output.stdout.push(await readField(rest[0], rest[1]));
+      } else if (subcommand === 'set') {
+        required(rest, 3, 'Usage: comet-state.mjs set <change-name> <field> <value>');
+        validateChangeName(rest[0]);
+        await setField(output, rest[0], rest[1], rest[2]);
+      } else if (subcommand === 'transition') {
+        required(rest, 2, 'Usage: comet-state.mjs transition <change-name> <event>');
+        await transition(output, rest[0], rest[1]);
+      } else if (subcommand === 'check') {
+        required(rest, 2, 'Usage: comet-state.mjs check <change-name> <phase> [--recover]');
+        if (rest[2] === '--recover') await recover(output, rest[0]);
+        else await check(output, rest[0], rest[1]);
+      } else if (subcommand === 'scale') {
+        required(rest, 1, 'Usage: comet-state.mjs scale <change-name>');
+        await scale(output, rest[0]);
+      } else if (subcommand === 'record-check') {
+        required(
+          rest,
+          2,
+          'Usage: comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]',
+        );
+        await recordCheck(output, rest[0], rest[1], rest.slice(2));
+      } else if (subcommand === 'task-checkoff') {
+        required(rest, 2, 'Usage: comet-state.mjs task-checkoff <file> <task-text>');
+        await taskCheckoff(output, rest[0], rest[1]);
+      } else if (subcommand === 'rebind') {
+        requiredExact(rest, 1, 'Usage: comet-state.mjs rebind <change-name>');
+        await rebind(output, rest[0]);
+      } else if (subcommand === 'select') {
+        requiredExact(rest, 1, 'Usage: comet-state.mjs select <change-name>');
+        await selectChange(output, rest[0]);
+      } else if (subcommand === 'current') {
+        requiredExact(rest, 0, 'Usage: comet-state.mjs current');
+        await currentChange(output);
+      } else if (subcommand === 'clear-selection') {
+        requiredExact(rest, 0, 'Usage: comet-state.mjs clear-selection');
+        await clearSelection(output);
+      } else if (subcommand === 'next') {
+        required(rest, 1, 'Usage: comet-state.mjs next <change-name>');
+        await next(output, rest[0]);
+      } else {
+        fail(`Unknown subcommand: ${subcommand ?? ''}`);
+      }
+      return output.result();
+    } catch (error) {
+      if (!(error instanceof CommandFailure)) throw error;
+      // The frozen 0.3.8 shell calls red() once per line and never embeds newlines
+      // inside a single color call. Mirror that contract by wrapping each line of
+      // the message in its own span so multi-line errors (e.g. validateEnum) render
+      // as separate colored lines rather than one span across a newline.
+      if (error.message) {
+        for (const line of error.message.split('\n')) output.stderr.push(red(line));
+      }
+      return output.result(error.exitCode);
     }
-    return output.result();
-  } catch (error) {
-    if (!(error instanceof CommandFailure)) throw error;
-    // The frozen 0.3.8 shell calls red() once per line and never embeds newlines
-    // inside a single color call. Mirror that contract by wrapping each line of
-    // the message in its own span so multi-line errors (e.g. validateEnum) render
-    // as separate colored lines rather than one span across a newline.
-    if (error.message) {
-      for (const line of error.message.split('\n')) output.stderr.push(red(line));
-    }
-    return output.result(error.exitCode);
-  }
-};
+  });

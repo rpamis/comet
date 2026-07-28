@@ -39,6 +39,9 @@ Reuse Comet open capability to create change, but use tweak defaults: do not exe
 
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
 
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** Do not execute its direct official CLI, fixed-cwd, or fixed physical OpenSpec path instructions. Route every OpenSpec command through `comet classic openspec -- <args...>` and use the `<classic-*>` logical roots bound for this run for every change and artifact path.
+
 After the skill loads, follow its guidance to create streamlined artifacts:
   - `proposal.md` — change motivation + goals + scope
   - `design.md` — brief implementation description (no solution comparison needed)
@@ -89,6 +92,9 @@ This apply path belongs only to tweak. Full `/comet-classic` or `workflow: full`
 Before continuing or starting changes, handle uncommitted changes through `comet/reference/dirty-worktree.md`. If attribution shows a qualitative-change signal or file-count tripwire is hit, handle it through this file's "Upgrade Assessment".
 
 **Immediately execute:** Use the Skill tool to load the `openspec-apply-change` skill. Skipping this step is prohibited.
+
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** Use only its apply semantics. Replace every direct official CLI, fixed-cwd, or fixed physical OpenSpec path instruction with `comet classic openspec -- <args...>` and the `<classic-*>` logical roots.
 
 After the skill loads, use the current `<change-name>` as input and follow `openspec-apply-change` to execute the OpenSpec apply flow:
 

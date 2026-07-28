@@ -47,7 +47,7 @@ describe('Classic command check evidence', () => {
 
   it('appends command evidence without executing the saved command', async () => {
     const marker = path.join(projectRoot, 'must-not-exist');
-    const recorded = await recordCommandCheck(changeDir, run, {
+    const recorded = await recordCommandCheck(projectRoot, changeDir, run, {
       scope: 'build',
       command: `node -e "require('fs').writeFileSync('${marker}', 'bad')"`,
       exitCode: 0,
@@ -73,12 +73,12 @@ describe('Classic command check evidence', () => {
 
   it('returns the newest valid matching record, including failures, for only the current run', async () => {
     const oldRun = runState('run-old');
-    await recordCommandCheck(changeDir, run, {
+    await recordCommandCheck(projectRoot, changeDir, run, {
       scope: 'verify',
       command: 'npm test',
       exitCode: 0,
     });
-    await recordCommandCheck(changeDir, oldRun, {
+    await recordCommandCheck(projectRoot, changeDir, oldRun, {
       scope: 'verify',
       command: 'old run failure',
       exitCode: 9,
@@ -90,14 +90,14 @@ describe('Classic command check evidence', () => {
       runId: run.runId,
       data: { scope: 'verify', command: '', exitCode: 7, cwd: '.' },
     } as TrajectoryEvent);
-    const failure = await recordCommandCheck(changeDir, run, {
+    const failure = await recordCommandCheck(projectRoot, changeDir, run, {
       scope: 'verify',
       command: 'npm test -- --runInBand',
       exitCode: 2,
     });
 
-    expect(await latestCommandCheck(changeDir, run, 'verify')).toEqual(failure);
-    expect(await latestCommandCheck(changeDir, run, 'build')).toBeNull();
+    expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toEqual(failure);
+    expect(await latestCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
   });
 
   it('ignores newer records with invalid cwd and normalizes the older valid cwd', async () => {
@@ -118,7 +118,7 @@ describe('Classic command check evidence', () => {
       });
     }
 
-    expect(await latestCommandCheck(changeDir, run, 'build')).toEqual({
+    expect(await latestCommandCheck(projectRoot, changeDir, run, 'build')).toEqual({
       sequence: 1,
       timestamp,
       runId: run.runId,
@@ -134,7 +134,7 @@ describe('Classic command check evidence', () => {
     ['missing data', undefined],
     ['array data', []],
   ])('ignores a newer record with %s', async (_label, malformedData) => {
-    const valid = await recordCommandCheck(changeDir, run, {
+    const valid = await recordCommandCheck(projectRoot, changeDir, run, {
       scope: 'verify',
       command: 'npm test',
       exitCode: 0,
@@ -148,7 +148,7 @@ describe('Classic command check evidence', () => {
     } as unknown as TrajectoryEvent;
     await appendTrajectory(changeDir, run.trajectoryRef, malformed);
 
-    await expect(latestCommandCheck(changeDir, run, 'verify')).resolves.toEqual(valid);
+    await expect(latestCommandCheck(projectRoot, changeDir, run, 'verify')).resolves.toEqual(valid);
   });
 
   it.each([
@@ -157,6 +157,8 @@ describe('Classic command check evidence', () => {
     [{ scope: 'build', command: 'npm test', exitCode: 0.5 }, /exitCode/i],
     [{ scope: 'build', command: 'npm test', exitCode: 0, cwd: '../outside' }, /project root/i],
   ])('rejects invalid evidence %#', async (input, message) => {
-    await expect(recordCommandCheck(changeDir, run, input as never)).rejects.toThrow(message);
+    await expect(recordCommandCheck(projectRoot, changeDir, run, input as never)).rejects.toThrow(
+      message,
+    );
   });
 });

@@ -78,7 +78,7 @@ Classic 提供：
 
 ```text
 comet classic root move docs --dry-run
-comet classic root move docs --apply
+comet classic root move docs --apply --plan <id>
 ```
 
 `--dry-run` 是只读操作，输出源、目标、文件清单摘要、冲突、配置变化、阻塞 change 和不会重写的历史证据。

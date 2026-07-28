@@ -154,6 +154,9 @@ When scale assessment result is "large":
 
 **Immediately execute:** Use the Skill tool to load the `openspec-verify-change` skill. Skipping this step is prohibited.
 
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** Use only its verification semantics. Replace every direct official CLI, fixed-cwd, or fixed physical OpenSpec path instruction with `comet classic openspec -- <args...>` and the resolver-returned `<classic-*>` logical roots.
+
 After the skill loads, follow its guidance to verify. Check items:
 1. All tasks.md tasks completed (`[x]`)
 2. Implementation matches `<classic-change-dir>/design.md` high-level design decisions

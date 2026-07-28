@@ -19,7 +19,13 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
+import { writeWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-writer.js';
 import { planClassicRootMove } from '../../domains/comet-classic/classic-root-move.js';
+import {
+  assertClassicLayoutInitializationSafe,
+  beginClassicLayoutInitialization,
+  checkpointClassicLayoutInitialization,
+} from '../../domains/comet-classic/classic-layout-initialization.js';
 
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
@@ -91,6 +97,21 @@ async function writeReadyClassicRootMove(projectRoot: string): Promise<void> {
   const manifestSource = { directories, files: [], totalBytes: 0 };
   const manifest = { ...manifestSource, hash: sha256(JSON.stringify(manifestSource)) };
   const plan = await planClassicRootMove(projectRoot);
+  const legacyPlanId = sha256(
+    JSON.stringify({
+      source: 'openspec',
+      target: 'docs/openspec',
+      staging: '.comet/transactions/classic-root-move/<transaction-id>/openspec',
+      targetInitialState: 'missing',
+      fileCount: manifest.files.length,
+      directoryCount: manifest.directories.length,
+      totalBytes: manifest.totalBytes,
+      manifestHash: manifest.hash,
+      configPath: plan.configPath,
+      originalConfigHash: plan.originalConfigHash,
+      expectedConfigHash: plan.expectedConfigHash,
+    }),
+  );
   const staging = path.join(
     projectRoot,
     '.comet',
@@ -114,7 +135,7 @@ async function writeReadyClassicRootMove(projectRoot: string): Promise<void> {
         configPath: plan.configPath,
         originalConfigHash: plan.originalConfigHash,
         expectedConfigHash: plan.expectedConfigHash,
-        planId: plan.planId,
+        planId: legacyPlanId,
         targetInitialState: 'missing',
         manifest,
       },
@@ -245,6 +266,138 @@ describe('doctor command', () => {
     await expect(
       fs.stat(path.join(tmpDir, '.comet', 'classic-root-move.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('reports and repairs a project config write interrupted after quarantine', async () => {
+    await writeProjectConfig(tmpDir, defaultProjectConfig('before-crash'));
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+    const previous = await fs.readFile(configPath, 'utf8');
+    const worker = path.resolve('test/helpers/project-config-crash-worker.mjs');
+
+    const crashed = spawnSync(process.execPath, [worker, tmpDir], {
+      cwd: path.resolve('.'),
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(crashed.status, crashed.stderr).toBe(73);
+
+    const before = await collectDoctorPayload(tmpDir);
+    expect(
+      before.results.find((result) => result.check === 'project config write transaction'),
+    ).toMatchObject({
+      status: 'warn',
+      message: expect.stringContaining('config-quarantined'),
+    });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let repaired: DoctorPayload;
+    try {
+      await doctorCommand(tmpDir, {
+        json: true,
+        repair: true,
+        scope: 'project',
+        homeDir: tmpDir,
+      });
+      repaired = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+    } finally {
+      log.mockRestore();
+    }
+    expect(repaired!.repaired).toContain('project config write transaction');
+    await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(previous);
+    const after = await collectDoctorPayload(tmpDir);
+    expect(
+      after.results.find((result) => result.check === 'project config write transaction'),
+    ).toBeUndefined();
+  });
+
+  it('does not repair a project config transaction while its writer is still active', async () => {
+    await writeProjectConfig(tmpDir, defaultProjectConfig('before-live-write'));
+    let enterPublish!: () => void;
+    const publishEntered = new Promise<void>((resolve) => {
+      enterPublish = resolve;
+    });
+    let releasePublish!: () => void;
+    const publishRelease = new Promise<void>((resolve) => {
+      releasePublish = resolve;
+    });
+    const writer = writeWorkflowProjectConfig(tmpDir, defaultProjectConfig('after-live-write'), {
+      beforePublish: async () => {
+        enterPublish();
+        await publishRelease;
+      },
+    });
+    await publishEntered;
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await expect(
+        doctorCommand(tmpDir, {
+          json: true,
+          repair: true,
+          scope: 'project',
+          homeDir: tmpDir,
+        }),
+      ).rejects.toThrow(/transaction .* still active/iu);
+    } finally {
+      log.mockRestore();
+      releasePublish();
+    }
+    await writer;
+
+    await expect(
+      fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'),
+    ).resolves.toContain('artifact_root: after-live-write');
+    expect(
+      (await fs.readdir(path.join(tmpDir, '.comet'))).filter(
+        (entry) =>
+          entry.includes('config-write-transaction') ||
+          entry.endsWith('.next') ||
+          entry.endsWith('.quarantine'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('reports an owned Classic initialization and atomically quarantines it on rollback', async () => {
+    const initialization = await assertClassicLayoutInitializationSafe(tmpDir, 'docs');
+    const owned = await beginClassicLayoutInitialization(tmpDir, initialization);
+    await fs.mkdir(path.join(owned.openSpecRoot, 'changes', 'archive'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(owned.openSpecRoot, 'specs'), { recursive: true });
+    await fs.writeFile(path.join(owned.openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
+    await checkpointClassicLayoutInitialization(tmpDir, owned.initializationPermit);
+
+    const before = await collectDoctorPayload(tmpDir);
+    expect(
+      before.results.find((result) => result.check === 'Classic initialization'),
+    ).toMatchObject({
+      status: 'warn',
+      message: expect.stringMatching(/initializing.*continue, rollback/iu),
+    });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let repaired: DoctorPayload;
+    try {
+      await doctorCommand(tmpDir, {
+        json: true,
+        repair: true,
+        strategy: 'rollback',
+        scope: 'project',
+        homeDir: tmpDir,
+      });
+      repaired = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+    } finally {
+      log.mockRestore();
+    }
+    expect(repaired!.repaired).toContain('Classic initialization');
+    await expect(fs.access(owned.openSpecRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    const journal = JSON.parse(
+      await fs.readFile(path.join(tmpDir, '.comet', 'classic-init-ownership.json'), 'utf8'),
+    ) as { stage: string; quarantine: string };
+    expect(journal.stage).toBe('quarantined');
+    await expect(
+      fs.readFile(path.join(tmpDir, ...journal.quarantine.split('/'), 'config.yaml'), 'utf8'),
+    ).resolves.toBe('schema: spec-driven\n');
   });
 
   it('reports an invalid project config without guessing Classic working directories', async () => {

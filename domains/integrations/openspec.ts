@@ -642,7 +642,7 @@ async function installOpenSpec(
 
     configBackup = writeAllWorkflowsToDefaultConfig();
 
-    if (scope === 'project' && artifactLayout === 'docs') {
+    if (scope === 'project') {
       if (toolIds.length > 0) {
         stagingProject = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-tools-'));
         await runOpenSpecInit(
@@ -655,24 +655,21 @@ async function installOpenSpec(
         );
       }
       await assertProjectMutationAllowed(projectMutationGuard, 'before');
-      const artifactBase = path.join(projectPath, 'docs');
-      await ensureProtectedProjectDirectory(projectPath, 'docs', {
-        label: 'OpenSpec docs artifact base',
-      });
-      const assertArtifactBaseMutationAllowed = async () => {
-        await projectMutationGuard?.();
-        await inspectProtectedProjectPath(projectPath, 'docs', {
+      const artifactBase = artifactLayout === 'docs' ? path.join(projectPath, 'docs') : projectPath;
+      let artifactMutationGuard = projectMutationGuard;
+      if (artifactLayout === 'docs') {
+        await ensureProtectedProjectDirectory(projectPath, 'docs', {
           label: 'OpenSpec docs artifact base',
-          expected: 'directory',
         });
-      };
-      await runOpenSpecInit(
-        artifactBase,
-        ['none'],
-        openspecEnv.env,
-        assertArtifactBaseMutationAllowed,
-        true,
-      );
+        artifactMutationGuard = async () => {
+          await projectMutationGuard?.();
+          await inspectProtectedProjectPath(projectPath, 'docs', {
+            label: 'OpenSpec docs artifact base',
+            expected: 'directory',
+          });
+        };
+      }
+      await runOpenSpecInit(artifactBase, ['none'], openspecEnv.env, artifactMutationGuard, true);
       if (stagingProject) {
         await assertProjectMutationAllowed(projectMutationGuard, 'before', true);
         await mergeGeneratedToolDirectories(
@@ -685,13 +682,7 @@ async function installOpenSpec(
       }
       await assertProjectMutationAllowed(projectMutationGuard, 'after-external', true);
     } else {
-      const targetPath = scope === 'global' ? os.homedir() : projectPath;
-      await runOpenSpecInit(
-        targetPath,
-        scope === 'project' && toolIds.length === 0 ? ['none'] : toolIds,
-        openspecEnv.env,
-        scope === 'project' ? projectMutationGuard : undefined,
-      );
+      await runOpenSpecInit(os.homedir(), toolIds, openspecEnv.env);
     }
 
     const openspecWritesGlobal = scope === 'global';

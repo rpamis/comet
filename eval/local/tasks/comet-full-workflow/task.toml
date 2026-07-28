@@ -6,8 +6,6 @@ category = "comet"
 tags = ["comet", "workflow", "openspec", "full-cycle"]
 default_treatments = [
     "CONTROL",
-    "COMET_CLASSIC_DOCS_LAYOUT",
-    "COMET_CLASSIC_LEGACY_LAYOUT",
     "COMET_FULL_040_BETA",
     "COMET_FULL_039",
 ]

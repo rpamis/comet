@@ -382,7 +382,13 @@ def _score_spec_drift(events: dict[str, Any], test_dir: Path) -> tuple[float, st
     files = list(events.get("files_modified", [])) + list(events.get("files_created", []))
 
     spec_touched = any("specs/" in f and "openspec/changes" in f for f in files)
-    spec_synced = bool(re.search(r"openspec\s+(?:sync|archive)", cmds))
+    spec_synced = bool(
+        re.search(
+            r"\b(?:openspec\s+(?:sync|archive)|"
+            r"comet\s+classic\s+openspec\s+--\s+(?:sync|archive))\b",
+            cmds,
+        )
+    )
 
     if not spec_touched:
         # No delta spec needed — neutral pass (not applicable)

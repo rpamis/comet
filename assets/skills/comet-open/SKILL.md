@@ -45,6 +45,9 @@ This flow requires **OpenSpec >= 1.5.0**. Stop immediately if the version is old
 
 **Immediately execute:** Use the Skill tool to load the `openspec-explore` skill. Skipping this step is prohibited.
 
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** After loading, use only its exploration method. Do not execute any instruction that invokes the official CLI directly, changes to a fixed cwd, or reads or writes a fixed physical OpenSpec path. Route every CLI call through `comet classic openspec -- <args...>` and replace every file path with the `<classic-*>` logical roots bound for this run.
+
 After the skill loads, explore the problem space following its guidance, but do not treat one Q&A turn as sufficient clarification. You must continue asking, align with the user, and form a clarification summary covering:
 - Goals: the problem the user truly wants to solve and the expected outcome
 - Non-goals: what is explicitly out of scope for this change
@@ -126,7 +129,13 @@ Do not run `comet classic openspec -- new change` or create proposal/design/task
 
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
 
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** After loading, use only its change-creation semantics. Do not execute any instruction that invokes the official CLI directly, changes to a fixed cwd, or writes the change under a fixed physical OpenSpec root. Run create, status, and instructions through `comet classic openspec -- <args...>`, and use `<classic-change-dir>` and the other logical roots for every file path.
+
 Full `/comet-classic` workflow must not use the Skill tool to load the `openspec-propose` skill by default; only load it when the user explicitly requests generating the proposal and artifacts in one pass.
+
+<!-- external-openspec-skill-override -->
+**External OpenSpec Skill override:** Apply the same rule to `openspec-propose`: ignore direct official CLI, fixed-cwd, and fixed physical OpenSpec path instructions; use the adapter and resolver-returned `<classic-*>` logical roots.
 
 After the skill loads, follow its guidance to create the change skeleton. When Step 1b has produced an unambiguous resolved brief, override its "STOP and wait for user direction" behavior to avoid a duplicate question.
 

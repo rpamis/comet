@@ -13,7 +13,8 @@ import {
 function usage() {
   return {
     exitCode: 64,
-    stderr: 'Usage: comet classic root show | comet classic root move docs <--dry-run|--apply>',
+    stderr:
+      'Usage: comet classic root show | comet classic root move docs --dry-run | comet classic root move docs --apply --plan <id>',
   };
 }
 
@@ -28,6 +29,11 @@ export function formatClassicRootMoveReport(
       `source: ${plan.source}`,
       `target: ${plan.target}`,
       `staging: ${plan.staging}`,
+      `artifact layout: ${plan.artifactLayout}`,
+      `source identity: ${JSON.stringify(plan.sourceIdentity)}`,
+      `target initial identity: ${
+        plan.targetInitialIdentity ? JSON.stringify(plan.targetInitialIdentity) : 'missing'
+      }`,
       `files: ${plan.fileCount}`,
       `directories: ${plan.directoryCount}`,
       `bytes: ${plan.totalBytes}`,
@@ -56,7 +62,7 @@ export function formatClassicRootMoveReport(
 }
 
 export const classicRootCommand: ClassicCommandHandler = async (args) => {
-  const [action, target, mode] = args;
+  const [action, target, mode, planFlag, planId, ...extra] = args;
   if (action === 'show' && target === undefined) {
     const projectRoot = await discoverClassicProject(process.cwd());
     const layout = await assertClassicLayoutReadable(projectRoot);
@@ -75,13 +81,26 @@ export const classicRootCommand: ClassicCommandHandler = async (args) => {
     };
   }
   if (action !== 'move' || target !== 'docs') return usage();
-  if (mode !== '--dry-run' && mode !== '--apply') return usage();
-  const plan =
-    mode === '--dry-run'
-      ? await planClassicRootMove(process.cwd())
-      : await applyClassicRootMove(process.cwd());
+  if (mode === '--dry-run') {
+    if (planFlag !== undefined) return usage();
+    const plan = await planClassicRootMove(process.cwd());
+    return {
+      exitCode: 0,
+      stdout: formatClassicRootMoveReport(plan, 'dry-run'),
+    };
+  }
+  if (
+    mode !== '--apply' ||
+    planFlag !== '--plan' ||
+    !planId ||
+    !/^[a-f0-9]{64}$/u.test(planId) ||
+    extra.length > 0
+  ) {
+    return usage();
+  }
+  const plan = await applyClassicRootMove(process.cwd(), { planId });
   return {
     exitCode: 0,
-    stdout: formatClassicRootMoveReport(plan, mode === '--dry-run' ? 'dry-run' : 'complete'),
+    stdout: formatClassicRootMoveReport(plan, 'complete'),
   };
 };

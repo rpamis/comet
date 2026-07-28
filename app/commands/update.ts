@@ -44,6 +44,9 @@ import {
 } from '../../domains/integrations/openspec.js';
 import {
   assertClassicLayoutInitializationSafe,
+  beginClassicLayoutInitialization,
+  checkpointClassicLayoutInitialization,
+  completeClassicLayoutInitialization,
   type ClassicLayoutInitializationPermit,
 } from '../../domains/comet-classic/classic-layout-initialization.js';
 import { classicLayoutPaths } from '../../domains/comet-classic/classic-layout.js';
@@ -1343,12 +1346,13 @@ async function updateSingleProject(
   let classicLayoutInitializationPermit: ClassicLayoutInitializationPermit | undefined;
   if (refreshClassicArtifactRoot) {
     try {
-      const initialization = await assertClassicLayoutInitializationSafe(
+      let initialization = await assertClassicLayoutInitializationSafe(
         projectPath,
         classicArtifactLayout,
         undefined,
         projectConfigSnapshot?.identity,
       );
+      initialization = await beginClassicLayoutInitialization(projectPath, initialization);
       classicLayoutInitializationPermit = initialization.initializationPermit;
     } catch (error) {
       const reason = `Classic layout preflight failed: ${(error as Error).message}`;
@@ -1696,6 +1700,12 @@ async function updateSingleProject(
               classicLayoutPaths(projectPath, classicArtifactLayout),
             );
             await assertClassicProjectMutationAllowed?.();
+            if (classicLayoutInitializationPermit) {
+              await checkpointClassicLayoutInitialization(
+                projectPath,
+                classicLayoutInitializationPermit,
+              );
+            }
           } catch (error) {
             projectConfigCommitBlocked = true;
             throw error;
@@ -1771,6 +1781,9 @@ async function updateSingleProject(
       scope === 'project',
       scope === 'project' && classicProject,
     );
+    if (scope === 'project' && classicLayoutInitializationPermit) {
+      await completeClassicLayoutInitialization(projectPath, classicLayoutInitializationPermit);
+    }
     log(`  ${t(lang, 'configMerged')}`);
   }
 

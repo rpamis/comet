@@ -170,7 +170,7 @@ See the "Upgrade Assessment" section of each `comet-hotfix` / `comet-tweak` for 
 
 | Scenario | Handling |
 |----------|----------|
-| `comet classic openspec -- list --json` fails | Check whether OpenSpec is installed; prompt the user to run `comet classic openspec -- init` |
+| `comet classic openspec -- list --json` fails | Check whether OpenSpec is installed; if the artifact root is missing or damaged, prompt the user to run `comet update --scope project` or rerun `comet init --scope project` |
 | Sub-skill unavailable | Stop workflow, prompt to install or enable the corresponding skill |
 | `.comet.yaml` missing | Enter the relevant preset's `/comet-open` initialization, then run `comet state select`; never skip initialization |
 | `.comet.yaml` malformed | Stop and report the parse error; repair from version control, backup, or verifiable artifacts, never overwrite it with `comet state set` |

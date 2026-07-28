@@ -170,7 +170,7 @@ hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬�
 
 | 场景 | 处理方式 |
 |------|---------|
-| `comet classic openspec -- list --json` 失败 | 检查 OpenSpec 是否已安装，提示 `comet classic openspec -- init` |
+| `comet classic openspec -- list --json` 失败 | 检查 OpenSpec 是否已安装；若 artifact root 缺失或损坏，提示运行 `comet update --scope project` 或重新运行 `comet init --scope project` |
 | 子 skill 不可用 | 停止流程，提示安装或启用对应 skill |
 | `.comet.yaml` 缺失 | 进入对应 preset 的 `/comet-open` 初始化状态，再运行 `comet state select`；不得跳过初始化 |
 | `.comet.yaml` 格式异常 | 停止并报告解析错误；从版本控制、备份或可验证产物人工修复，不能用 `comet state set` 覆盖损坏文件 |
