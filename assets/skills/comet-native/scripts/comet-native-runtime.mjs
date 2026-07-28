@@ -8641,6 +8641,7 @@ var COMMENTS = {
     "native.language": "# Artifact language used by Native workflow documents.\n# language: en | zh-CN",
     "native.clarification_mode": "# Controls whether Native asks one clarification at a time or every currently answerable question in a round.\n# clarification_mode: sequential | batch",
     "native.archive_confirmation": "# Controls whether Native archives automatically after a successful preview or waits for explicit user confirmation.\n# archive_confirmation: automatic | required",
+    "native.max_verify_failures": "# Maximum failed Verify outcomes allowed for one confirmed contract before Native stops the completion loop.",
     "native.snapshot": "# Controls the auditable project scope and bounded work used by Native content snapshots.",
     "native.snapshot.include": "# Selects the project-relative paths included in Native snapshots. Patterns use / and support *, **, and ?.",
     "native.snapshot.exclude": "# Removes paths from the included scope. Exclusions are bound into each new change baseline.",
@@ -8663,6 +8664,7 @@ var COMMENTS = {
     "native.language": "# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
     "native.clarification_mode": "# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。\n# 可选值：sequential | batch",
     "native.archive_confirmation": "# Native 归档预演成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required",
+    "native.max_verify_failures": "# 同一份已确认 contract 最多允许的 Verify 失败次数；达到上限后停止完成循环。",
     "native.snapshot": "# Native 内容快照使用的可审计项目范围与有界工作预算。",
     "native.snapshot.include": "# Native 快照纳入的项目相对路径；模式使用 /，支持 *、** 和 ?。",
     "native.snapshot.exclude": "# 从纳入范围中排除路径；新 change 会把排除策略绑定到 baseline。",
@@ -9310,6 +9312,7 @@ var NATIVE_KEYS = /* @__PURE__ */ new Set([
   "language",
   "clarification_mode",
   "archive_confirmation",
+  "max_verify_failures",
   "snapshot",
   "pending_root_move"
 ]);
@@ -9325,6 +9328,7 @@ var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
 var MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH = 1024;
 var MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS = 64;
+var DEFAULT_NATIVE_MAX_VERIFY_FAILURES = 5;
 var DEFAULT_NATIVE_SNAPSHOT_CONFIG = {
   include: ["**/*"],
   exclude: [],
@@ -9492,6 +9496,10 @@ function parseConfig(value) {
   if (archiveConfirmation !== "automatic" && archiveConfirmation !== "required") {
     throw new Error("native.archive_confirmation must be automatic or required");
   }
+  const maxVerifyFailures = native.max_verify_failures ?? DEFAULT_NATIVE_MAX_VERIFY_FAILURES;
+  if (!Number.isSafeInteger(maxVerifyFailures) || maxVerifyFailures < 1) {
+    throw new Error("native.max_verify_failures must be a positive integer");
+  }
   const pending = parsePending(native.pending_root_move);
   const snapshot2 = parseSnapshot(native.snapshot);
   return {
@@ -9504,6 +9512,7 @@ function parseConfig(value) {
       language,
       clarification_mode: clarificationMode,
       archive_confirmation: archiveConfirmation,
+      max_verify_failures: maxVerifyFailures,
       snapshot: snapshot2,
       ...pending ? { pending_root_move: pending } : {}
     }
@@ -9519,6 +9528,7 @@ function defaultProjectConfig(artifactRoot = "docs", language = "en") {
       language,
       clarification_mode: "sequential",
       archive_confirmation: "automatic",
+      max_verify_failures: DEFAULT_NATIVE_MAX_VERIFY_FAILURES,
       snapshot: { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ["**/*"], exclude: [] }
     }
   };
@@ -9589,6 +9599,7 @@ async function writeProjectConfig(projectRoot, config) {
       language: config.native.language,
       clarification_mode: config.native.clarification_mode,
       archive_confirmation: config.native.archive_confirmation,
+      max_verify_failures: config.native.max_verify_failures,
       snapshot: config.native.snapshot,
       ...config.native.pending_root_move ? {
         pending_root_move: {
@@ -9618,6 +9629,7 @@ async function writeProjectConfig(projectRoot, config) {
       language: validated.native.language,
       clarification_mode: validated.native.clarification_mode,
       archive_confirmation: validated.native.archive_confirmation,
+      max_verify_failures: validated.native.max_verify_failures,
       snapshot: validated.native.snapshot,
       ...validated.native.pending_root_move ? {
         pending_root_move: {
@@ -17191,7 +17203,7 @@ function buildNativeAcceptanceEvidenceTrace(criteria, evidence, options) {
     evidenceById.set(entry2.acceptance_id, entry2);
   }
   const missing = [...byId.keys()].filter((id) => !evidenceById.has(id));
-  if (missing.length > 0) {
+  if (missing.length > 0 && options.allowMissing !== true) {
     const shown = missing.slice(0, MISSING_ACCEPTANCE_DETAIL_LIMIT);
     const remainder = missing.length - shown.length;
     throw new Error(
@@ -17200,6 +17212,17 @@ function buildNativeAcceptanceEvidenceTrace(criteria, evidence, options) {
   }
   const entries = [...byId.values()].sort((left, right) => compareText4(left.id, right.id)).map((criterion2) => {
     const entry2 = evidenceById.get(criterion2.id);
+    if (!entry2) {
+      return {
+        acceptanceId: criterion2.id,
+        status: "missing",
+        kind: criterion2.kind,
+        source: portableRef(criterion2.source, `Acceptance source for ${criterion2.id}`),
+        evidenceRefs: [],
+        skippedReason: null,
+        waiverRef: null
+      };
+    }
     const status = entry2.status;
     const evidenceRefs = [...entry2.evidence_refs].map((reference) => typedReceiptRef(reference)).sort();
     if (new Set(evidenceRefs).size !== evidenceRefs.length) {
@@ -17408,7 +17431,7 @@ function parseNativeAcceptanceEvidenceTrace(value) {
       ["acceptanceId", "status", "kind", "source", "evidenceRefs", "skippedReason", "waiverRef"],
       `Native acceptance trace entry ${index}`
     );
-    if (typeof entry2.acceptanceId !== "string" || !/^acceptance-[a-f0-9]{64}$/u.test(entry2.acceptanceId) || entry2.kind !== "brief-example" && entry2.kind !== "spec-scenario" && entry2.kind !== "spec-must" || typeof entry2.source !== "string" || !Array.isArray(entry2.evidenceRefs) || entry2.status !== "passed" && entry2.status !== "failed" && entry2.status !== "waived" || entry2.evidenceRefs.some((reference) => typeof reference !== "string") || entry2.waiverRef !== null && typeof entry2.waiverRef !== "string" || entry2.skippedReason !== null && (typeof entry2.skippedReason !== "string" || entry2.skippedReason.length === 0 || entry2.skippedReason.trim() !== entry2.skippedReason)) {
+    if (typeof entry2.acceptanceId !== "string" || !/^acceptance-[a-f0-9]{64}$/u.test(entry2.acceptanceId) || entry2.kind !== "brief-example" && entry2.kind !== "spec-scenario" && entry2.kind !== "spec-must" || typeof entry2.source !== "string" || !Array.isArray(entry2.evidenceRefs) || entry2.status !== "passed" && entry2.status !== "failed" && entry2.status !== "missing" && entry2.status !== "waived" || entry2.evidenceRefs.some((reference) => typeof reference !== "string") || entry2.waiverRef !== null && typeof entry2.waiverRef !== "string" || entry2.skippedReason !== null && (typeof entry2.skippedReason !== "string" || entry2.skippedReason.length === 0 || entry2.skippedReason.trim() !== entry2.skippedReason)) {
       throw new Error(`Native acceptance trace entry ${index} is invalid`);
     }
     const evidenceRefs = entry2.evidenceRefs.map(
@@ -17416,7 +17439,7 @@ function parseNativeAcceptanceEvidenceTrace(value) {
     );
     const status = entry2.status;
     const waiverRef2 = entry2.waiverRef === null ? null : waiverReceiptRef(entry2.waiverRef);
-    if (JSON.stringify(evidenceRefs) !== JSON.stringify([...new Set(evidenceRefs)].sort(compareText4)) || status === "passed" && (evidenceRefs.length === 0 || entry2.skippedReason !== null || waiverRef2 !== null) || status === "failed" && (evidenceRefs.length > 0 || entry2.skippedReason === null || waiverRef2 !== null) || status === "waived" && (evidenceRefs.length > 0 || entry2.skippedReason !== null || waiverRef2 === null)) {
+    if (JSON.stringify(evidenceRefs) !== JSON.stringify([...new Set(evidenceRefs)].sort(compareText4)) || status === "passed" && (evidenceRefs.length === 0 || entry2.skippedReason !== null || waiverRef2 !== null) || status === "failed" && (evidenceRefs.length > 0 || entry2.skippedReason === null || waiverRef2 !== null) || status === "missing" && (evidenceRefs.length > 0 || entry2.skippedReason !== null || waiverRef2 !== null) || status === "waived" && (evidenceRefs.length > 0 || entry2.skippedReason !== null || waiverRef2 === null)) {
       throw new Error(`Native acceptance trace entry ${index} evidence state is invalid`);
     }
     return {
@@ -19313,9 +19336,9 @@ var NATIVE_REPAIR_SIGNATURE_SCHEMA = "comet.native.repair-signature.v1";
 var NATIVE_REPAIR_STAGNATION_LIMITS = {
   warningAtConsecutiveFailures: 2,
   manualStopAtConsecutiveFailures: 3,
-  maxRepairIterations: 12,
   maxHistoryRecords: 64,
   maxCategories: 16,
+  maxFailedAcceptanceIds: 1024,
   maxFailedCheckIds: 128,
   maxOverrideSummaryCharacters: 2e3
 };
@@ -19371,15 +19394,19 @@ function normalizeNativeRepairFailureTokens(options) {
 }
 function buildNativeRepairSignature(facts) {
   const tokens = normalizeNativeRepairFailureTokens(facts);
+  const failedAcceptanceIds2 = normalizedTokens(
+    facts.failedAcceptanceIds,
+    "Native repair failed acceptance IDs",
+    NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedAcceptanceIds,
+    true
+  );
+  if (failedAcceptanceIds2.length === 0 && tokens.failedCheckIds.length === 0) {
+    throw new Error("Native repair failure must identify an acceptance or check gap");
+  }
   const content = {
     schema: NATIVE_REPAIR_SIGNATURE_SCHEMA,
     contractHash: hash5(facts.contractHash, "Native repair contract hash"),
-    implementationScopeHash: hash5(
-      facts.implementationScopeHash,
-      "Native repair implementation scope hash"
-    ),
-    artifactSnapshotHash: hash5(facts.artifactSnapshotHash, "Native repair artifact snapshot hash"),
-    categories: tokens.categories,
+    failedAcceptanceIds: failedAcceptanceIds2,
     failedCheckIds: tokens.failedCheckIds
   };
   return {
@@ -19397,7 +19424,14 @@ function normalizeHistory(history) {
     if (!record14 || record14.kind !== "failure" && record14.kind !== "override") {
       throw new Error(`Native repair history record ${index} is invalid`);
     }
-    const expectedKeys = record14.kind === "failure" ? ["iteration", "kind", "revision", "signatureHash"] : ["iteration", "kind", "revision", "signatureHash", "summaryHash"];
+    const expectedKeys = record14.kind === "failure" ? record14.failedAcceptanceIds === void 0 && record14.failedCheckIds === void 0 ? ["iteration", "kind", "revision", "signatureHash"] : [
+      "failedAcceptanceIds",
+      "failedCheckIds",
+      "iteration",
+      "kind",
+      "revision",
+      "signatureHash"
+    ] : ["iteration", "kind", "revision", "signatureHash", "summaryHash"];
     const keys = Object.keys(record14).sort(compareText5);
     if (keys.length !== expectedKeys.length || keys.some((key, keyIndex) => key !== expectedKeys[keyIndex])) {
       throw new Error(`Native repair history record ${index} fields are invalid`);
@@ -19412,7 +19446,29 @@ function normalizeHistory(history) {
     previousIteration = iteration;
     previousRevision = revision;
     const signatureHash = hash5(record14.signatureHash, `Native repair history ${index} signature`);
-    if (record14.kind === "failure") return { kind: "failure", iteration, revision, signatureHash };
+    if (record14.kind === "failure") {
+      if (record14.failedAcceptanceIds === void 0 && record14.failedCheckIds === void 0) {
+        return { kind: "failure", iteration, revision, signatureHash };
+      }
+      return {
+        kind: "failure",
+        iteration,
+        revision,
+        signatureHash,
+        failedAcceptanceIds: normalizedTokens(
+          record14.failedAcceptanceIds ?? [],
+          `Native repair history ${index} failed acceptance IDs`,
+          NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedAcceptanceIds,
+          true
+        ),
+        failedCheckIds: normalizedTokens(
+          record14.failedCheckIds ?? [],
+          `Native repair history ${index} failed check IDs`,
+          NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedCheckIds,
+          true
+        )
+      };
+    }
     return {
       kind: "override",
       iteration,
@@ -19421,6 +19477,27 @@ function normalizeHistory(history) {
       summaryHash: hash5(record14.summaryHash, `Native repair history ${index} summary`)
     };
   });
+}
+function isSubset(values, other) {
+  const available = new Set(other);
+  return values.every((value) => available.has(value));
+}
+function semanticProgress(current, previous) {
+  if (current.failedAcceptanceIds === void 0 || current.failedCheckIds === void 0 || previous.failedAcceptanceIds === void 0 || previous.failedCheckIds === void 0) {
+    return current.signatureHash !== previous.signatureHash;
+  }
+  return isSubset(current.failedAcceptanceIds, previous.failedAcceptanceIds) && isSubset(current.failedCheckIds, previous.failedCheckIds) && (current.failedAcceptanceIds.length < previous.failedAcceptanceIds.length || current.failedCheckIds.length < previous.failedCheckIds.length);
+}
+function nativeRepairConsecutiveFailures(current, failures) {
+  let consecutive = 1;
+  let later = current;
+  for (let index = failures.length - 1; index >= 0; index -= 1) {
+    const previous = failures[index];
+    if (semanticProgress(later, previous)) break;
+    consecutive += 1;
+    later = previous;
+  }
+  return consecutive;
 }
 function overrideSummary(value) {
   const summary = value.trim();
@@ -19441,16 +19518,20 @@ function decideNativeRepairStagnation(options) {
     (record14) => record14.kind === "failure"
   );
   const totalRepairFailures = failures.length + 1;
-  const remainingIterations = Math.max(
-    0,
-    NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations - totalRepairFailures
+  const maxVerifyFailures = positiveInteger4(
+    options.maxVerifyFailures,
+    "Native maximum Verify failures"
   );
-  let consecutiveFailures = 1;
-  for (let index = failures.length - 1; index >= 0; index -= 1) {
-    if (failures[index].signatureHash !== signature.signatureHash) break;
-    consecutiveFailures += 1;
-  }
-  if (totalRepairFailures >= NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations) {
+  const remainingIterations = Math.max(0, maxVerifyFailures - totalRepairFailures);
+  const consecutiveFailures = nativeRepairConsecutiveFailures(
+    {
+      signatureHash: signature.signatureHash,
+      failedAcceptanceIds: signature.failedAcceptanceIds,
+      failedCheckIds: signature.failedCheckIds
+    },
+    failures
+  );
+  if (totalRepairFailures >= maxVerifyFailures) {
     return {
       disposition: "hard-stop",
       reasonCode: "repair-iteration-limit",
@@ -19558,7 +19639,17 @@ var EVENT_TYPES2 = /* @__PURE__ */ new Set([
   "recovery_reconciled"
 ]);
 var EVENT_KEYS2 = ["data", "runId", "sequence", "timestamp", "type"];
-var PROJECTION_KEYS = ["disposition", "overrideSummaryHash", "signatureHash"];
+var LEGACY_PROJECTION_KEYS = ["disposition", "overrideSummaryHash", "signatureHash"];
+var PROJECTION_KEYS = [
+  "contractHash",
+  "disposition",
+  "failedAcceptanceIds",
+  "failedCheckIds",
+  "maxVerifyFailures",
+  "overrideSummaryHash",
+  "signatureHash"
+];
+var LEGACY_MAX_REPAIR_ITERATIONS = 12;
 function compareText6(left, right) {
   if (left < right) return -1;
   if (left > right) return 1;
@@ -19585,6 +19676,12 @@ function hash6(value, label) {
     throw new Error(`${label} must be a SHA-256 hash`);
   }
   return value;
+}
+function failedAcceptanceIds(value) {
+  if (!Array.isArray(value) || value.length > NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedAcceptanceIds || value.some((entry2) => typeof entry2 !== "string" || !/^acceptance-[a-f0-9]{64}$/u.test(entry2))) {
+    throw new Error("Native repair trajectory failed acceptance IDs are invalid");
+  }
+  return [...new Set(value)].sort(compareText6);
 }
 function nativeRepairScopeHash(bundle) {
   const scope = parseNativeImplementationScopeBundle(bundle).scope;
@@ -19700,7 +19797,11 @@ function parseEvent2(value, index, runId) {
 }
 function parseNativeRepairTrajectoryProjection(value) {
   const projection = record11(value, "Native repair trajectory projection");
-  exactKeys8(projection, PROJECTION_KEYS, "Native repair trajectory projection");
+  const keys = Object.keys(projection).sort(compareText6);
+  const legacy = keys.length === LEGACY_PROJECTION_KEYS.length && keys.every((key, index) => key === LEGACY_PROJECTION_KEYS[index]);
+  if (!legacy) {
+    exactKeys8(projection, PROJECTION_KEYS, "Native repair trajectory projection");
+  }
   const signatureHash = hash6(projection.signatureHash, "Native repair trajectory signature hash");
   if (projection.disposition !== "continue" && projection.disposition !== "warn" && projection.disposition !== "manual-stop" && projection.disposition !== "hard-stop") {
     throw new Error("Native repair trajectory disposition is invalid");
@@ -19709,10 +19810,33 @@ function parseNativeRepairTrajectoryProjection(value) {
   if (overrideSummaryHash !== null && projection.disposition !== "continue") {
     throw new Error("Native repair trajectory override must continue exactly once");
   }
+  if (legacy) {
+    return {
+      signatureHash,
+      disposition: projection.disposition,
+      overrideSummaryHash,
+      contractHash: null,
+      failedAcceptanceIds: [],
+      failedCheckIds: [],
+      maxVerifyFailures: null
+    };
+  }
+  const contractHash = hash6(projection.contractHash, "Native repair trajectory contract hash");
+  const normalizedFailedAcceptanceIds = failedAcceptanceIds(projection.failedAcceptanceIds);
+  const failedCheckIds = normalizeNativeRepairFailureTokens({
+    failedCheckIds: projection.failedCheckIds
+  }).failedCheckIds;
+  if (!Number.isSafeInteger(projection.maxVerifyFailures) || projection.maxVerifyFailures < 1) {
+    throw new Error("Native repair trajectory maximum Verify failures is invalid");
+  }
   return {
     signatureHash,
     disposition: projection.disposition,
-    overrideSummaryHash
+    overrideSummaryHash,
+    contractHash,
+    failedAcceptanceIds: normalizedFailedAcceptanceIds,
+    failedCheckIds,
+    maxVerifyFailures: projection.maxVerifyFailures
   };
 }
 function assertProjectionTransition(data, projection) {
@@ -19733,15 +19857,21 @@ function assertProjectionTransition(data, projection) {
 function assertCommittedFailureProjection(projection, history) {
   const failures = history.filter((entry2) => entry2.kind === "failure");
   const total = failures.length + 1;
-  if (total > NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations) {
+  const maxVerifyFailures = projection.maxVerifyFailures ?? LEGACY_MAX_REPAIR_ITERATIONS;
+  if (total > maxVerifyFailures) {
     throw new Error("Native repair trajectory commits a failure beyond the hard-stop boundary");
   }
-  let consecutive = 1;
-  for (let index = failures.length - 1; index >= 0; index -= 1) {
-    if (failures[index].signatureHash !== projection.signatureHash) break;
-    consecutive += 1;
-  }
-  const expectedDisposition = total >= NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations ? "hard-stop" : consecutive < NATIVE_REPAIR_STAGNATION_LIMITS.warningAtConsecutiveFailures ? "continue" : consecutive < NATIVE_REPAIR_STAGNATION_LIMITS.manualStopAtConsecutiveFailures ? "warn" : "manual-stop";
+  const consecutive = nativeRepairConsecutiveFailures(
+    {
+      signatureHash: projection.signatureHash,
+      ...projection.contractHash === null ? {} : {
+        failedAcceptanceIds: projection.failedAcceptanceIds,
+        failedCheckIds: projection.failedCheckIds
+      }
+    },
+    failures
+  );
+  const expectedDisposition = total >= maxVerifyFailures ? "hard-stop" : consecutive < NATIVE_REPAIR_STAGNATION_LIMITS.warningAtConsecutiveFailures ? "continue" : consecutive < NATIVE_REPAIR_STAGNATION_LIMITS.manualStopAtConsecutiveFailures ? "warn" : "manual-stop";
   if (projection.disposition !== expectedDisposition || projection.overrideSummaryHash !== null) {
     throw new Error(
       `Native repair trajectory failure disposition is invalid: expected ${expectedDisposition}`
@@ -19750,7 +19880,8 @@ function assertCommittedFailureProjection(projection, history) {
 }
 function assertCommittedOverrideProjection(projection, history, latestProjection) {
   const failures = history.filter((entry2) => entry2.kind === "failure");
-  if (failures.length >= NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations) {
+  const maxVerifyFailures = latestProjection?.maxVerifyFailures ?? LEGACY_MAX_REPAIR_ITERATIONS;
+  if (failures.length >= maxVerifyFailures) {
     throw new Error("Native repair trajectory cannot override a hard stop");
   }
   if (latestProjection?.disposition !== "manual-stop" || latestProjection.signatureHash !== projection.signatureHash || failures.at(-1)?.signatureHash !== projection.signatureHash) {
@@ -19773,6 +19904,7 @@ function projectNativeRepairHistory(options) {
   const history = [];
   let latestProjection = null;
   let activeScopeHash = null;
+  let activeContractHash = null;
   let iteration = 0;
   let totalDataNodes = 0;
   let totalDataCharacters = 0;
@@ -19787,18 +19919,12 @@ function projectNativeRepairHistory(options) {
     const data = event.data;
     const eventScopeHash = Object.hasOwn(data, "repairScopeHash") ? hash6(data.repairScopeHash, "Native repair trajectory repair scope hash") : Object.hasOwn(data, "implementationScopeHash") ? hash6(data.implementationScopeHash, "Native repair trajectory implementation scope hash") : null;
     if (!Object.hasOwn(data, NATIVE_REPAIR_TRAJECTORY_FIELD)) {
-      if (event.type === "state_transitioned" && data.previousPhase === "build" && data.nextPhase === "verify" && (eventScopeHash !== null && activeScopeHash !== null && eventScopeHash !== activeScopeHash || eventScopeHash === null && (latestProjection?.disposition === "manual-stop" || latestProjection?.disposition === "hard-stop"))) {
+      if (latestProjection?.contractHash === null && event.type === "state_transitioned" && data.previousPhase === "build" && data.nextPhase === "verify" && (eventScopeHash !== null && activeScopeHash !== null && eventScopeHash !== activeScopeHash || eventScopeHash === null && (latestProjection?.disposition === "manual-stop" || latestProjection?.disposition === "hard-stop"))) {
         history.length = 0;
         latestProjection = null;
         activeScopeHash = eventScopeHash;
         iteration = 0;
         continue;
-      }
-      if (event.type === "state_transitioned" && data.previousPhase === "verify" && data.nextPhase === "archive" && data.verificationResult === "pass") {
-        history.length = 0;
-        latestProjection = null;
-        activeScopeHash = null;
-        iteration = 0;
       }
       continue;
     }
@@ -19808,7 +19934,12 @@ function projectNativeRepairHistory(options) {
     const projection = parseNativeRepairTrajectoryProjection(data[NATIVE_REPAIR_TRAJECTORY_FIELD]);
     assertProjectionTransition(data, projection);
     if (projection.overrideSummaryHash === null) {
-      if (eventScopeHash !== null && activeScopeHash !== null && eventScopeHash !== activeScopeHash) {
+      if (projection.contractHash !== null && activeContractHash !== null && projection.contractHash !== activeContractHash) {
+        history.length = 0;
+        iteration = 0;
+      }
+      if (projection.contractHash !== null) activeContractHash = projection.contractHash;
+      if (projection.contractHash === null && eventScopeHash !== null && activeScopeHash !== null && eventScopeHash !== activeScopeHash) {
         history.length = 0;
         iteration = 0;
       }
@@ -19819,10 +19950,14 @@ function projectNativeRepairHistory(options) {
         kind: "failure",
         revision: event.sequence,
         iteration,
-        signatureHash: projection.signatureHash
+        signatureHash: projection.signatureHash,
+        ...projection.contractHash === null ? {} : {
+          failedAcceptanceIds: [...projection.failedAcceptanceIds],
+          failedCheckIds: [...projection.failedCheckIds]
+        }
       });
     } else {
-      if (eventScopeHash !== null && activeScopeHash !== null && eventScopeHash !== activeScopeHash) {
+      if (latestProjection?.contractHash === null && eventScopeHash !== null && activeScopeHash !== null && eventScopeHash !== activeScopeHash) {
         throw new Error("Native repair override cannot cross implementation scope progress");
       }
       assertCommittedOverrideProjection(projection, history, latestProjection);
@@ -19880,7 +20015,11 @@ function acceptLatestNativeRepairOverride(options) {
     eventProjection: {
       signatureHash: expectedSignatureHash,
       disposition: "continue",
-      overrideSummaryHash
+      overrideSummaryHash,
+      contractHash: projected.latestProjection.contractHash,
+      failedAcceptanceIds: [...projected.latestProjection.failedAcceptanceIds],
+      failedCheckIds: [...projected.latestProjection.failedCheckIds],
+      maxVerifyFailures: projected.latestProjection.maxVerifyFailures
     }
   };
 }
@@ -19902,6 +20041,7 @@ function nativeRepairFailureFacts(input) {
     implementationScopeHash: nativeRepairScopeHash(bundle),
     artifactSnapshotHash: bundle.scope.currentProjectionHash,
     categories: tokens.categories,
+    failedAcceptanceIds: envelope.acceptanceTrace.entries.filter((entry2) => entry2.status === "failed" || entry2.status === "missing").map((entry2) => entry2.acceptanceId).sort(compareText6),
     failedCheckIds: tokens.failedCheckIds
   };
 }
@@ -19909,18 +20049,27 @@ function projectionForDecision(decision, overrideSummaryHash) {
   return {
     signatureHash: decision.signature.signatureHash,
     disposition: decision.disposition,
-    overrideSummaryHash
+    overrideSummaryHash,
+    contractHash: decision.signature.contractHash,
+    failedAcceptanceIds: [...decision.signature.failedAcceptanceIds],
+    failedCheckIds: [...decision.signature.failedCheckIds],
+    maxVerifyFailures: decision.totalRepairFailures + decision.remainingIterations
   };
 }
 function runtimeContext(input) {
+  const facts = nativeRepairFailureFacts(input);
+  const projected = projectNativeRepairHistory(input);
   return {
-    facts: nativeRepairFailureFacts(input),
-    history: rebuildNativeRepairHistory(input)
+    facts,
+    history: projected.latestProjection?.contractHash !== null && projected.latestProjection?.contractHash !== facts.contractHash ? [] : projected.history
   };
 }
 function inspectNativeRepairFailure(input) {
   const context = runtimeContext(input);
-  const decision = decideNativeRepairStagnation(context);
+  const decision = decideNativeRepairStagnation({
+    ...context,
+    maxVerifyFailures: input.maxVerifyFailures
+  });
   return {
     ...context,
     decision,
@@ -20799,11 +20948,17 @@ var TYPED_RECEIPT_REF_PATTERN = /^runtime\/evidence\/receipts\/[a-f0-9]{64}\.jso
 var WAIVER_RECEIPT_REF_PATTERN = /^runtime\/evidence\/waivers\/[a-f0-9]{64}\.json$/u;
 var ACCEPTANCE_HASH_PATTERN = /^[a-f0-9]{64}$/u;
 var ACCEPTANCE_CURSOR_PATTERN = /^native-acceptance-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
+function compareText7(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
 var NATIVE_ACCEPTANCE_PAGE_LIMITS = Object.freeze({
   maxItems: 16,
   maxTextBytes: 512,
   maxContextItems: 4,
   maxContextItemBytes: 256,
+  maxFailedCheckIds: 16,
   maxSerializedBytes: 32 * 1024
 });
 var NATIVE_ACCEPTANCE_LIMITS = Object.freeze({
@@ -20853,7 +21008,7 @@ function acceptanceOffset(options) {
   }
   return offset;
 }
-function acceptanceProjection(criterion2) {
+function acceptanceProjection(criterion2, verificationStatus) {
   const text3 = truncateUtf8(criterion2.text, NATIVE_ACCEPTANCE_PAGE_LIMITS.maxTextBytes);
   const projectedContext = criterion2.context.slice(0, NATIVE_ACCEPTANCE_PAGE_LIMITS.maxContextItems).map((entry2) => truncateUtf8(entry2, NATIVE_ACCEPTANCE_PAGE_LIMITS.maxContextItemBytes));
   return {
@@ -20863,7 +21018,8 @@ function acceptanceProjection(criterion2) {
     context: projectedContext.map((entry2) => entry2.value),
     text: text3.value,
     contextTruncated: criterion2.context.length > projectedContext.length || projectedContext.some((entry2) => entry2.truncated),
-    textTruncated: text3.truncated
+    textTruncated: text3.truncated,
+    verificationStatus
   };
 }
 function projectNativeAcceptancePage(options) {
@@ -20873,9 +21029,20 @@ function projectNativeAcceptancePage(options) {
     cursor: options.cursor
   });
   const items = [];
+  const failedCheckIds = [...new Set(options.failedCheckIds ?? [])].sort(compareText7);
+  const projectedFailedCheckIds = failedCheckIds.slice(
+    0,
+    NATIVE_ACCEPTANCE_PAGE_LIMITS.maxFailedCheckIds
+  );
   const remaining = options.criteria.slice(offset, offset + NATIVE_ACCEPTANCE_PAGE_LIMITS.maxItems);
   for (const criterion2 of remaining) {
-    const candidate = [...items, acceptanceProjection(criterion2)];
+    const candidate = [
+      ...items,
+      acceptanceProjection(
+        criterion2,
+        options.verificationStatuses?.get(criterion2.id) ?? "unverified"
+      )
+    ];
     const nextOffset2 = offset + candidate.length;
     const trial = {
       schema: "comet.native.acceptance-page.v1",
@@ -20883,6 +21050,10 @@ function projectNativeAcceptancePage(options) {
       total: options.criteria.length,
       offset,
       items: candidate,
+      failedAcceptanceIds: candidate.filter((item) => item.verificationStatus === "failed").map((item) => item.id),
+      missingAcceptanceIds: candidate.filter((item) => item.verificationStatus === "missing").map((item) => item.id),
+      failedCheckIds: projectedFailedCheckIds,
+      failedCheckIdsTruncated: failedCheckIds.length > projectedFailedCheckIds.length,
       nextCursor: nextOffset2 < options.criteria.length ? acceptanceCursor(options.acceptanceHash, nextOffset2) : null,
       limits: { ...NATIVE_ACCEPTANCE_PAGE_LIMITS }
     };
@@ -20904,6 +21075,10 @@ function projectNativeAcceptancePage(options) {
     total: options.criteria.length,
     offset,
     items,
+    failedAcceptanceIds: items.filter((item) => item.verificationStatus === "failed").map((item) => item.id),
+    missingAcceptanceIds: items.filter((item) => item.verificationStatus === "missing").map((item) => item.id),
+    failedCheckIds: projectedFailedCheckIds,
+    failedCheckIdsTruncated: failedCheckIds.length > projectedFailedCheckIds.length,
     nextCursor: nextOffset < options.criteria.length ? acceptanceCursor(options.acceptanceHash, nextOffset) : null,
     limits: { ...NATIVE_ACCEPTANCE_PAGE_LIMITS }
   };
@@ -21408,16 +21583,16 @@ function normalizeSpec3(input) {
   };
 }
 function compareCriteria(left, right) {
-  return compareText7(left.id, right.id);
+  return compareText8(left.id, right.id);
 }
-function compareText7(left, right) {
+function compareText8(left, right) {
   if (left < right) return -1;
   if (left > right) return 1;
   return 0;
 }
 function buildNativeContractSnapshot(input) {
   const briefSource = portableRef2(input.briefSource ?? "brief.md", "Native brief source");
-  const specs = input.specs.map(normalizeSpec3).sort((left, right) => compareText7(left.snapshot.capability, right.snapshot.capability));
+  const specs = input.specs.map(normalizeSpec3).sort((left, right) => compareText8(left.snapshot.capability, right.snapshot.capability));
   const capabilities = specs.map(({ snapshot: snapshot2 }) => snapshot2.capability);
   if (new Set(capabilities).size !== capabilities.length) {
     throw new Error("Native contract contains duplicate capabilities");
@@ -24007,9 +24182,9 @@ async function validateV2ReceiptGraph(options) {
     const matrix = options.trace.entries.map(
       (entry2) => ({
         acceptance_id: entry2.acceptanceId,
-        status: entry2.status,
+        status: entry2.status === "missing" ? "failed" : entry2.status,
         evidence_refs: [...entry2.evidenceRefs],
-        ...entry2.skippedReason === null ? {} : { skipped_reason: entry2.skippedReason },
+        ...entry2.status === "missing" ? { skipped_reason: "Acceptance evidence is missing" } : entry2.skippedReason === null ? {} : { skipped_reason: entry2.skippedReason },
         ...entry2.waiverRef === null ? {} : { waiver_ref: entry2.waiverRef }
       })
     );
@@ -24028,9 +24203,11 @@ async function validateV2ReceiptGraph(options) {
     independentReviewChecked = receipt.evidence.checked;
   };
   for (const entry2 of options.trace.entries) {
-    if (entry2.status === "failed") {
+    if (entry2.status === "failed" || entry2.status === "missing") {
       if (options.result === "pass") {
-        throw new Error("Native passing verification cannot include failed acceptance criteria");
+        throw new Error(
+          "Native passing verification cannot include failed or missing acceptance criteria"
+        );
       }
       continue;
     }
@@ -24131,10 +24308,13 @@ async function inspectNativeVerificationEvidence(options) {
   }
   const requiredReceiptRefs = options.receiptRef ? [options.receiptRef] : [];
   const trace = buildNativeAcceptanceEvidenceTrace(facts.contract.acceptance, report.entries, {
-    nativeRootRef: nativeRootRef2(options.paths)
+    nativeRootRef: nativeRootRef2(options.paths),
+    allowMissing: options.result === "fail"
   });
-  if (options.result === "pass" && trace.entries.some((entry2) => entry2.status === "failed")) {
-    throw new Error("Native passing verification cannot include failed acceptance criteria");
+  if (options.result === "pass" && trace.entries.some((entry2) => entry2.status === "failed" || entry2.status === "missing")) {
+    throw new Error(
+      "Native passing verification cannot include failed or missing acceptance criteria"
+    );
   }
   const receiptGraph = await validateV2ReceiptGraph({
     paths: options.paths,
@@ -26420,7 +26600,7 @@ function nativeContinuation(options) {
     (finding) => finding.repairCommand !== null || REPAIR_CODES.test(finding.code)
   );
   const stagnationStop = actionableFindings.find(
-    (finding) => finding.code === "repair-stagnation-stop"
+    (finding) => finding.code === "repair-stagnation-stop" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
   );
   const requiredInputs = [
     ...new Set(actionableFindings.map((finding) => finding.requiredAction))
@@ -26493,6 +26673,20 @@ function nativeContinuation(options) {
       command: `comet native next ${options.state.name} --summary "<summary>"`,
       requiresUserDecision: false,
       requiredInputs: ["summary"]
+    };
+  }
+  if (options.state.phase === "build" && options.state.verification_result === "fail") {
+    return {
+      schema: "comet.native.continuation.v1",
+      skill: "comet-native",
+      change: options.state.name,
+      phase: options.state.phase,
+      revision: options.state.revision,
+      disposition: "continue",
+      action: "work-phase",
+      command: null,
+      requiresUserDecision: false,
+      requiredInputs: ["repair-verification-gaps"]
     };
   }
   if (actionableFindings.length > 0) {
@@ -26691,8 +26885,8 @@ var EXACT_METADATA = {
   },
   "repair-iteration-limit": {
     severity: "error",
-    requiredAction: "change-implementation-before-starting-a-new-repair-episode",
-    retry: "next",
+    requiredAction: "change-confirmed-contract-or-increase-verify-failure-budget",
+    retry: "none",
     repair: "none"
   },
   "repair-override-exhausted": {
@@ -26794,7 +26988,7 @@ function structureNativeFindings(options) {
       repairCommand: metadata.repair === "doctor" ? `comet native doctor ${options.state.name} --repair${finding.code.startsWith("transition-") ? " --strategy continue" : ""}` : null,
       // This is intentionally code-based, not severity-based. Model-actionable
       // missing data must never be presented as a user decision.
-      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "shape-confirmation-required" || finding.code === "approval-confirmation-required" || finding.code === "contract-changed-after-approval" || finding.code === "verification-scope-partial" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
+      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "shape-confirmation-required" || finding.code === "approval-confirmation-required" || finding.code === "contract-changed-after-approval" || finding.code === "verification-scope-partial"
     };
   }).sort((left, right) => {
     const severityRank = { error: 0, warning: 1, info: 2 };
@@ -26943,34 +27137,38 @@ async function inspectNativeRepairHistory(paths, state) {
     history: rebuildNativeRepairHistory(committed)
   };
 }
-function decisionFromInspection(inspection) {
+function decisionFromInspection(inspection, maxVerifyFailures) {
   const latest = inspection.latest;
   if (!latest) return null;
   const failures = inspection.history.filter((entry2) => entry2.kind === "failure");
-  let consecutiveFailures = 0;
-  for (let index = failures.length - 1; index >= 0; index -= 1) {
-    if (failures[index].signatureHash !== latest.signatureHash) break;
-    consecutiveFailures += 1;
-  }
+  const consecutiveFailures = failures.length === 0 ? 0 : nativeRepairConsecutiveFailures(
+    {
+      signatureHash: latest.signatureHash,
+      ...latest.contractHash === null ? {} : {
+        failedAcceptanceIds: latest.failedAcceptanceIds,
+        failedCheckIds: latest.failedCheckIds
+      }
+    },
+    failures.slice(0, -1)
+  );
   const overrideAccepted = latest.overrideSummaryHash !== null;
   const overrideAlreadyUsed = inspection.history.some(
     (entry2) => entry2.kind === "override" && entry2.signatureHash === latest.signatureHash
   );
+  const hardStop = failures.length >= maxVerifyFailures;
+  const effectiveDisposition = latest.disposition === "hard-stop" && !hardStop ? "continue" : latest.disposition;
   return {
-    disposition: latest.disposition,
-    reasonCode: overrideAccepted ? "override-accepted" : overrideAlreadyUsed && latest.disposition === "manual-stop" ? "override-already-used" : latest.disposition === "hard-stop" ? "repair-iteration-limit" : latest.disposition === "manual-stop" ? "repeated-failure-stop" : latest.disposition === "warn" ? "repeated-failure-warning" : "new-failure-signature",
+    disposition: hardStop ? "hard-stop" : effectiveDisposition,
+    reasonCode: overrideAccepted ? "override-accepted" : overrideAlreadyUsed && latest.disposition === "manual-stop" ? "override-already-used" : hardStop ? "repair-iteration-limit" : latest.disposition === "manual-stop" ? "repeated-failure-stop" : latest.disposition === "warn" ? "repeated-failure-warning" : "new-failure-signature",
     signatureHash: latest.signatureHash,
     consecutiveFailures,
     totalRepairFailures: failures.length,
-    remainingIterations: Math.max(
-      0,
-      NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations - failures.length
-    ),
+    remainingIterations: Math.max(0, maxVerifyFailures - failures.length),
     overrideAccepted
   };
 }
-async function inspectLatestNativeRepairDecision(paths, state) {
-  return decisionFromInspection(await inspectNativeRepairHistory(paths, state));
+async function inspectLatestNativeRepairDecision(paths, state, maxVerifyFailures) {
+  return decisionFromInspection(await inspectNativeRepairHistory(paths, state), maxVerifyFailures);
 }
 function projectNativeRepairDecision(result2) {
   return {
@@ -26983,30 +27181,71 @@ function projectNativeRepairDecision(result2) {
     overrideAccepted: result2.decision.overrideAccepted
   };
 }
+function nativeRepairFailedCheckIdsFromReceipts(receipts, supplied = []) {
+  return normalizeNativeRepairFailureTokens({
+    failedCheckIds: [
+      ...supplied,
+      ...receipts.filter((receipt) => receipt.role === "required-check" && receipt.status !== "passed").map((receipt) => nativeBlockedCheckId(receipt))
+    ]
+  }).failedCheckIds;
+}
 async function inspectNativeRepairFailureForTransition(options) {
   if (!options.state.implementation_scope) {
     throw new Error("Native repair failure has no implementation scope");
   }
-  const [committed, implementationScope] = await Promise.all([
+  const [committed, implementationScope, requiredReceipts] = await Promise.all([
     readNativeCommittedRepairTrajectory(options.paths, options.state),
     readNativeImplementationScopeBundle(
       options.paths,
       options.state.name,
       options.state.implementation_scope
+    ),
+    Promise.all(
+      options.envelope.requiredReceiptRefs.map(
+        (ref) => readNativeVerificationReceipt(options.paths, options.state.name, ref)
+      )
     )
   ]);
+  const failedCheckIds = nativeRepairFailedCheckIdsFromReceipts(
+    requiredReceipts,
+    options.failedCheckIds
+  );
   return inspectNativeRepairFailure({
     ...committed,
     envelope: options.envelope,
     implementationScope,
+    maxVerifyFailures: options.maxVerifyFailures,
     ...options.categories ? { categories: options.categories } : {},
-    ...options.failedCheckIds ? { failedCheckIds: options.failedCheckIds } : {}
+    ...failedCheckIds.length > 0 ? { failedCheckIds } : {}
   });
 }
 async function inspectNativeRepairBuildGuard(options) {
   const inspection = await inspectNativeRepairHistory(options.paths, options.state);
   const latest = inspection.latest;
-  if (!latest || latest.disposition !== "manual-stop" && latest.disposition !== "hard-stop") {
+  const currentContractHash = parseNativeImplementationScopeBundle(
+    options.currentImplementationScope
+  ).scope.contractHash;
+  if (latest?.contractHash !== null && latest?.contractHash !== currentContractHash) {
+    if (options.override) {
+      throw new Error("Native repair override cannot cross a confirmed contract change");
+    }
+    return { disposition: "proceed", eventProjection: null };
+  }
+  const totalFailures = inspection.history.filter((entry2) => entry2.kind === "failure").length;
+  if (latest && totalFailures >= options.maxVerifyFailures) {
+    if (options.override) {
+      throw new Error("Native repair hard stop cannot be overridden");
+    }
+    return {
+      disposition: "hard-stop",
+      signatureHash: latest.signatureHash,
+      overrideRecorded: inspection.history.some(
+        (entry2) => entry2.kind === "override" && entry2.signatureHash === latest.signatureHash
+      )
+    };
+  }
+  const effectiveDisposition = latest?.disposition === "hard-stop" && totalFailures < options.maxVerifyFailures ? "continue" : latest?.disposition;
+  if (!latest || effectiveDisposition !== "manual-stop" && effectiveDisposition !== "hard-stop") {
     if (options.override) {
       throw new Error("Native repair override requires the latest manual stop");
     }
@@ -27038,7 +27277,7 @@ async function inspectNativeRepairBuildGuard(options) {
   if (previousImplementationScope.scope.scopeHash !== previousEnvelope.implementationScopeHash) {
     throw new Error("Native repair verification evidence does not match its implementation scope");
   }
-  if (nativeRepairScopeHash(options.currentImplementationScope) !== nativeRepairScopeHash(previousImplementationScope)) {
+  if (latest.contractHash === null && nativeRepairScopeHash(options.currentImplementationScope) !== nativeRepairScopeHash(previousImplementationScope)) {
     if (options.override) {
       throw new Error("Native repair override is not valid after implementation scope progress");
     }
@@ -27078,19 +27317,25 @@ async function inspectNativeRepairBuildGuard(options) {
     }).eventProjection
   };
 }
-async function inspectNativeRepairStatus(paths, state) {
+async function inspectNativeRepairStatus(paths, state, maxVerifyFailures) {
   if (state.phase !== "build" || state.verification_result !== "fail") return null;
   const inspection = await inspectNativeRepairHistory(paths, state);
   const latest = inspection.latest;
-  if (!latest || latest.disposition !== "manual-stop" && latest.disposition !== "hard-stop") {
-    return null;
-  }
+  if (!latest) return null;
+  const failures = inspection.history.filter((entry2) => entry2.kind === "failure");
+  const hardStop = failures.length >= maxVerifyFailures;
+  const effectiveDisposition = latest.disposition === "hard-stop" && !hardStop ? "continue" : latest.disposition;
   return {
-    disposition: latest.disposition,
+    disposition: hardStop ? "hard-stop" : effectiveDisposition,
     signatureHash: latest.signatureHash,
     overrideRecorded: inspection.history.some(
       (entry2) => entry2.kind === "override" && entry2.signatureHash === latest.signatureHash
-    )
+    ),
+    failedAcceptanceIds: [...latest.failedAcceptanceIds],
+    failedCheckIds: [...latest.failedCheckIds],
+    totalVerifyFailures: failures.length,
+    maxVerifyFailures,
+    remainingVerifyFailures: Math.max(0, maxVerifyFailures - failures.length)
   };
 }
 
@@ -27298,17 +27543,52 @@ async function inspectNativeStatus(paths, name, options) {
     };
   }
   const resume = await buildNativeResumeView({ paths, state });
+  let repair = null;
+  const repairFindings = [];
+  if (state.phase === "build" && state.verification_result === "fail") {
+    try {
+      repair = await inspectNativeRepairStatus(paths, state, options?.maxVerifyFailures ?? 5);
+      if (repair && (repair.disposition === "manual-stop" || repair.disposition === "hard-stop")) {
+        const code = repair.disposition === "hard-stop" ? "repair-iteration-limit" : repair.overrideRecorded ? "repair-override-exhausted" : "repair-stagnation-stop";
+        repairFindings.push({
+          code,
+          message: `Native repair is stopped at failure signature: ${repair.signatureHash}`
+        });
+      }
+    } catch {
+      repairFindings.push({
+        code: "trajectory-invalid",
+        message: "Native repair history could not be reconstructed safely"
+      });
+    }
+  }
   let acceptancePage;
-  if (options?.details && (state.phase === "verify" || state.phase === "archive")) {
+  if (options?.details && (state.phase === "build" || state.phase === "verify" || state.phase === "archive")) {
     try {
       const contract = await collectNativeContractFiles({
         changeDir: nativeChangeDir(paths, state.name),
         briefRef: state.brief,
         specChanges: state.spec_changes
       });
+      const verificationStatuses = /* @__PURE__ */ new Map();
+      if (state.phase === "build" && state.verification_result === "fail" && state.verification_evidence) {
+        const envelope = await readNativeVerificationEvidence(
+          paths,
+          state.name,
+          state.verification_evidence
+        );
+        for (const entry2 of envelope.acceptanceTrace.entries) {
+          verificationStatuses.set(
+            entry2.acceptanceId,
+            entry2.status === "failed" ? "failed" : entry2.status === "missing" ? "missing" : "satisfied"
+          );
+        }
+      }
       acceptancePage = projectNativeAcceptancePage({
         criteria: contract.contract.acceptance,
         acceptanceHash: contract.contract.acceptanceHash,
+        verificationStatuses,
+        failedCheckIds: repair?.failedCheckIds ?? [],
         ...options.acceptanceCursor ? { cursor: options.acceptanceCursor } : {}
       });
     } catch (error) {
@@ -27364,25 +27644,6 @@ async function inspectNativeStatus(paths, name, options) {
       }))
     );
   }
-  let repair = null;
-  const repairFindings = [];
-  if (state.phase === "build" && state.verification_result === "fail") {
-    try {
-      repair = await inspectNativeRepairStatus(paths, state);
-      if (repair) {
-        const code = repair.disposition === "hard-stop" ? "repair-iteration-limit" : repair.overrideRecorded ? "repair-override-exhausted" : "repair-stagnation-stop";
-        repairFindings.push({
-          code,
-          message: `Native repair is stopped at failure signature: ${repair.signatureHash}`
-        });
-      }
-    } catch {
-      repairFindings.push({
-        code: "trajectory-invalid",
-        message: "Native repair history could not be reconstructed safely"
-      });
-    }
-  }
   let archivePreflight = null;
   const archiveFindings = [];
   if (state.phase === "archive") {
@@ -27433,7 +27694,7 @@ async function inspectNativeStatus(paths, name, options) {
   const mutationBlocked = findings.some(
     (finding) => finding.code === "trajectory-tail-incomplete" || finding.code === "trajectory-invalid"
   );
-  const repairBlocked = repair !== null;
+  const repairBlocked = repair?.disposition === "manual-stop" || repair?.disposition === "hard-stop";
   const firstErrorFinding = findings.find((finding) => finding.severity === "error");
   return {
     name: state.name,
@@ -27540,7 +27801,8 @@ async function listNativeStatusPage(paths, options) {
   const candidates = await Promise.all(
     names.slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems).map(
       (name) => inspectNativeStatus(paths, name, {
-        clarificationMode: options?.clarificationMode
+        clarificationMode: options?.clarificationMode,
+        maxVerifyFailures: options?.maxVerifyFailures
       })
     )
   );
@@ -27576,7 +27838,8 @@ async function listNativeStatusPage(paths, options) {
 }
 async function listNativeStatus(paths, options) {
   return (await listNativeStatusPage(paths, {
-    clarificationMode: options?.clarificationMode
+    clarificationMode: options?.clarificationMode,
+    maxVerifyFailures: options?.maxVerifyFailures
   })).items;
 }
 
@@ -28490,7 +28753,7 @@ function fileIdentity2(stat) {
     size: stat.size
   };
 }
-function compareText8(left, right) {
+function compareText9(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 function portableProjectRef(paths, target) {
@@ -28698,7 +28961,7 @@ async function readCanonicalDocument(options) {
       mtimeMs: afterHandle.mtimeMs,
       identity: fileIdentity2(afterHandle),
       directoryChain: options.directoryChain,
-      dependencies: [...new Set(parsed.dependencies)].sort(compareText8)
+      dependencies: [...new Set(parsed.dependencies)].sort(compareText9)
     };
   } finally {
     await handle.close();
@@ -28734,7 +28997,7 @@ async function inspectCleanupQuarantines(options) {
     const directory = path45.join(evidenceRoot, kind);
     const directoryChain = await captureDirectoryChain6(changeRoot, directory);
     const entries = (await fs29.readdir(directory, { withFileTypes: true })).sort(
-      (left, right) => compareText8(left.name, right.name)
+      (left, right) => compareText9(left.name, right.name)
     );
     const byOriginal = /* @__PURE__ */ new Map();
     for (const entry2 of entries) {
@@ -28745,7 +29008,7 @@ async function inspectCleanupQuarantines(options) {
       byOriginal.set(match[1], grouped);
     }
     for (const [originalName, entriesForOriginal] of [...byOriginal.entries()].sort(
-      ([left], [right]) => compareText8(left, right)
+      ([left], [right]) => compareText9(left, right)
     )) {
       if (entriesForOriginal.length !== 1) {
         throw new Error(
@@ -28794,7 +29057,7 @@ async function inspectCleanupQuarantines(options) {
     }
   }
   if (recoveries.length === 0) return { findings: [], pending: false };
-  const refs = recoveries.map((recovery) => recovery.ref).sort(compareText8);
+  const refs = recoveries.map((recovery) => recovery.ref).sort(compareText9);
   if (!options.repair) {
     return {
       pending: true,
@@ -28810,7 +29073,7 @@ async function inspectCleanupQuarantines(options) {
       ]
     };
   }
-  for (const recovery of recoveries.sort((left, right) => compareText8(left.ref, right.ref))) {
+  for (const recovery of recoveries.sort((left, right) => compareText9(left.ref, right.ref))) {
     await verifyDirectoryChain7(recovery.document.directoryChain);
     if (recovery.action === "finish-linked-recovery") {
       const original = await readCanonicalDocument({
@@ -28908,7 +29171,7 @@ async function scanEvidenceStore(paths, name) {
   }
   const unknownRootEntries = rootEntries.filter(
     (entry2) => !MANAGED_KINDS.includes(entry2.name) || !entry2.isDirectory() || entry2.isSymbolicLink()
-  ).map((entry2) => entry2.name).sort(compareText8);
+  ).map((entry2) => entry2.name).sort(compareText9);
   if (unknownRootEntries.length > 0) {
     throw new Error(
       `Native evidence root has unknown or special entries: ${boundedRefs(unknownRootEntries)}`
@@ -28921,7 +29184,7 @@ async function scanEvidenceStore(paths, name) {
     const directory = path45.join(evidenceRoot, kind);
     const directoryChain = await captureDirectoryChain6(changeRoot, directory);
     const entries = (await fs29.readdir(directory, { withFileTypes: true })).sort(
-      (left, right) => compareText8(left.name, right.name)
+      (left, right) => compareText9(left.name, right.name)
     );
     await verifyDirectoryChain7(directoryChain);
     for (const entry2 of entries) {
@@ -28962,14 +29225,14 @@ async function scanEvidenceStore(paths, name) {
 }
 function closeDependencies(seeds, documents) {
   const retained = /* @__PURE__ */ new Set();
-  const pending = [...seeds].sort(compareText8).reverse();
+  const pending = [...seeds].sort(compareText9).reverse();
   while (pending.length > 0) {
     const ref = pending.pop();
     if (retained.has(ref)) continue;
     const document = documents.get(ref);
     if (!document) throw new Error(`Native evidence dependency is missing: ${ref}`);
     retained.add(ref);
-    for (const dependency of [...document.dependencies].sort(compareText8).reverse()) {
+    for (const dependency of [...document.dependencies].sort(compareText9).reverse()) {
       if (!retained.has(dependency)) pending.push(dependency);
     }
   }
@@ -28985,7 +29248,7 @@ function dependentsBeforeDependencies(candidates) {
       }
     }
   }
-  const ready = [...dependencyCounts].filter(([, count]) => count === 0).map(([ref]) => ref).sort(compareText8);
+  const ready = [...dependencyCounts].filter(([, count]) => count === 0).map(([ref]) => ref).sort(compareText9);
   const ordered = [];
   while (ready.length > 0) {
     const ref = ready.shift();
@@ -28998,7 +29261,7 @@ function dependentsBeforeDependencies(candidates) {
       dependencyCounts.set(dependency, next);
       if (next === 0) {
         ready.push(dependency);
-        ready.sort(compareText8);
+        ready.sort(compareText9);
       }
     }
   }
@@ -29025,13 +29288,13 @@ function planRetention(documents, rootRefs, nowMs) {
     }
   }
   for (const kind of MANAGED_KINDS) {
-    const newestUnreferenced = documents.filter((document) => document.kind === kind && !rootClosure.has(document.ref)).sort((left, right) => right.mtimeMs - left.mtimeMs || compareText8(left.ref, right.ref)).slice(0, NATIVE_EVIDENCE_RETENTION_POLICY.keepLatestUnreferencedPerKind);
+    const newestUnreferenced = documents.filter((document) => document.kind === kind && !rootClosure.has(document.ref)).sort((left, right) => right.mtimeMs - left.mtimeMs || compareText9(left.ref, right.ref)).slice(0, NATIVE_EVIDENCE_RETENTION_POLICY.keepLatestUnreferencedPerKind);
     for (const document of newestUnreferenced) retainedSeeds.add(document.ref);
   }
   const retained = closeDependencies(retainedSeeds, byRef);
   const candidates = documents.filter(
     (document) => !retained.has(document.ref) && nowMs - document.mtimeMs >= NATIVE_EVIDENCE_RETENTION_POLICY.minimumAgeMs
-  ).sort((left, right) => compareText8(left.ref, right.ref));
+  ).sort((left, right) => compareText9(left.ref, right.ref));
   return {
     candidates: dependentsBeforeDependencies(candidates),
     candidateBytes: candidates.reduce((total, candidate) => total + candidate.size, 0)
@@ -29052,7 +29315,7 @@ function boundedMessage(message) {
   return `${result2}...`;
 }
 function summaryFinding(name, plan, repaired, evidenceRoot) {
-  const refs = plan.candidates.map((candidate) => candidate.ref).sort(compareText8);
+  const refs = plan.candidates.map((candidate) => candidate.ref).sort(compareText9);
   return {
     severity: "info",
     code: repaired ? "evidence-retention-cleaned" : "evidence-retention-candidates",
@@ -29143,7 +29406,7 @@ async function changeNames(paths, requested) {
     if (error.code === "ENOENT") return [];
     throw error;
   }
-  return entries.filter((entry2) => entry2.isDirectory() && !entry2.isSymbolicLink()).map((entry2) => entry2.name).sort(compareText8);
+  return entries.filter((entry2) => entry2.isDirectory() && !entry2.isSymbolicLink()).map((entry2) => entry2.name).sort(compareText9);
 }
 async function retentionDeferred(paths, name) {
   const inspection = await inspectNativeChange(paths, name);
@@ -29910,6 +30173,7 @@ async function finishForwardMove(options) {
     language: config.native.language,
     clarification_mode: config.native.clarification_mode,
     archive_confirmation: config.native.archive_confirmation,
+    max_verify_failures: config.native.max_verify_failures,
     snapshot: config.native.snapshot
   };
   const committed = {
@@ -30055,6 +30319,7 @@ async function recoverNativeRootMove(options) {
       language: config.native.language,
       clarification_mode: config.native.clarification_mode,
       archive_confirmation: config.native.archive_confirmation,
+      max_verify_failures: config.native.max_verify_failures,
       snapshot: config.native.snapshot
     };
     const restored = {
@@ -30374,9 +30639,11 @@ async function inspectLocks(paths, repair, unfinished) {
   }
   return findings;
 }
-async function inspectChanges(paths, name) {
+async function inspectChanges(paths, name, maxVerifyFailures = 5) {
   const findings = [];
-  const statuses = name ? await listNativeStatus(paths).then((all) => all.filter((status) => status.name === name)) : await listNativeStatus(paths);
+  const statuses = name ? await listNativeStatus(paths, { maxVerifyFailures }).then(
+    (all) => all.filter((status) => status.name === name)
+  ) : await listNativeStatus(paths, { maxVerifyFailures });
   if (name && statuses.length === 0) {
     return [
       {
@@ -30397,7 +30664,10 @@ async function inspectChanges(paths, name) {
       });
       continue;
     }
-    const detailed = await inspectNativeStatus(paths, status.name, { details: true });
+    const detailed = await inspectNativeStatus(paths, status.name, {
+      details: true,
+      maxVerifyFailures
+    });
     for (const artifact of detailed.findings ?? []) {
       if (artifact.code === "trajectory-tail-incomplete" || artifact.code === "checkpoint-progress-incomplete") {
         continue;
@@ -30764,7 +31034,9 @@ async function doctorNativeProject(options) {
   );
   findings.push(...await inspectLocks(paths, repair, transactions.unfinished));
   findings.push(...await inspectSelection(paths, repair));
-  findings.push(...await inspectChanges(paths, options.name));
+  findings.push(
+    ...await inspectChanges(paths, options.name, config?.native.max_verify_failures ?? 5)
+  );
   return {
     healthy: findings.every((finding) => finding.severity === "info"),
     findings
@@ -31850,6 +32122,7 @@ async function retreatStaleNativeEvidence(options) {
 async function advanceNativeChange(options) {
   const normalizedOptions = {
     ...options,
+    maxVerifyFailures: options.maxVerifyFailures ?? DEFAULT_NATIVE_MAX_VERIFY_FAILURES,
     evidence: normalizeNativeAdvanceEvidence(options.evidence)
   };
   validateNativeAdvanceEvidence(normalizedOptions.evidence);
@@ -31860,7 +32133,9 @@ async function advanceNativeChange(options) {
       options.paths,
       options.name,
       `advance ${options.name}`,
-      () => advanceNativeChangeLocked(normalizedOptions)
+      () => advanceNativeChangeLocked(
+        normalizedOptions
+      )
     )
   );
 }
@@ -31884,7 +32159,7 @@ async function advanceNativeChangeLocked(options) {
       ) : true;
       if (!verificationRetryIsFresh) {
       } else {
-        const repair = Object.hasOwn(last.data, "repairStagnation") ? await inspectLatestNativeRepairDecision(options.paths, state) : null;
+        const repair = Object.hasOwn(last.data, "repairStagnation") ? await inspectLatestNativeRepairDecision(options.paths, state, options.maxVerifyFailures) : null;
         const repairFindings2 = repair && repair.disposition !== "continue" ? structureNativeFindings({
           paths: options.paths,
           state,
@@ -32050,6 +32325,7 @@ async function advanceNativeChangeLocked(options) {
       paths: options.paths,
       state,
       currentImplementationScope: buildEvidence.bundle,
+      maxVerifyFailures: options.maxVerifyFailures,
       ...options.evidence.repairOverrideSignature && options.evidence.repairOverrideSummary ? {
         override: {
           expectedSignatureHash: options.evidence.repairOverrideSignature,
@@ -32134,6 +32410,7 @@ async function advanceNativeChangeLocked(options) {
       paths: options.paths,
       state,
       envelope: verificationEvidence.envelope,
+      maxVerifyFailures: options.maxVerifyFailures,
       ...options.evidence.repairFailureCategories ? { categories: options.evidence.repairFailureCategories } : {},
       ...options.evidence.repairFailedCheckIds ? { failedCheckIds: options.evidence.repairFailedCheckIds } : {}
     });
@@ -32896,7 +33173,8 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     });
     await selectNativeChange(paths, state.name);
     const status = await inspectNativeStatus(paths, state.name, {
-      clarificationMode: config.native.clarification_mode
+      clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures
     });
     return success(
       "new",
@@ -32914,7 +33192,8 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       const { config, paths } = await configuredPaths(projectRoot);
       const state = await markNativeSpecRemoval(paths, name, capability);
       const status = await inspectNativeStatus(paths, state.name, {
-        clarificationMode: config.native.clarification_mode
+        clarificationMode: config.native.clarification_mode,
+        maxVerifyFailures: config.native.max_verify_failures
       });
       return success(
         "spec remove",
@@ -32931,7 +33210,8 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       const { config, paths } = await configuredPaths(projectRoot);
       const state = await rebaseNativeSpecChanges({ paths, name, summary });
       const status = await inspectNativeStatus(paths, state.name, {
-        clarificationMode: config.native.clarification_mode
+        clarificationMode: config.native.clarification_mode,
+        maxVerifyFailures: config.native.max_verify_failures
       });
       return success(
         "spec rebase",
@@ -32948,7 +33228,8 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const { config, paths } = await configuredPaths(projectRoot);
     const page = await listNativeStatusPage(paths, {
       ...cursor ? { cursor } : {},
-      clarificationMode: config.native.clarification_mode
+      clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures
     });
     return success("list", page);
   }
@@ -33009,10 +33290,12 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const data = name ? await inspectNativeStatus(paths, name, {
       details,
       ...acceptanceCursor2 ? { acceptanceCursor: acceptanceCursor2 } : {},
-      clarificationMode: config.native.clarification_mode
+      clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures
     }) : await listNativeStatusPage(paths, {
       ...cursor ? { cursor } : {},
-      clarificationMode: config.native.clarification_mode
+      clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures
     });
     return success("status", data);
   }
@@ -33022,7 +33305,8 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const { config, paths } = await configuredPaths(projectRoot);
     await selectNativeChange(paths, name);
     const status = await inspectNativeStatus(paths, name, {
-      clarificationMode: config.native.clarification_mode
+      clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures
     });
     return success(
       "select",
@@ -33050,7 +33334,8 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       expectedRevision
     });
     const status = await inspectNativeStatus(paths, name, {
-      clarificationMode: config.native.clarification_mode
+      clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures
     });
     const manifestRef = path52.relative(
       paths.projectRoot,
@@ -33675,7 +33960,8 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       paths,
       name,
       evidence,
-      clarificationMode: config.native.clarification_mode
+      clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures
     });
     if (result2.next === "manual") {
       const repairBlocked = result2.repair?.disposition === "manual-stop" || result2.repair?.disposition === "hard-stop" || result2.findings.some(
@@ -33696,7 +33982,8 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       };
     }
     const status = await inspectNativeStatus(paths, name, {
-      clarificationMode: config.native.clarification_mode
+      clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures
     });
     return success("next", { ...result2, continuation: status.continuation });
   }

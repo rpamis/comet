@@ -1,0 +1,92 @@
+{
+  "schema": "comet.native.verification-evidence.v1",
+  "change": "native-completion-loop",
+  "sourceRevision": 3,
+  "result": "pass",
+  "freshness": "complete",
+  "contractHash": "46e3c70972b641107fca7887e92c9c3d62be8ee47713b6cff09db06dde123cc1",
+  "acceptanceCriteriaHash": "eae8ff713607effb1a63f989db545746f0f6bb310a3aa737c504b042573d63ee",
+  "implementationScopeRef": "runtime/evidence/scopes/cd343720b1122af792bf6f97d5fa7d062559614d0fb507c0bef613598f44fb84.json",
+  "implementationScopeHash": "cd343720b1122af792bf6f97d5fa7d062559614d0fb507c0bef613598f44fb84",
+  "reportRef": "verification.md",
+  "reportHash": "5b96d301567cb80066e43b31f19959b0f06eea888fa2cfe350a2054b4bdcb3b6",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v1",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "eae8ff713607effb1a63f989db545746f0f6bb310a3aa737c504b042573d63ee",
+    "total": 7,
+    "evidenced": 7,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-1194688bfb80d7ae33cf674fcd8fb6e0a8e1a3a60ff5d310e58df2209810a987",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/domains/comet-native/native-cli.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-3de11b8ed6c3ba2032c1045deecc3ebd1d6b09e095d01bb0d094ed2b8ee9153b",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/domains/comet-native/native-repair-stagnation.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-a9f71c7a5167a1dbcb94067a26aad9475e91aac566aaf706f1cd2c2470d0def4",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-native/native-repair-stagnation.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-dd8ee721cc16aff622291b5fe7a1516747bb1958f7071fac44df985a66d59214",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/domains/comet-native/native-repair-transitions.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-e099793bcb30b0a7e14013e62b2a6f4bd623500e21265201e6742af4aeb70c86",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-native/native-diagnostics.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f5c9c8c0f5606ae6e9d8ef80a991c698d1d7976b0ca63955c63fb8dc15baad29",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/domains/comet-native/native-cli.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-fc9466b43327a98231a6465ee9d0cc20b72fd3c2c9317c1cd9dd203293734769",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "domains/comet-native/native-continuation.ts"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "0fa6b3add31818b8c5b02536a482c69ba183ec948297feb9119710af6eb91e99"
+  },
+  "partialAllowanceRef": null,
+  "partialAllowanceHash": null,
+  "receiptRef": "runtime/evidence/check-receipts/83705316544b4dc1ebc62deecb2c54e0ebb1135587851abf715d7762663c90a8.json",
+  "createdAt": "2026-07-28T11:39:22.108Z",
+  "envelopeHash": "f577d5cccbc96fc020009b37de31710b1b3f8120ea9edb3dff9087abe9e34855"
+}

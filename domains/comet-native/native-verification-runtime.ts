@@ -463,9 +463,13 @@ async function validateV2ReceiptGraph(options: {
     const matrix = options.trace.entries.map(
       (entry): NativeAcceptanceEvidenceEntry => ({
         acceptance_id: entry.acceptanceId,
-        status: entry.status,
+        status: entry.status === 'missing' ? 'failed' : entry.status,
         evidence_refs: [...entry.evidenceRefs],
-        ...(entry.skippedReason === null ? {} : { skipped_reason: entry.skippedReason }),
+        ...(entry.status === 'missing'
+          ? { skipped_reason: 'Acceptance evidence is missing' }
+          : entry.skippedReason === null
+            ? {}
+            : { skipped_reason: entry.skippedReason }),
         ...(entry.waiverRef === null ? {} : { waiver_ref: entry.waiverRef }),
       }),
     );
@@ -484,9 +488,11 @@ async function validateV2ReceiptGraph(options: {
     independentReviewChecked = receipt.evidence.checked;
   };
   for (const entry of options.trace.entries) {
-    if (entry.status === 'failed') {
+    if (entry.status === 'failed' || entry.status === 'missing') {
       if (options.result === 'pass') {
-        throw new Error('Native passing verification cannot include failed acceptance criteria');
+        throw new Error(
+          'Native passing verification cannot include failed or missing acceptance criteria',
+        );
       }
       continue;
     }
@@ -626,9 +632,15 @@ export async function inspectNativeVerificationEvidence(
   const requiredReceiptRefs = options.receiptRef ? [options.receiptRef] : [];
   const trace = buildNativeAcceptanceEvidenceTrace(facts.contract.acceptance, report.entries, {
     nativeRootRef: nativeRootRef(options.paths),
+    allowMissing: options.result === 'fail',
   });
-  if (options.result === 'pass' && trace.entries.some((entry) => entry.status === 'failed')) {
-    throw new Error('Native passing verification cannot include failed acceptance criteria');
+  if (
+    options.result === 'pass' &&
+    trace.entries.some((entry) => entry.status === 'failed' || entry.status === 'missing')
+  ) {
+    throw new Error(
+      'Native passing verification cannot include failed or missing acceptance criteria',
+    );
   }
   const receiptGraph = await validateV2ReceiptGraph({
     paths: options.paths,

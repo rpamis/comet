@@ -10024,6 +10024,7 @@ var NATIVE_KEYS = /* @__PURE__ */ new Set([
   "language",
   "clarification_mode",
   "archive_confirmation",
+  "max_verify_failures",
   "snapshot",
   "pending_root_move"
 ]);
@@ -10039,6 +10040,7 @@ var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
 var MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH = 1024;
 var MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS = 64;
+var DEFAULT_NATIVE_MAX_VERIFY_FAILURES = 5;
 var DEFAULT_NATIVE_SNAPSHOT_CONFIG = {
   include: ["**/*"],
   exclude: [],
@@ -10206,6 +10208,10 @@ function parseConfig(value) {
   if (archiveConfirmation !== "automatic" && archiveConfirmation !== "required") {
     throw new Error("native.archive_confirmation must be automatic or required");
   }
+  const maxVerifyFailures = native.max_verify_failures ?? DEFAULT_NATIVE_MAX_VERIFY_FAILURES;
+  if (!Number.isSafeInteger(maxVerifyFailures) || maxVerifyFailures < 1) {
+    throw new Error("native.max_verify_failures must be a positive integer");
+  }
   const pending = parsePending(native.pending_root_move);
   const snapshot = parseSnapshot(native.snapshot);
   return {
@@ -10218,6 +10224,7 @@ function parseConfig(value) {
       language,
       clarification_mode: clarificationMode,
       archive_confirmation: archiveConfirmation,
+      max_verify_failures: maxVerifyFailures,
       snapshot,
       ...pending ? { pending_root_move: pending } : {}
     }

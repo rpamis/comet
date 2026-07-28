@@ -21,11 +21,18 @@ const ACCEPTANCE_HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const ACCEPTANCE_CURSOR_PATTERN =
   /^native-acceptance-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
 
+function compareText(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 export const NATIVE_ACCEPTANCE_PAGE_LIMITS = Object.freeze({
   maxItems: 16,
   maxTextBytes: 512,
   maxContextItems: 4,
   maxContextItemBytes: 256,
+  maxFailedCheckIds: 16,
   maxSerializedBytes: 32 * 1024,
 });
 
@@ -115,6 +122,7 @@ function acceptanceOffset(options: {
 
 function acceptanceProjection(
   criterion: NativeAcceptanceCriterion,
+  verificationStatus: NativeAcceptanceCriterionProjection['verificationStatus'],
 ): NativeAcceptanceCriterionProjection {
   const text = truncateUtf8(criterion.text, NATIVE_ACCEPTANCE_PAGE_LIMITS.maxTextBytes);
   const projectedContext = criterion.context
@@ -130,6 +138,7 @@ function acceptanceProjection(
       criterion.context.length > projectedContext.length ||
       projectedContext.some((entry) => entry.truncated),
     textTruncated: text.truncated,
+    verificationStatus,
   };
 }
 
@@ -138,6 +147,11 @@ export function projectNativeAcceptancePage(options: {
   criteria: readonly NativeAcceptanceCriterion[];
   acceptanceHash: string;
   cursor?: string | null;
+  verificationStatuses?: ReadonlyMap<
+    string,
+    NativeAcceptanceCriterionProjection['verificationStatus']
+  >;
+  failedCheckIds?: readonly string[];
 }): NativeAcceptancePageProjection {
   const offset = acceptanceOffset({
     acceptanceHash: options.acceptanceHash,
@@ -145,9 +159,20 @@ export function projectNativeAcceptancePage(options: {
     cursor: options.cursor,
   });
   const items: NativeAcceptanceCriterionProjection[] = [];
+  const failedCheckIds = [...new Set(options.failedCheckIds ?? [])].sort(compareText);
+  const projectedFailedCheckIds = failedCheckIds.slice(
+    0,
+    NATIVE_ACCEPTANCE_PAGE_LIMITS.maxFailedCheckIds,
+  );
   const remaining = options.criteria.slice(offset, offset + NATIVE_ACCEPTANCE_PAGE_LIMITS.maxItems);
   for (const criterion of remaining) {
-    const candidate = [...items, acceptanceProjection(criterion)];
+    const candidate = [
+      ...items,
+      acceptanceProjection(
+        criterion,
+        options.verificationStatuses?.get(criterion.id) ?? 'unverified',
+      ),
+    ];
     const nextOffset = offset + candidate.length;
     const trial: NativeAcceptancePageProjection = {
       schema: 'comet.native.acceptance-page.v1',
@@ -155,6 +180,14 @@ export function projectNativeAcceptancePage(options: {
       total: options.criteria.length,
       offset,
       items: candidate,
+      failedAcceptanceIds: candidate
+        .filter((item) => item.verificationStatus === 'failed')
+        .map((item) => item.id),
+      missingAcceptanceIds: candidate
+        .filter((item) => item.verificationStatus === 'missing')
+        .map((item) => item.id),
+      failedCheckIds: projectedFailedCheckIds,
+      failedCheckIdsTruncated: failedCheckIds.length > projectedFailedCheckIds.length,
       nextCursor:
         nextOffset < options.criteria.length
           ? acceptanceCursor(options.acceptanceHash, nextOffset)
@@ -182,6 +215,14 @@ export function projectNativeAcceptancePage(options: {
     total: options.criteria.length,
     offset,
     items,
+    failedAcceptanceIds: items
+      .filter((item) => item.verificationStatus === 'failed')
+      .map((item) => item.id),
+    missingAcceptanceIds: items
+      .filter((item) => item.verificationStatus === 'missing')
+      .map((item) => item.id),
+    failedCheckIds: projectedFailedCheckIds,
+    failedCheckIdsTruncated: failedCheckIds.length > projectedFailedCheckIds.length,
     nextCursor:
       nextOffset < options.criteria.length
         ? acceptanceCursor(options.acceptanceHash, nextOffset)

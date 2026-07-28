@@ -657,6 +657,55 @@ Pass.
     ).resolves.toMatchObject({ ready: true });
   });
 
+  it('accepts an incomplete matrix only for fail and records omitted criteria as missing', async () => {
+    const contract = await collectNativeContractFiles({
+      changeDir,
+      briefRef: verifyState.brief,
+      specChanges: verifyState.spec_changes,
+    });
+    const machineBlock = serializeNativeVerificationMachineBlock([
+      {
+        acceptance_id: contract.contract.acceptance[0].id,
+        status: 'passed',
+        evidence_refs: [acceptanceReceiptRef],
+      },
+    ]);
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      `# Acceptance evidence
+${machineBlock}
+# Conclusion
+Fail.
+`,
+    );
+    const failedRef = await writeCheckReceipt({ status: 'failed' });
+
+    await expect(
+      prepareNativeVerificationEvidence({
+        paths,
+        state: verifyState,
+        result: 'pass',
+        reportRef: 'verification.md',
+        receiptRef: failedRef,
+      }),
+    ).rejects.toThrow('missing 1 acceptance evidence entry');
+    const failed = await prepareNativeVerificationEvidence({
+      paths,
+      state: verifyState,
+      result: 'fail',
+      reportRef: 'verification.md',
+      receiptRef: failedRef,
+    });
+    expect(failed.envelope?.acceptanceTrace.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          acceptanceId: contract.contract.acceptance[1].id,
+          status: 'missing',
+        }),
+      ]),
+    );
+  });
+
   it('refuses a passing result without a current Runtime receipt', async () => {
     await expect(
       prepareNativeVerificationEvidence({
@@ -814,7 +863,7 @@ ${serializeNativeVerificationMachineBlock(
         reportRef: 'verification.md',
         receiptRef: await writeCheckReceipt(),
       }),
-    ).rejects.toThrow('failed acceptance criteria');
+    ).rejects.toThrow('failed or missing acceptance criteria');
   });
 
   it('binds a signed structured waiver to a real blocking receipt and alternative evidence', async () => {

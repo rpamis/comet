@@ -26,7 +26,7 @@ const LEGACY_VERIFICATION_ENVELOPE_HASH_TAG = 'comet.native.verification-evidenc
 
 export interface NativeAcceptanceTraceEntry {
   acceptanceId: string;
-  status: 'passed' | 'failed' | 'waived';
+  status: 'passed' | 'failed' | 'missing' | 'waived';
   kind: NativeAcceptanceCriterion['kind'];
   source: string;
   evidenceRefs: string[];
@@ -244,7 +244,7 @@ function compareText(left: string, right: string): number {
 export function buildNativeAcceptanceEvidenceTrace(
   criteria: readonly NativeAcceptanceCriterion[],
   evidence: readonly NativeAcceptanceEvidenceEntry[],
-  options: { nativeRootRef: string },
+  options: { nativeRootRef: string; allowMissing?: boolean },
 ): NativeAcceptanceEvidenceTrace {
   const nativeRootRef = portableRef(options.nativeRootRef, 'Native root ref');
   const byId = new Map(criteria.map((criterion) => [criterion.id, criterion]));
@@ -261,7 +261,7 @@ export function buildNativeAcceptanceEvidenceTrace(
     evidenceById.set(entry.acceptance_id, entry);
   }
   const missing = [...byId.keys()].filter((id) => !evidenceById.has(id));
-  if (missing.length > 0) {
+  if (missing.length > 0 && options.allowMissing !== true) {
     const shown = missing.slice(0, MISSING_ACCEPTANCE_DETAIL_LIMIT);
     const remainder = missing.length - shown.length;
     throw new Error(
@@ -272,7 +272,18 @@ export function buildNativeAcceptanceEvidenceTrace(
   const entries = [...byId.values()]
     .sort((left, right) => compareText(left.id, right.id))
     .map((criterion): NativeAcceptanceTraceEntry => {
-      const entry = evidenceById.get(criterion.id)!;
+      const entry = evidenceById.get(criterion.id);
+      if (!entry) {
+        return {
+          acceptanceId: criterion.id,
+          status: 'missing',
+          kind: criterion.kind,
+          source: portableRef(criterion.source, `Acceptance source for ${criterion.id}`),
+          evidenceRefs: [],
+          skippedReason: null,
+          waiverRef: null,
+        };
+      }
       const status = entry.status;
       const evidenceRefs = [...entry.evidence_refs]
         .map((reference) => typedReceiptRef(reference))
@@ -559,7 +570,10 @@ export function parseNativeAcceptanceEvidenceTrace(value: unknown): NativeAccept
         entry.kind !== 'spec-must') ||
       typeof entry.source !== 'string' ||
       !Array.isArray(entry.evidenceRefs) ||
-      (entry.status !== 'passed' && entry.status !== 'failed' && entry.status !== 'waived') ||
+      (entry.status !== 'passed' &&
+        entry.status !== 'failed' &&
+        entry.status !== 'missing' &&
+        entry.status !== 'waived') ||
       entry.evidenceRefs.some((reference) => typeof reference !== 'string') ||
       (entry.waiverRef !== null && typeof entry.waiverRef !== 'string') ||
       (entry.skippedReason !== null &&
@@ -581,6 +595,8 @@ export function parseNativeAcceptanceEvidenceTrace(value: unknown): NativeAccept
         (evidenceRefs.length === 0 || entry.skippedReason !== null || waiverRef !== null)) ||
       (status === 'failed' &&
         (evidenceRefs.length > 0 || entry.skippedReason === null || waiverRef !== null)) ||
+      (status === 'missing' &&
+        (evidenceRefs.length > 0 || entry.skippedReason !== null || waiverRef !== null)) ||
       (status === 'waived' &&
         (evidenceRefs.length > 0 || entry.skippedReason !== null || waiverRef === null))
     ) {

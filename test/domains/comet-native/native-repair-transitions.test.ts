@@ -10,16 +10,24 @@ import {
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   defaultProjectConfig,
+  readProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { inspectNativeRepairHistory } from '../../../domains/comet-native/native-repair-integration.js';
+import {
+  inspectNativeRepairHistory,
+  nativeRepairFailedCheckIdsFromReceipts,
+} from '../../../domains/comet-native/native-repair-integration.js';
 import { NATIVE_TRAJECTORY_MAX_TEXT_CHARACTERS } from '../../../domains/comet-native/native-trajectory-limits.js';
 import type {
   NativeProjectPaths,
   NativeTransitionHooks,
 } from '../../../domains/comet-native/native-types.js';
+import {
+  buildNativeVerificationReceipt,
+  nativeBlockedCheckId,
+} from '../../../domains/comet-native/native-verification-receipt.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
 import { advanceNativeChange } from '../../helpers/native-confirmed-transition.js';
 
@@ -75,6 +83,7 @@ describe('Native repair stagnation transitions', () => {
   });
 
   async function leaveBuild(summary: string, override?: { signature: string; summary: string }) {
+    const config = await readProjectConfig(projectRoot);
     return advanceNativeChange({
       paths,
       name: 'repair-change',
@@ -88,6 +97,7 @@ describe('Native repair stagnation transitions', () => {
             }
           : {}),
       },
+      maxVerifyFailures: config!.native.max_verify_failures,
     });
   }
 
@@ -95,7 +105,9 @@ describe('Native repair stagnation transitions', () => {
     summary: string,
     hooks?: NativeTransitionHooks,
     category = 'focused-check-failed',
+    checkId: string | string[] = 'focused-check',
   ) {
+    const config = await readProjectConfig(projectRoot);
     await fs.writeFile(
       path.join(changeDir, 'verification.md'),
       await nativeVerificationFixtureReport({
@@ -113,8 +125,9 @@ describe('Native repair stagnation transitions', () => {
         verificationResult: 'fail',
         verificationReport: 'verification.md',
         repairFailureCategories: [category],
-        repairFailedCheckIds: ['focused-check'],
+        repairFailedCheckIds: Array.isArray(checkId) ? checkId : [checkId],
       },
+      maxVerifyFailures: config!.native.max_verify_failures,
       hooks,
     });
   }
@@ -146,6 +159,33 @@ describe('Native repair stagnation transitions', () => {
       next: 'auto',
       change: { phase: 'build' },
       repair: { disposition: 'continue', consecutiveFailures: 1 },
+      continuation: {
+        disposition: 'continue',
+        action: 'work-phase',
+        command: null,
+        requiredInputs: ['repair-verification-gaps'],
+      },
+    });
+    await expect(
+      inspectNativeStatus(paths, 'repair-change', {
+        details: true,
+        maxVerifyFailures: 5,
+      }),
+    ).resolves.toMatchObject({
+      phase: 'build',
+      repair: {
+        failedAcceptanceIds: [expect.stringMatching(/^acceptance-[a-f0-9]{64}$/u)],
+        failedCheckIds: ['focused-check'],
+        totalVerifyFailures: 1,
+        maxVerifyFailures: 5,
+        remainingVerifyFailures: 4,
+      },
+      acceptancePage: {
+        failedAcceptanceIds: [expect.stringMatching(/^acceptance-[a-f0-9]{64}$/u)],
+        failedCheckIds: ['focused-check'],
+        items: [expect.objectContaining({ verificationStatus: 'failed' })],
+      },
+      continuation: { action: 'work-phase', command: null },
     });
     await leaveBuild('First repair attempt is ready.');
     const second = await failVerify('The same focused check fails again.');
@@ -157,6 +197,36 @@ describe('Native repair stagnation transitions', () => {
     await leaveBuild('Second repair attempt is ready.');
     return failVerify('The unchanged focused failure repeated a third time.');
   }
+
+  it('derives failed check IDs from non-passing required-check receipts', () => {
+    const receipt = buildNativeVerificationReceipt({
+      kind: 'static-inspection',
+      role: 'required-check',
+      status: 'failed',
+      bindings: {
+        change: 'repair-change',
+        sourceRevision: 3,
+        contractHash: 'a'.repeat(64),
+        scopeHash: 'b'.repeat(64),
+        snapshotHash: 'c'.repeat(64),
+        artifactHash: 'd'.repeat(64),
+      },
+      acceptanceIds: [],
+      actor: 'native-runtime:scoped-text-safety',
+      issuedAt: '2026-07-28T00:00:00.000Z',
+      evidence: {
+        subjects: ['src/feature.ts'],
+        rule: 'scoped-text-safety',
+        resultSummary: 'The focused check failed.',
+        checkReceiptRef: `runtime/evidence/check-receipts/${'e'.repeat(64)}.json`,
+        checkReceiptHash: 'e'.repeat(64),
+      },
+    });
+
+    expect(nativeRepairFailedCheckIdsFromReceipts([receipt], ['caller-check'])).toEqual(
+      ['caller-check', nativeBlockedCheckId(receipt)].sort(),
+    );
+  });
 
   it('persists a third-failure stop and records exactly one explicit override', async () => {
     const stopped = await reachManualStop();
@@ -222,20 +292,21 @@ describe('Native repair stagnation transitions', () => {
         consecutiveFailures: 4,
       },
       findings: [expect.objectContaining({ code: 'repair-override-exhausted' })],
-      continuation: { disposition: 'await-user', requiresUserDecision: true },
+      continuation: { disposition: 'blocked', requiresUserDecision: false },
     });
     const exhausted = await leaveBuild('Try to repeat an exhausted override.');
     expect(exhausted).toMatchObject({
       next: 'manual',
       findings: [expect.objectContaining({ code: 'repair-override-exhausted' })],
-      continuation: { disposition: 'await-user', requiresUserDecision: true },
+      continuation: { disposition: 'blocked', requiresUserDecision: false },
     });
 
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 3;\n');
-    const progressed = await leaveBuild('Continue with a genuinely changed implementation.');
+    const progressed = await leaveBuild('A code-only change cannot reset the semantic gap.');
     expect(progressed).toMatchObject({
-      next: 'auto',
-      change: { phase: 'verify', verification_result: 'pending' },
+      next: 'manual',
+      change: { phase: 'build', verification_result: 'fail' },
+      continuation: { disposition: 'blocked' },
     });
   });
 
@@ -337,7 +408,7 @@ describe('Native repair stagnation transitions', () => {
     });
   });
 
-  it('treats a changed implementation scope as progress without requiring an override', async () => {
+  it('does not treat a changed implementation scope as semantic progress', async () => {
     const stopped = await reachManualStop();
     expect(stopped.repair).toMatchObject({ disposition: 'manual-stop' });
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 3;\n');
@@ -347,13 +418,14 @@ describe('Native repair stagnation transitions', () => {
     );
 
     expect(progressed).toMatchObject({
-      next: 'auto',
-      change: { phase: 'verify', verification_result: 'pending' },
+      next: 'manual',
+      change: { phase: 'build', verification_result: 'fail' },
+      continuation: { disposition: 'blocked' },
     });
-    expect(progressed.change.implementation_scope).not.toBe(stopped.change.implementation_scope);
+    expect(progressed.change.implementation_scope).toBe(stopped.change.implementation_scope);
   });
 
-  it('resets the episode after scope progress following the first or second failure', async () => {
+  it('keeps the same episode after code changes until the semantic gap changes', async () => {
     const first = await failVerify('The initial implementation fails once.');
     expect(first.repair).toMatchObject({
       disposition: 'continue',
@@ -365,40 +437,42 @@ describe('Native repair stagnation transitions', () => {
 
     const afterFirstProgress = await failVerify('The changed scope has a new failure episode.');
     expect(afterFirstProgress.repair).toMatchObject({
-      disposition: 'continue',
-      consecutiveFailures: 1,
-      totalRepairFailures: 1,
-    });
-    await leaveBuild('Retry once without changing the current scope.');
-    const repeated = await failVerify('The same changed scope fails twice.');
-    expect(repeated.repair).toMatchObject({
       disposition: 'warn',
       consecutiveFailures: 2,
       totalRepairFailures: 2,
     });
-
-    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 4;\n');
-    await leaveBuild('The second repair also makes real scope progress.');
-    const afterSecondProgress = await failVerify('The second changed scope starts fresh.');
-    expect(afterSecondProgress.repair).toMatchObject({
-      disposition: 'continue',
-      consecutiveFailures: 1,
-      totalRepairFailures: 1,
+    await leaveBuild('Retry once without changing the current scope.');
+    const repeated = await failVerify('The same changed scope fails twice.');
+    expect(repeated.repair).toMatchObject({
+      disposition: 'manual-stop',
+      consecutiveFailures: 3,
+      totalRepairFailures: 3,
     });
   });
 
-  it('does not hard-stop twelve failures when every repair changes the scope', async () => {
-    for (let attempt = 1; attempt <= 12; attempt += 1) {
-      const failed = await failVerify(`Progressing repair failure ${attempt}.`);
+  it('hard-stops at five failures even when code changes and gap signatures alternate', async () => {
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const failed = await failVerify(
+        `Progressing repair failure ${attempt}.`,
+        undefined,
+        'focused-check-failed',
+        Array.from({ length: 6 - attempt }, (_, index) => `focused-check-${index + 1}`),
+      );
       expect(failed).toMatchObject({
-        next: 'auto',
         repair: {
-          disposition: 'continue',
           consecutiveFailures: 1,
-          totalRepairFailures: 1,
+          totalRepairFailures: attempt,
         },
       });
-      if (attempt === 12) break;
+      if (attempt === 5) {
+        expect(failed).toMatchObject({
+          next: 'manual',
+          repair: { disposition: 'hard-stop', remainingIterations: 0 },
+          continuation: { disposition: 'blocked' },
+        });
+        break;
+      }
+      expect(failed.next).toBe('auto');
       await fs.writeFile(
         path.join(projectRoot, 'src', 'feature.ts'),
         `export const value = ${attempt + 10};\n`,
@@ -441,10 +515,8 @@ describe('Native repair stagnation transitions', () => {
     };
 
     await leavePartialBuild('Establish the accepted partial repair scope.');
-    await failVerify('The partial-scope verification fails once.');
-    await leavePartialBuild('Retry the same accepted partial scope once.');
     await failVerify('The partial-scope verification fails twice.');
-    await leavePartialBuild('Retry the same accepted partial scope twice.');
+    await leavePartialBuild('Retry the same accepted partial scope.');
     const stopped = await failVerify('The partial-scope verification fails three times.');
     expect(stopped.repair).toMatchObject({ disposition: 'manual-stop' });
 
@@ -486,9 +558,12 @@ describe('Native repair stagnation transitions', () => {
   });
 
   it('does not reactivate an old manual stop after a later stale-evidence retreat', async () => {
-    await reachManualStop();
+    const stopped = await reachManualStop();
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 3;\n');
-    await leaveBuild('A changed implementation scope makes real repair progress.');
+    await leaveBuild('Use the single override before the successful candidate.', {
+      signature: stopped.repair!.signatureHash,
+      summary: 'Try the repaired implementation once without weakening verification.',
+    });
     const archived = await passVerify('The progressed implementation now passes.');
     expect(archived.change.phase).toBe('archive');
 
@@ -511,14 +586,15 @@ describe('Native repair stagnation transitions', () => {
       change: { phase: 'verify', verification_result: 'pending' },
     });
 
-    const newEpisode = await failVerify('The rebuilt implementation starts a new repair episode.');
+    const newEpisode = await failVerify('The rebuilt implementation retains the contract budget.');
     expect(newEpisode).toMatchObject({
-      next: 'auto',
+      next: 'manual',
       repair: {
-        disposition: 'continue',
-        consecutiveFailures: 1,
-        totalRepairFailures: 1,
+        disposition: 'manual-stop',
+        consecutiveFailures: 4,
+        totalRepairFailures: 4,
       },
+      continuation: { disposition: 'blocked' },
     });
   });
 
@@ -551,15 +627,16 @@ describe('Native repair stagnation transitions', () => {
     expect(history.history.filter((entry) => entry.kind === 'failure')).toHaveLength(3);
   });
 
-  it('hard-stops the twelfth total failure even when signatures alternate', async () => {
+  it('hard-stops at five alternating failures and preserves the count when config increases', async () => {
     let finalResult: Awaited<ReturnType<typeof failVerify>> | null = null;
-    for (let attempt = 1; attempt <= 12; attempt += 1) {
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
       finalResult = await failVerify(
         `Verification failure ${attempt}.`,
         undefined,
         attempt % 2 === 0 ? 'even-failure' : 'odd-failure',
+        Array.from({ length: 6 - attempt }, (_, index) => `check-${index + 1}`),
       );
-      if (attempt < 12) {
+      if (attempt < 5) {
         expect(finalResult.next).toBe('auto');
         await leaveBuild(`Repair attempt ${attempt} is ready.`);
       }
@@ -570,26 +647,51 @@ describe('Native repair stagnation transitions', () => {
       change: { phase: 'build' },
       repair: {
         disposition: 'hard-stop',
-        totalRepairFailures: 12,
+        totalRepairFailures: 5,
         remainingIterations: 0,
       },
       findings: [expect.objectContaining({ code: 'repair-iteration-limit' })],
-      continuation: { disposition: 'await-user', requiresUserDecision: true },
+      continuation: { disposition: 'blocked', requiresUserDecision: false },
     });
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 99;\n');
-    const progressed = await leaveBuild('Implementation changed after the hard stop.');
-    expect(progressed).toMatchObject({
-      next: 'auto',
+    const stillStopped = await leaveBuild('Implementation changed after the hard stop.');
+    expect(stillStopped).toMatchObject({
+      next: 'manual',
+      change: { phase: 'build' },
+      continuation: { disposition: 'blocked' },
+    });
+
+    const config = defaultProjectConfig('.');
+    config.native.max_verify_failures = 6;
+    await writeProjectConfig(projectRoot, config);
+    const progressed = await runNativeCli([
+      'next',
+      'repair-change',
+      '--summary',
+      'The configured contract budget now permits one more attempt.',
+      '--artifact',
+      'src/feature.ts',
+      '--json',
+      '--project-root',
+      projectRoot,
+    ]);
+    expect(progressed.exitCode).toBe(0);
+    const progressedData = JSON.parse(progressed.stdout!);
+    expect(progressedData.data).toMatchObject({
       change: { phase: 'verify', verification_result: 'pending' },
     });
-    const freshEpisode = await failVerify('The changed implementation has a new bounded episode.');
+    const freshEpisode = await failVerify(
+      'The changed implementation consumes the sixth contract failure.',
+      undefined,
+      'third-failure',
+      'third-check',
+    );
+    expect(progressed).toMatchObject({
+      exitCode: 0,
+    });
     expect(freshEpisode).toMatchObject({
-      next: 'auto',
-      repair: {
-        disposition: 'continue',
-        consecutiveFailures: 1,
-        totalRepairFailures: 1,
-      },
+      next: 'manual',
+      repair: { disposition: 'hard-stop', totalRepairFailures: 6, remainingIterations: 0 },
     });
   }, 60_000);
 });

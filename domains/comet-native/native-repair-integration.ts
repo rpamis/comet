@@ -2,6 +2,7 @@ import { nativeChangeDir } from './native-change.js';
 import {
   readNativeImplementationScopeBundle,
   readNativeVerificationEvidence,
+  readNativeVerificationReceipt,
 } from './native-evidence-storage.js';
 import {
   acceptLatestNativeRepairOverride,
@@ -14,7 +15,8 @@ import {
   type NativeRepairTrajectoryProjection,
 } from './native-repair-runtime.js';
 import {
-  NATIVE_REPAIR_STAGNATION_LIMITS,
+  nativeRepairConsecutiveFailures,
+  normalizeNativeRepairFailureTokens,
   type NativeRepairHistoryRecord,
 } from './native-repair-stagnation.js';
 import {
@@ -29,7 +31,14 @@ import type {
   NativeRepairStatusProjection,
 } from './native-types.js';
 import type { NativeVerificationEvidenceEnvelope } from './native-verification-evidence.js';
-import type { NativeImplementationScopeBundle } from './native-verification-scope.js';
+import {
+  nativeBlockedCheckId,
+  type NativeVerificationReceipt,
+} from './native-verification-receipt.js';
+import {
+  parseNativeImplementationScopeBundle,
+  type NativeImplementationScopeBundle,
+} from './native-verification-scope.js';
 
 export interface NativeRepairHistoryInspection {
   committed: NativeCommittedRepairTrajectory;
@@ -91,26 +100,40 @@ export async function inspectNativeRepairHistory(
 
 function decisionFromInspection(
   inspection: NativeRepairHistoryInspection,
+  maxVerifyFailures: number,
 ): NativeRepairDecisionProjection | null {
   const latest = inspection.latest;
   if (!latest) return null;
   const failures = inspection.history.filter((entry) => entry.kind === 'failure');
-  let consecutiveFailures = 0;
-  for (let index = failures.length - 1; index >= 0; index -= 1) {
-    if (failures[index].signatureHash !== latest.signatureHash) break;
-    consecutiveFailures += 1;
-  }
+  const consecutiveFailures =
+    failures.length === 0
+      ? 0
+      : nativeRepairConsecutiveFailures(
+          {
+            signatureHash: latest.signatureHash,
+            ...(latest.contractHash === null
+              ? {}
+              : {
+                  failedAcceptanceIds: latest.failedAcceptanceIds,
+                  failedCheckIds: latest.failedCheckIds,
+                }),
+          },
+          failures.slice(0, -1),
+        );
   const overrideAccepted = latest.overrideSummaryHash !== null;
   const overrideAlreadyUsed = inspection.history.some(
     (entry) => entry.kind === 'override' && entry.signatureHash === latest.signatureHash,
   );
+  const hardStop = failures.length >= maxVerifyFailures;
+  const effectiveDisposition =
+    latest.disposition === 'hard-stop' && !hardStop ? 'continue' : latest.disposition;
   return {
-    disposition: latest.disposition,
+    disposition: hardStop ? 'hard-stop' : effectiveDisposition,
     reasonCode: overrideAccepted
       ? 'override-accepted'
       : overrideAlreadyUsed && latest.disposition === 'manual-stop'
         ? 'override-already-used'
-        : latest.disposition === 'hard-stop'
+        : hardStop
           ? 'repair-iteration-limit'
           : latest.disposition === 'manual-stop'
             ? 'repeated-failure-stop'
@@ -120,10 +143,7 @@ function decisionFromInspection(
     signatureHash: latest.signatureHash,
     consecutiveFailures,
     totalRepairFailures: failures.length,
-    remainingIterations: Math.max(
-      0,
-      NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations - failures.length,
-    ),
+    remainingIterations: Math.max(0, maxVerifyFailures - failures.length),
     overrideAccepted,
   };
 }
@@ -131,8 +151,9 @@ function decisionFromInspection(
 export async function inspectLatestNativeRepairDecision(
   paths: NativeProjectPaths,
   state: NativeChangeState,
+  maxVerifyFailures: number,
 ): Promise<NativeRepairDecisionProjection | null> {
-  return decisionFromInspection(await inspectNativeRepairHistory(paths, state));
+  return decisionFromInspection(await inspectNativeRepairHistory(paths, state), maxVerifyFailures);
 }
 
 export function projectNativeRepairDecision(
@@ -149,30 +170,55 @@ export function projectNativeRepairDecision(
   };
 }
 
+export function nativeRepairFailedCheckIdsFromReceipts(
+  receipts: readonly NativeVerificationReceipt[],
+  supplied: readonly string[] = [],
+): string[] {
+  return normalizeNativeRepairFailureTokens({
+    failedCheckIds: [
+      ...supplied,
+      ...receipts
+        .filter((receipt) => receipt.role === 'required-check' && receipt.status !== 'passed')
+        .map((receipt) => nativeBlockedCheckId(receipt)),
+    ],
+  }).failedCheckIds;
+}
+
 export async function inspectNativeRepairFailureForTransition(options: {
   paths: NativeProjectPaths;
   state: NativeChangeState;
   envelope: NativeVerificationEvidenceEnvelope;
+  maxVerifyFailures: number;
   categories?: readonly string[];
   failedCheckIds?: readonly string[];
 }): Promise<NativeRepairRuntimeResult> {
   if (!options.state.implementation_scope) {
     throw new Error('Native repair failure has no implementation scope');
   }
-  const [committed, implementationScope] = await Promise.all([
+  const [committed, implementationScope, requiredReceipts] = await Promise.all([
     readNativeCommittedRepairTrajectory(options.paths, options.state),
     readNativeImplementationScopeBundle(
       options.paths,
       options.state.name,
       options.state.implementation_scope,
     ),
+    Promise.all(
+      options.envelope.requiredReceiptRefs.map((ref) =>
+        readNativeVerificationReceipt(options.paths, options.state.name, ref),
+      ),
+    ),
   ]);
+  const failedCheckIds = nativeRepairFailedCheckIdsFromReceipts(
+    requiredReceipts,
+    options.failedCheckIds,
+  );
   return inspectNativeRepairFailure({
     ...committed,
     envelope: options.envelope,
     implementationScope,
+    maxVerifyFailures: options.maxVerifyFailures,
     ...(options.categories ? { categories: options.categories } : {}),
-    ...(options.failedCheckIds ? { failedCheckIds: options.failedCheckIds } : {}),
+    ...(failedCheckIds.length > 0 ? { failedCheckIds } : {}),
   });
 }
 
@@ -181,11 +227,38 @@ export async function inspectNativeRepairBuildGuard(options: {
   paths: NativeProjectPaths;
   state: NativeChangeState;
   currentImplementationScope: NativeImplementationScopeBundle;
+  maxVerifyFailures: number;
   override?: { expectedSignatureHash: string; summary: string };
 }): Promise<NativeRepairBuildGuard> {
   const inspection = await inspectNativeRepairHistory(options.paths, options.state);
   const latest = inspection.latest;
-  if (!latest || (latest.disposition !== 'manual-stop' && latest.disposition !== 'hard-stop')) {
+  const currentContractHash = parseNativeImplementationScopeBundle(
+    options.currentImplementationScope,
+  ).scope.contractHash;
+  if (latest?.contractHash !== null && latest?.contractHash !== currentContractHash) {
+    if (options.override) {
+      throw new Error('Native repair override cannot cross a confirmed contract change');
+    }
+    return { disposition: 'proceed', eventProjection: null };
+  }
+  const totalFailures = inspection.history.filter((entry) => entry.kind === 'failure').length;
+  if (latest && totalFailures >= options.maxVerifyFailures) {
+    if (options.override) {
+      throw new Error('Native repair hard stop cannot be overridden');
+    }
+    return {
+      disposition: 'hard-stop',
+      signatureHash: latest.signatureHash,
+      overrideRecorded: inspection.history.some(
+        (entry) => entry.kind === 'override' && entry.signatureHash === latest.signatureHash,
+      ),
+    };
+  }
+  const effectiveDisposition =
+    latest?.disposition === 'hard-stop' && totalFailures < options.maxVerifyFailures
+      ? 'continue'
+      : latest?.disposition;
+  if (!latest || (effectiveDisposition !== 'manual-stop' && effectiveDisposition !== 'hard-stop')) {
     if (options.override) {
       throw new Error('Native repair override requires the latest manual stop');
     }
@@ -223,8 +296,9 @@ export async function inspectNativeRepairBuildGuard(options: {
     throw new Error('Native repair verification evidence does not match its implementation scope');
   }
   if (
+    latest.contractHash === null &&
     nativeRepairScopeHash(options.currentImplementationScope) !==
-    nativeRepairScopeHash(previousImplementationScope)
+      nativeRepairScopeHash(previousImplementationScope)
   ) {
     if (options.override) {
       throw new Error('Native repair override is not valid after implementation scope progress');
@@ -269,18 +343,26 @@ export async function inspectNativeRepairBuildGuard(options: {
 export async function inspectNativeRepairStatus(
   paths: NativeProjectPaths,
   state: NativeChangeState,
+  maxVerifyFailures: number,
 ): Promise<NativeRepairStatusProjection | null> {
   if (state.phase !== 'build' || state.verification_result !== 'fail') return null;
   const inspection = await inspectNativeRepairHistory(paths, state);
   const latest = inspection.latest;
-  if (!latest || (latest.disposition !== 'manual-stop' && latest.disposition !== 'hard-stop')) {
-    return null;
-  }
+  if (!latest) return null;
+  const failures = inspection.history.filter((entry) => entry.kind === 'failure');
+  const hardStop = failures.length >= maxVerifyFailures;
+  const effectiveDisposition =
+    latest.disposition === 'hard-stop' && !hardStop ? 'continue' : latest.disposition;
   return {
-    disposition: latest.disposition,
+    disposition: hardStop ? 'hard-stop' : effectiveDisposition,
     signatureHash: latest.signatureHash,
     overrideRecorded: inspection.history.some(
       (entry) => entry.kind === 'override' && entry.signatureHash === latest.signatureHash,
     ),
+    failedAcceptanceIds: [...latest.failedAcceptanceIds],
+    failedCheckIds: [...latest.failedCheckIds],
+    totalVerifyFailures: failures.length,
+    maxVerifyFailures,
+    remainingVerifyFailures: Math.max(0, maxVerifyFailures - failures.length),
   };
 }

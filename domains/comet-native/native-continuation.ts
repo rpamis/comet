@@ -42,7 +42,10 @@ export function nativeContinuation(options: {
     (finding) => finding.repairCommand !== null || REPAIR_CODES.test(finding.code),
   );
   const stagnationStop = actionableFindings.find(
-    (finding) => finding.code === 'repair-stagnation-stop',
+    (finding) =>
+      finding.code === 'repair-stagnation-stop' ||
+      finding.code === 'repair-iteration-limit' ||
+      finding.code === 'repair-override-exhausted',
   );
   const requiredInputs = [
     ...new Set(actionableFindings.map((finding) => finding.requiredAction)),
@@ -116,6 +119,20 @@ export function nativeContinuation(options: {
       command: `comet native next ${options.state.name} --summary "<summary>"`,
       requiresUserDecision: false,
       requiredInputs: ['summary'],
+    };
+  }
+  if (options.state.phase === 'build' && options.state.verification_result === 'fail') {
+    return {
+      schema: 'comet.native.continuation.v1',
+      skill: 'comet-native',
+      change: options.state.name,
+      phase: options.state.phase,
+      revision: options.state.revision,
+      disposition: 'continue',
+      action: 'work-phase',
+      command: null,
+      requiresUserDecision: false,
+      requiredInputs: ['repair-verification-gaps'],
     };
   }
   if (actionableFindings.length > 0) {

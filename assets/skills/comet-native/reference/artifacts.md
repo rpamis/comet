@@ -60,6 +60,7 @@ native:
   language: en
   clarification_mode: sequential
   archive_confirmation: automatic
+  max_verify_failures: 5
   snapshot:
     include:
       - '**/*'
@@ -72,6 +73,8 @@ native:
 `clarification_mode` controls how Native organizes user decisions and which confirmation contract applies before leaving Shape. `sequential` asks one most-upstream question per round, while `batch` asks every question whose prerequisites are settled. The default is `sequential` when the field is absent. It does not change the change schema, lifecycle, safety confirmations, or caller-defined stop points.
 
 `archive_confirmation` controls what happens after a successful Archive preview. `automatic` commits with the preview's exact hash, while `required` returns `await-user` and requires an explicit user choice before committing with `--confirmed`. The default is `automatic` when the field is absent. The value is bound into `preflightHash`, so changing it after preview invalidates the old hash. Intermediate failed Build ↔ Verify iterations never enter Archive and therefore do not repeatedly trigger this decision point.
+
+`max_verify_failures` is the total Verify-fail budget for one confirmed contract. It must be a positive integer and defaults to `5` when absent. Every committed fail consumes one attempt; ordinary implementation changes, semantic progress, and configuration edits do not erase the accumulated count. Raising the setting can expose remaining budget under the new limit, but only a newly confirmed contract starts counting from zero.
 
 `snapshot` defines the explicit content-snapshot scope and bounded resource budget. `include` and `exclude` use project-relative `/` paths with `*`, `**`, and `?`; the normalized policy and its hash are persisted in each new change baseline. Later current snapshots keep using the baseline policy, so changing configuration mid-change cannot hide implementation changes. `max_files`, `max_total_bytes`, and `max_duration_ms` bound capture work and can be raised for larger repositories. File content uses streaming SHA-256, does not depend on Git object hashes, and has no separate 5 MiB per-file limit.
 
@@ -174,7 +177,7 @@ On first discovery, `next` infers create/replace and freezes its hash; `spec rem
 
 Persist reviewable facts, not hidden reasoning. Put unrun checks under Skipped checks, and never describe a failed result as pass.
 
-The runtime derives at most 1024 acceptance items from the brief and proposed specifications. It rejects overflow rather than first creating an unbounded list and truncating it. Each `acceptancePage` contains at most 16 items. Text is capped at 512 UTF-8 bytes, context at four entries of at most 256 bytes each, and a full page at 32 KiB. Text or context truncation is marked explicitly, while acceptance IDs are never lost to paging or truncation. Cursors bind to the current acceptance hash and fail after the contract changes.
+The runtime derives at most 1024 acceptance items from the brief and proposed specifications. It rejects overflow rather than first creating an unbounded list and truncating it. Build, Verify, and Archive `status --details` can all return an `acceptancePage`. Each page contains at most 16 items. Text is capped at 512 UTF-8 bytes, context at four entries of at most 256 bytes each, and a full page at 32 KiB. Build-after-fail projects each item as `satisfied`, `failed`, `missing`, or `unverified` and lists failed/missing acceptance IDs for that page. Failed check IDs are capped at 16 per page with explicit truncation. Text or context truncation is marked explicitly, while acceptance IDs are never lost to paging or truncation. Cursors bind to the current acceptance hash and fail after the contract changes.
 
 `# Acceptance evidence` must contain exactly one fixed machine block. The runtime derives IDs from the brief/specifications and returns them through Build or `status --details`; never calculate or rewrite them yourself. Generate this block with `comet native evidence format` and paste the result; never hand-format the JSON — a hand-typed block can almost never match the canonical serialization byte-for-byte and will be rejected with a "canonical serialization" error:
 

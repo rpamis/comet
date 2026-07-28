@@ -11,7 +11,7 @@ Native 保存需求、完整目标规格、状态和证据。你负责理解、�
 
 ## 需求澄清协议
 
-从 `.comet/config.yaml` 读取 `native.clarification_mode` 和 `native.archive_confirmation`。前者允许 `sequential` 或 `batch`，字段缺失时使用 `sequential`；后者允许 `automatic` 或 `required`，字段缺失时使用 `automatic`。`clarification_mode` 决定用户问题的组织方式和离开 Shape 前的确认契约；`archive_confirmation` 只决定成功归档预演后是自动提交，还是等待最终用户确认。两者都不改变 Native 的阶段或 change schema。
+从 `.comet/config.yaml` 读取 `native.clarification_mode`、`native.archive_confirmation` 和 `native.max_verify_failures`。前者允许 `sequential` 或 `batch`，字段缺失时使用 `sequential`；归档策略允许 `automatic` 或 `required`，字段缺失时使用 `automatic`；Verify 失败上限必须是正整数，字段缺失时使用 `5`。`clarification_mode` 决定用户问题的组织方式和离开 Shape 前的确认契约；`archive_confirmation` 只决定成功归档预演后是自动提交，还是等待最终用户确认；`max_verify_failures` 限制同一份已确认 contract 的完成循环。它们都不增加 Native 阶段或改变 change schema。
 
 先识别会改变用户可见结果、但尚未定义的分支。“规范化”“直观”“标准”“预期”等词不是产品契约；只有用户原话、用户确认的答案，或明确适用于当前行为的公开契约可以关闭这类分支。
 
@@ -195,7 +195,9 @@ comet native next <change-name> --summary <摘要> [--confirmed]
 
 不要为流程制造额外文档。发现需求或规格漂移时，先更新 Native 产物；出现新的用户决定时标记 `[blocking]`，按当前配置的澄清协议处理。Sequential 模式需要重新遍历决策树，Batch 模式需要重新计算问题集；两种模式都要在继续实现前取得更新后共享理解的最终确认。
 
-完成后提供真实项目产物；没有代码变化时给出明确理由。然后运行：
+Build 可以分批完成。每轮先用 `status <change> --details` 分页读取完整 acceptance 集和上一轮的 `failed` / `missing` 状态，优先处理一小批相关缺口；长任务使用现有 checkpoint 保存恢复摘要、下一动作和真实产物引用。checkpoint 只用于恢复，不能证明 acceptance 已满足或 Archive 已就绪。
+
+形成候选实现后，重新读取当前 brief、完整规格、全部 acceptance 页、implementation scope 和验证入口，完成一次完整规格审计。完成后提供真实项目产物；没有代码变化时给出明确理由。然后运行：
 
 ```text
 comet native next <change-name> --summary <摘要> --artifact <项目内路径> [--confirmed]
@@ -294,11 +296,11 @@ comet native next <change-name> --summary <摘要> \
   [--independent-review-receipt <review-receipt-ref>]
 ```
 
-fail 会回到 Build。修复后重新验证，并用 `--failure-category` 与 `--failed-check` 提交稳定、非敏感的失败事实。
+fail 会回到 Build。Runtime 从已校验的 acceptance matrix/envelope 派生 `failed` / `missing` acceptance IDs，并让 continuation 返回 `action: work-phase`，要求先修复这些缺口；不得把默认 `next` 当成修复动作。修复后重新验证，并用 `--failure-category` 与 `--failed-check` 提交稳定、非敏感的失败事实。
 
-同一失败第二次出现会告警；第三次且 scope 没有进展会停止。scope 发生真实变化会结束当前 repair episode。scope 未变化但有明确新假设时，可按 status 返回的 signature 使用一次 `--override-repair`；同一 signature 不得重复 override。达到停止条件后请用户决定，不要弱化检查或伪造 pass。
+失败签名只绑定当前 contract、未满足 acceptance IDs 和 failed check IDs；单纯代码、snapshot 或 implementation scope 变化不算语义进展。相同缺口第二次出现会告警，第三次停止，并允许按 status 返回的 signature 使用一次 `--override-repair`；同一 signature 不得重复 override。同一 contract 默认最多接受 5 次 Verify fail，或采用 `native.max_verify_failures` 的正整数配置；普通实现变化和配置修改不会清除累计次数，只有用户确认的新 contract 开始新预算。达到停滞或总预算上限时返回 `blocked`，不要弱化检查或伪造 pass。
 
-进入 Archive 后，brief、规格、implementation scope、报告、receipt、waiver、review trust policy 或 review 发生变化会使证据失效。Archive 预演、事务首个操作前，以及 spec 操作完成但 change 尚未移动的最终 freshness fence 都会重新验证绑定事实；按 Runtime continuation 回到 Build，重新封印 scope 并验证；不要沿用失效的 pass。
+进入 Archive 后，brief、规格、implementation scope、报告、receipt、waiver、review trust policy 或 review 发生变化会使证据失效。Archive 预演、事务首个操作前，以及 spec 操作完成但 change 尚未移动的最终 freshness fence 都会重新验证绑定事实；按 Runtime continuation 回到 Build，重新封印 scope 并验证；不要沿用失效的 pass。Verify 失败的中间循环不得运行 Archive preview，也不得触发归档确认；只有最终 pass 后才按 `native.archive_confirmation` 执行一次最终归档路径。
 
 ## Archive
 

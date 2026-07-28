@@ -58,6 +58,7 @@ export interface CometProjectConfig {
     language: 'en' | 'zh-CN';
     clarification_mode: NativeClarificationMode;
     archive_confirmation: NativeArchiveConfirmation;
+    max_verify_failures: number;
     snapshot: NativeSnapshotConfig;
     pending_root_move?: NativePendingRootMove;
   };
@@ -437,6 +438,7 @@ export interface NativeAcceptanceCriterionProjection {
   text: string;
   contextTruncated: boolean;
   textTruncated: boolean;
+  verificationStatus: 'satisfied' | 'failed' | 'missing' | 'unverified';
 }
 
 export interface NativeAcceptancePageProjection {
@@ -445,12 +447,17 @@ export interface NativeAcceptancePageProjection {
   total: number;
   offset: number;
   items: NativeAcceptanceCriterionProjection[];
+  failedAcceptanceIds: string[];
+  missingAcceptanceIds: string[];
+  failedCheckIds: string[];
+  failedCheckIdsTruncated: boolean;
   nextCursor: string | null;
   limits: {
     maxItems: number;
     maxTextBytes: number;
     maxContextItems: number;
     maxContextItemBytes: number;
+    maxFailedCheckIds: number;
     maxSerializedBytes: number;
   };
 }
@@ -475,6 +482,11 @@ export interface NativeRepairStatusProjection {
   disposition: NativeRepairDecisionProjection['disposition'];
   signatureHash: string;
   overrideRecorded: boolean;
+  failedAcceptanceIds: string[];
+  failedCheckIds: string[];
+  totalVerifyFailures: number;
+  maxVerifyFailures: number;
+  remainingVerifyFailures: number;
 }
 
 export interface NativePreparedScopeProjection {

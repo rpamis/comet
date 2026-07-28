@@ -14,6 +14,7 @@ type ProjectConfigCommentKey =
   | 'native.language'
   | 'native.clarification_mode'
   | 'native.archive_confirmation'
+  | 'native.max_verify_failures'
   | 'native.snapshot'
   | 'native.snapshot.include'
   | 'native.snapshot.exclude'
@@ -42,6 +43,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Controls whether Native asks one clarification at a time or every currently answerable question in a round.\n# clarification_mode: sequential | batch',
     'native.archive_confirmation':
       '# Controls whether Native archives automatically after a successful preview or waits for explicit user confirmation.\n# archive_confirmation: automatic | required',
+    'native.max_verify_failures':
+      '# Maximum failed Verify outcomes allowed for one confirmed contract before Native stops the completion loop.',
     'native.snapshot':
       '# Controls the auditable project scope and bounded work used by Native content snapshots.',
     'native.snapshot.include':
@@ -77,6 +80,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Native 每轮询问一个问题，或一次提出当前所有可回答的问题。\n# 可选值：sequential | batch',
     'native.archive_confirmation':
       '# Native 归档预演成功后自动归档，或等待用户明确确认。\n# 可选值：automatic | required',
+    'native.max_verify_failures':
+      '# 同一份已确认 contract 最多允许的 Verify 失败次数；达到上限后停止完成循环。',
     'native.snapshot': '# Native 内容快照使用的可审计项目范围与有界工作预算。',
     'native.snapshot.include': '# Native 快照纳入的项目相对路径；模式使用 /，支持 *、** 和 ?。',
     'native.snapshot.exclude': '# 从纳入范围中排除路径；新 change 会把排除策略绑定到 baseline。',

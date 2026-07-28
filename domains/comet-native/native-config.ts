@@ -24,6 +24,7 @@ const NATIVE_KEYS = new Set([
   'language',
   'clarification_mode',
   'archive_confirmation',
+  'max_verify_failures',
   'snapshot',
   'pending_root_move',
 ]);
@@ -39,6 +40,7 @@ const NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 const CLEANUP_KEYS = new Set(['kind', 'state', 'manifest_hash']);
 export const MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH = 1024;
 export const MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS = 64;
+export const DEFAULT_NATIVE_MAX_VERIFY_FAILURES = 5;
 export const DEFAULT_NATIVE_SNAPSHOT_CONFIG: NativeSnapshotConfig = {
   include: ['**/*'],
   exclude: [],
@@ -230,6 +232,10 @@ function parseConfig(value: unknown): CometProjectConfig {
   if (archiveConfirmation !== 'automatic' && archiveConfirmation !== 'required') {
     throw new Error('native.archive_confirmation must be automatic or required');
   }
+  const maxVerifyFailures = native.max_verify_failures ?? DEFAULT_NATIVE_MAX_VERIFY_FAILURES;
+  if (!Number.isSafeInteger(maxVerifyFailures) || (maxVerifyFailures as number) < 1) {
+    throw new Error('native.max_verify_failures must be a positive integer');
+  }
   const pending = parsePending(native.pending_root_move);
   const snapshot = parseSnapshot(native.snapshot);
   return {
@@ -242,6 +248,7 @@ function parseConfig(value: unknown): CometProjectConfig {
       language,
       clarification_mode: clarificationMode,
       archive_confirmation: archiveConfirmation,
+      max_verify_failures: maxVerifyFailures as number,
       snapshot,
       ...(pending ? { pending_root_move: pending } : {}),
     },
@@ -261,6 +268,7 @@ export function defaultProjectConfig(
       language,
       clarification_mode: 'sequential',
       archive_confirmation: 'automatic',
+      max_verify_failures: DEFAULT_NATIVE_MAX_VERIFY_FAILURES,
       snapshot: { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ['**/*'], exclude: [] },
     },
   };
@@ -346,6 +354,7 @@ export async function writeProjectConfig(
       language: config.native.language,
       clarification_mode: config.native.clarification_mode,
       archive_confirmation: config.native.archive_confirmation,
+      max_verify_failures: config.native.max_verify_failures,
       snapshot: config.native.snapshot,
       ...(config.native.pending_root_move
         ? {
@@ -379,6 +388,7 @@ export async function writeProjectConfig(
       language: validated.native.language,
       clarification_mode: validated.native.clarification_mode,
       archive_confirmation: validated.native.archive_confirmation,
+      max_verify_failures: validated.native.max_verify_failures,
       snapshot: validated.native.snapshot,
       ...(validated.native.pending_root_move
         ? {

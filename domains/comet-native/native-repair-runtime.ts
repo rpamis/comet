@@ -5,6 +5,7 @@ import {
   decideNativeRepairOverride,
   decideNativeRepairStagnation,
   hashNativeRepairOverrideSummary,
+  nativeRepairConsecutiveFailures,
   NATIVE_REPAIR_STAGNATION_LIMITS,
   normalizeNativeRepairFailureTokens,
   type NativeRepairFailureFacts,
@@ -51,12 +52,26 @@ const EVENT_TYPES = new Set<TrajectoryEvent['type']>([
   'recovery_reconciled',
 ]);
 const EVENT_KEYS = ['data', 'runId', 'sequence', 'timestamp', 'type'] as const;
-const PROJECTION_KEYS = ['disposition', 'overrideSummaryHash', 'signatureHash'] as const;
+const LEGACY_PROJECTION_KEYS = ['disposition', 'overrideSummaryHash', 'signatureHash'] as const;
+const PROJECTION_KEYS = [
+  'contractHash',
+  'disposition',
+  'failedAcceptanceIds',
+  'failedCheckIds',
+  'maxVerifyFailures',
+  'overrideSummaryHash',
+  'signatureHash',
+] as const;
+const LEGACY_MAX_REPAIR_ITERATIONS = 12;
 
 export interface NativeRepairTrajectoryProjection {
   signatureHash: string;
   disposition: 'continue' | 'warn' | 'manual-stop' | 'hard-stop';
   overrideSummaryHash: string | null;
+  contractHash: string | null;
+  failedAcceptanceIds: string[];
+  failedCheckIds: string[];
+  maxVerifyFailures: number | null;
 }
 
 export interface NativeCommittedRepairTrajectory {
@@ -73,7 +88,9 @@ export interface NativeRepairEvidenceInput {
 }
 
 export interface NativeRepairRuntimeInput
-  extends NativeCommittedRepairTrajectory, NativeRepairEvidenceInput {}
+  extends NativeCommittedRepairTrajectory, NativeRepairEvidenceInput {
+  maxVerifyFailures: number;
+}
 
 export interface NativeRepairRuntimeResult {
   facts: NativeRepairFailureFacts;
@@ -147,6 +164,17 @@ function hash(value: unknown, label: string): string {
     throw new Error(`${label} must be a SHA-256 hash`);
   }
   return value;
+}
+
+function failedAcceptanceIds(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedAcceptanceIds ||
+    value.some((entry) => typeof entry !== 'string' || !/^acceptance-[a-f0-9]{64}$/u.test(entry))
+  ) {
+    throw new Error('Native repair trajectory failed acceptance IDs are invalid');
+  }
+  return [...new Set(value as string[])].sort(compareText);
 }
 
 /**
@@ -293,7 +321,13 @@ export function parseNativeRepairTrajectoryProjection(
   value: unknown,
 ): NativeRepairTrajectoryProjection {
   const projection = record(value, 'Native repair trajectory projection');
-  exactKeys(projection, PROJECTION_KEYS, 'Native repair trajectory projection');
+  const keys = Object.keys(projection).sort(compareText);
+  const legacy =
+    keys.length === LEGACY_PROJECTION_KEYS.length &&
+    keys.every((key, index) => key === LEGACY_PROJECTION_KEYS[index]);
+  if (!legacy) {
+    exactKeys(projection, PROJECTION_KEYS, 'Native repair trajectory projection');
+  }
   const signatureHash = hash(projection.signatureHash, 'Native repair trajectory signature hash');
   if (
     projection.disposition !== 'continue' &&
@@ -310,10 +344,36 @@ export function parseNativeRepairTrajectoryProjection(
   if (overrideSummaryHash !== null && projection.disposition !== 'continue') {
     throw new Error('Native repair trajectory override must continue exactly once');
   }
+  if (legacy) {
+    return {
+      signatureHash,
+      disposition: projection.disposition,
+      overrideSummaryHash,
+      contractHash: null,
+      failedAcceptanceIds: [],
+      failedCheckIds: [],
+      maxVerifyFailures: null,
+    };
+  }
+  const contractHash = hash(projection.contractHash, 'Native repair trajectory contract hash');
+  const normalizedFailedAcceptanceIds = failedAcceptanceIds(projection.failedAcceptanceIds);
+  const failedCheckIds = normalizeNativeRepairFailureTokens({
+    failedCheckIds: projection.failedCheckIds as string[],
+  }).failedCheckIds;
+  if (
+    !Number.isSafeInteger(projection.maxVerifyFailures) ||
+    (projection.maxVerifyFailures as number) < 1
+  ) {
+    throw new Error('Native repair trajectory maximum Verify failures is invalid');
+  }
   return {
     signatureHash,
     disposition: projection.disposition,
     overrideSummaryHash,
+    contractHash,
+    failedAcceptanceIds: normalizedFailedAcceptanceIds,
+    failedCheckIds,
+    maxVerifyFailures: projection.maxVerifyFailures as number,
   };
 }
 
@@ -351,16 +411,24 @@ function assertCommittedFailureProjection(
 ): void {
   const failures = history.filter((entry) => entry.kind === 'failure');
   const total = failures.length + 1;
-  if (total > NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations) {
+  const maxVerifyFailures = projection.maxVerifyFailures ?? LEGACY_MAX_REPAIR_ITERATIONS;
+  if (total > maxVerifyFailures) {
     throw new Error('Native repair trajectory commits a failure beyond the hard-stop boundary');
   }
-  let consecutive = 1;
-  for (let index = failures.length - 1; index >= 0; index -= 1) {
-    if (failures[index].signatureHash !== projection.signatureHash) break;
-    consecutive += 1;
-  }
+  const consecutive = nativeRepairConsecutiveFailures(
+    {
+      signatureHash: projection.signatureHash,
+      ...(projection.contractHash === null
+        ? {}
+        : {
+            failedAcceptanceIds: projection.failedAcceptanceIds,
+            failedCheckIds: projection.failedCheckIds,
+          }),
+    },
+    failures,
+  );
   const expectedDisposition =
-    total >= NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations
+    total >= maxVerifyFailures
       ? 'hard-stop'
       : consecutive < NATIVE_REPAIR_STAGNATION_LIMITS.warningAtConsecutiveFailures
         ? 'continue'
@@ -380,7 +448,8 @@ function assertCommittedOverrideProjection(
   latestProjection: NativeRepairTrajectoryProjection | null,
 ): void {
   const failures = history.filter((entry) => entry.kind === 'failure');
-  if (failures.length >= NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations) {
+  const maxVerifyFailures = latestProjection?.maxVerifyFailures ?? LEGACY_MAX_REPAIR_ITERATIONS;
+  if (failures.length >= maxVerifyFailures) {
     throw new Error('Native repair trajectory cannot override a hard stop');
   }
   if (
@@ -419,6 +488,7 @@ function projectNativeRepairHistory(
   const history: NativeRepairHistoryRecord[] = [];
   let latestProjection: NativeRepairTrajectoryProjection | null = null;
   let activeScopeHash: string | null = null;
+  let activeContractHash: string | null = null;
   let iteration = 0;
   let totalDataNodes = 0;
   let totalDataCharacters = 0;
@@ -441,6 +511,7 @@ function projectNativeRepairHistory(
         : null;
     if (!Object.hasOwn(data, NATIVE_REPAIR_TRAJECTORY_FIELD)) {
       if (
+        latestProjection?.contractHash === null &&
         event.type === 'state_transitioned' &&
         data.previousPhase === 'build' &&
         data.nextPhase === 'verify' &&
@@ -460,19 +531,6 @@ function projectNativeRepairHistory(
         iteration = 0;
         continue;
       }
-      if (
-        event.type === 'state_transitioned' &&
-        data.previousPhase === 'verify' &&
-        data.nextPhase === 'archive' &&
-        data.verificationResult === 'pass'
-      ) {
-        // A committed passing verification closes the prior repair episode. The raw trajectory
-        // still retains its history, while future failures start fresh if Archive later retreats.
-        history.length = 0;
-        latestProjection = null;
-        activeScopeHash = null;
-        iteration = 0;
-      }
       continue;
     }
     if (event.type !== 'state_transitioned') {
@@ -482,6 +540,16 @@ function projectNativeRepairHistory(
     assertProjectionTransition(data, projection);
     if (projection.overrideSummaryHash === null) {
       if (
+        projection.contractHash !== null &&
+        activeContractHash !== null &&
+        projection.contractHash !== activeContractHash
+      ) {
+        history.length = 0;
+        iteration = 0;
+      }
+      if (projection.contractHash !== null) activeContractHash = projection.contractHash;
+      if (
+        projection.contractHash === null &&
         eventScopeHash !== null &&
         activeScopeHash !== null &&
         eventScopeHash !== activeScopeHash
@@ -497,9 +565,16 @@ function projectNativeRepairHistory(
         revision: event.sequence,
         iteration,
         signatureHash: projection.signatureHash,
+        ...(projection.contractHash === null
+          ? {}
+          : {
+              failedAcceptanceIds: [...projection.failedAcceptanceIds],
+              failedCheckIds: [...projection.failedCheckIds],
+            }),
       });
     } else {
       if (
+        latestProjection?.contractHash === null &&
         eventScopeHash !== null &&
         activeScopeHash !== null &&
         eventScopeHash !== activeScopeHash
@@ -576,6 +651,10 @@ export function acceptLatestNativeRepairOverride(
       signatureHash: expectedSignatureHash,
       disposition: 'continue',
       overrideSummaryHash,
+      contractHash: projected.latestProjection.contractHash,
+      failedAcceptanceIds: [...projected.latestProjection.failedAcceptanceIds],
+      failedCheckIds: [...projected.latestProjection.failedCheckIds],
+      maxVerifyFailures: projected.latestProjection.maxVerifyFailures,
     },
   };
 }
@@ -603,6 +682,10 @@ export function nativeRepairFailureFacts(
     implementationScopeHash: nativeRepairScopeHash(bundle),
     artifactSnapshotHash: bundle.scope.currentProjectionHash,
     categories: tokens.categories,
+    failedAcceptanceIds: envelope.acceptanceTrace.entries
+      .filter((entry) => entry.status === 'failed' || entry.status === 'missing')
+      .map((entry) => entry.acceptanceId)
+      .sort(compareText),
     failedCheckIds: tokens.failedCheckIds,
   };
 }
@@ -615,6 +698,10 @@ function projectionForDecision(
     signatureHash: decision.signature.signatureHash,
     disposition: decision.disposition,
     overrideSummaryHash,
+    contractHash: decision.signature.contractHash,
+    failedAcceptanceIds: [...decision.signature.failedAcceptanceIds],
+    failedCheckIds: [...decision.signature.failedCheckIds],
+    maxVerifyFailures: decision.totalRepairFailures + decision.remainingIterations,
   };
 }
 
@@ -622,9 +709,15 @@ function runtimeContext(input: NativeRepairRuntimeInput): {
   facts: NativeRepairFailureFacts;
   history: NativeRepairHistoryRecord[];
 } {
+  const facts = nativeRepairFailureFacts(input);
+  const projected = projectNativeRepairHistory(input);
   return {
-    facts: nativeRepairFailureFacts(input),
-    history: rebuildNativeRepairHistory(input),
+    facts,
+    history:
+      projected.latestProjection?.contractHash !== null &&
+      projected.latestProjection?.contractHash !== facts.contractHash
+        ? []
+        : projected.history,
   };
 }
 
@@ -636,7 +729,10 @@ export function inspectNativeRepairResume(
   const latestProjection = projected.latestProjection;
   const signatureHash = buildNativeRepairSignature(facts).signatureHash;
   const currentScope = parseNativeImplementationScopeBundle(input.currentImplementationScope);
-  if (nativeRepairScopeHash(currentScope) !== nativeRepairScopeHash(input.implementationScope)) {
+  if (
+    latestProjection?.contractHash === null &&
+    nativeRepairScopeHash(currentScope) !== nativeRepairScopeHash(input.implementationScope)
+  ) {
     return {
       disposition: 'proceed',
       reason: 'scope-progress',
@@ -681,7 +777,10 @@ export function inspectNativeRepairFailure(
   input: NativeRepairRuntimeInput,
 ): NativeRepairRuntimeResult {
   const context = runtimeContext(input);
-  const decision = decideNativeRepairStagnation(context);
+  const decision = decideNativeRepairStagnation({
+    ...context,
+    maxVerifyFailures: input.maxVerifyFailures,
+  });
   return {
     ...context,
     decision,
@@ -693,7 +792,11 @@ export function acceptNativeRepairOverride(
   input: NativeRepairRuntimeInput & { override: NativeRepairOverrideRequest },
 ): NativeRepairRuntimeResult {
   const context = runtimeContext(input);
-  const decision = decideNativeRepairOverride({ ...context, override: input.override });
+  const decision = decideNativeRepairOverride({
+    ...context,
+    override: input.override,
+    maxVerifyFailures: input.maxVerifyFailures,
+  });
   const summaryHash = decision.overrideAccepted
     ? hashNativeRepairOverrideSummary(input.override.summary)
     : null;

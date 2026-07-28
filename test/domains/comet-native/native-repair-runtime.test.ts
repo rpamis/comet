@@ -17,7 +17,6 @@ import {
   type NativeRepairEvidenceInput,
   type NativeRepairTrajectoryProjection,
 } from '../../../domains/comet-native/native-repair-runtime.js';
-import { NATIVE_REPAIR_STAGNATION_LIMITS } from '../../../domains/comet-native/native-repair-stagnation.js';
 import {
   buildNativeAcceptanceEvidenceTrace,
   buildNativeVerificationEvidenceEnvelope,
@@ -49,7 +48,7 @@ function snapshot(hash: string): NativeContentSnapshotManifest {
 function evidenceInput(
   result: 'pass' | 'fail' = 'fail',
   currentHash = 'b'.repeat(64),
-): NativeRepairEvidenceInput {
+): NativeRepairEvidenceInput & { maxVerifyFailures: number } {
   const contract = buildNativeContractSnapshot({
     briefMarkdown: '# Acceptance examples\n- The repaired behavior works.\n',
     specs: [],
@@ -64,8 +63,9 @@ function evidenceInput(
     contract.acceptance,
     contract.acceptance.map((criterion) => ({
       acceptance_id: criterion.id,
-      status: 'passed' as const,
-      evidence_refs: [`runtime/evidence/receipts/${'a'.repeat(64)}.json`],
+      status: result === 'fail' ? ('failed' as const) : ('passed' as const),
+      evidence_refs: result === 'fail' ? [] : [`runtime/evidence/receipts/${'a'.repeat(64)}.json`],
+      ...(result === 'fail' ? { skipped_reason: 'The acceptance is not satisfied.' } : {}),
     })),
     { nativeRootRef: 'comet' },
   );
@@ -87,10 +87,12 @@ function evidenceInput(
       result === 'pass' ? `runtime/evidence/receipts/${'c'.repeat(64)}.json` : null,
     now: NOW,
   });
-  return { envelope, implementationScope };
+  return { envelope, implementationScope, maxVerifyFailures: 5 };
 }
 
-function unchangedEvidenceInput(noCodeReason: string): NativeRepairEvidenceInput {
+function unchangedEvidenceInput(
+  noCodeReason: string,
+): NativeRepairEvidenceInput & { maxVerifyFailures: number } {
   const contract = buildNativeContractSnapshot({
     briefMarkdown: '# Acceptance examples\n- The no-code behavior remains valid.\n',
     specs: [],
@@ -107,8 +109,9 @@ function unchangedEvidenceInput(noCodeReason: string): NativeRepairEvidenceInput
     contract.acceptance,
     contract.acceptance.map((criterion) => ({
       acceptance_id: criterion.id,
-      status: 'passed' as const,
-      evidence_refs: [`runtime/evidence/receipts/${'a'.repeat(64)}.json`],
+      status: 'failed' as const,
+      evidence_refs: [],
+      skipped_reason: 'The acceptance is not satisfied.',
     })),
     { nativeRootRef: 'comet' },
   );
@@ -129,7 +132,7 @@ function unchangedEvidenceInput(noCodeReason: string): NativeRepairEvidenceInput
     independentReviewReceiptRef: null,
     now: NOW,
   });
-  return { envelope, implementationScope };
+  return { envelope, implementationScope, maxVerifyFailures: 5 };
 }
 
 function event(
@@ -329,7 +332,11 @@ describe('Native repair runtime integration', () => {
     expect(historyOnly.eventProjection).toEqual(accepted.eventProjection);
     expect(accepted.eventProjection?.overrideSummaryHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(Object.keys(accepted.eventProjection!).sort()).toEqual([
+      'contractHash',
       'disposition',
+      'failedAcceptanceIds',
+      'failedCheckIds',
+      'maxVerifyFailures',
       'overrideSummaryHash',
       'signatureHash',
     ]);
@@ -356,6 +363,10 @@ describe('Native repair runtime integration', () => {
         revision: 3,
         iteration: 3,
         signatureHash: expectedSignatureHash,
+        failedAcceptanceIds: evidence.envelope.acceptanceTrace.entries
+          .filter((entry) => entry.status === 'failed' || entry.status === 'missing')
+          .map((entry) => entry.acceptanceId),
+        failedCheckIds: [],
       },
       {
         kind: 'override',
@@ -471,24 +482,22 @@ describe('Native repair runtime integration', () => {
     ]);
   });
 
-  it('hard-stops the twelfth total failure and never applies an override there', () => {
+  it('hard-stops the configured fifth total failure and never applies an override there', () => {
     const evidence = evidenceInput();
-    const trajectory = Array.from(
-      { length: NATIVE_REPAIR_STAGNATION_LIMITS.maxRepairIterations - 1 },
-      (_, index) =>
-        repairEvent(index + 1, {
-          signatureHash: index.toString(16).padStart(64, '0'),
-          disposition: 'continue',
-          overrideSummaryHash: null,
-        }),
+    const trajectory = Array.from({ length: 4 }, (_, index) =>
+      repairEvent(index + 1, {
+        signatureHash: index.toString(16).padStart(64, '0'),
+        disposition: 'continue',
+        overrideSummaryHash: null,
+      }),
     );
     const currentSignature = buildNativeRepairSignatureFromEvidence(evidence).signatureHash;
     const stopped = inspectNativeRepairFailure({ ...evidence, ...committed(trajectory) });
     expect(stopped).toMatchObject({
-      decision: { disposition: 'hard-stop', totalRepairFailures: 12 },
+      decision: { disposition: 'hard-stop', totalRepairFailures: 5 },
       eventProjection: { disposition: 'hard-stop', overrideSummaryHash: null },
     });
-    const persisted = [...trajectory, repairEvent(12, stopped.eventProjection!)];
+    const persisted = [...trajectory, repairEvent(5, stopped.eventProjection!)];
     expect(inspectLatestNativeRepairProjection(committed(persisted))).toEqual(
       stopped.eventProjection,
     );
@@ -499,7 +508,7 @@ describe('Native repair runtime integration', () => {
         ...committed(persisted),
         currentImplementationScope: progressed.implementationScope,
       }),
-    ).toMatchObject({ disposition: 'proceed', reason: 'scope-progress' });
+    ).toMatchObject({ disposition: 'hard-stop', reason: 'hard-stop' });
     const result = acceptNativeRepairOverride({
       ...evidence,
       ...committed(persisted),
@@ -510,7 +519,7 @@ describe('Native repair runtime integration', () => {
     });
 
     expect(result).toMatchObject({
-      decision: { disposition: 'hard-stop', totalRepairFailures: 12 },
+      decision: { disposition: 'hard-stop', totalRepairFailures: 5 },
       eventProjection: null,
     });
     expect(() =>

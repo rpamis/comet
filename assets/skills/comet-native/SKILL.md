@@ -11,7 +11,7 @@ Run the entire workflow inside this Skill. Do not load phase Skills or impose fi
 
 ## Clarification Protocol
 
-Read `native.clarification_mode` and `native.archive_confirmation` from `.comet/config.yaml`. The former allows `sequential` or `batch` and defaults to `sequential`; the latter allows `automatic` or `required` and defaults to `automatic`. `clarification_mode` determines how user questions are organized and which confirmation contract applies before leaving Shape. `archive_confirmation` only determines whether a successful Archive preview commits automatically or waits for final user confirmation. Neither setting changes Native phases or the change schema.
+Read `native.clarification_mode`, `native.archive_confirmation`, and `native.max_verify_failures` from `.comet/config.yaml`. The first allows `sequential` or `batch` and defaults to `sequential`; the Archive policy allows `automatic` or `required` and defaults to `automatic`; the Verify-failure limit must be a positive integer and defaults to `5`. `clarification_mode` determines how user questions are organized and which confirmation contract applies before leaving Shape. `archive_confirmation` only determines whether a successful Archive preview commits automatically or waits for final user confirmation. `max_verify_failures` bounds the completion loop for one confirmed contract. These settings do not add a Native phase or change the change schema.
 
 First identify undefined branches that would change user-visible results. Words such as “normalize,” “intuitive,” “standard,” and “expected” are not product contracts. Only the user's words, a confirmed answer, or a published contract that clearly applies to the current behavior can close such a branch.
 
@@ -195,7 +195,9 @@ Choose the simplest reliable implementation that satisfies the brief and propose
 
 Do not create extra documents merely to satisfy the workflow. If requirements or specifications drift, update the Native artifacts first. If a new user decision appears, mark it `[blocking]` and follow the configured clarification protocol. Sequential mode must traverse the decision tree again, while Batch mode must recompute the ready question set; both modes must obtain final confirmation of the updated shared understanding before implementation continues.
 
-When implementation is complete, provide real project artifacts. If no code changed, provide a concrete reason. Then run:
+Build may be completed in batches. At the start of each iteration, use `status <change> --details` to page through the complete acceptance set and the previous `failed` / `missing` states, then prioritize a small related batch of gaps. For long work, use the existing checkpoint to save a recovery summary, next action, and real artifact refs. A checkpoint is recovery state, not proof that acceptance is satisfied or Archive is ready.
+
+Once there is a candidate implementation, reread the current brief, complete specs, every acceptance page, the implementation scope, and the verification entry points for one complete spec audit. Then provide real project artifacts. If no code changed, provide a concrete reason. Then run:
 
 ```text
 comet native next <change-name> --summary <summary> --artifact <project-path> [--confirmed]
@@ -294,11 +296,11 @@ comet native next <change-name> --summary <summary> \
   [--independent-review-receipt <review-receipt-ref>]
 ```
 
-`fail` returns to Build. Fix the evidenced problem, verify again, and submit stable, non-sensitive failure facts through `--failure-category` and `--failed-check`.
+`fail` returns to Build. Runtime derives `failed` / `missing` acceptance IDs from the validated acceptance matrix/envelope, and continuation returns `action: work-phase` so those gaps are repaired first; do not treat a default `next` command as the repair action. Fix the evidenced problem, verify again, and submit stable, non-sensitive failure facts through `--failure-category` and `--failed-check`.
 
-The second identical failure warns. The third with no scope progress stops. A real scope change ends the current repair episode. If scope has not changed but one concrete new hypothesis exists, use the signature returned by status with `--override-repair` once. Never repeat an override for the same signature. At a repair stop, ask the user to decide; do not weaken checks or fabricate a pass.
+The failure signature binds only the current contract, unsatisfied acceptance IDs, and failed check IDs. Code, snapshot, or implementation-scope churn alone is not semantic progress. The second identical gap warns, the third stops, and the signature returned by status permits one `--override-repair`; never repeat an override for the same signature. One contract accepts at most five Verify failures by default, or the positive integer configured by `native.max_verify_failures`. Ordinary implementation changes and configuration edits do not erase the accumulated count; only a newly confirmed contract starts a new budget. A stagnation or total-budget stop returns `blocked`; never weaken checks or fabricate a pass.
 
-After entering Archive, changes to the brief, specifications, implementation scope, report, receipt, waiver, review trust policy, or review make the evidence stale. Archive preview, the fence before its first transaction operation, and the final freshness fence after spec operations but before moving the change all revalidate bound facts. Follow the Runtime continuation back to Build, reseal the scope, and verify again. Do not reuse a stale pass.
+After entering Archive, changes to the brief, specifications, implementation scope, report, receipt, waiver, review trust policy, or review make the evidence stale. Archive preview, the fence before its first transaction operation, and the final freshness fence after spec operations but before moving the change all revalidate bound facts. Follow the Runtime continuation back to Build, reseal the scope, and verify again. Do not reuse a stale pass. Intermediate failed Verify loops must not run Archive preview or trigger Archive confirmation; only the final pass follows `native.archive_confirmation` through the final Archive path.
 
 ## Archive
 

@@ -526,6 +526,7 @@ async function dispatch(
     await selectNativeChange(paths, state.name);
     const status = await inspectNativeStatus(paths, state.name, {
       clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures,
     });
     return success(
       'new',
@@ -543,6 +544,7 @@ async function dispatch(
       const state = await markNativeSpecRemoval(paths, name, capability);
       const status = await inspectNativeStatus(paths, state.name, {
         clarificationMode: config.native.clarification_mode,
+        maxVerifyFailures: config.native.max_verify_failures,
       });
       return success(
         'spec remove',
@@ -559,6 +561,7 @@ async function dispatch(
       const state = await rebaseNativeSpecChanges({ paths, name, summary });
       const status = await inspectNativeStatus(paths, state.name, {
         clarificationMode: config.native.clarification_mode,
+        maxVerifyFailures: config.native.max_verify_failures,
       });
       return success(
         'spec rebase',
@@ -575,6 +578,7 @@ async function dispatch(
     const page = await listNativeStatusPage(paths, {
       ...(cursor ? { cursor } : {}),
       clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures,
     });
     return success('list', page);
   }
@@ -637,10 +641,12 @@ async function dispatch(
           details,
           ...(acceptanceCursor ? { acceptanceCursor } : {}),
           clarificationMode: config.native.clarification_mode,
+          maxVerifyFailures: config.native.max_verify_failures,
         })
       : await listNativeStatusPage(paths, {
           ...(cursor ? { cursor } : {}),
           clarificationMode: config.native.clarification_mode,
+          maxVerifyFailures: config.native.max_verify_failures,
         });
     return success('status', data);
   }
@@ -651,6 +657,7 @@ async function dispatch(
     await selectNativeChange(paths, name);
     const status = await inspectNativeStatus(paths, name, {
       clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures,
     });
     return success(
       'select',
@@ -678,6 +685,7 @@ async function dispatch(
     });
     const status = await inspectNativeStatus(paths, name, {
       clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures,
     });
     const manifestRef = path
       .relative(
@@ -1326,6 +1334,7 @@ async function dispatch(
       name,
       evidence,
       clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures,
     });
     if (result.next === 'manual') {
       const repairBlocked =
@@ -1350,6 +1359,7 @@ async function dispatch(
     }
     const status = await inspectNativeStatus(paths, name, {
       clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures,
     });
     return success('next', { ...result, continuation: status.continuation });
   }

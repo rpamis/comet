@@ -97,6 +97,22 @@ describe('Native acceptance evidence trace', () => {
     ).toThrow('invalid v2 evidence state');
   });
 
+  it('projects omitted evidence as a validated missing gap for failed verification', () => {
+    const [first] = evidenceForAll();
+    const trace = buildNativeAcceptanceEvidenceTrace(contract.acceptance, [first], {
+      nativeRootRef: 'comet',
+      allowMissing: true,
+    });
+
+    expect(trace.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ acceptanceId: first.acceptance_id, status: 'passed' }),
+        expect.objectContaining({ status: 'missing', evidenceRefs: [], skippedReason: null }),
+      ]),
+    );
+    expect(parseNativeAcceptanceEvidenceTrace(trace)).toEqual(trace);
+  });
+
   it('bounds missing-coverage diagnostics instead of echoing every acceptance ID', () => {
     const criteria = Array.from({ length: 100 }, (_, index) => ({
       id: `acceptance-${index.toString(16).padStart(64, '0')}`,

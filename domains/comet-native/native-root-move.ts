@@ -846,6 +846,7 @@ async function finishForwardMove(options: {
     language: config.native.language,
     clarification_mode: config.native.clarification_mode,
     archive_confirmation: config.native.archive_confirmation,
+    max_verify_failures: config.native.max_verify_failures,
     snapshot: config.native.snapshot,
   };
   const committed: CometProjectConfig = {
@@ -1012,6 +1013,7 @@ export async function recoverNativeRootMove(options: {
       language: config.native.language,
       clarification_mode: config.native.clarification_mode,
       archive_confirmation: config.native.archive_confirmation,
+      max_verify_failures: config.native.max_verify_failures,
       snapshot: config.native.snapshot,
     };
     const restored: CometProjectConfig = {

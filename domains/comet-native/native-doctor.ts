@@ -399,11 +399,14 @@ async function inspectLocks(
 async function inspectChanges(
   paths: NativeProjectPaths,
   name?: string,
+  maxVerifyFailures = 5,
 ): Promise<NativeDoctorFinding[]> {
   const findings: NativeDoctorFinding[] = [];
   const statuses = name
-    ? await listNativeStatus(paths).then((all) => all.filter((status) => status.name === name))
-    : await listNativeStatus(paths);
+    ? await listNativeStatus(paths, { maxVerifyFailures }).then((all) =>
+        all.filter((status) => status.name === name),
+      )
+    : await listNativeStatus(paths, { maxVerifyFailures });
   if (name && statuses.length === 0) {
     return [
       {
@@ -424,7 +427,10 @@ async function inspectChanges(
       });
       continue;
     }
-    const detailed = await inspectNativeStatus(paths, status.name, { details: true });
+    const detailed = await inspectNativeStatus(paths, status.name, {
+      details: true,
+      maxVerifyFailures,
+    });
     for (const artifact of detailed.findings ?? []) {
       if (
         artifact.code === 'trajectory-tail-incomplete' ||
@@ -857,7 +863,9 @@ export async function doctorNativeProject(options: {
   );
   findings.push(...(await inspectLocks(paths, repair, transactions.unfinished)));
   findings.push(...(await inspectSelection(paths, repair)));
-  findings.push(...(await inspectChanges(paths, options.name)));
+  findings.push(
+    ...(await inspectChanges(paths, options.name, config?.native.max_verify_failures ?? 5)),
+  );
   return {
     healthy: findings.every((finding) => finding.severity === 'info'),
     findings,

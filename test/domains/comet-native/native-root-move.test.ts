@@ -75,6 +75,7 @@ describe('Native artifact root moves', () => {
         language: 'en',
         clarification_mode: 'batch',
         archive_confirmation: 'required',
+        max_verify_failures: 5,
         snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
       },
     });
@@ -245,6 +246,7 @@ describe('Native artifact root moves', () => {
         language: 'en',
         clarification_mode: 'sequential',
         archive_confirmation: 'automatic',
+        max_verify_failures: 5,
         snapshot: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
       });
       await expect(fs.access(path.join(projectRoot, 'docs', 'comet'))).rejects.toMatchObject({

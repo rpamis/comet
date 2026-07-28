@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 
 import { decideWithResolver, recordOutcomeWithResolver } from '../engine/loop.js';
 import { inspectNativeGuard } from './native-guards.js';
+import { DEFAULT_NATIVE_MAX_VERIFY_FAILURES } from './native-config.js';
 import { checkNativeChangeLocked } from './native-check.js';
 import { projectNativeAcceptancePage } from './native-acceptance.js';
 import { nativeChangeDir, readNativeChange } from './native-change.js';
@@ -62,6 +63,7 @@ interface AdvanceNativeChangeOptions {
   name: string;
   evidence: NativeAdvanceEvidence;
   clarificationMode: NativeClarificationMode;
+  maxVerifyFailures?: number;
   now?: Date;
   runId?: () => string;
   transitionId?: () => string;
@@ -301,18 +303,23 @@ export async function advanceNativeChange(
 ): Promise<NativeAdvanceResult> {
   const normalizedOptions = {
     ...options,
+    maxVerifyFailures: options.maxVerifyFailures ?? DEFAULT_NATIVE_MAX_VERIFY_FAILURES,
     evidence: normalizeNativeAdvanceEvidence(options.evidence),
   };
   validateNativeAdvanceEvidence(normalizedOptions.evidence);
   return withNativeMutationLock(options.paths, `advance ${options.name}`, () =>
     withNativeTransitionLock(options.paths, options.name, `advance ${options.name}`, () =>
-      advanceNativeChangeLocked(normalizedOptions),
+      advanceNativeChangeLocked(
+        normalizedOptions as AdvanceNativeChangeOptions & {
+          maxVerifyFailures: number;
+        },
+      ),
     ),
   );
 }
 
 async function advanceNativeChangeLocked(
-  options: AdvanceNativeChangeOptions,
+  options: AdvanceNativeChangeOptions & { maxVerifyFailures: number },
 ): Promise<NativeAdvanceResult> {
   await settleNativeChangeJournalsLocked(options.paths, options.name);
   const state = await readNativeChange(options.paths, options.name);
@@ -344,7 +351,7 @@ async function advanceNativeChangeLocked(
         // Do not let an old transition hash bypass the current report/envelope freshness fence.
       } else {
         const repair = Object.hasOwn(last.data, 'repairStagnation')
-          ? await inspectLatestNativeRepairDecision(options.paths, state)
+          ? await inspectLatestNativeRepairDecision(options.paths, state, options.maxVerifyFailures)
           : null;
         const repairFindings =
           repair && repair.disposition !== 'continue'
@@ -543,6 +550,7 @@ async function advanceNativeChangeLocked(
       paths: options.paths,
       state,
       currentImplementationScope: buildEvidence.bundle,
+      maxVerifyFailures: options.maxVerifyFailures,
       ...(options.evidence.repairOverrideSignature && options.evidence.repairOverrideSummary
         ? {
             override: {
@@ -651,6 +659,7 @@ async function advanceNativeChangeLocked(
       paths: options.paths,
       state,
       envelope: verificationEvidence.envelope,
+      maxVerifyFailures: options.maxVerifyFailures,
       ...(options.evidence.repairFailureCategories
         ? { categories: options.evidence.repairFailureCategories }
         : {}),

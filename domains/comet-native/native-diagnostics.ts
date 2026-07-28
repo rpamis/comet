@@ -25,6 +25,7 @@ import {
 import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
 import { inspectNativeChangeConflicts } from './native-conflict-inspection.js';
 import { inspectNativeRepairStatus } from './native-repair-integration.js';
+import { readNativeVerificationEvidence } from './native-evidence-storage.js';
 import { inspectNativeImplementationScopeFreshness } from './native-verification-runtime.js';
 import {
   inspectNativeWorkspaceAdvisory,
@@ -174,6 +175,7 @@ export async function inspectNativeStatus(
     details?: boolean;
     acceptanceCursor?: string;
     clarificationMode?: NativeClarificationMode;
+    maxVerifyFailures?: number;
   },
 ): Promise<NativeStatusProjection> {
   const selected = (await selectedName(paths)) === name;
@@ -283,17 +285,71 @@ export async function inspectNativeStatus(
     };
   }
   const resume = await buildNativeResumeView({ paths, state });
+  let repair: Awaited<ReturnType<typeof inspectNativeRepairStatus>> = null;
+  const repairFindings: NativeFinding[] = [];
+  if (state.phase === 'build' && state.verification_result === 'fail') {
+    try {
+      repair = await inspectNativeRepairStatus(paths, state, options?.maxVerifyFailures ?? 5);
+      if (repair && (repair.disposition === 'manual-stop' || repair.disposition === 'hard-stop')) {
+        const code =
+          repair.disposition === 'hard-stop'
+            ? 'repair-iteration-limit'
+            : repair.overrideRecorded
+              ? 'repair-override-exhausted'
+              : 'repair-stagnation-stop';
+        repairFindings.push({
+          code,
+          message: `Native repair is stopped at failure signature: ${repair.signatureHash}`,
+        });
+      }
+    } catch {
+      repairFindings.push({
+        code: 'trajectory-invalid',
+        message: 'Native repair history could not be reconstructed safely',
+      });
+    }
+  }
   let acceptancePage: NativeStatusProjection['acceptancePage'];
-  if (options?.details && (state.phase === 'verify' || state.phase === 'archive')) {
+  if (
+    options?.details &&
+    (state.phase === 'build' || state.phase === 'verify' || state.phase === 'archive')
+  ) {
     try {
       const contract = await collectNativeContractFiles({
         changeDir: nativeChangeDir(paths, state.name),
         briefRef: state.brief,
         specChanges: state.spec_changes,
       });
+      const verificationStatuses = new Map<
+        string,
+        'satisfied' | 'failed' | 'missing' | 'unverified'
+      >();
+      if (
+        state.phase === 'build' &&
+        state.verification_result === 'fail' &&
+        state.verification_evidence
+      ) {
+        const envelope = await readNativeVerificationEvidence(
+          paths,
+          state.name,
+          state.verification_evidence,
+        );
+        for (const entry of envelope.acceptanceTrace.entries) {
+          verificationStatuses.set(
+            entry.acceptanceId,
+            entry.status === 'failed'
+              ? 'failed'
+              : entry.status === 'missing'
+                ? 'missing'
+                : 'satisfied',
+          );
+        }
+      }
       acceptancePage = projectNativeAcceptancePage({
         criteria: contract.contract.acceptance,
         acceptanceHash: contract.contract.acceptanceHash,
+        verificationStatuses,
+        failedCheckIds: repair?.failedCheckIds ?? [],
         ...(options.acceptanceCursor ? { cursor: options.acceptanceCursor } : {}),
       });
     } catch (error) {
@@ -348,30 +404,6 @@ export async function inspectNativeStatus(
         message: `Native Verify implementation scope is not current: ${code}`,
       })),
     );
-  }
-  let repair: Awaited<ReturnType<typeof inspectNativeRepairStatus>> = null;
-  const repairFindings: NativeFinding[] = [];
-  if (state.phase === 'build' && state.verification_result === 'fail') {
-    try {
-      repair = await inspectNativeRepairStatus(paths, state);
-      if (repair) {
-        const code =
-          repair.disposition === 'hard-stop'
-            ? 'repair-iteration-limit'
-            : repair.overrideRecorded
-              ? 'repair-override-exhausted'
-              : 'repair-stagnation-stop';
-        repairFindings.push({
-          code,
-          message: `Native repair is stopped at failure signature: ${repair.signatureHash}`,
-        });
-      }
-    } catch {
-      repairFindings.push({
-        code: 'trajectory-invalid',
-        message: 'Native repair history could not be reconstructed safely',
-      });
-    }
   }
   let archivePreflight: Awaited<ReturnType<typeof inspectNativeArchivePreflight>> | null = null;
   const archiveFindings: NativeFinding[] = [];
@@ -431,7 +463,8 @@ export async function inspectNativeStatus(
     (finding) =>
       finding.code === 'trajectory-tail-incomplete' || finding.code === 'trajectory-invalid',
   );
-  const repairBlocked = repair !== null;
+  const repairBlocked =
+    repair?.disposition === 'manual-stop' || repair?.disposition === 'hard-stop';
   const firstErrorFinding = findings.find((finding) => finding.severity === 'error');
   return {
     name: state.name,
@@ -547,7 +580,11 @@ function nativeStatusOffset(options: {
 
 export async function listNativeStatusPage(
   paths: NativeProjectPaths,
-  options?: { cursor?: string | null; clarificationMode?: NativeClarificationMode },
+  options?: {
+    cursor?: string | null;
+    clarificationMode?: NativeClarificationMode;
+    maxVerifyFailures?: number;
+  },
 ): Promise<NativeStatusPageProjection> {
   const names = await boundedNativeChangeNames(paths);
   const namesHash = canonicalHash('comet.native.status-names.v1', names);
@@ -560,6 +597,7 @@ export async function listNativeStatusPage(
     names.slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems).map((name) =>
       inspectNativeStatus(paths, name, {
         clarificationMode: options?.clarificationMode,
+        maxVerifyFailures: options?.maxVerifyFailures,
       }),
     ),
   );
@@ -600,11 +638,12 @@ export async function listNativeStatusPage(
 /** Compatibility projection for in-process callers; CLI consumers receive the resumable page. */
 export async function listNativeStatus(
   paths: NativeProjectPaths,
-  options?: { clarificationMode?: NativeClarificationMode },
+  options?: { clarificationMode?: NativeClarificationMode; maxVerifyFailures?: number },
 ): Promise<NativeStatusProjection[]> {
   return (
     await listNativeStatusPage(paths, {
       clarificationMode: options?.clarificationMode,
+      maxVerifyFailures: options?.maxVerifyFailures,
     })
   ).items;
 }

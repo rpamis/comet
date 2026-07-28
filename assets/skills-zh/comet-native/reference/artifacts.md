@@ -60,6 +60,7 @@ native:
   language: zh-CN
   clarification_mode: sequential
   archive_confirmation: automatic
+  max_verify_failures: 5
   snapshot:
     include:
       - "**/*"
@@ -72,6 +73,8 @@ native:
 `clarification_mode` 控制 Native 如何组织用户决定，以及离开 Shape 前采用哪条确认契约：`sequential` 每轮询问一个最上游问题，`batch` 每轮询问所有前置条件已经确定的问题。字段缺失时使用 `sequential`。它不改变 change schema、生命周期、安全确认或调用方停点。
 
 `archive_confirmation` 控制成功 Archive 预演后的行为：`automatic` 使用预演返回的精确 hash 自动提交，`required` 返回 `await-user` 并要求用户明确选择后才能用 `--confirmed` 提交。字段缺失时使用 `automatic`。该值绑定进 `preflightHash`；预演后修改配置会使旧 hash 失效。Build ↔ Verify 的中间失败轮次不会进入 Archive，因此不会反复触发该决策点。
+
+`max_verify_failures` 是同一份已确认 contract 的 Verify-fail 总预算，必须是正整数，字段缺失时使用 `5`。每个已提交的 fail 消耗一次；普通实现变化、语义进展和配置修改不清除已累计次数。提高配置可以释放尚未超过新上限的预算，但只有用户确认的新 contract 才从零开始计数。
 
 `snapshot` 定义内容快照的显式范围与资源预算。`include`/`exclude` 使用项目相对 `/` 路径以及 `*`、`**`、`?`；规范化策略及 hash 会写入新 change 的 baseline。后续 current snapshot 继续使用 baseline 策略，不能靠中途修改范围隐藏实现变化。`max_files`、`max_total_bytes` 和 `max_duration_ms` 只限制捕获工作，可按仓库规模提高；文件内容使用流式 SHA-256，不依赖 Git object hash，也没有独立的 5 MiB 单文件限制。
 
@@ -174,7 +177,7 @@ Sequential 模式的 Open questions 同时保存一个最上游阻塞问题。Ba
 
 保存可复核事实，不保存隐藏推理文本。未运行的检查放在 Skipped checks，失败结果不能写成 pass。
 
-Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出就拒绝继续，不会先构造无界列表再截断。`acceptancePage` 每页最多 16 项；单项文字最多 512 UTF-8 字节、context 最多 4 项且每项最多 256 字节，整页最多 32 KiB。文字或 context 截断会显式标记，验收 ID 不会因分页或截断而丢失；cursor 绑定当前 acceptance hash，契约变化后旧 cursor 会失效。
+Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出就拒绝继续，不会先构造无界列表再截断。Build、Verify 和 Archive 的 `status --details` 都可返回 `acceptancePage`。每页最多 16 项；单项文字最多 512 UTF-8 字节、context 最多 4 项且每项最多 256 字节，整页最多 32 KiB。Build-after-fail 会为每项投影 `satisfied`、`failed`、`missing` 或 `unverified`，并在页内列出 failed/missing acceptance IDs；failed check IDs 每页最多 16 项并显式标记截断。文字或 context 截断会显式标记，验收 ID 不会因分页或截断而丢失；cursor 绑定当前 acceptance hash，契约变化后旧 cursor 会失效。
 
 `# Acceptance evidence` 下必须恰好有一个固定机器块。ID 由 Runtime 从 brief/spec 派生，通过 Build 结果或 `status --details` 返回；不要自行计算或改写。生成这个块时用 `comet native evidence format` 把条目序列化成规范文本再粘贴进去，不要手工排版 JSON——手写几乎不可能逐字节匹配规范序列化规则，会被拒绝并报 "canonical serialization" 错误：
 

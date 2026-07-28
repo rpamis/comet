@@ -284,6 +284,7 @@ export async function collectNativeDashboardProjection(
     const page = await listNativeStatusPage(paths, {
       cursor: statusCursor,
       clarificationMode: config.native.clarification_mode,
+      maxVerifyFailures: config.native.max_verify_failures,
     });
     totalStatusCount ??= page.total;
     if (page.total !== totalStatusCount) {

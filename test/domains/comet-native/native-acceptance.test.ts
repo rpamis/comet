@@ -90,6 +90,37 @@ describe('Native acceptance criteria', () => {
     ).toThrow('integrity');
   });
 
+  it('projects bounded prior verification gaps on Build acceptance pages', () => {
+    const criteria = Array.from({ length: 3 }, (_, index) => ({
+      id: `acceptance-${index.toString(16).padStart(64, '0')}`,
+      kind: 'brief-example' as const,
+      source: 'brief.md',
+      context: [],
+      text: `Criterion ${index}.`,
+    }));
+    const statuses = new Map([
+      [criteria[0].id, 'satisfied' as const],
+      [criteria[1].id, 'failed' as const],
+      [criteria[2].id, 'missing' as const],
+    ]);
+    const page = projectNativeAcceptancePage({
+      criteria,
+      acceptanceHash: 'a'.repeat(64),
+      verificationStatuses: statuses,
+      failedCheckIds: Array.from({ length: 20 }, (_, index) => `check-${index}`),
+    });
+
+    expect(page.items.map((item) => item.verificationStatus)).toEqual([
+      'satisfied',
+      'failed',
+      'missing',
+    ]);
+    expect(page.failedAcceptanceIds).toEqual([criteria[1].id]);
+    expect(page.missingAcceptanceIds).toEqual([criteria[2].id]);
+    expect(page.failedCheckIds).toHaveLength(16);
+    expect(page.failedCheckIdsTruncated).toBe(true);
+  });
+
   it('derives stable IDs from Acceptance examples independent of list order and wrapping', () => {
     const first = `# Outcome
 Ship login.

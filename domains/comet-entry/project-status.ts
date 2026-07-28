@@ -208,6 +208,7 @@ export async function inspectCometProjectStatus(startPath: string): Promise<Come
       native = {
         changes: await listNativeStatus(paths, {
           clarificationMode: config.native.clarification_mode,
+          maxVerifyFailures: config.native.max_verify_failures,
         }),
       };
     } catch (error) {

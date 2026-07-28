@@ -1,0 +1,11 @@
+{
+  "schema": "comet.native.archive-cas.v1",
+  "operationId": "spec-1-native-completion-loop",
+  "role": "post",
+  "hash": "9b3efaba1b2caf06b3d1a2c0579258d33af8b1a5ef029f0d3886032df0b83e62",
+  "identity": {
+    "dev": 1986195787,
+    "ino": 2251799814208577,
+    "birthtimeMs": 1785238789116.1765
+  }
+}

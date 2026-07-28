@@ -299,7 +299,10 @@ async function resolveNativeResumeProbe(
   if (!config) throw new Error('.comet/config.yaml was not found after resolving Native entry');
   await assertNoPendingNativeRootMove(projectRoot);
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
-  const statuses = await listNativeStatus(paths);
+  const statuses = await listNativeStatus(paths, {
+    clarificationMode: config.native.clarification_mode,
+    maxVerifyFailures: config.native.max_verify_failures,
+  });
   let selectedName: string | null = null;
   let selectionError: string | null = null;
   try {

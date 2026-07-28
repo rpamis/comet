@@ -553,6 +553,10 @@ def check_native_artifacts():
         return failed("native_artifacts", "native workflow is not enabled")
     if config.get("native", {}).get("artifact_root") != "docs":
         return failed("native_artifacts", "native.artifact_root is not docs")
+    if config.get("native", {}).get("max_verify_failures") != 5:
+        return failed("native_artifacts", "native.max_verify_failures is not 5")
+    if config.get("native", {}).get("archive_confirmation", "automatic") != "automatic":
+        return failed("native_artifacts", "native.archive_confirmation is not automatic")
 
     canonical = WORKSPACE / "docs" / "comet" / "specs" / "sentence-counting" / "spec.md"
     if not canonical.is_file() or not canonical.read_text(encoding="utf-8").strip():
@@ -593,7 +597,9 @@ def check_trajectory():
         if line.strip()
     ]
     phases = set()
-    for event in events:
+    failed_loop_index = None
+    final_pass_index = None
+    for index, event in enumerate(events):
         data = event.get("data", {})
         phases.update(
             value
@@ -603,8 +609,31 @@ def check_trajectory():
         serialized = json.dumps(event).lower()
         if any(key in serialized for key in ("chain_of_thought", "reasoning_content", "hidden_reasoning")):
             return failed("trajectory", "Trajectory contains a hidden reasoning field")
+        repair = data.get("repairStagnation")
+        if (
+            data.get("previousPhase") == "verify"
+            and data.get("nextPhase") == "build"
+            and data.get("verificationResult") == "fail"
+            and isinstance(repair, dict)
+            and repair.get("contractHash")
+            and repair.get("failedAcceptanceIds")
+            and repair.get("maxVerifyFailures") == 5
+        ):
+            failed_loop_index = index
+        if (
+            data.get("previousPhase") == "verify"
+            and data.get("nextPhase") == "archive"
+            and data.get("verificationResult") == "pass"
+        ):
+            final_pass_index = index
     if not {"shape", "build", "verify", "archive"}.issubset(phases):
         return failed("trajectory", f"Missing phase evidence; found {sorted(phases)}")
+    if (
+        failed_loop_index is None
+        or final_pass_index is None
+        or failed_loop_index >= final_pass_index
+    ):
+        return failed("trajectory", "Missing failed-gap Build loop before the final passing Verify")
     return passed("trajectory")
 
 
