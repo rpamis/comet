@@ -5,6 +5,7 @@ import { PassThrough } from 'stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { classicResumeProbeCommand } from '../../../domains/comet-classic/classic-resume-probe-command.js';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const buildYaml = [
   'workflow: full',
@@ -79,6 +80,7 @@ async function runWithStdin<T>(payload: string, fn: () => Promise<T>): Promise<T
 
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-resume-probe-command-'));
+  await prepareClassicLegacyProject(tmpDir);
   process.chdir(tmpDir);
   await createActiveChange('cache-ttl');
 });

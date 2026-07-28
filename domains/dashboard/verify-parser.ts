@@ -1,12 +1,15 @@
-import { promises as fs } from 'fs';
 import path from 'path';
-import { fileExists } from '../../platform/fs/file-system.js';
+import {
+  inspectProtectedProjectPath,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import type { VerifyResult, VerifySummary } from './types.js';
 
 const VALID_RESULTS: ReadonlySet<VerifyResult> = new Set(['pending', 'pass', 'fail', 'unknown']);
 const DEFAULT_REPORT_RELATIVE = '.comet/verify-result.md';
 const SUMMARY_LINE_BUDGET = 6;
 const SUMMARY_CHAR_BUDGET = 480;
+const REPORT_READ_LIMIT_BYTES = 2 * 1024 * 1024;
 
 export interface VerifyContext {
   changeDir: string;
@@ -28,13 +31,27 @@ export async function resolveVerify(ctx: VerifyContext): Promise<VerifySummary> 
   const declared = normalizeResult(ctx.yaml.verify_result ?? ctx.yaml.verifyResult);
 
   const defaultReportPath = path.join(ctx.changeDir, DEFAULT_REPORT_RELATIVE);
+  const projectRoot = path.resolve(ctx.projectRoot ?? ctx.changeDir);
   const explicitReport = stripNullish(ctx.yaml.verification_report ?? ctx.yaml.verificationReport);
-  const reportPath = explicitReport
-    ? (safeJoin(ctx.projectRoot ?? ctx.changeDir, explicitReport) ?? defaultReportPath)
-    : defaultReportPath;
-
-  const reportExists = await fileExists(reportPath);
-  const summary = reportExists ? await readSummary(reportPath) : undefined;
+  const explicitPath = explicitReport
+    ? await resolveProtectedReport(projectRoot, explicitReport)
+    : null;
+  const reportPath = explicitPath ?? defaultReportPath;
+  const relativeReport = path.relative(projectRoot, reportPath).replaceAll('\\', '/');
+  let reportExists = false;
+  let summary: string | undefined;
+  try {
+    const result = await readProtectedProjectFile(
+      projectRoot,
+      relativeReport,
+      REPORT_READ_LIMIT_BYTES,
+      { label: 'Classic verification report' },
+    );
+    reportExists = true;
+    summary = summarize(result.bytes.toString('utf-8'));
+  } catch {
+    // Unsafe, missing, or unreadable reports must not influence dashboard state.
+  }
 
   let result: VerifyResult;
   if (declared) {
@@ -57,14 +74,17 @@ export async function resolveVerify(ctx: VerifyContext): Promise<VerifySummary> 
  * so callers can fall back to a safe default. A malicious `.comet.yaml` must
  * not be able to point the dashboard at arbitrary files on disk.
  */
-function safeJoin(root: string, candidate: string): string | null {
-  if (path.isAbsolute(candidate)) return null;
-  const resolvedRoot = path.resolve(root);
-  const resolved = path.resolve(resolvedRoot, candidate);
-  if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) {
+async function resolveProtectedReport(root: string, candidate: string): Promise<string | null> {
+  try {
+    return (
+      await inspectProtectedProjectPath(root, candidate, {
+        label: 'Classic verification report',
+        expected: 'file',
+      })
+    ).target;
+  } catch {
     return null;
   }
-  return resolved;
 }
 
 function normalizeResult(raw: string | undefined): VerifyResult | null {
@@ -81,20 +101,15 @@ function stripNullish(raw: string | undefined): string | undefined {
   return value;
 }
 
-async function readSummary(reportPath: string): Promise<string | undefined> {
-  try {
-    const content = await fs.readFile(reportPath, 'utf-8');
-    const lines = content
-      .split(/\r?\n/u)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .slice(0, SUMMARY_LINE_BUDGET);
-    const joined = lines.join('\n');
-    if (!joined) return undefined;
-    return joined.length > SUMMARY_CHAR_BUDGET
-      ? `${joined.slice(0, SUMMARY_CHAR_BUDGET - 1)}…`
-      : joined;
-  } catch {
-    return undefined;
-  }
+function summarize(content: string): string | undefined {
+  const lines = content
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, SUMMARY_LINE_BUDGET);
+  const joined = lines.join('\n');
+  if (!joined) return undefined;
+  return joined.length > SUMMARY_CHAR_BUDGET
+    ? `${joined.slice(0, SUMMARY_CHAR_BUDGET - 1)}…`
+    : joined;
 }

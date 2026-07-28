@@ -1,7 +1,9 @@
 import path from 'path';
 import os from 'os';
 import { promises as fs } from 'fs';
+import type { BigIntStats, Dirent } from 'fs';
 import { copyFile, fileExists, readDir } from '../../platform/fs/file-system.js';
+import { sameFileObject, type FileObjectIdentity } from '../../platform/fs/file-identity.js';
 import {
   getOpenSpecVersion,
   isCommandAvailable,
@@ -33,10 +35,21 @@ import {
 } from '../../platform/install/platforms.js';
 import { resolveCanonicalSkillRootOwners } from '../../platform/install/skill-root-owner.js';
 import type { InstallScope } from '../../platform/install/types.js';
-import { inspectClassicChange } from '../../domains/comet-classic/classic-diagnostics.js';
+import { inspectClassicChangeReadOnly } from '../../domains/comet-classic/classic-diagnostics.js';
+import {
+  inspectClassicLayout,
+  resolveClassicLayout,
+} from '../../domains/comet-classic/classic-layout.js';
+import { assertClassicOpenSpecRootHealthy } from '../../domains/comet-classic/classic-openspec-root.js';
+import {
+  inspectClassicRootMove,
+  repairClassicRootMove,
+} from '../../domains/comet-classic/classic-root-move.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
-import { readProjectConfig } from '../../domains/comet-native/native-config.js';
 import { repairCometCurrentSelection } from '../../domains/comet-entry/current-selection-repair.js';
+import { readWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-reader.js';
+import { inspectProtectedProjectPath } from '../../domains/workflow-contract/protected-project-path.js';
+import type { WorkflowProjectConfig } from '../../domains/workflow-contract/types.js';
 import { resolveHookWorkflowOwner } from '../../domains/comet-entry/hook-router.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 
@@ -57,6 +70,39 @@ const SUPERPOWERS_SENTINELS = [
   'writing-plans/SKILL.md',
 ] as const;
 const HOOK_ROUTER_RUNTIME = 'comet/scripts/comet-hook-router.mjs';
+const CLASSIC_PLATFORM_TOOL_SCAN_MAX_ENTRIES = 4096;
+const CLASSIC_PLATFORM_TOOL_SCAN_MAX_DEPTH = 8;
+const CLASSIC_PLATFORM_TOOL_SCAN_MAX_FINDINGS = 128;
+const CLASSIC_PLATFORM_TOOL_ROOTS = [
+  ...new Set([
+    ...PLATFORMS.flatMap((platform) => getPlatformSkillsDirs(platform, 'project')),
+    // OpenSpec commands for these platforms live outside their Skill roots.
+    '.agent',
+    '.clinerules',
+  ]),
+].sort();
+const OPEN_SPEC_COMMAND_CONTAINER_NAMES = new Set(['command', 'commands', 'prompts', 'workflows']);
+
+function configuredWorkflows(config: WorkflowProjectConfig | null): Array<'native' | 'classic'> {
+  return config?.workflows ?? (config ? [config.default_workflow] : ['classic']);
+}
+
+function configuredSkillLanguage(
+  config: WorkflowProjectConfig | null,
+  workflows: Array<'native' | 'classic'>,
+): 'zh' | 'en' {
+  if (!config) return 'en';
+  const ordered = [
+    config.default_workflow,
+    ...workflows.filter((workflow) => workflow !== config.default_workflow),
+  ];
+  for (const workflow of ordered) {
+    if (!workflows.includes(workflow)) continue;
+    const language = workflow === 'native' ? config.native?.language : config.classic?.language;
+    if (language) return language === 'zh-CN' ? 'zh' : 'en';
+  }
+  return 'en';
+}
 
 function hookRouterRuntimePaths(
   baseDir: string,
@@ -126,15 +172,60 @@ function checkScopeMode(
 }
 
 async function checkWorkingDirs(projectPath: string): Promise<CheckResult> {
-  const specsDir = path.join(projectPath, 'docs', 'superpowers', 'specs');
-  const plansDir = path.join(projectPath, 'docs', 'superpowers', 'plans');
-  const specsExist = await fileExists(specsDir);
-  const plansExist = await fileExists(plansDir);
-
-  if (specsExist && plansExist) {
-    return { check: 'working directories', status: 'pass', message: 'present' };
+  let layout;
+  try {
+    layout = await resolveClassicLayout(projectPath);
+  } catch (error) {
+    return {
+      check: 'working directories',
+      status: 'fail',
+      message: error instanceof Error ? error.message : String(error),
+    };
   }
-  if (!specsExist && !plansExist) {
+  const expected = [
+    layout.changesDir,
+    layout.archiveDir,
+    layout.specsDir,
+    layout.superpowersSpecsDir,
+    layout.superpowersPlansDir,
+    layout.superpowersReportsDir,
+  ];
+  let presence: boolean[];
+  try {
+    const inspections = await Promise.all(
+      expected.map((directory) =>
+        inspectProtectedProjectPath(
+          projectPath,
+          path.relative(projectPath, directory).replaceAll('\\', '/'),
+          {
+            label: `Classic working directory ${path
+              .relative(projectPath, directory)
+              .replaceAll('\\', '/')}`,
+            expected: 'directory',
+          },
+        ),
+      ),
+    );
+    presence = inspections.map((inspection) => inspection.exists);
+  } catch (error) {
+    return {
+      check: 'working directories',
+      status: 'fail',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+  const missing = expected
+    .filter((_, index) => !presence[index])
+    .map((directory) => path.relative(projectPath, directory).replaceAll('\\', '/'));
+
+  if (missing.length === 0) {
+    return {
+      check: 'working directories',
+      status: 'pass',
+      message: `present (${layout.artifactLayout})`,
+    };
+  }
+  if (missing.length === expected.length) {
     return {
       check: 'working directories',
       status: 'warn',
@@ -142,14 +233,300 @@ async function checkWorkingDirs(projectPath: string): Promise<CheckResult> {
         'project not initialized for Comet — run: comet init --scope project if this project should use Comet workflows',
     };
   }
-  const missing = [];
-  if (!specsExist) missing.push('specs');
-  if (!plansExist) missing.push('plans');
   return {
     check: 'working directories',
     status: 'warn',
     message: `partial (missing: ${missing.join(', ')})`,
   };
+}
+
+async function checkClassicLayout(projectPath: string): Promise<CheckResult> {
+  let transaction;
+  try {
+    transaction = await inspectClassicRootMove(projectPath);
+  } catch (error) {
+    return {
+      check: 'Classic artifact layout',
+      status: 'fail',
+      message: `invalid root move journal; allowed strategies: none (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    };
+  }
+  if (transaction) {
+    const allowed =
+      transaction.allowedStrategies.length > 0 ? transaction.allowedStrategies.join(', ') : 'none';
+    return {
+      check: 'Classic artifact layout',
+      status: 'fail',
+      message: `root move ${transaction.id} is incomplete at ${transaction.stage}; source ${transaction.source}; target ${transaction.target}; staging ${transaction.staging}; plan ${transaction.planId}; allowed strategies: ${allowed}${
+        transaction.reason ? ` (${transaction.reason})` : ''
+      }; run comet doctor --repair --strategy <strategy>`,
+    };
+  }
+  let inspection;
+  try {
+    inspection = await inspectClassicLayout(projectPath);
+  } catch (error) {
+    return {
+      check: 'Classic artifact layout',
+      status: 'fail',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (inspection.dualRoots) {
+    return {
+      check: 'Classic artifact layout',
+      status: 'fail',
+      message:
+        'both openspec/ and docs/openspec/ exist; Classic writes are blocked until the conflict is resolved',
+    };
+  }
+  const configuredRoot = path
+    .relative(projectPath, inspection.paths.openSpecRoot)
+    .replaceAll('\\', '/');
+  const alternateRoot = path.relative(projectPath, inspection.alternateRoot).replaceAll('\\', '/');
+  if (!inspection.configuredRootExists) {
+    return {
+      check: 'Classic artifact layout',
+      status: 'fail',
+      message: `${inspection.paths.artifactLayout}: configured ${configuredRoot}/ missing; alternate ${alternateRoot}/ ${
+        inspection.alternateRootExists ? 'present' : 'missing'
+      } — run: comet classic root show, then restore the configured root or use comet classic root move`,
+    };
+  }
+  return {
+    check: 'Classic artifact layout',
+    status: 'pass',
+    message: `${inspection.paths.artifactLayout}: configured ${configuredRoot}/ present; alternate ${alternateRoot}/ ${
+      inspection.alternateRootExists ? 'present' : 'missing'
+    }`,
+  };
+}
+
+async function checkClassicOpenSpecRoot(projectPath: string): Promise<CheckResult> {
+  try {
+    const health = await assertClassicOpenSpecRootHealthy(projectPath);
+    return {
+      check: 'Classic OpenSpec root',
+      status: 'pass',
+      message: `${health.configPath} is valid (${health.schema})`,
+    };
+  } catch (error) {
+    return {
+      check: 'Classic OpenSpec root',
+      status: 'fail',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+interface DoctorDirectoryIdentity {
+  object: FileObjectIdentity;
+  ctimeNs: bigint;
+  mtimeNs: bigint;
+  size: bigint;
+}
+
+function doctorDirectoryIdentity(stat: BigIntStats): DoctorDirectoryIdentity {
+  return {
+    object: {
+      dev: stat.dev,
+      ino: stat.ino,
+      birthtime: stat.birthtimeNs,
+    },
+    ctimeNs: stat.ctimeNs,
+    mtimeNs: stat.mtimeNs,
+    size: stat.size,
+  };
+}
+
+function sameDoctorDirectory(
+  left: DoctorDirectoryIdentity,
+  right: DoctorDirectoryIdentity,
+): boolean {
+  return (
+    sameFileObject(left.object, right.object) &&
+    left.ctimeNs === right.ctimeNs &&
+    left.mtimeNs === right.mtimeNs &&
+    left.size === right.size
+  );
+}
+
+async function readDoctorPlatformDirectory(
+  projectPath: string,
+  relativeDirectory: string,
+  maxEntries: number,
+): Promise<Dirent[] | null> {
+  const label = `Classic platform tool directory ${relativeDirectory}`;
+  const inspection = await inspectProtectedProjectPath(projectPath, relativeDirectory, {
+    label,
+    expected: 'directory',
+  });
+  if (!inspection.exists) return null;
+
+  const beforeStat = await fs.lstat(inspection.target, { bigint: true });
+  if (!beforeStat.isDirectory() || beforeStat.isSymbolicLink()) {
+    throw new Error(`${label} must be a real directory`);
+  }
+  const before = doctorDirectoryIdentity(beforeStat);
+  const entries: Dirent[] = [];
+  let readError: unknown;
+  const directory = await fs.opendir(inspection.target);
+  try {
+    for await (const entry of directory) {
+      entries.push(entry);
+      if (entries.length > maxEntries) {
+        throw new Error(
+          `Classic platform tool scan exceeds ${CLASSIC_PLATFORM_TOOL_SCAN_MAX_ENTRIES} entries`,
+        );
+      }
+    }
+  } catch (error) {
+    readError = error;
+  } finally {
+    await directory.close().catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== 'ERR_DIR_CLOSED' && !readError) {
+        readError = error;
+      }
+    });
+  }
+
+  const afterInspection = await inspectProtectedProjectPath(projectPath, relativeDirectory, {
+    label,
+    expected: 'directory',
+  });
+  if (!afterInspection.exists) {
+    throw new Error(`${label} changed while being inspected`);
+  }
+  const afterStat = await fs.lstat(afterInspection.target, { bigint: true });
+  if (
+    !afterStat.isDirectory() ||
+    afterStat.isSymbolicLink() ||
+    !sameDoctorDirectory(before, doctorDirectoryIdentity(afterStat))
+  ) {
+    throw new Error(`${label} changed while being inspected`);
+  }
+  if (readError) throw readError;
+  return entries;
+}
+
+function isOpenSpecPlatformToolSentinel(relativePath: string, kind: 'file' | 'directory'): boolean {
+  const segments = relativePath.split('/');
+  const name = segments.at(-1) ?? '';
+  const parent = segments.at(-2) ?? '';
+  if (kind === 'directory' && parent === 'skills' && /^openspec-[a-z0-9-]+$/iu.test(name)) {
+    return true;
+  }
+  if (kind !== 'file') return false;
+
+  const insideCommandContainer = segments.some((segment) =>
+    OPEN_SPEC_COMMAND_CONTAINER_NAMES.has(segment),
+  );
+  if (!insideCommandContainer) return false;
+  return /^(?:opsx|openspec)-[a-z0-9-]+\.[a-z0-9.]+$/iu.test(name) || segments.includes('opsx');
+}
+
+async function findClassicArtifactPlatformTools(
+  projectPath: string,
+  artifactBaseRelative: string,
+): Promise<string[]> {
+  const findings = new Set<string>();
+  const queue = CLASSIC_PLATFORM_TOOL_ROOTS.map((platformRoot) => ({
+    relative: path.posix.join(artifactBaseRelative, platformRoot.replaceAll('\\', '/')),
+    depth: 0,
+  }));
+  let inspectedEntries = 0;
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const entries = await readDoctorPlatformDirectory(
+      projectPath,
+      current.relative,
+      CLASSIC_PLATFORM_TOOL_SCAN_MAX_ENTRIES - inspectedEntries,
+    );
+    if (!entries) continue;
+
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      inspectedEntries += 1;
+      if (inspectedEntries > CLASSIC_PLATFORM_TOOL_SCAN_MAX_ENTRIES) {
+        throw new Error(
+          `Classic platform tool scan exceeds ${CLASSIC_PLATFORM_TOOL_SCAN_MAX_ENTRIES} entries`,
+        );
+      }
+      const relative = path.posix.join(current.relative, entry.name);
+      const inspection = await inspectProtectedProjectPath(projectPath, relative, {
+        label: `Classic platform tool candidate ${relative}`,
+        expected: 'any',
+      });
+      if (!inspection.exists) {
+        throw new Error(
+          `Classic platform tool candidate ${relative} changed while being inspected`,
+        );
+      }
+      const kind = inspection.kind === 'directory' ? 'directory' : 'file';
+      if (isOpenSpecPlatformToolSentinel(relative, kind)) {
+        findings.add(relative);
+        if (findings.size > CLASSIC_PLATFORM_TOOL_SCAN_MAX_FINDINGS) {
+          throw new Error(
+            `Classic platform tool scan exceeds ${CLASSIC_PLATFORM_TOOL_SCAN_MAX_FINDINGS} findings`,
+          );
+        }
+        continue;
+      }
+      if (kind === 'directory') {
+        if (current.depth >= CLASSIC_PLATFORM_TOOL_SCAN_MAX_DEPTH) {
+          throw new Error(
+            `Classic platform tool scan exceeds depth ${CLASSIC_PLATFORM_TOOL_SCAN_MAX_DEPTH} at ${relative}`,
+          );
+        }
+        queue.push({ relative, depth: current.depth + 1 });
+      }
+    }
+  }
+
+  return [...findings].sort();
+}
+
+async function checkClassicPlatformToolAssets(projectPath: string): Promise<CheckResult | null> {
+  let layout;
+  try {
+    layout = await resolveClassicLayout(projectPath);
+  } catch {
+    // The dedicated layout check already reports why the configured layout
+    // cannot be trusted. Do not guess whether the docs-only check applies.
+    return null;
+  }
+  if (layout.artifactLayout !== 'docs') return null;
+
+  const artifactBaseRelative = path
+    .relative(projectPath, layout.openSpecBase)
+    .replaceAll('\\', '/');
+  try {
+    const findings = await findClassicArtifactPlatformTools(projectPath, artifactBaseRelative);
+    if (findings.length === 0) {
+      return {
+        check: 'Classic platform tool assets',
+        status: 'pass',
+        message: 'no OpenSpec platform tool assets under docs/',
+      };
+    }
+    return {
+      check: 'Classic platform tool assets',
+      status: 'fail',
+      message: `found OpenSpec platform tool assets under the docs artifact root: ${findings.join(
+        ', ',
+      )}; these assets belong in platform directories at the project root — run comet update to repair the platform installation. Doctor did not move any files.`,
+    };
+  } catch (error) {
+    return {
+      check: 'Classic platform tool assets',
+      status: 'fail',
+      message: `could not safely inspect platform tool assets under docs/: ${
+        error instanceof Error ? error.message : String(error)
+      }; platform tool assets belong in platform directories at the project root — run comet update to repair the platform installation. Doctor did not move any files.`,
+    };
+  }
 }
 
 async function checkSuperpowers(
@@ -467,8 +844,25 @@ function formatRuntimeEvalRecovery(
 }
 
 async function checkCometYamlValidity(projectPath: string): Promise<CheckResult[]> {
-  const changesDir = path.join(projectPath, 'openspec', 'changes');
-  if (!(await fileExists(changesDir))) return [];
+  let changesDir: string;
+  try {
+    const inspection = await inspectClassicLayout(projectPath);
+    if (!inspection.configuredRootExists) return [];
+    changesDir = inspection.paths.changesDir;
+    const changesInspection = await inspectProtectedProjectPath(
+      projectPath,
+      path.relative(projectPath, changesDir).replaceAll('\\', '/'),
+      {
+        label: 'Classic changes directory',
+        expected: 'directory',
+      },
+    );
+    if (!changesInspection.exists) return [];
+  } catch {
+    // The layout check reports the concrete root/config problem. Do not follow
+    // an unsafe or unavailable configured root merely to enumerate state.
+    return [];
+  }
 
   const entries = await readDir(changesDir);
   const results: CheckResult[] = [];
@@ -477,14 +871,52 @@ async function checkCometYamlValidity(projectPath: string): Promise<CheckResult[
     if (entry === 'archive') continue;
     const changeDir = path.join(changesDir, entry);
     const yamlPath = path.join(changeDir, '.comet.yaml');
-    if (!(await fileExists(yamlPath))) continue;
+    const runtimePath = path.join(changeDir, '.comet');
+    try {
+      const changeInspection = await inspectProtectedProjectPath(
+        projectPath,
+        path.relative(projectPath, changeDir).replaceAll('\\', '/'),
+        {
+          label: `Classic change ${entry}`,
+          expected: 'directory',
+        },
+      );
+      if (!changeInspection.exists) continue;
+      const yamlInspection = await inspectProtectedProjectPath(
+        projectPath,
+        path.relative(projectPath, yamlPath).replaceAll('\\', '/'),
+        {
+          label: `Classic state ${entry}`,
+          expected: 'file',
+        },
+      );
+      if (!yamlInspection.exists) continue;
+      await inspectProtectedProjectPath(
+        projectPath,
+        path.relative(projectPath, runtimePath).replaceAll('\\', '/'),
+        {
+          label: `Classic runtime directory ${entry}`,
+          expected: 'directory',
+        },
+      );
+    } catch (error) {
+      results.push({
+        check: `.comet.yaml: ${entry}`,
+        status: 'fail',
+        message: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
 
-    const diagnostic = await inspectClassicChange(changeDir, entry);
+    const diagnostic = await inspectClassicChangeReadOnly(changeDir, entry);
     if (diagnostic.valid) {
+      const step =
+        diagnostic.currentStep ??
+        (diagnostic.runtimeMode === 'legacy-state' ? `legacy:${diagnostic.phase}` : 'completed');
       results.push({
         check: `.comet.yaml: ${entry}`,
         status: 'pass',
-        message: `valid (step: ${diagnostic.currentStep ?? 'completed'}, mode: ${diagnostic.runtimeMode})`,
+        message: `valid (step: ${step}, mode: ${diagnostic.runtimeMode})`,
       });
       if (diagnostic.runtimeEval) {
         const runtimeCheckMessage = diagnostic.runtimeEval.passed
@@ -554,8 +986,16 @@ async function collectResultsWithContext(
   context: DoctorContext,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
-  const config = scope === 'global' ? null : await readProjectConfig(projectPath);
-  const workflows = config?.workflows ?? (config ? [config.default_workflow] : ['classic']);
+  let config = null;
+  let configError: string | null = null;
+  if (scope !== 'global') {
+    try {
+      config = await readWorkflowProjectConfig(projectPath);
+    } catch (error) {
+      configError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  const workflows = configError ? ['native', 'classic'] : configuredWorkflows(config);
   const workflowSelection: InitWorkflowSelection =
     workflows.includes('native') && workflows.includes('classic')
       ? 'both'
@@ -563,6 +1003,9 @@ async function collectResultsWithContext(
         ? 'native'
         : 'classic';
   const classicEnabled = workflowSelection !== 'native';
+  if (configError) {
+    results.push({ check: 'project config', status: 'fail', message: configError });
+  }
   const scopeMode = checkScopeMode(projectPath, scope, context);
   if (scopeMode) results.push(scopeMode);
   results.push(checkEnvironment(projectPath, context));
@@ -571,6 +1014,11 @@ async function collectResultsWithContext(
     results.push(await checkOpenSpecCli());
     results.push(await checkSuperpowers(projectPath, scope, context));
     if (scope !== 'global') {
+      const classicLayout = await checkClassicLayout(projectPath);
+      results.push(classicLayout);
+      const platformToolAssets = await checkClassicPlatformToolAssets(projectPath);
+      if (platformToolAssets) results.push(platformToolAssets);
+      results.push(await checkClassicOpenSpecRoot(projectPath));
       results.push(await checkWorkingDirs(projectPath));
     }
   }
@@ -578,9 +1026,21 @@ async function collectResultsWithContext(
   results.push(await checkScriptsPresent());
   if (classicEnabled) {
     results.push(await checkCodegraph(projectPath, scope));
-    results.push(...(await checkCometYamlValidity(projectPath)));
+    if (!configError && config && workflows.includes('classic')) {
+      results.push(...(await checkCometYamlValidity(projectPath)));
+    }
   }
-  if (scope !== 'global') results.push(await checkCurrentSelection(projectPath));
+  if (scope !== 'global') {
+    results.push(
+      configError
+        ? {
+            check: 'current selection',
+            status: 'fail',
+            message: `unavailable because project config is invalid: ${configError}`,
+          }
+        : await checkCurrentSelection(projectPath),
+    );
+  }
   return results;
 }
 
@@ -637,12 +1097,13 @@ async function repairDoctorState(
   projectPath: string,
   scope: DoctorScope,
   context: DoctorContext,
+  strategy?: 'continue' | 'rollback',
 ): Promise<string[]> {
   const repaired: string[] = [];
   let projectRouterReady = false;
-  const config = scope === 'global' ? null : await readProjectConfig(projectPath);
-  const language = config?.native.language === 'zh-CN' ? 'zh' : 'en';
-  const workflows = config?.workflows ?? (config ? [config.default_workflow] : ['classic']);
+  const config = scope === 'global' ? null : await readWorkflowProjectConfig(projectPath);
+  const workflows = configuredWorkflows(config);
+  const language = configuredSkillLanguage(config, workflows);
   const workflowSelection: InitWorkflowSelection =
     workflows.includes('native') && workflows.includes('classic')
       ? 'both'
@@ -690,6 +1151,9 @@ async function repairDoctorState(
     if (selectionRepair.migratedLegacyClassic) repaired.push('Classic selection v1');
     if (selectionRepair.clearedStaleSelection) repaired.push('stale current selection');
   }
+  if (scope !== 'global' && strategy && (await repairClassicRootMove(projectPath, strategy))) {
+    repaired.push('Classic root move');
+  }
 
   for (const target of targets) {
     const { baseDir, scope: targetScope, platform } = target;
@@ -718,6 +1182,7 @@ function icon(status: string): string {
 interface DoctorOptions {
   json?: boolean;
   repair?: boolean;
+  strategy?: 'continue' | 'rollback';
   scope?: DoctorScope;
   homeDir?: string;
 }
@@ -729,7 +1194,12 @@ export async function doctorCommand(
   const projectPath = path.resolve(targetPath);
   const scope = options.scope ?? 'auto';
   const context = { homeDir: path.resolve(options.homeDir ?? os.homedir()) };
-  const repaired = options.repair ? await repairDoctorState(projectPath, scope, context) : [];
+  if (options.strategy && !options.repair) {
+    throw new Error('--strategy requires --repair');
+  }
+  const repaired = options.repair
+    ? await repairDoctorState(projectPath, scope, context, options.strategy)
+    : [];
   const results =
     options.homeDir === undefined
       ? await collectResults(projectPath, scope)

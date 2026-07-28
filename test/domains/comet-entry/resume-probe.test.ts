@@ -79,6 +79,21 @@ async function createClassic(projectRoot: string, name: string): Promise<void> {
   await writeFile(path.join(changeDir, 'tasks.md'), '- [ ] finish\n');
 }
 
+async function writeClassicProjectConfig(projectRoot: string): Promise<void> {
+  await writeFile(
+    path.join(projectRoot, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      '  artifact_layout: legacy',
+      '  language: zh-CN',
+      '',
+    ].join('\n'),
+  );
+}
+
 function input(utterance: string, nonTrivialWork = true) {
   return {
     schema_version: COMET_RESUME_PROBE_SCHEMA_VERSION,
@@ -139,7 +154,7 @@ describe('Comet entry resume probe v2', () => {
     });
   });
 
-  it('routes configured Classic and legacy projects through the permanent Classic entry', async () => {
+  it('routes configured Classic through its permanent entry and rejects missing config', async () => {
     await writeProjectConfig(projectRoot, {
       ...defaultProjectConfig('.'),
       default_workflow: 'classic',
@@ -161,13 +176,17 @@ describe('Comet entry resume probe v2', () => {
     });
 
     await fs.rm(path.join(projectRoot, '.comet', 'config.yaml'));
-    const legacy = await resolveCometEntryResumeProbe(projectRoot, input('继续 classic-change'));
-    expect(legacy).toMatchObject({
-      workflow: 'classic',
-      skill: 'comet-classic',
-      entrySource: 'legacy-fallback',
-      action: 'auto_resume',
-      nextCommand: '/comet-classic',
+    const missingConfig = await resolveCometEntryResumeProbe(
+      projectRoot,
+      input('继续 classic-change'),
+    );
+    expect(missingConfig).toMatchObject({
+      workflow: null,
+      skill: null,
+      entrySource: null,
+      action: 'ask_user',
+      reasonCode: 'project-config-invalid',
+      nextCommand: null,
     });
   });
 
@@ -196,6 +215,7 @@ describe('Comet entry resume probe v2', () => {
   );
 
   it('preserves the Classic dirty-worktree confirmation rule behind the v2 facade', async () => {
+    await writeClassicProjectConfig(projectRoot);
     await createClassic(projectRoot, 'classic-dirty');
     const initialized = spawnSync('git', ['init'], { cwd: projectRoot, encoding: 'utf8' });
     expect(initialized.status, initialized.stderr).toBe(0);
@@ -204,7 +224,7 @@ describe('Comet entry resume probe v2', () => {
       resolveCometEntryResumeProbe(projectRoot, input('继续 classic-dirty')),
     ).resolves.toMatchObject({
       workflow: 'classic',
-      entrySource: 'legacy-fallback',
+      entrySource: 'project-config',
       action: 'ask_user',
       reasonCode: 'classic-ask-user',
       changeName: 'classic-dirty',
@@ -213,6 +233,7 @@ describe('Comet entry resume probe v2', () => {
   });
 
   it('fails closed with structured Classic output when legacy change state is malformed', async () => {
+    await writeClassicProjectConfig(projectRoot);
     await writeFile(
       path.join(projectRoot, 'openspec', 'changes', 'broken-classic', '.comet.yaml'),
       'workflow: [broken\n',
@@ -224,7 +245,7 @@ describe('Comet entry resume probe v2', () => {
       schema_version: 'comet.resume_probe.v2',
       workflow: 'classic',
       skill: 'comet-classic',
-      entrySource: 'legacy-fallback',
+      entrySource: 'project-config',
       action: 'ask_user',
       confidence: 'low',
       reasonCode: 'classic-state-invalid',

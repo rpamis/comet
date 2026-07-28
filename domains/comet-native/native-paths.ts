@@ -2,6 +2,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
+import { normalizeWorkflowArtifactRoot } from '../workflow-contract/project-config.js';
+
 import type { NativeProjectPaths } from './native-types.js';
 
 export const PROJECT_CONFIG_FILE = '.comet/config.yaml';
@@ -83,19 +85,7 @@ export async function discoverNativeProject(startPath: string): Promise<string> 
 }
 
 export function normalizeArtifactRootRef(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length === 0 || path.isAbsolute(trimmed) || /^(?:[A-Za-z]:|~|[\\/])/u.test(trimmed)) {
-    throw new Error('native.artifact_root must be a project-relative path');
-  }
-  const segments = trimmed.replaceAll('\\', '/').split('/');
-  if (segments.includes('..')) {
-    throw new Error('native.artifact_root must stay inside the project root');
-  }
-  const normalized = path.posix.normalize(segments.filter((segment) => segment !== '').join('/'));
-  if (normalized === '..' || normalized.startsWith('../')) {
-    throw new Error('native.artifact_root must stay inside the project root');
-  }
-  return normalized === '' ? '.' : normalized;
+  return normalizeWorkflowArtifactRoot(value);
 }
 
 export async function resolveArtifactRoot(projectRoot: string, value: string): Promise<string> {

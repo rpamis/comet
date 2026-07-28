@@ -1,5 +1,12 @@
-import { existsSync, promises as fs, readFileSync } from 'fs';
+import { promises as fs, readFileSync } from 'fs';
 import path from 'path';
+import {
+  assertClassicLayoutWritable,
+  assertClassicLayoutReadable,
+  classicProjectRelative,
+} from './classic-layout.js';
+import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
+import { inspectClassicProjectTarget } from './classic-protected-path.js';
 import type { CometHookDecision, CometHookRequest } from '../comet-entry/hook-types.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import {
@@ -145,16 +152,21 @@ async function loadGoverningChange(changeDir: string): Promise<GoverningChange |
 }
 
 async function activeChanges(projectRoot: string): Promise<GoverningChange[]> {
-  const changesDir = path.join(projectRoot, 'openspec', 'changes');
+  const changesDir = (await assertClassicLayoutReadable(projectRoot)).changesDir;
   const governingChanges: GoverningChange[] = [];
-  if (!existsSync(changesDir)) return governingChanges;
+  const changesInspection = await inspectClassicProjectTarget(projectRoot, changesDir, {
+    label: 'Classic changes directory',
+    expected: 'directory',
+  });
+  if (!changesInspection.exists) return governingChanges;
   for (const entry of (await fs.readdir(changesDir, { withFileTypes: true })).sort((left, right) =>
     left.name.localeCompare(right.name),
   )) {
-    if (!entry.isDirectory() || entry.name === 'archive') continue;
-    const changeDir = path.join(changesDir, entry.name);
-    if (!existsSync(path.join(changeDir, '.comet.yaml'))) continue;
-    const governing = await loadGoverningChange(changeDir);
+    if (entry.name === 'archive') continue;
+    if (openSpecChangeNameError(entry.name)) continue;
+    const active = await inspectClassicActiveChangeDirectory(entry.name, projectRoot);
+    if (!active.exists || !active.stateExists) continue;
+    const governing = await loadGoverningChange(active.directory);
     if (!governing || governing.archived) continue;
     governingChanges.push(governing);
   }
@@ -387,19 +399,19 @@ async function governingChange(
   projectRoot: string,
   selectedChangeName?: string,
 ): Promise<GoverningResolution> {
-  const prefix = 'openspec/changes/';
+  const layout = await assertClassicLayoutReadable(projectRoot);
+  const prefix = `${classicProjectRelative(projectRoot, layout.changesDir)}/`;
   if (relativePath.startsWith(prefix)) {
     const rest = relativePath.slice(prefix.length);
     const [name] = rest.split('/');
     if (name && name !== 'archive') {
-      const changeDir = path.join(projectRoot, 'openspec', 'changes', name);
-      const stateFile = path.join(changeDir, '.comet.yaml');
-      if (existsSync(stateFile)) {
-        const governing = await loadGoverningChange(changeDir);
+      const active = await inspectClassicActiveChangeDirectory(name, projectRoot);
+      if (active.stateExists) {
+        const governing = await loadGoverningChange(active.directory);
         if (governing) return governing;
-        return { changeDir, phase: 'open', classic: null, archived: false };
+        return { changeDir: active.directory, phase: 'open', classic: null, archived: false };
       }
-      return { changeDir, phase: 'open', classic: null, archived: false };
+      return { changeDir: active.directory, phase: 'open', classic: null, archived: false };
     }
   }
   if (isSuperpowersArtifactPath(relativePath)) {
@@ -457,8 +469,12 @@ function isSuperpowersWorkspace(relativePath: string): boolean {
   return relativePath === '.superpowers' || relativePath.startsWith('.superpowers/');
 }
 
-function openSpecAllowed(relativePath: string, phase: ClassicPhase): string | null {
-  if (!relativePath.startsWith('openspec/')) return null;
+function openSpecAllowed(
+  relativePath: string,
+  phase: ClassicPhase,
+  openSpecPrefix: string,
+): string | null {
+  if (!relativePath.startsWith(openSpecPrefix)) return null;
   const stateFile =
     relativePath.endsWith('/.comet.yaml') || relativePath.endsWith('/.openspec.yaml');
   const proposal =
@@ -634,6 +650,14 @@ async function inspectClassicHookTarget(
   selectedChangeName?: string,
 ): Promise<ClassicCommandResult> {
   const relativePath = await projectRelative(target, projectRoot);
+  try {
+    await assertClassicLayoutWritable(projectRoot);
+  } catch (error) {
+    return result(
+      2,
+      `[COMET-HOOK] blocked: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
   if (isCometConfig(relativePath)) {
     return allowed(`${relativePath} (whitelist: comet config)`);
@@ -668,7 +692,12 @@ async function inspectClassicHookTarget(
 
   const phase = governing.phase;
 
-  const openSpec = openSpecAllowed(relativePath, phase);
+  const layout = await assertClassicLayoutReadable(projectRoot);
+  const openSpec = openSpecAllowed(
+    relativePath,
+    phase,
+    `${classicProjectRelative(projectRoot, layout.openSpecRoot)}/`,
+  );
   if (openSpec) return allowed(openSpec);
   if (isSuperpowersArtifactPath(relativePath)) {
     if (governing.superpowersArtifact === 'matched' && allowsSuperpowersArtifacts(governing)) {
@@ -692,7 +721,29 @@ export async function inspectClassicHookGuard(
   changeName: string,
   request: CometHookRequest,
 ): Promise<CometHookDecision> {
-  const active = await activeChanges(projectRoot);
+  if (request.intent !== 'non-write') {
+    try {
+      await assertClassicLayoutWritable(projectRoot);
+    } catch (error) {
+      return {
+        allowed: false,
+        reason: error instanceof Error ? error.message : String(error),
+        workflow: 'classic',
+        change: changeName,
+      };
+    }
+  }
+  let active: GoverningChange[];
+  try {
+    active = await activeChanges(projectRoot);
+  } catch (error) {
+    return {
+      allowed: false,
+      reason: error instanceof Error ? error.message : String(error),
+      workflow: 'classic',
+      change: changeName,
+    };
+  }
   const selected = active.find((change) => governingChangeName(change) === changeName);
   if (!selected) {
     return {

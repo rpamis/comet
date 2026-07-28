@@ -12,6 +12,7 @@ import { uninstallCommand } from '../commands/uninstall.js';
 import {
   PUBLIC_CLASSIC_COMMANDS,
   runClassicFacade,
+  runClassicGroupFacade,
   type PublicClassicCommand,
 } from '../commands/classic.js';
 import { runNativeFacade } from '../commands/native.js';
@@ -140,6 +141,12 @@ program
   .option('--json', 'Output as JSON')
   .option('--repair', 'Repair managed Hook, Rule, and deterministic selection state')
   .addOption(
+    new Option('--strategy <strategy>', 'Classic root move recovery strategy').choices([
+      'continue',
+      'rollback',
+    ]),
+  )
+  .addOption(
     new Option('--scope <scope>', 'Install scope to diagnose').choices([
       'auto',
       'global',
@@ -225,6 +232,16 @@ for (const command of PUBLIC_CLASSIC_COMMANDS) {
       process.exitCode = await runClassicFacade(command, args);
     });
 }
+
+program
+  .command('classic [args...]')
+  .description('Manage the Comet Classic workflow and its configured artifact root')
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .helpOption(false)
+  .action(async (args: string[]) => {
+    process.exitCode = await runClassicGroupFacade(args);
+  });
 
 program
   .command('native [args...]')

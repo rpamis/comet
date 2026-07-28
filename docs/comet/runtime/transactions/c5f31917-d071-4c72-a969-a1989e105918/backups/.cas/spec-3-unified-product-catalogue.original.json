@@ -1,0 +1,11 @@
+{
+  "schema": "comet.native.archive-cas.v1",
+  "operationId": "spec-3-unified-product-catalogue",
+  "role": "original",
+  "hash": "6f27dc7a98b2cf99695b3334f078033bd349def37f35108cf90d994ee20214b1",
+  "identity": {
+    "dev": 1986195787,
+    "ino": 2533274791198212,
+    "birthtimeMs": 1785165426212.8164
+  }
+}

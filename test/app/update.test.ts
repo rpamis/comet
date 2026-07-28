@@ -5,8 +5,10 @@ import os from 'os';
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
 import { select } from '@inquirer/prompts';
+import { parse } from 'yaml';
 import { getLatestVersion } from '../../platform/version/version.js';
 import { PLATFORMS, type Platform } from '../../platform/install/platforms.js';
+import { installOpenSpec } from '../../domains/integrations/openspec.js';
 import {
   buildNpmUpdateArgs,
   detectCometPackageScope,
@@ -25,6 +27,7 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
+import { assertClassicLayoutReadable } from '../../domains/comet-classic/classic-layout.js';
 
 // Mock the interactive select prompt so tests don't hang on CI (no TTY).
 vi.mock('@inquirer/prompts', () => ({
@@ -53,9 +56,17 @@ vi.mock('../../platform/version/version.js', () => ({
   })),
 }));
 
+vi.mock('../../domains/integrations/openspec.js', () => ({
+  installOpenSpec: vi.fn(async () => 'installed'),
+  isProjectMutationGuardError: vi.fn(
+    (error: unknown) => (error as Error | undefined)?.name === 'ProjectMutationGuardError',
+  ),
+}));
+
 const mockedSelect = vi.mocked(select);
 const mockedSpawn = vi.mocked(spawn);
 const mockedGetLatestVersion = vi.mocked(getLatestVersion);
+const mockedInstallOpenSpec = vi.mocked(installOpenSpec);
 
 const claudePlatform: Platform = {
   id: 'claude',
@@ -79,6 +90,56 @@ async function writeFakeCometPackage(packageRoot: string, version: string): Prom
     JSON.stringify({ name: '@rpamis/comet', version, bin: { comet: 'bin/comet.js' } }),
   );
   await fs.writeFile(path.join(packageRoot, 'bin', 'comet.js'), '#!/usr/bin/env node\n');
+}
+
+async function arrangeClassicDocsOpenSpecUpdate(projectPath: string): Promise<void> {
+  await fs.mkdir(path.join(projectPath, '.comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(projectPath, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows:',
+      '  - classic',
+      'ambient_resume: true',
+      'classic:',
+      '  artifact_layout: docs',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  await fs.mkdir(path.join(projectPath, 'docs', 'openspec'), { recursive: true });
+  await fs.mkdir(path.join(projectPath, '.claude', 'skills', 'comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(projectPath, '.claude', 'skills', 'comet', 'SKILL.md'),
+    '# Comet\n',
+    'utf8',
+  );
+  await fs.mkdir(path.join(projectPath, '.claude', 'skills', 'openspec-propose'), {
+    recursive: true,
+  });
+  await fs.writeFile(
+    path.join(projectPath, '.claude', 'skills', 'openspec-propose', 'SKILL.md'),
+    '# OpenSpec\n',
+    'utf8',
+  );
+}
+
+async function writeMockOpenSpecProject(
+  projectPath: string,
+  artifactLayout: 'legacy' | 'docs',
+  config: 'healthy' | 'missing' | 'corrupt' = 'healthy',
+): Promise<void> {
+  const openSpecRoot =
+    artifactLayout === 'docs'
+      ? path.join(projectPath, 'docs', 'openspec')
+      : path.join(projectPath, 'openspec');
+  await fs.mkdir(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
+  if (config === 'healthy') {
+    await fs.writeFile(path.join(openSpecRoot, 'config.yaml'), 'schema: spec-driven\n', 'utf8');
+  } else if (config === 'corrupt') {
+    await fs.writeFile(path.join(openSpecRoot, 'config.yaml'), 'schema: [broken\n', 'utf8');
+  }
 }
 
 async function arrangeComponentFailure(
@@ -155,6 +216,22 @@ describe('update command helpers', () => {
     mockedSelect.mockClear();
     mockedSpawn.mockClear();
     mockedGetLatestVersion.mockClear();
+    mockedInstallOpenSpec.mockReset();
+    mockedInstallOpenSpec.mockImplementation(
+      async (
+        projectPath,
+        _toolIds,
+        scope,
+        _shouldInstallCli,
+        _mirrorOpenCodePlatformIds,
+        artifactLayout,
+      ) => {
+        if (scope === 'project') {
+          await writeMockOpenSpecProject(projectPath, artifactLayout);
+        }
+        return 'installed';
+      },
+    );
     mockedSpawn.mockImplementation((_command, args, options) => {
       const child = new EventEmitter() as EventEmitter & {
         stdout: EventEmitter;
@@ -1285,6 +1362,7 @@ describe('update command helpers', () => {
     const config = defaultProjectConfig('.');
     config.workflows = ['classic'];
     config.default_workflow = 'classic';
+    await fs.mkdir(projectDir, { recursive: true });
     await writeProjectConfig(projectDir, config);
     await fs.mkdir(path.join(projectDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(path.join(projectDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
@@ -1869,6 +1947,516 @@ describe('update command helpers', () => {
     }
   });
 
+  it('updates installed OpenSpec platform assets against the configured docs artifact root', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-docs-update-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        skipNpm: true,
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(mockedInstallOpenSpec).toHaveBeenCalledWith(
+      tmpDir,
+      ['claude'],
+      'project',
+      false,
+      [],
+      'docs',
+      expect.any(Function),
+    );
+    await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it.each(['missing', 'corrupt'] as const)(
+    'leaves project config unchanged when OpenSpec reports installed with a %s config',
+    async (openSpecConfig) => {
+      const fakeHome = path.join(tmpDir, `classic-docs-${openSpecConfig}-home`);
+      await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+      const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+      const configBefore = await fs.readFile(configPath, 'utf8');
+      mockedInstallOpenSpec.mockImplementationOnce(
+        async (
+          projectPath,
+          _toolIds,
+          scope,
+          _shouldInstallCli,
+          _mirrorOpenCodePlatformIds,
+          artifactLayout,
+        ) => {
+          if (scope === 'project') {
+            await writeMockOpenSpecProject(projectPath, artifactLayout, openSpecConfig);
+          }
+          return 'installed';
+        },
+      );
+
+      const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      let json: string;
+      try {
+        await updateCommand(tmpDir, {
+          currentProject: true,
+          installMode: 'copy',
+          language: 'zh',
+          json: true,
+          skipNpm: true,
+        });
+        json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      } finally {
+        log.mockRestore();
+        homeSpy.mockRestore();
+      }
+
+      expect(JSON.parse(json)).toMatchObject({
+        status: 'incomplete',
+        openspec: {
+          status: 'failed',
+          reason: expect.stringMatching(/OpenSpec root is unhealthy/iu),
+        },
+      });
+      await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(configBefore);
+    },
+  );
+
+  it('upgrades a legacy partial Native and Classic project config without moving its root', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-legacy-partial-home');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: docs',
+        '  language: en',
+        'language: zh-CN',
+        'context_compression: beta',
+        'review_mode: thorough',
+        'auto_transition: false',
+        'custom_top: keep',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n',
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'openspec-propose'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'openspec-propose', 'SKILL.md'),
+      '# OpenSpec\n',
+      'utf8',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        language: 'zh',
+        json: true,
+        skipNpm: true,
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(JSON.parse(json)).toMatchObject({ status: 'complete' });
+    const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'));
+    expect(config).toMatchObject({
+      schema: 'comet.project.v1',
+      default_workflow: 'native',
+      workflows: ['native', 'classic'],
+      native: {
+        artifact_root: 'docs',
+        language: 'en',
+      },
+      classic: {
+        artifact_layout: 'legacy',
+        language: 'zh-CN',
+        context_compression: 'beta',
+        review_mode: 'thorough',
+        auto_transition: false,
+      },
+      custom_top: 'keep',
+    });
+    await expect(assertClassicLayoutReadable(tmpDir)).resolves.toMatchObject({
+      artifactLayout: 'legacy',
+      openSpecRoot: path.join(tmpDir, 'openspec'),
+    });
+    expect(mockedInstallOpenSpec).toHaveBeenCalledWith(
+      tmpDir,
+      ['claude'],
+      'project',
+      false,
+      [],
+      'legacy',
+      expect.any(Function),
+    );
+    await expect(fs.access(path.join(tmpDir, 'docs', 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('fails closed without invoking OpenSpec or mutating either artifact root when both roots exist', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-dual-root-update-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'legacy\n', 'utf8');
+    await fs.writeFile(path.join(tmpDir, 'docs', 'openspec', 'docs-marker.txt'), 'docs\n', 'utf8');
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+    const managedSkillPath = path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md');
+    const configBefore = await fs.readFile(configPath);
+    const managedSkillBefore = await fs.readFile(managedSkillPath);
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        skipNpm: true,
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(JSON.parse(json)).toMatchObject({
+      status: 'incomplete',
+      openspec: {
+        status: 'failed',
+        reason: expect.stringContaining('Classic layout conflict'),
+      },
+      failures: [expect.objectContaining({ component: 'OpenSpec' })],
+    });
+    expect(mockedInstallOpenSpec).not.toHaveBeenCalled();
+    await expect(
+      fs.readFile(path.join(tmpDir, 'openspec', 'legacy-marker.txt'), 'utf8'),
+    ).resolves.toBe('legacy\n');
+    await expect(
+      fs.readFile(path.join(tmpDir, 'docs', 'openspec', 'docs-marker.txt'), 'utf8'),
+    ).resolves.toBe('docs\n');
+    await expect(fs.readFile(configPath)).resolves.toEqual(configBefore);
+    await expect(fs.readFile(managedSkillPath)).resolves.toEqual(managedSkillBefore);
+  });
+
+  it('rejects a project .comet junction without touching the external config or OpenSpec', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-update-config-outside-'));
+    const source = [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      '  artifact_layout: docs',
+      '',
+    ].join('\n');
+    try {
+      await fs.writeFile(path.join(outsideRoot, 'config.yaml'), source, 'utf8');
+      await fs.writeFile(path.join(outsideRoot, 'marker.txt'), 'keep\n', 'utf8');
+      try {
+        await fs.symlink(
+          outsideRoot,
+          path.join(tmpDir, '.comet'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(
+        updateCommand(tmpDir, {
+          currentProject: true,
+          installMode: 'copy',
+          json: true,
+          skipNpm: true,
+        }),
+      ).rejects.toThrow(/symbolic link or junction/iu);
+      expect(mockedInstallOpenSpec).not.toHaveBeenCalled();
+      await expect(fs.readFile(path.join(outsideRoot, 'config.yaml'), 'utf8')).resolves.toBe(
+        source,
+      );
+      await expect(fs.readFile(path.join(outsideRoot, 'marker.txt'), 'utf8')).resolves.toBe(
+        'keep\n',
+      );
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a project config symlink without touching its external target or OpenSpec', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-update-file-outside-'));
+    const outsideConfig = path.join(outsideRoot, 'config.yaml');
+    const source = [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      '  artifact_layout: docs',
+      '',
+    ].join('\n');
+    try {
+      await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+      await fs.writeFile(outsideConfig, source, 'utf8');
+      try {
+        await fs.symlink(outsideConfig, path.join(tmpDir, '.comet', 'config.yaml'), 'file');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(
+        updateCommand(tmpDir, {
+          currentProject: true,
+          installMode: 'copy',
+          json: true,
+          skipNpm: true,
+        }),
+      ).rejects.toThrow(/symbolic link or junction/iu);
+      expect(mockedInstallOpenSpec).not.toHaveBeenCalled();
+      await expect(fs.readFile(outsideConfig, 'utf8')).resolves.toBe(source);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('refreshes only the Classic artifact root when no OpenSpec tool assets are installed', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-docs-no-openspec-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    await fs.rm(path.join(tmpDir, '.claude', 'skills', 'openspec-propose'), {
+      recursive: true,
+      force: true,
+    });
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        skipNpm: true,
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(mockedInstallOpenSpec).toHaveBeenCalledWith(
+      tmpDir,
+      [],
+      'project',
+      false,
+      [],
+      'docs',
+      expect.any(Function),
+    );
+  });
+
+  it('keeps config unchanged when an artifact-only OpenSpec refresh cannot run', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-docs-artifact-only-missing-cli-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    await fs.rm(path.join(tmpDir, '.claude', 'skills', 'openspec-propose'), {
+      recursive: true,
+      force: true,
+    });
+    const configPath = path.join(tmpDir, '.comet', 'config.yaml');
+    const configBefore = await fs.readFile(configPath);
+    mockedInstallOpenSpec.mockResolvedValue('skipped');
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        language: 'zh',
+        json: true,
+        skipNpm: true,
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(JSON.parse(json)).toMatchObject({
+      status: 'incomplete',
+      openspec: {
+        status: 'failed',
+        reason: expect.stringContaining('CLI'),
+      },
+    });
+    expect(mockedInstallOpenSpec).toHaveBeenCalledWith(
+      tmpDir,
+      [],
+      'project',
+      false,
+      [],
+      'docs',
+      expect.any(Function),
+    );
+    await expect(fs.readFile(configPath)).resolves.toEqual(configBefore);
+  });
+
+  it('fails closed when installed OpenSpec assets cannot be refreshed because the CLI is missing', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-docs-missing-openspec-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    mockedInstallOpenSpec.mockResolvedValue('skipped');
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        skipNpm: true,
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(JSON.parse(json)).toMatchObject({
+      status: 'incomplete',
+      openspec: {
+        status: 'failed',
+        reason: expect.stringContaining('CLI'),
+      },
+      failures: [expect.objectContaining({ component: 'OpenSpec' })],
+    });
+  });
+
+  it('reports an OpenSpec integration failure as an incomplete update', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-docs-failed-openspec-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    mockedInstallOpenSpec.mockResolvedValue('failed');
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        skipNpm: true,
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(JSON.parse(json)).toMatchObject({
+      status: 'incomplete',
+      openspec: { status: 'failed' },
+      failures: [expect.objectContaining({ component: 'OpenSpec' })],
+    });
+  });
+
+  it('reports a thrown OpenSpec adapter error without falling back to the legacy root', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-docs-throwing-openspec-home');
+    await arrangeClassicDocsOpenSpecUpdate(tmpDir);
+    mockedInstallOpenSpec.mockRejectedValue(new Error('adapter exploded'));
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        json: true,
+        skipNpm: true,
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(JSON.parse(json)).toMatchObject({
+      status: 'incomplete',
+      openspec: {
+        status: 'failed',
+        reason: expect.stringContaining('adapter exploded'),
+      },
+      failures: [expect.objectContaining({ component: 'OpenSpec' })],
+    });
+    await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('updates installed OpenSpec assets at global scope without initializing a project root', async () => {
+    const fakeHome = path.join(tmpDir, 'classic-global-openspec-home');
+    await fs.mkdir(path.join(fakeHome, '.claude', 'skills', 'openspec-propose'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(fakeHome, '.claude', 'skills', 'openspec-propose', 'SKILL.md'),
+      '# OpenSpec\n',
+      'utf8',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await updateCommand(tmpDir, {
+        scope: 'global',
+        platform: 'claude',
+        json: true,
+        skipNpm: true,
+      });
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(mockedInstallOpenSpec).toHaveBeenCalledWith(
+      tmpDir,
+      ['claude'],
+      'global',
+      false,
+      [],
+      'legacy',
+      undefined,
+    );
+    await expect(fs.access(path.join(tmpDir, 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it('rejects custom platform targets for global update', async () => {
     await expect(
       updateCommand(tmpDir, {
@@ -2040,10 +2628,8 @@ describe('update command helpers', () => {
     expect(updatedConfig).toContain('keep: true');
     expect(updatedConfig).toContain('artifact_root: docs');
     expect(updatedConfig).toContain('clarification_mode: sequential');
-    expect(updatedConfig).toContain('classic:');
-    expect(updatedConfig).not.toMatch(
-      /^(language|context_compression|review_mode|auto_transition):/mu,
-    );
+    expect(updatedConfig).not.toContain('classic:');
+    expect(updatedConfig).toContain('language: legacy');
     await expect(
       fs.readFile(path.join(tmpDir, 'docs', 'superpowers', 'keep.md'), 'utf8'),
     ).resolves.toBe('keep classic working files\n');

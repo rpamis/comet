@@ -4,11 +4,25 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
+import { resolveProjectLanguage } from '../../app/commands/resume-probe.js';
 
 const repositoryRoot = path.resolve('.');
 const cli = path.join(repositoryRoot, 'bin', 'comet.js');
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 const activeChange = 'resume-probe-change';
+
+function classicProjectConfig(ambientResume = true): string {
+  return [
+    'schema: comet.project.v1',
+    'default_workflow: classic',
+    'workflows: [classic]',
+    `ambient_resume: ${String(ambientResume)}`,
+    'classic:',
+    '  artifact_layout: legacy',
+    '  language: en',
+    '',
+  ].join('\n');
+}
 
 function runCli(cwd: string, args: string[], input?: string): ReturnType<typeof spawnSync> {
   return spawnSync(process.execPath, [cli, ...args], {
@@ -55,6 +69,9 @@ describe('resumeProbe command', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-resume-cli-'));
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), classicProjectConfig(), 'utf8');
+    await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
     state(tmpDir, ['init', activeChange, 'full']);
     state(tmpDir, ['set', activeChange, 'build_mode', 'executing-plans']);
     state(tmpDir, ['set', activeChange, 'tdd_mode', 'direct']);
@@ -66,8 +83,6 @@ describe('resumeProbe command', () => {
     state(tmpDir, ['set', activeChange, 'phase', 'build'], {
       COMET_FORCE_PHASE: '1',
     });
-    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
-    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: "en"\n', 'utf8');
   });
 
   afterEach(async () => {
@@ -82,10 +97,20 @@ describe('resumeProbe command', () => {
       schema_version: 'comet.resume_probe.v2',
       workflow: 'classic',
       skill: 'comet-classic',
-      entrySource: 'legacy-fallback',
+      entrySource: 'project-config',
       action: 'auto_resume',
       nextCommand: '/comet-classic',
     });
+  });
+
+  it('does not treat the removed flat language field as the project locale', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      'language: zh-CN\nambient_resume: true\n',
+      'utf8',
+    );
+
+    await expect(resolveProjectLanguage(tmpDir)).resolves.toBe('unknown');
   });
 
   it('renders the resolved workflow and permanent entry in text mode', () => {
@@ -100,7 +125,7 @@ describe('resumeProbe command', () => {
   it('honors ambient_resume: false in a legacy Classic project config', async () => {
     await fs.writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
-      'language: en\nambient_resume: false\n',
+      classicProjectConfig(false),
       'utf8',
     );
 

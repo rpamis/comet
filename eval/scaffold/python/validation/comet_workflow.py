@@ -16,6 +16,7 @@ from pathlib import Path
 
 WORKSPACE = Path("/workspace")
 RESULTS_FILE = "_test_results.json"
+DOCS_LAYOUT_TREATMENT = "COMET_CLASSIC_DOCS_LAYOUT"
 
 
 def _passed(name: str, message: str = "") -> dict:
@@ -26,11 +27,32 @@ def _failed(name: str, message: str) -> dict:
     return {"check": name, "status": "failed", "message": message}
 
 
+def _uses_docs_layout() -> bool:
+    """Return whether the current eval treatment selects the docs catalogue."""
+    try:
+        context = json.loads((WORKSPACE / "_test_context.json").read_text())
+    except (OSError, ValueError, TypeError):
+        return False
+    return context.get("treatment_name") == DOCS_LAYOUT_TREATMENT
+
+
+def _changes_relative() -> Path:
+    return (
+        Path("docs/openspec/changes")
+        if _uses_docs_layout()
+        else Path("openspec/changes")
+    )
+
+
 def check_openspec_artifacts() -> dict:
     """proposal.md + tasks.md exist in a change dir (active or archived)."""
-    changes_dir = WORKSPACE / "openspec" / "changes"
+    relative_changes = _changes_relative()
+    changes_dir = WORKSPACE / relative_changes
     if not changes_dir.exists():
-        return _failed("openspec_artifacts", "openspec/changes/ directory not found")
+        return _failed(
+            "openspec_artifacts",
+            f"{relative_changes.as_posix()}/ directory not found",
+        )
 
     candidates: list[Path] = []
     for d in changes_dir.iterdir():
@@ -53,9 +75,10 @@ def check_openspec_artifacts() -> dict:
 
 def check_comet_state() -> dict:
     """A .comet.yaml exists somewhere under openspec/changes with a sane phase."""
-    changes_dir = WORKSPACE / "openspec" / "changes"
+    relative_changes = _changes_relative()
+    changes_dir = WORKSPACE / relative_changes
     if not changes_dir.exists():
-        return _failed("comet_state", "openspec/changes/ not found")
+        return _failed("comet_state", f"{relative_changes.as_posix()}/ not found")
 
     # Search active + archived change dirs for .comet.yaml.
     state_files: list[Path] = []
@@ -72,7 +95,10 @@ def check_comet_state() -> dict:
                     continue
                 if (change_dir / "proposal.md").exists() and (change_dir / "tasks.md").exists():
                     return _passed("comet_state", "phase=archived")
-        return _failed("comet_state", "No .comet.yaml found under openspec/changes/")
+        return _failed(
+            "comet_state",
+            f"No .comet.yaml found under {relative_changes.as_posix()}/",
+        )
 
     # Read the first one and check it has a recognised phase.
     try:
@@ -94,29 +120,38 @@ def check_workflow_phases() -> dict:
     """Evidence of the 5 phases: proposal→design→plan/build→verify→archive."""
     evidence = 0
     found: list[str] = []
+    changes = _changes_relative().as_posix()
 
     # Phase 1 (open): proposal/tasks
-    if _glob_exists("openspec/changes/**/proposal.md") or _glob_exists("openspec/changes/**/tasks.md"):
+    if _glob_exists(f"{changes}/**/proposal.md") or _glob_exists(
+        f"{changes}/**/tasks.md"
+    ):
         evidence += 1
         found.append("open")
     # Phase 2 (design): design.md or docs/superpowers/specs/
-    if _glob_exists("openspec/changes/**/design.md") or _glob_exists("docs/superpowers/specs/*.md"):
+    if _glob_exists(f"{changes}/**/design.md") or _glob_exists(
+        "docs/superpowers/specs/*.md"
+    ):
         evidence += 1
         found.append("design")
     # Phase 3 (build): plan.md, docs/superpowers/plans/, or .comet/ handoff
-    if _glob_exists("openspec/changes/**/plan.md") or _glob_exists("docs/superpowers/plans/*.md") or _glob_exists("openspec/changes/**/.comet/"):
+    if (
+        _glob_exists(f"{changes}/**/plan.md")
+        or _glob_exists("docs/superpowers/plans/*.md")
+        or _glob_exists(f"{changes}/**/.comet/")
+    ):
         evidence += 1
         found.append("build")
     # Phase 4 (verify): verification report or docs/superpowers/reports/
     if (
-        _glob_exists("openspec/changes/**/verification.md")
-        or _glob_exists("openspec/changes/**/verification-report.md")
+        _glob_exists(f"{changes}/**/verification.md")
+        or _glob_exists(f"{changes}/**/verification-report.md")
         or _glob_exists("docs/superpowers/reports/*.md")
     ):
         evidence += 1
         found.append("verify")
     # Phase 5 (archive): openspec/changes/archive/
-    if (WORKSPACE / "openspec" / "changes" / "archive").exists():
+    if (WORKSPACE / _changes_relative() / "archive").exists():
         evidence += 1
         found.append("archive")
 

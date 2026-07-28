@@ -5,7 +5,7 @@
 本文件是 Comet 项目文件结构参考。按需查阅，不随 skill 一次性加载。
 
 ```text
-openspec/                              # OpenSpec — WHAT
+<classic-open-spec-root>/              # OpenSpec — WHAT；由 Classic layout resolver 返回
 ├── config.yaml
 ├── changes/
 │   ├── <name>/                        # 活跃 change
@@ -19,7 +19,7 @@ openspec/                              # OpenSpec — WHAT
 │   └── archive/YYYY-MM-DD-<name>/     # 已归档
 └── specs/<capability>/spec.md         # 主 specs（归档时按 OpenSpec delta 语义合并）
 
-docs/superpowers/                      # Superpowers — HOW
+<classic-superpowers-root>/            # Superpowers — HOW；由 Classic layout resolver 返回
 ├── specs/YYYY-MM-DD-<topic>-design.md # 设计文档（技术 RFC，归档时标注状态）
 └── plans/YYYY-MM-DD-<feature>.md      # 实施计划（文件头含 change 关联元数据）
 

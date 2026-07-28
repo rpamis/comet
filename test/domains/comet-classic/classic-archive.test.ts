@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { annotatedMarkdown } from '../../../domains/comet-classic/classic-archive.js';
 import { readRunState } from '../../../domains/engine/state.js';
+import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
@@ -34,6 +35,20 @@ function run(cwd: string, args: string[], env: NodeJS.ProcessEnv = {}) {
 async function makeProject(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-archive-'));
   temporary.push(dir);
+  await fs.mkdir(path.join(dir, '.comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      '  artifact_layout: legacy',
+      '',
+    ].join('\n'),
+  );
+  await fs.mkdir(path.join(dir, 'openspec', 'changes'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
   return dir;
 }
 
@@ -152,6 +167,58 @@ async function fakeOpenSpec(
 }
 
 describe('Classic archive command', () => {
+  async function makeConfiguredSourceProject(): Promise<string> {
+    const dir = await makeProject();
+    await fs.mkdir(path.join(dir, 'openspec', 'changes', 'archive'), { recursive: true });
+    return dir;
+  }
+
+  it('rejects an active change junction without reading or writing external state', async () => {
+    const dir = await makeConfiguredSourceProject();
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-archive-active-outside-'));
+    temporary.push(outside);
+    await fs.writeFile(path.join(outside, '.comet.yaml'), 'outside: marker\n');
+    await fs.writeFile(path.join(outside, 'marker.txt'), 'unchanged\n');
+    await fs.symlink(
+      outside,
+      path.join(dir, 'openspec', 'changes', 'demo'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const previous = process.cwd();
+    process.chdir(dir);
+    try {
+      const result = await runClassicCli(['archive', 'demo']);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toMatch(/symbolic link or junction/iu);
+      expect(await fs.readFile(path.join(outside, 'marker.txt'), 'utf8')).toBe('unchanged\n');
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it('rejects an exact archive junction without reading or writing external state', async () => {
+    const dir = await makeConfiguredSourceProject();
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-archive-exact-outside-'));
+    temporary.push(outside);
+    await fs.writeFile(path.join(outside, '.comet.yaml'), 'outside: marker\n');
+    await fs.writeFile(path.join(outside, 'marker.txt'), 'unchanged\n');
+    await fs.symlink(
+      outside,
+      path.join(dir, 'openspec', 'changes', 'archive', 'demo'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const previous = process.cwd();
+    process.chdir(dir);
+    try {
+      const result = await runClassicCli(['archive', 'demo']);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toMatch(/symbolic link or junction/iu);
+      expect(await fs.readFile(path.join(outside, 'marker.txt'), 'utf8')).toBe('unchanged\n');
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
   it('rejects a change that is not in the archive phase', async () => {
     const dir = await makeProject();
     run(dir, ['state', 'init', 'demo', 'full']); // phase = open
@@ -177,7 +244,7 @@ describe('Classic archive command', () => {
     const before = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
 
     const result = run(dir, ['archive', 'demo', '--dry-run']);
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain('[DRY-RUN] Would run OpenSpec archive: demo');
     expect(result.stderr).toContain('[DRY-RUN] Would set archived: true');
     expect(result.stderr).toContain('Dry run complete. 4/4 steps would succeed.');
@@ -213,7 +280,7 @@ describe('Classic archive command', () => {
 
     const result = run(dir, ['archive', 'demo'], { COMET_OPENSPEC: fake.command });
 
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     expect(await fs.readFile(fake.log, 'utf8')).toBe('archive demo --yes\n');
     const archiveDir = path.join(
       dir,

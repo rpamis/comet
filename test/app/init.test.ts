@@ -3,6 +3,7 @@ import { applyBulkOverwriteChoice } from '../../app/commands/init.js';
 import {
   copyCometSkillsForPlatform,
   createWorkingDirs,
+  mergeProjectConfig,
   readManifest,
 } from '../../domains/skill/platform-install.js';
 import { PLATFORMS } from '../../platform/install/platforms.js';
@@ -65,12 +66,13 @@ describe('init command helpers', () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-config-'));
 
     try {
-      await createWorkingDirs(tmpDir, 'zh-CN');
+      await mergeProjectConfig(tmpDir, 'zh-CN', 'docs');
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
       expect(parse(config)).toMatchObject({
         ambient_resume: true,
         classic: {
+          artifact_layout: 'docs',
           language: 'zh-CN',
           context_compression: 'off',
           review_mode: 'standard',
@@ -79,6 +81,7 @@ describe('init command helpers', () => {
       });
       expect(config).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
       expect(config).toContain('# Classic 工作流文档使用的产物语言');
+      expect(config).toContain('artifact_layout: docs');
       expect(config).toContain('language: zh-CN');
       expect(config).toContain('# 新建 Classic change 是否启用 beta 上下文压缩');
       expect(config).toContain('context_compression: off');
@@ -104,7 +107,7 @@ describe('init command helpers', () => {
         'utf-8',
       );
 
-      await createWorkingDirs(tmpDir);
+      await mergeProjectConfig(tmpDir);
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
       expect(config).toContain('language: en');
@@ -121,7 +124,7 @@ describe('init command helpers', () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-config-default-'));
 
     try {
-      await createWorkingDirs(tmpDir);
+      await mergeProjectConfig(tmpDir);
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
       expect(config).toContain('# language: en | zh-CN');

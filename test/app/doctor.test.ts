@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'crypto';
 import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
@@ -18,6 +19,7 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
+import { planClassicRootMove } from '../../domains/comet-classic/classic-root-move.js';
 
 const stateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
@@ -65,7 +67,113 @@ async function collectDoctorResults(
   return (await collectDoctorPayload(targetPath, scope)).results;
 }
 
-function state(cwd: string, ...args: string[]) {
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+async function writeReadyClassicRootMove(projectRoot: string): Promise<void> {
+  const transactionId = '22222222-2222-4222-8222-222222222222';
+  const config = defaultProjectConfig('docs', 'en');
+  config.default_workflow = 'classic';
+  config.workflows = ['classic'];
+  config.classic = {
+    artifact_layout: 'legacy',
+    language: 'en',
+    context_compression: 'off',
+    review_mode: 'standard',
+    auto_transition: true,
+  };
+  await writeProjectConfig(projectRoot, config);
+  const source = path.join(projectRoot, 'openspec');
+  await fs.mkdir(path.join(source, 'changes', 'archive'), { recursive: true });
+  await fs.mkdir(path.join(source, 'specs'), { recursive: true });
+  const directories = ['changes', 'changes/archive', 'specs'];
+  const manifestSource = { directories, files: [], totalBytes: 0 };
+  const manifest = { ...manifestSource, hash: sha256(JSON.stringify(manifestSource)) };
+  const plan = await planClassicRootMove(projectRoot);
+  const staging = path.join(
+    projectRoot,
+    '.comet',
+    'transactions',
+    'classic-root-move',
+    transactionId,
+    'openspec',
+  );
+  await fs.mkdir(path.dirname(staging), { recursive: true });
+  await fs.cp(source, staging, { recursive: true });
+  await fs.writeFile(
+    path.join(projectRoot, '.comet', 'classic-root-move.json'),
+    `${JSON.stringify(
+      {
+        schema: 'comet.classic-root-move.v1',
+        id: transactionId,
+        stage: 'ready',
+        source: 'openspec',
+        target: 'docs/openspec',
+        staging: `.comet/transactions/classic-root-move/${transactionId}/openspec`,
+        configPath: plan.configPath,
+        originalConfigHash: plan.originalConfigHash,
+        expectedConfigHash: plan.expectedConfigHash,
+        planId: plan.planId,
+        targetInitialState: 'missing',
+        manifest,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+async function writeHealthyDocsClassicProject(projectRoot: string): Promise<void> {
+  const config = defaultProjectConfig('docs', 'en');
+  config.default_workflow = 'classic';
+  config.workflows = ['classic'];
+  config.classic = {
+    artifact_layout: 'docs',
+    language: 'en',
+    context_compression: 'off',
+    review_mode: 'standard',
+    auto_transition: true,
+  };
+  await writeProjectConfig(projectRoot, config);
+  await Promise.all([
+    fs.mkdir(path.join(projectRoot, 'docs', 'openspec', 'changes', 'archive'), {
+      recursive: true,
+    }),
+    fs.mkdir(path.join(projectRoot, 'docs', 'openspec', 'specs'), { recursive: true }),
+    fs.mkdir(path.join(projectRoot, 'docs', 'superpowers', 'specs'), { recursive: true }),
+    fs.mkdir(path.join(projectRoot, 'docs', 'superpowers', 'plans'), { recursive: true }),
+    fs.mkdir(path.join(projectRoot, 'docs', 'superpowers', 'reports'), { recursive: true }),
+  ]);
+  await fs.writeFile(
+    path.join(projectRoot, 'docs', 'openspec', 'config.yaml'),
+    'schema: spec-driven\n',
+    'utf8',
+  );
+}
+
+async function state(cwd: string, ...args: string[]) {
+  const configPath = path.join(cwd, '.comet', 'config.yaml');
+  try {
+    await fs.access(configPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    await fs.mkdir(path.join(cwd, '.comet'), { recursive: true });
+    await fs.writeFile(
+      configPath,
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '  language: en',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(cwd, 'openspec'), { recursive: true });
+  }
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (args[0] === 'set' && args[2] === 'phase') {
     // Direct phase writes are normally blocked; the force hatch is the
@@ -90,14 +198,447 @@ describe('doctor command', () => {
     await fs.mkdir(tmpDir, { recursive: true });
   });
 
+  it('reports allowed Classic recovery strategies and never chooses one implicitly', async () => {
+    await fs.mkdir(path.join(tmpDir, '.git'));
+    await writeReadyClassicRootMove(tmpDir);
+
+    const before = await collectDoctorPayload(tmpDir);
+    expect(
+      before.results.find((result) => result.check === 'Classic artifact layout'),
+    ).toMatchObject({
+      status: 'fail',
+      message: expect.stringContaining('allowed strategies: continue, rollback'),
+    });
+    expect(
+      before.results.find((result) => result.check === 'Classic artifact layout')?.message,
+    ).toContain(
+      'staging .comet/transactions/classic-root-move/22222222-2222-4222-8222-222222222222/openspec',
+    );
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, {
+        json: true,
+        repair: true,
+        scope: 'project',
+        homeDir: tmpDir,
+      });
+    } finally {
+      log.mockRestore();
+    }
+    await expect(
+      fs.stat(path.join(tmpDir, '.comet', 'classic-root-move.json')),
+    ).resolves.toBeDefined();
+
+    const repairLog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, {
+        json: true,
+        repair: true,
+        strategy: 'rollback',
+        scope: 'project',
+        homeDir: tmpDir,
+      });
+    } finally {
+      repairLog.mockRestore();
+    }
+    await expect(
+      fs.stat(path.join(tmpDir, '.comet', 'classic-root-move.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('reports an invalid project config without guessing Classic working directories', async () => {
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'schema: [broken\n');
+    await fs.mkdir(path.join(tmpDir, 'openspec', 'changes', 'must-not-be-scanned'), {
+      recursive: true,
+    });
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.find((result) => result.check === 'Classic artifact layout')).toMatchObject({
+      status: 'fail',
+      message: expect.stringContaining('Invalid .comet/config.yaml'),
+    });
+    expect(results.find((result) => result.check === 'working directories')).toMatchObject({
+      status: 'fail',
+      message: expect.stringContaining('Invalid .comet/config.yaml'),
+    });
+  });
+
+  it('reports both Classic root states and a repair command when the configured root is missing', async () => {
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.find((result) => result.check === 'Classic artifact layout')).toMatchObject({
+      status: 'fail',
+      message: expect.stringMatching(
+        /configured docs\/openspec\/ missing; alternate openspec\/ present.*comet classic root show/iu,
+      ),
+    });
+  });
+
+  it('reports an uninitialized or corrupt configured OpenSpec root as unhealthy', async () => {
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, 'docs', 'openspec', 'changes', 'archive'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(tmpDir, 'docs', 'openspec', 'specs'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'specs'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'plans'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'reports'), { recursive: true });
+
+    let results = await collectDoctorResults(tmpDir);
+    expect(results.find((result) => result.check === 'Classic OpenSpec root')).toMatchObject({
+      status: 'fail',
+      message: expect.stringContaining('config.yaml is missing'),
+    });
+
+    await fs.writeFile(
+      path.join(tmpDir, 'docs', 'openspec', 'config.yaml'),
+      'schema: [broken\n',
+      'utf8',
+    );
+    results = await collectDoctorResults(tmpDir);
+    expect(results.find((result) => result.check === 'Classic OpenSpec root')).toMatchObject({
+      status: 'fail',
+      message: expect.stringContaining('invalid YAML'),
+    });
+  });
+
+  it('does not confuse normal docs artifacts or project-level OpenSpec tools with coupled assets', async () => {
+    await writeHealthyDocsClassicProject(tmpDir);
+    await fs.mkdir(path.join(tmpDir, 'docs', 'openspec', 'specs', 'openspec-notes'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'openspec-propose'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'openspec-propose', 'SKILL.md'),
+      'project-level OpenSpec skill\n',
+      'utf8',
+    );
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(results.find((result) => result.check === 'Classic platform tool assets')).toMatchObject(
+      {
+        status: 'pass',
+        message: expect.stringContaining('no OpenSpec platform tool assets under docs/'),
+      },
+    );
+  });
+
+  it('does not run the docs coupling check for a legacy Classic layout', async () => {
+    const config = defaultProjectConfig('docs', 'en');
+    config.default_workflow = 'classic';
+    config.workflows = ['classic'];
+    config.classic = {
+      artifact_layout: 'legacy',
+      language: 'en',
+      context_compression: 'off',
+      review_mode: 'standard',
+      auto_transition: true,
+    };
+    await writeProjectConfig(tmpDir, config);
+    await fs.mkdir(path.join(tmpDir, 'openspec', 'changes', 'archive'), { recursive: true });
+    await fs.mkdir(path.join(tmpDir, 'openspec', 'specs'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
+    const nestedSkill = path.join(
+      tmpDir,
+      'docs',
+      '.claude',
+      'skills',
+      'openspec-propose',
+      'SKILL.md',
+    );
+    await fs.mkdir(path.dirname(nestedSkill), { recursive: true });
+    await fs.writeFile(nestedSkill, 'legacy layout leaves docs coupling out of scope\n');
+
+    const results = await collectDoctorResults(tmpDir);
+
+    expect(
+      results.find((result) => result.check === 'Classic platform tool assets'),
+    ).toBeUndefined();
+  });
+
+  it('reports OpenSpec skills and command files nested under docs for every registered platform root', async () => {
+    await writeHealthyDocsClassicProject(tmpDir);
+    const platformRoots = [
+      ...new Set(
+        PLATFORMS.flatMap((platform) => [platform.skillsDir, ...(platform.legacySkillsDirs ?? [])]),
+      ),
+    ];
+    for (const platformRoot of platformRoots) {
+      const skillDir = path.join(tmpDir, 'docs', platformRoot, 'skills', 'openspec-propose');
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(path.join(skillDir, 'SKILL.md'), `${platformRoot} misplaced skill\n`);
+    }
+    await fs.mkdir(path.join(tmpDir, 'docs', '.cursor', 'commands'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'docs', '.cursor', 'commands', 'opsx-propose.md'),
+      'misplaced Cursor command\n',
+    );
+    await fs.mkdir(path.join(tmpDir, 'docs', '.codex', 'prompts'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'docs', '.codex', 'prompts', 'opsx-propose.md'),
+      'misplaced Codex command\n',
+    );
+    await fs.mkdir(path.join(tmpDir, 'docs', '.clinerules', 'workflows'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(tmpDir, 'docs', '.clinerules', 'workflows', 'opsx-propose.md'),
+      'misplaced Cline command\n',
+    );
+    await fs.mkdir(path.join(tmpDir, 'docs', '.agent', 'workflows'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(tmpDir, 'docs', '.agent', 'workflows', 'opsx-propose.md'),
+      'misplaced Antigravity command\n',
+    );
+
+    const results = await collectDoctorResults(tmpDir);
+    const platformAssets = results.find(
+      (result) => result.check === 'Classic platform tool assets',
+    );
+
+    expect(platformAssets).toMatchObject({
+      status: 'fail',
+      message: expect.stringMatching(
+        /platform directories at the project root.*comet update.*Doctor did not move/iu,
+      ),
+    });
+    for (const platformRoot of platformRoots) {
+      expect(platformAssets?.message).toContain(
+        path.posix.join('docs', platformRoot, 'skills', 'openspec-propose'),
+      );
+    }
+    expect(platformAssets?.message).toContain('docs/.cursor/commands/opsx-propose.md');
+    expect(platformAssets?.message).toContain('docs/.codex/prompts/opsx-propose.md');
+    expect(platformAssets?.message).toContain('docs/.clinerules/workflows/opsx-propose.md');
+    expect(platformAssets?.message).toContain('docs/.agent/workflows/opsx-propose.md');
+    const repairLog = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, {
+        json: true,
+        repair: true,
+        scope: 'project',
+        homeDir: tmpDir,
+      });
+    } finally {
+      repairLog.mockRestore();
+    }
+    await expect(
+      fs.readFile(
+        path.join(tmpDir, 'docs', '.claude', 'skills', 'openspec-propose', 'SKILL.md'),
+        'utf8',
+      ),
+    ).resolves.toBe('.claude misplaced skill\n');
+  });
+
+  it('fails closed without following a linked platform directory under docs', async () => {
+    await writeHealthyDocsClassicProject(tmpDir);
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-doctor-tools-link-'));
+    const outsideMarker = path.join(outsideRoot, 'skills', 'openspec-propose', 'SKILL.md');
+    try {
+      await fs.mkdir(path.dirname(outsideMarker), { recursive: true });
+      await fs.writeFile(outsideMarker, 'outside-platform-marker\n', 'utf8');
+      try {
+        await fs.symlink(
+          outsideRoot,
+          path.join(tmpDir, 'docs', '.claude'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      const results = await collectDoctorResults(tmpDir);
+      const platformAssets = results.find(
+        (result) => result.check === 'Classic platform tool assets',
+      );
+
+      expect(platformAssets).toMatchObject({
+        status: 'fail',
+        message: expect.stringMatching(/symbolic link or junction.*comet update/iu),
+      });
+      expect(JSON.stringify(results)).not.toContain('outside-platform-marker');
+      await expect(fs.readFile(outsideMarker, 'utf8')).resolves.toBe('outside-platform-marker\n');
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['configured', 'alternate'] as const)(
+    'fails the Classic layout check when the %s root is a directory link',
+    async (kind) => {
+      const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-doctor-root-link-'));
+      try {
+        await fs.mkdir(path.join(outsideRoot, 'changes', 'external-marker'), {
+          recursive: true,
+        });
+        await fs.writeFile(
+          path.join(outsideRoot, 'changes', 'external-marker', '.comet.yaml'),
+          'phase: open\n',
+          'utf8',
+        );
+        await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+        await fs.writeFile(
+          path.join(tmpDir, '.comet', 'config.yaml'),
+          [
+            'schema: comet.project.v1',
+            'default_workflow: classic',
+            'workflows: [classic]',
+            'classic:',
+            '  artifact_layout: docs',
+            '',
+          ].join('\n'),
+          'utf8',
+        );
+        if (kind === 'configured') {
+          await fs.mkdir(path.join(tmpDir, 'docs'), { recursive: true });
+          try {
+            await fs.symlink(
+              outsideRoot,
+              path.join(tmpDir, 'docs', 'openspec'),
+              process.platform === 'win32' ? 'junction' : 'dir',
+            );
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+            throw error;
+          }
+        } else {
+          await fs.mkdir(path.join(tmpDir, 'docs', 'openspec'), { recursive: true });
+          try {
+            await fs.symlink(
+              outsideRoot,
+              path.join(tmpDir, 'openspec'),
+              process.platform === 'win32' ? 'junction' : 'dir',
+            );
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+            throw error;
+          }
+        }
+
+        const results = await collectDoctorResults(tmpDir);
+
+        expect(results.find((result) => result.check === 'Classic artifact layout')).toMatchObject({
+          status: 'fail',
+          message: expect.stringMatching(/symbolic link or junction/iu),
+        });
+        expect(results.some((result) => result.check.includes('external-marker'))).toBe(false);
+      } finally {
+        await fs.rm(outsideRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('fails working-directory health when the Superpowers root is a directory link', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-doctor-superpowers-link-'));
+    try {
+      await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(tmpDir, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: classic',
+          'workflows: [classic]',
+          'classic:',
+          '  artifact_layout: legacy',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
+      await fs.mkdir(path.join(tmpDir, 'docs'), { recursive: true });
+      try {
+        await fs.symlink(
+          outsideRoot,
+          path.join(tmpDir, 'docs', 'superpowers'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      const results = await collectDoctorResults(tmpDir);
+
+      expect(results.find((result) => result.check === 'working directories')).toMatchObject({
+        status: 'fail',
+        message: expect.stringMatching(/symbolic link or junction/iu),
+      });
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('fails a Classic change check without reading through its runtime directory link', async () => {
+    const initialized = await state(tmpDir, 'init', 'runtime-link', 'full');
+    expect(initialized.status, initialized.stderr).toBe(0);
+    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'runtime-link');
+    const runtimeDir = path.join(changeDir, '.comet');
+    await fs.rm(runtimeDir, { recursive: true, force: true });
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-doctor-runtime-link-'));
+    const outsideState = path.join(outsideRoot, 'run-state.json');
+    try {
+      await fs.writeFile(outsideState, 'outside-runtime-marker\n', 'utf8');
+      await fs.symlink(outsideRoot, runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');
+
+      const results = await collectDoctorResults(tmpDir);
+      const changeCheck = results.find((result) => result.check === '.comet.yaml: runtime-link');
+
+      expect(changeCheck).toMatchObject({
+        status: 'fail',
+        message: expect.stringMatching(/symbolic link or junction/iu),
+      });
+      expect(JSON.stringify(results)).not.toContain('outside-runtime-marker');
+      await expect(fs.readFile(outsideState, 'utf8')).resolves.toBe('outside-runtime-marker\n');
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('accepts current comet state fields in JSON output', async () => {
+  it('accepts current comet state fields without mutating them during a layout conflict', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'current-state');
-    state(tmpDir, 'init', 'current-state', 'full');
-    state(tmpDir, 'set', 'current-state', 'phase', 'verify');
+    await state(tmpDir, 'init', 'current-state', 'full');
+    await state(tmpDir, 'set', 'current-state', 'phase', 'verify');
+    await fs.mkdir(path.join(tmpDir, 'docs', 'openspec'), { recursive: true });
     const before = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -109,12 +650,21 @@ describe('doctor command', () => {
       log.mockRestore();
     }
 
-    const results = JSON.parse(json).results as Array<{ check: string; status: string }>;
-    expect(results.find((result) => result.check === '.comet.yaml: current-state')).toMatchObject({
-      status: 'pass',
-      message: expect.stringContaining('full.verify.run'),
+    const results = JSON.parse(json).results as Array<{
+      check: string;
+      status: string;
+      message: string;
+    }>;
+    expect(results.find((result) => result.check === 'Classic artifact layout')).toMatchObject({
+      status: 'fail',
     });
-    expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).not.toBe(before);
+    const stateResult = results.find((result) => result.check === '.comet.yaml: current-state');
+    expect(stateResult).toMatchObject({
+      status: 'pass',
+      message: expect.stringContaining('step: legacy:verify'),
+    });
+    expect(stateResult?.message).toContain('mode: legacy-state');
+    expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(before);
   });
 
   it('prints the current Comet version in text output', async () => {
@@ -341,6 +891,44 @@ describe('doctor command', () => {
     expect(
       after.find((result) => result.check === 'hook runtime: Claude Code (project)'),
     ).toMatchObject({ status: 'pass', message: 'current' });
+  });
+
+  it('uses the Classic-only project language when repairing managed Rules', async () => {
+    await installManagedCometSkills(tmpDir);
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '  language: zh-CN',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(tmpDir, {
+        json: true,
+        repair: true,
+        scope: 'project',
+        homeDir: tmpDir,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    const installedRule = await fs.readFile(
+      path.join(tmpDir, '.claude', 'rules', 'comet-workflow-guard.md'),
+      'utf8',
+    );
+    expect(installedRule).toContain('# Comet 当前需求阶段规则');
+    expect(installedRule).not.toContain('# Comet Current-Change Phase Rule');
   });
 
   it('repairs duplicate and legacy managed Hook and Rule state without touching user entries', async () => {
@@ -642,7 +1230,7 @@ describe('doctor command', () => {
 
   it('uses the shared schema and leaves invalid state untouched', async () => {
     const invalidChangeDir = path.join(tmpDir, 'openspec', 'changes', 'top-level-invalid');
-    state(tmpDir, 'init', 'top-level-invalid', 'full');
+    await state(tmpDir, 'init', 'top-level-invalid', 'full');
     await fs.appendFile(path.join(invalidChangeDir, '.comet.yaml'), 'unknown_root_field: true\n');
     const before = await fs.readFile(path.join(invalidChangeDir, '.comet.yaml'), 'utf8');
 
@@ -671,7 +1259,7 @@ describe('doctor command', () => {
   });
 
   it('uses Classic diagnostics for comet yaml validity messages', async () => {
-    state(tmpDir, 'init', 'demo', 'full');
+    await state(tmpDir, 'init', 'demo', 'full');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json: string;
@@ -686,12 +1274,14 @@ describe('doctor command', () => {
       (item: { check: string }) => item.check === '.comet.yaml: demo',
     );
 
-    expect(cometYaml.message).toContain('step: full.open');
-    expect(cometYaml.message).toContain('mode: engine-projection');
+    expect(cometYaml.message).toContain('step: legacy:open');
+    expect(cometYaml.message).toContain('mode: legacy-state');
   });
 
-  it('prints runtime check evidence in doctor output for valid changes', async () => {
-    state(tmpDir, 'init', 'demo', 'full');
+  it('does not synthesize runtime evidence while inspecting a legacy change', async () => {
+    await state(tmpDir, 'init', 'demo', 'full');
+    const stateFile = path.join(tmpDir, 'openspec', 'changes', 'demo', '.comet.yaml');
+    const before = await fs.readFile(stateFile, 'utf8');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let output: string;
@@ -702,17 +1292,14 @@ describe('doctor command', () => {
       log.mockRestore();
     }
 
-    expect(output).toContain(
-      'runtime_check: demo: fail (full.open; missing: openspec.proposal, openspec.tasks;',
-    );
-    expect(output).toContain(
-      'next: run /comet-open or restore missing evidence (openspec.proposal, openspec.tasks), then rerun comet doctor',
-    );
+    expect(output).toContain('.comet.yaml: demo: valid (step: legacy:open, mode: legacy-state)');
+    expect(output).not.toContain('runtime_check: demo:');
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
   });
 
   it('prints invalid comet yaml errors together with a concrete next step', async () => {
     const invalidChangeDir = path.join(tmpDir, 'openspec', 'changes', 'top-level-invalid');
-    state(tmpDir, 'init', 'top-level-invalid', 'full');
+    await state(tmpDir, 'init', 'top-level-invalid', 'full');
     await fs.appendFile(path.join(invalidChangeDir, '.comet.yaml'), 'unknown_root_field: true\n');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);

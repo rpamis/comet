@@ -1,0 +1,121 @@
+# Current Classic treatment for the unified docs catalogue. Frozen 039-release
+# and 040-beta snapshots remain unchanged.
+COMET_CLASSIC_DOCS_LAYOUT:
+  description: 'Current Comet Classic workflow with docs/openspec and docs/superpowers roots'
+  claude_md: |
+    Begin by invoking /comet-classic. Initialize a new Classic project with
+    classic.artifact_layout `docs`. Resolve paths with `comet classic root show`
+    and execute every OpenSpec command through `comet classic openspec --`.
+    The terminal project must use docs/openspec and docs/superpowers without
+    creating a second root-level openspec directory.
+  skills: &current_classic_skills
+    - name: comet
+      source: path
+      path: ../assets/skills/comet
+    - name: comet-classic
+      source: path
+      path: ../assets/skills/comet-classic
+    - name: comet-open
+      source: path
+      path: ../assets/skills/comet-open
+    - name: comet-design
+      source: path
+      path: ../assets/skills/comet-design
+    - name: comet-build
+      source: path
+      path: ../assets/skills/comet-build
+    - name: comet-verify
+      source: path
+      path: ../assets/skills/comet-verify
+    - name: comet-archive
+      source: path
+      path: ../assets/skills/comet-archive
+    - name: comet-hotfix
+      source: path
+      path: ../assets/skills/comet-hotfix
+    - name: comet-tweak
+      source: path
+      path: ../assets/skills/comet-tweak
+    - name: openspec-explore
+      skill: dependency/openspec/openspec-explore
+      variant: all
+      base: benchmarks
+    - name: openspec-new-change
+      skill: dependency/openspec/openspec-new-change
+      variant: all
+      base: benchmarks
+    - name: openspec-continue-change
+      skill: dependency/openspec/openspec-continue-change
+      variant: all
+      base: benchmarks
+    - name: openspec-apply-change
+      skill: dependency/openspec/openspec-apply-change
+      variant: all
+      base: benchmarks
+    - name: openspec-sync-specs
+      skill: dependency/openspec/openspec-sync-specs
+      variant: all
+      base: benchmarks
+    - name: openspec-archive-change
+      skill: dependency/openspec/openspec-archive-change
+      variant: all
+      base: benchmarks
+    - name: openspec-verify-change
+      skill: dependency/openspec/openspec-verify-change
+      variant: all
+      base: benchmarks
+    - name: brainstorming
+      skill: dependency/superpowers/brainstorming
+      variant: all
+      base: benchmarks
+    - name: writing-plans
+      skill: dependency/superpowers/writing-plans
+      variant: all
+      base: benchmarks
+    - name: executing-plans
+      skill: dependency/superpowers/executing-plans
+      variant: all
+      base: benchmarks
+    - name: subagent-driven-development
+      skill: dependency/superpowers/subagent-driven-development
+      variant: all
+      base: benchmarks
+    - name: test-driven-development
+      skill: dependency/superpowers/test-driven-development
+      variant: all
+      base: benchmarks
+    - name: systematic-debugging
+      skill: dependency/superpowers/systematic-debugging
+      variant: all
+      base: benchmarks
+    - name: verification-before-completion
+      skill: dependency/superpowers/verification-before-completion
+      variant: all
+      base: benchmarks
+    - name: using-git-worktrees
+      skill: dependency/superpowers/using-git-worktrees
+      variant: all
+      base: benchmarks
+    - name: requesting-code-review
+      skill: dependency/superpowers/requesting-code-review
+      variant: all
+      base: benchmarks
+    - name: receiving-code-review
+      skill: dependency/superpowers/receiving-code-review
+      variant: all
+      base: benchmarks
+    - name: finishing-a-development-branch
+      skill: dependency/superpowers/finishing-a-development-branch
+      variant: all
+      base: benchmarks
+
+COMET_CLASSIC_LEGACY_LAYOUT:
+  description: 'Current Comet Classic workflow with the explicit root-level legacy OpenSpec layout'
+  claude_md: |
+    Begin by invoking /comet-classic. This is the current legacy-compatibility
+    scenario: initialize the project with an explicit
+    classic.artifact_layout `legacy`, resolve paths with
+    `comet classic root show`, and execute every OpenSpec command through
+    `comet classic openspec --`. The terminal project must use the root-level
+    openspec directory and docs/superpowers without creating docs/openspec.
+  skills: *current_classic_skills

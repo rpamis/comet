@@ -1,8 +1,17 @@
+import type {
+  WorkflowNativeEnabledProjectConfig,
+  WorkflowNativePendingRootMove,
+  WorkflowNativeRootMoveCleanup,
+  WorkflowNativeRootMoveCleanupKind,
+  WorkflowNativeSnapshotConfig,
+} from '../workflow-contract/types.js';
+
 export type NativePhase = 'shape' | 'build' | 'verify' | 'archive';
 export type NativeApproval = null | 'implicit' | 'confirmed';
 export type NativeVerificationResult = 'pending' | 'pass' | 'fail';
 export type NativeSpecOperation = 'create' | 'replace' | 'remove';
-export type NativeClarificationMode = 'sequential' | 'batch';
+export type NativeClarificationMode =
+  WorkflowNativeEnabledProjectConfig['native']['clarification_mode'];
 
 export const NATIVE_RUNTIME_PROTOCOL_VERSION = 3 as const;
 export const NATIVE_CHANGE_SCHEMA = 'comet.native.v3' as const;
@@ -12,33 +21,10 @@ export const NATIVE_TRANSITION_SCHEMA = 'comet.native.transition.v3' as const;
 export const NATIVE_V2_TRANSITION_SCHEMA = 'comet.native.transition.v2' as const;
 export const NATIVE_LEGACY_TRANSITION_SCHEMA = 'comet.native.transition.v1' as const;
 
-export type NativeRootMoveCleanupKind =
-  | 'forward-source'
-  | 'restart-staging'
-  | 'rollback-destination'
-  | 'rollback-staging';
-
-export interface NativeRootMoveCleanup {
-  kind: NativeRootMoveCleanupKind;
-  state: 'prepared' | 'quarantined' | 'deleting';
-  manifestHash: string;
-}
-
-export interface NativePendingRootMove {
-  id: string;
-  fromArtifactRoot: string;
-  toArtifactRoot: string;
-  stage: 'copying' | 'ready' | 'switched';
-  cleanup?: NativeRootMoveCleanup;
-}
-
-export interface NativeSnapshotConfig {
-  include: string[];
-  exclude: string[];
-  max_files: number;
-  max_total_bytes: number;
-  max_duration_ms: number;
-}
+export type NativeRootMoveCleanupKind = WorkflowNativeRootMoveCleanupKind;
+export type NativeRootMoveCleanup = WorkflowNativeRootMoveCleanup;
+export type NativePendingRootMove = WorkflowNativePendingRootMove;
+export type NativeSnapshotConfig = WorkflowNativeSnapshotConfig;
 
 export interface NativeSnapshotPolicy {
   schema: 'comet.native.snapshot-policy.v1';
@@ -47,25 +33,7 @@ export interface NativeSnapshotPolicy {
   hash: string;
 }
 
-export interface CometProjectConfig {
-  schema: 'comet.project.v1';
-  default_workflow: 'native' | 'classic';
-  workflows?: Array<'native' | 'classic'>;
-  ambient_resume: boolean;
-  native: {
-    artifact_root: string;
-    language: 'en' | 'zh-CN';
-    clarification_mode: NativeClarificationMode;
-    snapshot: NativeSnapshotConfig;
-    pending_root_move?: NativePendingRootMove;
-  };
-  classic?: {
-    language?: 'en' | 'zh-CN';
-    context_compression?: 'off' | 'beta';
-    review_mode?: 'off' | 'standard' | 'thorough';
-    auto_transition?: boolean;
-  };
-}
+export type CometProjectConfig = WorkflowNativeEnabledProjectConfig;
 
 export interface NativeProjectPaths {
   projectRoot: string;

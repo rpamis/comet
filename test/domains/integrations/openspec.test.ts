@@ -88,6 +88,381 @@ describe('openspec', () => {
   });
 
   describe('installOpenSpec', () => {
+    it('separates project tool generation from the docs OpenSpec artifact root', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-docs-layout-'));
+      try {
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'where' || command === 'which') {
+            return Buffer.from('/usr/bin/openspec');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+            return Buffer.from('1.5.0');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+            const target = args[1] as string;
+            const tools = args[args.indexOf('--tools') + 1];
+            if (tools === 'none') {
+              fs.mkdirSync(path.join(target, 'openspec', 'changes', 'archive'), {
+                recursive: true,
+              });
+            } else {
+              const generated = path.join(target, '.claude', 'skills', 'openspec-new-change');
+              fs.mkdirSync(generated, { recursive: true });
+              fs.writeFileSync(path.join(generated, 'SKILL.md'), '# generated\n');
+            }
+            return Buffer.from('ok');
+          }
+          return Buffer.from('ok');
+        });
+
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+        const result = await installOpenSpec(tmpDir, ['claude'], 'project', false, [], 'docs');
+
+        expect(result).toBe('installed');
+        expect(
+          fs.existsSync(path.join(tmpDir, '.claude', 'skills', 'openspec-new-change', 'SKILL.md')),
+        ).toBe(true);
+        expect(fs.existsSync(path.join(tmpDir, 'docs', 'openspec', 'changes', 'archive'))).toBe(
+          true,
+        );
+        expect(fs.existsSync(path.join(tmpDir, 'openspec'))).toBe(false);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('initializes a project artifact root without staging platform tools', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-artifact-only-'));
+      try {
+        mockedExecFileSync.mockImplementation((command, args) => {
+          if (command === 'where' || command === 'which') {
+            return Buffer.from('/usr/bin/openspec');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+            return Buffer.from('1.5.0');
+          }
+          if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+            const target = String(args[1]);
+            fs.mkdirSync(path.join(target, 'openspec'), { recursive: true });
+            fs.writeFileSync(path.join(target, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
+            return Buffer.from('ok');
+          }
+          return Buffer.from('ok');
+        });
+
+        const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+        const result = await installOpenSpec(tmpDir, [], 'project', false, [], 'docs');
+
+        expect(result).toBe('installed');
+        expect(
+          mockedExecFileSync.mock.calls.filter(
+            ([command, args]) =>
+              command === 'openspec' && Array.isArray(args) && args[0] === 'init',
+          ),
+        ).toHaveLength(1);
+        expect(mockedExecFileSync.mock.calls.at(-1)?.[1]).toEqual(
+          expect.arrayContaining(['--tools', 'none']),
+        );
+        expect(fs.existsSync(path.join(tmpDir, '.claude'))).toBe(false);
+        expect(fs.existsSync(path.join(tmpDir, 'docs', 'openspec', 'config.yaml'))).toBe(true);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it.each(['initial', 'after-guard'] as const)(
+      'rejects an %s project platform junction without copying staged tools outside',
+      async (replacement) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-platform-race-'));
+        const outsideRoot = fs.mkdtempSync(
+          path.join(os.tmpdir(), 'comet-openspec-platform-outside-'),
+        );
+        const platformRoot = path.join(tmpDir, '.claude', 'skills');
+        const heldPlatformRoot = path.join(tmpDir, '.claude', 'skills-held');
+        let replaced = false;
+        try {
+          fs.mkdirSync(platformRoot, { recursive: true });
+          const probe = path.join(tmpDir, '.junction-probe');
+          try {
+            fs.symlinkSync(outsideRoot, probe, process.platform === 'win32' ? 'junction' : 'dir');
+            fs.rmSync(probe, { force: true });
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+            throw error;
+          }
+          if (replacement === 'initial') {
+            fs.rmSync(platformRoot, { recursive: true, force: true });
+            fs.symlinkSync(
+              outsideRoot,
+              platformRoot,
+              process.platform === 'win32' ? 'junction' : 'dir',
+            );
+            replaced = true;
+          }
+          mockedExecFileSync.mockImplementation((command, args) => {
+            if (command === 'where' || command === 'which') {
+              return Buffer.from('/usr/bin/openspec');
+            }
+            if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+              return Buffer.from('1.5.0');
+            }
+            if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+              const target = String(args[1]);
+              const tools = args[args.indexOf('--tools') + 1];
+              if (tools === 'none') {
+                fs.mkdirSync(path.join(target, 'openspec'), { recursive: true });
+                fs.writeFileSync(
+                  path.join(target, 'openspec', 'config.yaml'),
+                  'schema: spec-driven\n',
+                );
+              } else {
+                const generated = path.join(
+                  target,
+                  '.claude',
+                  'skills',
+                  'openspec-new-change',
+                  'SKILL.md',
+                );
+                fs.mkdirSync(path.dirname(generated), { recursive: true });
+                fs.writeFileSync(generated, '# staged\n');
+              }
+              return Buffer.from('ok');
+            }
+            return Buffer.from('ok');
+          });
+          const guard = vi.fn(async () => {
+            if (
+              replacement === 'after-guard' &&
+              !replaced &&
+              fs.existsSync(path.join(tmpDir, 'docs', 'openspec', 'config.yaml'))
+            ) {
+              fs.renameSync(platformRoot, heldPlatformRoot);
+              fs.symlinkSync(
+                outsideRoot,
+                platformRoot,
+                process.platform === 'win32' ? 'junction' : 'dir',
+              );
+              replaced = true;
+            }
+          });
+
+          const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+          const result = await installOpenSpec(
+            tmpDir,
+            ['claude'],
+            'project',
+            false,
+            [],
+            'docs',
+            guard,
+          );
+
+          expect(replaced).toBe(true);
+          expect(result).toBe('failed');
+          expect(fs.readdirSync(outsideRoot)).toEqual([]);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+          fs.rmSync(outsideRoot, { recursive: true, force: true });
+        }
+      },
+    );
+
+    it.each([
+      ['zcode', '.zcode', 'initial'],
+      ['zcode', '.zcode', 'after-guard'],
+      ['mimocode', '.mimocode', 'initial'],
+      ['mimocode', '.mimocode', 'after-guard'],
+    ] as const)(
+      'rejects an %s project mirror destination %s identity change without writing outside (%s)',
+      async (platformId, platformDir, replacement) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-mirror-race-'));
+        const outsideRoot = fs.mkdtempSync(
+          path.join(os.tmpdir(), 'comet-openspec-mirror-outside-'),
+        );
+        const destinationRoot = path.join(tmpDir, platformDir);
+        const heldDestinationRoot = path.join(tmpDir, `${platformDir}-held`);
+        let replaced = false;
+        try {
+          fs.mkdirSync(destinationRoot, { recursive: true });
+          const probe = path.join(tmpDir, '.junction-probe');
+          try {
+            fs.symlinkSync(outsideRoot, probe, process.platform === 'win32' ? 'junction' : 'dir');
+            fs.rmSync(probe, { force: true });
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+            throw error;
+          }
+          const replaceDestination = () => {
+            fs.renameSync(destinationRoot, heldDestinationRoot);
+            fs.symlinkSync(
+              outsideRoot,
+              destinationRoot,
+              process.platform === 'win32' ? 'junction' : 'dir',
+            );
+            replaced = true;
+          };
+          if (replacement === 'initial') {
+            replaceDestination();
+          }
+          mockedExecFileSync.mockImplementation((command, args) => {
+            if (command === 'where' || command === 'which') {
+              return Buffer.from('/usr/bin/openspec');
+            }
+            if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+              return Buffer.from('1.5.0');
+            }
+            if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+              const target = String(args[1]);
+              const tools = args[args.indexOf('--tools') + 1];
+              if (tools === 'none') {
+                fs.mkdirSync(path.join(target, 'openspec'), { recursive: true });
+                fs.writeFileSync(
+                  path.join(target, 'openspec', 'config.yaml'),
+                  'schema: spec-driven\n',
+                );
+              } else {
+                const generated = path.join(
+                  target,
+                  '.opencode',
+                  'skills',
+                  'openspec-new-change',
+                  'SKILL.md',
+                );
+                fs.mkdirSync(path.dirname(generated), { recursive: true });
+                fs.writeFileSync(generated, '# staged\n');
+              }
+              return Buffer.from('ok');
+            }
+            return Buffer.from('ok');
+          });
+          const guard = vi.fn(async () => {
+            if (
+              replacement === 'after-guard' &&
+              !replaced &&
+              fs.existsSync(
+                path.join(tmpDir, '.opencode', 'skills', 'openspec-new-change', 'SKILL.md'),
+              )
+            ) {
+              replaceDestination();
+            }
+          });
+
+          const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+          const result = await installOpenSpec(
+            tmpDir,
+            ['opencode'],
+            'project',
+            false,
+            [platformId],
+            'docs',
+            guard,
+          );
+
+          expect(replaced).toBe(true);
+          expect(result).toBe('failed');
+          expect(fs.readdirSync(outsideRoot)).toEqual([]);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+          fs.rmSync(outsideRoot, { recursive: true, force: true });
+        }
+      },
+    );
+
+    it.each(['initial', 'after-guard'] as const)(
+      'rejects an %s docs artifact-base junction before OpenSpec writes outside',
+      async (replacement) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-artifact-race-'));
+        const outsideRoot = fs.mkdtempSync(
+          path.join(os.tmpdir(), 'comet-openspec-artifact-outside-'),
+        );
+        const docsRoot = path.join(tmpDir, 'docs');
+        const heldDocsRoot = path.join(tmpDir, 'docs-held');
+        let guardCalls = 0;
+        let replaced = false;
+        try {
+          fs.mkdirSync(docsRoot, { recursive: true });
+          const probe = path.join(tmpDir, '.junction-probe');
+          try {
+            fs.symlinkSync(outsideRoot, probe, process.platform === 'win32' ? 'junction' : 'dir');
+            fs.rmSync(probe, { force: true });
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+            throw error;
+          }
+          if (replacement === 'initial') {
+            fs.rmSync(docsRoot, { recursive: true, force: true });
+            fs.symlinkSync(
+              outsideRoot,
+              docsRoot,
+              process.platform === 'win32' ? 'junction' : 'dir',
+            );
+            replaced = true;
+          }
+          mockedExecFileSync.mockImplementation((command, args) => {
+            if (command === 'where' || command === 'which') {
+              return Buffer.from('/usr/bin/openspec');
+            }
+            if (command === 'openspec' && Array.isArray(args) && args[0] === '--version') {
+              return Buffer.from('1.5.0');
+            }
+            if (command === 'openspec' && Array.isArray(args) && args[0] === 'init') {
+              const target = String(args[1]);
+              const tools = args[args.indexOf('--tools') + 1];
+              if (tools === 'none') {
+                fs.mkdirSync(path.join(target, 'openspec'), { recursive: true });
+                fs.writeFileSync(
+                  path.join(target, 'openspec', 'config.yaml'),
+                  'schema: spec-driven\n',
+                );
+              } else {
+                const generated = path.join(
+                  target,
+                  '.claude',
+                  'skills',
+                  'openspec-new-change',
+                  'SKILL.md',
+                );
+                fs.mkdirSync(path.dirname(generated), { recursive: true });
+                fs.writeFileSync(generated, '# staged\n');
+              }
+              return Buffer.from('ok');
+            }
+            return Buffer.from('ok');
+          });
+          const guard = vi.fn(async () => {
+            guardCalls++;
+            if (replacement === 'after-guard' && !replaced && guardCalls === 4) {
+              fs.renameSync(docsRoot, heldDocsRoot);
+              fs.symlinkSync(
+                outsideRoot,
+                docsRoot,
+                process.platform === 'win32' ? 'junction' : 'dir',
+              );
+              replaced = true;
+            }
+          });
+
+          const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+          const result = await installOpenSpec(
+            tmpDir,
+            ['claude'],
+            'project',
+            false,
+            [],
+            'docs',
+            guard,
+          );
+
+          expect(replaced).toBe(true);
+          expect(result).toBe('failed');
+          expect(fs.readdirSync(outsideRoot)).toEqual([]);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+          fs.rmSync(outsideRoot, { recursive: true, force: true });
+        }
+      },
+    );
+
     it('accepts the Kimi OpenSpec tool id from platform definitions', async () => {
       mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
       mockedExecFileSync.mockReturnValueOnce(Buffer.from('ok'));
@@ -462,6 +837,54 @@ describe('openspec', () => {
       const result = await installOpenSpec('/tmp/test', ['claude'], 'project');
 
       expect(result).toBe('failed');
+    });
+
+    it('checks a project mutation guard before starting OpenSpec init', async () => {
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('1.5.0'));
+      const guard = vi.fn(async () => {
+        throw new Error('project config drifted');
+      });
+
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+      await expect(
+        installOpenSpec('/tmp/test', ['claude'], 'project', false, [], 'legacy', guard),
+      ).rejects.toThrow(/before OpenSpec project mutation.*project config drifted/iu);
+      expect(guard).toHaveBeenCalledTimes(1);
+      expect(mockedExecFileSync).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/before OpenSpec project mutation.*project config drifted/iu),
+      );
+      errorSpy.mockRestore();
+    });
+
+    it('reports a partial failure when the project mutation guard detects drift after init', async () => {
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('/usr/bin/openspec'));
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('1.5.0'));
+      mockedExecFileSync.mockReturnValueOnce(Buffer.from('ok'));
+      const guard = vi
+        .fn<() => Promise<void>>()
+        .mockResolvedValueOnce()
+        .mockResolvedValueOnce()
+        .mockRejectedValueOnce(new Error('project config drifted'));
+
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+      await expect(
+        installOpenSpec('/tmp/test', ['claude'], 'project', false, [], 'legacy', guard),
+      ).rejects.toThrow(/partial failure.*project config drifted/iu);
+      expect(guard).toHaveBeenCalledTimes(3);
+      expect(
+        mockedExecFileSync.mock.calls.filter(
+          ([command, args]) =>
+            String(command) === 'openspec' && Array.isArray(args) && args.map(String)[0] === 'init',
+        ),
+      ).toHaveLength(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/partial failure.*project config drifted/iu),
+      );
+      errorSpy.mockRestore();
     });
 
     it('shows openspec init stderr details when init throws', async () => {

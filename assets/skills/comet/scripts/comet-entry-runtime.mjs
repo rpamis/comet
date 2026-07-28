@@ -7245,7 +7245,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument3(source, options = {}) {
+    function parseDocument2(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -7271,7 +7271,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument3(src, options);
+      const doc = parseDocument2(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -7307,7 +7307,7 @@ var require_public_api = __commonJS({
     }
     exports.parse = parse;
     exports.parseAllDocuments = parseAllDocuments;
-    exports.parseDocument = parseDocument3;
+    exports.parseDocument = parseDocument2;
     exports.stringify = stringify2;
   }
 });
@@ -7367,204 +7367,308 @@ var require_dist = __commonJS({
 // domains/comet-entry/entry-runtime.ts
 import path4 from "path";
 
-// domains/comet-native/native-config.ts
-var import_yaml2 = __toESM(require_dist(), 1);
-import { promises as fs3 } from "fs";
-import path3 from "path";
+// domains/comet-native/native-paths.ts
+import { promises as fs } from "fs";
+import path2 from "path";
+import os from "os";
 
 // domains/workflow-contract/project-config.ts
 var import_yaml = __toESM(require_dist(), 1);
-
-// platform/fs/file-identity.ts
-function hasPlatformIdentity(value) {
-  return value !== 0 && value !== 0n && value !== "0";
+import path from "path";
+var WORKFLOW_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
+var MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH = 1024;
+var MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS = 64;
+var DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG = {
+  include: ["**/*"],
+  exclude: [],
+  max_files: 1e4,
+  max_total_bytes: 256 * 1024 * 1024,
+  max_duration_ms: 6e4
+};
+function projectRelativeSegments(value, label) {
+  if (typeof value !== "string") throw new Error(`${label} must be a string`);
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || path.posix.isAbsolute(trimmed) || path.win32.isAbsolute(trimmed) || /^(?:~|[\\/])/u.test(trimmed)) {
+    throw new Error(`${label} must be a project-relative path`);
+  }
+  if (trimmed === ".") return [];
+  const segments = trimmed.replaceAll("\\", "/").split("/");
+  if (segments.some((segment) => segment === "..")) {
+    throw new Error(`${label} must stay inside the project root`);
+  }
+  if (segments.some((segment) => segment === "" || segment === ".")) {
+    throw new Error(`${label} must not contain empty or dot path segments`);
+  }
+  return segments;
 }
-function sameFileObject(left, right) {
-  const comparableDevice = hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev);
-  if (comparableDevice && left.dev !== right.dev) return false;
-  const comparableInode = hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
-  if (comparableInode && left.ino !== right.ino) return false;
-  if (comparableDevice && comparableInode) return true;
-  return left.birthtime === right.birthtime;
+function normalizeWorkflowArtifactRoot(value) {
+  const segments = projectRelativeSegments(value, "native.artifact_root");
+  return segments.length === 0 ? "." : segments.join("/");
 }
-
-// domains/comet-native/native-protected-file.ts
-import { createHash } from "node:crypto";
-import { constants as fsConstants, promises as fs } from "node:fs";
-import path from "node:path";
-import { TextDecoder } from "node:util";
-function isInside(parent, target) {
-  const relative = path.relative(parent, target);
-  return relative === "" || !path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`);
+function normalizeClassicArtifactLayout(value, fallback = "legacy") {
+  const resolved = value ?? fallback;
+  if (resolved !== "legacy" && resolved !== "docs") {
+    throw new Error("classic.artifact_layout must be legacy or docs");
+  }
+  return resolved;
 }
-function positiveLimit(value) {
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new Error("Native protected file byte limit must be a positive integer");
+function normalizeWorkflowRelativePath(value, label, allowWildcards = false) {
+  if (typeof value !== "string") throw new Error(`${label} must be a string`);
+  const trimmed = value.trim().replaceAll("\\", "/");
+  if (trimmed.length === 0 || path.posix.isAbsolute(trimmed) || path.win32.isAbsolute(trimmed) || /^(?:~|[\\/])/u.test(trimmed)) {
+    throw new Error(`${label} must be relative to its declared path base`);
+  }
+  const segments = trimmed.split("/");
+  if (segments.some((segment) => segment === "..")) {
+    throw new Error(`${label} must stay inside its declared path base`);
+  }
+  if (segments.some((segment) => segment === "" || segment === ".")) {
+    throw new Error(`${label} must not contain empty or dot path segments`);
+  }
+  if (!allowWildcards && /[*?]/u.test(trimmed)) {
+    throw new Error(`${label} cannot contain wildcards`);
+  }
+  return segments.join("/");
+}
+function projectConfigRecord(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a mapping`);
   }
   return value;
 }
-function sameDirectoryIdentity(expected, actual) {
-  return sameFileObject(
-    { ...expected, birthtime: expected.birthtimeMs },
-    {
-      ...actual,
-      birthtime: actual.birthtimeMs
-    }
-  );
-}
-function asFileIdentity(stat) {
-  return {
-    dev: stat.dev,
-    ino: stat.ino,
-    birthtimeMs: stat.birthtimeMs,
-    ctimeMs: stat.ctimeMs,
-    mtimeMs: stat.mtimeMs,
-    size: stat.size
-  };
-}
-function sameFileIdentity(expected, actual) {
-  return sameFileObject(
-    { ...expected, birthtime: expected.birthtimeMs },
-    {
-      ...actual,
-      birthtime: actual.birthtimeMs
-    }
-  ) && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
-}
-async function captureDirectoryIdentity(directory, label) {
-  const stat = await fs.lstat(directory);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error(`${label} parent must be a real directory: ${directory}`);
+function projectConfigLanguage(value, fallback, label) {
+  const resolved = value ?? fallback;
+  if (resolved !== "en" && resolved !== "zh-CN") {
+    throw new Error(`${label} must be en or zh-CN`);
   }
-  return {
-    path: directory,
-    realPath: await fs.realpath(directory),
-    dev: stat.dev,
-    ino: stat.ino,
-    birthtimeMs: stat.birthtimeMs
-  };
+  return resolved;
 }
-async function captureDirectoryChain(root, directory, label) {
-  const lexicalRoot = path.resolve(root);
-  const lexicalDirectory = path.resolve(directory);
-  if (!isInside(lexicalRoot, lexicalDirectory)) {
-    throw new Error(`${label} is outside its managed root`);
+function normalizeWorkflowSnapshotPattern(value, label) {
+  if (typeof value !== "string" || value.length === 0 || value.includes("\\") || value.includes("\0") || value.startsWith("/") || value.split("/").includes("..")) {
+    throw new Error(`${label} contains an unsafe pattern`);
   }
-  const chain = [await captureDirectoryIdentity(lexicalRoot, label)];
-  let cursor = lexicalRoot;
-  for (const segment of path.relative(lexicalRoot, lexicalDirectory).split(path.sep).filter(Boolean)) {
-    await verifyDirectoryChain(chain, label);
-    cursor = path.join(cursor, segment);
-    const identity = await captureDirectoryIdentity(cursor, label);
-    if (!isInside(chain[0].realPath, identity.realPath)) {
-      throw new Error(`${label} parent resolves outside its managed root: ${cursor}`);
-    }
-    chain.push(identity);
+  if (value.length > MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH) {
+    throw new Error(`${label} exceeds ${MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH} characters`);
   }
-  await verifyDirectoryChain(chain, label);
-  return chain;
-}
-async function verifyDirectoryChain(chain, label) {
-  for (const identity of chain) {
-    const stat = await fs.lstat(identity.path);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity(identity, stat) || await fs.realpath(identity.path) !== identity.realPath) {
-      throw new Error(`${label} parent changed during I/O: ${identity.path}`);
+  let wildcardTokens = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === "?") {
+      wildcardTokens += 1;
+    } else if (value[index] === "*") {
+      wildcardTokens += 1;
+      if (value[index + 1] === "*") index += 1;
     }
   }
+  if (wildcardTokens > MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS) {
+    throw new Error(
+      `${label} contains more than ${MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS} wildcard tokens`
+    );
+  }
+  return value;
 }
-async function readHandleBounded(handle, maxBytes, label) {
-  const chunks = [];
-  let total = 0;
-  const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
-  while (true) {
-    const remaining = maxBytes + 1 - total;
-    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
-    if (bytesRead === 0) break;
-    total += bytesRead;
-    if (total > maxBytes) throw new Error(`${label} exceeds ${maxBytes} bytes`);
-    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
-  }
-  return Buffer.concat(chunks, total);
+function workflowSnapshotPatterns(value, label, fallback) {
+  if (value === void 0) return [...fallback];
+  if (!Array.isArray(value)) throw new Error(`${label} contains an unsafe pattern`);
+  return [
+    ...new Set(value.map((pattern) => normalizeWorkflowSnapshotPattern(pattern, label)))
+  ].sort((left, right) => left.localeCompare(right, "en"));
 }
-async function readNativeProtectedFile(options) {
-  const maxBytes = positiveLimit(options.maxBytes);
-  const file = path.resolve(options.file);
-  const chain = await captureDirectoryChain(options.root, path.dirname(file), options.label);
-  const forbidden = await Promise.all(
-    (options.forbiddenRoots ?? []).map(
-      (root) => captureDirectoryIdentity(path.resolve(root), options.label)
-    )
-  );
-  await options.hooks?.afterParentChainCaptured?.();
-  await verifyDirectoryChain(chain, options.label);
-  const before = await fs.lstat(file);
-  if (!before.isFile() || before.isSymbolicLink()) {
-    throw new Error(`${options.label} must be a regular file`);
+function positiveWorkflowSnapshotInteger(value, fallback, label) {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved < 1) {
+    throw new Error(`${label} must be a positive integer`);
   }
-  if (before.size > maxBytes) throw new Error(`${options.label} exceeds ${maxBytes} bytes`);
-  const beforeIdentity = asFileIdentity(before);
-  const beforeRealPath = await fs.realpath(file);
-  if (!isInside(chain[0].realPath, beforeRealPath)) {
-    throw new Error(`${options.label} resolves outside its managed root`);
-  }
-  if (forbidden.some((identity) => isInside(identity.realPath, beforeRealPath))) {
-    throw new Error(`${options.label} resolves inside an excluded root`);
-  }
-  const flags = process.platform === "win32" ? fsConstants.O_RDONLY : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
-  const handle = await fs.open(file, flags);
-  try {
-    const opened = await handle.stat();
-    await options.hooks?.afterOpen?.();
-    const [pathAfterOpen, realPathAfterOpen] = await Promise.all([
-      fs.lstat(file),
-      fs.realpath(file)
-    ]);
-    await verifyDirectoryChain(chain, options.label);
-    await verifyDirectoryChain(forbidden, options.label);
-    if (!opened.isFile() || !pathAfterOpen.isFile() || pathAfterOpen.isSymbolicLink() || realPathAfterOpen !== beforeRealPath || !sameFileIdentity(beforeIdentity, opened) || !sameFileIdentity(beforeIdentity, pathAfterOpen)) {
-      throw new Error(`${options.label} changed while opening`);
-    }
-    await options.hooks?.beforeRead?.();
-    const bytes = await readHandleBounded(handle, maxBytes, options.label);
-    await options.hooks?.beforeFinalCheck?.();
-    const [afterHandle, afterPath, afterRealPath] = await Promise.all([
-      handle.stat(),
-      fs.lstat(file),
-      fs.realpath(file)
-    ]);
-    await verifyDirectoryChain(chain, options.label);
-    await verifyDirectoryChain(forbidden, options.label);
-    if (!afterPath.isFile() || afterPath.isSymbolicLink() || afterRealPath !== beforeRealPath || !sameFileIdentity(beforeIdentity, afterHandle) || !sameFileIdentity(beforeIdentity, afterPath)) {
-      throw new Error(`${options.label} changed while reading`);
-    }
+  return resolved;
+}
+function normalizeWorkflowSnapshot(value) {
+  if (value === void 0) {
     return {
-      bytes,
-      hash: createHash("sha256").update(bytes).digest("hex"),
-      size: bytes.length
+      ...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG,
+      include: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include],
+      exclude: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude]
     };
-  } finally {
-    await handle.close();
   }
+  const snapshot = projectConfigRecord(value, "native.snapshot");
+  return {
+    include: workflowSnapshotPatterns(
+      snapshot.include,
+      "native.snapshot.include",
+      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.include
+    ),
+    exclude: workflowSnapshotPatterns(
+      snapshot.exclude,
+      "native.snapshot.exclude",
+      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.exclude
+    ),
+    max_files: positiveWorkflowSnapshotInteger(
+      snapshot.max_files,
+      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_files,
+      "native.snapshot.max_files"
+    ),
+    max_total_bytes: positiveWorkflowSnapshotInteger(
+      snapshot.max_total_bytes,
+      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_total_bytes,
+      "native.snapshot.max_total_bytes"
+    ),
+    max_duration_ms: positiveWorkflowSnapshotInteger(
+      snapshot.max_duration_ms,
+      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_duration_ms,
+      "native.snapshot.max_duration_ms"
+    )
+  };
 }
-async function readNativeProtectedTextFile(options) {
-  const snapshot = await readNativeProtectedFile(options);
-  let text;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(snapshot.bytes);
-  } catch (error) {
-    throw new Error(`${options.label} is not valid UTF-8`, { cause: error });
+function normalizeWorkflowPendingRootMove(value) {
+  if (value === void 0) return void 0;
+  const pending = projectConfigRecord(value, "native.pending_root_move");
+  const id = pending.id;
+  const from = pending.from_artifact_root;
+  const to = pending.to_artifact_root;
+  const stage = pending.stage;
+  if (typeof id !== "string" || !/^[a-f0-9-]{8,}$/u.test(id)) {
+    throw new Error("native.pending_root_move.id is invalid");
   }
-  return { ...snapshot, text };
+  if (typeof from !== "string" || typeof to !== "string") {
+    throw new Error("native.pending_root_move roots must be strings");
+  }
+  if (stage !== "copying" && stage !== "ready" && stage !== "switched") {
+    throw new Error("native.pending_root_move.stage is invalid");
+  }
+  let cleanup;
+  if (pending.cleanup !== void 0) {
+    const rawCleanup = projectConfigRecord(pending.cleanup, "native.pending_root_move.cleanup");
+    const kind = rawCleanup.kind;
+    const state = rawCleanup.state;
+    const manifestHash = rawCleanup.manifest_hash;
+    if (kind !== "forward-source" && kind !== "restart-staging" && kind !== "rollback-destination" && kind !== "rollback-staging") {
+      throw new Error("native.pending_root_move.cleanup.kind is invalid");
+    }
+    if (state !== "prepared" && state !== "quarantined" && state !== "deleting") {
+      throw new Error("native.pending_root_move.cleanup.state is invalid");
+    }
+    if (typeof manifestHash !== "string" || !/^[a-f0-9]{64}$/u.test(manifestHash)) {
+      throw new Error("native.pending_root_move.cleanup.manifest_hash is invalid");
+    }
+    cleanup = { kind, state, manifestHash };
+  }
+  return {
+    id,
+    fromArtifactRoot: normalizeWorkflowArtifactRoot(from),
+    toArtifactRoot: normalizeWorkflowArtifactRoot(to),
+    stage,
+    ...cleanup ? { cleanup } : {}
+  };
+}
+function normalizeWorkflowNativeProjectConfig(value) {
+  const native = projectConfigRecord(value, "native");
+  if (typeof native.artifact_root !== "string") {
+    throw new Error("native.artifact_root must be a string");
+  }
+  const clarificationMode = native.clarification_mode ?? "sequential";
+  if (clarificationMode !== "sequential" && clarificationMode !== "batch") {
+    throw new Error("native.clarification_mode must be sequential or batch");
+  }
+  const pending = normalizeWorkflowPendingRootMove(native.pending_root_move);
+  return {
+    artifact_root: normalizeWorkflowArtifactRoot(native.artifact_root),
+    language: projectConfigLanguage(native.language, "en", "native.language"),
+    clarification_mode: clarificationMode,
+    snapshot: normalizeWorkflowSnapshot(native.snapshot),
+    ...pending ? { pending_root_move: pending } : {}
+  };
+}
+function normalizeWorkflowClassicProjectConfig(value) {
+  const classic = projectConfigRecord(value, "classic");
+  const contextCompression = classic.context_compression ?? "off";
+  if (contextCompression !== "off" && contextCompression !== "beta") {
+    throw new Error("classic.context_compression must be off or beta");
+  }
+  const reviewMode = classic.review_mode ?? "standard";
+  if (reviewMode !== "off" && reviewMode !== "standard" && reviewMode !== "thorough") {
+    throw new Error("classic.review_mode must be off, standard, or thorough");
+  }
+  const autoTransition = classic.auto_transition ?? true;
+  if (typeof autoTransition !== "boolean") {
+    throw new Error("classic.auto_transition must be true or false");
+  }
+  return {
+    artifact_layout: normalizeClassicArtifactLayout(classic.artifact_layout),
+    language: projectConfigLanguage(classic.language, "zh-CN", "classic.language"),
+    context_compression: contextCompression,
+    review_mode: reviewMode,
+    auto_transition: autoTransition
+  };
+}
+function normalizeAmbientResume(value) {
+  const resolved = value ?? true;
+  if (typeof resolved !== "boolean") {
+    throw new Error("ambient_resume must be true or false");
+  }
+  return resolved;
+}
+function normalizeWorkflowProjectConfig(root, native, classic, ambientResume, options) {
+  const hasSchema = root.schema !== void 0;
+  const hasProjectMarker = hasSchema || root.default_workflow !== void 0 || root.workflows !== void 0 || !options.allowPartialProject && root.native !== void 0;
+  if (!hasProjectMarker) return null;
+  if (options.allowPartialProject && !hasSchema) return null;
+  if (root.schema !== "comet.project.v1") {
+    throw new Error("Unsupported Comet project schema");
+  }
+  if (root.default_workflow !== "native" && root.default_workflow !== "classic") {
+    throw new Error("default_workflow must be native or classic");
+  }
+  const configuredWorkflows = root.workflows ?? [root.default_workflow];
+  if (!Array.isArray(configuredWorkflows) || configuredWorkflows.length === 0 || configuredWorkflows.some((workflow) => workflow !== "native" && workflow !== "classic")) {
+    throw new Error("workflows must contain native and/or classic");
+  }
+  const workflows = [...new Set(configuredWorkflows)];
+  if (!workflows.includes(root.default_workflow)) {
+    throw new Error("workflows must include default_workflow");
+  }
+  if (workflows.includes("native") && !native) {
+    throw new Error("native must be a mapping");
+  }
+  return {
+    schema: "comet.project.v1",
+    default_workflow: root.default_workflow,
+    workflows,
+    ambient_resume: ambientResume,
+    ...native ? { native } : {},
+    ...classic ? { classic } : {}
+  };
+}
+function parseWorkflowProjectConfigDocument(source, options = {}) {
+  const document = (0, import_yaml.parseDocument)(source, { uniqueKeys: true });
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid .comet/config.yaml: ${document.errors[0].message}`);
+  }
+  const parsed = document.toJS();
+  if (parsed === null || parsed === void 0) {
+    return { value: {}, config: null, ambient_resume: true };
+  }
+  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Invalid .comet/config.yaml: root must be a mapping");
+  }
+  const value = parsed;
+  const ambientResume = normalizeAmbientResume(value.ambient_resume);
+  const native = value.native === void 0 ? void 0 : normalizeWorkflowNativeProjectConfig(value.native);
+  const classic = value.classic === void 0 ? void 0 : normalizeWorkflowClassicProjectConfig(value.classic);
+  const config = normalizeWorkflowProjectConfig(value, native, classic, ambientResume, {
+    allowPartialProject: options.allowPartialProject ?? false
+  });
+  return {
+    value,
+    config,
+    ambient_resume: ambientResume,
+    ...native ? { native } : {},
+    ...classic ? { classic } : {}
+  };
 }
 
 // domains/comet-native/native-paths.ts
-import { promises as fs2 } from "fs";
-import path2 from "path";
-import os from "os";
 var PROJECT_CONFIG_FILE = ".comet/config.yaml";
 async function isFileOrDirectory(target) {
   try {
-    await fs2.lstat(target);
+    await fs.lstat(target);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -7573,7 +7677,7 @@ async function isFileOrDirectory(target) {
 }
 async function declaresNativeProjectConfig(target) {
   try {
-    const source = await fs2.readFile(target, "utf8");
+    const source = await fs.readFile(target, "utf8");
     return /^schema:\s*comet\.project\.v1\s*$/mu.test(source);
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -7583,7 +7687,7 @@ async function declaresNativeProjectConfig(target) {
 async function discoverNativeProject(startPath) {
   let cursor = path2.resolve(startPath);
   try {
-    if (!(await fs2.stat(cursor)).isDirectory()) cursor = path2.dirname(cursor);
+    if (!(await fs.stat(cursor)).isDirectory()) cursor = path2.dirname(cursor);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -7604,247 +7708,264 @@ async function discoverNativeProject(startPath) {
     cursor = parent;
   }
 }
-function normalizeArtifactRootRef(value) {
-  const trimmed = value.trim();
-  if (trimmed.length === 0 || path2.isAbsolute(trimmed) || /^(?:[A-Za-z]:|~|[\\/])/u.test(trimmed)) {
-    throw new Error("native.artifact_root must be a project-relative path");
-  }
-  const segments = trimmed.replaceAll("\\", "/").split("/");
-  if (segments.includes("..")) {
-    throw new Error("native.artifact_root must stay inside the project root");
-  }
-  const normalized = path2.posix.normalize(segments.filter((segment) => segment !== "").join("/"));
-  if (normalized === ".." || normalized.startsWith("../")) {
-    throw new Error("native.artifact_root must stay inside the project root");
-  }
-  return normalized === "" ? "." : normalized;
+
+// domains/workflow-contract/project-config-reader.ts
+import { createHash } from "crypto";
+
+// domains/workflow-contract/protected-project-path.ts
+import { promises as fs3 } from "fs";
+import path3 from "path";
+
+// platform/fs/race-safe-read.ts
+import { constants as fsConstants, promises as fs2 } from "fs";
+
+// platform/fs/file-identity.ts
+function hasPlatformIdentity(value) {
+  return value !== 0 && value !== 0n && value !== "0";
+}
+function hasComparableFileObject(left, right) {
+  return hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev) && hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
+}
+function sameFileObject(left, right) {
+  const comparableDevice = hasPlatformIdentity(left.dev) && hasPlatformIdentity(right.dev);
+  if (comparableDevice && left.dev !== right.dev) return false;
+  const comparableInode = hasPlatformIdentity(left.ino) && hasPlatformIdentity(right.ino);
+  if (comparableInode && left.ino !== right.ino) return false;
+  if (comparableDevice && comparableInode) return true;
+  return left.birthtime === right.birthtime;
 }
 
-// domains/comet-native/native-config.ts
-var NATIVE_KEYS = /* @__PURE__ */ new Set([
-  "artifact_root",
-  "language",
-  "clarification_mode",
-  "snapshot",
-  "pending_root_move"
-]);
-var SNAPSHOT_KEYS = /* @__PURE__ */ new Set([
-  "include",
-  "exclude",
-  "max_files",
-  "max_total_bytes",
-  "max_duration_ms"
-]);
-var PENDING_KEYS = /* @__PURE__ */ new Set(["id", "from_artifact_root", "to_artifact_root", "stage", "cleanup"]);
-var NATIVE_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
-var CLEANUP_KEYS = /* @__PURE__ */ new Set(["kind", "state", "manifest_hash"]);
-var MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH = 1024;
-var MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS = 64;
-var DEFAULT_NATIVE_SNAPSHOT_CONFIG = {
-  include: ["**/*"],
-  exclude: [],
-  max_files: 1e4,
-  max_total_bytes: 256 * 1024 * 1024,
-  max_duration_ms: 6e4
+// platform/fs/race-safe-read.ts
+var RaceSafeReadError = class extends Error {
+  reason;
+  constructor(reason, message, options) {
+    super(message, options);
+    this.name = "RaceSafeReadError";
+    this.reason = reason;
+  }
 };
-function normalizeNativeSnapshotPattern(value, label) {
-  if (typeof value !== "string" || value.length === 0 || value.includes("\\") || value.includes("\0") || value.startsWith("/") || value.split("/").includes("..")) {
-    throw new Error(`${label} contains an unsafe pattern`);
-  }
-  if (value.length > MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH) {
-    throw new Error(`${label} exceeds ${MAX_NATIVE_SNAPSHOT_PATTERN_LENGTH} characters`);
-  }
-  let wildcardTokens = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    if (value[index] === "?") {
-      wildcardTokens += 1;
-    } else if (value[index] === "*") {
-      wildcardTokens += 1;
-      if (value[index + 1] === "*") index += 1;
-    }
-  }
-  if (wildcardTokens > MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS) {
-    throw new Error(
-      `${label} contains more than ${MAX_NATIVE_SNAPSHOT_PATTERN_WILDCARDS} wildcard tokens`
-    );
-  }
-  return value;
+function birthtimeOf(stat) {
+  return "birthtimeNs" in stat && typeof stat.birthtimeNs === "bigint" ? stat.birthtimeNs : stat.birthtimeMs;
 }
-function snapshotPatterns(value, label, fallback) {
-  if (value === void 0) return [...fallback];
-  if (!Array.isArray(value)) {
-    throw new Error(`${label} contains an unsafe pattern`);
-  }
-  return [...new Set(value.map((pattern) => normalizeNativeSnapshotPattern(pattern, label)))].sort(
-    (left, right) => left.localeCompare(right, "en")
-  );
+function ctimeOf(stat) {
+  return "ctimeNs" in stat && typeof stat.ctimeNs === "bigint" ? stat.ctimeNs : stat.ctimeMs;
 }
-function positiveSnapshotInteger(value, fallback, label) {
-  const resolved = value ?? fallback;
-  if (!Number.isSafeInteger(resolved) || resolved < 1) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  return resolved;
+function identityOf(stat) {
+  return { dev: stat.dev, ino: stat.ino, birthtime: birthtimeOf(stat) };
 }
-function parseSnapshot(value) {
-  if (value === void 0)
-    return { ...DEFAULT_NATIVE_SNAPSHOT_CONFIG, include: ["**/*"], exclude: [] };
-  const snapshot = record(value, "native.snapshot");
-  rejectUnknown(snapshot, SNAPSHOT_KEYS, "native.snapshot");
-  return {
-    include: snapshotPatterns(
-      snapshot.include,
-      "native.snapshot.include",
-      DEFAULT_NATIVE_SNAPSHOT_CONFIG.include
-    ),
-    exclude: snapshotPatterns(
-      snapshot.exclude,
-      "native.snapshot.exclude",
-      DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude
-    ),
-    max_files: positiveSnapshotInteger(
-      snapshot.max_files,
-      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_files,
-      "native.snapshot.max_files"
-    ),
-    max_total_bytes: positiveSnapshotInteger(
-      snapshot.max_total_bytes,
-      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_total_bytes,
-      "native.snapshot.max_total_bytes"
-    ),
-    max_duration_ms: positiveSnapshotInteger(
-      snapshot.max_duration_ms,
-      DEFAULT_NATIVE_SNAPSHOT_CONFIG.max_duration_ms,
-      "native.snapshot.max_duration_ms"
-    )
-  };
+function sameStatIdentity(left, right) {
+  const leftObject = identityOf(left);
+  const rightObject = identityOf(right);
+  if (hasComparableFileObject(leftObject, rightObject)) {
+    return sameFileObject(leftObject, rightObject);
+  }
+  return sameFileObject(leftObject, rightObject) && birthtimeOf(left) === birthtimeOf(right) && ctimeOf(left) === ctimeOf(right) && left.size === right.size;
 }
-function record(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be a mapping`);
+async function readFileRaceSafe(file, maxBytes, options = {}) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new Error("race-safe read byte limit must be a positive integer");
   }
-  return value;
-}
-function rejectUnknown(value, known, label) {
-  const unknown = Object.keys(value).filter((key) => !known.has(key));
-  if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
-}
-function parsePending(value) {
-  if (value === void 0) return void 0;
-  const pending = record(value, "native.pending_root_move");
-  rejectUnknown(pending, PENDING_KEYS, "native.pending_root_move");
-  const id = pending.id;
-  const from = pending.from_artifact_root;
-  const to = pending.to_artifact_root;
-  const stage = pending.stage;
-  if (typeof id !== "string" || !/^[a-f0-9-]{8,}$/u.test(id)) {
-    throw new Error("native.pending_root_move.id is invalid");
+  const label = options.label ?? "file";
+  const bigint = options.bigint === true;
+  const before = await fs2.lstat(file, { bigint });
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new RaceSafeReadError("not-regular-file", `${label} must be a regular file`);
   }
-  if (typeof from !== "string" || typeof to !== "string") {
-    throw new Error("native.pending_root_move roots must be strings");
+  if (BigInt(before.size) > BigInt(maxBytes)) {
+    throw new RaceSafeReadError("too-large", `${label} exceeds ${maxBytes} bytes`);
   }
-  if (stage !== "copying" && stage !== "ready" && stage !== "switched") {
-    throw new Error("native.pending_root_move.stage is invalid");
-  }
-  let cleanup;
-  if (pending.cleanup !== void 0) {
-    const value2 = record(pending.cleanup, "native.pending_root_move.cleanup");
-    rejectUnknown(value2, CLEANUP_KEYS, "native.pending_root_move.cleanup");
-    const kind = value2.kind;
-    const state = value2.state;
-    const manifestHash = value2.manifest_hash;
-    if (kind !== "forward-source" && kind !== "restart-staging" && kind !== "rollback-destination" && kind !== "rollback-staging") {
-      throw new Error("native.pending_root_move.cleanup.kind is invalid");
-    }
-    if (state !== "prepared" && state !== "quarantined" && state !== "deleting") {
-      throw new Error("native.pending_root_move.cleanup.state is invalid");
-    }
-    if (typeof manifestHash !== "string" || !/^[a-f0-9]{64}$/u.test(manifestHash)) {
-      throw new Error("native.pending_root_move.cleanup.manifest_hash is invalid");
-    }
-    cleanup = { kind, state, manifestHash };
-  }
-  return {
-    id,
-    fromArtifactRoot: normalizeArtifactRootRef(from),
-    toArtifactRoot: normalizeArtifactRootRef(to),
-    stage,
-    ...cleanup ? { cleanup } : {}
-  };
-}
-function parseConfig(value) {
-  const root = record(value, PROJECT_CONFIG_FILE);
-  if (root.schema !== "comet.project.v1") throw new Error("Unsupported Comet project schema");
-  if (root.default_workflow !== "native" && root.default_workflow !== "classic") {
-    throw new Error("default_workflow must be native or classic");
-  }
-  const configuredWorkflows = root.workflows ?? [root.default_workflow];
-  if (!Array.isArray(configuredWorkflows) || configuredWorkflows.length === 0 || configuredWorkflows.some((workflow) => workflow !== "native" && workflow !== "classic")) {
-    throw new Error("workflows must contain native and/or classic");
-  }
-  const workflows = [...new Set(configuredWorkflows)];
-  if (!workflows.includes(root.default_workflow)) {
-    throw new Error("workflows must include default_workflow");
-  }
-  const ambientResume = root.ambient_resume ?? true;
-  if (typeof ambientResume !== "boolean") {
-    throw new Error("ambient_resume must be true or false");
-  }
-  const native = record(root.native, "native");
-  rejectUnknown(native, NATIVE_KEYS, "native");
-  if (typeof native.artifact_root !== "string") {
-    throw new Error("native.artifact_root must be a string");
-  }
-  const language = native.language ?? "en";
-  if (language !== "en" && language !== "zh-CN") {
-    throw new Error("native.language must be en or zh-CN");
-  }
-  const clarificationMode = native.clarification_mode ?? "sequential";
-  if (clarificationMode !== "sequential" && clarificationMode !== "batch") {
-    throw new Error("native.clarification_mode must be sequential or batch");
-  }
-  const pending = parsePending(native.pending_root_move);
-  const snapshot = parseSnapshot(native.snapshot);
-  return {
-    schema: "comet.project.v1",
-    default_workflow: root.default_workflow,
-    workflows,
-    ambient_resume: ambientResume,
-    native: {
-      artifact_root: normalizeArtifactRootRef(native.artifact_root),
-      language,
-      clarification_mode: clarificationMode,
-      snapshot,
-      ...pending ? { pending_root_move: pending } : {}
-    }
-  };
-}
-async function readProjectConfig(projectRoot) {
-  const canonical = path3.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
-  const file = canonical;
+  const beforeRealPath = await fs2.realpath(file);
+  await options.verify?.("pre-open", { realPath: beforeRealPath, identity: identityOf(before) });
+  const flags = process.platform === "win32" ? fsConstants.O_RDONLY : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+  let handle;
   try {
-    await fs3.lstat(file);
+    handle = await fs2.open(file, flags);
   } catch (error) {
-    if (error.code === "ENOENT") return null;
+    if (error.code === "ELOOP") {
+      throw new RaceSafeReadError("not-regular-file", `${label} must be a regular file`, {
+        cause: error
+      });
+    }
     throw error;
   }
-  const source = (await readNativeProtectedTextFile({
-    root: projectRoot,
-    file,
-    maxBytes: NATIVE_PROJECT_CONFIG_MAX_BYTES,
-    label: PROJECT_CONFIG_FILE
-  })).text;
-  const document = (0, import_yaml2.parseDocument)(source, { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid ${PROJECT_CONFIG_FILE}: ${document.errors[0].message}`);
+  try {
+    const [opened, pathAfterOpen, realPathAfterOpen] = await Promise.all([
+      handle.stat({ bigint }),
+      fs2.lstat(file, { bigint }),
+      fs2.realpath(file)
+    ]);
+    if (!opened.isFile() || !pathAfterOpen.isFile() || pathAfterOpen.isSymbolicLink() || realPathAfterOpen !== beforeRealPath || !sameStatIdentity(before, opened) || !sameStatIdentity(before, pathAfterOpen)) {
+      throw new RaceSafeReadError("changed", `${label} changed while opening`);
+    }
+    await options.verify?.("post-open", {
+      realPath: realPathAfterOpen,
+      identity: identityOf(opened)
+    });
+    await options.hooks?.afterOpen?.();
+    const chunks = [];
+    let total = 0;
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+    for (; ; ) {
+      const remaining = maxBytes + 1 - total;
+      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > maxBytes) {
+        throw new RaceSafeReadError("too-large", `${label} exceeds ${maxBytes} bytes`);
+      }
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
+    await options.hooks?.beforeFinalCheck?.();
+    const [afterHandle, afterPath, afterRealPath] = await Promise.all([
+      handle.stat({ bigint }),
+      fs2.lstat(file, { bigint }),
+      fs2.realpath(file)
+    ]);
+    if (!afterPath.isFile() || afterPath.isSymbolicLink() || afterRealPath !== beforeRealPath || !sameStatIdentity(before, afterHandle) || !sameStatIdentity(before, afterPath)) {
+      throw new RaceSafeReadError("changed", `${label} changed while reading`);
+    }
+    await options.verify?.("post-read", {
+      realPath: afterRealPath,
+      identity: identityOf(afterHandle)
+    });
+    return { bytes: Buffer.concat(chunks, total), stat: afterHandle, realPath: afterRealPath };
+  } finally {
+    await handle.close();
   }
-  const value = document.toJS();
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const root = value;
-  if (root.schema === void 0 && root.native === void 0 && root.default_workflow === void 0) {
-    return null;
+}
+
+// domains/workflow-contract/protected-project-path.ts
+function isMissingPath(error) {
+  const code = error?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+function isInside(root, target) {
+  const relative = path3.relative(root, target);
+  return relative === "" || !path3.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path3.sep}`);
+}
+async function assertRealProjectRoot(projectRoot, label) {
+  const lexicalRoot = path3.resolve(projectRoot);
+  const stat = await fs3.lstat(lexicalRoot);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error(`${label} project root must be a real directory`);
   }
-  return parseConfig(value);
+  return fs3.realpath(lexicalRoot);
+}
+async function inspectExistingChain(lexicalRoot, realRoot, segments, options) {
+  let cursor = lexicalRoot;
+  for (let index = 0; index < segments.length; index++) {
+    cursor = path3.join(cursor, segments[index]);
+    let stat;
+    try {
+      stat = await fs3.lstat(cursor);
+    } catch (error) {
+      if (isMissingPath(error)) return { exists: false, kind: "missing" };
+      throw error;
+    }
+    const display = path3.relative(lexicalRoot, cursor).replaceAll("\\", "/");
+    if (stat.isSymbolicLink()) {
+      throw new Error(`${options.label} crosses a symbolic link or junction at ${display}`);
+    }
+    const final = index === segments.length - 1;
+    if (!final && !stat.isDirectory()) {
+      throw new Error(`${options.label} ancestor ${display} must be a real directory`);
+    }
+    if (final && (options.expected === "file" && !stat.isFile() || options.expected === "directory" && !stat.isDirectory() || options.expected === "any" && !stat.isFile() && !stat.isDirectory())) {
+      throw new Error(`${options.label} must be a real ${options.expected}`);
+    }
+    const realCursor = await fs3.realpath(cursor);
+    if (!isInside(realRoot, realCursor)) {
+      throw new Error(`${options.label} resolves outside the project root`);
+    }
+    if (final) {
+      return {
+        exists: true,
+        kind: stat.isFile() ? "file" : stat.isDirectory() ? "directory" : "missing"
+      };
+    }
+  }
+  return { exists: true, kind: "directory" };
+}
+async function inspectProtectedProjectPath(projectRoot, relativePath, options) {
+  const relative = normalizeWorkflowRelativePath(relativePath, options.label);
+  const lexicalRoot = path3.resolve(projectRoot);
+  const realRoot = await assertRealProjectRoot(lexicalRoot, options.label);
+  const segments = relative.split("/");
+  const target = path3.resolve(lexicalRoot, ...segments);
+  if (!isInside(lexicalRoot, target)) {
+    throw new Error(`${options.label} must stay inside the project root`);
+  }
+  const result = await inspectExistingChain(lexicalRoot, realRoot, segments, options);
+  return {
+    projectRoot: lexicalRoot,
+    target,
+    relative,
+    exists: result.exists,
+    kind: result.kind
+  };
+}
+async function readProtectedProjectFile(projectRoot, relativePath, maxBytes, options) {
+  const inspection = await inspectProtectedProjectPath(projectRoot, relativePath, {
+    label: options.label,
+    expected: "file"
+  });
+  if (!inspection.exists) {
+    const error = new Error(`${options.label} does not exist`);
+    error.code = "ENOENT";
+    throw error;
+  }
+  const realRoot = await assertRealProjectRoot(inspection.projectRoot, options.label);
+  return readFileRaceSafe(inspection.target, maxBytes, {
+    ...options,
+    verify: async (_checkpoint, context) => {
+      if (!isInside(realRoot, context.realPath)) {
+        throw new Error(`${options.label} resolves outside the project root`);
+      }
+      await inspectExistingChain(inspection.projectRoot, realRoot, inspection.relative.split("/"), {
+        label: options.label,
+        expected: "file"
+      });
+    }
+  });
+}
+
+// domains/workflow-contract/project-config-reader.ts
+var WORKFLOW_PROJECT_CONFIG_PATH = ".comet/config.yaml";
+function isMissingProjectConfig(error) {
+  const code = error?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+async function readWorkflowProjectConfigDocument(projectRoot, options = {}) {
+  return (await readWorkflowProjectConfigSnapshot(projectRoot, options)).document;
+}
+async function readWorkflowProjectConfigBytes(projectRoot) {
+  try {
+    return (await readProtectedProjectFile(
+      projectRoot,
+      WORKFLOW_PROJECT_CONFIG_PATH,
+      WORKFLOW_PROJECT_CONFIG_MAX_BYTES,
+      { label: WORKFLOW_PROJECT_CONFIG_PATH }
+    )).bytes;
+  } catch (error) {
+    if (isMissingProjectConfig(error)) return null;
+    throw error;
+  }
+}
+function projectConfigIdentity(bytes) {
+  return bytes ? {
+    exists: true,
+    sha256: createHash("sha256").update(bytes).digest("hex")
+  } : { exists: false, sha256: null };
+}
+async function readWorkflowProjectConfigSnapshot(projectRoot, options = {}) {
+  const bytes = await readWorkflowProjectConfigBytes(projectRoot);
+  return {
+    document: bytes ? parseWorkflowProjectConfigDocument(bytes.toString("utf8"), options) : null,
+    identity: projectConfigIdentity(bytes)
+  };
+}
+async function readWorkflowProjectConfig(projectRoot) {
+  return (await readWorkflowProjectConfigDocument(projectRoot))?.config ?? null;
 }
 
 // domains/comet-entry/resolve-entry.ts
@@ -7857,13 +7978,9 @@ function configuredResolution(workflow) {
 }
 async function resolveCometEntry(startPath) {
   const projectRoot = await discoverNativeProject(startPath);
-  const config = await readProjectConfig(projectRoot);
+  const config = await readWorkflowProjectConfig(projectRoot);
   if (!config) {
-    return {
-      workflow: "classic",
-      skill: "comet-classic",
-      source: "legacy-fallback"
-    };
+    throw new Error("Comet workflow entry is unavailable because .comet/config.yaml is missing");
   }
   return configuredResolution(config.default_workflow);
 }

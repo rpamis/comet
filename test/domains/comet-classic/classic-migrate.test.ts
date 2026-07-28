@@ -91,6 +91,19 @@ describe('Classic legacy migration', () => {
     skillRoot = path.join(projectRoot, 'classic-skill');
     await fs.mkdir(changeDir, { recursive: true });
     await fs.mkdir(skillRoot, { recursive: true });
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
     await fs.writeFile(path.join(skillRoot, 'SKILL.md'), '# Classic\n');
     pkg = classicPackage(skillRoot);
   });
@@ -158,6 +171,137 @@ describe('Classic legacy migration', () => {
       contextHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       artifactsHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
+  });
+
+  it('imports an archived docs-layout handoff through its historical legacy pointer', async () => {
+    await fs.rm(path.join(projectRoot, 'openspec'), { recursive: true, force: true });
+    changeDir = path.join(projectRoot, 'docs', 'openspec', 'changes', 'archive', '2026-06-14-demo');
+    await fs.mkdir(path.join(changeDir, '.comet', 'handoff'), { recursive: true });
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const historicalPointer = 'openspec/changes/demo/.comet/handoff/context.json';
+    await fs.writeFile(
+      path.join(changeDir, '.comet', 'handoff', 'context.json'),
+      '{"historical":true}\n',
+      'utf8',
+    );
+    await writeClassicState(changeDir, {
+      classic: classic({
+        phase: 'design',
+        handoffContext: historicalPointer,
+        handoffHash: 'b'.repeat(64),
+      }),
+      run: null,
+    });
+
+    const result = await ensureClassicRun(changeDir, {
+      skillPackage: pkg,
+      runId: () => 'run-historical-handoff',
+      now: () => new Date('2026-06-14T00:00:00.000Z'),
+    });
+
+    expect(await readContext(changeDir, result.run.contextRef)).toBe('{"historical":true}\n');
+    expect(await readArtifacts(changeDir, result.run.artifactsRef)).toMatchObject({
+      handoff_context: historicalPointer,
+    });
+  });
+
+  it('rejects migration when the handoff parent is replaced during the protected read', async () => {
+    const handoff = 'openspec/changes/demo/.comet/handoff/context.json';
+    const handoffParent = path.dirname(path.join(projectRoot, handoff));
+    const held = `${handoffParent}-held`;
+    const outsideRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'comet-classic-migrate-handoff-outside-'),
+    );
+    const ensureWithHooks = ensureClassicRun as unknown as (
+      changeDir: string,
+      options: Parameters<typeof ensureClassicRun>[1] & {
+        handoffReadHooks: { afterOpen: () => void | Promise<void> };
+      },
+    ) => ReturnType<typeof ensureClassicRun>;
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await writeProjectFile(handoff, '{"inside":true}\n');
+    await fs.writeFile(path.join(outsideRoot, 'context.json'), '{"outside":"keep"}\n', 'utf8');
+    await writeClassicState(changeDir, {
+      classic: classic({
+        phase: 'design',
+        handoffContext: handoff,
+        handoffHash: 'b'.repeat(64),
+      }),
+      run: null,
+    });
+    const linkProbe = path.join(projectRoot, 'handoff-link-probe');
+    try {
+      try {
+        await fs.symlink(outsideRoot, linkProbe, process.platform === 'win32' ? 'junction' : 'dir');
+        if (process.platform === 'win32') await fs.rmdir(linkProbe);
+        else await fs.unlink(linkProbe);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(
+        ensureWithHooks(changeDir, {
+          skillPackage: pkg,
+          runId: () => 'run-handoff-race',
+          handoffReadHooks: {
+            afterOpen: async () => {
+              await fs.rename(handoffParent, held);
+              await fs.symlink(
+                outsideRoot,
+                handoffParent,
+                process.platform === 'win32' ? 'junction' : 'dir',
+              );
+            },
+          },
+        }),
+      ).rejects.toThrow(/changed|junction|outside|regular file|operation not permitted|EPERM/iu);
+      expect(await fs.readFile(path.join(outsideRoot, 'context.json'), 'utf8')).toBe(
+        '{"outside":"keep"}\n',
+      );
+    } finally {
+      try {
+        if ((await fs.lstat(handoffParent)).isSymbolicLink()) {
+          if (process.platform === 'win32') await fs.rmdir(handoffParent);
+          else await fs.unlink(handoffParent);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (
+        await fs.stat(held).then(
+          () => true,
+          () => false,
+        )
+      ) {
+        await fs.rename(held, handoffParent);
+      }
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
   });
 
   it('is byte-idempotent and does not duplicate migration events', async () => {

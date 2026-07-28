@@ -1,5 +1,3 @@
-import { promises as fs } from 'fs';
-import path from 'path';
 import {
   clearCometCurrentSelection,
   clearCometCurrentSelectionIf,
@@ -13,7 +11,7 @@ import {
   resolveBranchBinding,
   unboundDetachedMessage,
 } from './classic-branch-binding.js';
-import { assertOpenSpecChangeName } from './classic-paths.js';
+import { assertOpenSpecChangeName, inspectClassicActiveChangeDirectory } from './classic-paths.js';
 import { readClassicState } from './classic-store.js';
 
 export type CurrentChangeSelection = CometCurrentSelection;
@@ -27,42 +25,29 @@ export function currentChangeFile(projectRoot: string): string {
   return cometCurrentSelectionFile(projectRoot);
 }
 
-function changeDirectory(projectRoot: string, changeName: string): string {
-  return path.join(projectRoot, 'openspec', 'changes', changeName);
-}
-
-async function validateActiveChange(projectRoot: string, changeName: string): Promise<void> {
+async function validateActiveChange(projectRoot: string, changeName: string): Promise<string> {
   assertOpenSpecChangeName(changeName);
-  const changeDir = changeDirectory(projectRoot, changeName);
-  try {
-    await fs.access(path.join(changeDir, '.comet.yaml'));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(
-        `Cannot select current change '${changeName}': active change state not found`,
-        {
-          cause: error,
-        },
-      );
-    }
-    throw error;
+  const active = await inspectClassicActiveChangeDirectory(changeName, projectRoot);
+  if (!active.stateExists) {
+    throw new Error(`Cannot select current change '${changeName}': active change state not found`);
   }
 
-  const projection = await readClassicState(changeDir, { migrate: false });
+  const projection = await readClassicState(active.directory, { migrate: false });
   if (!projection.classic) {
     throw new Error(`Cannot select current change '${changeName}': Classic state is incomplete`);
   }
   if (projection.classic.archived) {
     throw new Error(`Cannot select current change '${changeName}': change is archived`);
   }
+  return active.directory;
 }
 
 export async function selectCurrentChange(
   projectRoot: string,
   changeName: string,
 ): Promise<CurrentChangeSelection> {
-  await validateActiveChange(projectRoot, changeName);
-  const outcome = await resolveBranchBinding(changeDirectory(projectRoot, changeName), {
+  const changeDir = await validateActiveChange(projectRoot, changeName);
+  const outcome = await resolveBranchBinding(changeDir, {
     heal: true,
     cwd: projectRoot,
   });
@@ -101,8 +86,9 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
   }
 
   const selection = current.selection;
+  let changeDir: string;
   try {
-    await validateActiveChange(projectRoot, selection.change);
+    changeDir = await validateActiveChange(projectRoot, selection.change);
   } catch (error) {
     return {
       status: 'stale',
@@ -110,7 +96,7 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
     };
   }
 
-  const outcome = await resolveBranchBinding(changeDirectory(projectRoot, selection.change), {
+  const outcome = await resolveBranchBinding(changeDir, {
     heal: false,
     cwd: projectRoot,
   });

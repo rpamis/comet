@@ -116,6 +116,26 @@ def test_comet_tasks_default_to_comet_workflow_profile():
 
     assert task.config.evaluation.profile == "comet-workflow"
     assert task.config.interaction.mode == "auto_user"
+    assert "COMET_CLASSIC_DOCS_LAYOUT" in task.default_treatments
+    assert "COMET_CLASSIC_LEGACY_LAYOUT" in task.default_treatments
+
+
+def test_full_workflow_docs_layout_uses_current_cli_and_compatible_openspec():
+    environment = get_tasks_dir() / "comet-full-workflow/environment"
+    dockerfile = (environment / "Dockerfile").read_text(encoding="utf-8")
+    wrapper = (environment / "current-comet.sh").read_text(encoding="utf-8")
+    package = json.loads((Path(__file__).resolve().parents[4] / "package.json").read_text())
+    dependency_snapshot = json.loads(
+        (environment / "current-comet-package.json").read_text(encoding="utf-8")
+    )
+
+    assert (environment / ".include-current-comet-cli").is_file()
+    assert "FROM node:22" in dockerfile
+    assert "@fission-ai/openspec@1.5.0" in dockerfile
+    assert "mkdir -p openspec/changes" not in dockerfile
+    assert "/workspace/_eval_current_comet" in wrapper
+    assert 'runtime="$(mktemp -d)"' in wrapper
+    assert dependency_snapshot["dependencies"] == package["dependencies"]
 
 
 def test_comet_task_prompt_requires_real_comet_invocation():

@@ -87,8 +87,11 @@ describe('Comet entry resolver runtime release asset', () => {
         env: { ...process.env, FILE_PATH: 'src/app.ts' },
       },
     );
-    expect(outsideProject.status, outsideProject.stderr).toBe(0);
+    expect(outsideProject.status).toBe(2);
     expect(outsideProject.stdout).toBe('');
+    expect(outsideProject.stderr).toContain(
+      'Classic artifact layout is unavailable from .comet/config.yaml',
+    );
   });
 
   it('resolves Native from project config with only the bundled Skill runtime available', async () => {
@@ -118,19 +121,15 @@ describe('Comet entry resolver runtime release asset', () => {
     });
   });
 
-  it('uses the no-config Classic fallback with only the bundled Skill runtime available', async () => {
+  it('fails closed when configuration is absent with only the bundled Skill runtime available', async () => {
     const projectRoot = path.join(temporaryRoot, 'classic-project');
     await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });
 
     const result = runSkillOnly(projectRoot);
 
-    expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({
-      schema: 'comet.workflow-resolution.v1',
-      workflow: 'classic',
-      skill: 'comet-classic',
-      source: 'legacy-fallback',
-    });
+    expect(result.status).toBe(65);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('.comet/config.yaml is missing');
   });
 
   it('fails closed on malformed config instead of falling back to Classic', async () => {

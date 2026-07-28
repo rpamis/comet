@@ -84,7 +84,18 @@ describe('CLI help text', () => {
       facadeDescriptions.filter((description) => help.stdout.includes(description)),
     ).toHaveLength(4);
     expect(help.stdout).toMatch(/^\s+resume-probe \[options\] \[path\]\s+Probe whether/mu);
+    expect(help.stdout).toMatch(/^\s+classic \[args\.\.\.\]\s+Manage the Comet Classic workflow/mu);
     expect(help.stdout).toContain('Manage the self-contained Comet Native workflow');
+  });
+
+  it('documents the layout-aware Classic command group', () => {
+    const help = runCli('classic', '--help');
+
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toContain('Usage: comet classic <command> [args]');
+    expect(help.stdout).toContain('openspec -- <openspec-args...>');
+    expect(help.stdout).toContain('root show');
+    expect(help.stdout).toContain('root move docs <--dry-run|--apply>');
   });
 
   it('keeps Native behind one isolated root command', () => {

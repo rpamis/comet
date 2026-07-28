@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import { spawnSync } from 'child_process';
 import os from 'os';
 import path from 'path';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const sourceScripts = path.resolve('assets', 'skills', 'comet', 'scripts');
 
@@ -13,6 +14,7 @@ describe('Skill Engine schema compatibility', () => {
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-engine-'));
+    await prepareClassicLegacyProject(root);
     await fs.mkdir(path.join(root, 'assets'), { recursive: true });
     for (const name of [
       'comet-runtime.mjs',

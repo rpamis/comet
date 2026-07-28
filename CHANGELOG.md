@@ -7,6 +7,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **Explicit platform targeting**: `comet init` and `comet update` now accept `--platform <platform>` to initialize or refresh one registered platform, or a project-scoped custom platform such as `.test`, while preserving workflow-scoped asset installation and the existing detection fallback when the option is omitted.
+- **Unified Classic product catalogue**: New Classic and dual-workflow projects now keep OpenSpec artifacts under `docs/openspec/` alongside `docs/comet/` and `docs/superpowers/`. `comet classic openspec -- <args...>` runs OpenSpec against the configured root, while `comet classic root show` and the dry-run/apply root move commands expose and migrate the layout explicitly. Current-skill legacy- and docs-layout Eval treatments cover both supported catalogues ([#173](https://github.com/rpamis/comet/issues/173)).
+
+### Changed
+
+- **Backward-compatible Classic layout routing**: Existing projects without `classic.artifact_layout` continue using root-level `openspec/`, and `comet update` records that legacy choice without moving data. Classic runtime, Entry routing, Hook guards, Dashboard, workflow contracts, Doctor, and uninstall now resolve one configured layout and fail closed on conflicting roots or unsafe migrations.
 
 ## What's Changed [0.4.0-beta.9] - 2026-07-25
 

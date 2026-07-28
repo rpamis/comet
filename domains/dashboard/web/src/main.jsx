@@ -1471,9 +1471,7 @@ function filterChanges(snapshot, tab, query) {
 }
 
 function relativeChangePath(change) {
-  return change.status === 'archived'
-    ? `openspec/changes/archive/${change.name}`
-    : `openspec/changes/${change.name}`;
+  return change.relativePath || change.name;
 }
 
 function phaseLabel(phase) {

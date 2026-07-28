@@ -1,9 +1,13 @@
 import { createHash } from 'crypto';
-import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
-import { openSpecChangeNameError } from './classic-paths.js';
+import { executeClassicOpenSpec } from './classic-openspec-command.js';
+import {
+  findClassicArchiveChangeDirectory,
+  inspectClassicActiveChangeDirectory,
+  openSpecChangeNameError,
+} from './classic-paths.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
 import { readClassicState, writeClassicState } from './classic-store.js';
@@ -21,6 +25,18 @@ import {
   writePendingAction,
 } from '../../domains/engine/run-store.js';
 import type { Checkpoint, EngineAction, RunState } from '../../domains/engine/types.js';
+import {
+  assertClassicLayoutWritable,
+  classicProjectRelative,
+  discoverClassicProject,
+} from './classic-layout.js';
+import {
+  classicProjectTargetExists,
+  ensureClassicProjectDirectory,
+  inspectClassicProjectTarget,
+  readClassicProjectFile,
+  writeClassicProjectText,
+} from './classic-protected-path.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -50,24 +66,27 @@ class ArchiveFailure extends Error {
 
 class ArchiveOutput {
   readonly stderr: string[] = [];
+  readonly openSpecStdout: string[] = [];
+  readonly openSpecStderr: string[] = [];
   stepsOk = 0;
   stepsTotal = 0;
 
+  captureOpenSpec(result: ClassicCommandResult): void {
+    if (result.stdout) this.openSpecStdout.push(result.stdout);
+    if (result.stderr) this.openSpecStderr.push(result.stderr);
+  }
+
   toResult(exitCode = 0): ClassicCommandResult {
+    const diagnostics = this.stderr.length > 0 ? this.stderr.join('\n') + '\n' : '';
+    const openSpecStderr = this.openSpecStderr.join('');
+    const separator = openSpecStderr && diagnostics && !openSpecStderr.endsWith('\n') ? '\n' : '';
     return {
       exitCode,
-      ...(this.stderr.length > 0 ? { stderr: this.stderr.join('\n') + '\n' } : {}),
+      ...(this.openSpecStdout.length > 0 ? { stdout: this.openSpecStdout.join('') } : {}),
+      ...(openSpecStderr || diagnostics
+        ? { stderr: `${openSpecStderr}${separator}${diagnostics}` }
+        : {}),
     };
-  }
-}
-
-async function exists(file: string): Promise<boolean> {
-  try {
-    await fs.access(file);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
   }
 }
 
@@ -124,18 +143,6 @@ export function annotatedMarkdown(
   return exactlyOneFinalNewline([...header, normalized].join('\n'));
 }
 
-async function findArchiveDir(change: string, preferred: string): Promise<string | null> {
-  if (await exists(preferred)) return preferred;
-  const archiveRoot = 'openspec/changes/archive';
-  if (!(await exists(archiveRoot))) return null;
-  for (const entry of (await fs.readdir(archiveRoot)).sort()) {
-    if (!entry.endsWith(`-${change}`)) continue;
-    const candidate = `${archiveRoot}/${entry}`;
-    if ((await fs.stat(candidate)).isDirectory()) return candidate;
-  }
-  return null;
-}
-
 async function appendRecoveryEvent(
   changeDir: string,
   run: RunState,
@@ -166,34 +173,64 @@ async function appendRecoveryEvent(
 
 async function annotateFrontmatter(
   output: ArchiveOutput,
+  projectRoot: string,
   file: string,
   archiveName: string,
   extraFields: string,
   dryRun: boolean,
 ): Promise<void> {
-  if (!(await exists(file))) return;
+  if (
+    !(await classicProjectTargetExists(projectRoot, file, {
+      label: 'Classic archive annotation target',
+      expected: 'file',
+    }))
+  ) {
+    return;
+  }
   if (dryRun) {
     output.stderr.push(yellow(`  [DRY-RUN] Would annotate: ${file}`));
     output.stepsOk += 1;
     output.stepsTotal += 1;
     return;
   }
-  const original = await fs.readFile(file, 'utf8');
+  const original = await readClassicProjectFile(projectRoot, file, {
+    label: 'Classic archive annotation target',
+  });
   const updated = annotatedMarkdown(original, archiveName, extraFields);
-  await fs.writeFile(file, updated);
+  await writeClassicProjectText(projectRoot, file, updated, {
+    label: 'Classic archive annotation target',
+  });
   output.stderr.push(green(`  [OK] Annotated: ${file}`));
   output.stepsOk += 1;
   output.stepsTotal += 1;
 }
 
-async function verifyMainSpecsClean(): Promise<void> {
-  const specsRoot = 'openspec/specs';
-  if (!(await exists(specsRoot))) return;
+async function verifyMainSpecsClean(projectRoot: string, specsRoot: string): Promise<void> {
+  const rootInspection = await inspectClassicProjectTarget(projectRoot, specsRoot, {
+    label: 'Classic main specs directory',
+    expected: 'directory',
+  });
+  if (!rootInspection.exists) return;
   let found = false;
-  for (const entry of await fs.readdir(specsRoot)) {
-    const specFile = `${specsRoot}/${entry}/spec.md`;
-    if (!(await exists(specFile))) continue;
-    const matches = (await fs.readFile(specFile, 'utf8'))
+  const entries = await fs.readdir(specsRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    const specFile = `${specsRoot}/${entry.name}/spec.md`;
+    const content = await (async () => {
+      if (
+        !(await classicProjectTargetExists(projectRoot, specFile, {
+          label: `Classic main spec ${entry.name}`,
+          expected: 'file',
+        }))
+      ) {
+        return null;
+      }
+      return readClassicProjectFile(projectRoot, specFile, {
+        label: `Classic main spec ${entry.name}`,
+      });
+    })();
+    if (content === null) continue;
+    const matches = content
       .split(/\r?\n/u)
       .map((line, index) => ({ line, number: index + 1 }))
       .filter((item) => /^## (ADDED|MODIFIED|REMOVED|RENAMED) Requirements$/u.test(item.line));
@@ -214,23 +251,34 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
   const dryRun = args[1] === '--dry-run';
   try {
     validateChangeName(change);
-    const activeDir = `openspec/changes/${change}`;
+    const projectRoot = await discoverClassicProject(process.cwd());
+    const layout = await assertClassicLayoutWritable(projectRoot);
+    const active = await inspectClassicActiveChangeDirectory(change, layout.projectRoot);
+    const activeDir = active.directory;
+    const activeRef = classicProjectRelative(layout.projectRoot, activeDir);
     const today = new Date().toISOString().slice(0, 10);
     let archiveName = `${today}-${change}`;
-    let archiveDir = `openspec/changes/archive/${archiveName}`;
-    const openspec = process.env.COMET_OPENSPEC || 'openspec';
+    let archiveDir = path.join(layout.archiveDir, archiveName);
 
     output.stderr.push(`=== Comet Archive: ${change} ===`);
 
-    const activeExists = await exists(`${activeDir}/.comet.yaml`);
-    const recoveredArchive = activeExists ? null : await findArchiveDir(change, archiveDir);
-    const changeDir = activeExists ? activeDir : recoveredArchive;
-    if (!changeDir || !(await exists(`${changeDir}/.comet.yaml`))) {
-      throw new ArchiveFailure(red(`FATAL: .comet.yaml not found in ${activeDir}/`));
+    const activeExists = active.stateExists;
+    const recoveredArchive = activeExists
+      ? null
+      : await findClassicArchiveChangeDirectory(change, layout.projectRoot);
+    const changeDir = activeExists ? activeDir : recoveredArchive?.directory;
+    if (
+      !changeDir ||
+      !(await classicProjectTargetExists(layout.projectRoot, `${changeDir}/.comet.yaml`, {
+        label: `Classic change ${change} state`,
+        expected: 'file',
+      }))
+    ) {
+      throw new ArchiveFailure(red(`FATAL: .comet.yaml not found in ${activeRef}/`));
     }
     if (recoveredArchive) {
-      archiveDir = recoveredArchive;
-      archiveName = path.basename(recoveredArchive);
+      archiveDir = recoveredArchive.directory;
+      archiveName = path.basename(recoveredArchive.directory);
     }
     const projection = await readClassicState(changeDir);
     if (!projection.classic) {
@@ -254,7 +302,11 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
     output.stepsOk += 1;
     output.stepsTotal += 1;
 
-    if (activeExists && (await exists(archiveDir))) {
+    const archiveTarget = await inspectClassicProjectTarget(layout.projectRoot, archiveDir, {
+      label: `Classic archive target ${archiveName}`,
+      expected: 'directory',
+    });
+    if (activeExists && archiveTarget.exists) {
       throw new ArchiveFailure(red(`FATAL: archive target already exists: ${archiveDir}`));
     }
     output.stderr.push(green('  [OK] Archive target available'));
@@ -266,6 +318,11 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
       output.stepsOk += 1;
       output.stepsTotal += 1;
     } else if (!classic.archived || projection.run?.pending) {
+      await ensureClassicProjectDirectory(
+        layout.projectRoot,
+        `${changeDir}/.comet`,
+        'Classic change runtime directory',
+      );
       const runtime = await ensureClassicRuntimeRun(changeDir);
       const actionId = `classic-archive:${change}`;
       const pendingAction = await readPendingAction(changeDir, runtime.run.pendingRef);
@@ -305,26 +362,24 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
       }
 
       if (!recoveredArchive) {
-        const archiveRun = spawnSync(openspec, ['archive', change, '--yes'], {
-          encoding: 'utf8',
-          shell: process.platform === 'win32',
-        });
-        if (archiveRun.stdout) process.stderr.write(archiveRun.stdout);
-        if (archiveRun.stderr) process.stderr.write(archiveRun.stderr);
-        if (archiveRun.error && (archiveRun.error as NodeJS.ErrnoException).code === 'ENOENT') {
-          throw new ArchiveFailure(
-            [
-              red(`FATAL: OpenSpec CLI not found: ${openspec}`),
-              red('Install OpenSpec or set COMET_OPENSPEC to the openspec executable.'),
-            ].join('\n'),
-          );
-        }
-        if (archiveRun.status !== 0) {
-          throw new ArchiveFailure('', archiveRun.status ?? 1);
+        const archiveRun = await executeClassicOpenSpec(
+          ['archive', change, '--yes'],
+          layout.projectRoot,
+        );
+        output.captureOpenSpec(archiveRun);
+        if (archiveRun.exitCode !== 0) {
+          throw new ArchiveFailure('', archiveRun.exitCode);
         }
       }
 
-      const resolvedArchive = await findArchiveDir(change, archiveDir);
+      let resolvedArchive = await findClassicArchiveChangeDirectory(change, layout.projectRoot, {
+        preferredArchiveName: archiveName,
+      });
+      if (!resolvedArchive && !recoveredArchive) {
+        resolvedArchive = await findClassicArchiveChangeDirectory(change, layout.projectRoot, {
+          skipExactCompatibility: true,
+        });
+      }
       if (!resolvedArchive) {
         output.stderr.push(red('  [FAIL] OpenSpec archive output not found'));
         output.stepsTotal += 1;
@@ -334,22 +389,29 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
         );
         return output.toResult(1);
       }
-      archiveDir = resolvedArchive;
-      archiveName = path.basename(resolvedArchive);
+      archiveDir = resolvedArchive.directory;
+      archiveName = path.basename(resolvedArchive.directory);
       output.stderr.push(green(`  [OK] OpenSpec archive completed: ${archiveDir}`));
       output.stepsOk += 1;
       output.stepsTotal += 1;
 
-      await verifyMainSpecsClean();
+      await verifyMainSpecsClean(layout.projectRoot, layout.specsDir);
       output.stderr.push(green('  [OK] Main specs verified clean'));
       output.stepsOk += 1;
       output.stepsTotal += 1;
 
       if (designDoc) {
-        await annotateFrontmatter(output, designDoc, archiveName, 'status: final', false);
+        await annotateFrontmatter(
+          output,
+          layout.projectRoot,
+          designDoc,
+          archiveName,
+          'status: final',
+          false,
+        );
       }
       if (planPath) {
-        await annotateFrontmatter(output, planPath, archiveName, '', false);
+        await annotateFrontmatter(output, layout.projectRoot, planPath, archiveName, '', false);
       }
 
       const archivedProjection = await readClassicState(archiveDir);
@@ -358,7 +420,7 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
       }
       const artifacts = {
         ...(await readArtifacts(archiveDir, archivedProjection.run.artifactsRef)),
-        archive_directory: archiveDir,
+        archive_directory: classicProjectRelative(layout.projectRoot, archiveDir),
       };
       await writeArtifacts(archiveDir, archivedProjection.run.artifactsRef, artifacts);
 
@@ -380,7 +442,7 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
           archivedProjection.run,
           {
             actionId,
-            archiveDirectory: archiveDir,
+            archiveDirectory: classicProjectRelative(layout.projectRoot, archiveDir),
             event: 'archived',
             source: 'comet-archive',
           },
@@ -441,10 +503,17 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
 
     if (dryRun) {
       if (designDoc) {
-        await annotateFrontmatter(output, designDoc, archiveName, 'status: final', true);
+        await annotateFrontmatter(
+          output,
+          layout.projectRoot,
+          designDoc,
+          archiveName,
+          'status: final',
+          true,
+        );
       }
       if (planPath) {
-        await annotateFrontmatter(output, planPath, archiveName, '', true);
+        await annotateFrontmatter(output, layout.projectRoot, planPath, archiveName, '', true);
       }
       output.stderr.push(
         yellow(`  [DRY-RUN] Would set archived: true in ${archiveDir}/.comet.yaml`),
@@ -453,7 +522,7 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
       output.stepsTotal += 1;
     }
 
-    if (!dryRun) await clearCurrentChangeIf(process.cwd(), change);
+    if (!dryRun) await clearCurrentChangeIf(layout.projectRoot, change);
 
     output.stderr.push('');
     output.stderr.push(

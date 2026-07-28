@@ -41,7 +41,7 @@ Read this file only when field meanings are needed. Normal `/comet-classic` rout
 
 | Field | Meaning |
 |-------|---------|
-| `active_changes_count` | Number of unarchived active changes from `openspec list --json`. Multiple active changes without a `change_id` route to `ask_user`. |
+| `active_changes_count` | Number of unarchived active changes from `comet classic openspec -- list --json`. Multiple active changes without a `change_id` route to `ask_user`. |
 | `active_change_names` | Names of active changes. When the user supplies `change_id`, the runtime checks it against this list. |
 | `dirty_worktree` | Optional state field. The entry-route minimal skeleton does not need it; dirty worktree handling belongs to `comet/reference/dirty-worktree.md`. |
 

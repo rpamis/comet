@@ -61,6 +61,19 @@ describe('Classic current change selection', () => {
     await fs.writeFile(path.join(root, 'README.md'), '# Test\n');
     git(root, 'add', 'README.md');
     git(root, 'commit', '-m', 'init');
+    await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '',
+      ].join('\n'),
+    );
+    await fs.mkdir(path.join(root, 'openspec', 'changes'), { recursive: true });
   });
 
   afterEach(async () => {
@@ -79,7 +92,10 @@ describe('Classic current change selection', () => {
       branch: 'main',
     });
     expect(JSON.parse(await fs.readFile(currentChangeFile(root), 'utf8'))).toEqual(selected);
-    expect((await fs.readdir(path.join(root, '.comet'))).sort()).toEqual(['current-change.json']);
+    expect((await fs.readdir(path.join(root, '.comet'))).sort()).toEqual([
+      'config.yaml',
+      'current-change.json',
+    ]);
   });
 
   it('refuses to select a change whose bound branch drifted', async () => {
@@ -97,6 +113,25 @@ describe('Classic current change selection', () => {
     await expect(selectCurrentChange(root, 'missing')).rejects.toThrow('active change');
     await seedActiveChange(root, 'archived-change', true);
     await expect(selectCurrentChange(root, 'archived-change')).rejects.toThrow('archived');
+  });
+
+  it('rejects an active change directory junction without selecting external state', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-current-change-outside-'));
+    try {
+      await seedActiveChange(outside, 'change-a', false);
+      await fs.symlink(
+        path.join(outside, 'openspec', 'changes', 'change-a'),
+        path.join(root, 'openspec', 'changes', 'change-a'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      await expect(selectCurrentChange(root, 'change-a')).rejects.toThrow(
+        /symbolic link or junction/iu,
+      );
+      expect(await exists(currentChangeFile(root))).toBe(false);
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   });
 
   it('marks a selection stale after the bound branch drifts', async () => {
@@ -275,7 +310,10 @@ describe('Classic current change selection', () => {
 
     await expect(selectCurrentChange(root, 'change-a')).rejects.toThrow();
 
-    expect((await fs.readdir(path.join(root, '.comet'))).sort()).toEqual(['current-change.json']);
+    expect((await fs.readdir(path.join(root, '.comet'))).sort()).toEqual([
+      'config.yaml',
+      'current-change.json',
+    ]);
   });
 
   it('clears the selection idempotently', async () => {

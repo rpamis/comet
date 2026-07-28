@@ -40,6 +40,7 @@ import {
   artifactLanguageToSkillLanguage,
   resolveArtifactLanguage,
 } from '../../../domains/skill/languages.js';
+import { assertClassicLayoutInitializationSafe } from '../../../domains/comet-classic/classic-layout-initialization.js';
 
 describe('skills', () => {
   let tmpDir: string;
@@ -451,9 +452,11 @@ describe('skills', () => {
       await expect(fs.stat(plansDir)).resolves.toBeDefined();
     });
 
-    it('does not throw when directories already exist', async () => {
+    it('does not reuse an unconfigured artifact root without initialization authorization', async () => {
       await createWorkingDirs(tmpDir);
-      await expect(createWorkingDirs(tmpDir)).resolves.not.toThrow();
+      await expect(createWorkingDirs(tmpDir)).rejects.toThrow(
+        /cannot initialize Classic layout without/iu,
+      );
     });
 
     it('installs ambient resume instructions while preserving user content', async () => {
@@ -471,7 +474,7 @@ describe('skills', () => {
     });
 
     it('records the selected project language in Comet config', async () => {
-      await createWorkingDirs(tmpDir, 'zh-CN');
+      await mergeProjectConfig(tmpDir, 'zh-CN', 'docs');
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
       expect(config).toContain('# Classic 工作流文档使用的产物语言');
@@ -480,12 +483,60 @@ describe('skills', () => {
     });
 
     it('defaults the project language to en when none is provided', async () => {
-      await createWorkingDirs(tmpDir);
+      await mergeProjectConfig(tmpDir);
 
       const config = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
       expect(config).toContain('# language: en | zh-CN');
       expect(config).toContain('language: en');
     });
+
+    it.each([
+      {
+        label: 'OpenSpec changes',
+        linkedPath: ['docs', 'openspec', 'changes'],
+        escapedWrite: ['archive'],
+      },
+      {
+        label: 'Superpowers root',
+        linkedPath: ['docs', 'superpowers'],
+        escapedWrite: ['specs'],
+      },
+      {
+        label: 'Comet control directory',
+        linkedPath: ['.comet'],
+        escapedWrite: ['config.yaml'],
+      },
+    ])(
+      'rejects a $label junction created after initialization preflight',
+      async ({ linkedPath, escapedWrite }) => {
+        const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-working-dirs-outside-'));
+        try {
+          const initialization = await assertClassicLayoutInitializationSafe(tmpDir, 'docs');
+          await fs.mkdir(initialization.openSpecRoot, { recursive: true });
+          const linked = path.join(tmpDir, ...linkedPath);
+          await fs.mkdir(path.dirname(linked), { recursive: true });
+          try {
+            await fs.symlink(
+              outsideRoot,
+              linked,
+              process.platform === 'win32' ? 'junction' : 'dir',
+            );
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+            throw error;
+          }
+
+          await expect(
+            createWorkingDirs(tmpDir, 'en', 'docs', initialization.initializationPermit),
+          ).rejects.toThrow(/symbolic link or junction/iu);
+          await expect(fs.access(path.join(outsideRoot, ...escapedWrite))).rejects.toMatchObject({
+            code: 'ENOENT',
+          });
+        } finally {
+          await fs.rm(outsideRoot, { recursive: true, force: true });
+        }
+      },
+    );
   });
 
   describe('copyCometSkillsForPlatform', () => {
@@ -1360,9 +1411,13 @@ describe('skills', () => {
         'utf-8',
       );
 
-      expect(zhOpen).toContain('openspec instructions <artifact-id> --change "<name>" --json');
+      expect(zhOpen).toContain(
+        'comet classic openspec -- instructions <artifact-id> --change "<name>" --json',
+      );
       expect(zhOpen).toContain('不得硬编码生成顺序');
-      expect(zhOpen).not.toContain('openspec instructions proposal --change "<name>" --json');
+      expect(zhOpen).not.toContain(
+        'comet classic openspec -- instructions proposal --change "<name>" --json',
+      );
       for (const field of [
         '`context`',
         '`rules`',
@@ -1375,7 +1430,7 @@ describe('skills', () => {
       }
       expect(zhOpen).toContain('不得复制到 artifact 内容中');
       expect(zhOpen).toContain('每创建一个 artifact 后');
-      expect(zhOpen).toContain('openspec status --change "<name>" --json');
+      expect(zhOpen).toContain('comet classic openspec -- status --change "<name>" --json');
       expect(zhOpen).toContain('必须立即停止并报告 OpenSpec 错误');
       expect(zhOpen).toContain('不得回退为硬编码文档结构');
     });
@@ -1386,9 +1441,13 @@ describe('skills', () => {
         'utf-8',
       );
 
-      expect(enOpen).toContain('openspec instructions <artifact-id> --change "<name>" --json');
+      expect(enOpen).toContain(
+        'comet classic openspec -- instructions <artifact-id> --change "<name>" --json',
+      );
       expect(enOpen).toContain('Must not hard-code generation order');
-      expect(enOpen).not.toContain('openspec instructions proposal --change "<name>" --json');
+      expect(enOpen).not.toContain(
+        'comet classic openspec -- instructions proposal --change "<name>" --json',
+      );
       for (const field of [
         '`context`',
         '`rules`',
@@ -1401,7 +1460,7 @@ describe('skills', () => {
       }
       expect(enOpen).toContain('must not copy them into artifact content');
       expect(enOpen).toContain('Re-run status after creating each artifact');
-      expect(enOpen).toContain('openspec status --change "<name>" --json');
+      expect(enOpen).toContain('comet classic openspec -- status --change "<name>" --json');
       expect(enOpen).toContain('Also stop if status/instructions fails');
       expect(enOpen).toContain('Must not fall back to hard-coded artifact prose');
     });
@@ -1681,7 +1740,7 @@ describe('skills', () => {
       );
 
       // LOW: comet-verify Step 2b disambiguates design.md vs Design Doc
-      expect(zhVerify).toContain('实现符合 `openspec/changes/<name>/design.md` 高层设计决策');
+      expect(zhVerify).toContain('实现符合 `<classic-change-dir>/design.md` 高层设计决策');
       expect(zhTweak).not.toContain('停止 tweak，升级为完整 `/comet`');
 
       // IMPORTANT: main /comet preset detection must match the current tweak positioning.
@@ -1913,7 +1972,7 @@ describe('skills', () => {
         '### 1b. Resolve Requirements and Change Name (Non-blocking by Default)',
       );
       expect(enOpen).toContain(
-        'Do not run `openspec new change` or create proposal/design/tasks while the resolved brief or name remains ambiguous',
+        'Do not run `comet classic openspec -- new change` or create proposal/design/tasks while the resolved brief or name remains ambiguous',
       );
       expect(enOpen).toContain(
         'Full `/comet-classic` workflow must not use the Skill tool to load the `openspec-propose` skill',
@@ -2083,7 +2142,7 @@ describe('skills', () => {
         'must follow the `comet/reference/decision-point.md` protocol to pause and wait for the user to decide whether to split into a new change',
       );
       expect(enVerify).toContain(
-        'Implementation matches `openspec/changes/<name>/design.md` high-level design decisions',
+        'Implementation matches `<classic-change-dir>/design.md` high-level design decisions',
       );
       expect(enBuild).toContain('create independent change through `/comet-open`');
       expect(enBuild).not.toContain('create independent change through `/opsx:new`');
@@ -2124,7 +2183,7 @@ describe('skills', () => {
       );
       expect(enDesign).toContain('Default `context_compression: off` generates');
       expect(enDesign).toContain('If context_compression is beta, use:');
-      expect(enDesign).toContain('openspec/changes/<name>/.comet/handoff/spec-context.md');
+      expect(enDesign).toContain('<classic-change-dir>/.comet/handoff/spec-context.md');
       expect(enDesign).toContain('In beta mode, `spec-context.json` must be structurally valid');
       expect(enDesign).toContain('incrementally update `brainstorm-summary.md`');
       expect(enDesign).toContain('### 3a. Optional Active Context Compaction');
@@ -2348,7 +2407,7 @@ describe('skills', () => {
       expect(zhDispatch).toContain('implementer 不得勾选 plan 或 OpenSpec task');
       expect(zhDispatch).toContain('协调者唯一允许的文件修改');
       expect(zhDispatch).toContain('plan、OpenSpec task 和 subagent 进度检查点');
-      expect(zhDispatch).toContain('openspec/changes/<name>/.comet/subagent-progress.md');
+      expect(zhDispatch).toContain('<classic-change-dir>/.comet/subagent-progress.md');
       expect(zhDispatch).toContain('final-review | final-fix');
       expect(zhDispatch).toContain('当前审查-修复轮次');
       expect(zhDispatch).toContain('已通过的审查阶段');
@@ -2391,7 +2450,7 @@ describe('skills', () => {
       expect(zhDispatch).not.toContain('PLAN_MATCHES="$(grep -cF');
       expect(zhDispatch).toContain('RED 失败命令与失败摘要');
       expect(zhDispatch).toContain('GREEN 通过命令与通过摘要');
-      expect(zhDispatch).not.toContain("grep -n '\\- \\[ \\]' openspec/changes/<name>/tasks.md");
+      expect(zhDispatch).not.toContain("grep -n '\\- \\[ \\]' <classic-change-dir>/tasks.md");
       expect(zhDispatch).toContain('禁止总结、禁止询问用户是否继续、禁止在任务之间等待用户输入');
       expect(zhDispatch).toContain('存在无法从仓库、计划或既有上下文消除的真实歧义');
       expect(zhDispatch).toContain('后台调度能力在执行中失效属于运行停止条件');
@@ -2400,10 +2459,10 @@ describe('skills', () => {
       expect(zhDispatch).toContain('返回 `comet-build` 继续执行退出条件、阶段守卫和后续阶段衔接');
       expect(zhRecovery).toContain('重新加载 Superpowers `subagent-driven-development` 技能');
       expect(zhRecovery).toContain('重新阅读 `comet/reference/subagent-dispatch.md`');
-      expect(zhRecovery).toContain('读取 `openspec/changes/<name>/.comet/subagent-progress.md`');
+      expect(zhRecovery).toContain('读取 `<classic-change-dir>/.comet/subagent-progress.md`');
       expect(zhGuard).toContain('重新加载 Superpowers `subagent-driven-development` 技能');
       expect(zhGuard).toContain('读取 `comet/reference/subagent-dispatch.md` 获取 Comet 专属扩展');
-      expect(zhGuard).toContain('读取 `openspec/changes/<name>/.comet/subagent-progress.md`');
+      expect(zhGuard).toContain('读取 `<classic-change-dir>/.comet/subagent-progress.md`');
     });
 
     it('keeps the English dispatch contract behaviorally aligned', async () => {
@@ -2475,7 +2534,7 @@ describe('skills', () => {
       );
       expect(enDispatch).toContain('The coordinator may modify only');
       expect(enDispatch).toContain('plan, OpenSpec task, and subagent progress checkpoint');
-      expect(enDispatch).toContain('openspec/changes/<name>/.comet/subagent-progress.md');
+      expect(enDispatch).toContain('<classic-change-dir>/.comet/subagent-progress.md');
       expect(enDispatch).toContain('final-review | final-fix');
       expect(enDispatch).toContain('current review-fix round');
       expect(enDispatch).toContain('review stages already passed');
@@ -2497,12 +2556,12 @@ describe('skills', () => {
       );
       expect(enRecovery).toContain('reload the Superpowers `subagent-driven-development` skill');
       expect(enRecovery).toContain('Re-read `comet/reference/subagent-dispatch.md`');
-      expect(enRecovery).toContain('Read `openspec/changes/<name>/.comet/subagent-progress.md`');
+      expect(enRecovery).toContain('Read `<classic-change-dir>/.comet/subagent-progress.md`');
       expect(enGuard).toContain('reload the Superpowers `subagent-driven-development` skill');
       expect(enGuard).toContain(
         'Re-read `comet/reference/subagent-dispatch.md` for Comet-specific extensions',
       );
-      expect(enGuard).toContain('Read `openspec/changes/<name>/.comet/subagent-progress.md`');
+      expect(enGuard).toContain('Read `<classic-change-dir>/.comet/subagent-progress.md`');
       expect(enGuard).toContain('according to the current `review_mode`');
       expect(enGuard).toContain('validated according to `review_mode`');
       expect(enGuard).not.toContain('wait for both spec compliance and code quality reviews');
@@ -2951,8 +3010,8 @@ describe('skills', () => {
       expect(parseProjectConfigOverrides('   \n  ')).toEqual({});
     });
 
-    it('returns empty object for malformed YAML', () => {
-      expect(parseProjectConfigOverrides('{{invalid')).toEqual({});
+    it('fails closed for malformed YAML', () => {
+      expect(() => parseProjectConfigOverrides('{{invalid')).toThrow('Invalid .comet/config.yaml');
     });
 
     it('parses valid YAML into string-keyed record', () => {
@@ -3040,6 +3099,7 @@ describe('skills', () => {
       expect(parse(content)).toMatchObject({
         ambient_resume: true,
         classic: {
+          artifact_layout: 'legacy',
           language: 'en',
           context_compression: 'off',
           review_mode: 'standard',
@@ -3144,6 +3204,7 @@ describe('skills', () => {
       const content = await fs.readFile(path.join(configDir, 'config.yaml'), 'utf-8');
       expect(parse(content)).toMatchObject({
         classic: {
+          artifact_layout: 'legacy',
           language: 'en',
           context_compression: 'beta',
           review_mode: 'standard',
@@ -3165,6 +3226,57 @@ describe('skills', () => {
       await mergeProjectConfig(tmpDir);
       const content = await fs.readFile(path.join(configDir, 'config.yaml'), 'utf-8');
       expect(content).toContain('custom_setting: hello');
+    });
+
+    it.each([
+      ['malformed YAML', 'classic:\n  language: en\nextension: [unterminated\n'],
+      [
+        'duplicate keys',
+        'classic:\n  language: en\n  review_mode: standard\n  review_mode: thorough\n',
+      ],
+    ])('fails closed without overwriting an existing config with %s', async (_label, source) => {
+      const configDir = path.join(tmpDir, '.comet');
+      const configPath = path.join(configDir, 'config.yaml');
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(configPath, source, 'utf-8');
+
+      await expect(mergeProjectConfig(tmpDir)).rejects.toThrow('Invalid .comet/config.yaml');
+      await expect(fs.readFile(configPath, 'utf-8')).resolves.toBe(source);
+    });
+
+    it('preserves unknown fields inside the Classic block', async () => {
+      const configDir = path.join(tmpDir, '.comet');
+      const configPath = path.join(configDir, 'config.yaml');
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        configPath,
+        [
+          'schema: comet.project.v1',
+          'default_workflow: classic',
+          'workflows: [classic]',
+          'classic:',
+          '  artifact_layout: legacy',
+          '  language: en',
+          '  custom_extension:',
+          '    owner: user',
+          '    enabled: true',
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
+
+      await mergeProjectConfig(tmpDir, null);
+
+      expect(parse(await fs.readFile(configPath, 'utf-8'))).toMatchObject({
+        classic: {
+          artifact_layout: 'legacy',
+          language: 'en',
+          custom_extension: {
+            owner: 'user',
+            enabled: true,
+          },
+        },
+      });
     });
 
     it('overwrites review_mode default from off to standard on re-init', async () => {
@@ -3226,6 +3338,7 @@ describe('skills', () => {
 
       expect(parse(second)).toMatchObject({
         classic: {
+          artifact_layout: 'legacy',
           language: 'zh-CN',
           context_compression: 'beta',
           review_mode: 'thorough',
@@ -3238,18 +3351,12 @@ describe('skills', () => {
     });
   });
 
-  describe('createWorkingDirs with config merge', () => {
-    it('merges config on second call instead of skipping', async () => {
+  describe('createWorkingDirs config boundary', () => {
+    it('does not activate a workflow or write project config', async () => {
       await createWorkingDirs(tmpDir);
       const configPath = path.join(tmpDir, '.comet', 'config.yaml');
-      // Simulate old config with review_mode: off
-      await fs.writeFile(configPath, 'review_mode: off\n', 'utf-8');
 
-      await createWorkingDirs(tmpDir);
-      const content = await fs.readFile(configPath, 'utf-8');
-      expect(content).toContain('review_mode: off');
-      expect(content).toContain('context_compression: off');
-      expect(content).toContain('auto_transition: true');
+      await expect(fs.access(configPath)).rejects.toMatchObject({ code: 'ENOENT' });
     });
   });
 

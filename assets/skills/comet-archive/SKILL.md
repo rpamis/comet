@@ -5,11 +5,13 @@ description: "Use only when explicitly invoked as /comet-archive or routed by th
 
 # Comet Phase 5: Archive (Archive)
 
+Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+
 ## Prerequisites
 
 - Verification passed (Phase 4 complete)
 - Archive commit and branch handling are still pending (`branch_status: pending`)
-- `verify_result: pass` in `openspec/changes/<name>/.comet.yaml`
+- `verify_result: pass` in `<classic-change-dir>/.comet.yaml`
 
 ## Steps
 
@@ -90,7 +92,7 @@ brainstorming → delta spec → implementation → verification → main spec m
 ### 4. Commit Archive Changes with Exact Paths
 
 The archive script only moves files and merges the spec; it does not commit. After archiving, the worktree holds these uncommitted changes:
-- The change directory moved from `openspec/changes/<name>/` to `openspec/changes/archive/YYYY-MM-DD-<name>/`
+- The change directory moved from `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`
 - The main spec content merged via delta semantics
 - Archive metadata annotations on the design doc / plan
 
@@ -131,14 +133,14 @@ Archive no longer invokes Superpowers `finishing-a-development-branch`. Local me
 ## Exit Conditions
 
 - Archive script executed successfully (exit code 0)
-- Archive directory `openspec/changes/archive/YYYY-MM-DD-<change-name>/` exists
+- Archive directory `<classic-archive-root>/YYYY-MM-DD-<change-name>/` exists
 - Archived `.comet.yaml` contains `archived: true`
 - Archived `branch_status: handled` is included in the only archive commit
 - `comet guard <change-name> archive` passes
 - The only archive commit was pushed successfully using the delivery method confirmed before archive; if the user selected PR creation, the PR was created successfully
 - Current selection was cleared after remote delivery succeeded
 
-The archive script moves `openspec/changes/<name>/` to `openspec/changes/archive/YYYY-MM-DD-<name>/`.
+The archive script moves `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`.
 
 `comet guard <change-name> archive` resolves the actual archive directory from the original change name; do not construct a dated archive path manually.
 

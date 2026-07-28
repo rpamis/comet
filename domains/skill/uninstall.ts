@@ -1,5 +1,20 @@
 import path from 'path';
-import { lstat, writeFile } from 'fs/promises';
+import { randomUUID } from 'crypto';
+import type { BigIntStats } from 'fs';
+import {
+  hasComparableFileObject,
+  sameFileObject,
+  type FileObjectIdentity,
+} from '../../platform/fs/file-identity.js';
+import { classicLayoutPaths } from '../comet-classic/classic-layout.js';
+import { nativeProjectPaths } from '../comet-native/native-paths.js';
+import {
+  readWorkflowProjectConfigIdentity,
+  readWorkflowProjectConfigSnapshot,
+  workflowProjectConfigIdentityEquals,
+  type WorkflowProjectConfigIdentity,
+} from '../workflow-contract/project-config-reader.js';
+import { lstat, realpath, rename, rmdir, unlink, writeFile } from 'fs/promises';
 
 import {
   fileExists,
@@ -39,6 +54,495 @@ const LEGACY_HOOK_SCRIPT_PATHS = [
   'comet/scripts/comet-hook-guard.mjs',
   'comet-native/scripts/comet-native-hook-guard.mjs',
 ] as const;
+
+type ManagedWorkingTree = {
+  readonly [entry: string]: 'file' | ManagedWorkingTree;
+};
+
+const EMPTY_MANAGED_WORKING_TREE: ManagedWorkingTree = {};
+const OPENSPEC_WORKING_TREE: ManagedWorkingTree = {
+  changes: {
+    archive: EMPTY_MANAGED_WORKING_TREE,
+  },
+  specs: EMPTY_MANAGED_WORKING_TREE,
+};
+const SUPERPOWERS_WORKING_TREE: ManagedWorkingTree = {
+  specs: EMPTY_MANAGED_WORKING_TREE,
+  plans: EMPTY_MANAGED_WORKING_TREE,
+  reports: EMPTY_MANAGED_WORKING_TREE,
+};
+const COMET_WORKING_TREE: ManagedWorkingTree = {
+  'config.yaml': 'file',
+};
+const NATIVE_WORKING_TREE: ManagedWorkingTree = {
+  specs: EMPTY_MANAGED_WORKING_TREE,
+  changes: EMPTY_MANAGED_WORKING_TREE,
+  archive: EMPTY_MANAGED_WORKING_TREE,
+  runtime: {
+    locks: EMPTY_MANAGED_WORKING_TREE,
+    transactions: EMPTY_MANAGED_WORKING_TREE,
+  },
+};
+
+interface WorkingObjectIdentity {
+  kind: 'file' | 'directory';
+  fileObject: FileObjectIdentity;
+  size: bigint;
+}
+
+interface InspectedWorkingNode {
+  identity: WorkingObjectIdentity;
+  children: Map<string, InspectedWorkingNode> | null;
+}
+
+interface ManagedWorkingTreePlan {
+  directory: string;
+  managedTree: ManagedWorkingTree;
+  root: InspectedWorkingNode;
+  ancestorIdentities: Map<string, WorkingObjectIdentity>;
+  countRemoval: boolean;
+}
+
+interface QuarantinedWorkingTree {
+  plan: ManagedWorkingTreePlan;
+  quarantine: string;
+}
+
+interface RemoveWorkingDirsOptions {
+  testHooks?: {
+    afterPlanInspection?: () => void | Promise<void>;
+  };
+}
+
+function birthtimeOf(stat: BigIntStats): bigint {
+  return stat.birthtimeNs;
+}
+
+function workingIdentity(stat: BigIntStats): WorkingObjectIdentity {
+  return {
+    kind: stat.isFile() ? 'file' : 'directory',
+    fileObject: { dev: stat.dev, ino: stat.ino, birthtime: birthtimeOf(stat) },
+    size: stat.size,
+  };
+}
+
+function sameWorkingIdentity(
+  expected: WorkingObjectIdentity,
+  actual: WorkingObjectIdentity,
+): boolean {
+  if (expected.kind !== actual.kind) return false;
+  if (
+    hasComparableFileObject(expected.fileObject, actual.fileObject) &&
+    !sameFileObject(expected.fileObject, actual.fileObject)
+  ) {
+    return false;
+  }
+  if (
+    !hasComparableFileObject(expected.fileObject, actual.fileObject) &&
+    !sameFileObject(expected.fileObject, actual.fileObject)
+  ) {
+    return false;
+  }
+  return expected.kind === 'directory' || expected.size === actual.size;
+}
+
+function isInsideDirectory(parent: string, target: string): boolean {
+  const relative = path.relative(parent, target);
+  return (
+    relative === '' ||
+    (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`))
+  );
+}
+
+async function readWorkingObjectIdentity(
+  target: string,
+  expected: 'file' | 'directory',
+): Promise<WorkingObjectIdentity> {
+  const stat = await lstat(target, { bigint: true });
+  if (stat.isSymbolicLink() || (expected === 'file' ? !stat.isFile() : !stat.isDirectory())) {
+    throw new Error(`Refusing to remove non-${expected} working object: ${target}`);
+  }
+  return workingIdentity(stat);
+}
+
+async function captureAncestorIdentities(
+  projectRoot: string,
+  directory: string,
+): Promise<Map<string, WorkingObjectIdentity>> {
+  if (!isInsideDirectory(projectRoot, directory)) {
+    throw new Error(`Working directory is outside the project root: ${directory}`);
+  }
+  const identities = new Map<string, WorkingObjectIdentity>();
+  let cursor = projectRoot;
+  identities.set(path.resolve(cursor), await readWorkingObjectIdentity(cursor, 'directory'));
+  const relative = path.relative(projectRoot, directory);
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    cursor = path.join(cursor, segment);
+    identities.set(path.resolve(cursor), await readWorkingObjectIdentity(cursor, 'directory'));
+  }
+  return identities;
+}
+
+async function assertIdentityChain(
+  projectRoot: string,
+  target: string,
+  identities: ReadonlyMap<string, WorkingObjectIdentity>,
+): Promise<void> {
+  if (!isInsideDirectory(projectRoot, target)) {
+    throw new Error(`Working directory is outside the project root: ${target}`);
+  }
+  let cursor = projectRoot;
+  const paths = [cursor];
+  const relative = path.relative(projectRoot, target);
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    cursor = path.join(cursor, segment);
+    paths.push(cursor);
+  }
+  for (const current of paths) {
+    const expected = identities.get(path.resolve(current));
+    if (!expected) {
+      throw new Error(`Working-directory identity is not bound: ${current}`);
+    }
+    const actual = await readWorkingObjectIdentity(current, expected.kind);
+    if (!sameWorkingIdentity(expected, actual)) {
+      throw new Error(`Working-directory object changed after inspection: ${current}`);
+    }
+  }
+}
+
+async function inspectManagedNode(
+  projectRoot: string,
+  directory: string,
+  managedTree: ManagedWorkingTree,
+  identities: Map<string, WorkingObjectIdentity>,
+): Promise<InspectedWorkingNode> {
+  const identity = identities.get(path.resolve(directory));
+  if (!identity) throw new Error(`Working-directory identity is not bound: ${directory}`);
+  const entries = (await readDir(directory)).sort();
+  await assertIdentityChain(projectRoot, directory, identities);
+  const children = new Map<string, InspectedWorkingNode>();
+
+  for (const entry of entries) {
+    if (!Object.prototype.hasOwnProperty.call(managedTree, entry)) {
+      throw new Error(
+        `Refusing to remove unknown working-directory content: ${path.join(directory, entry)}`,
+      );
+    }
+    const expected = managedTree[entry];
+    const entryPath = path.join(directory, entry);
+    if (expected === 'file') {
+      const childIdentity = await readWorkingObjectIdentity(entryPath, 'file');
+      identities.set(path.resolve(entryPath), childIdentity);
+      children.set(entry, { identity: childIdentity, children: null });
+      continue;
+    }
+    const childIdentity = await readWorkingObjectIdentity(entryPath, 'directory');
+    identities.set(path.resolve(entryPath), childIdentity);
+    children.set(entry, await inspectManagedNode(projectRoot, entryPath, expected, identities));
+  }
+
+  const entriesAfter = (await readDir(directory)).sort();
+  await assertIdentityChain(projectRoot, directory, identities);
+  if (JSON.stringify(entriesAfter) !== JSON.stringify(entries)) {
+    throw new Error(`Working directory changed during inspection: ${directory}`);
+  }
+  return { identity, children };
+}
+
+async function inspectManagedWorkingTree(
+  projectRoot: string,
+  directory: string,
+  managedTree: ManagedWorkingTree,
+  countRemoval = false,
+): Promise<ManagedWorkingTreePlan | null> {
+  try {
+    const ancestorIdentities = await captureAncestorIdentities(projectRoot, directory);
+    return {
+      directory,
+      managedTree,
+      root: await inspectManagedNode(projectRoot, directory, managedTree, ancestorIdentities),
+      ancestorIdentities,
+      countRemoval,
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function validateManagedNode(
+  projectRoot: string,
+  directory: string,
+  node: InspectedWorkingNode,
+  identities: ReadonlyMap<string, WorkingObjectIdentity>,
+): Promise<void> {
+  await assertIdentityChain(projectRoot, directory, identities);
+  const actualIdentity = await readWorkingObjectIdentity(directory, node.identity.kind);
+  if (!sameWorkingIdentity(node.identity, actualIdentity)) {
+    throw new Error(`Working-directory object changed after inspection: ${directory}`);
+  }
+  if (!node.children) return;
+
+  const entries = (await readDir(directory)).sort();
+  await assertIdentityChain(projectRoot, directory, identities);
+  const expectedEntries = [...node.children.keys()].sort();
+  if (JSON.stringify(entries) !== JSON.stringify(expectedEntries)) {
+    throw new Error(`Working directory changed after inspection: ${directory}`);
+  }
+  for (const entry of expectedEntries) {
+    await validateManagedNode(
+      projectRoot,
+      path.join(directory, entry),
+      node.children.get(entry)!,
+      identities,
+    );
+  }
+  const entriesAfter = (await readDir(directory)).sort();
+  await assertIdentityChain(projectRoot, directory, identities);
+  if (JSON.stringify(entriesAfter) !== JSON.stringify(expectedEntries)) {
+    throw new Error(`Working directory changed after inspection: ${directory}`);
+  }
+}
+
+async function validateManagedWorkingTree(
+  projectRoot: string,
+  plan: ManagedWorkingTreePlan,
+): Promise<void> {
+  await validateManagedNode(projectRoot, plan.directory, plan.root, plan.ancestorIdentities);
+}
+
+function mergeManagedWorkingTree(
+  target: ManagedWorkingTree,
+  segments: readonly string[],
+  managedTree: ManagedWorkingTree,
+): void {
+  if (segments.length === 0) {
+    for (const [entry, expected] of Object.entries(managedTree)) {
+      const current = target[entry];
+      if (current === 'file' || expected === 'file') {
+        if (current !== undefined && current !== expected) {
+          throw new Error(`Conflicting managed working-tree entry: ${entry}`);
+        }
+        (target as Record<string, 'file' | ManagedWorkingTree>)[entry] = expected;
+      } else if (current === undefined) {
+        (target as Record<string, 'file' | ManagedWorkingTree>)[entry] = expected;
+      } else {
+        mergeManagedWorkingTree(current, [], expected);
+      }
+    }
+    return;
+  }
+  const [head, ...tail] = segments;
+  const current = target[head];
+  if (current === 'file') throw new Error(`Conflicting managed working-tree entry: ${head}`);
+  const child = current ?? {};
+  (target as Record<string, 'file' | ManagedWorkingTree>)[head] = child;
+  mergeManagedWorkingTree(child, tail, managedTree);
+}
+
+function cloneManagedWorkingTree(managedTree: ManagedWorkingTree): ManagedWorkingTree {
+  return Object.fromEntries(
+    Object.entries(managedTree).map(([entry, expected]) => [
+      entry,
+      expected === 'file' ? expected : cloneManagedWorkingTree(expected),
+    ]),
+  );
+}
+
+async function assertWorkingTreeAbsentOrRealDirectory(
+  projectRoot: string,
+  directory: string,
+): Promise<boolean> {
+  try {
+    await captureAncestorIdentities(projectRoot, directory);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function validateQuarantinedNode(
+  directory: string,
+  node: InspectedWorkingNode,
+  ancestors: readonly { path: string; identity: WorkingObjectIdentity }[],
+): Promise<void> {
+  await assertQuarantineAncestorIdentities(ancestors);
+  const actual = await readWorkingObjectIdentity(directory, node.identity.kind);
+  if (!sameWorkingIdentity(node.identity, actual)) {
+    throw new Error(`Quarantined working object changed: ${directory}`);
+  }
+  if (!node.children) return;
+  const entries = (await readDir(directory)).sort();
+  await assertQuarantineAncestorIdentities(ancestors);
+  const expectedEntries = [...node.children.keys()].sort();
+  const after = await readWorkingObjectIdentity(directory, 'directory');
+  if (
+    !sameWorkingIdentity(node.identity, after) ||
+    JSON.stringify(entries) !== JSON.stringify(expectedEntries)
+  ) {
+    throw new Error(`Quarantined working directory changed: ${directory}`);
+  }
+  for (const entry of expectedEntries) {
+    await validateQuarantinedNode(path.join(directory, entry), node.children.get(entry)!, [
+      ...ancestors,
+      { path: directory, identity: node.identity },
+    ]);
+  }
+  const entriesAfter = (await readDir(directory)).sort();
+  await assertQuarantineAncestorIdentities(ancestors);
+  const finalIdentity = await readWorkingObjectIdentity(directory, 'directory');
+  if (
+    !sameWorkingIdentity(node.identity, finalIdentity) ||
+    JSON.stringify(entriesAfter) !== JSON.stringify(expectedEntries)
+  ) {
+    throw new Error(`Quarantined working directory changed: ${directory}`);
+  }
+}
+
+async function assertQuarantineAncestorIdentities(
+  ancestors: readonly { path: string; identity: WorkingObjectIdentity }[],
+): Promise<void> {
+  for (const ancestor of ancestors) {
+    const actual = await readWorkingObjectIdentity(ancestor.path, 'directory');
+    if (!sameWorkingIdentity(ancestor.identity, actual)) {
+      throw new Error(`Quarantine ancestor changed: ${ancestor.path}`);
+    }
+  }
+}
+
+async function removeQuarantinedNode(
+  directory: string,
+  node: InspectedWorkingNode,
+  ancestors: readonly { path: string; identity: WorkingObjectIdentity }[],
+): Promise<void> {
+  await assertQuarantineAncestorIdentities(ancestors);
+  const actual = await readWorkingObjectIdentity(directory, node.identity.kind);
+  if (!sameWorkingIdentity(node.identity, actual)) {
+    throw new Error(`Quarantined working object changed: ${directory}`);
+  }
+  if (!node.children) {
+    await unlink(directory);
+    return;
+  }
+
+  for (const [entry, child] of node.children) {
+    await removeQuarantinedNode(path.join(directory, entry), child, [
+      ...ancestors,
+      { path: directory, identity: node.identity },
+    ]);
+  }
+  const entries = await readDir(directory);
+  await assertQuarantineAncestorIdentities(ancestors);
+  const after = await readWorkingObjectIdentity(directory, 'directory');
+  if (!sameWorkingIdentity(node.identity, after) || entries.length !== 0) {
+    throw new Error(`Quarantined working directory changed before removal: ${directory}`);
+  }
+  await assertQuarantineAncestorIdentities(ancestors);
+  const beforeRemove = await readWorkingObjectIdentity(directory, 'directory');
+  if (!sameWorkingIdentity(node.identity, beforeRemove)) {
+    throw new Error(`Quarantined working directory changed before removal: ${directory}`);
+  }
+  await rmdir(directory);
+}
+
+function quarantineAncestorChain(
+  plan: ManagedWorkingTreePlan,
+): Array<{ path: string; identity: WorkingObjectIdentity }> {
+  const parent = path.dirname(plan.directory);
+  return [...plan.ancestorIdentities.entries()]
+    .filter(([candidate]) => candidate !== path.resolve(plan.directory))
+    .filter(([candidate]) => isInsideDirectory(candidate, parent))
+    .sort(([left], [right]) => left.split(path.sep).length - right.split(path.sep).length)
+    .map(([ancestorPath, identity]) => ({ path: ancestorPath, identity }));
+}
+
+async function rollbackQuarantinedTrees(
+  quarantined: readonly QuarantinedWorkingTree[],
+): Promise<void> {
+  for (const item of [...quarantined].reverse()) {
+    try {
+      await rename(item.quarantine, item.plan.directory);
+    } catch {
+      // Preserve the original failure. A conflicting replacement remains
+      // visible for explicit repair instead of being overwritten.
+    }
+  }
+}
+
+async function removeManagedWorkingTree(
+  projectRoot: string,
+  plans: readonly ManagedWorkingTreePlan[],
+): Promise<RemovalResult> {
+  for (const plan of plans) {
+    await validateManagedWorkingTree(projectRoot, plan);
+  }
+
+  // Preserve the existing retry contract for a config directory whose final
+  // rmdir is denied, while ensuring this probe happens before any tree moves.
+  const configPlan = plans.find((plan) => plan.countRemoval);
+  if (configPlan?.root.children && configPlan.root.children.size > 0) {
+    try {
+      await rmdir(configPlan.directory);
+      throw new Error('Managed config directory changed after inspection');
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
+    }
+  }
+
+  const quarantined: QuarantinedWorkingTree[] = [];
+  try {
+    for (const plan of plans) {
+      await validateManagedWorkingTree(projectRoot, plan);
+      const ancestors = quarantineAncestorChain(plan);
+      await assertQuarantineAncestorIdentities(ancestors);
+      const quarantine = path.join(
+        path.dirname(plan.directory),
+        `.${path.basename(plan.directory)}.comet-uninstall-${randomUUID()}`,
+      );
+      try {
+        await lstat(quarantine);
+        throw new Error(`Uninstall quarantine already exists: ${quarantine}`);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      await rename(plan.directory, quarantine);
+      const item = { plan, quarantine };
+      quarantined.push(item);
+      await assertQuarantineAncestorIdentities(ancestors);
+      await validateQuarantinedNode(quarantine, plan.root, ancestors);
+    }
+  } catch (error) {
+    await rollbackQuarantinedTrees(quarantined);
+    throw error;
+  }
+
+  let removed = 0;
+  try {
+    for (const item of quarantined) {
+      await removeQuarantinedNode(
+        item.quarantine,
+        item.plan.root,
+        quarantineAncestorChain(item.plan),
+      );
+      if (item.plan.countRemoval) removed++;
+    }
+  } catch {
+    const remaining: QuarantinedWorkingTree[] = [];
+    for (const item of quarantined) {
+      try {
+        await lstat(item.quarantine);
+        remaining.push(item);
+      } catch {
+        // A fully removed quarantine has nothing left to restore.
+      }
+    }
+    await rollbackQuarantinedTrees(remaining);
+    return { removed, failed: 1 };
+  }
+  return { removed, failed: 0 };
+}
 
 async function removeManagedSkillsFromDirs(
   baseDir: string,
@@ -526,56 +1030,141 @@ async function removeKiroHooks(
   return { removed, failed };
 }
 
-async function removeWorkingDirs(projectPath: string): Promise<RemovalResult> {
-  let removed = 0;
-  let failed = 0;
-
-  const cometDir = path.join(projectPath, '.comet');
+async function removeWorkingDirs(
+  projectPath: string,
+  options: RemoveWorkingDirsOptions = {},
+): Promise<RemovalResult> {
+  let projectRoot: string;
   try {
-    if (await removeDir(cometDir)) {
-      removed++;
+    projectRoot = await realpath(projectPath);
+    const rootStat = await lstat(projectRoot, { bigint: true });
+    if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+      return { removed: 0, failed: 1 };
     }
   } catch {
-    failed++;
+    return { removed: 0, failed: 1 };
   }
+  const cometDir = path.join(projectRoot, '.comet');
+  const docsDir = path.join(projectRoot, 'docs');
+  const legacyOpenSpecRoot = path.join(projectRoot, 'openspec');
+  const docsOpenSpecRoot = path.join(docsDir, 'openspec');
 
-  const specsDir = path.join(projectPath, 'docs', 'superpowers', 'specs');
+  let plans: ManagedWorkingTreePlan[];
+  let configIdentity: WorkflowProjectConfigIdentity;
   try {
-    if (await isDirEmpty(specsDir)) {
-      await removeDir(specsDir);
+    const snapshot = await readWorkflowProjectConfigSnapshot(projectRoot, {
+      allowPartialProject: true,
+    });
+    const document = snapshot.document;
+    configIdentity = snapshot.identity;
+    const configuredWorkflows = document?.config
+      ? (document.config.workflows ?? [document.config.default_workflow])
+      : [];
+    const classicEnabled =
+      configuredWorkflows.includes('classic') || document?.classic !== undefined;
+    const nativeEnabled = configuredWorkflows.includes('native') || document?.native !== undefined;
+    const artifactLayout = classicEnabled ? (document?.classic?.artifact_layout ?? 'legacy') : null;
+    const layout = artifactLayout ? classicLayoutPaths(projectRoot, artifactLayout) : null;
+
+    if (artifactLayout) {
+      const legacyRootExists = await assertWorkingTreeAbsentOrRealDirectory(
+        projectRoot,
+        legacyOpenSpecRoot,
+      );
+      const docsRootExists = await assertWorkingTreeAbsentOrRealDirectory(
+        projectRoot,
+        docsOpenSpecRoot,
+      );
+      if (legacyRootExists && docsRootExists) {
+        throw new Error('Refusing to remove conflicting legacy and docs OpenSpec roots');
+      }
+      const alternateRootExists = artifactLayout === 'legacy' ? docsRootExists : legacyRootExists;
+      if (alternateRootExists) {
+        throw new Error('Refusing to remove an OpenSpec root that does not match project config');
+      }
+    }
+
+    const cometTree = cloneManagedWorkingTree(COMET_WORKING_TREE);
+    const docsTree: ManagedWorkingTree = {
+      superpowers: cloneManagedWorkingTree(SUPERPOWERS_WORKING_TREE),
+    };
+    const legacyTree = cloneManagedWorkingTree(OPENSPEC_WORKING_TREE);
+    if (artifactLayout === 'docs') {
+      mergeManagedWorkingTree(docsTree, ['openspec'], OPENSPEC_WORKING_TREE);
+    }
+
+    let separateNativeRoot: string | null = null;
+    if (nativeEnabled) {
+      if (!document?.native) throw new Error('Native project config is incomplete');
+      const nativePaths = await nativeProjectPaths(projectRoot, document.native.artifact_root);
+      if (isInsideDirectory(docsDir, nativePaths.nativeRoot)) {
+        mergeManagedWorkingTree(
+          docsTree,
+          path.relative(docsDir, nativePaths.nativeRoot).split(path.sep).filter(Boolean),
+          NATIVE_WORKING_TREE,
+        );
+      } else if (isInsideDirectory(cometDir, nativePaths.nativeRoot)) {
+        mergeManagedWorkingTree(
+          cometTree,
+          path.relative(cometDir, nativePaths.nativeRoot).split(path.sep).filter(Boolean),
+          NATIVE_WORKING_TREE,
+        );
+      } else if (
+        artifactLayout === 'legacy' &&
+        isInsideDirectory(legacyOpenSpecRoot, nativePaths.nativeRoot)
+      ) {
+        mergeManagedWorkingTree(
+          legacyTree,
+          path.relative(legacyOpenSpecRoot, nativePaths.nativeRoot).split(path.sep).filter(Boolean),
+          NATIVE_WORKING_TREE,
+        );
+      } else {
+        separateNativeRoot = nativePaths.nativeRoot;
+      }
+    }
+
+    const candidates: Array<
+      readonly [directory: string, tree: ManagedWorkingTree, countRemoval: boolean]
+    > = [[docsDir, docsTree, false]];
+    if (artifactLayout === 'legacy') {
+      candidates.push([layout!.openSpecRoot, legacyTree, false]);
+    }
+    if (separateNativeRoot) {
+      candidates.push([separateNativeRoot, NATIVE_WORKING_TREE, false]);
+    }
+    candidates.push([cometDir, cometTree, true]);
+
+    plans = [];
+    for (const [directory, managedTree, countRemoval] of candidates) {
+      const inspected = await inspectManagedWorkingTree(
+        projectRoot,
+        directory,
+        managedTree,
+        countRemoval,
+      );
+      if (inspected) plans.push(inspected);
+    }
+    await options.testHooks?.afterPlanInspection?.();
+    if (
+      !workflowProjectConfigIdentityEquals(
+        configIdentity,
+        await readWorkflowProjectConfigIdentity(projectRoot),
+      )
+    ) {
+      throw new Error('Project config changed during uninstall planning');
+    }
+    for (const plan of plans) {
+      await validateManagedWorkingTree(projectRoot, plan);
     }
   } catch {
-    failed++;
+    return { removed: 0, failed: 1 };
   }
 
-  const plansDir = path.join(projectPath, 'docs', 'superpowers', 'plans');
   try {
-    if (await isDirEmpty(plansDir)) {
-      await removeDir(plansDir);
-    }
+    return await removeManagedWorkingTree(projectRoot, plans);
   } catch {
-    failed++;
+    return { removed: 0, failed: 1 };
   }
-
-  const superpowersDir = path.join(projectPath, 'docs', 'superpowers');
-  try {
-    if (await isDirEmpty(superpowersDir)) {
-      await removeDir(superpowersDir);
-    }
-  } catch {
-    failed++;
-  }
-
-  const docsDir = path.join(projectPath, 'docs');
-  try {
-    if (await isDirEmpty(docsDir)) {
-      await removeDir(docsDir);
-    }
-  } catch {
-    failed++;
-  }
-
-  return { removed, failed };
 }
 
 export {

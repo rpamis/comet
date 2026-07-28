@@ -2,7 +2,7 @@
 
 规范路径：`comet/reference/comet-yaml-fields.md`
 
-本文件是 `openspec/changes/<name>/` 下每个 change 级 `.comet.yaml` 状态文件的字段参考。按需查阅，不随 skill 一次性加载。项目级默认配置放在 `.comet/config.yaml`，全局默认配置放在 `~/.comet/config.yaml`；项目配置优先于全局配置。
+本文件是 `<classic-change-dir>/` 下每个 change 级 `.comet.yaml` 状态文件的字段参考。`<classic-change-dir>` 来自 `comet/reference/classic-layout.md` 的 resolver 绑定。按需查阅，不随 skill 一次性加载。项目级默认配置放在 `.comet/config.yaml`，全局默认配置放在 `~/.comet/config.yaml`；项目配置优先于全局配置。
 
 ## 示例
 

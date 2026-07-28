@@ -52,7 +52,7 @@ export interface CometProjectStatus {
   defaultEntry: CometEntryResolution | { error: string };
   workflows: {
     native: { changes: NativeStatusProjection[]; error?: string };
-    classic: { changes: ChangeStatus[] };
+    classic: { changes: ChangeStatus[]; error?: string };
   };
   unmanagedOpenSpec: ChangeStatus[];
 }

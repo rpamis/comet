@@ -35,14 +35,14 @@ describe('workflow resolve command', () => {
     });
   });
 
-  it('prints a concise text resolution for the legacy fallback', async () => {
+  it('fails closed when project configuration is absent', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
-    await workflowResolveCommand(projectRoot);
-
-    expect(log).toHaveBeenCalledWith(
-      ['workflow: classic', 'skill: comet-classic', 'source: legacy-fallback'].join('\n'),
+    await expect(workflowResolveCommand(projectRoot)).rejects.toThrow(
+      '.comet/config.yaml is missing',
     );
+
+    expect(log).not.toHaveBeenCalled();
   });
 
   it('fails closed when project configuration is malformed', async () => {

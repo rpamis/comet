@@ -5,6 +5,7 @@ import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { readRunState, writeRunState } from '../../../domains/engine/state.js';
+import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
@@ -32,6 +33,19 @@ function run(cwd: string, ...args: string[]) {
 async function makeProject(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-handoff-'));
   temporary.push(dir);
+  await fs.mkdir(path.join(dir, '.comet'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.comet', 'config.yaml'),
+    [
+      'schema: comet.project.v1',
+      'default_workflow: classic',
+      'workflows: [classic]',
+      'classic:',
+      '  artifact_layout: legacy',
+      '',
+    ].join('\n'),
+  );
+  await fs.mkdir(path.join(dir, 'openspec', 'changes'), { recursive: true });
   return dir;
 }
 
@@ -47,6 +61,40 @@ async function seedDesignChange(dir: string, name = 'demo'): Promise<string> {
 }
 
 describe('Classic handoff command', () => {
+  it('rejects a nested handoff junction without writing outside the project', async () => {
+    const dir = await makeProject();
+    const previous = process.cwd();
+    process.chdir(dir);
+    try {
+      expect((await runClassicCli(['state', 'init', 'linked-handoff', 'full'])).exitCode).toBe(0);
+      const changeDir = path.join(dir, 'openspec', 'changes', 'linked-handoff');
+      await fs.writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
+      await fs.writeFile(path.join(changeDir, 'design.md'), 'design\n');
+      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] implement\n');
+      expect(
+        (await runClassicCli(['state', 'transition', 'linked-handoff', 'open-complete'])).exitCode,
+      ).toBe(0);
+
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-handoff-outside-'));
+      temporary.push(outside);
+      await fs.writeFile(path.join(outside, 'marker.txt'), 'unchanged\n');
+      await fs.symlink(
+        outside,
+        path.join(changeDir, '.comet', 'handoff'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      const result = await runClassicCli(['handoff', 'linked-handoff', 'design', '--write']);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toMatch(/symbolic link or junction/iu);
+      expect(await fs.readFile(path.join(outside, 'marker.txt'), 'utf8')).toBe('unchanged\n');
+      expect(await fs.readdir(outside)).toEqual(['marker.txt']);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
   it('writes a compact design handoff and records the context fields', async () => {
     const dir = await makeProject();
     const changeDir = await seedDesignChange(dir);

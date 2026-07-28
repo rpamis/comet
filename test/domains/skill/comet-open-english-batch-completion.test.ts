@@ -23,7 +23,7 @@ describe('comet-open English batch completion protocol', () => {
       'utf8',
     );
 
-    expect(skill).toContain('openspec status --change "<name>" --json');
+    expect(skill).toContain('comet classic openspec -- status --change "<name>" --json');
     expect(skill).toContain('Every artifact listed in `applyRequires` must be `done`');
     expect(skill).toContain('Treat `isComplete` as diagnostic only');
     expect(skill).toContain('If any split item fails these checks');

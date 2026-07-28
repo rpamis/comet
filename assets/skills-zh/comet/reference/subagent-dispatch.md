@@ -93,7 +93,7 @@ implementer 或修复 agent 回报必须提供 **RED 失败命令与失败摘要
 
 ### 4. 持久进度检查点
 
-主会话必须维护 `openspec/changes/<name>/.comet/subagent-progress.md`，并在每次派发、agent 回报、审查结果、修复轮次变化和 task 勾选后立即更新。检查点至少记录：
+主会话必须维护 `<classic-change-dir>/.comet/subagent-progress.md`，并在每次派发、agent 回报、审查结果、修复轮次变化和 task 勾选后立即更新。检查点至少记录：
 
 - 当前 plan task 唯一文本及映射的 OpenSpec task 文本
 - 当前阶段：`implementing | task-review | checkoff | done | blocked | final-review | final-fix`
@@ -144,7 +144,7 @@ Comet 不读取、不写入、也不要求任何 Superpowers `subagent-driven-de
 
 ```bash
 comet state task-checkoff <plan-file> <plan-task-text>
-comet state task-checkoff openspec/changes/<name>/tasks.md <openspec-task-text>
+comet state task-checkoff <classic-change-dir>/tasks.md <openspec-task-text>
 ```
 
 仅在对应映射存在时运行第二条。脚本会要求任务文本恰好出现一次且该项已勾选；验证失败时不得进入下一个 task。
@@ -159,7 +159,7 @@ comet state task-checkoff openspec/changes/<name>/tasks.md <openspec-task-text>
 
 ## 上下文恢复
 
-重新加载 Superpowers `subagent-driven-development` 技能并重新阅读本文档。先读取 `openspec/changes/<name>/.comet/subagent-progress.md`，再与第一个未勾选 task 和当前工作树核对：
+重新加载 Superpowers `subagent-driven-development` 技能并重新阅读本文档。先读取 `<classic-change-dir>/.comet/subagent-progress.md`，再与第一个未勾选 task 和当前工作树核对：
 
 - 检查点与未勾选 task 匹配时，从记录的精确阶段恢复，保留实现提交、RED/GREEN 证据、`review_mode`、已通过的审查阶段、未解决反馈和当前审查-修复轮次；不得重置轮次或重复已经通过的阶段。
 - 若已加载的 Superpowers `subagent-driven-development` 技能通过自己的进度记录报告某个 task 已完成，先对照 git 历史和 Comet plan/OpenSpec checkbox 完成恢复判断。若提交和任务身份匹配，更新 Comet 检查点/勾选状态，不得重复派发已完成工作。

@@ -87,6 +87,20 @@ describe('Comet Hook Router', () => {
     expect(listClassic).not.toHaveBeenCalled();
   });
 
+  it('fails closed when default owner enumeration sees both Classic roots', async () => {
+    await configureBoth();
+    await fs.mkdir(path.join(root, 'openspec', 'changes', 'legacy'), { recursive: true });
+    await fs.mkdir(path.join(root, 'docs', 'openspec', 'changes', 'docs'), { recursive: true });
+
+    const resolution = await resolveHookWorkflowOwner(root);
+
+    expect(resolution).toMatchObject({
+      status: 'stale',
+      code: 'change-state-unreadable',
+      reason: expect.stringContaining('Classic layout conflict'),
+    });
+  });
+
   it('routes one event to only the selected Classic Guard', async () => {
     await configureBoth();
     const changeDir = path.join(root, 'openspec', 'changes', 'classic-change');

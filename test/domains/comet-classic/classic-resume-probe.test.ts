@@ -63,6 +63,18 @@ const buildYaml = [
 describe('resolveCometResumeProbe', () => {
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-resume-probe-'));
+    await writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '',
+      ].join('\n'),
+    );
+    await fs.mkdir(path.join(tmpDir, 'openspec', 'changes'), { recursive: true });
   });
 
   afterEach(async () => {
@@ -84,6 +96,18 @@ describe('resolveCometResumeProbe', () => {
     });
   });
 
+  it('ignores non-change files in the Classic changes directory', async () => {
+    await writeFile(path.join(tmpDir, 'openspec', 'changes', 'README.txt'), 'notes\n');
+
+    const result = await resolveCometResumeProbe(tmpDir, {
+      schema_version: 'comet.resume_probe.v1',
+      utterance: 'continue',
+      agent_context: { non_trivial_work: true, already_in_comet_flow: false },
+    });
+
+    expect(result.action).toBe('none');
+  });
+
   it('auto resumes a single active change for resume-like work', async () => {
     await createChange('cache-ttl', buildYaml);
 
@@ -100,6 +124,49 @@ describe('resolveCometResumeProbe', () => {
       phase: 'build',
       nextCommand: '/comet-build',
     });
+  });
+
+  it('fails closed instead of resuming from either root during a dual-root conflict', async () => {
+    await createChange('legacy-change', buildYaml);
+    await writeFile(
+      path.join(tmpDir, 'docs', 'openspec', 'changes', 'docs-change', 'proposal.md'),
+      '# Docs change\n',
+    );
+
+    await expect(
+      resolveCometResumeProbe(tmpDir, {
+        schema_version: 'comet.resume_probe.v1',
+        utterance: '继续刚才的任务',
+        agent_context: { non_trivial_work: true, already_in_comet_flow: false },
+      }),
+    ).rejects.toThrow('Classic layout conflict');
+  });
+
+  it('fails closed when an active change directory is a junction', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-resume-probe-outside-'));
+    try {
+      const outsideChange = path.join(outside, 'cache-ttl');
+      await writeFile(path.join(outsideChange, '.comet.yaml'), buildYaml);
+      await writeFile(path.join(outsideChange, 'proposal.md'), 'outside marker\n');
+      await fs.symlink(
+        outsideChange,
+        path.join(tmpDir, 'openspec', 'changes', 'cache-ttl'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+
+      await expect(
+        resolveCometResumeProbe(tmpDir, {
+          schema_version: 'comet.resume_probe.v1',
+          utterance: '继续 cache-ttl',
+          agent_context: { non_trivial_work: true, already_in_comet_flow: false },
+        }),
+      ).rejects.toThrow(/symbolic link or junction/iu);
+      expect(await fs.readFile(path.join(outsideChange, 'proposal.md'), 'utf8')).toBe(
+        'outside marker\n',
+      );
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
   });
 
   it('does not rewrite legacy command fields while probing', async () => {

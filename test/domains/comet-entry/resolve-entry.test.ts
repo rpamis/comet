@@ -20,14 +20,12 @@ describe('Comet entry resolution', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('uses the read-only Classic fallback when project config is absent', async () => {
+  it('does not guess a Classic workflow when project config is absent', async () => {
     const before = await fs.readdir(projectRoot);
 
-    await expect(resolveCometEntry(projectRoot)).resolves.toEqual({
-      workflow: 'classic',
-      skill: 'comet-classic',
-      source: 'legacy-fallback',
-    });
+    await expect(resolveCometEntry(projectRoot)).rejects.toThrow(
+      'Comet workflow entry is unavailable',
+    );
 
     expect(await fs.readdir(projectRoot)).toEqual(before);
     await expect(fs.access(path.join(projectRoot, '.comet', 'config.yaml'))).rejects.toMatchObject({
@@ -68,10 +66,17 @@ describe('Comet entry resolution', () => {
     });
   });
 
-  it.each([
-    ['malformed YAML', 'schema: ['],
-    [
-      'unknown fields',
+  it('fails closed for malformed YAML instead of using the Classic fallback', async () => {
+    await fs.mkdir(path.join(projectRoot, '.comet'));
+    await fs.writeFile(path.join(projectRoot, '.comet', 'config.yaml'), 'schema: [', 'utf8');
+
+    await expect(resolveCometEntry(projectRoot)).rejects.toThrow();
+  });
+
+  it('accepts unknown extension fields without changing workflow ownership', async () => {
+    await fs.mkdir(path.join(projectRoot, '.comet'));
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
       [
         'schema: comet.project.v1',
         'default_workflow: native',
@@ -80,11 +85,12 @@ describe('Comet entry resolution', () => {
         '  unexpected: true',
         '',
       ].join('\n'),
-    ],
-  ])('fails closed for %s instead of using the Classic fallback', async (_label, source) => {
-    await fs.mkdir(path.join(projectRoot, '.comet'));
-    await fs.writeFile(path.join(projectRoot, '.comet', 'config.yaml'), source, 'utf8');
+      'utf8',
+    );
 
-    await expect(resolveCometEntry(projectRoot)).rejects.toThrow();
+    await expect(resolveCometEntry(projectRoot)).resolves.toMatchObject({
+      workflow: 'native',
+      source: 'project-config',
+    });
   });
 });

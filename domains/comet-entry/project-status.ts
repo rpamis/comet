@@ -1,19 +1,39 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-import { fileExists, readDir } from '../../platform/fs/file-system.js';
 import { latestCommandCheck } from '../comet-classic/classic-command-checks.js';
 import { inspectClassicChangeReadOnly } from '../comet-classic/classic-diagnostics.js';
+import { assertClassicLayoutReadable } from '../comet-classic/classic-layout.js';
+import {
+  inspectClassicActiveChangeDirectory,
+  openSpecChangeNameError,
+} from '../comet-classic/classic-paths.js';
+import {
+  inspectClassicProjectTarget,
+  readClassicProjectFile,
+} from '../comet-classic/classic-protected-path.js';
 import { readClassicState } from '../comet-classic/classic-store.js';
-import { assertNoPendingNativeRootMove, readProjectConfig } from '../comet-native/native-config.js';
+import { assertNoPendingNativeRootMove } from '../comet-native/native-config.js';
 import { listNativeStatus } from '../comet-native/native-diagnostics.js';
 import { discoverNativeProject, nativeProjectPaths } from '../comet-native/native-paths.js';
+import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import { resolveCometEntry } from './resolve-entry.js';
 import type { ChangeStatus, CometEntryResolution, CometProjectStatus } from './types.js';
 
-async function countTasks(tasksPath: string): Promise<{ done: number; total: number }> {
-  if (!(await fileExists(tasksPath))) return { done: 0, total: 0 };
-  const content = await fs.readFile(tasksPath, 'utf8');
+async function countTasks(
+  projectRoot: string,
+  tasksPath: string,
+): Promise<{ done: number; total: number }> {
+  let content: string;
+  try {
+    content = await readClassicProjectFile(projectRoot, tasksPath, {
+      label: 'Classic tasks artifact',
+    });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return { done: 0, total: 0 };
+    throw error;
+  }
   const lines = content.split('\n');
   return {
     done: lines.filter((line) => /^\s*- \[x\]/iu.test(line)).length,
@@ -26,7 +46,7 @@ function unmanagedChange(name: string, done: number, total: number): ChangeStatu
     name,
     cometManaged: false,
     archiveReady: total > 0 && done === total,
-    recommendedArchiveCommand: `openspec archive ${name} -y`,
+    recommendedArchiveCommand: `comet classic openspec -- archive ${name} -y`,
     workflow: null,
     phase: null,
     buildMode: null,
@@ -46,24 +66,87 @@ function unmanagedChange(name: string, done: number, total: number): ChangeStatu
   };
 }
 
+function invalidClassicChange(name: string, error: unknown, done = 0, total = 0): ChangeStatus {
+  return {
+    name,
+    cometManaged: true,
+    archiveReady: false,
+    recommendedArchiveCommand: `comet archive ${name}`,
+    workflow: 'unknown',
+    phase: 'invalid',
+    buildMode: null,
+    isolation: null,
+    boundBranch: null,
+    verifyMode: null,
+    verifyResult: 'pending',
+    designDoc: null,
+    plan: null,
+    tasksCompleted: done,
+    tasksTotal: total,
+    nextCommand: null,
+    currentStep: null,
+    runtimeMode: 'invalid',
+    runtimeEval: null,
+    commandChecks: null,
+    error: error instanceof Error ? error.message : String(error),
+  };
+}
+
 async function inspectOpenSpecChanges(
   projectRoot: string,
-): Promise<{ classic: ChangeStatus[]; unmanaged: ChangeStatus[] }> {
-  const changesDir = path.join(projectRoot, 'openspec', 'changes');
-  if (!(await fileExists(changesDir))) return { classic: [], unmanaged: [] };
+): Promise<{ classic: ChangeStatus[]; unmanaged: ChangeStatus[]; error?: string }> {
+  let changesDir: string;
+  try {
+    changesDir = (await assertClassicLayoutReadable(projectRoot)).changesDir;
+    const inspection = await inspectClassicProjectTarget(projectRoot, changesDir, {
+      label: 'Classic changes root',
+      expected: 'directory',
+    });
+    if (!inspection.exists) return { classic: [], unmanaged: [] };
+  } catch (error) {
+    return {
+      classic: [],
+      unmanaged: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
   const classic: ChangeStatus[] = [];
   const unmanaged: ChangeStatus[] = [];
-  for (const name of (await readDir(changesDir)).sort()) {
+  const names = (await fs.readdir(changesDir)).sort();
+  await inspectClassicProjectTarget(projectRoot, changesDir, {
+    label: 'Classic changes root',
+    expected: 'directory',
+  });
+  for (const name of names) {
     if (name === 'archive') continue;
-    const changeDir = path.join(changesDir, name);
-    if (!(await fs.stat(changeDir)).isDirectory()) continue;
-    const { done, total } = await countTasks(path.join(changeDir, 'tasks.md'));
-    if (!(await fileExists(path.join(changeDir, '.comet.yaml')))) {
+    if (openSpecChangeNameError(name)) continue;
+    let change;
+    try {
+      change = await inspectClassicActiveChangeDirectory(name, projectRoot);
+    } catch (error) {
+      classic.push(invalidClassicChange(name, error));
+      continue;
+    }
+    if (!change.exists) continue;
+    const changeDir = change.directory;
+    let done: number;
+    let total: number;
+    try {
+      ({ done, total } = await countTasks(projectRoot, path.join(changeDir, 'tasks.md')));
+    } catch (error) {
+      classic.push(invalidClassicChange(name, error));
+      continue;
+    }
+    if (!change.stateExists) {
       unmanaged.push(unmanagedChange(name, done, total));
       continue;
     }
 
     try {
+      await inspectClassicProjectTarget(projectRoot, path.join(changeDir, '.comet'), {
+        label: `Classic runtime directory for ${name}`,
+        expected: 'directory',
+      });
       const projection = await readClassicState(changeDir, { migrate: false });
       const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
       if (unknownKeys.length > 0) {
@@ -154,29 +237,7 @@ async function inspectOpenSpecChanges(
         error: diagnostic.error,
       });
     } catch (error) {
-      classic.push({
-        name,
-        cometManaged: true,
-        archiveReady: false,
-        recommendedArchiveCommand: `comet archive ${name}`,
-        workflow: 'unknown',
-        phase: 'invalid',
-        buildMode: null,
-        isolation: null,
-        boundBranch: null,
-        verifyMode: null,
-        verifyResult: 'pending',
-        designDoc: null,
-        plan: null,
-        tasksCompleted: done,
-        tasksTotal: total,
-        nextCommand: null,
-        currentStep: null,
-        runtimeMode: 'invalid',
-        runtimeEval: null,
-        commandChecks: null,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      classic.push(invalidClassicChange(name, error, done, total));
     }
   }
   return { classic, unmanaged };
@@ -184,24 +245,24 @@ async function inspectOpenSpecChanges(
 
 export async function inspectCometProjectStatus(startPath: string): Promise<CometProjectStatus> {
   const projectRoot = await discoverNativeProject(startPath);
-  const openSpec = await inspectOpenSpecChanges(projectRoot);
   let defaultEntry: CometEntryResolution | { error: string };
   let configError: string | null = null;
   let config = null;
   try {
+    config = await readWorkflowProjectConfig(projectRoot);
     defaultEntry = await resolveCometEntry(projectRoot);
-    if (defaultEntry.source === 'project-config') {
-      config = await readProjectConfig(projectRoot);
-    }
   } catch (error) {
     configError = error instanceof Error ? error.message : String(error);
     defaultEntry = { error: configError };
   }
+  const openSpec = configError
+    ? { classic: [], unmanaged: [], error: configError }
+    : await inspectOpenSpecChanges(projectRoot);
 
   let native: CometProjectStatus['workflows']['native'];
   if (configError) {
     native = { changes: [], error: configError };
-  } else if (config) {
+  } else if (config?.native) {
     try {
       await assertNoPendingNativeRootMove(projectRoot);
       const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
@@ -222,7 +283,10 @@ export async function inspectCometProjectStatus(startPath: string): Promise<Come
     defaultEntry,
     workflows: {
       native,
-      classic: { changes: openSpec.classic },
+      classic: {
+        changes: openSpec.classic,
+        ...(openSpec.error ? { error: openSpec.error } : {}),
+      },
     },
     unmanagedOpenSpec: openSpec.unmanaged,
   };

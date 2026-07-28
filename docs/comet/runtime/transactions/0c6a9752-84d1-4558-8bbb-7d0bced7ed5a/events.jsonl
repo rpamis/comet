@@ -1,0 +1,12 @@
+{"sequence":1,"timestamp":"2026-07-27T15:17:02.809Z","type":"prepared"}
+{"sequence":2,"timestamp":"2026-07-27T15:17:05.600Z","type":"operation-started","operationId":"spec-1-classic-config-block"}
+{"sequence":3,"timestamp":"2026-07-27T15:17:05.866Z","type":"operation-completed","operationId":"spec-1-classic-config-block"}
+{"sequence":4,"timestamp":"2026-07-27T15:17:05.890Z","type":"operation-started","operationId":"spec-2-native-init-workspace-defaults"}
+{"sequence":5,"timestamp":"2026-07-27T15:17:06.144Z","type":"operation-completed","operationId":"spec-2-native-init-workspace-defaults"}
+{"sequence":6,"timestamp":"2026-07-27T15:17:06.166Z","type":"operation-started","operationId":"spec-3-unified-product-catalogue"}
+{"sequence":7,"timestamp":"2026-07-27T15:17:06.318Z","type":"operation-completed","operationId":"spec-3-unified-product-catalogue"}
+{"sequence":8,"timestamp":"2026-07-27T15:17:06.339Z","type":"operation-started","operationId":"archive-change"}
+{"sequence":9,"timestamp":"2026-07-27T15:17:06.735Z","type":"operation-completed","operationId":"archive-change"}
+{"sequence":10,"timestamp":"2026-07-27T15:17:07.011Z","type":"archive-finalization-started"}
+{"sequence":11,"timestamp":"2026-07-27T15:17:07.122Z","type":"archive-finalized"}
+{"sequence":12,"timestamp":"2026-07-27T15:17:07.326Z","type":"commit"}

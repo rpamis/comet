@@ -303,6 +303,93 @@ def test_comet_profile_scores_full_with_full_specific_rubric(tmp_path: Path):
     assert any("workflow=full" in msg and "design=deep" in msg for msg in passed)
 
 
+def test_comet_profile_scores_docs_layout_from_treatment(tmp_path: Path):
+    change_dir = tmp_path / "docs" / "openspec" / "changes" / "archive" / "2026-07-28-add-sentences"
+    comet_dir = change_dir / ".comet"
+    (comet_dir / "handoff").mkdir(parents=True)
+    (change_dir / ".comet.yaml").write_text(
+        "workflow: full\nphase: archive\nverify_result: pass\narchived: true\n",
+        encoding="utf-8",
+    )
+    (comet_dir / "state-events.jsonl").write_text(
+        '{"event":"archived","from":{"phase":"archive"},"to":{"phase":"archive"}}\n',
+        encoding="utf-8",
+    )
+    (comet_dir / "trajectory.jsonl").write_text("{}\n", encoding="utf-8")
+    (comet_dir / "handoff" / "design-context.json").write_text(
+        '{"change":"add-sentences"}',
+        encoding="utf-8",
+    )
+    (change_dir / "proposal.md").write_text(
+        "\n".join(f"proposal line {index}" for index in range(12)),
+        encoding="utf-8",
+    )
+    (change_dir / "design.md").write_text(
+        "Tradeoff and alternative option with risk to consider.",
+        encoding="utf-8",
+    )
+    (change_dir / "tasks.md").write_text(
+        "- [x] Design\n- [x] Implement\n- [x] Verify\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/superpowers/specs").mkdir(parents=True)
+    (tmp_path / "docs/superpowers/specs/add-sentences.md").write_text(
+        "# Design\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/superpowers/plans").mkdir(parents=True)
+    (tmp_path / "docs/superpowers/plans/add-sentences.md").write_text(
+        "# Plan\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/superpowers/reports").mkdir(parents=True)
+    (tmp_path / "docs/superpowers/reports/add-sentences.md").write_text(
+        "# Verification\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "test_sentences.py").write_text(
+        "def test_sentences():\n    assert True\n",
+        encoding="utf-8",
+    )
+    outputs = {
+        "treatment_name": "COMET_CLASSIC_DOCS_LAYOUT",
+        "completion": {"passed": ["sentences added"], "failed": []},
+        "events": {
+            "skills_invoked": [
+                "comet",
+                "comet-open",
+                "openspec-new-change",
+                "comet-design",
+                "brainstorming",
+                "comet-build",
+                "writing-plans",
+                "comet-verify",
+                "verification-before-completion",
+                "comet-archive",
+            ],
+            "commands_run": [],
+            "files_created": [
+                "docs/openspec/changes/archive/2026-07-28-add-sentences/proposal.md",
+                "docs/openspec/changes/archive/2026-07-28-add-sentences/tasks.md",
+                "docs/superpowers/specs/add-sentences.md",
+                "docs/superpowers/plans/add-sentences.md",
+                "docs/superpowers/reports/add-sentences.md",
+            ],
+            "files_modified": [],
+            "num_turns": 1,
+            "tool_calls": [],
+            "duration_seconds": 5,
+        },
+        "interaction": {"mode": "auto_user", "max_turns": 3},
+    }
+
+    passed, _ = run_profile_rubric("comet-workflow", tmp_path, outputs)
+
+    assert any("[RUBRIC] main_flow: 1.00 - workflow=full" in msg for msg in passed)
+    assert any("[RUBRIC] artifact_quality: 1.00" in msg for msg in passed)
+    assert any("[RUBRIC] recovery_resilience: 1.00" in msg for msg in passed)
+
+
 def test_generic_profile_scores_completion_skill_artifact_and_efficiency(tmp_path: Path):
     (tmp_path / "result.md").write_text("done")
     outputs = {
@@ -468,7 +555,10 @@ def test_authoring_profile_allows_lightweight_package_without_engine_files(tmp_p
     passed, failed = run_profile_rubric("authoring-skill", tmp_path, outputs)
 
     assert failed == []
-    assert any("[RUBRIC] engine_contract: 1.00 - Engine disabled for lightweight package" in msg for msg in passed)
+    assert any(
+        "[RUBRIC] engine_contract: 1.00 - Engine disabled for lightweight package" in msg
+        for msg in passed
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -588,8 +678,7 @@ def test_generic_interaction_compliance_uses_driver_turns(tmp_path: Path):
     passed, _ = run_profile_rubric("generic", tmp_path, outputs)
 
     assert any(
-        "[RUBRIC] interaction_compliance: 1.00 - turns=4, max=4" in message
-        for message in passed
+        "[RUBRIC] interaction_compliance: 1.00 - turns=4, max=4" in message for message in passed
     )
 
 

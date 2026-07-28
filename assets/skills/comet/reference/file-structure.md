@@ -5,7 +5,7 @@ Canonical path: `comet/reference/file-structure.md`
 This file is the Comet project file structure reference. Consult on demand; not loaded inline with skills.
 
 ```text
-openspec/                              # OpenSpec — WHAT
+<classic-open-spec-root>/              # OpenSpec — WHAT; returned by the Classic layout resolver
 ├── config.yaml
 ├── changes/
 │   ├── <name>/                        # Active change
@@ -19,7 +19,7 @@ openspec/                              # OpenSpec — WHAT
 │   └── archive/YYYY-MM-DD-<name>/     # Archived
 └── specs/<capability>/spec.md         # Main specs (merged on archive via OpenSpec delta semantics)
 
-docs/superpowers/                      # Superpowers — HOW
+<classic-superpowers-root>/            # Superpowers — HOW; returned by the Classic layout resolver
 ├── specs/YYYY-MM-DD-<topic>-design.md # Design doc (technical RFC; annotated on archive)
 └── plans/YYYY-MM-DD-<feature>.md      # Implementation plan (file header contains change metadata)
 

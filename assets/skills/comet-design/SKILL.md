@@ -5,6 +5,8 @@ description: "Use only when explicitly invoked as /comet-design or routed by the
 
 # Comet Phase 2: Deep Design (Design)
 
+Before starting or recovering, read and follow `comet/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+
 ## Prerequisites
 
 - Active change exists (proposal.md, design.md, tasks.md)
@@ -40,21 +42,21 @@ The script reads the change `.comet.yaml` `context_compression` snapshot, then g
 Default `context_compression: off` generates:
 
 ```
-openspec/changes/<name>/.comet/handoff/design-context.json
-openspec/changes/<name>/.comet/handoff/design-context.md
+<classic-change-dir>/.comet/handoff/design-context.json
+<classic-change-dir>/.comet/handoff/design-context.md
 ```
 
 Beta mode (`classic.context_compression: beta` in project `.comet/config.yaml`, snapshotted into `.comet.yaml` when the change is created) generates:
 
 ```
-openspec/changes/<name>/.comet/handoff/spec-context.json
-openspec/changes/<name>/.comet/handoff/spec-context.md
+<classic-change-dir>/.comet/handoff/spec-context.json
+<classic-change-dir>/.comet/handoff/spec-context.md
 ```
 
 And writes to `.comet.yaml`:
 
 ```yaml
-handoff_context: openspec/changes/<name>/.comet/handoff/design-context.json
+handoff_context: <classic-change-dir>/.comet/handoff/design-context.json
 handoff_hash: <sha256>
 ```
 
@@ -94,12 +96,12 @@ After the skill loads, follow its guidance and use the following context:
 
 ```
 Change: <change-name>
-OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/design-context.md
-Machine handoff: openspec/changes/<name>/.comet/handoff/design-context.json
+OpenSpec Context Pack: <classic-change-dir>/.comet/handoff/design-context.md
+Machine handoff: <classic-change-dir>/.comet/handoff/design-context.json
 
 If context_compression is beta, use:
-OpenSpec Context Pack: openspec/changes/<name>/.comet/handoff/spec-context.md
-Machine handoff: openspec/changes/<name>/.comet/handoff/spec-context.json
+OpenSpec Context Pack: <classic-change-dir>/.comet/handoff/spec-context.md
+Machine handoff: <classic-change-dir>/.comet/handoff/spec-context.json
 
 OpenSpec artifacts are the upstream source of truth, but you must not weaken the Superpowers `brainstorming` clarification flow by "skipping redundant context exploration".
 Your task is to perform deep technical design based on the handoff package: implementation approach, technical risks, testing strategy, boundary conditions.
@@ -146,9 +148,9 @@ Only after the user explicitly confirms, proceed to Step 2. If the user requests
 
 After the user confirms the design proposal, before creating the Design Doc, create or update the incrementally maintained checkpoint file and finalize it as the confirmed design summary:
 
-Use the current platform's file API to ensure `openspec/changes/<name>/.comet/handoff/` exists; do not rely on a POSIX-only directory command.
+Use the current platform's file API to ensure `<classic-change-dir>/.comet/handoff/` exists; do not rely on a POSIX-only directory command.
 
-`openspec/changes/<name>/.comet/handoff/brainstorm-summary.md` structure:
+`<classic-change-dir>/.comet/handoff/brainstorm-summary.md` structure:
 
 ```markdown
 # Brainstorm Summary
@@ -174,9 +176,9 @@ Use the current platform's file API to ensure `openspec/changes/<name>/.comet/ha
 ```
 
 **Context compaction note**: Each incremental update to `brainstorm-summary.md` is a relatively safe recovery point. After brainstorming completes, if the context window is tight, prefer compacting here. After compaction, reload the following files to continue Step 2:
-- `openspec/changes/<name>/.comet/handoff/brainstorm-summary.md`
-- `openspec/changes/<name>/.comet/handoff/design-context.md` (or `spec-context.md` in beta mode)
-- `openspec/changes/<name>/.comet/handoff/design-context.json` (or `spec-context.json` in beta mode)
+- `<classic-change-dir>/.comet/handoff/brainstorm-summary.md`
+- `<classic-change-dir>/.comet/handoff/design-context.md` (or `spec-context.md` in beta mode)
+- `<classic-change-dir>/.comet/handoff/design-context.json` (or `spec-context.json` in beta mode)
 
 ### 1e. Compaction Policy (Non-blocking Here)
 

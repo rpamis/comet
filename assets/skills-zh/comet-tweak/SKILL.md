@@ -5,6 +5,8 @@ description: "仅在用户明确调用 /comet-tweak，或由 Comet 根 Skill/run
 
 # Comet 预设路径：Tweak
 
+开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+
 Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程。它串联 OpenSpec 的核心流程，复用 open、build、verify、archive 能力，仅跳过 Superpowers brainstorming 和完整 plan。
 
 适用于串联 OpenSpec 的轻量改动，例如配置调整、文档或 prompt 优化，以及需 spec 驱动（含 delta spec）但不需要完整 `/comet-classic` 深度设计流程的中等变更。delta spec 在 tweak 中是一等公民正常产物，需要 delta spec 本身不构成升级理由。
@@ -90,8 +92,8 @@ comet guard <change-name> open --apply
 
 技能加载后，以当前 `<change-name>` 作为输入，按 `openspec-apply-change` 的指引执行 OpenSpec apply 流程：
 
-1. 运行或遵循 `openspec status --change "<name>" --json`，确认 schema 和任务 artifact
-2. 运行或遵循 `openspec instructions apply --change "<name>" --json`，读取 OpenSpec 返回的 apply 指令、`contextFiles`、任务进度和动态 instruction
+1. 运行或遵循 `comet classic openspec -- status --change "<name>" --json`，确认 schema 和任务 artifact
+2. 运行或遵循 `comet classic openspec -- instructions apply --change "<name>" --json`，读取 OpenSpec 返回的 apply 指令、`contextFiles`、任务进度和动态 instruction
 3. 读取 apply 指令列出的所有 context files，不得只凭旧对话或手写 tasks 循环实现
 4. 按 apply 指令逐个完成未勾选任务，保持改动最小且聚焦
 5. 每完成一个任务后：

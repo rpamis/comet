@@ -41,7 +41,7 @@
 
 | 字段 | 含义 |
 |------|------|
-| `active_changes_count` | `openspec list --json` 得到的未归档 active change 数量。多个 active change 且用户未指定 `change_id` 时会 `ask_user`。 |
+| `active_changes_count` | `comet classic openspec -- list --json` 得到的未归档 active change 数量。多个 active change 且用户未指定 `change_id` 时会 `ask_user`。 |
 | `active_change_names` | active change 名称列表。用户指定 `change_id` 时，runtime 用它检查 change 是否存在。 |
 | `dirty_worktree` | 可选状态字段。入口路由最小骨架不需要填写；dirty worktree 由 `comet/reference/dirty-worktree.md` 专门处理。 |
 

@@ -1,0 +1,126 @@
+{
+  "schema": "comet.native.verification-evidence.v1",
+  "change": "complete-unified-product-catalogue",
+  "sourceRevision": 3,
+  "result": "pass",
+  "freshness": "partial",
+  "contractHash": "efd20a585dc21457e2e6999a9c317e494045881431f3b02523d1a4bf951829e9",
+  "acceptanceCriteriaHash": "861d8be2d7a7b82a0ccc5dcb17b3ae5c9ee9ea1d2071d05cfa42deddc2987de4",
+  "implementationScopeRef": "runtime/evidence/scopes/dcf8a8a9e7581ea73183caecede24036a38112ecb7e22387d030b4f6813ee972.json",
+  "implementationScopeHash": "dcf8a8a9e7581ea73183caecede24036a38112ecb7e22387d030b4f6813ee972",
+  "reportRef": "verification.md",
+  "reportHash": "87e2a2e6559c433a7a11d5c9f52171500362ea5a0efbbbdee9a53d2f62108bc1",
+  "acceptanceTrace": {
+    "schema": "comet.native.acceptance-trace.v1",
+    "nativeRootRef": "docs/comet",
+    "criteriaHash": "861d8be2d7a7b82a0ccc5dcb17b3ae5c9ee9ea1d2071d05cfa42deddc2987de4",
+    "total": 10,
+    "evidenced": 10,
+    "skipped": 0,
+    "entries": [
+      {
+        "acceptanceId": "acceptance-094c979422621567ce17b3ce663d587f1a0bb63c3478425df8c4b5e4b01e89f2",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/domains/comet-classic/classic-root-move.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-1d3da39f523ff5cabf62520e5962a48b820ba30f7e4588287732349ab0409d42",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/app/doctor.test.ts",
+          "test/domains/comet-classic/classic-root-move.test.ts",
+          "test/domains/integrations/openspec.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-30486a3d96478060faf0de3ea0cef6c32afb502052a36b8ec49dee36ae8d64f2",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/app/uninstall.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-395b4f5e57f592e642de95405012f3315244731ebbbe800a9a3b205bb5ac933a",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/domains/comet-classic/classic-protected-consumers.test.ts",
+          "test/domains/comet-entry/project-status.test.ts",
+          "test/domains/dashboard/collector.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-4dc9f24a261daa0b1c1495d147b525f95da843da2acf6c5381e55a33f2196a0f",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/app/doctor.test.ts",
+          "test/domains/comet-classic/classic-root-move.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-522b0b715d4e74bc341f7864e863ca270282e96823af351b48a59d8fcb337a74",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/domains/comet-classic/classic-root-move.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-9204d4d05451c3cab80aff9416051e2ac76155f34db192902ba14fee6ea25e39",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/domains/skill/classic-layout-skill-contract.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-a06d6b969d76386156607548d1a4a2a865298bcc94b1c1f37e40d09db869e9e8",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "eval/local/tasks/comet-full-workflow/validation/test_full_workflow.py",
+          "eval/local/treatments/comet/comet_classic_docs_layout.yaml"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-a93d3b617e451eda434f537f3ae0c6fac6604902c4f2b0a26f025343df4ded07",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/domains/factory/factory-package.test.ts"
+        ],
+        "skippedReason": null
+      },
+      {
+        "acceptanceId": "acceptance-f4466cf2fbb4d5d4db9a45b04d679621d5b4eb9426865b5b215e50a3580ade1a",
+        "kind": "brief-example",
+        "source": "brief.md",
+        "evidenceRefs": [
+          "test/app/update.test.ts",
+          "test/domains/workflow-contract/workflow-contract.test.ts"
+        ],
+        "skippedReason": null
+      }
+    ],
+    "traceHash": "2fc8245fd21ea04c4d74cae65b6e1927a9955dace4c45fe8ba54f887d8540923"
+  },
+  "partialAllowanceRef": "runtime/evidence/allowances/76feacc71e768ad5c54c8b54e46ddfedab86277583174d4ad96a3ed2c99924a4.json",
+  "partialAllowanceHash": "76feacc71e768ad5c54c8b54e46ddfedab86277583174d4ad96a3ed2c99924a4",
+  "receiptRef": null,
+  "createdAt": "2026-07-28T00:21:24.598Z",
+  "envelopeHash": "1368a8071c401be01c65eb7aea6d3c62ed09dcaa04c63e92d23a9d01ffdfadcf"
+}

@@ -9,6 +9,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const classicRuntimeRoot = path.resolve('assets', 'skills', 'comet', 'runtime', 'classic');
@@ -78,6 +79,7 @@ describe('hook guard', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-guard-'));
+    await prepareClassicLegacyProject(tmpDir);
     hookGuardScript = path.resolve(scriptsDir, 'comet-hook-guard.mjs');
     execFileSync('git', ['init'], { cwd: tmpDir, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });

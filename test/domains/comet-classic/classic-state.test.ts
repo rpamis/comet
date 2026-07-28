@@ -89,6 +89,74 @@ describe('Classic state projection', () => {
     });
   });
 
+  it('does not commit Classic state through a change directory replaced before commit', async () => {
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-state-outside-'));
+    const held = `${changeDir}-held`;
+    const writeWithHook = writeClassicState as unknown as (
+      changeDir: string,
+      projection: Parameters<typeof writeClassicState>[1],
+      options: { beforeCommit: () => void | Promise<void> },
+    ) => Promise<void>;
+    const linkProbe = `${changeDir}-link-probe`;
+    try {
+      try {
+        await fs.symlink(outsideRoot, linkProbe, process.platform === 'win32' ? 'junction' : 'dir');
+        if (process.platform === 'win32') await fs.rmdir(linkProbe);
+        else await fs.unlink(linkProbe);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+        throw error;
+      }
+
+      await expect(
+        writeWithHook(
+          changeDir,
+          {
+            classic: classicState(),
+            run: null,
+          },
+          {
+            beforeCommit: async () => {
+              const temporaryName = (await fs.readdir(changeDir)).find(
+                (entry) => entry.includes('.comet.yaml.') && entry.endsWith('.tmp'),
+              );
+              expect(temporaryName).toBeDefined();
+              await fs.rename(changeDir, held);
+              await fs.writeFile(path.join(outsideRoot, '.comet.yaml'), 'keep: true\n', 'utf8');
+              await fs.writeFile(path.join(outsideRoot, temporaryName!), 'outside-temp\n', 'utf8');
+              await fs.symlink(
+                outsideRoot,
+                changeDir,
+                process.platform === 'win32' ? 'junction' : 'dir',
+              );
+            },
+          },
+        ),
+      ).rejects.toThrow(/changed|junction|outside|managed parent/iu);
+      await expect(fs.readFile(path.join(outsideRoot, '.comet.yaml'), 'utf8')).resolves.toBe(
+        'keep: true\n',
+      );
+    } finally {
+      try {
+        if ((await fs.lstat(changeDir)).isSymbolicLink()) {
+          if (process.platform === 'win32') await fs.rmdir(changeDir);
+          else await fs.unlink(changeDir);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (
+        await fs.stat(held).then(
+          () => true,
+          () => false,
+        )
+      ) {
+        await fs.rename(held, changeDir);
+      }
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
   it('reads a legacy-only state without inventing a Run', async () => {
     await writeClassicState(changeDir, { classic: classicState(), run: null });
 

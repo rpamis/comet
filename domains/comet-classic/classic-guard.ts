@@ -1,6 +1,6 @@
 import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
-import { existsSync, promises as fs, readFileSync } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument } from 'yaml';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
@@ -10,6 +10,7 @@ import {
   type RecordedCommandCheck,
 } from './classic-command-checks.js';
 import { inspectClassicChange } from './classic-diagnostics.js';
+import { assertClassicLayoutWritable } from './classic-layout.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import type { ClassicRunContext } from './classic-migrate.js';
@@ -19,6 +20,14 @@ import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classi
 import { classicValidateCommand } from './classic-validate-command.js';
 import { readClassicState } from './classic-store.js';
 import { readClassicConfigValue } from './classic-project-config.js';
+import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
+import {
+  classicProjectFileNonempty,
+  classicProjectTargetExists,
+  inspectClassicProjectTarget,
+  readClassicProjectBytes,
+  readClassicProjectFile,
+} from './classic-protected-path.js';
 import {
   driftBlockedMessage,
   resolveBranchBinding,
@@ -100,22 +109,17 @@ class GuardOutput {
 }
 
 async function exists(file: string): Promise<boolean> {
-  try {
-    await fs.access(file);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
+  return classicProjectTargetExists(process.cwd(), file, {
+    label: `Classic guard path ${path.relative(process.cwd(), path.resolve(file)).replaceAll('\\', '/')}`,
+  });
 }
 
 async function nonempty(file: string): Promise<boolean> {
-  try {
-    return (await fs.stat(file)).size > 0;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
+  return classicProjectFileNonempty(
+    process.cwd(),
+    file,
+    `Classic guard file ${path.relative(process.cwd(), path.resolve(file)).replaceAll('\\', '/')}`,
+  );
 }
 
 function validateChangeName(name: string): void {
@@ -133,7 +137,12 @@ async function resolveChangeDir(name: string): Promise<string> {
 
 async function readField(changeDir: string, field: string): Promise<string> {
   const file = path.join(changeDir, '.comet.yaml');
-  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: false });
+  const document = parseDocument(
+    await readClassicProjectFile(process.cwd(), file, {
+      label: `Classic state ${changeDir}/.comet.yaml`,
+    }),
+    { uniqueKeys: false },
+  );
   if (document.errors.length > 0) {
     throw new GuardFailure(`ERROR: Invalid .comet.yaml: ${document.errors[0].message}`);
   }
@@ -183,7 +192,11 @@ async function documentLanguageMatchesConfigured(
   file: string,
 ): Promise<CheckResult> {
   const language = await configuredLanguage(changeDir);
-  const source = stripFencedCodeBlocks(await fs.readFile(file, 'utf8'));
+  const source = stripFencedCodeBlocks(
+    await readClassicProjectFile(process.cwd(), file, {
+      label: `Classic language-check artifact ${file}`,
+    }),
+  );
   const cjk = countCjkChars(source);
   const englishWords = countEnglishWords(source);
 
@@ -200,8 +213,14 @@ async function documentLanguageMatchesConfigured(
   return pass();
 }
 
-function hashFile(file: string): string {
-  return createHash('sha256').update(readFileSync(file)).digest('hex');
+async function hashFile(file: string): Promise<string> {
+  return createHash('sha256')
+    .update(
+      await readClassicProjectBytes(process.cwd(), file, {
+        label: `Classic handoff source ${file}`,
+      }),
+    )
+    .digest('hex');
 }
 
 async function handoffSourceFiles(changeDir: string): Promise<string[]> {
@@ -212,6 +231,10 @@ async function handoffSourceFiles(changeDir: string): Promise<string[]> {
   const files = [`${changeDir}/proposal.md`, `${changeDir}/design.md`, `${changeDir}/tasks.md`];
   const specs = `${changeDir}/specs`;
   if (await exists(specs)) {
+    await inspectClassicProjectTarget(process.cwd(), specs, {
+      label: `Classic delta-spec directory ${specs}`,
+      expected: 'directory',
+    });
     for (const entry of (await fs.readdir(specs)).sort()) {
       const spec = `${specs}/${entry}/spec.md`;
       if (await exists(spec)) files.push(spec);
@@ -224,7 +247,7 @@ async function computeHandoffHash(changeDir: string): Promise<string> {
   const lines: string[] = [];
   for (const file of await handoffSourceFiles(changeDir)) {
     if (await exists(file)) {
-      lines.push(`path:${file}`, `sha256:${hashFile(file)}`);
+      lines.push(`path:${file}`, `sha256:${await hashFile(file)}`);
     }
   }
   // Match the frozen shell: command substitution $(...) strips the trailing
@@ -239,6 +262,10 @@ async function preflight(changeDir: string, name: string): Promise<void> {
   if (!(await exists(path.join(changeDir, '.comet.yaml')))) {
     throw new GuardFailure(red(`FATAL: .comet.yaml not found in ${changeDir}`));
   }
+  await inspectClassicProjectTarget(process.cwd(), path.join(changeDir, '.comet'), {
+    label: `Classic runtime directory for ${name}`,
+    expected: 'directory',
+  });
   const result = await classicValidateCommand([name], { json: false });
   if (result.exitCode !== 0) {
     if (result.stderr)
@@ -328,27 +355,18 @@ const INFERRED_COMMAND_SOURCES = [
 ] as const;
 
 async function removedProjectCommandField(field: 'build_command' | 'verify_command') {
-  const config = path.join('.comet', 'config.yaml');
-  if (!(await exists(config))) return false;
-  const document = parseDocument(await fs.readFile(config, 'utf8'));
-  if (document.errors.length > 0) {
-    // A malformed project config must not be treated as "no removed field
-    // present": that would let an upgraded project silently fall through to the
-    // inferred build check even though it may still declare a removed
-    // build_command/verify_command. Surface the parse error instead. Both call
-    // sites (buildPasses / verificationCommandPasses) run inside a check()
-    // wrapper, so this throw becomes a FAIL outcome that blocks the guard.
+  try {
+    const document = await readWorkflowProjectConfigDocument(process.cwd(), {
+      allowPartialProject: true,
+    });
+    if (!document) return false;
+    return Object.prototype.hasOwnProperty.call(document.value, field);
+  } catch (error) {
     throw new Error(
-      `.comet/config.yaml is invalid YAML (${document.errors[0].message}); cannot check for removed "${field}" field. Fix the config and retry.`,
+      `.comet/config.yaml is invalid YAML (${error instanceof Error ? error.message : String(error)}); cannot check for removed "${field}" field. Fix the config and retry.`,
+      { cause: error },
     );
   }
-  const value = document.toJS() as unknown;
-  return (
-    Boolean(value) &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.prototype.hasOwnProperty.call(value, field)
-  );
 }
 
 function removedProjectCommandRun(field: 'build_command' | 'verify_command'): CommandRun {
@@ -370,23 +388,22 @@ function runInferred(command: string): CommandRun {
 }
 
 async function inferredBuildCommand(): Promise<string | null> {
-  if (
-    (await exists('package.json')) &&
-    (() => {
-      const parsed = JSON.parse(readFileSync('package.json', 'utf8')) as {
-        scripts?: Record<string, unknown>;
-      };
-      return typeof parsed.scripts?.build === 'string';
-    })()
-  ) {
-    return 'npm run build';
+  if (await exists('package.json')) {
+    const parsed = JSON.parse(
+      await readClassicProjectFile(process.cwd(), 'package.json', {
+        label: 'package.json',
+      }),
+    ) as {
+      scripts?: Record<string, unknown>;
+    };
+    if (typeof parsed.scripts?.build === 'string') return 'npm run build';
   }
   if (await exists('pom.xml')) {
     if (process.platform === 'win32') {
-      if (existsSync('mvnw.cmd')) return 'mvnw.cmd compile -q';
+      if (await exists('mvnw.cmd')) return 'mvnw.cmd compile -q';
       return 'mvn.cmd compile -q';
     }
-    if (existsSync('mvnw')) return './mvnw compile -q';
+    if (await exists('mvnw')) return './mvnw compile -q';
     return 'mvn compile -q';
   }
   if (await exists('Cargo.toml')) return 'cargo build';
@@ -446,7 +463,9 @@ async function tasksAllDone(changeDir: string): Promise<CheckResult> {
       `tasks.md is missing at ${tasks}\nNext: restore or create tasks.md for this change before leaving build.`,
     );
   }
-  const source = await fs.readFile(tasks, 'utf8');
+  const source = await readClassicProjectFile(process.cwd(), tasks, {
+    label: `Classic tasks ${tasks}`,
+  });
   if (!/- \[x\]/u.test(source)) {
     return fail(
       "tasks.md has no completed tasks.\nNext: complete implementation tasks and mark them with '- [x]'.",
@@ -467,7 +486,11 @@ async function tasksAllDone(changeDir: string): Promise<CheckResult> {
 async function tasksHasAny(changeDir: string): Promise<boolean> {
   const tasks = path.join(changeDir, 'tasks.md');
   if (!(await exists(tasks))) return false;
-  return /- \[/u.test(await fs.readFile(tasks, 'utf8'));
+  return /- \[/u.test(
+    await readClassicProjectFile(process.cwd(), tasks, {
+      label: `Classic tasks ${tasks}`,
+    }),
+  );
 }
 
 async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
@@ -478,7 +501,9 @@ async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
       `plan file is missing at ${plan}\nNext: restore the Superpowers plan file or update .comet.yaml plan before leaving build.`,
     );
   }
-  const source = await fs.readFile(plan, 'utf8');
+  const source = await readClassicProjectFile(process.cwd(), plan, {
+    label: `Classic plan ${plan}`,
+  });
   const unfinished = source
     .split(/\r?\n/u)
     .map((line, index) => ({ line, number: index + 1 }))
@@ -580,7 +605,7 @@ async function reviewModeSelected(changeDir: string, change: string): Promise<Ch
 
 async function verificationReportExists(changeDir: string): Promise<boolean> {
   const report = await readField(changeDir, 'verification_report');
-  return Boolean(report) && report !== 'null' && existsSync(report);
+  return Boolean(report) && report !== 'null' && (await exists(report));
 }
 
 async function branchStatusHandled(changeDir: string): Promise<boolean> {
@@ -596,7 +621,11 @@ async function designDocFrontmatterHas(
   field: string,
   expected: string,
 ): Promise<boolean> {
-  const source = (await fs.readFile(designDoc, 'utf8')).replace(/^\uFEFF/u, '');
+  const source = (
+    await readClassicProjectFile(process.cwd(), designDoc, {
+      label: `Classic Design Doc ${designDoc}`,
+    })
+  ).replace(/^\uFEFF/u, '');
   let inFrontmatter = false;
   for (const line of source.split(/\r?\n/u)) {
     if (!inFrontmatter) {
@@ -611,7 +640,7 @@ async function designDocFrontmatterHas(
 
 async function designDocRecorded(changeDir: string, change: string): Promise<CheckResult> {
   const designDoc = await readField(changeDir, 'design_doc');
-  if (designDoc && designDoc !== 'null' && existsSync(designDoc)) return pass();
+  if (designDoc && designDoc !== 'null' && (await exists(designDoc))) return pass();
   return fail(
     `design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design.\nNext: create the Design Doc and run: comet state set ${change} design_doc <path>`,
   );
@@ -656,7 +685,9 @@ async function designHandoffMarkdownTraceable(changeDir: string): Promise<CheckR
   const markdown = `${context.replace(/\.json$/u, '')}.md`;
   if (!(await nonempty(markdown)))
     return fail(`design handoff markdown is missing or empty: ${markdown}`);
-  const source = await fs.readFile(markdown, 'utf8');
+  const source = await readClassicProjectFile(process.cwd(), markdown, {
+    label: `Classic handoff markdown ${markdown}`,
+  });
   const lines = new Set(source.split(/\r?\n/u));
   const problems: string[] = [];
   if (!/^Generated-by: comet-handoff\.sh$/mu.test(source)) {
@@ -670,7 +701,7 @@ async function designHandoffMarkdownTraceable(changeDir: string): Promise<CheckR
     if (!lines.has(`- Source: ${file}`)) {
       problems.push(`handoff markdown is missing source reference: ${file}`);
     }
-    if (!lines.has(`- SHA256: ${hashFile(file)}`)) {
+    if (!lines.has(`- SHA256: ${await hashFile(file)}`)) {
       problems.push(`handoff markdown is missing current sha256 for: ${file}`);
     }
   }
@@ -686,7 +717,9 @@ async function betaSpecJsonStructurallyValid(changeDir: string): Promise<CheckRe
   const context = await readField(changeDir, 'handoff_context');
   if (!context || context === 'null') return fail('handoff_context is missing from .comet.yaml');
   if (!(await nonempty(context))) return fail(`spec-context.json is missing or empty: ${context}`);
-  const source = await fs.readFile(context, 'utf8');
+  const source = await readClassicProjectFile(process.cwd(), context, {
+    label: `Classic handoff context ${context}`,
+  });
   const problems: string[] = [];
   let parsed: unknown;
   try {
@@ -965,6 +998,7 @@ export const classicGuardCommand: ClassicCommandHandler = async (args, options) 
         `${red(`Unknown phase: ${phase ?? ''}`)}\nValid phases: open, design, build, verify, archive`,
       );
     }
+    await assertClassicLayoutWritable(process.cwd());
     const changeDir = await resolveChangeDir(change);
     await preflight(changeDir, change);
     const runContext = await ensureClassicRuntimeRun(changeDir);

@@ -1,12 +1,11 @@
-import { promises as fs } from 'fs';
 import path from 'path';
-import { parseDocument } from 'yaml';
 import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
   resolveCometEntryResumeProbe,
   type CometEntryResumeProbeInput,
   type CometEntryResumeProbeResult,
 } from '../../domains/comet-entry/resume-probe.js';
+import { readWorkflowProjectConfigDocument } from '../../domains/workflow-contract/project-config-reader.js';
 
 interface ResumeProbeOptions {
   utterance?: string;
@@ -45,14 +44,16 @@ async function resolveUtterance(options: ResumeProbeOptions): Promise<string> {
   return options.utterance ?? '';
 }
 
-async function resolveProjectLanguage(projectPath: string): Promise<string> {
-  const config = path.join(projectPath, '.comet', 'config.yaml');
+export async function resolveProjectLanguage(projectPath: string): Promise<string> {
   try {
-    const document = parseDocument(await fs.readFile(config, 'utf8'));
-    if (document.errors.length > 0) return 'unknown';
-    const value = document.toJS();
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return 'unknown';
-    const language = (value as Record<string, unknown>).language;
+    const document = await readWorkflowProjectConfigDocument(projectPath, {
+      allowPartialProject: true,
+    });
+    if (!document) return 'unknown';
+    const language =
+      document.config?.default_workflow === 'classic'
+        ? document.classic?.language
+        : (document.native?.language ?? document.classic?.language);
     return typeof language === 'string' && language.trim() ? language.trim() : 'unknown';
   } catch {
     return 'unknown';

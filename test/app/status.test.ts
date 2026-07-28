@@ -22,6 +22,28 @@ function state(cwd: string, ...args: string[]) {
   });
 }
 
+function classicChangesDir(projectRoot: string): string {
+  return path.join(projectRoot, 'docs', 'openspec', 'changes');
+}
+
+async function writeClassicProjectConfig(projectRoot: string): Promise<void> {
+  const config = defaultProjectConfig('docs', 'en');
+  config.default_workflow = 'classic';
+  config.workflows = ['classic'];
+  config.classic = {
+    artifact_layout: 'docs',
+    language: 'en',
+    context_compression: 'off',
+    review_mode: 'standard',
+    auto_transition: true,
+  };
+  await writeProjectConfig(projectRoot, config);
+  const openSpecRoot = path.join(projectRoot, 'docs', 'openspec');
+  await fs.mkdir(path.join(openSpecRoot, 'changes', 'archive'), { recursive: true });
+  await fs.mkdir(path.join(openSpecRoot, 'specs'), { recursive: true });
+  await fs.writeFile(path.join(openSpecRoot, 'config.yaml'), 'schema: spec-driven\n');
+}
+
 async function snapshotChange(changeDir: string): Promise<{ files: string[]; yaml: Buffer }> {
   const files: string[] = [];
   async function visit(directory: string): Promise<void> {
@@ -63,6 +85,7 @@ describe('status command', () => {
       `comet-status-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     await fs.mkdir(tmpDir, { recursive: true });
+    await writeClassicProjectConfig(tmpDir);
   });
 
   afterEach(async () => {
@@ -70,7 +93,7 @@ describe('status command', () => {
   });
 
   it('classifies mixed Comet and OpenSpec changes in sorted JSON output', async () => {
-    const changesDir = path.join(tmpDir, 'openspec', 'changes');
+    const changesDir = classicChangesDir(tmpDir);
     state(tmpDir, 'init', 'z-comet-ready', 'full');
     state(tmpDir, 'set', 'z-comet-ready', 'phase', 'archive');
     state(tmpDir, 'set', 'z-comet-ready', 'verify_result', 'pass');
@@ -110,7 +133,7 @@ describe('status command', () => {
       defaultEntry: {
         workflow: 'classic',
         skill: 'comet-classic',
-        source: 'legacy-fallback',
+        source: 'project-config',
       },
       workflows: {
         native: { changes: [] },
@@ -137,7 +160,7 @@ describe('status command', () => {
       name: 'a-open-complete',
       cometManaged: false,
       archiveReady: true,
-      recommendedArchiveCommand: 'openspec archive a-open-complete -y',
+      recommendedArchiveCommand: 'comet classic openspec -- archive a-open-complete -y',
       workflow: null,
       phase: null,
       buildMode: null,
@@ -168,7 +191,7 @@ describe('status command', () => {
       name: 'c-open-incomplete',
       cometManaged: false,
       archiveReady: false,
-      recommendedArchiveCommand: 'openspec archive c-open-incomplete -y',
+      recommendedArchiveCommand: 'comet classic openspec -- archive c-open-incomplete -y',
       tasksCompleted: 1,
       tasksTotal: 2,
       commandChecks: null,
@@ -191,7 +214,7 @@ describe('status command', () => {
 
   it('includes latest build and verify command checks for a synchronized Comet Run', async () => {
     state(tmpDir, 'init', 'audited', 'full');
-    await ensureClassicRuntimeRun(path.join(tmpDir, 'openspec', 'changes', 'audited'));
+    await ensureClassicRuntimeRun(path.join(classicChangesDir(tmpDir), 'audited'));
     expect(
       state(
         tmpDir,
@@ -261,7 +284,7 @@ describe('status command', () => {
   });
 
   it('labels mixed text output and recommends archive commands only for ready changes', async () => {
-    const changesDir = path.join(tmpDir, 'openspec', 'changes');
+    const changesDir = classicChangesDir(tmpDir);
     state(tmpDir, 'init', 'comet-ready', 'full');
     state(tmpDir, 'set', 'comet-ready', 'phase', 'archive');
     state(tmpDir, 'set', 'comet-ready', 'verify_result', 'pass');
@@ -285,14 +308,18 @@ describe('status command', () => {
     expect(output).toContain('open-ready [OpenSpec] [plain change [1/1 tasks]]');
     expect(output).toContain('open-not-ready [OpenSpec] [plain change [0/1 tasks]]');
     expect(output).toContain('recommended archive: comet archive comet-ready');
-    expect(output).toContain('recommended archive: openspec archive open-ready -y');
+    expect(output).toContain(
+      'recommended archive: comet classic openspec -- archive open-ready -y',
+    );
     expect(output).not.toContain('recommended archive: comet archive comet-not-ready');
-    expect(output).not.toContain('recommended archive: openspec archive open-not-ready -y');
+    expect(output).not.toContain(
+      'recommended archive: comet classic openspec -- archive open-not-ready -y',
+    );
     expect(output.match(/recommended archive:/g)).toHaveLength(2);
   });
 
   it('prints the next command for active changes', async () => {
-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'next-build');
+    const changeDir = path.join(classicChangesDir(tmpDir), 'next-build');
     state(tmpDir, 'init', 'next-build', 'full');
     state(tmpDir, 'set', 'next-build', 'phase', 'build');
     state(tmpDir, 'set', 'next-build', 'build_mode', 'executing-plans');
@@ -319,7 +346,7 @@ describe('status command', () => {
   });
 
   it('prints branch-bound workspace modes with bound branch and omits bound suffix for null isolation', async () => {
-    const changesDir = path.join(tmpDir, 'openspec', 'changes');
+    const changesDir = classicChangesDir(tmpDir);
     state(tmpDir, 'init', 'current-bound', 'full');
     await setCometYamlField(path.join(changesDir, 'current-bound'), 'isolation', 'current');
     await setCometYamlField(path.join(changesDir, 'current-bound'), 'bound_branch', 'feature-A');
@@ -351,7 +378,7 @@ describe('status command', () => {
   });
 
   it('includes boundBranch in JSON status output', async () => {
-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'current-bound');
+    const changeDir = path.join(classicChangesDir(tmpDir), 'current-bound');
     state(tmpDir, 'init', 'current-bound', 'full');
     await setCometYamlField(changeDir, 'isolation', 'current');
     await setCometYamlField(changeDir, 'bound_branch', 'feature-A');
@@ -373,7 +400,7 @@ describe('status command', () => {
   });
 
   it('keeps legacy state without a Run byte-for-byte read-only in text and JSON status', async () => {
-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'next-verify');
+    const changeDir = path.join(classicChangesDir(tmpDir), 'next-verify');
     state(tmpDir, 'init', 'next-verify', 'full');
     state(tmpDir, 'set', 'next-verify', 'phase', 'verify');
     const yamlPath = path.join(changeDir, '.comet.yaml');
@@ -414,7 +441,7 @@ describe('status command', () => {
   ])(
     'reports %s as invalid without changing the synchronized change',
     async (_label, fault, error) => {
-      const changeDir = path.join(tmpDir, 'openspec', 'changes', `invalid-${fault}`);
+      const changeDir = path.join(classicChangesDir(tmpDir), `invalid-${fault}`);
       state(tmpDir, 'init', `invalid-${fault}`, 'full');
       await ensureClassicRuntimeRun(changeDir);
       if (fault === 'marker') {
@@ -453,7 +480,7 @@ describe('status command', () => {
   );
 
   it('reports invalid state without modifying it', async () => {
-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'invalid');
+    const changeDir = path.join(classicChangesDir(tmpDir), 'invalid');
     state(tmpDir, 'init', 'invalid', 'full');
     await fs.appendFile(
       path.join(changeDir, '.comet.yaml'),
@@ -479,7 +506,7 @@ describe('status command', () => {
   });
 
   it('keeps invalid errors visible and only prints the invalid recovery hint for invalid changes', async () => {
-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'invalid');
+    const changeDir = path.join(classicChangesDir(tmpDir), 'invalid');
     state(tmpDir, 'init', 'invalid', 'full');
     await fs.appendFile(path.join(changeDir, '.comet.yaml'), 'unknown_root_field: true\n');
 
@@ -502,7 +529,7 @@ describe('status command', () => {
 
   it('prints actionable runtime-eval recovery guidance for valid changes', async () => {
     state(tmpDir, 'init', 'runtime-eval-fail', 'full');
-    await ensureClassicRuntimeRun(path.join(tmpDir, 'openspec', 'changes', 'runtime-eval-fail'));
+    await ensureClassicRuntimeRun(path.join(classicChangesDir(tmpDir), 'runtime-eval-fail'));
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let output: string;
@@ -522,7 +549,7 @@ describe('status command', () => {
   });
 
   it('reports Classic runtime mode from shared diagnostics', async () => {
-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'demo');
+    const changeDir = path.join(classicChangesDir(tmpDir), 'demo');
     state(tmpDir, 'init', 'demo', 'full');
     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
     await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');

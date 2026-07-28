@@ -1,7 +1,7 @@
-import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
 import path from 'path';
 import { Document, parseDocument } from 'yaml';
+import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import {
   CLASSIC_WIRE_KEYS,
   classicStateToDocument,
@@ -17,6 +17,8 @@ import {
   removeRunState,
   type StateDocument,
 } from '../../domains/engine/state.js';
+
+const CLASSIC_STATE_MAX_BYTES = 2 * 1024 * 1024;
 
 function documentRecord(document: Document): StateDocument {
   const value = document.toJS() as unknown;
@@ -85,7 +87,16 @@ function stripLegacyCommandFields(document: Document): boolean {
 async function readDocument(file: string): Promise<Document> {
   let source: string;
   try {
-    source = await fs.readFile(file, 'utf8');
+    source = (
+      await readProtectedProjectFile(
+        path.dirname(file),
+        path.basename(file),
+        CLASSIC_STATE_MAX_BYTES,
+        {
+          label: 'Classic state document',
+        },
+      )
+    ).bytes.toString('utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     return new Document({});
@@ -129,9 +140,7 @@ export async function readClassicState(
   }
 
   if (migrated && shouldMigrate) {
-    const temporary = path.join(changeDir, `.comet.yaml.${randomUUID()}.tmp`);
-    await fs.writeFile(temporary, document.toString(), 'utf8');
-    await fs.rename(temporary, file);
+    await atomicWriteContainedText(file, document.toString(), { containedRoot: changeDir });
   }
 
   return parseClassicStateDocument(documentRecord(document), run);
@@ -145,6 +154,7 @@ export async function readLegacyState(changeDir: string): Promise<LegacyStateSum
 export async function writeClassicState(
   changeDir: string,
   projection: Omit<ClassicStateProjection, 'unknownKeys'> & { unknownKeys?: string[] },
+  options: { beforeCommit?: () => void | Promise<void> } = {},
 ): Promise<void> {
   const file = path.join(changeDir, '.comet.yaml');
   const document = await readDocument(file);
@@ -155,15 +165,10 @@ export async function writeClassicState(
 
   parseClassicStateDocument(documentRecord(document), projection.run ?? null);
 
-  await fs.mkdir(changeDir, { recursive: true });
-  const temporary = path.join(changeDir, `.comet.yaml.${randomUUID()}.tmp`);
-  try {
-    await fs.writeFile(temporary, document.toString(), 'utf8');
-    await fs.rename(temporary, file);
-  } catch (error) {
-    await fs.rm(temporary, { force: true });
-    throw error;
-  }
+  await atomicWriteContainedText(file, document.toString(), {
+    containedRoot: changeDir,
+    beforeCommit: options.beforeCommit,
+  });
 
   // Write Run state to separate file (or remove if no Run)
   if (projection.run) {

@@ -5,6 +5,8 @@ description: "仅在用户明确调用 /comet-hotfix，或由 Comet 根 Skill/ru
 
 # Comet 预设路径：Hotfix
 
+开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+
 快速 bug fix 工作流：open → build → verify → archive。跳过 brainstorming 和完整 plan，适用于行为修复、不涉及新 capability 设计的场景。
 
 **适用条件**（必须全部满足）：
@@ -91,7 +93,7 @@ comet state next <name>
 
 完成 RED 证据后，按 tasks.md 逐个执行任务：
 
-1. 读取 `openspec/changes/<name>/tasks.md`，获取未完成任务列表
+1. 读取 `<classic-change-dir>/tasks.md`，获取未完成任务列表
 2. 对每个未完成任务：
    - 根据任务描述修改代码
    - 运行项目格式化命令（如 `mvn spotless:apply`、`npm run format` 等）
@@ -105,7 +107,7 @@ comet state next <name>
 具体调查、最小失败测试、修复验证和保持当前 change 验证闭环的要求，按 `comet/reference/debug-gate.md` 执行。
 
 **如修复影响已有 spec 验收场景**：
-- 在 `openspec/changes/<name>/specs/<capability>/spec.md` 创建 delta spec
+- 在 `<classic-change-dir>/specs/<capability>/spec.md` 创建 delta spec
 - 仅包含 `## MODIFIED Requirements` 部分
 
 ### 3. 根因消除检查

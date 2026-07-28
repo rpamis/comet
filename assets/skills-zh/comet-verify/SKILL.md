@@ -5,6 +5,8 @@ description: "仅在用户明确调用 /comet-verify，或由 Comet 根 Skill/ru
 
 # Comet 阶段 4：验证（Verify）
 
+开始或恢复前必须先读取并执行 `comet/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+
 ## 前置条件
 
 - 代码已提交（阶段 3 完成）
@@ -154,7 +156,7 @@ comet state transition <change-name> verify-fail
 
 技能加载后，按其指引验证。检查项：
 1. tasks.md 全部任务已完成（`[x]`）
-2. 实现符合 `openspec/changes/<name>/design.md` 高层设计决策
+2. 实现符合 `<classic-change-dir>/design.md` 高层设计决策
 3. 实现符合 Design Doc（`docs/superpowers/specs/` 下的技术设计文档）
 4. 能力规格场景全部通过
 5. proposal.md 目标已满足

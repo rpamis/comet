@@ -1,8 +1,8 @@
-import { promises as fs } from 'fs';
 import path from 'path';
 import { isMap, parseDocument } from 'yaml';
 import type { ClassicCommandHandler } from './classic-cli.js';
 import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
+import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
 import { CLASSIC_WIRE_KEYS, RUN_WIRE_KEYS } from './classic-state.js';
 
 const GREEN = '\u001b[32m';
@@ -53,16 +53,6 @@ function color(code: string, message: string): string {
   return `${code}${message}${RESET}`;
 }
 
-async function exists(file: string): Promise<boolean> {
-  try {
-    await fs.access(file);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
-}
-
 function text(value: unknown): string {
   if (value === null || value === undefined) return '';
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
@@ -94,7 +84,9 @@ export const classicValidateCommand: ClassicCommandHandler = async (args) => {
 
   let source: string;
   try {
-    source = await fs.readFile(yamlFile, 'utf8');
+    source = await readClassicProjectFile(process.cwd(), yamlFile, {
+      label: `Classic state ${label}/.comet.yaml`,
+    });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       fail('.comet.yaml does not exist');
@@ -143,10 +135,26 @@ export const classicValidateCommand: ClassicCommandHandler = async (args) => {
       fail(`verify_failures='${text(value)}' is not a non-negative integer`);
     }
   }
-  for (const field of ['design_doc', 'plan', 'handoff_context'] as const) {
+  for (const field of ['design_doc', 'plan', 'handoff_context', 'verification_report'] as const) {
     const value = text(record[field]);
-    if (value && !(await exists(path.resolve(value)))) {
-      fail(`${field}='${value}' does not exist on disk`);
+    if (!value) continue;
+    if (/^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes('..')) {
+      fail(`${field}='${value}' must be a relative repository path`);
+      continue;
+    }
+    try {
+      if (
+        !(await classicProjectTargetExists(process.cwd(), path.resolve(value), {
+          label: `${field} artifact pointer`,
+          expected: 'file',
+        }))
+      ) {
+        fail(`${field}='${value}' does not exist on disk`);
+      }
+    } catch (error) {
+      fail(
+        `${field}='${value}' is unsafe: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
   for (const field of ['handoff_hash'] as const) {
