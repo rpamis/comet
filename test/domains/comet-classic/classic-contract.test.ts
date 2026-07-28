@@ -174,6 +174,10 @@ function normalizeOutput(value: string, root: string): string {
   const normalizedValue = value
     .replaceAll(root, '<ROOT>')
     .replaceAll(toBashPath(root), '<ROOT>')
+    // The active runtime records an absolute handoff_context while the frozen
+    // launcher recorded the project-relative path. Both point to the same
+    // handoff artifact, so compare the path form used by the frozen contract.
+    .replaceAll('handoff_context=<ROOT>/', 'handoff_context=')
     // The active runtime may list transition events added after the frozen
     // 0.3.9 baseline (e.g. preset-escalate) in the "Valid values:" error line.
     // These are intentional enhancements; strip them so the differential
@@ -187,7 +191,8 @@ function normalizeOutput(value: string, root: string): string {
     const nextLine = lines[index + 1] ?? '';
     if (
       /\[FAIL\] (?:proposal\.md|design\.md|tasks\.md) matches configured language/u.test(line) &&
-      /ENOENT: no such file or directory, open /u.test(nextLine)
+      (/ENOENT: no such file or directory, open /u.test(nextLine) ||
+        /Classic language-check artifact .* does not exist/u.test(nextLine))
     ) {
       index += 1;
       continue;
