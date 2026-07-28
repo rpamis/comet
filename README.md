@@ -602,11 +602,12 @@ Classic uses a decoupled state architecture with separate files:
 | File                                      | Owner    | Purpose                                             |
 | ----------------------------------------- | -------- | --------------------------------------------------- |
 | `.openspec.yaml`                          | OpenSpec | Spec lifecycle, change metadata                     |
-| `openspec/changes/<name>/.comet.yaml`     | Comet    | Workflow phase, execution mode, verification status |
+| `<classic-change-dir>/.comet.yaml`        | Comet    | Workflow phase, execution mode, verification status |
 | `.comet/run-state.json`                   | Engine   | Run identity and execution state (machine-owned)    |
 | `.comet/state-events.jsonl`               | Comet    | Append-only state transition audit log              |
 
 Each change-level `.comet.yaml` stores Classic workflow state and only keeps `run_id` as the link to the Engine Run.
+`<classic-change-dir>` is resolved from the project's `classic.artifact_layout`; use `comet classic root show` to inspect the current OpenSpec root.
 Machine-owned Engine state lives in the change's `.comet/run-state.json` with camelCase fields such as `currentStep`,
 `status`, and `iteration`. Legacy Run fields left in YAML are migrated after compatibility reads, and `skill` is no
 longer a valid current `.comet.yaml` field. Project defaults live in `.comet/config.yaml`.
