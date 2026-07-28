@@ -122,6 +122,8 @@ async function configureActiveClassicLegacyLayout(
 ): Promise<void> {
   if (sourceScripts !== activeScripts) return;
   await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+  await fs.mkdir(path.join(root, 'openspec', 'changes', 'archive'), { recursive: true });
+  await fs.mkdir(path.join(root, 'openspec', 'specs'), { recursive: true });
   await fs.writeFile(
     path.join(root, '.comet', 'config.yaml'),
     [
@@ -134,6 +136,7 @@ async function configureActiveClassicLegacyLayout(
     ].join('\n'),
     'utf8',
   );
+  await fs.writeFile(path.join(root, 'openspec', 'config.yaml'), 'schema: spec-driven\n', 'utf8');
 }
 
 function runScript(
