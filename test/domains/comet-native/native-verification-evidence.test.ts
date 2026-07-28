@@ -15,11 +15,14 @@ const contract = buildNativeContractSnapshot({
   briefMarkdown: '# Acceptance examples\n- The command succeeds.\n- Failure is visible.\n',
   specs: [],
 });
+const requiredReceiptRef = `runtime/evidence/receipts/${'b'.repeat(64)}.json`;
+const reviewReceiptRef = `runtime/evidence/receipts/${'c'.repeat(64)}.json`;
 
 function evidenceForAll() {
   return contract.acceptance.map((criterion) => ({
     acceptance_id: criterion.id,
-    evidence_refs: [`tests/${criterion.id}.txt`],
+    status: 'passed' as const,
+    evidence_refs: [`runtime/evidence/receipts/${criterion.id.slice('acceptance-'.length)}.json`],
   }));
 }
 
@@ -82,13 +85,16 @@ describe('Native acceptance evidence trace', () => {
     expect(() =>
       buildTrace([
         ...evidenceForAll(),
-        { acceptance_id: `acceptance-${'f'.repeat(64)}`, evidence_refs: ['tests/no.txt'] },
+        {
+          acceptance_id: `acceptance-${'f'.repeat(64)}`,
+          evidence_refs: [`runtime/evidence/receipts/${'f'.repeat(64)}.json`],
+        },
       ]),
     ).toThrow('unknown acceptance ID');
     expect(() => buildTrace([first, first])).toThrow('repeats acceptance ID');
     expect(() =>
       buildTrace([{ ...first, skipped_reason: 'not run' }, evidenceForAll()[1]]),
-    ).toThrow('exactly one');
+    ).toThrow('invalid v2 evidence state');
   });
 
   it('bounds missing-coverage diagnostics instead of echoing every acceptance ID', () => {
@@ -114,7 +120,12 @@ describe('Native acceptance evidence trace', () => {
 
   it('preserves an explicit skipped reason without calling it evidence', () => {
     const entries = evidenceForAll();
-    entries[0] = { ...entries[0], evidence_refs: [], skipped_reason: 'Platform unavailable' };
+    entries[0] = {
+      ...entries[0],
+      status: 'failed',
+      evidence_refs: [],
+      skipped_reason: 'Platform unavailable',
+    };
     const trace = buildTrace(entries);
 
     expect(trace).toMatchObject({ total: 2, evidenced: 1, skipped: 1 });
@@ -123,7 +134,7 @@ describe('Native acceptance evidence trace', () => {
   it('rejects sensitive refs and deeply invalid traces even when their self-hash is refreshed', () => {
     const sensitive = evidenceForAll();
     sensitive[0] = { ...sensitive[0], evidence_refs: ['runtime/forged-receipt.json'] };
-    expect(() => buildTrace(sensitive)).toThrow('native-runtime');
+    expect(() => buildTrace(sensitive)).toThrow('typed v2 receipt');
 
     const trace = buildTrace();
     const malformed = structuredClone(trace) as typeof trace & {
@@ -145,7 +156,7 @@ describe('Native acceptance evidence trace', () => {
         buildNativeAcceptanceEvidenceTrace(contract.acceptance, evidence, {
           nativeRootRef: 'docs/comet',
         }),
-      ).toThrow('sensitive');
+      ).toThrow('typed v2 receipt');
     },
   );
 });
@@ -196,6 +207,8 @@ describe('Native partial allowance and verification envelope', () => {
       reportRef: 'verification.md',
       reportHash: 'd'.repeat(64),
       acceptanceTrace: trace,
+      requiredReceiptRefs: [requiredReceiptRef],
+      independentReviewReceiptRef: reviewReceiptRef,
       now: new Date('2026-07-17T00:00:00.000Z'),
     });
     expect(complete).toMatchObject({ freshness: 'complete', partialAllowanceRef: null });
@@ -216,6 +229,8 @@ describe('Native partial allowance and verification envelope', () => {
         reportRef: 'verification.md',
         reportHash: 'd'.repeat(64),
         acceptanceTrace: trace,
+        requiredReceiptRefs: [requiredReceiptRef],
+        independentReviewReceiptRef: reviewReceiptRef,
       }),
     ).toThrow('requires a confirmed allowance');
 
@@ -242,6 +257,8 @@ describe('Native partial allowance and verification envelope', () => {
       reportRef: 'verification.md',
       reportHash: 'd'.repeat(64),
       acceptanceTrace: trace,
+      requiredReceiptRefs: [requiredReceiptRef],
+      independentReviewReceiptRef: reviewReceiptRef,
       partialAllowance: {
         ref: `runtime/evidence/allowances/${allowance.allowanceHash}.json`,
         allowance,
@@ -283,6 +300,8 @@ describe('Native partial allowance and verification envelope', () => {
         reportRef: 'verification.md',
         reportHash: 'd'.repeat(64),
         acceptanceTrace: trace,
+        requiredReceiptRefs: [requiredReceiptRef],
+        independentReviewReceiptRef: reviewReceiptRef,
       }),
     ).toThrow('does not match the verification contract');
   });

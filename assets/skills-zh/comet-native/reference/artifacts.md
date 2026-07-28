@@ -3,7 +3,9 @@
 ## 目录
 
 ```text
+<controller-home>/.comet/native-controller-trust.json # 项目外、由 controller/owner 预置的只读 trust root
 <project>/.comet/config.yaml
+<project>/.comet/native-review-trust.json # controller 签名、change 创建前固定的公开 v2 policy
 <project>/.comet/current-change.json       # Native/Classic 共享的当前需求归属
 <artifact-root>/comet/
   specs/<capability>/spec.md
@@ -22,6 +24,8 @@
       artifacts.json                 # 可选；Run artifact refs
       transition.json                # 可选；未完成阶段推进日志
       checkpoint-journal.json        # 可选；未完成 progress checkpoint 日志
+      trust/
+        review-policy-<policy-hash>.json # controller 签名的创建时 policy 快照
       checkpoints/
         latest.json                  # 最近阶段边界 checkpoint
         progress.json
@@ -32,6 +36,8 @@
         allowances/<sha256>.json
         verifications/<sha256>.json
         check-receipts/<sha256>.json
+        receipts/<sha256>.json
+        waivers/<sha256>.json
   archive/YYYY-MM-DD-<change-name>/
   runtime/
     locks/
@@ -40,7 +46,7 @@
       events.jsonl
 ```
 
-`artifact-root` 由项目配置唯一指定。Native 不使用隐藏的 change 目录，也不从其他需求目录发现状态。项目级 `.comet/config.yaml` 是持久配置例外；`root move` 中断恢复期间还可能在源/目标 artifact root 旁出现 Runtime 管理的临时 staging 或 quarantine，事务收口后会清除。它们不是第二个可写 Native change 根。
+`artifact-root` 由项目配置唯一指定。Native 不使用隐藏的 change 目录，也不从其他需求目录发现状态。项目外的 `native-controller-trust.json` 把项目物理根 hash 绑定到 controller 公开 identity；Native 命令只读它，不创建、不修改。该文件必须处于当前 Agent 无法替换的宿主只读边界：POSIX 要求文件及父目录链由不同 UID 持有且不可写，Windows 要求宿主提供 Runtime 可验证的只读挂载能力。项目级 `.comet/config.yaml` 和公开的 `.comet/native-review-trust.json` 是持久配置例外；后者使用 `comet.native.review-trust-policy.v2`，保存 controller 签名、implementation key ID 以及预信任 reviewer/waiver signer 公开 identity，不保存任何私钥。`root move` 中断恢复期间还可能在源/目标 artifact root 旁出现 Runtime 管理的临时 staging 或 quarantine，事务收口后会清除。它们不是第二个可写 Native change 根。
 
 ## 项目配置
 
@@ -89,6 +95,7 @@ native:
 schema: comet.native.v3
 minimum_runtime_version: 3
 revision: 1
+verification_protocol: signed-v2
 name: add-sentence-counting
 language: zh-CN
 phase: shape
@@ -110,7 +117,9 @@ created_at: 2026-07-14
 run_id: null
 ```
 
-不要直接编辑 Runtime 管理字段。`phase`、`revision`、`approval`、`approved_contract_hash`、`spec_changes`、operation、`base_hash`、三个 evidence ref、`run_id` 和 `archived` 都由 Runtime 管理。
+不要直接编辑 Runtime 管理字段。`phase`、`revision`、`verification_protocol`、`approval`、`approved_contract_hash`、`spec_changes`、operation、`base_hash`、三个 evidence ref、`run_id` 和 `archived` 都由 Runtime 管理。
+
+新 change 固定为 `signed-v2`。创建 baseline 的 `creation` binding 保存 policy hash、`runtime/trust/review-policy-<policy-hash>.json` 的 ref/hash，以及完整 `comet.native.creation-authorization.v1`。authorization 由外部 controller 签名并绑定项目物理根 hash、policy、protocol 与 change name；读取状态、Verify 和 Archive 时都会相对 controller-owned trust root 重验。只有 controller store 明确列出的旧 change 才读取为 `legacy-v1`；schema migration 也显式保留该协议。marker、创建 binding、policy 快照或外部 trust 不一致会使 status、next 与 Archive 失败关闭，不能通过手改 YAML、baseline 或项目内 policy 绕过 signed receipt/review。
 
 `approval: confirmed` 表示 Runtime 已记录用户对当前共享理解的明确确认。`implicit` 只用于兼容旧 change，不代表用户已经确认；处于 Build 的旧 `implicit` change 必须确认后才能进入 Verify。`approved_contract_hash` 把 approval 绑定到当时的 brief/spec contract，contract 发生变化后也必须由用户重新确认。需要改变需求时，只更新 brief 和 `specs/<capability>/spec.md`；删除 capability 使用 `comet native spec remove`，再由命令检查并推进。
 
@@ -171,24 +180,22 @@ Runtime 最多从 brief 与拟议规格合计派生 1024 个验收项，超出�
 [
   {
     "acceptance_id": "acceptance-<sha256>",
+    "status": "passed",
     "evidence_refs": [
-      "src/feature.ts"
+      "runtime/evidence/receipts/<sha256>.json"
     ]
   },
   {
     "acceptance_id": "acceptance-<sha256>",
+    "status": "waived",
     "evidence_refs": [],
-    "waiver": {
-      "reason": "该平台当前不可用。",
-      "risk": "该平台路径尚未执行。",
-      "alternative_evidence_refs": ["test/platform-fallback.md"]
-    }
+    "waiver_ref": "runtime/evidence/waivers/<sha256>.json"
   }
 ]
 <!-- comet-native:acceptance-evidence:end -->
 ```
 
-数组按 `acceptance_id` 排序，`evidence_refs` 也排序。每项要么给出至少一个项目相对 evidence ref，要么使用空数组加结构化 `waiver`；旧 `skipped_reason` 只能如实表达未完成，不能用于 pass。waiver 必须包含原因、风险与至少一条替代证据，并在 Verify 使用 `--confirmed --confirm-waiver`。不能同时给证据和 waiver，也不能引用绝对路径、Native 外部路径、`.git` 或 `.env*`。
+数组按 `acceptance_id` 排序，`evidence_refs` 也排序。`passed` 必须引用至少一个当前 typed receipt；`failed` 使用空 refs 与非空 `skipped_reason`；`waived` 使用空 refs 与一个 signed `waiver_ref`。waiver receipt 绑定 blocking receipt、原因、风险、替代 typed receipts、当前 bindings 与预信任 waiver signer。三种状态不能混用字段，也不能引用绝对路径、旧项目文件 evidence ref、`.git`、`.env*` 或其他 Native runtime 路径。
 
 ```text
 comet native evidence format [--entries <path>]
@@ -204,13 +211,15 @@ comet native evidence format [--entries <path>]
   - `physical-selection-changed` 和 `physical-enumeration-limit`：稳定或缩小项目树后重试，不能授权为 partial scope。
   - 任何情况都不能手改 evidence 或猜测未枚举路径。
 - `evidence/scopes/`：Build 离开时由 baseline、当前快照、声明产物和 contract 派生的 implementation scope。当前快照不完整时不会猜测删除；变化过多时只展开有界明细，其余由带数量与内容 hash 的 `scope-detail-overflow` 表示。scope 不完整时 Runtime 停止；用户显式接受后才生成 `allowances/`。
-- `evidence/verifications/`：Verify 结论的 envelope，绑定 Runtime 身份、change revision、contract、acceptance coverage、scope、报告 hash 和可选 check receipt。任一绑定事实变化都会 stale。
+- `evidence/verifications/`：Verify 结论的 v2 envelope，绑定 change revision、contract、完整 acceptance matrix、scope、报告 hash、required receipt refs、验收 receipt refs、waiver refs 和 independent review ref。Verify 与 Archive 共用 graph validator；任一绑定事实变化都会 stale。
 - `evidence/check-receipts/`：`comet native check` 的内置策略结果。它只保存 policy/version、scope/snapshot 绑定、有界 issue 与计数，不保存文件内容，也不是测试完整性的证明。
+- `evidence/receipts/`：typed v2 receipt。`automated-check` 保存真实 executable/argv/exit/timeout、worktree 与 after-fence；`static-inspection` 绑定内置 check；`manual-evidence` 保存已确认步骤与观察；`implementation-attestation` 由预信任 implementation signer 签名。`independent-review` 引用该 attestation，由不同的外部预信任 reviewer 签署 canonical acceptance matrix 与完整 evidence graph；graph 包含 reviewed receipt/waiver refs、automated/static replay refs 和 manual attestation refs。reviewer 路径会重放 automated receipt、重跑 static inspection，并对 manual receipt 明确 attestation；review 不能充当直接 acceptance evidence。
+- `evidence/waivers/`：每个 acceptance 一份 signed waiver，绑定一个当前非 passed blocking receipt、原因、风险、替代 receipt 与预信任 signer；waiver 不能覆盖其他 acceptance，也不能让 required global check 在只覆盖部分 acceptance 时通过。
 - `checkpoints/`：阶段内恢复摘要与真实产物 manifest。checkpoint 会递增 revision，但不改变 phase，也不能代替 brief、规格、scope 或 verification。
 
 所有 hash ref 都由 Runtime 写入并在读取时重算。不要复制旧 ref 到新状态、手改 JSON 或把 receipt 当作 pass；`next`、status 和 Archive 会重新读取并检查新鲜度。
 
-Evidence retention 只能由 doctor 显式执行，不在普通工作流中后台删除文件。只读 doctor 报告候选；`doctor --repair` 只清理 active change 中至少 30 天、每种 evidence kind 最新 32 份之外，并且能从当前 state refs 及其依赖闭包证明未引用的 snapshot、scope、allowance、verification 和 check receipt。
+Evidence retention 只能由 doctor 显式执行，不在普通工作流中后台删除文件。只读 doctor 报告候选；`doctor --repair` 只清理 active change 中至少 30 天、每种 evidence kind 最新 32 份之外，并且能从当前 state refs 及其依赖闭包证明未引用的 snapshot、scope、allowance、verification、check receipt、typed receipt 和 waiver。
 
 候选按 dependents-before-dependencies 排序。每个文件先在父链与身份复核后改名到同目录唯一 `.gc` quarantine，再复核并删除。中断的 quarantine 会由后续 doctor 发现；显式 repair 仅在原路径不存在且内容与身份有效时无覆盖恢复。
 

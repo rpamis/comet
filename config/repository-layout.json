@@ -116,5 +116,9 @@
   ],
   "platformModules": ["fs", "install", "paths", "process", "version"],
   "scriptModules": ["benchmark", "build", "install", "lib", "lint", "release"],
+  "allowedCodeFiles": [
+    "eval/scaffold/shell/native-review-signer-daemon.mjs",
+    "eval/scaffold/shell/native-review-verifier-daemon.mjs"
+  ],
   "testRoots": ["test"]
 }

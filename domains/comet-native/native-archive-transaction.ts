@@ -35,6 +35,9 @@ export interface NativeArchiveTransactionHooksV2 {
     operation: NativeArchiveTransactionOperationV2,
     completedCount: number,
   ) => void | Promise<void>;
+  beforeArchiveChangeMove?: (
+    operation: NativeArchiveTransactionOperationV2,
+  ) => void | Promise<void>;
   afterFinalizationStarted?: (journal: NativeArchiveTransactionJournalV2) => void | Promise<void>;
   afterProtectedCopySourceParentCaptured?: (
     kind: 'stage' | 'backup' | 'apply',
@@ -1155,6 +1158,9 @@ export async function applyNativeArchiveTransactionV2(
   let completedCount = completed.size;
   for (const operation of current.operations) {
     if (completed.has(operation.id)) continue;
+    if (operation.id === 'archive-change') {
+      await hooks?.beforeArchiveChangeMove?.(operation);
+    }
     await appendNativeTransactionEvent(paths, current.id, 'operation-started', operation.id);
     await applyOperation(paths, current, operation, hooks);
     await appendNativeTransactionEvent(paths, current.id, 'operation-completed', operation.id);

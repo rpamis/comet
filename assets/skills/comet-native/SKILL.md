@@ -113,9 +113,17 @@ This establishes the project-wide shared selection. Do not add a `resume` comman
 
 If several active changes exist and the selection does not identify the target uniquely, ask the user to choose. Create a new change only when disk facts prove that no active change exists:
 
+Before creating a change, the host/project owner must provision the controller trust root at `~/.comet/native-controller-trust.json` in an external read-only boundary the current Agent cannot replace, binding the physical project root to the controller's public identity. A regular POSIX file must be owned by a different UID, and neither the file nor its parent chain may be writable by the current process. Windows requires a host-provided read-only mount capability trusted by the Runtime; a same-user local file fails closed. Native commands only read this store; they never create or modify it. The external controller then signs the public in-project `.comet/native-review-trust.json` v2 policy and issues a creation authorization for the exact change. The policy fixes the public Ed25519 identities for implementation, review, and waiver signing. The controller, implementation, every reviewer, and every waiver signer must use globally distinct keys.
+
+The current Agent must not hold, request, or read controller, reviewer, or waiver-signer private keys. It must not run `trust policy` or `trust authorize`, or sign on behalf of an external reviewer or waiver signer. Give the current Agent only public identities, the creation authorization, and receipt refs. Each external role injects its private-key environment variable into a one-shot owner-controlled signer/helper and clears it immediately after the command. Private keys must never enter the current session, project, Native artifacts, command output, or reports. Remain blocked when an external signature is missing: provide the exact pending command and wait for its owner instead of generating a replacement key, reusing the implementation key, forging a receipt, or downgrading to legacy.
+
 ```text
-comet native new <change-name> --language en
+comet native new <change-name> \
+  --creation-authorization <controller-owned-path> \
+  --language en
 ```
+
+`new` creates `verification_protocol: signed-v2` by default. While holding the mutation lock, it validates the external controller trust, the controller-signed policy, and a creation authorization bound to the physical project root, policy hash, protocol, and change name, then stores a creation-time policy snapshot. Any missing or invalid prerequisite fails before the change directory is created. An old active change remains readable and completable as `legacy-v1` only when the controller store explicitly lists it as legacy. Never edit the marker or downgrade a new change to bypass signed-v2.
 
 Derive the name as lowercase kebab-case. Use only the configured `<artifact-root>/comet/`; do not scan or modify another workflow's directories.
 
@@ -213,7 +221,7 @@ Never edit snapshots or evidence, guess unenumerated paths, or present partial s
 
 Run verification appropriate to the Acceptance examples, complete target specifications, and risk. Record actual commands, results, skipped checks, specification consistency, known limitations, and the conclusion. Never record an unrun check as passed.
 
-In the fixed acceptance evidence block of `verification.md`, use every Runtime-provided `acceptance_id`. Passed items record project-relative evidence refs; an unfinished item cannot treat `skipped_reason` as a pass. A real exception uses a structured `waiver` with its reason, risk, and alternative evidence, then requires explicit confirmation at Verify. Serialize the entries with `comet native evidence format` and paste the result; never hand-format this JSON — a hand-typed block can almost never match the canonical serialization byte-for-byte. See the artifact reference for the exact format.
+In the fixed acceptance evidence block of `verification.md`, use every Runtime-provided `acceptance_id`. Every `passed` item references a typed acceptance receipt on the current bindings. Use `receipt automated` for a real command, or `receipt manual --confirmed` only for genuine human observation with steps, observations, and a responsible actor. A failed or skipped result is not a pass. For a real waiver, preserve the blocking receipt and give the reason, risk, and alternative typed receipt to the external pre-trusted waiver signer, who runs `receipt waive`; the current Agent receives only the `waiver_ref`, and the report entry uses `status: waived` with that ref. Serialize entries with `comet native evidence format`; never hand-format the JSON.
 
 When you need reproducible text-hygiene evidence, run the built-in read-only check:
 
@@ -223,23 +231,74 @@ comet native check <change-name>
 
 This command scans a bounded set of regular project text files in the current implementation scope/current snapshot. It does not invoke Git, a shell, project scripts, external processes, or external Skills. It does not modify project files, phase, Run, or trajectory; it writes a content-addressed receipt. It does not replace risk-based project tests.
 
-`pass` requires a current check receipt bound to the scope, snapshot, and contract; when `--receipt` is omitted, Runtime creates the current built-in check receipt under its lock. A required failed, skipped, scan-limited, timed-out, or invalid check blocks it. A high-risk change (Native/Entry runtime, path/transaction/migration, security boundary, installation, or routing) also requires an independent review: its reviewer differs from the implementation author, covers every acceptance ID, checks unified I/O, adversarial paths, generated assets, and a real lifecycle Eval, and has no unresolved P0/P1 finding. Generate the review hash through Runtime first:
+`pass` requires a typed required-check receipt bound to the current scope, snapshot, and contract. When `--receipt` is omitted, Runtime runs its built-in `check` under the lock and creates a typed static-inspection receipt. A required failed, skipped, blocked, scan-limited, timed-out, or invalid result blocks the pass. `receipt automated` defaults to 120 seconds and accepts at most 3,600,000 milliseconds; timeout terminates the process tree and produces a blocked receipt.
+
+Every signed-v2 pass requires an independent acceptance-applicability review. The Runtime first creates an implementation preparation bound to the current change/revision/contract/scope/snapshot, complete acceptance set, and run/scope execution ID. An owner-controlled pure signer reads only the complete preparation and returns a detached signature; the Runtime then revalidates current state and finalizes without the private key:
 
 ```text
-comet native review format <change-name> --input review-draft.json > review.json
+comet native receipt implement <change-name> prepare \
+  --identity <implementation-identity.json> --output <implementation-preparation.json>
+comet native receipt implement sign \
+  --preparation <implementation-preparation.json> \
+  --identity <implementation-identity.json> \
+  --private-key-env <implementation-secret-env> \
+  --output <implementation-attestation.json>
+comet native receipt implement <change-name> finalize \
+  --preparation <implementation-preparation.json> \
+  --attestation <implementation-attestation.json> \
+  --confirmed
 ```
 
-After writing the report, run:
+Finish the final `verification.md`, then give the code, specifications, complete acceptance matrix, implementation attestation, required-check receipt, and all typed evidence/waiver refs to an external pre-trusted reviewer distinct from the implementation identity. Runtime `prepare` freezes the review inputs. In an isolated environment, the external reviewer runs `approve`, independently replays automated/static evidence, explicitly attests every manual receipt, records findings, and confirms acceptance applicability. A pure signer signs only the complete approval, and a private-key-free Runtime finalizes it. The current implementation Agent cannot run reviewer approval/signing or sign for the reviewer:
 
 ```text
-comet native next <change-name> --summary <summary> --result pass|fail --report verification.md [--receipt <ref>] [--review review.json] [--confirmed --confirm-waiver]
+comet native receipt review <change-name> prepare \
+  --implementation-receipt <implementation-receipt-ref> \
+  --report verification.md \
+  --required-receipt <required-check-receipt-ref> \
+  --identity <reviewer-identity.json> \
+  [--unified-io-receipt <typed-receipt-ref> \
+   --adversarial-paths-receipt <typed-receipt-ref> \
+   --generated-assets-receipt <typed-receipt-ref> \
+   --lifecycle-eval-receipt <typed-receipt-ref>] \
+  --output <review-preparation.json>
+comet native receipt review <change-name> approve \
+  --preparation <review-preparation.json> \
+  [--attest-manual <manual-receipt-ref>]... \
+  [--findings <findings.json>] \
+  --checked-acceptance-applicability \
+  --output <review-approval.json>
+comet native receipt review sign \
+  --approval <review-approval.json> \
+  --identity <reviewer-identity.json> \
+  --private-key-env <reviewer-secret-env> \
+  --output <review-attestation.json>
+comet native receipt review <change-name> finalize \
+  --preparation <review-preparation.json> \
+  --approval <review-approval.json> \
+  --attestation <review-attestation.json> \
+  --confirmed
+```
+
+The review covers the complete current acceptance set in the final report and has no unresolved P0/P1 finding. On the reviewer path, the Runtime re-executes automated receipts, reruns static inspection, and requires explicit reviewer attestation for manual receipts. The signature binds the canonical acceptance matrix, complete evidence/waiver graph, and replay refs. A high-risk change (`app/`, `domains/`, `platform/`, `config/`, bundled Skills/manifest, relevant runtime/build/install/release scripts, dependency manifests, and incomplete or deletion-containing scopes) must provide a real typed receipt for each unified-I/O, adversarial-path, generated-asset, and real lifecycle Eval check; boolean self-attestation is insufficient. Verify and Archive share the same graph validator, so any report, receipt, or graph change makes the review stale. A signed review is a trusted accountability boundary for these review facts, not a formal proof of semantic correctness.
+
+Inject the external reviewer's private-key environment variable only into the project-agnostic `receipt review sign` process and clear it immediately afterward. That signer performs no filesystem, project, Git, or subprocess access. `approve` must be run outside the current Agent by a real reviewer; manual confirmations supplied by the current Agent cannot become reviewer attestations. Remain blocked when an external approval or signature is missing. The current Agent cannot self-sign or use a review as direct acceptance evidence. After review, pass every acceptance receipt from the report through `--evidence-receipt`, and pass the review only through the independent-review parameter:
+
+```text
+comet native next <change-name> --summary <summary> \
+  --result pass|fail \
+  --report verification.md \
+  [--receipt <required-receipt-ref>] \
+  [--evidence-receipt <acceptance-receipt-ref>]... \
+  [--waiver <waiver-ref>]... \
+  [--independent-review-receipt <review-receipt-ref>]
 ```
 
 `fail` returns to Build. Fix the evidenced problem, verify again, and submit stable, non-sensitive failure facts through `--failure-category` and `--failed-check`.
 
 The second identical failure warns. The third with no scope progress stops. A real scope change ends the current repair episode. If scope has not changed but one concrete new hypothesis exists, use the signature returned by status with `--override-repair` once. Never repeat an override for the same signature. At a repair stop, ask the user to decide; do not weaken checks or fabricate a pass.
 
-After entering Archive, changes to the brief, specifications, implementation scope, report, receipt, waiver, or review make the evidence stale. Archive preview and its lock-held commit both revalidate these bound facts. Follow the Runtime continuation back to Build, reseal the scope, and verify again. Do not reuse a stale pass.
+After entering Archive, changes to the brief, specifications, implementation scope, report, receipt, waiver, review trust policy, or review make the evidence stale. Archive preview, the fence before its first transaction operation, and the final freshness fence after spec operations but before moving the change all revalidate bound facts. Follow the Runtime continuation back to Build, reseal the scope, and verify again. Do not reuse a stale pass.
 
 ## Archive
 

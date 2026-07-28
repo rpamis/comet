@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -17,39 +18,97 @@ import {
   readNativeChange,
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
+import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
+import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { generateNativeReviewKeyPair } from '../../../domains/comet-native/native-review-identity.js';
+import { buildNativeReviewTrustPolicy } from '../../../domains/comet-native/native-review-trust.js';
 import { readNativeBaselineManifest } from '../../../domains/comet-native/native-snapshot.js';
+import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import {
   NATIVE_CHANGE_SCHEMA,
   NATIVE_RUNTIME_PROTOCOL_VERSION,
   type NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
+import {
+  authorizeNativeTestChange,
+  installNativeControllerTrust,
+} from '../../helpers/native-controller-trust.js';
 
 describe('Native change store', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
+  const controller = generateNativeReviewKeyPair();
+  let cleanupControllerTrust: (() => Promise<void>) | null;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-change-'));
     paths = await nativeProjectPaths(projectRoot, '.');
+    cleanupControllerTrust = null;
   });
 
   afterEach(async () => {
+    await cleanupControllerTrust?.();
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  async function installReviewTrustPolicy(name: string) {
+    cleanupControllerTrust = await installNativeControllerTrust({
+      projectRoot,
+      controller,
+    });
+    const implementation = generateNativeReviewKeyPair();
+    const reviewer = generateNativeReviewKeyPair();
+    const waiver = generateNativeReviewKeyPair();
+    const policy = buildNativeReviewTrustPolicy({
+      controllerIdentity: controller.identity,
+      controllerPrivateKey: controller.privateKey,
+      implementationKeyId: implementation.identity.keyId,
+      trustedReviewers: [reviewer.identity],
+      trustedWaiverSigners: [waiver.identity],
+    });
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'native-review-trust.json'),
+      `${JSON.stringify(policy, null, 2)}\n`,
+    );
+    return authorizeNativeTestChange({
+      projectRoot,
+      controller,
+      policy,
+      name,
+    });
+  }
+
+  it('requires a trust policy before creating a default signed-v2 change', async () => {
+    await expect(
+      createNativeChange({
+        paths,
+        name: 'missing-trust-policy',
+        language: 'en',
+        verificationProtocol: 'signed-v2',
+      }),
+    ).rejects.toThrow('require a review trust policy');
+    await expect(
+      fs.access(path.join(paths.changesDir, 'missing-trust-policy')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('creates the visible Native change layout without claiming Shape is complete', async () => {
+    const creationAuthorization = await installReviewTrustPolicy('add-authentication');
     const state = await createNativeChange({
       paths,
       name: 'add-authentication',
       language: 'zh-CN',
       now: new Date('2026-07-14T00:00:00Z'),
+      creationAuthorization,
     });
 
     expect(state).toMatchObject({
       schema: NATIVE_CHANGE_SCHEMA,
       minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
       revision: 1,
+      verification_protocol: 'signed-v2',
       phase: 'shape',
       approval: null,
       approved_contract_hash: null,
@@ -72,8 +131,120 @@ describe('Native change store', () => {
       schema: 'comet.native.content-snapshot.v1',
       origin: 'change-created',
       complete: true,
-      entries: [],
+      entries: [
+        expect.objectContaining({
+          path: '.comet/native-review-trust.json',
+        }),
+      ],
     });
+  });
+
+  it('fails status, next, and archive closed when signed-v2 is edited to legacy-v1', async () => {
+    const creationAuthorization = await installReviewTrustPolicy('downgrade-attempt');
+    const state = await createNativeChange({
+      paths,
+      name: 'downgrade-attempt',
+      language: 'en',
+      creationAuthorization,
+    });
+    const stateFile = path.join(paths.changesDir, state.name, 'comet-state.yaml');
+    await fs.writeFile(
+      stateFile,
+      (await fs.readFile(stateFile, 'utf8')).replace(
+        'verification_protocol: signed-v2',
+        'verification_protocol: legacy-v1',
+      ),
+    );
+
+    const status = await inspectNativeStatus(paths, state.name);
+    expect(status).toMatchObject({
+      phase: 'invalid',
+      nextCommand: null,
+      archiveReady: false,
+      error: expect.stringContaining('does not match its creation baseline'),
+    });
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: state.name,
+        clarificationMode: 'adaptive',
+        evidence: { summary: 'Attempt to bypass signed review.' },
+      }),
+    ).rejects.toThrow('does not match its creation baseline');
+    await expect(inspectNativeArchivePreflight({ paths, name: state.name })).rejects.toThrow(
+      'does not match its creation baseline',
+    );
+  });
+
+  it('rejects a synchronized state, baseline, policy, and attacker-owner downgrade', async () => {
+    const creationAuthorization = await installReviewTrustPolicy('forged-downgrade');
+    const state = await createNativeChange({
+      paths,
+      name: 'forged-downgrade',
+      language: 'en',
+      creationAuthorization,
+    });
+    const attackerController = generateNativeReviewKeyPair();
+    const attackerImplementation = generateNativeReviewKeyPair();
+    const attackerReviewer = generateNativeReviewKeyPair();
+    const attackerWaiver = generateNativeReviewKeyPair();
+    const forgedPolicy = buildNativeReviewTrustPolicy({
+      controllerIdentity: attackerController.identity,
+      controllerPrivateKey: attackerController.privateKey,
+      implementationKeyId: attackerImplementation.identity.keyId,
+      trustedReviewers: [attackerReviewer.identity],
+      trustedWaiverSigners: [attackerWaiver.identity],
+    });
+    const forgedPolicyText = `${JSON.stringify(forgedPolicy, null, 2)}\n`;
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'native-review-trust.json'),
+      forgedPolicyText,
+    );
+    const baselineFile = path.join(
+      paths.changesDir,
+      state.name,
+      'runtime',
+      'baseline-manifest.json',
+    );
+    const baseline = JSON.parse(await fs.readFile(baselineFile, 'utf8')) as {
+      origin: string;
+      creation?: unknown;
+      entries: Array<{ path: string; hash: string; size: number }>;
+    };
+    baseline.origin = 'legacy-migration';
+    delete baseline.creation;
+    const policyEntry = baseline.entries.find(
+      (entry) => entry.path === '.comet/native-review-trust.json',
+    )!;
+    policyEntry.hash = createHash('sha256').update(forgedPolicyText).digest('hex');
+    policyEntry.size = Buffer.byteLength(forgedPolicyText);
+    await fs.writeFile(baselineFile, `${JSON.stringify(baseline, null, 2)}\n`);
+    const stateFile = path.join(paths.changesDir, state.name, 'comet-state.yaml');
+    await fs.writeFile(
+      stateFile,
+      (await fs.readFile(stateFile, 'utf8')).replace(
+        'verification_protocol: signed-v2',
+        'verification_protocol: legacy-v1',
+      ),
+    );
+
+    const status = await inspectNativeStatus(paths, state.name);
+    expect(status).toMatchObject({
+      phase: 'invalid',
+      nextCommand: null,
+      archiveReady: false,
+      error: expect.stringContaining('controller-backed'),
+    });
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: state.name,
+        evidence: { summary: 'Attempt a fully rehashed downgrade.' },
+      }),
+    ).rejects.toThrow('controller-backed');
+    await expect(inspectNativeArchivePreflight({ paths, name: state.name })).rejects.toThrow(
+      'controller-backed',
+    );
   });
 
   it('fails at change creation when the baseline snapshot is incomplete', async () => {
@@ -86,7 +257,12 @@ describe('Native change store', () => {
     );
 
     await expect(
-      createNativeChange({ paths, name: 'incomplete-baseline', language: 'en' }),
+      createNativeChange({
+        paths,
+        name: 'incomplete-baseline',
+        language: 'en',
+        verificationProtocol: 'legacy-v1',
+      }),
     ).rejects.toMatchObject({
       name: 'NativeBaselineIncompleteError',
       code: 'native-baseline-incomplete',
@@ -110,6 +286,7 @@ describe('Native change store', () => {
       paths,
       name: 'large-baseline',
       language: 'en',
+      verificationProtocol: 'legacy-v1',
     });
 
     expect(await readNativeBaselineManifest(paths, state.name)).toMatchObject({
@@ -135,7 +312,12 @@ describe('Native change store', () => {
     await fs.writeFile(path.join(projectRoot, 'dataset.bin'), Buffer.alloc(1025, 0x61));
 
     await expect(
-      createNativeChange({ paths, name: 'budget-too-small', language: 'en' }),
+      createNativeChange({
+        paths,
+        name: 'budget-too-small',
+        language: 'en',
+        verificationProtocol: 'legacy-v1',
+      }),
     ).rejects.toMatchObject({
       name: 'NativeBaselineIncompleteError',
       effectiveLimits: expect.objectContaining({
@@ -150,6 +332,7 @@ describe('Native change store', () => {
       paths,
       name: 'budget-raised',
       language: 'en',
+      verificationProtocol: 'legacy-v1',
     });
 
     expect(await readNativeBaselineManifest(paths, state.name)).toMatchObject({
@@ -166,20 +349,33 @@ describe('Native change store', () => {
   });
 
   it('reads older v3 state without an approval hash and canonicalizes it to null', async () => {
-    const state = await createNativeChange({ paths, name: 'legacy-v3-state', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'legacy-v3-state',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const file = path.join(paths.changesDir, state.name, 'comet-state.yaml');
     const legacy = { ...state } as Record<string, unknown>;
     delete legacy.approved_contract_hash;
+    delete legacy.verification_protocol;
     await fs.writeFile(file, stringify(legacy));
 
     const parsed = await readNativeChange(paths, state.name);
     expect(parsed.approved_contract_hash).toBeNull();
+    expect(parsed.verification_protocol).toBe('legacy-v1');
     await writeNativeChange(paths, parsed);
     expect(await fs.readFile(file, 'utf8')).toContain('approved_contract_hash: null');
+    expect(await fs.readFile(file, 'utf8')).toContain('verification_protocol: legacy-v1');
   });
 
   it('round-trips create, replace, and remove spec operations', async () => {
-    const state = await createNativeChange({ paths, name: 'update-auth', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'update-auth',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     state.spec_changes = [
       {
         capability: 'new-auth',
@@ -201,7 +397,12 @@ describe('Native change store', () => {
   });
 
   it('fails closed before parsing an oversized change document', async () => {
-    const state = await createNativeChange({ paths, name: 'oversized-change', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'oversized-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     await fs.writeFile(
       path.join(paths.changesDir, state.name, 'comet-state.yaml'),
       'x'.repeat(NATIVE_CHANGE_DOCUMENT_MAX_BYTES + 1),
@@ -213,7 +414,12 @@ describe('Native change store', () => {
   });
 
   it('rejects a stale change write instead of silently overwriting a newer revision', async () => {
-    const created = await createNativeChange({ paths, name: 'revision-conflict', language: 'en' });
+    const created = await createNativeChange({
+      paths,
+      name: 'revision-conflict',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const first = structuredClone(created);
     const stale = structuredClone(created);
     first.approval = 'implicit';
@@ -231,7 +437,12 @@ describe('Native change store', () => {
   });
 
   it('allows only one competing writer to advance the same revision', async () => {
-    const created = await createNativeChange({ paths, name: 'concurrent-cas', language: 'en' });
+    const created = await createNativeChange({
+      paths,
+      name: 'concurrent-cas',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const left = { ...structuredClone(created), approval: 'implicit' as const };
     const right = { ...structuredClone(created), approval: 'confirmed' as const };
     const results = await Promise.allSettled([
@@ -245,8 +456,18 @@ describe('Native change store', () => {
   });
 
   it('lists multiple active changes in name order', async () => {
-    await createNativeChange({ paths, name: 'zeta-change', language: 'en' });
-    await createNativeChange({ paths, name: 'alpha-change', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'zeta-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
+    await createNativeChange({
+      paths,
+      name: 'alpha-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     expect((await listNativeChanges(paths)).map((state) => state.name)).toEqual([
       'alpha-change',
       'zeta-change',
@@ -259,7 +480,12 @@ describe('Native change store', () => {
     ['bad date', { created_at: '2026-02-31' }],
     ['bad name', { name: '../escape' }],
   ])('rejects %s', async (_label, patch) => {
-    const state = await createNativeChange({ paths, name: 'strict-change', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'strict-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const file = path.join(paths.changesDir, state.name, 'comet-state.yaml');
     const value = { ...state, ...patch };
     await fs.writeFile(file, stringify(value));
@@ -267,7 +493,12 @@ describe('Native change store', () => {
   });
 
   it('requires field-specific change-relative content-addressed evidence refs', async () => {
-    const state = await createNativeChange({ paths, name: 'strict-evidence', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'strict-evidence',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const file = path.join(paths.changesDir, state.name, 'comet-state.yaml');
     const hash = 'a'.repeat(64);
     await fs.writeFile(
@@ -306,7 +537,12 @@ describe('Native change store', () => {
   });
 
   it('rejects duplicate capabilities and path traversal sources', async () => {
-    const state = await createNativeChange({ paths, name: 'strict-specs', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'strict-specs',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const file = path.join(paths.changesDir, state.name, 'comet-state.yaml');
     await fs.writeFile(
       file,

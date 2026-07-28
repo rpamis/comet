@@ -62,6 +62,7 @@ describe('Native spec conflict rebase', () => {
   async function advanceToArchive(name: string): Promise<string> {
     const changeDir = nativeChangeDir(paths, name);
     await advanceNativeChange({ paths, name, evidence: { summary: 'shape is ready' } });
+    await fs.appendFile(path.join(projectRoot, 'feature.ts'), '// implementation\n');
     await advanceNativeChange({
       paths,
       name,
@@ -84,6 +85,7 @@ describe('Native spec conflict rebase', () => {
   }
 
   async function verifyAgain(name: string): Promise<void> {
+    await fs.appendFile(path.join(projectRoot, 'feature.ts'), '// rebased implementation\n');
     const evidence = {
       summary: 'rebased implementation confirmed',
       artifacts: ['feature.ts'],
@@ -107,6 +109,10 @@ describe('Native spec conflict rebase', () => {
           })
         : prepared;
     expect(build.change).toMatchObject({ phase: 'verify', approval: 'confirmed' });
+    await fs.writeFile(
+      path.join(nativeChangeDir(paths, name), 'verification.md'),
+      await nativeVerificationFixtureReport({ paths, name }),
+    );
     await advanceNativeChange({
       paths,
       name,
@@ -126,13 +132,19 @@ describe('Native spec conflict rebase', () => {
 
   it('refreshes a replace base and reopens Archive to Build for re-verification', async () => {
     const canonicalFile = await canonical('authentication', 'old canonical\n');
-    const state = await createNativeChange({ paths, name: 'replace-conflict', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'replace-conflict',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const changeDir = nativeChangeDir(paths, state.name);
     await fs.writeFile(path.join(changeDir, state.brief), brief);
     const proposed = path.join(changeDir, 'specs', 'authentication', 'spec.md');
     await fs.mkdir(path.dirname(proposed), { recursive: true });
     await fs.writeFile(proposed, 'target canonical\n');
     await advanceNativeChange({ paths, name: state.name, evidence: { summary: 'shape ready' } });
+    await fs.appendFile(path.join(projectRoot, 'feature.ts'), '// replacement implementation\n');
     await advanceNativeChange({
       paths,
       name: state.name,
@@ -185,7 +197,12 @@ describe('Native spec conflict rebase', () => {
 
   it('refreshes a remove base and preserves the explicit removal intent', async () => {
     const canonicalFile = await canonical('legacy-auth', 'legacy v1\n');
-    await createNativeChange({ paths, name: 'remove-conflict', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'remove-conflict',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     await fs.writeFile(path.join(nativeChangeDir(paths, 'remove-conflict'), 'brief.md'), brief);
     await markNativeSpecRemoval(paths, 'remove-conflict', 'legacy-auth');
     const changeDir = await advanceToArchive('remove-conflict');

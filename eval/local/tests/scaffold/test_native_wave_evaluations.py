@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import base64
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -548,6 +550,284 @@ def test_controller_snapshots_native_runtime_for_readonly_oracle(tmp_path: Path)
     }
     docker_harness = (EVAL_ROOT / "scaffold/shell/docker.sh").read_text(encoding="utf-8")
     assert "_eval_trusted_oracles:ro" in docker_harness
+
+
+def test_controller_provisions_immutable_native_review_fixture(tmp_path: Path):
+    eval_conftest = sys.modules["conftest"]
+    environment = tmp_path / "environment"
+    environment.mkdir()
+    (environment / ".include-trusted-native-runtime").write_text(
+        "include\n", encoding="utf-8"
+    )
+    (environment / ".include-trusted-native-review-fixture").write_text(
+        "sentence-counting\n", encoding="utf-8"
+    )
+    skill_source = tmp_path / "skill/comet-native"
+    runtime = skill_source / "scripts/comet-native-runtime.mjs"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text(
+        "console.log(JSON.stringify({"
+        "args:process.argv.slice(2),"
+        "reviewer:Boolean(process.env.COMET_NATIVE_EXTERNAL_REVIEWER_KEY)"
+        "}));\n",
+        encoding="utf-8",
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    eval_conftest._copy_trusted_native_runtime_snapshot(
+        environment,
+        workspace,
+        {"comet-native": {"source_dir": skill_source}},
+    )
+    eval_conftest._copy_trusted_native_review_fixture(environment, workspace)
+
+    oracle = workspace / "_eval_trusted_oracles"
+    public_fixture = json.loads(
+        (oracle / "native-review-fixture.json").read_text(encoding="utf-8")
+    )
+    policy = json.loads((oracle / "native-review-trust.json").read_text(encoding="utf-8"))
+    authorization = json.loads(
+        (oracle / "sentence-counting-creation-authorization.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    store = json.loads(
+        (oracle / "controller-home/native-controller-trust.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert public_fixture["schema"] == "comet.eval.native-review-fixture.v1"
+    assert public_fixture["change"] == "sentence-counting"
+    assert public_fixture["signerMode"] == "external-verifier-sidecar"
+    assert policy["schema"] == "comet.native.review-trust-policy.v2"
+    assert authorization["schema"] == "comet.native.creation-authorization.v1"
+    assert authorization["policyHash"] == policy["policyHash"]
+    assert authorization["projectRootHash"] == canonical_hash(
+        "comet.native.controller-project-root.v1", "/workspace"
+    )
+    assert store["projects"] == [
+        {
+            "projectRootHash": authorization["projectRootHash"],
+            "controllerIdentity": store["projects"][0]["controllerIdentity"],
+            "legacyChanges": [],
+        }
+    ]
+    assert (workspace / ".comet/native-review-trust.json").read_bytes() == (
+        oracle / "native-review-trust.json"
+    ).read_bytes()
+    validator = load_validator("comet-native-workflow", "test_native_workflow.py")
+    validator._validate_signature(
+        policy["controllerSignature"],
+        store["projects"][0]["controllerIdentity"],
+        policy["policyHash"],
+        "Controller policy",
+    )
+    validator._validate_signature(
+        authorization["controllerSignature"],
+        store["projects"][0]["controllerIdentity"],
+        authorization["authorizationHash"],
+        "Controller authorization",
+    )
+
+    secrets_root = workspace.with_name(f".{workspace.name}-native-review-secrets")
+    secret_documents = [
+        json.loads((secrets_root / f"{role}-key.json").read_text(encoding="utf-8"))
+        for role in ("implementation", "reviewer", "waiver")
+    ]
+    oracle_text = "\n".join(
+        file.read_text(encoding="utf-8")
+        for file in oracle.rglob("*")
+        if file.is_file()
+    )
+    assert all(document["privateKey"] not in oracle_text for document in secret_documents)
+    assert "COMET_NATIVE_REVIEW_VERIFIER_URL" in (
+        oracle / "native-review-signer.mjs"
+    ).read_text(encoding="utf-8")
+    assert "privateKey" not in (
+        oracle / "native-review-signer.mjs"
+    ).read_text(encoding="utf-8")
+
+    docker_harness = (EVAL_ROOT / "scaffold/shell/docker.sh").read_text(encoding="utf-8")
+    assert "native-review-signer-daemon.mjs" in docker_harness
+    assert "native-review-verifier-daemon.mjs" in docker_harness
+    verifier_daemon = (
+        EVAL_ROOT / "scaffold/shell/native-review-verifier-daemon.mjs"
+    ).read_text(encoding="utf-8")
+    assert "manual evidence requires an external human reviewer" in verifier_daemon
+    signer_start = docker_harness.split('node //opt/scaffold-shell/native-review-signer-daemon.mjs')[0]
+    assert 'workspace_host://workspace' not in signer_start.split('docker run -d --rm --name "$signer_name"')[-1]
+    assert 'workspace_host://workspace' in docker_harness
+    assert 'NATIVE_REVIEW_CONTROLLER_VOLUME://home/agent/.comet:ro' in docker_harness
+
+
+def test_native_workflow_validator_recomputes_typed_receipt_hash(tmp_path: Path):
+    validator = load_validator("comet-native-workflow", "test_native_workflow.py")
+    archived = tmp_path / "archive"
+    content = {
+        "schema": "comet.native.verification-receipt.v2",
+        "kind": "manual-evidence",
+        "role": "acceptance-evidence",
+        "status": "passed",
+        "bindings": {
+            "change": "sentence-counting",
+            "sourceRevision": 3,
+            "contractHash": "1" * 64,
+            "scopeHash": "2" * 64,
+            "snapshotHash": "3" * 64,
+            "artifactHash": "4" * 64,
+        },
+        "acceptanceIds": ["acceptance-" + "a" * 64],
+        "actor": "eval-manual",
+        "issuedAt": "2026-07-28T00:00:00.000Z",
+        "evidence": {
+            "steps": ["Run the sentence check."],
+            "observations": ["The check passed."],
+            "responsible": "eval-manual",
+        },
+    }
+    digest = validator._canonical_hash(
+        "comet.native.verification-receipt.v2", content
+    )
+    reference = f"runtime/evidence/receipts/{digest}.json"
+    receipt_file = archived / reference
+    write_json(receipt_file, {**content, "receiptHash": digest})
+
+    assert validator._read_typed_receipt(archived, reference)["receiptHash"] == digest
+
+    forged = json.loads(receipt_file.read_text(encoding="utf-8"))
+    forged["evidence"]["observations"] = ["A forged result."]
+    write_json(receipt_file, forged)
+    with pytest.raises(ValueError, match="schema/hash"):
+        validator._read_typed_receipt(archived, reference)
+
+
+def test_native_workflow_validator_performs_real_ed25519_verification():
+    validator = load_validator("comet-native-workflow", "test_native_workflow.py")
+    payload_hash = "a" * 64
+    script = r"""
+const {generateKeyPairSync,createHash,sign}=require('node:crypto');
+const pair=generateKeyPairSync('ed25519');
+const publicKey=pair.publicKey.export({format:'der',type:'spki'});
+const message=Buffer.concat([
+  Buffer.from('comet.native.review-payload.v1\0'),
+  Buffer.from(process.argv[1],'hex')
+]);
+process.stdout.write(JSON.stringify({
+  identity:{
+    schema:'comet.native.review-identity.v1',
+    algorithm:'ed25519',
+    keyId:createHash('sha256').update(publicKey).digest('hex'),
+    publicKey:publicKey.toString('base64')
+  },
+  signature:sign(null,message,pair.privateKey).toString('base64')
+}));
+"""
+    generated = json.loads(
+        subprocess.run(
+            ["node", "-e", script, payload_hash],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        ).stdout
+    )
+    proof = {
+        "schema": "comet.native.review-signature.v1",
+        "algorithm": "ed25519",
+        "keyId": generated["identity"]["keyId"],
+        "payloadHash": payload_hash,
+        "signature": generated["signature"],
+    }
+
+    validator._validate_signature(
+        proof, generated["identity"], payload_hash, "Reviewer"
+    )
+
+    forged_bytes = bytearray(base64.b64decode(proof["signature"]))
+    forged_bytes[0] ^= 1
+    forged = {**proof, "signature": base64.b64encode(forged_bytes).decode("ascii")}
+    with pytest.raises(ValueError, match="Ed25519"):
+        validator._validate_signature(
+            forged, generated["identity"], payload_hash, "Reviewer"
+        )
+
+
+def test_native_workflow_oracle_rejects_forged_runtime_identity(tmp_path: Path):
+    validator = load_validator("comet-native-workflow", "test_native_workflow.py")
+    validator.WORKSPACE = tmp_path
+    oracle = tmp_path / "_eval_trusted_oracles/comet-native-runtime.mjs"
+    oracle.parent.mkdir(parents=True)
+    oracle.write_text("console.log('{}');\n", encoding="utf-8")
+    write_json(
+        oracle.parent / "native-runtime-identity.json",
+        {
+            "schema": "comet.eval.trusted-native-runtime.v1",
+            "runtimeFile": oracle.name,
+            "runtimeHash": hashlib.sha256(oracle.read_bytes()).hexdigest(),
+        },
+    )
+    assert validator._trusted_native_runtime() == oracle
+
+    oracle.write_text("console.log('{\"forged\":true}');\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="does not match"):
+        validator._trusted_native_runtime()
+
+
+def test_native_workflow_oracle_rejects_an_incomplete_reconstructed_archive(
+    tmp_path: Path,
+):
+    validator = load_validator("comet-native-workflow", "test_native_workflow.py")
+    validator.WORKSPACE = tmp_path
+    acceptance_id = "acceptance-" + "a" * 64
+    archived = tmp_path / "docs/comet/archive/2026-07-28-sentence-counting"
+    archived.mkdir(parents=True)
+    (archived / "comet-state.yaml").write_text(
+        "name: sentence-counting\nphase: archive\narchived: true\nverification_result: pass\n",
+        encoding="utf-8",
+    )
+    oracle = tmp_path / "_eval_trusted_oracles/comet-native-runtime.mjs"
+    oracle.parent.mkdir(parents=True)
+    oracle.write_bytes(
+        (
+            EVAL_ROOT.parent
+            / "assets/skills/comet-native/scripts/comet-native-runtime.mjs"
+        ).read_bytes()
+    )
+    write_json(
+        oracle.parent / "native-runtime-identity.json",
+        {
+            "schema": "comet.eval.trusted-native-runtime.v1",
+            "runtimeFile": oracle.name,
+            "runtimeHash": hashlib.sha256(oracle.read_bytes()).hexdigest(),
+        },
+    )
+
+    with pytest.raises(ValueError, match="reconstructed pre-archive state"):
+        validator._run_trusted_archive_oracle(
+            archived,
+            {
+                "name": "sentence-counting",
+                "phase": "archive",
+                "archived": True,
+                "verification_result": "pass",
+            },
+            [acceptance_id],
+        )
+
+    assert archived.is_dir()
+    assert not (tmp_path / "docs/comet/changes/sentence-counting").exists()
+    with pytest.raises(ValueError, match="rejected"):
+        validator._run_trusted_archive_oracle(
+            archived,
+            {
+                "name": "sentence-counting",
+                "phase": "archive",
+                "archived": False,
+                "verification_result": "pass",
+            },
+            [acceptance_id],
+        )
 
 
 def test_controller_source_build_contains_current_native_dashboard_adapter(tmp_path: Path):

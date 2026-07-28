@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   archiveNativeChange,
   NativeArchivePreflightError,
+  recoverArchiveTransaction,
 } from '../../../domains/comet-native/native-archive.js';
 import { nativeArchiveTransactionPaths } from '../../../domains/comet-native/native-archive-transaction.js';
 import {
@@ -155,9 +156,83 @@ describe('Native archive', () => {
     });
   });
 
+  it('rechecks verification freshness after spec operations and before moving the change', async () => {
+    const now = new Date('2026-07-15T01:00:00.000Z');
+    const specChanges: NativeSpecChange[] = [
+      {
+        capability: 'freshness-fence',
+        operation: 'create',
+        source: 'specs/freshness-fence.md',
+        base_hash: null,
+      },
+    ];
+    const { changeDir } = await prepareNativeArchiveFixture({
+      paths,
+      name: 'freshness-fence',
+      specChanges,
+      proposedSpecs: {
+        'specs/freshness-fence.md': 'freshness fence spec\n',
+      },
+    });
+    const expectedPreflightHash = await readyNativeArchivePreflight({
+      paths,
+      name: 'freshness-fence',
+      now,
+    });
+    let transactionId = '';
+
+    await expect(
+      archiveNativeChange({
+        paths,
+        name: 'freshness-fence',
+        expectedPreflightHash,
+        now,
+        hooks: {
+          afterPrepared: (journal) => {
+            transactionId = journal.id;
+          },
+          beforeArchiveChangeMove: () =>
+            fs.writeFile(
+              path.join(projectRoot, 'native-archive-proof.txt'),
+              'changed after verification\n',
+            ),
+        },
+      }),
+    ).rejects.toThrow('verification freshness changed before moving');
+
+    await expect(fs.stat(changeDir)).resolves.toBeDefined();
+    await expect(
+      fs.readFile(path.join(paths.specsDir, 'freshness-fence', 'spec.md'), 'utf8'),
+    ).resolves.toBe('freshness fence spec\n');
+    await expect(
+      fs.access(path.join(paths.archiveDir, '2026-07-15-freshness-fence')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+
+    await fs.writeFile(
+      path.join(projectRoot, 'native-archive-proof.txt'),
+      'Native Archive fixture evidence.\n',
+    );
+    await expect(
+      recoverArchiveTransaction({
+        paths,
+        transactionId,
+        strategy: 'continue',
+      }),
+    ).resolves.toMatchObject({ status: 'committed' });
+    await expect(fs.access(changeDir)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(
+      fs.stat(path.join(paths.archiveDir, '2026-07-15-freshness-fence')),
+    ).resolves.toBeDefined();
+  });
+
   it('preserves the current selection when archiving a different Native change', async () => {
     const now = new Date('2026-07-15T00:00:00.000Z');
-    await createNativeChange({ paths, name: 'selected-change', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'selected-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     await prepareNativeArchiveFixture({ paths, name: 'archived-change' });
     await selectNativeChange(paths, 'selected-change');
     const expectedPreflightHash = await readyNativeArchivePreflight({

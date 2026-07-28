@@ -3,6 +3,8 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createNativeChange } from '../../domains/comet-native/native-change.js';
+import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 
 const repositoryRoot = path.resolve('.');
@@ -119,8 +121,12 @@ describe('resumeProbe command', () => {
   it('routes a configured Native project without considering Classic changes', async () => {
     const initialized = runCli(tmpDir, ['native', 'init', '--language', 'en']);
     expect(initialized.status, initialized.stderr).toBe(0);
-    const created = runCli(tmpDir, ['native', 'new', 'native-resume']);
-    expect(created.status, created.stderr).toBe(0);
+    await createNativeChange({
+      paths: await nativeProjectPaths(tmpDir, 'docs'),
+      name: 'native-resume',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const changeDir = path.join(tmpDir, 'docs', 'comet', 'changes', 'native-resume');
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),

@@ -52,7 +52,12 @@ describe('Native repair stagnation transitions', () => {
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 1;\n');
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    const state = await createNativeChange({ paths, name: 'repair-change', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'repair-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     changeDir = nativeChangeDir(paths, state.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
     await advanceNativeChange({

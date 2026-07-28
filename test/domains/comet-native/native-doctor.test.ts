@@ -101,7 +101,12 @@ describe('Native doctor', () => {
   });
 
   it('reports malformed user-authored state and artifacts without modifying them', async () => {
-    const state = await createNativeChange({ paths, name: 'incomplete-change', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'incomplete-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const briefFile = path.join(nativeChangeDir(paths, state.name), 'brief.md');
     const briefBefore = await fs.readFile(briefFile, 'utf8');
     const result = await doctorNativeProject({ paths, repair: true });
@@ -114,7 +119,12 @@ describe('Native doctor', () => {
   });
 
   it('migrates legacy Git-backed workspace metadata to process-free v2 identities', async () => {
-    const state = await createNativeChange({ paths, name: 'legacy-workspace', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'legacy-workspace',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const file = nativeWorkspaceFile(paths, state.name);
     await fs.writeFile(
       file,
@@ -152,7 +162,12 @@ describe('Native doctor', () => {
   });
 
   it('upgrades hash-only v2 workspace metadata to stable path identities', async () => {
-    const state = await createNativeChange({ paths, name: 'hash-only-workspace', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'hash-only-workspace',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const file = nativeWorkspaceFile(paths, state.name);
     const identity = (await readNativeWorkspaceIdentity(paths, state.name))!;
     const hashOnly = { ...identity } as Record<string, unknown>;
@@ -179,7 +194,12 @@ describe('Native doctor', () => {
   });
 
   it('reports an interrupted phase transition and only continues it explicitly', async () => {
-    const state = await createNativeChange({ paths, name: 'pending-transition', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'pending-transition',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     await fs.writeFile(
       path.join(nativeChangeDir(paths, state.name), 'brief.md'),
       `# Outcome
@@ -229,7 +249,12 @@ Run focused tests.
   });
 
   it('reports malformed Run trajectory data with its path', async () => {
-    const state = await createNativeChange({ paths, name: 'broken-trajectory', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'broken-trajectory',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const changeDir = nativeChangeDir(paths, state.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), validBrief);
     await advanceNativeChange({

@@ -109,7 +109,12 @@ describe('Native archive recovery', () => {
     expect(await fs.readFile(canonical, 'utf8')).toBe('old auth\n');
     expect(await fs.stat(changeDir)).toBeTruthy();
     await expect(
-      createNativeChange({ paths, name: 'blocked-by-recovery', language: 'en' }),
+      createNativeChange({
+        paths,
+        name: 'blocked-by-recovery',
+        language: 'en',
+        verificationProtocol: 'legacy-v1',
+      }),
     ).rejects.toThrow('transaction recovery is required');
 
     const recovered = await recoverArchiveTransaction({

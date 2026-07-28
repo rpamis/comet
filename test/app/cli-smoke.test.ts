@@ -3,6 +3,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { createNativeChange } from '../../domains/comet-native/native-change.js';
+import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 
 const repositoryRoot = path.resolve('.');
@@ -101,14 +103,12 @@ describe('built CLI smoke', () => {
 
   it('runs the Native facade without changing root status and doctor commands', async () => {
     const initialized = runCli('native', 'init', '--project-root', projectRoot, '--json');
-    const created = runCli(
-      'native',
-      'new',
-      'smoke-change',
-      '--project-root',
-      projectRoot,
-      '--json',
-    );
+    await createNativeChange({
+      paths: await nativeProjectPaths(projectRoot, 'docs'),
+      name: 'smoke-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const status = runCli(
       'native',
       'status',
@@ -120,8 +120,6 @@ describe('built CLI smoke', () => {
 
     expect(initialized.status, initialized.stderr).toBe(0);
     expect(JSON.parse(initialized.stdout)).toMatchObject({ command: 'init', exitCode: 0 });
-    expect(created.status, created.stderr).toBe(0);
-    expect(JSON.parse(created.stdout)).toMatchObject({ command: 'new', exitCode: 0 });
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout)).toMatchObject({
       command: 'status',

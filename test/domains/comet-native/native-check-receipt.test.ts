@@ -60,6 +60,7 @@ describe('Native scoped check receipts', () => {
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 1;\n');
     const created = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'safe-check',
       language: 'en',
       now: new Date('2026-07-17T00:00:00.000Z'),
@@ -84,6 +85,7 @@ describe('Native scoped check receipts', () => {
     await fs.writeFile(path.join(projectRoot, 'unchanged.ts'), 'export const stable = true;\n');
     const created = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'safe-check',
       language: 'en',
       now: new Date('2026-07-17T00:00:00.000Z'),
@@ -224,6 +226,7 @@ describe('Native scoped check receipts', () => {
     await fs.writeFile(path.join(projectRoot, 'src', 'kept.ts'), 'export const kept = true;\n');
     const created = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'safe-check',
       language: 'en',
       now: new Date('2026-07-17T00:00:00.000Z'),
@@ -319,6 +322,7 @@ describe('Native scoped check receipts', () => {
     }
     const created = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'safe-check',
       language: 'en',
       now: new Date('2026-07-17T00:00:00.000Z'),
@@ -364,6 +368,7 @@ describe('Native scoped check receipts', () => {
     }
     const created = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'safe-check',
       language: 'en',
       now: new Date('2026-07-17T00:00:00.000Z'),

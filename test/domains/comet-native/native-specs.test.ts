@@ -63,7 +63,12 @@ describe('Native runtime-owned spec metadata', () => {
   }
 
   it('infers create and replace while preserving the first canonical base hash', async () => {
-    let state = await createNativeChange({ paths, name: 'sync-specs', language: 'en' });
+    let state = await createNativeChange({
+      paths,
+      name: 'sync-specs',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const canonicalFile = await canonical('existing-capability', 'original\n');
     const originalHash = await sha256File(canonicalFile);
     await proposed('sync-specs', 'new-capability', 'new target\n');
@@ -90,7 +95,12 @@ describe('Native runtime-owned spec metadata', () => {
   });
 
   it('records remove through a command-owned mutation and rejects a proposed/remove conflict', async () => {
-    await createNativeChange({ paths, name: 'remove-spec', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'remove-spec',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const canonicalFile = await canonical('legacy-capability', 'legacy\n');
     const baseHash = await sha256File(canonicalFile);
 
@@ -113,7 +123,12 @@ describe('Native runtime-owned spec metadata', () => {
   });
 
   it('keeps the first remove hash when the canonical spec later changes', async () => {
-    await createNativeChange({ paths, name: 'stable-remove', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'stable-remove',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const canonicalFile = await canonical('legacy-capability', 'legacy v1\n');
     const originalHash = await sha256File(canonicalFile);
 
@@ -133,6 +148,7 @@ describe('Native runtime-owned spec metadata', () => {
   it('continues a pending transition before recording a remove intent', async () => {
     const state = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'remove-after-recovery',
       language: 'en',
     });

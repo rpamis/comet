@@ -37,7 +37,12 @@ describe('Native phase Hook guard', () => {
   async function activeChange(phase: 'shape' | 'build' | 'verify' | 'archive', name: string) {
     const paths = await nativeProjectPaths(projectRoot, '.');
     await ensureNativeDirectories(paths);
-    const state = await createNativeChange({ paths, name, language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name,
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     state.phase = phase;
     await writeNativeChange(paths, state);
     return { paths, state };
@@ -189,7 +194,12 @@ describe('Native phase Hook guard', () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await ensureNativeDirectories(paths);
-    await createNativeChange({ paths, name: 'guard-control', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'guard-control',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
 
     await expect(
       inspectNativeHookGuard(
@@ -245,9 +255,15 @@ describe('Native phase Hook guard', () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
     await ensureNativeDirectories(paths);
-    await createNativeChange({ paths, name: 'shape-change', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'shape-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const buildChange = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'build-change',
       language: 'en',
     });

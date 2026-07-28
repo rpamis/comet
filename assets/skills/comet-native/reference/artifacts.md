@@ -3,7 +3,9 @@
 ## Layout
 
 ```text
+<controller-home>/.comet/native-controller-trust.json # Read-only controller/owner trust root outside the project
 <project>/.comet/config.yaml
+<project>/.comet/native-review-trust.json # Controller-signed public v2 policy fixed before change creation
 <project>/.comet/current-change.json       # Shared Native/Classic current owner selection
 <artifact-root>/comet/
   specs/<capability>/spec.md
@@ -22,6 +24,8 @@
       artifacts.json                 # Optional; Run artifact refs
       transition.json                # Optional; incomplete phase-transition journal
       checkpoint-journal.json        # Optional; incomplete progress-checkpoint journal
+      trust/
+        review-policy-<policy-hash>.json # Controller-signed creation-time policy snapshot
       checkpoints/
         latest.json                  # Most recent phase-boundary checkpoint
         progress.json
@@ -32,6 +36,8 @@
         allowances/<sha256>.json
         verifications/<sha256>.json
         check-receipts/<sha256>.json
+        receipts/<sha256>.json
+        waivers/<sha256>.json
   archive/YYYY-MM-DD-<change-name>/
   runtime/
     locks/
@@ -40,7 +46,7 @@
       events.jsonl
 ```
 
-Project configuration names the single `artifact-root`. Native does not use a hidden change directory and never discovers state from other requirements directories. The project-level `.comet/config.yaml` is the persistent-configuration exception. During interrupted `root move` recovery, runtime-managed staging or quarantine directories may also appear beside the source or target artifact root; the transaction removes them when it settles. They are not a second writable Native change root.
+Project configuration names the single `artifact-root`. Native does not use a hidden change directory and never discovers state from other requirements directories. The external `native-controller-trust.json` binds the physical project-root hash to the controller's public identity. Native commands only read it; they never create or modify it. The file must live in a host read-only boundary the current Agent cannot replace: POSIX requires a different UID to own the file and its parent chain with no current-process write access, while Windows requires a Runtime-verifiable host read-only mount capability. The project-level `.comet/config.yaml` and public `.comet/native-review-trust.json` are persistent-configuration exceptions. The latter uses `comet.native.review-trust-policy.v2` and stores the controller signature, implementation key ID, and pretrusted public reviewer/waiver-signer identities, never private keys. During interrupted `root move` recovery, runtime-managed staging or quarantine directories may also appear beside the source or target artifact root; the transaction removes them when it settles. They are not a second writable Native change root.
 
 ## Project configuration
 
@@ -89,6 +95,7 @@ Project configuration is capped at 64 KiB, selection at 16 KiB, and change YAML 
 schema: comet.native.v3
 minimum_runtime_version: 3
 revision: 1
+verification_protocol: signed-v2
 name: add-sentence-counting
 language: en
 phase: shape
@@ -110,7 +117,9 @@ created_at: 2026-07-14
 run_id: null
 ```
 
-Do not edit Runtime-managed fields directly. The Runtime owns `phase`, `revision`, `approval`, `approved_contract_hash`, `spec_changes`, operation, `base_hash`, all three evidence refs, `run_id`, and `archived`.
+Do not edit Runtime-managed fields directly. The Runtime owns `phase`, `revision`, `verification_protocol`, `approval`, `approved_contract_hash`, `spec_changes`, operation, `base_hash`, all three evidence refs, `run_id`, and `archived`.
+
+New changes are pinned to `signed-v2`. The creation baseline's `creation` binding stores the policy hash, the ref/hash of `runtime/trust/review-policy-<policy-hash>.json`, and the complete `comet.native.creation-authorization.v1`. The external controller signs that authorization over the physical project-root hash, policy, protocol, and change name. State reads, Verify, and Archive revalidate it against the controller-owned trust root. Only an old change explicitly listed by the controller store is read as `legacy-v1`; schema migration preserves that protocol explicitly. A mismatch in the marker, creation binding, policy snapshot, or external trust makes status, next, and Archive fail closed, so editing YAML, the baseline, or the in-project policy cannot bypass signed receipts and review.
 
 `approval: confirmed` means the Runtime recorded explicit user confirmation of the current shared understanding. `implicit` exists only for compatibility with older changes and does not prove confirmation; an older `implicit` change in Build must be confirmed before Verify. `approved_contract_hash` binds approval to the brief/spec contract from that moment, and later contract drift also requires fresh user confirmation. To change requirements, edit only the brief and `specs/<capability>/spec.md`; remove a capability with `comet native spec remove`, then let the command validate and advance state.
 
@@ -171,24 +180,22 @@ The runtime derives at most 1024 acceptance items from the brief and proposed sp
 [
   {
     "acceptance_id": "acceptance-<sha256>",
+    "status": "passed",
     "evidence_refs": [
-      "src/feature.ts"
+      "runtime/evidence/receipts/<sha256>.json"
     ]
   },
   {
     "acceptance_id": "acceptance-<sha256>",
+    "status": "waived",
     "evidence_refs": [],
-    "waiver": {
-      "reason": "This platform is currently unavailable.",
-      "risk": "The platform path remains unexecuted.",
-      "alternative_evidence_refs": ["test/platform-fallback.md"]
-    }
+    "waiver_ref": "runtime/evidence/waivers/<sha256>.json"
   }
 ]
 <!-- comet-native:acceptance-evidence:end -->
 ```
 
-The array is sorted by `acceptance_id`, and every `evidence_refs` list is sorted. Each item either supplies at least one project-relative evidence ref or uses an empty array plus a structured `waiver`; a legacy `skipped_reason` truthfully records incompleteness and cannot produce a pass. A waiver supplies its reason, risk, and at least one alternative evidence ref, then Verify requires `--confirmed --confirm-waiver`. Never provide both evidence and a waiver, and never reference an absolute path, a path outside Native, `.git`, or `.env*`.
+The array is sorted by `acceptance_id`, and every `evidence_refs` list is sorted. `passed` must reference at least one current typed receipt; `failed` uses empty refs and a nonempty `skipped_reason`; `waived` uses empty refs and one signed `waiver_ref`. A waiver receipt binds the blocking receipt, reason, risk, alternative typed receipts, current bindings, and a pretrusted waiver signer. Never mix fields from the three statuses, and never reference an absolute path, a legacy project-file evidence ref, `.git`, `.env*`, or another Native runtime path.
 
 ```text
 comet native evidence format [--entries <path>]
@@ -204,13 +211,15 @@ Pass the entry array above (without the markers) as JSON on stdin, or point `--e
   - `physical-selection-changed` and `physical-enumeration-limit`: stabilize or reduce the project tree and retry. Neither can be authorized as partial scope.
   - Never edit evidence or guess unenumerated paths.
 - `evidence/scopes/`: implementation scope derived from the baseline, current snapshot, declared artifacts, and contract when leaving Build. An incomplete current snapshot never guesses deletions. When changes exceed the detail budget, only bounded details are expanded and the remainder is represented by a `scope-detail-overflow` count and content hash. The runtime stops when scope is incomplete; it creates an `allowances/` record only after explicit user acceptance.
-- `evidence/verifications/`: the Verify conclusion envelope, bound to runtime identity, change revision, contract, acceptance coverage, scope, report hash, and an optional check receipt. Any bound fact change makes it stale.
+- `evidence/verifications/`: the Verify conclusion v2 envelope, bound to change revision, contract, the complete acceptance matrix, scope, report hash, required receipt refs, acceptance receipt refs, waiver refs, and an independent review ref. Verify and Archive share the graph validator; any bound fact change makes it stale.
 - `evidence/check-receipts/`: built-in policy results from `comet native check`. A receipt records only policy/version, scope/snapshot binding, bounded issues, and counts. It stores no file contents and does not prove test completeness.
+- `evidence/receipts/`: typed v2 receipts. `automated-check` records the real executable/argv/exit/timeout, worktree, and after-fence; `static-inspection` binds the built-in check; `manual-evidence` records confirmed steps and observations; `implementation-attestation` is signed by the pretrusted implementation signer. `independent-review` references that attestation and is signed by a distinct external pretrusted reviewer over the canonical acceptance matrix and complete evidence graph. The graph includes reviewed receipt/waiver refs, automated/static replay refs, and manual-attestation refs. The reviewer path re-executes automated receipts, reruns static inspection, and explicitly attests manual receipts. A review cannot serve as direct acceptance evidence.
+- `evidence/waivers/`: one signed waiver per acceptance, binding one current non-passed blocking receipt, reason, risk, alternative receipts, and a pretrusted signer. A waiver cannot cover another acceptance or make a required global check pass when its covered acceptance set is incomplete.
 - `checkpoints/`: in-phase recovery summaries and manifests of real artifacts. A checkpoint increments revision without changing phase and cannot replace the brief, specifications, scope, or verification.
 
 The runtime writes every hash ref and recomputes it when reading. Never copy old refs into new state, hand-edit JSON, or treat a receipt as a pass; `next`, status, and Archive reread it and check freshness.
 
-Evidence retention is an explicit doctor capability and never deletes files in the background during normal workflow. Read-only doctor reports candidates. `doctor --repair` removes only active-change snapshots, scopes, allowances, verifications, and check receipts that are at least 30 days old, are outside the latest 32 items of their evidence kind, and are proven unreferenced from current state refs and the dependency closure.
+Evidence retention is an explicit doctor capability and never deletes files in the background during normal workflow. Read-only doctor reports candidates. `doctor --repair` removes only active-change snapshots, scopes, allowances, verifications, check receipts, typed receipts, and waivers that are at least 30 days old, are outside the latest 32 items of their evidence kind, and are proven unreferenced from current state refs and the dependency closure.
 
 Candidates are ordered dependents before dependencies. After parent-chain and identity checks, each file is renamed into a unique same-directory `.gc` quarantine, checked again, then removed. A later doctor detects interrupted quarantine; explicit repair restores without overwrite only when the original path is absent and content and identity remain valid.
 

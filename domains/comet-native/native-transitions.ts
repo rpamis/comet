@@ -78,8 +78,9 @@ function hasEvidenceRetreatExtras(evidence: NativeAdvanceEvidence): boolean {
     evidence.verificationResult !== undefined ||
     evidence.verificationReport !== undefined ||
     evidence.verificationReceipt !== undefined ||
-    evidence.waiverConfirmed !== undefined ||
-    evidence.independentReviewRef !== undefined ||
+    evidence.verificationReceiptRefs !== undefined ||
+    evidence.verificationWaiverRefs !== undefined ||
+    evidence.independentReviewReceiptRef !== undefined ||
     evidence.repairFailureCategories !== undefined ||
     evidence.repairFailedCheckIds !== undefined ||
     evidence.repairOverrideSignature !== undefined ||
@@ -327,36 +328,53 @@ async function advanceNativeChangeLocked(
       last.data.evidenceHash === hash &&
       last.data.nextPhase === state.phase
     ) {
-      const repair = Object.hasOwn(last.data, 'repairStagnation')
-        ? await inspectLatestNativeRepairDecision(options.paths, state)
-        : null;
-      const repairFindings =
-        repair && repair.disposition !== 'continue'
-          ? structureNativeFindings({
-              paths: options.paths,
-              state,
-              findings: [repairFinding(repair)],
-            })
-          : [];
-      const stopped = repair?.disposition === 'manual-stop' || repair?.disposition === 'hard-stop';
-      return {
-        change: state,
-        previousPhase: (last.data.previousPhase as NativePhase) ?? state.phase,
-        next: stopped ? 'manual' : 'auto',
-        nextCommand: stopped
-          ? null
-          : state.phase === 'archive'
-            ? `comet native archive ${state.name} --dry-run`
-            : null,
-        findings: repairFindings,
-        continuation: nativeContinuation({
-          state,
+      const verificationRetryIsFresh =
+        last.data.previousPhase === 'verify'
+          ? ['complete', 'partial'].includes(
+              (
+                await inspectNativeVerificationFreshness({
+                  paths: options.paths,
+                  state,
+                  now: options.now,
+                })
+              ).freshness,
+            )
+          : true;
+      if (!verificationRetryIsFresh) {
+        // Do not let an old transition hash bypass the current report/envelope freshness fence.
+      } else {
+        const repair = Object.hasOwn(last.data, 'repairStagnation')
+          ? await inspectLatestNativeRepairDecision(options.paths, state)
+          : null;
+        const repairFindings =
+          repair && repair.disposition !== 'continue'
+            ? structureNativeFindings({
+                paths: options.paths,
+                state,
+                findings: [repairFinding(repair)],
+              })
+            : [];
+        const stopped =
+          repair?.disposition === 'manual-stop' || repair?.disposition === 'hard-stop';
+        return {
+          change: state,
+          previousPhase: (last.data.previousPhase as NativePhase) ?? state.phase,
+          next: stopped ? 'manual' : 'auto',
+          nextCommand: stopped
+            ? null
+            : state.phase === 'archive'
+              ? `comet native archive ${state.name} --dry-run`
+              : null,
           findings: repairFindings,
-          archiveReady: state.phase === 'archive' && state.verification_result === 'pass',
-          clarificationMode: options.clarificationMode,
-        }),
-        ...(repair ? { repair } : {}),
-      };
+          continuation: nativeContinuation({
+            state,
+            findings: repairFindings,
+            archiveReady: state.phase === 'archive' && state.verification_result === 'pass',
+            clarificationMode: options.clarificationMode,
+          }),
+          ...(repair ? { repair } : {}),
+        };
+      }
     }
   }
 
@@ -593,8 +611,9 @@ async function advanceNativeChangeLocked(
           result: options.evidence.verificationResult!,
           reportRef: options.evidence.verificationReport!,
           receiptRef: verificationReceipt,
-          waiverConfirmed: options.evidence.waiverConfirmed === true,
-          independentReviewRef: options.evidence.independentReviewRef ?? null,
+          receiptRefs: options.evidence.verificationReceiptRefs,
+          waiverRefs: options.evidence.verificationWaiverRefs,
+          independentReviewReceiptRef: options.evidence.independentReviewReceiptRef,
           now: options.now,
         })
       : null;

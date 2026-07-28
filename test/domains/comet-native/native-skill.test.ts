@@ -410,4 +410,86 @@ describe('Comet Native Skills', () => {
       }
     }
   });
+
+  it('documents signed-v2 trust, typed receipts, and applicability review in both languages', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        skillTerms: [
+          '创建 change 之前',
+          '当前 Agent 无法替换的项目外只读边界',
+          '当前 Agent 不能持有、请求或读取 controller、reviewer 或 waiver signer 私钥',
+          '缺少外部签名时保持 blocked',
+          '--creation-authorization',
+          'implementation attestation',
+          'acceptance-applicability',
+          '高风险',
+          '真实生命周期 Eval',
+          '--independent-review-receipt',
+        ],
+      },
+      {
+        language: 'en' as const,
+        skillTerms: [
+          'Before creating a change',
+          'external read-only boundary the current Agent cannot replace',
+          'The current Agent must not hold, request, or read controller, reviewer, or waiver-signer private keys',
+          'Remain blocked when an external signature is missing',
+          '--creation-authorization',
+          'implementation attestation',
+          'acceptance-applicability',
+          'high-risk',
+          'real lifecycle Eval',
+          '--independent-review-receipt',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const skill = await read(variant.language, 'SKILL.md');
+      const commands = await read(variant.language, 'reference/commands.md');
+      const artifacts = await read(variant.language, 'reference/artifacts.md');
+      for (const term of variant.skillTerms) {
+        expect(skill, `${variant.language}: ${term}`).toContain(term);
+      }
+      for (const command of [
+        'trust keygen',
+        'trust identity',
+        'trust policy',
+        'trust authorize',
+        '--controller-private-key-env',
+        '--creation-authorization',
+        'receipt manual',
+        'receipt automated',
+        'receipt implement',
+        'receipt implement sign',
+        'receipt review',
+        'receipt review sign',
+        'receipt review <change-name> approve',
+        '--attest-manual <ref>',
+        'receipt waive',
+        '--report <verification.md>',
+        '--required-receipt <ref>',
+        '--unified-io-receipt <ref>',
+        '--adversarial-paths-receipt <ref>',
+        '--generated-assets-receipt <ref>',
+        '--lifecycle-eval-receipt <ref>',
+        '--evidence-receipt',
+        '--waiver',
+        '--independent-review-receipt',
+      ]) {
+        expect(commands, `${variant.language}: ${command}`).toContain(command);
+      }
+      expect(artifacts).toContain('verification_protocol');
+      expect(artifacts).toContain('receipts/<sha256>.json');
+      expect(artifacts).toContain('waivers/<sha256>.json');
+      expect(artifacts).toContain('.comet/native-review-trust.json');
+      expect(artifacts).toContain('native-controller-trust.json');
+      expect(artifacts).toContain('runtime/trust/review-policy-<policy-hash>.json');
+      expect(commands).not.toContain('--checked-unified-io');
+      expect(commands).not.toContain('--checked-adversarial-paths');
+      expect(commands).not.toContain('--checked-generated-assets');
+      expect(commands).not.toContain('--checked-lifecycle-eval');
+    }
+  });
 });

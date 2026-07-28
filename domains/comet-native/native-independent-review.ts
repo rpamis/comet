@@ -163,6 +163,8 @@ export function parseNativeIndependentReview(
   if (root.schema !== 'comet.native.independent-review.v1')
     throw new Error('Native independent review is invalid');
   const { review_hash: _hash, schema: _schema, ...input } = root;
+  void _hash;
+  void _schema;
   const content = reviewContent(input, expectedAcceptanceIds);
   if (
     typeof root.review_hash !== 'string' ||
@@ -174,14 +176,25 @@ export function parseNativeIndependentReview(
   return { ...content, reviewHash: root.review_hash };
 }
 
-export function isNativeHighRiskScope(paths: readonly string[]): boolean {
-  return paths.some(
-    (path) =>
-      /^(?:domains\/(?:comet-native|comet-entry)\/|platform\/|assets\/skills(?:-zh)?\/comet-native\/|config\/)/u.test(
+export function isNativeHighRiskScope(
+  changes: readonly (string | { path: string; before: unknown | null; after: unknown | null })[],
+): boolean {
+  return changes.some((change) => {
+    if (typeof change !== 'string' && change.before !== null && change.after === null) {
+      return true;
+    }
+    const rawPath = typeof change === 'string' ? change : change.path;
+    const path = rawPath.replaceAll('\\', '/');
+    return (
+      /^(?:app|domains|platform|config)\//u.test(path) ||
+      /^(?:package(?:-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/u.test(path) ||
+      /^assets\/(?:manifest\.json|skills(?:-zh)?\/)/u.test(path) ||
+      /^scripts\/.*(?:build.*runtime|runtime.*build|release|install|uninstall|migrat|manifest)/iu.test(
         path,
       ) ||
-      /^(?:app|domains|platform)\/.*(?:archive|transaction|migration|protected|path|state|schema|hook|router|install|uninstall)[a-z0-9-]*\.(?:[cm]?[jt]s|tsx?)$/iu.test(
+      /^(?:app|domains)\/.*(?:security|permission|persist|archive|transaction|migration|protected|path|process|state|schema|hook|router|runtime|install|uninstall)[a-z0-9-]*\.(?:[cm]?[jt]s|tsx?)$/iu.test(
         path,
-      ),
-  );
+      )
+    );
+  });
 }

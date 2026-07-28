@@ -1,8 +1,14 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument, stringify } from 'yaml';
 
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import {
+  verifyNativeCreationAuthorization,
+  type NativeCreationAuthorization,
+} from './native-creation-authorization.js';
+import { readNativeControllerTrustProject } from './native-controller-trust.js';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import {
@@ -12,11 +18,19 @@ import {
 } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
-import { readNativeProtectedDirectory } from './native-protected-file.js';
+import {
+  readNativeProtectedDirectory,
+  readNativeProtectedTextFile,
+} from './native-protected-file.js';
+import {
+  readNativeReviewTrustPolicy,
+  verifyNativeReviewTrustPolicy,
+} from './native-review-trust.js';
 import { compareAndSwapNativeRevision } from './native-revision.js';
 import {
   createNativeContentSnapshot,
   inspectNativeContentSnapshotHealth,
+  readNativeBaselineManifest,
   writeNativeBaselineManifest,
 } from './native-snapshot.js';
 import { assertNativeTrajectoryHealthy } from './native-trajectory-recovery.js';
@@ -32,6 +46,7 @@ import type {
   NativeProjectPaths,
   NativeSpecChange,
   NativeVerificationResult,
+  NativeVerificationProtocol,
   NativeV2ChangeState,
 } from './native-types.js';
 import {
@@ -63,6 +78,7 @@ const CURRENT_CHANGE_KEYS = new Set<string>([
   'implementation_scope',
   'verification_evidence',
   'partial_allowance',
+  'verification_protocol',
 ]);
 const SPEC_CHANGE_KEYS = new Set(['capability', 'operation', 'source', 'base_hash']);
 const PHASES = new Set<NativePhase>(['shape', 'build', 'verify', 'archive']);
@@ -337,6 +353,14 @@ function approvedContractHash(value: unknown): string | null {
   return value;
 }
 
+function verificationProtocol(value: unknown): NativeVerificationProtocol {
+  if (value === undefined) return 'legacy-v1';
+  if (value !== 'legacy-v1' && value !== 'signed-v2') {
+    throw new Error('Native verification_protocol must be legacy-v1 or signed-v2');
+  }
+  return value;
+}
+
 export function parseV2NativeChangeValue(value: unknown): NativeV2ChangeState {
   const root = record(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_V2_CHANGE_SCHEMA) {
@@ -394,6 +418,7 @@ export function parseNativeChangeValue(value: unknown): NativeChangeState {
     schema: NATIVE_CHANGE_SCHEMA,
     minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
     revision,
+    verification_protocol: verificationProtocol(root.verification_protocol),
     ...fields,
     approved_contract_hash: approvalHash,
     implementation_scope: contentAddressedRef(
@@ -481,6 +506,7 @@ export function nativeChangeDocument(state: NativeChangeState): Record<string, u
     schema: parsed.schema,
     minimum_runtime_version: parsed.minimum_runtime_version,
     revision: parsed.revision,
+    verification_protocol: parsed.verification_protocol,
     name: parsed.name,
     language: parsed.language,
     phase: parsed.phase,
@@ -570,6 +596,8 @@ export async function createNativeChange(options: {
   paths: NativeProjectPaths;
   name: string;
   language: 'en' | 'zh-CN';
+  verificationProtocol?: NativeVerificationProtocol;
+  creationAuthorization?: NativeCreationAuthorization;
   now?: Date;
 }): Promise<NativeChangeState> {
   return withNativeMutationLock(options.paths, `create change ${options.name}`, () =>
@@ -581,9 +609,42 @@ async function createNativeChangeLocked(options: {
   paths: NativeProjectPaths;
   name: string;
   language: 'en' | 'zh-CN';
+  verificationProtocol?: NativeVerificationProtocol;
+  creationAuthorization?: NativeCreationAuthorization;
   now?: Date;
 }): Promise<NativeChangeState> {
   assertNativeName(options.name);
+  // The public CLI always passes signed-v2 explicitly. Keeping the low-level
+  // constructor's no-authorization default on legacy-v1 preserves internal
+  // migration/read fixtures without creating an unsigned signed-v2 change.
+  const verificationProtocol =
+    options.verificationProtocol ?? (options.creationAuthorization ? 'signed-v2' : 'legacy-v1');
+  let signedCreation: {
+    policy: Awaited<ReturnType<typeof readNativeReviewTrustPolicy>>;
+    authorization: NativeCreationAuthorization;
+  } | null = null;
+  if (verificationProtocol === 'signed-v2') {
+    const policy = await readNativeReviewTrustPolicy(options.paths).catch((error: unknown) => {
+      throw new Error(
+        'New signed-v2 Native changes require a review trust policy before creation',
+        { cause: error },
+      );
+    });
+    if (!options.creationAuthorization) {
+      throw new Error(
+        'New signed-v2 Native changes require a controller-signed creation authorization',
+      );
+    }
+    signedCreation = {
+      policy,
+      authorization: await verifyNativeCreationAuthorization({
+        paths: options.paths,
+        policyHash: policy.policyHash,
+        authorization: options.creationAuthorization,
+        change: options.name,
+      }),
+    };
+  }
   const changeDir = nativeChangeDir(options.paths, options.name);
   await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
   let createdChangeDir = false;
@@ -615,6 +676,7 @@ async function createNativeChangeLocked(options: {
       schema: NATIVE_CHANGE_SCHEMA,
       minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
       revision: 1,
+      verification_protocol: verificationProtocol,
       name: options.name,
       language: options.language,
       phase: 'shape',
@@ -668,7 +730,26 @@ async function createNativeChangeLocked(options: {
         baseline.policy?.hash ?? null,
       );
     }
-    await writeNativeBaselineManifest(options.paths, state.name, baseline);
+    let creationBaseline = baseline;
+    if (signedCreation) {
+      const policyText = `${JSON.stringify(signedCreation.policy, null, 2)}\n`;
+      const policySnapshotHash = createHash('sha256').update(policyText).digest('hex');
+      const policySnapshotRef = `runtime/trust/review-policy-${signedCreation.policy.policyHash}.json`;
+      await fs.mkdir(path.join(changeDir, 'runtime', 'trust'), { recursive: true });
+      await atomicWriteText(path.join(changeDir, ...policySnapshotRef.split('/')), policyText);
+      creationBaseline = {
+        ...baseline,
+        creation: {
+          schema: 'comet.native.change-creation-binding.v1',
+          protocol: 'signed-v2',
+          policyHash: signedCreation.policy.policyHash,
+          policySnapshotRef,
+          policySnapshotHash,
+          authorization: signedCreation.authorization,
+        },
+      };
+    }
+    await writeNativeBaselineManifest(options.paths, state.name, creationBaseline);
     await createNativeChangeFile(options.paths, state);
     await writeNativeWorkspaceIdentity({
       paths: options.paths,
@@ -718,7 +799,85 @@ export async function inspectNativeChange(
       message: `Native schema migration is incomplete for ${name}; run doctor --repair`,
     };
   }
+  if (inspection.status === 'current' && inspection.state) {
+    await assertNativeVerificationProtocolBinding(paths, inspection.state as NativeChangeState);
+  }
   return inspection;
+}
+
+async function assertNativeVerificationProtocolBinding(
+  paths: NativeProjectPaths,
+  state: NativeChangeState,
+): Promise<void> {
+  const controllerTrust = await readNativeControllerTrustProject(paths.projectRoot);
+  const controllerRequiresSigned =
+    controllerTrust !== null && !controllerTrust.legacyChanges.includes(state.name);
+  if (controllerRequiresSigned && state.verification_protocol !== 'signed-v2') {
+    throw new Error(
+      `Native verification protocol does not match its creation baseline (controller-backed): expected signed-v2 for ${state.name}`,
+    );
+  }
+  if (
+    controllerTrust !== null &&
+    controllerTrust.legacyChanges.includes(state.name) &&
+    state.verification_protocol !== 'legacy-v1'
+  ) {
+    throw new Error(`Native controller trust marks ${state.name} as legacy-v1`);
+  }
+  const baseline = await readNativeBaselineManifest(paths, state.name);
+  if (baseline === null) {
+    if (state.verification_protocol === 'signed-v2' || controllerRequiresSigned) {
+      throw new Error(
+        `Native signed-v2 verification protocol has no creation baseline: ${state.name}`,
+      );
+    }
+    return;
+  }
+  const expectedProtocol: NativeVerificationProtocol = baseline.creation
+    ? 'signed-v2'
+    : 'legacy-v1';
+  if (state.verification_protocol !== expectedProtocol) {
+    throw new Error(
+      `Native verification protocol does not match its creation baseline: expected ${expectedProtocol}, got ${state.verification_protocol}`,
+    );
+  }
+  if (expectedProtocol === 'signed-v2') {
+    if (!controllerTrust) {
+      throw new Error('Native signed-v2 creation has no controller-owned trust root');
+    }
+    const creation = baseline.creation!;
+    const changeDir = nativeChangeDir(paths, state.name);
+    const snapshot = await readNativeProtectedTextFile({
+      root: nativeChangeDir(paths, state.name),
+      file: path.join(changeDir, ...creation.policySnapshotRef.split('/')),
+      maxBytes: 64 * 1024,
+      label: 'Native creation-time trust policy snapshot',
+    });
+    if (createHash('sha256').update(snapshot.text).digest('hex') !== creation.policySnapshotHash) {
+      throw new Error('Native creation-time trust policy snapshot hash mismatch');
+    }
+    let policy: unknown;
+    try {
+      policy = JSON.parse(snapshot.text);
+    } catch (error) {
+      throw new Error('Native creation-time trust policy snapshot is invalid JSON', {
+        cause: error,
+      });
+    }
+    const verifiedPolicy = verifyNativeReviewTrustPolicy(
+      policy,
+      controllerTrust.controllerIdentity,
+    );
+    if (verifiedPolicy.policyHash !== creation.policyHash) {
+      throw new Error('Native creation-time trust policy snapshot does not match its binding');
+    }
+    await verifyNativeCreationAuthorization({
+      paths,
+      policyHash: creation.policyHash,
+      authorization: creation.authorization,
+      change: state.name,
+    });
+  }
 }
 
 export async function readNativeChange(
@@ -806,6 +965,10 @@ export async function compareAndSwapNativeChangeLocked(
     throw new Error(
       `Native progress checkpoint recovery is required for ${state.name} before another state write`,
     );
+  }
+  const current = await readNativeChange(paths, state.name);
+  if (current.verification_protocol !== state.verification_protocol) {
+    throw new Error('Native verification protocol changed outside a revisioned state transition');
   }
   await assertNativeTrajectoryHealthy(paths, state.name);
   const file = path.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);

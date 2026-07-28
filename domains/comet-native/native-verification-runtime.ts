@@ -9,19 +9,18 @@ import type {
   NativeVerificationFreshness,
 } from './native-archive-preflight.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import {
-  isNativeHighRiskScope,
-  parseNativeIndependentReview,
-} from './native-independent-review.js';
+import { isNativeHighRiskScope } from './native-independent-review.js';
+import { loadNativeReviewTrustPolicy, trustedNativeIdentity } from './native-review-trust.js';
 import { nativeChangeDir } from './native-change.js';
 import type { NativeCheckReceipt } from './native-check-receipt.js';
-import { readNativeCheckReceipt } from './native-check-receipt-storage.js';
 import type { NativeContractSnapshot } from './native-contract.js';
 import { collectNativeContractFiles } from './native-contract-files.js';
 import {
   readNativeImplementationScopeBundle,
   readNativePartialAllowance,
   readNativeVerificationEvidence,
+  readNativeVerificationReceipt,
+  readNativeWaiverReceipt,
   nativeEvidenceRef,
   writeNativeVerificationReportSnapshot,
   writeNativeVerificationEvidence,
@@ -42,6 +41,17 @@ import {
   buildNativeVerificationEvidenceEnvelope,
   type NativeVerificationEvidenceEnvelope,
 } from './native-verification-evidence.js';
+import {
+  nativeReceiptBindingsMatch,
+  validateNativeReviewEvidenceGraph,
+  validateNativeStaticReceiptDependency,
+} from './native-verification-receipt-runtime.js';
+import {
+  nativeArtifactBindingHash,
+  nativeBlockedCheckId,
+  type NativeVerificationReceipt,
+  type NativeVerificationReceiptBindings,
+} from './native-verification-receipt.js';
 
 export type NativeVerificationFreshnessFindingCode =
   | 'verification-contract-stale'
@@ -53,6 +63,7 @@ export type NativeVerificationFreshnessFindingCode =
   | 'verification-independent-review-missing'
   | 'verification-independent-review-stale'
   | 'verification-waiver-unconfirmed'
+  | 'verification-protocol-legacy'
   | 'verification-state-mismatch'
   | 'verification-evidence-missing'
   | 'verification-evidence-invalid';
@@ -76,6 +87,7 @@ function projectionManifest(projection: NativeSnapshotProjection): NativeContent
   return {
     schema: 'comet.native.content-snapshot.v1',
     origin: projection.origin,
+    ...(projection.capture ? { capture: projection.capture } : {}),
     createdAt: '1970-01-01T00:00:00.000Z',
     complete: projection.complete,
     limits: projection.limits,
@@ -246,15 +258,348 @@ function checkReceiptBindingCodes(options: {
   return codes;
 }
 
+function verificationReceiptBindings(options: {
+  state: NativeChangeState;
+  contractHash: string;
+  implementationScope: NativeImplementationScopeBundle;
+  sourceRevision?: number;
+}): NativeVerificationReceiptBindings {
+  return {
+    change: options.state.name,
+    sourceRevision: options.sourceRevision ?? options.state.revision,
+    contractHash: options.contractHash,
+    scopeHash: options.implementationScope.scope.scopeHash,
+    snapshotHash: options.implementationScope.scope.currentProjectionHash,
+    artifactHash: nativeArtifactBindingHash(options.implementationScope.scope.declaredArtifacts),
+  };
+}
+
+async function validateTypedReceipt(options: {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+  ref: string;
+  expectedBindings: NativeVerificationReceiptBindings;
+  acceptanceId?: string;
+  role: NativeVerificationReceipt['role'];
+  contractHash: string;
+  implementationScope: NativeImplementationScopeBundle;
+  result: 'pass' | 'fail';
+}): Promise<NativeVerificationReceipt> {
+  const receipt = await readNativeVerificationReceipt(
+    options.paths,
+    options.state.name,
+    options.ref,
+  );
+  if (
+    receipt.role !== options.role ||
+    !nativeReceiptBindingsMatch(receipt, options.expectedBindings) ||
+    (options.acceptanceId !== undefined && !receipt.acceptanceIds.includes(options.acceptanceId))
+  ) {
+    throw new Error('Native verification receipt coverage or binding is invalid');
+  }
+  if (options.result === 'pass' && receipt.status !== 'passed') {
+    throw new Error(`Native verification receipt is ${receipt.status}`);
+  }
+  const check = await validateNativeStaticReceiptDependency({
+    paths: options.paths,
+    state: options.state,
+    receipt,
+  });
+  if (check) {
+    const codes = checkReceiptBindingCodes({
+      receipt: check,
+      sourceRevision: options.expectedBindings.sourceRevision,
+      result: options.result,
+      contractHash: options.contractHash,
+      implementationScope: options.implementationScope,
+    });
+    if (codes.length > 0) {
+      throw new Error(`Native static receipt dependency is invalid: ${codes.join(', ')}`);
+    }
+  }
+  return receipt;
+}
+
+async function validateV2ReceiptGraph(options: {
+  paths: NativeProjectPaths;
+  state: NativeChangeState;
+  result: 'pass' | 'fail';
+  trace: ReturnType<typeof buildNativeAcceptanceEvidenceTrace>;
+  requiredReceiptRefs: readonly string[];
+  independentReviewReceiptRef?: string | null;
+  contractHash: string;
+  implementationScope: NativeImplementationScopeBundle;
+  sourceRevision?: number;
+}): Promise<{
+  independentReviewReceiptRef: string | null;
+  independentReviewChecked:
+    | Extract<NativeVerificationReceipt, { kind: 'independent-review' }>['evidence']['checked']
+    | null;
+}> {
+  const expectedBindings = verificationReceiptBindings({
+    state: options.state,
+    contractHash: options.contractHash,
+    implementationScope: options.implementationScope,
+    sourceRevision: options.sourceRevision,
+  });
+  const requiredReceipts = new Map<string, NativeVerificationReceipt>();
+  const reviewedReceiptRefs = new Set<string>(options.requiredReceiptRefs);
+  const reviewedWaiverRefs = new Set<string>();
+  for (const ref of options.requiredReceiptRefs) {
+    const receipt = await validateTypedReceipt({
+      ...options,
+      ref,
+      expectedBindings,
+      role: 'required-check',
+      result: 'fail',
+    });
+    requiredReceipts.set(ref, receipt);
+  }
+  let independentReviewReceiptRef: string | null = null;
+  let independentReviewChecked:
+    | Extract<NativeVerificationReceipt, { kind: 'independent-review' }>['evidence']['checked']
+    | null = null;
+  let reviewPolicy: Awaited<ReturnType<typeof loadNativeReviewTrustPolicy>> | null = null;
+  const requireReviewPolicy = async () => {
+    reviewPolicy ??= await loadNativeReviewTrustPolicy({
+      paths: options.paths,
+      scope: options.implementationScope,
+    });
+    return reviewPolicy;
+  };
+  const waivedBlockedReceiptCoverage = new Map<string, Set<string>>();
+  const completeAcceptanceIds = options.trace.entries.map((entry) => entry.acceptanceId).sort();
+  const acceptReviewReceipt = async (
+    ref: string,
+    receipt: NativeVerificationReceipt,
+  ): Promise<void> => {
+    if (receipt.kind !== 'independent-review') {
+      throw new Error('Native applicability review ref is not an independent-review receipt');
+    }
+    if (
+      JSON.stringify([...receipt.acceptanceIds].sort()) !== JSON.stringify(completeAcceptanceIds)
+    ) {
+      throw new Error('Native independent review must cover the complete current acceptance set');
+    }
+    const policy = await requireReviewPolicy();
+    if (
+      receipt.evidence.reviewPolicyHash !== policy.policyHash ||
+      receipt.evidence.implementationKeyId !== policy.implementationKeyId
+    ) {
+      throw new Error('Native independent review trust policy is stale');
+    }
+    trustedNativeIdentity(policy, 'reviewer', receipt.evidence.reviewerIdentity.keyId);
+    const implementationReceipt = await readNativeVerificationReceipt(
+      options.paths,
+      options.state.name,
+      receipt.evidence.implementationReceiptRef,
+    );
+    const expectedExecutionId = options.state.run_id
+      ? `run:${options.state.run_id}`
+      : `scope:${options.implementationScope.scope.scopeHash}`;
+    if (
+      implementationReceipt.kind !== 'implementation-attestation' ||
+      implementationReceipt.status !== 'passed' ||
+      !nativeReceiptBindingsMatch(implementationReceipt, expectedBindings) ||
+      JSON.stringify(implementationReceipt.acceptanceIds) !==
+        JSON.stringify(completeAcceptanceIds) ||
+      implementationReceipt.evidence.implementationIdentity.keyId !== policy.implementationKeyId ||
+      implementationReceipt.evidence.reviewPolicyHash !== policy.policyHash ||
+      implementationReceipt.evidence.implementationExecutionId !== expectedExecutionId
+    ) {
+      throw new Error('Native independent review implementation attestation is stale or invalid');
+    }
+    const highRisk =
+      !options.implementationScope.scope.complete ||
+      isNativeHighRiskScope(options.implementationScope.scope.changes);
+    const checkedRefs = [
+      ['unifiedIo', receipt.evidence.checked.unifiedIo],
+      ['adversarialPaths', receipt.evidence.checked.adversarialPaths],
+      ['generatedAssets', receipt.evidence.checked.generatedAssets],
+      ['lifecycleEval', receipt.evidence.checked.lifecycleEval],
+    ] as const;
+    if (highRisk && checkedRefs.some(([, checkedRef]) => checkedRef === null)) {
+      throw new Error('Native high-risk independent review has incomplete required checks');
+    }
+    for (const [name, checkedRef] of checkedRefs) {
+      if (checkedRef === null) continue;
+      const checkedReceipt = await readNativeVerificationReceipt(
+        options.paths,
+        options.state.name,
+        checkedRef,
+      );
+      const allowed =
+        name === 'unifiedIo'
+          ? checkedReceipt.kind === 'static-inspection' || checkedReceipt.kind === 'manual-evidence'
+          : checkedReceipt.kind === 'automated-check' || checkedReceipt.kind === 'manual-evidence';
+      if (
+        !allowed ||
+        checkedReceipt.status !== 'passed' ||
+        !nativeReceiptBindingsMatch(checkedReceipt, expectedBindings)
+      ) {
+        throw new Error(`Native ${name} review check lacks valid typed evidence`);
+      }
+      if (checkedReceipt.kind === 'static-inspection') {
+        const check = await validateNativeStaticReceiptDependency({
+          paths: options.paths,
+          state: options.state,
+          receipt: checkedReceipt,
+        });
+        if (
+          !check ||
+          checkReceiptBindingCodes({
+            receipt: check,
+            sourceRevision: expectedBindings.sourceRevision,
+            result: 'pass',
+            contractHash: options.contractHash,
+            implementationScope: options.implementationScope,
+          }).length > 0
+        ) {
+          throw new Error('Native unified-I/O static review check is stale');
+        }
+      }
+      reviewedReceiptRefs.add(checkedRef);
+    }
+    const matrix = options.trace.entries.map(
+      (entry): NativeAcceptanceEvidenceEntry => ({
+        acceptance_id: entry.acceptanceId,
+        status: entry.status,
+        evidence_refs: [...entry.evidenceRefs],
+        ...(entry.skippedReason === null ? {} : { skipped_reason: entry.skippedReason }),
+        ...(entry.waiverRef === null ? {} : { waiver_ref: entry.waiverRef }),
+      }),
+    );
+    await validateNativeReviewEvidenceGraph({
+      paths: options.paths,
+      state: options.state,
+      reviewReceipt: receipt,
+      matrix,
+      expectedReceiptRefs: [...reviewedReceiptRefs],
+      expectedWaiverRefs: [...reviewedWaiverRefs],
+    });
+    if (independentReviewReceiptRef !== null && independentReviewReceiptRef !== ref) {
+      throw new Error('Native verification contains multiple independent review receipts');
+    }
+    independentReviewReceiptRef = ref;
+    independentReviewChecked = receipt.evidence.checked;
+  };
+  for (const entry of options.trace.entries) {
+    if (entry.status === 'failed') {
+      if (options.result === 'pass') {
+        throw new Error('Native passing verification cannot include failed acceptance criteria');
+      }
+      continue;
+    }
+    if (entry.status === 'waived') {
+      const waiver = await readNativeWaiverReceipt(
+        options.paths,
+        options.state.name,
+        entry.waiverRef!,
+      );
+      if (
+        waiver.acceptanceId !== entry.acceptanceId ||
+        JSON.stringify(waiver.bindings) !== JSON.stringify(expectedBindings)
+      ) {
+        throw new Error('Native waiver receipt does not match its acceptance or current bindings');
+      }
+      reviewedWaiverRefs.add(entry.waiverRef!);
+      const blockedReceipt = await readNativeVerificationReceipt(
+        options.paths,
+        options.state.name,
+        waiver.blockedReceiptRef,
+      );
+      if (
+        blockedReceipt.status === 'passed' ||
+        !nativeReceiptBindingsMatch(blockedReceipt, expectedBindings) ||
+        (blockedReceipt.role === 'acceptance-evidence' &&
+          !blockedReceipt.acceptanceIds.includes(entry.acceptanceId)) ||
+        waiver.blockedCheckId !== nativeBlockedCheckId(blockedReceipt)
+      ) {
+        throw new Error('Native waiver does not bind a current blocking receipt');
+      }
+      reviewedReceiptRefs.add(waiver.blockedReceiptRef);
+      const policy = await requireReviewPolicy();
+      if (waiver.reviewPolicyHash !== policy.policyHash) {
+        throw new Error('Native waiver trust policy is stale');
+      }
+      trustedNativeIdentity(policy, 'waiver', waiver.signerIdentity.keyId);
+      const waiverCoverage =
+        waivedBlockedReceiptCoverage.get(waiver.blockedReceiptRef) ?? new Set<string>();
+      waiverCoverage.add(entry.acceptanceId);
+      waivedBlockedReceiptCoverage.set(waiver.blockedReceiptRef, waiverCoverage);
+      for (const alternativeRef of waiver.alternativeReceiptRefs) {
+        const alternativeReceipt = await validateTypedReceipt({
+          ...options,
+          ref: alternativeRef,
+          expectedBindings,
+          acceptanceId: entry.acceptanceId,
+          role: 'acceptance-evidence',
+        });
+        if (
+          alternativeReceipt.kind !== 'automated-check' &&
+          alternativeReceipt.kind !== 'manual-evidence'
+        ) {
+          throw new Error('Native waiver alternative must be automated-check or manual-evidence');
+        }
+        reviewedReceiptRefs.add(alternativeRef);
+      }
+      continue;
+    }
+    for (const ref of entry.evidenceRefs) {
+      const receipt = await validateTypedReceipt({
+        ...options,
+        ref,
+        expectedBindings,
+        acceptanceId: entry.acceptanceId,
+        role: 'acceptance-evidence',
+      });
+      if (receipt.kind !== 'automated-check' && receipt.kind !== 'manual-evidence') {
+        throw new Error('Native acceptance evidence must be automated-check or manual-evidence');
+      }
+      reviewedReceiptRefs.add(ref);
+    }
+  }
+  if (
+    options.independentReviewReceiptRef &&
+    options.independentReviewReceiptRef !== independentReviewReceiptRef
+  ) {
+    const receipt = await validateTypedReceipt({
+      ...options,
+      ref: options.independentReviewReceiptRef,
+      expectedBindings,
+      role: 'acceptance-evidence',
+    });
+    await acceptReviewReceipt(options.independentReviewReceiptRef, receipt);
+  }
+  if (
+    options.result === 'pass' &&
+    [...requiredReceipts.entries()].some(
+      ([ref, receipt]) =>
+        receipt.status !== 'passed' &&
+        !completeAcceptanceIds.every((acceptanceId) =>
+          waivedBlockedReceiptCoverage.get(ref)?.has(acceptanceId),
+        ),
+    )
+  ) {
+    throw new Error('Native required check is not passed or covered by a current waiver');
+  }
+  return { independentReviewReceiptRef, independentReviewChecked };
+}
+
 export interface NativeVerificationEvidenceOptions {
   paths: NativeProjectPaths;
   state: NativeChangeState;
   result: 'pass' | 'fail';
   reportRef: string;
   receiptRef?: string | null;
-  waiverConfirmed?: boolean;
-  independentReviewRef?: string | null;
+  receiptRefs?: readonly string[];
+  waiverRefs?: readonly string[];
+  independentReviewReceiptRef?: string | null;
   now?: Date;
+}
+
+function sortedRefs(refs: readonly string[] | undefined): string[] {
+  return [...(refs ?? [])].sort();
 }
 
 /** Build and validate an envelope without mutating the Native evidence store. */
@@ -275,61 +620,35 @@ export async function inspectNativeVerificationEvidence(
     };
   }
   const report = await reportEvidence(options);
-  const hasWaiver = report.entries.some((entry) => entry.waiver !== undefined);
-  if (options.result === 'pass' && hasWaiver && !options.waiverConfirmed) {
-    throw new Error('Native passing verification requires explicit confirmation for every waiver');
-  }
   if (options.result === 'pass' && !options.receiptRef) {
-    throw new Error('Native passing verification requires a Native check receipt');
+    throw new Error('Native passing verification requires a typed required-check receipt');
   }
-  let receiptRef: string | null = null;
-  if (options.receiptRef) {
-    const receipt = await readNativeCheckReceipt(
-      options.paths,
-      options.state.name,
-      options.receiptRef,
-    );
-    const receiptCodes = checkReceiptBindingCodes({
-      receipt,
-      sourceRevision: options.state.revision,
-      result: options.result,
-      contractHash: facts.contractHash,
-      implementationScope: facts.bundle,
-    });
-    if (receiptCodes.length > 0) {
-      throw new Error(`Native verification receipt is not admissible: ${receiptCodes.join(', ')}`);
-    }
-    receiptRef = options.receiptRef;
-  }
-  const highRisk = isNativeHighRiskScope(
-    facts.bundle.scope.changes
-      .filter((change) => change.after !== null)
-      .map((change) => change.path),
-  );
-  let independentReview: NativeVerificationPreparation['envelope'] extends infer T
-    ? T extends { independentReview: infer R }
-      ? R
-      : never
-    : never = null;
-  if (options.independentReviewRef) {
-    const reviewDocument = await readNativeBoundedTextFile({
-      root: nativeChangeDir(options.paths, options.state.name),
-      ref: options.independentReviewRef,
-    });
-    const review = parseNativeIndependentReview(
-      JSON.parse(reviewDocument.text) as unknown,
-      facts.contract.acceptance.map((criterion) => criterion.id),
-    );
-    independentReview = { ref: reviewDocument.ref, hash: reviewDocument.hash, review };
-  }
-  if (highRisk && independentReview === null) {
-    throw new Error('Native high-risk verification requires an independent review receipt');
-  }
+  const requiredReceiptRefs = options.receiptRef ? [options.receiptRef] : [];
   const trace = buildNativeAcceptanceEvidenceTrace(facts.contract.acceptance, report.entries, {
     nativeRootRef: nativeRootRef(options.paths),
   });
   if (options.result === 'pass' && trace.entries.some((entry) => entry.status === 'failed')) {
-    throw new Error('Native passing verification cannot include skipped acceptance criteria');
+    throw new Error('Native passing verification cannot include failed acceptance criteria');
+  }
+  const receiptGraph = await validateV2ReceiptGraph({
+    paths: options.paths,
+    state: options.state,
+    result: options.result,
+    trace,
+    requiredReceiptRefs,
+    independentReviewReceiptRef: options.independentReviewReceiptRef,
+    contractHash: facts.contractHash,
+    implementationScope: facts.bundle,
+  });
+  const signedVerification = options.state.verification_protocol === 'signed-v2';
+  if (
+    signedVerification &&
+    options.result === 'pass' &&
+    receiptGraph.independentReviewReceiptRef === null
+  ) {
+    throw new Error(
+      'Native passing verification requires a signed acceptance-applicability review receipt',
+    );
   }
   const allowance = options.state.partial_allowance
     ? await readNativePartialAllowance(
@@ -350,9 +669,8 @@ export async function inspectNativeVerificationEvidence(
     },
     reportRef: report.ref,
     reportHash: report.hash,
-    receiptRef,
-    waiverConfirmed: options.waiverConfirmed === true,
-    independentReview,
+    requiredReceiptRefs,
+    independentReviewReceiptRef: receiptGraph.independentReviewReceiptRef,
     acceptanceTrace: trace,
     partialAllowance:
       options.state.partial_allowance && allowance
@@ -360,6 +678,18 @@ export async function inspectNativeVerificationEvidence(
         : null,
     now: options.now,
   });
+  if (
+    (options.receiptRefs !== undefined &&
+      JSON.stringify(sortedRefs(options.receiptRefs)) !== JSON.stringify(envelope.receiptRefs)) ||
+    (options.waiverRefs !== undefined &&
+      JSON.stringify(sortedRefs(options.waiverRefs)) !== JSON.stringify(envelope.waiverRefs)) ||
+    (options.independentReviewReceiptRef !== undefined &&
+      options.independentReviewReceiptRef !== envelope.independentReviewReceiptRef)
+  ) {
+    throw new Error(
+      'Native verification receipt, waiver, or independent-review refs do not exactly match the report',
+    );
+  }
   const evidenceRef = nativeEvidenceRef('verifications', envelope.envelopeHash);
   return {
     ready: true,
@@ -449,25 +779,30 @@ export async function inspectNativeVerificationFreshness(options: {
     };
   }
   try {
-    const [facts, envelope, report] = await Promise.all([
+    const [facts, envelope] = await Promise.all([
       inspectCurrentScopeFacts(options),
       readNativeVerificationEvidence(
         options.paths,
         options.state.name,
         options.state.verification_evidence,
       ),
-      reportEvidence({
-        paths: options.paths,
-        state: options.state,
-        reportRef: options.state.verification_report,
-      }),
     ]);
+    if (envelope.schema !== 'comet.native.verification-evidence.v2') {
+      return {
+        freshness: 'stale',
+        findingCodes: ['verification-protocol-legacy'],
+        evidence: emptyEvidence(options.state.verification_result, 'stale'),
+        envelope: null,
+      };
+    }
+    const report = await reportEvidence({
+      paths: options.paths,
+      state: options.state,
+      reportRef: options.state.verification_report,
+    });
     const findingCodes = [...facts.findingCodes];
     if (report.hash !== envelope.reportHash || report.ref !== envelope.reportRef) {
       findingCodes.push('verification-report-stale');
-    }
-    if (report.entries.some((entry) => entry.waiver !== undefined) && !envelope.waiverConfirmed) {
-      findingCodes.push('verification-waiver-unconfirmed');
     }
     if (
       envelope.result !== options.state.verification_result ||
@@ -479,51 +814,30 @@ export async function inspectNativeVerificationFreshness(options: {
     ) {
       findingCodes.push('verification-state-mismatch');
     }
-    if (envelope.receiptRef) {
-      try {
-        const receipt = await readNativeCheckReceipt(
-          options.paths,
-          options.state.name,
-          envelope.receiptRef,
-        );
-        findingCodes.push(
-          ...checkReceiptBindingCodes({
-            receipt,
-            sourceRevision: envelope.sourceRevision,
-            result: envelope.result,
-            contractHash: envelope.contractHash,
-            implementationScope: facts.bundle,
-          }),
-        );
-      } catch {
-        findingCodes.push('verification-receipt-invalid');
-      }
-    }
-    const highRisk = isNativeHighRiskScope(
-      facts.bundle.scope.changes
-        .filter((change) => change.after !== null)
-        .map((change) => change.path),
-    );
-    if (highRisk && envelope.independentReview === null) {
-      findingCodes.push('verification-independent-review-missing');
-    }
-    if (envelope.independentReview) {
-      try {
-        const document = await readNativeBoundedTextFile({
-          root: nativeChangeDir(options.paths, options.state.name),
-          ref: envelope.independentReview.ref,
-        });
-        if (document.hash !== envelope.independentReview.hash) {
-          findingCodes.push('verification-independent-review-stale');
-        } else {
-          parseNativeIndependentReview(
-            JSON.parse(document.text) as unknown,
-            facts.contract.acceptance.map((criterion) => criterion.id),
-          );
-        }
-      } catch {
+    try {
+      const graph = await validateV2ReceiptGraph({
+        paths: options.paths,
+        state: options.state,
+        result: envelope.result,
+        trace: envelope.acceptanceTrace,
+        requiredReceiptRefs: envelope.requiredReceiptRefs,
+        independentReviewReceiptRef: envelope.independentReviewReceiptRef,
+        contractHash: envelope.contractHash,
+        implementationScope: facts.bundle,
+        sourceRevision: envelope.sourceRevision,
+      });
+      if (graph.independentReviewReceiptRef !== envelope.independentReviewReceiptRef) {
         findingCodes.push('verification-independent-review-stale');
       }
+    } catch {
+      findingCodes.push('verification-receipt-invalid');
+    }
+    if (
+      options.state.verification_protocol === 'signed-v2' &&
+      envelope.result === 'pass' &&
+      envelope.independentReviewReceiptRef === null
+    ) {
+      findingCodes.push('verification-independent-review-missing');
     }
     const uniqueCodes = [...new Set(findingCodes)].sort();
     const freshness: NativeVerificationFreshness =

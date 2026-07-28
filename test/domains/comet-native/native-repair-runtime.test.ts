@@ -64,7 +64,8 @@ function evidenceInput(
     contract.acceptance,
     contract.acceptance.map((criterion) => ({
       acceptance_id: criterion.id,
-      evidence_refs: ['verification.md'],
+      status: 'passed' as const,
+      evidence_refs: [`runtime/evidence/receipts/${'a'.repeat(64)}.json`],
     })),
     { nativeRootRef: 'comet' },
   );
@@ -81,6 +82,9 @@ function evidenceInput(
     reportRef: 'verification.md',
     reportHash: 'c'.repeat(64),
     acceptanceTrace,
+    requiredReceiptRefs: [`runtime/evidence/receipts/${'b'.repeat(64)}.json`],
+    independentReviewReceiptRef:
+      result === 'pass' ? `runtime/evidence/receipts/${'c'.repeat(64)}.json` : null,
     now: NOW,
   });
   return { envelope, implementationScope };
@@ -103,7 +107,8 @@ function unchangedEvidenceInput(noCodeReason: string): NativeRepairEvidenceInput
     contract.acceptance,
     contract.acceptance.map((criterion) => ({
       acceptance_id: criterion.id,
-      evidence_refs: ['verification.md'],
+      status: 'passed' as const,
+      evidence_refs: [`runtime/evidence/receipts/${'a'.repeat(64)}.json`],
     })),
     { nativeRootRef: 'comet' },
   );
@@ -120,6 +125,8 @@ function unchangedEvidenceInput(noCodeReason: string): NativeRepairEvidenceInput
     reportRef: 'verification.md',
     reportHash: 'c'.repeat(64),
     acceptanceTrace,
+    requiredReceiptRefs: [`runtime/evidence/receipts/${'b'.repeat(64)}.json`],
+    independentReviewReceiptRef: null,
     now: NOW,
   });
   return { envelope, implementationScope };

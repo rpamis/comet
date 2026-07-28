@@ -16,7 +16,8 @@ COPY wordcount.py /workspace/wordcount.py
 COPY test_wordcount.py /workspace/test_wordcount.py
 
 RUN useradd --create-home --shell /bin/bash agent && \
-    chown -R agent:agent /workspace
+    mkdir -p /home/agent/.comet && \
+    chown -R agent:agent /workspace /home/agent/.comet
 USER agent
 ENV HOME=/home/agent
 ENV PYTHONPATH=/workspace

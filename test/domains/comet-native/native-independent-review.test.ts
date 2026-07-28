@@ -59,5 +59,24 @@ describe('Native independent review', () => {
     expect(isNativeHighRiskScope(['domains/comet-native/native-archive.ts'])).toBe(true);
     expect(isNativeHighRiskScope(['src/feature.ts'])).toBe(false);
     expect(isNativeHighRiskScope(['domains/example/path-parser.ts'])).toBe(true);
+    expect(isNativeHighRiskScope(['domains/comet-classic/classic-cli.ts'])).toBe(true);
+    expect(isNativeHighRiskScope(['assets/skills/comet/SKILL.md'])).toBe(true);
+    expect(isNativeHighRiskScope(['assets/manifest.json'])).toBe(true);
+    expect(isNativeHighRiskScope(['domains/workflow-contract/project-config.ts'])).toBe(true);
+    expect(isNativeHighRiskScope(['scripts/build-native-runtime.ts'])).toBe(true);
+    expect(isNativeHighRiskScope(['platform/process/spawn.ts'])).toBe(true);
+    expect(isNativeHighRiskScope(['app/commands/example.ts'])).toBe(true);
+    expect(isNativeHighRiskScope(['app/cli/index.ts'])).toBe(true);
+    expect(isNativeHighRiskScope(['domains/accounts/access-control.ts'])).toBe(true);
+    expect(isNativeHighRiskScope(['pnpm-lock.yaml'])).toBe(true);
+    expect(
+      isNativeHighRiskScope([
+        {
+          path: 'src/ordinary-feature.ts',
+          before: { hash: 'before' },
+          after: null,
+        },
+      ]),
+    ).toBe(true);
   });
 });

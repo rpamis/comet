@@ -54,6 +54,7 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 - `platform/`：文件系统、进程、安装平台、版本、路径等平台适配能力。domain 不应直接散落平台差异逻辑。
 - `scripts/`：构建、发布、benchmark、lint 等仓库自动化脚本。可调用源码模块，但不要成为运行时业务入口。
 - `assets/`：发布资产和内置 Skill 内容。修改 runtime 源码后必须通过构建同步生成资产，不要把业务逻辑只写在生成物里。
+- `eval/scaffold/shell/` 中仅允许 `config/repository-layout.json` 明确列出的隔离评审 sidecar 入口；它们属于 Eval 容器边界，不是产品 Runtime 入口。
 
 测试目录必须跟随被测对象归属：
 
@@ -238,4 +239,4 @@ Changelog写英文
 - 如果当前请求未明确调用 Comet Skill，且 probe 返回 `out_of_scope` 或 `none`，不要进入 Comet workflow。
 - 如果配置或状态无效且没有 `nextCommand`，停止并报告原因；不要猜测另一个 workflow。
 - 不能只因为存在 active change 就把无关任务挂到该 change。Native 的未提交改动由 Native 入口检查，不由探针自动归因。
-</comet-ambient-resume>
+  </comet-ambient-resume>

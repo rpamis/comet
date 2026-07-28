@@ -33,7 +33,12 @@ describe('Native progress checkpoints', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-progress-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    await createNativeChange({ paths, name: 'resume-work', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'resume-work',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
   });
 
   async function writeValidBrief(): Promise<void> {

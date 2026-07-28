@@ -60,6 +60,7 @@ import type {
   NativeSpecChange,
   NativeTransactionJournal,
 } from './native-types.js';
+import { inspectNativeVerificationFreshness } from './native-verification-runtime.js';
 
 type AnyArchiveTransactionJournal = NativeTransactionJournal | NativeArchiveTransactionJournalV2;
 
@@ -416,7 +417,29 @@ async function continueArchive(
         );
       }
     }
-    const applied = await applyNativeArchiveTransactionV2(paths, journal, hooks);
+    const applied = await applyNativeArchiveTransactionV2(paths, journal, {
+      ...hooks,
+      beforeArchiveChangeMove: async (operation) => {
+        await hooks?.beforeArchiveChangeMove?.(operation);
+        const state = await readNativeChange(paths, journal.change);
+        const freshness = await inspectNativeVerificationFreshness({
+          paths,
+          state,
+          now: new Date(journal.createdAt),
+        });
+        if (
+          state.phase !== 'archive' ||
+          state.archived ||
+          state.verification_result !== 'pass' ||
+          !['complete', 'partial'].includes(freshness.freshness) ||
+          freshness.findingCodes.length > 0
+        ) {
+          throw new Error(
+            `Native Archive verification freshness changed before moving ${journal.change}: ${freshness.findingCodes.join(', ') || freshness.freshness}`,
+          );
+        }
+      },
+    });
     await finalizeArchive(paths, applied, hooks);
     return finalizeNativeArchiveTransactionV2(paths, applied, 'commit');
   }

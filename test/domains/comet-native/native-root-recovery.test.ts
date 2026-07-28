@@ -47,6 +47,7 @@ describe('Native artifact root recovery', () => {
     await enableBatchClarification();
     await createNativeChange({
       paths: await nativeProjectPaths(projectRoot, '.'),
+      verificationProtocol: 'legacy-v1',
       name: 'identity-change',
       language: 'en',
     });
@@ -68,6 +69,7 @@ describe('Native artifact root recovery', () => {
     await expect(
       createNativeChange({
         paths: await nativeProjectPaths(projectRoot, '.'),
+        verificationProtocol: 'legacy-v1',
         name: 'must-not-start',
         language: 'en',
       }),
@@ -93,7 +95,12 @@ describe('Native artifact root recovery', () => {
     const source = await seedNativeRoot(projectRoot, '.');
     await enableBatchClarification();
     const sourcePaths = await nativeProjectPaths(projectRoot, '.');
-    await createNativeChange({ paths: sourcePaths, name: 'identity-change', language: 'en' });
+    await createNativeChange({
+      paths: sourcePaths,
+      name: 'identity-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     let transactionId = '';
     await expect(
       moveNativeRoot({
@@ -133,6 +140,7 @@ describe('Native artifact root recovery', () => {
     await seedNativeRoot(projectRoot, '.');
     await createNativeChange({
       paths: await nativeProjectPaths(projectRoot, '.'),
+      verificationProtocol: 'legacy-v1',
       name: 'identity-change',
       language: 'en',
     });

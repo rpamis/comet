@@ -17,7 +17,14 @@ import {
 import { NATIVE_CONTRACT_FILE_LIMITS } from '../../../domains/comet-native/native-contract-files.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { generateNativeReviewKeyPair } from '../../../domains/comet-native/native-review-identity.js';
+import { buildNativeReviewTrustPolicy } from '../../../domains/comet-native/native-review-trust.js';
+import type { NativeReviewTrustPolicy } from '../../../domains/comet-native/native-review-trust.js';
 import { MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES } from '../../../domains/comet-native/native-verification-scope.js';
+import {
+  authorizeNativeTestChange,
+  installNativeControllerTrust,
+} from '../../helpers/native-controller-trust.js';
 
 const brief = `# Outcome
 Add sentence counting.
@@ -51,16 +58,64 @@ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
 
 describe('Comet Native CLI dispatcher', () => {
   let projectRoot: string;
+  let implementationKey: ReturnType<typeof generateNativeReviewKeyPair>;
+  let reviewerKey: ReturnType<typeof generateNativeReviewKeyPair>;
+  let waiverKey: ReturnType<typeof generateNativeReviewKeyPair>;
+  let controllerKey: ReturnType<typeof generateNativeReviewKeyPair>;
+  let reviewPolicy: NativeReviewTrustPolicy;
+  let authorizationRoot: string;
+  let cleanupControllerTrust: () => Promise<void>;
   const projectArgs = () => ['--project-root', projectRoot] as const;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-cli-'));
     execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
+    implementationKey = generateNativeReviewKeyPair();
+    reviewerKey = generateNativeReviewKeyPair();
+    waiverKey = generateNativeReviewKeyPair();
+    controllerKey = generateNativeReviewKeyPair();
+    cleanupControllerTrust = await installNativeControllerTrust({
+      projectRoot,
+      controller: controllerKey,
+    });
+    authorizationRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-authorizations-'));
+    reviewPolicy = buildNativeReviewTrustPolicy({
+      controllerIdentity: controllerKey.identity,
+      controllerPrivateKey: controllerKey.privateKey,
+      implementationKeyId: implementationKey.identity.keyId,
+      trustedReviewers: [reviewerKey.identity],
+      trustedWaiverSigners: [waiverKey.identity],
+    });
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'native-review-trust.json'),
+      `${JSON.stringify(reviewPolicy, null, 2)}\n`,
+    );
   });
 
   afterEach(async () => {
+    await cleanupControllerTrust();
+    await fs.rm(authorizationRoot, { recursive: true, force: true });
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
+
+  async function creationArgs(name: string): Promise<string[]> {
+    const file = path.join(authorizationRoot, `${name}.json`);
+    await fs.writeFile(
+      file,
+      `${JSON.stringify(
+        await authorizeNativeTestChange({
+          projectRoot,
+          controller: controllerKey,
+          policy: reviewPolicy,
+          name,
+        }),
+        null,
+        2,
+      )}\n`,
+    );
+    return ['--creation-authorization', file];
+  }
 
   it('initializes docs as the default Native artifact root', async () => {
     const initialized = json(await runNativeCli(['init', '--json', ...projectArgs()]));
@@ -81,6 +136,129 @@ describe('Comet Native CLI dispatcher', () => {
     ).resolves.toContain('artifact_root: docs');
   });
 
+  it('creates pre-trusted review identities without printing private keys and formats policy before a change', async () => {
+    await fs.rm(path.join(projectRoot, '.comet', 'native-review-trust.json'));
+    expect((await runNativeCli(['init', ...projectArgs()])).exitCode).toBe(0);
+    const secretRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-secrets-'));
+    try {
+      const identities = await Promise.all(
+        ['implementation', 'reviewer', 'waiver'].map(async (name) => {
+          const identityPath = path.join(projectRoot, 'identities', `${name}.json`);
+          const privateKeyPath = path.join(secretRoot, `${name}.key`);
+          const result = await runNativeCli([
+            'trust',
+            'keygen',
+            '--identity',
+            identityPath,
+            '--private-key',
+            privateKeyPath,
+            '--json',
+            ...projectArgs(),
+          ]);
+          if (process.platform === 'win32') {
+            expect(json(result)).toMatchObject({
+              exitCode: 64,
+              error: {
+                code: 'usage',
+                message: expect.stringContaining('cannot persist private keys on Windows'),
+              },
+            });
+            await expect(fs.access(privateKeyPath)).rejects.toMatchObject({ code: 'ENOENT' });
+            const generated = generateNativeReviewKeyPair();
+            const envName = `COMET_NATIVE_TEST_KEY_${name.toUpperCase()}`;
+            process.env[envName] = generated.privateKey;
+            const imported = await runNativeCli([
+              'trust',
+              'identity',
+              '--identity',
+              identityPath,
+              '--private-key-env',
+              envName,
+              '--json',
+              ...projectArgs(),
+            ]);
+            delete process.env[envName];
+            expect(imported.exitCode, imported.stderr).toBe(0);
+            expect(imported.stdout).not.toContain(generated.privateKey);
+            expect(await fs.readFile(identityPath, 'utf8')).not.toContain(generated.privateKey);
+            return identityPath;
+          }
+          expect(result.exitCode, result.stderr).toBe(0);
+          const privateKey = (await fs.readFile(privateKeyPath, 'utf8')).trim();
+          expect(privateKey).not.toHaveLength(0);
+          expect(result.stdout).not.toContain(privateKey);
+          expect((await fs.stat(privateKeyPath)).mode & 0o077).toBe(0);
+          return identityPath;
+        }),
+      );
+      const controllerEnv = 'COMET_NATIVE_TEST_CONTROLLER_KEY';
+      process.env[controllerEnv] = controllerKey.privateKey;
+      const policy = await runNativeCli([
+        'trust',
+        'policy',
+        '--implementation-identity',
+        identities[0],
+        '--reviewer-identity',
+        identities[1],
+        '--waiver-identity',
+        identities[2],
+        '--controller-private-key-env',
+        controllerEnv,
+        '--json',
+        ...projectArgs(),
+      ]);
+      delete process.env[controllerEnv];
+      expect(policy.exitCode, policy.stderr).toBe(0);
+      expect(
+        JSON.parse(
+          await fs.readFile(path.join(projectRoot, '.comet', 'native-review-trust.json'), 'utf8'),
+        ),
+      ).toMatchObject({
+        schema: 'comet.native.review-trust-policy.v2',
+        policyHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      });
+    } finally {
+      await fs.rm(secretRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform !== 'win32')(
+    'rejects a private-key target whose outside parent symlink resolves into the project',
+    async () => {
+      const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-key-escape-'));
+      const insideTarget = path.join(projectRoot, 'escaped-secrets');
+      const linkedParent = path.join(outsideRoot, 'linked-parent');
+      await fs.mkdir(insideTarget, { recursive: true });
+      await fs.symlink(insideTarget, linkedParent, 'dir');
+      try {
+        const result = json(
+          await runNativeCli([
+            'trust',
+            'keygen',
+            '--identity',
+            path.join(projectRoot, 'implementation-identity.json'),
+            '--private-key',
+            path.join(linkedParent, 'implementation.key'),
+            '--json',
+            ...projectArgs(),
+          ]),
+        );
+        expect(result).toMatchObject({
+          exitCode: 64,
+          error: {
+            code: 'usage',
+            message: expect.stringMatching(/symlink|resolves inside/u),
+          },
+        });
+        await expect(
+          fs.access(path.join(insideTarget, 'implementation.key')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        await fs.rm(outsideRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('returns structured baseline diagnostics when change creation cannot capture a complete baseline', async () => {
     const config = defaultProjectConfig('.');
     config.native.snapshot.max_total_bytes = 5 * 1024 * 1024;
@@ -91,7 +269,13 @@ describe('Comet Native CLI dispatcher', () => {
     );
 
     const result = json(
-      await runNativeCli(['new', 'incomplete-baseline', '--json', ...projectArgs()]),
+      await runNativeCli([
+        'new',
+        'incomplete-baseline',
+        ...(await creationArgs('incomplete-baseline')),
+        '--json',
+        ...projectArgs(),
+      ]),
     );
     expect(result).toMatchObject({
       exitCode: 65,
@@ -112,7 +296,14 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('selects each successfully created change as the current Native owner', async () => {
-    expect(await runNativeCli(['new', 'first-change', ...projectArgs()])).toMatchObject({
+    expect(
+      await runNativeCli([
+        'new',
+        'first-change',
+        ...(await creationArgs('first-change')),
+        ...projectArgs(),
+      ]),
+    ).toMatchObject({
       exitCode: 0,
     });
     expect(
@@ -126,7 +317,14 @@ describe('Comet Native CLI dispatcher', () => {
       branch: null,
     });
 
-    expect(await runNativeCli(['new', 'second-change', ...projectArgs()])).toMatchObject({
+    expect(
+      await runNativeCli([
+        'new',
+        'second-change',
+        ...(await creationArgs('second-change')),
+        ...projectArgs(),
+      ]),
+    ).toMatchObject({
       exitCode: 0,
     });
     expect(
@@ -157,11 +355,22 @@ describe('Comet Native CLI dispatcher', () => {
       exitCode: 0,
       data: { artifactRoot: 'docs', language: 'zh-CN' },
     });
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
 
     const root = json(await runNativeCli(['root', 'show', '--json', ...projectArgs()]));
     expect(root).toMatchObject({ command: 'root show', data: { artifactRoot: 'docs' } });
 
-    const created = await runNativeCli(['new', 'sentence-counting', ...projectArgs()]);
+    const created = await runNativeCli([
+      'new',
+      'sentence-counting',
+      ...(await creationArgs('sentence-counting')),
+      ...projectArgs(),
+    ]);
     expect(created).toMatchObject({ exitCode: 0 });
     expect(created.stdout).toContain('Created Native change sentence-counting');
     const paths = await nativeProjectPaths(projectRoot, 'docs');
@@ -238,9 +447,12 @@ describe('Comet Native CLI dispatcher', () => {
         preparedScope: { acceptancePage: { items: Array<{ id: string }> } };
       }
     ).preparedScope.acceptancePage.items;
-    expect(builtCriteria).toEqual([
-      expect.objectContaining({ id: expect.stringMatching(/^acceptance-[a-f0-9]{64}$/u) }),
-    ]);
+    expect(builtCriteria).toHaveLength(2);
+    expect(builtCriteria).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: expect.stringMatching(/^acceptance-[a-f0-9]{64}$/u) }),
+      ]),
+    );
 
     const resumed = json(
       await runNativeCli(['status', 'sentence-counting', '--details', '--json', ...projectArgs()]),
@@ -248,10 +460,62 @@ describe('Comet Native CLI dispatcher', () => {
     const resumedCriteria = (resumed.data as { acceptancePage: { items: Array<{ id: string }> } })
       .acceptancePage.items;
     expect(resumedCriteria).toEqual(builtCriteria);
+    const argvProbe = json(
+      await runNativeCli([
+        'receipt',
+        'automated',
+        'sentence-counting',
+        ...resumedCriteria.flatMap((criterion) => ['--acceptance', criterion.id]),
+        '--timeout-ms',
+        '5000',
+        '--json',
+        ...projectArgs(),
+        '--',
+        process.execPath,
+        '-e',
+        "const expected=['--json','--project-root','child-root']; if(JSON.stringify(process.argv.slice(1))!==JSON.stringify(expected)) process.exit(2); process.stdout.write('argv preserved')",
+        '--',
+        '--json',
+        '--project-root',
+        'child-root',
+      ]),
+    );
+    expect(argvProbe).toMatchObject({
+      exitCode: 0,
+      data: {
+        receipt: {
+          status: 'passed',
+          evidence: {
+            args: expect.arrayContaining(['--json', '--project-root', 'child-root']),
+            outputSummary: 'argv preserved',
+          },
+        },
+      },
+    });
+    const manualReceiptResult = json(
+      await runNativeCli([
+        'receipt',
+        'manual',
+        'sentence-counting',
+        ...resumedCriteria.flatMap((criterion) => ['--acceptance', criterion.id]),
+        '--responsible',
+        'native-cli-test',
+        '--step',
+        'Execute the sentence-counting acceptance contract.',
+        '--observation',
+        'Every acceptance criterion produced the expected result.',
+        '--confirmed',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(manualReceiptResult.exitCode).toBe(0);
+    const manualReceiptRef = (manualReceiptResult.data as { ref: string }).ref;
     const acceptanceEntries = resumedCriteria
       .map((criterion) => ({
         acceptance_id: criterion.id,
-        evidence_refs: ['feature.ts'],
+        status: 'passed',
+        evidence_refs: [manualReceiptRef],
       }))
       .sort((left, right) => left.acceptance_id.localeCompare(right.acceptance_id));
 
@@ -276,7 +540,165 @@ Pass.
     const checked = json(
       await runNativeCli(['check', 'sentence-counting', '--json', ...projectArgs()]),
     );
-    const receipt = (checked.data as { ref: string }).ref;
+    const checkedReceiptRef = (checked.data as { ref: string }).ref;
+    expect(checkedReceiptRef).toMatch(/^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u);
+    const identityRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-identities-'));
+    const implementationIdentityPath = path.join(identityRoot, 'implementation.json');
+    const reviewerIdentityPath = path.join(identityRoot, 'reviewer.json');
+    const implementationPreparationPath = path.join(
+      identityRoot,
+      'implementation-preparation.json',
+    );
+    const implementationAttestationPath = path.join(
+      identityRoot,
+      'implementation-attestation.json',
+    );
+    const reviewPreparationPath = path.join(identityRoot, 'review-preparation.json');
+    const reviewApprovalPath = path.join(identityRoot, 'review-approval.json');
+    const reviewAttestationPath = path.join(identityRoot, 'review-attestation.json');
+    const implementationKeyEnv = 'COMET_NATIVE_CLI_IMPLEMENTATION_KEY';
+    const reviewerKeyEnv = 'COMET_NATIVE_CLI_REVIEWER_KEY';
+    let reviewReceiptRef = '';
+    try {
+      await fs.writeFile(
+        implementationIdentityPath,
+        `${JSON.stringify(implementationKey.identity, null, 2)}\n`,
+      );
+      await fs.writeFile(
+        reviewerIdentityPath,
+        `${JSON.stringify(reviewerKey.identity, null, 2)}\n`,
+      );
+      process.env[implementationKeyEnv] = implementationKey.privateKey;
+      process.env[reviewerKeyEnv] = reviewerKey.privateKey;
+      const implementationPreparation = json(
+        await runNativeCli([
+          'receipt',
+          'implement',
+          'sentence-counting',
+          'prepare',
+          '--identity',
+          implementationIdentityPath,
+          '--output',
+          implementationPreparationPath,
+          '--json',
+          ...projectArgs(),
+        ]),
+      );
+      expect(implementationPreparation.exitCode).toBe(0);
+      const implementationAttestation = json(
+        await runNativeCli([
+          'receipt',
+          'implement',
+          'sign',
+          '--preparation',
+          implementationPreparationPath,
+          '--identity',
+          implementationIdentityPath,
+          '--private-key-env',
+          implementationKeyEnv,
+          '--output',
+          implementationAttestationPath,
+          '--json',
+        ]),
+      );
+      expect(implementationAttestation.exitCode).toBe(0);
+      const implementationReceipt = json(
+        await runNativeCli([
+          'receipt',
+          'implement',
+          'sentence-counting',
+          'finalize',
+          '--preparation',
+          implementationPreparationPath,
+          '--attestation',
+          implementationAttestationPath,
+          '--confirmed',
+          '--json',
+          ...projectArgs(),
+        ]),
+      );
+      expect(implementationReceipt.exitCode).toBe(0);
+      const implementationReceiptRef = (implementationReceipt.data as { ref: string }).ref;
+      const reviewPreparation = json(
+        await runNativeCli([
+          'receipt',
+          'review',
+          'sentence-counting',
+          'prepare',
+          '--implementation-receipt',
+          implementationReceiptRef,
+          '--report',
+          'verification.md',
+          '--required-receipt',
+          checkedReceiptRef,
+          '--identity',
+          reviewerIdentityPath,
+          '--output',
+          reviewPreparationPath,
+          '--json',
+          ...projectArgs(),
+        ]),
+      );
+      expect(reviewPreparation.exitCode).toBe(0);
+      const reviewApproval = json(
+        await runNativeCli([
+          'receipt',
+          'review',
+          'sentence-counting',
+          'approve',
+          '--preparation',
+          reviewPreparationPath,
+          '--output',
+          reviewApprovalPath,
+          '--attest-manual',
+          manualReceiptRef,
+          '--checked-acceptance-applicability',
+          '--json',
+          ...projectArgs(),
+        ]),
+      );
+      expect(reviewApproval.exitCode).toBe(0);
+      const reviewAttestation = json(
+        await runNativeCli([
+          'receipt',
+          'review',
+          'sign',
+          '--approval',
+          reviewApprovalPath,
+          '--identity',
+          reviewerIdentityPath,
+          '--private-key-env',
+          reviewerKeyEnv,
+          '--output',
+          reviewAttestationPath,
+          '--json',
+        ]),
+      );
+      expect(reviewAttestation.exitCode).toBe(0);
+      const reviewReceipt = json(
+        await runNativeCli([
+          'receipt',
+          'review',
+          'sentence-counting',
+          'finalize',
+          '--preparation',
+          reviewPreparationPath,
+          '--approval',
+          reviewApprovalPath,
+          '--attestation',
+          reviewAttestationPath,
+          '--confirmed',
+          '--json',
+          ...projectArgs(),
+        ]),
+      );
+      expect(reviewReceipt.exitCode).toBe(0);
+      reviewReceiptRef = (reviewReceipt.data as { ref: string }).ref;
+    } finally {
+      delete process.env[implementationKeyEnv];
+      delete process.env[reviewerKeyEnv];
+      await fs.rm(identityRoot, { recursive: true, force: true });
+    }
     const verified = json(
       await runNativeCli([
         'next',
@@ -288,7 +710,13 @@ Pass.
         '--report',
         'verification.md',
         '--receipt',
-        receipt,
+        checkedReceiptRef,
+        '--evidence-receipt',
+        manualReceiptRef,
+        '--evidence-receipt',
+        reviewReceiptRef,
+        '--independent-review-receipt',
+        reviewReceiptRef,
         '--json',
         ...projectArgs(),
       ]),
@@ -318,7 +746,12 @@ Pass.
   }, 120_000);
 
   it('pages every Runtime-derived acceptance ID through the public status command', async () => {
-    await runNativeCli(['new', 'paged-acceptance', ...projectArgs()]);
+    await runNativeCli([
+      'new',
+      'paged-acceptance',
+      ...(await creationArgs('paged-acceptance')),
+      ...projectArgs(),
+    ]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'paged-acceptance');
     const acceptanceExamples = Array.from(
@@ -439,7 +872,13 @@ Pass.
   });
 
   it('creates the default config from new and keeps Classic paths untouched', async () => {
-    const result = await runNativeCli(['new', 'default-root', '--json', ...projectArgs()]);
+    const result = await runNativeCli([
+      'new',
+      'default-root',
+      ...(await creationArgs('default-root')),
+      '--json',
+      ...projectArgs(),
+    ]);
     expect(result.exitCode).toBe(0);
     expect(json(result)).toMatchObject({ data: { name: 'default-root', phase: 'shape' } });
     expect(await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8')).toContain(
@@ -488,7 +927,12 @@ Pass.
   });
 
   it('returns guard findings as structured invalid data', async () => {
-    await runNativeCli(['new', 'blocked-shape', ...projectArgs()]);
+    await runNativeCli([
+      'new',
+      'blocked-shape',
+      ...(await creationArgs('blocked-shape')),
+      ...projectArgs(),
+    ]);
     const result = await runNativeCli([
       'next',
       'blocked-shape',
@@ -506,7 +950,12 @@ Pass.
   });
 
   it('records explicit confirmation through Shape next without editing change state', async () => {
-    await runNativeCli(['new', 'confirmed-shape', ...projectArgs()]);
+    await runNativeCli([
+      'new',
+      'confirmed-shape',
+      ...(await creationArgs('confirmed-shape')),
+      ...projectArgs(),
+    ]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'confirmed-shape');
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
@@ -531,7 +980,12 @@ Pass.
 
   it('enforces shared-understanding confirmation in Sequential and Batch modes', async () => {
     await runNativeCli(['init', '--root', 'docs', ...projectArgs()]);
-    await runNativeCli(['new', 'mode-boundary', ...projectArgs()]);
+    await runNativeCli([
+      'new',
+      'mode-boundary',
+      ...(await creationArgs('mode-boundary')),
+      ...projectArgs(),
+    ]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'mode-boundary');
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
@@ -627,7 +1081,12 @@ Pass.
   });
 
   it('records a remove intent and canonical hash through the spec command', async () => {
-    await runNativeCli(['new', 'remove-capability', ...projectArgs()]);
+    await runNativeCli([
+      'new',
+      'remove-capability',
+      ...(await creationArgs('remove-capability')),
+      ...projectArgs(),
+    ]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const canonical = path.join(paths.specsDir, 'legacy-capability', 'spec.md');
     await fs.mkdir(path.dirname(canonical), { recursive: true });
@@ -659,7 +1118,12 @@ Pass.
   });
 
   it('rejects show when the brief exceeds its bounded-read budget', async () => {
-    await runNativeCli(['new', 'oversized-brief', ...projectArgs()]);
+    await runNativeCli([
+      'new',
+      'oversized-brief',
+      ...(await creationArgs('oversized-brief')),
+      ...projectArgs(),
+    ]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await fs.writeFile(
       path.join(paths.changesDir, 'oversized-brief', 'brief.md'),
@@ -675,7 +1139,12 @@ Pass.
   });
 
   it('rejects show when proposed specs exceed the count budget', async () => {
-    await runNativeCli(['new', 'too-many-specs', ...projectArgs()]);
+    await runNativeCli([
+      'new',
+      'too-many-specs',
+      ...(await creationArgs('too-many-specs')),
+      ...projectArgs(),
+    ]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const specsDir = path.join(paths.changesDir, 'too-many-specs', 'specs');
     await Promise.all(
@@ -695,7 +1164,12 @@ Pass.
   });
 
   it('rejects show when proposed specs exceed the aggregate byte budget', async () => {
-    await runNativeCli(['new', 'oversized-spec-set', ...projectArgs()]);
+    await runNativeCli([
+      'new',
+      'oversized-spec-set',
+      ...(await creationArgs('oversized-spec-set')),
+      ...projectArgs(),
+    ]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const specsDir = path.join(paths.changesDir, 'oversized-spec-set', 'specs');
     const fileBytes = NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes - 1024;
@@ -784,10 +1258,13 @@ Pass.
   ] as const)(
     'returns exit 70 with a retryable state when %s hits an unexpected filesystem failure',
     async (_command, args, retryCreatesChange) => {
+      const commandArgs = retryCreatesChange
+        ? [...args, ...(await creationArgs('storage-failure'))]
+        : [...args];
       const failure = Object.assign(new Error('simulated storage failure'), { code: 'EIO' });
       const realpath = vi.spyOn(fs, 'realpath').mockRejectedValueOnce(failure);
       try {
-        const result = await runNativeCli([...args, '--json', ...projectArgs()]);
+        const result = await runNativeCli([...commandArgs, '--json', ...projectArgs()]);
         expect(result.exitCode).toBe(70);
         expect(json(result)).toMatchObject({ error: { code: 'internal' } });
       } finally {
@@ -799,7 +1276,7 @@ Pass.
         code: 'ENOENT',
       });
       if (!retryCreatesChange) return;
-      const retried = await runNativeCli([...args, '--json', ...projectArgs()]);
+      const retried = await runNativeCli([...commandArgs, '--json', ...projectArgs()]);
       expect(retried.exitCode).toBe(0);
       expect(json(retried)).toMatchObject({ data: { name: 'storage-failure' } });
     },
@@ -807,10 +1284,18 @@ Pass.
 
   it('formats acceptance evidence entries into the exact canonical verification.md block', async () => {
     const acceptanceId = `acceptance-${'a'.repeat(64)}`;
+    const firstRef = `runtime/evidence/receipts/${'a'.repeat(64)}.json`;
+    const secondRef = `runtime/evidence/receipts/${'b'.repeat(64)}.json`;
     const entriesPath = path.join(projectRoot, 'entries.json');
     await fs.writeFile(
       entriesPath,
-      JSON.stringify([{ acceptance_id: acceptanceId, evidence_refs: ['b.ts', 'a.ts'] }]),
+      JSON.stringify([
+        {
+          acceptance_id: acceptanceId,
+          status: 'passed',
+          evidence_refs: [secondRef, firstRef],
+        },
+      ]),
     );
 
     const result = await runNativeCli([
@@ -826,7 +1311,11 @@ Pass.
     const { block } = json(result).data as { block: string };
     expect(block).toContain(NATIVE_ACCEPTANCE_EVIDENCE_START_MARKER);
     expect(parseNativeVerificationMachineBlock(block)).toEqual([
-      { acceptance_id: acceptanceId, evidence_refs: ['a.ts', 'b.ts'] },
+      {
+        acceptance_id: acceptanceId,
+        status: 'passed',
+        evidence_refs: [firstRef, secondRef],
+      },
     ]);
 
     const handWritten = block.replace('  {', ' {');

@@ -22,7 +22,12 @@ describe('Native structured findings', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-findings-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    state = await createNativeChange({ paths, name: 'finding-shape', language: 'en' });
+    state = await createNativeChange({
+      paths,
+      name: 'finding-shape',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
   });
 
   afterEach(async () => {

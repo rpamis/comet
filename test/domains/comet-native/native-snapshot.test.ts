@@ -1621,7 +1621,12 @@ describe('Native VCS-independent content snapshots', () => {
     });
     try {
       await expect(
-        createNativeChange({ paths, name: 'retryable-change', language: 'en' }),
+        createNativeChange({
+          paths,
+          name: 'retryable-change',
+          language: 'en',
+          verificationProtocol: 'legacy-v1',
+        }),
       ).rejects.toMatchObject({ code: 'EACCES' });
       await expect(fs.access(nativeChangeDir(paths, 'retryable-change'))).rejects.toMatchObject({
         code: 'ENOENT',
@@ -1629,7 +1634,12 @@ describe('Native VCS-independent content snapshots', () => {
 
       failProjectRead = false;
       await expect(
-        createNativeChange({ paths, name: 'retryable-change', language: 'en' }),
+        createNativeChange({
+          paths,
+          name: 'retryable-change',
+          language: 'en',
+          verificationProtocol: 'legacy-v1',
+        }),
       ).resolves.toMatchObject({ name: 'retryable-change', revision: 1 });
     } finally {
       spy.mockRestore();

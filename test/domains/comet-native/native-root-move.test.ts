@@ -43,7 +43,12 @@ describe('Native artifact root moves', () => {
     config!.native.clarification_mode = 'batch';
     await writeProjectConfig(projectRoot, config!);
     const sourcePaths = await nativeProjectPaths(projectRoot, from);
-    await createNativeChange({ paths: sourcePaths, name: 'identity-change', language: 'en' });
+    await createNativeChange({
+      paths: sourcePaths,
+      name: 'identity-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const sourceSpec = path.join(source, 'specs', 'word-count', 'spec.md');
     const sourceBinary = path.join(source, 'changes', 'active-change', 'payload.bin');
     const expected = [await sha256File(sourceSpec), await sha256File(sourceBinary)];

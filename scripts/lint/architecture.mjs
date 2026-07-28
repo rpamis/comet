@@ -238,6 +238,7 @@ const ignoredGeneratedRelativePaths = new Set([
   ...gitignoredDirectoryEntries,
   ...[...gitSubmodulePaths].filter((submodulePath) => submodulePath.includes('/')),
 ]);
+const allowedCodeFiles = new Set(layout.allowedCodeFiles ?? []);
 for (const file of walkFiles('.', ignoredGeneratedTrees, ignoredGeneratedRelativePaths)) {
   if (!codeFilePattern.test(file)) continue;
   const normalized = file.replaceAll('\\', '/');
@@ -250,6 +251,7 @@ for (const file of walkFiles('.', ignoredGeneratedTrees, ignoredGeneratedRelativ
     normalized.startsWith('assets/skills/comet/scripts/') ||
     normalized.startsWith('assets/skills/comet-native/scripts/') ||
     normalized.startsWith('eval/local/skills/') ||
+    allowedCodeFiles.has(normalized) ||
     normalized === 'bin/comet.js' ||
     allowedRootSourceFiles.has(normalized);
   if (!allowed) {

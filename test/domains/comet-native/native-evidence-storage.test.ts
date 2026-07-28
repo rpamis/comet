@@ -66,7 +66,12 @@ describe('Native evidence storage', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-evidence-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    await createNativeChange({ paths, name: 'secure-login', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'secure-login',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
   });
 
   afterEach(async () => {
@@ -87,7 +92,13 @@ describe('Native evidence storage', () => {
     const { scope } = bundle;
     const trace = buildNativeAcceptanceEvidenceTrace(
       contract.acceptance,
-      [{ acceptance_id: contract.acceptance[0].id, evidence_refs: ['test/login.test.ts'] }],
+      [
+        {
+          acceptance_id: contract.acceptance[0].id,
+          status: 'passed',
+          evidence_refs: [`runtime/evidence/receipts/${'a'.repeat(64)}.json`],
+        },
+      ],
       { nativeRootRef: 'comet' },
     );
     return { bundle, contract, scope, trace };
@@ -125,6 +136,8 @@ describe('Native evidence storage', () => {
       reportRef: 'verification.md',
       reportHash: createHash('sha256').update('Verification passed.').digest('hex'),
       acceptanceTrace: trace,
+      requiredReceiptRefs: [`runtime/evidence/receipts/${'b'.repeat(64)}.json`],
+      independentReviewReceiptRef: `runtime/evidence/receipts/${'c'.repeat(64)}.json`,
       partialAllowance: { ref: allowanceRef, allowance },
       now: new Date('2026-07-17T00:00:00.000Z'),
     });

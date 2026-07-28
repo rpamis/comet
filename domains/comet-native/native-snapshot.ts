@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
+import { parseNativeCreationAuthorization } from './native-creation-authorization.js';
 import {
   DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   normalizeNativeSnapshotPattern,
@@ -13,6 +14,7 @@ import { sha256Text } from './native-hash.js';
 import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import { readNativeProtectedTextFile } from './native-protected-file.js';
+import { NATIVE_REVIEW_TRUST_POLICY_REF } from './native-review-contract.js';
 import { nativeSensitiveRelativePathReason } from './native-sensitive-paths.js';
 import type {
   NativeContentSnapshotManifest,
@@ -39,6 +41,7 @@ const CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const MANIFEST_KEYS = new Set([
   'schema',
   'origin',
+  'creation',
   'capture',
   'createdAt',
   'complete',
@@ -58,6 +61,14 @@ const LIMIT_KEYS = new Set([
 ]);
 const POLICY_KEYS = new Set(['schema', 'include', 'exclude', 'hash']);
 const CAPTURE_KEYS = new Set(['provider', 'gitSelection', 'physicalSelection', 'projection']);
+const CREATION_KEYS = new Set([
+  'schema',
+  'protocol',
+  'policyHash',
+  'policySnapshotRef',
+  'policySnapshotHash',
+  'authorization',
+]);
 const GIT_PROJECTION_KEYS = new Set(['provider', 'selection']);
 const GIT_SELECTION_KEYS = new Set([
   'schema',
@@ -1887,6 +1898,34 @@ export function parseNativeContentSnapshotManifest(value: unknown): NativeConten
   if (!SNAPSHOT_ORIGINS.has(manifest.origin as NativeContentSnapshotManifest['origin'])) {
     throw new Error('Native content snapshot origin is invalid');
   }
+  let creation: NativeContentSnapshotManifest['creation'];
+  if (manifest.creation !== undefined) {
+    const value = record(manifest.creation, 'Native change creation binding');
+    rejectUnknown(value, CREATION_KEYS, 'Native change creation binding');
+    if (
+      value.schema !== 'comet.native.change-creation-binding.v1' ||
+      value.protocol !== 'signed-v2' ||
+      typeof value.policyHash !== 'string' ||
+      !HASH_PATTERN.test(value.policyHash) ||
+      typeof value.policySnapshotHash !== 'string' ||
+      !HASH_PATTERN.test(value.policySnapshotHash) ||
+      typeof value.policySnapshotRef !== 'string' ||
+      !/^runtime\/trust\/review-policy-[a-f0-9]{64}\.json$/u.test(value.policySnapshotRef)
+    ) {
+      throw new Error('Native change creation binding is invalid');
+    }
+    creation = {
+      schema: 'comet.native.change-creation-binding.v1',
+      protocol: 'signed-v2',
+      policyHash: value.policyHash,
+      policySnapshotRef: value.policySnapshotRef,
+      policySnapshotHash: value.policySnapshotHash,
+      authorization: parseNativeCreationAuthorization(value.authorization),
+    };
+  }
+  if (manifest.origin !== 'change-created' && creation !== undefined) {
+    throw new Error('Native change creation binding does not match snapshot origin');
+  }
   let capture: NativeContentSnapshotManifest['capture'];
   if (manifest.capture !== undefined) {
     const captureValue = record(manifest.capture, 'Native content snapshot capture');
@@ -2071,6 +2110,7 @@ export function parseNativeContentSnapshotManifest(value: unknown): NativeConten
   const parsed: NativeContentSnapshotManifest = {
     schema: 'comet.native.content-snapshot.v1',
     origin: manifest.origin as NativeContentSnapshotManifest['origin'],
+    ...(creation ? { creation } : {}),
     ...(capture ? { capture } : {}),
     createdAt: manifest.createdAt,
     complete: manifest.complete,
@@ -2525,6 +2565,39 @@ export async function createNativeContentSnapshot(
     );
   };
 
+  const captureForcedProtectedRefs = async (): Promise<void> => {
+    for (const relative of [NATIVE_REVIEW_TRUST_POLICY_REF]) {
+      if (capturedEntryValidations.has(relative)) continue;
+      const target = path.resolve(projectRoot, ...relative.split('/'));
+      let stat: import('fs').Stats;
+      try {
+        stat = await fs.lstat(target);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+        omit({
+          path: relative,
+          size: null,
+          type: 'file',
+          reason: isChangedDuringReadError(error) ? 'changed-during-read' : 'unreadable',
+        });
+        continue;
+      }
+      if (stat.isSymbolicLink()) {
+        await captureSymbolicLink(target, relative, stat);
+      } else if (stat.isFile()) {
+        await captureFile(target, relative, stat);
+      } else {
+        omit({
+          path: relative,
+          size: null,
+          type: stat.isDirectory() ? 'directory' : 'other',
+          reason: 'changed-during-read',
+        });
+      }
+    }
+  };
+
   const revalidateCapturedEntries = async (): Promise<void> => {
     for (const [relative, validation] of [...capturedEntryValidations]) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
@@ -2686,6 +2759,7 @@ export async function createNativeContentSnapshot(
     }
   };
 
+  await captureForcedProtectedRefs();
   const gitSelection = await nativeGitSnapshotSelection(
     execution,
     projectRoot,
@@ -2705,6 +2779,7 @@ export async function createNativeContentSnapshot(
     await options.physicalSelectionHooks?.afterInitialSelection?.();
     for (const record of before.records) {
       if (record.type !== 'file' && record.type !== 'symlink') continue;
+      if (capturedEntryValidations.has(record.path)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       if (!snapshotPolicyIncludes(policy, record.path, execution)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
@@ -2765,6 +2840,7 @@ export async function createNativeContentSnapshot(
   } else {
     await options.gitSelectionHooks?.afterInitialSelection?.();
     for (const relative of selectionPaths(gitSelection)) {
+      if (capturedEntryValidations.has(relative)) continue;
       if (!isSnapshotProjectRef(paths, relative)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
       if (!snapshotPolicyIncludes(policy, relative, execution)) continue;

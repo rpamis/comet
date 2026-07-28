@@ -54,7 +54,12 @@ describe('Native conflict radar collection', () => {
   });
 
   async function change(name: string): Promise<NativeChangeState> {
-    const created = await createNativeChange({ paths, name, language: 'en' });
+    const created = await createNativeChange({
+      paths,
+      name,
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     await fs.writeFile(path.join(nativeChangeDir(paths, name), 'brief.md'), brief);
     await fs.mkdir(path.join(nativeChangeDir(paths, name), 'specs'), { recursive: true });
     await fs.writeFile(

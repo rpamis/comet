@@ -1,10 +1,19 @@
 import { serializeNativeVerificationMachineBlock } from '../../domains/comet-native/native-acceptance.js';
 import { nativeChangeDir, readNativeChange } from '../../domains/comet-native/native-change.js';
 import { buildNativeCheckReceipt } from '../../domains/comet-native/native-check-receipt-model.js';
-import { writeNativeCheckReceipt } from '../../domains/comet-native/native-check-receipt-storage.js';
+import {
+  readNativeCheckReceipt,
+  writeNativeCheckReceipt,
+} from '../../domains/comet-native/native-check-receipt-storage.js';
 import { collectNativeContractFiles } from '../../domains/comet-native/native-contract-files.js';
 import type { NativeProjectPaths } from '../../domains/comet-native/native-types.js';
 import { readNativeImplementationScopeBundle } from '../../domains/comet-native/native-evidence-storage.js';
+import {
+  issueNativeManualEvidenceReceipt,
+  persistNativeStaticInspectionReceipt,
+} from '../../domains/comet-native/native-verification-receipt-runtime.js';
+
+const TYPED_RECEIPT_REF_PATTERN = /^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u;
 
 /** Build a structurally valid report for lifecycle tests that are not testing evidence content. */
 export async function nativeVerificationFixtureReport(options: {
@@ -19,13 +28,33 @@ export async function nativeVerificationFixtureReport(options: {
     briefRef: state.brief,
     specChanges: state.spec_changes,
   });
-  const evidenceRefs = [...(options.evidenceRefs ?? [])];
+  const conclusion = options.conclusion ?? 'Pass';
+  let evidenceRefs = [...(options.evidenceRefs ?? [])].filter((ref) =>
+    TYPED_RECEIPT_REF_PATTERN.test(ref),
+  );
+  if (conclusion === 'Pass' && evidenceRefs.length === 0) {
+    const issued = await issueNativeManualEvidenceReceipt({
+      paths: options.paths,
+      name: options.name,
+      acceptanceIds: collected.contract.acceptance.map((criterion) => criterion.id),
+      responsible: 'native-test-fixture',
+      steps: ['Exercise every acceptance criterion in the lifecycle fixture.'],
+      observations: ['Every acceptance criterion produced the expected fixture outcome.'],
+      confirmed: true,
+      now: new Date('2026-07-28T00:00:00.000Z'),
+    });
+    evidenceRefs = [issued.ref];
+  }
   const machineBlock = serializeNativeVerificationMachineBlock(
     collected.contract.acceptance.map((criterion) => ({
       acceptance_id: criterion.id,
-      ...(evidenceRefs.length > 0
-        ? { evidence_refs: evidenceRefs }
-        : { evidence_refs: [], skipped_reason: 'Lifecycle fixture does not execute this check.' }),
+      ...(conclusion === 'Pass'
+        ? { status: 'passed' as const, evidence_refs: evidenceRefs }
+        : {
+            status: 'failed' as const,
+            evidence_refs: [],
+            skipped_reason: 'Lifecycle fixture records the requested failed verification outcome.',
+          }),
     })),
   );
   return `# Acceptance evidence
@@ -39,7 +68,7 @@ Matches.
 # Known limitations and risks
 This report is test fixture evidence only.
 # Conclusion
-${options.conclusion ?? 'Pass'}.
+${conclusion}.
 `;
 }
 
@@ -63,7 +92,7 @@ export async function nativeVerificationFixtureReceipt(options: {
   const selected = scope.scope.changes.filter((change) => change.after !== null);
   const startedAt = (options.now ?? new Date('2026-07-28T00:00:00.000Z')).toISOString();
   const endedAt = new Date(new Date(startedAt).getTime() + 1).toISOString();
-  return writeNativeCheckReceipt({
+  const checkRef = await writeNativeCheckReceipt({
     paths: options.paths,
     name: options.name,
     receipt: buildNativeCheckReceipt({
@@ -97,4 +126,12 @@ export async function nativeVerificationFixtureReceipt(options: {
       staleReasons: [],
     }),
   });
+  return (
+    await persistNativeStaticInspectionReceipt({
+      paths: options.paths,
+      state,
+      checkReceipt: await readNativeCheckReceipt(options.paths, options.name, checkRef),
+      checkReceiptRef: checkRef,
+    })
+  ).ref;
 }

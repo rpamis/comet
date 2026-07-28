@@ -310,6 +310,89 @@ build_trusted_oracle_mount_args() {
         TRUSTED_ORACLE_MOUNT_ARGS+=(
             "-v" "$native_oracles_host://workspace/_eval_trusted_oracles:ro"
         )
+        if [[ -f "$dir/_eval_trusted_oracles/controller-home/native-controller-trust.json" ]]; then
+            local native_controller_home_host
+            native_controller_home_host=$(_winpath "$dir/_eval_trusted_oracles/controller-home")
+            TRUSTED_ORACLE_MOUNT_ARGS+=(
+                "-v" "$native_controller_home_host://home/agent/.comet:ro"
+            )
+        fi
+        if [[ -f "$dir/_eval_trusted_oracles/native-review-trust.json" ]]; then
+            local native_policy_host
+            native_policy_host=$(_winpath "$dir/_eval_trusted_oracles/native-review-trust.json")
+            TRUSTED_ORACLE_MOUNT_ARGS+=(
+                "-v" "$native_policy_host://workspace/.comet/native-review-trust.json:ro"
+            )
+        fi
+    fi
+}
+
+start_native_review_sidecars() {
+    local dir="$1"
+    local image_id="$2"
+    NATIVE_REVIEW_AGENT_ARGS=()
+    NATIVE_REVIEW_SIDECAR_NAMES=()
+    NATIVE_REVIEW_NETWORK=""
+    NATIVE_REVIEW_CONTROLLER_VOLUME=""
+    local secret_dir
+    secret_dir="$(dirname "$dir")/.$(basename "$dir")-native-review-secrets"
+    if [[ ! -f "$secret_dir/signer-token" ]]; then
+        return 0
+    fi
+    local suffix shell_host workspace_host oracle_host secret_host token_host
+    suffix=$(sha256_text "$dir" | cut -c1-20)
+    NATIVE_REVIEW_NETWORK="comet-native-review-$suffix"
+    NATIVE_REVIEW_CONTROLLER_VOLUME="comet-native-controller-$suffix"
+    local signer_name="comet-native-signer-$suffix"
+    local verifier_name="comet-native-verifier-$suffix"
+    NATIVE_REVIEW_SIDECAR_NAMES=("$signer_name" "$verifier_name")
+    shell_host=$(_winpath "$SCRIPT_DIR")
+    workspace_host=$(_winpath "$dir")
+    oracle_host=$(_winpath "$dir/_eval_trusted_oracles")
+    secret_host=$(_winpath "$secret_dir")
+    token_host=$(_winpath "$secret_dir/signer-token")
+    docker network create "$NATIVE_REVIEW_NETWORK" >/dev/null
+    docker volume create "$NATIVE_REVIEW_CONTROLLER_VOLUME" >/dev/null
+    docker run --rm --user 0 \
+        -v "$oracle_host/controller-home://source:ro" \
+        -v "$NATIVE_REVIEW_CONTROLLER_VOLUME://target" \
+        "$image_id" \
+        sh -c 'cp /source/native-controller-trust.json /target/native-controller-trust.json && chown root:root /target/native-controller-trust.json && chmod 0444 /target/native-controller-trust.json'
+    docker run -d --rm --name "$signer_name" \
+        --network "$NATIVE_REVIEW_NETWORK" \
+        -v "$shell_host://opt/scaffold-shell:ro" \
+        -v "$secret_host://run/native-review-secrets:ro" \
+        "$image_id" \
+        node //opt/scaffold-shell/native-review-signer-daemon.mjs \
+            //run/native-review-secrets //run/native-review-secrets/signer-token >/dev/null
+    docker run -d --rm --name "$verifier_name" \
+        --network "$NATIVE_REVIEW_NETWORK" \
+        -v "$workspace_host://workspace" \
+        -v "$oracle_host://workspace/_eval_trusted_oracles:ro" \
+        -v "$shell_host://opt/scaffold-shell:ro" \
+        -v "$token_host://run/native-review-signer-token:ro" \
+        -v "$NATIVE_REVIEW_CONTROLLER_VOLUME://home/agent/.comet:ro" \
+        -w //workspace \
+        "$image_id" \
+        node //opt/scaffold-shell/native-review-verifier-daemon.mjs \
+            "http://$signer_name:4317" //run/native-review-signer-token >/dev/null
+    NATIVE_REVIEW_AGENT_ARGS=(
+        "--network" "$NATIVE_REVIEW_NETWORK"
+        "-e" "COMET_NATIVE_REVIEW_VERIFIER_URL=http://$verifier_name:4318"
+        "-v" "$NATIVE_REVIEW_CONTROLLER_VOLUME://home/agent/.comet:ro"
+    )
+}
+
+stop_native_review_sidecars() {
+    local name
+    for name in "${NATIVE_REVIEW_SIDECAR_NAMES[@]:-}"; do
+        docker rm -f "$name" &> /dev/null || true
+    done
+    if [[ -n "${NATIVE_REVIEW_NETWORK:-}" ]]; then
+        docker network rm "$NATIVE_REVIEW_NETWORK" &> /dev/null || true
+    fi
+    if [[ -n "${NATIVE_REVIEW_CONTROLLER_VOLUME:-}" ]]; then
+        docker volume rm "$NATIVE_REVIEW_CONTROLLER_VOLUME" &> /dev/null || true
     fi
 }
 
@@ -400,6 +483,8 @@ docker_run_claude() {
     build_env_args
     build_plugin_args
     build_trusted_oracle_mount_args "$dir"
+    start_native_review_sidecars "$dir" "$image_id"
+    trap stop_native_review_sidecars RETURN
 
     local cmd=(
         claude -p "$prompt"
@@ -421,6 +506,7 @@ docker_run_claude() {
 
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD "$timeout" docker run --rm \
+            ${NATIVE_REVIEW_AGENT_ARGS[@]+"${NATIVE_REVIEW_AGENT_ARGS[@]}"} \
             -v "$windir://workspace" \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
@@ -430,6 +516,7 @@ docker_run_claude() {
             "${cmd[@]}"
     else
         docker run --rm \
+            ${NATIVE_REVIEW_AGENT_ARGS[@]+"${NATIVE_REVIEW_AGENT_ARGS[@]}"} \
             -v "$windir://workspace" \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
@@ -473,6 +560,8 @@ docker_run_claude_loop() {
     build_env_args
     build_plugin_args
     build_trusted_oracle_mount_args "$dir"
+    start_native_review_sidecars "$dir" "$image_id"
+    trap stop_native_review_sidecars RETURN
 
     local windir shell_dir
     windir=$(_winpath "$dir")
@@ -488,6 +577,7 @@ docker_run_claude_loop() {
     # Mount the scaffold shell scripts read-only so the loop driver is available
     # at /opt/scaffold-shell/ inside the container.
     docker run --rm --name "$container_name" \
+        ${NATIVE_REVIEW_AGENT_ARGS[@]+"${NATIVE_REVIEW_AGENT_ARGS[@]}"} \
         -v "$windir://workspace" \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
         -v "$shell_dir://opt/scaffold-shell:ro" \

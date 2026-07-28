@@ -217,6 +217,7 @@ describe('Native Build evidence preparation', () => {
     paths = await nativeProjectPaths(projectRoot, '.');
     const created = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'focused-change',
       language: 'en',
       now: new Date('2026-07-17T00:00:00.000Z'),
@@ -343,6 +344,7 @@ describe('Native Build evidence preparation', () => {
     );
     const created = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'git-removal',
       language: 'en',
       now: new Date('2026-07-17T00:00:00.000Z'),

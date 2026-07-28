@@ -38,7 +38,12 @@ describe('Native resume status view', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-resume-view-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    await createNativeChange({ paths, name: 'compact-resume', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'compact-resume',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     await fs.writeFile(path.join(nativeChangeDir(paths, 'compact-resume'), 'brief.md'), validBrief);
   });
 

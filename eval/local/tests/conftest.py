@@ -15,6 +15,7 @@ import json
 import hashlib
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tempfile
@@ -235,6 +236,8 @@ CURRENT_COMET_CLI_MARKER = ".include-current-comet-cli"
 CURRENT_COMET_BUILD_SCHEMA = "comet.eval.current-comet-build.v1"
 TRUSTED_NATIVE_RUNTIME_MARKER = ".include-trusted-native-runtime"
 TRUSTED_NATIVE_RUNTIME_SCHEMA = "comet.eval.trusted-native-runtime.v1"
+TRUSTED_NATIVE_REVIEW_FIXTURE_MARKER = ".include-trusted-native-review-fixture"
+TRUSTED_NATIVE_REVIEW_FIXTURE_SCHEMA = "comet.eval.native-review-fixture.v1"
 MODEL_EXECUTION_ENV_KEYS = (
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_MODEL",
@@ -462,6 +465,218 @@ def _copy_trusted_native_runtime_snapshot(
     }
     (target_root / "native-runtime-identity.json").write_text(
         json.dumps(identity, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _copy_trusted_native_review_fixture(
+    environment_dir: Path,
+    test_dir: Path,
+) -> None:
+    """Provision controller-owned signed-v2 trust without exposing a controller private key."""
+    marker = environment_dir / TRUSTED_NATIVE_REVIEW_FIXTURE_MARKER
+    if not marker.is_file():
+        return
+    change = marker.read_text(encoding="utf-8").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", change):
+        raise ValueError("Trusted Native review fixture change name is invalid")
+    oracle_root = test_dir / "_eval_trusted_oracles"
+    runtime = oracle_root / "comet-native-runtime.mjs"
+    if not runtime.is_file():
+        raise FileNotFoundError(
+            "Trusted Native review fixture requires the controller-selected runtime"
+        )
+    node = shutil.which("node")
+    if node is None:
+        raise FileNotFoundError("Trusted Native review fixture requires Node.js")
+    generator = r"""
+const {createHash,generateKeyPairSync,sign}=require('node:crypto');
+const change=process.argv[1];
+const canonical=(value)=>{
+  if(value===null)return 'null';
+  if(Array.isArray(value))return `[${value.map(canonical).join(',')}]`;
+  if(typeof value==='object')return `{${Object.keys(value).sort().map(
+    key=>`${JSON.stringify(key)}:${canonical(value[key])}`
+  ).join(',')}}`;
+  return JSON.stringify(value);
+};
+const hash=(tag,value)=>createHash('sha256').update(`${tag}\n${canonical(value)}`).digest('hex');
+const keyPair=()=>{
+  const pair=generateKeyPairSync('ed25519');
+  const publicKey=pair.publicKey.export({format:'der',type:'spki'});
+  return {
+    identity:{
+      schema:'comet.native.review-identity.v1',
+      algorithm:'ed25519',
+      keyId:createHash('sha256').update(publicKey).digest('hex'),
+      publicKey:publicKey.toString('base64')
+    },
+    privateKey:pair.privateKey.export({format:'der',type:'pkcs8'}).toString('base64')
+  };
+};
+const proof=(pair,payloadHash)=>({
+  schema:'comet.native.review-signature.v1',
+  algorithm:'ed25519',
+  keyId:pair.identity.keyId,
+  payloadHash,
+  signature:sign(null,Buffer.concat([
+    Buffer.from('comet.native.review-payload.v1\0'),
+    Buffer.from(payloadHash,'hex')
+  ]),{
+    key:Buffer.from(pair.privateKey,'base64'),
+    format:'der',
+    type:'pkcs8'
+  }).toString('base64')
+});
+const controller=keyPair();
+const implementation=keyPair();
+const reviewer=keyPair();
+const waiver=keyPair();
+const policyContent={
+  schema:'comet.native.review-trust-policy.v2',
+  controllerKeyId:controller.identity.keyId,
+  implementationKeyId:implementation.identity.keyId,
+  trustedReviewers:[reviewer.identity],
+  trustedWaiverSigners:[waiver.identity]
+};
+const policyHash=hash('comet.native.review-trust-policy.v2',policyContent);
+const policy={
+  ...policyContent,
+  policyHash,
+  controllerSignature:proof(controller,policyHash)
+};
+const projectRootHash=hash('comet.native.controller-project-root.v1','/workspace');
+const authorizationContent={
+  schema:'comet.native.creation-authorization.v1',
+  controllerKeyId:controller.identity.keyId,
+  projectRootHash,
+  policyHash,
+  protocol:'signed-v2',
+  change,
+  issuedAt:'2026-07-28T00:00:00.000Z'
+};
+const authorizationHash=hash(
+  'comet.native.creation-authorization.v1',
+  authorizationContent
+);
+const authorization={
+  ...authorizationContent,
+  authorizationHash,
+  controllerSignature:proof(controller,authorizationHash)
+};
+const store={
+  schema:'comet.native.controller-trust-store.v1',
+  projects:[{
+    projectRootHash,
+    controllerIdentity:controller.identity,
+    legacyChanges:[]
+  }]
+};
+process.stdout.write(JSON.stringify({
+  policy,
+  authorization,
+  store,
+  identities:{
+    implementation:implementation.identity,
+    reviewer:reviewer.identity,
+    waiver:waiver.identity
+  },
+  privateKeys:{
+    implementation:implementation.privateKey,
+    reviewer:reviewer.privateKey,
+    waiver:waiver.privateKey
+  }
+}));
+"""
+    generated = subprocess.run(
+        [node, "-e", generator, change],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    fixture = json.loads(generated.stdout)
+    controller_home = oracle_root / "controller-home"
+    controller_home.mkdir(parents=True, exist_ok=True)
+    (controller_home / "native-controller-trust.json").write_text(
+        json.dumps(fixture["store"], indent=2) + "\n", encoding="utf-8"
+    )
+    policy_file = oracle_root / "native-review-trust.json"
+    policy_file.write_text(
+        json.dumps(fixture["policy"], indent=2) + "\n", encoding="utf-8"
+    )
+    project_policy = test_dir / ".comet" / "native-review-trust.json"
+    project_policy.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(policy_file, project_policy)
+    authorization_name = f"{change}-creation-authorization.json"
+    (oracle_root / authorization_name).write_text(
+        json.dumps(fixture["authorization"], indent=2) + "\n", encoding="utf-8"
+    )
+    for role, identity in fixture["identities"].items():
+        (oracle_root / f"{role}-identity.json").write_text(
+            json.dumps(identity, indent=2) + "\n", encoding="utf-8"
+        )
+    secrets_root = test_dir.with_name(f".{test_dir.name}-native-review-secrets")
+    if secrets_root.exists():
+        shutil.rmtree(secrets_root)
+    secrets_root.mkdir(mode=0o700)
+    for role, private_key in fixture["privateKeys"].items():
+        secret_file = secrets_root / f"{role}-key.json"
+        secret_file.write_text(
+            json.dumps(
+                {
+                    "identity": fixture["identities"][role],
+                    "privateKey": private_key,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        secret_file.chmod(0o600)
+    signer_token = secrets_root / "signer-token"
+    signer_token.write_text(secrets.token_hex(32) + "\n", encoding="utf-8")
+    signer_token.chmod(0o600)
+    signer = """\
+const [role,change,...args]=process.argv.slice(2);
+const endpoint=process.env.COMET_NATIVE_REVIEW_VERIFIER_URL;
+if(!endpoint||!['implementation','reviewer','waiver'].includes(role)){
+  process.stderr.write('Native external verifier is unavailable or the role is invalid\\n');
+  process.exit(64);
+}
+let response;
+for(let attempt=0;attempt<20;attempt+=1){
+  try{
+    response=await fetch(`${endpoint}/invoke`,{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({role,change,args})
+    });
+    break;
+  }catch(error){
+    if(attempt===19)throw error;
+    await new Promise(resolve=>setTimeout(resolve,250));
+  }
+}
+const result=await response.json();
+if(!response.ok){
+  process.stderr.write(`${result.error??'Native external verifier rejected the request'}\\n`);
+  process.exit(65);
+}
+process.stdout.write(result.stdout??'');
+"""
+    signer_file = oracle_root / "native-review-signer.mjs"
+    signer_file.write_text(signer, encoding="utf-8")
+    public_fixture = {
+        "schema": TRUSTED_NATIVE_REVIEW_FIXTURE_SCHEMA,
+        "change": change,
+        "policyHash": fixture["policy"]["policyHash"],
+        "creationAuthorization": f"/workspace/_eval_trusted_oracles/{authorization_name}",
+        "signer": "/workspace/_eval_trusted_oracles/native-review-signer.mjs",
+        "signerMode": "external-verifier-sidecar",
+        "roles": ["implementation", "reviewer", "waiver"],
+    }
+    (oracle_root / "native-review-fixture.json").write_text(
+        json.dumps(public_fixture, indent=2) + "\n", encoding="utf-8"
     )
 
 
@@ -1150,7 +1365,11 @@ def setup_test_context(test_dir):
 
     def _copy_environment(environment_dir: Path) -> None:
         for item in environment_dir.iterdir():
-            if item.name in {CURRENT_COMET_CLI_MARKER, TRUSTED_NATIVE_RUNTIME_MARKER}:
+            if item.name in {
+                CURRENT_COMET_CLI_MARKER,
+                TRUSTED_NATIVE_RUNTIME_MARKER,
+                TRUSTED_NATIVE_REVIEW_FIXTURE_MARKER,
+            }:
                 continue
             dest = test_dir / item.name
             if item.is_dir():
@@ -1205,6 +1424,7 @@ def setup_test_context(test_dir):
         if environment_dir and environment_dir.exists():
             _copy_environment(environment_dir)
             _copy_trusted_native_runtime_snapshot(environment_dir, test_dir, skills)
+            _copy_trusted_native_review_fixture(environment_dir, test_dir)
 
         if claude_md:
             with tempfile.NamedTemporaryFile(

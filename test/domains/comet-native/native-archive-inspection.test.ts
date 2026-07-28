@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { serializeNativeVerificationMachineBlock } from '../../../domains/comet-native/native-acceptance.js';
 import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
 import { prepareNativeBuildEvidence } from '../../../domains/comet-native/native-build-evidence.js';
 import {
@@ -20,7 +19,11 @@ import type {
   NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
 import { prepareNativeVerificationEvidence } from '../../../domains/comet-native/native-verification-runtime.js';
-import { nativeVerificationFixtureReceipt } from '../../helpers/native-verification.js';
+import { issueNativeManualEvidenceReceipt } from '../../../domains/comet-native/native-verification-receipt-runtime.js';
+import {
+  nativeVerificationFixtureReceipt,
+  nativeVerificationFixtureReport,
+} from '../../helpers/native-verification.js';
 
 const brief = `# Outcome
 Ship one focused behavior.
@@ -52,6 +55,7 @@ describe('Native Archive inspection', () => {
     paths = await nativeProjectPaths(projectRoot, '.');
     const created = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'archive-preview',
       language: 'en',
       now: new Date('2026-07-17T00:00:00.000Z'),
@@ -82,37 +86,37 @@ describe('Native Archive inspection', () => {
       briefRef: verifyState.brief,
       specChanges: verifyState.spec_changes,
     });
-    const block = serializeNativeVerificationMachineBlock(
-      contract.contract.acceptance.map((criterion) => ({
-        acceptance_id: criterion.id,
-        evidence_refs: ['src/feature.ts'],
-      })),
-    );
+    const receiptRef = (
+      await issueNativeManualEvidenceReceipt({
+        paths,
+        name: verifyState.name,
+        acceptanceIds: contract.contract.acceptance.map((criterion) => criterion.id),
+        responsible: 'archive-inspection-fixture',
+        steps: ['Run the focused archive inspection fixture.'],
+        observations: ['The focused behavior matched the acceptance contract.'],
+        confirmed: true,
+        now: new Date('2026-07-17T01:30:00.000Z'),
+      })
+    ).ref;
     await fs.writeFile(
       path.join(changeDir, 'verification.md'),
-      `# Acceptance evidence
-${block}
-# Commands and results
-Focused check passed.
-# Skipped checks
-None.
-# Spec consistency
-Consistent.
-# Known limitations and risks
-None.
-# Conclusion
-Pass.
-`,
+      await nativeVerificationFixtureReport({
+        paths,
+        name: verifyState.name,
+        evidenceRefs: [receiptRef],
+      }),
     );
+    const requiredReceiptRef = await nativeVerificationFixtureReceipt({
+      paths,
+      name: verifyState.name,
+      now: new Date('2026-07-17T01:45:00.000Z'),
+    });
     const verification = await prepareNativeVerificationEvidence({
       paths,
       state: verifyState,
       result: 'pass',
       reportRef: 'verification.md',
-      receiptRef: await nativeVerificationFixtureReceipt({
-        paths,
-        name: verifyState.name,
-      }),
+      receiptRef: requiredReceiptRef,
       now: new Date('2026-07-17T02:00:00.000Z'),
     });
     const archiveCandidate: NativeChangeState = {
@@ -196,6 +200,7 @@ Pass.
   it('blocks when another visible change claims the same implementation artifact', async () => {
     const competing = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: 'competing-change',
       language: 'en',
     });

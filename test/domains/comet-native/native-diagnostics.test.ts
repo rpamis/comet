@@ -109,7 +109,12 @@ describe('Native status diagnostics', () => {
   });
 
   async function validChange(name: string): Promise<void> {
-    const state = await createNativeChange({ paths, name, language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name,
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     await fs.writeFile(path.join(nativeChangeDir(paths, name), state.brief), brief);
   }
 

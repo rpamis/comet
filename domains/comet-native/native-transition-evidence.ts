@@ -12,6 +12,15 @@ export function nativeAdvanceEvidenceHash(evidence: NativeAdvanceEvidence): stri
       verificationResult: evidence.verificationResult ?? null,
       verificationReport: evidence.verificationReport ?? null,
       verificationReceipt: evidence.verificationReceipt ?? null,
+      verificationReceiptRefs:
+        evidence.verificationReceiptRefs === undefined
+          ? null
+          : [...evidence.verificationReceiptRefs].sort(),
+      verificationWaiverRefs:
+        evidence.verificationWaiverRefs === undefined
+          ? null
+          : [...evidence.verificationWaiverRefs].sort(),
+      independentReviewReceiptRef: evidence.independentReviewReceiptRef ?? null,
       allowPartialScopeHash: evidence.allowPartialScopeHash ?? null,
       partialReason: evidence.partialReason ?? null,
       repairFailureCategories: [...(evidence.repairFailureCategories ?? [])].sort(),

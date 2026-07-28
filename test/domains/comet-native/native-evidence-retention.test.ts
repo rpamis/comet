@@ -22,6 +22,7 @@ import {
   NATIVE_EVIDENCE_RETENTION_POLICY,
 } from '../../../domains/comet-native/native-evidence-retention.js';
 import {
+  writeNativeVerificationReceipt,
   writeNativeImplementationScope,
   writeNativePartialAllowance,
   writeNativeVerificationReportSnapshot,
@@ -35,6 +36,10 @@ import type {
   NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
 import { buildNativeImplementationScopeBundle } from '../../../domains/comet-native/native-verification-scope.js';
+import {
+  buildNativeVerificationReceipt,
+  nativeArtifactBindingHash,
+} from '../../../domains/comet-native/native-verification-receipt.js';
 import {
   buildNativeAcceptanceEvidenceTrace,
   buildNativePartialAllowance,
@@ -127,6 +132,7 @@ describe('Native evidence retention', () => {
     paths = await nativeProjectPaths(projectRoot, '.');
     state = await createNativeChange({
       paths,
+      verificationProtocol: 'legacy-v1',
       name: CHANGE,
       language: 'en',
       now: new Date('2026-07-01T00:00:00.000Z'),
@@ -368,21 +374,11 @@ describe('Native evidence retention', () => {
       scopeRef: string;
       allowanceRef: string;
       currentSnapshotRef: string;
-      receiptRef: string;
+      receiptRefs: string[];
       verificationRef: string;
       bundle: ReturnType<typeof buildNativeImplementationScopeBundle>;
       allowance: ReturnType<typeof buildNativePartialAllowance>;
     }> = [];
-    const trace = buildNativeAcceptanceEvidenceTrace(
-      contract.acceptance,
-      [
-        {
-          acceptance_id: contract.acceptance[0].id,
-          evidence_refs: ['test/retention.test.ts'],
-        },
-      ],
-      { nativeRootRef: 'comet' },
-    );
     for (let index = 0; index < 34; index += 1) {
       const bundle = buildNativeImplementationScopeBundle({
         baseline: snapshot([]),
@@ -417,11 +413,68 @@ describe('Native evidence retention', () => {
         bundle.scope.scopeHash,
         bundle.scope.currentProjectionHash,
       );
-      const receiptRef = await writeNativeCheckReceipt({
+      const checkReceiptRef = await writeNativeCheckReceipt({
         paths,
         name: CHANGE,
         receipt: builtReceipt,
       });
+      const bindings = {
+        change: CHANGE,
+        sourceRevision: 100 + index,
+        contractHash: contract.contractHash,
+        scopeHash: bundle.scope.scopeHash,
+        snapshotHash: bundle.scope.currentProjectionHash,
+        artifactHash: nativeArtifactBindingHash(bundle.scope.declaredArtifacts),
+      };
+      const requiredReceiptRef = await writeNativeVerificationReceipt({
+        paths,
+        name: CHANGE,
+        receipt: buildNativeVerificationReceipt({
+          kind: 'static-inspection',
+          role: 'required-check',
+          status: 'passed',
+          bindings,
+          acceptanceIds: [],
+          actor: `native-runtime:${builtReceipt.checker.policy}`,
+          issuedAt: new Date('2026-07-01T00:00:00.000Z').toISOString(),
+          evidence: {
+            subjects: [],
+            rule: builtReceipt.checker.policy,
+            resultSummary: 'The retained static inspection passed.',
+            checkReceiptRef,
+            checkReceiptHash: builtReceipt.receiptHash,
+          },
+        }),
+      });
+      const acceptanceReceiptRef = await writeNativeVerificationReceipt({
+        paths,
+        name: CHANGE,
+        receipt: buildNativeVerificationReceipt({
+          kind: 'manual-evidence',
+          role: 'acceptance-evidence',
+          status: 'passed',
+          bindings,
+          acceptanceIds: [contract.acceptance[0].id],
+          actor: 'native-retention-test',
+          issuedAt: new Date('2026-07-01T00:00:00.000Z').toISOString(),
+          evidence: {
+            steps: ['Inspect retained acceptance evidence.'],
+            observations: ['The evidence remains available.'],
+            responsible: 'native-retention-test',
+          },
+        }),
+      });
+      const trace = buildNativeAcceptanceEvidenceTrace(
+        contract.acceptance,
+        [
+          {
+            acceptance_id: contract.acceptance[0].id,
+            status: 'passed',
+            evidence_refs: [acceptanceReceiptRef],
+          },
+        ],
+        { nativeRootRef: 'comet' },
+      );
       const verification = buildNativeVerificationEvidenceEnvelope({
         change: CHANGE,
         sourceRevision: 100 + index,
@@ -433,7 +486,8 @@ describe('Native evidence retention', () => {
         reportHash: REPORT_HASH,
         acceptanceTrace: trace,
         partialAllowance: { ref: allowanceRef, allowance },
-        receiptRef,
+        requiredReceiptRefs: [requiredReceiptRef],
+        independentReviewReceiptRef: null,
         now: new Date('2026-07-01T00:00:00.000Z'),
       });
       await writeNativeVerificationReportSnapshot({
@@ -450,13 +504,15 @@ describe('Native evidence retention', () => {
       await setOldMtime(paths, scopeRef, index);
       await setOldMtime(paths, allowanceRef, index);
       await setOldMtime(paths, bundle.scope.currentProjectionRef, index);
-      await setOldMtime(paths, receiptRef, index);
+      await setOldMtime(paths, checkReceiptRef, index);
+      await setOldMtime(paths, requiredReceiptRef, index);
+      await setOldMtime(paths, acceptanceReceiptRef, index);
       await setOldMtime(paths, verificationRef, index);
       graphs.push({
         scopeRef,
         allowanceRef,
         currentSnapshotRef: bundle.scope.currentProjectionRef,
-        receiptRef,
+        receiptRefs: [checkReceiptRef, requiredReceiptRef, acceptanceReceiptRef],
         verificationRef,
         bundle,
         allowance,
@@ -513,7 +569,7 @@ describe('Native evidence retention', () => {
       protectedGraph.allowanceRef,
       protectedGraph.scopeRef,
       protectedGraph.currentSnapshotRef,
-      protectedGraph.receiptRef,
+      ...protectedGraph.receiptRefs,
     ]) {
       await expect(fs.access(refFile(paths, ref))).resolves.toBeUndefined();
     }
@@ -522,7 +578,7 @@ describe('Native evidence retention', () => {
       removableGraph.allowanceRef,
       removableGraph.scopeRef,
       removableGraph.currentSnapshotRef,
-      removableGraph.receiptRef,
+      ...removableGraph.receiptRefs,
     ]) {
       await expect(fs.access(refFile(paths, ref))).rejects.toMatchObject({ code: 'ENOENT' });
     }

@@ -5,6 +5,11 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { createNativeChange } from '../../../domains/comet-native/native-change.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 
 interface JsonEnvelope {
@@ -26,7 +31,14 @@ describe('Native Wave B CLI contract', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-wave-b-cli-'));
     execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
-    await runNativeCli(['new', 'cold-resume', ...projectArgs()]);
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await createNativeChange({
+      paths,
+      name: 'cold-resume',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
   });
 
   afterEach(async () => {

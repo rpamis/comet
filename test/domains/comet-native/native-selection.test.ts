@@ -30,7 +30,12 @@ describe('Native current change selection', () => {
   });
 
   it('stores the Native owner in the shared project selection', async () => {
-    await createNativeChange({ paths, name: 'selected-change', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'selected-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     await selectNativeChange(paths, 'selected-change');
 
     expect(await resolveSelectedNativeChange(paths)).toBe('selected-change');
@@ -55,7 +60,12 @@ describe('Native current change selection', () => {
   });
 
   it('refuses a runtime junction before writing the shared selection', async () => {
-    await createNativeChange({ paths, name: 'selected-change', language: 'en' });
+    await createNativeChange({
+      paths,
+      name: 'selected-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     await fs.rm(paths.runtimeDir, { recursive: true, force: true });
     await fs.symlink(outside, paths.runtimeDir, process.platform === 'win32' ? 'junction' : 'dir');
 

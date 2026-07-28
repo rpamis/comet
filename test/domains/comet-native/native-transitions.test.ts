@@ -49,7 +49,12 @@ describe('Native guarded transitions', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-transitions-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    const state = await createNativeChange({ paths, name: 'advance-change', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'advance-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     changeDir = nativeChangeDir(paths, state.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
   });
@@ -374,6 +379,19 @@ describe('Native guarded transitions', () => {
       verification_result: 'fail',
       verification_report: 'verification.md',
     });
+
+    await fs.appendFile(path.join(changeDir, 'verification.md'), '\nChanged after transition.\n');
+    const retry = await advanceNativeChange({
+      paths,
+      name: 'advance-change',
+      evidence: {
+        summary: 'verification failed',
+        verificationResult: 'fail',
+        verificationReport: 'verification.md',
+      },
+    });
+    expect(retry.next).toBe('manual');
+    expect(retry.change.revision).toBe(result.change.revision);
   });
 
   it('advances Verify pass to the Native archive command without reasoning fields', async () => {
@@ -410,5 +428,18 @@ describe('Native guarded transitions', () => {
     const run = (await readRunStateAt(changeDir, NATIVE_RUN_STORAGE))!;
     const source = await fs.readFile(path.join(changeDir, run.trajectoryRef), 'utf8');
     expect(source).not.toMatch(/reasoning|thoughts|chain_of_thought/iu);
+
+    await fs.appendFile(path.join(changeDir, 'verification.md'), '\nChanged after transition.\n');
+    await expect(
+      advanceNativeChange({
+        paths,
+        name: 'advance-change',
+        evidence: {
+          summary: 'verified',
+          verificationResult: 'pass',
+          verificationReport: 'verification.md',
+        },
+      }),
+    ).rejects.toThrow('retreat only accepts a transition summary');
   });
 });

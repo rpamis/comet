@@ -113,9 +113,17 @@ comet native select <change-name>
 
 存在多个 active change，且 selection 不能唯一确定目标时，让用户选择。只有磁盘事实证明没有 active change 时，才把目标归纳为 lowercase kebab-case 名称并创建：
 
+创建 change 之前，宿主/项目 owner 必须在当前 Agent 无法替换的项目外只读边界中预置 controller trust root `~/.comet/native-controller-trust.json`，把项目物理根绑定到 controller 公开 identity。POSIX 普通文件必须由不同 UID 持有，且文件及其父目录链对当前进程不可写；Windows 必须由宿主提供受 Runtime 信任的只读挂载能力，本机同用户可写文件会失败关闭。Native 命令只读取该 store，不能创建或修改它。外部 controller 再签署项目内公开的 `.comet/native-review-trust.json` v2 policy，并为具体 change 签发 creation authorization。policy 固定 implementation、reviewer 和 waiver signer 的 Ed25519 公开身份；controller、implementation、所有 reviewer 和所有 waiver signer 的 key 必须全局不同。
+
+当前 Agent 不能持有、请求或读取 controller、reviewer 或 waiver signer 私钥，也不能自行运行 `trust policy`、`trust authorize` 或代替外部 reviewer/waiver signer 签名。只把公开 identity、creation authorization 和 receipt ref 交给当前 Agent。外部角色通过 owner 控制的 signer/helper 一次性注入私钥环境变量，命令结束后立即清除；私钥不能进入当前会话、项目、Native 产物、命令输出或报告。缺少外部签名时保持 blocked；缺少 controller store、policy 或 authorization 时同样停止。给出准确的待执行命令并等待对应 owner，不能生成替代 key、复用 implementation key、伪造 receipt 或降级到 legacy。
+
 ```text
-comet native new <change-name> --language zh-CN
+comet native new <change-name> \
+  --creation-authorization <controller-owned-path> \
+  --language zh-CN
 ```
+
+`new` 默认创建 `verification_protocol: signed-v2`，在持有 mutation lock 时验证外部 controller trust、controller 签名的 policy 与绑定项目物理根、policy hash、protocol、change name 的 creation authorization，并保存创建时 policy 快照。任一前置条件缺失或无效都会在创建 change 目录之前失败。旧 active change 只有被 controller store 明确列为 legacy 时才按 `legacy-v1` 继续读取和完成；不要手改 marker，也不要为绕过 signed-v2 把新 change 降级。
 
 只使用配置指定的 `<artifact-root>/comet/`，不扫描或修改其他工作流目录。
 
@@ -213,7 +221,7 @@ Runtime 无法证明 scope 完整时会停在 Build，返回 partial scope hash 
 
 根据 Acceptance examples、完整目标规格和风险运行验证。记录实际命令、结果、跳过项、规格一致性、已知限制和结论；未运行的检查不能写成通过。
 
-在 `verification.md` 的固定 acceptance evidence 块中逐项使用 Runtime 返回的 `acceptance_id`。通过项记录项目相对 evidence refs；未完成项不能把 `skipped_reason` 当作通过。确需例外时，使用包含原因、风险和替代证据的结构化 `waiver`，并在 Verify 时显式确认。用 `comet native evidence format` 把条目序列化成规范文本再粘贴，不要手工排版这段 JSON——手写几乎不可能逐字节匹配规范序列化规则。格式见产物参考。
+在 `verification.md` 的固定 acceptance evidence 块中逐项使用 Runtime 返回的 `acceptance_id`。每个 `passed` 项必须引用当前 bindings 上的 typed acceptance receipt：可用 `receipt automated` 执行真实命令，或在确实需要人工观察时用 `receipt manual --confirmed` 记录步骤、观察和责任人。failed/skipped 不能伪装成 pass。确需 waiver 时，先保留 blocking receipt，再把原因、风险和替代 typed receipt 交给外部预信任 waiver signer 运行 `receipt waive`；当前 Agent 只接收 `waiver_ref`，报告项写 `status: waived` 与该 ref。用 `comet native evidence format` 把条目序列化成规范文本再粘贴，不要手工排版 JSON。格式见产物参考。
 
 需要一份可重建的文本卫生证据时，可运行内置只读检查：
 
@@ -223,23 +231,74 @@ comet native check <change-name>
 
 该命令只扫描当前 implementation scope/current snapshot 中有界的项目内普通文本文件，不调用 Git、shell、项目脚本、外部进程或外部 Skill。它不会修改项目文件、phase、Run 或 trajectory；结果写入内容寻址 receipt。它不替代按风险选择的项目测试。
 
-`pass` 必须绑定当前 scope、snapshot 和 contract 的 check receipt；若未传 `--receipt`，Runtime 会在锁内生成当前内置 check receipt。required check 的 failed、skipped、scan-limit、超时或无效 receipt 都阻断通过。高风险 change（Native/Entry runtime、路径/事务/迁移、安全边界、安装或路由等）还必须提交独立 review：reviewer 必须与实现者不同、覆盖全部 acceptance ID、检查统一读写、对抗路径、生成物和真实生命周期 Eval，且不能有未解决 P0/P1。先用 Runtime 生成 review hash：
+`pass` 必须绑定当前 scope、snapshot 和 contract 的 typed required-check receipt；若未传 `--receipt`，Runtime 会在锁内运行内置 `check` 并生成 typed static-inspection receipt。required check 的 failed、skipped、blocked、scan-limit、超时或无效结果都阻断通过。`receipt automated` 的默认 timeout 为 120 秒，显式值最多 3,600,000 毫秒；超时会终止整个进程树并生成 blocked receipt，不能靠扩大到无界时间绕过。
+
+每个 signed-v2 pass 都必须有独立的 acceptance-applicability 审核。Runtime 先生成绑定当前 change/revision/contract/scope/snapshot、完整 acceptance ID 集合和当前 run/scope execution ID 的 implementation preparation；owner 控制的纯 signer 只读取完整 preparation 并返回 detached signature，随后 Runtime 在无私钥环境中重新验证当前状态并 finalize：
 
 ```text
-comet native review format <change-name> --input review-draft.json > review.json
+comet native receipt implement <change-name> prepare \
+  --identity <implementation-identity.json> --output <implementation-preparation.json>
+comet native receipt implement sign \
+  --preparation <implementation-preparation.json> \
+  --identity <implementation-identity.json> \
+  --private-key-env <implementation-secret-env> \
+  --output <implementation-attestation.json>
+comet native receipt implement <change-name> finalize \
+  --preparation <implementation-preparation.json> \
+  --attestation <implementation-attestation.json> \
+  --confirmed
 ```
 
-写完报告后运行：
+先完成最终 `verification.md`，再把代码、规格、完整验收矩阵、implementation attestation、required-check receipt 和所有 typed evidence/waiver refs 交给预信任且不同于 implementation identity 的外部 reviewer。Runtime 的 `prepare` 冻结审核输入；外部 reviewer 在隔离环境中运行 `approve`，独立重放 automated/static evidence、明确 attestation 每个 manual receipt、记录 findings 并确认验收适用性；纯 signer 只签署完整 approval，最后由无私钥 Runtime finalize。当前 implementation Agent 不能运行 reviewer 的 approve/sign，也不能代签：
 
 ```text
-comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md [--receipt <ref>] [--review review.json] [--confirmed --confirm-waiver]
+comet native receipt review <change-name> prepare \
+  --implementation-receipt <implementation-receipt-ref> \
+  --report verification.md \
+  --required-receipt <required-check-receipt-ref> \
+  --identity <reviewer-identity.json> \
+  [--unified-io-receipt <typed-receipt-ref> \
+   --adversarial-paths-receipt <typed-receipt-ref> \
+   --generated-assets-receipt <typed-receipt-ref> \
+   --lifecycle-eval-receipt <typed-receipt-ref>] \
+  --output <review-preparation.json>
+comet native receipt review <change-name> approve \
+  --preparation <review-preparation.json> \
+  [--attest-manual <manual-receipt-ref>]... \
+  [--findings <findings.json>] \
+  --checked-acceptance-applicability \
+  --output <review-approval.json>
+comet native receipt review sign \
+  --approval <review-approval.json> \
+  --identity <reviewer-identity.json> \
+  --private-key-env <reviewer-secret-env> \
+  --output <review-attestation.json>
+comet native receipt review <change-name> finalize \
+  --preparation <review-preparation.json> \
+  --approval <review-approval.json> \
+  --attestation <review-attestation.json> \
+  --confirmed
+```
+
+review 必须覆盖最终报告中的完整当前 acceptance ID 集合，不能有未解决 P0/P1。Runtime 会在 reviewer 路径重新执行 automated receipt、重新运行 static inspection，并要求 reviewer 对 manual receipt 明确 attestation；签名绑定 canonical acceptance matrix、完整 evidence/waiver graph 和 replay refs。高风险 change（`app/`、`domains/`、`platform/`、`config/`、内置 Skills/manifest、相关 runtime/build/install/release scripts、依赖清单，以及无法证明完整或含删除的 scope）还必须为统一 I/O、对抗路径、生成物和真实生命周期 Eval 分别传入真实 typed receipt，不能用布尔自报替代。Verify 与 Archive 共用同一 graph validator；报告、receipt 或 graph 变化都会使 review stale。签名 review 是预信任身份对这些审核事实的责任边界，不是对语义正确性的形式化证明。
+
+外部 reviewer 的私钥环境变量只能注入项目无关的 `receipt review sign` 进程，并在命令结束后立即清除；该 signer 不读取文件系统、项目、Git 或子进程。`approve` 必须在当前 Agent 之外由真实 reviewer 执行，不能把当前 Agent 传入的人工确认直接当成 reviewer attestation。缺少外部 approval 或签名时保持 blocked，不能由当前 Agent 自签或把 review 当作直接 acceptance evidence。review 完成后，把报告中的每个 acceptance receipt 作为 `--evidence-receipt` 传入，并只通过独立审核参数传入 review ref：
+
+```text
+comet native next <change-name> --summary <摘要> \
+  --result pass|fail \
+  --report verification.md \
+  [--receipt <required-receipt-ref>] \
+  [--evidence-receipt <acceptance-receipt-ref>]... \
+  [--waiver <waiver-ref>]... \
+  [--independent-review-receipt <review-receipt-ref>]
 ```
 
 fail 会回到 Build。修复后重新验证，并用 `--failure-category` 与 `--failed-check` 提交稳定、非敏感的失败事实。
 
 同一失败第二次出现会告警；第三次且 scope 没有进展会停止。scope 发生真实变化会结束当前 repair episode。scope 未变化但有明确新假设时，可按 status 返回的 signature 使用一次 `--override-repair`；同一 signature 不得重复 override。达到停止条件后请用户决定，不要弱化检查或伪造 pass。
 
-进入 Archive 后，brief、规格、implementation scope、报告、receipt、waiver 或 review 发生变化会使证据失效。Archive 预演和锁内提交都会重新验证这些绑定事实；按 Runtime continuation 回到 Build，重新封印 scope 并验证；不要沿用失效的 pass。
+进入 Archive 后，brief、规格、implementation scope、报告、receipt、waiver、review trust policy 或 review 发生变化会使证据失效。Archive 预演、事务首个操作前，以及 spec 操作完成但 change 尚未移动的最终 freshness fence 都会重新验证绑定事实；按 Runtime continuation 回到 Build，重新封印 scope 并验证；不要沿用失效的 pass。
 
 ## Archive
 

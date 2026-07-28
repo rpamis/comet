@@ -42,7 +42,12 @@ describe('Native phase guards', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-guards-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    state = await createNativeChange({ paths, name: 'guarded-change', language: 'en' });
+    state = await createNativeChange({
+      paths,
+      name: 'guarded-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     changeDir = nativeChangeDir(paths, state.name);
   });
 

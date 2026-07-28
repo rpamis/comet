@@ -154,6 +154,7 @@ function upgradeV2StateToV3(
     ...state,
     schema: NATIVE_CHANGE_SCHEMA,
     minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
+    verification_protocol: 'legacy-v1',
     revision: state.revision + (retreat && options?.incrementRetreatRevision ? 1 : 0),
     phase: retreat ? 'build' : state.phase,
     verification_result: retreat ? 'pending' : state.verification_result,

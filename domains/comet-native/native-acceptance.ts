@@ -13,8 +13,10 @@ const EVIDENCE_ENTRY_KEYS = new Set([
   'status',
   'evidence_refs',
   'skipped_reason',
-  'waiver',
+  'waiver_ref',
 ]);
+const TYPED_RECEIPT_REF_PATTERN = /^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u;
+const WAIVER_RECEIPT_REF_PATTERN = /^runtime\/evidence\/waivers\/[a-f0-9]{64}\.json$/u;
 const ACCEPTANCE_HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const ACCEPTANCE_CURSOR_PATTERN =
   /^native-acceptance-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
@@ -48,15 +50,10 @@ export interface NativeAcceptanceCriterion {
 
 export interface NativeAcceptanceEvidenceEntry {
   acceptance_id: string;
-  /** Omitted only when parsing legacy verification reports. */
-  status?: 'passed' | 'failed' | 'waived';
+  status: 'passed' | 'failed' | 'waived';
   evidence_refs: string[];
   skipped_reason?: string;
-  waiver?: {
-    reason: string;
-    risk: string;
-    alternative_evidence_refs: string[];
-  };
+  waiver_ref?: string;
 }
 
 function truncateUtf8(value: string, maxBytes: number): { value: string; truncated: boolean } {
@@ -246,14 +243,15 @@ function nextFenceState(line: string, current: FenceState | null): FenceState | 
 function* iterateScannedMarkdown(markdown: string): Generator<IndexedScannedMarkdownLine> {
   let fence: FenceState | null = null;
   let htmlComment = false;
-  let htmlTag: string | null = null;
+  let opaqueHtmlTag: string | null = null;
+  const opaqueHtmlTags = new Set(['code', 'pre', 'script', 'style', 'svg', 'template']);
   const normalized = markdown.replace(/\r\n?/gu, '\n');
   let start = 0;
   let index = 0;
   while (start <= normalized.length) {
     const end = normalized.indexOf('\n', start);
     const line = end === -1 ? normalized.slice(start) : normalized.slice(start, end);
-    const body = fence === null && !htmlComment && htmlTag === null;
+    const body = fence === null && !htmlComment && opaqueHtmlTag === null;
     yield { line, body, index };
     index += 1;
 
@@ -261,8 +259,8 @@ function* iterateScannedMarkdown(markdown: string): Generator<IndexedScannedMark
       fence = nextFenceState(line, fence);
     } else if (htmlComment) {
       if (line.includes('-->')) htmlComment = false;
-    } else if (htmlTag !== null) {
-      if (new RegExp(`</${htmlTag}\\s*>`, 'iu').test(line)) htmlTag = null;
+    } else if (opaqueHtmlTag !== null) {
+      if (new RegExp(`</${opaqueHtmlTag}\\s*>`, 'iu').test(line)) opaqueHtmlTag = null;
     } else {
       const nextFence = nextFenceState(line, null);
       if (nextFence !== null) {
@@ -275,11 +273,12 @@ function* iterateScannedMarkdown(markdown: string): Generator<IndexedScannedMark
           const htmlStart = /^<([A-Za-z][A-Za-z0-9-]*)\b[^>]*>/u.exec(trimmed);
           if (
             htmlStart &&
+            opaqueHtmlTags.has(htmlStart[1].toLowerCase()) &&
             !trimmed.startsWith('</') &&
             !trimmed.endsWith('/>') &&
             !new RegExp(`</${htmlStart[1]}\\s*>`, 'iu').test(trimmed)
           ) {
-            htmlTag = htmlStart[1];
+            opaqueHtmlTag = htmlStart[1];
           }
         }
       }
@@ -466,9 +465,9 @@ export function deriveSpecAcceptanceCriteria(
 }
 
 /**
- * Derive atomic criteria from normative specification bullets in addition to Scenario blocks.
- * Native specs in this repository are prose-first, so relying on optional Scenario headings
- * would let a mandatory requirement disappear from the machine acceptance set.
+ * Conservatively derive every substantive specification statement outside Scenario blocks.
+ * Scenario blocks are already represented by `spec-scenario`; excluding their body avoids
+ * duplicate criteria while prose, numbered requirements, and MUST bullets cannot disappear.
  */
 export function deriveSpecMandatoryAcceptanceCriteria(
   markdown: string,
@@ -480,28 +479,77 @@ export function deriveSpecMandatoryAcceptanceCriteria(
   }
   const criteria: NativeAcceptanceCriterion[] = [];
   const ancestry: MarkdownHeading[] = [];
-  for (const { line, body } of iterateScannedMarkdown(markdown)) {
-    const heading = body ? markdownHeading(line) : null;
-    if (heading) {
-      while (ancestry.at(-1) && ancestry.at(-1)!.level >= heading.level) ancestry.pop();
-      ancestry.push(heading);
-      continue;
-    }
-    if (!body) continue;
-    const item = /^\s*[-*+][ \t]+(.+)$/u.exec(line);
-    if (!item || !/(?:\bmust\b|必须|不得)/iu.test(item[1])) continue;
+  let scenarioLevel: number | null = null;
+  let active: {
+    parts: string[];
+    context: string[];
+  } | null = null;
+  const flush = () => {
+    if (active === null) return;
     if (criteria.length >= maxCriteria) {
       throw new Error(`Native acceptance exceeds its ${maxCriteria}-criterion acceptance budget`);
     }
-    criteria.push(
-      criterion(
-        'spec-must',
-        source,
-        item[1],
-        ancestry.map((entry) => entry.text),
-      ),
-    );
+    criteria.push(criterion('spec-must', source, active.parts.join(' '), active.context));
+    active = null;
+  };
+  const excludedSection = () =>
+    ancestry.some((heading) => /^(?:non-?goals?|非目标)$/iu.test(heading.text.trim()));
+  for (const { line, body } of iterateScannedMarkdown(markdown)) {
+    const heading = body ? markdownHeading(line) : null;
+    if (heading) {
+      flush();
+      if (scenarioLevel !== null && heading.level <= scenarioLevel) scenarioLevel = null;
+      while (ancestry.at(-1) && ancestry.at(-1)!.level >= heading.level) ancestry.pop();
+      ancestry.push(heading);
+      if (/^Scenario\s*:/iu.test(heading.text)) scenarioLevel = heading.level;
+      continue;
+    }
+    const trimmed = line.trim();
+    if (!body || scenarioLevel !== null || excludedSection()) {
+      flush();
+      continue;
+    }
+    if (
+      trimmed.length === 0 ||
+      nextFenceState(line, null) !== null ||
+      /^<!--(?:.*-->)?$/u.test(trimmed) ||
+      /^-->$/u.test(trimmed) ||
+      /^<\/?[A-Za-z][^>]*>$/u.test(trimmed) ||
+      /^<[A-Za-z][^>]*>.*<\/[A-Za-z][^>]*>$/u.test(trimmed) ||
+      /^(?:[-*_]\s*){3,}$/u.test(trimmed) ||
+      /^\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/u.test(trimmed)
+    ) {
+      flush();
+      continue;
+    }
+    const item = /^\s*(?:[-*+]|\d+[.)])[ \t]+(.+)$/u.exec(line);
+    if (item) {
+      flush();
+      active = {
+        parts: [item[1]],
+        context: ancestry.map((entry) => entry.text),
+      };
+      continue;
+    }
+    if (/^\|.*\|$/u.test(trimmed)) {
+      flush();
+      active = {
+        parts: [trimmed],
+        context: ancestry.map((entry) => entry.text),
+      };
+      flush();
+      continue;
+    }
+    if (active === null) {
+      active = {
+        parts: [trimmed],
+        context: ancestry.map((entry) => entry.text),
+      };
+    } else {
+      active.parts.push(trimmed);
+    }
   }
+  flush();
   return uniqueCriteria(criteria, 'Specification mandatory requirements');
 }
 
@@ -529,6 +577,11 @@ function normalizeEvidenceRef(value: string, acceptanceId: string): string {
   ) {
     throw new Error(`Acceptance evidence ${acceptanceId} references sensitive content`);
   }
+  if (!TYPED_RECEIPT_REF_PATTERN.test(portable)) {
+    throw new Error(
+      `Acceptance evidence ${acceptanceId} must reference a content-addressed typed receipt`,
+    );
+  }
   return portable;
 }
 
@@ -539,6 +592,11 @@ function evidenceRecord(value: unknown, index: number): Record<string, unknown> 
   const record = value as Record<string, unknown>;
   const unknown = Object.keys(record).filter((key) => !EVIDENCE_ENTRY_KEYS.has(key));
   if (unknown.length > 0) {
+    if (unknown.includes('waiver')) {
+      throw new Error(
+        `Acceptance evidence entry ${index} must reference a content-addressed waiver receipt`,
+      );
+    }
     throw new Error(
       `Acceptance evidence entry ${index} has unknown field(s): ${unknown.join(', ')}`,
     );
@@ -574,7 +632,7 @@ function validateEvidenceEntries(value: unknown): NativeAcceptanceEvidenceEntry[
       throw new Error(`Acceptance evidence ${acceptanceId} has a duplicate evidence ref`);
     }
     const status = record.status;
-    if (status !== undefined && status !== 'passed' && status !== 'failed' && status !== 'waived') {
+    if (status !== 'passed' && status !== 'failed' && status !== 'waived') {
       throw new Error(`Acceptance evidence ${acceptanceId} status is invalid`);
     }
 
@@ -587,71 +645,46 @@ function validateEvidenceEntries(value: unknown): NativeAcceptanceEvidenceEntry[
       }
       skippedReason = record.skipped_reason.trim();
     }
-    let waiver: NativeAcceptanceEvidenceEntry['waiver'];
-    if (Object.prototype.hasOwnProperty.call(record, 'waiver')) {
-      if (!record.waiver || typeof record.waiver !== 'object' || Array.isArray(record.waiver)) {
-        throw new Error(`Acceptance evidence ${acceptanceId} waiver is invalid`);
-      }
-      const rawWaiver = record.waiver as Record<string, unknown>;
-      const expected = new Set(['reason', 'risk', 'alternative_evidence_refs']);
-      const unknown = Object.keys(rawWaiver).filter((key) => !expected.has(key));
-      if (unknown.length > 0 || Object.keys(rawWaiver).length !== expected.size) {
-        throw new Error(`Acceptance evidence ${acceptanceId} waiver is invalid`);
-      }
+    let waiverRef: string | undefined;
+    if (Object.prototype.hasOwnProperty.call(record, 'waiver_ref')) {
       if (
-        typeof rawWaiver.reason !== 'string' ||
-        rawWaiver.reason.trim().length === 0 ||
-        typeof rawWaiver.risk !== 'string' ||
-        rawWaiver.risk.trim().length === 0 ||
-        !Array.isArray(rawWaiver.alternative_evidence_refs)
+        typeof record.waiver_ref !== 'string' ||
+        !WAIVER_RECEIPT_REF_PATTERN.test(record.waiver_ref)
       ) {
-        throw new Error(`Acceptance evidence ${acceptanceId} waiver is invalid`);
+        throw new Error(
+          `Acceptance evidence ${acceptanceId} waiver_ref must identify a content-addressed waiver receipt`,
+        );
       }
-      const alternativeEvidenceRefs = rawWaiver.alternative_evidence_refs.map((reference) => {
-        if (typeof reference !== 'string' || reference.trim().length === 0) {
-          throw new Error(`Acceptance evidence ${acceptanceId} waiver evidence is invalid`);
-        }
-        return normalizeEvidenceRef(reference, acceptanceId);
-      });
-      if (
-        alternativeEvidenceRefs.length === 0 ||
-        new Set(alternativeEvidenceRefs).size !== alternativeEvidenceRefs.length
-      ) {
-        throw new Error(`Acceptance evidence ${acceptanceId} waiver evidence is invalid`);
-      }
-      waiver = {
-        reason: rawWaiver.reason.trim(),
-        risk: rawWaiver.risk.trim(),
-        alternative_evidence_refs: alternativeEvidenceRefs,
-      };
+      waiverRef = record.waiver_ref;
     }
-    const effectiveStatus =
-      status ??
-      (waiver !== undefined ? 'waived' : skippedReason !== undefined ? 'failed' : 'passed');
-    if (effectiveStatus === 'passed' && evidenceRefs.length === 0) {
+    if (status === 'passed' && evidenceRefs.length === 0) {
       throw new Error(`Acceptance evidence ${acceptanceId} passed status requires evidence_refs`);
     }
-    if (effectiveStatus === 'failed' && (evidenceRefs.length > 0 || skippedReason === undefined)) {
+    if (
+      status === 'failed' &&
+      (evidenceRefs.length > 0 || skippedReason === undefined || waiverRef !== undefined)
+    ) {
       throw new Error(
         `Acceptance evidence ${acceptanceId} failed status requires a skipped_reason and no evidence`,
       );
     }
-    if (effectiveStatus === 'waived' && (evidenceRefs.length > 0 || waiver === undefined)) {
+    if (
+      status === 'waived' &&
+      (evidenceRefs.length > 0 || waiverRef === undefined || skippedReason !== undefined)
+    ) {
       throw new Error(
-        `Acceptance evidence ${acceptanceId} waived status requires a waiver and no evidence`,
+        `Acceptance evidence ${acceptanceId} waived status requires a waiver receipt and no evidence`,
       );
     }
-    if (skippedReason !== undefined && waiver !== undefined) {
-      throw new Error(
-        `Acceptance evidence ${acceptanceId} must use either a failed status or a waiver`,
-      );
+    if (status === 'passed' && (skippedReason !== undefined || waiverRef !== undefined)) {
+      throw new Error(`Acceptance evidence ${acceptanceId} passed status has invalid fields`);
     }
     return {
       acceptance_id: acceptanceId,
-      ...(status === undefined ? {} : { status }),
+      status,
       evidence_refs: evidenceRefs,
       ...(skippedReason === undefined ? {} : { skipped_reason: skippedReason }),
-      ...(waiver === undefined ? {} : { waiver }),
+      ...(waiverRef === undefined ? {} : { waiver_ref: waiverRef }),
     };
   });
 }

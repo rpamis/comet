@@ -79,6 +79,7 @@ function legacyState(state: NativeChangeState): Record<string, unknown> {
   const legacy: Record<string, unknown> = { ...state };
   delete legacy.minimum_runtime_version;
   delete legacy.revision;
+  delete legacy.verification_protocol;
   delete legacy.operation;
   delete legacy.approved_contract_hash;
   delete legacy.implementation_scope;
@@ -102,6 +103,7 @@ function legacyTransition(journal: NativeTransitionJournal): Record<string, unkn
 
 function v2State(state: NativeChangeState): Record<string, unknown> {
   const previous: Record<string, unknown> = { ...state };
+  delete previous.verification_protocol;
   delete previous.approved_contract_hash;
   delete previous.implementation_scope;
   delete previous.verification_evidence;
@@ -146,7 +148,12 @@ describe('Native transition recovery', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-transition-recovery-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    const state = await createNativeChange({ paths, name: 'recover-transition', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'recover-transition',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     changeDir = nativeChangeDir(paths, state.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
   });

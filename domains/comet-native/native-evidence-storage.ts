@@ -21,8 +21,15 @@ import {
   parseNativePartialAllowance,
   parseNativeVerificationEvidenceEnvelope,
   type NativePartialAllowance,
+  type NativeReadableVerificationEvidenceEnvelope,
   type NativeVerificationEvidenceEnvelope,
 } from './native-verification-evidence.js';
+import {
+  parseNativeVerificationReceipt,
+  parseNativeWaiverReceipt,
+  type NativeVerificationReceipt,
+  type NativeWaiverReceipt,
+} from './native-verification-receipt.js';
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 export const MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES = MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES;
@@ -34,7 +41,9 @@ export type NativeEvidenceKind =
   | 'scopes'
   | 'allowances'
   | 'verifications'
-  | 'reports';
+  | 'reports'
+  | 'receipts'
+  | 'waivers';
 
 export interface NativeEvidenceReadHooks {
   afterParentChainCaptured?: () => void | Promise<void>;
@@ -274,7 +283,7 @@ export async function readNativeVerificationReportSnapshot(
 
 function parseEvidenceRef(ref: string, expectedKind: NativeEvidenceKind): string {
   const match =
-    /^runtime\/evidence\/(snapshots|scopes|allowances|verifications|reports)\/([a-f0-9]{64})\.json$/u.exec(
+    /^runtime\/evidence\/(snapshots|scopes|allowances|verifications|reports|receipts|waivers)\/([a-f0-9]{64})\.json$/u.exec(
       ref,
     );
   if (!match || match[1] !== expectedKind) {
@@ -369,7 +378,7 @@ function parseEnvelope(
   value: unknown,
   expectedName: string,
   expectedHash: string,
-): NativeVerificationEvidenceEnvelope {
+): NativeReadableVerificationEvidenceEnvelope {
   const evidence = parseNativeVerificationEvidenceEnvelope(value);
   if (evidence.change !== expectedName || evidence.envelopeHash !== expectedHash) {
     throw new Error('Native verification evidence ref/hash/change mismatch');
@@ -380,7 +389,7 @@ function parseEnvelope(
 async function assertEnvelopeDependencies(
   paths: NativeProjectPaths,
   name: string,
-  evidence: NativeVerificationEvidenceEnvelope,
+  evidence: NativeReadableVerificationEvidenceEnvelope,
   requireReportSnapshot = false,
 ): Promise<void> {
   const scope = await readNativeImplementationScope(paths, name, evidence.implementationScopeRef);
@@ -514,12 +523,83 @@ export async function readNativePartialAllowance(
   );
 }
 
+export async function writeNativeVerificationReceipt(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  receipt: NativeVerificationReceipt;
+}): Promise<string> {
+  const receipt = parseNativeVerificationReceipt(options.receipt);
+  if (receipt.bindings.change !== options.name) {
+    throw new Error('Native verification receipt change mismatch');
+  }
+  return writeEvidenceDocument({
+    paths: options.paths,
+    name: options.name,
+    kind: 'receipts',
+    hash: receipt.receiptHash,
+    value: receipt,
+  });
+}
+
+export async function readNativeVerificationReceipt(
+  paths: NativeProjectPaths,
+  name: string,
+  ref: string,
+  hooks?: NativeEvidenceReadHooks,
+): Promise<NativeVerificationReceipt> {
+  const hash = parseEvidenceRef(ref, 'receipts');
+  const receipt = parseNativeVerificationReceipt(
+    await readEvidenceDocument({ paths, name, kind: 'receipts', hash, hooks }),
+  );
+  if (receipt.bindings.change !== name || receipt.receiptHash !== hash) {
+    throw new Error('Native verification receipt ref/hash/change mismatch');
+  }
+  return receipt;
+}
+
+export async function writeNativeWaiverReceipt(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  waiver: NativeWaiverReceipt;
+}): Promise<string> {
+  const waiver = parseNativeWaiverReceipt(options.waiver);
+  if (waiver.bindings.change !== options.name) {
+    throw new Error('Native waiver receipt change mismatch');
+  }
+  return writeEvidenceDocument({
+    paths: options.paths,
+    name: options.name,
+    kind: 'waivers',
+    hash: waiver.waiverHash,
+    value: waiver,
+  });
+}
+
+export async function readNativeWaiverReceipt(
+  paths: NativeProjectPaths,
+  name: string,
+  ref: string,
+  hooks?: NativeEvidenceReadHooks,
+): Promise<NativeWaiverReceipt> {
+  const hash = parseEvidenceRef(ref, 'waivers');
+  const waiver = parseNativeWaiverReceipt(
+    await readEvidenceDocument({ paths, name, kind: 'waivers', hash, hooks }),
+  );
+  if (waiver.bindings.change !== name || waiver.waiverHash !== hash) {
+    throw new Error('Native waiver receipt ref/hash/change mismatch');
+  }
+  return waiver;
+}
+
 export async function writeNativeVerificationEvidence(options: {
   paths: NativeProjectPaths;
   name: string;
   evidence: NativeVerificationEvidenceEnvelope;
 }): Promise<string> {
   const evidence = parseEnvelope(options.evidence, options.name, options.evidence.envelopeHash);
+  if (evidence.schema !== 'comet.native.verification-evidence.v2') {
+    throw new Error('Native active verification evidence must use v2');
+  }
   await assertEnvelopeDependencies(options.paths, options.name, evidence, true);
   return writeEvidenceDocument({
     ...options,
@@ -534,7 +614,7 @@ export async function readNativeVerificationEvidence(
   name: string,
   ref: string,
   hooks?: NativeEvidenceReadHooks,
-): Promise<NativeVerificationEvidenceEnvelope> {
+): Promise<NativeReadableVerificationEvidenceEnvelope> {
   const hash = parseEvidenceRef(ref, 'verifications');
   const evidence = parseEnvelope(
     await readEvidenceDocument({ paths, name, kind: 'verifications', hash, hooks }),

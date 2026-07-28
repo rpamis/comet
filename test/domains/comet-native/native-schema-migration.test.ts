@@ -50,6 +50,7 @@ import { nativeVerificationFixtureReport } from '../../helpers/native-verificati
 
 function legacyDocument(state: NativeChangeState): Record<string, unknown> {
   const fields: Record<string, unknown> = { ...state };
+  delete fields.verification_protocol;
   delete fields.minimum_runtime_version;
   delete fields.revision;
   delete fields.approved_contract_hash;
@@ -61,6 +62,7 @@ function legacyDocument(state: NativeChangeState): Record<string, unknown> {
 
 function v2Document(state: NativeChangeState): Record<string, unknown> {
   const fields: Record<string, unknown> = { ...state };
+  delete fields.verification_protocol;
   delete fields.approved_contract_hash;
   delete fields.implementation_scope;
   delete fields.verification_evidence;
@@ -104,7 +106,12 @@ describe('Native schema compatibility and journalized migration', () => {
   });
 
   async function seedLegacyChange(name: string): Promise<string> {
-    const state = await createNativeChange({ paths, name, language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name,
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const file = path.join(nativeChangeDir(paths, name), 'comet-state.yaml');
     await fs.writeFile(file, stringify(legacyDocument(state)));
     await fs.rm(nativeBaselineManifestFile(paths, name), { force: true });
@@ -115,7 +122,12 @@ describe('Native schema compatibility and journalized migration', () => {
     name: string,
     phase: NativePhase,
   ): Promise<{ changeDir: string; state: NativeChangeState }> {
-    const created = await createNativeChange({ paths, name, language: 'en' });
+    const created = await createNativeChange({
+      paths,
+      name,
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const changeDir = nativeChangeDir(paths, created.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
     if (phase !== 'shape') {
@@ -694,7 +706,12 @@ describe('Native schema compatibility and journalized migration', () => {
   });
 
   it('fails closed on a schema that requires a newer runtime without rewriting it', async () => {
-    const state = await createNativeChange({ paths, name: 'future-change', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'future-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const file = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
     const source = stringify({
       ...state,
@@ -720,7 +737,12 @@ describe('Native schema compatibility and journalized migration', () => {
   });
 
   it('fails closed on an unsupported older schema without inventing a migration route', async () => {
-    const state = await createNativeChange({ paths, name: 'ancient-change', language: 'en' });
+    const state = await createNativeChange({
+      paths,
+      name: 'ancient-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     const file = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
     const source = stringify({
       ...state,

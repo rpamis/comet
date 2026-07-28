@@ -61,7 +61,12 @@ describe('Native artifact validation', () => {
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-artifacts-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    state = await createNativeChange({ paths, name: 'auth-change', language: 'en' });
+    state = await createNativeChange({
+      paths,
+      name: 'auth-change',
+      language: 'en',
+      verificationProtocol: 'legacy-v1',
+    });
     changeDir = nativeChangeDir(paths, state.name);
   });
 

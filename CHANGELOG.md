@@ -2,16 +2,21 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.0-beta.10] - 2026-07-26
+## What's Changed [0.4.0-beta.10] - 2026-07-28
 
 ### Added
 
 - **Explicit platform targeting**: `comet init` and `comet update` now accept `--platform <platform>` to initialize or refresh one registered platform, or a project-scoped custom platform such as `.test`, while preserving workflow-scoped asset installation and the existing detection fallback when the option is omitted.
-- **Native independent review receipts**: `comet native review format` creates a content-hashed review receipt that records an independent reviewer, full acceptance coverage, mandatory safety checks, and resolved findings for high-risk Native changes.
+- **Native controller-backed trust**: New signed-v2 changes require a controller-owned trust root outside the project, a controller-signed public role policy, and a change-specific creation authorization. Implementation, reviewer, and waiver identities remain globally separated, so project-local edits or the implementation role cannot redefine who may approve a change.
+- **Native typed verification receipts**: `comet native receipt automated|manual|implement|review|waive` records acceptance evidence, implementation attestations, independent reviews, and structured waivers as bound, content-addressed artifacts. Implementation and review signing use prepare/sign/finalize handoffs, and high-risk reviews require typed receipts for unified I/O, adversarial paths, generated assets, and a real lifecycle Eval.
 
 ### Changed
 
-- **Fail-closed Native verification**: A passing Verify result now requires a fresh Runtime check receipt, blocks skipped or scan-limited checks by default, supports only explicitly confirmed structured waivers, and rechecks high-risk review evidence before Archive commits.
+- **Fail-closed Native verification**: A passing Verify result now requires a fresh Runtime check receipt and direct automated/manual evidence or a structured waiver for every acceptance item. The external reviewer replays automated/static evidence, attests manual evidence, and signs the final canonical matrix and evidence graph; Verify and Archive reject stale reports, receipts, waivers, review policy, replays, or implementation scope.
+
+### Security
+
+- **Native verification trust isolation**: Controller, reviewer, and waiver private keys stay outside the implementation Agent and project artifacts; implementation/review keys enter only project-agnostic detached-signature processes, while reviewer replay/approval runs without signing secrets. Controller trust stores must be host-isolated read-only, automated commands receive a sanitized environment, and timed-out verification commands terminate their process tree.
 
 ## What's Changed [0.4.0-beta.9] - 2026-07-25
 

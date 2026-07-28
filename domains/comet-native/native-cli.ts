@@ -1,3 +1,4 @@
+import { promises as fs } from 'node:fs';
 import path from 'path';
 
 import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
@@ -7,9 +8,8 @@ import {
   NativeArchivePreflightError,
   NativeSpecConflictError,
 } from './native-archive.js';
+import { atomicWriteJson } from './native-atomic-file.js';
 import { serializeNativeVerificationMachineBlock } from './native-acceptance.js';
-import { formatNativeIndependentReview } from './native-independent-review.js';
-import { collectNativeContractFiles } from './native-contract-files.js';
 import { inspectNativeArchivePreflight } from './native-archive-inspection.js';
 import {
   createNativeChange,
@@ -36,7 +36,9 @@ import {
   ensureNativeDirectories,
   nativeProjectPaths,
   normalizeArtifactRootRef,
+  resolveContainedNativePath,
 } from './native-paths.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
 import { moveNativeRoot } from './native-root-move.js';
 import { selectNativeChange } from './native-selection.js';
 import {
@@ -47,6 +49,45 @@ import {
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import { MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES } from './native-verification-scope.js';
+import {
+  buildNativeCreationAuthorization,
+  parseNativeCreationAuthorization,
+} from './native-creation-authorization.js';
+import {
+  nativeControllerProjectRootHash,
+  readNativeControllerTrustProject,
+} from './native-controller-trust.js';
+import {
+  approveNativeIndependentReviewPreparation,
+  finalizeNativeImplementationAttestation,
+  finalizeNativeIndependentReviewReceipt,
+  issueNativeAutomatedCheckReceipt,
+  issueNativeManualEvidenceReceipt,
+  issueNativeWaiverReceipt,
+  MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS,
+  prepareNativeIndependentReview,
+  prepareNativeImplementationAttestation,
+  type NativeIndependentReviewPreparation,
+} from './native-verification-receipt-runtime.js';
+import {
+  generateNativeReviewKeyPair,
+  nativeReviewIdentityFromPrivateKey,
+  nativeReviewPrivateKeyFilePersistenceSupported,
+  parseNativeReviewIdentity,
+  parseNativeReviewSignature,
+} from './native-review-identity.js';
+import {
+  buildNativeReviewTrustPolicy,
+  NATIVE_REVIEW_TRUST_POLICY_REF,
+  readNativeReviewTrustPolicy,
+} from './native-review-trust.js';
+import {
+  parseNativeImplementationPreparation,
+  parseNativeIndependentReviewApproval,
+  signNativeImplementationPreparation,
+  signNativeIndependentReviewApproval,
+} from './native-review-signer.js';
+import type { NativeReviewFinding } from './native-verification-receipt.js';
 import { advanceNativeChange } from './native-transitions.js';
 import { inspectNativeHookGuard, readNativeHookRequest } from './native-hook-guard.js';
 import type {
@@ -85,7 +126,7 @@ Commands:
   init [--root <artifact-root>] [--language en|zh-CN]
   root show
   root move <artifact-root>
-  new <change-name> [--language en|zh-CN]
+  new <change-name> --creation-authorization <path> [--language en|zh-CN]
   spec remove <change-name> <capability>
   spec rebase <change-name> --summary <text>
   list [--cursor <token>]
@@ -95,8 +136,21 @@ Commands:
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   check <change-name>
   evidence format [--entries <path>]
-  review format <change-name> [--input <path>]
-  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <change-relative-ref>] [--review <change-relative-ref>] [--confirm-waiver] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
+  trust keygen --identity <path> --private-key <outside-project-path>
+  trust identity --private-key-env <name> --identity <path>
+  trust policy --implementation-identity <path> --reviewer-identity <path> --waiver-identity <path> --controller-private-key-env <name>
+  trust authorize <change-name> --controller-private-key-env <name> --output <path>
+  receipt manual <change-name> --acceptance <id> --responsible <text> --step <text> --observation <text> --confirmed
+  receipt automated <change-name> --acceptance <id> [--timeout-ms <n>] -- <executable> [args...]
+  receipt implement <change-name> prepare --identity <path> --output <path>
+  receipt implement sign --preparation <path> --identity <path> --private-key-env <name> --output <path>
+  receipt implement <change-name> finalize --preparation <path> --attestation <path> --confirmed
+  receipt review <change-name> prepare --implementation-receipt <ref> --report <path> --required-receipt <ref> --identity <path> [--unified-io-receipt <ref> --adversarial-paths-receipt <ref> --generated-assets-receipt <ref> --lifecycle-eval-receipt <ref>] --output <path>
+  receipt review <change-name> approve --preparation <path> --attest-manual <ref> [--findings <path>] --checked-acceptance-applicability --output <path>
+  receipt review sign --approval <path> --identity <path> --private-key-env <name> --output <path>
+  receipt review <change-name> finalize --preparation <path> --approval <path> --attestation <path> --confirmed
+  receipt waive <change-name> --acceptance <id> --blocked-receipt <ref> --reason <text> --risk <text> --alternative-receipt <ref> --identity <path> --private-key-env <name> --confirmed
+  next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <required-ref>] [--evidence-receipt <ref>] [--waiver <ref>] [--independent-review-receipt <ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
   archive <change-name> --expect-preflight <sha256>
   doctor [<change-name>] [--repair] [--strategy continue|rollback]
@@ -231,6 +285,122 @@ async function readBoundedEvidenceStdin(maxBytes: number): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+async function readEvidenceJson(filePath: string, label: string): Promise<unknown> {
+  const raw = await readBoundedEvidenceFile(
+    path.resolve(filePath),
+    MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES,
+  );
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw new Error(`${label} must be valid JSON: ${(error as Error).message}`, {
+      cause: error,
+    });
+  }
+}
+
+function privateKeyFromEnvironment(name: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) {
+    throw new NativeUsageError('--private-key-env must be an environment variable name');
+  }
+  const value = process.env[name];
+  if (!value) throw new NativeUsageError(`Private key environment variable ${name} is not set`);
+  delete process.env[name];
+  return value;
+}
+
+function pathIsInside(parent: string, target: string): boolean {
+  const relative = path.relative(parent, target);
+  return (
+    relative === '' ||
+    (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`))
+  );
+}
+
+async function assertPrivateKeyOutsideProject(projectRoot: string, file: string): Promise<void> {
+  const relative = path.relative(projectRoot, file);
+  if (
+    relative === '' ||
+    (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  ) {
+    throw new NativeUsageError('--private-key must resolve outside the Native project');
+  }
+  const physicalProjectRoot = await fs.realpath(projectRoot);
+  const parsed = path.parse(path.resolve(path.dirname(file)));
+  let cursor = parsed.root;
+  for (const segment of path
+    .relative(parsed.root, path.resolve(path.dirname(file)))
+    .split(path.sep)
+    .filter(Boolean)) {
+    cursor = path.join(cursor, segment);
+    let stat: Awaited<ReturnType<typeof fs.lstat>>;
+    try {
+      stat = await fs.lstat(cursor);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new NativeUsageError(
+        '--private-key parent chain must not contain symlinks, junctions, or non-directories',
+      );
+    }
+    if (pathIsInside(physicalProjectRoot, await fs.realpath(cursor))) {
+      throw new NativeUsageError('--private-key parent resolves inside the Native project');
+    }
+  }
+}
+
+async function writeExclusiveFile(file: string, content: string, mode: number): Promise<void> {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const handle = await fs.open(file, 'wx', mode);
+  try {
+    await handle.writeFile(content, 'utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+async function writeExclusivePrivateKeyFile(
+  projectRoot: string,
+  file: string,
+  content: string,
+): Promise<void> {
+  if (!nativeReviewPrivateKeyFilePersistenceSupported()) {
+    throw new NativeUsageError(
+      'trust keygen cannot persist private keys on Windows because owner-only ACLs cannot be verified; generate the identity in an external secret store and provide signing keys through --private-key-env',
+    );
+  }
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await assertPrivateKeyOutsideProject(projectRoot, file);
+  const handle = await fs.open(file, 'wx', 0o600);
+  let secure = false;
+  try {
+    await handle.writeFile(content, 'utf8');
+    await handle.chmod(0o600);
+    const stat = await handle.stat();
+    if ((stat.mode & 0o077) !== 0) {
+      throw new Error('Native review private key file permissions are not owner-only');
+    }
+    const [physicalProjectRoot, physicalFile, target] = await Promise.all([
+      fs.realpath(projectRoot),
+      fs.realpath(file),
+      fs.lstat(file),
+    ]);
+    if (
+      !target.isFile() ||
+      target.isSymbolicLink() ||
+      pathIsInside(physicalProjectRoot, physicalFile)
+    ) {
+      throw new Error('Native review private key resolved inside the project during write');
+    }
+    secure = true;
+  } finally {
+    await handle.close();
+    if (!secure) await fs.rm(file, { force: true });
+  }
+}
+
 async function dispatch(
   rawArgs: string[],
   explicitProjectRoot: string | undefined,
@@ -327,6 +497,10 @@ async function dispatch(
   }
   if (command === 'new') {
     const name = requiredPositional(rawArgs, 'change name');
+    const creationAuthorizationPath = takeOption(rawArgs, '--creation-authorization');
+    if (!creationAuthorizationPath) {
+      throw new NativeUsageError('--creation-authorization is required');
+    }
     let config = await readProjectConfig(projectRoot);
     const language = languageOption(rawArgs, config?.native.language ?? 'en');
     assertNoArguments(rawArgs);
@@ -340,7 +514,15 @@ async function dispatch(
     if (shouldWriteConfig) await writeProjectConfig(projectRoot, config);
     const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
     await ensureNativeDirectories(paths);
-    const state = await createNativeChange({ paths, name, language });
+    const state = await createNativeChange({
+      paths,
+      name,
+      language,
+      verificationProtocol: 'signed-v2',
+      creationAuthorization: parseNativeCreationAuthorization(
+        await readEvidenceJson(creationAuthorizationPath, 'Native creation authorization'),
+      ),
+    });
     await selectNativeChange(paths, state.name);
     const status = await inspectNativeStatus(paths, state.name, {
       clarificationMode: config.native.clarification_mode,
@@ -572,39 +754,476 @@ async function dispatch(
     }
     throw new NativeUsageError(`Unknown evidence command: ${subcommand}`);
   }
-  if (command === 'review') {
-    const subcommand = requiredPositional(rawArgs, 'review subcommand');
-    if (subcommand !== 'format')
-      throw new NativeUsageError(`Unknown review command: ${subcommand}`);
-    const name = requiredPositional(rawArgs, 'change name');
-    const inputPath = takeOption(rawArgs, '--input');
-    assertNoArguments(rawArgs);
-    const raw = inputPath
-      ? await readBoundedEvidenceFile(
-          path.resolve(inputPath),
-          MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES,
-        )
-      : await readBoundedEvidenceStdin(MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES);
-    let input: unknown;
-    try {
-      input = JSON.parse(raw) as unknown;
-    } catch (error) {
-      throw new Error(`Independent review must be valid JSON: ${(error as Error).message}`, {
-        cause: error,
-      });
+  if (command === 'trust') {
+    const subcommand = requiredPositional(rawArgs, 'trust subcommand');
+    if (subcommand === 'identity') {
+      const identityPathValue = takeOption(rawArgs, '--identity');
+      const privateKeyEnv = takeOption(rawArgs, '--private-key-env');
+      if (!identityPathValue || !privateKeyEnv) {
+        throw new NativeUsageError('trust identity requires --identity and --private-key-env');
+      }
+      assertNoArguments(rawArgs);
+      const identityPath = path.resolve(identityPathValue);
+      const identity = nativeReviewIdentityFromPrivateKey(privateKeyFromEnvironment(privateKeyEnv));
+      await writeExclusiveFile(identityPath, `${JSON.stringify(identity, null, 2)}\n`, 0o644);
+      return success(
+        'trust identity',
+        { identityPath, keyId: identity.keyId, privateKeyPrinted: false },
+        `Native review identity ${identity.keyId} created from external private key material\n`,
+      );
     }
+    if (subcommand === 'keygen') {
+      const identityPathValue = takeOption(rawArgs, '--identity');
+      const privateKeyPathValue = takeOption(rawArgs, '--private-key');
+      if (!identityPathValue || !privateKeyPathValue) {
+        throw new NativeUsageError('trust keygen requires --identity and --private-key');
+      }
+      assertNoArguments(rawArgs);
+      const identityPath = path.resolve(identityPathValue);
+      const privateKeyPath = path.resolve(privateKeyPathValue);
+      await assertPrivateKeyOutsideProject(projectRoot, privateKeyPath);
+      if (identityPath === privateKeyPath) {
+        throw new NativeUsageError('--identity and --private-key must be different files');
+      }
+      const keyPair = generateNativeReviewKeyPair();
+      await writeExclusivePrivateKeyFile(projectRoot, privateKeyPath, `${keyPair.privateKey}\n`);
+      await writeExclusiveFile(
+        identityPath,
+        `${JSON.stringify(keyPair.identity, null, 2)}\n`,
+        0o644,
+      );
+      return success(
+        'trust keygen',
+        {
+          identityPath,
+          privateKeyPath,
+          keyId: keyPair.identity.keyId,
+          privateKeyPrinted: false,
+        },
+        `Native review identity ${keyPair.identity.keyId} created; private key written only to ${privateKeyPath}\n`,
+      );
+    }
+    if (subcommand === 'policy') {
+      const implementationIdentityPath = takeOption(rawArgs, '--implementation-identity');
+      const reviewerIdentityPaths = takeMany(rawArgs, '--reviewer-identity');
+      const waiverIdentityPaths = takeMany(rawArgs, '--waiver-identity');
+      const controllerPrivateKeyEnv = takeOption(rawArgs, '--controller-private-key-env');
+      if (
+        !implementationIdentityPath ||
+        reviewerIdentityPaths.length === 0 ||
+        waiverIdentityPaths.length === 0 ||
+        !controllerPrivateKeyEnv
+      ) {
+        throw new NativeUsageError(
+          'trust policy requires --implementation-identity, --reviewer-identity, --waiver-identity, and --controller-private-key-env',
+        );
+      }
+      assertNoArguments(rawArgs);
+      const { paths } = await configuredPaths(projectRoot);
+      const implementationIdentity = parseNativeReviewIdentity(
+        await readEvidenceJson(implementationIdentityPath, 'Implementation identity'),
+      );
+      const trustedReviewers = await Promise.all(
+        reviewerIdentityPaths.map(async (file) =>
+          parseNativeReviewIdentity(await readEvidenceJson(file, 'Reviewer identity')),
+        ),
+      );
+      const trustedWaiverSigners = await Promise.all(
+        waiverIdentityPaths.map(async (file) =>
+          parseNativeReviewIdentity(await readEvidenceJson(file, 'Waiver signer identity')),
+        ),
+      );
+      const controllerTrust = await readNativeControllerTrustProject(projectRoot);
+      if (!controllerTrust) {
+        throw new Error('Native project has no controller-owned trust root');
+      }
+      const policy = buildNativeReviewTrustPolicy({
+        controllerIdentity: controllerTrust.controllerIdentity,
+        controllerPrivateKey: privateKeyFromEnvironment(controllerPrivateKeyEnv),
+        implementationKeyId: implementationIdentity.keyId,
+        trustedReviewers,
+        trustedWaiverSigners,
+      });
+      const policyPath = path.join(projectRoot, ...NATIVE_REVIEW_TRUST_POLICY_REF.split('/'));
+      await withNativeMutationLock(paths, 'create review trust policy', async () => {
+        await resolveContainedNativePath(projectRoot, policyPath);
+        const activeEntries = await fs.readdir(paths.changesDir).catch((error: unknown) => {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+          throw error;
+        });
+        if (activeEntries.length > 0) {
+          throw new Error('Native review trust policy must be created before any active change');
+        }
+        await atomicWriteJson(policyPath, policy, {
+          containedRoot: projectRoot,
+          exclusive: true,
+        });
+      });
+      return success(
+        'trust policy',
+        { ref: NATIVE_REVIEW_TRUST_POLICY_REF, policy },
+        `Native review trust policy created: ${NATIVE_REVIEW_TRUST_POLICY_REF}\n`,
+      );
+    }
+    if (subcommand === 'authorize') {
+      const name = requiredPositional(rawArgs, 'change name');
+      const controllerPrivateKeyEnv = takeOption(rawArgs, '--controller-private-key-env');
+      const outputPathValue = takeOption(rawArgs, '--output');
+      if (!controllerPrivateKeyEnv || !outputPathValue) {
+        throw new NativeUsageError(
+          'trust authorize requires --controller-private-key-env and --output',
+        );
+      }
+      assertNoArguments(rawArgs);
+      const { paths } = await configuredPaths(projectRoot);
+      const [controllerTrust, policy, projectRootHash] = await Promise.all([
+        readNativeControllerTrustProject(projectRoot),
+        readNativeReviewTrustPolicy(paths),
+        nativeControllerProjectRootHash(projectRoot),
+      ]);
+      if (!controllerTrust) {
+        throw new Error('Native project has no controller-owned trust root');
+      }
+      const authorization = buildNativeCreationAuthorization({
+        controllerIdentity: controllerTrust.controllerIdentity,
+        controllerPrivateKey: privateKeyFromEnvironment(controllerPrivateKeyEnv),
+        projectRootHash,
+        policyHash: policy.policyHash,
+        change: name,
+      });
+      const outputPath = path.resolve(outputPathValue);
+      await writeExclusiveFile(outputPath, `${JSON.stringify(authorization, null, 2)}\n`, 0o644);
+      return success(
+        'trust authorize',
+        { outputPath, authorization },
+        `Native creation authorization written to ${outputPath}\n`,
+      );
+    }
+    throw new NativeUsageError(`Unknown trust command: ${subcommand}`);
+  }
+  if (command === 'receipt') {
+    const subcommand = requiredPositional(rawArgs, 'receipt subcommand');
+    if (subcommand === 'implement' && rawArgs[0] === 'sign') {
+      rawArgs.shift();
+      const preparationPath = takeOption(rawArgs, '--preparation');
+      const identityPath = takeOption(rawArgs, '--identity');
+      const privateKeyEnv = takeOption(rawArgs, '--private-key-env');
+      const outputPathValue = takeOption(rawArgs, '--output');
+      if (!preparationPath || !identityPath || !privateKeyEnv || !outputPathValue) {
+        throw new NativeUsageError(
+          'receipt implement sign requires --preparation, --identity, --private-key-env, and --output',
+        );
+      }
+      assertNoArguments(rawArgs);
+      const attestation = signNativeImplementationPreparation({
+        preparation: await readEvidenceJson(preparationPath, 'Native implementation preparation'),
+        identity: parseNativeReviewIdentity(
+          await readEvidenceJson(identityPath, 'Implementation identity'),
+        ),
+        privateKey: privateKeyFromEnvironment(privateKeyEnv),
+      });
+      const outputPath = path.resolve(outputPathValue);
+      await atomicWriteJson(outputPath, attestation);
+      return success(
+        'receipt implement sign',
+        { outputPath, attestation },
+        `Native implementation attestation written to ${outputPath}\n`,
+      );
+    }
+    if (subcommand === 'review' && rawArgs[0] === 'sign') {
+      rawArgs.shift();
+      const approvalPath = takeOption(rawArgs, '--approval');
+      const identityPath = takeOption(rawArgs, '--identity');
+      const privateKeyEnv = takeOption(rawArgs, '--private-key-env');
+      const outputPathValue = takeOption(rawArgs, '--output');
+      if (!approvalPath || !identityPath || !privateKeyEnv || !outputPathValue) {
+        throw new NativeUsageError(
+          'receipt review sign requires --approval, --identity, --private-key-env, and --output',
+        );
+      }
+      assertNoArguments(rawArgs);
+      const attestation = signNativeIndependentReviewApproval({
+        approval: await readEvidenceJson(approvalPath, 'Native review approval'),
+        identity: parseNativeReviewIdentity(
+          await readEvidenceJson(identityPath, 'Reviewer identity'),
+        ),
+        privateKey: privateKeyFromEnvironment(privateKeyEnv),
+      });
+      const outputPath = path.resolve(outputPathValue);
+      await atomicWriteJson(outputPath, attestation);
+      return success(
+        'receipt review sign',
+        { outputPath, attestation },
+        `Native review attestation written to ${outputPath}\n`,
+      );
+    }
+    const name = requiredPositional(rawArgs, 'change name');
     const { paths } = await configuredPaths(projectRoot);
-    const state = await readNativeChange(paths, name);
-    const contract = await collectNativeContractFiles({
-      changeDir: nativeChangeDir(paths, name),
-      briefRef: state.brief,
-      specChanges: state.spec_changes,
-    });
-    const review = formatNativeIndependentReview(
-      input,
-      contract.contract.acceptance.map((criterion) => criterion.id),
-    );
-    return success('review format', { review }, `${JSON.stringify(review, null, 2)}\n`);
+    if (subcommand === 'implement') {
+      const implementationPhase = requiredPositional(rawArgs, 'implementation phase');
+      if (implementationPhase === 'prepare') {
+        const identityPath = takeOption(rawArgs, '--identity');
+        const outputPathValue = takeOption(rawArgs, '--output');
+        if (!identityPath || !outputPathValue) {
+          throw new NativeUsageError('receipt implement prepare requires --identity and --output');
+        }
+        assertNoArguments(rawArgs);
+        const preparation = await prepareNativeImplementationAttestation({
+          paths,
+          name,
+          implementationIdentity: parseNativeReviewIdentity(
+            await readEvidenceJson(identityPath, 'Implementation identity'),
+          ),
+        });
+        const outputPath = path.resolve(outputPathValue);
+        await atomicWriteJson(outputPath, preparation);
+        return success(
+          'receipt implement prepare',
+          { outputPath, preparation },
+          `Native implementation preparation written to ${outputPath}\n`,
+        );
+      }
+      if (implementationPhase === 'finalize') {
+        const preparationPath = takeOption(rawArgs, '--preparation');
+        const attestationPath = takeOption(rawArgs, '--attestation');
+        const confirmed = takeFlag(rawArgs, '--confirmed');
+        if (!preparationPath || !attestationPath) {
+          throw new NativeUsageError(
+            'receipt implement finalize requires --preparation and --attestation',
+          );
+        }
+        assertNoArguments(rawArgs);
+        const issued = await finalizeNativeImplementationAttestation({
+          paths,
+          name,
+          preparation: parseNativeImplementationPreparation(
+            await readEvidenceJson(preparationPath, 'Native implementation preparation'),
+          ),
+          attestation: parseNativeReviewSignature(
+            await readEvidenceJson(attestationPath, 'Native implementation attestation'),
+          ),
+          confirmed,
+        });
+        return success(
+          'receipt implement finalize',
+          issued,
+          `Native implementation attestation: ${issued.ref}\n`,
+        );
+      }
+      throw new NativeUsageError(`Unknown receipt implementation phase: ${implementationPhase}`);
+    }
+    if (subcommand === 'manual') {
+      const acceptanceIds = takeMany(rawArgs, '--acceptance');
+      const responsible = takeOption(rawArgs, '--responsible');
+      const steps = takeMany(rawArgs, '--step');
+      const observations = takeMany(rawArgs, '--observation');
+      const confirmed = takeFlag(rawArgs, '--confirmed');
+      if (!responsible) throw new NativeUsageError('--responsible is required');
+      assertNoArguments(rawArgs);
+      const issued = await issueNativeManualEvidenceReceipt({
+        paths,
+        name,
+        acceptanceIds,
+        responsible,
+        steps,
+        observations,
+        confirmed,
+      });
+      return success('receipt manual', issued, `Native manual receipt: ${issued.ref}\n`);
+    }
+    if (subcommand === 'automated') {
+      const separator = rawArgs.indexOf('--');
+      if (separator < 0 || separator === rawArgs.length - 1) {
+        throw new NativeUsageError('receipt automated requires -- <executable> [args...]');
+      }
+      const commandArgs = rawArgs.splice(separator + 1);
+      rawArgs.splice(separator, 1);
+      const acceptanceIds = takeMany(rawArgs, '--acceptance');
+      const timeoutText = takeOption(rawArgs, '--timeout-ms');
+      assertNoArguments(rawArgs);
+      const timeoutMs =
+        timeoutText === undefined
+          ? undefined
+          : /^[1-9]\d*$/u.test(timeoutText) &&
+              Number.isSafeInteger(Number(timeoutText)) &&
+              Number(timeoutText) <= MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS
+            ? Number(timeoutText)
+            : null;
+      if (timeoutMs === null) {
+        throw new NativeUsageError(
+          `--timeout-ms must be an integer from 1 through ${MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS}`,
+        );
+      }
+      const issued = await issueNativeAutomatedCheckReceipt({
+        paths,
+        name,
+        acceptanceIds,
+        command: commandArgs[0],
+        args: commandArgs.slice(1),
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      });
+      return {
+        command: 'receipt automated',
+        exitCode: issued.receipt.status === 'passed' ? 0 : 1,
+        data: issued,
+        text: `Native automated receipt ${issued.receipt.status}: ${issued.ref}\n`,
+      };
+    }
+    if (subcommand === 'review') {
+      const reviewPhase = requiredPositional(rawArgs, 'review phase');
+      if (reviewPhase === 'prepare') {
+        const implementationReceiptRef = takeOption(rawArgs, '--implementation-receipt');
+        const reportRef = takeOption(rawArgs, '--report');
+        const requiredReceiptRefs = takeMany(rawArgs, '--required-receipt');
+        const identityPath = takeOption(rawArgs, '--identity');
+        const outputPathValue = takeOption(rawArgs, '--output');
+        const checkedEvidence = {
+          unifiedIo: takeOption(rawArgs, '--unified-io-receipt') ?? null,
+          adversarialPaths: takeOption(rawArgs, '--adversarial-paths-receipt') ?? null,
+          generatedAssets: takeOption(rawArgs, '--generated-assets-receipt') ?? null,
+          lifecycleEval: takeOption(rawArgs, '--lifecycle-eval-receipt') ?? null,
+        };
+        if (
+          !implementationReceiptRef ||
+          !reportRef ||
+          requiredReceiptRefs.length === 0 ||
+          !identityPath ||
+          !outputPathValue
+        ) {
+          throw new NativeUsageError(
+            'receipt review prepare requires --implementation-receipt, --report, at least one --required-receipt, --identity, and --output',
+          );
+        }
+        assertNoArguments(rawArgs);
+        const preparation = await prepareNativeIndependentReview({
+          paths,
+          name,
+          implementationReceiptRef,
+          reportRef,
+          requiredReceiptRefs,
+          reviewerIdentity: parseNativeReviewIdentity(
+            await readEvidenceJson(identityPath, 'Reviewer identity'),
+          ),
+          checkedEvidence,
+        });
+        const outputPath = path.resolve(outputPathValue);
+        await atomicWriteJson(outputPath, preparation);
+        return success(
+          'receipt review prepare',
+          { outputPath, preparation },
+          `Native review preparation written to ${outputPath}\n`,
+        );
+      }
+      if (reviewPhase === 'approve') {
+        const preparationPath = takeOption(rawArgs, '--preparation');
+        const outputPathValue = takeOption(rawArgs, '--output');
+        const manualAttestationRefs = takeMany(rawArgs, '--attest-manual');
+        const findingsPath = takeOption(rawArgs, '--findings');
+        const acceptanceApplicability = takeFlag(rawArgs, '--checked-acceptance-applicability');
+        if (!preparationPath || !outputPathValue) {
+          throw new NativeUsageError('receipt review approve requires --preparation and --output');
+        }
+        assertNoArguments(rawArgs);
+        const rawFindings = findingsPath
+          ? await readEvidenceJson(findingsPath, 'Independent review findings')
+          : [];
+        if (!Array.isArray(rawFindings)) {
+          throw new Error('Independent review findings must be a JSON array');
+        }
+        const preparation = (await readEvidenceJson(
+          preparationPath,
+          'Native review preparation',
+        )) as NativeIndependentReviewPreparation;
+        const approval = await approveNativeIndependentReviewPreparation({
+          paths,
+          name,
+          preparation,
+          acceptanceApplicability,
+          manualAttestationRefs,
+          findings: rawFindings as NativeReviewFinding[],
+        });
+        const outputPath = path.resolve(outputPathValue);
+        await atomicWriteJson(outputPath, approval);
+        return success(
+          'receipt review approve',
+          { outputPath, approval },
+          `Native review approval written to ${outputPath}\n`,
+        );
+      }
+      if (reviewPhase === 'finalize') {
+        const preparationPath = takeOption(rawArgs, '--preparation');
+        const approvalPath = takeOption(rawArgs, '--approval');
+        const attestationPath = takeOption(rawArgs, '--attestation');
+        const confirmed = takeFlag(rawArgs, '--confirmed');
+        if (!preparationPath || !approvalPath || !attestationPath) {
+          throw new NativeUsageError(
+            'receipt review finalize requires --preparation, --approval, and --attestation',
+          );
+        }
+        assertNoArguments(rawArgs);
+        const issued = await finalizeNativeIndependentReviewReceipt({
+          paths,
+          name,
+          preparation: (await readEvidenceJson(
+            preparationPath,
+            'Native review preparation',
+          )) as NativeIndependentReviewPreparation,
+          approval: parseNativeIndependentReviewApproval(
+            await readEvidenceJson(approvalPath, 'Native review approval'),
+          ),
+          attestation: parseNativeReviewSignature(
+            await readEvidenceJson(attestationPath, 'Native review attestation'),
+          ),
+          confirmed,
+        });
+        return {
+          command: 'receipt review finalize',
+          exitCode: issued.receipt.status === 'passed' ? 0 : 1,
+          data: issued,
+          text: `Native review receipt ${issued.receipt.status}: ${issued.ref}\n`,
+        };
+      }
+      throw new NativeUsageError(`Unknown receipt review phase: ${reviewPhase}`);
+    }
+    if (subcommand === 'waive') {
+      const acceptanceId = takeOption(rawArgs, '--acceptance');
+      const blockedReceiptRef = takeOption(rawArgs, '--blocked-receipt');
+      const reason = takeOption(rawArgs, '--reason');
+      const risk = takeOption(rawArgs, '--risk');
+      const alternativeReceiptRefs = takeMany(rawArgs, '--alternative-receipt');
+      const identityPath = takeOption(rawArgs, '--identity');
+      const privateKeyEnv = takeOption(rawArgs, '--private-key-env');
+      const confirmed = takeFlag(rawArgs, '--confirmed');
+      if (
+        !acceptanceId ||
+        !blockedReceiptRef ||
+        !reason ||
+        !risk ||
+        !identityPath ||
+        !privateKeyEnv
+      ) {
+        throw new NativeUsageError(
+          'receipt waive requires --acceptance, --blocked-receipt, --reason, --risk, --identity, and --private-key-env',
+        );
+      }
+      assertNoArguments(rawArgs);
+      const issued = await issueNativeWaiverReceipt({
+        paths,
+        name,
+        acceptanceId,
+        blockedReceiptRef,
+        reason,
+        risk,
+        alternativeReceiptRefs,
+        signerIdentity: parseNativeReviewIdentity(
+          await readEvidenceJson(identityPath, 'Waiver signer identity'),
+        ),
+        privateKey: privateKeyFromEnvironment(privateKeyEnv),
+        confirmed,
+      });
+      return success('receipt waive', issued, `Native waiver receipt: ${issued.ref}\n`);
+    }
+    throw new NativeUsageError(`Unknown receipt command: ${subcommand}`);
   }
   if (command === 'next') {
     const name = requiredPositional(rawArgs, 'change name');
@@ -618,8 +1237,11 @@ async function dispatch(
     const verificationResult = takeOption(rawArgs, '--result');
     const verificationReport = takeOption(rawArgs, '--report');
     const verificationReceipt = takeOption(rawArgs, '--receipt');
-    const independentReviewRef = takeOption(rawArgs, '--review');
-    const waiverConfirmed = takeFlag(rawArgs, '--confirm-waiver');
+    const hasVerificationReceiptRefs = rawArgs.includes('--evidence-receipt');
+    const hasVerificationWaiverRefs = rawArgs.includes('--waiver');
+    const verificationReceiptRefs = takeMany(rawArgs, '--evidence-receipt');
+    const verificationWaiverRefs = takeMany(rawArgs, '--waiver');
+    const independentReviewReceiptRef = takeOption(rawArgs, '--independent-review-receipt');
     const repairFailureCategories = takeMany(rawArgs, '--failure-category');
     const repairFailedCheckIds = takeMany(rawArgs, '--failed-check');
     const repairOverrideSignature = takeOption(rawArgs, '--override-repair');
@@ -651,11 +1273,18 @@ async function dispatch(
     if (verificationReceipt && verificationResult === undefined) {
       throw new NativeUsageError('--receipt requires --result');
     }
-    if (independentReviewRef && verificationResult !== 'pass') {
-      throw new NativeUsageError('--review requires --result pass');
+    if (
+      (verificationReceiptRefs.length > 0 ||
+        verificationWaiverRefs.length > 0 ||
+        independentReviewReceiptRef) &&
+      verificationResult === undefined
+    ) {
+      throw new NativeUsageError(
+        '--evidence-receipt, --waiver, and --independent-review-receipt require --result',
+      );
     }
-    if (waiverConfirmed && (verificationResult !== 'pass' || !confirmed)) {
-      throw new NativeUsageError('--confirm-waiver requires --result pass and --confirmed');
+    if (independentReviewReceiptRef && verificationResult !== 'pass') {
+      throw new NativeUsageError('--independent-review-receipt requires --result pass');
     }
     if ((repairOverrideSignature === undefined) !== (repairOverrideSummary === undefined)) {
       throw new NativeUsageError(
@@ -680,8 +1309,13 @@ async function dispatch(
       ...(verificationResult ? { verificationResult } : {}),
       ...(verificationReport ? { verificationReport } : {}),
       ...(verificationReceipt ? { verificationReceipt } : {}),
-      ...(waiverConfirmed ? { waiverConfirmed: true } : {}),
-      ...(independentReviewRef ? { independentReviewRef } : {}),
+      ...(verificationResult && hasVerificationReceiptRefs
+        ? {
+            verificationReceiptRefs,
+          }
+        : {}),
+      ...(verificationResult && hasVerificationWaiverRefs ? { verificationWaiverRefs } : {}),
+      ...(independentReviewReceiptRef ? { independentReviewReceiptRef } : {}),
       ...(repairFailureCategories.length > 0 ? { repairFailureCategories } : {}),
       ...(repairFailedCheckIds.length > 0 ? { repairFailedCheckIds } : {}),
       ...(repairOverrideSignature ? { repairOverrideSignature } : {}),
@@ -899,14 +1533,18 @@ function render(result: DispatchResult, json: boolean): NativeCommandResult {
 
 export async function runNativeCli(argv: readonly string[]): Promise<NativeCommandResult> {
   const args = [...argv];
-  const json = args.includes('--json');
+  const separator = args.indexOf('--');
+  const globalArgs = separator < 0 ? args : args.slice(0, separator);
+  const commandTail = separator < 0 ? [] : args.slice(separator);
+  const json = globalArgs.includes('--json');
   let explicitProjectRoot: string | undefined;
-  let command: string | null = args[0] ?? null;
+  let command: string | null = globalArgs[0] ?? null;
   try {
-    takeFlag(args, '--json');
-    explicitProjectRoot = takeOption(args, '--project-root');
-    command = args[0] ?? null;
-    return render(await dispatch(args, explicitProjectRoot), json);
+    takeFlag(globalArgs, '--json');
+    explicitProjectRoot = takeOption(globalArgs, '--project-root');
+    const dispatchArgs = [...globalArgs, ...commandTail];
+    command = dispatchArgs[0] ?? null;
+    return render(await dispatch(dispatchArgs, explicitProjectRoot), json);
   } catch (error) {
     return render(errorResult(command, error), json);
   }

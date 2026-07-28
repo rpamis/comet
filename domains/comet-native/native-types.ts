@@ -3,6 +3,7 @@ export type NativeApproval = null | 'implicit' | 'confirmed';
 export type NativeVerificationResult = 'pending' | 'pass' | 'fail';
 export type NativeSpecOperation = 'create' | 'replace' | 'remove';
 export type NativeClarificationMode = 'sequential' | 'batch';
+export type NativeVerificationProtocol = 'legacy-v1' | 'signed-v2';
 
 export const NATIVE_RUNTIME_PROTOCOL_VERSION = 3 as const;
 export const NATIVE_CHANGE_SCHEMA = 'comet.native.v3' as const;
@@ -119,6 +120,7 @@ export interface NativeChangeState extends NativeChangeStateFields {
   schema: typeof NATIVE_CHANGE_SCHEMA;
   minimum_runtime_version: typeof NATIVE_RUNTIME_PROTOCOL_VERSION;
   revision: number;
+  verification_protocol: NativeVerificationProtocol;
   /** Hash of the brief/spec contract that the current approval applies to. */
   approved_contract_hash: string | null;
   implementation_scope: NativeContentAddressedRef | null;
@@ -237,6 +239,14 @@ export type NativeContentSnapshotCapture =
 export interface NativeContentSnapshotManifest {
   schema: 'comet.native.content-snapshot.v1';
   origin: 'change-created' | 'legacy-migration' | 'explicit';
+  creation?: {
+    schema: 'comet.native.change-creation-binding.v1';
+    protocol: 'signed-v2';
+    policyHash: string;
+    policySnapshotRef: string;
+    policySnapshotHash: string;
+    authorization: NativeCreationAuthorization;
+  };
   capture?: NativeContentSnapshotCapture;
   createdAt: string;
   complete: boolean;
@@ -407,8 +417,9 @@ export interface NativeAdvanceEvidence {
   verificationResult?: 'pass' | 'fail';
   verificationReport?: string;
   verificationReceipt?: string;
-  waiverConfirmed?: boolean;
-  independentReviewRef?: string;
+  verificationReceiptRefs?: string[];
+  verificationWaiverRefs?: string[];
+  independentReviewReceiptRef?: string;
   repairFailureCategories?: string[];
   repairFailedCheckIds?: string[];
   repairOverrideSignature?: string;
@@ -686,3 +697,4 @@ export interface NativeTransactionHooks {
   ) => void | Promise<void>;
 }
 import type { RunState } from '../engine/types.js';
+import type { NativeCreationAuthorization } from './native-creation-authorization.js';
