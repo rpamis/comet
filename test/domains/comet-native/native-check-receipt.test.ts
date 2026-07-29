@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { constants as fsConstants, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -420,10 +420,18 @@ describe('Native scoped check receipts', () => {
     await fs.writeFile(replacement, 'export const value = 7;\n');
     const originalOpen = fs.open.bind(fs);
     let targetOpens = 0;
+    let replaced = false;
+    const protectedOpenFlags =
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
     const open = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
       if (path.resolve(String(args[0])) === path.resolve(target)) {
         targetOpens += 1;
-        if (targetOpens === 1) await fs.rename(replacement, target);
+        const isProtectedRead =
+          process.platform === 'win32' ? targetOpens === 2 : args[1] === protectedOpenFlags;
+        if (!replaced && isProtectedRead) {
+          replaced = true;
+          await fs.rename(replacement, target);
+        }
       }
       return originalOpen(...args);
     });
