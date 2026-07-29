@@ -7406,7 +7406,7 @@ function normalizeWorkflowArtifactRoot(value) {
   const segments = projectRelativeSegments(value, "native.artifact_root");
   return segments.length === 0 ? "." : segments.join("/");
 }
-function normalizeClassicArtifactLayout(value, fallback = "legacy") {
+function normalizeClassicArtifactLayout(value, fallback = "docs") {
   const resolved = value ?? fallback;
   if (resolved !== "legacy" && resolved !== "docs") {
     throw new Error("classic.artifact_layout must be legacy or docs");

@@ -211,7 +211,7 @@ describe('workflow contract normalization', () => {
     expect(() => normalizeWorkflowArtifactRoot('docs/')).toThrow(
       'native.artifact_root must not contain empty or dot path segments',
     );
-    expect(normalizeClassicArtifactLayout(undefined)).toBe('legacy');
+    expect(normalizeClassicArtifactLayout(undefined)).toBe('docs');
     expect(() => normalizeClassicArtifactLayout('elsewhere')).toThrow(
       'classic.artifact_layout must be legacy or docs',
     );

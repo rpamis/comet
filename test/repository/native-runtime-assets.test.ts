@@ -71,14 +71,10 @@ describe('Native runtime release asset', () => {
     expect(source).toContain('parseCometHookRequest');
     expect(source).toContain('Hook write target could not be determined');
     expect(source).toContain('comet.native.controller-trust-store.v1');
-    expect(source).toContain('comet.native.creation-authorization.v1');
+    expect(source).not.toContain('comet.native.creation-authorization.v1');
     expect(source).toContain('comet.native.review-trust-policy.v2');
-    expect(source).toContain(
-      'trust authorize <change-name> --controller-private-key-env <name> --output <path>',
-    );
-    expect(source).toContain(
-      'new <change-name> --creation-authorization <path> [--language en|zh-CN]',
-    );
+    expect(source).not.toContain('trust authorize');
+    expect(source).toContain('new <change-name> [--language en|zh-CN]');
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
   });
 
@@ -92,12 +88,8 @@ describe('Native runtime release asset', () => {
       'utf8',
     );
 
-    expect(english).toContain(
-      'comet native new <change-name> --creation-authorization <path> [--language en|zh-CN]',
-    );
-    expect(chinese).toContain(
-      'comet native new <change-name> --creation-authorization <path> [--language en|zh-CN]',
-    );
+    expect(english).toContain('comet native new <change-name> [--language en|zh-CN]');
+    expect(chinese).toContain('comet native new <change-name> [--language en|zh-CN]');
     expect(english).toContain('`new` creates default configuration and `<project>/docs/comet/`');
     expect(chinese).toContain('`new` 在配置缺失时创建默认配置和 `<project>/docs/comet/`');
   });

@@ -2,6 +2,17 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.11] - 2026-07-29
+
+### Changed
+
+- **Project configuration defaults**: New Classic configurations default to `classic.artifact_layout: docs`. `comet update` now fills every missing managed Native and Classic setting, choosing `docs/openspec/` unless an existing root-level `openspec/` project must be preserved.
+- **Risk-based Native review**: Independent review is required by the actual implementation scope and risk instead of a change-creation signing mode, so ordinary changes can start immediately while high-risk verification remains fail-closed.
+
+### Removed
+
+- **Native creation authorization**: `comet native new` no longer requires `--creation-authorization`, and the `signed-v2` creation protocol plus `comet native trust authorize` have been removed.
+
 ## What's Changed [0.4.0-beta.10] - 2026-07-28
 
 ### Added

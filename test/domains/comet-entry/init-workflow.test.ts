@@ -174,7 +174,7 @@ describe('Comet init workflow policy', () => {
         workflow: 'native',
         source: 'explicit-option',
         artifactRoot: 'docs',
-        classicArtifactLayout: 'legacy',
+        classicArtifactLayout: 'docs',
         writeProjectConfig: true,
       },
     );
@@ -202,7 +202,7 @@ describe('Comet init workflow policy', () => {
         workflow,
         source: 'project-config',
         artifactRoot: 'docs',
-        classicArtifactLayout: workflow === 'classic' ? 'legacy' : 'docs',
+        classicArtifactLayout: 'docs',
         writeProjectConfig: false,
         legacyEvidence: [],
       });

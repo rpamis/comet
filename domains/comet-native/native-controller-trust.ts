@@ -15,12 +15,10 @@ export const NATIVE_CONTROLLER_TRUST_STORE_TEST_ENV =
 const PROJECT_ROOT_HASH_TAG = 'comet.native.controller-project-root.v1';
 const MAX_STORE_BYTES = 256 * 1024;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
-const CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 
 export interface NativeControllerTrustProject {
   projectRootHash: string;
   controllerIdentity: NativeReviewIdentity;
-  legacyChanges: string[];
 }
 
 export interface NativeControllerTrustStore {
@@ -89,34 +87,18 @@ export function parseNativeControllerTrustStore(value: unknown): NativeControlle
     const project = record(value, `Native controller trust project ${index}`);
     exactKeys(
       project,
-      ['projectRootHash', 'controllerIdentity', 'legacyChanges'],
+      ['projectRootHash', 'controllerIdentity'],
       `Native controller trust project ${index}`,
     );
     if (
       typeof project.projectRootHash !== 'string' ||
-      !HASH_PATTERN.test(project.projectRootHash) ||
-      !Array.isArray(project.legacyChanges)
+      !HASH_PATTERN.test(project.projectRootHash)
     ) {
       throw new Error(`Native controller trust project ${index} is invalid`);
-    }
-    const legacyChanges = project.legacyChanges.map((change) => {
-      if (typeof change !== 'string' || !CHANGE_NAME_PATTERN.test(change)) {
-        throw new Error(`Native controller trust project ${index} legacy change is invalid`);
-      }
-      return change;
-    });
-    if (
-      JSON.stringify(legacyChanges) !==
-      JSON.stringify(
-        [...new Set(legacyChanges)].sort((left, right) => left.localeCompare(right, 'en')),
-      )
-    ) {
-      throw new Error(`Native controller trust project ${index} legacy changes must be sorted`);
     }
     return {
       projectRootHash: project.projectRootHash,
       controllerIdentity: parseNativeReviewIdentity(project.controllerIdentity),
-      legacyChanges,
     };
   });
   if (

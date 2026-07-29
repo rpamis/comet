@@ -55,10 +55,7 @@ import {
   buildNativeReviewTrustPolicy,
   NATIVE_REVIEW_TRUST_POLICY_REF,
 } from '../../../domains/comet-native/native-review-trust.js';
-import {
-  authorizeNativeTestChange,
-  installNativeControllerTrust,
-} from '../../helpers/native-controller-trust.js';
+import { installNativeControllerTrust } from '../../helpers/native-controller-trust.js';
 
 const brief = `# Outcome
 Ship the focused behavior.
@@ -124,13 +121,6 @@ describe('Native verification evidence runtime', () => {
       name: 'verified-change',
       language: 'en',
       now: new Date('2026-07-17T00:00:00.000Z'),
-      creationAuthorization: await authorizeNativeTestChange({
-        projectRoot,
-        controller,
-        policy,
-        name: 'verified-change',
-        now: new Date('2026-07-17T00:00:00.000Z'),
-      }),
     });
     changeDir = nativeChangeDir(paths, created.name);
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);

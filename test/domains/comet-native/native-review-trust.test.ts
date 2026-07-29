@@ -48,10 +48,7 @@ import type {
   NativeChangeState,
   NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
-import {
-  authorizeNativeTestChange,
-  installNativeControllerTrust,
-} from '../../helpers/native-controller-trust.js';
+import { installNativeControllerTrust } from '../../helpers/native-controller-trust.js';
 
 const brief = `# Outcome
 Ship trusted review.
@@ -104,12 +101,6 @@ describe('Native pre-trusted review policy', () => {
       paths,
       name: 'trusted-review',
       language: 'en',
-      creationAuthorization: await authorizeNativeTestChange({
-        projectRoot: root,
-        controller,
-        policy,
-        name: 'trusted-review',
-      }),
     });
     await fs.writeFile(path.join(nativeChangeDir(paths, state.name), 'brief.md'), brief);
     await advanceNativeChange({
@@ -724,12 +715,6 @@ ${serializeNativeVerificationMachineBlock(
         paths: gitPaths,
         name: 'git-fence',
         language: 'en',
-        creationAuthorization: await authorizeNativeTestChange({
-          projectRoot: gitRoot,
-          controller,
-          policy,
-          name: 'git-fence',
-        }),
       });
       await fs.writeFile(path.join(nativeChangeDir(gitPaths, opened.name), 'brief.md'), brief);
       await advanceNativeChange({

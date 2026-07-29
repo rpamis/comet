@@ -126,12 +126,22 @@ export async function resolveInitWorkflow(
     const explicit = requestedWorkflow !== undefined || requestedArtifactRoot !== undefined;
     const configuredWorkflows = existing.workflows ?? [existing.default_workflow];
     const classicAlreadyEnabled = configuredWorkflows.includes('classic');
+    const rawClassic = snapshot.document?.value.classic;
+    const hasExplicitClassicLayout =
+      rawClassic !== null &&
+      typeof rawClassic === 'object' &&
+      !Array.isArray(rawClassic) &&
+      (rawClassic as Record<string, unknown>).artifact_layout !== undefined;
+    const inferredClassicLayout: ClassicArtifactLayout = hasExplicitClassicLayout
+      ? (existing.classic?.artifact_layout ?? 'docs')
+      : classicAlreadyEnabled && (await fileExists(path.join(projectRoot, 'openspec')))
+        ? 'legacy'
+        : 'docs';
     return {
       workflow,
       source: explicit ? 'explicit-option' : 'project-config',
       artifactRoot: requestedArtifactRoot ?? existing.native?.artifact_root ?? 'docs',
-      classicArtifactLayout:
-        existing.classic?.artifact_layout ?? (classicAlreadyEnabled ? 'legacy' : 'docs'),
+      classicArtifactLayout: inferredClassicLayout,
       writeProjectConfig:
         workflow !== existing.default_workflow || (workflow === 'native' && !existing.native),
       legacyEvidence: [],
@@ -139,12 +149,17 @@ export async function resolveInitWorkflow(
   }
 
   const legacyEvidence = await findLegacyEvidence(projectRoot, snapshot.identity.exists);
+  const legacyArtifactLayout =
+    legacyEvidence.some((item) => item.startsWith('openspec/')) ||
+    (snapshot.identity.exists &&
+      (await fileExists(path.join(projectRoot, 'openspec'))) &&
+      !(await fileExists(path.join(projectRoot, 'docs', 'openspec'))));
   if (requestedWorkflow) {
     return {
       workflow: requestedWorkflow,
       source: 'explicit-option',
       artifactRoot: requestedArtifactRoot ?? 'docs',
-      classicArtifactLayout: legacyEvidence.length > 0 ? 'legacy' : 'docs',
+      classicArtifactLayout: legacyArtifactLayout ? 'legacy' : 'docs',
       writeProjectConfig: true,
       legacyEvidence,
     };
@@ -154,7 +169,7 @@ export async function resolveInitWorkflow(
       workflow: 'classic',
       source: 'legacy-project',
       artifactRoot: 'docs',
-      classicArtifactLayout: 'legacy',
+      classicArtifactLayout: legacyArtifactLayout ? 'legacy' : 'docs',
       writeProjectConfig: false,
       legacyEvidence,
     };

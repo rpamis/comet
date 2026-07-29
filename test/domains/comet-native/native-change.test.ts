@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createHash } from 'node:crypto';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -18,97 +17,40 @@ import {
   readNativeChange,
   writeNativeChange,
 } from '../../../domains/comet-native/native-change.js';
-import { inspectNativeArchivePreflight } from '../../../domains/comet-native/native-archive-inspection.js';
-import { inspectNativeStatus } from '../../../domains/comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { generateNativeReviewKeyPair } from '../../../domains/comet-native/native-review-identity.js';
-import { buildNativeReviewTrustPolicy } from '../../../domains/comet-native/native-review-trust.js';
 import { readNativeBaselineManifest } from '../../../domains/comet-native/native-snapshot.js';
-import { advanceNativeChange } from '../../../domains/comet-native/native-transitions.js';
 import {
   NATIVE_CHANGE_SCHEMA,
   NATIVE_RUNTIME_PROTOCOL_VERSION,
   type NativeProjectPaths,
 } from '../../../domains/comet-native/native-types.js';
-import {
-  authorizeNativeTestChange,
-  installNativeControllerTrust,
-} from '../../helpers/native-controller-trust.js';
 
 describe('Native change store', () => {
   let projectRoot: string;
   let paths: NativeProjectPaths;
-  const controller = generateNativeReviewKeyPair();
-  let cleanupControllerTrust: (() => Promise<void>) | null;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-change-'));
     paths = await nativeProjectPaths(projectRoot, '.');
-    cleanupControllerTrust = null;
   });
 
   afterEach(async () => {
-    await cleanupControllerTrust?.();
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  async function installReviewTrustPolicy(name: string) {
-    cleanupControllerTrust = await installNativeControllerTrust({
-      projectRoot,
-      controller,
-    });
-    const implementation = generateNativeReviewKeyPair();
-    const reviewer = generateNativeReviewKeyPair();
-    const waiver = generateNativeReviewKeyPair();
-    const policy = buildNativeReviewTrustPolicy({
-      controllerIdentity: controller.identity,
-      controllerPrivateKey: controller.privateKey,
-      implementationKeyId: implementation.identity.keyId,
-      trustedReviewers: [reviewer.identity],
-      trustedWaiverSigners: [waiver.identity],
-    });
-    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
-    await fs.writeFile(
-      path.join(projectRoot, '.comet', 'native-review-trust.json'),
-      `${JSON.stringify(policy, null, 2)}\n`,
-    );
-    return authorizeNativeTestChange({
-      projectRoot,
-      controller,
-      policy,
-      name,
-    });
-  }
-
-  it('requires a trust policy before creating a default signed-v2 change', async () => {
-    await expect(
-      createNativeChange({
-        paths,
-        name: 'missing-trust-policy',
-        language: 'en',
-        verificationProtocol: 'signed-v2',
-      }),
-    ).rejects.toThrow('require a review trust policy');
-    await expect(
-      fs.access(path.join(paths.changesDir, 'missing-trust-policy')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
-  });
-
   it('creates the visible Native change layout without claiming Shape is complete', async () => {
-    const creationAuthorization = await installReviewTrustPolicy('add-authentication');
     const state = await createNativeChange({
       paths,
       name: 'add-authentication',
       language: 'zh-CN',
       now: new Date('2026-07-14T00:00:00Z'),
-      creationAuthorization,
     });
 
     expect(state).toMatchObject({
       schema: NATIVE_CHANGE_SCHEMA,
       minimum_runtime_version: NATIVE_RUNTIME_PROTOCOL_VERSION,
       revision: 1,
-      verification_protocol: 'signed-v2',
+      verification_protocol: 'legacy-v1',
       phase: 'shape',
       approval: null,
       approved_contract_hash: null,
@@ -131,120 +73,8 @@ describe('Native change store', () => {
       schema: 'comet.native.content-snapshot.v1',
       origin: 'change-created',
       complete: true,
-      entries: [
-        expect.objectContaining({
-          path: '.comet/native-review-trust.json',
-        }),
-      ],
+      entries: [],
     });
-  });
-
-  it('fails status, next, and archive closed when signed-v2 is edited to legacy-v1', async () => {
-    const creationAuthorization = await installReviewTrustPolicy('downgrade-attempt');
-    const state = await createNativeChange({
-      paths,
-      name: 'downgrade-attempt',
-      language: 'en',
-      creationAuthorization,
-    });
-    const stateFile = path.join(paths.changesDir, state.name, 'comet-state.yaml');
-    await fs.writeFile(
-      stateFile,
-      (await fs.readFile(stateFile, 'utf8')).replace(
-        'verification_protocol: signed-v2',
-        'verification_protocol: legacy-v1',
-      ),
-    );
-
-    const status = await inspectNativeStatus(paths, state.name);
-    expect(status).toMatchObject({
-      phase: 'invalid',
-      nextCommand: null,
-      archiveReady: false,
-      error: expect.stringContaining('does not match its creation baseline'),
-    });
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: state.name,
-        clarificationMode: 'adaptive',
-        evidence: { summary: 'Attempt to bypass signed review.' },
-      }),
-    ).rejects.toThrow('does not match its creation baseline');
-    await expect(inspectNativeArchivePreflight({ paths, name: state.name })).rejects.toThrow(
-      'does not match its creation baseline',
-    );
-  });
-
-  it('rejects a synchronized state, baseline, policy, and attacker-owner downgrade', async () => {
-    const creationAuthorization = await installReviewTrustPolicy('forged-downgrade');
-    const state = await createNativeChange({
-      paths,
-      name: 'forged-downgrade',
-      language: 'en',
-      creationAuthorization,
-    });
-    const attackerController = generateNativeReviewKeyPair();
-    const attackerImplementation = generateNativeReviewKeyPair();
-    const attackerReviewer = generateNativeReviewKeyPair();
-    const attackerWaiver = generateNativeReviewKeyPair();
-    const forgedPolicy = buildNativeReviewTrustPolicy({
-      controllerIdentity: attackerController.identity,
-      controllerPrivateKey: attackerController.privateKey,
-      implementationKeyId: attackerImplementation.identity.keyId,
-      trustedReviewers: [attackerReviewer.identity],
-      trustedWaiverSigners: [attackerWaiver.identity],
-    });
-    const forgedPolicyText = `${JSON.stringify(forgedPolicy, null, 2)}\n`;
-    await fs.writeFile(
-      path.join(projectRoot, '.comet', 'native-review-trust.json'),
-      forgedPolicyText,
-    );
-    const baselineFile = path.join(
-      paths.changesDir,
-      state.name,
-      'runtime',
-      'baseline-manifest.json',
-    );
-    const baseline = JSON.parse(await fs.readFile(baselineFile, 'utf8')) as {
-      origin: string;
-      creation?: unknown;
-      entries: Array<{ path: string; hash: string; size: number }>;
-    };
-    baseline.origin = 'legacy-migration';
-    delete baseline.creation;
-    const policyEntry = baseline.entries.find(
-      (entry) => entry.path === '.comet/native-review-trust.json',
-    )!;
-    policyEntry.hash = createHash('sha256').update(forgedPolicyText).digest('hex');
-    policyEntry.size = Buffer.byteLength(forgedPolicyText);
-    await fs.writeFile(baselineFile, `${JSON.stringify(baseline, null, 2)}\n`);
-    const stateFile = path.join(paths.changesDir, state.name, 'comet-state.yaml');
-    await fs.writeFile(
-      stateFile,
-      (await fs.readFile(stateFile, 'utf8')).replace(
-        'verification_protocol: signed-v2',
-        'verification_protocol: legacy-v1',
-      ),
-    );
-
-    const status = await inspectNativeStatus(paths, state.name);
-    expect(status).toMatchObject({
-      phase: 'invalid',
-      nextCommand: null,
-      archiveReady: false,
-      error: expect.stringContaining('controller-backed'),
-    });
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: state.name,
-        evidence: { summary: 'Attempt a fully rehashed downgrade.' },
-      }),
-    ).rejects.toThrow('controller-backed');
-    await expect(inspectNativeArchivePreflight({ paths, name: state.name })).rejects.toThrow(
-      'controller-backed',
-    );
   });
 
   it('fails at change creation when the baseline snapshot is incomplete', async () => {

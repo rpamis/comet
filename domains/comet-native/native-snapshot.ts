@@ -4,7 +4,6 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
-import { parseNativeCreationAuthorization } from './native-creation-authorization.js';
 import {
   DEFAULT_NATIVE_SNAPSHOT_CONFIG,
   normalizeNativeSnapshotPattern,
@@ -41,7 +40,6 @@ const CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const MANIFEST_KEYS = new Set([
   'schema',
   'origin',
-  'creation',
   'capture',
   'createdAt',
   'complete',
@@ -61,14 +59,6 @@ const LIMIT_KEYS = new Set([
 ]);
 const POLICY_KEYS = new Set(['schema', 'include', 'exclude', 'hash']);
 const CAPTURE_KEYS = new Set(['provider', 'gitSelection', 'physicalSelection', 'projection']);
-const CREATION_KEYS = new Set([
-  'schema',
-  'protocol',
-  'policyHash',
-  'policySnapshotRef',
-  'policySnapshotHash',
-  'authorization',
-]);
 const GIT_PROJECTION_KEYS = new Set(['provider', 'selection']);
 const GIT_SELECTION_KEYS = new Set([
   'schema',
@@ -1898,34 +1888,6 @@ export function parseNativeContentSnapshotManifest(value: unknown): NativeConten
   if (!SNAPSHOT_ORIGINS.has(manifest.origin as NativeContentSnapshotManifest['origin'])) {
     throw new Error('Native content snapshot origin is invalid');
   }
-  let creation: NativeContentSnapshotManifest['creation'];
-  if (manifest.creation !== undefined) {
-    const value = record(manifest.creation, 'Native change creation binding');
-    rejectUnknown(value, CREATION_KEYS, 'Native change creation binding');
-    if (
-      value.schema !== 'comet.native.change-creation-binding.v1' ||
-      value.protocol !== 'signed-v2' ||
-      typeof value.policyHash !== 'string' ||
-      !HASH_PATTERN.test(value.policyHash) ||
-      typeof value.policySnapshotHash !== 'string' ||
-      !HASH_PATTERN.test(value.policySnapshotHash) ||
-      typeof value.policySnapshotRef !== 'string' ||
-      !/^runtime\/trust\/review-policy-[a-f0-9]{64}\.json$/u.test(value.policySnapshotRef)
-    ) {
-      throw new Error('Native change creation binding is invalid');
-    }
-    creation = {
-      schema: 'comet.native.change-creation-binding.v1',
-      protocol: 'signed-v2',
-      policyHash: value.policyHash,
-      policySnapshotRef: value.policySnapshotRef,
-      policySnapshotHash: value.policySnapshotHash,
-      authorization: parseNativeCreationAuthorization(value.authorization),
-    };
-  }
-  if (manifest.origin !== 'change-created' && creation !== undefined) {
-    throw new Error('Native change creation binding does not match snapshot origin');
-  }
   let capture: NativeContentSnapshotManifest['capture'];
   if (manifest.capture !== undefined) {
     const captureValue = record(manifest.capture, 'Native content snapshot capture');
@@ -2110,7 +2072,6 @@ export function parseNativeContentSnapshotManifest(value: unknown): NativeConten
   const parsed: NativeContentSnapshotManifest = {
     schema: 'comet.native.content-snapshot.v1',
     origin: manifest.origin as NativeContentSnapshotManifest['origin'],
-    ...(creation ? { creation } : {}),
     ...(capture ? { capture } : {}),
     createdAt: manifest.createdAt,
     complete: manifest.complete,

@@ -6,11 +6,10 @@ Begin by invoking the `/comet-native` Skill. Use its bundled Native runtime and 
   `max_verify_failures: 5`;
 - consume the controller-owned fixture at
   `/workspace/_eval_trusted_oracles/native-review-fixture.json`: the public review policy and
-  external controller trust are already installed read-only, and the fixture names the signed
-  creation-authorization token and the external-verifier client;
-- create `sentence-counting` with that signed creation authorization. Do not run `trust keygen`,
-  `trust policy`, or `trust authorize`, and do not inspect or copy any controller/reviewer/waiver
-  private material;
+  external controller trust are already installed read-only, and the fixture names the
+  external-verifier client;
+- create `sentence-counting` directly. Do not run `trust keygen` or `trust policy`, and do not
+  inspect or copy any controller/reviewer/waiver private material;
 - create and manage a Native change;
 - add a `--sentences` CLI flag;
 - count sentences by splitting on `.`, `!`, and `?`;

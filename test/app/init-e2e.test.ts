@@ -366,6 +366,12 @@ describe('comet init E2E', () => {
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
     await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), 'language: en\n', 'utf8');
+    await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, 'openspec', 'config.yaml'),
+      'schema: spec-driven\n',
+      'utf8',
+    );
 
     const { initCommand } = await import('../../app/commands/init.js');
     const result = await captureJsonOutput(() => initCommand(tmpDir, { yes: true, json: true }));

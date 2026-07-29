@@ -42,11 +42,10 @@ If multiple reasonable candidates remain, ask the user to select one. Create a c
 
 ```text
 comet native new <change-name> \
-  --creation-authorization <owner-provided-path> \
   --language en
 ```
 
-If the Runtime reports missing external authorization, stop creation and wait for the owner. Use only the Native artifact root selected by project configuration.
+Use only the Native artifact root selected by project configuration.
 
 ## Shape
 

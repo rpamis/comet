@@ -9,7 +9,7 @@ comet native init [--root <artifact-root>] [--language en|zh-CN]
 comet native root show
 comet native root move <artifact-root>
 
-comet native new <change-name> --creation-authorization <path> [--language en|zh-CN]
+comet native new <change-name> [--language en|zh-CN]
 comet native list [--cursor <token>]
 comet native show <change-name>
 comet native status [--cursor <token>]
@@ -20,8 +20,6 @@ comet native spec rebase <change-name> --summary <text>
 ```
 
 `artifact-root` 是项目内相对路径。`new` 在配置缺失时创建默认配置和 `<project>/docs/comet/`。已有配置需要迁移根目录时使用 `root move`，不要直接改配置。
-
-`new` 需要 owner 提供与该 change 匹配的 creation authorization。当前 Agent 不生成授权、不处理私钥。缺少外部动作时，保留 Runtime 错误并等待 owner。
 
 `status` 和 `show` 是只读命令。`new` 和 `select` 会建立当前 Native selection。多个候选无法唯一判断时让用户选择。
 
@@ -78,7 +76,7 @@ comet native receipt manual <change-name> \
 
 ## 外部审核交接
 
-signed-v2 pass 可能要求 implementation attestation、independent review 或 waiver。当前 Agent 可以准备和最终导入交接产物，但不得执行外部角色的 approve/sign，也不得接收其私钥。
+高风险 change 的 pass 可能要求 implementation attestation、independent review 或 waiver。当前 Agent 可以准备和最终导入交接产物，但不得执行外部角色的 approve/sign，也不得接收其私钥。
 
 Implementation 交接：
 

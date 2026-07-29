@@ -652,9 +652,10 @@ export async function inspectNativeVerificationEvidence(
     contractHash: facts.contractHash,
     implementationScope: facts.bundle,
   });
-  const signedVerification = options.state.verification_protocol === 'signed-v2';
+  const independentReviewRequired =
+    !facts.bundle.scope.complete || isNativeHighRiskScope(facts.bundle.scope.changes);
   if (
-    signedVerification &&
+    independentReviewRequired &&
     options.result === 'pass' &&
     receiptGraph.independentReviewReceiptRef === null
   ) {
@@ -845,7 +846,7 @@ export async function inspectNativeVerificationFreshness(options: {
       findingCodes.push('verification-receipt-invalid');
     }
     if (
-      options.state.verification_protocol === 'signed-v2' &&
+      (!facts.bundle.scope.complete || isNativeHighRiskScope(facts.bundle.scope.changes)) &&
       envelope.result === 'pass' &&
       envelope.independentReviewReceiptRef === null
     ) {

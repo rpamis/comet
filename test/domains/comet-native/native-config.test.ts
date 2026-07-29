@@ -167,7 +167,7 @@ describe('Native project configuration', () => {
     ).resolves.toContain('artifact_layout: docs');
   });
 
-  it('normalizes a missing Classic layout to legacy without changing the schema version', async () => {
+  it('normalizes a missing Classic layout to docs without changing the schema version', async () => {
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
       [
@@ -183,7 +183,7 @@ describe('Native project configuration', () => {
     );
 
     const value = await readProjectConfig(projectRoot);
-    expect(value?.classic?.artifact_layout).toBe('legacy');
+    expect(value?.classic?.artifact_layout).toBe('docs');
     expect(value?.schema).toBe('comet.project.v1');
   });
 

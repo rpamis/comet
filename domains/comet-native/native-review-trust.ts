@@ -179,7 +179,7 @@ export function verifyNativeReviewTrustPolicy(
   return policy;
 }
 
-/** Read the public trust policy before opening a signed-v2 change. */
+/** Read the public trust policy when external review evidence is required. */
 export async function readNativeReviewTrustPolicy(
   paths: NativeProjectPaths,
 ): Promise<NativeReviewTrustPolicy> {

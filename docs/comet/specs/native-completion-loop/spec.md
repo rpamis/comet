@@ -42,7 +42,8 @@ Native 必须把一次 Agent turn 视为一次可恢复迭代，而不是完成�
 ## 兼容与验证
 
 - 不新增 Native phase、独立 Loop Engine、新 CLI 命令、Goal 状态文件或外部 Skill 依赖。
-- 保持旧 archive 可读，并保持 #240 signed-v2 证据与独立审查边界。
+- 删除 change 创建授权和 `signed-v2` 创建协议，不提供兼容读取或可选 trust mode；高风险独立审查只由当前 implementation scope 触发。
+- 不含已删除创建授权格式的旧 archive 继续可读。
 - acceptance page、status 和 continuation 输出必须有预算、可分页并跨平台稳定。
 - 中英文 Native Skill、Runtime 源码和生成资产必须同步。
 - 回归测试和真实生命周期 Eval 必须覆盖“遗漏 spec → 回 Build 修复 → 再 Verify → Archive”、语义停滞停止、总预算，以及两种归档配置。

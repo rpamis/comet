@@ -1588,7 +1588,7 @@ function managedConfigFields(language: string = 'en'): ManagedConfigFields {
   const classic: ManagedConfigField[] = [
     {
       key: 'artifact_layout',
-      def: 'legacy',
+      def: 'docs',
       comment: projectConfigComment('classic.artifact_layout', commentLanguage),
     },
     {
@@ -1617,6 +1617,16 @@ function managedConfigFields(language: string = 'en'): ManagedConfigFields {
       key: 'clarification_mode',
       def: 'sequential',
       comment: projectConfigComment('native.clarification_mode', commentLanguage),
+    },
+    {
+      key: 'archive_confirmation',
+      def: 'automatic',
+      comment: projectConfigComment('native.archive_confirmation', commentLanguage),
+    },
+    {
+      key: 'max_verify_failures',
+      def: '5',
+      comment: projectConfigComment('native.max_verify_failures', commentLanguage),
     },
   ];
   return { top, native, classic };
@@ -1651,6 +1661,7 @@ function parseProjectConfigOverrides(content: string): Record<string, string> {
 function coerceConfigScalar(raw: unknown): unknown {
   if (raw === 'true') return true;
   if (raw === 'false') return false;
+  if (typeof raw === 'string' && /^(?:0|[1-9]\d*)$/u.test(raw)) return Number(raw);
   return raw;
 }
 
@@ -1688,7 +1699,7 @@ function renderProjectConfig(
 async function mergeProjectConfig(
   projectPath: string,
   language: string | null = null,
-  artifactLayoutDefault: 'legacy' | 'docs' = 'legacy',
+  artifactLayoutDefault: 'legacy' | 'docs' = 'docs',
   completeProjectConfig = false,
   enableClassicWorkflow = completeProjectConfig,
 ): Promise<void> {
@@ -1747,6 +1758,16 @@ async function mergeProjectConfig(
       const value = nativeBlock[f.key] ?? f.def;
       if (f.key === 'clarification_mode' && value !== 'sequential' && value !== 'batch') {
         throw new Error('native.clarification_mode must be sequential or batch');
+      }
+      if (f.key === 'archive_confirmation' && value !== 'automatic' && value !== 'required') {
+        throw new Error('native.archive_confirmation must be automatic or required');
+      }
+      if (
+        f.key === 'max_verify_failures' &&
+        (!Number.isSafeInteger(coerceConfigScalar(value)) ||
+          (coerceConfigScalar(value) as number) < 1)
+      ) {
+        throw new Error('native.max_verify_failures must be a positive integer');
       }
       nativeBlock[f.key] = coerceConfigScalar(value);
     }

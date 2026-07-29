@@ -310,7 +310,7 @@ def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
         raise ValueError("Verification evidence file is missing or unsafe")
     evidence = json.loads(evidence_file.read_text(encoding="utf-8"))
     if (
-        state.get("verification_protocol") != "signed-v2"
+        state.get("verification_protocol") != "legacy-v1"
         or evidence.get("schema") != "comet.native.verification-evidence.v2"
         or evidence.get("envelopeHash") != evidence_match.group(1)
         or _content_hash(
@@ -319,7 +319,7 @@ def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
         != evidence.get("envelopeHash")
         or evidence.get("result") != "pass"
     ):
-        raise ValueError("Archive does not contain passing signed-v2 verification evidence")
+        raise ValueError("Archive does not contain passing v2 verification evidence")
 
     trace = evidence.get("acceptanceTrace")
     entries = trace.get("entries") if isinstance(trace, dict) else None

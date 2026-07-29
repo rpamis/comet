@@ -933,7 +933,7 @@ export async function repairClassicLayoutInitialization(
     const workflows =
       snapshot.document?.config?.workflows ??
       (snapshot.document?.config ? [snapshot.document.config.default_workflow] : []);
-    const configuredLayout = snapshot.document?.classic?.artifact_layout ?? 'legacy';
+    const configuredLayout = snapshot.document?.classic?.artifact_layout ?? journal.artifactLayout;
     if (
       !workflows.includes('classic') ||
       configuredLayout !== journal.artifactLayout ||
@@ -1086,7 +1086,7 @@ export async function assertClassicLayoutInitializationSafe(
       configIdentity,
       ownership.configIdentity,
     );
-    const configuredLayout = config?.classic?.artifact_layout ?? 'legacy';
+    const configuredLayout = config?.classic?.artifact_layout ?? desiredLayout;
     const committedConfigurationMatches =
       Boolean(config && classicEnabled && configuredLayout === desiredLayout) &&
       ownership.rootIdentity !== null &&
@@ -1111,7 +1111,7 @@ export async function assertClassicLayoutInitializationSafe(
   }
 
   if (config && classicEnabled) {
-    const configuredLayout = config.classic?.artifact_layout ?? 'legacy';
+    const configuredLayout = config.classic?.artifact_layout ?? desiredLayout;
     if (configuredLayout !== desiredLayout) {
       throw new Error(
         `Configured Classic layout is ${configuredLayout}, but OpenSpec initialization requested ${desiredLayout}`,

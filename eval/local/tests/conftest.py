@@ -490,7 +490,7 @@ def _copy_trusted_native_review_fixture(
     environment_dir: Path,
     test_dir: Path,
 ) -> None:
-    """Provision controller-owned signed-v2 trust without exposing a controller private key."""
+    """Provision external review trust without exposing private keys."""
     marker = environment_dir / TRUSTED_NATIVE_REVIEW_FIXTURE_MARKER
     if not marker.is_file():
         return
@@ -563,35 +563,15 @@ const policy={
   controllerSignature:proof(controller,policyHash)
 };
 const projectRootHash=hash('comet.native.controller-project-root.v1','/workspace');
-const authorizationContent={
-  schema:'comet.native.creation-authorization.v1',
-  controllerKeyId:controller.identity.keyId,
-  projectRootHash,
-  policyHash,
-  protocol:'signed-v2',
-  change,
-  issuedAt:'2026-07-28T00:00:00.000Z'
-};
-const authorizationHash=hash(
-  'comet.native.creation-authorization.v1',
-  authorizationContent
-);
-const authorization={
-  ...authorizationContent,
-  authorizationHash,
-  controllerSignature:proof(controller,authorizationHash)
-};
 const store={
   schema:'comet.native.controller-trust-store.v1',
   projects:[{
     projectRootHash,
     controllerIdentity:controller.identity,
-    legacyChanges:[]
   }]
 };
 process.stdout.write(JSON.stringify({
   policy,
-  authorization,
   store,
   identities:{
     implementation:implementation.identity,
@@ -625,10 +605,6 @@ process.stdout.write(JSON.stringify({
     project_policy = test_dir / ".comet" / "native-review-trust.json"
     project_policy.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(policy_file, project_policy)
-    authorization_name = f"{change}-creation-authorization.json"
-    (oracle_root / authorization_name).write_text(
-        json.dumps(fixture["authorization"], indent=2) + "\n", encoding="utf-8"
-    )
     for role, identity in fixture["identities"].items():
         (oracle_root / f"{role}-identity.json").write_text(
             json.dumps(identity, indent=2) + "\n", encoding="utf-8"
@@ -688,7 +664,6 @@ process.stdout.write(result.stdout??'');
         "schema": TRUSTED_NATIVE_REVIEW_FIXTURE_SCHEMA,
         "change": change,
         "policyHash": fixture["policy"]["policyHash"],
-        "creationAuthorization": f"/workspace/_eval_trusted_oracles/{authorization_name}",
         "signer": "/workspace/_eval_trusted_oracles/native-review-signer.mjs",
         "signerMode": "external-verifier-sidecar",
         "roles": ["implementation", "reviewer", "waiver"],

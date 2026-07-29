@@ -1340,7 +1340,21 @@ async function updateSingleProject(
   const reportedInstallMode = targets.every((target) => nativeProject && target.scope === 'project')
     ? 'copy'
     : selectedInstallMode;
-  const classicArtifactLayout = projectConfig?.classic?.artifact_layout ?? 'legacy';
+  const rawClassic = projectConfigDocument?.value.classic;
+  const explicitClassicArtifactLayout =
+    rawClassic !== null &&
+    typeof rawClassic === 'object' &&
+    !Array.isArray(rawClassic) &&
+    ((rawClassic as Record<string, unknown>).artifact_layout === 'legacy' ||
+      (rawClassic as Record<string, unknown>).artifact_layout === 'docs')
+      ? ((rawClassic as Record<string, unknown>).artifact_layout as 'legacy' | 'docs')
+      : null;
+  const classicArtifactLayout =
+    explicitClassicArtifactLayout ??
+    ((await fileExists(path.join(projectPath, 'openspec'))) &&
+    !(await fileExists(path.join(projectPath, 'docs', 'openspec')))
+      ? 'legacy'
+      : 'docs');
   const refreshClassicArtifactRoot =
     includesProjectScope && classicProject && targets.some((target) => target.scope === 'project');
   let classicLayoutInitializationPermit: ClassicLayoutInitializationPermit | undefined;
@@ -1777,7 +1791,7 @@ async function updateSingleProject(
     await mergeProjectConfig(
       configRoot,
       languageId ? languageToArtifactLanguage(languageId) : null,
-      'legacy',
+      scope === 'project' ? classicArtifactLayout : 'docs',
       scope === 'project',
       scope === 'project' && classicProject,
     );

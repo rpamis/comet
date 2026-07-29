@@ -49,14 +49,7 @@ import {
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import { MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES } from './native-verification-scope.js';
-import {
-  buildNativeCreationAuthorization,
-  parseNativeCreationAuthorization,
-} from './native-creation-authorization.js';
-import {
-  nativeControllerProjectRootHash,
-  readNativeControllerTrustProject,
-} from './native-controller-trust.js';
+import { readNativeControllerTrustProject } from './native-controller-trust.js';
 import {
   approveNativeIndependentReviewPreparation,
   finalizeNativeImplementationAttestation,
@@ -79,7 +72,6 @@ import {
 import {
   buildNativeReviewTrustPolicy,
   NATIVE_REVIEW_TRUST_POLICY_REF,
-  readNativeReviewTrustPolicy,
 } from './native-review-trust.js';
 import {
   parseNativeImplementationPreparation,
@@ -126,7 +118,7 @@ Commands:
   init [--root <artifact-root>] [--language en|zh-CN]
   root show
   root move <artifact-root>
-  new <change-name> --creation-authorization <path> [--language en|zh-CN]
+  new <change-name> [--language en|zh-CN]
   spec remove <change-name> <capability>
   spec rebase <change-name> --summary <text>
   list [--cursor <token>]
@@ -139,7 +131,6 @@ Commands:
   trust keygen --identity <path> --private-key <outside-project-path>
   trust identity --private-key-env <name> --identity <path>
   trust policy --implementation-identity <path> --reviewer-identity <path> --waiver-identity <path> --controller-private-key-env <name>
-  trust authorize <change-name> --controller-private-key-env <name> --output <path>
   receipt manual <change-name> --acceptance <id> --responsible <text> --step <text> --observation <text> --confirmed
   receipt automated <change-name> --acceptance <id> [--timeout-ms <n>] -- <executable> [args...]
   receipt implement <change-name> prepare --identity <path> --output <path>
@@ -497,10 +488,6 @@ async function dispatch(
   }
   if (command === 'new') {
     const name = requiredPositional(rawArgs, 'change name');
-    const creationAuthorizationPath = takeOption(rawArgs, '--creation-authorization');
-    if (!creationAuthorizationPath) {
-      throw new NativeUsageError('--creation-authorization is required');
-    }
     let config = await readProjectConfig(projectRoot);
     const language = languageOption(rawArgs, config?.native.language ?? 'en');
     assertNoArguments(rawArgs);
@@ -518,10 +505,6 @@ async function dispatch(
       paths,
       name,
       language,
-      verificationProtocol: 'signed-v2',
-      creationAuthorization: parseNativeCreationAuthorization(
-        await readEvidenceJson(creationAuthorizationPath, 'Native creation authorization'),
-      ),
     });
     await selectNativeChange(paths, state.name);
     const status = await inspectNativeStatus(paths, state.name, {
@@ -855,13 +838,6 @@ async function dispatch(
       const policyPath = path.join(projectRoot, ...NATIVE_REVIEW_TRUST_POLICY_REF.split('/'));
       await withNativeMutationLock(paths, 'create review trust policy', async () => {
         await resolveContainedNativePath(projectRoot, policyPath);
-        const activeEntries = await fs.readdir(paths.changesDir).catch((error: unknown) => {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-          throw error;
-        });
-        if (activeEntries.length > 0) {
-          throw new Error('Native review trust policy must be created before any active change');
-        }
         await atomicWriteJson(policyPath, policy, {
           containedRoot: projectRoot,
           exclusive: true,
@@ -871,40 +847,6 @@ async function dispatch(
         'trust policy',
         { ref: NATIVE_REVIEW_TRUST_POLICY_REF, policy },
         `Native review trust policy created: ${NATIVE_REVIEW_TRUST_POLICY_REF}\n`,
-      );
-    }
-    if (subcommand === 'authorize') {
-      const name = requiredPositional(rawArgs, 'change name');
-      const controllerPrivateKeyEnv = takeOption(rawArgs, '--controller-private-key-env');
-      const outputPathValue = takeOption(rawArgs, '--output');
-      if (!controllerPrivateKeyEnv || !outputPathValue) {
-        throw new NativeUsageError(
-          'trust authorize requires --controller-private-key-env and --output',
-        );
-      }
-      assertNoArguments(rawArgs);
-      const { paths } = await configuredPaths(projectRoot);
-      const [controllerTrust, policy, projectRootHash] = await Promise.all([
-        readNativeControllerTrustProject(projectRoot),
-        readNativeReviewTrustPolicy(paths),
-        nativeControllerProjectRootHash(projectRoot),
-      ]);
-      if (!controllerTrust) {
-        throw new Error('Native project has no controller-owned trust root');
-      }
-      const authorization = buildNativeCreationAuthorization({
-        controllerIdentity: controllerTrust.controllerIdentity,
-        controllerPrivateKey: privateKeyFromEnvironment(controllerPrivateKeyEnv),
-        projectRootHash,
-        policyHash: policy.policyHash,
-        change: name,
-      });
-      const outputPath = path.resolve(outputPathValue);
-      await writeExclusiveFile(outputPath, `${JSON.stringify(authorization, null, 2)}\n`, 0o644);
-      return success(
-        'trust authorize',
-        { outputPath, authorization },
-        `Native creation authorization written to ${outputPath}\n`,
       );
     }
     throw new NativeUsageError(`Unknown trust command: ${subcommand}`);

@@ -2119,6 +2119,98 @@ describe('update command helpers', () => {
     });
   });
 
+  it('backfills every managed Native and Classic default with the docs layout', async () => {
+    const fakeHome = path.join(tmpDir, 'partial-config-defaults-home');
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'default_workflow: native',
+        'native:',
+        '  artifact_root: docs',
+        '  language: en',
+        'custom_top: keep',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n',
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'openspec-propose'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'openspec-propose', 'SKILL.md'),
+      '# OpenSpec\n',
+      'utf8',
+    );
+
+    const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        installMode: 'copy',
+        language: 'en',
+        json: true,
+        skipNpm: true,
+      });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homeSpy.mockRestore();
+    }
+
+    expect(JSON.parse(json)).toMatchObject({ status: 'complete' });
+    const config = parse(await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf8'));
+    expect(config).toMatchObject({
+      schema: 'comet.project.v1',
+      default_workflow: 'native',
+      workflows: ['native', 'classic'],
+      ambient_resume: true,
+      native: {
+        artifact_root: 'docs',
+        language: 'en',
+        clarification_mode: 'sequential',
+        archive_confirmation: 'automatic',
+        max_verify_failures: 5,
+        snapshot: {
+          include: ['**/*'],
+          exclude: [],
+          max_files: 10_000,
+          max_total_bytes: 256 * 1024 * 1024,
+          max_duration_ms: 60_000,
+        },
+      },
+      classic: {
+        artifact_layout: 'docs',
+        language: 'en',
+        context_compression: 'off',
+        review_mode: 'standard',
+        auto_transition: true,
+      },
+      custom_top: 'keep',
+    });
+    await expect(assertClassicLayoutReadable(tmpDir)).resolves.toMatchObject({
+      artifactLayout: 'docs',
+      openSpecRoot: path.join(tmpDir, 'docs', 'openspec'),
+    });
+    expect(mockedInstallOpenSpec).toHaveBeenCalledWith(
+      tmpDir,
+      ['claude'],
+      'project',
+      false,
+      [],
+      'docs',
+      expect.any(Function),
+    );
+  });
+
   it('fails closed without invoking OpenSpec or mutating either artifact root when both roots exist', async () => {
     const fakeHome = path.join(tmpDir, 'classic-dual-root-update-home');
     await arrangeClassicDocsOpenSpecUpdate(tmpDir);

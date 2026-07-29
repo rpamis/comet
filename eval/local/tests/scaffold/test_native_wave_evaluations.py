@@ -597,11 +597,6 @@ def test_controller_provisions_immutable_native_review_fixture(tmp_path: Path):
         (oracle / "native-review-fixture.json").read_text(encoding="utf-8")
     )
     policy = json.loads((oracle / "native-review-trust.json").read_text(encoding="utf-8"))
-    authorization = json.loads(
-        (oracle / "sentence-counting-creation-authorization.json").read_text(
-            encoding="utf-8"
-        )
-    )
     store = json.loads(
         (oracle / "controller-home/native-controller-trust.json").read_text(
             encoding="utf-8"
@@ -611,16 +606,13 @@ def test_controller_provisions_immutable_native_review_fixture(tmp_path: Path):
     assert public_fixture["change"] == "sentence-counting"
     assert public_fixture["signerMode"] == "external-verifier-sidecar"
     assert policy["schema"] == "comet.native.review-trust-policy.v2"
-    assert authorization["schema"] == "comet.native.creation-authorization.v1"
-    assert authorization["policyHash"] == policy["policyHash"]
-    assert authorization["projectRootHash"] == canonical_hash(
+    project_root_hash = canonical_hash(
         "comet.native.controller-project-root.v1", "/workspace"
     )
     assert store["projects"] == [
         {
-            "projectRootHash": authorization["projectRootHash"],
+            "projectRootHash": project_root_hash,
             "controllerIdentity": store["projects"][0]["controllerIdentity"],
-            "legacyChanges": [],
         }
     ]
     assert (workspace / ".comet/native-review-trust.json").read_bytes() == (
@@ -633,13 +625,6 @@ def test_controller_provisions_immutable_native_review_fixture(tmp_path: Path):
         policy["policyHash"],
         "Controller policy",
     )
-    validator._validate_signature(
-        authorization["controllerSignature"],
-        store["projects"][0]["controllerIdentity"],
-        authorization["authorizationHash"],
-        "Controller authorization",
-    )
-
     secrets_root = workspace.with_name(f".{workspace.name}-native-review-secrets")
     secret_documents = [
         json.loads((secrets_root / f"{role}-key.json").read_text(encoding="utf-8"))

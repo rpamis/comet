@@ -21,10 +21,7 @@ import { generateNativeReviewKeyPair } from '../../../domains/comet-native/nativ
 import { buildNativeReviewTrustPolicy } from '../../../domains/comet-native/native-review-trust.js';
 import type { NativeReviewTrustPolicy } from '../../../domains/comet-native/native-review-trust.js';
 import { MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES } from '../../../domains/comet-native/native-verification-scope.js';
-import {
-  authorizeNativeTestChange,
-  installNativeControllerTrust,
-} from '../../helpers/native-controller-trust.js';
+import { installNativeControllerTrust } from '../../helpers/native-controller-trust.js';
 
 const brief = `# Outcome
 Add sentence counting.
@@ -63,7 +60,6 @@ describe('Comet Native CLI dispatcher', () => {
   let waiverKey: ReturnType<typeof generateNativeReviewKeyPair>;
   let controllerKey: ReturnType<typeof generateNativeReviewKeyPair>;
   let reviewPolicy: NativeReviewTrustPolicy;
-  let authorizationRoot: string;
   let cleanupControllerTrust: () => Promise<void>;
   const projectArgs = () => ['--project-root', projectRoot] as const;
 
@@ -78,7 +74,6 @@ describe('Comet Native CLI dispatcher', () => {
       projectRoot,
       controller: controllerKey,
     });
-    authorizationRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-authorizations-'));
     reviewPolicy = buildNativeReviewTrustPolicy({
       controllerIdentity: controllerKey.identity,
       controllerPrivateKey: controllerKey.privateKey,
@@ -95,27 +90,8 @@ describe('Comet Native CLI dispatcher', () => {
 
   afterEach(async () => {
     await cleanupControllerTrust();
-    await fs.rm(authorizationRoot, { recursive: true, force: true });
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
-
-  async function creationArgs(name: string): Promise<string[]> {
-    const file = path.join(authorizationRoot, `${name}.json`);
-    await fs.writeFile(
-      file,
-      `${JSON.stringify(
-        await authorizeNativeTestChange({
-          projectRoot,
-          controller: controllerKey,
-          policy: reviewPolicy,
-          name,
-        }),
-        null,
-        2,
-      )}\n`,
-    );
-    return ['--creation-authorization', file];
-  }
 
   it('initializes docs as the default Native artifact root', async () => {
     const initialized = json(await runNativeCli(['init', '--json', ...projectArgs()]));
@@ -136,9 +112,12 @@ describe('Comet Native CLI dispatcher', () => {
     ).resolves.toContain('artifact_root: docs');
   });
 
-  it('creates pre-trusted review identities without printing private keys and formats policy before a change', async () => {
+  it('creates review identities without printing private keys and can add policy after a change', async () => {
     await fs.rm(path.join(projectRoot, '.comet', 'native-review-trust.json'));
     expect((await runNativeCli(['init', ...projectArgs()])).exitCode).toBe(0);
+    expect(
+      (await runNativeCli(['new', 'review-policy-after-creation', ...projectArgs()])).exitCode,
+    ).toBe(0);
     const secretRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-secrets-'));
     try {
       const identities = await Promise.all(
@@ -269,13 +248,7 @@ describe('Comet Native CLI dispatcher', () => {
     );
 
     const result = json(
-      await runNativeCli([
-        'new',
-        'incomplete-baseline',
-        ...(await creationArgs('incomplete-baseline')),
-        '--json',
-        ...projectArgs(),
-      ]),
+      await runNativeCli(['new', 'incomplete-baseline', '--json', ...projectArgs()]),
     );
     expect(result).toMatchObject({
       exitCode: 65,
@@ -296,14 +269,7 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('selects each successfully created change as the current Native owner', async () => {
-    expect(
-      await runNativeCli([
-        'new',
-        'first-change',
-        ...(await creationArgs('first-change')),
-        ...projectArgs(),
-      ]),
-    ).toMatchObject({
+    expect(await runNativeCli(['new', 'first-change', ...projectArgs()])).toMatchObject({
       exitCode: 0,
     });
     expect(
@@ -317,14 +283,7 @@ describe('Comet Native CLI dispatcher', () => {
       branch: null,
     });
 
-    expect(
-      await runNativeCli([
-        'new',
-        'second-change',
-        ...(await creationArgs('second-change')),
-        ...projectArgs(),
-      ]),
-    ).toMatchObject({
+    expect(await runNativeCli(['new', 'second-change', ...projectArgs()])).toMatchObject({
       exitCode: 0,
     });
     expect(
@@ -365,12 +324,7 @@ describe('Comet Native CLI dispatcher', () => {
     const root = json(await runNativeCli(['root', 'show', '--json', ...projectArgs()]));
     expect(root).toMatchObject({ command: 'root show', data: { artifactRoot: 'docs' } });
 
-    const created = await runNativeCli([
-      'new',
-      'sentence-counting',
-      ...(await creationArgs('sentence-counting')),
-      ...projectArgs(),
-    ]);
+    const created = await runNativeCli(['new', 'sentence-counting', ...projectArgs()]);
     expect(created).toMatchObject({ exitCode: 0 });
     expect(created.stdout).toContain('Created Native change sentence-counting');
     const paths = await nativeProjectPaths(projectRoot, 'docs');
@@ -794,12 +748,7 @@ Pass.
   }, 120_000);
 
   it('pages every Runtime-derived acceptance ID through the public status command', async () => {
-    await runNativeCli([
-      'new',
-      'paged-acceptance',
-      ...(await creationArgs('paged-acceptance')),
-      ...projectArgs(),
-    ]);
+    await runNativeCli(['new', 'paged-acceptance', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'paged-acceptance');
     const acceptanceExamples = Array.from(
@@ -920,13 +869,7 @@ Pass.
   });
 
   it('creates the default config from new and keeps Classic paths untouched', async () => {
-    const result = await runNativeCli([
-      'new',
-      'default-root',
-      ...(await creationArgs('default-root')),
-      '--json',
-      ...projectArgs(),
-    ]);
+    const result = await runNativeCli(['new', 'default-root', '--json', ...projectArgs()]);
     expect(result.exitCode).toBe(0);
     expect(json(result)).toMatchObject({ data: { name: 'default-root', phase: 'shape' } });
     expect(await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8')).toContain(
@@ -975,12 +918,7 @@ Pass.
   });
 
   it('returns guard findings as structured invalid data', async () => {
-    await runNativeCli([
-      'new',
-      'blocked-shape',
-      ...(await creationArgs('blocked-shape')),
-      ...projectArgs(),
-    ]);
+    await runNativeCli(['new', 'blocked-shape', ...projectArgs()]);
     const result = await runNativeCli([
       'next',
       'blocked-shape',
@@ -998,12 +936,7 @@ Pass.
   });
 
   it('records explicit confirmation through Shape next without editing change state', async () => {
-    await runNativeCli([
-      'new',
-      'confirmed-shape',
-      ...(await creationArgs('confirmed-shape')),
-      ...projectArgs(),
-    ]);
+    await runNativeCli(['new', 'confirmed-shape', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'confirmed-shape');
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
@@ -1028,12 +961,7 @@ Pass.
 
   it('enforces shared-understanding confirmation in Sequential and Batch modes', async () => {
     await runNativeCli(['init', '--root', 'docs', ...projectArgs()]);
-    await runNativeCli([
-      'new',
-      'mode-boundary',
-      ...(await creationArgs('mode-boundary')),
-      ...projectArgs(),
-    ]);
+    await runNativeCli(['new', 'mode-boundary', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'mode-boundary');
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
@@ -1129,12 +1057,7 @@ Pass.
   });
 
   it('records a remove intent and canonical hash through the spec command', async () => {
-    await runNativeCli([
-      'new',
-      'remove-capability',
-      ...(await creationArgs('remove-capability')),
-      ...projectArgs(),
-    ]);
+    await runNativeCli(['new', 'remove-capability', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const canonical = path.join(paths.specsDir, 'legacy-capability', 'spec.md');
     await fs.mkdir(path.dirname(canonical), { recursive: true });
@@ -1166,12 +1089,7 @@ Pass.
   });
 
   it('rejects show when the brief exceeds its bounded-read budget', async () => {
-    await runNativeCli([
-      'new',
-      'oversized-brief',
-      ...(await creationArgs('oversized-brief')),
-      ...projectArgs(),
-    ]);
+    await runNativeCli(['new', 'oversized-brief', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await fs.writeFile(
       path.join(paths.changesDir, 'oversized-brief', 'brief.md'),
@@ -1187,12 +1105,7 @@ Pass.
   });
 
   it('rejects show when proposed specs exceed the count budget', async () => {
-    await runNativeCli([
-      'new',
-      'too-many-specs',
-      ...(await creationArgs('too-many-specs')),
-      ...projectArgs(),
-    ]);
+    await runNativeCli(['new', 'too-many-specs', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const specsDir = path.join(paths.changesDir, 'too-many-specs', 'specs');
     await Promise.all(
@@ -1212,12 +1125,7 @@ Pass.
   });
 
   it('rejects show when proposed specs exceed the aggregate byte budget', async () => {
-    await runNativeCli([
-      'new',
-      'oversized-spec-set',
-      ...(await creationArgs('oversized-spec-set')),
-      ...projectArgs(),
-    ]);
+    await runNativeCli(['new', 'oversized-spec-set', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const specsDir = path.join(paths.changesDir, 'oversized-spec-set', 'specs');
     const fileBytes = NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes - 1024;
@@ -1306,9 +1214,7 @@ Pass.
   ] as const)(
     'returns exit 70 with a retryable state when %s hits an unexpected filesystem failure',
     async (_command, args, retryCreatesChange) => {
-      const commandArgs = retryCreatesChange
-        ? [...args, ...(await creationArgs('storage-failure'))]
-        : [...args];
+      const commandArgs = [...args];
       const failure = Object.assign(new Error('simulated storage failure'), { code: 'EIO' });
       const realpath = vi.spyOn(fs, 'realpath').mockRejectedValueOnce(failure);
       try {

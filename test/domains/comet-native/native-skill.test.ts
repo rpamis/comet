@@ -253,7 +253,7 @@ describe('Comet Native Skills', () => {
       ]) {
         expect(commands, `${language}: ${command}`).toContain(command);
       }
-      expect(commands).toContain('--creation-authorization <path>');
+      expect(commands).not.toContain('--creation-authorization');
       expect(commands).toContain('--allow-partial-scope <sha256>');
       expect(commands).toContain('--independent-review-receipt <review-receipt-ref>');
       expect(commands).toContain('--expect-preflight <sha256> [--confirmed]');
@@ -285,8 +285,6 @@ describe('Comet Native Skills', () => {
     expect(enSkill).toContain('impersonate an external approval role');
     expect(zhCommands).toContain('不得执行外部角色的 approve/sign');
     expect(enCommands).toContain("must not perform an external role's approve or sign action");
-    expect(zhCommands).toContain('等待 owner');
-    expect(enCommands).toContain('wait for the owner');
   });
 
   it('uses recovery as an actionable runbook rather than a Runtime design document', async () => {

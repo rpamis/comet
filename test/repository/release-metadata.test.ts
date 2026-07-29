@@ -16,7 +16,7 @@ describe('release metadata', () => {
       readFileSync(path.join(repositoryRoot, 'assets', 'manifest.json'), 'utf8'),
     ) as { version: string };
 
-    expect(packageJson.version).toBe('0.4.0-beta.10');
+    expect(packageJson.version).toBe('0.4.0-beta.11');
     expect(packageLock.version).toBe(packageJson.version);
     expect(packageLock.packages[''].version).toBe(packageJson.version);
     expect(assetsManifest.version).toBe(packageJson.version);

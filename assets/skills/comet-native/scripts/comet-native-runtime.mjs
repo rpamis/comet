@@ -7629,14 +7629,13 @@ function recordOutcomeWithResolver(pkg, state, outcome, resolver, context) {
 }
 
 // domains/comet-native/native-artifacts.ts
-import { promises as fs16 } from "fs";
-import path22 from "path";
+import { promises as fs14 } from "fs";
+import path19 from "path";
 
 // domains/comet-native/native-change.ts
 var import_yaml2 = __toESM(require_dist(), 1);
-import { createHash as createHash12 } from "node:crypto";
-import { promises as fs15 } from "fs";
-import path21 from "path";
+import { promises as fs13 } from "fs";
+import path18 from "path";
 
 // domains/comet-native/native-bounded-file.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -7857,625 +7856,13 @@ async function readNativeBoundedTextFile(options) {
   }
 }
 
-// domains/comet-native/native-canonical-hash.ts
-import { createHash as createHash3 } from "crypto";
-function invalidCanonicalJson(detail) {
-  throw new TypeError(`Value is not valid canonical JSON: ${detail}`);
-}
-function canonicalArray(value, ancestors) {
-  if (ancestors.has(value)) invalidCanonicalJson("cyclic structures are not supported");
-  ancestors.add(value);
-  try {
-    const enumerableKeys = Object.keys(value);
-    for (let index = 0; index < value.length; index += 1) {
-      if (!Object.prototype.hasOwnProperty.call(value, index)) {
-        invalidCanonicalJson("sparse arrays are not supported");
-      }
-    }
-    if (enumerableKeys.length !== value.length || enumerableKeys.some((key, index) => key !== String(index))) {
-      invalidCanonicalJson("arrays must not have named enumerable properties");
-    }
-    if (Object.getOwnPropertySymbols(value).length > 0) {
-      invalidCanonicalJson("symbol properties are not supported");
-    }
-    return `[${value.map((entry2) => canonicalValue(entry2, ancestors)).join(",")}]`;
-  } finally {
-    ancestors.delete(value);
-  }
-}
-function canonicalObject(value, ancestors) {
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    invalidCanonicalJson("only plain objects are supported");
-  }
-  if (ancestors.has(value)) invalidCanonicalJson("cyclic structures are not supported");
-  if (Object.getOwnPropertySymbols(value).length > 0) {
-    invalidCanonicalJson("symbol properties are not supported");
-  }
-  ancestors.add(value);
-  try {
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const keys = Object.keys(value).sort();
-    const fields = keys.map((key) => {
-      const descriptor = descriptors[key];
-      if (!descriptor || !("value" in descriptor)) {
-        invalidCanonicalJson("accessor properties are not supported");
-      }
-      return `${JSON.stringify(key)}:${canonicalValue(descriptor.value, ancestors)}`;
-    });
-    return `{${fields.join(",")}}`;
-  } finally {
-    ancestors.delete(value);
-  }
-}
-function canonicalValue(value, ancestors) {
-  if (value === null) return "null";
-  switch (typeof value) {
-    case "boolean":
-      return value ? "true" : "false";
-    case "string":
-      return JSON.stringify(value);
-    case "number":
-      if (!Number.isFinite(value)) invalidCanonicalJson("numbers must be finite");
-      return JSON.stringify(Object.is(value, -0) ? 0 : value);
-    case "object":
-      return Array.isArray(value) ? canonicalArray(value, ancestors) : canonicalObject(value, ancestors);
-    case "bigint":
-    case "function":
-    case "symbol":
-    case "undefined":
-      return invalidCanonicalJson(`${typeof value} values are not supported`);
-  }
-  return invalidCanonicalJson("unsupported value type");
-}
-function canonicalJson(value) {
-  return canonicalValue(value, /* @__PURE__ */ new Set());
-}
-function canonicalHash(tag, value) {
-  if (tag.length === 0) throw new TypeError("Canonical hash tag must be non-empty");
-  if (/[\r\n]/u.test(tag)) {
-    throw new TypeError("Canonical hash tag must not contain a line break");
-  }
-  return createHash3("sha256").update(`${tag}
-${canonicalJson(value)}`).digest("hex");
-}
-
-// domains/comet-native/native-controller-trust.ts
-import { promises as fs4 } from "node:fs";
-import os from "node:os";
-import path4 from "node:path";
-
-// platform/fs/trusted-readonly-file.ts
-import { constants as fsConstants2, promises as fs3 } from "node:fs";
-import path3 from "node:path";
-function trustedReadonlyPosixFactsIssue(facts) {
-  if (facts.fileUid === facts.currentUid) {
-    return "Trusted file must be owned by a different host identity";
-  }
-  if ((facts.fileMode & 18) !== 0 || facts.fileWritable) {
-    return "Trusted file is writable by the current process";
-  }
-  if (facts.parents.some(
-    (parent) => parent.uid === facts.currentUid || (parent.mode & 18) !== 0 || parent.writable
-  )) {
-    return "Trusted file parent chain is writable by the current process";
-  }
-  return null;
-}
-var testHostIsolatedFiles = /* @__PURE__ */ new Set();
-function sameIdentity(left, right) {
-  return left.realPath === right.realPath && left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeMs === right.mtimeMs;
-}
-async function currentProcessCanWrite(file) {
-  try {
-    await fs3.access(file, fsConstants2.W_OK);
-    return true;
-  } catch (error) {
-    if (error.code === "EACCES" || error.code === "EPERM") {
-      return false;
-    }
-    throw error;
-  }
-}
-async function inspectIdentity(file) {
-  const [stat, realPath] = await Promise.all([fs3.lstat(file), fs3.realpath(file)]);
-  if (!stat.isFile() || stat.isSymbolicLink()) {
-    throw new Error("Trusted file capability requires a regular non-symlink file");
-  }
-  return {
-    realPath,
-    dev: stat.dev,
-    ino: stat.ino,
-    size: stat.size,
-    mtimeMs: stat.mtimeMs
-  };
-}
-async function assertTrustedReadonlyFile(options) {
-  const identity = await inspectIdentity(options.file);
-  if (options.previous && !sameIdentity(options.previous, identity)) {
-    throw new Error("Trusted file identity changed while reading");
-  }
-  if (process.env.NODE_ENV === "test" && testHostIsolatedFiles.has(path3.resolve(options.file))) {
-    return identity;
-  }
-  if (process.platform === "win32") {
-    throw new Error(
-      "Trusted file isolation cannot be proven from Windows file mode; use a host read-only mount capability"
-    );
-  }
-  const currentUid = process.geteuid?.() ?? process.getuid?.();
-  if (currentUid === void 0) {
-    throw new Error("Trusted file owner isolation is unavailable on this platform");
-  }
-  const fileStat = await fs3.stat(identity.realPath);
-  const parents = [];
-  let directory = path3.dirname(identity.realPath);
-  for (; ; ) {
-    const stat = await fs3.lstat(directory);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) {
-      throw new Error("Trusted file parent chain is not a physical directory chain");
-    }
-    parents.push({
-      uid: stat.uid,
-      mode: stat.mode,
-      writable: await currentProcessCanWrite(directory)
-    });
-    const parent = path3.dirname(directory);
-    if (parent === directory) break;
-    directory = parent;
-  }
-  const issue = trustedReadonlyPosixFactsIssue({
-    currentUid,
-    fileUid: fileStat.uid,
-    fileMode: fileStat.mode,
-    fileWritable: await currentProcessCanWrite(identity.realPath),
-    parents
-  });
-  if (issue) throw new Error(issue);
-  return identity;
-}
-
-// domains/comet-native/native-review-identity.ts
-import {
-  createHash as createHash4,
-  createPrivateKey,
-  createPublicKey,
-  generateKeyPairSync,
-  sign as cryptoSign,
-  verify as cryptoVerify
-} from "node:crypto";
-var NATIVE_REVIEW_IDENTITY_SCHEMA = "comet.native.review-identity.v1";
-var NATIVE_REVIEW_KEYPAIR_SCHEMA = "comet.native.review-keypair.v1";
-var NATIVE_REVIEW_SIGNATURE_SCHEMA = "comet.native.review-signature.v1";
-var ALGORITHM = "ed25519";
-var HASH_PATTERN = /^[a-f0-9]{64}$/u;
-var MAX_PUBLIC_KEY_TEXT = 512;
-var MAX_PRIVATE_KEY_TEXT = 16384;
-var MAX_SIGNATURE_TEXT = 256;
-var SIGNATURE_CONTEXT = Buffer.from("comet.native.review-payload.v1\0", "utf8");
-function nativeReviewPrivateKeyFilePersistenceSupported(platform = process.platform) {
-  return platform !== "win32";
-}
-function record(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  return value;
-}
-function exactKeys(value, expected, label) {
-  const actual = Object.keys(value).sort();
-  const canonical = [...expected].sort();
-  if (JSON.stringify(actual) !== JSON.stringify(canonical)) {
-    throw new Error(`${label} fields are invalid`);
-  }
-}
-function sha256(value) {
-  return createHash4("sha256").update(value).digest("hex");
-}
-function payloadHash(value, label = "Native review payloadHash") {
-  if (typeof value !== "string" || !HASH_PATTERN.test(value)) {
-    throw new Error(`${label} must be a lowercase SHA-256 hash`);
-  }
-  return value;
-}
-function canonicalBase64(value, label, maxCharacters, expectedBytes) {
-  if (typeof value !== "string" || value.length === 0 || value.length > maxCharacters || value.length % 4 !== 0) {
-    throw new Error(`${label} is invalid`);
-  }
-  const bytes = Buffer.from(value, "base64");
-  if (bytes.length === 0 || bytes.toString("base64") !== value || expectedBytes !== void 0 && bytes.length !== expectedBytes) {
-    throw new Error(`${label} must use canonical base64`);
-  }
-  return bytes;
-}
-function publicKeyMaterial(value) {
-  const supplied = canonicalBase64(value, "Native review public key", MAX_PUBLIC_KEY_TEXT);
-  let key;
-  try {
-    key = createPublicKey({ key: supplied, format: "der", type: "spki" });
-  } catch (error) {
-    throw new Error("Native review public key is invalid", { cause: error });
-  }
-  if (key.type !== "public" || key.asymmetricKeyType !== "ed25519") {
-    throw new Error("Native review public key must be Ed25519");
-  }
-  const der = key.export({ format: "der", type: "spki" });
-  if (!Buffer.isBuffer(der) || !supplied.equals(der)) {
-    throw new Error("Native review public key must use canonical SPKI DER");
-  }
-  return { key, der, text: der.toString("base64") };
-}
-function privateKeyMaterial(value) {
-  const supplied = canonicalBase64(value, "Native review private key", MAX_PRIVATE_KEY_TEXT);
-  let key;
-  try {
-    key = createPrivateKey({ key: supplied, format: "der", type: "pkcs8" });
-  } catch (error) {
-    throw new Error("Native review private key is invalid", { cause: error });
-  }
-  if (key.type !== "private" || key.asymmetricKeyType !== "ed25519") {
-    throw new Error("Native review private key must be Ed25519");
-  }
-  const der = key.export({ format: "der", type: "pkcs8" });
-  if (!Buffer.isBuffer(der) || !supplied.equals(der)) {
-    throw new Error("Native review private key must use canonical PKCS8 DER");
-  }
-  return { key, der };
-}
-function signaturePayload(hash8) {
-  return Buffer.concat([SIGNATURE_CONTEXT, Buffer.from(hash8, "hex")]);
-}
-function parseNativeReviewSignature(value) {
-  const root = record(value, "Native review signature");
-  exactKeys(
-    root,
-    ["schema", "algorithm", "keyId", "payloadHash", "signature"],
-    "Native review signature"
-  );
-  if (root.schema !== NATIVE_REVIEW_SIGNATURE_SCHEMA || root.algorithm !== ALGORITHM || typeof root.keyId !== "string" || !HASH_PATTERN.test(root.keyId)) {
-    throw new Error("Native review signature identity is invalid");
-  }
-  const hash8 = payloadHash(root.payloadHash);
-  const signature = canonicalBase64(
-    root.signature,
-    "Native review signature",
-    MAX_SIGNATURE_TEXT,
-    64
-  ).toString("base64");
-  return {
-    schema: NATIVE_REVIEW_SIGNATURE_SCHEMA,
-    algorithm: ALGORITHM,
-    keyId: root.keyId,
-    payloadHash: hash8,
-    signature
-  };
-}
-function parseNativeReviewIdentity(value) {
-  const root = record(value, "Native review identity");
-  exactKeys(root, ["schema", "algorithm", "keyId", "publicKey"], "Native review identity");
-  if (root.schema !== NATIVE_REVIEW_IDENTITY_SCHEMA || root.algorithm !== ALGORITHM || typeof root.keyId !== "string" || !HASH_PATTERN.test(root.keyId)) {
-    throw new Error("Native review identity keyId is invalid");
-  }
-  const publicKey = publicKeyMaterial(root.publicKey);
-  const keyId = sha256(publicKey.der);
-  if (root.keyId !== keyId) {
-    throw new Error("Native review identity keyId does not match its public key");
-  }
-  return {
-    schema: NATIVE_REVIEW_IDENTITY_SCHEMA,
-    algorithm: ALGORITHM,
-    keyId,
-    publicKey: publicKey.text
-  };
-}
-function generateNativeReviewKeyPair() {
-  const generated = generateKeyPairSync("ed25519");
-  const publicKey = generated.publicKey.export({ format: "der", type: "spki" });
-  const privateKey = generated.privateKey.export({ format: "der", type: "pkcs8" });
-  if (!Buffer.isBuffer(publicKey) || !Buffer.isBuffer(privateKey)) {
-    throw new Error("Native review key generation returned unsupported key material");
-  }
-  const identity = {
-    schema: NATIVE_REVIEW_IDENTITY_SCHEMA,
-    algorithm: ALGORITHM,
-    keyId: sha256(publicKey),
-    publicKey: publicKey.toString("base64")
-  };
-  return {
-    schema: NATIVE_REVIEW_KEYPAIR_SCHEMA,
-    identity,
-    privateKey: privateKey.toString("base64")
-  };
-}
-function nativeReviewIdentityFromPrivateKey(privateKeyValue) {
-  const privateKey = privateKeyMaterial(privateKeyValue);
-  const publicKey = createPublicKey(privateKey.key).export({ format: "der", type: "spki" });
-  if (!Buffer.isBuffer(publicKey)) {
-    throw new Error("Native review private key returned unsupported public key material");
-  }
-  return {
-    schema: NATIVE_REVIEW_IDENTITY_SCHEMA,
-    algorithm: ALGORITHM,
-    keyId: sha256(publicKey),
-    publicKey: publicKey.toString("base64")
-  };
-}
-function signNativeReviewPayloadHash(options) {
-  const identity = parseNativeReviewIdentity(options.identity);
-  const hash8 = payloadHash(options.payloadHash);
-  const privateKey = privateKeyMaterial(options.privateKey);
-  const derivedPublicKey = createPublicKey(privateKey.key).export({ format: "der", type: "spki" });
-  if (!Buffer.isBuffer(derivedPublicKey) || !derivedPublicKey.equals(Buffer.from(identity.publicKey, "base64"))) {
-    throw new Error("Native review private key does not match the public identity");
-  }
-  return {
-    schema: NATIVE_REVIEW_SIGNATURE_SCHEMA,
-    algorithm: ALGORITHM,
-    keyId: identity.keyId,
-    payloadHash: hash8,
-    signature: cryptoSign(null, signaturePayload(hash8), privateKey.key).toString("base64")
-  };
-}
-function verifyNativeReviewPayloadHash(options) {
-  const identity = parseNativeReviewIdentity(options.identity);
-  const hash8 = payloadHash(options.payloadHash);
-  const proof = parseNativeReviewSignature(options.proof);
-  if (proof.payloadHash !== hash8) {
-    throw new Error("Native review signature payloadHash does not match the expected payloadHash");
-  }
-  if (proof.keyId !== identity.keyId) {
-    throw new Error("Native review signature keyId does not match the public identity");
-  }
-  const signature = canonicalBase64(
-    proof.signature,
-    "Native review signature",
-    MAX_SIGNATURE_TEXT,
-    64
-  );
-  const publicKey = publicKeyMaterial(identity.publicKey);
-  if (!cryptoVerify(null, signaturePayload(hash8), publicKey.key, signature)) {
-    throw new Error("Native review signature is invalid");
-  }
-  return proof;
-}
-
-// domains/comet-native/native-controller-trust.ts
-var NATIVE_CONTROLLER_TRUST_STORE_SCHEMA = "comet.native.controller-trust-store.v1";
-var NATIVE_CONTROLLER_TRUST_STORE_TEST_ENV = "COMET_NATIVE_CONTROLLER_TRUST_STORE_TEST_PATH";
-var PROJECT_ROOT_HASH_TAG = "comet.native.controller-project-root.v1";
-var MAX_STORE_BYTES = 256 * 1024;
-var HASH_PATTERN2 = /^[a-f0-9]{64}$/u;
-var CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
-function record2(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  return value;
-}
-function exactKeys2(value, keys, label) {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`${label} fields are invalid`);
-  }
-}
-function isInside2(parent, target) {
-  const relative = path4.relative(parent, target);
-  return relative === "" || !path4.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path4.sep}`);
-}
-function normalizedPhysicalRoot(root) {
-  const normalized = path4.normalize(root).replaceAll("\\", "/");
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
-}
-async function nativeControllerProjectRootHash(projectRoot) {
-  return canonicalHash(
-    PROJECT_ROOT_HASH_TAG,
-    normalizedPhysicalRoot(await fs4.realpath(projectRoot))
-  );
-}
-function parseNativeControllerTrustStore(value) {
-  const root = record2(value, "Native controller trust store");
-  exactKeys2(root, ["schema", "projects"], "Native controller trust store");
-  if (root.schema !== NATIVE_CONTROLLER_TRUST_STORE_SCHEMA || !Array.isArray(root.projects) || root.projects.length === 0 || root.projects.length > 1024) {
-    throw new Error("Native controller trust store is invalid");
-  }
-  const projects = root.projects.map((value2, index) => {
-    const project = record2(value2, `Native controller trust project ${index}`);
-    exactKeys2(
-      project,
-      ["projectRootHash", "controllerIdentity", "legacyChanges"],
-      `Native controller trust project ${index}`
-    );
-    if (typeof project.projectRootHash !== "string" || !HASH_PATTERN2.test(project.projectRootHash) || !Array.isArray(project.legacyChanges)) {
-      throw new Error(`Native controller trust project ${index} is invalid`);
-    }
-    const legacyChanges = project.legacyChanges.map((change) => {
-      if (typeof change !== "string" || !CHANGE_NAME_PATTERN.test(change)) {
-        throw new Error(`Native controller trust project ${index} legacy change is invalid`);
-      }
-      return change;
-    });
-    if (JSON.stringify(legacyChanges) !== JSON.stringify(
-      [...new Set(legacyChanges)].sort((left, right) => left.localeCompare(right, "en"))
-    )) {
-      throw new Error(`Native controller trust project ${index} legacy changes must be sorted`);
-    }
-    return {
-      projectRootHash: project.projectRootHash,
-      controllerIdentity: parseNativeReviewIdentity(project.controllerIdentity),
-      legacyChanges
-    };
-  });
-  if (JSON.stringify(projects.map((project) => project.projectRootHash)) !== JSON.stringify(
-    [...new Set(projects.map((project) => project.projectRootHash))].sort(
-      (left, right) => left.localeCompare(right, "en")
-    )
-  )) {
-    throw new Error("Native controller trust projects must be sorted and unique");
-  }
-  return { schema: NATIVE_CONTROLLER_TRUST_STORE_SCHEMA, projects };
-}
-function nativeControllerTrustStorePath() {
-  const testPath = process.env.NODE_ENV === "test" ? process.env[NATIVE_CONTROLLER_TRUST_STORE_TEST_ENV] : void 0;
-  return path4.resolve(
-    testPath ?? path4.join(os.homedir(), ".comet", "native-controller-trust.json")
-  );
-}
-async function readNativeControllerTrustProject(projectRoot) {
-  const storePath = nativeControllerTrustStorePath();
-  let physicalProjectRoot;
-  try {
-    physicalProjectRoot = await fs4.realpath(projectRoot);
-  } catch (error) {
-    throw new Error("Native project root is unavailable for controller trust", { cause: error });
-  }
-  let trustedIdentity;
-  try {
-    trustedIdentity = await assertTrustedReadonlyFile({ file: storePath });
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw new Error("Native controller trust store is not host-isolated read-only", {
-      cause: error
-    });
-  }
-  let result2;
-  try {
-    result2 = await readFileRaceSafe(storePath, MAX_STORE_BYTES, {
-      label: "Native controller trust store",
-      verify: (_checkpoint, context) => {
-        if (isInside2(physicalProjectRoot, context.realPath)) {
-          throw new Error("Native controller trust store must resolve outside the project");
-        }
-      }
-    });
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-  try {
-    await assertTrustedReadonlyFile({
-      file: storePath,
-      previous: trustedIdentity
-    });
-  } catch (error) {
-    throw new Error("Native controller trust store isolation changed while reading", {
-      cause: error
-    });
-  }
-  let parsed;
-  try {
-    parsed = parseNativeControllerTrustStore(JSON.parse(result2.bytes.toString("utf8")));
-  } catch (error) {
-    throw new Error("Native controller trust store is not valid canonical JSON", {
-      cause: error
-    });
-  }
-  const projectRootHash = await nativeControllerProjectRootHash(projectRoot);
-  return parsed.projects.find((project) => project.projectRootHash === projectRootHash) ?? null;
-}
-
-// domains/comet-native/native-creation-authorization.ts
-var NATIVE_CREATION_AUTHORIZATION_SCHEMA = "comet.native.creation-authorization.v1";
-var HASH_PATTERN3 = /^[a-f0-9]{64}$/u;
-var CHANGE_NAME_PATTERN2 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
-function record3(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  return value;
-}
-function exactKeys3(value, expected, label) {
-  const actual = Object.keys(value).sort();
-  const canonical = [...expected].sort();
-  if (JSON.stringify(actual) !== JSON.stringify(canonical)) {
-    throw new Error(`${label} fields are invalid`);
-  }
-}
-function buildNativeCreationAuthorization(input) {
-  const content = {
-    schema: NATIVE_CREATION_AUTHORIZATION_SCHEMA,
-    controllerKeyId: input.controllerIdentity.keyId,
-    projectRootHash: input.projectRootHash,
-    policyHash: input.policyHash,
-    protocol: "signed-v2",
-    change: input.change,
-    issuedAt: (input.now ?? /* @__PURE__ */ new Date()).toISOString()
-  };
-  const authorizationHash = canonicalHash(NATIVE_CREATION_AUTHORIZATION_SCHEMA, content);
-  return parseNativeCreationAuthorization({
-    ...content,
-    authorizationHash,
-    controllerSignature: signNativeReviewPayloadHash({
-      identity: input.controllerIdentity,
-      privateKey: input.controllerPrivateKey,
-      payloadHash: authorizationHash
-    })
-  });
-}
-function parseNativeCreationAuthorization(value) {
-  const root = record3(value, "Native creation authorization");
-  exactKeys3(
-    root,
-    [
-      "schema",
-      "controllerKeyId",
-      "projectRootHash",
-      "policyHash",
-      "protocol",
-      "change",
-      "issuedAt",
-      "authorizationHash",
-      "controllerSignature"
-    ],
-    "Native creation authorization"
-  );
-  if (root.schema !== NATIVE_CREATION_AUTHORIZATION_SCHEMA || typeof root.controllerKeyId !== "string" || !HASH_PATTERN3.test(root.controllerKeyId) || typeof root.projectRootHash !== "string" || !HASH_PATTERN3.test(root.projectRootHash) || typeof root.policyHash !== "string" || !HASH_PATTERN3.test(root.policyHash) || root.protocol !== "signed-v2" || typeof root.change !== "string" || !CHANGE_NAME_PATTERN2.test(root.change) || typeof root.issuedAt !== "string" || Number.isNaN(Date.parse(root.issuedAt)) || typeof root.authorizationHash !== "string" || !HASH_PATTERN3.test(root.authorizationHash)) {
-    throw new Error("Native creation authorization is invalid");
-  }
-  const content = {
-    schema: NATIVE_CREATION_AUTHORIZATION_SCHEMA,
-    controllerKeyId: root.controllerKeyId,
-    projectRootHash: root.projectRootHash,
-    policyHash: root.policyHash,
-    protocol: "signed-v2",
-    change: root.change,
-    issuedAt: root.issuedAt
-  };
-  const authorizationHash = canonicalHash(NATIVE_CREATION_AUTHORIZATION_SCHEMA, content);
-  if (authorizationHash !== root.authorizationHash) {
-    throw new Error("Native creation authorization hash mismatch");
-  }
-  const controllerSignature = parseNativeReviewSignature(root.controllerSignature);
-  if (controllerSignature.keyId !== root.controllerKeyId || controllerSignature.payloadHash !== authorizationHash) {
-    throw new Error("Native creation authorization signature binding is invalid");
-  }
-  return { ...content, authorizationHash, controllerSignature };
-}
-async function verifyNativeCreationAuthorization(options) {
-  const controllerTrust = await readNativeControllerTrustProject(options.paths.projectRoot);
-  if (!controllerTrust) {
-    throw new Error("Native project has no controller-owned trust root");
-  }
-  const authorization = parseNativeCreationAuthorization(options.authorization);
-  const projectRootHash = await nativeControllerProjectRootHash(options.paths.projectRoot);
-  if (authorization.controllerKeyId !== controllerTrust.controllerIdentity.keyId || authorization.projectRootHash !== projectRootHash || authorization.policyHash !== options.policyHash || authorization.change !== options.change) {
-    throw new Error("Native creation authorization does not match the trusted project/change");
-  }
-  verifyNativeReviewPayloadHash({
-    identity: controllerTrust.controllerIdentity,
-    payloadHash: authorization.authorizationHash,
-    proof: authorization.controllerSignature
-  });
-  return authorization;
-}
-
 // domains/comet-native/native-atomic-file.ts
 import { randomUUID } from "crypto";
-import { promises as fs5 } from "fs";
-import path5 from "path";
-function isInside3(parent, target) {
-  const relative = path5.relative(parent, target);
-  return relative === "" || !path5.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path5.sep}`);
+import { promises as fs3 } from "fs";
+import path3 from "path";
+function isInside2(parent, target) {
+  const relative = path3.relative(parent, target);
+  return relative === "" || !path3.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path3.sep}`);
 }
 function sameDirectoryIdentity2(identity, stat) {
   return sameFileObject(
@@ -8495,13 +7882,13 @@ function sameFileIdentity2(left, right) {
   return sameFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function captureDirectoryIdentity(directory) {
-  const stat = await fs5.lstat(directory);
+  const stat = await fs3.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error(`Native atomic write parent must be a real directory: ${directory}`);
   }
   return {
     path: directory,
-    realPath: await fs5.realpath(directory),
+    realPath: await fs3.realpath(directory),
     dev: stat.dev,
     ino: stat.ino,
     birthtimeMs: stat.birthtimeMs
@@ -8509,31 +7896,31 @@ async function captureDirectoryIdentity(directory) {
 }
 async function verifyDirectoryChain2(chain) {
   for (const identity of chain) {
-    const stat = await fs5.lstat(identity.path);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity2(identity, stat) || await fs5.realpath(identity.path) !== identity.realPath) {
+    const stat = await fs3.lstat(identity.path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity2(identity, stat) || await fs3.realpath(identity.path) !== identity.realPath) {
       throw new Error(`Native atomic write parent changed before commit: ${identity.path}`);
     }
   }
 }
 async function prepareContainedDirectoryChain(root, directory) {
-  const lexicalRoot = path5.resolve(root);
-  const lexicalDirectory = path5.resolve(directory);
-  if (!isInside3(lexicalRoot, lexicalDirectory)) {
+  const lexicalRoot = path3.resolve(root);
+  const lexicalDirectory = path3.resolve(directory);
+  if (!isInside2(lexicalRoot, lexicalDirectory)) {
     throw new Error(`Native atomic write parent is outside its managed root: ${directory}`);
   }
   const chain = [await captureDirectoryIdentity(lexicalRoot)];
-  const segments = path5.relative(lexicalRoot, lexicalDirectory).split(path5.sep).filter(Boolean);
+  const segments = path3.relative(lexicalRoot, lexicalDirectory).split(path3.sep).filter(Boolean);
   let cursor = lexicalRoot;
   for (const segment of segments) {
     await verifyDirectoryChain2(chain);
-    cursor = path5.join(cursor, segment);
+    cursor = path3.join(cursor, segment);
     try {
-      await fs5.mkdir(cursor);
+      await fs3.mkdir(cursor);
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
     }
     const identity = await captureDirectoryIdentity(cursor);
-    if (!isInside3(chain[0].realPath, identity.realPath)) {
+    if (!isInside2(chain[0].realPath, identity.realPath)) {
       throw new Error(`Native atomic write parent resolves outside its managed root: ${cursor}`);
     }
     chain.push(identity);
@@ -8544,7 +7931,7 @@ async function prepareContainedDirectoryChain(root, directory) {
 async function syncDirectory(directory) {
   let handle;
   try {
-    handle = await fs5.open(directory, "r");
+    handle = await fs3.open(directory, "r");
     await handle.sync();
   } catch (error) {
     const code = error.code;
@@ -8556,23 +7943,23 @@ async function syncDirectory(directory) {
   }
 }
 async function atomicWrite(file, content, options = {}) {
-  const directory = path5.dirname(file);
+  const directory = path3.dirname(file);
   const directoryChain = options.containedRoot ? await prepareContainedDirectoryChain(options.containedRoot, directory) : null;
-  if (!directoryChain) await fs5.mkdir(directory, { recursive: true });
-  const temporary = path5.join(directory, `.${path5.basename(file)}.${randomUUID()}.tmp`);
+  if (!directoryChain) await fs3.mkdir(directory, { recursive: true });
+  const temporary = path3.join(directory, `.${path3.basename(file)}.${randomUUID()}.tmp`);
   let handle;
   let temporaryIdentity;
   try {
     await options.beforeTemporaryOpen?.();
-    handle = await fs5.open(temporary, "wx");
+    handle = await fs3.open(temporary, "wx");
     temporaryIdentity = await handle.stat();
     if (directoryChain) {
       const [temporaryPathStat, temporaryRealPath] = await Promise.all([
-        fs5.lstat(temporary),
-        fs5.realpath(temporary)
+        fs3.lstat(temporary),
+        fs3.realpath(temporary)
       ]);
       await verifyDirectoryChain2(directoryChain);
-      if (!temporaryPathStat.isFile() || temporaryPathStat.isSymbolicLink() || !sameFileIdentity2(temporaryIdentity, temporaryPathStat) || !isInside3(directoryChain[0].realPath, temporaryRealPath)) {
+      if (!temporaryPathStat.isFile() || temporaryPathStat.isSymbolicLink() || !sameFileIdentity2(temporaryIdentity, temporaryPathStat) || !isInside2(directoryChain[0].realPath, temporaryRealPath)) {
         throw new Error("Native atomic write temporary file opened outside its managed parent");
       }
     }
@@ -8587,26 +7974,26 @@ async function atomicWrite(file, content, options = {}) {
     await options.beforeCommit?.();
     if (directoryChain) {
       await verifyDirectoryChain2(directoryChain);
-      const temporaryStat = await fs5.lstat(temporary);
+      const temporaryStat = await fs3.lstat(temporary);
       if (!temporaryStat.isFile() || temporaryStat.isSymbolicLink() || !temporaryIdentity || !sameFileIdentity2(temporaryStat, temporaryIdentity)) {
         throw new Error("Native atomic write temporary file changed before commit");
       }
     }
     if (options.exclusive) {
-      await fs5.link(temporary, file);
-      await fs5.unlink(temporary);
+      await fs3.link(temporary, file);
+      await fs3.unlink(temporary);
     } else {
-      await fs5.rename(temporary, file);
+      await fs3.rename(temporary, file);
     }
     await syncDirectory(directory);
   } catch (error) {
     await handle?.close();
     if (!directoryChain) {
-      await fs5.rm(temporary, { force: true });
+      await fs3.rm(temporary, { force: true });
     } else {
       try {
         await verifyDirectoryChain2(directoryChain);
-        await fs5.rm(temporary, { force: true });
+        await fs3.rm(temporary, { force: true });
       } catch {
       }
     }
@@ -8624,11 +8011,11 @@ async function atomicWriteJson(file, value, options = {}) {
 }
 
 // domains/comet-native/native-config.ts
-import path9 from "path";
+import path7 from "path";
 
 // domains/workflow-contract/project-config.ts
 var import_yaml = __toESM(require_dist(), 1);
-import path6 from "path";
+import path4 from "path";
 var WORKFLOW_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
 var MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH = 1024;
 var MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS = 64;
@@ -8659,7 +8046,7 @@ var COMMENTS = {
     "native.snapshot.max_total_bytes": "# Bounds the total file content hashed by one snapshot. Content is streamed and does not depend on Git hashes.",
     "native.snapshot.max_duration_ms": "# Bounds snapshot capture time in milliseconds. Increase it together with the byte budget on slower or larger repositories.",
     classic: "# Classic workflow settings. They do not change Native state or behavior.",
-    "classic.artifact_layout": "# Selects the Classic artifact layout. New projects use docs; existing projects remain legacy until explicitly migrated.\n# artifact_layout: legacy | docs",
+    "classic.artifact_layout": "# Selects the Classic artifact layout. The default is docs; update preserves detected root-level legacy artifacts.\n# artifact_layout: legacy | docs",
     "classic.language": "# Artifact language used by Classic workflow documents.\n# language: en | zh-CN",
     "classic.context_compression": "# Controls beta context compression for new Classic changes.\n# context_compression: off | beta",
     "classic.review_mode": "# Sets the default review depth for new Classic changes.\n# review_mode: off | standard | thorough",
@@ -8683,7 +8070,7 @@ var COMMENTS = {
     "native.snapshot.max_total_bytes": "# 单次快照最多哈希的文件内容总字节数；内容采用流式读取，不依赖 Git hash。",
     "native.snapshot.max_duration_ms": "# 单次快照的最长执行时间（毫秒）；较慢或更大的仓库应与字节预算一并提高。",
     classic: "# Classic 工作流配置，不会改变 Native 的状态或行为。",
-    "classic.artifact_layout": "# Classic 产物布局；新项目使用 docs，已有项目在显式迁移前保持 legacy。\n# 可选值：legacy | docs",
+    "classic.artifact_layout": "# Classic 产物布局；默认使用 docs，update 检测到根目录 legacy 产物时予以保留。\n# 可选值：legacy | docs",
     "classic.language": "# Classic 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
     "classic.context_compression": "# 新建 Classic change 是否启用 beta 上下文压缩。\n# 可选值：off | beta",
     "classic.review_mode": "# 新建 Classic change 默认使用的审查深度。\n# 可选值：off | standard | thorough",
@@ -8737,7 +8124,7 @@ function renderStructuredProjectConfig(value, language) {
 function projectRelativeSegments(value, label) {
   if (typeof value !== "string") throw new Error(`${label} must be a string`);
   const trimmed = value.trim();
-  if (trimmed.length === 0 || path6.posix.isAbsolute(trimmed) || path6.win32.isAbsolute(trimmed) || /^(?:~|[\\/])/u.test(trimmed)) {
+  if (trimmed.length === 0 || path4.posix.isAbsolute(trimmed) || path4.win32.isAbsolute(trimmed) || /^(?:~|[\\/])/u.test(trimmed)) {
     throw new Error(`${label} must be a project-relative path`);
   }
   if (trimmed === ".") return [];
@@ -8754,7 +8141,7 @@ function normalizeWorkflowArtifactRoot(value) {
   const segments = projectRelativeSegments(value, "native.artifact_root");
   return segments.length === 0 ? "." : segments.join("/");
 }
-function normalizeClassicArtifactLayout(value, fallback = "legacy") {
+function normalizeClassicArtifactLayout(value, fallback = "docs") {
   const resolved = value ?? fallback;
   if (resolved !== "legacy" && resolved !== "docs") {
     throw new Error("classic.artifact_layout must be legacy or docs");
@@ -8764,7 +8151,7 @@ function normalizeClassicArtifactLayout(value, fallback = "legacy") {
 function normalizeWorkflowRelativePath(value, label, allowWildcards = false) {
   if (typeof value !== "string") throw new Error(`${label} must be a string`);
   const trimmed = value.trim().replaceAll("\\", "/");
-  if (trimmed.length === 0 || path6.posix.isAbsolute(trimmed) || path6.win32.isAbsolute(trimmed) || /^(?:~|[\\/])/u.test(trimmed)) {
+  if (trimmed.length === 0 || path4.posix.isAbsolute(trimmed) || path4.win32.isAbsolute(trimmed) || /^(?:~|[\\/])/u.test(trimmed)) {
     throw new Error(`${label} must be relative to its declared path base`);
   }
   const segments = trimmed.split("/");
@@ -9144,39 +8531,39 @@ function defaultWorkflowProjectConfig(artifactRoot = "docs", language = "en") {
 }
 
 // domains/workflow-contract/project-config-reader.ts
-import { createHash as createHash5 } from "crypto";
+import { createHash as createHash3 } from "crypto";
 
 // domains/workflow-contract/protected-project-path.ts
-import { promises as fs6 } from "fs";
-import path7 from "path";
+import { promises as fs4 } from "fs";
+import path5 from "path";
 function isMissingPath(error) {
   const code = error?.code;
   return code === "ENOENT" || code === "ENOTDIR";
 }
-function isInside4(root, target) {
-  const relative = path7.relative(root, target);
-  return relative === "" || !path7.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path7.sep}`);
+function isInside3(root, target) {
+  const relative = path5.relative(root, target);
+  return relative === "" || !path5.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path5.sep}`);
 }
 async function assertRealProjectRoot(projectRoot, label) {
-  const lexicalRoot = path7.resolve(projectRoot);
-  const stat = await fs6.lstat(lexicalRoot);
+  const lexicalRoot = path5.resolve(projectRoot);
+  const stat = await fs4.lstat(lexicalRoot);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error(`${label} project root must be a real directory`);
   }
-  return fs6.realpath(lexicalRoot);
+  return fs4.realpath(lexicalRoot);
 }
 async function inspectExistingChain(lexicalRoot, realRoot, segments, options) {
   let cursor = lexicalRoot;
   for (let index = 0; index < segments.length; index++) {
-    cursor = path7.join(cursor, segments[index]);
+    cursor = path5.join(cursor, segments[index]);
     let stat;
     try {
-      stat = await fs6.lstat(cursor);
+      stat = await fs4.lstat(cursor);
     } catch (error) {
       if (isMissingPath(error)) return { exists: false, kind: "missing" };
       throw error;
     }
-    const display = path7.relative(lexicalRoot, cursor).replaceAll("\\", "/");
+    const display = path5.relative(lexicalRoot, cursor).replaceAll("\\", "/");
     if (stat.isSymbolicLink()) {
       throw new Error(`${options.label} crosses a symbolic link or junction at ${display}`);
     }
@@ -9187,8 +8574,8 @@ async function inspectExistingChain(lexicalRoot, realRoot, segments, options) {
     if (final && (options.expected === "file" && !stat.isFile() || options.expected === "directory" && !stat.isDirectory() || options.expected === "any" && !stat.isFile() && !stat.isDirectory())) {
       throw new Error(`${options.label} must be a real ${options.expected}`);
     }
-    const realCursor = await fs6.realpath(cursor);
-    if (!isInside4(realRoot, realCursor)) {
+    const realCursor = await fs4.realpath(cursor);
+    if (!isInside3(realRoot, realCursor)) {
       throw new Error(`${options.label} resolves outside the project root`);
     }
     if (final) {
@@ -9202,11 +8589,11 @@ async function inspectExistingChain(lexicalRoot, realRoot, segments, options) {
 }
 async function inspectProtectedProjectPath(projectRoot, relativePath, options) {
   const relative = normalizeWorkflowRelativePath(relativePath, options.label);
-  const lexicalRoot = path7.resolve(projectRoot);
+  const lexicalRoot = path5.resolve(projectRoot);
   const realRoot = await assertRealProjectRoot(lexicalRoot, options.label);
   const segments = relative.split("/");
-  const target = path7.resolve(lexicalRoot, ...segments);
-  if (!isInside4(lexicalRoot, target)) {
+  const target = path5.resolve(lexicalRoot, ...segments);
+  if (!isInside3(lexicalRoot, target)) {
     throw new Error(`${options.label} must stay inside the project root`);
   }
   const result2 = await inspectExistingChain(lexicalRoot, realRoot, segments, options);
@@ -9232,7 +8619,7 @@ async function readProtectedProjectFile(projectRoot, relativePath, maxBytes, opt
   return readFileRaceSafe(inspection.target, maxBytes, {
     ...options,
     verify: async (_checkpoint, context) => {
-      if (!isInside4(realRoot, context.realPath)) {
+      if (!isInside3(realRoot, context.realPath)) {
         throw new Error(`${options.label} resolves outside the project root`);
       }
       await inspectExistingChain(inspection.projectRoot, realRoot, inspection.relative.split("/"), {
@@ -9271,7 +8658,7 @@ async function readWorkflowProjectConfigBytes(projectRoot) {
 function projectConfigIdentity(bytes) {
   return bytes ? {
     exists: true,
-    sha256: createHash5("sha256").update(bytes).digest("hex")
+    sha256: createHash3("sha256").update(bytes).digest("hex")
   } : { exists: false, sha256: null };
 }
 async function readWorkflowProjectConfigIdentity(projectRoot) {
@@ -9298,13 +8685,13 @@ async function assertWorkflowProjectConfigIdentity(projectRoot, expectedIdentity
 }
 
 // domains/comet-native/native-paths.ts
-import { promises as fs7 } from "fs";
-import path8 from "path";
-import os2 from "os";
+import { promises as fs5 } from "fs";
+import path6 from "path";
+import os from "os";
 var PROJECT_CONFIG_FILE = ".comet/config.yaml";
 async function isFileOrDirectory(target) {
   try {
-    await fs7.lstat(target);
+    await fs5.lstat(target);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -9313,7 +8700,7 @@ async function isFileOrDirectory(target) {
 }
 async function declaresNativeProjectConfig(target) {
   try {
-    const source = await fs7.readFile(target, "utf8");
+    const source = await fs5.readFile(target, "utf8");
     return /^schema:\s*comet\.project\.v1\s*$/mu.test(source);
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -9321,49 +8708,49 @@ async function declaresNativeProjectConfig(target) {
   }
 }
 function inside(parent, target) {
-  const relative = path8.relative(parent, target);
-  return relative === "" || !path8.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path8.sep}`);
+  const relative = path6.relative(parent, target);
+  return relative === "" || !path6.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path6.sep}`);
 }
 async function physicalPath(target) {
   const missing = [];
   let cursor = target;
   while (!await isFileOrDirectory(cursor)) {
-    const parent = path8.dirname(cursor);
+    const parent = path6.dirname(cursor);
     if (parent === cursor) break;
-    missing.push(path8.basename(cursor));
+    missing.push(path6.basename(cursor));
     cursor = parent;
   }
-  const existing = await fs7.realpath(cursor);
-  return path8.resolve(existing, ...missing.reverse());
+  const existing = await fs5.realpath(cursor);
+  return path6.resolve(existing, ...missing.reverse());
 }
 async function isSymbolicLink(target) {
   try {
-    return (await fs7.lstat(target)).isSymbolicLink();
+    return (await fs5.lstat(target)).isSymbolicLink();
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
   }
 }
 async function discoverNativeProject(startPath) {
-  let cursor = path8.resolve(startPath);
+  let cursor = path6.resolve(startPath);
   try {
-    if (!(await fs7.stat(cursor)).isDirectory()) cursor = path8.dirname(cursor);
+    if (!(await fs5.stat(cursor)).isDirectory()) cursor = path6.dirname(cursor);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
   const fallback = cursor;
-  const home = path8.resolve(os2.homedir());
+  const home = path6.resolve(os.homedir());
   while (true) {
     const isHomeBoundary = cursor === home && fallback !== home;
     if (!isHomeBoundary) {
-      const configFile = path8.join(cursor, ...PROJECT_CONFIG_FILE.split("/"));
+      const configFile = path6.join(cursor, ...PROJECT_CONFIG_FILE.split("/"));
       const configMarksProject = cursor === fallback || await declaresNativeProjectConfig(configFile);
       if (await isFileOrDirectory(configFile) && configMarksProject) {
         return cursor;
       }
     }
-    if (await isFileOrDirectory(path8.join(cursor, ".git"))) return cursor;
-    const parent = path8.dirname(cursor);
+    if (await isFileOrDirectory(path6.join(cursor, ".git"))) return cursor;
+    const parent = path6.dirname(cursor);
     if (parent === cursor) return fallback;
     cursor = parent;
   }
@@ -9373,8 +8760,8 @@ function normalizeArtifactRootRef(value) {
 }
 async function resolveArtifactRoot(projectRoot, value) {
   const normalized = normalizeArtifactRootRef(value);
-  const lexical = path8.resolve(projectRoot, ...normalized.split("/"));
-  const physicalProject = await fs7.realpath(projectRoot);
+  const lexical = path6.resolve(projectRoot, ...normalized.split("/"));
+  const physicalProject = await fs5.realpath(projectRoot);
   const physicalTarget = await physicalPath(lexical);
   if (!inside(physicalProject, physicalTarget)) {
     throw new Error("native.artifact_root resolves outside the project root");
@@ -9384,7 +8771,7 @@ async function resolveArtifactRoot(projectRoot, value) {
 async function nativeProjectPaths(projectRoot, artifactRootRef) {
   const normalized = normalizeArtifactRootRef(artifactRootRef);
   const artifactRoot = await resolveArtifactRoot(projectRoot, normalized);
-  const nativeRoot = path8.join(artifactRoot, "comet");
+  const nativeRoot = path6.join(artifactRoot, "comet");
   if (await isSymbolicLink(nativeRoot)) {
     throw new Error("The configured Native comet root must not be a symbolic link");
   }
@@ -9396,17 +8783,17 @@ async function nativeProjectPaths(projectRoot, artifactRootRef) {
     throw new Error("The configured Native comet root resolves outside its artifact root");
   }
   return {
-    projectRoot: path8.resolve(projectRoot),
-    configFile: path8.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/")),
+    projectRoot: path6.resolve(projectRoot),
+    configFile: path6.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/")),
     artifactRoot,
     artifactRootRef: normalized,
     nativeRoot,
-    specsDir: path8.join(nativeRoot, "specs"),
-    changesDir: path8.join(nativeRoot, "changes"),
-    archiveDir: path8.join(nativeRoot, "archive"),
-    runtimeDir: path8.join(nativeRoot, "runtime"),
-    locksDir: path8.join(nativeRoot, "runtime", "locks"),
-    transactionsDir: path8.join(nativeRoot, "runtime", "transactions")
+    specsDir: path6.join(nativeRoot, "specs"),
+    changesDir: path6.join(nativeRoot, "changes"),
+    archiveDir: path6.join(nativeRoot, "archive"),
+    runtimeDir: path6.join(nativeRoot, "runtime"),
+    locksDir: path6.join(nativeRoot, "runtime", "locks"),
+    transactionsDir: path6.join(nativeRoot, "runtime", "transactions")
   };
 }
 async function ensureNativeDirectories(paths) {
@@ -9420,16 +8807,16 @@ async function ensureNativeDirectories(paths) {
   await Promise.all(
     directories.map(async (directory) => {
       await resolveContainedNativePath(paths.nativeRoot, directory);
-      await fs7.mkdir(directory, { recursive: true });
+      await fs5.mkdir(directory, { recursive: true });
     })
   );
 }
 function isInsidePath(parent, target) {
-  return inside(path8.resolve(parent), path8.resolve(target));
+  return inside(path6.resolve(parent), path6.resolve(target));
 }
 async function resolveContainedNativePath(root, target) {
-  const lexicalRoot = path8.resolve(root);
-  const lexicalTarget = path8.resolve(target);
+  const lexicalRoot = path6.resolve(root);
+  const lexicalTarget = path6.resolve(target);
   if (!inside(lexicalRoot, lexicalTarget)) {
     throw new Error(`Path is outside the Native root: ${target}`);
   }
@@ -9471,7 +8858,7 @@ async function writeProjectConfig(projectRoot, config, options = {}) {
     allowPartialProject: true
   });
   const document = mergeWorkflowProjectConfigDocument(snapshot2.document?.value ?? {}, config);
-  const canonical = path9.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
+  const canonical = path7.join(projectRoot, ...PROJECT_CONFIG_FILE.split("/"));
   await atomicWriteText(
     canonical,
     renderStructuredProjectConfig(document, config.native.language === "zh-CN" ? "zh-CN" : "en"),
@@ -9507,15 +8894,15 @@ async function resolveNativeProject(options) {
 }
 
 // domains/comet-native/native-mutation-lock.ts
-import { promises as fs11 } from "fs";
-import path13 from "path";
+import { promises as fs9 } from "fs";
+import path11 from "path";
 
 // domains/comet-native/native-lock.ts
 import { AsyncLocalStorage } from "async_hooks";
 import { randomUUID as randomUUID2 } from "crypto";
-import { promises as fs8 } from "fs";
-import os3 from "os";
-import path10 from "path";
+import { promises as fs6 } from "fs";
+import os2 from "os";
+import path8 from "path";
 var NATIVE_LOCK_MAX_BYTES = 16 * 1024;
 var NATIVE_LOCK_COORDINATOR_DIR = ".coordinator";
 var NATIVE_LOCK_COORDINATOR_TIMEOUT_MS = 5e3;
@@ -9599,7 +8986,7 @@ async function readNativeLock(file) {
 }
 function diagnosisFromSnapshot(snapshot2) {
   if (!snapshot2) return { status: "missing", owner: null, identity: null };
-  if (snapshot2.owner.hostname !== os3.hostname()) {
+  if (snapshot2.owner.hostname !== os2.hostname()) {
     return { status: "unknown", owner: snapshot2.owner, identity: snapshot2.identity };
   }
   const alive = isProcessAlive(snapshot2.owner.pid);
@@ -9611,13 +8998,13 @@ function diagnosisFromSnapshot(snapshot2) {
 }
 async function restoreQuarantinedNativeLock(quarantine, file) {
   try {
-    await fs8.lstat(file);
+    await fs6.lstat(file);
     return;
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
   try {
-    await fs8.rename(quarantine, file);
+    await fs6.rename(quarantine, file);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -9631,13 +9018,13 @@ async function removeBoundNativeLock(expected, quarantineDir) {
   if (!sameNativeLockVersion(current.identity, expected.identity)) {
     throw new Error(`Native lock identity changed: ${expected.file}`);
   }
-  await fs8.mkdir(quarantineDir, { recursive: true });
-  const quarantine = path10.join(
+  await fs6.mkdir(quarantineDir, { recursive: true });
+  const quarantine = path8.join(
     quarantineDir,
-    `${path10.basename(expected.file)}.${expected.owner.id}.${randomUUID2()}.removed`
+    `${path8.basename(expected.file)}.${expected.owner.id}.${randomUUID2()}.removed`
   );
   try {
-    await fs8.rename(expected.file, quarantine);
+    await fs6.rename(expected.file, quarantine);
   } catch (error) {
     if (error.code === "ENOENT") return "missing";
     throw error;
@@ -9647,14 +9034,14 @@ async function removeBoundNativeLock(expected, quarantineDir) {
     await restoreQuarantinedNativeLock(quarantine, expected.file);
     throw new Error(`Native lock changed before quarantine: ${expected.file}`);
   }
-  await fs8.rm(quarantine, { force: true });
+  await fs6.rm(quarantine, { force: true });
   return "removed";
 }
 function newNativeLockOwner(operation) {
   return {
     id: randomUUID2(),
     pid: process.pid,
-    hostname: os3.hostname(),
+    hostname: os2.hostname(),
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     operation
   };
@@ -9662,7 +9049,7 @@ function newNativeLockOwner(operation) {
 async function writeNativeLockFile(file, owner) {
   let handle;
   try {
-    handle = await fs8.open(file, "wx");
+    handle = await fs6.open(file, "wx");
   } catch (error) {
     if (error.code === "EEXIST") {
       const existing = await readNativeLock(file);
@@ -9683,35 +9070,35 @@ async function writeNativeLockFile(file, owner) {
 }
 async function publishNativeCoordinatorClaim(paths, operation) {
   const locksDir = await resolveContainedNativePath(paths.nativeRoot, paths.locksDir);
-  await fs8.mkdir(locksDir, { recursive: true });
+  await fs6.mkdir(locksDir, { recursive: true });
   const coordinatorDir = await resolveContainedNativePath(
     paths.nativeRoot,
-    path10.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR)
+    path8.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR)
   );
-  await fs8.mkdir(coordinatorDir, { recursive: true });
+  await fs6.mkdir(coordinatorDir, { recursive: true });
   const owner = newNativeLockOwner(operation);
-  const temporary = path10.join(coordinatorDir, `.${owner.id}.tmp`);
-  const file = path10.join(coordinatorDir, `${owner.id}.claim`);
+  const temporary = path8.join(coordinatorDir, `.${owner.id}.tmp`);
+  const file = path8.join(coordinatorDir, `${owner.id}.claim`);
   try {
     const identity = await writeNativeLockFile(temporary, owner);
-    await fs8.rename(temporary, file);
+    await fs6.rename(temporary, file);
     const published = await readNativeLockSnapshot(file);
     if (!published || !sameNativeLockObject(identity, published.identity)) {
       throw new Error(`Native lock coordinator claim changed while publishing: ${file}`);
     }
     return { file, nativeRoot: paths.nativeRoot, locksDir, owner, identity: published.identity };
   } finally {
-    await fs8.rm(temporary, { force: true });
+    await fs6.rm(temporary, { force: true });
   }
 }
 async function hasNativeCoordinatorPredecessor(claim) {
-  const coordinatorDir = path10.dirname(claim.file);
+  const coordinatorDir = path8.dirname(claim.file);
   let predecessor = false;
-  const claimName = path10.basename(claim.file);
-  for (const entry2 of await fs8.readdir(coordinatorDir, { withFileTypes: true })) {
+  const claimName = path8.basename(claim.file);
+  for (const entry2 of await fs6.readdir(coordinatorDir, { withFileTypes: true })) {
     if (!entry2.isFile() || entry2.isSymbolicLink() || !entry2.name.endsWith(".claim")) continue;
-    const file = path10.join(coordinatorDir, entry2.name);
-    if (path10.resolve(file) === path10.resolve(claim.file)) continue;
+    const file = path8.join(coordinatorDir, entry2.name);
+    if (path8.resolve(file) === path8.resolve(claim.file)) continue;
     try {
       const snapshot2 = await readNativeLockSnapshot(file);
       const diagnosis = diagnosisFromSnapshot(snapshot2);
@@ -9733,7 +9120,7 @@ async function releaseNativeCoordinatorClaim(claim) {
   if (current.owner.id !== claim.owner.id || !sameNativeLockVersion(current.identity, claim.identity)) {
     throw new Error(`Native lock coordinator ownership changed: ${claim.file}`);
   }
-  await removeBoundNativeLock(current, path10.dirname(claim.file));
+  await removeBoundNativeLock(current, path8.dirname(claim.file));
 }
 async function acquireNativeCoordinator(paths, operation) {
   const deadline = Date.now() + NATIVE_LOCK_COORDINATOR_TIMEOUT_MS;
@@ -9762,7 +9149,7 @@ async function acquireNativeLocalCoordinator(key) {
   };
 }
 async function withNativeLockCoordinator(paths, operation, work) {
-  const key = path10.resolve(paths.locksDir);
+  const key = path8.resolve(paths.locksDir);
   const current = nativeLockCoordinator.getStore();
   if (current?.has(key)) return work();
   const releaseLocal = await acquireNativeLocalCoordinator(key);
@@ -9783,8 +9170,8 @@ async function withNativeLockCoordinator(paths, operation, work) {
 }
 async function withNativeLockRecovery(pathEntries, operation, work) {
   const unique = [
-    ...new Map(pathEntries.map((entry2) => [path10.resolve(entry2.locksDir), entry2])).values()
-  ].sort((left, right) => path10.resolve(left.locksDir).localeCompare(path10.resolve(right.locksDir)));
+    ...new Map(pathEntries.map((entry2) => [path8.resolve(entry2.locksDir), entry2])).values()
+  ].sort((left, right) => path8.resolve(left.locksDir).localeCompare(path8.resolve(right.locksDir)));
   const enter = async (index) => {
     const entry2 = unique[index];
     return entry2 ? withNativeLockCoordinator(entry2, operation, () => enter(index + 1)) : work();
@@ -9794,10 +9181,10 @@ async function withNativeLockRecovery(pathEntries, operation, work) {
 async function acquireNativeLock(paths, name, operation) {
   return withNativeLockCoordinator(paths, `acquire ${name}`, async () => {
     const locksDir = await resolveContainedNativePath(paths.nativeRoot, paths.locksDir);
-    await fs8.mkdir(locksDir, { recursive: true });
+    await fs6.mkdir(locksDir, { recursive: true });
     const file = await resolveContainedNativePath(
       paths.nativeRoot,
-      path10.join(locksDir, lockName(name))
+      path8.join(locksDir, lockName(name))
     );
     const owner = newNativeLockOwner(operation);
     const identity = await writeNativeLockFile(file, owner);
@@ -9806,7 +9193,7 @@ async function acquireNativeLock(paths, name, operation) {
 }
 async function releaseNativeLock(lock) {
   if (!await readNativeLockSnapshot(lock.file)) return;
-  await withNativeLockCoordinator(lock, `release ${path10.basename(lock.file)}`, async () => {
+  await withNativeLockCoordinator(lock, `release ${path8.basename(lock.file)}`, async () => {
     const current = await readNativeLockSnapshot(lock.file);
     if (!current) return;
     if (current.owner.id !== lock.owner.id) {
@@ -9815,7 +9202,7 @@ async function releaseNativeLock(lock) {
     if (!sameNativeLockVersion(current.identity, lock.identity)) {
       throw new Error(`Native lock identity changed: ${lock.file}`);
     }
-    const coordinatorDir = path10.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR);
+    const coordinatorDir = path8.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR);
     await removeBoundNativeLock(current, coordinatorDir);
   });
 }
@@ -9834,10 +9221,10 @@ async function diagnoseNativeLock(file) {
   return diagnosisFromSnapshot(await readNativeLockSnapshot(file));
 }
 async function takeOverNativeStaleLock(paths, file, expected) {
-  return withNativeLockCoordinator(paths, `take over ${path10.basename(file)}`, async () => {
+  return withNativeLockCoordinator(paths, `take over ${path8.basename(file)}`, async () => {
     const locksDir = await resolveContainedNativePath(paths.nativeRoot, paths.locksDir);
     const containedFile = await resolveContainedNativePath(paths.nativeRoot, file);
-    if (path10.resolve(path10.dirname(containedFile)) !== path10.resolve(locksDir)) {
+    if (path8.resolve(path8.dirname(containedFile)) !== path8.resolve(locksDir)) {
       throw new Error(`Native lock takeover target is outside the lock directory: ${file}`);
     }
     const snapshot2 = await readNativeLockSnapshot(containedFile);
@@ -9849,25 +9236,25 @@ async function takeOverNativeStaleLock(paths, file, expected) {
     if (diagnosis.status !== "stale" || !snapshot2) {
       return { status: "changed", diagnosis };
     }
-    const coordinatorDir = path10.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR);
+    const coordinatorDir = path8.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR);
     const removed = await removeBoundNativeLock(snapshot2, coordinatorDir);
     return removed === "removed" ? { status: "removed", owner: snapshot2.owner } : { status: "missing" };
   });
 }
 
 // domains/comet-native/native-transaction.ts
-import { promises as fs10 } from "fs";
-import path12 from "path";
+import { promises as fs8 } from "fs";
+import path10 from "path";
 import { TextDecoder as TextDecoder3 } from "util";
 
 // domains/comet-native/native-protected-file.ts
-import { createHash as createHash6 } from "node:crypto";
-import { constants as fsConstants3, promises as fs9 } from "node:fs";
-import path11 from "node:path";
+import { createHash as createHash4 } from "node:crypto";
+import { constants as fsConstants2, promises as fs7 } from "node:fs";
+import path9 from "node:path";
 import { TextDecoder as TextDecoder2 } from "node:util";
-function isInside5(parent, target) {
-  const relative = path11.relative(parent, target);
-  return relative === "" || !path11.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path11.sep}`);
+function isInside4(parent, target) {
+  const relative = path9.relative(parent, target);
+  return relative === "" || !path9.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path9.sep}`);
 }
 function positiveLimit2(value) {
   if (!Number.isSafeInteger(value) || value < 1) {
@@ -9904,31 +9291,31 @@ function sameFileIdentity3(expected, actual) {
   ) && expected.birthtimeMs === actual.birthtimeMs && expected.ctimeMs === actual.ctimeMs && expected.mtimeMs === actual.mtimeMs && expected.size === actual.size;
 }
 async function captureDirectoryIdentity2(directory, label) {
-  const stat = await fs9.lstat(directory);
+  const stat = await fs7.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error(`${label} parent must be a real directory: ${directory}`);
   }
   return {
     path: directory,
-    realPath: await fs9.realpath(directory),
+    realPath: await fs7.realpath(directory),
     dev: stat.dev,
     ino: stat.ino,
     birthtimeMs: stat.birthtimeMs
   };
 }
 async function captureDirectoryChain2(root, directory, label) {
-  const lexicalRoot = path11.resolve(root);
-  const lexicalDirectory = path11.resolve(directory);
-  if (!isInside5(lexicalRoot, lexicalDirectory)) {
+  const lexicalRoot = path9.resolve(root);
+  const lexicalDirectory = path9.resolve(directory);
+  if (!isInside4(lexicalRoot, lexicalDirectory)) {
     throw new Error(`${label} is outside its managed root`);
   }
   const chain = [await captureDirectoryIdentity2(lexicalRoot, label)];
   let cursor = lexicalRoot;
-  for (const segment of path11.relative(lexicalRoot, lexicalDirectory).split(path11.sep).filter(Boolean)) {
+  for (const segment of path9.relative(lexicalRoot, lexicalDirectory).split(path9.sep).filter(Boolean)) {
     await verifyDirectoryChain3(chain, label);
-    cursor = path11.join(cursor, segment);
+    cursor = path9.join(cursor, segment);
     const identity = await captureDirectoryIdentity2(cursor, label);
-    if (!isInside5(chain[0].realPath, identity.realPath)) {
+    if (!isInside4(chain[0].realPath, identity.realPath)) {
       throw new Error(`${label} parent resolves outside its managed root: ${cursor}`);
     }
     chain.push(identity);
@@ -9938,8 +9325,8 @@ async function captureDirectoryChain2(root, directory, label) {
 }
 async function verifyDirectoryChain3(chain, label) {
   for (const identity of chain) {
-    const stat = await fs9.lstat(identity.path);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity3(identity, stat) || await fs9.realpath(identity.path) !== identity.realPath) {
+    const stat = await fs7.lstat(identity.path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity3(identity, stat) || await fs7.realpath(identity.path) !== identity.realPath) {
       throw new Error(`${label} parent changed during I/O: ${identity.path}`);
     }
   }
@@ -9960,36 +9347,36 @@ async function readHandleBounded(handle, maxBytes, label) {
 }
 async function readNativeProtectedFile(options) {
   const maxBytes = positiveLimit2(options.maxBytes);
-  const file = path11.resolve(options.file);
-  const chain = await captureDirectoryChain2(options.root, path11.dirname(file), options.label);
+  const file = path9.resolve(options.file);
+  const chain = await captureDirectoryChain2(options.root, path9.dirname(file), options.label);
   const forbidden = await Promise.all(
     (options.forbiddenRoots ?? []).map(
-      (root) => captureDirectoryIdentity2(path11.resolve(root), options.label)
+      (root) => captureDirectoryIdentity2(path9.resolve(root), options.label)
     )
   );
   await options.hooks?.afterParentChainCaptured?.();
   await verifyDirectoryChain3(chain, options.label);
-  const before = await fs9.lstat(file);
+  const before = await fs7.lstat(file);
   if (!before.isFile() || before.isSymbolicLink()) {
     throw new Error(`${options.label} must be a regular file`);
   }
   if (before.size > maxBytes) throw new Error(`${options.label} exceeds ${maxBytes} bytes`);
   const beforeIdentity = asFileIdentity(before);
-  const beforeRealPath = await fs9.realpath(file);
-  if (!isInside5(chain[0].realPath, beforeRealPath)) {
+  const beforeRealPath = await fs7.realpath(file);
+  if (!isInside4(chain[0].realPath, beforeRealPath)) {
     throw new Error(`${options.label} resolves outside its managed root`);
   }
-  if (forbidden.some((identity) => isInside5(identity.realPath, beforeRealPath))) {
+  if (forbidden.some((identity) => isInside4(identity.realPath, beforeRealPath))) {
     throw new Error(`${options.label} resolves inside an excluded root`);
   }
-  const flags = process.platform === "win32" ? fsConstants3.O_RDONLY : fsConstants3.O_RDONLY | fsConstants3.O_NOFOLLOW | fsConstants3.O_NONBLOCK;
-  const handle = await fs9.open(file, flags);
+  const flags = process.platform === "win32" ? fsConstants2.O_RDONLY : fsConstants2.O_RDONLY | fsConstants2.O_NOFOLLOW | fsConstants2.O_NONBLOCK;
+  const handle = await fs7.open(file, flags);
   try {
     const opened = await handle.stat();
     await options.hooks?.afterOpen?.();
     const [pathAfterOpen, realPathAfterOpen] = await Promise.all([
-      fs9.lstat(file),
-      fs9.realpath(file)
+      fs7.lstat(file),
+      fs7.realpath(file)
     ]);
     await verifyDirectoryChain3(chain, options.label);
     await verifyDirectoryChain3(forbidden, options.label);
@@ -10001,8 +9388,8 @@ async function readNativeProtectedFile(options) {
     await options.hooks?.beforeFinalCheck?.();
     const [afterHandle, afterPath, afterRealPath] = await Promise.all([
       handle.stat(),
-      fs9.lstat(file),
-      fs9.realpath(file)
+      fs7.lstat(file),
+      fs7.realpath(file)
     ]);
     await verifyDirectoryChain3(chain, options.label);
     await verifyDirectoryChain3(forbidden, options.label);
@@ -10011,7 +9398,7 @@ async function readNativeProtectedFile(options) {
     }
     return {
       bytes,
-      hash: createHash6("sha256").update(bytes).digest("hex"),
+      hash: createHash4("sha256").update(bytes).digest("hex"),
       size: bytes.length
     };
   } finally {
@@ -10032,11 +9419,11 @@ async function readNativeProtectedDirectory(options) {
   const chain = await captureDirectoryChain2(options.root, options.directory, options.label);
   let entries;
   if (options.maxEntries === void 0) {
-    entries = await fs9.readdir(options.directory, { withFileTypes: true });
+    entries = await fs7.readdir(options.directory, { withFileTypes: true });
   } else {
     const maxEntries = positiveLimit2(options.maxEntries);
     entries = [];
-    const directory = await fs9.opendir(options.directory);
+    const directory = await fs7.opendir(options.directory);
     try {
       for await (const entry2 of directory) {
         entries.push(entry2);
@@ -10061,41 +9448,41 @@ async function captureNativeProtectedDirectoryGuard(options) {
   return { verify: () => verifyDirectoryChain3(chain, options.label) };
 }
 async function quarantineNativeProtectedDirectoryInternal(options) {
-  const directory = path11.resolve(options.directory);
-  const quarantine = path11.resolve(options.quarantine);
-  if (path11.dirname(quarantine) !== path11.dirname(directory) || !isInside5(path11.resolve(options.root), quarantine) || quarantine === directory) {
+  const directory = path9.resolve(options.directory);
+  const quarantine = path9.resolve(options.quarantine);
+  if (path9.dirname(quarantine) !== path9.dirname(directory) || !isInside4(path9.resolve(options.root), quarantine) || quarantine === directory) {
     throw new Error(`${options.label} quarantine must be a distinct sibling inside its root`);
   }
   const parentChain = await captureDirectoryChain2(
     options.root,
-    path11.dirname(directory),
+    path9.dirname(directory),
     options.label
   );
   const identity = await captureDirectoryIdentity2(directory, options.label);
-  if (!isInside5(parentChain[0].realPath, identity.realPath)) {
+  if (!isInside4(parentChain[0].realPath, identity.realPath)) {
     throw new Error(`${options.label} resolves outside its managed root`);
   }
   await options.beforeQuarantine?.();
   await verifyDirectoryChain3(parentChain, options.label);
-  const current = await fs9.lstat(directory);
-  if (!current.isDirectory() || current.isSymbolicLink() || !sameDirectoryIdentity3(identity, current) || await fs9.realpath(directory) !== identity.realPath) {
+  const current = await fs7.lstat(directory);
+  if (!current.isDirectory() || current.isSymbolicLink() || !sameDirectoryIdentity3(identity, current) || await fs7.realpath(directory) !== identity.realPath) {
     throw new Error(`${options.label} changed before quarantine`);
   }
   try {
-    await fs9.lstat(quarantine);
+    await fs7.lstat(quarantine);
     throw new Error(`${options.label} quarantine path is occupied`);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  await fs9.rename(directory, quarantine);
+  await fs7.rename(directory, quarantine);
   await verifyDirectoryChain3(parentChain, options.label);
-  const quarantined = await fs9.lstat(quarantine);
+  const quarantined = await fs7.lstat(quarantine);
   if (!quarantined.isDirectory() || quarantined.isSymbolicLink() || !sameDirectoryIdentity3(identity, quarantined)) {
     throw new Error(`${options.label} changed while quarantining`);
   }
   await options.afterQuarantine?.(quarantine);
   try {
-    await fs9.lstat(directory);
+    await fs7.lstat(directory);
     throw new Error(`${options.label} path was recreated while quarantining`);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -10106,15 +9493,15 @@ async function quarantineNativeProtectedDirectory(options) {
   await quarantineNativeProtectedDirectoryInternal(options);
 }
 async function removeNativeProtectedFile(options) {
-  const file = path11.resolve(options.file);
-  const parentChain = await captureDirectoryChain2(options.root, path11.dirname(file), options.label);
-  const before = await fs9.lstat(file);
+  const file = path9.resolve(options.file);
+  const parentChain = await captureDirectoryChain2(options.root, path9.dirname(file), options.label);
+  const before = await fs7.lstat(file);
   if (!before.isFile() || before.isSymbolicLink()) {
     throw new Error(`${options.label} must be a regular file`);
   }
   const identity = asFileIdentity(before);
-  const realPath = await fs9.realpath(file);
-  if (!isInside5(parentChain[0].realPath, realPath)) {
+  const realPath = await fs7.realpath(file);
+  if (!isInside4(parentChain[0].realPath, realPath)) {
     throw new Error(`${options.label} resolves outside its managed root`);
   }
   const snapshot2 = await readNativeProtectedFile({
@@ -10126,57 +9513,57 @@ async function removeNativeProtectedFile(options) {
   if (snapshot2.hash !== options.expectedHash || snapshot2.size !== options.expectedSize) {
     throw new Error(`${options.label} changed before removal`);
   }
-  const [afterRead, afterReadRealPath] = await Promise.all([fs9.lstat(file), fs9.realpath(file)]);
+  const [afterRead, afterReadRealPath] = await Promise.all([fs7.lstat(file), fs7.realpath(file)]);
   if (!afterRead.isFile() || afterRead.isSymbolicLink() || !sameFileIdentity3(identity, afterRead) || afterReadRealPath !== realPath) {
     throw new Error(`${options.label} changed while verifying removal`);
   }
   await options.beforeRemove?.();
   await verifyDirectoryChain3(parentChain, options.label);
-  const [current, currentRealPath] = await Promise.all([fs9.lstat(file), fs9.realpath(file)]);
+  const [current, currentRealPath] = await Promise.all([fs7.lstat(file), fs7.realpath(file)]);
   if (!current.isFile() || current.isSymbolicLink() || !sameFileIdentity3(identity, current) || currentRealPath !== realPath) {
     throw new Error(`${options.label} changed before removal`);
   }
-  await fs9.rm(file);
+  await fs7.rm(file);
   await verifyDirectoryChain3(parentChain, options.label);
 }
 async function removeNativeProtectedEmptyDirectory(options) {
-  const directory = path11.resolve(options.directory);
+  const directory = path9.resolve(options.directory);
   const parentChain = await captureDirectoryChain2(
     options.root,
-    path11.dirname(directory),
+    path9.dirname(directory),
     options.label
   );
   const identity = await captureDirectoryIdentity2(directory, options.label);
-  if (!isInside5(parentChain[0].realPath, identity.realPath)) {
+  if (!isInside4(parentChain[0].realPath, identity.realPath)) {
     throw new Error(`${options.label} resolves outside its managed root`);
   }
   await options.beforeRemove?.();
   await verifyDirectoryChain3(parentChain, options.label);
-  const current = await fs9.lstat(directory);
-  if (!current.isDirectory() || current.isSymbolicLink() || !sameDirectoryIdentity3(identity, current) || await fs9.realpath(directory) !== identity.realPath) {
+  const current = await fs7.lstat(directory);
+  if (!current.isDirectory() || current.isSymbolicLink() || !sameDirectoryIdentity3(identity, current) || await fs7.realpath(directory) !== identity.realPath) {
     throw new Error(`${options.label} changed before removal`);
   }
-  await fs9.rmdir(directory);
+  await fs7.rmdir(directory);
   await verifyDirectoryChain3(parentChain, options.label);
 }
 async function ensureNativeProtectedDirectory(options) {
-  const lexicalRoot = path11.resolve(options.root);
-  const lexicalDirectory = path11.resolve(options.directory);
-  if (!isInside5(lexicalRoot, lexicalDirectory)) {
+  const lexicalRoot = path9.resolve(options.root);
+  const lexicalDirectory = path9.resolve(options.directory);
+  if (!isInside4(lexicalRoot, lexicalDirectory)) {
     throw new Error(`${options.label} is outside its managed root`);
   }
   const chain = [await captureDirectoryIdentity2(lexicalRoot, options.label)];
   let cursor = lexicalRoot;
-  for (const segment of path11.relative(lexicalRoot, lexicalDirectory).split(path11.sep).filter(Boolean)) {
+  for (const segment of path9.relative(lexicalRoot, lexicalDirectory).split(path9.sep).filter(Boolean)) {
     await verifyDirectoryChain3(chain, options.label);
-    cursor = path11.join(cursor, segment);
+    cursor = path9.join(cursor, segment);
     try {
-      await fs9.mkdir(cursor);
+      await fs7.mkdir(cursor);
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
     }
     const identity = await captureDirectoryIdentity2(cursor, options.label);
-    if (!isInside5(chain[0].realPath, identity.realPath)) {
+    if (!isInside4(chain[0].realPath, identity.realPath)) {
       throw new Error(`${options.label} resolves outside its managed root: ${cursor}`);
     }
     chain.push(identity);
@@ -10184,25 +9571,25 @@ async function ensureNativeProtectedDirectory(options) {
   await verifyDirectoryChain3(chain, options.label);
 }
 async function moveNativeProtectedDirectory(options) {
-  const root = path11.resolve(options.root);
-  const source = path11.resolve(options.source);
-  const target = path11.resolve(options.target);
-  if (source === target || !isInside5(root, source) || !isInside5(root, target) || isInside5(source, target) || isInside5(target, source)) {
+  const root = path9.resolve(options.root);
+  const source = path9.resolve(options.source);
+  const target = path9.resolve(options.target);
+  if (source === target || !isInside4(root, source) || !isInside4(root, target) || isInside4(source, target) || isInside4(target, source)) {
     throw new Error(`${options.label} source and target must be distinct paths inside one root`);
   }
   await ensureNativeProtectedDirectory({
     root,
-    directory: path11.dirname(target),
+    directory: path9.dirname(target),
     label: `${options.label} target parent`
   });
-  const sourceParentChain = await captureDirectoryChain2(root, path11.dirname(source), options.label);
-  const targetParentChain = await captureDirectoryChain2(root, path11.dirname(target), options.label);
+  const sourceParentChain = await captureDirectoryChain2(root, path9.dirname(source), options.label);
+  const targetParentChain = await captureDirectoryChain2(root, path9.dirname(target), options.label);
   const sourceIdentity = await captureDirectoryIdentity2(source, options.label);
-  if (!isInside5(sourceParentChain[0].realPath, sourceIdentity.realPath)) {
+  if (!isInside4(sourceParentChain[0].realPath, sourceIdentity.realPath)) {
     throw new Error(`${options.label} source resolves outside its managed root`);
   }
   try {
-    await fs9.lstat(target);
+    await fs7.lstat(target);
     throw new Error(`${options.label} target already exists`);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -10212,21 +9599,21 @@ async function moveNativeProtectedDirectory(options) {
     verifyDirectoryChain3(sourceParentChain, options.label),
     verifyDirectoryChain3(targetParentChain, options.label)
   ]);
-  const current = await fs9.lstat(source);
-  if (!current.isDirectory() || current.isSymbolicLink() || !sameDirectoryIdentity3(sourceIdentity, current) || await fs9.realpath(source) !== sourceIdentity.realPath) {
+  const current = await fs7.lstat(source);
+  if (!current.isDirectory() || current.isSymbolicLink() || !sameDirectoryIdentity3(sourceIdentity, current) || await fs7.realpath(source) !== sourceIdentity.realPath) {
     throw new Error(`${options.label} source changed before move`);
   }
-  await fs9.rename(source, target);
+  await fs7.rename(source, target);
   await Promise.all([
     verifyDirectoryChain3(sourceParentChain, options.label),
     verifyDirectoryChain3(targetParentChain, options.label)
   ]);
-  const moved = await fs9.lstat(target);
-  if (!moved.isDirectory() || moved.isSymbolicLink() || !sameDirectoryIdentity3(sourceIdentity, moved) || !isInside5(sourceParentChain[0].realPath, await fs9.realpath(target))) {
+  const moved = await fs7.lstat(target);
+  if (!moved.isDirectory() || moved.isSymbolicLink() || !sameDirectoryIdentity3(sourceIdentity, moved) || !isInside4(sourceParentChain[0].realPath, await fs7.realpath(target))) {
     throw new Error(`${options.label} source identity changed while moving`);
   }
   try {
-    await fs9.lstat(source);
+    await fs7.lstat(source);
     throw new Error(`${options.label} source was recreated while moving`);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -10252,7 +9639,7 @@ async function copyNativeProtectedFile(options) {
       if (options.expectedTargetHash === void 0) return;
       if (options.expectedTargetHash === null) {
         try {
-          await fs9.lstat(options.target);
+          await fs7.lstat(options.target);
         } catch (error) {
           if (error.code === "ENOENT") return;
           throw error;
@@ -10341,7 +9728,7 @@ var NATIVE_TRANSACTION_EVENT_MAX_COUNT = 1024;
 var NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES = 64 * 1024 * 1024;
 var NATIVE_LEGACY_TRANSACTION_DIRECTORY_MAX_ENTRIES = 2e4;
 var UTF8_DECODER = new TextDecoder3("utf-8", { fatal: true });
-function record4(value, label) {
+function record(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
@@ -10357,7 +9744,7 @@ function validTimestamp(value) {
   return !Number.isNaN(parsed.valueOf()) && parsed.toISOString() === value;
 }
 function assertRef(ref, label) {
-  if (typeof ref !== "string" || ref.length === 0 || path12.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
+  if (typeof ref !== "string" || ref.length === 0 || path10.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
     throw new Error(`${label} must stay inside the Native root`);
   }
 }
@@ -10368,12 +9755,12 @@ function assertHash(value, label) {
 }
 function assertArchiveRef(ref, label) {
   assertRef(ref, label);
-  if (ref.includes("\\") || ref !== path12.posix.normalize(ref) || ref.split("/").includes(".") || ref.endsWith("/") || Buffer.byteLength(ref, "utf8") > 1024) {
+  if (ref.includes("\\") || ref !== path10.posix.normalize(ref) || ref.split("/").includes(".") || ref.endsWith("/") || Buffer.byteLength(ref, "utf8") > 1024) {
     throw new Error(`${label} must be a normalized Native-relative ref`);
   }
 }
 function parseOperation(value, index) {
-  const operation = record4(value, `transaction operations[${index}]`);
+  const operation = record(value, `transaction operations[${index}]`);
   rejectUnknown(operation, OPERATION_KEYS, `transaction operations[${index}]`);
   if (typeof operation.id !== "string" || !/^[a-z0-9][a-z0-9-]*$/u.test(operation.id)) {
     throw new Error(`transaction operations[${index}].id is invalid`);
@@ -10401,7 +9788,7 @@ function parseOperation(value, index) {
   return operation;
 }
 function parseNativeArchiveTransactionJournalV2(value) {
-  const journal = record4(value, "Native Archive transaction journal");
+  const journal = record(value, "Native Archive transaction journal");
   rejectUnknown(journal, ARCHIVE_V2_JOURNAL_KEYS, "Native Archive transaction journal");
   if (journal.schema !== "comet.native.transaction.v2") {
     throw new Error("Unsupported Native Archive transaction schema");
@@ -10424,7 +9811,7 @@ function parseNativeArchiveTransactionJournalV2(value) {
     throw new Error("Native Archive transaction operations must be an array");
   }
   const operations = journal.operations.map((value2, index) => {
-    const operation = record4(value2, `Archive transaction operations[${index}]`);
+    const operation = record(value2, `Archive transaction operations[${index}]`);
     rejectUnknown(operation, ARCHIVE_V2_OPERATION_KEYS, `Archive transaction operations[${index}]`);
     if (typeof operation.id !== "string" || !/^[a-z0-9][a-z0-9-]*$/u.test(operation.id)) {
       throw new Error(`Archive transaction operations[${index}].id is invalid`);
@@ -10514,7 +9901,7 @@ function parseNativeArchiveTransactionJournalV2(value) {
   };
 }
 function parseJournal(value) {
-  const journal = record4(value, "Native transaction journal");
+  const journal = record(value, "Native transaction journal");
   if (journal.schema === "comet.native.transaction.v2") {
     return parseNativeArchiveTransactionJournalV2(journal);
   }
@@ -10531,7 +9918,7 @@ function parseJournal(value) {
   if (typeof journal.status !== "string" || !TRANSACTION_STATUSES.has(journal.status)) {
     throw new Error("Native transaction status is invalid");
   }
-  if (typeof journal.projectRoot !== "string" || !path12.isAbsolute(journal.projectRoot) || typeof journal.nativeRoot !== "string" || !path12.isAbsolute(journal.nativeRoot)) {
+  if (typeof journal.projectRoot !== "string" || !path10.isAbsolute(journal.projectRoot) || typeof journal.nativeRoot !== "string" || !path10.isAbsolute(journal.nativeRoot)) {
     throw new Error("Native transaction roots must be absolute paths");
   }
   if (journal.change !== void 0 && (typeof journal.change !== "string" || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(journal.change))) {
@@ -10561,7 +9948,7 @@ function parseJournal(value) {
   };
 }
 function parseEvent(value, line) {
-  const event = record4(value, `Native transaction event at line ${line}`);
+  const event = record(value, `Native transaction event at line ${line}`);
   rejectUnknown(event, EVENT_KEYS, `Native transaction event at line ${line}`);
   if (event.sequence !== line) {
     throw new Error(`Native transaction event sequence at line ${line} must be ${line}`);
@@ -10707,16 +10094,16 @@ function canonicalEventLogSource(events) {
 }
 function transactionDir(paths, id) {
   if (!/^[a-f0-9-]{8,}$/u.test(id)) throw new Error(`Invalid Native transaction id: ${id}`);
-  return path12.join(paths.transactionsDir, id);
+  return path10.join(paths.transactionsDir, id);
 }
 function nativeTransactionPaths(paths, id) {
   const directory = transactionDir(paths, id);
   return {
     directory,
-    journal: path12.join(directory, "transaction.json"),
-    events: path12.join(directory, "events.jsonl"),
-    staged: path12.join(directory, "staged"),
-    backups: path12.join(directory, "backups")
+    journal: path10.join(directory, "transaction.json"),
+    events: path10.join(directory, "events.jsonl"),
+    staged: path10.join(directory, "staged"),
+    backups: path10.join(directory, "backups")
   };
 }
 async function resolveNativeTransactionPaths(paths, id) {
@@ -10729,10 +10116,10 @@ async function resolveNativeTransactionPaths(paths, id) {
   return transaction;
 }
 function resolveRefLexically(paths, ref) {
-  if (ref.length === 0 || path12.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
+  if (ref.length === 0 || path10.isAbsolute(ref) || /^(?:[A-Za-z]:|~|[\\/])/u.test(ref) || ref.split(/[\\/]/u).includes("..")) {
     throw new Error(`Unsafe Native transaction ref: ${ref}`);
   }
-  const target = path12.resolve(paths.nativeRoot, ...ref.split(/[\\/]/u));
+  const target = path10.resolve(paths.nativeRoot, ...ref.split(/[\\/]/u));
   if (!isInsidePath(paths.nativeRoot, target))
     throw new Error(`Unsafe Native transaction ref: ${ref}`);
   return target;
@@ -10742,7 +10129,7 @@ async function resolveRef(paths, ref) {
 }
 async function exists(file) {
   try {
-    await fs10.access(file);
+    await fs8.access(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -10752,7 +10139,7 @@ async function exists(file) {
 async function readEventLogSnapshot(paths, id, options = {}) {
   const tx = await resolveNativeTransactionPaths(paths, id);
   try {
-    await fs10.lstat(tx.events);
+    await fs8.lstat(tx.events);
   } catch (error) {
     if (error.code === "ENOENT") {
       return {
@@ -10832,7 +10219,7 @@ async function appendNativeTransactionEvent(paths, id, type, operationId) {
     ...operationId ? { operationId } : {}
   };
   parseEvent(event, event.sequence);
-  await fs10.mkdir(tx.directory, { recursive: true });
+  await fs8.mkdir(tx.directory, { recursive: true });
   await atomicWriteText(tx.events, canonicalEventLogSource([...snapshot2.events, event]), {
     containedRoot: paths.nativeRoot,
     beforeCommit: () => assertEventLogSnapshotUnchanged(paths, id, snapshot2)
@@ -10845,8 +10232,8 @@ async function createNativeTransaction(paths, journal) {
   }
   journal = parseJournal(journal);
   const tx = await resolveNativeTransactionPaths(paths, journal.id);
-  await fs10.mkdir(tx.staged, { recursive: true });
-  await fs10.mkdir(tx.backups, { recursive: true });
+  await fs8.mkdir(tx.staged, { recursive: true });
+  await fs8.mkdir(tx.backups, { recursive: true });
   await atomicWriteJson(tx.journal, journal);
   await appendNativeTransactionEvent(paths, journal.id, "prepared");
 }
@@ -10896,7 +10283,7 @@ async function copyAtomic(paths, source, target, label) {
   const targetSnapshot = await readLegacyTransactionFile(paths, target, `${label} target`);
   await ensureNativeProtectedDirectory({
     root: paths.nativeRoot,
-    directory: path12.dirname(target),
+    directory: path10.dirname(target),
     label: `${label} target parent`
   });
   await copyNativeProtectedFile({
@@ -11059,18 +10446,18 @@ async function finalizeNativeTransaction(paths, journal, event) {
   return event === "commit" ? setNativeTransactionStatus(paths, journal, "committed") : journal;
 }
 function nativeRootRef(paths, target) {
-  const absolute = path12.resolve(target);
+  const absolute = path10.resolve(target);
   if (!isInsidePath(paths.nativeRoot, absolute)) {
     throw new Error(`Path is outside the Native root: ${target}`);
   }
-  return path12.relative(paths.nativeRoot, absolute).split(path12.sep).join("/");
+  return path10.relative(paths.nativeRoot, absolute).split(path10.sep).join("/");
 }
 
 // domains/comet-native/native-mutation-lock.ts
 async function hasUnfinishedTransaction(paths, allowedTransactionId) {
   let entries;
   try {
-    entries = await fs11.readdir(paths.transactionsDir, { withFileTypes: true });
+    entries = await fs9.readdir(paths.transactionsDir, { withFileTypes: true });
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
@@ -11090,7 +10477,7 @@ async function hasUnfinishedTransaction(paths, allowedTransactionId) {
 }
 async function acquireNativeMutationLock(paths, operation) {
   const deadline = Date.now() + 5e3;
-  const file = path13.join(paths.locksDir, "root-move.lock");
+  const file = path11.join(paths.locksDir, "root-move.lock");
   while (true) {
     try {
       return await acquireNativeLock(paths, "root-move", operation);
@@ -11115,178 +10502,6 @@ async function withNativeMutationLock(paths, operation, work, options) {
   } finally {
     await releaseNativeLock(lock);
   }
-}
-
-// domains/comet-native/native-review-trust.ts
-import path14 from "node:path";
-
-// domains/comet-native/native-review-contract.ts
-var NATIVE_REVIEW_TRUST_POLICY_REF = ".comet/native-review-trust.json";
-
-// domains/comet-native/native-review-trust.ts
-var NATIVE_REVIEW_TRUST_POLICY_SCHEMA = "comet.native.review-trust-policy.v2";
-var POLICY_HASH_TAG = NATIVE_REVIEW_TRUST_POLICY_SCHEMA;
-var MAX_POLICY_BYTES = 64 * 1024;
-var HASH_PATTERN4 = /^[a-f0-9]{64}$/u;
-function record5(value, label) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  return value;
-}
-function exactKeys4(value, expected, label) {
-  const actual = Object.keys(value).sort();
-  const canonical = [...expected].sort();
-  if (JSON.stringify(actual) !== JSON.stringify(canonical)) {
-    throw new Error(`${label} fields are invalid`);
-  }
-}
-function identities(value, label) {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
-    throw new Error(`${label} must be a bounded non-empty array`);
-  }
-  const parsed = value.map(parseNativeReviewIdentity).sort((left, right) => left.keyId.localeCompare(right.keyId, "en"));
-  if (new Set(parsed.map((identity) => identity.keyId)).size !== parsed.length || JSON.stringify(value) !== JSON.stringify(parsed)) {
-    throw new Error(`${label} must be sorted and unique`);
-  }
-  return parsed;
-}
-function buildNativeReviewTrustPolicy(input) {
-  const content = {
-    schema: NATIVE_REVIEW_TRUST_POLICY_SCHEMA,
-    controllerKeyId: input.controllerIdentity.keyId,
-    implementationKeyId: input.implementationKeyId,
-    trustedReviewers: [...input.trustedReviewers].sort(
-      (left, right) => left.keyId.localeCompare(right.keyId, "en")
-    ),
-    trustedWaiverSigners: [...input.trustedWaiverSigners].sort(
-      (left, right) => left.keyId.localeCompare(right.keyId, "en")
-    )
-  };
-  const policyHash = canonicalHash(POLICY_HASH_TAG, content);
-  return parseNativeReviewTrustPolicy({
-    ...content,
-    policyHash,
-    controllerSignature: signNativeReviewPayloadHash({
-      identity: input.controllerIdentity,
-      privateKey: input.controllerPrivateKey,
-      payloadHash: policyHash
-    })
-  });
-}
-function parseNativeReviewTrustPolicy(value) {
-  const root = record5(value, "Native review trust policy");
-  exactKeys4(
-    root,
-    [
-      "schema",
-      "controllerKeyId",
-      "implementationKeyId",
-      "trustedReviewers",
-      "trustedWaiverSigners",
-      "policyHash",
-      "controllerSignature"
-    ],
-    "Native review trust policy"
-  );
-  if (root.schema !== NATIVE_REVIEW_TRUST_POLICY_SCHEMA || typeof root.controllerKeyId !== "string" || !HASH_PATTERN4.test(root.controllerKeyId) || typeof root.implementationKeyId !== "string" || !HASH_PATTERN4.test(root.implementationKeyId) || typeof root.policyHash !== "string" || !HASH_PATTERN4.test(root.policyHash)) {
-    throw new Error("Native review trust policy identity or hash is invalid");
-  }
-  const trustedReviewers = identities(root.trustedReviewers, "Native trusted reviewers");
-  const trustedWaiverSigners = identities(
-    root.trustedWaiverSigners,
-    "Native trusted waiver signers"
-  );
-  if (trustedReviewers.some((identity) => identity.keyId === root.implementationKeyId) || trustedWaiverSigners.some((identity) => identity.keyId === root.implementationKeyId) || (/* @__PURE__ */ new Set([
-    root.controllerKeyId,
-    root.implementationKeyId,
-    ...trustedReviewers.map((identity) => identity.keyId),
-    ...trustedWaiverSigners.map((identity) => identity.keyId)
-  ])).size !== 2 + trustedReviewers.length + trustedWaiverSigners.length) {
-    throw new Error(
-      "Native controller, implementation, reviewer, and waiver signer identities must be globally distinct"
-    );
-  }
-  const content = {
-    schema: NATIVE_REVIEW_TRUST_POLICY_SCHEMA,
-    controllerKeyId: root.controllerKeyId,
-    implementationKeyId: root.implementationKeyId,
-    trustedReviewers,
-    trustedWaiverSigners
-  };
-  const policyHash = canonicalHash(POLICY_HASH_TAG, content);
-  if (policyHash !== root.policyHash) {
-    throw new Error("Native review trust policy hash mismatch");
-  }
-  const controllerSignature = parseNativeReviewSignature(root.controllerSignature);
-  if (controllerSignature.keyId !== root.controllerKeyId || controllerSignature.payloadHash !== policyHash) {
-    throw new Error("Native review trust policy controller signature binding is invalid");
-  }
-  return { ...content, policyHash, controllerSignature };
-}
-function verifyNativeReviewTrustPolicy(value, controllerIdentity) {
-  const policy = parseNativeReviewTrustPolicy(value);
-  if (policy.controllerKeyId !== controllerIdentity.keyId) {
-    throw new Error("Native review trust policy controller is not host-trusted");
-  }
-  verifyNativeReviewPayloadHash({
-    identity: controllerIdentity,
-    payloadHash: policy.policyHash,
-    proof: policy.controllerSignature
-  });
-  return policy;
-}
-async function readNativeReviewTrustPolicy(paths) {
-  const file = await readNativeProtectedTextFile({
-    root: paths.projectRoot,
-    file: path14.join(paths.projectRoot, ...NATIVE_REVIEW_TRUST_POLICY_REF.split("/")),
-    maxBytes: MAX_POLICY_BYTES,
-    label: NATIVE_REVIEW_TRUST_POLICY_REF
-  });
-  try {
-    const controllerTrust = await readNativeControllerTrustProject(paths.projectRoot);
-    if (!controllerTrust) throw new Error("Native project has no controller-owned trust root");
-    return verifyNativeReviewTrustPolicy(JSON.parse(file.text), controllerTrust.controllerIdentity);
-  } catch (error) {
-    throw new Error("Native review trust policy is not valid canonical JSON", { cause: error });
-  }
-}
-async function loadNativeReviewTrustPolicy(options) {
-  const baseline = options.scope.baseline.entries.find(
-    (entry2) => entry2.path === NATIVE_REVIEW_TRUST_POLICY_REF
-  );
-  const current = options.scope.current.entries.find(
-    (entry2) => entry2.path === NATIVE_REVIEW_TRUST_POLICY_REF
-  );
-  if (!baseline || !current || baseline.hash !== current.hash || baseline.size !== current.size) {
-    throw new Error(
-      "Native review trust policy must exist unchanged from change creation through Build"
-    );
-  }
-  const file = await readNativeProtectedTextFile({
-    root: options.paths.projectRoot,
-    file: path14.join(options.paths.projectRoot, ...NATIVE_REVIEW_TRUST_POLICY_REF.split("/")),
-    maxBytes: MAX_POLICY_BYTES,
-    label: NATIVE_REVIEW_TRUST_POLICY_REF
-  });
-  if (file.hash !== current.hash || file.size !== current.size) {
-    throw new Error("Native review trust policy changed after Build");
-  }
-  let value;
-  try {
-    value = JSON.parse(file.text);
-  } catch (error) {
-    throw new Error("Native review trust policy is not valid JSON", { cause: error });
-  }
-  const controllerTrust = await readNativeControllerTrustProject(options.paths.projectRoot);
-  if (!controllerTrust) throw new Error("Native project has no controller-owned trust root");
-  return verifyNativeReviewTrustPolicy(value, controllerTrust.controllerIdentity);
-}
-function trustedNativeIdentity(policy, kind, keyId) {
-  const identities2 = kind === "reviewer" ? policy.trustedReviewers : policy.trustedWaiverSigners;
-  const identity = identities2.find((candidate) => candidate.keyId === keyId);
-  if (!identity) throw new Error(`Native ${kind} identity is not pre-trusted`);
-  return identity;
 }
 
 // domains/comet-native/native-revision.ts
@@ -11316,22 +10531,25 @@ async function compareAndSwapNativeRevision(options) {
 }
 
 // domains/comet-native/native-snapshot.ts
-import { createHash as createHash8 } from "crypto";
+import { createHash as createHash6 } from "crypto";
 import { spawn } from "node:child_process";
-import { promises as fs12 } from "fs";
-import path15 from "path";
+import { promises as fs10 } from "fs";
+import path12 from "path";
 
 // domains/comet-native/native-hash.ts
-import { createHash as createHash7 } from "crypto";
+import { createHash as createHash5 } from "crypto";
 import { createReadStream } from "fs";
 async function sha256File(file) {
-  const hash8 = createHash7("sha256");
+  const hash8 = createHash5("sha256");
   for await (const chunk of createReadStream(file)) hash8.update(chunk);
   return hash8.digest("hex");
 }
 function sha256Text(content) {
-  return createHash7("sha256").update(content).digest("hex");
+  return createHash5("sha256").update(content).digest("hex");
 }
+
+// domains/comet-native/native-review-contract.ts
+var NATIVE_REVIEW_TRUST_POLICY_REF = ".comet/native-review-trust.json";
 
 // domains/comet-native/native-snapshot.ts
 var DEFAULT_NATIVE_SNAPSHOT_LIMITS = {
@@ -11342,11 +10560,10 @@ var DEFAULT_NATIVE_SNAPSHOT_LIMITS = {
 };
 var MAX_RECORDED_OMISSIONS = 1e3;
 var NATIVE_SNAPSHOT_MANIFEST_HARD_MAX_BYTES = 8 * 1024 * 1024;
-var CHANGE_NAME_PATTERN3 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+var CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 var MANIFEST_KEYS = /* @__PURE__ */ new Set([
   "schema",
   "origin",
-  "creation",
   "capture",
   "createdAt",
   "complete",
@@ -11366,14 +10583,6 @@ var LIMIT_KEYS = /* @__PURE__ */ new Set([
 ]);
 var POLICY_KEYS = /* @__PURE__ */ new Set(["schema", "include", "exclude", "hash"]);
 var CAPTURE_KEYS = /* @__PURE__ */ new Set(["provider", "gitSelection", "physicalSelection", "projection"]);
-var CREATION_KEYS = /* @__PURE__ */ new Set([
-  "schema",
-  "protocol",
-  "policyHash",
-  "policySnapshotRef",
-  "policySnapshotHash",
-  "authorization"
-]);
 var GIT_PROJECTION_KEYS = /* @__PURE__ */ new Set(["provider", "selection"]);
 var GIT_SELECTION_KEYS = /* @__PURE__ */ new Set([
   "schema",
@@ -11427,7 +10636,7 @@ var OMISSION_REASONS = /* @__PURE__ */ new Set([
   "physical-enumeration-limit",
   "physical-selection-changed"
 ]);
-var HASH_PATTERN5 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN = /^[a-f0-9]{64}$/u;
 var GIT_OBJECT_ID_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 var UNREADABLE_ERROR_CODES = /* @__PURE__ */ new Set(["EACCES", "EPERM"]);
 var GIT_LIST_STDERR_LIMIT = 64 * 1024;
@@ -11487,9 +10696,9 @@ async function terminateNativeProcessTree(child, adapter) {
   }
   if (process.platform === "win32") {
     const configuredSystemRoot = process.env.SystemRoot ?? process.env.WINDIR;
-    const systemRoot = configuredSystemRoot && path15.win32.isAbsolute(configuredSystemRoot) ? path15.win32.resolve(configuredSystemRoot) : "C:\\Windows";
-    const taskkill = path15.win32.join(systemRoot, "System32", "taskkill.exe");
-    if (!path15.win32.isAbsolute(taskkill)) {
+    const systemRoot = configuredSystemRoot && path12.win32.isAbsolute(configuredSystemRoot) ? path12.win32.resolve(configuredSystemRoot) : "C:\\Windows";
+    const taskkill = path12.win32.join(systemRoot, "System32", "taskkill.exe");
+    if (!path12.win32.isAbsolute(taskkill)) {
       child.kill("SIGKILL");
       child.stdin?.destroy();
       child.stdout?.destroy();
@@ -11642,7 +10851,7 @@ function runGitNullRecords(execution, projectRoot, args, options) {
       options.stdin !== void 0
     );
     const records = [];
-    const digest = createHash8("sha256");
+    const digest = createHash6("sha256");
     const stderr = [];
     let stderrBytes = 0;
     let stdoutBytes = 0;
@@ -11749,8 +10958,8 @@ async function runGitCheckIgnore(execution, projectRoot, paths) {
     throw new Error("Native Git check-ignore output exceeded its safety budget");
   }
   return new Set(
-    result2.records.map((record13) => {
-      const value = decodeGitRecord(record13);
+    result2.records.map((record12) => {
+      const value = decodeGitRecord(record12);
       return value.endsWith("/") ? value.slice(0, -1) : value;
     })
   );
@@ -11778,7 +10987,7 @@ async function runGitHasOutput(execution, projectRoot, args) {
 }
 function safeGitProjectPath(value) {
   const withoutDirectoryMarker = value.endsWith("/") ? value.slice(0, -1) : value;
-  if (withoutDirectoryMarker.length === 0 || withoutDirectoryMarker.includes("\\") || path15.posix.isAbsolute(withoutDirectoryMarker) || /^[A-Za-z]:/u.test(withoutDirectoryMarker) || path15.posix.normalize(withoutDirectoryMarker) !== withoutDirectoryMarker || withoutDirectoryMarker === ".." || withoutDirectoryMarker.startsWith("../") || withoutDirectoryMarker.includes("\0")) {
+  if (withoutDirectoryMarker.length === 0 || withoutDirectoryMarker.includes("\\") || path12.posix.isAbsolute(withoutDirectoryMarker) || /^[A-Za-z]:/u.test(withoutDirectoryMarker) || path12.posix.normalize(withoutDirectoryMarker) !== withoutDirectoryMarker || withoutDirectoryMarker === ".." || withoutDirectoryMarker.startsWith("../") || withoutDirectoryMarker.includes("\0")) {
     return null;
   }
   return withoutDirectoryMarker;
@@ -11793,15 +11002,15 @@ function requireSafeGitProjectPaths(values, source) {
   });
 }
 async function hasGitMetadataBoundary(projectRoot) {
-  let cursor = path15.resolve(projectRoot);
+  let cursor = path12.resolve(projectRoot);
   while (true) {
     try {
-      await fs12.lstat(path15.join(cursor, ".git"));
+      await fs10.lstat(path12.join(cursor, ".git"));
       return true;
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    const parent = path15.dirname(cursor);
+    const parent = path12.dirname(cursor);
     if (parent === cursor) return false;
     cursor = parent;
   }
@@ -11871,18 +11080,18 @@ async function nativeGitSnapshotSelection(execution, projectRoot, limits = DEFAU
   const gitlinks = /* @__PURE__ */ new Set();
   const addStagedRecords = (records) => {
     for (const encoded of records) {
-      const record13 = decodeGitRecord(encoded);
-      const separator = record13.indexOf("	");
+      const record12 = decodeGitRecord(encoded);
+      const separator = record12.indexOf("	");
       if (separator < 0) {
         throw new Error("Native Git snapshot provider returned a malformed staged record");
       }
       const header = /^(?<mode>[0-7]{6}) (?<objectId>[a-f0-9]{40}|[a-f0-9]{64}) (?<stage>[0-3])$/u.exec(
-        record13.slice(0, separator)
+        record12.slice(0, separator)
       )?.groups;
       if (!header) {
         throw new Error("Native Git snapshot provider returned a malformed staged header");
       }
-      const relative = safeGitProjectPath(record13.slice(separator + 1));
+      const relative = safeGitProjectPath(record12.slice(separator + 1));
       if (relative === null) {
         throw new Error("Native Git snapshot provider returned an unsafe staged path");
       }
@@ -11986,10 +11195,10 @@ function physicalSelectionRecordType(stat) {
   return "other";
 }
 async function nativePhysicalSnapshotSelection(options) {
-  const projectRoot = path15.resolve(options.paths.projectRoot);
-  const nativeRoot = path15.resolve(options.paths.nativeRoot);
-  const configFile = path15.resolve(options.paths.configFile);
-  const selectionFile = path15.join(projectRoot, ".comet", "current-change.json");
+  const projectRoot = path12.resolve(options.paths.projectRoot);
+  const nativeRoot = path12.resolve(options.paths.nativeRoot);
+  const configFile = path12.resolve(options.paths.configFile);
+  const selectionFile = path12.join(projectRoot, ".comet", "current-change.json");
   const records = [];
   const omissions = [];
   const xor = Buffer.alloc(32);
@@ -12006,26 +11215,26 @@ async function nativePhysicalSnapshotSelection(options) {
     stopped = true;
     return false;
   };
-  const addRecord = (record13) => {
-    const encoded = Buffer.from(`${record13.type}\0${record13.path}`, "utf8");
-    const digest = createHash8("sha256").update("comet.native.physical-selection-record.v1\0").update(encoded).digest();
+  const addRecord = (record12) => {
+    const encoded = Buffer.from(`${record12.type}\0${record12.path}`, "utf8");
+    const digest = createHash6("sha256").update("comet.native.physical-selection-record.v1\0").update(encoded).digest();
     for (let index = 0; index < xor.length; index += 1) xor[index] ^= digest[index];
     sum = sum + BigInt(`0x${digest.toString("hex")}`) & PHYSICAL_SELECTION_SUM_MASK;
     recordCount += 1;
     encodedBytes += encoded.byteLength;
-    if (Buffer.byteLength(record13.path, "utf8") > options.limits.maxPathBytes || encodedBytes > options.limits.maxBytes) {
+    if (Buffer.byteLength(record12.path, "utf8") > options.limits.maxPathBytes || encodedBytes > options.limits.maxBytes) {
       overflow = true;
       stopped = true;
       return;
     }
-    records.push(record13);
+    records.push(record12);
   };
   const visit = async (directory) => {
     if (stopped) return;
     if (!hasExecutionBudget()) return;
     let handle;
     try {
-      handle = await fs12.opendir(directory);
+      handle = await fs10.opendir(directory);
     } catch (error) {
       if (!hasExecutionBudget()) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -12067,7 +11276,7 @@ async function nativePhysicalSnapshotSelection(options) {
           stopped = true;
           break;
         }
-        const target = path15.join(directory, child.name);
+        const target = path12.join(directory, child.name);
         const relative = portableRelative(projectRoot, target);
         if (target === configFile || target === selectionFile || sameOrInside(nativeRoot, target) || options.denylist.some((denied) => sameOrInside(denied, target)) || nativeSensitiveRelativePathReason(relative) !== null) {
           continue;
@@ -12075,7 +11284,7 @@ async function nativePhysicalSnapshotSelection(options) {
         if (!hasExecutionBudget()) break;
         let stat;
         try {
-          stat = await fs12.lstat(target);
+          stat = await fs10.lstat(target);
         } catch (error) {
           if (!hasExecutionBudget()) break;
           if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -12098,7 +11307,7 @@ async function nativePhysicalSnapshotSelection(options) {
           if (!hasExecutionBudget()) break;
           let realDirectory;
           try {
-            realDirectory = await fs12.realpath(target);
+            realDirectory = await fs10.realpath(target);
           } catch (error) {
             if (!hasExecutionBudget()) break;
             if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -12250,8 +11459,8 @@ async function inspectGitlinkWorkingTree(execution, target) {
 }
 function isSnapshotProjectRef(paths, relative) {
   if (nativeSensitiveRelativePathReason(relative) !== null) return false;
-  const target = path15.resolve(paths.projectRoot, ...relative.split("/"));
-  return !sameOrInside(path15.resolve(paths.nativeRoot), target);
+  const target = path12.resolve(paths.projectRoot, ...relative.split("/"));
+  return !sameOrInside(path12.resolve(paths.nativeRoot), target);
 }
 function inspectNativeContentSnapshotHealth(value, options = {}) {
   const manifest = parseNativeContentSnapshotManifest(value);
@@ -12270,14 +11479,14 @@ function inspectNativeContentSnapshotHealth(value, options = {}) {
   };
 }
 function portableRelative(root, target) {
-  return path15.relative(root, target).split(path15.sep).join("/");
+  return path12.relative(root, target).split(path12.sep).join("/");
 }
 function normalizedDenylist(projectRoot, values) {
-  return values.map((value) => path15.resolve(projectRoot, ...value.split(/[\\/]/u)));
+  return values.map((value) => path12.resolve(projectRoot, ...value.split(/[\\/]/u)));
 }
 function sameOrInside(root, target) {
-  const normalizedRoot = path15.resolve(root);
-  const normalizedTarget = path15.resolve(target);
+  const normalizedRoot = path12.resolve(root);
+  const normalizedTarget = path12.resolve(target);
   return normalizedTarget === normalizedRoot || isInsidePath(normalizedRoot, normalizedTarget);
 }
 function isUnreadableError(error) {
@@ -12448,7 +11657,7 @@ async function sha256FileBounded(file, maxBytes, expected, execution) {
   if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
   let handle;
   try {
-    handle = await fs12.open(file, "r");
+    handle = await fs10.open(file, "r");
   } catch (error) {
     if (!nativeSnapshotExecutionHasBudget(execution)) return { status: "budget-exhausted" };
     throw error;
@@ -12457,7 +11666,7 @@ async function sha256FileBounded(file, maxBytes, expected, execution) {
     await handle.close();
     return { status: "budget-exhausted" };
   }
-  const hash8 = createHash8("sha256");
+  const hash8 = createHash6("sha256");
   const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
   let bytes = 0;
   try {
@@ -12490,7 +11699,7 @@ async function sha256FileBounded(file, maxBytes, expected, execution) {
     await handle.close();
   }
 }
-function record6(value, label) {
+function record2(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
@@ -12516,17 +11725,17 @@ function snapshotPath(value, label) {
   if (typeof value !== "string" || value.length === 0 || value.includes("\\") || value.includes("\0")) {
     throw new Error(`${label} must be a normalized project-relative path`);
   }
-  const normalized = path15.posix.normalize(value);
-  if (normalized !== value || path15.posix.isAbsolute(value) || normalized === ".." || normalized.startsWith("../")) {
+  const normalized = path12.posix.normalize(value);
+  if (normalized !== value || path12.posix.isAbsolute(value) || normalized === ".." || normalized.startsWith("../")) {
     throw new Error(`${label} must stay inside the project root`);
   }
   return value;
 }
 function parseEntry(value, index) {
-  const entry2 = record6(value, `Native snapshot entry ${index}`);
+  const entry2 = record2(value, `Native snapshot entry ${index}`);
   rejectUnknown2(entry2, ENTRY_KEYS, `Native snapshot entry ${index}`);
   const entryPath = snapshotPath(entry2.path, `Native snapshot entry ${index} path`);
-  if (typeof entry2.hash !== "string" || !HASH_PATTERN5.test(entry2.hash)) {
+  if (typeof entry2.hash !== "string" || !HASH_PATTERN.test(entry2.hash)) {
     throw new Error(`Native snapshot entry ${index} hash is invalid`);
   }
   if (entry2.type !== "file") throw new Error(`Native snapshot entry ${index} type is invalid`);
@@ -12538,7 +11747,7 @@ function parseEntry(value, index) {
   };
 }
 function parseOmission(value, index) {
-  const omission = record6(value, `Native snapshot omission ${index}`);
+  const omission = record2(value, `Native snapshot omission ${index}`);
   rejectUnknown2(omission, OMISSION_KEYS, `Native snapshot omission ${index}`);
   if (!OMISSION_TYPES.has(omission.type)) {
     throw new Error(`Native snapshot omission ${index} type is invalid`);
@@ -12554,9 +11763,9 @@ function parseOmission(value, index) {
   };
 }
 function parseOmissionOverflow(value) {
-  const overflow = record6(value, "Native snapshot omission overflow");
+  const overflow = record2(value, "Native snapshot omission overflow");
   rejectUnknown2(overflow, OMISSION_OVERFLOW_KEYS, "Native snapshot omission overflow");
-  if (typeof overflow.hash !== "string" || !HASH_PATTERN5.test(overflow.hash)) {
+  if (typeof overflow.hash !== "string" || !HASH_PATTERN.test(overflow.hash)) {
     throw new Error("Native snapshot omission overflow hash is invalid");
   }
   const expectedRef = `native-snapshot://omitted-overflow/${overflow.hash}`;
@@ -12570,9 +11779,9 @@ function parseOmissionOverflow(value) {
   };
 }
 function parseGitSelectionStreamEvidence(value, label) {
-  const stream = record6(value, label);
+  const stream = record2(value, label);
   rejectUnknown2(stream, GIT_SELECTION_STREAM_KEYS, label);
-  if (typeof stream.hash !== "string" || !HASH_PATTERN5.test(stream.hash)) {
+  if (typeof stream.hash !== "string" || !HASH_PATTERN.test(stream.hash)) {
     throw new Error(`${label} hash is invalid`);
   }
   if (typeof stream.overflow !== "boolean") {
@@ -12596,7 +11805,7 @@ function parseGitSelectionStreamEvidence(value, label) {
   };
 }
 function parseGitSelectionEvidence(value) {
-  const selection = record6(value, "Native Git selection evidence");
+  const selection = record2(value, "Native Git selection evidence");
   rejectUnknown2(selection, GIT_SELECTION_KEYS, "Native Git selection evidence");
   if (selection.schema !== "comet.native.git-selection.v1") {
     throw new Error("Native Git selection evidence schema is invalid");
@@ -12656,9 +11865,9 @@ function parseGitSelectionEvidence(value) {
   };
 }
 function parsePhysicalSelectionStreamEvidence(value, label) {
-  const stream = record6(value, label);
+  const stream = record2(value, label);
   rejectUnknown2(stream, PHYSICAL_SELECTION_STREAM_KEYS, label);
-  if (typeof stream.hash !== "string" || !HASH_PATTERN5.test(stream.hash)) {
+  if (typeof stream.hash !== "string" || !HASH_PATTERN.test(stream.hash)) {
     throw new Error(`${label} hash is invalid`);
   }
   if (typeof stream.overflow !== "boolean" || typeof stream.unstable !== "boolean") {
@@ -12685,7 +11894,7 @@ function parsePhysicalSelectionStreamEvidence(value, label) {
   };
 }
 function parsePhysicalSelectionEvidence(value) {
-  const selection = record6(value, "Native physical selection evidence");
+  const selection = record2(value, "Native physical selection evidence");
   rejectUnknown2(selection, PHYSICAL_SELECTION_KEYS, "Native physical selection evidence");
   if (selection.schema !== "comet.native.physical-selection.v1") {
     throw new Error("Native physical selection evidence schema is invalid");
@@ -12718,7 +11927,7 @@ function parsePhysicalSelectionEvidence(value) {
   };
 }
 function parseNativeContentSnapshotManifest(value) {
-  const manifest = record6(value, "Native content snapshot manifest");
+  const manifest = record2(value, "Native content snapshot manifest");
   rejectUnknown2(manifest, MANIFEST_KEYS, "Native content snapshot manifest");
   if (manifest.schema !== "comet.native.content-snapshot.v1") {
     throw new Error("Unsupported Native content snapshot schema");
@@ -12726,28 +11935,9 @@ function parseNativeContentSnapshotManifest(value) {
   if (!SNAPSHOT_ORIGINS.has(manifest.origin)) {
     throw new Error("Native content snapshot origin is invalid");
   }
-  let creation;
-  if (manifest.creation !== void 0) {
-    const value2 = record6(manifest.creation, "Native change creation binding");
-    rejectUnknown2(value2, CREATION_KEYS, "Native change creation binding");
-    if (value2.schema !== "comet.native.change-creation-binding.v1" || value2.protocol !== "signed-v2" || typeof value2.policyHash !== "string" || !HASH_PATTERN5.test(value2.policyHash) || typeof value2.policySnapshotHash !== "string" || !HASH_PATTERN5.test(value2.policySnapshotHash) || typeof value2.policySnapshotRef !== "string" || !/^runtime\/trust\/review-policy-[a-f0-9]{64}\.json$/u.test(value2.policySnapshotRef)) {
-      throw new Error("Native change creation binding is invalid");
-    }
-    creation = {
-      schema: "comet.native.change-creation-binding.v1",
-      protocol: "signed-v2",
-      policyHash: value2.policyHash,
-      policySnapshotRef: value2.policySnapshotRef,
-      policySnapshotHash: value2.policySnapshotHash,
-      authorization: parseNativeCreationAuthorization(value2.authorization)
-    };
-  }
-  if (manifest.origin !== "change-created" && creation !== void 0) {
-    throw new Error("Native change creation binding does not match snapshot origin");
-  }
   let capture;
   if (manifest.capture !== void 0) {
-    const captureValue = record6(manifest.capture, "Native content snapshot capture");
+    const captureValue = record2(manifest.capture, "Native content snapshot capture");
     rejectUnknown2(captureValue, CAPTURE_KEYS, "Native content snapshot capture");
     if (captureValue.provider !== "git" && captureValue.provider !== "physical-tree") {
       throw new Error("Native content snapshot capture provider is invalid");
@@ -12756,7 +11946,7 @@ function parseNativeContentSnapshotManifest(value) {
     const physicalSelection2 = captureValue.physicalSelection === void 0 ? void 0 : parsePhysicalSelectionEvidence(captureValue.physicalSelection);
     let projection = null;
     if (captureValue.projection !== void 0) {
-      const projectionValue = record6(captureValue.projection, "Native content snapshot projection");
+      const projectionValue = record2(captureValue.projection, "Native content snapshot projection");
       rejectUnknown2(projectionValue, GIT_PROJECTION_KEYS, "Native content snapshot projection");
       if (projectionValue.provider !== "git") {
         throw new Error("Native content snapshot projection provider is invalid");
@@ -12793,7 +11983,7 @@ function parseNativeContentSnapshotManifest(value) {
   if (typeof manifest.complete !== "boolean") {
     throw new Error("Native content snapshot complete flag is invalid");
   }
-  const limitValue = record6(manifest.limits, "Native content snapshot limits");
+  const limitValue = record2(manifest.limits, "Native content snapshot limits");
   rejectUnknown2(limitValue, LIMIT_KEYS, "Native content snapshot limits");
   const limits = {
     maxFiles: positiveInteger(limitValue.maxFiles, "Native snapshot maxFiles"),
@@ -12809,7 +11999,7 @@ function parseNativeContentSnapshotManifest(value) {
   };
   let policy;
   if (manifest.policy !== void 0) {
-    const policyValue = record6(manifest.policy, "Native snapshot policy");
+    const policyValue = record2(manifest.policy, "Native snapshot policy");
     rejectUnknown2(policyValue, POLICY_KEYS, "Native snapshot policy");
     if (policyValue.schema !== "comet.native.snapshot-policy.v1") {
       throw new Error("Native snapshot policy schema is invalid");
@@ -12902,7 +12092,6 @@ function parseNativeContentSnapshotManifest(value) {
   const parsed = {
     schema: "comet.native.content-snapshot.v1",
     origin: manifest.origin,
-    ...creation ? { creation } : {},
     ...capture ? { capture } : {},
     createdAt: manifest.createdAt,
     complete: manifest.complete,
@@ -12923,7 +12112,7 @@ async function filterNativeContentSnapshotToProjectScope(paths, value, options =
   if (manifest.capture?.provider === "git" || manifest.capture?.projection || manifest.capture?.physicalSelection) {
     return manifest;
   }
-  const projectRoot = path15.resolve(paths.projectRoot);
+  const projectRoot = path12.resolve(paths.projectRoot);
   const execution = createNativeSnapshotExecution(options);
   const gitSelectionLimits = resolveNativeGitSelectionLimits(options.gitSelectionLimits);
   const selection = await nativeGitSnapshotSelection(
@@ -13042,10 +12231,10 @@ async function filterNativeContentSnapshotToProjectScope(paths, value, options =
   return parseNativeContentSnapshotManifest(projected);
 }
 function nativeBaselineManifestFile(paths, name) {
-  if (!CHANGE_NAME_PATTERN3.test(name)) throw new Error(`Invalid Native change name: ${name}`);
-  const changeDir = path15.join(paths.changesDir, name);
+  if (!CHANGE_NAME_PATTERN.test(name)) throw new Error(`Invalid Native change name: ${name}`);
+  const changeDir = path12.join(paths.changesDir, name);
   if (!isInsidePath(paths.changesDir, changeDir)) throw new Error("Native change path escaped");
-  return path15.join(changeDir, "runtime", "baseline-manifest.json");
+  return path12.join(changeDir, "runtime", "baseline-manifest.json");
 }
 async function createNativeContentSnapshot(paths, options = {}) {
   const limits = {
@@ -13067,12 +12256,12 @@ async function createNativeContentSnapshot(paths, options = {}) {
   if (limits.maxFiles < 1 || limits.maxFileBytes < 1 || limits.maxTotalBytes < 1 || limits.maxManifestBytes < 1) {
     throw new Error("Native snapshot limits must be positive");
   }
-  const projectRoot = path15.resolve(paths.projectRoot);
-  const physicalProjectRoot = await fs12.realpath(projectRoot);
-  const nativeRoot = path15.resolve(paths.nativeRoot);
-  const physicalNativeRoot = await fs12.realpath(nativeRoot);
-  const configFile = path15.resolve(paths.configFile);
-  const selectionFile = path15.join(projectRoot, ".comet", "current-change.json");
+  const projectRoot = path12.resolve(paths.projectRoot);
+  const physicalProjectRoot = await fs10.realpath(projectRoot);
+  const nativeRoot = path12.resolve(paths.nativeRoot);
+  const physicalNativeRoot = await fs10.realpath(nativeRoot);
+  const configFile = path12.resolve(paths.configFile);
+  const selectionFile = path12.join(projectRoot, ".comet", "current-change.json");
   const denylist = normalizedDenylist(projectRoot, options.denylist ?? []);
   const entries = [];
   const omitted = [];
@@ -13142,7 +12331,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
     let realTarget;
     try {
-      realTarget = await fs12.realpath(target);
+      realTarget = await fs10.realpath(target);
     } catch (error) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -13183,9 +12372,9 @@ async function createNativeContentSnapshot(paths, options = {}) {
         return;
       }
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      afterRealTarget = await fs12.realpath(target);
+      afterRealTarget = await fs10.realpath(target);
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      after = await fs12.lstat(target);
+      after = await fs10.lstat(target);
     } catch (error) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -13219,11 +12408,11 @@ async function createNativeContentSnapshot(paths, options = {}) {
     let secondTarget;
     let after;
     try {
-      firstTarget = await fs12.readlink(target, { encoding: "buffer" });
+      firstTarget = await fs10.readlink(target, { encoding: "buffer" });
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      after = await fs12.lstat(target);
+      after = await fs10.lstat(target);
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      secondTarget = await fs12.readlink(target, { encoding: "buffer" });
+      secondTarget = await fs10.readlink(target, { encoding: "buffer" });
     } catch (error) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -13253,7 +12442,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
       omit({ path: relative, size, type: "other", reason: "total-size" });
       return;
     }
-    const hash8 = createHash8("sha256").update("symlink\0").update(firstTarget).digest("hex");
+    const hash8 = createHash6("sha256").update("symlink\0").update(firstTarget).digest("hex");
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
     await recordCapturedEntry(
       { path: relative, hash: hash8, size, type: "file" },
@@ -13263,10 +12452,10 @@ async function createNativeContentSnapshot(paths, options = {}) {
   const captureForcedProtectedRefs = async () => {
     for (const relative of [NATIVE_REVIEW_TRUST_POLICY_REF]) {
       if (capturedEntryValidations.has(relative)) continue;
-      const target = path15.resolve(projectRoot, ...relative.split("/"));
+      const target = path12.resolve(projectRoot, ...relative.split("/"));
       let stat;
       try {
-        stat = await fs12.lstat(target);
+        stat = await fs10.lstat(target);
       } catch (error) {
         if (error.code === "ENOENT") continue;
         if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -13299,9 +12488,9 @@ async function createNativeContentSnapshot(paths, options = {}) {
         let realTarget2;
         let stat2;
         try {
-          realTarget2 = await fs12.realpath(validation2.target);
+          realTarget2 = await fs10.realpath(validation2.target);
           if (!nativeSnapshotExecutionHasBudget(execution)) return;
-          stat2 = await fs12.lstat(validation2.target);
+          stat2 = await fs10.lstat(validation2.target);
         } catch (error) {
           if (!nativeSnapshotExecutionHasBudget(execution)) return;
           if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -13328,9 +12517,9 @@ async function createNativeContentSnapshot(paths, options = {}) {
         let stat2;
         let rawTarget;
         try {
-          stat2 = await fs12.lstat(validation2.target);
+          stat2 = await fs10.lstat(validation2.target);
           if (!nativeSnapshotExecutionHasBudget(execution)) return;
-          rawTarget = await fs12.readlink(validation2.target, { encoding: "buffer" });
+          rawTarget = await fs10.readlink(validation2.target, { encoding: "buffer" });
         } catch (error) {
           if (!nativeSnapshotExecutionHasBudget(execution)) return;
           if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
@@ -13356,9 +12545,9 @@ async function createNativeContentSnapshot(paths, options = {}) {
       let realTarget;
       let stat;
       try {
-        realTarget = await fs12.realpath(validation2.target);
+        realTarget = await fs10.realpath(validation2.target);
         if (!nativeSnapshotExecutionHasBudget(execution)) return;
-        stat = await fs12.lstat(validation2.target);
+        stat = await fs10.lstat(validation2.target);
       } catch {
         if (!nativeSnapshotExecutionHasBudget(execution)) return;
         invalidateCapturedEntry(relative, {
@@ -13414,7 +12603,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
     for (const [relative, target] of capturedTrackedAbsences) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       try {
-        const stat = await fs12.lstat(target);
+        const stat = await fs10.lstat(target);
         if (!nativeSnapshotExecutionHasBudget(execution)) return;
         omit({
           path: relative,
@@ -13448,21 +12637,21 @@ async function createNativeContentSnapshot(paths, options = {}) {
       hooks: options.physicalSelectionHooks
     });
     await options.physicalSelectionHooks?.afterInitialSelection?.();
-    for (const record13 of before.records) {
-      if (record13.type !== "file" && record13.type !== "symlink") continue;
-      if (capturedEntryValidations.has(record13.path)) continue;
+    for (const record12 of before.records) {
+      if (record12.type !== "file" && record12.type !== "symlink") continue;
+      if (capturedEntryValidations.has(record12.path)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
-      if (!snapshotPolicyIncludes(policy, record13.path, execution)) continue;
+      if (!snapshotPolicyIncludes(policy, record12.path, execution)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
-      const target = path15.resolve(projectRoot, ...record13.path.split("/"));
+      const target = path12.resolve(projectRoot, ...record12.path.split("/"));
       let stat;
       try {
-        stat = await fs12.lstat(target);
+        stat = await fs10.lstat(target);
       } catch (error) {
         if (!nativeSnapshotExecutionHasBudget(execution)) break;
         if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
         omit({
-          path: record13.path,
+          path: record12.path,
           size: null,
           type: "file",
           reason: isChangedDuringReadError(error) ? "changed-during-read" : "unreadable"
@@ -13470,21 +12659,21 @@ async function createNativeContentSnapshot(paths, options = {}) {
         continue;
       }
       if (remainingNativeSnapshotTime(execution) < 1) break;
-      if (record13.type === "symlink" && stat.isSymbolicLink()) {
-        await captureSymbolicLink(target, record13.path, stat);
+      if (record12.type === "symlink" && stat.isSymbolicLink()) {
+        await captureSymbolicLink(target, record12.path, stat);
         if (remainingNativeSnapshotTime(execution) < 1) break;
         continue;
       }
-      if (record13.type !== "file" || !stat.isFile() || stat.isSymbolicLink()) {
+      if (record12.type !== "file" || !stat.isFile() || stat.isSymbolicLink()) {
         omit({
-          path: record13.path,
+          path: record12.path,
           size: stat.isFile() ? stat.size : null,
           type: stat.isDirectory() ? "directory" : stat.isFile() ? "file" : "other",
           reason: "changed-during-read"
         });
         continue;
       }
-      await captureFile(target, record13.path, stat);
+      await captureFile(target, record12.path, stat);
       if (remainingNativeSnapshotTime(execution) < 1) break;
     }
     if (remainingNativeSnapshotTime(execution) >= 1) await revalidateCapturedEntries();
@@ -13514,7 +12703,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
       if (remainingNativeSnapshotTime(execution) < 1) break;
       if (!snapshotPolicyIncludes(policy, relative, execution)) continue;
       if (remainingNativeSnapshotTime(execution) < 1) break;
-      const target = path15.resolve(projectRoot, ...relative.split("/"));
+      const target = path12.resolve(projectRoot, ...relative.split("/"));
       if (target === configFile || target === selectionFile || denylist.some((denied) => sameOrInside(denied, target))) {
         continue;
       }
@@ -13526,7 +12715,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
         let realGitlink;
         let gitlinkStat;
         try {
-          [realGitlink, gitlinkStat] = await Promise.all([fs12.realpath(target), fs12.lstat(target)]);
+          [realGitlink, gitlinkStat] = await Promise.all([fs10.realpath(target), fs10.lstat(target)]);
         } catch {
           omit({
             path: relative,
@@ -13584,7 +12773,7 @@ async function createNativeContentSnapshot(paths, options = {}) {
       }
       let before;
       try {
-        before = await fs12.lstat(target);
+        before = await fs10.lstat(target);
       } catch (error) {
         if (isChangedDuringReadError(error) && gitSelection.tracked.has(relative)) {
           capturedTrackedAbsences.set(relative, target);
@@ -13713,11 +12902,11 @@ async function readNativeBaselineManifest(paths, name) {
 }
 
 // domains/comet-native/native-trajectory-recovery.ts
-import { createHash as createHash10 } from "crypto";
-import path19 from "path";
+import { createHash as createHash8 } from "crypto";
+import path16 from "path";
 
 // domains/engine/storage-layout.ts
-import path16 from "path";
+import path13 from "path";
 var NATIVE_RUN_STORAGE = /* @__PURE__ */ Object.freeze({
   stateRef: "runtime/run-state.json",
   pendingRef: "runtime/pending-action.json",
@@ -13728,7 +12917,7 @@ var NATIVE_RUN_STORAGE = /* @__PURE__ */ Object.freeze({
   snapshotsRef: "runtime/skill-snapshots"
 });
 function assertRunStorageRef(value) {
-  if (value.length === 0 || path16.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+  if (value.length === 0 || path13.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
     throw new Error("Run storage ref must stay inside the Run root");
   }
 }
@@ -13737,13 +12926,13 @@ function assertRunStorageLayout(storage) {
 }
 
 // domains/comet-native/native-run-store.ts
-import { createHash as createHash9 } from "node:crypto";
-import { constants as fsConstants4, promises as fs13 } from "node:fs";
-import path18 from "node:path";
+import { createHash as createHash7 } from "node:crypto";
+import { constants as fsConstants3, promises as fs11 } from "node:fs";
+import path15 from "node:path";
 import { TextDecoder as TextDecoder4 } from "node:util";
 
 // domains/engine/state.ts
-import path17 from "path";
+import path14 from "path";
 var field = (doc, key) => {
   const value = doc[key];
   return value === null || value === void 0 ? null : String(value);
@@ -13757,7 +12946,7 @@ function requiredString(doc, key) {
 }
 function requiredRunReference(doc, key) {
   const value = requiredString(doc, key);
-  if (path17.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+  if (path14.isAbsolute(value) || /^(?:[A-Za-z]:|[\\/]|~)/u.test(value) || value.split(/[\\/]/u).includes("..")) {
     throw new Error(`Invalid Run state: ${key} must stay inside the change directory`);
   }
   return value;
@@ -13913,9 +13102,9 @@ var NATIVE_RUN_IO_LIMITS = {
   contextBytes: 1024 * 1024,
   artifactsBytes: 1024 * 1024
 };
-function isInside6(parent, target) {
-  const relative = path18.relative(parent, target);
-  return relative === "" || !path18.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path18.sep}`);
+function isInside5(parent, target) {
+  const relative = path15.relative(parent, target);
+  return relative === "" || !path15.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path15.sep}`);
 }
 function asIdentity(stat) {
   return {
@@ -13950,34 +13139,34 @@ function runFile(changeDir, kind, relativePath) {
   if (relativePath !== void 0 && relativePath !== expected) {
     throw new Error(`Native Run ${kind} ref must be ${expected}`);
   }
-  const root = path18.resolve(changeDir);
-  const target = path18.resolve(root, ...expected.split("/"));
-  if (!isInside6(root, target)) throw new Error("Native Run path must stay inside its change");
+  const root = path15.resolve(changeDir);
+  const target = path15.resolve(root, ...expected.split("/"));
+  if (!isInside5(root, target)) throw new Error("Native Run path must stay inside its change");
   return target;
 }
 async function directoryIdentity2(directory) {
-  const stat = await fs13.lstat(directory);
+  const stat = await fs11.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error(`Native Run parent must be a real directory: ${directory}`);
   }
   return {
     path: directory,
-    realPath: await fs13.realpath(directory),
+    realPath: await fs11.realpath(directory),
     dev: stat.dev,
     ino: stat.ino,
     birthtimeMs: stat.birthtimeMs
   };
 }
 async function captureDirectoryChain3(root, directory) {
-  const lexicalRoot = path18.resolve(root);
-  const lexicalDirectory = path18.resolve(directory);
-  if (!isInside6(lexicalRoot, lexicalDirectory)) {
+  const lexicalRoot = path15.resolve(root);
+  const lexicalDirectory = path15.resolve(directory);
+  if (!isInside5(lexicalRoot, lexicalDirectory)) {
     throw new Error("Native Run path is outside its change");
   }
   const chain = [await directoryIdentity2(lexicalRoot)];
   let cursor = lexicalRoot;
-  for (const segment of path18.relative(lexicalRoot, lexicalDirectory).split(path18.sep).filter(Boolean)) {
-    cursor = path18.join(cursor, segment);
+  for (const segment of path15.relative(lexicalRoot, lexicalDirectory).split(path15.sep).filter(Boolean)) {
+    cursor = path15.join(cursor, segment);
     let identity;
     try {
       identity = await directoryIdentity2(cursor);
@@ -13985,7 +13174,7 @@ async function captureDirectoryChain3(root, directory) {
       if (error.code === "ENOENT") return null;
       throw error;
     }
-    if (!isInside6(chain[0].realPath, identity.realPath)) {
+    if (!isInside5(chain[0].realPath, identity.realPath)) {
       throw new Error(`Native Run parent resolves outside its change: ${cursor}`);
     }
     chain.push(identity);
@@ -13994,8 +13183,8 @@ async function captureDirectoryChain3(root, directory) {
 }
 async function verifyDirectoryChain4(chain) {
   for (const identity of chain) {
-    const stat = await fs13.lstat(identity.path);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity4(identity, stat) || await fs13.realpath(identity.path) !== identity.realPath) {
+    const stat = await fs11.lstat(identity.path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity4(identity, stat) || await fs11.realpath(identity.path) !== identity.realPath) {
       throw new Error(`Native Run parent changed during I/O: ${identity.path}`);
     }
   }
@@ -14015,12 +13204,12 @@ async function readHandleBounded2(handle, maxBytes, label) {
   return Buffer.concat(chunks, total);
 }
 async function readProtectedText(changeDir, file, maxBytes, label, hooks) {
-  const chain = await captureDirectoryChain3(changeDir, path18.dirname(file));
+  const chain = await captureDirectoryChain3(changeDir, path15.dirname(file));
   if (!chain) return null;
   await hooks?.afterParentChainCaptured?.();
   let before;
   try {
-    before = await fs13.lstat(file);
+    before = await fs11.lstat(file);
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -14030,22 +13219,22 @@ async function readProtectedText(changeDir, file, maxBytes, label, hooks) {
   }
   if (before.size > maxBytes) throw new Error(`${label} exceeds ${maxBytes} bytes`);
   const beforeIdentity = asIdentity(before);
-  const beforeRealPath = await fs13.realpath(file);
-  if (!isInside6(chain[0].realPath, beforeRealPath)) {
+  const beforeRealPath = await fs11.realpath(file);
+  if (!isInside5(chain[0].realPath, beforeRealPath)) {
     throw new Error(`${label} resolves outside its change`);
   }
-  const flags = process.platform === "win32" ? fsConstants4.O_RDONLY : fsConstants4.O_RDONLY | fsConstants4.O_NOFOLLOW | fsConstants4.O_NONBLOCK;
+  const flags = process.platform === "win32" ? fsConstants3.O_RDONLY : fsConstants3.O_RDONLY | fsConstants3.O_NOFOLLOW | fsConstants3.O_NONBLOCK;
   let handle;
   try {
-    handle = await fs13.open(file, flags);
+    handle = await fs11.open(file, flags);
   } catch (error) {
     throw new Error(`${label} changed while opening`, { cause: error });
   }
   try {
     const [opened, pathAfterOpen, realPathAfterOpen] = await Promise.all([
       handle.stat(),
-      fs13.lstat(file),
-      fs13.realpath(file)
+      fs11.lstat(file),
+      fs11.realpath(file)
     ]);
     await verifyDirectoryChain4(chain);
     if (!opened.isFile() || !pathAfterOpen.isFile() || pathAfterOpen.isSymbolicLink() || realPathAfterOpen !== beforeRealPath || !sameFileIdentity5(beforeIdentity, opened) || !sameFileIdentity5(beforeIdentity, pathAfterOpen)) {
@@ -14056,8 +13245,8 @@ async function readProtectedText(changeDir, file, maxBytes, label, hooks) {
     await hooks?.beforeFinalCheck?.();
     const [afterHandle, afterPath, afterRealPath] = await Promise.all([
       handle.stat(),
-      fs13.lstat(file),
-      fs13.realpath(file)
+      fs11.lstat(file),
+      fs11.realpath(file)
     ]);
     await verifyDirectoryChain4(chain);
     if (!afterPath.isFile() || afterPath.isSymbolicLink() || afterRealPath !== beforeRealPath || !sameFileIdentity5(beforeIdentity, afterHandle) || !sameFileIdentity5(beforeIdentity, afterPath)) {
@@ -14078,36 +13267,36 @@ async function readProtectedText(changeDir, file, maxBytes, label, hooks) {
   }
 }
 async function captureTarget(changeDir, file, label) {
-  const chain = await captureDirectoryChain3(changeDir, path18.dirname(file));
+  const chain = await captureDirectoryChain3(changeDir, path15.dirname(file));
   if (!chain) return { exists: false };
   let stat;
   try {
-    stat = await fs13.lstat(file);
+    stat = await fs11.lstat(file);
   } catch (error) {
     if (error.code === "ENOENT") return { exists: false };
     throw error;
   }
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`${label} must be a regular file`);
-  const realPath = await fs13.realpath(file);
-  if (!isInside6(chain[0].realPath, realPath))
+  const realPath = await fs11.realpath(file);
+  if (!isInside5(chain[0].realPath, realPath))
     throw new Error(`${label} resolves outside its change`);
   await verifyDirectoryChain4(chain);
   return { exists: true, identity: asIdentity(stat), realPath };
 }
 async function verifyTarget(changeDir, file, expected, label) {
-  const chain = await captureDirectoryChain3(changeDir, path18.dirname(file));
+  const chain = await captureDirectoryChain3(changeDir, path15.dirname(file));
   if (!chain) {
     if (!expected.exists) return;
     throw new Error(`${label} parent changed before commit`);
   }
   let stat;
   try {
-    stat = await fs13.lstat(file);
+    stat = await fs11.lstat(file);
   } catch (error) {
     if (error.code === "ENOENT" && !expected.exists) return;
     throw new Error(`${label} changed before commit`, { cause: error });
   }
-  if (!expected.exists || !stat.isFile() || stat.isSymbolicLink() || !sameFileIdentity5(expected.identity, stat) || await fs13.realpath(file) !== expected.realPath) {
+  if (!expected.exists || !stat.isFile() || stat.isSymbolicLink() || !sameFileIdentity5(expected.identity, stat) || await fs11.realpath(file) !== expected.realPath) {
     throw new Error(`${label} changed before commit`);
   }
   await verifyDirectoryChain4(chain);
@@ -14223,7 +13412,7 @@ async function replaceNativeTrajectoryText(changeDir, relativePath, content, exp
     "Native Run trajectory"
   );
   if (!existing) throw new Error("Native Run trajectory disappeared before repair");
-  const actualHash = createHash9("sha256").update(existing.text, "utf8").digest("hex");
+  const actualHash = createHash7("sha256").update(existing.text, "utf8").digest("hex");
   if (actualHash !== expectedHash) {
     throw new Error("Native Run trajectory changed before repair");
   }
@@ -14290,7 +13479,7 @@ async function writeNativeCheckpoint(changeDir, relativePath, checkpoint, hooks)
 }
 
 // domains/comet-native/native-trajectory-recovery.ts
-var CHANGE_NAME_PATTERN4 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+var CHANGE_NAME_PATTERN2 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 var NativeTrajectoryRepairRequiredError = class extends Error {
   constructor(inspection) {
     super(
@@ -14303,13 +13492,13 @@ var NativeTrajectoryRepairRequiredError = class extends Error {
   code = "native-trajectory-tail-repair-required";
 };
 function sha256Buffer(value) {
-  return createHash10("sha256").update(value).digest("hex");
+  return createHash8("sha256").update(value).digest("hex");
 }
 function trajectoryFile(paths, name) {
-  if (!CHANGE_NAME_PATTERN4.test(name)) throw new Error(`Invalid Native change name: ${name}`);
-  const changeDir = path19.join(paths.changesDir, name);
+  if (!CHANGE_NAME_PATTERN2.test(name)) throw new Error(`Invalid Native change name: ${name}`);
+  const changeDir = path16.join(paths.changesDir, name);
   if (!isInsidePath(paths.changesDir, changeDir)) throw new Error("Native change path escaped");
-  return path19.join(changeDir, "runtime", "trajectory.jsonl");
+  return path16.join(changeDir, "runtime", "trajectory.jsonl");
 }
 function parseCompleteLines(content) {
   const lines = content.split(/\n/u);
@@ -14370,7 +13559,7 @@ function analyzeTrajectory(file, source) {
 async function inspectFile(paths, name) {
   const file = trajectoryFile(paths, name);
   await resolveContainedNativePath(paths.nativeRoot, file);
-  const changeDir = path19.join(paths.changesDir, name);
+  const changeDir = path16.join(paths.changesDir, name);
   const content = await readNativeTrajectoryText(changeDir, NATIVE_RUN_STORAGE.trajectoryRef);
   return content === null ? { status: "clean", file } : analyzeTrajectory(file, Buffer.from(content));
 }
@@ -14391,7 +13580,7 @@ async function repairNativeTrajectoryTail(paths, name, hooks) {
     }
     try {
       await replaceNativeTrajectoryText(
-        path19.join(paths.changesDir, name),
+        path16.join(paths.changesDir, name),
         NATIVE_RUN_STORAGE.trajectoryRef,
         result2.targetContent,
         result2.inspection.originalHash,
@@ -14415,10 +13604,10 @@ async function repairNativeTrajectoryTail(paths, name, hooks) {
 }
 
 // domains/comet-native/native-workspace.ts
-import { createHash as createHash11 } from "node:crypto";
-import { promises as fs14 } from "node:fs";
-import path20 from "node:path";
-var HASH_PATTERN6 = /^[a-f0-9]{64}$/u;
+import { createHash as createHash9 } from "node:crypto";
+import { promises as fs12 } from "node:fs";
+import path17 from "node:path";
+var HASH_PATTERN2 = /^[a-f0-9]{64}$/u;
 var MAX_WORKSPACE_IDENTITY_BYTES = 16 * 1024;
 var NATIVE_WORKSPACE_ADVISORY_CODES = /* @__PURE__ */ new Set([
   "workspace-root-changed",
@@ -14428,8 +13617,8 @@ function isNativeWorkspaceAdvisoryCode(code) {
   return NATIVE_WORKSPACE_ADVISORY_CODES.has(code);
 }
 function portableRelative2(parent, target) {
-  const relative = path20.relative(parent, target);
-  if (path20.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path20.sep}`)) {
+  const relative = path17.relative(parent, target);
+  if (path17.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path17.sep}`)) {
     return null;
   }
   return relative.replaceAll("\\", "/") || ".";
@@ -14441,38 +13630,38 @@ function hasControlCharacter(value) {
   });
 }
 function normalizedPortableRef(value, label) {
-  if (value.length === 0 || hasControlCharacter(value) || value.includes("\\") || path20.posix.isAbsolute(value) || /^(?:[A-Za-z]:|~)/u.test(value) || value.split("/").includes("..")) {
+  if (value.length === 0 || hasControlCharacter(value) || value.includes("\\") || path17.posix.isAbsolute(value) || /^(?:[A-Za-z]:|~)/u.test(value) || value.split("/").includes("..")) {
     throw new Error(`${label} must be a portable project-relative path`);
   }
-  const normalized = path20.posix.normalize(value);
+  const normalized = path17.posix.normalize(value);
   if (normalized !== value || normalized === ".." || normalized.startsWith("../")) {
     throw new Error(`${label} must be a normalized project-relative path`);
   }
   return normalized;
 }
 function identityHash(tag, value) {
-  return createHash11("sha256").update(`${tag}
+  return createHash9("sha256").update(`${tag}
 ${value}`).digest("hex");
 }
 async function physicalDirectoryIdentity(tag, value) {
-  const realPath = await fs14.realpath(value);
-  const stat = await fs14.lstat(realPath);
+  const realPath = await fs12.realpath(value);
+  const stat = await fs12.lstat(realPath);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error("Native workspace identity requires a real directory");
   }
-  const normalizedPath = process.platform === "win32" ? path20.normalize(realPath).toLowerCase() : realPath;
+  const normalizedPath = process.platform === "win32" ? path17.normalize(realPath).toLowerCase() : realPath;
   return identityHash(tag, `${normalizedPath}
 ${stat.dev}
 ${stat.ino}
 ${stat.birthtimeMs}`);
 }
 async function directoryPathIdentity(tag, value) {
-  const realPath = await fs14.realpath(value);
-  const stat = await fs14.lstat(realPath);
+  const realPath = await fs12.realpath(value);
+  const stat = await fs12.lstat(realPath);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error("Native workspace identity requires a real directory");
   }
-  const normalizedPath = process.platform === "win32" ? path20.normalize(realPath).toLowerCase() : realPath;
+  const normalizedPath = process.platform === "win32" ? path17.normalize(realPath).toLowerCase() : realPath;
   return identityHash(tag, normalizedPath);
 }
 function isoTimestamp(value) {
@@ -14506,7 +13695,7 @@ function assertIdentity(value) {
   if (root.schema !== "comet.native.workspace.v2") {
     throw new Error("Unsupported Native workspace identity");
   }
-  if (!Number.isSafeInteger(root.capturedRevision) || root.capturedRevision < 1 || typeof root.nativeRootRef !== "string" || !HASH_PATTERN6.test(String(root.projectRootId)) || !HASH_PATTERN6.test(String(root.nativeRootId))) {
+  if (!Number.isSafeInteger(root.capturedRevision) || root.capturedRevision < 1 || typeof root.nativeRootRef !== "string" || !HASH_PATTERN2.test(String(root.projectRootId)) || !HASH_PATTERN2.test(String(root.nativeRootId))) {
     throw new Error("Native workspace identity is invalid");
   }
   isoTimestamp(root.capturedAt);
@@ -14516,15 +13705,15 @@ function assertIdentity(value) {
   if (hasProjectPathId !== hasNativePathId) {
     throw new Error("Native workspace path identities must be provided together");
   }
-  if (hasProjectPathId && !HASH_PATTERN6.test(String(root.projectRootPathId)) || hasNativePathId && !HASH_PATTERN6.test(String(root.nativeRootPathId))) {
+  if (hasProjectPathId && !HASH_PATTERN2.test(String(root.projectRootPathId)) || hasNativePathId && !HASH_PATTERN2.test(String(root.nativeRootPathId))) {
     throw new Error("Native workspace path identity is invalid");
   }
-  if (root.sessionHash !== void 0 && !HASH_PATTERN6.test(String(root.sessionHash))) {
+  if (root.sessionHash !== void 0 && !HASH_PATTERN2.test(String(root.sessionHash))) {
     throw new Error("Native workspace session hash is invalid");
   }
 }
 function nativeWorkspaceFile(paths, name) {
-  return path20.join(paths.changesDir, name, "runtime", "workspace.json");
+  return path17.join(paths.changesDir, name, "runtime", "workspace.json");
 }
 function nativeWorkspaceRef(paths, name) {
   const relative = portableRelative2(paths.nativeRoot, nativeWorkspaceFile(paths, name));
@@ -14691,7 +13880,7 @@ var PHASES = /* @__PURE__ */ new Set(["shape", "build", "verify", "archive"]);
 var APPROVALS = /* @__PURE__ */ new Set(["implicit", "confirmed"]);
 var VERIFY_RESULTS = /* @__PURE__ */ new Set(["pending", "pass", "fail"]);
 var NATIVE_CHANGE_STATE_FILE = "comet-state.yaml";
-var HASH_PATTERN7 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN3 = /^[a-f0-9]{64}$/u;
 var NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 var CONTENT_ADDRESSED_REF_PATTERN = /^runtime\/evidence\/(scopes|allowances|verifications)\/([a-f0-9]{64})\.json$/u;
 var NativeSchemaMigrationRequiredError = class extends Error {
@@ -14776,7 +13965,7 @@ var NATIVE_BRIEF_TEMPLATE = [
   "# Verification expectations",
   ""
 ].join("\n");
-function record7(value, label) {
+function record3(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be a mapping`);
   }
@@ -14793,12 +13982,12 @@ function assertCapabilityId(value) {
   if (!NAME_PATTERN.test(value)) throw new Error(`Invalid Native capability id: ${value}`);
 }
 function assertRelativeRef(value, label) {
-  if (value.length === 0 || path21.isAbsolute(value) || /^(?:[A-Za-z]:|~|[\\/])/u.test(value) || value.split(/[\\/]/u).includes("..")) {
+  if (value.length === 0 || path18.isAbsolute(value) || /^(?:[A-Za-z]:|~|[\\/])/u.test(value) || value.split(/[\\/]/u).includes("..")) {
     throw new Error(`${label} must stay inside the Native change`);
   }
 }
 function parseSpecChange(value, index) {
-  const item = record7(value, `spec_changes[${index}]`);
+  const item = record3(value, `spec_changes[${index}]`);
   rejectUnknown3(item, SPEC_CHANGE_KEYS, `spec_changes[${index}]`);
   if (typeof item.capability !== "string") throw new Error("spec change capability is required");
   assertCapabilityId(item.capability);
@@ -14817,12 +14006,12 @@ function parseSpecChange(value, index) {
       throw new Error(`Create spec ${item.capability} requires null base_hash`);
   } else if (item.operation === "replace") {
     if (!source) throw new Error(`Replace spec ${item.capability} requires source`);
-    if (typeof baseHash !== "string" || !HASH_PATTERN7.test(baseHash)) {
+    if (typeof baseHash !== "string" || !HASH_PATTERN3.test(baseHash)) {
       throw new Error(`Replace spec ${item.capability} requires a SHA-256 base_hash`);
     }
   } else {
     if (source !== void 0) throw new Error(`Remove spec ${item.capability} forbids source`);
-    if (typeof baseHash !== "string" || !HASH_PATTERN7.test(baseHash)) {
+    if (typeof baseHash !== "string" || !HASH_PATTERN3.test(baseHash)) {
       throw new Error(`Remove spec ${item.capability} requires a SHA-256 base_hash`);
     }
   }
@@ -14890,7 +14079,7 @@ function parseChangeFields(root, knownKeys) {
   };
 }
 function parseLegacyNativeChangeValue(value) {
-  const root = record7(value, NATIVE_CHANGE_STATE_FILE);
+  const root = record3(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_LEGACY_CHANGE_SCHEMA) {
     throw new Error(`Expected ${NATIVE_LEGACY_CHANGE_SCHEMA}`);
   }
@@ -14917,20 +14106,20 @@ function contentAddressedRef(value, label, kind) {
 }
 function approvedContractHash(value) {
   if (value === void 0 || value === null) return null;
-  if (typeof value !== "string" || !HASH_PATTERN7.test(value)) {
+  if (typeof value !== "string" || !HASH_PATTERN3.test(value)) {
     throw new Error("Native approved_contract_hash must be null or a SHA-256 hash");
   }
   return value;
 }
 function verificationProtocol(value) {
   if (value === void 0) return "legacy-v1";
-  if (value !== "legacy-v1" && value !== "signed-v2") {
-    throw new Error("Native verification_protocol must be legacy-v1 or signed-v2");
+  if (value !== "legacy-v1") {
+    throw new Error("Native verification_protocol must be legacy-v1");
   }
   return value;
 }
 function parseV2NativeChangeValue(value) {
-  const root = record7(value, NATIVE_CHANGE_STATE_FILE);
+  const root = record3(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_V2_CHANGE_SCHEMA) {
     throw new Error(`Expected ${NATIVE_V2_CHANGE_SCHEMA}`);
   }
@@ -14949,7 +14138,7 @@ function parseV2NativeChangeValue(value) {
   };
 }
 function parseNativeChangeValue(value) {
-  const root = record7(value, NATIVE_CHANGE_STATE_FILE);
+  const root = record3(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema !== NATIVE_CHANGE_SCHEMA) {
     if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA || root.schema === NATIVE_V2_CHANGE_SCHEMA) {
       const previous = root.schema === NATIVE_LEGACY_CHANGE_SCHEMA ? parseLegacyNativeChangeValue(root) : parseV2NativeChangeValue(root);
@@ -15003,7 +14192,7 @@ function parseNativeChangeValue(value) {
   };
 }
 function inspectNativeChangeValue(value) {
-  const root = record7(value, NATIVE_CHANGE_STATE_FILE);
+  const root = record3(value, NATIVE_CHANGE_STATE_FILE);
   if (root.schema === NATIVE_LEGACY_CHANGE_SCHEMA) {
     const state2 = parseLegacyNativeChangeValue(root);
     return {
@@ -15113,15 +14302,15 @@ function nativeV2ChangeDocument(state) {
 }
 function nativeChangeDir(paths, name) {
   assertNativeName(name);
-  const target = path21.join(paths.changesDir, name);
+  const target = path18.join(paths.changesDir, name);
   if (!isInsidePath(paths.changesDir, target)) throw new Error("Native change path escaped");
   return target;
 }
 async function hasPendingNativeSchemaMigration(paths, name) {
-  const file = path21.join(nativeChangeDir(paths, name), "runtime", "schema-migration.json");
+  const file = path18.join(nativeChangeDir(paths, name), "runtime", "schema-migration.json");
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
-    await fs15.lstat(file);
+    await fs13.lstat(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -15129,10 +14318,10 @@ async function hasPendingNativeSchemaMigration(paths, name) {
   }
 }
 async function hasPendingNativeCheckpointRecovery(paths, name) {
-  const file = path21.join(nativeChangeDir(paths, name), "runtime", "checkpoint-journal.json");
+  const file = path18.join(nativeChangeDir(paths, name), "runtime", "checkpoint-journal.json");
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
-    await fs15.lstat(file);
+    await fs13.lstat(file);
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
@@ -15148,42 +14337,19 @@ async function createNativeChange(options) {
 }
 async function createNativeChangeLocked(options) {
   assertNativeName(options.name);
-  const verificationProtocol2 = options.verificationProtocol ?? (options.creationAuthorization ? "signed-v2" : "legacy-v1");
-  let signedCreation = null;
-  if (verificationProtocol2 === "signed-v2") {
-    const policy = await readNativeReviewTrustPolicy(options.paths).catch((error) => {
-      throw new Error(
-        "New signed-v2 Native changes require a review trust policy before creation",
-        { cause: error }
-      );
-    });
-    if (!options.creationAuthorization) {
-      throw new Error(
-        "New signed-v2 Native changes require a controller-signed creation authorization"
-      );
-    }
-    signedCreation = {
-      policy,
-      authorization: await verifyNativeCreationAuthorization({
-        paths: options.paths,
-        policyHash: policy.policyHash,
-        authorization: options.creationAuthorization,
-        change: options.name
-      })
-    };
-  }
+  const verificationProtocol2 = options.verificationProtocol ?? "legacy-v1";
   const changeDir = nativeChangeDir(options.paths, options.name);
   await resolveContainedNativePath(options.paths.nativeRoot, changeDir);
   let createdChangeDir = false;
   try {
     try {
-      await fs15.mkdir(changeDir, { recursive: false });
+      await fs13.mkdir(changeDir, { recursive: false });
       createdChangeDir = true;
     } catch (error) {
       if (error.code === "ENOENT") {
-        await fs15.mkdir(options.paths.changesDir, { recursive: true });
+        await fs13.mkdir(options.paths.changesDir, { recursive: true });
         try {
-          await fs15.mkdir(changeDir, { recursive: false });
+          await fs13.mkdir(changeDir, { recursive: false });
           createdChangeDir = true;
         } catch (retryError) {
           if (retryError.code === "EEXIST") {
@@ -15221,9 +14387,9 @@ async function createNativeChangeLocked(options) {
       run_id: null
     };
     await Promise.all([
-      fs15.mkdir(path21.join(changeDir, "specs"), { recursive: true }),
-      fs15.mkdir(path21.join(changeDir, "runtime", "checkpoints"), { recursive: true }),
-      atomicWriteText(path21.join(changeDir, "brief.md"), NATIVE_BRIEF_TEMPLATE)
+      fs13.mkdir(path18.join(changeDir, "specs"), { recursive: true }),
+      fs13.mkdir(path18.join(changeDir, "runtime", "checkpoints"), { recursive: true }),
+      atomicWriteText(path18.join(changeDir, "brief.md"), NATIVE_BRIEF_TEMPLATE)
     ]);
     const projectConfig = await readProjectConfig(options.paths.projectRoot);
     const snapshot2 = projectConfig?.native.snapshot ?? DEFAULT_NATIVE_SNAPSHOT_CONFIG;
@@ -15257,27 +14423,7 @@ async function createNativeChangeLocked(options) {
         baseline.policy?.hash ?? null
       );
     }
-    let creationBaseline = baseline;
-    if (signedCreation) {
-      const policyText = `${JSON.stringify(signedCreation.policy, null, 2)}
-`;
-      const policySnapshotHash = createHash12("sha256").update(policyText).digest("hex");
-      const policySnapshotRef = `runtime/trust/review-policy-${signedCreation.policy.policyHash}.json`;
-      await fs15.mkdir(path21.join(changeDir, "runtime", "trust"), { recursive: true });
-      await atomicWriteText(path21.join(changeDir, ...policySnapshotRef.split("/")), policyText);
-      creationBaseline = {
-        ...baseline,
-        creation: {
-          schema: "comet.native.change-creation-binding.v1",
-          protocol: "signed-v2",
-          policyHash: signedCreation.policy.policyHash,
-          policySnapshotRef,
-          policySnapshotHash,
-          authorization: signedCreation.authorization
-        }
-      };
-    }
-    await writeNativeBaselineManifest(options.paths, state.name, creationBaseline);
+    await writeNativeBaselineManifest(options.paths, state.name, baseline);
     await createNativeChangeFile(options.paths, state);
     await writeNativeWorkspaceIdentity({
       paths: options.paths,
@@ -15287,13 +14433,13 @@ async function createNativeChangeLocked(options) {
     });
     return state;
   } catch (error) {
-    if (createdChangeDir) await fs15.rm(changeDir, { recursive: true, force: true });
+    if (createdChangeDir) await fs13.rm(changeDir, { recursive: true, force: true });
     throw error;
   }
 }
 var NATIVE_CHANGE_DOCUMENT_MAX_BYTES = 256 * 1024;
-async function readChangeDocumentFile(file, root = path21.dirname(file)) {
-  const ref = path21.relative(root, file).split(path21.sep).join("/");
+async function readChangeDocumentFile(file, root = path18.dirname(file)) {
+  const ref = path18.relative(root, file).split(path18.sep).join("/");
   const source = await readNativeBoundedTextFile({
     root,
     ref,
@@ -15306,7 +14452,7 @@ async function readChangeDocumentFile(file, root = path21.dirname(file)) {
   return document.toJS();
 }
 async function inspectNativeChange(paths, name) {
-  const file = path21.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
+  const file = path18.join(nativeChangeDir(paths, name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   const inspection = inspectNativeChangeValue(await readChangeDocumentFile(file, paths.nativeRoot));
   if (inspection.state && inspection.state.name !== name) {
@@ -15327,67 +14473,10 @@ async function inspectNativeChange(paths, name) {
   return inspection;
 }
 async function assertNativeVerificationProtocolBinding(paths, state) {
-  const controllerTrust = await readNativeControllerTrustProject(paths.projectRoot);
-  const controllerRequiresSigned = controllerTrust !== null && !controllerTrust.legacyChanges.includes(state.name);
-  if (controllerRequiresSigned && state.verification_protocol !== "signed-v2") {
-    throw new Error(
-      `Native verification protocol does not match its creation baseline (controller-backed): expected signed-v2 for ${state.name}`
-    );
-  }
-  if (controllerTrust !== null && controllerTrust.legacyChanges.includes(state.name) && state.verification_protocol !== "legacy-v1") {
-    throw new Error(`Native controller trust marks ${state.name} as legacy-v1`);
-  }
   const baseline = await readNativeBaselineManifest(paths, state.name);
-  if (baseline === null) {
-    if (state.verification_protocol === "signed-v2" || controllerRequiresSigned) {
-      throw new Error(
-        `Native signed-v2 verification protocol has no creation baseline: ${state.name}`
-      );
-    }
-    return;
-  }
-  const expectedProtocol = baseline.creation ? "signed-v2" : "legacy-v1";
-  if (state.verification_protocol !== expectedProtocol) {
-    throw new Error(
-      `Native verification protocol does not match its creation baseline: expected ${expectedProtocol}, got ${state.verification_protocol}`
-    );
-  }
-  if (expectedProtocol === "signed-v2") {
-    if (!controllerTrust) {
-      throw new Error("Native signed-v2 creation has no controller-owned trust root");
-    }
-    const creation = baseline.creation;
-    const changeDir = nativeChangeDir(paths, state.name);
-    const snapshot2 = await readNativeProtectedTextFile({
-      root: nativeChangeDir(paths, state.name),
-      file: path21.join(changeDir, ...creation.policySnapshotRef.split("/")),
-      maxBytes: 64 * 1024,
-      label: "Native creation-time trust policy snapshot"
-    });
-    if (createHash12("sha256").update(snapshot2.text).digest("hex") !== creation.policySnapshotHash) {
-      throw new Error("Native creation-time trust policy snapshot hash mismatch");
-    }
-    let policy;
-    try {
-      policy = JSON.parse(snapshot2.text);
-    } catch (error) {
-      throw new Error("Native creation-time trust policy snapshot is invalid JSON", {
-        cause: error
-      });
-    }
-    const verifiedPolicy = verifyNativeReviewTrustPolicy(
-      policy,
-      controllerTrust.controllerIdentity
-    );
-    if (verifiedPolicy.policyHash !== creation.policyHash) {
-      throw new Error("Native creation-time trust policy snapshot does not match its binding");
-    }
-    await verifyNativeCreationAuthorization({
-      paths,
-      policyHash: creation.policyHash,
-      authorization: creation.authorization,
-      change: state.name
-    });
+  if (baseline === null) return;
+  if (state.verification_protocol !== "legacy-v1") {
+    throw new Error(`Native verification protocol is unsupported: ${state.verification_protocol}`);
   }
 }
 async function readNativeChange(paths, name) {
@@ -15401,10 +14490,10 @@ async function readNativeChange(paths, name) {
   return inspection.state;
 }
 async function createNativeChangeFile(paths, state) {
-  const file = path21.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);
+  const file = path18.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   try {
-    await fs15.access(file);
+    await fs13.access(file);
     throw new Error(`Native change state already exists: ${state.name}`);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
@@ -15451,7 +14540,7 @@ async function compareAndSwapNativeChangeLocked(paths, state, expectedRevision, 
     throw new Error("Native verification protocol changed outside a revisioned state transition");
   }
   await assertNativeTrajectoryHealthy(paths, state.name);
-  const file = path21.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);
+  const file = path18.join(nativeChangeDir(paths, state.name), NATIVE_CHANGE_STATE_FILE);
   await resolveContainedNativePath(paths.nativeRoot, file);
   return compareAndSwapNativeChangeFile(file, state, expectedRevision);
 }
@@ -15503,15 +14592,15 @@ function markdownSections(source) {
   return sections;
 }
 async function readContainedFile(root, relativeRef) {
-  const target = path22.resolve(root, ...relativeRef.split(/[\\/]/u));
+  const target = path19.resolve(root, ...relativeRef.split(/[\\/]/u));
   if (!isInsidePath(root, target))
     throw new Error(`Artifact escapes Native change: ${relativeRef}`);
-  const realRoot = await fs16.realpath(root);
-  const realTarget = await fs16.realpath(target);
+  const realRoot = await fs14.realpath(root);
+  const realTarget = await fs14.realpath(target);
   if (!isInsidePath(realRoot, realTarget)) {
     throw new Error(`Artifact symlink escapes Native change: ${relativeRef}`);
   }
-  if (!(await fs16.stat(realTarget)).isFile())
+  if (!(await fs14.stat(realTarget)).isFile())
     throw new Error(`Artifact is not a file: ${relativeRef}`);
   return realTarget;
 }
@@ -15592,7 +14681,7 @@ async function validateNativeVerification(changeDir, reportRef) {
   return result(findings);
 }
 function canonicalSpecPath(paths, capability) {
-  return path22.join(paths.specsDir, capability, "spec.md");
+  return path19.join(paths.specsDir, capability, "spec.md");
 }
 async function validateNativeSpecChanges(paths, state) {
   const findings = [];
@@ -15657,11 +14746,96 @@ import { promises as fs22 } from "node:fs";
 import path38 from "node:path";
 
 // domains/comet-native/native-archive-preflight.ts
-import path23 from "node:path";
+import path20 from "node:path";
+
+// domains/comet-native/native-canonical-hash.ts
+import { createHash as createHash10 } from "crypto";
+function invalidCanonicalJson(detail) {
+  throw new TypeError(`Value is not valid canonical JSON: ${detail}`);
+}
+function canonicalArray(value, ancestors) {
+  if (ancestors.has(value)) invalidCanonicalJson("cyclic structures are not supported");
+  ancestors.add(value);
+  try {
+    const enumerableKeys = Object.keys(value);
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.prototype.hasOwnProperty.call(value, index)) {
+        invalidCanonicalJson("sparse arrays are not supported");
+      }
+    }
+    if (enumerableKeys.length !== value.length || enumerableKeys.some((key, index) => key !== String(index))) {
+      invalidCanonicalJson("arrays must not have named enumerable properties");
+    }
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      invalidCanonicalJson("symbol properties are not supported");
+    }
+    return `[${value.map((entry2) => canonicalValue(entry2, ancestors)).join(",")}]`;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+function canonicalObject(value, ancestors) {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    invalidCanonicalJson("only plain objects are supported");
+  }
+  if (ancestors.has(value)) invalidCanonicalJson("cyclic structures are not supported");
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    invalidCanonicalJson("symbol properties are not supported");
+  }
+  ancestors.add(value);
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Object.keys(value).sort();
+    const fields = keys.map((key) => {
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor)) {
+        invalidCanonicalJson("accessor properties are not supported");
+      }
+      return `${JSON.stringify(key)}:${canonicalValue(descriptor.value, ancestors)}`;
+    });
+    return `{${fields.join(",")}}`;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+function canonicalValue(value, ancestors) {
+  if (value === null) return "null";
+  switch (typeof value) {
+    case "boolean":
+      return value ? "true" : "false";
+    case "string":
+      return JSON.stringify(value);
+    case "number":
+      if (!Number.isFinite(value)) invalidCanonicalJson("numbers must be finite");
+      return JSON.stringify(Object.is(value, -0) ? 0 : value);
+    case "object":
+      return Array.isArray(value) ? canonicalArray(value, ancestors) : canonicalObject(value, ancestors);
+    case "bigint":
+    case "function":
+    case "symbol":
+    case "undefined":
+      return invalidCanonicalJson(`${typeof value} values are not supported`);
+  }
+  return invalidCanonicalJson("unsupported value type");
+}
+function canonicalJson(value) {
+  return canonicalValue(value, /* @__PURE__ */ new Set());
+}
+function canonicalHash(tag, value) {
+  if (tag.length === 0) throw new TypeError("Canonical hash tag must be non-empty");
+  if (/[\r\n]/u.test(tag)) {
+    throw new TypeError("Canonical hash tag must not contain a line break");
+  }
+  return createHash10("sha256").update(`${tag}
+${canonicalJson(value)}`).digest("hex");
+}
+
+// domains/comet-native/native-archive-preflight.ts
 var NATIVE_ARCHIVE_PREFLIGHT_SCHEMA = "comet.native.archive-preflight.v1";
 var PREFLIGHT_HASH_TAG = "comet.native.archive-preflight.v1";
 var OPERATION_HASH_TAG = "comet.native.archive-operation.v1";
-var HASH_PATTERN8 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN4 = /^[a-f0-9]{64}$/u;
 var NAME_PATTERN2 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 var FINDING_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 function compareText(left, right) {
@@ -15670,7 +14844,7 @@ function compareText(left, right) {
   return 0;
 }
 function hash(value, label) {
-  if (typeof value !== "string" || !HASH_PATTERN8.test(value)) {
+  if (typeof value !== "string" || !HASH_PATTERN4.test(value)) {
     throw new Error(`${label} must be a SHA-256 hash`);
   }
   return value;
@@ -15679,8 +14853,8 @@ function optionalHash(value, label) {
   return value === null ? null : hash(value, label);
 }
 function normalizedRef(value, label) {
-  const normalized = path23.posix.normalize(value);
-  if (typeof value !== "string" || value.length === 0 || value !== value.trim() || value.includes("\\") || path23.posix.isAbsolute(normalized) || /^(?:[A-Za-z]:|~)/u.test(value) || value.split("/").includes("..") || normalized !== value || normalized === "." || value.endsWith("/")) {
+  const normalized = path20.posix.normalize(value);
+  if (typeof value !== "string" || value.length === 0 || value !== value.trim() || value.includes("\\") || path20.posix.isAbsolute(normalized) || /^(?:[A-Za-z]:|~)/u.test(value) || value.split("/").includes("..") || normalized !== value || normalized === "." || value.endsWith("/")) {
     throw new Error(`${label} must be a normalized Native-relative ref`);
   }
   return value;
@@ -15867,8 +15041,8 @@ function buildNativeArchivePreflight(input) {
 }
 
 // domains/comet-native/native-conflict-radar.ts
-import { createHash as createHash13 } from "node:crypto";
-import path24 from "node:path";
+import { createHash as createHash11 } from "node:crypto";
+import path21 from "node:path";
 var NATIVE_CONFLICT_RADAR_SCHEMA = "comet.native.conflict-radar.v1";
 var NATIVE_CONFLICT_RADAR_LIMITS = Object.freeze({
   maxChanges: 32,
@@ -15885,7 +15059,7 @@ var NATIVE_CONFLICT_RADAR_LIMITS = Object.freeze({
 });
 var RADAR_HASH_TAG = "comet.native.conflict-radar.v1";
 var SIGNAL_SET_HASH_TAG = "comet.native.conflict-radar-signals.v1";
-var HASH_PATTERN9 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN5 = /^[a-f0-9]{64}$/u;
 var NAME_PATTERN3 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 var CHANGE_KEYS2 = /* @__PURE__ */ new Set([
   "name",
@@ -15908,10 +15082,10 @@ function strictRecord(value, keys, label) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
-  const record13 = value;
-  const unknown = Object.keys(record13).filter((key) => !keys.has(key));
+  const record12 = value;
+  const unknown = Object.keys(record12).filter((key) => !keys.has(key));
   if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(", ")}`);
-  return record13;
+  return record12;
 }
 function boundedText(value, label, maxBytes) {
   if (typeof value !== "string" || value.length === 0 || value !== value.trim()) {
@@ -15922,78 +15096,78 @@ function boundedText(value, label, maxBytes) {
 }
 function normalizedProjectPath(value, label) {
   const candidate = boundedText(value, label, NATIVE_CONFLICT_RADAR_LIMITS.maxArtifactPathBytes);
-  const normalized = path24.posix.normalize(candidate);
+  const normalized = path21.posix.normalize(candidate);
   if (candidate.includes("\\") || Array.from(candidate).some((character) => {
     const code = character.codePointAt(0) ?? 0;
     return code <= 31 || code === 127;
-  }) || /^(?:[A-Za-z]:|~)/u.test(candidate) || path24.posix.isAbsolute(normalized) || candidate.split("/").includes("..") || normalized !== candidate || normalized === "." || candidate.endsWith("/")) {
+  }) || /^(?:[A-Za-z]:|~)/u.test(candidate) || path21.posix.isAbsolute(normalized) || candidate.split("/").includes("..") || normalized !== candidate || normalized === "." || candidate.endsWith("/")) {
     throw new Error(`${label} must be a normalized project-relative path`);
   }
   return candidate;
 }
 function normalizedHash(value, label) {
-  if (typeof value !== "string" || !HASH_PATTERN9.test(value)) {
+  if (typeof value !== "string" || !HASH_PATTERN5.test(value)) {
     throw new Error(`${label} must be a SHA-256 hash`);
   }
   return value;
 }
 function normalizeSpec2(value, label) {
-  const record13 = strictRecord(value, SPEC_KEYS, label);
+  const record12 = strictRecord(value, SPEC_KEYS, label);
   const capability = boundedText(
-    record13.capability,
+    record12.capability,
     `${label} capability`,
     NATIVE_CONFLICT_RADAR_LIMITS.maxCapabilityBytes
   );
   if (!NAME_PATTERN3.test(capability)) throw new Error(`${label} capability is invalid`);
-  if (record13.operation !== "create" && record13.operation !== "replace" && record13.operation !== "remove") {
+  if (record12.operation !== "create" && record12.operation !== "replace" && record12.operation !== "remove") {
     throw new Error(`${label} operation is invalid`);
   }
-  const baseHash = record13.baseHash === null ? null : normalizedHash(record13.baseHash, `${label} canonical base hash`);
-  if (record13.operation === "create" && baseHash !== null) {
+  const baseHash = record12.baseHash === null ? null : normalizedHash(record12.baseHash, `${label} canonical base hash`);
+  if (record12.operation === "create" && baseHash !== null) {
     throw new Error(`${label} create operation requires a null canonical base hash`);
   }
-  if (record13.operation !== "create" && baseHash === null) {
-    throw new Error(`${label} ${record13.operation} operation requires a canonical base hash`);
+  if (record12.operation !== "create" && baseHash === null) {
+    throw new Error(`${label} ${record12.operation} operation requires a canonical base hash`);
   }
-  return { capability, operation: record13.operation, baseHash };
+  return { capability, operation: record12.operation, baseHash };
 }
 function normalizeArtifact(value, label) {
-  const record13 = strictRecord(value, ARTIFACT_KEYS, label);
-  if (record13.kind !== "file" && record13.kind !== "directory") {
+  const record12 = strictRecord(value, ARTIFACT_KEYS, label);
+  if (record12.kind !== "file" && record12.kind !== "directory") {
     throw new Error(`${label} kind is invalid`);
   }
-  return { path: normalizedProjectPath(record13.path, `${label} path`), kind: record13.kind };
+  return { path: normalizedProjectPath(record12.path, `${label} path`), kind: record12.kind };
 }
 function normalizeChange(value, index) {
-  const record13 = strictRecord(value, CHANGE_KEYS2, `Conflict radar change ${index}`);
+  const record12 = strictRecord(value, CHANGE_KEYS2, `Conflict radar change ${index}`);
   const name = boundedText(
-    record13.name,
+    record12.name,
     `Conflict radar change ${index} name`,
     NATIVE_CONFLICT_RADAR_LIMITS.maxNameBytes
   );
   if (!NAME_PATTERN3.test(name)) throw new Error(`Conflict radar change ${index} name is invalid`);
-  if (!Number.isSafeInteger(record13.revision) || record13.revision < 1) {
+  if (!Number.isSafeInteger(record12.revision) || record12.revision < 1) {
     throw new Error(`Conflict radar change ${name} revision must be a positive safe integer`);
   }
-  if (!Array.isArray(record13.specs)) {
+  if (!Array.isArray(record12.specs)) {
     throw new Error(`Conflict radar change ${name} specs must be an array`);
   }
-  if (record13.specs.length > NATIVE_CONFLICT_RADAR_LIMITS.maxSpecsPerChange) {
+  if (record12.specs.length > NATIVE_CONFLICT_RADAR_LIMITS.maxSpecsPerChange) {
     throw new Error(`Conflict radar change ${name} exceeds the spec budget`);
   }
-  if (!Array.isArray(record13.declaredArtifacts)) {
+  if (!Array.isArray(record12.declaredArtifacts)) {
     throw new Error(`Conflict radar change ${name} declared artifacts must be an array`);
   }
-  if (record13.declaredArtifacts.length > NATIVE_CONFLICT_RADAR_LIMITS.maxArtifactsPerChange) {
+  if (record12.declaredArtifacts.length > NATIVE_CONFLICT_RADAR_LIMITS.maxArtifactsPerChange) {
     throw new Error(`Conflict radar change ${name} exceeds the declared artifact budget`);
   }
-  const specs = record13.specs.map(
+  const specs = record12.specs.map(
     (spec, specIndex) => normalizeSpec2(spec, `Conflict radar change ${name} spec ${specIndex}`)
   ).sort((left, right) => compareText2(left.capability, right.capability));
   if (new Set(specs.map((spec) => spec.capability)).size !== specs.length) {
     throw new Error(`Conflict radar change ${name} has duplicate capabilities`);
   }
-  const declaredArtifacts = record13.declaredArtifacts.map(
+  const declaredArtifacts = record12.declaredArtifacts.map(
     (artifact, artifactIndex) => normalizeArtifact(artifact, `Conflict radar change ${name} artifact ${artifactIndex}`)
   ).sort(
     (left, right) => compareText2(left.path, right.path) || compareText2(left.kind, right.kind)
@@ -16002,13 +15176,13 @@ function normalizeChange(value, index) {
   if (new Set(artifactPaths).size !== artifactPaths.length) {
     throw new Error(`Conflict radar change ${name} has duplicate or conflicting artifact paths`);
   }
-  const workspaceIdentityHash = record13.workspaceIdentityHash === void 0 || record13.workspaceIdentityHash === null ? null : normalizedHash(
-    record13.workspaceIdentityHash,
+  const workspaceIdentityHash = record12.workspaceIdentityHash === void 0 || record12.workspaceIdentityHash === null ? null : normalizedHash(
+    record12.workspaceIdentityHash,
     `Conflict radar change ${name} workspace identity hash`
   );
   return {
     name,
-    revision: record13.revision,
+    revision: record12.revision,
     specs,
     declaredArtifacts,
     workspaceIdentityHash
@@ -16067,7 +15241,7 @@ function workspaceRelationship(left, right) {
 }
 function relationship(left, right) {
   const visibleSignals = [];
-  const signalHasher = createHash13("sha256").update(`${SIGNAL_SET_HASH_TAG}
+  const signalHasher = createHash11("sha256").update(`${SIGNAL_SET_HASH_TAG}
 [`);
   let signalCount = 0;
   let hasDefiniteConflict = false;
@@ -16165,13 +15339,13 @@ function buildNativeConflictRadar(input) {
 }
 
 // domains/comet-native/native-evidence-storage.ts
-import { createHash as createHash15 } from "node:crypto";
-import { promises as fs17 } from "node:fs";
-import path28 from "node:path";
+import { createHash as createHash14 } from "node:crypto";
+import { promises as fs15 } from "node:fs";
+import path25 from "node:path";
 
 // domains/comet-native/native-verification-scope.ts
-import { createHash as createHash14 } from "node:crypto";
-import path25 from "path";
+import { createHash as createHash12 } from "node:crypto";
+import path22 from "path";
 var NATIVE_IMPLEMENTATION_SCOPE_SCHEMA = "comet.native.implementation-scope.v2";
 var NATIVE_SNAPSHOT_PROJECTION_SCHEMA = "comet.native.content-snapshot-projection.v1";
 var SNAPSHOT_PROJECTION_HASH_TAG = "comet.native.content-snapshot-projection.v1";
@@ -16204,8 +15378,8 @@ function projectRelativePath(value, label) {
   if (typeof value !== "string" || value.length === 0 || value.includes("\\") || value.includes("\0") || value.endsWith("/") || /^[a-zA-Z]:/u.test(value)) {
     throw new Error(`${label} must be a normalized project-relative path`);
   }
-  const normalized = path25.posix.normalize(value);
-  if (normalized !== value || normalized === "." || normalized === ".." || normalized.startsWith("../") || path25.posix.isAbsolute(normalized)) {
+  const normalized = path22.posix.normalize(value);
+  if (normalized !== value || normalized === "." || normalized === ".." || normalized.startsWith("../") || path22.posix.isAbsolute(normalized)) {
     throw new Error(`${label} must stay inside the project root`);
   }
   return value;
@@ -16262,7 +15436,7 @@ function fitSnapshotProjectionBudget(value) {
   const omitted = [...value.omitted];
   let omittedCount = value.omittedCount;
   let overflowCount = value.omissionOverflow?.count ?? 0;
-  const overflowHash = createHash14("sha256");
+  const overflowHash = createHash12("sha256");
   overflowHash.update(`${SNAPSHOT_PROJECTION_OVERFLOW_HASH_TAG}
 `);
   if (value.omissionOverflow) {
@@ -16571,7 +15745,7 @@ function parseScopeDetailOverflow(scope) {
   return { ...counts, hash: hash8 };
 }
 function hashScopeDetailOverflow(options) {
-  const hash8 = createHash14("sha256");
+  const hash8 = createHash12("sha256");
   hash8.update(`${SCOPE_DETAIL_OVERFLOW_HASH_TAG}
 `);
   let changeIndex = 0;
@@ -17210,7 +16384,7 @@ function rebuildNativeImplementationScopeBundle(input) {
 }
 
 // domains/comet-native/native-verification-evidence.ts
-import path26 from "node:path";
+import path23 from "node:path";
 
 // domains/comet-native/native-redaction.ts
 var AUTHORIZATION_PATTERN = /\b(Bearer|Basic)\s+[^\s"']+/giu;
@@ -17226,7 +16400,7 @@ function redactNativeCredentialText(value) {
 
 // domains/comet-native/native-independent-review.ts
 var HASH_TAG = "comet.native.independent-review.v1";
-var HASH_PATTERN10 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN6 = /^[a-f0-9]{64}$/u;
 var MAX_TEXT = 2e3;
 function object(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -17234,7 +16408,7 @@ function object(value, label) {
   }
   return value;
 }
-function exactKeys5(value, keys, label) {
+function exactKeys(value, keys, label) {
   const actual = Object.keys(value).sort();
   const expected = [...keys].sort();
   if (JSON.stringify(actual) !== JSON.stringify(expected))
@@ -17248,7 +16422,7 @@ function text(value, label) {
 }
 function reviewContent(value, expectedAcceptanceIds) {
   const root = object(value, "Native independent review");
-  exactKeys5(
+  exactKeys(
     root,
     ["implementation_author", "reviewer", "acceptance_ids", "checked", "findings"],
     "Native independent review"
@@ -17267,7 +16441,7 @@ function reviewContent(value, expectedAcceptanceIds) {
   if (new Set(acceptanceIds).size !== acceptanceIds.length || JSON.stringify([...acceptanceIds].sort()) !== JSON.stringify(expected))
     throw new Error("Native independent review does not cover every acceptance ID");
   const checked = object(root.checked, "Native independent review checked");
-  exactKeys5(
+  exactKeys(
     checked,
     ["unified_io", "adversarial_paths", "generated_assets", "lifecycle_eval"],
     "Native independent review checked"
@@ -17278,7 +16452,7 @@ function reviewContent(value, expectedAcceptanceIds) {
     throw new Error("Native independent review findings are invalid");
   const findings = root.findings.map((entry2, index) => {
     const finding = object(entry2, `Native independent review finding ${index}`);
-    exactKeys5(
+    exactKeys(
       finding,
       ["severity", "status", "summary"],
       `Native independent review finding ${index}`
@@ -17309,7 +16483,7 @@ function reviewContent(value, expectedAcceptanceIds) {
 }
 function parseNativeIndependentReview(value, expectedAcceptanceIds) {
   const root = object(value, "Native independent review");
-  exactKeys5(
+  exactKeys(
     root,
     [
       "schema",
@@ -17328,7 +16502,7 @@ function parseNativeIndependentReview(value, expectedAcceptanceIds) {
   void _hash;
   void _schema;
   const content = reviewContent(input, expectedAcceptanceIds);
-  if (typeof root.review_hash !== "string" || !HASH_PATTERN10.test(root.review_hash) || canonicalHash(HASH_TAG, content) !== root.review_hash) {
+  if (typeof root.review_hash !== "string" || !HASH_PATTERN6.test(root.review_hash) || canonicalHash(HASH_TAG, content) !== root.review_hash) {
     throw new Error("Native independent review hash is invalid");
   }
   return { ...content, reviewHash: root.review_hash };
@@ -17349,7 +16523,7 @@ function isNativeHighRiskScope(changes) {
 }
 
 // domains/comet-native/native-verification-evidence.ts
-var HASH_PATTERN11 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN7 = /^[a-f0-9]{64}$/u;
 var MISSING_ACCEPTANCE_DETAIL_LIMIT = 8;
 var ACCEPTANCE_TRACE_HASH_TAG = "comet.native.acceptance-trace.v2";
 var LEGACY_ACCEPTANCE_TRACE_HASH_TAG = "comet.native.acceptance-trace.v1";
@@ -17357,7 +16531,7 @@ var PARTIAL_ALLOWANCE_HASH_TAG = "comet.native.partial-allowance.v1";
 var VERIFICATION_ENVELOPE_HASH_TAG = "comet.native.verification-evidence.v2";
 var LEGACY_VERIFICATION_ENVELOPE_HASH_TAG = "comet.native.verification-evidence.v1";
 function hash2(value, label) {
-  if (!HASH_PATTERN11.test(value)) throw new Error(`${label} must be a SHA-256 hash`);
+  if (!HASH_PATTERN7.test(value)) throw new Error(`${label} must be a SHA-256 hash`);
   return value;
 }
 function positiveRevision2(value) {
@@ -17380,11 +16554,11 @@ function requiredText(value, label, max = 2e3) {
   return normalized;
 }
 function portableRef(value, label) {
-  const normalized = path26.posix.normalize(value);
+  const normalized = path23.posix.normalize(value);
   if (value.length === 0 || value !== value.trim() || value.includes("\\") || Array.from(value).some((character) => {
     const code = character.codePointAt(0) ?? 0;
     return code <= 31 || code === 127;
-  }) || path26.posix.isAbsolute(normalized) || /^(?:[A-Za-z]:|~)/u.test(value) || value.split("/").includes("..") || normalized !== value || normalized === "." || value.endsWith("/")) {
+  }) || path23.posix.isAbsolute(normalized) || /^(?:[A-Za-z]:|~)/u.test(value) || value.split("/").includes("..") || normalized !== value || normalized === "." || value.endsWith("/")) {
     throw new Error(`${label} must be a normalized relative ref`);
   }
   return value;
@@ -17674,7 +16848,7 @@ function parseNativeAcceptanceEvidenceTrace(value) {
     ],
     "Native acceptance trace"
   );
-  if (root.schema !== "comet.native.acceptance-trace.v2" || typeof root.nativeRootRef !== "string" || typeof root.criteriaHash !== "string" || !HASH_PATTERN11.test(root.criteriaHash) || !Number.isSafeInteger(root.total) || !Number.isSafeInteger(root.evidenced) || !Number.isSafeInteger(root.skipped) || !Array.isArray(root.entries)) {
+  if (root.schema !== "comet.native.acceptance-trace.v2" || typeof root.nativeRootRef !== "string" || typeof root.criteriaHash !== "string" || !HASH_PATTERN7.test(root.criteriaHash) || !Number.isSafeInteger(root.total) || !Number.isSafeInteger(root.evidenced) || !Number.isSafeInteger(root.skipped) || !Array.isArray(root.entries)) {
     throw new Error("Native acceptance trace is invalid");
   }
   const nativeRootRef3 = portableRef(root.nativeRootRef, "Native root ref");
@@ -17748,7 +16922,7 @@ function parseNativeLegacyAcceptanceEvidenceTrace(value) {
     ],
     "Legacy Native acceptance trace"
   );
-  if (root.schema !== "comet.native.acceptance-trace.v1" || typeof root.nativeRootRef !== "string" || typeof root.criteriaHash !== "string" || !HASH_PATTERN11.test(root.criteriaHash) || !Number.isSafeInteger(root.total) || !Number.isSafeInteger(root.evidenced) || !Number.isSafeInteger(root.skipped) || !Array.isArray(root.entries)) {
+  if (root.schema !== "comet.native.acceptance-trace.v1" || typeof root.nativeRootRef !== "string" || typeof root.criteriaHash !== "string" || !HASH_PATTERN7.test(root.criteriaHash) || !Number.isSafeInteger(root.total) || !Number.isSafeInteger(root.evidenced) || !Number.isSafeInteger(root.skipped) || !Array.isArray(root.entries)) {
     throw new Error("Legacy Native acceptance trace is invalid");
   }
   const nativeRootRef3 = portableRef(root.nativeRootRef, "Legacy Native root ref");
@@ -18090,7 +17264,7 @@ function parseNativeLegacyVerificationEvidenceEnvelope(root) {
 }
 
 // domains/comet-native/native-check-receipt-model.ts
-import path27 from "node:path";
+import path24 from "node:path";
 var NATIVE_CHECK_RECEIPT_SCHEMA = "comet.native.check-receipt.v1";
 var NATIVE_CHECK_RECEIPT_HASH_TAG = "comet.native.check-receipt.v1";
 var NATIVE_CHECK_POLICY = "scoped-text-safety";
@@ -18104,8 +17278,8 @@ var NATIVE_CHECK_LIMITS = Object.freeze({
   maxTotalBytes: 8 * 1024 * 1024,
   maxIssues: 128
 });
-var HASH_PATTERN12 = /^[a-f0-9]{64}$/u;
-var CHANGE_NAME_PATTERN5 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+var HASH_PATTERN8 = /^[a-f0-9]{64}$/u;
+var CHANGE_NAME_PATTERN3 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 var CHECKER_HASH_TAG = "comet.native.checker-policy.v1";
 var CHECK_INPUT_HASH_TAG = "comet.native.check-input.v1";
 var MAX_ISSUE_PATH_BYTES = 2048;
@@ -18143,13 +17317,13 @@ var STALE_REASON_ORDER = [
   "implementation-after-does-not-match-scope"
 ];
 var STALE_REASONS = new Set(STALE_REASON_ORDER);
-function record8(value, label) {
+function record4(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
   return value;
 }
-function exactKeys6(value, expected, label) {
+function exactKeys2(value, expected, label) {
   const keys = new Set(expected);
   const unknown = Object.keys(value).filter((key) => !keys.has(key));
   const missing = expected.filter((key) => !(key in value));
@@ -18157,7 +17331,7 @@ function exactKeys6(value, expected, label) {
   if (missing.length > 0) throw new Error(`${label} is missing field(s): ${missing.join(", ")}`);
 }
 function hash3(value, label) {
-  if (typeof value !== "string" || !HASH_PATTERN12.test(value)) {
+  if (typeof value !== "string" || !HASH_PATTERN8.test(value)) {
     throw new Error(`${label} must be a SHA-256 hash`);
   }
   return value;
@@ -18185,17 +17359,17 @@ function projectRelativePath2(value, label) {
   if (typeof value !== "string" || value.length === 0 || Buffer.byteLength(value, "utf8") > MAX_ISSUE_PATH_BYTES || value.includes("\\") || value.includes("\0") || value.endsWith("/") || /^[a-zA-Z]:/u.test(value)) {
     throw new Error(`${label} must be a bounded normalized project-relative path`);
   }
-  const normalized = path27.posix.normalize(value);
-  if (normalized !== value || normalized === "." || normalized === ".." || normalized.startsWith("../") || path27.posix.isAbsolute(normalized)) {
+  const normalized = path24.posix.normalize(value);
+  if (normalized !== value || normalized === "." || normalized === ".." || normalized.startsWith("../") || path24.posix.isAbsolute(normalized)) {
     throw new Error(`${label} must stay inside the project root`);
   }
   return value;
 }
 function parseChecker(value) {
-  const checker = record8(value, "Native check receipt checker");
-  exactKeys6(checker, ["policy", "version", "hash", "limits"], "Native check receipt checker");
-  const limits = record8(checker.limits, "Native check receipt limits");
-  exactKeys6(
+  const checker = record4(value, "Native check receipt checker");
+  exactKeys2(checker, ["policy", "version", "hash", "limits"], "Native check receipt checker");
+  const limits = record4(checker.limits, "Native check receipt limits");
+  exactKeys2(
     limits,
     ["maxFiles", "maxFileBytes", "maxTotalBytes", "maxIssues"],
     "Native check receipt limits"
@@ -18211,8 +17385,8 @@ function parseChecker(value) {
   };
 }
 function parseContract(value) {
-  const contract = record8(value, "Native check receipt contract");
-  exactKeys6(contract, ["expectedHash", "beforeHash", "afterHash"], "Native check receipt contract");
+  const contract = record4(value, "Native check receipt contract");
+  exactKeys2(contract, ["expectedHash", "beforeHash", "afterHash"], "Native check receipt contract");
   return {
     expectedHash: hash3(contract.expectedHash, "Native check expected contract hash"),
     beforeHash: hash3(contract.beforeHash, "Native check before contract hash"),
@@ -18220,8 +17394,8 @@ function parseContract(value) {
   };
 }
 function parseImplementation(value) {
-  const implementation = record8(value, "Native check receipt implementation");
-  exactKeys6(
+  const implementation = record4(value, "Native check receipt implementation");
+  exactKeys2(
     implementation,
     ["scopeHash", "expectedSnapshotHash", "beforeSnapshotHash", "afterSnapshotHash"],
     "Native check receipt implementation"
@@ -18240,8 +17414,8 @@ function parseImplementation(value) {
   };
 }
 function parseCounts(value) {
-  const counts = record8(value, "Native check receipt counts");
-  exactKeys6(
+  const counts = record4(value, "Native check receipt counts");
+  exactKeys2(
     counts,
     [
       "filesSelected",
@@ -18280,8 +17454,8 @@ function parseIssues(value) {
     throw new Error("Native check receipt issues must be a bounded array");
   }
   const issues = value.map((entry2, index) => {
-    const issue = record8(entry2, `Native check issue ${index}`);
-    exactKeys6(issue, ["path", "line", "kind"], `Native check issue ${index}`);
+    const issue = record4(entry2, `Native check issue ${index}`);
+    exactKeys2(issue, ["path", "line", "kind"], `Native check issue ${index}`);
     if (typeof issue.kind !== "string" || !ISSUE_KINDS.has(issue.kind)) {
       throw new Error(`Native check issue ${index} kind is invalid`);
     }
@@ -18314,8 +17488,8 @@ function nativeCheckInputHash(value) {
   return canonicalHash(CHECK_INPUT_HASH_TAG, value);
 }
 function parseNativeCheckReceipt(value) {
-  const receipt = record8(value, "Native check receipt");
-  exactKeys6(
+  const receipt = record4(value, "Native check receipt");
+  exactKeys2(
     receipt,
     [
       "schema",
@@ -18340,7 +17514,7 @@ function parseNativeCheckReceipt(value) {
   if (receipt.schema !== NATIVE_CHECK_RECEIPT_SCHEMA) {
     throw new Error("Native check receipt schema is invalid");
   }
-  if (typeof receipt.change !== "string" || Buffer.byteLength(receipt.change, "utf8") > 128 || !CHANGE_NAME_PATTERN5.test(receipt.change)) {
+  if (typeof receipt.change !== "string" || Buffer.byteLength(receipt.change, "utf8") > 128 || !CHANGE_NAME_PATTERN3.test(receipt.change)) {
     throw new Error("Native check receipt change name is invalid");
   }
   const sourceRevision = positiveInteger3(receipt.sourceRevision, "Native check source revision");
@@ -18435,6 +17609,210 @@ function buildNativeCheckReceipt(input) {
   });
 }
 
+// domains/comet-native/native-review-identity.ts
+import {
+  createHash as createHash13,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  sign as cryptoSign,
+  verify as cryptoVerify
+} from "node:crypto";
+var NATIVE_REVIEW_IDENTITY_SCHEMA = "comet.native.review-identity.v1";
+var NATIVE_REVIEW_KEYPAIR_SCHEMA = "comet.native.review-keypair.v1";
+var NATIVE_REVIEW_SIGNATURE_SCHEMA = "comet.native.review-signature.v1";
+var ALGORITHM = "ed25519";
+var HASH_PATTERN9 = /^[a-f0-9]{64}$/u;
+var MAX_PUBLIC_KEY_TEXT = 512;
+var MAX_PRIVATE_KEY_TEXT = 16384;
+var MAX_SIGNATURE_TEXT = 256;
+var SIGNATURE_CONTEXT = Buffer.from("comet.native.review-payload.v1\0", "utf8");
+function nativeReviewPrivateKeyFilePersistenceSupported(platform = process.platform) {
+  return platform !== "win32";
+}
+function record5(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+function exactKeys3(value, expected, label) {
+  const actual = Object.keys(value).sort();
+  const canonical = [...expected].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(canonical)) {
+    throw new Error(`${label} fields are invalid`);
+  }
+}
+function sha256(value) {
+  return createHash13("sha256").update(value).digest("hex");
+}
+function payloadHash(value, label = "Native review payloadHash") {
+  if (typeof value !== "string" || !HASH_PATTERN9.test(value)) {
+    throw new Error(`${label} must be a lowercase SHA-256 hash`);
+  }
+  return value;
+}
+function canonicalBase64(value, label, maxCharacters, expectedBytes) {
+  if (typeof value !== "string" || value.length === 0 || value.length > maxCharacters || value.length % 4 !== 0) {
+    throw new Error(`${label} is invalid`);
+  }
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.length === 0 || bytes.toString("base64") !== value || expectedBytes !== void 0 && bytes.length !== expectedBytes) {
+    throw new Error(`${label} must use canonical base64`);
+  }
+  return bytes;
+}
+function publicKeyMaterial(value) {
+  const supplied = canonicalBase64(value, "Native review public key", MAX_PUBLIC_KEY_TEXT);
+  let key;
+  try {
+    key = createPublicKey({ key: supplied, format: "der", type: "spki" });
+  } catch (error) {
+    throw new Error("Native review public key is invalid", { cause: error });
+  }
+  if (key.type !== "public" || key.asymmetricKeyType !== "ed25519") {
+    throw new Error("Native review public key must be Ed25519");
+  }
+  const der = key.export({ format: "der", type: "spki" });
+  if (!Buffer.isBuffer(der) || !supplied.equals(der)) {
+    throw new Error("Native review public key must use canonical SPKI DER");
+  }
+  return { key, der, text: der.toString("base64") };
+}
+function privateKeyMaterial(value) {
+  const supplied = canonicalBase64(value, "Native review private key", MAX_PRIVATE_KEY_TEXT);
+  let key;
+  try {
+    key = createPrivateKey({ key: supplied, format: "der", type: "pkcs8" });
+  } catch (error) {
+    throw new Error("Native review private key is invalid", { cause: error });
+  }
+  if (key.type !== "private" || key.asymmetricKeyType !== "ed25519") {
+    throw new Error("Native review private key must be Ed25519");
+  }
+  const der = key.export({ format: "der", type: "pkcs8" });
+  if (!Buffer.isBuffer(der) || !supplied.equals(der)) {
+    throw new Error("Native review private key must use canonical PKCS8 DER");
+  }
+  return { key, der };
+}
+function signaturePayload(hash8) {
+  return Buffer.concat([SIGNATURE_CONTEXT, Buffer.from(hash8, "hex")]);
+}
+function parseNativeReviewSignature(value) {
+  const root = record5(value, "Native review signature");
+  exactKeys3(
+    root,
+    ["schema", "algorithm", "keyId", "payloadHash", "signature"],
+    "Native review signature"
+  );
+  if (root.schema !== NATIVE_REVIEW_SIGNATURE_SCHEMA || root.algorithm !== ALGORITHM || typeof root.keyId !== "string" || !HASH_PATTERN9.test(root.keyId)) {
+    throw new Error("Native review signature identity is invalid");
+  }
+  const hash8 = payloadHash(root.payloadHash);
+  const signature = canonicalBase64(
+    root.signature,
+    "Native review signature",
+    MAX_SIGNATURE_TEXT,
+    64
+  ).toString("base64");
+  return {
+    schema: NATIVE_REVIEW_SIGNATURE_SCHEMA,
+    algorithm: ALGORITHM,
+    keyId: root.keyId,
+    payloadHash: hash8,
+    signature
+  };
+}
+function parseNativeReviewIdentity(value) {
+  const root = record5(value, "Native review identity");
+  exactKeys3(root, ["schema", "algorithm", "keyId", "publicKey"], "Native review identity");
+  if (root.schema !== NATIVE_REVIEW_IDENTITY_SCHEMA || root.algorithm !== ALGORITHM || typeof root.keyId !== "string" || !HASH_PATTERN9.test(root.keyId)) {
+    throw new Error("Native review identity keyId is invalid");
+  }
+  const publicKey = publicKeyMaterial(root.publicKey);
+  const keyId = sha256(publicKey.der);
+  if (root.keyId !== keyId) {
+    throw new Error("Native review identity keyId does not match its public key");
+  }
+  return {
+    schema: NATIVE_REVIEW_IDENTITY_SCHEMA,
+    algorithm: ALGORITHM,
+    keyId,
+    publicKey: publicKey.text
+  };
+}
+function generateNativeReviewKeyPair() {
+  const generated = generateKeyPairSync("ed25519");
+  const publicKey = generated.publicKey.export({ format: "der", type: "spki" });
+  const privateKey = generated.privateKey.export({ format: "der", type: "pkcs8" });
+  if (!Buffer.isBuffer(publicKey) || !Buffer.isBuffer(privateKey)) {
+    throw new Error("Native review key generation returned unsupported key material");
+  }
+  const identity = {
+    schema: NATIVE_REVIEW_IDENTITY_SCHEMA,
+    algorithm: ALGORITHM,
+    keyId: sha256(publicKey),
+    publicKey: publicKey.toString("base64")
+  };
+  return {
+    schema: NATIVE_REVIEW_KEYPAIR_SCHEMA,
+    identity,
+    privateKey: privateKey.toString("base64")
+  };
+}
+function nativeReviewIdentityFromPrivateKey(privateKeyValue) {
+  const privateKey = privateKeyMaterial(privateKeyValue);
+  const publicKey = createPublicKey(privateKey.key).export({ format: "der", type: "spki" });
+  if (!Buffer.isBuffer(publicKey)) {
+    throw new Error("Native review private key returned unsupported public key material");
+  }
+  return {
+    schema: NATIVE_REVIEW_IDENTITY_SCHEMA,
+    algorithm: ALGORITHM,
+    keyId: sha256(publicKey),
+    publicKey: publicKey.toString("base64")
+  };
+}
+function signNativeReviewPayloadHash(options) {
+  const identity = parseNativeReviewIdentity(options.identity);
+  const hash8 = payloadHash(options.payloadHash);
+  const privateKey = privateKeyMaterial(options.privateKey);
+  const derivedPublicKey = createPublicKey(privateKey.key).export({ format: "der", type: "spki" });
+  if (!Buffer.isBuffer(derivedPublicKey) || !derivedPublicKey.equals(Buffer.from(identity.publicKey, "base64"))) {
+    throw new Error("Native review private key does not match the public identity");
+  }
+  return {
+    schema: NATIVE_REVIEW_SIGNATURE_SCHEMA,
+    algorithm: ALGORITHM,
+    keyId: identity.keyId,
+    payloadHash: hash8,
+    signature: cryptoSign(null, signaturePayload(hash8), privateKey.key).toString("base64")
+  };
+}
+function verifyNativeReviewPayloadHash(options) {
+  const identity = parseNativeReviewIdentity(options.identity);
+  const hash8 = payloadHash(options.payloadHash);
+  const proof = parseNativeReviewSignature(options.proof);
+  if (proof.payloadHash !== hash8) {
+    throw new Error("Native review signature payloadHash does not match the expected payloadHash");
+  }
+  if (proof.keyId !== identity.keyId) {
+    throw new Error("Native review signature keyId does not match the public identity");
+  }
+  const signature = canonicalBase64(
+    proof.signature,
+    "Native review signature",
+    MAX_SIGNATURE_TEXT,
+    64
+  );
+  const publicKey = publicKeyMaterial(identity.publicKey);
+  if (!cryptoVerify(null, signaturePayload(hash8), publicKey.key, signature)) {
+    throw new Error("Native review signature is invalid");
+  }
+  return proof;
+}
+
 // domains/comet-native/native-verification-receipt.ts
 var NATIVE_VERIFICATION_RECEIPT_SCHEMA = "comet.native.verification-receipt.v2";
 var NATIVE_WAIVER_RECEIPT_SCHEMA = "comet.native.waiver-receipt.v2";
@@ -18446,9 +17824,9 @@ var IMPLEMENTATION_PAYLOAD_HASH_TAG = "comet.native.implementation-attestation.v
 var WAIVER_PAYLOAD_HASH_TAG = "comet.native.waiver-attestation.v1";
 var REVIEW_MATRIX_HASH_TAG = "comet.native.review-acceptance-matrix.v1";
 var REVIEW_EVIDENCE_GRAPH_HASH_TAG = "comet.native.review-evidence-graph.v1";
-var HASH_PATTERN13 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN10 = /^[a-f0-9]{64}$/u;
 var ACCEPTANCE_ID_PATTERN = /^acceptance-[a-f0-9]{64}$/u;
-var CHANGE_NAME_PATTERN6 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
+var CHANGE_NAME_PATTERN4 = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 var RECEIPT_REF_PATTERN = /^runtime\/evidence\/receipts\/([a-f0-9]{64})\.json$/u;
 var WAIVER_REF_PATTERN = /^runtime\/evidence\/waivers\/([a-f0-9]{64})\.json$/u;
 var CHECK_RECEIPT_REF_PATTERN = /^runtime\/evidence\/check-receipts\/([a-f0-9]{64})\.json$/u;
@@ -18502,7 +17880,7 @@ function buildNativeReviewEvidenceGraph(input) {
     graphHash: canonicalHash(REVIEW_EVIDENCE_GRAPH_HASH_TAG, content)
   });
 }
-function record9(value, label) {
+function record6(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
@@ -18512,7 +17890,7 @@ function record9(value, label) {
   }
   return value;
 }
-function exactKeys7(value, expected, label) {
+function exactKeys4(value, expected, label) {
   const actual = Object.keys(value).sort();
   const keys = [...expected].sort();
   if (actual.length !== keys.length || actual.some((key, index) => key !== keys[index])) {
@@ -18520,7 +17898,7 @@ function exactKeys7(value, expected, label) {
   }
 }
 function hash4(value, label) {
-  if (typeof value !== "string" || !HASH_PATTERN13.test(value)) {
+  if (typeof value !== "string" || !HASH_PATTERN10.test(value)) {
     throw new Error(`${label} must be a SHA-256 hash`);
   }
   return value;
@@ -18579,8 +17957,8 @@ function parseReplayList(value, label) {
     throw new Error(`${label} must be a bounded array`);
   }
   const replays = value.map((entry2, index) => {
-    const replay = record9(entry2, `${label} ${index}`);
-    exactKeys7(replay, ["sourceRef", "replayRef"], `${label} ${index}`);
+    const replay = record6(entry2, `${label} ${index}`);
+    exactKeys4(replay, ["sourceRef", "replayRef"], `${label} ${index}`);
     return {
       sourceRef: receiptRef(replay.sourceRef, `${label} ${index} source`),
       replayRef: receiptRef(replay.replayRef, `${label} ${index} replay`)
@@ -18594,8 +17972,8 @@ function parseReplayList(value, label) {
   return replays;
 }
 function parseNativeReviewEvidenceGraph(value) {
-  const root = record9(value, "Native review evidence graph");
-  exactKeys7(
+  const root = record6(value, "Native review evidence graph");
+  exactKeys4(
     root,
     [
       "schema",
@@ -18638,13 +18016,13 @@ function parseNativeReviewEvidenceGraph(value) {
   return { ...content, graphHash };
 }
 function bindings(value) {
-  const root = record9(value, "Native verification receipt bindings");
-  exactKeys7(
+  const root = record6(value, "Native verification receipt bindings");
+  exactKeys4(
     root,
     ["change", "sourceRevision", "contractHash", "scopeHash", "snapshotHash", "artifactHash"],
     "Native verification receipt bindings"
   );
-  if (typeof root.change !== "string" || !CHANGE_NAME_PATTERN6.test(root.change) || !Number.isSafeInteger(root.sourceRevision) || root.sourceRevision < 1) {
+  if (typeof root.change !== "string" || !CHANGE_NAME_PATTERN4.test(root.change) || !Number.isSafeInteger(root.sourceRevision) || root.sourceRevision < 1) {
     throw new Error("Native verification receipt bindings are invalid");
   }
   return {
@@ -18667,8 +18045,8 @@ function parseFindings(value, allowOpenBlocking) {
     throw new Error("Native independent review findings are invalid");
   }
   const findings = value.map((entry2, index) => {
-    const finding = record9(entry2, `Native independent review finding ${index}`);
-    exactKeys7(
+    const finding = record6(entry2, `Native independent review finding ${index}`);
+    exactKeys4(
       finding,
       ["severity", "status", "summary"],
       `Native independent review finding ${index}`
@@ -18690,9 +18068,9 @@ function parseFindings(value, allowOpenBlocking) {
   return findings;
 }
 function parseEvidence(kind, value, actor, status, role) {
-  const evidence = record9(value, `Native ${kind} evidence`);
+  const evidence = record6(value, `Native ${kind} evidence`);
   if (kind === "automated-check") {
-    exactKeys7(
+    exactKeys4(
       evidence,
       [
         "executable",
@@ -18723,8 +18101,8 @@ function parseEvidence(kind, value, actor, status, role) {
     if (status === "passed" && evidence.exitCode !== 0 || status === "failed" && evidence.exitCode === 0 || status === "passed" && (evidence.timedOut || evidence.signal !== null)) {
       throw new Error("Native automated-check status does not match its exit code");
     }
-    const worktree = record9(evidence.worktree, "Native automated-check worktree");
-    exactKeys7(
+    const worktree = record6(evidence.worktree, "Native automated-check worktree");
+    exactKeys4(
       worktree,
       ["provider", "root", "beforeCommit", "afterCommit"],
       "Native automated-check worktree"
@@ -18732,8 +18110,8 @@ function parseEvidence(kind, value, actor, status, role) {
     if (worktree.provider !== "git" && worktree.provider !== "none" || worktree.beforeCommit !== null && (typeof worktree.beforeCommit !== "string" || !/^[a-f0-9]{40,64}$/u.test(worktree.beforeCommit)) || worktree.afterCommit !== null && (typeof worktree.afterCommit !== "string" || !/^[a-f0-9]{40,64}$/u.test(worktree.afterCommit))) {
       throw new Error("Native automated-check worktree identity is invalid");
     }
-    const afterFence = record9(evidence.afterFence, "Native automated-check after fence");
-    exactKeys7(
+    const afterFence = record6(evidence.afterFence, "Native automated-check after fence");
+    exactKeys4(
       afterFence,
       ["snapshotHash", "scopeHash", "matched"],
       "Native automated-check after fence"
@@ -18771,7 +18149,7 @@ function parseEvidence(kind, value, actor, status, role) {
     };
   }
   if (kind === "static-inspection") {
-    exactKeys7(
+    exactKeys4(
       evidence,
       ["subjects", "rule", "resultSummary", "checkReceiptRef", "checkReceiptHash"],
       "Native static-inspection evidence"
@@ -18794,7 +18172,7 @@ function parseEvidence(kind, value, actor, status, role) {
     };
   }
   if (kind === "manual-evidence") {
-    exactKeys7(
+    exactKeys4(
       evidence,
       ["steps", "observations", "responsible"],
       "Native manual-evidence evidence"
@@ -18808,7 +18186,7 @@ function parseEvidence(kind, value, actor, status, role) {
     };
   }
   if (kind === "implementation-attestation") {
-    exactKeys7(
+    exactKeys4(
       evidence,
       ["implementationExecutionId", "reviewPolicyHash", "implementationIdentity", "attestation"],
       "Native implementation-attestation evidence"
@@ -18830,7 +18208,7 @@ function parseEvidence(kind, value, actor, status, role) {
       attestation: parseNativeReviewSignature(evidence.attestation)
     };
   }
-  exactKeys7(
+  exactKeys4(
     evidence,
     [
       "preparationHash",
@@ -18861,8 +18239,8 @@ function parseEvidence(kind, value, actor, status, role) {
   if (actor !== `review-key:${reviewerIdentity.keyId}`) {
     throw new Error("Native independent review actor/reviewer identity mismatch");
   }
-  const checked = record9(evidence.checked, "Native independent review checks");
-  exactKeys7(
+  const checked = record6(evidence.checked, "Native independent review checks");
+  exactKeys4(
     checked,
     [
       "acceptanceApplicability",
@@ -18904,8 +18282,8 @@ function parseEvidence(kind, value, actor, status, role) {
   };
 }
 function receiptContent(value) {
-  const root = record9(value, "Native verification receipt");
-  exactKeys7(
+  const root = record6(value, "Native verification receipt");
+  exactKeys4(
     root,
     [
       "schema",
@@ -19001,8 +18379,8 @@ function buildNativeVerificationReceipt(input) {
   };
 }
 function parseNativeVerificationReceipt(value) {
-  const root = record9(value, "Native verification receipt");
-  exactKeys7(
+  const root = record6(value, "Native verification receipt");
+  exactKeys4(
     root,
     [
       "schema",
@@ -19031,8 +18409,8 @@ function parseNativeVerificationReceipt(value) {
   return { ...content, receiptHash };
 }
 function waiverContent(value) {
-  const root = record9(value, "Native waiver receipt");
-  exactKeys7(
+  const root = record6(value, "Native waiver receipt");
+  exactKeys4(
     root,
     [
       "schema",
@@ -19081,8 +18459,8 @@ function buildNativeWaiverReceipt(input) {
   return { ...content, waiverHash: canonicalHash(WAIVER_RECEIPT_HASH_TAG, content) };
 }
 function parseNativeWaiverReceipt(value) {
-  const root = record9(value, "Native waiver receipt");
-  exactKeys7(
+  const root = record6(value, "Native waiver receipt");
+  exactKeys4(
     root,
     [
       "schema",
@@ -19126,12 +18504,12 @@ function nativeBlockedCheckId(receipt) {
 }
 
 // domains/comet-native/native-evidence-storage.ts
-var HASH_PATTERN14 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN11 = /^[a-f0-9]{64}$/u;
 var MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES = MAX_NATIVE_IMPLEMENTATION_EVIDENCE_DOCUMENT_BYTES;
 var MAX_NATIVE_IMPLEMENTATION_SCOPE_BUNDLE_BYTES = 3 * MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES;
-function isInside7(parent, target) {
-  const relative = path28.relative(parent, target);
-  return relative === "" || !path28.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path28.sep}`);
+function isInside6(parent, target) {
+  const relative = path25.relative(parent, target);
+  return relative === "" || !path25.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path25.sep}`);
 }
 function sameDirectoryIdentity5(identity, stat) {
   return sameFileObject(
@@ -19151,30 +18529,30 @@ function sameFileIdentity6(left, right) {
   return sameFileObject(leftObject, rightObject) && left.birthtimeMs === right.birthtimeMs && left.ctimeMs === right.ctimeMs && left.size === right.size;
 }
 async function captureDirectoryIdentity3(directory) {
-  const stat = await fs17.lstat(directory);
+  const stat = await fs15.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error(`Native evidence parent must be a real directory: ${directory}`);
   }
   return {
     path: directory,
-    realPath: await fs17.realpath(directory),
+    realPath: await fs15.realpath(directory),
     dev: stat.dev,
     ino: stat.ino,
     birthtimeMs: stat.birthtimeMs
   };
 }
 async function captureDirectoryChain4(root, directory) {
-  const lexicalRoot = path28.resolve(root);
-  const lexicalDirectory = path28.resolve(directory);
-  if (!isInside7(lexicalRoot, lexicalDirectory)) {
+  const lexicalRoot = path25.resolve(root);
+  const lexicalDirectory = path25.resolve(directory);
+  if (!isInside6(lexicalRoot, lexicalDirectory)) {
     throw new Error("Native evidence path is outside its change");
   }
   const chain = [await captureDirectoryIdentity3(lexicalRoot)];
   let cursor = lexicalRoot;
-  for (const segment of path28.relative(lexicalRoot, lexicalDirectory).split(path28.sep).filter(Boolean)) {
-    cursor = path28.join(cursor, segment);
+  for (const segment of path25.relative(lexicalRoot, lexicalDirectory).split(path25.sep).filter(Boolean)) {
+    cursor = path25.join(cursor, segment);
     const identity = await captureDirectoryIdentity3(cursor);
-    if (!isInside7(chain[0].realPath, identity.realPath)) {
+    if (!isInside6(chain[0].realPath, identity.realPath)) {
       throw new Error(`Native evidence parent resolves outside its change: ${cursor}`);
     }
     chain.push(identity);
@@ -19183,29 +18561,29 @@ async function captureDirectoryChain4(root, directory) {
 }
 async function verifyDirectoryChain5(chain) {
   for (const identity of chain) {
-    const stat = await fs17.lstat(identity.path);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity5(identity, stat) || await fs17.realpath(identity.path) !== identity.realPath) {
+    const stat = await fs15.lstat(identity.path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || !sameDirectoryIdentity5(identity, stat) || await fs15.realpath(identity.path) !== identity.realPath) {
       throw new Error(`Native evidence parent changed while reading: ${identity.path}`);
     }
   }
 }
 async function readBoundedEvidenceJson(file, changeRoot, hooks = {}) {
-  const chain = await captureDirectoryChain4(changeRoot, path28.dirname(file));
+  const chain = await captureDirectoryChain4(changeRoot, path25.dirname(file));
   await hooks.afterParentChainCaptured?.();
-  const lexical = await fs17.lstat(file);
+  const lexical = await fs15.lstat(file);
   if (!lexical.isFile() || lexical.isSymbolicLink()) {
     throw new Error("Native evidence document must be a regular file");
   }
-  const realPath = await fs17.realpath(file);
-  if (!isInside7(chain[0].realPath, realPath)) {
+  const realPath = await fs15.realpath(file);
+  if (!isInside6(chain[0].realPath, realPath)) {
     throw new Error("Native evidence document resolves outside its change");
   }
-  const handle = await fs17.open(file, "r");
+  const handle = await fs15.open(file, "r");
   try {
     const [opened, pathAfterOpen, realPathAfterOpen] = await Promise.all([
       handle.stat(),
-      fs17.lstat(file),
-      fs17.realpath(file)
+      fs15.lstat(file),
+      fs15.realpath(file)
     ]);
     await verifyDirectoryChain5(chain);
     if (!opened.isFile() || !pathAfterOpen.isFile() || pathAfterOpen.isSymbolicLink() || realPathAfterOpen !== realPath || !sameFileIdentity6(opened, lexical) || !sameFileIdentity6(opened, pathAfterOpen)) {
@@ -19235,8 +18613,8 @@ async function readBoundedEvidenceJson(file, changeRoot, hooks = {}) {
     await hooks.beforeFinalCheck?.();
     const [afterHandle, afterPath, afterRealPath] = await Promise.all([
       handle.stat(),
-      fs17.lstat(file),
-      fs17.realpath(file)
+      fs15.lstat(file),
+      fs15.realpath(file)
     ]);
     await verifyDirectoryChain5(chain);
     if (!afterPath.isFile() || afterPath.isSymbolicLink() || afterRealPath !== realPath || !sameFileIdentity6(opened, afterHandle) || !sameFileIdentity6(opened, afterPath)) {
@@ -19248,7 +18626,7 @@ async function readBoundedEvidenceJson(file, changeRoot, hooks = {}) {
   }
 }
 function nativeEvidenceRef(kind, hash8) {
-  if (!HASH_PATTERN14.test(hash8)) throw new Error("Native evidence hash is invalid");
+  if (!HASH_PATTERN11.test(hash8)) throw new Error("Native evidence hash is invalid");
   return `runtime/evidence/${kind}/${hash8}.json`;
 }
 function nativeReportEvidenceRef(hash8) {
@@ -19256,7 +18634,7 @@ function nativeReportEvidenceRef(hash8) {
 }
 async function writeNativeVerificationReportSnapshot(options) {
   const encoded = Buffer.from(options.text, "utf8");
-  if (encoded.byteLength > MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES || createHash15("sha256").update(encoded).digest("hex") !== options.hash) {
+  if (encoded.byteLength > MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES || createHash14("sha256").update(encoded).digest("hex") !== options.hash) {
     throw new Error("Native verification report snapshot hash or size is invalid");
   }
   return writeEvidenceDocument({
@@ -19272,13 +18650,13 @@ async function writeNativeVerificationReportSnapshot(options) {
   });
 }
 async function readNativeVerificationReportSnapshot(paths, name, hash8) {
-  if (!HASH_PATTERN14.test(hash8)) throw new Error("Native report evidence hash is invalid");
+  if (!HASH_PATTERN11.test(hash8)) throw new Error("Native report evidence hash is invalid");
   const value = await readEvidenceDocument({ paths, name, kind: "reports", hash: hash8 });
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Native report evidence must be an object");
   }
   const report = value;
-  if (Object.keys(report).sort().join(",") !== "content,reportHash,schema" || report.schema !== "comet.native.verification-report.v1" || report.reportHash !== hash8 || typeof report.content !== "string" || createHash15("sha256").update(Buffer.from(report.content, "utf8")).digest("hex") !== hash8) {
+  if (Object.keys(report).sort().join(",") !== "content,reportHash,schema" || report.schema !== "comet.native.verification-report.v1" || report.reportHash !== hash8 || typeof report.content !== "string" || createHash14("sha256").update(Buffer.from(report.content, "utf8")).digest("hex") !== hash8) {
     throw new Error("Native report evidence does not match its hash");
   }
   return report.content;
@@ -19293,7 +18671,7 @@ function parseEvidenceRef(ref, expectedKind) {
   return match[2];
 }
 function evidenceFile(paths, name, kind, hash8) {
-  return path28.join(nativeChangeDir(paths, name), ...nativeEvidenceRef(kind, hash8).split("/"));
+  return path25.join(nativeChangeDir(paths, name), ...nativeEvidenceRef(kind, hash8).split("/"));
 }
 async function readEvidenceDocument(options) {
   const file = evidenceFile(options.paths, options.name, options.kind, options.hash);
@@ -19581,8 +18959,8 @@ async function inspectNativeChangeConflicts(paths, name) {
 
 // domains/comet-native/native-transition-journal.ts
 import { randomUUID as randomUUID3 } from "crypto";
-import { promises as fs18 } from "fs";
-import path29 from "path";
+import { promises as fs16 } from "fs";
+import path26 from "path";
 import { isDeepStrictEqual } from "util";
 
 // domains/comet-native/native-repair-stagnation.ts
@@ -19598,7 +18976,7 @@ var NATIVE_REPAIR_STAGNATION_LIMITS = {
 };
 var SIGNATURE_HASH_TAG = "comet.native.repair-signature.v1";
 var OVERRIDE_SUMMARY_HASH_TAG = "comet.native.repair-override-summary.v1";
-var HASH_PATTERN15 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN12 = /^[a-f0-9]{64}$/u;
 var TOKEN_PATTERN = /^[a-z0-9][a-z0-9._:/-]{0,255}$/u;
 function compareText5(left, right) {
   if (left < right) return -1;
@@ -19606,7 +18984,7 @@ function compareText5(left, right) {
   return 0;
 }
 function hash5(value, label) {
-  if (typeof value !== "string" || !HASH_PATTERN15.test(value)) {
+  if (typeof value !== "string" || !HASH_PATTERN12.test(value)) {
     throw new Error(`${label} must be a SHA-256 hash`);
   }
   return value;
@@ -19674,11 +19052,11 @@ function normalizeHistory(history) {
   }
   let previousIteration = 0;
   let previousRevision = 0;
-  return history.map((record13, index) => {
-    if (!record13 || record13.kind !== "failure" && record13.kind !== "override") {
+  return history.map((record12, index) => {
+    if (!record12 || record12.kind !== "failure" && record12.kind !== "override") {
       throw new Error(`Native repair history record ${index} is invalid`);
     }
-    const expectedKeys = record13.kind === "failure" ? record13.failedAcceptanceIds === void 0 && record13.failedCheckIds === void 0 ? ["iteration", "kind", "revision", "signatureHash"] : [
+    const expectedKeys = record12.kind === "failure" ? record12.failedAcceptanceIds === void 0 && record12.failedCheckIds === void 0 ? ["iteration", "kind", "revision", "signatureHash"] : [
       "failedAcceptanceIds",
       "failedCheckIds",
       "iteration",
@@ -19686,22 +19064,22 @@ function normalizeHistory(history) {
       "revision",
       "signatureHash"
     ] : ["iteration", "kind", "revision", "signatureHash", "summaryHash"];
-    const keys = Object.keys(record13).sort(compareText5);
+    const keys = Object.keys(record12).sort(compareText5);
     if (keys.length !== expectedKeys.length || keys.some((key, keyIndex) => key !== expectedKeys[keyIndex])) {
       throw new Error(`Native repair history record ${index} fields are invalid`);
     }
-    const iteration = positiveInteger4(record13.iteration, `Native repair history ${index} iteration`);
-    const revision = positiveInteger4(record13.revision, `Native repair history ${index} revision`);
+    const iteration = positiveInteger4(record12.iteration, `Native repair history ${index} iteration`);
+    const revision = positiveInteger4(record12.revision, `Native repair history ${index} revision`);
     const previous = index > 0 ? history[index - 1] : null;
-    const pairedOverride = record13.kind === "override" && previous?.kind === "failure" && iteration === previousIteration && revision >= previousRevision && record13.signatureHash === previous.signatureHash;
+    const pairedOverride = record12.kind === "override" && previous?.kind === "failure" && iteration === previousIteration && revision >= previousRevision && record12.signatureHash === previous.signatureHash;
     if (!pairedOverride && (iteration <= previousIteration || revision <= previousRevision)) {
       throw new Error("Native repair history must be strictly ordered by revision and iteration");
     }
     previousIteration = iteration;
     previousRevision = revision;
-    const signatureHash = hash5(record13.signatureHash, `Native repair history ${index} signature`);
-    if (record13.kind === "failure") {
-      if (record13.failedAcceptanceIds === void 0 && record13.failedCheckIds === void 0) {
+    const signatureHash = hash5(record12.signatureHash, `Native repair history ${index} signature`);
+    if (record12.kind === "failure") {
+      if (record12.failedAcceptanceIds === void 0 && record12.failedCheckIds === void 0) {
         return { kind: "failure", iteration, revision, signatureHash };
       }
       return {
@@ -19710,13 +19088,13 @@ function normalizeHistory(history) {
         revision,
         signatureHash,
         failedAcceptanceIds: normalizedTokens(
-          record13.failedAcceptanceIds ?? [],
+          record12.failedAcceptanceIds ?? [],
           `Native repair history ${index} failed acceptance IDs`,
           NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedAcceptanceIds,
           true
         ),
         failedCheckIds: normalizedTokens(
-          record13.failedCheckIds ?? [],
+          record12.failedCheckIds ?? [],
           `Native repair history ${index} failed check IDs`,
           NATIVE_REPAIR_STAGNATION_LIMITS.maxFailedCheckIds,
           true
@@ -19728,7 +19106,7 @@ function normalizeHistory(history) {
       iteration,
       revision,
       signatureHash,
-      summaryHash: hash5(record13.summaryHash, `Native repair history ${index} summary`)
+      summaryHash: hash5(record12.summaryHash, `Native repair history ${index} summary`)
     };
   });
 }
@@ -19769,7 +19147,7 @@ function decideNativeRepairStagnation(options) {
   const signature = buildNativeRepairSignature(options.facts);
   const history = normalizeHistory(options.history);
   const failures = history.filter(
-    (record13) => record13.kind === "failure"
+    (record12) => record12.kind === "failure"
   );
   const totalRepairFailures = failures.length + 1;
   const maxVerifyFailures = positiveInteger4(
@@ -19828,7 +19206,7 @@ function decideNativeRepairStagnation(options) {
     }
     overrideSummary(options.override.summary);
     const alreadyUsed2 = history.some(
-      (record13) => record13.kind === "override" && record13.signatureHash === signature.signatureHash
+      (record12) => record12.kind === "override" && record12.signatureHash === signature.signatureHash
     );
     return {
       disposition: alreadyUsed2 ? "manual-stop" : "continue",
@@ -19841,7 +19219,7 @@ function decideNativeRepairStagnation(options) {
     };
   }
   const alreadyUsed = history.some(
-    (record13) => record13.kind === "override" && record13.signatureHash === signature.signatureHash
+    (record12) => record12.kind === "override" && record12.signatureHash === signature.signatureHash
   );
   return {
     disposition: "manual-stop",
@@ -19879,7 +19257,7 @@ var NATIVE_REPAIR_TRAJECTORY_LIMITS = {
   maxTotalDataCharacters: 1048576,
   maxRunIdCharacters: 256
 };
-var HASH_PATTERN16 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN13 = /^[a-f0-9]{64}$/u;
 var REPAIR_SCOPE_HASH_TAG = "comet.native.repair-scope.v1";
 var EVENT_TYPES2 = /* @__PURE__ */ new Set([
   "run_started",
@@ -19909,13 +19287,13 @@ function compareText6(left, right) {
   if (left > right) return 1;
   return 0;
 }
-function exactKeys8(value, expected, label) {
+function exactKeys5(value, expected, label) {
   const actual = Object.keys(value).sort(compareText6);
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
     throw new Error(`${label} fields are invalid`);
   }
 }
-function record10(value, label) {
+function record7(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
@@ -19926,7 +19304,7 @@ function record10(value, label) {
   return value;
 }
 function hash6(value, label) {
-  if (typeof value !== "string" || !HASH_PATTERN16.test(value)) {
+  if (typeof value !== "string" || !HASH_PATTERN13.test(value)) {
     throw new Error(`${label} must be a SHA-256 hash`);
   }
   return value;
@@ -19992,7 +19370,7 @@ function boundedData(value, depth, budget, label, legacyTransitionText = false) 
       value.forEach((entry2, index) => boundedData(entry2, depth + 1, budget, `${label}[${index}]`));
       return;
     }
-    const object2 = record10(value, label);
+    const object2 = record7(value, label);
     const keys = Object.keys(object2);
     if (keys.length > NATIVE_REPAIR_TRAJECTORY_LIMITS.maxObjectFields) {
       throw new Error(`${label} contains too many fields`);
@@ -20028,8 +19406,8 @@ function parseTimestamp(value) {
   return value;
 }
 function parseEvent2(value, index, runId) {
-  const event = record10(value, `Native repair trajectory event ${index + 1}`);
-  exactKeys8(event, EVENT_KEYS2, `Native repair trajectory event ${index + 1}`);
+  const event = record7(value, `Native repair trajectory event ${index + 1}`);
+  exactKeys5(event, EVENT_KEYS2, `Native repair trajectory event ${index + 1}`);
   if (!Number.isSafeInteger(event.sequence) || event.sequence !== index + 1) {
     throw new Error("Native repair trajectory sequence is invalid");
   }
@@ -20042,7 +19420,7 @@ function parseEvent2(value, index, runId) {
   }
   const budget = { nodes: 0, characters: 0, ancestors: /* @__PURE__ */ new Set() };
   boundedData(event.data, 0, budget, "Native trajectory event data");
-  record10(event.data, "Native repair trajectory event data");
+  record7(event.data, "Native repair trajectory event data");
   return {
     event,
     dataNodes: budget.nodes,
@@ -20050,11 +19428,11 @@ function parseEvent2(value, index, runId) {
   };
 }
 function parseNativeRepairTrajectoryProjection(value) {
-  const projection = record10(value, "Native repair trajectory projection");
+  const projection = record7(value, "Native repair trajectory projection");
   const keys = Object.keys(projection).sort(compareText6);
   const legacy = keys.length === LEGACY_PROJECTION_KEYS.length && keys.every((key, index) => key === LEGACY_PROJECTION_KEYS[index]);
   if (!legacy) {
-    exactKeys8(projection, PROJECTION_KEYS, "Native repair trajectory projection");
+    exactKeys5(projection, PROJECTION_KEYS, "Native repair trajectory projection");
   }
   const signatureHash = hash6(projection.signatureHash, "Native repair trajectory signature hash");
   if (projection.disposition !== "continue" && projection.disposition !== "warn" && projection.disposition !== "manual-stop" && projection.disposition !== "hard-stop") {
@@ -20243,8 +19621,8 @@ function inspectLatestNativeRepairProjection(options) {
 }
 function acceptLatestNativeRepairOverride(options) {
   const projected = projectNativeRepairHistory(options);
-  const request = record10(options.override, "Native repair override request");
-  exactKeys8(request, ["expectedSignatureHash", "summary"], "Native repair override request");
+  const request = record7(options.override, "Native repair override request");
+  exactKeys5(request, ["expectedSignatureHash", "summary"], "Native repair override request");
   const expectedSignatureHash = hash6(
     request.expectedSignatureHash,
     "Native repair override expected signature"
@@ -20497,7 +19875,7 @@ var NativeTransitionMigrationRequiredError = class extends Error {
   code = "native-transition-migration-required";
 };
 function nativeTransitionJournalFile(paths, name) {
-  return path29.join(nativeChangeDir(paths, name), "runtime", "transition.json");
+  return path26.join(nativeChangeDir(paths, name), "runtime", "transition.json");
 }
 function nativeTransitionLockName(name) {
   return `transition-${name}`;
@@ -20537,70 +19915,70 @@ function parseTransitionEventData(value, evidenceHash) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Native transition journal event data is invalid");
   }
-  const record13 = value;
-  const keys = Object.keys(record13);
+  const record12 = value;
+  const keys = Object.keys(record12);
   const unknown = keys.find((key) => !TRANSITION_EVENT_DATA_KEYS.has(key));
   const missing = [...REQUIRED_TRANSITION_EVENT_DATA_KEYS].find(
-    (key) => !Object.hasOwn(record13, key)
+    (key) => !Object.hasOwn(record12, key)
   );
-  const expectedSize = REQUIRED_TRANSITION_EVENT_DATA_KEYS.size + (Object.hasOwn(record13, "implementationScopeHash") ? 1 : 0) + (Object.hasOwn(record13, "repairScopeHash") ? 1 : 0) + (Object.hasOwn(record13, "repairStagnation") ? 1 : 0);
+  const expectedSize = REQUIRED_TRANSITION_EVENT_DATA_KEYS.size + (Object.hasOwn(record12, "implementationScopeHash") ? 1 : 0) + (Object.hasOwn(record12, "repairScopeHash") ? 1 : 0) + (Object.hasOwn(record12, "repairStagnation") ? 1 : 0);
   if (unknown || missing || keys.length !== expectedSize) {
     throw new Error(
       `Native transition journal event data keys are invalid${unknown ? `: ${unknown}` : missing ? `: missing ${missing}` : ""}`
     );
   }
-  if (!["shape", "build", "verify", "archive"].includes(record13.previousPhase) || !["shape", "build", "verify", "archive"].includes(record13.nextPhase)) {
+  if (!["shape", "build", "verify", "archive"].includes(record12.previousPhase) || !["shape", "build", "verify", "archive"].includes(record12.nextPhase)) {
     throw new Error("Native transition journal event phases are invalid");
   }
-  if (record13.evidenceHash !== evidenceHash) {
+  if (record12.evidenceHash !== evidenceHash) {
     throw new Error("Native transition journal event evidence hash mismatch");
   }
-  assertNativeTrajectoryText(record13.summary, "Native transition journal event summary");
-  if (redactNativeCredentialText(record13.summary) !== record13.summary) {
+  assertNativeTrajectoryText(record12.summary, "Native transition journal event summary");
+  if (redactNativeCredentialText(record12.summary) !== record12.summary) {
     throw new Error("Native transition journal event summary contains unredacted credentials");
   }
-  if (!Array.isArray(record13.artifacts) || record13.artifacts.length > 128 || record13.artifacts.some(
+  if (!Array.isArray(record12.artifacts) || record12.artifacts.length > 128 || record12.artifacts.some(
     (artifact) => typeof artifact !== "string" || artifact.length === 0 || Buffer.byteLength(artifact, "utf8") > 512
   )) {
     throw new Error("Native transition journal event artifacts are invalid");
   }
-  if (record13.noCodeReason !== null) {
+  if (record12.noCodeReason !== null) {
     assertNativeTrajectoryText(
-      record13.noCodeReason,
+      record12.noCodeReason,
       "Native transition journal event no-code reason"
     );
-    if (redactNativeCredentialText(record13.noCodeReason) !== record13.noCodeReason) {
+    if (redactNativeCredentialText(record12.noCodeReason) !== record12.noCodeReason) {
       throw new Error(
         "Native transition journal event no-code reason contains unredacted credentials"
       );
     }
   }
-  if (record13.verificationResult !== null && record13.verificationResult !== "pass" && record13.verificationResult !== "fail") {
+  if (record12.verificationResult !== null && record12.verificationResult !== "pass" && record12.verificationResult !== "fail") {
     throw new Error("Native transition journal event verification result is invalid");
   }
-  const implementationScopeHash = Object.hasOwn(record13, "implementationScopeHash") ? record13.implementationScopeHash : null;
-  if (implementationScopeHash !== null && (typeof implementationScopeHash !== "string" || !/^[a-f0-9]{64}$/.test(implementationScopeHash) || record13.previousPhase !== "build" && record13.previousPhase !== "verify")) {
+  const implementationScopeHash = Object.hasOwn(record12, "implementationScopeHash") ? record12.implementationScopeHash : null;
+  if (implementationScopeHash !== null && (typeof implementationScopeHash !== "string" || !/^[a-f0-9]{64}$/.test(implementationScopeHash) || record12.previousPhase !== "build" && record12.previousPhase !== "verify")) {
     throw new Error("Native transition journal implementation scope hash is invalid");
   }
-  const repairStagnation = Object.hasOwn(record13, "repairStagnation") ? parseNativeRepairTrajectoryProjection(record13.repairStagnation) : null;
+  const repairStagnation = Object.hasOwn(record12, "repairStagnation") ? parseNativeRepairTrajectoryProjection(record12.repairStagnation) : null;
   if (repairStagnation) {
     const failureProjection = repairStagnation.overrideSummaryHash === null;
-    if (failureProjection && (record13.previousPhase !== "verify" || record13.nextPhase !== "build" || record13.verificationResult !== "fail") || !failureProjection && (record13.previousPhase !== "build" || record13.nextPhase !== "verify" || record13.verificationResult !== null)) {
+    if (failureProjection && (record12.previousPhase !== "verify" || record12.nextPhase !== "build" || record12.verificationResult !== "fail") || !failureProjection && (record12.previousPhase !== "build" || record12.nextPhase !== "verify" || record12.verificationResult !== null)) {
       throw new Error("Native transition journal repair projection does not match its phase");
     }
   }
-  const repairScopeHash = Object.hasOwn(record13, "repairScopeHash") ? record13.repairScopeHash : null;
-  if (repairScopeHash !== null && (typeof repairScopeHash !== "string" || !/^[a-f0-9]{64}$/.test(repairScopeHash) || record13.previousPhase !== "build" && record13.previousPhase !== "verify" || implementationScopeHash === null)) {
+  const repairScopeHash = Object.hasOwn(record12, "repairScopeHash") ? record12.repairScopeHash : null;
+  if (repairScopeHash !== null && (typeof repairScopeHash !== "string" || !/^[a-f0-9]{64}$/.test(repairScopeHash) || record12.previousPhase !== "build" && record12.previousPhase !== "verify" || implementationScopeHash === null)) {
     throw new Error("Native transition journal repair scope hash is invalid");
   }
   return {
-    previousPhase: record13.previousPhase,
-    nextPhase: record13.nextPhase,
+    previousPhase: record12.previousPhase,
+    nextPhase: record12.nextPhase,
     evidenceHash,
-    summary: record13.summary,
-    artifacts: [...record13.artifacts],
-    noCodeReason: record13.noCodeReason,
-    verificationResult: record13.verificationResult,
+    summary: record12.summary,
+    artifacts: [...record12.artifacts],
+    noCodeReason: record12.noCodeReason,
+    verificationResult: record12.verificationResult,
     ...implementationScopeHash ? { implementationScopeHash } : {},
     ...repairScopeHash ? { repairScopeHash } : {},
     ...repairStagnation ? { repairStagnation } : {}
@@ -20608,8 +19986,8 @@ function parseTransitionEventData(value, evidenceHash) {
 }
 function parseLegacyTransitionEventData(value, evidenceHash) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    const record13 = value;
-    const keys = Object.keys(record13);
+    const record12 = value;
+    const keys = Object.keys(record12);
     const legacyRebaseKeys = /* @__PURE__ */ new Set([
       "previousPhase",
       "nextPhase",
@@ -20617,13 +19995,13 @@ function parseLegacyTransitionEventData(value, evidenceHash) {
       "summary",
       "reason"
     ]);
-    if (keys.length === legacyRebaseKeys.size && keys.every((key) => legacyRebaseKeys.has(key)) && record13.reason === "spec-rebase") {
+    if (keys.length === legacyRebaseKeys.size && keys.every((key) => legacyRebaseKeys.has(key)) && record12.reason === "spec-rebase") {
       return parseTransitionEventData(
         {
-          previousPhase: record13.previousPhase,
-          nextPhase: record13.nextPhase,
-          evidenceHash: record13.evidenceHash,
-          summary: record13.summary,
+          previousPhase: record12.previousPhase,
+          nextPhase: record12.nextPhase,
+          evidenceHash: record12.evidenceHash,
+          summary: record12.summary,
           artifacts: [],
           noCodeReason: null,
           verificationResult: null
@@ -21168,7 +20546,7 @@ async function continueNativeTransitionLocked(paths, name, hooks) {
       `Native transition journal changed while continuing ${journal.change}; it was not removed`
     );
   }
-  await fs18.rm(nativeTransitionJournalFile(paths, name), { force: true });
+  await fs16.rm(nativeTransitionJournalFile(paths, name), { force: true });
   return journal.nextState;
 }
 async function continueNativeTransition(paths, name, hooks) {
@@ -21188,7 +20566,7 @@ async function continueNativeTransition(paths, name, hooks) {
 import path37 from "node:path";
 
 // domains/comet-native/native-acceptance.ts
-import path30 from "node:path";
+import path27 from "node:path";
 var ACCEPTANCE_HASH_TAG = "comet.native.acceptance.v1";
 var ACCEPTANCE_ID_PATTERN2 = /^acceptance-[a-f0-9]{64}$/u;
 var EVIDENCE_ENTRY_KEYS = /* @__PURE__ */ new Set([
@@ -21615,10 +20993,10 @@ function deriveSpecMandatoryAcceptanceCriteria(markdown, source = "spec.md", max
 }
 function normalizeEvidenceRef(value, acceptanceId2) {
   const normalized = value.trim().replaceAll("\\", "/");
-  if (normalized.length === 0 || hasControlCharacter2(normalized) || path30.posix.isAbsolute(normalized) || /^(?:[A-Za-z]:|~|[A-Za-z][A-Za-z0-9+.-]*:)/u.test(normalized) || normalized.split("/").includes("..")) {
+  if (normalized.length === 0 || hasControlCharacter2(normalized) || path27.posix.isAbsolute(normalized) || /^(?:[A-Za-z]:|~|[A-Za-z][A-Za-z0-9+.-]*:)/u.test(normalized) || normalized.split("/").includes("..")) {
     throw new Error(`Acceptance evidence ${acceptanceId2} has an unsafe evidence ref`);
   }
-  const portable = path30.posix.normalize(normalized);
+  const portable = path27.posix.normalize(normalized);
   if (portable === "." || portable === ".." || portable.startsWith("../")) {
     throw new Error(`Acceptance evidence ${acceptanceId2} has an unsafe evidence ref`);
   }
@@ -21638,8 +21016,8 @@ function evidenceRecord2(value, index) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Acceptance evidence entry ${index} must be an object`);
   }
-  const record13 = value;
-  const unknown = Object.keys(record13).filter((key) => !EVIDENCE_ENTRY_KEYS.has(key));
+  const record12 = value;
+  const unknown = Object.keys(record12).filter((key) => !EVIDENCE_ENTRY_KEYS.has(key));
   if (unknown.length > 0) {
     if (unknown.includes("waiver")) {
       throw new Error(
@@ -21650,15 +21028,15 @@ function evidenceRecord2(value, index) {
       `Acceptance evidence entry ${index} has unknown field(s): ${unknown.join(", ")}`
     );
   }
-  return record13;
+  return record12;
 }
 function validateEvidenceEntries(value) {
   if (!Array.isArray(value))
     throw new Error("Native acceptance evidence block must be a JSON array");
   const seenIds = /* @__PURE__ */ new Set();
   return value.map((item, index) => {
-    const record13 = evidenceRecord2(item, index);
-    const acceptanceId2 = record13.acceptance_id;
+    const record12 = evidenceRecord2(item, index);
+    const acceptanceId2 = record12.acceptance_id;
     if (typeof acceptanceId2 !== "string" || !ACCEPTANCE_ID_PATTERN2.test(acceptanceId2)) {
       throw new Error(`Acceptance evidence entry ${index} has an invalid acceptance_id`);
     }
@@ -21666,10 +21044,10 @@ function validateEvidenceEntries(value) {
       throw new Error(`Native acceptance evidence has duplicate acceptance_id: ${acceptanceId2}`);
     }
     seenIds.add(acceptanceId2);
-    if (!Array.isArray(record13.evidence_refs)) {
+    if (!Array.isArray(record12.evidence_refs)) {
       throw new Error(`Acceptance evidence ${acceptanceId2} requires an evidence_refs array`);
     }
-    const evidenceRefs = record13.evidence_refs.map((reference) => {
+    const evidenceRefs = record12.evidence_refs.map((reference) => {
       if (typeof reference !== "string" || reference.trim().length === 0) {
         throw new Error(`Acceptance evidence ${acceptanceId2} has a non-empty string requirement`);
       }
@@ -21678,27 +21056,27 @@ function validateEvidenceEntries(value) {
     if (new Set(evidenceRefs).size !== evidenceRefs.length) {
       throw new Error(`Acceptance evidence ${acceptanceId2} has a duplicate evidence ref`);
     }
-    const status = record13.status;
+    const status = record12.status;
     if (status !== "passed" && status !== "failed" && status !== "waived") {
       throw new Error(`Acceptance evidence ${acceptanceId2} status is invalid`);
     }
     let skippedReason;
-    if (Object.prototype.hasOwnProperty.call(record13, "skipped_reason")) {
-      if (typeof record13.skipped_reason !== "string" || record13.skipped_reason.trim().length === 0) {
+    if (Object.prototype.hasOwnProperty.call(record12, "skipped_reason")) {
+      if (typeof record12.skipped_reason !== "string" || record12.skipped_reason.trim().length === 0) {
         throw new Error(
           `Acceptance evidence ${acceptanceId2} skipped_reason must be a non-empty string`
         );
       }
-      skippedReason = record13.skipped_reason.trim();
+      skippedReason = record12.skipped_reason.trim();
     }
     let waiverRef2;
-    if (Object.prototype.hasOwnProperty.call(record13, "waiver_ref")) {
-      if (typeof record13.waiver_ref !== "string" || !WAIVER_RECEIPT_REF_PATTERN.test(record13.waiver_ref)) {
+    if (Object.prototype.hasOwnProperty.call(record12, "waiver_ref")) {
+      if (typeof record12.waiver_ref !== "string" || !WAIVER_RECEIPT_REF_PATTERN.test(record12.waiver_ref)) {
         throw new Error(
           `Acceptance evidence ${acceptanceId2} waiver_ref must identify a content-addressed waiver receipt`
         );
       }
-      waiverRef2 = record13.waiver_ref;
+      waiverRef2 = record12.waiver_ref;
     }
     if (status === "passed" && evidenceRefs.length === 0) {
       throw new Error(`Acceptance evidence ${acceptanceId2} passed status requires evidence_refs`);
@@ -21775,11 +21153,382 @@ function serializeNativeVerificationMachineBlock(entries) {
   ].join("\n");
 }
 
+// domains/comet-native/native-review-trust.ts
+import path30 from "node:path";
+
+// domains/comet-native/native-controller-trust.ts
+import { promises as fs18 } from "node:fs";
+import os3 from "node:os";
+import path29 from "node:path";
+
+// platform/fs/trusted-readonly-file.ts
+import { constants as fsConstants4, promises as fs17 } from "node:fs";
+import path28 from "node:path";
+function trustedReadonlyPosixFactsIssue(facts) {
+  if (facts.fileUid === facts.currentUid) {
+    return "Trusted file must be owned by a different host identity";
+  }
+  if ((facts.fileMode & 18) !== 0 || facts.fileWritable) {
+    return "Trusted file is writable by the current process";
+  }
+  if (facts.parents.some(
+    (parent) => parent.uid === facts.currentUid || (parent.mode & 18) !== 0 || parent.writable
+  )) {
+    return "Trusted file parent chain is writable by the current process";
+  }
+  return null;
+}
+var testHostIsolatedFiles = /* @__PURE__ */ new Set();
+function sameIdentity(left, right) {
+  return left.realPath === right.realPath && left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeMs === right.mtimeMs;
+}
+async function currentProcessCanWrite(file) {
+  try {
+    await fs17.access(file, fsConstants4.W_OK);
+    return true;
+  } catch (error) {
+    if (error.code === "EACCES" || error.code === "EPERM") {
+      return false;
+    }
+    throw error;
+  }
+}
+async function inspectIdentity(file) {
+  const [stat, realPath] = await Promise.all([fs17.lstat(file), fs17.realpath(file)]);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error("Trusted file capability requires a regular non-symlink file");
+  }
+  return {
+    realPath,
+    dev: stat.dev,
+    ino: stat.ino,
+    size: stat.size,
+    mtimeMs: stat.mtimeMs
+  };
+}
+async function assertTrustedReadonlyFile(options) {
+  const identity = await inspectIdentity(options.file);
+  if (options.previous && !sameIdentity(options.previous, identity)) {
+    throw new Error("Trusted file identity changed while reading");
+  }
+  if (process.env.NODE_ENV === "test" && testHostIsolatedFiles.has(path28.resolve(options.file))) {
+    return identity;
+  }
+  if (process.platform === "win32") {
+    throw new Error(
+      "Trusted file isolation cannot be proven from Windows file mode; use a host read-only mount capability"
+    );
+  }
+  const currentUid = process.geteuid?.() ?? process.getuid?.();
+  if (currentUid === void 0) {
+    throw new Error("Trusted file owner isolation is unavailable on this platform");
+  }
+  const fileStat = await fs17.stat(identity.realPath);
+  const parents = [];
+  let directory = path28.dirname(identity.realPath);
+  for (; ; ) {
+    const stat = await fs17.lstat(directory);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error("Trusted file parent chain is not a physical directory chain");
+    }
+    parents.push({
+      uid: stat.uid,
+      mode: stat.mode,
+      writable: await currentProcessCanWrite(directory)
+    });
+    const parent = path28.dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  const issue = trustedReadonlyPosixFactsIssue({
+    currentUid,
+    fileUid: fileStat.uid,
+    fileMode: fileStat.mode,
+    fileWritable: await currentProcessCanWrite(identity.realPath),
+    parents
+  });
+  if (issue) throw new Error(issue);
+  return identity;
+}
+
+// domains/comet-native/native-controller-trust.ts
+var NATIVE_CONTROLLER_TRUST_STORE_SCHEMA = "comet.native.controller-trust-store.v1";
+var NATIVE_CONTROLLER_TRUST_STORE_TEST_ENV = "COMET_NATIVE_CONTROLLER_TRUST_STORE_TEST_PATH";
+var PROJECT_ROOT_HASH_TAG = "comet.native.controller-project-root.v1";
+var MAX_STORE_BYTES = 256 * 1024;
+var HASH_PATTERN14 = /^[a-f0-9]{64}$/u;
+function record8(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+function exactKeys6(value, keys, label) {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${label} fields are invalid`);
+  }
+}
+function isInside7(parent, target) {
+  const relative = path29.relative(parent, target);
+  return relative === "" || !path29.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path29.sep}`);
+}
+function normalizedPhysicalRoot(root) {
+  const normalized = path29.normalize(root).replaceAll("\\", "/");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+async function nativeControllerProjectRootHash(projectRoot) {
+  return canonicalHash(
+    PROJECT_ROOT_HASH_TAG,
+    normalizedPhysicalRoot(await fs18.realpath(projectRoot))
+  );
+}
+function parseNativeControllerTrustStore(value) {
+  const root = record8(value, "Native controller trust store");
+  exactKeys6(root, ["schema", "projects"], "Native controller trust store");
+  if (root.schema !== NATIVE_CONTROLLER_TRUST_STORE_SCHEMA || !Array.isArray(root.projects) || root.projects.length === 0 || root.projects.length > 1024) {
+    throw new Error("Native controller trust store is invalid");
+  }
+  const projects = root.projects.map((value2, index) => {
+    const project = record8(value2, `Native controller trust project ${index}`);
+    exactKeys6(
+      project,
+      ["projectRootHash", "controllerIdentity"],
+      `Native controller trust project ${index}`
+    );
+    if (typeof project.projectRootHash !== "string" || !HASH_PATTERN14.test(project.projectRootHash)) {
+      throw new Error(`Native controller trust project ${index} is invalid`);
+    }
+    return {
+      projectRootHash: project.projectRootHash,
+      controllerIdentity: parseNativeReviewIdentity(project.controllerIdentity)
+    };
+  });
+  if (JSON.stringify(projects.map((project) => project.projectRootHash)) !== JSON.stringify(
+    [...new Set(projects.map((project) => project.projectRootHash))].sort(
+      (left, right) => left.localeCompare(right, "en")
+    )
+  )) {
+    throw new Error("Native controller trust projects must be sorted and unique");
+  }
+  return { schema: NATIVE_CONTROLLER_TRUST_STORE_SCHEMA, projects };
+}
+function nativeControllerTrustStorePath() {
+  const testPath = process.env.NODE_ENV === "test" ? process.env[NATIVE_CONTROLLER_TRUST_STORE_TEST_ENV] : void 0;
+  return path29.resolve(
+    testPath ?? path29.join(os3.homedir(), ".comet", "native-controller-trust.json")
+  );
+}
+async function readNativeControllerTrustProject(projectRoot) {
+  const storePath = nativeControllerTrustStorePath();
+  let physicalProjectRoot;
+  try {
+    physicalProjectRoot = await fs18.realpath(projectRoot);
+  } catch (error) {
+    throw new Error("Native project root is unavailable for controller trust", { cause: error });
+  }
+  let trustedIdentity;
+  try {
+    trustedIdentity = await assertTrustedReadonlyFile({ file: storePath });
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw new Error("Native controller trust store is not host-isolated read-only", {
+      cause: error
+    });
+  }
+  let result2;
+  try {
+    result2 = await readFileRaceSafe(storePath, MAX_STORE_BYTES, {
+      label: "Native controller trust store",
+      verify: (_checkpoint, context) => {
+        if (isInside7(physicalProjectRoot, context.realPath)) {
+          throw new Error("Native controller trust store must resolve outside the project");
+        }
+      }
+    });
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  try {
+    await assertTrustedReadonlyFile({
+      file: storePath,
+      previous: trustedIdentity
+    });
+  } catch (error) {
+    throw new Error("Native controller trust store isolation changed while reading", {
+      cause: error
+    });
+  }
+  let parsed;
+  try {
+    parsed = parseNativeControllerTrustStore(JSON.parse(result2.bytes.toString("utf8")));
+  } catch (error) {
+    throw new Error("Native controller trust store is not valid canonical JSON", {
+      cause: error
+    });
+  }
+  const projectRootHash = await nativeControllerProjectRootHash(projectRoot);
+  return parsed.projects.find((project) => project.projectRootHash === projectRootHash) ?? null;
+}
+
+// domains/comet-native/native-review-trust.ts
+var NATIVE_REVIEW_TRUST_POLICY_SCHEMA = "comet.native.review-trust-policy.v2";
+var POLICY_HASH_TAG = NATIVE_REVIEW_TRUST_POLICY_SCHEMA;
+var MAX_POLICY_BYTES = 64 * 1024;
+var HASH_PATTERN15 = /^[a-f0-9]{64}$/u;
+function record9(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+function exactKeys7(value, expected, label) {
+  const actual = Object.keys(value).sort();
+  const canonical = [...expected].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(canonical)) {
+    throw new Error(`${label} fields are invalid`);
+  }
+}
+function identities(value, label) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
+    throw new Error(`${label} must be a bounded non-empty array`);
+  }
+  const parsed = value.map(parseNativeReviewIdentity).sort((left, right) => left.keyId.localeCompare(right.keyId, "en"));
+  if (new Set(parsed.map((identity) => identity.keyId)).size !== parsed.length || JSON.stringify(value) !== JSON.stringify(parsed)) {
+    throw new Error(`${label} must be sorted and unique`);
+  }
+  return parsed;
+}
+function buildNativeReviewTrustPolicy(input) {
+  const content = {
+    schema: NATIVE_REVIEW_TRUST_POLICY_SCHEMA,
+    controllerKeyId: input.controllerIdentity.keyId,
+    implementationKeyId: input.implementationKeyId,
+    trustedReviewers: [...input.trustedReviewers].sort(
+      (left, right) => left.keyId.localeCompare(right.keyId, "en")
+    ),
+    trustedWaiverSigners: [...input.trustedWaiverSigners].sort(
+      (left, right) => left.keyId.localeCompare(right.keyId, "en")
+    )
+  };
+  const policyHash = canonicalHash(POLICY_HASH_TAG, content);
+  return parseNativeReviewTrustPolicy({
+    ...content,
+    policyHash,
+    controllerSignature: signNativeReviewPayloadHash({
+      identity: input.controllerIdentity,
+      privateKey: input.controllerPrivateKey,
+      payloadHash: policyHash
+    })
+  });
+}
+function parseNativeReviewTrustPolicy(value) {
+  const root = record9(value, "Native review trust policy");
+  exactKeys7(
+    root,
+    [
+      "schema",
+      "controllerKeyId",
+      "implementationKeyId",
+      "trustedReviewers",
+      "trustedWaiverSigners",
+      "policyHash",
+      "controllerSignature"
+    ],
+    "Native review trust policy"
+  );
+  if (root.schema !== NATIVE_REVIEW_TRUST_POLICY_SCHEMA || typeof root.controllerKeyId !== "string" || !HASH_PATTERN15.test(root.controllerKeyId) || typeof root.implementationKeyId !== "string" || !HASH_PATTERN15.test(root.implementationKeyId) || typeof root.policyHash !== "string" || !HASH_PATTERN15.test(root.policyHash)) {
+    throw new Error("Native review trust policy identity or hash is invalid");
+  }
+  const trustedReviewers = identities(root.trustedReviewers, "Native trusted reviewers");
+  const trustedWaiverSigners = identities(
+    root.trustedWaiverSigners,
+    "Native trusted waiver signers"
+  );
+  if (trustedReviewers.some((identity) => identity.keyId === root.implementationKeyId) || trustedWaiverSigners.some((identity) => identity.keyId === root.implementationKeyId) || (/* @__PURE__ */ new Set([
+    root.controllerKeyId,
+    root.implementationKeyId,
+    ...trustedReviewers.map((identity) => identity.keyId),
+    ...trustedWaiverSigners.map((identity) => identity.keyId)
+  ])).size !== 2 + trustedReviewers.length + trustedWaiverSigners.length) {
+    throw new Error(
+      "Native controller, implementation, reviewer, and waiver signer identities must be globally distinct"
+    );
+  }
+  const content = {
+    schema: NATIVE_REVIEW_TRUST_POLICY_SCHEMA,
+    controllerKeyId: root.controllerKeyId,
+    implementationKeyId: root.implementationKeyId,
+    trustedReviewers,
+    trustedWaiverSigners
+  };
+  const policyHash = canonicalHash(POLICY_HASH_TAG, content);
+  if (policyHash !== root.policyHash) {
+    throw new Error("Native review trust policy hash mismatch");
+  }
+  const controllerSignature = parseNativeReviewSignature(root.controllerSignature);
+  if (controllerSignature.keyId !== root.controllerKeyId || controllerSignature.payloadHash !== policyHash) {
+    throw new Error("Native review trust policy controller signature binding is invalid");
+  }
+  return { ...content, policyHash, controllerSignature };
+}
+function verifyNativeReviewTrustPolicy(value, controllerIdentity) {
+  const policy = parseNativeReviewTrustPolicy(value);
+  if (policy.controllerKeyId !== controllerIdentity.keyId) {
+    throw new Error("Native review trust policy controller is not host-trusted");
+  }
+  verifyNativeReviewPayloadHash({
+    identity: controllerIdentity,
+    payloadHash: policy.policyHash,
+    proof: policy.controllerSignature
+  });
+  return policy;
+}
+async function loadNativeReviewTrustPolicy(options) {
+  const baseline = options.scope.baseline.entries.find(
+    (entry2) => entry2.path === NATIVE_REVIEW_TRUST_POLICY_REF
+  );
+  const current = options.scope.current.entries.find(
+    (entry2) => entry2.path === NATIVE_REVIEW_TRUST_POLICY_REF
+  );
+  if (!baseline || !current || baseline.hash !== current.hash || baseline.size !== current.size) {
+    throw new Error(
+      "Native review trust policy must exist unchanged from change creation through Build"
+    );
+  }
+  const file = await readNativeProtectedTextFile({
+    root: options.paths.projectRoot,
+    file: path30.join(options.paths.projectRoot, ...NATIVE_REVIEW_TRUST_POLICY_REF.split("/")),
+    maxBytes: MAX_POLICY_BYTES,
+    label: NATIVE_REVIEW_TRUST_POLICY_REF
+  });
+  if (file.hash !== current.hash || file.size !== current.size) {
+    throw new Error("Native review trust policy changed after Build");
+  }
+  let value;
+  try {
+    value = JSON.parse(file.text);
+  } catch (error) {
+    throw new Error("Native review trust policy is not valid JSON", { cause: error });
+  }
+  const controllerTrust = await readNativeControllerTrustProject(options.paths.projectRoot);
+  if (!controllerTrust) throw new Error("Native project has no controller-owned trust root");
+  return verifyNativeReviewTrustPolicy(value, controllerTrust.controllerIdentity);
+}
+function trustedNativeIdentity(policy, kind, keyId) {
+  const identities2 = kind === "reviewer" ? policy.trustedReviewers : policy.trustedWaiverSigners;
+  const identity = identities2.find((candidate) => candidate.keyId === keyId);
+  if (!identity) throw new Error(`Native ${kind} identity is not pre-trusted`);
+  return identity;
+}
+
 // domains/comet-native/native-contract.ts
 import path31 from "node:path";
 var CONTRACT_HASH_TAG = "comet.native.contract.v1";
 var ACCEPTANCE_SET_HASH_TAG = "comet.native.acceptance-set.v1";
-var HASH_PATTERN17 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN16 = /^[a-f0-9]{64}$/u;
 var NATIVE_CONTRACT_LIMITS = {
   maxAcceptanceCriteria: NATIVE_ACCEPTANCE_LIMITS.maxCriteria
 };
@@ -21804,7 +21553,7 @@ function normalizeSpec3(input) {
     throw new Error(`Invalid Native contract operation for ${input.capability}`);
   }
   if (input.operation === "remove") {
-    if (input.source !== null || input.markdown !== null || !input.baseHash?.match(HASH_PATTERN17)) {
+    if (input.source !== null || input.markdown !== null || !input.baseHash?.match(HASH_PATTERN16)) {
       throw new Error(`Remove contract ${input.capability} requires only a base hash`);
     }
     return {
@@ -21824,7 +21573,7 @@ function normalizeSpec3(input) {
   if (input.operation === "create" && input.baseHash !== null) {
     throw new Error(`Create contract ${input.capability} requires a null base hash`);
   }
-  if (input.operation === "replace" && !input.baseHash?.match(HASH_PATTERN17)) {
+  if (input.operation === "replace" && !input.baseHash?.match(HASH_PATTERN16)) {
     throw new Error(`Replace contract ${input.capability} requires a base hash`);
   }
   const source = portableRef2(input.source, `Contract source for ${input.capability}`);
@@ -21973,7 +21722,7 @@ async function collectNativeContractFiles(options) {
 
 // domains/comet-native/native-verification-receipt-runtime.ts
 import { execFile, spawn as spawn3 } from "node:child_process";
-import { createHash as createHash17 } from "node:crypto";
+import { createHash as createHash16 } from "node:crypto";
 import path36 from "node:path";
 import { promisify } from "node:util";
 
@@ -22047,14 +21796,14 @@ var NATIVE_CHECKPOINT_LIMITS = {
   maxTotalBytes: 64 * 1024 * 1024,
   maxDocumentBytes: 256 * 1024
 };
-var HASH_PATTERN18 = /^[a-f0-9]{64}$/u;
-function record11(value, label) {
+var HASH_PATTERN17 = /^[a-f0-9]{64}$/u;
+function record10(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
   return value;
 }
-function exactKeys9(value, keys, label) {
+function exactKeys8(value, keys, label) {
   const expected = new Set(keys);
   const unknown = Object.keys(value).filter((key) => !expected.has(key));
   const missing = keys.filter((key) => !(key in value));
@@ -22097,7 +21846,7 @@ function nativeCheckpointJournalFile(paths, name) {
   return path33.join(nativeChangeDir(paths, name), "runtime", "checkpoint-journal.json");
 }
 function nativeCheckpointManifestFile(paths, name, hash8) {
-  if (!HASH_PATTERN18.test(hash8)) throw new Error("Native checkpoint manifest hash is invalid");
+  if (!HASH_PATTERN17.test(hash8)) throw new Error("Native checkpoint manifest hash is invalid");
   return path33.join(
     nativeChangeDir(paths, name),
     "runtime",
@@ -22107,7 +21856,7 @@ function nativeCheckpointManifestFile(paths, name, hash8) {
   );
 }
 function nativeCheckpointManifestRef(hash8) {
-  if (!HASH_PATTERN18.test(hash8)) throw new Error("Native checkpoint manifest hash is invalid");
+  if (!HASH_PATTERN17.test(hash8)) throw new Error("Native checkpoint manifest hash is invalid");
   return `runtime/checkpoints/manifests/${hash8}.json`;
 }
 async function readBoundedJson(root, file, label) {
@@ -22120,8 +21869,8 @@ async function readBoundedJson(root, file, label) {
   return JSON.parse(snapshot2.bytes.toString("utf8"));
 }
 function parseArtifact(value, index) {
-  const artifact = record11(value, `checkpoint manifest artifact ${index}`);
-  exactKeys9(artifact, ["path", "hash", "size"], `checkpoint manifest artifact ${index}`);
+  const artifact = record10(value, `checkpoint manifest artifact ${index}`);
+  exactKeys8(artifact, ["path", "hash", "size"], `checkpoint manifest artifact ${index}`);
   const artifactPath = normalizeNativeCheckpointArtifactRef(
     stringValue(artifact.path, `checkpoint artifact ${index} path`, 4096)
   );
@@ -22131,7 +21880,7 @@ function parseArtifact(value, index) {
       `checkpoint artifact ${index} is excluded as sensitive (${sensitiveReason}): ${artifactPath}`
     );
   }
-  if (typeof artifact.hash !== "string" || !HASH_PATTERN18.test(artifact.hash)) {
+  if (typeof artifact.hash !== "string" || !HASH_PATTERN17.test(artifact.hash)) {
     throw new Error(`checkpoint artifact ${index} hash is invalid`);
   }
   return {
@@ -22141,8 +21890,8 @@ function parseArtifact(value, index) {
   };
 }
 function parseNativeCheckpointManifestValue(value, expectedName) {
-  const manifest = record11(value, "Native checkpoint manifest");
-  exactKeys9(
+  const manifest = record10(value, "Native checkpoint manifest");
+  exactKeys8(
     manifest,
     ["schema", "change", "artifacts", "totalBytes"],
     "Native checkpoint manifest"
@@ -22184,8 +21933,8 @@ function hashNativeCheckpointManifest(manifest) {
   return sha256Text(JSON.stringify(parseNativeCheckpointManifestValue(manifest, manifest.change)));
 }
 function parseNativeProgressCheckpointValue(value, expectedName) {
-  const checkpoint = record11(value, "Native progress checkpoint");
-  exactKeys9(
+  const checkpoint = record10(value, "Native progress checkpoint");
+  exactKeys8(
     checkpoint,
     [
       "schema",
@@ -22224,14 +21973,14 @@ function parseNativeProgressCheckpointValue(value, expectedName) {
     throw new Error("Native checkpoint stateRevision must increment previousRevision once");
   }
   const manifestHash = stringValue(checkpoint.manifestHash, "Native checkpoint manifestHash", 64);
-  if (!HASH_PATTERN18.test(manifestHash))
+  if (!HASH_PATTERN17.test(manifestHash))
     throw new Error("Native checkpoint manifestHash is invalid");
   const expectedManifestRef = nativeCheckpointManifestRef(manifestHash);
   if (checkpoint.manifestRef !== expectedManifestRef) {
     throw new Error("Native checkpoint manifestRef does not match manifestHash");
   }
   const inputHash = stringValue(checkpoint.inputHash, "Native checkpoint inputHash", 64);
-  if (!HASH_PATTERN18.test(inputHash)) throw new Error("Native checkpoint inputHash is invalid");
+  if (!HASH_PATTERN17.test(inputHash)) throw new Error("Native checkpoint inputHash is invalid");
   const createdAt = stringValue(checkpoint.createdAt, "Native checkpoint createdAt", 64);
   if (Number.isNaN(Date.parse(createdAt)))
     throw new Error("Native checkpoint createdAt is invalid");
@@ -22264,8 +22013,8 @@ function parseNativeProgressCheckpointValue(value, expectedName) {
   };
 }
 function parseNativeCheckpointJournalValue(value, expectedName) {
-  const journal = record11(value, "Native checkpoint journal");
-  exactKeys9(
+  const journal = record10(value, "Native checkpoint journal");
+  exactKeys8(
     journal,
     [
       "schema",
@@ -22296,7 +22045,7 @@ function parseNativeCheckpointJournalValue(value, expectedName) {
       artifacts: manifest.artifacts
     })
   );
-  if (!HASH_PATTERN18.test(inputHash) || inputHash !== checkpoint.inputHash || inputHash !== expectedInputHash || journal.id !== checkpoint.id || journal.createdAt !== checkpoint.createdAt) {
+  if (!HASH_PATTERN17.test(inputHash) || inputHash !== checkpoint.inputHash || inputHash !== expectedInputHash || journal.id !== checkpoint.id || journal.createdAt !== checkpoint.createdAt) {
     throw new Error("Native checkpoint journal envelope mismatch");
   }
   if (previousState.name !== expectedName || nextState.name !== expectedName || nextState.revision !== previousState.revision + 1 || checkpoint.previousRevision !== previousState.revision || checkpoint.stateRevision !== nextState.revision || checkpoint.phase !== nextState.phase || checkpoint.manifestHash !== hashNativeCheckpointManifest(manifest) || checkpoint.artifactCount !== manifest.artifacts.length) {
@@ -22594,7 +22343,7 @@ async function settleNativeChangeJournalsLocked(paths, name) {
 }
 
 // domains/comet-native/native-check-receipt.ts
-import { createHash as createHash16 } from "node:crypto";
+import { createHash as createHash15 } from "node:crypto";
 import { constants as fsConstants6, promises as fs21 } from "node:fs";
 import path35 from "node:path";
 import { TextDecoder as TextDecoder5 } from "node:util";
@@ -22602,7 +22351,7 @@ import { TextDecoder as TextDecoder5 } from "node:util";
 // domains/comet-native/native-check-receipt-storage.ts
 import { constants as fsConstants5, promises as fs20 } from "node:fs";
 import path34 from "node:path";
-var HASH_PATTERN19 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN18 = /^[a-f0-9]{64}$/u;
 var RECEIPT_REF_PATTERN2 = /^runtime\/evidence\/check-receipts\/([a-f0-9]{64})\.json$/u;
 var MAX_NATIVE_CHECK_RECEIPT_BYTES = 512 * 1024;
 function sameDirectoryIdentity6(identity, stat) {
@@ -22662,7 +22411,7 @@ async function verifyDirectoryChain6(chain) {
   }
 }
 function nativeCheckReceiptRef(hash8) {
-  if (!HASH_PATTERN19.test(hash8)) throw new Error("Native check receipt hash is invalid");
+  if (!HASH_PATTERN18.test(hash8)) throw new Error("Native check receipt hash is invalid");
   return `runtime/evidence/check-receipts/${hash8}.json`;
 }
 function receiptHashFromRef(ref) {
@@ -22989,7 +22738,7 @@ async function readScopedFile(options) {
       throw new ScopedFileError("unsafe-file", "Scoped file changed while opening");
     }
     const chunks = [];
-    const digest = createHash16("sha256");
+    const digest = createHash15("sha256");
     const buffer = Buffer.allocUnsafe(64 * 1024);
     let total = 0;
     while (true) {
@@ -23986,7 +23735,7 @@ async function issueNativeAutomatedCheckReceiptLocked(options) {
   const output = [];
   let outputBytes = 0;
   let totalOutputBytes = 0;
-  const outputHasher = createHash17("sha256");
+  const outputHasher = createHash16("sha256");
   let timedOut = false;
   const child = spawn3(options.command, [...options.args], {
     cwd: options.paths.projectRoot,
@@ -24583,8 +24332,8 @@ async function inspectNativeVerificationEvidence(options) {
     contractHash: facts.contractHash,
     implementationScope: facts.bundle
   });
-  const signedVerification = options.state.verification_protocol === "signed-v2";
-  if (signedVerification && options.result === "pass" && receiptGraph.independentReviewReceiptRef === null) {
+  const independentReviewRequired = !facts.bundle.scope.complete || isNativeHighRiskScope(facts.bundle.scope.changes);
+  if (independentReviewRequired && options.result === "pass" && receiptGraph.independentReviewReceiptRef === null) {
     throw new Error(
       "Native passing verification requires a signed acceptance-applicability review receipt"
     );
@@ -24713,7 +24462,7 @@ async function inspectNativeVerificationFreshness(options) {
     } catch {
       findingCodes.push("verification-receipt-invalid");
     }
-    if (options.state.verification_protocol === "signed-v2" && envelope.result === "pass" && envelope.independentReviewReceiptRef === null) {
+    if ((!facts.bundle.scope.complete || isNativeHighRiskScope(facts.bundle.scope.changes)) && envelope.result === "pass" && envelope.independentReviewReceiptRef === null) {
       findingCodes.push("verification-independent-review-missing");
     }
     const uniqueCodes = [...new Set(findingCodes)].sort();
@@ -25100,12 +24849,12 @@ function parseCasRecord(value, operation, role, expectedHash) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Archive CAS ${operation.id} ${role} record must be an object`);
   }
-  const record13 = value;
-  const keys = Object.keys(record13).sort();
+  const record12 = value;
+  const keys = Object.keys(record12).sort();
   if (keys.join(",") !== "hash,identity,operationId,role,schema") {
     throw new Error(`Archive CAS ${operation.id} ${role} record has an invalid shape`);
   }
-  const identity = record13.identity;
+  const identity = record12.identity;
   if (!identity || typeof identity !== "object" || Array.isArray(identity)) {
     throw new Error(`Archive CAS ${operation.id} ${role} identity must be an object`);
   }
@@ -25118,7 +24867,7 @@ function parseCasRecord(value, operation, role, expectedHash) {
       throw new Error(`Archive CAS ${operation.id} ${role} identity ${field2} is invalid`);
     }
   }
-  if (record13.schema !== NATIVE_ARCHIVE_CAS_SCHEMA || record13.operationId !== operation.id || record13.role !== role || record13.hash !== expectedHash) {
+  if (record12.schema !== NATIVE_ARCHIVE_CAS_SCHEMA || record12.operationId !== operation.id || record12.role !== role || record12.hash !== expectedHash) {
     throw new Error(`Archive CAS ${operation.id} ${role} record is not transaction-bound`);
   }
   return {
@@ -25180,7 +24929,7 @@ async function persistCasRecord(options) {
     directory: path40.dirname(options.file),
     label: `Archive CAS ${options.operation.id} records`
   });
-  const record13 = {
+  const record12 = {
     schema: NATIVE_ARCHIVE_CAS_SCHEMA,
     operationId: options.operation.id,
     role: options.role,
@@ -25188,7 +24937,7 @@ async function persistCasRecord(options) {
     identity: options.identity
   };
   try {
-    await atomicWriteJson(options.file, record13, {
+    await atomicWriteJson(options.file, record12, {
       containedRoot: options.paths.nativeRoot,
       exclusive: true
     });
@@ -25219,7 +24968,7 @@ async function bindCurrentTarget(options) {
     expectedHash: options.expectedHash,
     label: options.label
   });
-  const record13 = await persistCasRecord({
+  const record12 = await persistCasRecord({
     paths: options.paths,
     file: options.recordFile,
     operation: options.operation,
@@ -25231,10 +24980,10 @@ async function bindCurrentTarget(options) {
     paths: options.paths,
     file: options.file,
     operation: options.operation,
-    record: record13,
+    record: record12,
     label: options.label
   });
-  return record13;
+  return record12;
 }
 async function restoreUnexpectedQuarantine(options) {
   if (!await pathExists(options.quarantine) || await pathExists(options.target)) return;
@@ -25378,7 +25127,7 @@ async function ensureOriginalTargetQuarantined(options) {
     options.operation,
     options.target
   );
-  let record13 = await readCasRecord({
+  let record12 = await readCasRecord({
     paths: options.paths,
     file: cas.originalRecord,
     operation: options.operation,
@@ -25386,7 +25135,7 @@ async function ensureOriginalTargetQuarantined(options) {
     expectedHash
   });
   if (await pathExists(cas.originalQuarantine)) {
-    if (!record13) {
+    if (!record12) {
       throw new Error(
         `Archive apply quarantine ${options.operation.target} has no bound object identity`
       );
@@ -25395,18 +25144,18 @@ async function ensureOriginalTargetQuarantined(options) {
       paths: options.paths,
       file: cas.originalQuarantine,
       operation: options.operation,
-      record: record13,
+      record: record12,
       label: `Archive apply quarantine ${options.operation.target}`
     });
     await ensureBackup(options.paths, options.operation, options.hooks);
-    return { record: record13, quarantine: cas.originalQuarantine };
+    return { record: record12, quarantine: cas.originalQuarantine };
   }
   if (!await pathExists(options.target)) {
     throw new Error(
       `Archive apply target ${options.operation.target} disappeared before quarantine`
     );
   }
-  record13 ??= await bindCurrentTarget({
+  record12 ??= await bindCurrentTarget({
     paths: options.paths,
     file: options.target,
     recordFile: cas.originalRecord,
@@ -25419,7 +25168,7 @@ async function ensureOriginalTargetQuarantined(options) {
     paths: options.paths,
     file: options.target,
     operation: options.operation,
-    record: record13,
+    record: record12,
     label: `Archive apply target ${options.operation.target}`
   });
   await ensureBackup(options.paths, options.operation, options.hooks);
@@ -25429,10 +25178,10 @@ async function ensureOriginalTargetQuarantined(options) {
     phase: "apply",
     target: options.target,
     quarantine: cas.originalQuarantine,
-    record: record13,
+    record: record12,
     hooks: options.hooks
   });
-  return { record: record13, quarantine: cas.originalQuarantine };
+  return { record: record12, quarantine: cas.originalQuarantine };
 }
 async function ensureWriteCandidate(options) {
   const cas = await archiveCasPaths(
@@ -25479,19 +25228,19 @@ async function ensureWriteInstalled(options) {
     options.operation,
     options.target
   );
-  let record13 = await readCasRecord({
+  let record12 = await readCasRecord({
     paths: options.paths,
     file: cas.postRecord,
     operation: options.operation,
     role: "post",
     expectedHash
   });
-  if (record13 && await pathExists(options.target)) {
+  if (record12 && await pathExists(options.target)) {
     await validateFileAgainstCasRecord({
       paths: options.paths,
       file: options.target,
       operation: options.operation,
-      record: record13,
+      record: record12,
       label: `Archive write target ${options.operation.target}`
     });
     if (await pathExists(cas.candidate)) {
@@ -25499,11 +25248,11 @@ async function ensureWriteInstalled(options) {
         paths: options.paths,
         file: cas.candidate,
         operation: options.operation,
-        record: record13,
+        record: record12,
         label: `Archive write candidate ${options.operation.target}`
       });
     }
-    return record13;
+    return record12;
   }
   if (await pathExists(options.target)) {
     const candidate2 = await ensureWriteCandidate(options);
@@ -25524,7 +25273,7 @@ async function ensureWriteInstalled(options) {
         `Archive write target ${options.operation.target} is occupied by an external object`
       );
     }
-    record13 = await persistCasRecord({
+    record12 = await persistCasRecord({
       paths: options.paths,
       file: cas.postRecord,
       operation: options.operation,
@@ -25536,10 +25285,10 @@ async function ensureWriteInstalled(options) {
       paths: options.paths,
       file: candidate2,
       operation: options.operation,
-      record: record13,
+      record: record12,
       label: `Archive write candidate ${options.operation.target}`
     });
-    return record13;
+    return record12;
   }
   const candidate = await ensureWriteCandidate(options);
   const candidateIdentity = await captureStableArchiveFile({
@@ -25595,7 +25344,7 @@ async function ensureWriteInstalled(options) {
   if (!sameFileObject2(candidateIdentity.identity, targetIdentity.identity)) {
     throw new Error(`Archive write target ${options.operation.target} changed during install`);
   }
-  record13 = await persistCasRecord({
+  record12 = await persistCasRecord({
     paths: options.paths,
     file: cas.postRecord,
     operation: options.operation,
@@ -25607,10 +25356,10 @@ async function ensureWriteInstalled(options) {
     paths: options.paths,
     file: candidate,
     operation: options.operation,
-    record: record13,
+    record: record12,
     label: `Archive write candidate ${options.operation.target}`
   });
-  return record13;
+  return record12;
 }
 async function applyWrite(paths, journal, operation, hooks) {
   const target = await resolveRef2(paths, operation.target);
@@ -28105,7 +27854,7 @@ import { promises as fs31 } from "fs";
 import path49 from "path";
 
 // domains/comet-native/native-evidence-retention.ts
-import { createHash as createHash18, randomUUID as randomUUID8 } from "node:crypto";
+import { createHash as createHash17, randomUUID as randomUUID8 } from "node:crypto";
 import { constants as fsConstants7, promises as fs29 } from "node:fs";
 import path47 from "node:path";
 
@@ -28115,7 +27864,7 @@ import { randomUUID as randomUUID7 } from "crypto";
 import { promises as fs28 } from "fs";
 import path46 from "path";
 import { isDeepStrictEqual as isDeepStrictEqual3 } from "util";
-var HASH_PATTERN20 = /^[a-f0-9]{64}$/u;
+var HASH_PATTERN19 = /^[a-f0-9]{64}$/u;
 var MIGRATION_JOURNAL_KEYS = /* @__PURE__ */ new Set([
   "schema",
   "id",
@@ -28247,23 +27996,23 @@ function parseTransitionSupersede(value, expectedName, nextState, migrationId) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Schema migration transition supersede plan is invalid");
   }
-  const record13 = value;
+  const record12 = value;
   rejectUnknownFields(
-    record13,
+    record12,
     MIGRATION_TRANSITION_SUPERSEDE_KEYS,
     "Schema migration transition supersede plan"
   );
-  if (typeof record13.sourceHash !== "string" || !HASH_PATTERN20.test(record13.sourceHash)) {
+  if (typeof record12.sourceHash !== "string" || !HASH_PATTERN19.test(record12.sourceHash)) {
     throw new Error("Schema migration transition supersede source hash is invalid");
   }
-  if (typeof record13.transitionId !== "string" || record13.transitionId.length === 0) {
+  if (typeof record12.transitionId !== "string" || record12.transitionId.length === 0) {
     throw new Error("Schema migration superseded transition id is invalid");
   }
-  if (typeof record13.evidenceHash !== "string" || !HASH_PATTERN20.test(record13.evidenceHash)) {
+  if (typeof record12.evidenceHash !== "string" || !HASH_PATTERN19.test(record12.evidenceHash)) {
     throw new Error("Schema migration transition supersede evidence hash is invalid");
   }
-  const previousRun = parseNativeStoredRunStateValue(record13.previousRun);
-  const nextRun = parseNativeStoredRunStateValue(record13.nextRun);
+  const previousRun = parseNativeStoredRunStateValue(record12.previousRun);
+  const nextRun = parseNativeStoredRunStateValue(record12.nextRun);
   if (previousRun.runId !== nextRun.runId || nextState.run_id !== nextRun.runId || nextState.phase !== "build" && nextState.phase !== "verify" || nextRun.currentStep !== nextState.phase || nextRun.pending !== null || nextRun.status !== "running" || nextState.verification_result !== "pending" || nextState.verification_report !== null || nextState.implementation_scope !== null || nextState.verification_evidence !== null || nextState.partial_allowance !== null) {
     throw new Error("Schema migration transition supersede Run does not match target state");
   }
@@ -28278,12 +28027,12 @@ function parseTransitionSupersede(value, expectedName, nextState, migrationId) {
   if (!expectedNextRun || !sameRunState(expectedNextRun, nextRun)) {
     throw new Error("Schema migration transition supersede Run retreat is invalid");
   }
-  if (!record13.eventData || typeof record13.eventData !== "object" || Array.isArray(record13.eventData)) {
+  if (!record12.eventData || typeof record12.eventData !== "object" || Array.isArray(record12.eventData)) {
     throw new Error("Schema migration transition supersede event is invalid");
   }
-  const eventData = record13.eventData;
+  const eventData = record12.eventData;
   const eventKeys = Object.keys(eventData);
-  if (eventKeys.length !== MIGRATION_SUPERSEDE_EVENT_KEYS.size || eventKeys.some((key) => !MIGRATION_SUPERSEDE_EVENT_KEYS.has(key)) || eventData.fromSchema !== NATIVE_V2_CHANGE_SCHEMA || eventData.toSchema !== NATIVE_CHANGE_SCHEMA || !["build", "verify", "archive"].includes(eventData.previousPhase) || eventData.nextPhase !== nextState.phase || eventData.reason !== (nextState.phase === "build" ? "implementation-scope-required" : "verification-evidence-required") || eventData.supersededTransitionId !== record13.transitionId) {
+  if (eventKeys.length !== MIGRATION_SUPERSEDE_EVENT_KEYS.size || eventKeys.some((key) => !MIGRATION_SUPERSEDE_EVENT_KEYS.has(key)) || eventData.fromSchema !== NATIVE_V2_CHANGE_SCHEMA || eventData.toSchema !== NATIVE_CHANGE_SCHEMA || !["build", "verify", "archive"].includes(eventData.previousPhase) || eventData.nextPhase !== nextState.phase || eventData.reason !== (nextState.phase === "build" ? "implementation-scope-required" : "verification-evidence-required") || eventData.supersededTransitionId !== record12.transitionId) {
     throw new Error("Schema migration transition supersede event semantics are invalid");
   }
   if (nextState.name !== expectedName) {
@@ -28293,7 +28042,7 @@ function parseTransitionSupersede(value, expectedName, nextState, migrationId) {
     JSON.stringify({
       operation: "supersede-v2-evidence-transition",
       change: expectedName,
-      transitionId: record13.transitionId,
+      transitionId: record12.transitionId,
       migrationId,
       previousPhase: eventData.previousPhase,
       nextPhase: eventData.nextPhase,
@@ -28302,15 +28051,15 @@ function parseTransitionSupersede(value, expectedName, nextState, migrationId) {
       nextRevision: nextState.revision
     })
   );
-  if (record13.evidenceHash !== expectedEvidenceHash) {
+  if (record12.evidenceHash !== expectedEvidenceHash) {
     throw new Error("Schema migration transition supersede evidence hash mismatch");
   }
   return {
-    sourceHash: record13.sourceHash,
-    transitionId: record13.transitionId,
+    sourceHash: record12.sourceHash,
+    transitionId: record12.transitionId,
     previousRun,
     nextRun,
-    evidenceHash: record13.evidenceHash,
+    evidenceHash: record12.evidenceHash,
     eventData
   };
 }
@@ -28337,7 +28086,7 @@ function parseMigrationJournal(value, expectedName) {
   if (typeof journal.id !== "string" || journal.id.length === 0) {
     throw new Error("Schema migration id is invalid");
   }
-  if (typeof journal.sourceHash !== "string" || !HASH_PATTERN20.test(journal.sourceHash) || typeof journal.targetHash !== "string" || !HASH_PATTERN20.test(journal.targetHash)) {
+  if (typeof journal.sourceHash !== "string" || !HASH_PATTERN19.test(journal.sourceHash) || typeof journal.targetHash !== "string" || !HASH_PATTERN19.test(journal.targetHash)) {
     throw new Error("Schema migration hash is invalid");
   }
   if (typeof journal.createdAt !== "string" || Number.isNaN(Date.parse(journal.createdAt))) {
@@ -28361,7 +28110,7 @@ function parseMigrationJournal(value, expectedName) {
       "Schema migration transition target"
     );
     const transitionValue = journal.transition;
-    if (typeof transitionValue.sourceHash !== "string" || !HASH_PATTERN20.test(transitionValue.sourceHash) || typeof transitionValue.targetHash !== "string" || !HASH_PATTERN20.test(transitionValue.targetHash)) {
+    if (typeof transitionValue.sourceHash !== "string" || !HASH_PATTERN19.test(transitionValue.sourceHash) || typeof transitionValue.targetHash !== "string" || !HASH_PATTERN19.test(transitionValue.targetHash)) {
       throw new Error("Schema migration transition hash is invalid");
     }
     const parsedNextJournal = v1ToV2 ? parseV2NativeTransitionJournalValue(transitionValue.nextJournal, expectedName) : parseNativeTransitionJournalValue(transitionValue.nextJournal, expectedName);
@@ -28419,7 +28168,7 @@ function parseMigrationJournal(value, expectedName) {
     } catch (error) {
       throw new Error("Schema migration Run retreat is invalid", { cause: error });
     }
-    if (typeof retreat.evidenceHash !== "string" || !HASH_PATTERN20.test(retreat.evidenceHash) || !retreat.eventData || typeof retreat.eventData !== "object" || Array.isArray(retreat.eventData)) {
+    if (typeof retreat.evidenceHash !== "string" || !HASH_PATTERN19.test(retreat.evidenceHash) || !retreat.eventData || typeof retreat.eventData !== "object" || Array.isArray(retreat.eventData)) {
       throw new Error("Schema migration Run retreat is invalid");
     }
     if (nextState.schema !== NATIVE_CHANGE_SCHEMA || nextState.phase !== "build" || nextState.run_id !== nextRun.runId || previousRun.runId !== nextRun.runId || previousRun.currentStep !== "verify" && previousRun.currentStep !== "archive" || nextRun.currentStep !== "build" || nextRun.iteration !== previousRun.iteration + 1) {
@@ -29112,7 +28861,7 @@ function parseDocument3(kind, hash8, value, expectedChange) {
       throw new Error("Native report evidence must be an object");
     }
     const report = value;
-    if (Object.keys(report).sort().join(",") !== "content,reportHash,schema" || report.schema !== "comet.native.verification-report.v1" || report.reportHash !== hash8 || typeof report.content !== "string" || createHash18("sha256").update(Buffer.from(report.content, "utf8")).digest("hex") !== hash8) {
+    if (Object.keys(report).sort().join(",") !== "content,reportHash,schema" || report.schema !== "comet.native.verification-report.v1" || report.reportHash !== hash8 || typeof report.content !== "string" || createHash17("sha256").update(Buffer.from(report.content, "utf8")).digest("hex") !== hash8) {
       throw new Error("Native report evidence filename/hash does not match its content");
     }
     return { canonical: report, dependencies: [] };
@@ -29787,7 +29536,7 @@ async function inspectNativeEvidenceRetention(options) {
 }
 
 // domains/comet-native/native-root-move.ts
-import { createHash as createHash19, randomUUID as randomUUID9 } from "crypto";
+import { createHash as createHash18, randomUUID as randomUUID9 } from "crypto";
 import { promises as fs30 } from "fs";
 import path48 from "path";
 var NATIVE_ROOT_MOVE_MAX_FILE_BYTES = 64 * 1024 * 1024;
@@ -30000,7 +29749,7 @@ function cleanupManifestSource(manifest) {
   return JSON.stringify(manifest, null, 2) + "\n";
 }
 function cleanupManifestHash(source) {
-  return createHash19("sha256").update(source).digest("hex");
+  return createHash18("sha256").update(source).digest("hex");
 }
 function parseCleanupManifestEntry(value, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -31708,27 +31457,27 @@ async function readNativeProposedSpecs(paths, name) {
 }
 
 // domains/comet-native/native-review-signer.ts
-var HASH_PATTERN21 = /^[a-f0-9]{64}$/u;
-function record12(value, label) {
+var HASH_PATTERN20 = /^[a-f0-9]{64}$/u;
+function record11(value, label) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
   return value;
 }
-function exactKeys10(value, keys, label) {
+function exactKeys9(value, keys, label) {
   if (Object.keys(value).sort().join("\0") !== [...keys].sort().join("\0")) {
     throw new Error(`${label} has unexpected fields`);
   }
 }
 function hash7(value, label) {
-  if (typeof value !== "string" || !HASH_PATTERN21.test(value)) {
+  if (typeof value !== "string" || !HASH_PATTERN20.test(value)) {
     throw new Error(`${label} is invalid`);
   }
   return value;
 }
 function parseNativeIndependentReviewApproval(value) {
-  const root = record12(value, "Native review approval");
-  exactKeys10(
+  const root = record11(value, "Native review approval");
+  exactKeys9(
     root,
     ["schema", "preparationHash", "receipt", "payloadHash"],
     "Native review approval"
@@ -31736,8 +31485,8 @@ function parseNativeIndependentReviewApproval(value) {
   if (root.schema !== "comet.native.review-approval.v1") {
     throw new Error("Native review approval schema is invalid");
   }
-  const receipt = record12(root.receipt, "Native review approval receipt");
-  exactKeys10(
+  const receipt = record11(root.receipt, "Native review approval receipt");
+  exactKeys9(
     receipt,
     ["kind", "role", "status", "bindings", "acceptanceIds", "actor", "issuedAt", "evidence"],
     "Native review approval receipt"
@@ -31745,7 +31494,7 @@ function parseNativeIndependentReviewApproval(value) {
   if (receipt.kind !== "independent-review" || receipt.role !== "acceptance-evidence" || receipt.status !== "passed" && receipt.status !== "blocked" || !Array.isArray(receipt.acceptanceIds) || receipt.acceptanceIds.some((entry2) => typeof entry2 !== "string") || typeof receipt.actor !== "string" || typeof receipt.issuedAt !== "string") {
     throw new Error("Native review approval receipt is invalid");
   }
-  const evidence = record12(receipt.evidence, "Native review approval receipt evidence");
+  const evidence = record11(receipt.evidence, "Native review approval receipt evidence");
   const reviewerIdentity = parseNativeReviewIdentity(evidence.reviewerIdentity);
   if (receipt.actor !== `review-key:${reviewerIdentity.keyId}`) {
     throw new Error("Native review approval actor/reviewer identity mismatch");
@@ -31782,8 +31531,8 @@ function signNativeIndependentReviewApproval(options) {
   });
 }
 function parseNativeImplementationPreparation(value) {
-  const root = record12(value, "Native implementation preparation");
-  exactKeys10(
+  const root = record11(value, "Native implementation preparation");
+  exactKeys9(
     root,
     ["schema", "receipt", "payloadHash", "preparationHash"],
     "Native implementation preparation"
@@ -31791,8 +31540,8 @@ function parseNativeImplementationPreparation(value) {
   if (root.schema !== "comet.native.implementation-preparation.v1") {
     throw new Error("Native implementation preparation schema is invalid");
   }
-  const receipt = record12(root.receipt, "Native implementation preparation receipt");
-  exactKeys10(
+  const receipt = record11(root.receipt, "Native implementation preparation receipt");
+  exactKeys9(
     receipt,
     ["kind", "role", "status", "bindings", "acceptanceIds", "actor", "issuedAt", "evidence"],
     "Native implementation preparation receipt"
@@ -32892,12 +32641,12 @@ function addTarget(targets, value) {
 function collectTargets(input, args) {
   const targets = [];
   const records = [args, input].filter(isRecord2);
-  for (const record13 of records) {
-    for (const key of SINGULAR_PATH_KEYS) addTarget(targets, record13[key]);
-    for (const key of PLURAL_PATH_KEYS) addTarget(targets, record13[key]);
-    for (const key of NESTED_TARGET_KEYS) addTarget(targets, record13[key]);
+  for (const record12 of records) {
+    for (const key of SINGULAR_PATH_KEYS) addTarget(targets, record12[key]);
+    for (const key of PLURAL_PATH_KEYS) addTarget(targets, record12[key]);
+    for (const key of NESTED_TARGET_KEYS) addTarget(targets, record12[key]);
     for (const key of PATCH_KEYS) {
-      const value = record13[key];
+      const value = record12[key];
       if (typeof value === "string") targets.push(...patchTargets(value));
     }
   }
@@ -33077,7 +32826,7 @@ Commands:
   init [--root <artifact-root>] [--language en|zh-CN]
   root show
   root move <artifact-root>
-  new <change-name> --creation-authorization <path> [--language en|zh-CN]
+  new <change-name> [--language en|zh-CN]
   spec remove <change-name> <capability>
   spec rebase <change-name> --summary <text>
   list [--cursor <token>]
@@ -33090,7 +32839,6 @@ Commands:
   trust keygen --identity <path> --private-key <outside-project-path>
   trust identity --private-key-env <name> --identity <path>
   trust policy --implementation-identity <path> --reviewer-identity <path> --waiver-identity <path> --controller-private-key-env <name>
-  trust authorize <change-name> --controller-private-key-env <name> --output <path>
   receipt manual <change-name> --acceptance <id> --responsible <text> --step <text> --observation <text> --confirmed
   receipt automated <change-name> --acceptance <id> [--timeout-ms <n>] -- <executable> [args...]
   receipt implement <change-name> prepare --identity <path> --output <path>
@@ -33402,10 +33150,6 @@ async function dispatch(rawArgs, explicitProjectRoot) {
   }
   if (command === "new") {
     const name = requiredPositional(rawArgs, "change name");
-    const creationAuthorizationPath = takeOption(rawArgs, "--creation-authorization");
-    if (!creationAuthorizationPath) {
-      throw new NativeUsageError("--creation-authorization is required");
-    }
     let config = await readProjectConfig(projectRoot);
     const language = languageOption(rawArgs, config?.native.language ?? "en");
     assertNoArguments(rawArgs);
@@ -33422,11 +33166,7 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const state = await createNativeChange({
       paths,
       name,
-      language,
-      verificationProtocol: "signed-v2",
-      creationAuthorization: parseNativeCreationAuthorization(
-        await readEvidenceJson(creationAuthorizationPath, "Native creation authorization")
-      )
+      language
     });
     await selectNativeChange(paths, state.name);
     const status = await inspectNativeStatus(paths, state.name, {
@@ -33762,13 +33502,6 @@ async function dispatch(rawArgs, explicitProjectRoot) {
       const policyPath = path54.join(projectRoot, ...NATIVE_REVIEW_TRUST_POLICY_REF.split("/"));
       await withNativeMutationLock(paths, "create review trust policy", async () => {
         await resolveContainedNativePath(projectRoot, policyPath);
-        const activeEntries = await fs36.readdir(paths.changesDir).catch((error) => {
-          if (error.code === "ENOENT") return [];
-          throw error;
-        });
-        if (activeEntries.length > 0) {
-          throw new Error("Native review trust policy must be created before any active change");
-        }
         await atomicWriteJson(policyPath, policy, {
           containedRoot: projectRoot,
           exclusive: true
@@ -33778,42 +33511,6 @@ async function dispatch(rawArgs, explicitProjectRoot) {
         "trust policy",
         { ref: NATIVE_REVIEW_TRUST_POLICY_REF, policy },
         `Native review trust policy created: ${NATIVE_REVIEW_TRUST_POLICY_REF}
-`
-      );
-    }
-    if (subcommand === "authorize") {
-      const name = requiredPositional(rawArgs, "change name");
-      const controllerPrivateKeyEnv = takeOption(rawArgs, "--controller-private-key-env");
-      const outputPathValue = takeOption(rawArgs, "--output");
-      if (!controllerPrivateKeyEnv || !outputPathValue) {
-        throw new NativeUsageError(
-          "trust authorize requires --controller-private-key-env and --output"
-        );
-      }
-      assertNoArguments(rawArgs);
-      const { paths } = await configuredPaths(projectRoot);
-      const [controllerTrust, policy, projectRootHash] = await Promise.all([
-        readNativeControllerTrustProject(projectRoot),
-        readNativeReviewTrustPolicy(paths),
-        nativeControllerProjectRootHash(projectRoot)
-      ]);
-      if (!controllerTrust) {
-        throw new Error("Native project has no controller-owned trust root");
-      }
-      const authorization = buildNativeCreationAuthorization({
-        controllerIdentity: controllerTrust.controllerIdentity,
-        controllerPrivateKey: privateKeyFromEnvironment(controllerPrivateKeyEnv),
-        projectRootHash,
-        policyHash: policy.policyHash,
-        change: name
-      });
-      const outputPath = path54.resolve(outputPathValue);
-      await writeExclusiveFile(outputPath, `${JSON.stringify(authorization, null, 2)}
-`, 420);
-      return success(
-        "trust authorize",
-        { outputPath, authorization },
-        `Native creation authorization written to ${outputPath}
 `
       );
     }

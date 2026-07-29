@@ -38,7 +38,7 @@
 ## 漂移与兼容
 
 - Verify 后 contract、implementation scope、当前工作树、verification report、receipt、waiver 或 review 任一变化，当前通过结论失效并回退到重新 Verify 的受控流程。
-- 新协议使用版本化 evidence schema。旧 archive、旧 envelope 和旧 report 继续支持 show/status/doctor 的只读解析，不要求回填 acceptance matrix 或 receipt。
+- 新协议使用版本化 evidence schema。不含已删除 `signed-v2` 创建授权格式的旧 archive、旧 envelope 和旧 report 继续支持 show/status/doctor 的只读解析，不要求回填 acceptance matrix 或 receipt；已删除的创建授权格式不提供兼容读取。
 
 ## 验证要求
 

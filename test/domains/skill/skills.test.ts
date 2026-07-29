@@ -3100,7 +3100,7 @@ describe('skills', () => {
       expect(parse(content)).toMatchObject({
         ambient_resume: true,
         classic: {
-          artifact_layout: 'legacy',
+          artifact_layout: 'docs',
           language: 'en',
           context_compression: 'off',
           review_mode: 'standard',
@@ -3111,7 +3111,7 @@ describe('skills', () => {
       expect(content).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
     });
 
-    it('adds the sequential clarification default only to an existing Native block', async () => {
+    it('adds every managed Native default only to an existing Native block', async () => {
       const configDir = path.join(tmpDir, '.comet');
       const configPath = path.join(configDir, 'config.yaml');
       await fs.mkdir(configDir, { recursive: true });
@@ -3135,6 +3135,8 @@ describe('skills', () => {
           artifact_root: 'docs',
           language: 'en',
           clarification_mode: 'sequential',
+          archive_confirmation: 'automatic',
+          max_verify_failures: 5,
           snapshot: {
             include: ['**/*'],
             exclude: [],
@@ -3205,7 +3207,7 @@ describe('skills', () => {
       const content = await fs.readFile(path.join(configDir, 'config.yaml'), 'utf-8');
       expect(parse(content)).toMatchObject({
         classic: {
-          artifact_layout: 'legacy',
+          artifact_layout: 'docs',
           language: 'en',
           context_compression: 'beta',
           review_mode: 'standard',
@@ -3339,7 +3341,7 @@ describe('skills', () => {
 
       expect(parse(second)).toMatchObject({
         classic: {
-          artifact_layout: 'legacy',
+          artifact_layout: 'docs',
           language: 'zh-CN',
           context_compression: 'beta',
           review_mode: 'thorough',

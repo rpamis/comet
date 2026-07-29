@@ -218,6 +218,8 @@ Changelog写英文
 
 不能够直接修改Superpowers和OpenSpec的原始Skill
 
+除非用户明确同意，否则不得使用 Superpowers 的任何 Skill。
+
 ## github规范
 
 不能未经过同意直接在github上评论或者提交PR

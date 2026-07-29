@@ -75,13 +75,13 @@ describe('Classic artifact layout', () => {
     );
   });
 
-  it('defaults a missing Classic layout to legacy', async () => {
+  it('defaults a missing Classic layout to docs', async () => {
     const root = await project();
     await config(root, '  language: zh-CN\n');
 
-    await expect(readClassicArtifactLayout(root)).resolves.toBe('legacy');
-    expect(classicLayoutPaths(root, 'legacy').changesDir).toBe(
-      path.join(root, 'openspec', 'changes'),
+    await expect(readClassicArtifactLayout(root)).resolves.toBe('docs');
+    expect(classicLayoutPaths(root, 'docs').changesDir).toBe(
+      path.join(root, 'docs', 'openspec', 'changes'),
     );
   });
 

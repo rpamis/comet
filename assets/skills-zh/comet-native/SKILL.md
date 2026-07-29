@@ -42,11 +42,10 @@ Native 主流程不依赖任何外部 Skill。
 
 ```text
 comet native new <change-name> \
-  --creation-authorization <owner-provided-path> \
   --language zh-CN
 ```
 
-如果 Runtime 报告缺少外部授权，停止创建并等待 owner。只使用配置指定的 Native artifact root。
+只使用配置指定的 Native artifact root。
 
 ## Shape
 

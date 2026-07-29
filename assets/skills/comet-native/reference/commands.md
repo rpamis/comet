@@ -9,7 +9,7 @@ comet native init [--root <artifact-root>] [--language en|zh-CN]
 comet native root show
 comet native root move <artifact-root>
 
-comet native new <change-name> --creation-authorization <path> [--language en|zh-CN]
+comet native new <change-name> [--language en|zh-CN]
 comet native list [--cursor <token>]
 comet native show <change-name>
 comet native status [--cursor <token>]
@@ -20,8 +20,6 @@ comet native spec rebase <change-name> --summary <text>
 ```
 
 `artifact-root` is project-relative. `new` creates default configuration and `<project>/docs/comet/` when configuration is absent. Use `root move` to migrate an existing root; do not edit configuration directly.
-
-`new` requires a creation authorization supplied by the owner for that change. The current Agent does not generate authorization or handle private keys. If the external action is missing, preserve the Runtime error and wait for the owner.
 
 `status` and `show` are read-only. `new` and `select` establish the current Native selection. Ask the user when multiple candidates cannot be resolved uniquely.
 
@@ -78,7 +76,7 @@ Create receipts only for commands or manual observations that actually occurred.
 
 ## External review handoff
 
-A signed-v2 pass may require an implementation attestation, independent review, or waiver. The current Agent may prepare and finalize handoff artifacts, but must not perform an external role's approve or sign action or receive its private key.
+A high-risk change may require an implementation attestation, independent review, or waiver before it can pass. The current Agent may prepare and finalize handoff artifacts, but must not perform an external role's approve or sign action or receive its private key.
 
 Implementation handoff:
 

@@ -83,7 +83,7 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Bounds snapshot capture time in milliseconds. Increase it together with the byte budget on slower or larger repositories.',
     classic: '# Classic workflow settings. They do not change Native state or behavior.',
     'classic.artifact_layout':
-      '# Selects the Classic artifact layout. New projects use docs; existing projects remain legacy until explicitly migrated.\n# artifact_layout: legacy | docs',
+      '# Selects the Classic artifact layout. The default is docs; update preserves detected root-level legacy artifacts.\n# artifact_layout: legacy | docs',
     'classic.language':
       '# Artifact language used by Classic workflow documents.\n# language: en | zh-CN',
     'classic.context_compression':
@@ -118,7 +118,7 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# 单次快照的最长执行时间（毫秒）；较慢或更大的仓库应与字节预算一并提高。',
     classic: '# Classic 工作流配置，不会改变 Native 的状态或行为。',
     'classic.artifact_layout':
-      '# Classic 产物布局；新项目使用 docs，已有项目在显式迁移前保持 legacy。\n# 可选值：legacy | docs',
+      '# Classic 产物布局；默认使用 docs，update 检测到根目录 legacy 产物时予以保留。\n# 可选值：legacy | docs',
     'classic.language': '# Classic 工作流文档使用的产物语言。\n# 可选值：en | zh-CN',
     'classic.context_compression':
       '# 新建 Classic change 是否启用 beta 上下文压缩。\n# 可选值：off | beta',
@@ -214,7 +214,7 @@ export function normalizeWorkflowArtifactRoot(value: unknown): string {
 
 export function normalizeClassicArtifactLayout(
   value: unknown,
-  fallback: ClassicArtifactLayout = 'legacy',
+  fallback: ClassicArtifactLayout = 'docs',
 ): ClassicArtifactLayout {
   const resolved = value ?? fallback;
   if (resolved !== 'legacy' && resolved !== 'docs') {
@@ -732,7 +732,7 @@ function normalizeWorkflowArtifactRoot(value) {
   return segments.length === 0 ? '.' : segments.join('/');
 }
 
-function normalizeClassicArtifactLayout(value, fallback = 'legacy') {
+function normalizeClassicArtifactLayout(value, fallback = 'docs') {
   const resolved = value ?? fallback;
   if (resolved !== 'legacy' && resolved !== 'docs') {
     throw new Error('classic.artifact_layout must be legacy or docs');
