@@ -59,6 +59,8 @@ import type { WorkflowProjectConfig } from '../../domains/workflow-contract/type
 import { installSuperpowersForPlatforms } from '../../domains/integrations/superpowers.js';
 import {
   hasCodegraphProjectIndex,
+  initializeCodegraphProject,
+  inspectCodegraphIndex,
   installCodegraph,
   resolveCodegraphCommand,
 } from '../../domains/integrations/codegraph.js';
@@ -79,6 +81,7 @@ type InitOptions = {
   workflow?: InitWorkflowSelection;
   artifactRoot?: string;
   platform?: string;
+  codegraph?: 'init' | 'skip';
 };
 
 function workflowChoiceNames(lang: string): Array<{
@@ -489,6 +492,9 @@ export async function initCommand(
   const scope = await selectScope(options, lang);
   if (scope === 'global' && options.artifactRoot !== undefined) {
     throw new Error('--root is only valid for project-scope initialization');
+  }
+  if (scope === 'global' && options.codegraph === 'init') {
+    throw new Error('--codegraph init is only valid for project-scope initialization');
   }
   if (scope === 'project') {
     await readProjectRegistry({ strict: true });
@@ -984,15 +990,19 @@ export async function initCommand(
 
   const codegraphAlreadyIndexed = hasCodegraphProjectIndex(projectPath);
 
-  // JSON mode never installs CodeGraph interactively (matches pre-i18n behavior).
-  // If the project already has a .codegraph/ index, skip.
-  // Otherwise, only install when the user selected codegraph in the npm-deps prompt.
   const shouldInstallCodegraph =
-    !options.json && !codegraphAlreadyIndexed && shouldInstallCodegraphCli;
+    options.codegraph === 'init' ||
+    (options.codegraph === undefined &&
+      !options.json &&
+      !codegraphAlreadyIndexed &&
+      shouldInstallCodegraphCli);
 
   if (shouldInstallCodegraph) {
     log(`\n  ${t(lang, 'installingCG')}`);
-    const cgGlobalStatus = await installCodegraph(projectPath, scope, true);
+    const cgGlobalStatus =
+      options.codegraph === 'init'
+        ? await initializeCodegraphProject(projectPath, true, options.json === true)
+        : await installCodegraph(projectPath, scope, true, options.json === true);
     log(`  CodeGraph: ${cgGlobalStatus}`);
     for (const r of results) {
       r.codegraph = cgGlobalStatus;
@@ -1005,11 +1015,37 @@ export async function initCommand(
         });
       }
     }
-  } else if (!options.json && codegraphAlreadyIndexed) {
+  } else if (!options.json && options.codegraph !== 'skip' && codegraphAlreadyIndexed) {
     log('\n  CodeGraph: skipped (existing .codegraph index detected)');
   } else if (!options.json) {
     log(`\n  CodeGraph: ${t(lang, 'cgSkippedByUser')}`);
   }
+
+  const codegraph =
+    options.codegraph === 'skip'
+      ? {
+          requested: 'skip' as const,
+          status: 'skipped' as const,
+          repairable: false,
+          remediation: null,
+          detail: 'CodeGraph setup explicitly skipped',
+        }
+      : scope === 'project'
+        ? {
+            requested: options.codegraph ?? ('auto' as const),
+            ...inspectCodegraphIndex(projectPath),
+          }
+        : {
+            requested: options.codegraph ?? ('auto' as const),
+            status: resolveCodegraphCommand() ? ('cli_ready' as const) : ('cli_missing' as const),
+            repairable: false,
+            remediation: resolveCodegraphCommand()
+              ? null
+              : 'npm install -g @colbymchenry/codegraph',
+            detail: resolveCodegraphCommand()
+              ? 'CodeGraph CLI is installed; project indexes are not part of global scope'
+              : 'CodeGraph CLI is not installed',
+          };
 
   let projectConfigCreated = false;
   let projectConfigUpdated = false;
@@ -1204,6 +1240,7 @@ export async function initCommand(
           nativeArtifactRoot,
           classicArtifactLayout: workflowDecision?.classicArtifactLayout ?? null,
           selectedPlatforms: selectedPlatformIds,
+          codegraph,
           results: results.map((result) => ({
             platform: result.platform.id,
             platformName: result.platform.name,

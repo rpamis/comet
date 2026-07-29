@@ -82,4 +82,134 @@ describe('codegraph', () => {
       expect.arrayContaining([shimPath, ['install', '--yes']]),
     );
   });
+
+  it.each([
+    {
+      name: 'ready',
+      payload: {
+        initialized: true,
+        pendingChanges: { added: 0, modified: 0, removed: 0 },
+        index: { state: 'complete', reindexRecommended: false, pendingRefs: 0 },
+      },
+      expected: 'index_ready',
+      remediation: null,
+    },
+    {
+      name: 'stale',
+      payload: {
+        initialized: true,
+        pendingChanges: { added: 0, modified: 2, removed: 0 },
+        index: { state: 'complete', reindexRecommended: false, pendingRefs: 0 },
+      },
+      expected: 'index_stale',
+      remediation: 'codegraph sync',
+    },
+    {
+      name: 'stale extraction',
+      payload: {
+        initialized: true,
+        pendingChanges: { added: 0, modified: 0, removed: 0 },
+        index: { state: 'complete', reindexRecommended: true, pendingRefs: 0 },
+      },
+      expected: 'index_stale',
+      remediation: 'codegraph index',
+    },
+    {
+      name: 'incomplete',
+      payload: {
+        initialized: true,
+        pendingChanges: { added: 0, modified: 0, removed: 0 },
+        index: { state: 'partial', reindexRecommended: false, pendingRefs: 0 },
+      },
+      expected: 'index_incomplete',
+      remediation: 'codegraph index',
+    },
+  ])('classifies a $name CodeGraph status response', async ({ payload, expected, remediation }) => {
+    const codegraphDir = path.join(tmpDir, '.codegraph');
+    fs.mkdirSync(codegraphDir, { recursive: true });
+    fs.writeFileSync(path.join(codegraphDir, 'codegraph.db'), '');
+    mockedExecFileSync.mockImplementation((command: unknown, args?: unknown) => {
+      const cmd = String(command);
+      const cmdArgs = Array.isArray(args) ? args.map(String) : [];
+      if ((cmd === 'where' || cmd === 'which') && cmdArgs[0] === 'codegraph') {
+        return Buffer.from('/usr/bin/codegraph');
+      }
+      if (cmd === 'codegraph' && cmdArgs[0] === 'status') {
+        return JSON.stringify(payload);
+      }
+      return Buffer.from('');
+    });
+
+    const { inspectCodegraphIndex } = await import('../../../domains/integrations/codegraph.js');
+    const result = inspectCodegraphIndex(tmpDir);
+
+    expect(result).toMatchObject({
+      status: expected,
+      remediation,
+      repairable: expected !== 'index_ready',
+    });
+  });
+
+  it('reports a missing project index without invoking CodeGraph status', async () => {
+    mockedExecFileSync.mockImplementation((command: unknown, args?: unknown) => {
+      const cmd = String(command);
+      const cmdArgs = Array.isArray(args) ? args.map(String) : [];
+      if ((cmd === 'where' || cmd === 'which') && cmdArgs[0] === 'codegraph') {
+        return Buffer.from('/usr/bin/codegraph');
+      }
+      return Buffer.from('');
+    });
+
+    const { inspectCodegraphIndex } = await import('../../../domains/integrations/codegraph.js');
+    const result = inspectCodegraphIndex(tmpDir);
+
+    expect(result).toMatchObject({
+      status: 'project_not_initialized',
+      remediation: 'codegraph init -i',
+      repairable: true,
+    });
+    expect(mockedExecFileSync.mock.calls).not.toContainEqual(
+      expect.arrayContaining(['codegraph', expect.arrayContaining(['status'])]),
+    );
+  });
+
+  it('reports a missing CodeGraph CLI as non-repairable', async () => {
+    mockedExecFileSync.mockImplementation(() => {
+      throw new Error('command not found');
+    });
+
+    const { inspectCodegraphIndex } = await import('../../../domains/integrations/codegraph.js');
+
+    expect(inspectCodegraphIndex(tmpDir)).toMatchObject({
+      status: 'cli_missing',
+      repairable: false,
+      remediation: 'npm install -g @colbymchenry/codegraph',
+    });
+  });
+
+  it.each([
+    ['project_not_initialized', 'init'],
+    ['index_incomplete', 'index'],
+    ['index_stale', 'sync'],
+  ] as const)('repairs %s with the matching CodeGraph command', async (status, command) => {
+    mockedExecFileSync.mockImplementation((tool: unknown, args?: unknown) => {
+      const cmd = String(tool);
+      const cmdArgs = Array.isArray(args) ? args.map(String) : [];
+      if ((cmd === 'where' || cmd === 'which') && cmdArgs[0] === 'codegraph') {
+        return Buffer.from('/usr/bin/codegraph');
+      }
+      return Buffer.from('');
+    });
+
+    const { repairCodegraphIndex } = await import('../../../domains/integrations/codegraph.js');
+    repairCodegraphIndex(tmpDir, status);
+
+    expect(mockedExecFileSync.mock.calls).toContainEqual(
+      expect.arrayContaining([
+        'codegraph',
+        command === 'init' ? ['init', '-i'] : [command],
+        expect.objectContaining({ cwd: tmpDir }),
+      ]),
+    );
+  });
 });

@@ -222,6 +222,7 @@ Initializes Comet for selected AI coding platforms. Interactive setup selects Na
 | `--platform <platform>` | Initialize only this platform; project scope accepts custom platform ids    |
 | `--workflow <mode>` | Workflows to initialize: `native`, `classic`, or `both`                        |
 | `--root <path>`     | Project-relative Native artifact root, such as `docs`                          |
+| `--codegraph <action>` | Non-interactive project index action: explicitly choose `init` or `skip`    |
 | `--skip-existing`   | Skip already installed components                                              |
 | `--overwrite`       | Overwrite already installed components                                         |
 | `--json`            | Output structured JSON                                                         |
@@ -273,14 +274,18 @@ Starts a local HTTP server that displays a visual dashboard with active changes,
 <details>
 <summary><code>comet doctor [path]</code> — Diagnose Comet installation health</summary>
 
-Checks project/global installation health, working directories, installed skills, scripts, and active change
+Checks project/global installation health, working directories, installed skills, scripts, CodeGraph indexes, and active change
 diagnostics. `comet doctor` reports diagnostic status for malformed `.comet.yaml` files, current step / runtime mode
-for valid changes, and runtime evidence gaps that block safe resume.
+for valid changes, and runtime evidence gaps that block safe resume. In a Git secondary worktree, it separately reports
+the current worktree, primary worktree, and global fallback installation state. Ignored assets in the primary worktree
+are inspected only for classification and are never executed across worktrees.
 
-| Option            | Description                                                     |
-| ----------------- | --------------------------------------------------------------- |
-| `--json`          | Output structured diagnostic results                            |
-| `--scope <scope>` | Diagnose `auto`, `project`, or `global` scope (default: `auto`) |
+| Option            | Description                                                                                   |
+| ----------------- | --------------------------------------------------------------------------------------------- |
+| `--json`          | Output structured diagnostics, including CodeGraph state and the effective runtime source    |
+| `--scope <scope>` | Diagnose `auto`, `project`, or `global` scope (default: `auto`)                               |
+| `--repair`        | Repair deterministic managed-install and state problems                                       |
+| `--yes`           | Use with `--repair` to authorize potentially expensive CodeGraph initialization, rebuild, or sync |
 
 </details>
 

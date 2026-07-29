@@ -11,8 +11,10 @@ import {
   MINIMUM_OPENSPEC_VERSION,
 } from '../../domains/integrations/openspec.js';
 import {
-  hasCodegraphProjectIndex,
+  inspectCodegraphIndex,
+  repairCodegraphIndex,
   resolveCodegraphCommand,
+  type CodegraphIndexDiagnostic,
 } from '../../domains/integrations/codegraph.js';
 import {
   copyCometRulesForPlatform,
@@ -60,6 +62,7 @@ import {
 import type { WorkflowProjectConfig } from '../../domains/workflow-contract/types.js';
 import { resolveHookWorkflowOwner } from '../../domains/comet-entry/hook-router.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
+import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
 interface CheckResult {
   check: string;
@@ -70,6 +73,25 @@ interface CheckResult {
 type DoctorScope = InstallScope | 'auto';
 interface DoctorContext {
   homeDir: string;
+}
+
+type ManagedInstallAvailability = 'ready' | 'partial' | 'missing';
+
+interface DoctorRuntimeDiagnostic {
+  isSecondaryWorktree: boolean;
+  currentWorktreeRoot: string | null;
+  primaryWorktreeRoot: string | null;
+  currentProjectInstall: ManagedInstallAvailability;
+  primaryProjectInstall: ManagedInstallAvailability;
+  globalFallbackReady: boolean;
+  effectiveScope: 'project' | 'global' | 'none';
+  remediation: string | null;
+}
+
+interface DoctorReport {
+  results: CheckResult[];
+  runtime: DoctorRuntimeDiagnostic;
+  codegraph: CodegraphIndexDiagnostic | null;
 }
 
 const SUPERPOWERS_SENTINELS = [
@@ -993,36 +1015,114 @@ async function checkCometYamlValidity(projectPath: string): Promise<CheckResult[
   return results;
 }
 
-async function checkCodegraph(projectPath: string, scope: DoctorScope): Promise<CheckResult> {
-  if (scope !== 'global' && hasCodegraphProjectIndex(projectPath)) {
-    return { check: 'CodeGraph', status: 'pass', message: 'initialized (.codegraph/ present)' };
-  }
-
-  if (!resolveCodegraphCommand()) {
-    return {
-      check: 'CodeGraph CLI',
-      status: 'warn',
-      message: 'not installed — install with: npm install -g @colbymchenry/codegraph',
-    };
-  }
-
-  if (scope === 'global') {
-    return { check: 'CodeGraph CLI', status: 'pass', message: 'installed' };
-  }
-
-  const codegraphDir = path.join(projectPath, '.codegraph');
-  if (!(await fileExists(codegraphDir))) {
-    return {
-      check: 'CodeGraph',
-      status: 'warn',
-      message: 'CLI installed but project not initialized — run: codegraph init -i',
-    };
-  }
-
-  return { check: 'CodeGraph', status: 'pass', message: 'initialized (.codegraph/ present)' };
+function codegraphCheckResult(diagnostic: CodegraphIndexDiagnostic): CheckResult {
+  return {
+    check: diagnostic.status === 'cli_missing' ? 'CodeGraph CLI' : 'CodeGraph',
+    status:
+      diagnostic.status === 'index_ready' || diagnostic.status === 'cli_ready' ? 'pass' : 'warn',
+    message: diagnostic.remediation
+      ? `${diagnostic.detail} — run: ${diagnostic.remediation}`
+      : diagnostic.detail,
+  };
 }
 
-async function collectResults(projectPath: string, scope: DoctorScope): Promise<CheckResult[]> {
+async function inspectManagedInstallAvailability(
+  baseDir: string,
+  scope: InstallScope,
+  workflowSelection: InitWorkflowSelection,
+): Promise<ManagedInstallAvailability> {
+  const manifest = await readManifest();
+  const managedSkills = getManagedSkillPathsForSelection(
+    manifest,
+    scope === 'global' ? 'classic' : workflowSelection,
+  );
+  let partial = false;
+  for (const platform of PLATFORMS) {
+    const skillsDirs = getPlatformSkillsDirs(platform, scope);
+    const canonicalSkillsDir = skillsDirs[0];
+    for (const skillsDir of skillsDirs) {
+      const presence = await Promise.all(
+        managedSkills.map((relative) =>
+          fileExists(path.join(baseDir, skillsDir, 'skills', ...relative.split('/'))),
+        ),
+      );
+      const present = presence.filter(Boolean).length;
+      if (present === managedSkills.length && skillsDir === canonicalSkillsDir) return 'ready';
+      if (present > 0) partial = true;
+    }
+  }
+  return partial ? 'partial' : 'missing';
+}
+
+async function inspectDoctorRuntime(
+  projectPath: string,
+  context: DoctorContext,
+  workflowSelection: InitWorkflowSelection,
+): Promise<DoctorRuntimeDiagnostic> {
+  const worktree = inspectGitWorktree(projectPath);
+  const currentProjectInstall = await inspectManagedInstallAvailability(
+    projectPath,
+    'project',
+    workflowSelection,
+  );
+  const primaryProjectInstall =
+    worktree.isSecondaryWorktree && worktree.primaryWorktreeRoot
+      ? await inspectManagedInstallAvailability(
+          worktree.primaryWorktreeRoot,
+          'project',
+          workflowSelection,
+        )
+      : currentProjectInstall;
+  const globalFallbackReady =
+    (await inspectManagedInstallAvailability(context.homeDir, 'global', 'classic')) === 'ready';
+  const effectiveScope =
+    currentProjectInstall !== 'missing' ? 'project' : globalFallbackReady ? 'global' : 'none';
+  const remediation =
+    effectiveScope !== 'none'
+      ? null
+      : worktree.isSecondaryWorktree && primaryProjectInstall === 'ready'
+        ? 'run comet init . --scope project in this worktree, or install a global fallback'
+        : 'run comet init . --scope project';
+  return {
+    isSecondaryWorktree: worktree.isSecondaryWorktree,
+    currentWorktreeRoot: worktree.currentWorktreeRoot,
+    primaryWorktreeRoot: worktree.primaryWorktreeRoot,
+    currentProjectInstall,
+    primaryProjectInstall,
+    globalFallbackReady,
+    effectiveScope,
+    remediation,
+  };
+}
+
+function worktreeRuntimeCheck(runtime: DoctorRuntimeDiagnostic): CheckResult | null {
+  if (!runtime.isSecondaryWorktree) return null;
+  if (runtime.currentProjectInstall === 'ready') {
+    return {
+      check: 'Worktree runtime',
+      status: 'pass',
+      message: 'secondary Git worktree has a complete project-scope Comet installation',
+    };
+  }
+  if (runtime.primaryProjectInstall === 'ready' && runtime.globalFallbackReady) {
+    return {
+      check: 'Worktree runtime',
+      status: 'pass',
+      message:
+        'project assets exist only in the primary worktree; this worktree uses a complete global fallback and does not execute primary-worktree files',
+    };
+  }
+  return {
+    check: 'Worktree runtime',
+    status: runtime.effectiveScope === 'none' ? 'fail' : 'warn',
+    message:
+      runtime.primaryProjectInstall === 'ready'
+        ? `project assets exist only in the primary worktree and are not executed here; ${runtime.remediation}`
+        : `secondary worktree has no complete effective runtime; ${runtime.remediation}`,
+  };
+}
+
+async function collectResults(projectPath: string, scope: DoctorScope): Promise<DoctorReport> {
   const context = { homeDir: os.homedir() };
   return collectResultsWithContext(projectPath, scope, context);
 }
@@ -1031,7 +1131,7 @@ async function collectResultsWithContext(
   projectPath: string,
   scope: DoctorScope,
   context: DoctorContext,
-): Promise<CheckResult[]> {
+): Promise<DoctorReport> {
   const results: CheckResult[] = [];
   if (scope !== 'global') {
     const configTransaction = await checkProjectConfigWriteTransaction(projectPath);
@@ -1054,6 +1154,9 @@ async function collectResultsWithContext(
         ? 'native'
         : 'classic';
   const classicEnabled = workflowSelection !== 'native';
+  const runtime = await inspectDoctorRuntime(projectPath, context, workflowSelection);
+  const worktreeCheck = worktreeRuntimeCheck(runtime);
+  if (worktreeCheck) results.push(worktreeCheck);
   if (configError) {
     results.push({ check: 'project config', status: 'fail', message: configError });
   }
@@ -1067,7 +1170,15 @@ async function collectResultsWithContext(
   }
   if (classicEnabled) {
     results.push(await checkOpenSpecCli());
-    results.push(await checkSuperpowers(projectPath, scope, context));
+    results.push(
+      await checkSuperpowers(
+        projectPath,
+        scope === 'project' && runtime.isSecondaryWorktree && runtime.globalFallbackReady
+          ? 'auto'
+          : scope,
+        context,
+      ),
+    );
     if (scope !== 'global') {
       const classicLayout = await checkClassicLayout(projectPath);
       results.push(classicLayout);
@@ -1077,13 +1188,42 @@ async function collectResultsWithContext(
       results.push(await checkWorkingDirs(projectPath));
     }
   }
-  results.push(...(await checkSkillCompleteness(projectPath, scope, context, workflowSelection)));
-  results.push(await checkScriptsPresent());
-  if (classicEnabled) {
-    results.push(await checkCodegraph(projectPath, scope));
-    if (!configError && config && workflows.includes('classic')) {
-      results.push(...(await checkCometYamlValidity(projectPath)));
+  const skillResults = await checkSkillCompleteness(projectPath, scope, context, workflowSelection);
+  if (
+    scope === 'project' &&
+    runtime.isSecondaryWorktree &&
+    runtime.primaryProjectInstall === 'ready' &&
+    runtime.currentProjectInstall === 'missing'
+  ) {
+    const missing = skillResults.find((result) => result.check === 'Comet skills');
+    if (missing) {
+      missing.status = runtime.globalFallbackReady ? 'pass' : 'warn';
+      missing.message = runtime.globalFallbackReady
+        ? 'not copied into this secondary worktree; primary-worktree assets remain isolated and a complete global fallback is active'
+        : `not copied into this secondary worktree; primary-worktree assets are not executed here — ${runtime.remediation}`;
     }
+  }
+  results.push(...skillResults);
+  results.push(await checkScriptsPresent());
+  const codegraph: CodegraphIndexDiagnostic =
+    scope === 'global'
+      ? resolveCodegraphCommand()
+        ? {
+            status: 'cli_ready',
+            repairable: false,
+            remediation: null,
+            detail: 'CodeGraph CLI is installed; project indexes are not part of global scope',
+          }
+        : {
+            status: 'cli_missing',
+            repairable: false,
+            remediation: 'npm install -g @colbymchenry/codegraph',
+            detail: 'CodeGraph CLI is not installed',
+          }
+      : inspectCodegraphIndex(projectPath);
+  results.push(codegraphCheckResult(codegraph));
+  if (classicEnabled && !configError && config && workflows.includes('classic')) {
+    results.push(...(await checkCometYamlValidity(projectPath)));
   }
   if (scope !== 'global') {
     results.push(
@@ -1096,7 +1236,7 @@ async function collectResultsWithContext(
         : await checkCurrentSelection(projectPath),
     );
   }
-  return results;
+  return { results, runtime, codegraph };
 }
 
 async function checkCurrentSelection(projectPath: string): Promise<CheckResult> {
@@ -1153,6 +1293,8 @@ async function repairDoctorState(
   scope: DoctorScope,
   context: DoctorContext,
   strategy?: 'continue' | 'rollback',
+  repairCodegraph = false,
+  quietCodegraph = false,
 ): Promise<string[]> {
   const repaired: string[] = [];
   let projectRouterReady = false;
@@ -1232,6 +1374,25 @@ async function repairDoctorState(
     }
     repaired.push(`${platform.name} (${targetScope})`);
   }
+  if (repairCodegraph && scope !== 'global') {
+    const diagnostic = inspectCodegraphIndex(projectPath);
+    if (
+      diagnostic.status === 'project_not_initialized' ||
+      diagnostic.status === 'index_incomplete' ||
+      diagnostic.status === 'index_stale'
+    ) {
+      repairCodegraphIndex(
+        projectPath,
+        diagnostic.remediation === 'codegraph init -i'
+          ? 'project_not_initialized'
+          : diagnostic.remediation === 'codegraph sync'
+            ? 'index_stale'
+            : 'index_incomplete',
+        quietCodegraph,
+      );
+      repaired.push('CodeGraph project index');
+    }
+  }
   return repaired;
 }
 
@@ -1244,6 +1405,7 @@ function icon(status: string): string {
 interface DoctorOptions {
   json?: boolean;
   repair?: boolean;
+  yes?: boolean;
   strategy?: 'continue' | 'rollback';
   scope?: DoctorScope;
   homeDir?: string;
@@ -1259,18 +1421,31 @@ export async function doctorCommand(
   if (options.strategy && !options.repair) {
     throw new Error('--strategy requires --repair');
   }
+  if (options.yes && !options.repair) {
+    throw new Error('--yes requires --repair');
+  }
   const repaired = options.repair
-    ? await repairDoctorState(projectPath, scope, context, options.strategy)
+    ? await repairDoctorState(
+        projectPath,
+        scope,
+        context,
+        options.strategy,
+        options.yes === true,
+        options.json === true,
+      )
     : [];
-  const results =
+  const report =
     options.homeDir === undefined
       ? await collectResults(projectPath, scope)
       : await collectResultsWithContext(projectPath, scope, context);
+  const { results, runtime, codegraph } = report;
   const healthy = results.every((result) => result.status !== 'fail');
   const status = healthy ? 'passed' : 'failed';
 
   if (options.json) {
-    console.log(JSON.stringify({ scope, status, healthy, repaired, results }, null, 2));
+    console.log(
+      JSON.stringify({ scope, status, healthy, repaired, runtime, codegraph, results }, null, 2),
+    );
     return;
   }
 

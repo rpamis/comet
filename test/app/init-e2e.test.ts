@@ -179,6 +179,83 @@ describe('comet init E2E', () => {
     expect(printCometBanner).toHaveBeenLastCalledWith({ enabled: false });
   });
 
+  it('initializes CodeGraph when JSON init explicitly requests it', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const externalSuccess = mockedExecFileSync.getMockImplementation();
+    mockedExecFileSync.mockImplementation((command, args, options) => {
+      const cmd = String(command);
+      const cmdArgs = Array.isArray(args) ? args.map(String) : [];
+      if (cmd === 'codegraph' && cmdArgs[0] === 'init') {
+        mkdirSync(path.join(tmpDir, '.codegraph'), { recursive: true });
+        writeFileSync(path.join(tmpDir, '.codegraph', 'codegraph.db'), '');
+        return Buffer.from('initialized');
+      }
+      if (cmd === 'codegraph' && cmdArgs[0] === 'status') {
+        return JSON.stringify({
+          initialized: true,
+          pendingChanges: { added: 0, modified: 0, removed: 0 },
+          index: { state: 'complete', reindexRecommended: false, pendingRefs: 0 },
+        });
+      }
+      return externalSuccess?.(command, args, options) ?? Buffer.from('');
+    });
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const output = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'project',
+        codegraph: 'init',
+      }),
+    );
+
+    expect(output.codegraph).toMatchObject({
+      requested: 'init',
+      status: 'index_ready',
+      repairable: false,
+      remediation: null,
+    });
+    expect(mockedExecFileSync.mock.calls).toContainEqual(
+      expect.arrayContaining(['codegraph', ['init', '-i']]),
+    );
+    expect(
+      mockedExecFileSync.mock.calls.some(
+        ([command, args]) =>
+          String(command) === 'codegraph' &&
+          Array.isArray(args) &&
+          args.map(String).join(' ') === 'install --yes',
+      ),
+    ).toBe(false);
+  });
+
+  it('records an explicit CodeGraph skip without invoking CodeGraph in JSON mode', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+
+    const { initCommand } = await import('../../app/commands/init.js');
+    const output = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'project',
+        codegraph: 'skip',
+      }),
+    );
+
+    expect(output.codegraph).toEqual({
+      requested: 'skip',
+      status: 'skipped',
+      repairable: false,
+      remediation: null,
+      detail: 'CodeGraph setup explicitly skipped',
+    });
+    expect(mockedExecFileSync.mock.calls.some(([command]) => String(command) === 'codegraph')).toBe(
+      false,
+    );
+  });
+
   it('waits for the banner before printing version info', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });

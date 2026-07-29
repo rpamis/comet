@@ -49,16 +49,30 @@ interface DoctorPayload {
   status: 'passed' | 'failed';
   healthy: boolean;
   repaired: string[];
+  codegraph?: {
+    status: string;
+    repairable: boolean;
+    remediation: string | null;
+  };
+  runtime?: {
+    isSecondaryWorktree: boolean;
+    currentProjectInstall: string;
+    primaryProjectInstall: string;
+    globalFallbackReady: boolean;
+    effectiveScope: string;
+    remediation: string | null;
+  };
   results: Array<{ check: string; status: string; message: string }>;
 }
 
 async function collectDoctorPayload(
   targetPath: string,
   scope: 'project' | 'global' | 'auto' = 'project',
+  homeDir = targetPath,
 ): Promise<DoctorPayload> {
   const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   try {
-    await doctorCommand(targetPath, { json: true, scope, homeDir: targetPath });
+    await doctorCommand(targetPath, { json: true, scope, homeDir });
     const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
     return JSON.parse(output) as DoctorPayload;
   } finally {
@@ -217,6 +231,170 @@ describe('doctor command', () => {
       `comet-doctor-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     await fs.mkdir(tmpDir, { recursive: true });
+  });
+
+  it('reports a secondary worktree using a complete global fallback without calling it broken', async () => {
+    const secondary = path.join(
+      os.tmpdir(),
+      `comet-doctor-secondary-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const fakeHome = path.join(tmpDir, 'fake-home');
+    const git = (...args: string[]) =>
+      spawnSync('git', ['-C', tmpDir, ...args], { encoding: 'utf8', timeout: 20_000 });
+    try {
+      expect(git('init', '-b', 'master').status).toBe(0);
+      expect(git('config', 'user.email', 'doctor@example.com').status).toBe(0);
+      expect(git('config', 'user.name', 'Doctor Test').status).toBe(0);
+      await fs.writeFile(path.join(tmpDir, 'README.md'), '# test\n');
+      expect(git('add', 'README.md').status).toBe(0);
+      expect(git('commit', '-m', 'test').status).toBe(0);
+      await installManagedCometSkills(tmpDir);
+      await installManagedCometSkills(fakeHome);
+      expect(git('worktree', 'add', secondary, '-b', 'feature/doctor-secondary').status).toBe(0);
+
+      const payload = await collectDoctorPayload(secondary, 'project', fakeHome);
+
+      expect(payload.runtime).toMatchObject({
+        isSecondaryWorktree: true,
+        currentProjectInstall: 'missing',
+        primaryProjectInstall: 'ready',
+        globalFallbackReady: true,
+        effectiveScope: 'global',
+        remediation: null,
+      });
+      expect(payload.results.find((result) => result.check === 'Worktree runtime')).toMatchObject({
+        status: 'pass',
+        message: expect.stringContaining('global fallback'),
+      });
+      expect(payload.results.find((result) => result.check === 'Comet skills')).toMatchObject({
+        status: 'pass',
+        message: expect.stringContaining('secondary worktree'),
+      });
+      expect(JSON.stringify(payload.results)).not.toContain(
+        'not installed in project scope — run: comet init --scope project',
+      );
+
+      await fs.rm(fakeHome, { recursive: true, force: true });
+      const unavailable = await collectDoctorPayload(secondary, 'project', fakeHome);
+      expect(unavailable.runtime).toMatchObject({
+        isSecondaryWorktree: true,
+        primaryProjectInstall: 'ready',
+        globalFallbackReady: false,
+        effectiveScope: 'none',
+        remediation: expect.stringContaining('this worktree'),
+      });
+      expect(
+        unavailable.results.find((result) => result.check === 'Worktree runtime'),
+      ).toMatchObject({
+        status: 'fail',
+        message: expect.stringContaining('not executed here'),
+      });
+      expect(unavailable).toMatchObject({ status: 'failed', healthy: false });
+
+      const manifest = JSON.parse(
+        await fs.readFile(path.resolve('assets', 'manifest.json'), 'utf8'),
+      ) as { skills: string[] };
+      await fs.rm(path.join(tmpDir, '.claude', 'skills', ...manifest.skills[0]!.split('/')));
+      const stalePrimary = await collectDoctorPayload(secondary, 'project', fakeHome);
+      expect(stalePrimary.runtime).toMatchObject({
+        currentProjectInstall: 'missing',
+        primaryProjectInstall: 'partial',
+        effectiveScope: 'none',
+      });
+
+      await installManagedCometSkills(secondary);
+      const projectReady = await collectDoctorPayload(secondary, 'project', fakeHome);
+      expect(projectReady.runtime).toMatchObject({
+        currentProjectInstall: 'ready',
+        primaryProjectInstall: 'partial',
+        effectiveScope: 'project',
+        remediation: null,
+      });
+    } finally {
+      git('worktree', 'remove', '--force', secondary);
+      await fs.rm(secondary, { recursive: true, force: true });
+    }
+  });
+
+  it('repairs a missing CodeGraph index only with explicit --yes authorization', async () => {
+    const binDir = path.join(tmpDir, 'bin');
+    const logFile = path.join(tmpDir, 'codegraph.log');
+    await fs.mkdir(binDir, { recursive: true });
+    const executable =
+      process.platform === 'win32'
+        ? path.join(binDir, 'codegraph.cmd')
+        : path.join(binDir, 'codegraph');
+    const script =
+      process.platform === 'win32'
+        ? [
+            '@echo off',
+            `echo %1>>"${logFile}"`,
+            'if "%1"=="init" (',
+            '  if not exist ".codegraph" mkdir ".codegraph"',
+            '  type nul > ".codegraph\\codegraph.db"',
+            ')',
+            'if "%1"=="status" echo {"initialized":true,"pendingChanges":{"added":0,"modified":0,"removed":0},"index":{"state":"complete","reindexRecommended":false,"pendingRefs":0}}',
+            '',
+          ].join('\r\n')
+        : [
+            '#!/bin/sh',
+            `printf '%s\\n' "$1" >> '${logFile.replaceAll("'", "'\\''")}'`,
+            'if [ "$1" = "init" ]; then mkdir -p .codegraph; : > .codegraph/codegraph.db; fi',
+            'if [ "$1" = "status" ]; then printf \'%s\\n\' \'{"initialized":true,"pendingChanges":{"added":0,"modified":0,"removed":0},"index":{"state":"complete","reindexRecommended":false,"pendingRefs":0}}\'; fi',
+            '',
+          ].join('\n');
+    await fs.writeFile(executable, script);
+    if (process.platform !== 'win32') await fs.chmod(executable, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ''}`;
+    try {
+      const config = defaultProjectConfig('openspec');
+      config.default_workflow = 'classic';
+      config.workflows = ['classic'];
+      config.classic = {
+        artifact_layout: 'docs',
+        language: 'en',
+        context_compression: 'off',
+        review_mode: 'standard',
+        auto_transition: true,
+      };
+      await writeProjectConfig(tmpDir, config);
+
+      const before = await collectDoctorPayload(tmpDir);
+      expect(before.codegraph).toMatchObject({
+        status: 'project_not_initialized',
+        repairable: true,
+      });
+      await expect(fs.access(logFile)).rejects.toMatchObject({ code: 'ENOENT' });
+
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      let repaired: DoctorPayload;
+      try {
+        await doctorCommand(tmpDir, {
+          json: true,
+          repair: true,
+          yes: true,
+          scope: 'project',
+          homeDir: tmpDir,
+        });
+        repaired = JSON.parse(
+          log.mock.calls.map((call) => call.join(' ')).join('\n'),
+        ) as DoctorPayload;
+      } finally {
+        log.mockRestore();
+      }
+
+      expect(repaired!).toMatchObject({
+        repaired: expect.arrayContaining(['CodeGraph project index']),
+        codegraph: { status: 'index_ready', repairable: false },
+      });
+      await expect(fs.readFile(logFile, 'utf8')).resolves.toContain('init');
+      await expect(
+        fs.access(path.join(tmpDir, '.codegraph', 'codegraph.db')),
+      ).resolves.toBeUndefined();
+    } finally {
+      process.env.PATH = previousPath;
+    }
   });
 
   it('reports allowed Classic recovery strategies and never chooses one implicitly', async () => {
@@ -922,7 +1100,8 @@ describe('doctor command', () => {
     expect(results.map((result) => result.check)).not.toEqual(
       expect.arrayContaining(['openspec CLI', 'Superpowers', 'working directories']),
     );
-    expect(results.some((result) => result.check.startsWith('CodeGraph'))).toBe(false);
+    expect(results.some((result) => result.check.startsWith('CodeGraph'))).toBe(true);
+    expect(payload.codegraph?.status).toMatch(/^(cli_missing|project_not_initialized)$/u);
     await expect(
       fs.access(path.join(tmpDir, '.claude', 'skills', 'comet-any', 'SKILL.md')),
     ).resolves.toBeUndefined();

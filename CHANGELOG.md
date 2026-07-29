@@ -7,6 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **Targeted platform setup**: `comet init` and `comet update` now accept `--platform <platform>` so you can install or refresh one supported platform, including a project-specific custom platform, without changing the existing automatic fallback.
+- **CodeGraph index lifecycle**: Non-interactive project setup can explicitly choose `comet init --codegraph init|skip`, while JSON output and `comet doctor` report whether the CLI or index is missing, incomplete, stale, or ready. Authorized `comet doctor --repair --yes` runs the matching initialization, rebuild, or sync action without making ordinary doctor checks mutate the project ([#245](https://github.com/rpamis/comet/issues/245)).
 - **Classic catalogue migration**: `comet classic root show` reveals the active Classic artifact root, while `comet classic root move … --dry-run/--apply` plans and performs a safe move to the documentation catalogue ([#173](https://github.com/rpamis/comet/issues/173)).
 - **Native verification handoffs**: Native now provides receipt commands for automated checks, manual observations, implementation attestations, independent review, and approved waivers, so projects that need separated approval roles can record them in the change workflow.
 
@@ -20,6 +21,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Classic archive references**: Classic archive now updates change-local handoff and related artifact paths to their dated archive location, preserves the recorded handoff hash, and verifies archived references before reporting success, so archived changes pass Guard without manual state edits ([#244](https://github.com/rpamis/comet/issues/244)).
+- **Secondary worktree diagnostics**: `comet doctor` now distinguishes current-worktree project assets, primary-worktree-only assets, and an available global fallback. It reports the effective runtime source without treating intentionally uncopied ignored assets as corruption or executing files from another worktree, while still failing health checks when no usable runtime exists ([#246](https://github.com/rpamis/comet/issues/246)).
 
 ### Security
 

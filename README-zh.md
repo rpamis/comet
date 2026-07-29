@@ -204,6 +204,7 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 | `--platform <platform>` | 只初始化指定平台；项目范围内可使用自定义平台 id |
 | `--workflow <mode>` | 初始化工作流：`native`、`classic` 或 `both`          |
 | `--root <path>`     | Native 的项目内产物根目录，例如 `docs`               |
+| `--codegraph <action>` | 非交互式项目索引操作：显式选择 `init` 或 `skip`    |
 | `--skip-existing`   | 跳过已安装的组件                                     |
 | `--overwrite`       | 覆盖已安装的组件                                     |
 | `--json`            | 输出结构化 JSON                                      |
@@ -255,13 +256,15 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 <details>
 <summary><code>comet doctor [path]</code> — 诊断 Comet 安装健康状态</summary>
 
-检查项目级/全局安装、工作目录、已安装技能、脚本，以及活跃 change 的诊断信息。`comet doctor` 会对畸形
-`.comet.yaml` 报告 diagnostic 状态，对有效 change 报告 current step / runtime mode，并指出哪些运行时证据缺失导致无法安全恢复。
+检查项目级/全局安装、工作目录、已安装技能、脚本、CodeGraph 索引，以及活跃 change 的诊断信息。`comet doctor` 会对畸形
+`.comet.yaml` 报告 diagnostic 状态，对有效 change 报告 current step / runtime mode，并指出哪些运行时证据缺失导致无法安全恢复。在 Git secondary worktree 中，它会分别报告当前 worktree、primary worktree 与 global fallback 的安装状态；primary 中被忽略的资产只用于分类，不会跨 worktree 执行。
 
-| 选项              | 描述                                                    |
-| ----------------- | ------------------------------------------------------- |
-| `--json`          | 输出结构化诊断结果                                      |
-| `--scope <scope>` | 诊断 `auto`、`project` 或 `global` 范围（默认：`auto`） |
+| 选项              | 描述                                                                         |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `--json`          | 输出结构化诊断结果，包括 CodeGraph 状态与有效 runtime 来源                   |
+| `--scope <scope>` | 诊断 `auto`、`project` 或 `global` 范围（默认：`auto`）                      |
+| `--repair`        | 修复可确定恢复的托管安装与状态                                                |
+| `--yes`           | 与 `--repair` 同用，显式授权 CodeGraph 初始化、重建或同步等可能耗时的项目修复 |
 
 </details>
 

@@ -196,4 +196,15 @@ describe('CLI help text', () => {
     expect(commandHelp.stdout).not.toContain('--no-non-trivial-work');
     expect(commandHelp.stdout).toContain('--already-in-comet-flow');
   });
+
+  it('exposes explicit CodeGraph initialization and authorized doctor repair controls', () => {
+    const initHelp = runCli('init', '--help');
+    const doctorHelp = runCli('doctor', '--help');
+
+    expect(initHelp.status, initHelp.stderr).toBe(0);
+    expect(doctorHelp.status, doctorHelp.stderr).toBe(0);
+    expect(initHelp.stdout).toContain('--codegraph <action>');
+    expect(doctorHelp.stdout).toContain('--yes');
+    expect(doctorHelp.stdout).toContain('CodeGraph indexing');
+  });
 });

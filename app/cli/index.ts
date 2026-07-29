@@ -72,6 +72,9 @@ program
   .option('--overwrite', 'Overwrite manifest-managed files')
   .option('--json', 'Output as JSON')
   .option('--platform <platform>', 'Platform target to initialize')
+  .addOption(
+    new Option('--codegraph <action>', 'Project CodeGraph index action').choices(['init', 'skip']),
+  )
   .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
   .addOption(new Option('--language <lang>', 'Language for skills').choices(['en', 'zh']))
   .addOption(
@@ -140,6 +143,7 @@ program
   .description('Diagnose Comet installation health')
   .option('--json', 'Output as JSON')
   .option('--repair', 'Repair managed Hook, Rule, and deterministic selection state')
+  .option('--yes', 'Authorize repairable project integrations such as CodeGraph indexing')
   .addOption(
     new Option('--strategy <strategy>', 'Classic root move recovery strategy').choices([
       'continue',
