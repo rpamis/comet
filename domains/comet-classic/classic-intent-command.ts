@@ -1,4 +1,8 @@
-import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
+import type {
+  ClassicCommandHandler,
+  ClassicCommandOptions,
+  ClassicCommandResult,
+} from './classic-cli.js';
 import { CometIntentValidationError, resolveCometIntentRoute } from './classic-intent.js';
 import { readClassicWorkflowIntensity } from './classic-project-config.js';
 
@@ -30,13 +34,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function withConfiguredWorkflowIntensity(input: unknown): Promise<unknown> {
-  if (!isRecord(input)) return input;
-  const context = isRecord(input.context) ? { ...input.context } : {};
+async function withConfiguredWorkflowIntensity(
+  input: unknown,
+  options: Pick<ClassicCommandOptions, 'invocationCwd' | 'projectRoot'> = {},
+): Promise<unknown> {
+  if (!isRecord(input) || !isRecord(input.context)) return input;
+  const context = { ...input.context };
   if (context.workflow_intensity !== undefined && context.workflow_intensity !== null) {
     return input;
   }
-  const configured = await readClassicWorkflowIntensity();
+  const configured = await readClassicWorkflowIntensity(options);
   return {
     ...input,
     context: {
@@ -46,7 +53,7 @@ async function withConfiguredWorkflowIntensity(input: unknown): Promise<unknown>
   };
 }
 
-export const classicIntentCommand: ClassicCommandHandler = async (args, _options) => {
+export const classicIntentCommand: ClassicCommandHandler = async (args, options) => {
   const [subcommand, input] = args;
   if (subcommand !== 'route') return usage();
 
@@ -55,7 +62,7 @@ export const classicIntentCommand: ClassicCommandHandler = async (args, _options
 
   try {
     const resolution = resolveCometIntentRoute(
-      await withConfiguredWorkflowIntensity(JSON.parse(source)),
+      await withConfiguredWorkflowIntensity(JSON.parse(source), options),
     );
     return result(0, `${JSON.stringify(resolution, null, 2)}\n`);
   } catch (error) {

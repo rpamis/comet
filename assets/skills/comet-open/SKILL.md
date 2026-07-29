@@ -61,10 +61,10 @@ The clarification summary must include: goals, non-goals, scope boundaries, key 
 
 When the Comet intent runtime returns lightweight path recommendation metadata, present the recommendation reasons before creating OpenSpec artifacts, then pause under the user decision-point protocol.
 
-Options must be mutually exclusive:
-- "Switch to `/comet-tweak`" — the tweak workflow creates and owns the change
-- "Switch to `/comet-hotfix`" — only available for existing behavior fixes or regressions
-- "Continue full `/comet-open`" — keep the full OpenSpec + Design workflow
+Options must be built directly from the runtime's `recommendation.options`; do not infer or hardcode tweak/hotfix availability independently. Each option must be mutually exclusive:
+- `tweak` -> "Switch to `/comet-tweak`" — the tweak workflow creates and owns the change
+- `hotfix` -> "Switch to `/comet-hotfix`" — shown only when runtime recommendation options include `hotfix`
+- `full` -> "Continue full `/comet-open`" — keep the full OpenSpec + Design workflow
 
 The agent must not run `openspec new change` before lightweight path recommendation confirmation, must not create proposal/design/tasks, and must not automatically downgrade a full request to tweak/hotfix.
 

@@ -8,6 +8,8 @@ type ClassicConfigValue = {
 };
 
 type ClassicConfigOptions = {
+  invocationCwd?: string;
+  projectRoot?: string;
   cwd?: string;
   homeDir?: string;
 };
@@ -25,7 +27,7 @@ function configCandidates(options: ClassicConfigOptions = {}): Array<{
   file: string;
   source: string;
 }> {
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options.projectRoot ?? options.cwd ?? options.invocationCwd ?? process.cwd();
   const homeDir = options.homeDir ?? os.homedir();
   const candidates = [
     { file: path.resolve(cwd, '.comet', 'config.yaml'), source: '.comet/config.yaml' },

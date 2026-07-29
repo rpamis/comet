@@ -536,7 +536,12 @@ describe('Classic runtime CLI adapter', () => {
 
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout ?? '')).toMatchObject({
-      route: { name: 'hotfix', next_skill: 'comet-hotfix' },
+      route: {
+        name: 'full',
+        next_skill: 'comet-open',
+        requires_confirmation: true,
+        recommendation: { workflow: 'hotfix', next_skill: 'comet-hotfix' },
+      },
     });
   });
 
@@ -594,7 +599,12 @@ describe('Classic runtime CLI adapter', () => {
 
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout ?? '')).toMatchObject({
-      route: { name: 'hotfix', next_skill: 'comet-hotfix' },
+      route: {
+        name: 'full',
+        next_skill: 'comet-open',
+        requires_confirmation: true,
+        recommendation: { workflow: 'hotfix', next_skill: 'comet-hotfix' },
+      },
     });
   });
 });

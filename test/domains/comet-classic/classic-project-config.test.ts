@@ -95,14 +95,17 @@ describe('Classic project config', () => {
     }
   });
 
-  it('reads workflow_intensity from the nested Classic block', async () => {
-    await writeConfig(projectRoot, 'classic:\n  workflow_intensity: light\n');
+  it.each(['light', 'standard', 'thorough'] as const)(
+    'reads workflow_intensity=%s from the nested Classic block',
+    async (value) => {
+      await writeConfig(projectRoot, `classic:\n  workflow_intensity: ${value}\n`);
 
-    await expect(readClassicWorkflowIntensity({ cwd: projectRoot, homeDir })).resolves.toEqual({
-      value: 'light',
-      source: '.comet/config.yaml',
-    });
-  });
+      await expect(readClassicWorkflowIntensity({ cwd: projectRoot, homeDir })).resolves.toEqual({
+        value,
+        source: '.comet/config.yaml',
+      });
+    },
+  );
 
   it('defaults workflow_intensity to standard when absent', async () => {
     await expect(readClassicWorkflowIntensity({ cwd: projectRoot, homeDir })).resolves.toEqual({

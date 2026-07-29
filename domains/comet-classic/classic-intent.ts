@@ -380,7 +380,7 @@ function lowRiskEvidence(frame: CometIntentFrame): boolean {
 }
 
 function recommendationFor(frame: CometIntentFrame): CometIntentRecommendation | null {
-  if (hasRiskSignal(frame)) return null;
+  if (hasRiskSignal(frame) || !hasSmallScopeEvidence(frame)) return null;
   const intensity = frame.context.workflow_intensity;
   const evidenceIsStrong = lowRiskEvidence(frame);
   if (intensity === 'thorough' && !evidenceIsStrong) return null;
@@ -396,7 +396,7 @@ function recommendationFor(frame: CometIntentFrame): CometIntentRecommendation |
   }
 
   if (
-    (evidenceIsStrong || intensity === 'light') &&
+    evidenceIsStrong &&
     (frame.intent.name === 'start_change' ||
       frame.intent.name === 'make_tweak' ||
       frame.slots.requested_action === 'modify' ||
@@ -503,15 +503,15 @@ export function resolveCometIntentRoute(input: unknown): CometIntentRouteResolut
     frame.slots.existing_behavior === true &&
     hasEvidence(frame, 'slots.workflow_candidate')
   ) {
-    resolved = route('hotfix', confidence);
+    resolved = route('full', confidence);
   } else if (
     frame.intent.name === 'make_tweak' &&
     frame.slots.workflow_candidate === 'tweak' &&
     hasEvidence(frame, 'slots.workflow_candidate')
   ) {
-    resolved = route('tweak', confidence);
+    resolved = route('full', confidence);
   } else if (frame.slots.workflow_candidate && hasEvidence(frame, 'slots.workflow_candidate')) {
-    resolved = workflowRoute(frame.slots.workflow_candidate, confidence);
+    resolved = route('full', confidence);
   } else if (frame.slots.workflow_candidate === 'full') {
     resolved = route('full', confidence);
   } else {

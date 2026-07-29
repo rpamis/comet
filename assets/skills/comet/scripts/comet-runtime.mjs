@@ -12944,7 +12944,7 @@ import os from "os";
 import path26 from "path";
 var WORKFLOW_INTENSITIES = ["light", "standard", "thorough"];
 function configCandidates(options = {}) {
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options.projectRoot ?? options.cwd ?? options.invocationCwd ?? process.cwd();
   const homeDir = options.homeDir ?? os.homedir();
   const candidates = [
     { file: path26.resolve(cwd, ".comet", "config.yaml"), source: ".comet/config.yaml" },
@@ -15341,7 +15341,7 @@ function lowRiskEvidence(frame) {
   return hasSmallScopeEvidence(frame) || /docs?|prompt|wording|config|readme|small|tiny|minor/iu.test(frame.utterance);
 }
 function recommendationFor(frame) {
-  if (hasRiskSignal(frame)) return null;
+  if (hasRiskSignal(frame) || !hasSmallScopeEvidence(frame)) return null;
   const intensity = frame.context.workflow_intensity;
   const evidenceIsStrong = lowRiskEvidence(frame);
   if (intensity === "thorough" && !evidenceIsStrong) return null;
@@ -15354,7 +15354,7 @@ function recommendationFor(frame) {
       options: ["hotfix", "full"]
     };
   }
-  if ((evidenceIsStrong || intensity === "light") && (frame.intent.name === "start_change" || frame.intent.name === "make_tweak" || frame.slots.requested_action === "modify" || frame.slots.requested_action === "create")) {
+  if (evidenceIsStrong && (frame.intent.name === "start_change" || frame.intent.name === "make_tweak" || frame.slots.requested_action === "modify" || frame.slots.requested_action === "create")) {
     return {
       workflow: "tweak",
       next_skill: "comet-tweak",
@@ -15423,11 +15423,11 @@ function resolveCometIntentRoute(input) {
   } else if (recommendation) {
     resolved = route("full", confidence, null, recommendation);
   } else if (frame.intent.name === "fix_bug" && frame.slots.existing_behavior === true && hasEvidence(frame, "slots.workflow_candidate")) {
-    resolved = route("hotfix", confidence);
+    resolved = route("full", confidence);
   } else if (frame.intent.name === "make_tweak" && frame.slots.workflow_candidate === "tweak" && hasEvidence(frame, "slots.workflow_candidate")) {
-    resolved = route("tweak", confidence);
+    resolved = route("full", confidence);
   } else if (frame.slots.workflow_candidate && hasEvidence(frame, "slots.workflow_candidate")) {
-    resolved = workflowRoute(frame.slots.workflow_candidate, confidence);
+    resolved = route("full", confidence);
   } else if (frame.slots.workflow_candidate === "full") {
     resolved = route("full", confidence);
   } else {
@@ -15490,13 +15490,13 @@ async function readStdin() {
 function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-async function withConfiguredWorkflowIntensity(input) {
-  if (!isRecord3(input)) return input;
-  const context = isRecord3(input.context) ? { ...input.context } : {};
+async function withConfiguredWorkflowIntensity(input, options = {}) {
+  if (!isRecord3(input) || !isRecord3(input.context)) return input;
+  const context = { ...input.context };
   if (context.workflow_intensity !== void 0 && context.workflow_intensity !== null) {
     return input;
   }
-  const configured = await readClassicWorkflowIntensity();
+  const configured = await readClassicWorkflowIntensity(options);
   return {
     ...input,
     context: {
@@ -15505,14 +15505,14 @@ async function withConfiguredWorkflowIntensity(input) {
     }
   };
 }
-var classicIntentCommand = async (args, _options) => {
+var classicIntentCommand = async (args, options) => {
   const [subcommand, input] = args;
   if (subcommand !== "route") return usage();
   const source = input === "--stdin" ? await readStdin() : input;
   if (!source) return usage();
   try {
     const resolution = resolveCometIntentRoute(
-      await withConfiguredWorkflowIntensity(JSON.parse(source))
+      await withConfiguredWorkflowIntensity(JSON.parse(source), options)
     );
     return result2(0, `${JSON.stringify(resolution, null, 2)}
 `);

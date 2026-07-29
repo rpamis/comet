@@ -56,6 +56,7 @@ describe('Comet workflow optimization contracts', () => {
       expect(skill).toContain(heading);
       expect(skill).toContain(guard);
       expect(skill.indexOf(heading)).toBeLessThan(skill.indexOf('openspec new change'));
+      expect(skill.indexOf(guard)).toBeLessThan(skill.indexOf('openspec new change'));
     },
   );
 

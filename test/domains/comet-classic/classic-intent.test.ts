@@ -9,7 +9,16 @@ import {
   type CometIntentFrame,
 } from '../../../domains/comet-classic/classic-intent.js';
 
-function frame(overrides: Partial<CometIntentFrame> = {}): CometIntentFrame {
+type FrameOverrides = Partial<
+  Omit<CometIntentFrame, 'intent' | 'slots' | 'context' | 'proposed_route'>
+> & {
+  intent?: Partial<CometIntentFrame['intent']>;
+  slots?: Partial<CometIntentFrame['slots']>;
+  context?: Partial<CometIntentFrame['context']>;
+  proposed_route?: Partial<CometIntentFrame['proposed_route']>;
+};
+
+function frame(overrides: FrameOverrides = {}): CometIntentFrame {
   const base: CometIntentFrame = {
     schema_version: 'comet.intent.v1',
     utterance: 'fix the failing comet guard regression',
@@ -104,7 +113,7 @@ describe('resolveCometIntentRoute', () => {
     expect(result.route).toMatchObject({
       name: 'full',
       next_skill: 'comet-open',
-      recommendation: { workflow: 'hotfix', next_skill: 'comet-hotfix' },
+      recommendation: null,
     });
     expect(result.normalizedFrame).toMatchObject({
       locale: 'unknown',
@@ -282,7 +291,7 @@ describe('resolveCometIntentRoute', () => {
           schema_change: false,
           cross_module_change: false,
         },
-        context: { workflow_intensity: 'thorough' } as never,
+        context: { workflow_intensity: 'thorough' },
         evidence: [{ field: 'intent.name', quote: 'modify', source: 'user' }],
         proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
       }),
@@ -306,7 +315,7 @@ describe('resolveCometIntentRoute', () => {
           new_capability: true,
           public_api_change: true,
         },
-        context: { workflow_intensity: 'light' } as never,
+        context: { workflow_intensity: 'light' },
         evidence: [
           { field: 'slots.scope', quote: 'small', source: 'user' },
           { field: 'slots.public_api_change', quote: 'public API', source: 'user' },
@@ -317,6 +326,49 @@ describe('resolveCometIntentRoute', () => {
 
     expect(result.route).toMatchObject({ name: 'full', next_skill: 'comet-open' });
     expect(result.route.recommendation).toBeNull();
+  });
+
+  it('keeps thorough intensity on full for non-small bug or tweak candidates', () => {
+    for (const candidate of ['hotfix', 'tweak'] as const) {
+      const result = resolveCometIntentRoute(
+        frame({
+          utterance:
+            candidate === 'hotfix' ? 'fix the workflow regression' : 'tweak the workflow behavior',
+          intent: { name: candidate === 'hotfix' ? 'fix_bug' : 'make_tweak', confidence: 0.92 },
+          slots: {
+            requested_action: candidate === 'hotfix' ? 'fix' : 'modify',
+            workflow_candidate: candidate,
+            scope: 'unknown',
+            existing_behavior: candidate === 'hotfix' ? true : null,
+            new_capability: false,
+            public_api_change: false,
+            schema_change: false,
+            cross_module_change: false,
+          },
+          context: { workflow_intensity: 'thorough' },
+          evidence: [
+            {
+              field: 'intent.name',
+              quote: candidate === 'hotfix' ? 'fix' : 'tweak',
+              source: 'user',
+            },
+            { field: 'slots.workflow_candidate', quote: candidate, source: 'user' },
+          ],
+          proposed_route: {
+            name: candidate,
+            next_skill: `comet-${candidate}`,
+            confidence: 0.9,
+          },
+        }),
+      );
+
+      expect(result.route).toMatchObject({
+        name: 'full',
+        next_skill: 'comet-open',
+        requires_confirmation: false,
+        recommendation: null,
+      });
+    }
   });
 
   it('routes new capability and public API risk signals to full', () => {
@@ -497,7 +549,6 @@ describe('resolveCometIntentRoute', () => {
 
   it('intent command applies workflow_intensity from Classic project config', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-intent-command-'));
-    const previousCwd = process.cwd();
     try {
       await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
       await fs.writeFile(
@@ -505,7 +556,6 @@ describe('resolveCometIntentRoute', () => {
         'classic:\n  workflow_intensity: thorough\n',
         'utf8',
       );
-      process.chdir(projectRoot);
 
       const result = await classicIntentCommand(
         [
@@ -529,7 +579,7 @@ describe('resolveCometIntentRoute', () => {
             }),
           ),
         ],
-        { json: false },
+        { json: false, projectRoot },
       );
 
       expect(result.exitCode).toBe(0);
@@ -543,7 +593,6 @@ describe('resolveCometIntentRoute', () => {
         recommendation: null,
       });
     } finally {
-      process.chdir(previousCwd);
       await fs.rm(projectRoot, { recursive: true, force: true });
     }
   });

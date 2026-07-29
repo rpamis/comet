@@ -61,10 +61,10 @@ comet classic openspec -- --version
 
 当 Comet intent runtime 返回轻量路径推荐 metadata 时，必须在创建 OpenSpec artifacts 前展示推荐理由，并按用户决策点协议暂停等待用户选择。
 
-选项必须互斥：
-- 「切换到 `/comet-tweak`」— 由 tweak workflow 创建并拥有 change
-- 「切换到 `/comet-hotfix`」— 仅当请求是已有行为修复或回归时可选
-- 「继续 full `/comet-open`」— 保持完整 OpenSpec + Design 流程
+选项必须直接来自 runtime 返回的 `recommendation.options`，不得自行推断或硬编码 tweak/hotfix 可用性。每个选项必须互斥：
+- `tweak` → 「切换到 `/comet-tweak`」，由 tweak workflow 创建并拥有 change
+- `hotfix` → 「切换到 `/comet-hotfix`」，仅当 runtime recommendation options 包含 `hotfix` 时展示
+- `full` → 「继续 full `/comet-open`」，保持完整 OpenSpec + Design 流程
 
 不得在轻量路径推荐确认前运行 `openspec new change`，不得创建 proposal/design/tasks，也不得自动把 full 请求降级为 tweak/hotfix。
 
