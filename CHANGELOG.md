@@ -17,6 +17,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native archive confirmation**: Set `native.archive_confirmation: required` to require one explicit decision after a successful Archive preview, or keep the existing automatic archive behavior.
 - **Native guidance**: Native Skill instructions now keep the active phase and next action prominent, loading detailed clarification, command, artifact, and recovery guidance only when needed.
 
+### Fixed
+
+- **Classic archive references**: Classic archive now updates change-local handoff and related artifact paths to their dated archive location, preserves the recorded handoff hash, and verifies archived references before reporting success, so archived changes pass Guard without manual state edits ([#244](https://github.com/rpamis/comet/issues/244)).
+
 ### Security
 
 - **Native approval isolation**: Signed Native workflows keep approval credentials outside the project and implementation Agent, preventing a project change from granting itself approval authority.

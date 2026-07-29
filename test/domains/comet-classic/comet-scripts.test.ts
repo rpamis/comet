@@ -3315,6 +3315,7 @@ describe('comet scripts', () => {
         'verify_result: pass',
         'verification_report: docs/superpowers/reports/ready.md',
         'branch_status: handled',
+        'auto_transition: true',
         'verified_at: 2026-05-21',
         'archive_confirmation: confirmed',
         'archived: false',
@@ -3355,7 +3356,7 @@ describe('comet scripts', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain('Archive complete. 7/7 steps succeeded.');
+    expect(result.stderr).toContain('Archive complete. 8/8 steps succeeded.');
     await expect(fs.readFile(logFile, 'utf-8')).resolves.toBe('archive ready-to-archive --yes\n');
   }, 20_000);
 
@@ -3378,6 +3379,7 @@ describe('comet scripts', () => {
         'verify_result: pass',
         'verification_report: docs/superpowers/reports/merge.md',
         'branch_status: handled',
+        'auto_transition: true',
         'verified_at: 2026-05-21',
         'archive_confirmation: confirmed',
         'archived: false',
@@ -3459,6 +3461,7 @@ describe('comet scripts', () => {
         'verify_result: pass',
         'verification_report: docs/superpowers/reports/utc.md',
         'branch_status: handled',
+        'auto_transition: true',
         'verified_at: 2026-05-21',
         'archive_confirmation: confirmed',
         'archived: false',
@@ -4118,6 +4121,7 @@ describe('comet scripts', () => {
         'verify_result: pass',
         'verification_report: docs/superpowers/reports/archive-reopen.md',
         'branch_status: handled',
+        'auto_transition: true',
         'verified_at: 2026-06-05',
         'archive_confirmation: confirmed',
         'archived: false',

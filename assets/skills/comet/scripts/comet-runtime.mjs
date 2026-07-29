@@ -12085,6 +12085,54 @@ function artifactsHash(artifacts) {
     )
   );
 }
+function isPathInside(parent, target) {
+  const relative = path22.relative(parent, target);
+  return relative !== "" && !path22.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path22.sep}`);
+}
+function archivedPointer(projectRoot, activeDir, archiveDir, pointer) {
+  if (!pointer) return pointer;
+  const absolute = path22.resolve(projectRoot, pointer);
+  if (!isPathInside(activeDir, absolute)) return pointer;
+  return classicProjectRelative(
+    projectRoot,
+    path22.join(archiveDir, path22.relative(activeDir, absolute))
+  );
+}
+function archivedArtifacts(projectRoot, activeDir, archiveDir, artifacts) {
+  const rewritten = { ...artifacts };
+  for (const field2 of ["handoff_context", "handoff_markdown"]) {
+    const value = rewritten[field2];
+    if (!value) continue;
+    rewritten[field2] = archivedPointer(projectRoot, activeDir, archiveDir, value) ?? value;
+  }
+  return rewritten;
+}
+async function verifyFinalArchiveIntegrity(projectRoot, archiveDir) {
+  const projection = await readClassicState(archiveDir);
+  if (!projection.classic || !projection.run || !projection.classic.archived) {
+    throw new ArchiveFailure(red("  [FAIL] Final archived state is incomplete"));
+  }
+  const statePointers = [
+    ["design_doc", projection.classic.designDoc],
+    ["plan", projection.classic.plan],
+    ["verification_report", projection.classic.verificationReport],
+    ["handoff_context", projection.classic.handoffContext]
+  ];
+  const artifacts = await readArtifacts(archiveDir, projection.run.artifactsRef);
+  const artifactPointers = [
+    ["artifacts.handoff_context", artifacts.handoff_context],
+    ["artifacts.handoff_markdown", artifacts.handoff_markdown]
+  ];
+  for (const [field2, pointer] of [...statePointers, ...artifactPointers]) {
+    if (!pointer) continue;
+    if (!await classicProjectTargetExists(projectRoot, path22.resolve(projectRoot, pointer), {
+      label: `Classic archived ${field2}`,
+      expected: "file"
+    })) {
+      throw new ArchiveFailure(red(`  [FAIL] Final archived ${field2} does not exist: ${pointer}`));
+    }
+  }
+}
 function exactlyOneFinalNewline(markdown) {
   return `${markdown.replace(/\n+$/u, "")}
 `;
@@ -12343,7 +12391,12 @@ var classicArchiveCommand = async (args) => {
         throw new ArchiveFailure(red("  [FAIL] archived state projection is incomplete"));
       }
       const artifacts = {
-        ...await readArtifacts(archiveDir, archivedProjection.run.artifactsRef),
+        ...archivedArtifacts(
+          layout.projectRoot,
+          activeDir,
+          archiveDir,
+          await readArtifacts(archiveDir, archivedProjection.run.artifactsRef)
+        ),
         archive_directory: classicProjectRelative(layout.projectRoot, archiveDir)
       };
       await writeArtifacts(archiveDir, archivedProjection.run.artifactsRef, artifacts);
@@ -12351,7 +12404,33 @@ var classicArchiveCommand = async (args) => {
         recovering && archivedProjection.classic.archiveConfirmation !== "confirmed" ? { ...archivedProjection.classic, archiveConfirmation: "confirmed" } : archivedProjection.classic,
         "archived"
       );
-      const archivedClassic = archiveTransition.classic;
+      const archivedClassic = {
+        ...archiveTransition.classic,
+        designDoc: archivedPointer(
+          layout.projectRoot,
+          activeDir,
+          archiveDir,
+          archiveTransition.classic.designDoc
+        ),
+        plan: archivedPointer(
+          layout.projectRoot,
+          activeDir,
+          archiveDir,
+          archiveTransition.classic.plan
+        ),
+        verificationReport: archivedPointer(
+          layout.projectRoot,
+          activeDir,
+          archiveDir,
+          archiveTransition.classic.verificationReport
+        ),
+        handoffContext: archivedPointer(
+          layout.projectRoot,
+          activeDir,
+          archiveDir,
+          archiveTransition.classic.handoffContext
+        )
+      };
       let transitionedRun = archivedProjection.run;
       if (archivedProjection.run.currentStep !== "completed" || archivedProjection.run.status !== "completed") {
         transitionedRun = await transitionClassicRuntimeRun(
@@ -12435,6 +12514,14 @@ var classicArchiveCommand = async (args) => {
       output.stderr.push(
         yellow(`  [DRY-RUN] Would set archived: true in ${archiveDir}/.comet.yaml`)
       );
+      output.stepsOk += 1;
+      output.stepsTotal += 1;
+      output.stderr.push(yellow("  [DRY-RUN] Would verify final archive integrity"));
+      output.stepsOk += 1;
+      output.stepsTotal += 1;
+    } else {
+      await verifyFinalArchiveIntegrity(layout.projectRoot, archiveDir);
+      output.stderr.push(green("  [OK] Final archive integrity verified"));
       output.stepsOk += 1;
       output.stepsTotal += 1;
     }

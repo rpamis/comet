@@ -5,12 +5,14 @@ import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { annotatedMarkdown } from '../../../domains/comet-classic/classic-archive.js';
+import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';
 import { readRunState } from '../../../domains/engine/state.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
   archive: path.join(scriptsDir, 'comet-archive.mjs'),
+  guard: path.join(scriptsDir, 'comet-guard.mjs'),
   state: path.join(scriptsDir, 'comet-state.mjs'),
 };
 const temporary: string[] = [];
@@ -54,11 +56,16 @@ async function makeProject(): Promise<string> {
 
 async function seedArchiveChange(dir: string): Promise<string> {
   run(dir, ['state', 'init', 'demo', 'full']);
+  const changeDir = path.join(dir, 'openspec', 'changes', 'demo');
+  await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+  await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
+  await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Done\n');
   // Direct phase writes are normally blocked; the force hatch is the documented
   // way for tooling/tests to seed a change into the archive phase.
   run(dir, ['state', 'set', 'demo', 'phase', 'archive'], { COMET_FORCE_PHASE: '1' });
   run(dir, ['state', 'set', 'demo', 'verify_result', 'pass']);
-  return path.join(dir, 'openspec', 'changes', 'demo');
+  run(dir, ['state', 'set', 'demo', 'branch_status', 'handled']);
+  return changeDir;
 }
 
 function confirmArchiveChange(dir: string): void {
@@ -247,7 +254,7 @@ describe('Classic archive command', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain('[DRY-RUN] Would run OpenSpec archive: demo');
     expect(result.stderr).toContain('[DRY-RUN] Would set archived: true');
-    expect(result.stderr).toContain('Dry run complete. 4/4 steps would succeed.');
+    expect(result.stderr).toContain('Dry run complete. 5/5 steps would succeed.');
     expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(before);
     await expect(fs.access(path.join(changeDir, '.comet'))).rejects.toMatchObject({
       code: 'ENOENT',
@@ -311,6 +318,67 @@ describe('Classic archive command', () => {
     expect(artifacts.archive_directory).toBe(
       `openspec/changes/archive/${path.basename(archiveDir)}`,
     );
+  });
+
+  it('rewrites active change handoff pointers and passes the final archive guard', async () => {
+    const dir = await makeProject();
+    const changeDir = await seedArchiveChange(dir);
+    const contextRef = 'openspec/changes/demo/.comet/handoff/design-context.json';
+    const markdownRef = 'openspec/changes/demo/.comet/handoff/design-context.md';
+    const handoffHash = 'a'.repeat(64);
+    await fs.mkdir(path.join(changeDir, '.comet', 'handoff'), { recursive: true });
+    await fs.writeFile(path.join(dir, contextRef), '{"change":"demo"}\n');
+    await fs.writeFile(path.join(dir, markdownRef), '# Design context\n');
+    expect(run(dir, ['state', 'set', 'demo', 'handoff_context', contextRef]).status).toBe(0);
+    expect(run(dir, ['state', 'set', 'demo', 'handoff_hash', handoffHash]).status).toBe(0);
+
+    const activeRun = await ensureClassicRuntimeRun(changeDir);
+    const artifactsFile = path.join(changeDir, activeRun.run.artifactsRef);
+    const activeArtifacts = JSON.parse(await fs.readFile(artifactsFile, 'utf8')) as Record<
+      string,
+      string
+    >;
+    await fs.writeFile(
+      artifactsFile,
+      JSON.stringify({
+        ...activeArtifacts,
+        handoff_context: contextRef,
+        handoff_markdown: markdownRef,
+      }),
+    );
+    confirmArchiveChange(dir);
+    const fake = await fakeOpenSpec(dir, 'success');
+
+    const result = run(dir, ['archive', 'demo'], { COMET_OPENSPEC: fake.command });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain('[OK] Final archive integrity verified');
+    const archiveDir = path.join(
+      dir,
+      'openspec',
+      'changes',
+      'archive',
+      `${new Date().toISOString().slice(0, 10)}-demo`,
+    );
+    const archiveRef = `openspec/changes/archive/${path.basename(archiveDir)}`;
+    const archivedState = parse(
+      await fs.readFile(path.join(archiveDir, '.comet.yaml'), 'utf8'),
+    ) as Record<string, unknown>;
+    expect(archivedState.handoff_context).toBe(`${archiveRef}/.comet/handoff/design-context.json`);
+    expect(archivedState.handoff_hash).toBe(handoffHash);
+
+    const archivedRun = await readRunState(archiveDir);
+    expect(archivedRun).not.toBeNull();
+    const archivedArtifacts = JSON.parse(
+      await fs.readFile(path.join(archiveDir, archivedRun!.artifactsRef), 'utf8'),
+    ) as Record<string, string>;
+    expect(archivedArtifacts.handoff_context).toBe(
+      `${archiveRef}/.comet/handoff/design-context.json`,
+    );
+    expect(archivedArtifacts.handoff_markdown).toBe(
+      `${archiveRef}/.comet/handoff/design-context.md`,
+    );
+    expect(run(dir, ['guard', 'demo', 'archive']).status).toBe(0);
   });
 
   it('clears the shared selection when the archived change is current', async () => {
