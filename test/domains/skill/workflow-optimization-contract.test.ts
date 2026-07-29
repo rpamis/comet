@@ -36,6 +36,30 @@ describe('Comet workflow optimization contracts', () => {
   );
 
   it.each([
+    [
+      '中文',
+      zhSkillRoot,
+      '### 1a. 轻量路径推荐确认（阻塞点）',
+      '不得在轻量路径推荐确认前运行 `openspec new change`',
+    ],
+    [
+      'English',
+      skillRoot,
+      '### 1a. Lightweight Path Recommendation Confirmation (Blocking Point)',
+      'must not run `openspec new change` before lightweight path recommendation confirmation',
+    ],
+  ])(
+    '%s open flow confirms lightweight recommendation before artifact creation',
+    async (_language, root, heading, guard) => {
+      const skill = await readSkill(root, 'comet-open');
+
+      expect(skill).toContain(heading);
+      expect(skill).toContain(guard);
+      expect(skill.indexOf(heading)).toBeLessThan(skill.indexOf('openspec new change'));
+    },
+  );
+
+  it.each([
     ['中文', zhSkillRoot, 'Design Doc 和状态证据落盘后', '无法程序化触发时不得阻塞'],
     [
       'English',
@@ -252,14 +276,14 @@ describe('Comet workflow optimization contracts', () => {
     [
       '中文',
       zhSkillRoot,
-      '### 1b. 需求与 Change 名称解析（默认不阻塞）',
+      '### 1c. 需求与 Change 名称解析（默认不阻塞）',
       '范围与命名都明确时直接继续',
       '最终审视同时确认 change 名称、范围和产物内容',
     ],
     [
       'English',
       skillRoot,
-      '### 1b. Resolve Requirements and Change Name (Non-blocking by Default)',
+      '### 1c. Resolve Requirements and Change Name (Non-blocking by Default)',
       'Continue directly when scope and naming are both unambiguous',
       'The final review confirms the change name, scope, and artifact content together',
     ],

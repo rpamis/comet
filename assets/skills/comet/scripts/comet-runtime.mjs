@@ -7748,6 +7748,7 @@ var init_project_config = __esm({
         "classic.artifact_layout": "# Selects the Classic artifact layout. The default is docs; update preserves detected root-level legacy artifacts.\n# artifact_layout: legacy | docs",
         "classic.language": "# Artifact language used by Classic workflow documents.\n# language: en | zh-CN",
         "classic.context_compression": "# Controls beta context compression for new Classic changes.\n# context_compression: off | beta",
+        "classic.workflow_intensity": "# Tunes how aggressively Classic recommends lightweight workflows.\n# workflow_intensity: light | standard | thorough",
         "classic.review_mode": "# Sets the default review depth for new Classic changes.\n# review_mode: off | standard | thorough",
         "classic.auto_transition": "# Automatically enters the next Classic phase after a phase passes.\n# auto_transition: true | false"
       },
@@ -7772,6 +7773,7 @@ var init_project_config = __esm({
         "classic.artifact_layout": "# Classic 产物布局；默认使用 docs，update 检测到根目录 legacy 产物时予以保留。\n# 可选值：legacy | docs",
         "classic.language": "# Classic 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
         "classic.context_compression": "# 新建 Classic change 是否启用 beta 上下文压缩。\n# 可选值：off | beta",
+        "classic.workflow_intensity": "# 调节 Classic 推荐轻量工作流的积极程度。\n# 可选值：light | standard | thorough",
         "classic.review_mode": "# 新建 Classic change 默认使用的审查深度。\n# 可选值：off | standard | thorough",
         "classic.auto_transition": "# Classic 阶段通过后是否自动进入下一阶段。\n# 可选值：true | false"
       }
@@ -12940,6 +12942,7 @@ var classicValidateCommand = async (args, options) => withClassicCommandContext(
 init_project_config_reader();
 import os from "os";
 import path26 from "path";
+var WORKFLOW_INTENSITIES = ["light", "standard", "thorough"];
 function configCandidates(options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const homeDir = options.homeDir ?? os.homedir();
@@ -12970,6 +12973,19 @@ async function readClassicConfigValue(field2, options = {}) {
     return { value: String(value), source: candidate.source };
   }
   return null;
+}
+async function readClassicWorkflowIntensity(options = {}) {
+  const configured = await readClassicConfigValue("workflow_intensity", options);
+  if (!configured) return { value: "standard", source: "default" };
+  if (!WORKFLOW_INTENSITIES.includes(configured.value)) {
+    throw new Error(
+      `classic.workflow_intensity must be light, standard, or thorough, got '${configured.value}' from ${configured.source}`
+    );
+  }
+  return {
+    value: configured.value,
+    source: configured.source
+  };
 }
 
 // domains/comet-classic/classic-guard.ts
@@ -15100,6 +15116,7 @@ var REQUESTED_ACTIONS = [
   "unknown"
 ];
 var WORKFLOWS = ["full", "hotfix", "tweak"];
+var WORKFLOW_INTENSITIES2 = ["light", "standard", "thorough"];
 var SCOPES = ["small", "medium", "large", "unknown"];
 var ROUTES = ["full", "hotfix", "tweak", "resume", "ask_user", "out_of_scope"];
 var NEXT_SKILLS = [
@@ -15266,7 +15283,13 @@ function validateFrame(input) {
         context.dirty_worktree,
         "context.dirty_worktree",
         issues
-      )
+      ),
+      workflow_intensity: context.workflow_intensity === void 0 || context.workflow_intensity === null ? "standard" : enumValue2(
+        context.workflow_intensity,
+        WORKFLOW_INTENSITIES2,
+        "context.workflow_intensity",
+        issues
+      ) ?? "standard"
     },
     evidence: evidence.map((item, index) => {
       const record2 = isRecord2(item) ? item : {};
@@ -15295,7 +15318,8 @@ function validateFrame(input) {
         proposedRouteInput.fallback_reason,
         "proposed_route.fallback_reason",
         issues
-      )
+      ),
+      recommendation: null
     }
   };
   if (issues.length > 0) throw new CometIntentValidationError(issues);
@@ -15304,10 +15328,47 @@ function validateFrame(input) {
 function hasEvidence(frame, field2) {
   return frame.evidence.some((item) => item.field === field2 && item.quote.trim() !== "");
 }
+function hasSmallScopeEvidence(frame) {
+  if (frame.slots.scope === "small") return true;
+  return frame.evidence.some(
+    (item) => item.field === "slots.scope" && /\b(small|tiny|minor)\b|轻量|小型|较小|很小|微小|小改动|小修改/iu.test(item.quote)
+  );
+}
 function hasRiskSignal(frame) {
   return frame.slots.new_capability === true || frame.slots.public_api_change === true || frame.slots.schema_change === true || frame.slots.cross_module_change === true;
 }
-function route(name, confidence, fallback_reason = null) {
+function lowRiskEvidence(frame) {
+  return hasSmallScopeEvidence(frame) || /docs?|prompt|wording|config|readme|small|tiny|minor/iu.test(frame.utterance);
+}
+function recommendationFor(frame) {
+  if (hasRiskSignal(frame)) return null;
+  const intensity = frame.context.workflow_intensity;
+  const evidenceIsStrong = lowRiskEvidence(frame);
+  if (intensity === "thorough" && !evidenceIsStrong) return null;
+  if (frame.intent.name === "fix_bug" && frame.slots.existing_behavior === true) {
+    return {
+      workflow: "hotfix",
+      next_skill: "comet-hotfix",
+      intensity,
+      reasons: ["existing behavior fix", `workflow_intensity=${intensity}`],
+      options: ["hotfix", "full"]
+    };
+  }
+  if ((evidenceIsStrong || intensity === "light") && (frame.intent.name === "start_change" || frame.intent.name === "make_tweak" || frame.slots.requested_action === "modify" || frame.slots.requested_action === "create")) {
+    return {
+      workflow: "tweak",
+      next_skill: "comet-tweak",
+      intensity,
+      reasons: [
+        evidenceIsStrong ? "small low-risk request" : "low-risk request",
+        `workflow_intensity=${intensity}`
+      ],
+      options: ["tweak", "full"]
+    };
+  }
+  return null;
+}
+function route(name, confidence, fallback_reason = null, recommendation = null) {
   const nextSkill = {
     full: "comet-open",
     hotfix: "comet-hotfix",
@@ -15320,8 +15381,9 @@ function route(name, confidence, fallback_reason = null) {
     name,
     next_skill: nextSkill[name],
     confidence,
-    requires_confirmation: name === "ask_user" || name === "out_of_scope",
-    fallback_reason
+    requires_confirmation: Boolean(recommendation) || name === "ask_user" || name === "out_of_scope",
+    fallback_reason,
+    recommendation
   };
 }
 function askUser(reason) {
@@ -15334,6 +15396,7 @@ function resolveCometIntentRoute(input) {
   const frame = validateFrame(input);
   const diagnostics = [];
   const confidence = frame.intent.confidence;
+  const recommendation = frame.slots.user_explicit_workflow ? null : recommendationFor(frame);
   let resolved;
   if (frame.intent.confidence < COMET_INTENT_CONFIDENCE_THRESHOLD) {
     resolved = askUser(
@@ -15357,12 +15420,16 @@ function resolveCometIntentRoute(input) {
     resolved = workflowRoute(frame.slots.user_explicit_workflow, confidence);
   } else if (hasRiskSignal(frame)) {
     resolved = route("full", confidence);
+  } else if (recommendation) {
+    resolved = route("full", confidence, null, recommendation);
   } else if (frame.intent.name === "fix_bug" && frame.slots.existing_behavior === true && hasEvidence(frame, "slots.workflow_candidate")) {
     resolved = route("hotfix", confidence);
   } else if (frame.intent.name === "make_tweak" && frame.slots.workflow_candidate === "tweak" && hasEvidence(frame, "slots.workflow_candidate")) {
     resolved = route("tweak", confidence);
   } else if (frame.slots.workflow_candidate && hasEvidence(frame, "slots.workflow_candidate")) {
     resolved = workflowRoute(frame.slots.workflow_candidate, confidence);
+  } else if (frame.slots.workflow_candidate === "full") {
+    resolved = route("full", confidence);
   } else {
     resolved = askUser("workflow_candidate evidence is missing or route is ambiguous");
   }
@@ -15384,6 +15451,11 @@ function resolveCometIntentRoute(input) {
   if (resolved.fallback_reason !== frame.proposed_route.fallback_reason) {
     diagnostics.push(
       `agent proposed_route fallback_reason '${frame.proposed_route.fallback_reason}' normalized to '${resolved.fallback_reason}'`
+    );
+  }
+  if (resolved.recommendation?.workflow !== frame.proposed_route.recommendation?.workflow) {
+    diagnostics.push(
+      `agent proposed_route recommendation '${frame.proposed_route.recommendation?.workflow ?? null}' normalized to '${resolved.recommendation?.workflow ?? null}'`
     );
   }
   return {
@@ -15415,13 +15487,33 @@ async function readStdin() {
   }
   return Buffer.concat(chunks).toString("utf8");
 }
+function isRecord3(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+async function withConfiguredWorkflowIntensity(input) {
+  if (!isRecord3(input)) return input;
+  const context = isRecord3(input.context) ? { ...input.context } : {};
+  if (context.workflow_intensity !== void 0 && context.workflow_intensity !== null) {
+    return input;
+  }
+  const configured = await readClassicWorkflowIntensity();
+  return {
+    ...input,
+    context: {
+      ...context,
+      workflow_intensity: configured.value
+    }
+  };
+}
 var classicIntentCommand = async (args, _options) => {
   const [subcommand, input] = args;
   if (subcommand !== "route") return usage();
   const source = input === "--stdin" ? await readStdin() : input;
   if (!source) return usage();
   try {
-    const resolution = resolveCometIntentRoute(JSON.parse(source));
+    const resolution = resolveCometIntentRoute(
+      await withConfiguredWorkflowIntensity(JSON.parse(source))
+    );
     return result2(0, `${JSON.stringify(resolution, null, 2)}
 `);
   } catch (error) {
@@ -15431,6 +15523,9 @@ var classicIntentCommand = async (args, _options) => {
     if (error instanceof CometIntentValidationError) {
       return result2(1, void 0, error.message);
     }
+    if (error instanceof Error) {
+      return result2(1, void 0, error.message);
+    }
     throw error;
   }
 };
@@ -15438,11 +15533,11 @@ var classicIntentCommand = async (args, _options) => {
 // domains/comet-classic/classic-resume-probe.ts
 import { spawn } from "child_process";
 var COMET_RESUME_PROBE_SCHEMA_VERSION = "comet.resume_probe.v1";
-function isRecord3(value) {
+function isRecord4(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function normalizeInput(input) {
-  if (!isRecord3(input)) {
+  if (!isRecord4(input)) {
     throw new Error("Invalid CometResumeProbeInput: input must be an object");
   }
   if (input.schema_version !== COMET_RESUME_PROBE_SCHEMA_VERSION) {
@@ -15453,7 +15548,7 @@ function normalizeInput(input) {
   if (typeof input.utterance !== "string") {
     throw new Error("Invalid CometResumeProbeInput: utterance must be a string");
   }
-  const context = isRecord3(input.agent_context) ? input.agent_context : {};
+  const context = isRecord4(input.agent_context) ? input.agent_context : {};
   return {
     schema_version: COMET_RESUME_PROBE_SCHEMA_VERSION,
     utterance: input.utterance,

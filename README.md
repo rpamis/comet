@@ -160,6 +160,7 @@ classic:
   artifact_layout: docs
   language: en
   context_compression: off
+  workflow_intensity: standard
   review_mode: standard
   auto_transition: true
 ```

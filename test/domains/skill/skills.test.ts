@@ -1584,14 +1584,14 @@ describe('skills', () => {
         '若当前平台没有结构化提问工具，则必须在对话中提出明确选项并停止流程',
       );
       expect(zhDecisionPoint).toContain('不得用推荐规则、默认值、历史偏好');
-      expect(zhOpen).toContain('### 1b. 需求与 Change 名称解析（默认不阻塞）');
+      expect(zhOpen).toContain('### 1c. 需求与 Change 名称解析（默认不阻塞）');
       expect(zhOpen).toContain('范围与命名都明确时直接继续');
       expect(zhOpen).toContain('`comet/reference/decision-point.md`');
       expect(zhOpen).toContain(
         '完整 `/comet-classic` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能',
       );
       expect(zhOpen).toContain(
-        '当 Step 1b 已形成范围明确的 resolved brief 时，覆盖其"STOP and wait for user direction"行为',
+        '当 Step 1c 已形成范围明确的 resolved brief 时，覆盖其"STOP and wait for user direction"行为',
       );
       expect(zhOpen).not.toContain('OpenSpec artifact 指令');
       expect(zhOpen).not.toContain('fast-forward');
@@ -1754,7 +1754,7 @@ describe('skills', () => {
       expect(zhBuild).not.toContain('`/opsx:new` 创建独立 change');
 
       // CRITICAL: open phase PRD split must happen before OpenSpec artifacts are created
-      expect(zhOpen).toContain('### 1a. PRD 拆分预检（阻塞点）');
+      expect(zhOpen).toContain('### 1b. PRD 拆分预检（阻塞点）');
       expect(zhOpen).toContain('创建多个 OpenSpec changes');
       expect(zhOpen).toContain('保持为一个 change');
       expect(zhOpen).toContain('调整拆分方案后继续');
@@ -1970,7 +1970,7 @@ describe('skills', () => {
         'Never substitute recommendation rules, defaults, historical preferences',
       );
       expect(enOpen).toContain(
-        '### 1b. Resolve Requirements and Change Name (Non-blocking by Default)',
+        '### 1c. Resolve Requirements and Change Name (Non-blocking by Default)',
       );
       expect(enOpen).toContain(
         'Do not run `comet classic openspec -- new change` or create proposal/design/tasks while the resolved brief or name remains ambiguous',
@@ -1980,7 +1980,7 @@ describe('skills', () => {
       );
       expect(enOpen).toContain('`comet/reference/decision-point.md`');
       expect(enOpen).toContain(
-        'When Step 1b has produced an unambiguous resolved brief, override its "STOP and wait for user direction" behavior',
+        'When Step 1c has produced an unambiguous resolved brief, override its "STOP and wait for user direction" behavior',
       );
       expect(enOpen).toContain(
         'The clarification summary must include: goals, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios',
@@ -2147,7 +2147,7 @@ describe('skills', () => {
       );
       expect(enBuild).toContain('create independent change through `/comet-open`');
       expect(enBuild).not.toContain('create independent change through `/opsx:new`');
-      expect(enOpen).toContain('### 1a. PRD Split Preflight (Blocking Point)');
+      expect(enOpen).toContain('### 1b. PRD Split Preflight (Blocking Point)');
       expect(enOpen).toContain('Create multiple OpenSpec changes');
       expect(enOpen).toContain('Keep everything as one change');
       expect(enOpen).toContain('Adjust the split plan before continuing');

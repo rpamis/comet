@@ -1,5 +1,6 @@
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import { CometIntentValidationError, resolveCometIntentRoute } from './classic-intent.js';
+import { readClassicWorkflowIntensity } from './classic-project-config.js';
 
 function result(exitCode: number, stdout?: string, stderr?: string): ClassicCommandResult {
   return {
@@ -25,6 +26,26 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+async function withConfiguredWorkflowIntensity(input: unknown): Promise<unknown> {
+  if (!isRecord(input)) return input;
+  const context = isRecord(input.context) ? { ...input.context } : {};
+  if (context.workflow_intensity !== undefined && context.workflow_intensity !== null) {
+    return input;
+  }
+  const configured = await readClassicWorkflowIntensity();
+  return {
+    ...input,
+    context: {
+      ...context,
+      workflow_intensity: configured.value,
+    },
+  };
+}
+
 export const classicIntentCommand: ClassicCommandHandler = async (args, _options) => {
   const [subcommand, input] = args;
   if (subcommand !== 'route') return usage();
@@ -33,13 +54,18 @@ export const classicIntentCommand: ClassicCommandHandler = async (args, _options
   if (!source) return usage();
 
   try {
-    const resolution = resolveCometIntentRoute(JSON.parse(source));
+    const resolution = resolveCometIntentRoute(
+      await withConfiguredWorkflowIntensity(JSON.parse(source)),
+    );
     return result(0, `${JSON.stringify(resolution, null, 2)}\n`);
   } catch (error) {
     if (error instanceof SyntaxError) {
       return result(1, undefined, `Invalid JSON: ${error.message}`);
     }
     if (error instanceof CometIntentValidationError) {
+      return result(1, undefined, error.message);
+    }
+    if (error instanceof Error) {
       return result(1, undefined, error.message);
     }
     throw error;

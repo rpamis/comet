@@ -57,7 +57,18 @@ comet classic openspec -- --version
 
 澄清摘要必须包含：目标、非目标、范围边界、关键未知项、验收场景草案。
 
-### 1a. PRD 拆分预检（阻塞点）
+### 1a. 轻量路径推荐确认（阻塞点）
+
+当 Comet intent runtime 返回轻量路径推荐 metadata 时，必须在创建 OpenSpec artifacts 前展示推荐理由，并按用户决策点协议暂停等待用户选择。
+
+选项必须互斥：
+- 「切换到 `/comet-tweak`」— 由 tweak workflow 创建并拥有 change
+- 「切换到 `/comet-hotfix`」— 仅当请求是已有行为修复或回归时可选
+- 「继续 full `/comet-open`」— 保持完整 OpenSpec + Design 流程
+
+不得在轻量路径推荐确认前运行 `openspec new change`，不得创建 proposal/design/tasks，也不得自动把 full 请求降级为 tweak/hotfix。
+
+### 1b. PRD 拆分预检（阻塞点）
 
 当用户输入是大型 PRD、路线图、完整产品方案，或澄清摘要显示包含多个独立能力、模块、用户路径或里程碑时，必须在创建 OpenSpec artifacts 前评估是否需要拆分为多个 change。
 
@@ -112,7 +123,7 @@ comet state check <name> design
 
 断点恢复时先读取 `.comet/batches/<batch-id>.json`，再对清单中已创建的 active changes 运行上述 CLI 检查；已完整通过的拆分项不得重复创建，未通过的拆分项从 OpenSpec 返回的第一个 `ready` artifact 继续。未创建项按持久清单继续创建。清单缺失或损坏时停止并请求用户重建/确认，不能从目录列表猜测原始批次边界。
 
-### 1b. 需求与 Change 名称解析（默认不阻塞）
+### 1c. 需求与 Change 名称解析（默认不阻塞）
 
 创建 OpenSpec artifacts 前，把 Step 1 的澄清结果整理为 resolved brief：目标、非目标、范围边界、关键未知项和验收场景草案，并基于它派生一个能准确表达范围的 kebab-case 英文 change 名称。
 
@@ -137,9 +148,9 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 <!-- external-openspec-skill-override -->
 **外部 OpenSpec Skill 覆写：** 对 `openspec-propose` 同样不得采用其直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径；命令必须通过 adapter，产物必须写入 resolver 返回的 `<classic-*>` 逻辑根。
 
-技能加载后，按其指引创建 change 骨架；当 Step 1b 已形成范围明确的 resolved brief 时，覆盖其"STOP and wait for user direction"行为，避免重复询问。
+技能加载后，按其指引创建 change 骨架；当 Step 1c 已形成范围明确的 resolved brief 时，覆盖其"STOP and wait for user direction"行为，避免重复询问。
 
-直接使用 Step 1b 的 resolved brief 填充产物内容。只有 brief 仍有会改变范围的歧义时，才回退到技能的提问流程。
+直接使用 Step 1c 的 resolved brief 填充产物内容。只有 brief 仍有会改变范围的歧义时，才回退到技能的提问流程。
 
 change 骨架创建后立即初始化可恢复状态，不能等 artifacts 全部生成后再写 `.comet.yaml`：
 
@@ -180,7 +191,7 @@ comet state check <name> open
 
 **阻塞与失败处理**：`applyRequires` 尚未全部完成但没有任何可推进其依赖闭包的 ready artifact 时，必须报告相关 `blocked` artifact 的 `missingDeps` 并停止，不得猜测顺序或跳过依赖。如果 adapter 的 `status` / `instructions` 调用失败、返回无效 JSON、路径逃逸仓库、或未提供可用的 `resolvedOutputPath`，也必须立即停止并报告 OpenSpec 错误。不得回退为硬编码文档结构。
 
-**命名与范围守卫**：change name 必须使用 Step 1b 解析出的 kebab-case 英文名，不得使用非 kebab-case（如中文）名称。变更范围必须与 resolved brief 和用户描述一致，不得自行扩大或缩小。
+**命名与范围守卫**：change name 必须使用 Step 1c 解析出的 kebab-case 英文名，不得使用非 kebab-case（如中文）名称。变更范围必须与 resolved brief 和用户描述一致，不得自行扩大或缩小。
 
 确认以下产物已创建：
 
@@ -224,7 +235,7 @@ comet state check <name> open
 
 全部 OpenSpec artifacts 完成且内容完整性检查通过后，**必须按 `comet/reference/decision-point.md` 的协议暂停并等待用户确认**。不得在用户确认前执行阶段守卫或自动流转。
 
-最终审视同时确认 change 名称、范围和产物内容；不得因 Step 1b 已完成解析而省略，也不得在此之前再增加一次常规摘要/命名确认。
+最终审视同时确认 change 名称、范围和产物内容；不得因 Step 1c 已完成解析而省略，也不得在此之前再增加一次常规摘要/命名确认。
 
 用户确认问题必须以单选题形式呈现，包含以下摘要和选项：
 

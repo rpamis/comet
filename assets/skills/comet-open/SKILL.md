@@ -57,7 +57,18 @@ After the skill loads, explore the problem space following its guidance, but do 
 
 The clarification summary must include: goals, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios.
 
-### 1a. PRD Split Preflight (Blocking Point)
+### 1a. Lightweight Path Recommendation Confirmation (Blocking Point)
+
+When the Comet intent runtime returns lightweight path recommendation metadata, present the recommendation reasons before creating OpenSpec artifacts, then pause under the user decision-point protocol.
+
+Options must be mutually exclusive:
+- "Switch to `/comet-tweak`" — the tweak workflow creates and owns the change
+- "Switch to `/comet-hotfix`" — only available for existing behavior fixes or regressions
+- "Continue full `/comet-open`" — keep the full OpenSpec + Design workflow
+
+The agent must not run `openspec new change` before lightweight path recommendation confirmation, must not create proposal/design/tasks, and must not automatically downgrade a full request to tweak/hotfix.
+
+### 1b. PRD Split Preflight (Blocking Point)
 
 When the user input is a large PRD, roadmap, complete product plan, or the clarification summary shows multiple independent capabilities, modules, user journeys, or milestones, must evaluate whether it should be split into multiple changes before creating OpenSpec artifacts.
 
@@ -112,7 +123,7 @@ Only after every split item passes both CLI checks may you pause and ask which c
 
 On resume, read `.comet/batches/<batch-id>.json` first, then run the CLI checks above for already-created active changes. Do not recreate items that fully pass; resume incomplete items from the first `ready` artifact returned by OpenSpec. Create missing items from the persisted manifest. If the manifest is missing or damaged, stop and ask the user to rebuild/confirm it instead of inferring the original batch boundary from directory names.
 
-### 1b. Resolve Requirements and Change Name (Non-blocking by Default)
+### 1c. Resolve Requirements and Change Name (Non-blocking by Default)
 
 Before creating OpenSpec artifacts, turn Step 1 clarification into a resolved brief containing the goal, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios. Derive one kebab-case English change name that accurately represents that scope.
 
@@ -137,9 +148,9 @@ Full `/comet-classic` workflow must not use the Skill tool to load the `openspec
 <!-- external-openspec-skill-override -->
 **External OpenSpec Skill override:** Apply the same rule to `openspec-propose`: ignore direct official CLI, fixed-cwd, and fixed physical OpenSpec path instructions; use the adapter and resolver-returned `<classic-*>` logical roots.
 
-After the skill loads, follow its guidance to create the change skeleton. When Step 1b has produced an unambiguous resolved brief, override its "STOP and wait for user direction" behavior to avoid a duplicate question.
+After the skill loads, follow its guidance to create the change skeleton. When Step 1c has produced an unambiguous resolved brief, override its "STOP and wait for user direction" behavior to avoid a duplicate question.
 
-Use the Step 1b resolved brief directly to populate artifact content. Fall back to the skill's question flow only when ambiguity remains that would change scope.
+Use the Step 1c resolved brief directly to populate artifact content. Fall back to the skill's question flow only when ambiguity remains that would change scope.
 
 Immediately after creating the change skeleton, initialize recoverable state instead of waiting until every artifact is generated:
 
@@ -180,7 +191,7 @@ After preflight, generate the implementation-required artifacts from the OpenSpe
 
 **Blocking and failure handling**: if `applyRequires` is incomplete and no ready artifact can advance its dependency closure, report `missingDeps` for the relevant `blocked` artifacts and stop. Do not guess order or skip dependencies. Also stop if status/instructions fails, returns invalid JSON, escapes the repository, or provides no usable `resolvedOutputPath`. Must not fall back to hard-coded artifact prose.
 
-**Naming and scope guard**: Use the kebab-case English name resolved in Step 1b; never use a non-kebab-case name. Change scope must match the resolved brief and user request; do not expand or narrow it independently.
+**Naming and scope guard**: Use the kebab-case English name resolved in Step 1c; never use a non-kebab-case name. Change scope must match the resolved brief and user request; do not expand or narrow it independently.
 
 Confirm the following artifacts have been created:
 
@@ -224,7 +235,7 @@ Then check key artifact content: proposal covers problem, goals, scope, and non-
 
 After all OpenSpec artifacts are complete and the content check passes, **must follow the `comet/reference/decision-point.md` protocol to pause and wait for user confirmation**. Must not execute the phase guard or auto-transition before user confirmation.
 
-The final review confirms the change name, scope, and artifact content together. Do not skip it because Step 1b resolved the brief, and do not add another routine summary/name confirmation before it.
+The final review confirms the change name, scope, and artifact content together. Do not skip it because Step 1c resolved the brief, and do not add another routine summary/name confirmation before it.
 
 The user confirmation question must be presented as a single-select question with the following summary and options:
 

@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import { classicIntentCommand } from '../../../domains/comet-classic/classic-intent-command.js';
 import {
   CometIntentValidationError,
   resolveCometIntentRoute,
@@ -40,6 +44,7 @@ function frame(overrides: Partial<CometIntentFrame> = {}): CometIntentFrame {
       confidence: 0.9,
       requires_confirmation: false,
       fallback_reason: null,
+      recommendation: null,
     },
   };
   return {
@@ -53,14 +58,20 @@ function frame(overrides: Partial<CometIntentFrame> = {}): CometIntentFrame {
 }
 
 describe('resolveCometIntentRoute', () => {
-  it('routes existing bug fixes to hotfix', () => {
+  it('recommends hotfix confirmation for existing bug fixes', () => {
     const result = resolveCometIntentRoute(frame());
 
     expect(result.route).toMatchObject({
-      name: 'hotfix',
-      next_skill: 'comet-hotfix',
-      requires_confirmation: false,
+      name: 'full',
+      next_skill: 'comet-open',
+      requires_confirmation: true,
+      recommendation: {
+        workflow: 'hotfix',
+        next_skill: 'comet-hotfix',
+        intensity: 'standard',
+      },
     });
+    expect(result.route.recommendation?.reasons.join(' ')).toContain('existing behavior');
   });
 
   it('accepts compact frames and normalizes omitted optional fields', () => {
@@ -90,7 +101,11 @@ describe('resolveCometIntentRoute', () => {
       proposed_route: { name: 'hotfix', confidence: 0.9 },
     });
 
-    expect(result.route).toMatchObject({ name: 'hotfix', next_skill: 'comet-hotfix' });
+    expect(result.route).toMatchObject({
+      name: 'full',
+      next_skill: 'comet-open',
+      recommendation: { workflow: 'hotfix', next_skill: 'comet-hotfix' },
+    });
     expect(result.normalizedFrame).toMatchObject({
       locale: 'unknown',
       entities: [],
@@ -104,7 +119,7 @@ describe('resolveCometIntentRoute', () => {
     });
   });
 
-  it('routes doc, config, and prompt changes to tweak', () => {
+  it('recommends tweak confirmation for doc, config, and prompt changes', () => {
     const result = resolveCometIntentRoute(
       frame({
         utterance: 'tweak the comet prompt wording',
@@ -124,7 +139,184 @@ describe('resolveCometIntentRoute', () => {
       }),
     );
 
-    expect(result.route).toMatchObject({ name: 'tweak', next_skill: 'comet-tweak' });
+    expect(result.route).toMatchObject({
+      name: 'full',
+      next_skill: 'comet-open',
+      requires_confirmation: true,
+      recommendation: {
+        workflow: 'tweak',
+        next_skill: 'comet-tweak',
+        intensity: 'standard',
+      },
+    });
+    expect(result.route.recommendation?.reasons.join(' ')).toContain('small');
+  });
+
+  it('does not offer hotfix for ordinary tweak recommendations', () => {
+    const result = resolveCometIntentRoute(
+      frame({
+        utterance: 'tweak the README wording',
+        intent: { name: 'make_tweak', confidence: 0.89 },
+        entities: [{ type: 'file_path', value: 'README.md', text: 'README' }],
+        slots: {
+          requested_action: 'modify',
+          workflow_candidate: 'tweak',
+          existing_behavior: null,
+          target_area: 'README wording',
+        },
+        evidence: [
+          { field: 'intent.name', quote: 'tweak', source: 'user' },
+          { field: 'slots.workflow_candidate', quote: 'README wording', source: 'user' },
+        ],
+        proposed_route: { name: 'tweak', next_skill: 'comet-tweak', confidence: 0.88 },
+      }),
+    );
+
+    expect(result.route.recommendation).toMatchObject({
+      workflow: 'tweak',
+      options: ['tweak', 'full'],
+    });
+  });
+
+  it('routes explicit hotfix directly when no risk signals conflict', () => {
+    const result = resolveCometIntentRoute(
+      frame({
+        slots: { user_explicit_workflow: 'hotfix' },
+        evidence: [
+          { field: 'slots.user_explicit_workflow', quote: 'hotfix', source: 'user' },
+          { field: 'slots.workflow_candidate', quote: 'regression', source: 'user' },
+        ],
+      }),
+    );
+
+    expect(result.route).toMatchObject({
+      name: 'hotfix',
+      next_skill: 'comet-hotfix',
+      requires_confirmation: false,
+      recommendation: null,
+    });
+  });
+
+  it('recommends tweak confirmation for small low-risk work under standard intensity', () => {
+    const result = resolveCometIntentRoute(
+      frame({
+        utterance: 'add a small docs note',
+        intent: { name: 'start_change', confidence: 0.92 },
+        entities: [{ type: 'file_path', value: 'README.md', text: 'docs' }],
+        slots: {
+          requested_action: 'modify',
+          workflow_candidate: 'full',
+          scope: 'small',
+          existing_behavior: false,
+          new_capability: false,
+          public_api_change: false,
+          schema_change: false,
+          cross_module_change: false,
+        },
+        evidence: [
+          { field: 'intent.name', quote: 'add', source: 'user' },
+          { field: 'slots.scope', quote: 'small docs note', source: 'user' },
+        ],
+        proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
+      }),
+    );
+
+    expect(result.route).toMatchObject({
+      name: 'full',
+      next_skill: 'comet-open',
+      requires_confirmation: true,
+      recommendation: {
+        workflow: 'tweak',
+        next_skill: 'comet-tweak',
+        intensity: 'standard',
+      },
+    });
+    expect(result.route.recommendation?.reasons.join(' ')).toContain('small');
+  });
+
+  it('does not treat medium or large scope evidence as low-risk evidence', () => {
+    for (const scope of ['medium', 'large'] as const) {
+      const result = resolveCometIntentRoute(
+        frame({
+          utterance: `${scope} workflow update`,
+          intent: { name: 'start_change', confidence: 0.92 },
+          slots: {
+            requested_action: 'modify',
+            workflow_candidate: 'full',
+            scope,
+            existing_behavior: false,
+            new_capability: false,
+            public_api_change: false,
+            schema_change: false,
+            cross_module_change: false,
+          },
+          evidence: [
+            { field: 'intent.name', quote: 'update', source: 'user' },
+            { field: 'slots.scope', quote: `${scope} workflow update`, source: 'user' },
+          ],
+          proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
+        }),
+      );
+
+      expect(result.route).toMatchObject({
+        name: 'full',
+        next_skill: 'comet-open',
+        requires_confirmation: false,
+        recommendation: null,
+      });
+    }
+  });
+
+  it('keeps thorough intensity conservative for unclear small work', () => {
+    const result = resolveCometIntentRoute(
+      frame({
+        utterance: 'modify the workflow',
+        intent: { name: 'start_change', confidence: 0.92 },
+        slots: {
+          requested_action: 'modify',
+          workflow_candidate: 'full',
+          scope: 'unknown',
+          existing_behavior: false,
+          new_capability: false,
+          public_api_change: false,
+          schema_change: false,
+          cross_module_change: false,
+        },
+        context: { workflow_intensity: 'thorough' } as never,
+        evidence: [{ field: 'intent.name', quote: 'modify', source: 'user' }],
+        proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
+      }),
+    );
+
+    expect(result.route.name).toBe('full');
+    expect(result.route.requires_confirmation).toBe(false);
+    expect(result.route.recommendation).toBeNull();
+  });
+
+  it('does not recommend lightweight paths when risk signals are present', () => {
+    const result = resolveCometIntentRoute(
+      frame({
+        utterance: 'add a small public API',
+        intent: { name: 'start_change', confidence: 0.92 },
+        slots: {
+          requested_action: 'create',
+          workflow_candidate: 'full',
+          scope: 'small',
+          existing_behavior: false,
+          new_capability: true,
+          public_api_change: true,
+        },
+        context: { workflow_intensity: 'light' } as never,
+        evidence: [
+          { field: 'slots.scope', quote: 'small', source: 'user' },
+          { field: 'slots.public_api_change', quote: 'public API', source: 'user' },
+        ],
+        proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
+      }),
+    );
+
+    expect(result.route).toMatchObject({ name: 'full', next_skill: 'comet-open' });
+    expect(result.route.recommendation).toBeNull();
   });
 
   it('routes new capability and public API risk signals to full', () => {
@@ -165,9 +357,10 @@ describe('resolveCometIntentRoute', () => {
       }),
     );
 
-    expect(result.route.name).toBe('hotfix');
+    expect(result.route.name).toBe('full');
     expect(result.route.fallback_reason).toBeNull();
-    expect(result.route.next_skill).toBe('comet-hotfix');
+    expect(result.route.next_skill).toBe('comet-open');
+    expect(result.route.recommendation?.workflow).toBe('hotfix');
     expect(result.diagnostics.some((diagnostic) => diagnostic.includes('ask_user'))).toBe(true);
   });
 
@@ -278,7 +471,7 @@ describe('resolveCometIntentRoute', () => {
     expect(action).toThrow(/active_change_names must only contain strings/);
   });
 
-  it('records diagnostics when next_skill/requires_confirmation/fallback_reason are normalized', () => {
+  it('records diagnostics when route metadata is normalized', () => {
     const result = resolveCometIntentRoute(
       frame({
         proposed_route: {
@@ -291,13 +484,67 @@ describe('resolveCometIntentRoute', () => {
       }),
     );
 
-    expect(result.route.name).toBe('hotfix');
+    expect(result.route.name).toBe('full');
+    expect(result.route.recommendation?.workflow).toBe('hotfix');
     expect(result.diagnostics).toEqual(
       expect.arrayContaining([
-        "agent proposed_route next_skill 'comet-open' normalized to 'comet-hotfix'",
-        "agent proposed_route requires_confirmation 'true' normalized to 'false'",
+        "agent proposed_route 'hotfix' normalized to 'full'",
         "agent proposed_route fallback_reason 'manual set' normalized to 'null'",
+        "agent proposed_route recommendation 'null' normalized to 'hotfix'",
       ]),
     );
+  });
+
+  it('intent command applies workflow_intensity from Classic project config', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-intent-command-'));
+    const previousCwd = process.cwd();
+    try {
+      await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(projectRoot, '.comet', 'config.yaml'),
+        'classic:\n  workflow_intensity: thorough\n',
+        'utf8',
+      );
+      process.chdir(projectRoot);
+
+      const result = await classicIntentCommand(
+        [
+          'route',
+          JSON.stringify(
+            frame({
+              utterance: 'modify the workflow',
+              intent: { name: 'start_change', confidence: 0.92 },
+              slots: {
+                requested_action: 'modify',
+                workflow_candidate: 'full',
+                scope: 'unknown',
+                existing_behavior: false,
+                new_capability: false,
+                public_api_change: false,
+                schema_change: false,
+                cross_module_change: false,
+              },
+              evidence: [{ field: 'intent.name', quote: 'modify', source: 'user' }],
+              proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
+            }),
+          ),
+        ],
+        { json: false },
+      );
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout ?? '{}') as ReturnType<
+        typeof resolveCometIntentRoute
+      >;
+      expect(payload.normalizedFrame.context.workflow_intensity).toBe('thorough');
+      expect(payload.route).toMatchObject({
+        name: 'full',
+        requires_confirmation: false,
+        recommendation: null,
+      });
+    } finally {
+      process.chdir(previousCwd);
+      await fs.rm(projectRoot, { recursive: true, force: true });
+    }
   });
 });

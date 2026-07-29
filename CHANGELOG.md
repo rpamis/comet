@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.12] - 2026-07-30
+
+### Added
+
+- **Lightweight workflow recommendations**: Classic Comet now exposes `classic.workflow_intensity` and typed route recommendation metadata so evidence-backed tweak or hotfix candidates can present confirmed lightweight workflow options before continuing full open, while risk signals keep the conservative full workflow path.
+
 ## What's Changed [0.4.0-beta.11] - 2026-07-29
 
 ### Changed

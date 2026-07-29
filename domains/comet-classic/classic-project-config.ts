@@ -12,6 +12,15 @@ type ClassicConfigOptions = {
   homeDir?: string;
 };
 
+const WORKFLOW_INTENSITIES = ['light', 'standard', 'thorough'] as const;
+
+type ClassicWorkflowIntensity = (typeof WORKFLOW_INTENSITIES)[number];
+
+type ClassicWorkflowIntensityValue = {
+  value: ClassicWorkflowIntensity;
+  source: string;
+};
+
 function configCandidates(options: ClassicConfigOptions = {}): Array<{
   file: string;
   source: string;
@@ -54,5 +63,26 @@ async function readClassicConfigValue(
   return null;
 }
 
-export { configCandidates, readClassicConfigValue };
-export type { ClassicConfigOptions, ClassicConfigValue };
+async function readClassicWorkflowIntensity(
+  options: ClassicConfigOptions = {},
+): Promise<ClassicWorkflowIntensityValue> {
+  const configured = await readClassicConfigValue('workflow_intensity', options);
+  if (!configured) return { value: 'standard', source: 'default' };
+  if (!WORKFLOW_INTENSITIES.includes(configured.value as ClassicWorkflowIntensity)) {
+    throw new Error(
+      `classic.workflow_intensity must be light, standard, or thorough, got '${configured.value}' from ${configured.source}`,
+    );
+  }
+  return {
+    value: configured.value as ClassicWorkflowIntensity,
+    source: configured.source,
+  };
+}
+
+export { configCandidates, readClassicConfigValue, readClassicWorkflowIntensity };
+export type {
+  ClassicConfigOptions,
+  ClassicConfigValue,
+  ClassicWorkflowIntensity,
+  ClassicWorkflowIntensityValue,
+};

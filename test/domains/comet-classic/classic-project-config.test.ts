@@ -3,7 +3,10 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { readClassicConfigValue } from '../../../domains/comet-classic/classic-project-config.js';
+import {
+  readClassicConfigValue,
+  readClassicWorkflowIntensity,
+} from '../../../domains/comet-classic/classic-project-config.js';
 
 describe('Classic project config', () => {
   let projectRoot: string;
@@ -90,5 +93,29 @@ describe('Classic project config', () => {
     } finally {
       await fs.rm(outsideRoot, { recursive: true, force: true });
     }
+  });
+
+  it('reads workflow_intensity from the nested Classic block', async () => {
+    await writeConfig(projectRoot, 'classic:\n  workflow_intensity: light\n');
+
+    await expect(readClassicWorkflowIntensity({ cwd: projectRoot, homeDir })).resolves.toEqual({
+      value: 'light',
+      source: '.comet/config.yaml',
+    });
+  });
+
+  it('defaults workflow_intensity to standard when absent', async () => {
+    await expect(readClassicWorkflowIntensity({ cwd: projectRoot, homeDir })).resolves.toEqual({
+      value: 'standard',
+      source: 'default',
+    });
+  });
+
+  it('rejects invalid workflow_intensity values', async () => {
+    await writeConfig(projectRoot, 'classic:\n  workflow_intensity: fast\n');
+
+    await expect(readClassicWorkflowIntensity({ cwd: projectRoot, homeDir })).rejects.toThrow(
+      /workflow_intensity must be light, standard, or thorough/u,
+    );
   });
 });

@@ -1602,6 +1602,11 @@ function managedConfigFields(language: string = 'en'): ManagedConfigFields {
       comment: projectConfigComment('classic.context_compression', commentLanguage),
     },
     {
+      key: 'workflow_intensity',
+      def: 'standard',
+      comment: projectConfigComment('classic.workflow_intensity', commentLanguage),
+    },
+    {
       key: 'review_mode',
       def: 'standard',
       comment: projectConfigComment('classic.review_mode', commentLanguage),

@@ -48,6 +48,7 @@ type ProjectConfigCommentKey =
   | 'classic.artifact_layout'
   | 'classic.language'
   | 'classic.context_compression'
+  | 'classic.workflow_intensity'
   | 'classic.review_mode'
   | 'classic.auto_transition';
 
@@ -88,6 +89,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Artifact language used by Classic workflow documents.\n# language: en | zh-CN',
     'classic.context_compression':
       '# Controls beta context compression for new Classic changes.\n# context_compression: off | beta',
+    'classic.workflow_intensity':
+      '# Tunes how aggressively Classic recommends lightweight workflows.\n# workflow_intensity: light | standard | thorough',
     'classic.review_mode':
       '# Sets the default review depth for new Classic changes.\n# review_mode: off | standard | thorough',
     'classic.auto_transition':
@@ -122,6 +125,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'classic.language': '# Classic 工作流文档使用的产物语言。\n# 可选值：en | zh-CN',
     'classic.context_compression':
       '# 新建 Classic change 是否启用 beta 上下文压缩。\n# 可选值：off | beta',
+    'classic.workflow_intensity':
+      '# 调节 Classic 推荐轻量工作流的积极程度。\n# 可选值：light | standard | thorough',
     'classic.review_mode':
       '# 新建 Classic change 默认使用的审查深度。\n# 可选值：off | standard | thorough',
     'classic.auto_transition': '# Classic 阶段通过后是否自动进入下一阶段。\n# 可选值：true | false',
