@@ -29,6 +29,7 @@ from scaffold.python.native_eval import (
     adapt_prompt_for_native,
     filter_control_workflow_checks as _filter_control_workflow_checks,
     is_control_business_only_run as _is_control_business_only_run,
+    is_observational_baseline_run as _is_observational_baseline_run,
     split_comet_completion_checks as _split_comet_completion_checks,
 )
 from scaffold.python.profiles import resolve_profile_name, run_profile_rubric
@@ -469,5 +470,5 @@ def test_task_treatment(task_name, treatment_name):
         stderr=result.stderr,
     )
 
-    if failed:
+    if failed and not _is_observational_baseline_run(treatment_name):
         pytest.fail(f"Validation failed: {failed}")

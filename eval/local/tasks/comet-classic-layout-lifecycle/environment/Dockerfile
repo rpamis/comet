@@ -13,18 +13,14 @@ RUN pip install --break-system-packages --no-cache-dir pyyaml
 # Match Comet's supported OpenSpec floor. The current-checkout CLI and its
 # dependencies remain separate so the benchmark does not depend on a published
 # Comet package.
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @fission-ai/openspec@1.5.0 && \
-    npm config delete registry
+RUN npm install -g @fission-ai/openspec@1.5.0
 
 COPY current-comet-package.json /opt/comet-cli/package.json
 RUN npm install --prefix /opt/comet-cli --omit=dev --ignore-scripts
 
 # Claude Code CLI (the agent runtime; version overridable via BENCH_CC_VERSION).
 ARG CLAUDE_CODE_VERSION=latest
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && \
-    npm config delete registry
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # Existing wordcount code (extended during the task).
 COPY wordcount.py /workspace/wordcount.py

@@ -14,15 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir pyyaml pytest
 
 # OpenSpec CLI (comet drives openspec new/list/status/archive).
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @fission-ai/openspec@1.3.1 && \
-    npm config delete registry
+RUN npm install -g @fission-ai/openspec@1.3.1
 
 # Claude Code CLI (the agent runtime; version overridable via BENCH_CC_VERSION).
 ARG CLAUDE_CODE_VERSION=latest
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && \
-    npm config delete registry
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # The stats library with the median bug
 COPY stats.py /workspace/stats.py

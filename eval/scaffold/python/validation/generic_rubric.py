@@ -51,16 +51,46 @@ def _score_skill_invocation(outputs: dict[str, Any]) -> tuple[float | None, str]
     return score, f"{summary}; invoked={', '.join(invoked) if invoked else 'none'}"
 
 
+def _artifact_paths(artifact: Any) -> list[str]:
+    if isinstance(artifact, str):
+        return [artifact]
+    if not isinstance(artifact, dict):
+        return []
+
+    paths = artifact.get("paths", artifact.get("path", []))
+    if isinstance(paths, str):
+        return [paths]
+    if isinstance(paths, list):
+        return [path for path in paths if isinstance(path, str)]
+    return []
+
+
+def _path_exists(test_dir: Path, path: str) -> bool:
+    requested = Path(path)
+    if requested.is_absolute() or ".." in requested.parts:
+        return False
+
+    resolved_test_dir = test_dir.resolve()
+    candidates = test_dir.glob(path) if any(character in path for character in "*?[") else [test_dir / path]
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            candidate.resolve().relative_to(resolved_test_dir)
+        except ValueError:
+            continue
+        return True
+    return False
+
+
 def _score_artifact_presence(test_dir: Path, outputs: dict[str, Any]) -> tuple[float | None, str]:
     expected = outputs.get("expected_artifacts") or []
     if not expected:
         return None, "N/A - no expected_artifacts configured"
-    checks: list[bool] = []
+    checks = []
     for artifact in expected:
-        if any(ch in artifact for ch in "*?["):
-            checks.append(bool(list(test_dir.glob(artifact))))
-        else:
-            checks.append((test_dir / artifact).exists())
+        paths = _artifact_paths(artifact)
+        checks.append(bool(paths) and all(_path_exists(test_dir, path) for path in paths))
     score, summary = _binary_score(checks)
     return score, summary
 

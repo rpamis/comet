@@ -79,26 +79,6 @@ function jsonArtifact(
   return artifact(artifactPath, kind, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function claudeAgentDefinition(options: {
-  name: string;
-  description: string;
-  tools: string;
-  title: string;
-  body: string;
-}): string {
-  return `---
-name: ${options.name}
-description: ${options.description}
-tools: ${options.tools}
-model: inherit
----
-
-# ${options.title}
-
-${options.body}
-`;
-}
-
 function portableScriptAuthorBrief(): string {
   return `# Script Author Brief
 
@@ -262,6 +242,11 @@ ${bindings || '- No Skill bindings.'}
 ## Guardrails And Evidence
 
 ${guardrails || '- No explicit guardrails.'}
+
+## Workflow References
+
+- Route, Output Schemas, required Skill calls, and recovery state: \`reference/workflow-protocol.json\`.
+- Resolved source Skill evidence and composition provenance: \`reference/resolved-skills.json\`.
 
 ## Runtime And Recovery
 
@@ -1767,7 +1752,7 @@ function workflowContractEvalManifest(
         'comet-refactor-counter',
         'comet-api-cache-ttl',
       ]
-    : ['generic-skill-smoke', 'authoring-skill-smoke', 'workflow-route-conformance'];
+    : ['authoring-skill-smoke', 'workflow-route-conformance'];
   const activeOutputSchemas = uniqueStrings(activeNodes.flatMap((node) => node.outputSchemas));
   const activeOutputSchemaSet = new Set(activeOutputSchemas);
   const evalRequiredOutputSchemas = protocol.evals[0]?.requiredOutputSchemas ?? [];
@@ -1969,7 +1954,6 @@ function workflowContractArtifacts(plan: FactorySkillPackagePlan): FactoryPackag
     'reference/skill-review.md',
     'reference/composition-report.md',
     'reference/subagents/script-author.md',
-    'agents/claude/comet-any-script-author.md',
     'scripts/comet-plan.mjs',
     'scripts/comet-check.mjs',
     'scripts/comet-hook-guard.mjs',
@@ -2002,6 +1986,17 @@ function workflowContractArtifacts(plan: FactorySkillPackagePlan): FactoryPackag
     jsonArtifact('reference/resolved-skills.json', {
       schemaVersion: 1,
       resolvedSkills: plan.resolvedSkills ?? [],
+      sourceSummaries: (plan.resolvedSkills ?? []).flatMap((resolved) =>
+        resolved.sources.map((source) => ({
+          name: source.name,
+          query: resolved.query,
+          description: source.description,
+          platform: source.platform,
+          scope: source.scope,
+          origin: source.origin,
+          references: source.references ?? [],
+        })),
+      ),
       workflow: {
         kind: protocol.kind,
         nodes: protocol.nodes.map((node) => ({
@@ -2034,29 +2029,16 @@ function workflowContractArtifacts(plan: FactorySkillPackagePlan): FactoryPackag
     ),
     artifact('reference/skill-review.md', 'reference', renderSkillReviewMarkdown(plan)),
     artifact('reference/subagents/script-author.md', 'reference', portableScriptAuthorBrief()),
-    artifact(
-      'agents/claude/comet-any-script-author.md',
-      'agent',
-      claudeAgentDefinition({
-        name: 'comet-any-script-author',
-        description:
-          'Use when authoring workflow script contracts for a confirmed comet-any bundle draft.',
-        tools: 'Read, Write, Glob, Grep',
-        title: 'Script Author Agent',
-        body: 'Author the script contract for one comet-any authoring lane. Read the portable brief, write only the assigned report path, and do not publish, install, or run destructive commands.',
-      }),
-    ),
     jsonArtifact('reference/authoring-lanes.json', {
       schemaVersion: 1,
       protocolHash,
       lanes: [
-        'workflow-entry',
-        'skill-core',
-        'script-contract',
-        'platform-agent',
-        'reference',
-        'eval',
-        'skill-review',
+        { lane: 'script' },
+        { lane: 'reference' },
+        { lane: 'pause-points' },
+        { lane: 'workflow-entry' },
+        { lane: 'skill-core' },
+        { lane: 'skill-review' },
       ],
       review: authoringLanesReview(plan),
     }),
@@ -2217,12 +2199,6 @@ export async function generateFactorySkillPackage(
         .filter((item) => item.kind === 'script')
         .map((item) => artifactTarget(packageRoot, item.path)),
     },
-    platformAgents: [
-      {
-        id: 'comet-any-script-author',
-        platform: 'claude',
-        path: path.join(packageRoot, 'agents', 'claude', 'comet-any-script-author.md'),
-      },
-    ],
+    platformAgents: [],
   };
 }

@@ -7,7 +7,10 @@ import { pathToFileURL } from 'url';
 import { promisify } from 'util';
 import { parse } from 'yaml';
 import { generateFactorySkillPackage } from '../../../domains/factory/package.js';
-import type { FactorySkillPackagePlan } from '../../../domains/factory/types.js';
+import type {
+  FactoryResolvedSkill,
+  FactorySkillPackagePlan,
+} from '../../../domains/factory/types.js';
 import {
   builtinCometFivePhaseWorkflow,
   normalizeWorkflowDefinition,
@@ -365,39 +368,37 @@ describe('Factory skill package generation', () => {
     expect(decisionPoints).not.toContain('confirm Output Schemas');
   });
 
-  it('generates Claude Code custom agent definitions separately from portable role briefs', async () => {
+  it('keeps authoring subagent guidance portable instead of declaring a runtime-specific agent', async () => {
     const workflow = normalizeWorkflowDefinition(
       builtinCometFivePhaseWorkflow({
         name: 'agent-ready',
-        goal: 'Generate native authoring agents.',
+        goal: 'Generate portable authoring guidance.',
       }),
     );
     const output = await generateFactorySkillPackage(
       packagePlan({ root, name: 'agent-ready', workflow }),
     );
 
-    const agentPath = path.join(
-      output.packageRoot,
-      'agents',
-      'claude',
-      'comet-any-script-author.md',
-    );
-    const agent = await fs.readFile(agentPath, 'utf8');
-    expect(agent).toContain('---\nname: comet-any-script-author');
-    expect(agent).toContain('description: Use when authoring workflow script contracts');
-    expect(agent).toContain('tools: Read, Write, Glob, Grep');
-    expect(agent).toContain('model: inherit');
-    expect(agent).toContain('# Script Author Agent');
+    await expect(
+      fs.access(path.join(output.packageRoot, 'agents', 'claude', 'comet-any-script-author.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(output.platformAgents).toEqual([]);
 
     const lanes = JSON.parse(
       await fs.readFile(path.join(output.packageRoot, 'reference', 'authoring-lanes.json'), 'utf8'),
-    ) as { lanes: unknown[] };
-    expect(JSON.stringify(lanes)).toContain('platform-agent');
+    ) as { lanes: Array<{ lane?: string }> };
+    expect(lanes.lanes.map((lane) => lane.lane)).toEqual([
+      'script',
+      'reference',
+      'pause-points',
+      'workflow-entry',
+      'skill-core',
+      'skill-review',
+    ]);
 
     await expect(
       fs.access(path.join(output.packageRoot, 'reference', 'subagents', 'script-author.md')),
     ).resolves.toBeUndefined();
-    expect(agentPath).not.toContain(path.join('reference', 'subagents'));
   });
 
   it('generates workflow contract packages from Nodes and Output Schemas', async () => {
@@ -1762,6 +1763,63 @@ describe('Factory skill package generation', () => {
       ]),
     );
     expect(evalManifest.metadata?.draftHash).toBe('<current-bundle-hash>');
+  });
+
+  it('emits workflow-kernel authoring evidence that matches the Creator protocol and eval contract', async () => {
+    const workflow = normalizeWorkflowDefinition(customWorkflow('evaluable-kernel'));
+    const resolvedSkill: FactoryResolvedSkill = {
+      query: 'research-skill',
+      preferenceIndex: 0,
+      status: 'available',
+      sources: [
+        {
+          name: 'research-skill',
+          preferenceIndex: 0,
+          platform: 'codex',
+          scope: 'project',
+          origin: 'project',
+          root: '/tmp/research-skill',
+          description: 'Collects focused research notes.',
+          skillMd: '# Research Skill\n\nCollect focused research notes.\n',
+          hash: 'a'.repeat(64),
+        },
+      ],
+    };
+    const plan = packagePlan({ root, name: 'evaluable-kernel', workflow });
+    plan.resolvedSkills = [resolvedSkill];
+    const output = await generateFactorySkillPackage(plan);
+    const entry = await fs.readFile(output.skillPath, 'utf8');
+
+    const resolvedSkills = JSON.parse(
+      await fs.readFile(path.join(output.packageRoot, 'reference', 'resolved-skills.json'), 'utf8'),
+    ) as { sourceSummaries?: Array<{ name?: string; description?: string }> };
+    const authoringLanes = JSON.parse(
+      await fs.readFile(path.join(output.packageRoot, 'reference', 'authoring-lanes.json'), 'utf8'),
+    ) as { lanes?: Array<{ lane?: string }> };
+    const evalManifest = parse(
+      await fs.readFile(path.join(output.packageRoot, 'comet', 'eval.yaml'), 'utf8'),
+    ) as { evaluation?: { recommendedTasks?: string[] } };
+
+    expect(entry).toContain('reference/workflow-protocol.json');
+    expect(entry).toContain('reference/resolved-skills.json');
+    expect(resolvedSkills.sourceSummaries).toEqual([
+      expect.objectContaining({
+        name: 'research-skill',
+        description: 'Collects focused research notes.',
+      }),
+    ]);
+    expect(authoringLanes.lanes?.map((lane) => lane.lane)).toEqual([
+      'script',
+      'reference',
+      'pause-points',
+      'workflow-entry',
+      'skill-core',
+      'skill-review',
+    ]);
+    expect(evalManifest.evaluation?.recommendedTasks).toEqual([
+      'authoring-skill-smoke',
+      'workflow-route-conformance',
+    ]);
   });
 
   it('does not generate engine manifests when engine mode is none', async () => {

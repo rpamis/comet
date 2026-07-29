@@ -6,12 +6,20 @@ import { fileURLToPath } from 'url';
 const execFileSync = vi.fn();
 const existsSync = vi.fn(() => true);
 const prepareEvalManifest = vi.fn();
+const recordRepositoryEvalExperiment = vi.fn();
 const cleanupPreparedManifest = vi.fn();
 const project = path.join(os.tmpdir(), 'comet-eval-project');
 const manifest = path.join(os.tmpdir(), 'demo', 'comet', 'eval.yaml');
 const preparedManifest = path.join(os.tmpdir(), 'prepared', 'eval.yaml');
 const skillPath = path.join(os.tmpdir(), 'demo-skill');
 const evalCwd = path.join(path.resolve(project), 'eval');
+const repositoryEvalContext = {
+  projectRoot: project,
+  name: 'demo',
+  draftHash: 'a'.repeat(64),
+  evalManifestHash: 'b'.repeat(64),
+  sourceManifestPath: manifest,
+};
 const packagedEvalCwd = path.resolve(
   path.dirname(fileURLToPath(new URL('../../app/commands/eval.js', import.meta.url))),
   '../../eval',
@@ -30,12 +38,25 @@ vi.mock('../../domains/bundle/eval-manifest-runtime.js', () => ({
   prepareEvalManifest,
 }));
 
-function expectUvRun(args: string[]): void {
+vi.mock('../../domains/bundle/eval-run-result.js', () => ({
+  recordRepositoryEvalExperiment,
+}));
+
+function expectUvRun(args: string[], cwd = evalCwd): string {
   expect(execFileSync).toHaveBeenCalledWith('uv', ['--version'], { stdio: 'pipe' });
   expect(execFileSync).toHaveBeenCalledWith('uv', args, {
-    cwd: evalCwd,
+    cwd,
     stdio: 'inherit',
+    env: expect.objectContaining({
+      COMET_EVAL_EXPERIMENT_ID: expect.stringMatching(/^comet-eval-[0-9a-f-]+$/u),
+    }),
   });
+  const runCall = execFileSync.mock.calls.find(
+    ([command, callArgs]) => command === 'uv' && Array.isArray(callArgs) && callArgs[0] === 'run',
+  );
+  const experimentId = runCall?.[2]?.env?.COMET_EVAL_EXPERIMENT_ID;
+  expect(experimentId).toMatch(/^comet-eval-[0-9a-f-]+$/u);
+  return experimentId as string;
 }
 
 describe('eval command', () => {
@@ -46,6 +67,7 @@ describe('eval command', () => {
     existsSync.mockReturnValue(true);
     prepareEvalManifest.mockReset();
     cleanupPreparedManifest.mockReset();
+    recordRepositoryEvalExperiment.mockReset();
     prepareEvalManifest.mockResolvedValue({
       path: manifest,
       cleanup: cleanupPreparedManifest,
@@ -65,9 +87,7 @@ describe('eval command', () => {
       log.mockRestore();
     }
 
-    expect(execFileSync).toHaveBeenCalledWith('uv', ['--version'], { stdio: 'pipe' });
-    expect(execFileSync).toHaveBeenCalledWith(
-      'uv',
+    expectUvRun(
       [
         'run',
         'pytest',
@@ -75,10 +95,7 @@ describe('eval command', () => {
         `--eval-manifest=${path.resolve(manifest)}`,
         '-v',
       ],
-      {
-        cwd: packagedEvalCwd,
-        stdio: 'inherit',
-      },
+      packagedEvalCwd,
     );
   });
 
@@ -103,6 +120,78 @@ describe('eval command', () => {
       '-v',
     ]);
     expect(prepareEvalManifest).toHaveBeenCalledWith(manifest);
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a successful local Creator eval before cleaning up the prepared manifest', async () => {
+    prepareEvalManifest.mockResolvedValue({
+      path: preparedManifest,
+      context: repositoryEvalContext,
+      cleanup: cleanupPreparedManifest,
+    });
+    recordRepositoryEvalExperiment.mockResolvedValue({ status: 'eval-passed' });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await evalRunCommand({ project, manifest, quick: true });
+    } finally {
+      log.mockRestore();
+    }
+
+    const experimentId = expectUvRun([
+      'run',
+      'pytest',
+      'local/tests/tasks/test_tasks.py',
+      `--eval-manifest=${path.resolve(preparedManifest)}`,
+      '-v',
+    ]);
+    expect(recordRepositoryEvalExperiment).toHaveBeenCalledWith({
+      context: repositoryEvalContext,
+      experimentDir: path.join(evalCwd, 'local', 'logs', 'experiments', experimentId),
+      level: 'quick',
+    });
+    expect(recordRepositoryEvalExperiment.mock.invocationCallOrder[0]).toBeLessThan(
+      cleanupPreparedManifest.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('skips Creator recording for collect-only manifest discovery', async () => {
+    prepareEvalManifest.mockResolvedValue({
+      path: preparedManifest,
+      context: repositoryEvalContext,
+      cleanup: cleanupPreparedManifest,
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalCollectCommand } = await import('../../app/commands/eval.js');
+      await evalCollectCommand({ project, manifest });
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(recordRepositoryEvalExperiment).not.toHaveBeenCalled();
+    expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves a Creator recording failure while still cleaning up the prepared manifest', async () => {
+    const recordFailure = new Error('record failed');
+    prepareEvalManifest.mockResolvedValue({
+      path: preparedManifest,
+      context: repositoryEvalContext,
+      cleanup: cleanupPreparedManifest,
+    });
+    recordRepositoryEvalExperiment.mockRejectedValue(recordFailure);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { evalRunCommand } = await import('../../app/commands/eval.js');
+      await expect(evalRunCommand({ project, manifest, quick: false })).rejects.toBe(recordFailure);
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(recordRepositoryEvalExperiment).toHaveBeenCalledWith(
+      expect.objectContaining({ level: 'full' }),
+    );
     expect(cleanupPreparedManifest).toHaveBeenCalledTimes(1);
   });
 
@@ -151,7 +240,7 @@ describe('eval command', () => {
       log.mockRestore();
     }
 
-    expectUvRun([
+    const experimentId = expectUvRun([
       'run',
       'pytest',
       'langsmith/tests/tasks/test_tasks.py',
@@ -159,9 +248,10 @@ describe('eval command', () => {
       `--skill-path=${path.resolve(skillPath)}`,
       '-v',
     ]);
+    expect(recordRepositoryEvalExperiment).not.toHaveBeenCalled();
     expect(output).toContain('Suite: langsmith');
     expect(output).toContain(
-      path.join(evalCwd, 'langsmith', 'logs', 'experiments', '<experiment-id>', 'summary.md'),
+      path.join(evalCwd, 'langsmith', 'logs', 'experiments', experimentId, 'summary.md'),
     );
   });
 

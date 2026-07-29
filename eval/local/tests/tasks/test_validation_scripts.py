@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import types
@@ -14,6 +15,81 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def _final_dockerfile_user_is_non_root(dockerfile: str) -> bool:
+    user = None
+    for line in dockerfile.splitlines():
+        if re.match(r"^\s*FROM\s+", line, re.IGNORECASE):
+            user = None
+            continue
+        match = re.match(r"^\s*USER\s+(\S+)", line, re.IGNORECASE)
+        if match:
+            user = match.group(1).lower()
+
+    if user is None:
+        return False
+    return user.split(":", 1)[0] not in {"root", "0"}
+
+
+def _dockerfile_runs_claude_code_install(dockerfile: str) -> bool:
+    instructions = []
+    current = []
+    for raw_line in dockerfile.splitlines():
+        line = raw_line.strip()
+        if not current:
+            if line.startswith("#") or not re.match(r"^RUN\s+", line, re.IGNORECASE):
+                continue
+            current.append(line)
+        else:
+            current.append(line)
+
+        if line.endswith("\\"):
+            continue
+        instructions.append(" ".join(current).replace("\\", " "))
+        current = []
+
+    return any(
+        re.search(
+            r"\bnpm\s+install\s+-g\s+@anthropic-ai/claude-code(?:@[^\s;&]+)?(?=\s|$|&&|;)",
+            instruction,
+            re.IGNORECASE,
+        )
+        for instruction in instructions
+    )
+
+
+@pytest.mark.parametrize(
+    ("dockerfile", "expected"),
+    [
+        ("# RUN npm install -g @anthropic-ai/claude-code@latest\n", False),
+        ("RUN echo @anthropic-ai/claude-code@latest\n", False),
+        ("RUN npm install -g @anthropic-ai/claude-code@latest\n", True),
+        (
+            "RUN npm install -g @fission-ai/openspec@1.3.1 && \\\n"
+            "    npm install -g @anthropic-ai/claude-code@latest\n",
+            True,
+        ),
+    ],
+)
+def test_dockerfile_detects_real_claude_code_installation(dockerfile: str, expected: bool):
+    assert _dockerfile_runs_claude_code_install(dockerfile) is expected
+
+
+@pytest.mark.parametrize(
+    ("dockerfile", "expected"),
+    [
+        ("FROM python:3.12-slim\nUSER agent\n", True),
+        ("FROM python:3.12-slim\nUSER agent\nUSER root\n", False),
+        ("FROM python:3.12-slim\nUSER 0:0\n", False),
+        (
+            "FROM python:3.12-slim AS builder\nUSER agent\nFROM python:3.12-slim\n",
+            False,
+        ),
+    ],
+)
+def test_final_dockerfile_user_must_be_non_root(dockerfile: str, expected: bool):
+    assert _final_dockerfile_user_is_non_root(dockerfile) is expected
 
 
 def test_native_wave_validator_import_does_not_load_host_docker_helpers(tmp_path: Path):
@@ -551,6 +627,31 @@ def test_current_full_workflow_layout_rejects_missing_phase_artifact(
 
     assert result["status"] == "failed"
     assert missing_artifact.replace("_", " ") in result["reason"].replace("_", " ")
+def test_generic_skill_smoke_accepts_plain_language_approach_summary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    (tmp_path / "result.md").write_text(
+        """# Skill Smoke Result
+
+Created this file directly with a single write, since the task only required producing a small markdown document with a fixed structure — no code exploration or additional tooling was needed.
+
+- Wrote `result.md` at the workspace root
+- Included the required `# Skill Smoke Result` heading and a short summary
+- Verified the bullet list contains exactly three bullets
+""",
+        encoding="utf-8",
+    )
+    module = _load_validator(
+        ROOT / "local/tasks/generic-skill-smoke/validation/test_generic_skill_smoke.py",
+        tmp_path,
+    )
+    captured = {}
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(module, "write_test_results", captured.update)
+
+    module.main()
+
+    assert "result.md describes approach" in captured["passed"]
 
 
 def test_refactor_counter_accepts_annotated_wrappers(tmp_path: Path):
@@ -622,6 +723,17 @@ def test_pytest_task_images_install_pytest():
     assert missing == []
 
 
+def test_claude_eval_task_images_do_not_use_unapproved_npm_registry():
+    task_root = ROOT / "local/tasks"
+    mirror_images = []
+    for dockerfile in task_root.glob("*/environment/Dockerfile"):
+        text = dockerfile.read_text(encoding="utf-8").lower()
+        if "@anthropic-ai/claude-code" in text and "registry.npmmirror.com" in text:
+            mirror_images.append(str(dockerfile.relative_to(ROOT)))
+
+    assert mirror_images == []
+
+
 def test_comet_state_accepts_archived_change_without_active_state(monkeypatch, tmp_path: Path):
     from scaffold.python.validation import comet_workflow
 
@@ -655,3 +767,21 @@ def test_workflow_phases_accepts_verification_report_name(monkeypatch, tmp_path:
 
     assert result["status"] == "passed"
     assert "verify" in result["message"]
+
+
+def test_claude_eval_task_images_install_claude_code():
+    task_root = ROOT / "local/tasks"
+    dockerfiles = sorted(task_root.glob("*/environment/Dockerfile"))
+    missing_claude = []
+    root_images = []
+    for dockerfile in dockerfiles:
+        text = dockerfile.read_text(encoding="utf-8")
+        relative = str(dockerfile.relative_to(ROOT))
+        if not _dockerfile_runs_claude_code_install(text):
+            missing_claude.append(relative)
+        if not _final_dockerfile_user_is_non_root(text):
+            root_images.append(relative)
+
+    assert dockerfiles != []
+    assert missing_claude == []
+    assert root_images == []

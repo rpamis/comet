@@ -8,10 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir pyyaml pytest
 
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @fission-ai/openspec@1.3.1 && \
-    npm install -g @anthropic-ai/claude-code@latest && \
-    npm config delete registry
+RUN npm install -g @fission-ai/openspec@1.3.1 &&  npm install -g @anthropic-ai/claude-code@latest
 
 COPY . /workspace/
 RUN mkdir -p openspec/changes

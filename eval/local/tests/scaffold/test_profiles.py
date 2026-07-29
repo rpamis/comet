@@ -475,6 +475,33 @@ def test_generic_profile_scores_completion_skill_artifact_and_efficiency(tmp_pat
     assert any("[RUBRIC] weighted_score:" in msg for msg in passed)
 
 
+def test_generic_profile_rejects_artifacts_outside_the_test_directory(tmp_path: Path):
+    outside = tmp_path.parent / "outside-artifact.txt"
+    outside.write_text("outside", encoding="utf-8")
+    try:
+        (tmp_path / "outside-link.txt").symlink_to(outside)
+        (tmp_path / "outside-dir").symlink_to(outside.parent, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"Symbolic links are unavailable: {error}")
+
+    outputs = {
+        "completion": {"passed": ["validator ok"], "failed": []},
+        "events": {"skills_invoked": [], "commands_run": []},
+        "expected_artifacts": [
+            str(outside),
+            "../outside-artifact.txt",
+            "outside-link.txt",
+            "outside-dir/*.txt",
+        ],
+        "interaction": {"mode": "none"},
+    }
+
+    passed, failed = run_profile_rubric("generic", tmp_path, outputs)
+
+    assert failed == []
+    assert any("[RUBRIC] artifact_presence: 0.00 - 0/4 passed" in msg for msg in passed)
+
+
 def test_generic_profile_can_fail_required_skill_invocation(tmp_path: Path):
     outputs = {
         "completion": {"passed": [], "failed": ["validator failed"]},
@@ -514,11 +541,11 @@ def test_authoring_profile_scores_generated_package_and_engine_contract(tmp_path
         encoding="utf-8",
     )
     (package / "reference" / "authoring-lanes.json").write_text(
-        '{"lanes":[{"lane":"skill-core"},{"lane":"script-contract"},{"lane":"reference"},{"lane":"pause-points"},{"lane":"eval"},{"lane":"skill-review"}],"review":{"passed":true,"blockingFindings":[]}}',
+        '{"lanes":[{"lane":"script"},{"lane":"reference"},{"lane":"pause-points"},{"lane":"workflow-entry"},{"lane":"skill-core"},{"lane":"skill-review"}],"review":{"passed":true,"blockingFindings":[]}}',
         encoding="utf-8",
     )
     (package / "reference" / "skill-review.md").write_text(
-        "# Skill Review\n\nStatus: Review passed\n",
+        "# Skill Review\n\nPassed: yes.\n",
         encoding="utf-8",
     )
     for name in ("skill.yaml", "guardrails.yaml", "checks.yaml"):
@@ -587,11 +614,11 @@ def test_authoring_profile_allows_lightweight_package_without_engine_files(tmp_p
         encoding="utf-8",
     )
     (package / "reference" / "authoring-lanes.json").write_text(
-        '{"lanes":[{"lane":"skill-core"},{"lane":"script-contract"},{"lane":"reference"},{"lane":"pause-points"},{"lane":"eval"},{"lane":"skill-review"}],"review":{"passed":true,"blockingFindings":[]}}',
+        '{"lanes":[{"lane":"script"},{"lane":"reference"},{"lane":"pause-points"},{"lane":"workflow-entry"},{"lane":"skill-core"},{"lane":"skill-review"}],"review":{"passed":true,"blockingFindings":[]}}',
         encoding="utf-8",
     )
     (package / "reference" / "skill-review.md").write_text(
-        "# Skill Review\n\nStatus: Review passed\n",
+        "# Skill Review\n\nPassed: yes.\n",
         encoding="utf-8",
     )
 
@@ -1046,3 +1073,77 @@ def test_generic_llm_judge_parses_custom_dimensions(tmp_path: Path):
     assert "custom_0" in scores
     assert "custom_1" in scores
     assert scores["custom_0"] == (0.90, "handles edge cases well")
+
+
+def test_generic_rubric_scores_structured_expected_artifact_paths(tmp_path: Path):
+    artifact_dir = tmp_path / ".comet" / "runs" / "fix-from-issues"
+    artifact_dir.mkdir(parents=True)
+    for name in ("state.json", "plan.json", "verification.json"):
+        (artifact_dir / name).write_text("{}\n", encoding="utf-8")
+
+    passed, failed = run_profile_rubric(
+        "generic",
+        tmp_path,
+        {
+            "completion": {"passed": ["workflow completed"], "failed": []},
+            "expected_artifacts": [
+                {
+                    "node": "prepare",
+                    "schema": "fix-from-issues.prepare.v1",
+                    "artifact": "workflow-run-state",
+                    "paths": [".comet/runs/fix-from-issues/state.json"],
+                },
+                {
+                    "node": "plan",
+                    "schema": "fix-from-issues.plan.v1",
+                    "artifact": "repair-plan",
+                    "path": ".comet/runs/fix-from-issues/plan.json",
+                },
+                {
+                    "node": "verify",
+                    "schema": "fix-from-issues.implementation.v1",
+                    "artifact": "verification",
+                    "paths": [
+                        ".comet/runs/fix-from-issues/state.json",
+                        ".comet/runs/fix-from-issues/verification.json",
+                    ],
+                },
+                {
+                    "node": "watch",
+                    "schema": "fix-from-issues.watch.v1",
+                    "artifact": "run-records",
+                    "path": ".comet/runs/fix-from-issues/*.json",
+                },
+            ],
+        },
+    )
+
+    assert failed == []
+    assert any("[RUBRIC] artifact_presence: 1.00 - 4/4 passed" in item for item in passed)
+
+
+def test_generic_rubric_rejects_artifact_paths_outside_task_directory(tmp_path: Path):
+    outside = tmp_path.parent / "outside-artifact.json"
+    outside.write_text("{}\n", encoding="utf-8")
+    escaped_link = tmp_path / "escaped-artifact.json"
+    try:
+        escaped_link.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"Symbolic links are unavailable: {error}")
+
+    passed, failed = run_profile_rubric(
+        "generic",
+        tmp_path,
+        {
+            "completion": {"passed": ["workflow completed"], "failed": []},
+            "expected_artifacts": [
+                {"path": "../outside-artifact.json"},
+                {"path": str(outside)},
+                {"path": "escaped-artifact.json"},
+                {"path": "escaped-*.json"},
+            ],
+        },
+    )
+
+    assert failed == []
+    assert any("[RUBRIC] artifact_presence: 0.00 - 0/4 passed" in item for item in passed)

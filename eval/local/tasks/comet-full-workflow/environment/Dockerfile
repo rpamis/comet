@@ -15,15 +15,11 @@ RUN pip install --no-cache-dir pyyaml
 
 # OpenSpec CLI (comet drives openspec new/list/status/archive).
 # Use npmmirror for reproducible builds behind GFW.
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @fission-ai/openspec@1.3.1 && \
-    npm config delete registry
+RUN npm install -g @fission-ai/openspec@1.3.1
 
 # Claude Code CLI (the agent runtime; version overridable via BENCH_CC_VERSION).
 ARG CLAUDE_CODE_VERSION=latest
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && \
-    npm config delete registry
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # Sample project structure
 RUN mkdir -p wordcount-cli && \

@@ -54,9 +54,14 @@ def _is_comet_workflow_check(check: str) -> bool:
     return any(check.startswith(prefix) for prefix in COMET_WORKFLOW_CHECK_PREFIXES)
 
 
+def is_observational_baseline_run(treatment_name: str) -> bool:
+    """Return whether a treatment is recorded as a non-gating comparison baseline."""
+    return treatment_name in CONTROL_BUSINESS_ONLY_TREATMENTS
+
+
 def is_control_business_only_run(profile_name: str, treatment_name: str) -> bool:
     """Return whether workflow checks are non-applicable for this CONTROL run."""
-    return profile_name == "comet-workflow" and treatment_name in CONTROL_BUSINESS_ONLY_TREATMENTS
+    return profile_name == "comet-workflow" and is_observational_baseline_run(treatment_name)
 
 
 def filter_control_workflow_checks(

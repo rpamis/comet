@@ -178,17 +178,10 @@ function bundleManifest(
         },
       ],
       assets: [],
-      agents: [
-        {
-          id: 'comet-any-script-author',
-          path: `skills/${skillId}/agents/claude/comet-any-script-author.md`,
-          platform: 'claude',
-          required: true,
-        },
-      ],
+      agents: [],
     },
     platforms: {
-      requires: ['skills', 'scripts', 'rules', 'hooks', 'references', 'agents'],
+      requires: ['skills', 'scripts', 'rules', 'hooks', 'references'],
       optional: [],
       overrides: [],
     },

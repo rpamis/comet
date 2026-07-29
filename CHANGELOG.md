@@ -40,6 +40,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Local eval task images**: Installs Claude Code and runs every task image as a non-root agent so quick and full evaluations can collect the benchmark image identity and invoke the Claude runner ([#229](https://github.com/rpamis/comet/issues/229)).
+- **Local eval validators**: Makes the lightweight validator runtime importable from `validation/` scripts and accepts structured workflow artifact declarations in generic rubric scoring.
+- **Creator Bundle portability**: Generates portable authoring briefs instead of requiring a Claude-only runtime agent, so Codex distribution readiness is not blocked by a Claude-specific capability.
 - **Native baselines for large repositories**: Native content snapshots now support baseline-bound include/exclude policies and configurable file-count, total-byte, and duration budgets in `.comet/config.yaml`, with a 256 MiB default total budget and no separate 5 MiB per-file cap. Runtime continues to hash actual working-tree content with streaming SHA-256, records the effective policy and limits for audit, and reports actionable configuration fixes when a complete baseline cannot be captured ([#226](https://github.com/rpamis/comet/issues/226)).
 - **Global workflow selection**: `comet init` now offers Native, Classic, or both for global installs and accepts `--scope global --workflow native|classic|both`, so global Skill installation exposes the same workflow choices as project scope while preserving Classic as the non-interactive default when no workflow is specified ([#234](https://github.com/rpamis/comet/issues/234)).
 - **Explicit Comet Skill invocation**: Ambient Resume project instructions now give host-recognized manual Comet Skill invocations precedence over recovery probing, preventing `none` or `out_of_scope` results from skipping `/comet` when no active change exists ([#235](https://github.com/rpamis/comet/issues/235)).

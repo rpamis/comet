@@ -9,6 +9,7 @@ from scaffold.python.native_eval import (
     adapt_checks_for_native,
     adapt_prompt_for_native,
     filter_control_workflow_checks,
+    is_observational_baseline_run,
     split_comet_completion_checks,
 )
 from scaffold.python.validation.native_workflow import validate_native_workflow
@@ -290,6 +291,12 @@ def test_split_completion_classifies_native_checks_as_workflow():
             ],
         },
     }
+
+
+def test_control_is_an_observational_baseline_but_dynamic_treatments_are_gating():
+    assert is_observational_baseline_run("CONTROL") is True
+    assert is_observational_baseline_run("DYNAMIC_SKILL") is False
+    assert is_observational_baseline_run("COMET_FULL_040_BETA") is False
 
 
 def test_control_filter_removes_classic_and_native_workflow_checks():

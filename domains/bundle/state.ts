@@ -16,6 +16,148 @@ function statePath(projectRoot: string, name: string): string {
   return path.resolve(projectRoot, '.comet', 'bundle-authoring', `${name}.json`);
 }
 
+function portableProjectPath(projectRoot: string, value: string): string | null {
+  if (!path.isAbsolute(value)) return null;
+  const relative = path.relative(path.resolve(projectRoot), path.resolve(value));
+  if (
+    relative === '' ||
+    relative === '..' ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    return null;
+  }
+  return `./${relative.split(path.sep).join('/')}`;
+}
+
+function hydrateProjectPath(projectRoot: string, value: string): string {
+  if (!value.startsWith('./')) return value;
+  return path.resolve(projectRoot, ...value.slice(2).split(/[\\/]/u));
+}
+
+function mapNullableProjectPath(
+  value: string | null,
+  transform: (value: string) => string,
+): string | null {
+  return value === null ? null : transform(value);
+}
+
+function mapFactoryProjectPaths(
+  state: BundleAuthoringState['factory'],
+  transform: (value: string) => string,
+): BundleAuthoringState['factory'] {
+  if (!state) return state;
+  const generated = state.generatedSkillPackage;
+  return {
+    ...state,
+    ...(state.resolvedSkills === undefined
+      ? {}
+      : {
+          resolvedSkills: state.resolvedSkills.map((skill) => ({
+            ...skill,
+            sources: skill.sources.map((source) => ({
+              ...source,
+              root: transform(source.root),
+            })),
+          })),
+        }),
+    ...(state.preferencePath === undefined
+      ? {}
+      : { preferencePath: transform(state.preferencePath) }),
+    ...(state.planPath === undefined ? {} : { planPath: transform(state.planPath) }),
+    ...(generated === undefined
+      ? {}
+      : {
+          generatedSkillPackage: {
+            ...generated,
+            packageRoot: transform(generated.packageRoot),
+            enginePath: mapNullableProjectPath(generated.enginePath, transform),
+            evalManifestPath: mapNullableProjectPath(generated.evalManifestPath, transform),
+            ...(generated.controlPlane === undefined
+              ? {}
+              : {
+                  controlPlane: {
+                    ...generated.controlPlane,
+                    checksPath: mapNullableProjectPath(
+                      generated.controlPlane.checksPath,
+                      transform,
+                    ),
+                    evalManifestPath: mapNullableProjectPath(
+                      generated.controlPlane.evalManifestPath,
+                      transform,
+                    ),
+                    compositionReportPath: transform(generated.controlPlane.compositionReportPath),
+                    scripts: generated.controlPlane.scripts.map(transform),
+                  },
+                }),
+            ...(generated.platformAgents === undefined
+              ? {}
+              : {
+                  platformAgents: generated.platformAgents.map((agent) => ({
+                    ...agent,
+                    path: transform(agent.path),
+                  })),
+                }),
+          },
+        }),
+  };
+}
+
+function mapProjectPaths(
+  state: BundleAuthoringState,
+  transform: (value: string) => string,
+): BundleAuthoringState {
+  return {
+    ...state,
+    draftPath: transform(state.draftPath),
+    ...(state.base === undefined
+      ? {}
+      : {
+          base: {
+            ...state.base,
+            root: transform(state.base.root),
+          },
+        }),
+    candidates: state.candidates.map((candidate) => ({
+      ...candidate,
+      root: transform(candidate.root),
+    })),
+    ...(state.eval === undefined
+      ? {}
+      : {
+          eval: {
+            ...state.eval,
+            resultPath: transform(state.eval.resultPath),
+          },
+        }),
+    ...(state.ready === undefined
+      ? {}
+      : {
+          ready: {
+            ...state.ready,
+            path: transform(state.ready.path),
+          },
+        }),
+    ...(state.factory === undefined
+      ? {}
+      : { factory: mapFactoryProjectPaths(state.factory, transform) }),
+  };
+}
+
+function serializeProjectPaths(
+  projectRoot: string,
+  state: BundleAuthoringState,
+): BundleAuthoringState {
+  return mapProjectPaths(state, (value) => portableProjectPath(projectRoot, value) ?? value);
+}
+
+function hydrateProjectPaths(
+  projectRoot: string,
+  state: BundleAuthoringState,
+): BundleAuthoringState {
+  return mapProjectPaths(state, (value) => hydrateProjectPath(projectRoot, value));
+}
+
 function assertState(value: unknown, file: string): asserts value is BundleAuthoringState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Invalid Bundle authoring state at ${file}: document must be an object`);
@@ -59,7 +201,7 @@ export async function readBundleAuthoringState(
   if (value.name !== name) {
     throw new Error(`Invalid Bundle authoring state at ${file}: name must be ${name}`);
   }
-  return value;
+  return hydrateProjectPaths(projectRoot, value) as BundleAuthoringState;
 }
 
 export async function listBundleAuthoringStates(
@@ -109,10 +251,14 @@ export async function writeBundleAuthoringState(
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temporary = path.join(path.dirname(file), `.${state.name}.${randomUUID()}.tmp`);
   try {
-    await fs.writeFile(temporary, JSON.stringify(state, null, 2) + '\n', {
-      encoding: 'utf8',
-      flag: 'wx',
-    });
+    await fs.writeFile(
+      temporary,
+      JSON.stringify(serializeProjectPaths(projectRoot, state), null, 2) + '\n',
+      {
+        encoding: 'utf8',
+        flag: 'wx',
+      },
+    );
     await fs.rename(temporary, file);
   } finally {
     await fs.rm(temporary, { force: true });

@@ -1,15 +1,25 @@
+import { createHash } from 'crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { parse } from 'yaml';
 import { prepareEvalManifest } from '../../../domains/bundle/eval-manifest-runtime.js';
+import { hashBundle } from '../../../domains/bundle/hash.js';
+import { loadBundle } from '../../../domains/bundle/load.js';
 
 const temporary: string[] = [];
 
-async function createBundleFixture(): Promise<{ root: string; manifestPath: string }> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-runtime-test-'));
-  temporary.push(root);
+async function createBundleFixture(options: { projectRoot?: string } = {}): Promise<{
+  root: string;
+  manifestPath: string;
+}> {
+  const projectRoot =
+    options.projectRoot ?? (await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-runtime-test-')));
+  if (!options.projectRoot) temporary.push(projectRoot);
+  const root = options.projectRoot
+    ? path.join(projectRoot, '.comet', 'bundle-drafts', 'demo')
+    : projectRoot;
   const manifestPath = path.join(root, 'skills', 'demo', 'comet', 'eval.yaml');
   await fs.mkdir(path.dirname(manifestPath), { recursive: true });
   await fs.writeFile(
@@ -68,7 +78,98 @@ describe('prepareEvalManifest', () => {
     expect(resolved.metadata.draftHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(resolved.skill.source).toBe(path.join(root, 'skills', 'demo'));
     expect(await fs.readFile(manifestPath, 'utf8')).toContain('draftHash: <current-bundle-hash>');
+    expect(prepared.context).toBeUndefined();
 
+    await prepared.cleanup();
+  });
+
+  it('returns Creator recording context only for the matching current authoring draft', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-project-test-'));
+    temporary.push(projectRoot);
+    const { root, manifestPath } = await createBundleFixture({ projectRoot });
+    const manifestSource = await fs.readFile(manifestPath, 'utf8');
+    const draftHash = await hashBundle(await loadBundle(root));
+    const stateDir = path.join(projectRoot, '.comet', 'bundle-authoring');
+    await fs.mkdir(stateDir, { recursive: true });
+    await fs.writeFile(
+      path.join(stateDir, 'demo.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: 'demo',
+        mode: 'create',
+        status: 'draft',
+        draftPath: root,
+        currentHash: draftHash,
+        candidates: [],
+        defaultLocale: 'zh',
+        locales: ['zh'],
+        engineEnabled: false,
+        factory: {
+          generatedSkillPackage: {
+            entrySkill: 'demo',
+            internalSkills: [],
+            packageRoot: path.join(root, 'skills', 'demo'),
+            enginePath: null,
+            evalManifestPath: manifestPath,
+            controlPlane: {
+              checksPath: null,
+              evalManifestPath: manifestPath,
+              compositionReportPath: path.join(root, 'composition-report.json'),
+              scripts: [],
+            },
+          },
+        },
+      }),
+    );
+
+    const prepared = await prepareEvalManifest(manifestPath);
+    temporary.push(path.dirname(prepared.path));
+
+    expect(prepared.context).toEqual({
+      projectRoot,
+      name: 'demo',
+      draftHash,
+      evalManifestHash: createHash('sha256').update(manifestSource).digest('hex'),
+      sourceManifestPath: manifestPath,
+    });
+    await prepared.cleanup();
+  });
+
+  it('does not attach Creator context when the authoring state points at a stale draft hash', async () => {
+    const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-project-test-'));
+    temporary.push(projectRoot);
+    const { root, manifestPath } = await createBundleFixture({ projectRoot });
+    const stateDir = path.join(projectRoot, '.comet', 'bundle-authoring');
+    await fs.mkdir(stateDir, { recursive: true });
+    await fs.writeFile(
+      path.join(stateDir, 'demo.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: 'demo',
+        mode: 'create',
+        status: 'draft',
+        draftPath: root,
+        currentHash: 'f'.repeat(64),
+        candidates: [],
+        defaultLocale: 'zh',
+        locales: ['zh'],
+        engineEnabled: false,
+        factory: {
+          generatedSkillPackage: {
+            entrySkill: 'demo',
+            internalSkills: [],
+            packageRoot: path.join(root, 'skills', 'demo'),
+            enginePath: null,
+            evalManifestPath: manifestPath,
+          },
+        },
+      }),
+    );
+
+    const prepared = await prepareEvalManifest(manifestPath);
+    temporary.push(path.dirname(prepared.path));
+
+    expect(prepared.context).toBeUndefined();
     await prepared.cleanup();
   });
 

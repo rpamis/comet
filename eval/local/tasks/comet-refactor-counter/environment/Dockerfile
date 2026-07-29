@@ -9,14 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir pyyaml pytest
 
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @fission-ai/openspec@1.3.1 && \
-    npm config delete registry
+RUN npm install -g @fission-ai/openspec@1.3.1
 
 ARG CLAUDE_CODE_VERSION=latest
-RUN npm config set registry https://registry.npmmirror.com && \
-    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && \
-    npm config delete registry
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 COPY text_processor.py /workspace/text_processor.py
 COPY test_text_processor.py /workspace/test_text_processor.py
