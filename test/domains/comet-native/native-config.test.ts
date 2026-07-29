@@ -155,6 +155,7 @@ describe('Native project configuration', () => {
       artifact_layout: 'docs',
       language: 'zh-CN',
       context_compression: 'off',
+      recommend_lightweight_workflows: true,
       review_mode: 'standard',
       auto_transition: true,
     };

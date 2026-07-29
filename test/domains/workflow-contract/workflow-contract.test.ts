@@ -114,7 +114,7 @@ describe('workflow contract normalization', () => {
         '    max_files: 12000',
         '    max_total_bytes: 268435456',
         '    max_duration_ms: 90000',
-        'classic: { artifact_layout: docs, language: zh-CN, review_mode: thorough }',
+        'classic: { artifact_layout: docs, language: zh-CN, recommend_lightweight_workflows: false, review_mode: thorough }',
         'extension:',
         '  owners: [platform, workflow]',
         '  note: "value: with # content"',
@@ -140,6 +140,7 @@ describe('workflow contract normalization', () => {
       classic: {
         artifact_layout: 'docs',
         language: 'zh-CN',
+        recommend_lightweight_workflows: false,
         review_mode: 'thorough',
       },
     });
@@ -160,7 +161,7 @@ describe('workflow contract normalization', () => {
     ],
     [
       'invalid managed fields',
-      'schema: comet.project.v1\ndefault_workflow: classic\nclassic:\n  review_mode: casual\n',
+      'schema: comet.project.v1\ndefault_workflow: classic\nclassic:\n  recommend_lightweight_workflows: maybe\n',
     ],
   ])('fails closed for project config with %s', (_label, source) => {
     expect(() => parseWorkflowProjectConfigDocument(source)).toThrow();

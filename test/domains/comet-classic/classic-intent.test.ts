@@ -42,6 +42,7 @@ function frame(overrides: FrameOverrides = {}): CometIntentFrame {
       active_changes_count: 0,
       active_change_names: [],
       dirty_worktree: false,
+      recommend_lightweight_workflows: true,
     },
     evidence: [
       { field: 'intent.name', quote: 'fix', source: 'user' },
@@ -77,7 +78,6 @@ describe('resolveCometIntentRoute', () => {
       recommendation: {
         workflow: 'hotfix',
         next_skill: 'comet-hotfix',
-        intensity: 'standard',
       },
     });
     expect(result.route.recommendation?.reasons.join(' ')).toContain('existing behavior');
@@ -113,7 +113,11 @@ describe('resolveCometIntentRoute', () => {
     expect(result.route).toMatchObject({
       name: 'full',
       next_skill: 'comet-open',
-      recommendation: null,
+      requires_confirmation: true,
+      recommendation: {
+        workflow: 'hotfix',
+        next_skill: 'comet-hotfix',
+      },
     });
     expect(result.normalizedFrame).toMatchObject({
       locale: 'unknown',
@@ -128,7 +132,7 @@ describe('resolveCometIntentRoute', () => {
     });
   });
 
-  it('recommends tweak confirmation for doc, config, and prompt changes', () => {
+  it('recommends tweak confirmation for evidence-backed tweak candidates', () => {
     const result = resolveCometIntentRoute(
       frame({
         utterance: 'tweak the comet prompt wording',
@@ -155,10 +159,11 @@ describe('resolveCometIntentRoute', () => {
       recommendation: {
         workflow: 'tweak',
         next_skill: 'comet-tweak',
-        intensity: 'standard',
       },
     });
-    expect(result.route.recommendation?.reasons.join(' ')).toContain('small');
+    expect(result.route.recommendation?.reasons.join(' ')).toContain(
+      'workflow_candidate=tweak evidence',
+    );
   });
 
   it('does not offer hotfix for ordinary tweak recommendations', () => {
@@ -206,7 +211,7 @@ describe('resolveCometIntentRoute', () => {
     });
   });
 
-  it('recommends tweak confirmation for small low-risk work under standard intensity', () => {
+  it('does not infer tweak from small docs wording without workflow candidate evidence', () => {
     const result = resolveCometIntentRoute(
       frame({
         utterance: 'add a small docs note',
@@ -233,25 +238,20 @@ describe('resolveCometIntentRoute', () => {
     expect(result.route).toMatchObject({
       name: 'full',
       next_skill: 'comet-open',
-      requires_confirmation: true,
-      recommendation: {
-        workflow: 'tweak',
-        next_skill: 'comet-tweak',
-        intensity: 'standard',
-      },
+      requires_confirmation: false,
+      recommendation: null,
     });
-    expect(result.route.recommendation?.reasons.join(' ')).toContain('small');
   });
 
-  it('does not treat medium or large scope evidence as low-risk evidence', () => {
-    for (const scope of ['medium', 'large'] as const) {
+  it('uses scope only as a large-scope filter for lightweight recommendations', () => {
+    for (const scope of ['medium', 'unknown'] as const) {
       const result = resolveCometIntentRoute(
         frame({
           utterance: `${scope} workflow update`,
-          intent: { name: 'start_change', confidence: 0.92 },
+          intent: { name: 'make_tweak', confidence: 0.92 },
           slots: {
             requested_action: 'modify',
-            workflow_candidate: 'full',
+            workflow_candidate: 'tweak',
             scope,
             existing_behavior: false,
             new_capability: false,
@@ -260,30 +260,97 @@ describe('resolveCometIntentRoute', () => {
             cross_module_change: false,
           },
           evidence: [
-            { field: 'intent.name', quote: 'update', source: 'user' },
+            { field: 'intent.name', quote: 'tweak', source: 'user' },
+            { field: 'slots.workflow_candidate', quote: 'single change', source: 'user' },
             { field: 'slots.scope', quote: `${scope} workflow update`, source: 'user' },
           ],
-          proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
+          proposed_route: { name: 'tweak', next_skill: 'comet-tweak', confidence: 0.9 },
         }),
       );
 
       expect(result.route).toMatchObject({
         name: 'full',
         next_skill: 'comet-open',
-        requires_confirmation: false,
-        recommendation: null,
+        requires_confirmation: true,
+        recommendation: {
+          workflow: 'tweak',
+          next_skill: 'comet-tweak',
+        },
       });
     }
-  });
 
-  it('keeps thorough intensity conservative for unclear small work', () => {
-    const result = resolveCometIntentRoute(
+    const largeResult = resolveCometIntentRoute(
       frame({
-        utterance: 'modify the workflow',
-        intent: { name: 'start_change', confidence: 0.92 },
+        utterance: 'large workflow update',
+        intent: { name: 'make_tweak', confidence: 0.92 },
         slots: {
           requested_action: 'modify',
-          workflow_candidate: 'full',
+          workflow_candidate: 'tweak',
+          scope: 'large',
+          existing_behavior: false,
+          new_capability: false,
+          public_api_change: false,
+          schema_change: false,
+          cross_module_change: false,
+        },
+        evidence: [
+          { field: 'intent.name', quote: 'tweak', source: 'user' },
+          { field: 'slots.workflow_candidate', quote: 'single change', source: 'user' },
+          { field: 'slots.scope', quote: 'large workflow update', source: 'user' },
+        ],
+        proposed_route: { name: 'tweak', next_skill: 'comet-tweak', confidence: 0.9 },
+      }),
+    );
+
+    expect(largeResult.route).toMatchObject({
+      name: 'full',
+      next_skill: 'comet-open',
+      requires_confirmation: false,
+      recommendation: null,
+    });
+  });
+
+  it('does not recommend lightweight paths when the project disables recommendations', () => {
+    const result = resolveCometIntentRoute(
+      frame({
+        utterance: 'tweak a small workflow behavior',
+        intent: { name: 'make_tweak', confidence: 0.92 },
+        slots: {
+          requested_action: 'modify',
+          workflow_candidate: 'tweak',
+          scope: 'small',
+          existing_behavior: false,
+          new_capability: false,
+          public_api_change: false,
+          schema_change: false,
+          cross_module_change: false,
+        },
+        context: { recommend_lightweight_workflows: false },
+        evidence: [
+          { field: 'intent.name', quote: 'tweak', source: 'user' },
+          { field: 'slots.workflow_candidate', quote: 'single change', source: 'user' },
+          { field: 'slots.scope', quote: 'small workflow update', source: 'user' },
+        ],
+        proposed_route: { name: 'tweak', next_skill: 'comet-tweak', confidence: 0.9 },
+      }),
+    );
+
+    expect(result.route).toMatchObject({
+      name: 'full',
+      next_skill: 'comet-open',
+      requires_confirmation: false,
+      recommendation: null,
+    });
+  });
+
+  it('defaults lightweight recommendations to enabled when context omits the switch', () => {
+    const result = resolveCometIntentRoute(
+      frame({
+        utterance: 'tweak a workflow behavior',
+        intent: { name: 'make_tweak', confidence: 0.92 },
+        slots: {
+          requested_action: 'modify',
+          workflow_candidate: 'tweak',
           scope: 'unknown',
           existing_behavior: false,
           new_capability: false,
@@ -291,36 +358,44 @@ describe('resolveCometIntentRoute', () => {
           schema_change: false,
           cross_module_change: false,
         },
-        context: { workflow_intensity: 'thorough' },
-        evidence: [{ field: 'intent.name', quote: 'modify', source: 'user' }],
-        proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
+        context: { recommend_lightweight_workflows: undefined },
+        evidence: [
+          { field: 'intent.name', quote: 'tweak', source: 'user' },
+          { field: 'slots.workflow_candidate', quote: 'single change', source: 'user' },
+        ],
+        proposed_route: { name: 'tweak', next_skill: 'comet-tweak', confidence: 0.9 },
       }),
     );
 
-    expect(result.route.name).toBe('full');
-    expect(result.route.requires_confirmation).toBe(false);
-    expect(result.route.recommendation).toBeNull();
+    expect(result.route.recommendation).toMatchObject({
+      workflow: 'tweak',
+      next_skill: 'comet-tweak',
+    });
   });
 
-  it('does not recommend lightweight paths when risk signals are present', () => {
+  it('does not recommend lightweight paths when risk signal entities are present', () => {
     const result = resolveCometIntentRoute(
       frame({
-        utterance: 'add a small public API',
-        intent: { name: 'start_change', confidence: 0.92 },
+        utterance: 'tweak a security-sensitive workflow',
+        intent: { name: 'make_tweak', confidence: 0.92 },
+        entities: [
+          { type: 'risk_signal', value: 'security_sensitive', text: 'security-sensitive' },
+        ],
         slots: {
-          requested_action: 'create',
-          workflow_candidate: 'full',
+          requested_action: 'modify',
+          workflow_candidate: 'tweak',
           scope: 'small',
           existing_behavior: false,
-          new_capability: true,
-          public_api_change: true,
+          new_capability: false,
+          public_api_change: false,
         },
-        context: { workflow_intensity: 'light' },
+        context: { recommend_lightweight_workflows: true },
         evidence: [
+          { field: 'intent.name', quote: 'tweak', source: 'user' },
+          { field: 'slots.workflow_candidate', quote: 'single change', source: 'user' },
           { field: 'slots.scope', quote: 'small', source: 'user' },
-          { field: 'slots.public_api_change', quote: 'public API', source: 'user' },
         ],
-        proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
+        proposed_route: { name: 'tweak', next_skill: 'comet-tweak', confidence: 0.9 },
       }),
     );
 
@@ -328,50 +403,36 @@ describe('resolveCometIntentRoute', () => {
     expect(result.route.recommendation).toBeNull();
   });
 
-  it('keeps thorough intensity on full for non-small bug or tweak candidates', () => {
-    for (const candidate of ['hotfix', 'tweak'] as const) {
-      const result = resolveCometIntentRoute(
-        frame({
-          utterance:
-            candidate === 'hotfix' ? 'fix the workflow regression' : 'tweak the workflow behavior',
-          intent: { name: candidate === 'hotfix' ? 'fix_bug' : 'make_tweak', confidence: 0.92 },
-          slots: {
-            requested_action: candidate === 'hotfix' ? 'fix' : 'modify',
-            workflow_candidate: candidate,
-            scope: 'unknown',
-            existing_behavior: candidate === 'hotfix' ? true : null,
-            new_capability: false,
-            public_api_change: false,
-            schema_change: false,
-            cross_module_change: false,
-          },
-          context: { workflow_intensity: 'thorough' },
-          evidence: [
-            {
-              field: 'intent.name',
-              quote: candidate === 'hotfix' ? 'fix' : 'tweak',
-              source: 'user',
-            },
-            { field: 'slots.workflow_candidate', quote: candidate, source: 'user' },
-          ],
-          proposed_route: {
-            name: candidate,
-            next_skill: `comet-${candidate}`,
-            confidence: 0.9,
-          },
-        }),
-      );
+  it('allows small feature tweak recommendations when new_capability is the only risk-like slot', () => {
+    const result = resolveCometIntentRoute(
+      frame({
+        utterance: 'add a small quality-of-life toggle',
+        intent: { name: 'start_change', confidence: 0.92 },
+        slots: {
+          requested_action: 'create',
+          workflow_candidate: 'tweak',
+          scope: 'small',
+          existing_behavior: false,
+          new_capability: true,
+          public_api_change: false,
+          schema_change: false,
+          cross_module_change: false,
+        },
+        evidence: [
+          { field: 'intent.name', quote: 'add', source: 'user' },
+          { field: 'slots.workflow_candidate', quote: 'single OpenSpec change', source: 'user' },
+          { field: 'slots.scope', quote: 'small quality-of-life toggle', source: 'user' },
+        ],
+        proposed_route: { name: 'tweak', next_skill: 'comet-tweak', confidence: 0.9 },
+      }),
+    );
 
-      expect(result.route).toMatchObject({
-        name: 'full',
-        next_skill: 'comet-open',
-        requires_confirmation: false,
-        recommendation: null,
-      });
-    }
+    expect(result.route.recommendation).toMatchObject({
+      workflow: 'tweak',
+    });
   });
 
-  it('routes new capability and public API risk signals to full', () => {
+  it('routes public API risk signals to full even for new capability tweak candidates', () => {
     const result = resolveCometIntentRoute(
       frame({
         utterance: 'add a public API for intent routing',
@@ -379,17 +440,18 @@ describe('resolveCometIntentRoute', () => {
         entities: [{ type: 'risk_signal', value: 'public_api_change', text: 'public API' }],
         slots: {
           requested_action: 'create',
-          workflow_candidate: 'full',
-          scope: 'large',
+          workflow_candidate: 'tweak',
+          scope: 'small',
           existing_behavior: false,
           new_capability: true,
           public_api_change: true,
         },
         evidence: [
           { field: 'intent.name', quote: 'add', source: 'user' },
+          { field: 'slots.workflow_candidate', quote: 'single OpenSpec change', source: 'user' },
           { field: 'slots.public_api_change', quote: 'public API', source: 'user' },
         ],
-        proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.93 },
+        proposed_route: { name: 'tweak', next_skill: 'comet-tweak', confidence: 0.93 },
       }),
     );
 
@@ -547,13 +609,13 @@ describe('resolveCometIntentRoute', () => {
     );
   });
 
-  it('intent command applies workflow_intensity from Classic project config', async () => {
+  it('intent command applies recommend_lightweight_workflows from Classic project config', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-intent-command-'));
     try {
       await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
       await fs.writeFile(
         path.join(projectRoot, '.comet', 'config.yaml'),
-        'classic:\n  workflow_intensity: thorough\n',
+        'classic:\n  recommend_lightweight_workflows: false\n',
         'utf8',
       );
 
@@ -566,16 +628,20 @@ describe('resolveCometIntentRoute', () => {
               intent: { name: 'start_change', confidence: 0.92 },
               slots: {
                 requested_action: 'modify',
-                workflow_candidate: 'full',
-                scope: 'unknown',
+                workflow_candidate: 'tweak',
+                scope: 'small',
                 existing_behavior: false,
                 new_capability: false,
                 public_api_change: false,
                 schema_change: false,
                 cross_module_change: false,
               },
-              evidence: [{ field: 'intent.name', quote: 'modify', source: 'user' }],
-              proposed_route: { name: 'full', next_skill: 'comet-open', confidence: 0.9 },
+              context: { recommend_lightweight_workflows: undefined },
+              evidence: [
+                { field: 'intent.name', quote: 'modify', source: 'user' },
+                { field: 'slots.workflow_candidate', quote: 'single change', source: 'user' },
+              ],
+              proposed_route: { name: 'tweak', next_skill: 'comet-tweak', confidence: 0.9 },
             }),
           ),
         ],
@@ -586,7 +652,7 @@ describe('resolveCometIntentRoute', () => {
       const payload = JSON.parse(result.stdout ?? '{}') as ReturnType<
         typeof resolveCometIntentRoute
       >;
-      expect(payload.normalizedFrame.context.workflow_intensity).toBe('thorough');
+      expect(payload.normalizedFrame.context.recommend_lightweight_workflows).toBe(false);
       expect(payload.route).toMatchObject({
         name: 'full',
         requires_confirmation: false,

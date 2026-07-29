@@ -40,13 +40,13 @@ describe('Comet workflow optimization contracts', () => {
       '中文',
       zhSkillRoot,
       '### 1a. 轻量路径推荐确认（阻塞点）',
-      '不得在轻量路径推荐确认前运行 `openspec new change`',
+      '不得在轻量路径推荐确认前运行 `comet classic openspec -- new change`',
     ],
     [
       'English',
       skillRoot,
       '### 1a. Lightweight Path Recommendation Confirmation (Blocking Point)',
-      'must not run `openspec new change` before lightweight path recommendation confirmation',
+      'must not run `comet classic openspec -- new change` before lightweight path recommendation confirmation',
     ],
   ])(
     '%s open flow confirms lightweight recommendation before artifact creation',
@@ -55,8 +55,12 @@ describe('Comet workflow optimization contracts', () => {
 
       expect(skill).toContain(heading);
       expect(skill).toContain(guard);
-      expect(skill.indexOf(heading)).toBeLessThan(skill.indexOf('openspec new change'));
-      expect(skill.indexOf(guard)).toBeLessThan(skill.indexOf('openspec new change'));
+      expect(skill.indexOf(heading)).toBeLessThan(
+        skill.indexOf('comet classic openspec -- new change'),
+      );
+      expect(skill.indexOf(guard)).toBeLessThan(
+        skill.indexOf('comet classic openspec -- new change'),
+      );
     },
   );
 

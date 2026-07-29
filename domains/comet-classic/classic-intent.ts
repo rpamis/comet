@@ -31,7 +31,6 @@ const REQUESTED_ACTIONS = [
   'unknown',
 ] as const;
 const WORKFLOWS = ['full', 'hotfix', 'tweak'] as const;
-const WORKFLOW_INTENSITIES = ['light', 'standard', 'thorough'] as const;
 const SCOPES = ['small', 'medium', 'large', 'unknown'] as const;
 const ROUTES = ['full', 'hotfix', 'tweak', 'resume', 'ask_user', 'out_of_scope'] as const;
 const NEXT_SKILLS = [
@@ -51,7 +50,6 @@ export type CometIntentName = ValueOf<typeof INTENT_NAMES>;
 export type CometIntentEntityType = ValueOf<typeof ENTITY_TYPES>;
 export type CometIntentRequestedAction = ValueOf<typeof REQUESTED_ACTIONS>;
 export type CometIntentWorkflow = ValueOf<typeof WORKFLOWS>;
-export type CometIntentWorkflowIntensity = ValueOf<typeof WORKFLOW_INTENSITIES>;
 export type CometIntentScope = ValueOf<typeof SCOPES>;
 export type CometIntentRouteName = ValueOf<typeof ROUTES>;
 export type CometIntentNextSkill = ValueOf<typeof NEXT_SKILLS>;
@@ -80,7 +78,7 @@ export interface CometIntentFrame {
     active_changes_count: number;
     active_change_names: string[];
     dirty_worktree: boolean | null;
-    workflow_intensity: CometIntentWorkflowIntensity;
+    recommend_lightweight_workflows: boolean;
   };
   evidence: Array<{ field: string; quote: string; source: CometIntentEvidenceSource }>;
   proposed_route: CometIntentRoute;
@@ -102,7 +100,6 @@ export interface CometIntentRoute {
 export interface CometIntentRecommendation {
   workflow: Exclude<CometIntentWorkflow, 'full'>;
   next_skill: Extract<CometIntentNextSkill, 'comet-hotfix' | 'comet-tweak'>;
-  intensity: CometIntentWorkflowIntensity;
   reasons: string[];
   options: CometIntentWorkflow[];
 }
@@ -299,15 +296,15 @@ function validateFrame(input: unknown): CometIntentFrame {
         'context.dirty_worktree',
         issues,
       ),
-      workflow_intensity:
-        context.workflow_intensity === undefined || context.workflow_intensity === null
-          ? 'standard'
-          : (enumValue(
-              context.workflow_intensity,
-              WORKFLOW_INTENSITIES,
-              'context.workflow_intensity',
+      recommend_lightweight_workflows:
+        context.recommend_lightweight_workflows === undefined ||
+        context.recommend_lightweight_workflows === null
+          ? true
+          : (optionalBooleanValue(
+              context.recommend_lightweight_workflows,
+              'context.recommend_lightweight_workflows',
               issues,
-            ) ?? 'standard'),
+            ) ?? true),
     },
     evidence: evidence.map((item, index) => {
       const record = isRecord(item) ? item : {};
@@ -353,63 +350,61 @@ function hasEvidence(frame: CometIntentFrame, field: string): boolean {
   return frame.evidence.some((item) => item.field === field && item.quote.trim() !== '');
 }
 
-function hasSmallScopeEvidence(frame: CometIntentFrame): boolean {
-  if (frame.slots.scope === 'small') return true;
-
-  return frame.evidence.some(
-    (item) =>
-      item.field === 'slots.scope' &&
-      /\b(small|tiny|minor)\b|轻量|小型|较小|很小|微小|小改动|小修改/iu.test(item.quote),
+function hasWorkflowCandidateEvidence(
+  frame: CometIntentFrame,
+  workflow: Exclude<CometIntentWorkflow, 'full'>,
+): boolean {
+  return (
+    frame.slots.workflow_candidate === workflow && hasEvidence(frame, 'slots.workflow_candidate')
   );
 }
 
-function hasRiskSignal(frame: CometIntentFrame): boolean {
+function hasRiskSignalEntity(frame: CometIntentFrame): boolean {
+  return frame.entities.some((entity) => entity.type === 'risk_signal');
+}
+
+function hasHardRiskSignal(frame: CometIntentFrame): boolean {
   return (
-    frame.slots.new_capability === true ||
+    hasRiskSignalEntity(frame) ||
     frame.slots.public_api_change === true ||
     frame.slots.schema_change === true ||
     frame.slots.cross_module_change === true
   );
 }
 
-function lowRiskEvidence(frame: CometIntentFrame): boolean {
-  return (
-    hasSmallScopeEvidence(frame) ||
-    /docs?|prompt|wording|config|readme|small|tiny|minor/iu.test(frame.utterance)
-  );
+function scopeAllowsLightweightRecommendation(frame: CometIntentFrame): boolean {
+  return frame.slots.scope !== 'large';
 }
 
 function recommendationFor(frame: CometIntentFrame): CometIntentRecommendation | null {
-  if (hasRiskSignal(frame) || !hasSmallScopeEvidence(frame)) return null;
-  const intensity = frame.context.workflow_intensity;
-  const evidenceIsStrong = lowRiskEvidence(frame);
-  if (intensity === 'thorough' && !evidenceIsStrong) return null;
+  if (
+    !frame.context.recommend_lightweight_workflows ||
+    hasHardRiskSignal(frame) ||
+    !scopeAllowsLightweightRecommendation(frame)
+  ) {
+    return null;
+  }
 
-  if (frame.intent.name === 'fix_bug' && frame.slots.existing_behavior === true) {
+  if (
+    hasWorkflowCandidateEvidence(frame, 'hotfix') &&
+    (frame.intent.name === 'fix_bug' || frame.slots.existing_behavior === true)
+  ) {
     return {
       workflow: 'hotfix',
       next_skill: 'comet-hotfix',
-      intensity,
-      reasons: ['existing behavior fix', `workflow_intensity=${intensity}`],
+      reasons: [
+        'workflow_candidate=hotfix evidence',
+        frame.slots.existing_behavior === true ? 'existing behavior fix' : 'bug fix intent',
+      ],
       options: ['hotfix', 'full'],
     };
   }
 
-  if (
-    evidenceIsStrong &&
-    (frame.intent.name === 'start_change' ||
-      frame.intent.name === 'make_tweak' ||
-      frame.slots.requested_action === 'modify' ||
-      frame.slots.requested_action === 'create')
-  ) {
+  if (hasWorkflowCandidateEvidence(frame, 'tweak')) {
     return {
       workflow: 'tweak',
       next_skill: 'comet-tweak',
-      intensity,
-      reasons: [
-        evidenceIsStrong ? 'small low-risk request' : 'low-risk request',
-        `workflow_intensity=${intensity}`,
-      ],
+      reasons: ['workflow_candidate=tweak evidence'],
       options: ['tweak', 'full'],
     };
   }
@@ -487,14 +482,14 @@ export function resolveCometIntentRoute(input: unknown): CometIntentRouteResolut
   } else if (
     frame.slots.user_explicit_workflow &&
     frame.slots.user_explicit_workflow !== 'full' &&
-    hasRiskSignal(frame)
+    hasHardRiskSignal(frame)
   ) {
     resolved = askUser(
       `explicit workflow '${frame.slots.user_explicit_workflow}' conflicts with risk signals`,
     );
   } else if (frame.slots.user_explicit_workflow) {
     resolved = workflowRoute(frame.slots.user_explicit_workflow, confidence);
-  } else if (hasRiskSignal(frame)) {
+  } else if (hasHardRiskSignal(frame)) {
     resolved = route('full', confidence);
   } else if (recommendation) {
     resolved = route('full', confidence, null, recommendation);

@@ -5,7 +5,7 @@ import path from 'path';
 
 import {
   readClassicConfigValue,
-  readClassicWorkflowIntensity,
+  readClassicRecommendLightweightWorkflows,
 } from '../../../domains/comet-classic/classic-project-config.js';
 
 describe('Classic project config', () => {
@@ -95,30 +95,37 @@ describe('Classic project config', () => {
     }
   });
 
-  it.each(['light', 'standard', 'thorough'] as const)(
-    'reads workflow_intensity=%s from the nested Classic block',
-    async (value) => {
-      await writeConfig(projectRoot, `classic:\n  workflow_intensity: ${value}\n`);
+  it.each([
+    ['true', true],
+    ['false', false],
+  ] as const)(
+    'reads recommend_lightweight_workflows=%s from the nested Classic block',
+    async (value, expected) => {
+      await writeConfig(projectRoot, `classic:\n  recommend_lightweight_workflows: ${value}\n`);
 
-      await expect(readClassicWorkflowIntensity({ cwd: projectRoot, homeDir })).resolves.toEqual({
-        value,
+      await expect(
+        readClassicRecommendLightweightWorkflows({ cwd: projectRoot, homeDir }),
+      ).resolves.toEqual({
+        value: expected,
         source: '.comet/config.yaml',
       });
     },
   );
 
-  it('defaults workflow_intensity to standard when absent', async () => {
-    await expect(readClassicWorkflowIntensity({ cwd: projectRoot, homeDir })).resolves.toEqual({
-      value: 'standard',
+  it('defaults recommend_lightweight_workflows to true when absent', async () => {
+    await expect(
+      readClassicRecommendLightweightWorkflows({ cwd: projectRoot, homeDir }),
+    ).resolves.toEqual({
+      value: true,
       source: 'default',
     });
   });
 
-  it('rejects invalid workflow_intensity values', async () => {
-    await writeConfig(projectRoot, 'classic:\n  workflow_intensity: fast\n');
+  it('rejects invalid recommend_lightweight_workflows values', async () => {
+    await writeConfig(projectRoot, 'classic:\n  recommend_lightweight_workflows: maybe\n');
 
-    await expect(readClassicWorkflowIntensity({ cwd: projectRoot, homeDir })).rejects.toThrow(
-      /workflow_intensity must be light, standard, or thorough/u,
-    );
+    await expect(
+      readClassicRecommendLightweightWorkflows({ cwd: projectRoot, homeDir }),
+    ).rejects.toThrow(/classic\.recommend_lightweight_workflows must be true or false/u);
   });
 });

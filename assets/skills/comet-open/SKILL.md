@@ -66,7 +66,7 @@ Options must be built directly from the runtime's `recommendation.options`; do n
 - `hotfix` -> "Switch to `/comet-hotfix`" — shown only when runtime recommendation options include `hotfix`
 - `full` -> "Continue full `/comet-open`" — keep the full OpenSpec + Design workflow
 
-The agent must not run `openspec new change` before lightweight path recommendation confirmation, must not create proposal/design/tasks, and must not automatically downgrade a full request to tweak/hotfix.
+The agent must not run `comet classic openspec -- new change` before lightweight path recommendation confirmation, must not create proposal/design/tasks, and must not automatically downgrade a full request to tweak/hotfix.
 
 ### 1b. PRD Split Preflight (Blocking Point)
 

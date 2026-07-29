@@ -143,7 +143,7 @@ classic:
   artifact_layout: docs
   language: zh-CN
   context_compression: off
-  workflow_intensity: standard
+  recommend_lightweight_workflows: true
   review_mode: standard
   auto_transition: true
 ```

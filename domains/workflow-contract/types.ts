@@ -47,6 +47,7 @@ export interface WorkflowClassicProjectConfig {
   artifact_layout?: ClassicArtifactLayout;
   language?: ProjectConfigLanguage;
   context_compression?: 'off' | 'beta';
+  recommend_lightweight_workflows?: boolean;
   review_mode?: 'off' | 'standard' | 'thorough';
   auto_transition?: boolean;
 }

@@ -3041,6 +3041,8 @@ describe('skills', () => {
       expect(output).toContain('language: en');
       expect(output).toContain('# Controls beta context compression');
       expect(output).toContain('context_compression: off');
+      expect(output).toContain('# Controls whether Classic can recommend tweak or hotfix');
+      expect(output).toContain('recommend_lightweight_workflows: true');
       expect(output).toContain('# Sets the default review depth');
       expect(output).toContain('review_mode: standard');
       expect(output).toContain('# Automatically enters the next Classic phase');
@@ -3103,12 +3105,15 @@ describe('skills', () => {
           artifact_layout: 'docs',
           language: 'en',
           context_compression: 'off',
+          recommend_lightweight_workflows: true,
           review_mode: 'standard',
           auto_transition: true,
         },
       });
       expect(parse(content)).not.toHaveProperty('native');
-      expect(content).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
+      expect(content).not.toMatch(
+        /^(language|context_compression|recommend_lightweight_workflows|review_mode|auto_transition):/mu,
+      );
     });
 
     it('adds every managed Native default only to an existing Native block', async () => {
@@ -3324,6 +3329,7 @@ describe('skills', () => {
           'classic:',
           '  language: zh-CN',
           '  context_compression: beta',
+          '  recommend_lightweight_workflows: false',
           '  review_mode: thorough',
           '  auto_transition: false',
           'native:',
@@ -3344,12 +3350,15 @@ describe('skills', () => {
           artifact_layout: 'docs',
           language: 'zh-CN',
           context_compression: 'beta',
+          recommend_lightweight_workflows: false,
           review_mode: 'thorough',
           auto_transition: false,
         },
         native: { artifact_root: 'docs', language: 'en' },
       });
-      expect(second).not.toMatch(/^(language|context_compression|review_mode|auto_transition):/mu);
+      expect(second).not.toMatch(
+        /^(language|context_compression|recommend_lightweight_workflows|review_mode|auto_transition):/mu,
+      );
       expect(second).toBe(first);
     });
   });

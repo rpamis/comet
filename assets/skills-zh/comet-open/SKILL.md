@@ -66,7 +66,7 @@ comet classic openspec -- --version
 - `hotfix` → 「切换到 `/comet-hotfix`」，仅当 runtime recommendation options 包含 `hotfix` 时展示
 - `full` → 「继续 full `/comet-open`」，保持完整 OpenSpec + Design 流程
 
-不得在轻量路径推荐确认前运行 `openspec new change`，不得创建 proposal/design/tasks，也不得自动把 full 请求降级为 tweak/hotfix。
+不得在轻量路径推荐确认前运行 `comet classic openspec -- new change`，不得创建 proposal/design/tasks，也不得自动把 full 请求降级为 tweak/hotfix。
 
 ### 1b. PRD 拆分预检（阻塞点）
 

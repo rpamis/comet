@@ -48,7 +48,7 @@ type ProjectConfigCommentKey =
   | 'classic.artifact_layout'
   | 'classic.language'
   | 'classic.context_compression'
-  | 'classic.workflow_intensity'
+  | 'classic.recommend_lightweight_workflows'
   | 'classic.review_mode'
   | 'classic.auto_transition';
 
@@ -89,8 +89,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Artifact language used by Classic workflow documents.\n# language: en | zh-CN',
     'classic.context_compression':
       '# Controls beta context compression for new Classic changes.\n# context_compression: off | beta',
-    'classic.workflow_intensity':
-      '# Tunes how aggressively Classic recommends lightweight workflows.\n# workflow_intensity: light | standard | thorough',
+    'classic.recommend_lightweight_workflows':
+      '# Controls whether Classic can recommend tweak or hotfix before continuing full open.\n# recommend_lightweight_workflows: true | false',
     'classic.review_mode':
       '# Sets the default review depth for new Classic changes.\n# review_mode: off | standard | thorough',
     'classic.auto_transition':
@@ -125,8 +125,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'classic.language': '# Classic 工作流文档使用的产物语言。\n# 可选值：en | zh-CN',
     'classic.context_compression':
       '# 新建 Classic change 是否启用 beta 上下文压缩。\n# 可选值：off | beta',
-    'classic.workflow_intensity':
-      '# 调节 Classic 推荐轻量工作流的积极程度。\n# 可选值：light | standard | thorough',
+    'classic.recommend_lightweight_workflows':
+      '# 是否允许 Classic 在进入完整 open 前推荐 tweak 或 hotfix。\n# 可选值：true | false',
     'classic.review_mode':
       '# 新建 Classic change 默认使用的审查深度。\n# 可选值：off | standard | thorough',
     'classic.auto_transition': '# Classic 阶段通过后是否自动进入下一阶段。\n# 可选值：true | false',
@@ -449,6 +449,10 @@ function normalizeWorkflowClassicProjectConfig(value: unknown): WorkflowClassicP
   if (reviewMode !== 'off' && reviewMode !== 'standard' && reviewMode !== 'thorough') {
     throw new Error('classic.review_mode must be off, standard, or thorough');
   }
+  const recommendLightweightWorkflows = classic.recommend_lightweight_workflows ?? true;
+  if (typeof recommendLightweightWorkflows !== 'boolean') {
+    throw new Error('classic.recommend_lightweight_workflows must be true or false');
+  }
   const autoTransition = classic.auto_transition ?? true;
   if (typeof autoTransition !== 'boolean') {
     throw new Error('classic.auto_transition must be true or false');
@@ -457,6 +461,7 @@ function normalizeWorkflowClassicProjectConfig(value: unknown): WorkflowClassicP
     artifact_layout: normalizeClassicArtifactLayout(classic.artifact_layout),
     language: projectConfigLanguage(classic.language, 'zh-CN', 'classic.language'),
     context_compression: contextCompression,
+    recommend_lightweight_workflows: recommendLightweightWorkflows,
     review_mode: reviewMode,
     auto_transition: autoTransition,
   };
@@ -605,6 +610,7 @@ export function workflowProjectConfigManagedValue(
             artifact_layout: config.classic.artifact_layout,
             language: config.classic.language,
             context_compression: config.classic.context_compression,
+            recommend_lightweight_workflows: config.classic.recommend_lightweight_workflows,
             review_mode: config.classic.review_mode,
             auto_transition: config.classic.auto_transition,
           },
@@ -669,6 +675,7 @@ export function mergeWorkflowProjectConfigDocument(
       artifact_layout: validated.classic.artifact_layout,
       language: validated.classic.language,
       context_compression: validated.classic.context_compression,
+      recommend_lightweight_workflows: validated.classic.recommend_lightweight_workflows,
       review_mode: validated.classic.review_mode,
       auto_transition: validated.classic.auto_transition,
     };
@@ -1646,6 +1653,10 @@ function managedWorkflowConfigFields(source) {
     const reviewMode = classic.review_mode ?? 'standard';
     if (!['off', 'standard', 'thorough'].includes(reviewMode)) {
       throw new Error('classic.review_mode must be off, standard, or thorough');
+    }
+    const recommendLightweightWorkflows = classic.recommend_lightweight_workflows ?? true;
+    if (typeof recommendLightweightWorkflows !== 'boolean') {
+      throw new Error('classic.recommend_lightweight_workflows must be true or false');
     }
     const autoTransition = classic.auto_transition ?? true;
     if (typeof autoTransition !== 'boolean') {

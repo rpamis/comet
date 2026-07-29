@@ -4,7 +4,7 @@ import type {
   ClassicCommandResult,
 } from './classic-cli.js';
 import { CometIntentValidationError, resolveCometIntentRoute } from './classic-intent.js';
-import { readClassicWorkflowIntensity } from './classic-project-config.js';
+import { readClassicRecommendLightweightWorkflows } from './classic-project-config.js';
 
 function result(exitCode: number, stdout?: string, stderr?: string): ClassicCommandResult {
   return {
@@ -34,21 +34,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function withConfiguredWorkflowIntensity(
+async function withConfiguredLightweightRecommendationSwitch(
   input: unknown,
   options: Pick<ClassicCommandOptions, 'invocationCwd' | 'projectRoot'> = {},
 ): Promise<unknown> {
   if (!isRecord(input) || !isRecord(input.context)) return input;
   const context = { ...input.context };
-  if (context.workflow_intensity !== undefined && context.workflow_intensity !== null) {
+  if (
+    context.recommend_lightweight_workflows !== undefined &&
+    context.recommend_lightweight_workflows !== null
+  ) {
     return input;
   }
-  const configured = await readClassicWorkflowIntensity(options);
+  const configured = await readClassicRecommendLightweightWorkflows(options);
   return {
     ...input,
     context: {
       ...context,
-      workflow_intensity: configured.value,
+      recommend_lightweight_workflows: configured.value,
     },
   };
 }
@@ -62,7 +65,7 @@ export const classicIntentCommand: ClassicCommandHandler = async (args, options)
 
   try {
     const resolution = resolveCometIntentRoute(
-      await withConfiguredWorkflowIntensity(JSON.parse(source), options),
+      await withConfiguredLightweightRecommendationSwitch(JSON.parse(source), options),
     );
     return result(0, `${JSON.stringify(resolution, null, 2)}\n`);
   } catch (error) {

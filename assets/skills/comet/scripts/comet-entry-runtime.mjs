@@ -7597,6 +7597,10 @@ function normalizeWorkflowClassicProjectConfig(value) {
   if (reviewMode !== "off" && reviewMode !== "standard" && reviewMode !== "thorough") {
     throw new Error("classic.review_mode must be off, standard, or thorough");
   }
+  const recommendLightweightWorkflows = classic.recommend_lightweight_workflows ?? true;
+  if (typeof recommendLightweightWorkflows !== "boolean") {
+    throw new Error("classic.recommend_lightweight_workflows must be true or false");
+  }
   const autoTransition = classic.auto_transition ?? true;
   if (typeof autoTransition !== "boolean") {
     throw new Error("classic.auto_transition must be true or false");
@@ -7605,6 +7609,7 @@ function normalizeWorkflowClassicProjectConfig(value) {
     artifact_layout: normalizeClassicArtifactLayout(classic.artifact_layout),
     language: projectConfigLanguage(classic.language, "zh-CN", "classic.language"),
     context_compression: contextCompression,
+    recommend_lightweight_workflows: recommendLightweightWorkflows,
     review_mode: reviewMode,
     auto_transition: autoTransition
   };

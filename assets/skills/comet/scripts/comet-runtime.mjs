@@ -7633,6 +7633,10 @@ function normalizeWorkflowClassicProjectConfig(value) {
   if (reviewMode !== "off" && reviewMode !== "standard" && reviewMode !== "thorough") {
     throw new Error("classic.review_mode must be off, standard, or thorough");
   }
+  const recommendLightweightWorkflows = classic.recommend_lightweight_workflows ?? true;
+  if (typeof recommendLightweightWorkflows !== "boolean") {
+    throw new Error("classic.recommend_lightweight_workflows must be true or false");
+  }
   const autoTransition2 = classic.auto_transition ?? true;
   if (typeof autoTransition2 !== "boolean") {
     throw new Error("classic.auto_transition must be true or false");
@@ -7641,6 +7645,7 @@ function normalizeWorkflowClassicProjectConfig(value) {
     artifact_layout: normalizeClassicArtifactLayout(classic.artifact_layout),
     language: projectConfigLanguage(classic.language, "zh-CN", "classic.language"),
     context_compression: contextCompression2,
+    recommend_lightweight_workflows: recommendLightweightWorkflows,
     review_mode: reviewMode,
     auto_transition: autoTransition2
   };
@@ -7748,7 +7753,7 @@ var init_project_config = __esm({
         "classic.artifact_layout": "# Selects the Classic artifact layout. The default is docs; update preserves detected root-level legacy artifacts.\n# artifact_layout: legacy | docs",
         "classic.language": "# Artifact language used by Classic workflow documents.\n# language: en | zh-CN",
         "classic.context_compression": "# Controls beta context compression for new Classic changes.\n# context_compression: off | beta",
-        "classic.workflow_intensity": "# Tunes how aggressively Classic recommends lightweight workflows.\n# workflow_intensity: light | standard | thorough",
+        "classic.recommend_lightweight_workflows": "# Controls whether Classic can recommend tweak or hotfix before continuing full open.\n# recommend_lightweight_workflows: true | false",
         "classic.review_mode": "# Sets the default review depth for new Classic changes.\n# review_mode: off | standard | thorough",
         "classic.auto_transition": "# Automatically enters the next Classic phase after a phase passes.\n# auto_transition: true | false"
       },
@@ -7773,7 +7778,7 @@ var init_project_config = __esm({
         "classic.artifact_layout": "# Classic 产物布局；默认使用 docs，update 检测到根目录 legacy 产物时予以保留。\n# 可选值：legacy | docs",
         "classic.language": "# Classic 工作流文档使用的产物语言。\n# 可选值：en | zh-CN",
         "classic.context_compression": "# 新建 Classic change 是否启用 beta 上下文压缩。\n# 可选值：off | beta",
-        "classic.workflow_intensity": "# 调节 Classic 推荐轻量工作流的积极程度。\n# 可选值：light | standard | thorough",
+        "classic.recommend_lightweight_workflows": "# 是否允许 Classic 在进入完整 open 前推荐 tweak 或 hotfix。\n# 可选值：true | false",
         "classic.review_mode": "# 新建 Classic change 默认使用的审查深度。\n# 可选值：off | standard | thorough",
         "classic.auto_transition": "# Classic 阶段通过后是否自动进入下一阶段。\n# 可选值：true | false"
       }
@@ -12942,7 +12947,6 @@ var classicValidateCommand = async (args, options) => withClassicCommandContext(
 init_project_config_reader();
 import os from "os";
 import path26 from "path";
-var WORKFLOW_INTENSITIES = ["light", "standard", "thorough"];
 function configCandidates(options = {}) {
   const cwd = options.projectRoot ?? options.cwd ?? options.invocationCwd ?? process.cwd();
   const homeDir = options.homeDir ?? os.homedir();
@@ -12974,16 +12978,20 @@ async function readClassicConfigValue(field2, options = {}) {
   }
   return null;
 }
-async function readClassicWorkflowIntensity(options = {}) {
-  const configured = await readClassicConfigValue("workflow_intensity", options);
-  if (!configured) return { value: "standard", source: "default" };
-  if (!WORKFLOW_INTENSITIES.includes(configured.value)) {
-    throw new Error(
-      `classic.workflow_intensity must be light, standard, or thorough, got '${configured.value}' from ${configured.source}`
-    );
-  }
+function parseClassicBoolean(value, field2, source) {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`${field2} must be true or false, got '${value}' from ${source}`);
+}
+async function readClassicRecommendLightweightWorkflows(options = {}) {
+  const configured = await readClassicConfigValue("recommend_lightweight_workflows", options);
+  if (!configured) return { value: true, source: "default" };
   return {
-    value: configured.value,
+    value: parseClassicBoolean(
+      configured.value,
+      "classic.recommend_lightweight_workflows",
+      configured.source
+    ),
     source: configured.source
   };
 }
@@ -15116,7 +15124,6 @@ var REQUESTED_ACTIONS = [
   "unknown"
 ];
 var WORKFLOWS = ["full", "hotfix", "tweak"];
-var WORKFLOW_INTENSITIES2 = ["light", "standard", "thorough"];
 var SCOPES = ["small", "medium", "large", "unknown"];
 var ROUTES = ["full", "hotfix", "tweak", "resume", "ask_user", "out_of_scope"];
 var NEXT_SKILLS = [
@@ -15284,12 +15291,11 @@ function validateFrame(input) {
         "context.dirty_worktree",
         issues
       ),
-      workflow_intensity: context.workflow_intensity === void 0 || context.workflow_intensity === null ? "standard" : enumValue2(
-        context.workflow_intensity,
-        WORKFLOW_INTENSITIES2,
-        "context.workflow_intensity",
+      recommend_lightweight_workflows: context.recommend_lightweight_workflows === void 0 || context.recommend_lightweight_workflows === null ? true : optionalBooleanValue(
+        context.recommend_lightweight_workflows,
+        "context.recommend_lightweight_workflows",
         issues
-      ) ?? "standard"
+      ) ?? true
     },
     evidence: evidence.map((item, index) => {
       const record2 = isRecord2(item) ? item : {};
@@ -15328,41 +15334,38 @@ function validateFrame(input) {
 function hasEvidence(frame, field2) {
   return frame.evidence.some((item) => item.field === field2 && item.quote.trim() !== "");
 }
-function hasSmallScopeEvidence(frame) {
-  if (frame.slots.scope === "small") return true;
-  return frame.evidence.some(
-    (item) => item.field === "slots.scope" && /\b(small|tiny|minor)\b|轻量|小型|较小|很小|微小|小改动|小修改/iu.test(item.quote)
-  );
+function hasWorkflowCandidateEvidence(frame, workflow) {
+  return frame.slots.workflow_candidate === workflow && hasEvidence(frame, "slots.workflow_candidate");
 }
-function hasRiskSignal(frame) {
-  return frame.slots.new_capability === true || frame.slots.public_api_change === true || frame.slots.schema_change === true || frame.slots.cross_module_change === true;
+function hasRiskSignalEntity(frame) {
+  return frame.entities.some((entity) => entity.type === "risk_signal");
 }
-function lowRiskEvidence(frame) {
-  return hasSmallScopeEvidence(frame) || /docs?|prompt|wording|config|readme|small|tiny|minor/iu.test(frame.utterance);
+function hasHardRiskSignal(frame) {
+  return hasRiskSignalEntity(frame) || frame.slots.public_api_change === true || frame.slots.schema_change === true || frame.slots.cross_module_change === true;
+}
+function scopeAllowsLightweightRecommendation(frame) {
+  return frame.slots.scope !== "large";
 }
 function recommendationFor(frame) {
-  if (hasRiskSignal(frame) || !hasSmallScopeEvidence(frame)) return null;
-  const intensity = frame.context.workflow_intensity;
-  const evidenceIsStrong = lowRiskEvidence(frame);
-  if (intensity === "thorough" && !evidenceIsStrong) return null;
-  if (frame.intent.name === "fix_bug" && frame.slots.existing_behavior === true) {
+  if (!frame.context.recommend_lightweight_workflows || hasHardRiskSignal(frame) || !scopeAllowsLightweightRecommendation(frame)) {
+    return null;
+  }
+  if (hasWorkflowCandidateEvidence(frame, "hotfix") && (frame.intent.name === "fix_bug" || frame.slots.existing_behavior === true)) {
     return {
       workflow: "hotfix",
       next_skill: "comet-hotfix",
-      intensity,
-      reasons: ["existing behavior fix", `workflow_intensity=${intensity}`],
+      reasons: [
+        "workflow_candidate=hotfix evidence",
+        frame.slots.existing_behavior === true ? "existing behavior fix" : "bug fix intent"
+      ],
       options: ["hotfix", "full"]
     };
   }
-  if (evidenceIsStrong && (frame.intent.name === "start_change" || frame.intent.name === "make_tweak" || frame.slots.requested_action === "modify" || frame.slots.requested_action === "create")) {
+  if (hasWorkflowCandidateEvidence(frame, "tweak")) {
     return {
       workflow: "tweak",
       next_skill: "comet-tweak",
-      intensity,
-      reasons: [
-        evidenceIsStrong ? "small low-risk request" : "low-risk request",
-        `workflow_intensity=${intensity}`
-      ],
+      reasons: ["workflow_candidate=tweak evidence"],
       options: ["tweak", "full"]
     };
   }
@@ -15412,13 +15415,13 @@ function resolveCometIntentRoute(input) {
       confidence,
       "user asked a question without requesting a Comet workflow"
     );
-  } else if (frame.slots.user_explicit_workflow && frame.slots.user_explicit_workflow !== "full" && hasRiskSignal(frame)) {
+  } else if (frame.slots.user_explicit_workflow && frame.slots.user_explicit_workflow !== "full" && hasHardRiskSignal(frame)) {
     resolved = askUser(
       `explicit workflow '${frame.slots.user_explicit_workflow}' conflicts with risk signals`
     );
   } else if (frame.slots.user_explicit_workflow) {
     resolved = workflowRoute(frame.slots.user_explicit_workflow, confidence);
-  } else if (hasRiskSignal(frame)) {
+  } else if (hasHardRiskSignal(frame)) {
     resolved = route("full", confidence);
   } else if (recommendation) {
     resolved = route("full", confidence, null, recommendation);
@@ -15490,18 +15493,18 @@ async function readStdin() {
 function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-async function withConfiguredWorkflowIntensity(input, options = {}) {
+async function withConfiguredLightweightRecommendationSwitch(input, options = {}) {
   if (!isRecord3(input) || !isRecord3(input.context)) return input;
   const context = { ...input.context };
-  if (context.workflow_intensity !== void 0 && context.workflow_intensity !== null) {
+  if (context.recommend_lightweight_workflows !== void 0 && context.recommend_lightweight_workflows !== null) {
     return input;
   }
-  const configured = await readClassicWorkflowIntensity(options);
+  const configured = await readClassicRecommendLightweightWorkflows(options);
   return {
     ...input,
     context: {
       ...context,
-      workflow_intensity: configured.value
+      recommend_lightweight_workflows: configured.value
     }
   };
 }
@@ -15512,7 +15515,7 @@ var classicIntentCommand = async (args, options) => {
   if (!source) return usage();
   try {
     const resolution = resolveCometIntentRoute(
-      await withConfiguredWorkflowIntensity(JSON.parse(source), options)
+      await withConfiguredLightweightRecommendationSwitch(JSON.parse(source), options)
     );
     return result2(0, `${JSON.stringify(resolution, null, 2)}
 `);

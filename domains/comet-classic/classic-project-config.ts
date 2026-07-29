@@ -14,12 +14,8 @@ type ClassicConfigOptions = {
   homeDir?: string;
 };
 
-const WORKFLOW_INTENSITIES = ['light', 'standard', 'thorough'] as const;
-
-type ClassicWorkflowIntensity = (typeof WORKFLOW_INTENSITIES)[number];
-
-type ClassicWorkflowIntensityValue = {
-  value: ClassicWorkflowIntensity;
+type ClassicRecommendLightweightWorkflowsValue = {
+  value: boolean;
   source: string;
 };
 
@@ -65,26 +61,26 @@ async function readClassicConfigValue(
   return null;
 }
 
-async function readClassicWorkflowIntensity(
+function parseClassicBoolean(value: string, field: string, source: string): boolean {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`${field} must be true or false, got '${value}' from ${source}`);
+}
+
+async function readClassicRecommendLightweightWorkflows(
   options: ClassicConfigOptions = {},
-): Promise<ClassicWorkflowIntensityValue> {
-  const configured = await readClassicConfigValue('workflow_intensity', options);
-  if (!configured) return { value: 'standard', source: 'default' };
-  if (!WORKFLOW_INTENSITIES.includes(configured.value as ClassicWorkflowIntensity)) {
-    throw new Error(
-      `classic.workflow_intensity must be light, standard, or thorough, got '${configured.value}' from ${configured.source}`,
-    );
-  }
+): Promise<ClassicRecommendLightweightWorkflowsValue> {
+  const configured = await readClassicConfigValue('recommend_lightweight_workflows', options);
+  if (!configured) return { value: true, source: 'default' };
   return {
-    value: configured.value as ClassicWorkflowIntensity,
+    value: parseClassicBoolean(
+      configured.value,
+      'classic.recommend_lightweight_workflows',
+      configured.source,
+    ),
     source: configured.source,
   };
 }
 
-export { configCandidates, readClassicConfigValue, readClassicWorkflowIntensity };
-export type {
-  ClassicConfigOptions,
-  ClassicConfigValue,
-  ClassicWorkflowIntensity,
-  ClassicWorkflowIntensityValue,
-};
+export { configCandidates, readClassicConfigValue, readClassicRecommendLightweightWorkflows };
+export type { ClassicConfigOptions, ClassicConfigValue, ClassicRecommendLightweightWorkflowsValue };
