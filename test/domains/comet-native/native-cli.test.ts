@@ -334,6 +334,59 @@ describe('Comet Native CLI dispatcher', () => {
         },
       });
     }
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+    try {
+      const posixProbe = json(
+        await runNativeCli([
+          'receipt',
+          'automated',
+          'sentence-counting',
+          ...resumedCriteria.flatMap((criterion) => ['--acceptance', criterion.id]),
+          '--json',
+          ...projectArgs(),
+          '--',
+          process.execPath,
+          '-e',
+          "process.stdout.write('posix-direct-ok')",
+        ]),
+      );
+      expect(posixProbe, JSON.stringify(posixProbe)).toMatchObject({
+        exitCode: 0,
+        data: {
+          receipt: {
+            status: 'passed',
+            evidence: { outputSummary: 'posix-direct-ok' },
+          },
+        },
+      });
+    } finally {
+      platformSpy.mockRestore();
+    }
+    const timedOutReceipt = json(
+      await runNativeCli([
+        'receipt',
+        'automated',
+        'sentence-counting',
+        ...resumedCriteria.flatMap((criterion) => ['--acceptance', criterion.id]),
+        '--timeout-ms',
+        '1',
+        '--json',
+        ...projectArgs(),
+        '--',
+        process.execPath,
+        '-e',
+        'setInterval(() => {}, 1_000)',
+      ]),
+    );
+    expect(timedOutReceipt, JSON.stringify(timedOutReceipt)).toMatchObject({
+      exitCode: 1,
+      data: {
+        receipt: {
+          status: 'blocked',
+          evidence: { timedOut: true, exitCode: 124, signal: 'SIGKILL' },
+        },
+      },
+    });
     const manualReceiptResult = json(
       await runNativeCli([
         'receipt',
