@@ -161,7 +161,7 @@ describe('Native check public seam', () => {
     const firstRef = checked.data!.ref as string;
     const firstReceipt = await readNativeVerificationReceipt(paths, name, firstRef);
     expect(firstReceipt).toMatchObject({
-      schema: 'comet.native.verification-receipt.v2',
+      schema: 'comet.native.verification-receipt.v3',
       kind: 'static-inspection',
       status: 'passed',
     });

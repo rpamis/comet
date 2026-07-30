@@ -48,7 +48,15 @@ Verify fail 回到 Build 后：
 3. 重新运行相关验证；
 4. 再提交 Verify 结果。
 
-相同缺口重复出现或达到 `max_verify_failures` 时，Runtime 会停止自动循环。只有 status 返回允许的 repair override，并且存在一个明确的新修复假设时，才能使用该 signature 和摘要重试一次；否则保留现场并让用户决定范围、约束或是否停止。
+相同缺口第三次出现时，Runtime 返回 `repair-stagnation-stop`。这不是用户决策：Agent 从 status 读取 signature，提出一个与上一轮不同且具体的新的修复假设，完成对应修改后，使用该 signature 和假设摘要执行一次 repair override。不要让用户提供 signature、hash 或 override 参数。
+
+override 已耗尽或达到 `native.max_verify_failures` 时，continuation 返回 `await-user` 和 `repair-continuation-decision`。向用户说明当前失败和已尝试方案，只让用户选择：
+
+1. 继续尝试：由 Agent 提高 `native.max_verify_failures` 后继续；
+2. 调整已确认契约：回到 Shape 更新 brief 和完整目标规格，并重新确认；
+3. 停止本次修复：保留 change 和当前现场，不继续推进或 Archive。
+
+用户只做方向选择；Agent 负责修改配置或正式产物、读取 Runtime signature，并执行后续命令。
 
 ## Canonical spec 冲突
 

@@ -91,7 +91,6 @@ describe('Native Archive inspection', () => {
         paths,
         name: verifyState.name,
         acceptanceIds: contract.contract.acceptance.map((criterion) => criterion.id),
-        responsible: 'archive-inspection-fixture',
         steps: ['Run the focused archive inspection fixture.'],
         observations: ['The focused behavior matched the acceptance contract.'],
         confirmed: true,

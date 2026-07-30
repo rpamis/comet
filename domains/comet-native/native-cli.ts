@@ -98,7 +98,7 @@ Commands:
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   check <change-name>
   evidence format [--entries <path>]
-  receipt manual <change-name> --acceptance <id> --responsible <text> --step <text> --observation <text> --confirmed
+  receipt manual <change-name> --acceptance <id> --step <text> --observation <text> --confirmed
   receipt automated <change-name> --acceptance <id> [--timeout-ms <n>] -- <executable> [args...]
   next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <required-ref>] [--evidence-receipt <ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
@@ -594,17 +594,14 @@ async function dispatch(
     const { paths } = await configuredPaths(projectRoot);
     if (subcommand === 'manual') {
       const acceptanceIds = takeMany(rawArgs, '--acceptance');
-      const responsible = takeOption(rawArgs, '--responsible');
       const steps = takeMany(rawArgs, '--step');
       const observations = takeMany(rawArgs, '--observation');
       const confirmed = takeFlag(rawArgs, '--confirmed');
-      if (!responsible) throw new NativeUsageError('--responsible is required');
       assertNoArguments(rawArgs);
       const issued = await issueNativeManualEvidenceReceipt({
         paths,
         name,
         acceptanceIds,
-        responsible,
         steps,
         observations,
         confirmed,

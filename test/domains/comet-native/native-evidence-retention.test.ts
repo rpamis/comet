@@ -460,7 +460,6 @@ describe('Native evidence retention', () => {
           evidence: {
             steps: ['Inspect retained acceptance evidence.'],
             observations: ['The evidence remains available.'],
-            responsible: 'native-retention-test',
           },
         }),
       });

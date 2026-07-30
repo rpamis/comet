@@ -35,6 +35,7 @@ const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
 const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
 export const MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS = 60 * 60 * 1_000;
 const AUTOMATED_COMMAND_TERMINATION_WAIT_MS = 4_000;
+const NATIVE_MANUAL_EVIDENCE_ACTOR = 'native-runtime:manual-evidence';
 const execFileAsync = promisify(execFile);
 
 async function withNativeReceiptIssuanceLock<T>(options: {
@@ -171,7 +172,6 @@ export async function issueNativeManualEvidenceReceipt(options: {
   paths: NativeProjectPaths;
   name: string;
   acceptanceIds: readonly string[];
-  responsible: string;
   steps: readonly string[];
   observations: readonly string[];
   confirmed: boolean;
@@ -189,7 +189,6 @@ async function issueNativeManualEvidenceReceiptLocked(options: {
   paths: NativeProjectPaths;
   state: NativeChangeState;
   acceptanceIds: readonly string[];
-  responsible: string;
   steps: readonly string[];
   observations: readonly string[];
   confirmed: boolean;
@@ -205,12 +204,11 @@ async function issueNativeManualEvidenceReceiptLocked(options: {
     status: 'passed',
     bindings: context.bindings,
     acceptanceIds: normalizeAcceptanceIds(options.acceptanceIds, context.acceptanceIds),
-    actor: options.responsible,
+    actor: NATIVE_MANUAL_EVIDENCE_ACTOR,
     issuedAt: (options.now ?? new Date()).toISOString(),
     evidence: {
       steps: [...options.steps],
       observations: [...options.observations],
-      responsible: options.responsible,
     },
   });
   return {

@@ -37,7 +37,6 @@ export async function nativeVerificationFixtureReport(options: {
       paths: options.paths,
       name: options.name,
       acceptanceIds: collected.contract.acceptance.map((criterion) => criterion.id),
-      responsible: 'native-test-fixture',
       steps: ['Exercise every acceptance criterion in the lifecycle fixture.'],
       observations: ['Every acceptance criterion produced the expected fixture outcome.'],
       confirmed: true,

@@ -343,6 +343,46 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('does not ask users for an identity label when recording manual evidence', async () => {
+    for (const language of ['en', 'zh'] as const) {
+      const commands = await read(language, 'reference/commands.md');
+      expect(commands).not.toContain('--responsible');
+      expect(commands).not.toMatch(/\bresponsible\b|观察者标签|身份凭据/iu);
+    }
+  });
+
+  it('makes repair stops actionable without asking users for Runtime internals', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        terms: [
+          '新的修复假设',
+          '提高 `native.max_verify_failures`',
+          '调整已确认契约',
+          '停止本次修复',
+          '不要让用户提供 signature、hash 或 override 参数',
+        ],
+      },
+      {
+        language: 'en' as const,
+        terms: [
+          'one concrete new repair hypothesis',
+          'increase `native.max_verify_failures`',
+          'change the confirmed contract',
+          'stop this repair',
+          'Do not ask the user for a signature, hash, or override argument',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const skill = await read(variant.language, 'SKILL.md');
+      const recovery = await read(variant.language, 'reference/recovery.md');
+      expect(skill).toContain('`repair-continuation-decision`');
+      for (const term of variant.terms) expect(recovery).toContain(term);
+    }
+  });
+
   it('uses recovery as an actionable runbook rather than a Runtime design document', async () => {
     for (const language of ['en', 'zh'] as const) {
       const recovery = await read(language, 'reference/recovery.md');

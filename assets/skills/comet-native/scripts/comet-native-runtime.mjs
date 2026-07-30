@@ -17190,7 +17190,7 @@ function buildNativeCheckReceipt(input) {
 }
 
 // domains/comet-native/native-verification-receipt.ts
-var NATIVE_VERIFICATION_RECEIPT_SCHEMA = "comet.native.verification-receipt.v2";
+var NATIVE_VERIFICATION_RECEIPT_SCHEMA = "comet.native.verification-receipt.v3";
 var VERIFICATION_RECEIPT_HASH_TAG = NATIVE_VERIFICATION_RECEIPT_SCHEMA;
 var ARTIFACT_BINDING_HASH_TAG = "comet.native.declared-artifacts.v1";
 var HASH_PATTERN8 = /^[a-f0-9]{64}$/u;
@@ -17278,7 +17278,7 @@ function checkReceiptRef(value) {
   if (!match) throw new Error("Native static check receipt ref is invalid");
   return { ref: value, hash: match[1] };
 }
-function parseEvidence(kind, value, actor, status, role) {
+function parseEvidence(kind, value, status, role) {
   const evidence = record5(value, `Native ${kind} evidence`);
   if (kind === "automated-check") {
     exactKeys2(
@@ -17383,17 +17383,10 @@ function parseEvidence(kind, value, actor, status, role) {
     };
   }
   if (kind === "manual-evidence") {
-    exactKeys2(
-      evidence,
-      ["steps", "observations", "responsible"],
-      "Native manual-evidence evidence"
-    );
-    const responsible = text(evidence.responsible, "Native manual evidence responsible");
-    if (responsible !== actor) throw new Error("Native manual evidence actor/responsible mismatch");
+    exactKeys2(evidence, ["steps", "observations"], "Native manual-evidence evidence");
     return {
       steps: stringList(evidence.steps, "Native manual evidence steps"),
-      observations: stringList(evidence.observations, "Native manual evidence observations"),
-      responsible
+      observations: stringList(evidence.observations, "Native manual evidence observations")
     };
   }
   throw new Error(`Native verification receipt kind is unsupported: ${kind}`);
@@ -17444,7 +17437,7 @@ function receiptContent(value) {
     acceptanceIds,
     actor,
     issuedAt: timestamp2(root.issuedAt, "Native verification receipt issue time"),
-    evidence: parseEvidence(kind, root.evidence, actor, status, role)
+    evidence: parseEvidence(kind, root.evidence, status, role)
   };
   if (role === "required-check" && content.kind === "static-inspection" && (content.evidence.rule !== NATIVE_CHECK_POLICY || content.actor !== `native-runtime:${NATIVE_CHECK_POLICY}`)) {
     throw new Error("Native required check policy identity is invalid");
@@ -21097,6 +21090,7 @@ var MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
 var DEFAULT_COMMAND_TIMEOUT_MS = 12e4;
 var MAX_NATIVE_AUTOMATED_COMMAND_TIMEOUT_MS = 60 * 60 * 1e3;
 var AUTOMATED_COMMAND_TERMINATION_WAIT_MS = 4e3;
+var NATIVE_MANUAL_EVIDENCE_ACTOR = "native-runtime:manual-evidence";
 var execFileAsync = promisify(execFile);
 async function withNativeReceiptIssuanceLock(options) {
   return withNativeMutationLock(
@@ -21207,12 +21201,11 @@ async function issueNativeManualEvidenceReceiptLocked(options) {
     status: "passed",
     bindings: context.bindings,
     acceptanceIds: normalizeAcceptanceIds(options.acceptanceIds, context.acceptanceIds),
-    actor: options.responsible,
+    actor: NATIVE_MANUAL_EVIDENCE_ACTOR,
     issuedAt: (options.now ?? /* @__PURE__ */ new Date()).toISOString(),
     evidence: {
       steps: [...options.steps],
-      observations: [...options.observations],
-      responsible: options.responsible
+      observations: [...options.observations]
     }
   });
   return {
@@ -23972,8 +23965,11 @@ function nativeContinuation(options) {
   const repair = actionableFindings.find(
     (finding) => finding.repairCommand !== null || REPAIR_CODES.test(finding.code)
   );
+  const repairDecision = actionableFindings.find(
+    (finding) => finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
+  );
   const stagnationStop = actionableFindings.find(
-    (finding) => finding.code === "repair-stagnation-stop" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
+    (finding) => finding.code === "repair-stagnation-stop"
   );
   const requiredInputs = [
     ...new Set(actionableFindings.map((finding) => finding.requiredAction))
@@ -23990,6 +23986,20 @@ function nativeContinuation(options) {
       command: null,
       requiresUserDecision: false,
       requiredInputs: []
+    };
+  }
+  if (repairDecision) {
+    return {
+      schema: "comet.native.continuation.v1",
+      skill: "comet-native",
+      change: options.state.name,
+      phase: options.state.phase,
+      revision: options.state.revision,
+      disposition: "await-user",
+      action: "work-phase",
+      command: null,
+      requiresUserDecision: true,
+      requiredInputs: ["repair-continuation-decision"]
     };
   }
   if (decision) {
@@ -24014,10 +24024,10 @@ function nativeContinuation(options) {
       phase: options.state.phase,
       revision: options.state.revision,
       disposition: "blocked",
-      action: "work-phase",
+      action: "repair",
       command: null,
       requiresUserDecision: false,
-      requiredInputs: ["implementation-progress-or-repair-override"]
+      requiredInputs: ["new-repair-hypothesis"]
     };
   }
   if (repair) {
@@ -24252,19 +24262,19 @@ var EXACT_METADATA = {
   },
   "repair-stagnation-stop": {
     severity: "error",
-    requiredAction: "make-progress-or-explicitly-override-repair",
+    requiredAction: "try-new-repair-hypothesis-with-status-override",
     retry: "none",
     repair: "none"
   },
   "repair-iteration-limit": {
     severity: "error",
-    requiredAction: "change-confirmed-contract-or-increase-verify-failure-budget",
+    requiredAction: "choose-repair-continuation",
     retry: "none",
     repair: "none"
   },
   "repair-override-exhausted": {
     severity: "error",
-    requiredAction: "review-repeated-failure-after-override",
+    requiredAction: "choose-repair-continuation",
     retry: "none",
     repair: "none"
   }
@@ -24361,7 +24371,7 @@ function structureNativeFindings(options) {
       repairCommand: metadata.repair === "doctor" ? `comet native doctor ${options.state.name} --repair${finding.code.startsWith("transition-") ? " --strategy continue" : ""}` : null,
       // This is intentionally code-based, not severity-based. Model-actionable
       // missing data must never be presented as a user decision.
-      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "shape-confirmation-required" || finding.code === "approval-confirmation-required" || finding.code === "contract-changed-after-approval" || finding.code === "verification-scope-partial"
+      requiresUserDecision: finding.code === "brief-blocking-question" || finding.code === "shape-confirmation-required" || finding.code === "approval-confirmation-required" || finding.code === "contract-changed-after-approval" || finding.code === "verification-scope-partial" || finding.code === "repair-iteration-limit" || finding.code === "repair-override-exhausted"
     };
   }).sort((left, right) => {
     const severityRank = { error: 0, warning: 1, info: 2 };
@@ -30483,7 +30493,7 @@ Commands:
   checkpoint <change-name> --summary <text> --next-action <text> [--artifact <project-relative>] [--expect-revision <n>]
   check <change-name>
   evidence format [--entries <path>]
-  receipt manual <change-name> --acceptance <id> --responsible <text> --step <text> --observation <text> --confirmed
+  receipt manual <change-name> --acceptance <id> --step <text> --observation <text> --confirmed
   receipt automated <change-name> --acceptance <id> [--timeout-ms <n>] -- <executable> [args...]
   next <change-name> --summary <text> [--confirmed] [--artifact <path>] [--no-code-reason <text>] [--allow-partial-scope <sha256> --partial-reason <text>] [--result pass|fail] [--report <path>] [--receipt <required-ref>] [--evidence-receipt <ref>] [--failure-category <token>] [--failed-check <token>] [--override-repair <sha256> --override-summary <text>]
   archive <change-name> --dry-run
@@ -30958,17 +30968,14 @@ async function dispatch(rawArgs, explicitProjectRoot) {
     const { paths } = await configuredPaths(projectRoot);
     if (subcommand === "manual") {
       const acceptanceIds = takeMany(rawArgs, "--acceptance");
-      const responsible = takeOption(rawArgs, "--responsible");
       const steps = takeMany(rawArgs, "--step");
       const observations = takeMany(rawArgs, "--observation");
       const confirmed = takeFlag(rawArgs, "--confirmed");
-      if (!responsible) throw new NativeUsageError("--responsible is required");
       assertNoArguments(rawArgs);
       const issued = await issueNativeManualEvidenceReceipt({
         paths,
         name,
         acceptanceIds,
-        responsible,
         steps,
         observations,
         confirmed

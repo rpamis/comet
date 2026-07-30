@@ -95,6 +95,29 @@ describe('Native structured findings', () => {
     });
   });
 
+  it('reserves repair decisions for exhausted overrides and verification budgets', () => {
+    const findings = structureNativeFindings({
+      paths,
+      state,
+      findings: [
+        { code: 'repair-stagnation-stop', message: 'A repeated failure needs a new hypothesis.' },
+        { code: 'repair-override-exhausted', message: 'The one repair override was exhausted.' },
+        { code: 'repair-iteration-limit', message: 'The verification budget was exhausted.' },
+      ],
+    });
+
+    expect(findings.find((finding) => finding.code === 'repair-stagnation-stop')).toMatchObject({
+      requiredAction: 'try-new-repair-hypothesis-with-status-override',
+      requiresUserDecision: false,
+    });
+    for (const code of ['repair-override-exhausted', 'repair-iteration-limit']) {
+      expect(findings.find((finding) => finding.code === code)).toMatchObject({
+        requiredAction: 'choose-repair-continuation',
+        requiresUserDecision: true,
+      });
+    }
+  });
+
   it('fails closed without advertising an impossible repair for an invalid checkpoint', () => {
     const [finding] = structureNativeFindings({
       paths,

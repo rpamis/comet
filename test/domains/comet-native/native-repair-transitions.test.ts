@@ -234,7 +234,12 @@ describe('Native repair stagnation transitions', () => {
       next: 'manual',
       change: { phase: 'build', verification_result: 'fail' },
       repair: { disposition: 'manual-stop', consecutiveFailures: 3 },
-      continuation: { disposition: 'blocked', requiresUserDecision: false },
+      continuation: {
+        disposition: 'blocked',
+        action: 'repair',
+        requiresUserDecision: false,
+        requiredInputs: ['new-repair-hypothesis'],
+      },
       findings: [expect.objectContaining({ code: 'repair-stagnation-stop' })],
     });
     const signature = stopped.repair!.signatureHash;
@@ -292,13 +297,21 @@ describe('Native repair stagnation transitions', () => {
         consecutiveFailures: 4,
       },
       findings: [expect.objectContaining({ code: 'repair-override-exhausted' })],
-      continuation: { disposition: 'blocked', requiresUserDecision: false },
+      continuation: {
+        disposition: 'await-user',
+        requiresUserDecision: true,
+        requiredInputs: ['repair-continuation-decision'],
+      },
     });
     const exhausted = await leaveBuild('Try to repeat an exhausted override.');
     expect(exhausted).toMatchObject({
       next: 'manual',
       findings: [expect.objectContaining({ code: 'repair-override-exhausted' })],
-      continuation: { disposition: 'blocked', requiresUserDecision: false },
+      continuation: {
+        disposition: 'await-user',
+        requiresUserDecision: true,
+        requiredInputs: ['repair-continuation-decision'],
+      },
     });
 
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 3;\n');
@@ -306,7 +319,11 @@ describe('Native repair stagnation transitions', () => {
     expect(progressed).toMatchObject({
       next: 'manual',
       change: { phase: 'build', verification_result: 'fail' },
-      continuation: { disposition: 'blocked' },
+      continuation: {
+        disposition: 'await-user',
+        requiresUserDecision: true,
+        requiredInputs: ['repair-continuation-decision'],
+      },
     });
   });
 
@@ -468,7 +485,11 @@ describe('Native repair stagnation transitions', () => {
         expect(failed).toMatchObject({
           next: 'manual',
           repair: { disposition: 'hard-stop', remainingIterations: 0 },
-          continuation: { disposition: 'blocked' },
+          continuation: {
+            disposition: 'await-user',
+            requiresUserDecision: true,
+            requiredInputs: ['repair-continuation-decision'],
+          },
         });
         break;
       }
@@ -594,7 +615,11 @@ describe('Native repair stagnation transitions', () => {
         consecutiveFailures: 4,
         totalRepairFailures: 4,
       },
-      continuation: { disposition: 'blocked' },
+      continuation: {
+        disposition: 'await-user',
+        requiresUserDecision: true,
+        requiredInputs: ['repair-continuation-decision'],
+      },
     });
   });
 
@@ -651,14 +676,22 @@ describe('Native repair stagnation transitions', () => {
         remainingIterations: 0,
       },
       findings: [expect.objectContaining({ code: 'repair-iteration-limit' })],
-      continuation: { disposition: 'blocked', requiresUserDecision: false },
+      continuation: {
+        disposition: 'await-user',
+        requiresUserDecision: true,
+        requiredInputs: ['repair-continuation-decision'],
+      },
     });
     await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 99;\n');
     const stillStopped = await leaveBuild('Implementation changed after the hard stop.');
     expect(stillStopped).toMatchObject({
       next: 'manual',
       change: { phase: 'build' },
-      continuation: { disposition: 'blocked' },
+      continuation: {
+        disposition: 'await-user',
+        requiresUserDecision: true,
+        requiredInputs: ['repair-continuation-decision'],
+      },
     });
 
     const config = defaultProjectConfig('.');

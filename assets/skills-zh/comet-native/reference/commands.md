@@ -115,7 +115,6 @@ comet native receipt automated <change-name> \
 ```text
 comet native receipt manual <change-name> \
   --acceptance <id> \
-  --responsible <text> \
   --step <text> \
   --observation <text> \
   --confirmed

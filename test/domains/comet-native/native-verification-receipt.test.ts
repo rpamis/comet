@@ -18,7 +18,7 @@ const bindings = {
 };
 const issuedAt = '2026-07-28T00:00:02.000Z';
 
-describe('Native verification receipt v2', () => {
+describe('Native verification receipt v3', () => {
   it.each([
     [
       'automated-check',
@@ -63,7 +63,6 @@ describe('Native verification receipt v2', () => {
       {
         steps: ['Open the generated archive.'],
         observations: ['The receipt graph is present.'],
-        responsible: 'manual-reviewer',
       },
     ],
   ] as const)('round-trips a bound %s receipt', (kind, evidence) => {
@@ -80,7 +79,7 @@ describe('Native verification receipt v2', () => {
 
     expect(parseNativeVerificationReceipt(receipt)).toEqual(receipt);
     expect(receipt).toMatchObject({
-      schema: 'comet.native.verification-receipt.v2',
+      schema: 'comet.native.verification-receipt.v3',
       acceptanceIds: [acceptanceA, acceptanceB],
       bindings,
     });
@@ -91,7 +90,7 @@ describe('Native verification receipt v2', () => {
     (kind) => {
       expect(() =>
         parseNativeVerificationReceipt({
-          schema: 'comet.native.verification-receipt.v2',
+          schema: 'comet.native.verification-receipt.v3',
           receiptHash: hash('f'),
           kind,
           role: 'acceptance-evidence',

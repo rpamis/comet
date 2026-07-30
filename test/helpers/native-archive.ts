@@ -102,7 +102,6 @@ export async function prepareNativeArchiveFixture(options: {
     paths: options.paths,
     name: options.name,
     acceptanceIds: contract.contract.acceptance.map((criterion) => criterion.id),
-    responsible: 'native-archive-fixture',
     steps: ['Inspect the archived capability against every acceptance criterion.'],
     observations: ['The focused Native Archive fixture evidence passed.'],
     confirmed: true,

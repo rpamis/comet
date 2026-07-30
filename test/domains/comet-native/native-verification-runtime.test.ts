@@ -181,7 +181,6 @@ Pass.
         evidence: {
           steps: ['Execute the focused acceptance check.'],
           observations: ['The focused behavior matched the contract.'],
-          responsible: 'runtime-test',
         },
       }),
     });

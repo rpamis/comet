@@ -295,8 +295,6 @@ describe('Comet Native CLI dispatcher', () => {
         'manual',
         'sentence-counting',
         ...resumedCriteria.flatMap((criterion) => ['--acceptance', criterion.id]),
-        '--responsible',
-        'native-cli-test',
         '--step',
         'Execute the sentence-counting acceptance contract.',
         '--observation',
@@ -307,6 +305,17 @@ describe('Comet Native CLI dispatcher', () => {
       ]),
     );
     expect(manualReceiptResult.exitCode).toBe(0);
+    expect(manualReceiptResult.data).toMatchObject({
+      receipt: {
+        schema: 'comet.native.verification-receipt.v3',
+        actor: 'native-runtime:manual-evidence',
+        evidence: {
+          steps: ['Execute the sentence-counting acceptance contract.'],
+          observations: ['Every acceptance criterion produced the expected result.'],
+        },
+      },
+    });
+    expect(JSON.stringify(manualReceiptResult.data)).not.toContain('responsible');
     const manualReceiptRef = (manualReceiptResult.data as { ref: string }).ref;
     const acceptanceEntries = resumedCriteria
       .map((criterion) => ({

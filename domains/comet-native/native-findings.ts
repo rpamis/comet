@@ -120,19 +120,19 @@ const EXACT_METADATA: Record<string, FindingMetadata> = {
   },
   'repair-stagnation-stop': {
     severity: 'error',
-    requiredAction: 'make-progress-or-explicitly-override-repair',
+    requiredAction: 'try-new-repair-hypothesis-with-status-override',
     retry: 'none',
     repair: 'none',
   },
   'repair-iteration-limit': {
     severity: 'error',
-    requiredAction: 'change-confirmed-contract-or-increase-verify-failure-budget',
+    requiredAction: 'choose-repair-continuation',
     retry: 'none',
     repair: 'none',
   },
   'repair-override-exhausted': {
     severity: 'error',
-    requiredAction: 'review-repeated-failure-after-override',
+    requiredAction: 'choose-repair-continuation',
     retry: 'none',
     repair: 'none',
   },
@@ -264,7 +264,9 @@ export function structureNativeFindings(options: {
           finding.code === 'shape-confirmation-required' ||
           finding.code === 'approval-confirmation-required' ||
           finding.code === 'contract-changed-after-approval' ||
-          finding.code === 'verification-scope-partial',
+          finding.code === 'verification-scope-partial' ||
+          finding.code === 'repair-iteration-limit' ||
+          finding.code === 'repair-override-exhausted',
       };
     })
     .sort((left, right) => {

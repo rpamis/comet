@@ -48,7 +48,15 @@ After Verify fail returns to Build:
 3. rerun the relevant validation;
 4. submit the Verify result again.
 
-When the same gap repeats or `max_verify_failures` is reached, the Runtime stops the automatic loop. Use a status-provided repair override only when the Runtime allows it and one explicit new repair hypothesis exists. Otherwise preserve the scene and ask the user whether to change scope, constraints, or stop.
+When the same gap appears for the third time, the Runtime returns `repair-stagnation-stop`. This is not a user decision: read the signature from status, form one concrete new repair hypothesis that differs from the previous attempt, make the corresponding change, and use that signature and hypothesis summary for one repair override. Do not ask the user for a signature, hash, or override argument.
+
+When the override is exhausted or `native.max_verify_failures` is reached, the continuation returns `await-user` with `repair-continuation-decision`. Explain the current failure and attempted approaches, then ask the user to choose only:
+
+1. continue trying: increase `native.max_verify_failures` and continue;
+2. change the confirmed contract: return to Shape, update the brief and complete target specification, and reconfirm;
+3. stop this repair: preserve the change and current scene without progressing or running Archive.
+
+The user chooses only the direction. You update configuration or formal artifacts, read the Runtime signature, and execute the follow-up commands.
 
 ## Canonical specification conflict
 

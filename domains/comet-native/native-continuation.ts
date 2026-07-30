@@ -41,11 +41,12 @@ export function nativeContinuation(options: {
   const repair = actionableFindings.find(
     (finding) => finding.repairCommand !== null || REPAIR_CODES.test(finding.code),
   );
-  const stagnationStop = actionableFindings.find(
+  const repairDecision = actionableFindings.find(
     (finding) =>
-      finding.code === 'repair-stagnation-stop' ||
-      finding.code === 'repair-iteration-limit' ||
-      finding.code === 'repair-override-exhausted',
+      finding.code === 'repair-iteration-limit' || finding.code === 'repair-override-exhausted',
+  );
+  const stagnationStop = actionableFindings.find(
+    (finding) => finding.code === 'repair-stagnation-stop',
   );
   const requiredInputs = [
     ...new Set(actionableFindings.map((finding) => finding.requiredAction)),
@@ -63,6 +64,20 @@ export function nativeContinuation(options: {
       command: null,
       requiresUserDecision: false,
       requiredInputs: [],
+    };
+  }
+  if (repairDecision) {
+    return {
+      schema: 'comet.native.continuation.v1',
+      skill: 'comet-native',
+      change: options.state.name,
+      phase: options.state.phase,
+      revision: options.state.revision,
+      disposition: 'await-user',
+      action: 'work-phase',
+      command: null,
+      requiresUserDecision: true,
+      requiredInputs: ['repair-continuation-decision'],
     };
   }
   if (decision) {
@@ -87,10 +102,10 @@ export function nativeContinuation(options: {
       phase: options.state.phase,
       revision: options.state.revision,
       disposition: 'blocked',
-      action: 'work-phase',
+      action: 'repair',
       command: null,
       requiresUserDecision: false,
-      requiredInputs: ['implementation-progress-or-repair-override'],
+      requiredInputs: ['new-repair-hypothesis'],
     };
   }
   if (repair) {

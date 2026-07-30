@@ -3,7 +3,7 @@ import { NATIVE_CHECK_POLICY } from './native-check-receipt-model.js';
 import { redactNativeCredentialText } from './native-redaction.js';
 import type { NativeDeclaredArtifact } from './native-verification-scope.js';
 
-export const NATIVE_VERIFICATION_RECEIPT_SCHEMA = 'comet.native.verification-receipt.v2' as const;
+export const NATIVE_VERIFICATION_RECEIPT_SCHEMA = 'comet.native.verification-receipt.v3' as const;
 const VERIFICATION_RECEIPT_HASH_TAG = NATIVE_VERIFICATION_RECEIPT_SCHEMA;
 const ARTIFACT_BINDING_HASH_TAG = 'comet.native.declared-artifacts.v1';
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
@@ -67,7 +67,6 @@ export interface NativeStaticInspectionEvidence {
 export interface NativeManualEvidence {
   steps: string[];
   observations: string[];
-  responsible: string;
 }
 
 type NativeVerificationReceiptEvidenceByKind = {
@@ -203,7 +202,6 @@ function checkReceiptRef(value: unknown): { ref: string; hash: string } {
 function parseEvidence(
   kind: NativeVerificationReceiptKind,
   value: unknown,
-  actor: string,
   status: NativeVerificationReceiptStatus,
   role: NativeVerificationReceipt['role'],
 ): NativeVerificationReceipt['evidence'] {
@@ -331,17 +329,10 @@ function parseEvidence(
     };
   }
   if (kind === 'manual-evidence') {
-    exactKeys(
-      evidence,
-      ['steps', 'observations', 'responsible'],
-      'Native manual-evidence evidence',
-    );
-    const responsible = text(evidence.responsible, 'Native manual evidence responsible');
-    if (responsible !== actor) throw new Error('Native manual evidence actor/responsible mismatch');
+    exactKeys(evidence, ['steps', 'observations'], 'Native manual-evidence evidence');
     return {
       steps: stringList(evidence.steps, 'Native manual evidence steps'),
       observations: stringList(evidence.observations, 'Native manual evidence observations'),
-      responsible,
     };
   }
   throw new Error(`Native verification receipt kind is unsupported: ${kind satisfies never}`);
@@ -400,7 +391,7 @@ function receiptContent(value: unknown): Omit<NativeVerificationReceipt, 'receip
     acceptanceIds,
     actor,
     issuedAt: timestamp(root.issuedAt, 'Native verification receipt issue time'),
-    evidence: parseEvidence(kind, root.evidence, actor, status, role),
+    evidence: parseEvidence(kind, root.evidence, status, role),
   } as Omit<NativeVerificationReceipt, 'receiptHash'>;
   if (
     role === 'required-check' &&
