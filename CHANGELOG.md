@@ -8,8 +8,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Classic root migration**: `comet classic root move docs --dry-run` now reports the current state without exposing a plan ID, prints each conflict or blocker on its own line, and `--apply` migrates the complete `openspec/` tree—including active and incompletely archived changes—without requiring a plan ID. Migration output and errors follow `classic.language`, projects already using `docs/openspec/` receive a clear no-op result, and completed migrations keep the final result at the end of the detailed report.
 - **Native workflow guidance**: Native now identifies the current change and phase before loading a phase-specific reference, always performs Shape classification, silent-assumption checks, and shared-understanding confirmation before implementation, and explains project and change commands as a task-oriented runbook instead of an undifferentiated command list.
-- **Native repair continuation**: Repeated failures with one available override now remain Agent-owned and require a concrete new repair hypothesis, while exhausted overrides and verification budgets return one explicit user decision to continue with a larger budget, change the confirmed contract, or stop.
-- **Native verification execution**: Passing Verify now runs and binds the built-in required check automatically, while failed acceptance entries can reference failed automated receipts and let Runtime derive repair gaps without caller-supplied classifications. Automated receipts run project commands—including Windows command shims—with the current project environment and redact credential-like command output before storing the summary.
+- **Native verification and repair**: Passing Verify now runs and binds the built-in required check automatically. Acceptance evidence can come from manual observations or Runtime-executed project commands, with Windows command-shim support and credential-like output redaction. Runtime derives repair gaps from failed evidence; a repeated gap with one remaining override stays Agent-owned and requires a concrete new hypothesis, while an exhausted override or verification budget returns one explicit user decision.
 
 ### Fixed
 
@@ -19,9 +18,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Removed
 
-- **Native cryptographic review**: Removed controller trust, signing identities, implementation attestations, independent-review and waiver receipts, and their CLI and Eval handoff paths. Native verification now depends only on complete, current acceptance and required-check evidence bound to the active revision, contract, scope, snapshot, and artifacts.
-- **Native manual evidence identity label**: `comet native receipt manual` no longer accepts or requires `--responsible`. Verification receipt schema v3 records fixed Runtime provenance for manual observations while retaining the acceptance, contract, scope, snapshot, and artifact bindings that affect verification; active changes holding v2 receipts must record fresh evidence before passing Verify or running Archive.
-- **Redundant Native CLI inputs**: Removed the `comet native list` alias, the manual-receipt `--confirmed` flag, and caller-supplied `next --receipt`, `--evidence-receipt`, `--failure-category`, and `--failed-check` options. Use unnamed `status` for discovery and record acceptance receipt references in `verification.md`; Runtime owns required checks and repair fact derivation.
+- **Native cryptographic review**: Removed controller trust, signing identities, implementation attestations, independent-review and waiver receipts, and their CLI and Eval handoff paths. Native verification now depends on complete, current acceptance evidence and the built-in required check, bound to the active revision, contract, scope, snapshot, and artifacts.
+- **Redundant Native CLI inputs**: Removed the `comet native list` alias; manual-receipt `--responsible` and `--confirmed` options; and caller-supplied `next --receipt`, `--evidence-receipt`, `--failure-category`, and `--failed-check` options. Use unnamed `status` for discovery, record acceptance receipt references in `verification.md`, and record fresh schema-v3 evidence for active changes that still hold v2 receipts.
 
 ## What's Changed [0.4.0-beta.11] - 2026-07-29
 
