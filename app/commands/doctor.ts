@@ -1242,7 +1242,13 @@ async function collectResultsWithContext(
 async function checkCurrentSelection(projectPath: string): Promise<CheckResult> {
   const resolution = await resolveHookWorkflowOwner(projectPath);
   if (resolution.status === 'none') {
-    return { check: 'current selection', status: 'pass', message: 'no active Comet change' };
+    return resolution.staleSelection
+      ? {
+          check: 'current selection',
+          status: 'warn',
+          message: `${resolution.staleSelection.reason}; no active Comet change`,
+        }
+      : { check: 'current selection', status: 'pass', message: 'no active Comet change' };
   }
   if (resolution.status === 'owned') {
     return {
@@ -1255,14 +1261,14 @@ async function checkCurrentSelection(projectPath: string): Promise<CheckResult> 
     return {
       check: 'current selection',
       status: 'warn',
-      message: `missing; Router can infer ${resolution.owner.workflow}:${resolution.owner.name} read-only — select it explicitly before concurrent work`,
+      message: `${resolution.staleSelection ? `${resolution.staleSelection.reason}; ` : 'missing; '}Router can infer ${resolution.owner.workflow}:${resolution.owner.name} read-only — select it explicitly before concurrent work`,
     };
   }
   if (resolution.status === 'ambiguous') {
     return {
       check: 'current selection',
       status: 'fail',
-      message: `missing with multiple active changes: ${resolution.candidates.map((candidate) => `${candidate.workflow}:${candidate.name}`).join(', ')}`,
+      message: `${resolution.staleSelection ? `${resolution.staleSelection.reason}; ` : 'missing with '}multiple active changes: ${resolution.candidates.map((candidate) => `${candidate.workflow}:${candidate.name}`).join(', ')}`,
     };
   }
   if (resolution.status === 'stale') {

@@ -62,14 +62,15 @@ If the brief or specifications change confirmed behavior, obtain confirmation ag
 
 Implement the simplest reliable solution that satisfies the brief and complete target specifications. Work may proceed in batches. Long tasks may use a checkpoint for recovery context, but a checkpoint is not completion evidence.
 
-When requirements change, update the formal artifacts first. If a new user decision appears, return to the Shape clarification and confirmation boundary.
+When requirements change, update the formal artifacts first. If a new user decision appears, stay in Build but repeat the Shape clarification and confirmation boundary: save a `[blocking]` item, pause implementation, and ask the user. After confirmation, update Decisions, the brief, and the complete target specifications, then remove the blocker. When leaving Build, run the command returned by the Runtime and pass `--confirmed`.
 
 After the candidate implementation is complete, review it against the complete specifications and every acceptance item for omissions, then advance with real project artifacts:
 
 ```text
 comet native next <change-name> \
   --summary <summary> \
-  --artifact <project-path>
+  --artifact <project-path> \
+  [--confirmed]
 ```
 
 If no code changed or the Runtime cannot prove complete scope, read the command reference. Never describe unknown or incomplete scope as complete.
@@ -84,7 +85,7 @@ After entering Build, converge through this loop:
 4. Run real validation and submit the Verify result.
 5. `fail` returns to Build and repeats from step 1 without running Archive; only `pass` enters Archive.
 
-The loop ends only at `done`, `await-user`, `blocked`, or an explicit caller stop point. One Agent turn, one checkpoint, or the Agent saying “complete” is not a terminal state. The Agent finds and repairs gaps; the Runtime decides whether completion has been proven.
+`blocked` pauses the normal Build → Verify loop and enters a recovery branch. After handling the findings, resume from step 1 according to the new continuation. End the current work only at `done`, `await-user`, or an explicit caller stop point. One Agent turn, one checkpoint, one `blocked` result, or the Agent saying “complete” is not a terminal state. The Agent finds and repairs gaps; the Runtime decides whether completion has been proven.
 
 ## Verify
 
@@ -119,7 +120,7 @@ Shape, Build, and Verify transitions return `next: auto | manual` together with 
 
 - `continue`: reread the phase and currently required artifacts, then continue;
 - `await-user`: wait for a decision or missing input that genuinely requires the user;
-- `blocked`: handle the findings and read the recovery reference when needed;
+- `blocked`: pause the normal loop, handle the findings, and read the recovery reference when needed; then resume according to the new continuation rather than ending the task because it was `blocked`;
 - `done`: the change is complete.
 
 `next: auto` means only that the current transition succeeded; later work has not run automatically. If the caller explicitly requests a stop after a transition, update the formal artifacts, run the one allowed transition, make no tool calls after the transition succeeds, then output the agreed marker and end the turn, even when the continuation is `continue`.

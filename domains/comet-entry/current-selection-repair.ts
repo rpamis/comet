@@ -32,7 +32,7 @@ export async function repairCometCurrentSelection(
     : false;
 
   const resolution = await dependencies.resolveOwner(projectRoot);
-  if (resolution.status !== 'stale' || resolution.code !== 'target-missing') {
+  if (!('staleSelection' in resolution) || resolution.staleSelection?.code !== 'target-missing') {
     return { migratedLegacyClassic, clearedStaleSelection: false };
   }
 

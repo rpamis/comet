@@ -242,7 +242,7 @@ describe('Comet Hook Router', () => {
     expect(inspectClassic).not.toHaveBeenCalled();
   });
 
-  it('fails closed when a selection points to a missing change', async () => {
+  it('allows ordinary development when a stale selection has no active replacement', async () => {
     await configureBoth();
     await writeCometCurrentSelection(root, {
       schema: 'comet.selection.v2',
@@ -264,15 +264,12 @@ describe('Comet Hook Router', () => {
       },
     );
 
-    expect(decision).toMatchObject({
-      allowed: false,
-      reason: expect.stringContaining('missing or archived'),
-    });
+    expect(decision).toEqual({ allowed: true, reason: 'No active Comet change' });
     expect(inspectNative).not.toHaveBeenCalled();
     expect(inspectClassic).not.toHaveBeenCalled();
   });
 
-  it('classifies a missing selected change for deterministic repair', async () => {
+  it('classifies a stale selection with zero active changes as none', async () => {
     await configureBoth();
     await writeCometCurrentSelection(root, {
       schema: 'comet.selection.v2',
@@ -287,9 +284,64 @@ describe('Comet Hook Router', () => {
         listClassic: async () => [],
       }),
     ).resolves.toEqual({
-      status: 'stale',
-      code: 'target-missing',
-      reason: "selected native change 'missing-change' is missing or archived",
+      status: 'none',
+      staleSelection: {
+        code: 'target-missing',
+        reason: "selected native change 'missing-change' is missing or archived",
+      },
+    });
+  });
+
+  it('infers the sole active change after ignoring a stale selection', async () => {
+    await configureBoth();
+    await writeCometCurrentSelection(root, {
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'missing-change',
+      branch: null,
+    });
+
+    await expect(
+      resolveHookWorkflowOwner(root, {
+        listNative: async () => [
+          { workflow: 'native', name: 'only-active', phase: 'build' as const },
+        ],
+        listClassic: async () => [],
+      }),
+    ).resolves.toEqual({
+      status: 'inferred',
+      owner: { workflow: 'native', name: 'only-active', phase: 'build' },
+      staleSelection: {
+        code: 'target-missing',
+        reason: "selected native change 'missing-change' is missing or archived",
+      },
+    });
+  });
+
+  it('requires selection when a stale selection leaves multiple active changes', async () => {
+    await configureBoth();
+    await writeCometCurrentSelection(root, {
+      schema: 'comet.selection.v2',
+      workflow: 'native',
+      change: 'missing-change',
+      branch: null,
+    });
+
+    await expect(
+      resolveHookWorkflowOwner(root, {
+        listNative: async () => [{ workflow: 'native', name: 'first', phase: 'build' as const }],
+        listClassic: async () => [{ workflow: 'classic', name: 'second', phase: 'build' as const }],
+      }),
+    ).resolves.toEqual({
+      status: 'ambiguous',
+      candidates: [
+        { workflow: 'native', name: 'first', phase: 'build' },
+        { workflow: 'classic', name: 'second', phase: 'build' },
+      ],
+      staleSelection: {
+        code: 'target-missing',
+        reason: "selected native change 'missing-change' is missing or archived",
+      },
     });
   });
 

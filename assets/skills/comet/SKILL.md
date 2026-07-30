@@ -1,6 +1,6 @@
 ---
 name: comet
-description: "Use when the user invokes /comet or an active Comet change needs to be resumed."
+description: "Use when the user explicitly invokes /comet or asks to use Comet without choosing Native or Classic; load exactly one permanent entry from project configuration."
 ---
 
 # Comet Entry

@@ -100,7 +100,9 @@ describe('skills', () => {
         'utf-8',
       );
 
-      expect(zhContent).toContain('当用户调用 /comet，或存在需要恢复的 active Comet change 时使用');
+      expect(zhContent).toContain(
+        '当用户明确调用 /comet，或明确要求使用 Comet 但未指定 Native/Classic 时使用',
+      );
       expect(zhContent).toContain('一旦宿主加载本 Skill，就视为已经选定 `/comet` 入口');
       expect(zhContent).toContain('不得重新判断任务是否适合 Comet');
       expect(zhContent).toContain('必须立即执行下方入口解析');
@@ -114,7 +116,7 @@ describe('skills', () => {
       expect(zhContent).toContain('技能加载后，把用户原始请求完整交给已加载的入口 Skill');
 
       expect(enContent).toContain(
-        'Use when the user invokes /comet or an active Comet change needs to be resumed',
+        'Use when the user explicitly invokes /comet or asks to use Comet without choosing Native or Classic',
       );
       expect(enContent).toContain(
         'Once the host loads this Skill, treat the `/comet` entry as selected',
@@ -2755,9 +2757,15 @@ describe('skills', () => {
       }
       expect(zhGuard).toContain('先记录失败并通过 Native Runtime 回到 Build');
       expect(zhGuard).toContain('点号开头的普通项目文件');
+      expect(zhGuard).toContain('零个表示当前没有 Comet 需求');
+      expect(zhGuard).toContain('多个候选时暂停并让用户选择');
+      expect(zhGuard).toContain('普通写入权限不覆盖 brief 中未解决的 `[blocking]`');
       expect(enGuard).toContain('record the failed result');
       expect(enGuard).toContain('return to Build before modifying the implementation');
       expect(enGuard).toContain('dot-prefixed project files');
+      expect(enGuard).toContain('zero means there is no current Comet request');
+      expect(enGuard).toContain('multiple candidates require an explicit user selection');
+      expect(enGuard).toContain('does not override unresolved `[blocking]` user decisions');
 
       await expect(
         fs.access(

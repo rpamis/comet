@@ -1,6 +1,6 @@
 ---
 name: comet
-description: "当用户调用 /comet，或存在需要恢复的 active Comet change 时使用。"
+description: "当用户明确调用 /comet，或明确要求使用 Comet 但未指定 Native/Classic 时使用；只按项目配置加载一个永久入口。"
 ---
 
 # Comet 入口

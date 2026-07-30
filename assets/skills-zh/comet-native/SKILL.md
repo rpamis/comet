@@ -62,14 +62,15 @@ brief 或规格改变已确认的行为时，重新取得用户确认；不要�
 
 实现满足 brief 和完整目标规格的最简单可靠方案。可以分批完成；长任务可使用 checkpoint 保存恢复摘要，但 checkpoint 不是完成证据。
 
-需求变化时先更新正式产物。出现新的用户决定时回到 Shape 的澄清与确认边界。
+需求变化时先更新正式产物。出现新的用户决定时保持在 Build，但重新执行 Shape 的澄清与确认边界：保存 `[blocking]`、暂停实现并询问用户。用户确认后，更新 Decisions、brief 和完整目标规格并移除阻塞项；离开 Build 时执行 Runtime 返回的命令并传入 `--confirmed`。
 
 候选实现完成后，对照完整规格和全部 acceptance 复核是否仍有遗漏，再提供真实项目产物推进：
 
 ```text
 comet native next <change-name> \
   --summary <摘要> \
-  --artifact <项目内路径>
+  --artifact <项目内路径> \
+  [--confirmed]
 ```
 
 没有代码变化或 Runtime 无法证明完整 scope 时，读取命令参考。不得把未知或不完整范围声明为 complete。
@@ -84,7 +85,7 @@ comet native next <change-name> \
 4. 运行真实验证并提交 Verify 结果。
 5. `fail` 回到 Build，从第 1 步继续，且不运行 Archive；`pass` 才进入 Archive。
 
-Loop 只在 `done`、`await-user`、`blocked` 或调用方明确要求停止时结束。一次 Agent turn、一次 checkpoint 或 Agent 自述“已完成”都不是终态。Agent 负责发现并修复缺口，Runtime 负责判断是否完成。
+`blocked` 会暂停正常 Build → Verify 循环并进入恢复分支。处理 findings 后，根据新的 continuation 从第 1 步恢复循环。只有 `done`、`await-user` 或调用方明确要求停止时，才结束当前工作。一次 Agent turn、一次 checkpoint、一次 `blocked` 或 Agent 自述“已完成”都不是终态。Agent 负责发现并修复缺口，Runtime 负责判断是否完成。
 
 ## Verify
 
@@ -119,7 +120,7 @@ Shape、Build 和 Verify 的 transition 都会返回 `next: auto | manual`、`co
 
 - `continue`：重新读取 phase 和当前所需产物后继续；
 - `await-user`：等待确实需要用户决定或补充的输入；
-- `blocked`：处理 findings，必要时读取恢复参考；
+- `blocked`：暂停正常循环，处理 findings，必要时读取恢复参考；处理后按新的 continuation 恢复，不因 `blocked` 本身结束任务；
 - `done`：change 已完成。
 
 `next: auto` 只表示本次 transition 成功，不表示后续步骤已执行。调用方明确要求在某次 transition 后停止时，严格按“更新正式产物 → 执行一次允许的 transition → transition 成功后不再调用工具 → 输出约定标记并结束本轮”执行；即使 continuation 为 `continue` 也不得继续执行后续步骤。

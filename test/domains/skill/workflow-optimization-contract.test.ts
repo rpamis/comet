@@ -213,20 +213,28 @@ describe('Comet workflow optimization contracts', () => {
   );
 
   it.each([
-    ['中文', zhSkillRoot, '仅在用户明确调用', '或由 Comet 根 Skill/runtime'],
+    [
+      '中文',
+      zhSkillRoot,
+      '仅在用户明确调用',
+      '或由 Comet 根 Skill/runtime',
+      '明确要求使用 Comet 但未指定 Native/Classic',
+    ],
     [
       'English',
       skillRoot,
       'Use only when explicitly invoked',
       'or routed by the root Comet skill/runtime',
+      'asks to use Comet without choosing Native or Classic',
     ],
   ])(
     '%s phase skill descriptions cannot bypass root routing',
-    async (_language, root, explicitMarker, routedMarker) => {
+    async (_language, root, explicitMarker, routedMarker, rootTrigger) => {
       const rootDescription = descriptionOf(await readSkill(root, 'comet'));
 
       expect(rootDescription).toContain('/comet');
-      expect(rootDescription).toContain('active Comet change');
+      expect(rootDescription).toContain(rootTrigger);
+      expect(rootDescription).not.toContain('active Comet change');
 
       for (const name of [
         'comet-open',

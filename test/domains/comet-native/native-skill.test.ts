@@ -99,7 +99,7 @@ describe('Comet Native Skills', () => {
           '执行一次完整审查',
           '`fail` 回到 Build，从第 1 步继续',
           '`pass` 才进入 Archive',
-          '一次 Agent turn、一次 checkpoint 或 Agent 自述“已完成”都不是终态',
+          '一次 Agent turn、一次 checkpoint、一次 `blocked` 或 Agent 自述“已完成”都不是终态',
           'Agent 负责发现并修复缺口，Runtime 负责判断是否完成',
         ],
       },
@@ -112,7 +112,7 @@ describe('Comet Native Skills', () => {
           'perform one complete review',
           '`fail` returns to Build and repeats from step 1',
           'only `pass` enters Archive',
-          'One Agent turn, one checkpoint, or the Agent saying “complete” is not a terminal state',
+          'One Agent turn, one checkpoint, one `blocked` result, or the Agent saying “complete” is not a terminal state',
           'The Agent finds and repairs gaps; the Runtime decides whether completion has been proven',
         ],
       },
@@ -127,6 +127,50 @@ describe('Comet Native Skills', () => {
       expect(end, variant.language).toBeGreaterThan(start);
       for (const term of variant.terms) {
         expect(loop, `${variant.language}: ${term}`).toContain(term);
+      }
+    }
+  });
+
+  it('treats blocked as recovery and reconfirms changed Build requirements', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        skillTerms: [
+          '`blocked` 会暂停正常 Build → Verify 循环并进入恢复分支',
+          '不因 `blocked` 本身结束任务',
+          '出现新的用户决定时保持在 Build',
+          '执行 Runtime 返回的命令并传入 `--confirmed`',
+        ],
+        commandTerms: [
+          '如果需求变化引入新的用户决定',
+          '保持在 Build 并重新完成澄清与确认',
+          '传入 `--confirmed`',
+        ],
+      },
+      {
+        language: 'en' as const,
+        skillTerms: [
+          '`blocked` pauses the normal Build → Verify loop and enters a recovery branch',
+          'rather than ending the task because it was `blocked`',
+          'If a new user decision appears, stay in Build',
+          'run the command returned by the Runtime and pass `--confirmed`',
+        ],
+        commandTerms: [
+          'If changed requirements introduce a new user decision',
+          'stay in Build and repeat clarification and confirmation',
+          'with `--confirmed`',
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      const skill = await read(variant.language, 'SKILL.md');
+      const commands = await read(variant.language, 'reference/commands.md');
+      for (const term of variant.skillTerms) {
+        expect(skill, `${variant.language}: ${term}`).toContain(term);
+      }
+      for (const term of variant.commandTerms) {
+        expect(commands, `${variant.language}: ${term}`).toContain(term);
       }
     }
   });

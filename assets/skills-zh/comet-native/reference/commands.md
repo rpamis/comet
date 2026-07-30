@@ -137,7 +137,7 @@ comet native archive <change-name> --expect-preflight <sha256> [--confirmed]
 ```
 
 - Shape：只有用户确认最终共享理解后才传 `--confirmed`。
-- Build：提供真实 `--artifact`；确实没有项目文件变化时使用 `--no-code-reason`。
+- Build：提供真实 `--artifact`；确实没有项目文件变化时使用 `--no-code-reason`。如果需求变化引入新的用户决定，先保持在 Build 并重新完成澄清与确认；确认后更新正式产物，再执行 Runtime 返回的 transition 命令并传入 `--confirmed`。
 - Partial scope：先向用户说明 Runtime 返回的具体缺口和风险。超出已返回明细预算的变化由 `scope-detail-overflow` 数量和内容 hash 汇总；只有用户接受后才使用完全匹配的 scope hash、理由和 `--confirmed`。
 - Verify：提供 `--result` 和完整报告。标准报告路径提交为 `comet native next <change-name> --summary <摘要> --result pass|fail --report verification.md`。Runtime 在 pass 时自动执行内置 required check；报告中的 acceptance 条目直接引用 automated/manual receipt。已执行但失败的条目引用对应失败 receipt，未执行的条目写明 `skipped_reason`。repair 的失败 acceptance 和检查标识由 Runtime 从报告与 receipt 自动推导。
 - Repair override：只使用 status 返回的 signature，并且只在有一个明确新修复假设时执行。

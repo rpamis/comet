@@ -18,17 +18,26 @@ export interface ActiveHookChange {
   phase: string;
 }
 
+interface StaleHookSelection {
+  code: 'target-missing';
+  reason: string;
+}
+
 export type HookWorkflowOwnerResolution =
-  | { status: 'none' }
-  | { status: 'owned' | 'inferred'; owner: ActiveHookChange }
-  | { status: 'ambiguous'; candidates: ActiveHookChange[] }
+  | { status: 'none'; staleSelection?: StaleHookSelection }
+  | { status: 'owned'; owner: ActiveHookChange }
+  | { status: 'inferred'; owner: ActiveHookChange; staleSelection?: StaleHookSelection }
+  | {
+      status: 'ambiguous';
+      candidates: ActiveHookChange[];
+      staleSelection?: StaleHookSelection;
+    }
   | {
       status: 'stale';
       code:
         | 'selection-unreadable'
         | 'change-state-unreadable'
         | 'workflow-disabled'
-        | 'target-missing'
         | 'classic-selection-invalid';
       reason: string;
     };
@@ -52,6 +61,38 @@ function enabledWorkflows(
 ): CometWorkflow[] {
   if (!config) return ['classic'];
   return config.workflows ?? [config.default_workflow];
+}
+
+async function listEnabledActiveChanges(
+  projectRoot: string,
+  enabled: CometWorkflow[],
+  dependencies: Pick<HookRouterDependencies, 'listNative' | 'listClassic'>,
+  cached?: { workflow: CometWorkflow; candidates: ActiveHookChange[] },
+): Promise<ActiveHookChange[]> {
+  const [native, classic] = await Promise.all([
+    enabled.includes('native')
+      ? cached?.workflow === 'native'
+        ? cached.candidates
+        : dependencies.listNative(projectRoot)
+      : [],
+    enabled.includes('classic')
+      ? cached?.workflow === 'classic'
+        ? cached.candidates
+        : dependencies.listClassic(projectRoot)
+      : [],
+  ]);
+  return [...native, ...classic];
+}
+
+function resolveActiveCandidates(
+  candidates: ActiveHookChange[],
+  staleSelection?: StaleHookSelection,
+): HookWorkflowOwnerResolution {
+  if (candidates.length === 0) return { status: 'none', staleSelection };
+  if (candidates.length === 1) {
+    return { status: 'inferred', owner: candidates[0], staleSelection };
+  }
+  return { status: 'ambiguous', candidates, staleSelection };
 }
 
 export async function resolveHookWorkflowOwner(
@@ -95,11 +136,23 @@ export async function resolveHookWorkflowOwner(
     }
     const owner = selectedCandidates.find((candidate) => candidate.name === selection.change);
     if (!owner) {
-      return {
-        status: 'stale',
+      const staleSelection: StaleHookSelection = {
         code: 'target-missing',
         reason: `selected ${selection.workflow} change '${selection.change}' is missing or archived`,
       };
+      try {
+        const candidates = await listEnabledActiveChanges(projectRoot, enabled, dependencies, {
+          workflow: selection.workflow,
+          candidates: selectedCandidates,
+        });
+        return resolveActiveCandidates(candidates, staleSelection);
+      } catch (error) {
+        return {
+          status: 'stale',
+          code: 'change-state-unreadable',
+          reason: `cannot safely enumerate active Comet changes: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
     }
     if (selection.workflow === 'classic') {
       const resolved = await resolveCurrentChange(projectRoot);
@@ -117,13 +170,9 @@ export async function resolveHookWorkflowOwner(
     return { status: 'owned', owner };
   }
 
-  let native: ActiveHookChange[];
-  let classic: ActiveHookChange[];
   try {
-    [native, classic] = await Promise.all([
-      enabled.includes('native') ? dependencies.listNative(projectRoot) : Promise.resolve([]),
-      enabled.includes('classic') ? dependencies.listClassic(projectRoot) : Promise.resolve([]),
-    ]);
+    const candidates = await listEnabledActiveChanges(projectRoot, enabled, dependencies);
+    return resolveActiveCandidates(candidates);
   } catch (error) {
     return {
       status: 'stale',
@@ -131,11 +180,6 @@ export async function resolveHookWorkflowOwner(
       reason: `cannot safely enumerate active Comet changes: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  const candidates: ActiveHookChange[] = [...native, ...classic];
-
-  if (candidates.length === 0) return { status: 'none' };
-  if (candidates.length === 1) return { status: 'inferred', owner: candidates[0] };
-  return { status: 'ambiguous', candidates };
 }
 
 export async function inspectCometHook(

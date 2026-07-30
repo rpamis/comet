@@ -97,9 +97,11 @@ describe('shared Comet current selection repair', () => {
         {
           migrateLegacyClassic: async () => false,
           resolveOwner: async () => ({
-            status: 'stale',
-            code: 'target-missing',
-            reason: 'missing',
+            status: 'none',
+            staleSelection: {
+              code: 'target-missing',
+              reason: 'missing',
+            },
           }),
           clearSelection: async () => {
             throw cleanupFailure;

@@ -287,6 +287,29 @@ describe('Comet entry resume probe v2', () => {
     });
   });
 
+  it('returns none when a stale Native selection has no active replacement', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await writeFile(
+      nativeSelectionFile(paths),
+      JSON.stringify({
+        schema: 'comet.selection.v2',
+        workflow: 'native',
+        change: 'missing-change',
+        branch: null,
+      }),
+    );
+
+    await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
+      workflow: 'native',
+      skill: 'comet-native',
+      action: 'none',
+      reasonCode: 'no-active-native-changes',
+      changeName: null,
+      nextCommand: null,
+    });
+  });
+
   it('uses Native selection for multiple changes without guessing from content', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     await createNative(projectRoot, 'cache-controls');
