@@ -87,7 +87,7 @@ describe('Classic root show', () => {
     }
   });
 
-  it('requires --apply --plan <id> and keeps dry-run read-only', async () => {
+  it('keeps dry-run read-only and applies without exposing a plan ID', async () => {
     await fs.mkdir(path.join(projectRoot, 'openspec', 'changes', 'archive'), {
       recursive: true,
     });
@@ -95,25 +95,98 @@ describe('Classic root show', () => {
 
     const dryRun = await runClassicCli(['root', 'move', 'docs', '--dry-run']);
     expect(dryRun.exitCode).toBe(0);
-    const planId = dryRun.stdout?.match(/^plan: ([a-f0-9]{64})$/mu)?.[1];
-    expect(planId).toMatch(/^[a-f0-9]{64}$/u);
+    expect(dryRun.stdout).toContain('Classic 根目录迁移现状');
+    expect(dryRun.stdout).toContain('仅查看现状，未修改任何文件');
+    expect(dryRun.stdout).toContain('comet classic root move docs --apply');
+    expect(dryRun.stdout).not.toContain('plan:');
+    expect(dryRun.stdout).not.toContain('approved plan ID');
     await expect(fs.stat(path.join(projectRoot, 'docs', 'openspec'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
 
-    const missingPlan = await runClassicCli(['root', 'move', 'docs', '--apply']);
-    expect(missingPlan.exitCode).toBe(64);
-    expect(missingPlan.stderr).toContain('--apply --plan <id>');
-
-    const applied = await runClassicCli([
+    const legacySyntax = await runClassicCli([
       'root',
       'move',
       'docs',
       '--apply',
       '--plan',
-      String(planId),
+      'a'.repeat(64),
     ]);
+    expect(legacySyntax.exitCode).toBe(64);
+    expect(legacySyntax.stderr).not.toContain('--plan');
+
+    const applied = await runClassicCli(['root', 'move', 'docs', '--apply']);
     expect(applied.exitCode).toBe(0);
+    expect(applied.stdout).toContain('Classic 根目录迁移完成');
     await expect(fs.stat(path.join(projectRoot, 'docs', 'openspec'))).resolves.toBeDefined();
+  });
+
+  it('renders root move output in English when classic.language is en', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: legacy',
+        '  language: en',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(projectRoot, 'openspec', 'changes', 'archive'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(projectRoot, 'openspec', 'specs'), { recursive: true });
+
+    const dryRun = await runClassicCli(['root', 'move', 'docs', '--dry-run']);
+
+    expect(dryRun.exitCode).toBe(0);
+    expect(dryRun.stdout).toContain('Classic root move status');
+    expect(dryRun.stdout).toContain('Inspection only; no files were changed');
+    expect(dryRun.stdout).not.toMatch(/[\u4e00-\u9fff]/u);
+  });
+
+  it('renders invalid migration journal errors in the configured language', async () => {
+    await fs.writeFile(path.join(projectRoot, '.comet', 'classic-root-move.json'), '{}\n', 'utf8');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+
+    const result = await runClassicCli(['root', 'move', 'docs', '--dry-run']);
+
+    expect(result.exitCode).toBe(70);
+    expect(result.stderr).toContain('Classic 根目录迁移失败');
+    expect(result.stderr).toContain('迁移记录格式或内容无效');
+    expect(result.stderr).not.toContain('invalid Classic root move journal');
+  });
+
+  it('reports an already migrated docs layout without failing or mutating files', async () => {
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(projectRoot, 'docs', 'openspec', 'changes', 'archive'), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(projectRoot, 'docs', 'openspec', 'specs'), { recursive: true });
+
+    const dryRun = await runClassicCli(['root', 'move', 'docs', '--dry-run']);
+    const apply = await runClassicCli(['root', 'move', 'docs', '--apply']);
+
+    expect(dryRun).toMatchObject({ exitCode: 0 });
+    expect(dryRun.stdout).toContain('已经使用 docs/openspec');
+    expect(apply).toMatchObject({ exitCode: 0 });
+    expect(apply.stdout).toContain('无需重复迁移');
+    await expect(fs.stat(path.join(projectRoot, 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
 });

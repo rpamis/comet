@@ -30,5 +30,5 @@ Accept only `schema: comet.classic-layout.v1`. Bind the returned `openSpecRoot`,
 
 - New Classic projects default to `docs/openspec/`.
 - A missing `classic.artifact_layout` defaults to `docs/openspec/`. When `comet update` detects existing root-level `openspec/` artifacts, it explicitly backfills `legacy` without moving them.
-- Normal init/update never moves existing artifacts. Run `comet classic root move docs --dry-run` first and retain its plan ID; use `comet classic root move docs --apply --plan <id>` only with explicit user authorization.
-- The first migration version rejects every active or unmanaged OpenSpec change.
+- Normal init/update never moves existing artifacts. Run `comet classic root move docs --dry-run` to inspect the current state; after confirmation, run `comet classic root move docs --apply` to migrate. The Runtime manages migration identity and locked revalidation internally.
+- Migration moves the complete `openspec/` tree as-is, including active, unmanaged, and incompletely archived changes; change state does not block a root move.

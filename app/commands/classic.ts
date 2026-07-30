@@ -23,8 +23,8 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
         'Commands:',
         '  openspec -- <openspec-args...>       Run OpenSpec from the configured Classic root',
         '  root show                            Print the configured Classic artifact roots',
-        '  root move docs --dry-run                   Plan the legacy-to-docs migration',
-        '  root move docs --apply --plan <id>         Apply the exact audited plan',
+        '  root move docs --dry-run              Inspect the legacy-to-docs migration',
+        '  root move docs --apply                Apply the migration immediately',
         '',
       ].join('\n'),
     );

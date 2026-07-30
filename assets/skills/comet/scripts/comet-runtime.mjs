@@ -8096,6 +8096,9 @@ async function readWorkflowProjectConfigSnapshot(projectRoot, options = {}) {
     identity: projectConfigIdentity(bytes)
   };
 }
+async function readWorkflowProjectConfig(projectRoot) {
+  return (await readWorkflowProjectConfigDocument(projectRoot))?.config ?? null;
+}
 var WORKFLOW_PROJECT_CONFIG_PATH;
 var init_project_config_reader = __esm({
   "domains/workflow-contract/project-config-reader.ts"() {
@@ -15886,12 +15889,12 @@ var classicResumeProbeCommand = async (args, options) => withClassicCommandConte
 
 // domains/comet-classic/classic-root-move.ts
 init_file_identity();
-import { createHash as createHash9, randomUUID as randomUUID8 } from "crypto";
-import { promises as fs21 } from "fs";
-import path30 from "path";
 init_project_config();
 init_project_config_reader();
 init_protected_project_path();
+import { createHash as createHash9, randomUUID as randomUUID8 } from "crypto";
+import { promises as fs21 } from "fs";
+import path30 from "path";
 var JOURNAL_RELATIVE_PATH = ".comet/classic-root-move.json";
 var STAGING_PLAN_IDENTITY = ".comet/transactions/classic-root-move/<transaction-id>/openspec";
 var HISTORICAL_POINTERS_PRESERVED = [
@@ -15903,14 +15906,13 @@ var HISTORICAL_POINTERS_PRESERVED = [
 ];
 var APPLY_PRECONDITIONS = [
   "approved plan ID still matches layout, source identity and manifest, target identity, and configuration",
-  "no active, archive, or recovery blockers",
+  "no pending root-move recovery transaction",
   "target remains absent or the bound empty directory",
   "source, target, staging, transaction, and config paths remain protected"
 ];
 var MAX_FILES = 5e4;
 var MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 var MAX_JOURNAL_BYTES = 16 * 1024 * 1024;
-var MAX_PENDING_ACTION_BYTES = 1024 * 1024;
 var HASH_PATTERN = /^[a-f0-9]{64}$/u;
 var UUID_PATTERN2 = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 var journalClaimBrand = /* @__PURE__ */ Symbol("ClassicRootMoveJournalClaim");
@@ -15974,18 +15976,6 @@ async function protectedDirectoryExists(projectRoot, directory, label) {
     return true;
   } catch (error) {
     if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-async function protectedFileExists(projectRoot, file, label) {
-  try {
-    return (await inspectProtectedProjectPath(projectRoot, projectRelative2(projectRoot, file), {
-      label,
-      expected: "file"
-    })).exists;
-  } catch (error) {
-    const code = error.code;
-    if (code === "ENOENT" || code === "ENOTDIR") return false;
     throw error;
   }
 }
@@ -16317,6 +16307,12 @@ function manifestHash(manifest) {
     })
   ).digest("hex");
 }
+function compareManifestPath(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+function manifestPathsAreSorted(values, compare) {
+  return values.every((entry2, index) => index === 0 || compare(values[index - 1], entry2) <= 0);
+}
 function planIdFor(plan) {
   return createHash9("sha256").update(
     JSON.stringify({
@@ -16478,7 +16474,7 @@ async function scanTree(projectRoot, root, testHooks) {
       `tree:${relativeDirectory || projectRelative2(projectRoot, root)}`,
       testHooks
     );
-    for (const entry2 of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    for (const entry2 of entries.sort((left, right) => compareManifestPath(left.name, right.name))) {
       const absolute = path30.join(directory, entry2.name);
       const relative = relativeDirectory ? `${relativeDirectory}/${entry2.name}` : entry2.name;
       const stat = await fs21.lstat(absolute, { bigint: true });
@@ -16517,8 +16513,8 @@ async function scanTree(projectRoot, root, testHooks) {
     }
   }
   await visit(root, "");
-  directories.sort((left, right) => left.localeCompare(right));
-  files.sort((left, right) => left.path.localeCompare(right.path));
+  directories.sort(compareManifestPath);
+  files.sort((left, right) => compareManifestPath(left.path, right.path));
   const normalized2 = { directories, files, totalBytes };
   return { ...normalized2, hash: manifestHash(normalized2) };
 }
@@ -16556,99 +16552,6 @@ async function inspectInitialTarget(projectRoot, target, testHooks) {
     throw error;
   }
 }
-async function activeChangeBlockers(projectRoot, source, testHooks) {
-  const changesDir = path30.join(source, "changes");
-  let entries;
-  try {
-    entries = await readProtectedDirectory(projectRoot, changesDir, "active-changes", testHooks);
-  } catch (error) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
-  return entries.filter((entry2) => entry2.name !== "archive").map((entry2) => `active or unmanaged OpenSpec change: ${entry2.name}`).sort();
-}
-async function archiveAndRecoveryBlockers(projectRoot, source, testHooks) {
-  const archiveRoot = path30.join(source, "changes", "archive");
-  if (!await protectedDirectoryExists(projectRoot, archiveRoot, "archive-root")) return [];
-  const blockers = [];
-  for (const entry2 of await readProtectedDirectory(
-    projectRoot,
-    archiveRoot,
-    "archive-root",
-    testHooks
-  )) {
-    if (!entry2.isDirectory()) continue;
-    const changeDir = path30.join(archiveRoot, entry2.name);
-    const pending = path30.join(archiveRoot, entry2.name, ".comet", "pending-action.json");
-    const changeChain = await captureProtectedDirectoryChain(
-      projectRoot,
-      changeDir,
-      `archived change ${entry2.name}`
-    );
-    await testHooks?.afterDirectoryInspect?.(`archived-change:${entry2.name}`);
-    await validateProtectedDirectoryChain(changeChain, `archived change ${entry2.name}`);
-    await testHooks?.beforeArchivedPendingRead?.(entry2.name);
-    let pendingSource = null;
-    try {
-      pendingSource = (await readRootMoveFile(
-        projectRoot,
-        pending,
-        MAX_PENDING_ACTION_BYTES,
-        `Archived pending action ${entry2.name}`
-      )).toString("utf8").trim();
-    } catch (error) {
-      const code = error.code;
-      if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
-    }
-    if (pendingSource !== null) {
-      if (pendingSource && pendingSource !== "null" && pendingSource !== "{}") {
-        blockers.push(`archived change ${entry2.name} has a pending archive action`);
-      }
-    }
-    try {
-      await validateProtectedDirectoryChain(changeChain, `archived change ${entry2.name}`);
-      const [projection, legacy] = await Promise.all([
-        readClassicState(changeDir, { migrate: false }),
-        readLegacyState(changeDir)
-      ]);
-      await validateProtectedDirectoryChain(changeChain, `archived change ${entry2.name}`);
-      if (!legacy.archived) {
-        blockers.push(`archived change ${entry2.name} has archived: false`);
-      }
-      if (projection.run) {
-        if (projection.run.pending !== null || await protectedFileExists(
-          projectRoot,
-          path30.join(changeDir, projection.run.pendingRef),
-          `Archived recovery pending file ${entry2.name}`
-        )) {
-          blockers.push(`archived change ${entry2.name} has pending Classic recovery`);
-        }
-        if (projection.run.status !== "completed") {
-          blockers.push(
-            `archived change ${entry2.name} has incomplete Run status: ${projection.run.status}`
-          );
-        } else {
-          const checkpoint = await readCheckpoint(changeDir, projection.run.checkpointRef);
-          if (!checkpoint || checkpoint.runId !== projection.run.runId) {
-            blockers.push(`archived change ${entry2.name} has no completed checkpoint`);
-          }
-        }
-      }
-    } catch (error) {
-      blockers.push(
-        `archived change ${entry2.name} has invalid recovery state: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-  return blockers.sort();
-}
-async function classicSelectionBlockers(projectRoot) {
-  const selection = await readCometCurrentSelection(projectRoot);
-  if (selection.status === "selected" && selection.selection.workflow === "classic") {
-    return [`current Classic selection: ${selection.selection.change}`];
-  }
-  return [];
-}
 async function validatedLegacyConfig(projectRoot) {
   await assertClassicWorkflowEnabled(projectRoot);
   if (await readClassicArtifactLayout(projectRoot) !== "legacy") {
@@ -16685,17 +16588,6 @@ async function preflight2(projectRoot, options = {}) {
     docs.openSpecRoot,
     options.testHooks
   );
-  const activeBlockers = await activeChangeBlockers(
-    projectRoot,
-    legacy.openSpecRoot,
-    options.testHooks
-  );
-  const archiveBlockers = await archiveAndRecoveryBlockers(
-    projectRoot,
-    legacy.openSpecRoot,
-    options.testHooks
-  );
-  const selectionBlockers = await classicSelectionBlockers(projectRoot);
   const configSnapshot = await projectConfigSnapshot(projectRoot);
   await options.testHooks?.afterConfigSnapshot?.();
   const configHash = configSnapshot.identity.sha256;
@@ -16726,12 +16618,12 @@ async function preflight2(projectRoot, options = {}) {
       fileSummary: manifest.files.map((file) => ({ ...file })),
       configChange: { from: "legacy", to: "docs" },
       conflicts: targetInspection.conflicts,
-      blockers: [...activeBlockers, ...archiveBlockers, ...selectionBlockers],
+      blockers: [],
       pendingRecovery: null,
       historicalPointersPreserved: [...HISTORICAL_POINTERS_PRESERVED],
       applyPreconditions: [...APPLY_PRECONDITIONS],
       allowedRecoveryStrategies: [],
-      readyToApply: targetInspection.conflicts.length === 0 && activeBlockers.length === 0 && archiveBlockers.length === 0 && selectionBlockers.length === 0
+      readyToApply: targetInspection.conflicts.length === 0
     }
   };
 }
@@ -16843,7 +16735,10 @@ function parseManifest(value) {
     return { path: filePath, size: file.size, hash: file.hash };
   });
   if (files.length > MAX_FILES) throw invalidJournal(`manifest exceeds ${MAX_FILES} files`);
-  if (directories.some((entry2, index) => index > 0 && directories[index - 1] >= entry2) || files.some((entry2, index) => index > 0 && files[index - 1].path >= entry2.path)) {
+  const filePaths = files.map((file) => file.path);
+  const duplicatePaths = new Set(directories).size !== directories.length || new Set(filePaths).size !== filePaths.length;
+  const pathsUseSupportedOrder = manifestPathsAreSorted(directories, compareManifestPath) && manifestPathsAreSorted(filePaths, compareManifestPath) || manifestPathsAreSorted(directories, (left, right) => left.localeCompare(right)) && manifestPathsAreSorted(filePaths, (left, right) => left.localeCompare(right));
+  if (duplicatePaths || !pathsUseSupportedOrder) {
     throw invalidJournal("manifest paths must be unique and sorted");
   }
   const totalBytes = files.reduce((total, file) => total + file.size, 0);
@@ -17679,12 +17574,6 @@ async function planClassicRootMove(startPath, options = {}) {
   return (await preflight2(projectRoot, options)).plan;
 }
 async function applyClassicRootMove(startPath, options = {}) {
-  const approvedPlanId = options.planId;
-  if (!approvedPlanId || !HASH_PATTERN.test(approvedPlanId)) {
-    throw new Error(
-      "Classic root move apply requires the exact dry-run plan ID: --apply --plan <id>"
-    );
-  }
   const projectRoot = await discoverClassicProject(startPath);
   const existing = await readJournal(projectRoot, options.testHooks);
   if (existing) {
@@ -17693,6 +17582,10 @@ async function applyClassicRootMove(startPath, options = {}) {
     );
   }
   const initial = await preflight2(projectRoot);
+  const approvedPlanId = options.planId ?? initial.plan.planId;
+  if (!HASH_PATTERN.test(approvedPlanId)) {
+    throw new Error("Classic root move apply received an invalid internal plan ID");
+  }
   const id = randomUUID8();
   await assertRootMovePreflightBoundaries(projectRoot, id);
   const lockedJournal = {
@@ -17795,78 +17688,161 @@ async function inspectClassicRootMove(projectRoot, options = {}) {
 }
 
 // domains/comet-classic/classic-root-command.ts
-function usage3() {
+init_project_config_reader();
+function usage3(language = "en") {
   return {
     exitCode: 64,
-    stderr: "Usage: comet classic root show | comet classic root move docs --dry-run | comet classic root move docs --apply --plan <id>"
+    stderr: language === "zh-CN" ? "用法：comet classic root show | comet classic root move docs --dry-run | comet classic root move docs --apply" : "Usage: comet classic root show | comet classic root move docs --dry-run | comet classic root move docs --apply"
   };
 }
-function formatClassicRootMoveReport(plan, mode) {
-  const list = (values) => values.length > 0 ? values.join("; ") : "none";
+function rootMoveLanguage(config) {
+  return config?.classic?.language === "en" ? "en" : "zh-CN";
+}
+function formatClassicRootMoveError(error, language) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (language === "en") return message;
+  if (message === "invalid Classic root move journal: manifest paths must be unique and sorted") {
+    return "Classic 根目录迁移失败：迁移记录中的清单路径必须唯一且按顺序排列";
+  }
+  if (message.startsWith("invalid Classic root move journal:")) {
+    return "Classic 根目录迁移失败：迁移记录格式或内容无效，请运行 comet doctor 检查恢复状态";
+  }
+  return "Classic 根目录迁移失败：迁移过程中发生错误，请运行 comet doctor 检查迁移状态";
+}
+function formatClassicRootMoveReport(plan, mode, language = "en") {
+  const zh = language === "zh-CN";
+  const list = (values) => values.length > 0 ? values.join("; ") : zh ? "无" : "none";
+  const localizedReason = (value) => {
+    if (!zh) return value;
+    const pending = /^pending Classic root move: (.+) at (.+)$/u.exec(value);
+    if (pending) return `存在待恢复的 Classic 根目录迁移：${pending[1]}，阶段 ${pending[2]}`;
+    return {
+      "Classic docs target is not empty": "docs 目标目录非空",
+      "the locked apply preflight was not approved for execution": "已锁定的迁移预检尚未获准执行",
+      "Classic legacy root changed after migration preflight": "迁移预检后 legacy 根目录发生变化",
+      "Classic docs target changed after migration preflight": "迁移预检后 docs 目标目录发生变化",
+      "Classic staging changed after migration preflight": "迁移预检后暂存目录发生变化",
+      "Classic quarantine contains unknown or changed content": "隔离目录包含未知或已变化的内容",
+      "project config does not match the expected post-switch config hash": "项目配置与切换后的预期配置哈希不一致",
+      "the configured migration trees are incomplete": "已切换配置对应的迁移目录不完整",
+      "project config changed after migration preflight": "迁移预检后项目配置发生变化",
+      "the migration trees are not recoverable": "迁移目录当前无法安全恢复"
+    }[value] ?? "迁移状态存在无法识别的冲突，请运行 comet doctor 检查恢复状态";
+  };
+  const reasonLines = (label, values) => values.length === 0 ? [`${label}: ${zh ? "无" : "none"}`] : [`${label}:`, ...values.map((value) => `- ${localizedReason(value)}`)];
+  const targetState = zh ? { missing: "缺失", empty: "空目录", "non-empty": "非空目录" }[plan.targetInitialState] : plan.targetInitialState;
+  const historicalPointers = zh ? "handoff 哈希；运行状态；检查点；轨迹；已归档证据与产物指针" : plan.historicalPointersPreserved.join("; ");
+  const applyPreconditions = zh ? "内部迁移身份仍与布局、源目录、清单、目标目录和配置一致；不存在待恢复的根迁移事务；目标仍然缺失或为已绑定的空目录；所有迁移路径仍受保护" : plan.applyPreconditions.join("; ");
+  const recoveryStrategies = zh ? plan.allowedRecoveryStrategies.map((strategy) => strategy === "continue" ? "继续" : "回滚") : plan.allowedRecoveryStrategies;
+  const lines = [
+    mode === "dry-run" ? zh ? "Classic 根目录迁移现状" : "Classic root move status" : zh ? "Classic 根目录迁移完成" : "Classic root move complete",
+    ...mode === "dry-run" ? [
+      zh ? "说明：仅查看现状，未修改任何文件。" : "Note: Inspection only; no files were changed."
+    ] : [zh ? "结果：迁移已完成。" : "Result: Migration completed."],
+    `${zh ? "源目录" : "source"}: ${plan.source}`,
+    `${zh ? "目标目录" : "target"}: ${plan.target}`,
+    `${zh ? "暂存目录" : "staging"}: ${plan.staging}`,
+    `${zh ? "当前布局" : "artifact layout"}: ${plan.artifactLayout}`,
+    `${zh ? "源目录身份" : "source identity"}: ${JSON.stringify(plan.sourceIdentity)}`,
+    `${zh ? "目标初始身份" : "target initial identity"}: ${plan.targetInitialIdentity ? JSON.stringify(plan.targetInitialIdentity) : zh ? "缺失" : "missing"}`,
+    `${zh ? "文件数" : "files"}: ${plan.fileCount}`,
+    `${zh ? "目录数" : "directories"}: ${plan.directoryCount}`,
+    `${zh ? "总字节数" : "bytes"}: ${plan.totalBytes}`,
+    `${zh ? "清单哈希" : "manifest"}: ${plan.manifestHash}`,
+    ...plan.fileSummary.map(
+      (file) => `${zh ? "文件" : "file"}: ${file.path} ${file.size} ${file.hash}`
+    ),
+    `${zh ? "配置变更" : "config change"}: ${plan.configChange.from} -> ${plan.configChange.to}`,
+    `${zh ? "配置路径" : "config path"}: ${plan.configPath}`,
+    `${zh ? "配置哈希" : "config"}: ${plan.configHash}`,
+    `${zh ? "原配置哈希" : "original config"}: ${plan.originalConfigHash}`,
+    `${zh ? "预期配置哈希" : "expected config"}: ${plan.expectedConfigHash}`,
+    `${zh ? "目标初始状态" : "target initial state"}: ${targetState}`,
+    ...reasonLines(zh ? "冲突" : "conflicts", plan.conflicts),
+    ...reasonLines(zh ? "阻塞项" : "blockers", plan.blockers),
+    `${zh ? "待恢复事务" : "pending recovery"}: ${plan.pendingRecovery ? `${plan.pendingRecovery.id} ${zh ? "位于阶段" : "at"} ${plan.pendingRecovery.stage}` : zh ? "无" : "none"}`,
+    `${zh ? "保留历史指针" : "historical pointers preserved"}: ${historicalPointers}`,
+    `${zh ? "执行前提" : "apply preconditions"}: ${applyPreconditions}`,
+    `${zh ? "允许的恢复策略" : "allowed recovery strategies"}: ${list(recoveryStrategies)}`,
+    `${zh ? "可执行迁移" : "ready to apply"}: ${plan.readyToApply ? zh ? "是" : "yes" : zh ? "否" : "no"}`
+  ];
+  if (mode === "dry-run") {
+    lines.push(
+      plan.readyToApply ? zh ? "下一步：运行 comet classic root move docs --apply 执行迁移。" : "Next: run comet classic root move docs --apply to apply the migration." : zh ? "下一步：请先解决上述冲突或阻塞项。" : "Next: resolve the conflicts or blockers above before applying."
+    );
+  }
+  return `${lines.join("\n")}
+`;
+}
+function formatAlreadyMigratedReport(layout, mode, language) {
+  const root = classicProjectRelative(layout.projectRoot, layout.openSpecRoot);
+  if (language === "zh-CN") {
+    return [
+      mode === "dry-run" ? "Classic 根目录迁移现状" : "Classic 根目录迁移完成",
+      `当前布局: ${layout.artifactLayout}`,
+      `Classic 根目录: ${root}`,
+      mode === "dry-run" ? "说明：项目已经使用 docs/openspec，仅查看现状，未修改任何文件。" : "结果：项目已经使用 docs/openspec，无需重复迁移，未修改任何文件。"
+    ].join("\n") + "\n";
+  }
   return [
-    `Classic root move ${mode}`,
-    `source: ${plan.source}`,
-    `target: ${plan.target}`,
-    `staging: ${plan.staging}`,
-    `artifact layout: ${plan.artifactLayout}`,
-    `source identity: ${JSON.stringify(plan.sourceIdentity)}`,
-    `target initial identity: ${plan.targetInitialIdentity ? JSON.stringify(plan.targetInitialIdentity) : "missing"}`,
-    `files: ${plan.fileCount}`,
-    `directories: ${plan.directoryCount}`,
-    `bytes: ${plan.totalBytes}`,
-    `manifest: ${plan.manifestHash}`,
-    ...plan.fileSummary.map((file) => `file: ${file.path} ${file.size} ${file.hash}`),
-    `config change: ${plan.configChange.from} -> ${plan.configChange.to}`,
-    `config path: ${plan.configPath}`,
-    `config: ${plan.configHash}`,
-    `original config: ${plan.originalConfigHash}`,
-    `expected config: ${plan.expectedConfigHash}`,
-    `plan: ${plan.planId}`,
-    `target initial state: ${plan.targetInitialState}`,
-    `conflicts: ${list(plan.conflicts)}`,
-    `blockers: ${list(plan.blockers)}`,
-    `pending recovery: ${plan.pendingRecovery ? `${plan.pendingRecovery.id} at ${plan.pendingRecovery.stage}` : "none"}`,
-    `historical pointers preserved: ${plan.historicalPointersPreserved.join("; ")}`,
-    `apply preconditions: ${plan.applyPreconditions.join("; ")}`,
-    `allowed recovery strategies: ${list(plan.allowedRecoveryStrategies)}`,
-    `ready to apply: ${plan.readyToApply ? "yes" : "no"}`
+    mode === "dry-run" ? "Classic root move status" : "Classic root move complete",
+    `current layout: ${layout.artifactLayout}`,
+    `Classic root: ${root}`,
+    mode === "dry-run" ? "Note: The project already uses docs/openspec. Inspection only; no files were changed." : "Result: The project already uses docs/openspec. No migration was needed and no files were changed."
   ].join("\n") + "\n";
 }
 var classicRootCommand = async (args) => {
-  const [action, target, mode, planFlag, planId, ...extra] = args;
+  const [action, target, mode, ...extra] = args;
   if (action === "show" && target === void 0) {
-    const projectRoot = await discoverClassicProject(process.cwd());
-    const layout = await assertClassicLayoutReadable(projectRoot);
+    const projectRoot2 = await discoverClassicProject(process.cwd());
+    const layout2 = await assertClassicLayoutReadable(projectRoot2);
     return {
       exitCode: 0,
       stdout: JSON.stringify({
         schema: "comet.classic-layout.v1",
-        artifactLayout: layout.artifactLayout,
-        openSpecRoot: classicProjectRelative(projectRoot, layout.openSpecRoot),
-        changesRoot: classicProjectRelative(projectRoot, layout.changesDir),
-        archiveRoot: classicProjectRelative(projectRoot, layout.archiveDir),
-        specsRoot: classicProjectRelative(projectRoot, layout.specsDir),
-        superpowersRoot: classicProjectRelative(projectRoot, layout.superpowersRoot)
+        artifactLayout: layout2.artifactLayout,
+        openSpecRoot: classicProjectRelative(projectRoot2, layout2.openSpecRoot),
+        changesRoot: classicProjectRelative(projectRoot2, layout2.changesDir),
+        archiveRoot: classicProjectRelative(projectRoot2, layout2.archiveDir),
+        specsRoot: classicProjectRelative(projectRoot2, layout2.specsDir),
+        superpowersRoot: classicProjectRelative(projectRoot2, layout2.superpowersRoot)
       }) + "\n"
     };
   }
   if (action !== "move" || target !== "docs") return usage3();
-  if (mode === "--dry-run") {
-    if (planFlag !== void 0) return usage3();
-    const plan2 = await planClassicRootMove(process.cwd());
+  const projectRoot = await discoverClassicProject(process.cwd());
+  const config = await readWorkflowProjectConfig(projectRoot);
+  const language = rootMoveLanguage(config);
+  if (mode !== "--dry-run" && mode !== "--apply" || extra.length > 0) {
+    return usage3(language);
+  }
+  const layout = await assertClassicLayoutReadable(projectRoot);
+  const reportMode = mode === "--dry-run" ? "dry-run" : "complete";
+  if (layout.artifactLayout === "docs") {
     return {
       exitCode: 0,
-      stdout: formatClassicRootMoveReport(plan2, "dry-run")
+      stdout: formatAlreadyMigratedReport(layout, reportMode, language)
     };
   }
-  if (mode !== "--apply" || planFlag !== "--plan" || !planId || !/^[a-f0-9]{64}$/u.test(planId) || extra.length > 0) {
-    return usage3();
+  try {
+    if (mode === "--dry-run") {
+      const plan2 = await planClassicRootMove(projectRoot);
+      return {
+        exitCode: 0,
+        stdout: formatClassicRootMoveReport(plan2, "dry-run", language)
+      };
+    }
+    const plan = await applyClassicRootMove(projectRoot);
+    return {
+      exitCode: 0,
+      stdout: formatClassicRootMoveReport(plan, "complete", language)
+    };
+  } catch (error) {
+    return {
+      exitCode: 70,
+      stderr: formatClassicRootMoveError(error, language)
+    };
   }
-  const plan = await applyClassicRootMove(process.cwd(), { planId });
-  return {
-    exitCode: 0,
-    stdout: formatClassicRootMoveReport(plan, "complete")
-  };
 };
 
 // domains/comet-classic/classic-state-command.ts

@@ -78,4 +78,13 @@ describe('dashboard web source contracts', () => {
       "const nextPhase = change.phase === 'verify' ? '归档' : 'Verify';",
     );
   });
+
+  it('shows Classic collection failures instead of an empty workspace', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('snapshot.classicError ?');
+    expect(source).toContain('<ClassicErrorState error={snapshot.classicError} />');
+    expect(source).toContain('Classic 数据读取失败');
+    expect(source).toContain('{error.message}');
+  });
 });

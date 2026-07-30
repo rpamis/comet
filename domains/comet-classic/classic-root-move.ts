@@ -8,8 +8,6 @@ import {
   sameFileObject,
   type FileObjectIdentity,
 } from '../../platform/fs/file-identity.js';
-import { readCheckpoint } from '../engine/run-store.js';
-import { readCometCurrentSelection } from '../comet-entry/current-selection.js';
 import { renderStructuredProjectConfig } from '../workflow-contract/project-config.js';
 import {
   readWorkflowProjectConfigSnapshot,
@@ -27,7 +25,6 @@ import {
   readClassicArtifactLayout,
   writeClassicArtifactLayout,
 } from './classic-layout.js';
-import { readClassicState, readLegacyState } from './classic-store.js';
 
 const JOURNAL_RELATIVE_PATH = '.comet/classic-root-move.json';
 const STAGING_PLAN_IDENTITY = '.comet/transactions/classic-root-move/<transaction-id>/openspec';
@@ -40,14 +37,13 @@ const HISTORICAL_POINTERS_PRESERVED = [
 ] as const;
 const APPLY_PRECONDITIONS = [
   'approved plan ID still matches layout, source identity and manifest, target identity, and configuration',
-  'no active, archive, or recovery blockers',
+  'no pending root-move recovery transaction',
   'target remains absent or the bound empty directory',
   'source, target, staging, transaction, and config paths remain protected',
 ] as const;
 const MAX_FILES = 50_000;
 const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_JOURNAL_BYTES = 16 * 1024 * 1024;
-const MAX_PENDING_ACTION_BYTES = 1024 * 1024;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 const journalClaimBrand = Symbol('ClassicRootMoveJournalClaim');
@@ -108,7 +104,6 @@ interface ClassicRootMoveTestHooks {
   afterJournalQuarantine?: (operation: string) => void | Promise<void>;
   afterConfigSnapshot?: () => void | Promise<void>;
   afterDirectoryInspect?: (label: string) => void | Promise<void>;
-  beforeArchivedPendingRead?: (change: string) => void | Promise<void>;
   beforeMutation?: (operation: string) => void | Promise<void>;
 }
 
@@ -269,25 +264,6 @@ async function protectedDirectoryExists(
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
-}
-
-async function protectedFileExists(
-  projectRoot: string,
-  file: string,
-  label: string,
-): Promise<boolean> {
-  try {
-    return (
-      await inspectProtectedProjectPath(projectRoot, projectRelative(projectRoot, file), {
-        label,
-        expected: 'file',
-      })
-    ).exists;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT' || code === 'ENOTDIR') return false;
     throw error;
   }
 }
@@ -716,6 +692,16 @@ function manifestHash(manifest: Omit<ClassicRootMoveManifest, 'hash'>): string {
     )
     .digest('hex');
 }
+function compareManifestPath(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function manifestPathsAreSorted(
+  values: readonly string[],
+  compare: (left: string, right: string) => number,
+): boolean {
+  return values.every((entry, index) => index === 0 || compare(values[index - 1], entry) <= 0);
+}
 
 interface ClassicRootMovePlanIdentity {
   source: string;
@@ -970,7 +956,7 @@ async function scanTree(
       `tree:${relativeDirectory || projectRelative(projectRoot, root)}`,
       testHooks,
     );
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    for (const entry of entries.sort((left, right) => compareManifestPath(left.name, right.name))) {
       const absolute = path.join(directory, entry.name);
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
       const stat = await fs.lstat(absolute, { bigint: true });
@@ -1010,8 +996,8 @@ async function scanTree(
   }
 
   await visit(root, '');
-  directories.sort((left, right) => left.localeCompare(right));
-  files.sort((left, right) => left.path.localeCompare(right.path));
+  directories.sort(compareManifestPath);
+  files.sort((left, right) => compareManifestPath(left.path, right.path));
   const normalized = { directories, files, totalBytes };
   return { ...normalized, hash: manifestHash(normalized) };
 }
@@ -1062,122 +1048,6 @@ async function inspectInitialTarget(
   }
 }
 
-async function activeChangeBlockers(
-  projectRoot: string,
-  source: string,
-  testHooks?: ClassicRootMoveTestHooks,
-): Promise<string[]> {
-  const changesDir = path.join(source, 'changes');
-  let entries;
-  try {
-    entries = await readProtectedDirectory(projectRoot, changesDir, 'active-changes', testHooks);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw error;
-  }
-  return entries
-    .filter((entry) => entry.name !== 'archive')
-    .map((entry) => `active or unmanaged OpenSpec change: ${entry.name}`)
-    .sort();
-}
-
-async function archiveAndRecoveryBlockers(
-  projectRoot: string,
-  source: string,
-  testHooks?: ClassicRootMoveTestHooks,
-): Promise<string[]> {
-  const archiveRoot = path.join(source, 'changes', 'archive');
-  if (!(await protectedDirectoryExists(projectRoot, archiveRoot, 'archive-root'))) return [];
-  const blockers: string[] = [];
-  for (const entry of await readProtectedDirectory(
-    projectRoot,
-    archiveRoot,
-    'archive-root',
-    testHooks,
-  )) {
-    if (!entry.isDirectory()) continue;
-    const changeDir = path.join(archiveRoot, entry.name);
-    const pending = path.join(archiveRoot, entry.name, '.comet', 'pending-action.json');
-    const changeChain = await captureProtectedDirectoryChain(
-      projectRoot,
-      changeDir,
-      `archived change ${entry.name}`,
-    );
-    await testHooks?.afterDirectoryInspect?.(`archived-change:${entry.name}`);
-    await validateProtectedDirectoryChain(changeChain, `archived change ${entry.name}`);
-    await testHooks?.beforeArchivedPendingRead?.(entry.name);
-    let pendingSource: string | null = null;
-    try {
-      pendingSource = (
-        await readRootMoveFile(
-          projectRoot,
-          pending,
-          MAX_PENDING_ACTION_BYTES,
-          `Archived pending action ${entry.name}`,
-        )
-      )
-        .toString('utf8')
-        .trim();
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
-    }
-    if (pendingSource !== null) {
-      if (pendingSource && pendingSource !== 'null' && pendingSource !== '{}') {
-        blockers.push(`archived change ${entry.name} has a pending archive action`);
-      }
-    }
-    try {
-      await validateProtectedDirectoryChain(changeChain, `archived change ${entry.name}`);
-      const [projection, legacy] = await Promise.all([
-        readClassicState(changeDir, { migrate: false }),
-        readLegacyState(changeDir),
-      ]);
-      await validateProtectedDirectoryChain(changeChain, `archived change ${entry.name}`);
-      if (!legacy.archived) {
-        blockers.push(`archived change ${entry.name} has archived: false`);
-      }
-      if (projection.run) {
-        if (
-          projection.run.pending !== null ||
-          (await protectedFileExists(
-            projectRoot,
-            path.join(changeDir, projection.run.pendingRef),
-            `Archived recovery pending file ${entry.name}`,
-          ))
-        ) {
-          blockers.push(`archived change ${entry.name} has pending Classic recovery`);
-        }
-        if (projection.run.status !== 'completed') {
-          blockers.push(
-            `archived change ${entry.name} has incomplete Run status: ${projection.run.status}`,
-          );
-        } else {
-          const checkpoint = await readCheckpoint(changeDir, projection.run.checkpointRef);
-          if (!checkpoint || checkpoint.runId !== projection.run.runId) {
-            blockers.push(`archived change ${entry.name} has no completed checkpoint`);
-          }
-        }
-      }
-    } catch (error) {
-      blockers.push(
-        `archived change ${entry.name} has invalid recovery state: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  }
-  return blockers.sort();
-}
-
-async function classicSelectionBlockers(projectRoot: string): Promise<string[]> {
-  const selection = await readCometCurrentSelection(projectRoot);
-  if (selection.status === 'selected' && selection.selection.workflow === 'classic') {
-    return [`current Classic selection: ${selection.selection.change}`];
-  }
-  return [];
-}
-
 async function validatedLegacyConfig(projectRoot: string): Promise<void> {
   await assertClassicWorkflowEnabled(projectRoot);
   if ((await readClassicArtifactLayout(projectRoot)) !== 'legacy') {
@@ -1223,17 +1093,6 @@ async function preflight(
     docs.openSpecRoot,
     options.testHooks,
   );
-  const activeBlockers = await activeChangeBlockers(
-    projectRoot,
-    legacy.openSpecRoot,
-    options.testHooks,
-  );
-  const archiveBlockers = await archiveAndRecoveryBlockers(
-    projectRoot,
-    legacy.openSpecRoot,
-    options.testHooks,
-  );
-  const selectionBlockers = await classicSelectionBlockers(projectRoot);
   const configSnapshot = await projectConfigSnapshot(projectRoot);
   await options.testHooks?.afterConfigSnapshot?.();
   const configHash = configSnapshot.identity.sha256;
@@ -1264,16 +1123,12 @@ async function preflight(
       fileSummary: manifest.files.map((file) => ({ ...file })),
       configChange: { from: 'legacy', to: 'docs' },
       conflicts: targetInspection.conflicts,
-      blockers: [...activeBlockers, ...archiveBlockers, ...selectionBlockers],
+      blockers: [],
       pendingRecovery: null,
       historicalPointersPreserved: [...HISTORICAL_POINTERS_PRESERVED],
       applyPreconditions: [...APPLY_PRECONDITIONS],
       allowedRecoveryStrategies: [],
-      readyToApply:
-        targetInspection.conflicts.length === 0 &&
-        activeBlockers.length === 0 &&
-        archiveBlockers.length === 0 &&
-        selectionBlockers.length === 0,
+      readyToApply: targetInspection.conflicts.length === 0,
     },
   };
 }
@@ -1419,10 +1274,16 @@ function parseManifest(value: unknown): ClassicRootMoveManifest {
     return { path: filePath, size: file.size as number, hash: file.hash };
   });
   if (files.length > MAX_FILES) throw invalidJournal(`manifest exceeds ${MAX_FILES} files`);
-  if (
-    directories.some((entry, index) => index > 0 && directories[index - 1] >= entry) ||
-    files.some((entry, index) => index > 0 && files[index - 1].path >= entry.path)
-  ) {
+  const filePaths = files.map((file) => file.path);
+  const duplicatePaths =
+    new Set(directories).size !== directories.length ||
+    new Set(filePaths).size !== filePaths.length;
+  const pathsUseSupportedOrder =
+    (manifestPathsAreSorted(directories, compareManifestPath) &&
+      manifestPathsAreSorted(filePaths, compareManifestPath)) ||
+    (manifestPathsAreSorted(directories, (left, right) => left.localeCompare(right)) &&
+      manifestPathsAreSorted(filePaths, (left, right) => left.localeCompare(right)));
+  if (duplicatePaths || !pathsUseSupportedOrder) {
     throw invalidJournal('manifest paths must be unique and sorted');
   }
   const totalBytes = files.reduce((total, file) => total + file.size, 0);
@@ -2546,12 +2407,6 @@ export async function applyClassicRootMove(
   startPath: string,
   options: ClassicRootMoveOptions = {},
 ): Promise<ClassicRootMovePlan> {
-  const approvedPlanId = options.planId;
-  if (!approvedPlanId || !HASH_PATTERN.test(approvedPlanId)) {
-    throw new Error(
-      'Classic root move apply requires the exact dry-run plan ID: --apply --plan <id>',
-    );
-  }
   const projectRoot = await discoverClassicProject(startPath);
   const existing = await readJournal(projectRoot, options.testHooks);
   if (existing) {
@@ -2562,6 +2417,10 @@ export async function applyClassicRootMove(
   // This pass only provides a structurally valid journal for the exclusive
   // lock. The caller-approved plan is checked again after that lock exists.
   const initial = await preflight(projectRoot);
+  const approvedPlanId = options.planId ?? initial.plan.planId;
+  if (!HASH_PATTERN.test(approvedPlanId)) {
+    throw new Error('Classic root move apply received an invalid internal plan ID');
+  }
   const id = randomUUID();
   await assertRootMovePreflightBoundaries(projectRoot, id);
   const lockedJournal: ClassicRootMoveJournal = {

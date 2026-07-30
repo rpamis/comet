@@ -326,7 +326,7 @@ describe('Classic root move', () => {
     expect(plan.applyPreconditions).toEqual(
       expect.arrayContaining([
         'approved plan ID still matches layout, source identity and manifest, target identity, and configuration',
-        'no active, archive, or recovery blockers',
+        'no pending root-move recovery transaction',
       ]),
     );
     const report = formatClassicRootMoveReport(plan, 'dry-run');
@@ -340,6 +340,25 @@ describe('Classic root move', () => {
     expect(report).toContain(`original config: ${plan.originalConfigHash}`);
     expect(report).toContain(`expected config: ${plan.expectedConfigHash}`);
     expect(report).toContain('blockers: none');
+    const reportWithBlockers = formatClassicRootMoveReport(
+      { ...plan, blockers: ['first blocker', 'second blocker'] },
+      'dry-run',
+    );
+    expect(reportWithBlockers).toContain('blockers:\n- first blocker\n- second blocker');
+    expect(reportWithBlockers).not.toContain('first blocker; second blocker');
+    const chineseReport = formatClassicRootMoveReport(
+      {
+        ...plan,
+        conflicts: ['Classic docs target is not empty'],
+        blockers: ['pending Classic root move: transaction-id at locked'],
+      },
+      'dry-run',
+      'zh-CN',
+    );
+    expect(chineseReport).toContain('冲突:\n- docs 目标目录非空');
+    expect(chineseReport).toContain(
+      '阻塞项:\n- 存在待恢复的 Classic 根目录迁移：transaction-id，阶段 locked',
+    );
     expect(report).toContain('historical pointers preserved:');
     expect(report).toContain('allowed recovery strategies: none');
     expect((await readProjectConfig(projectRoot))?.classic?.artifact_layout).toBe('legacy');
@@ -349,11 +368,52 @@ describe('Classic root move', () => {
     });
   });
 
-  it('requires the exact dry-run plan ID before apply', async () => {
-    await expect(applyClassicRootMove(projectRoot)).rejects.toThrow(/dry-run plan ID/iu);
+  it('accepts journals written with the previous locale-aware manifest ordering', async () => {
+    const names = ['Z.md', 'a.md'];
+    const localeOrdered = [...names].sort((left, right) => left.localeCompare(right));
+    const codePointOrdered = [...names].sort((left, right) =>
+      left < right ? -1 : left > right ? 1 : 0,
+    );
+    expect(localeOrdered).not.toEqual(codePointOrdered);
+    for (const name of names) {
+      await fs.writeFile(path.join(projectRoot, 'openspec', 'specs', 'demo', name), name);
+    }
+    const files = await Promise.all(
+      ['spec.md', ...localeOrdered]
+        .sort((left, right) => left.localeCompare(right))
+        .map(async (name) => {
+          const content = await fs.readFile(
+            path.join(projectRoot, 'openspec', 'specs', 'demo', name),
+          );
+          return {
+            path: `specs/demo/${name}`,
+            size: content.byteLength,
+            hash: digest(content.toString()),
+          };
+        }),
+    );
+    const manifestBody = {
+      directories: ['changes', 'changes/archive', 'specs', 'specs/demo'],
+      files,
+      totalBytes: files.reduce((total, file) => total + file.size, 0),
+    };
+    const manifest = { ...manifestBody, hash: digest(JSON.stringify(manifestBody)) };
+    await writeJournal('locked', { manifest });
 
-    expect((await readProjectConfig(projectRoot))?.classic?.artifact_layout).toBe('legacy');
-    await expect(fs.stat(path.join(projectRoot, 'openspec'))).resolves.toBeDefined();
+    const plan = await planClassicRootMove(projectRoot);
+
+    expect(plan.pendingRecovery).toMatchObject({ stage: 'locked' });
+  });
+
+  it('derives and locks the executable plan during apply', async () => {
+    const applied = await applyClassicRootMove(projectRoot);
+    expect(applied.readyToApply).toBe(true);
+
+    expect((await readProjectConfig(projectRoot))?.classic?.artifact_layout).toBe('docs');
+    await expect(fs.stat(path.join(projectRoot, 'openspec'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.stat(path.join(projectRoot, 'docs', 'openspec'))).resolves.toBeDefined();
     await expect(
       fs.stat(path.join(projectRoot, '.comet', 'classic-root-move.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
@@ -538,25 +598,55 @@ describe('Classic root move', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('refuses any active or unmanaged OpenSpec change', async () => {
-    await fs.mkdir(path.join(projectRoot, 'openspec', 'changes', 'active'), {
-      recursive: true,
-    });
+  it('moves active and incomplete archived changes with the complete OpenSpec tree', async () => {
+    await fs.mkdir(path.join(projectRoot, 'openspec', 'changes', 'active'), { recursive: true });
     await fs.writeFile(
       path.join(projectRoot, 'openspec', 'changes', 'active', 'proposal.md'),
       '# Active\n',
     );
+    await writeArchivedState('not-archived', { archived: false });
+    await writeArchivedState('running-run', { runStatus: 'running' });
 
     const plan = await planClassicRootMove(projectRoot);
-    expect(plan.readyToApply).toBe(false);
-    expect(plan.blockers).toContain('active or unmanaged OpenSpec change: active');
-    await expect(applyPlannedRootMove()).rejects.toThrow(
-      'active or unmanaged OpenSpec change: active',
-    );
-    expect((await readProjectConfig(projectRoot))?.classic?.artifact_layout).toBe('legacy');
-    await expect(fs.stat(path.join(projectRoot, 'docs', 'openspec'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(plan.blockers).toEqual([]);
+    expect(plan.readyToApply).toBe(true);
+
+    await applyClassicRootMove(projectRoot);
+
+    await expect(
+      fs.readFile(
+        path.join(projectRoot, 'docs', 'openspec', 'changes', 'active', 'proposal.md'),
+        'utf8',
+      ),
+    ).resolves.toBe('# Active\n');
+    await expect(
+      fs.readFile(
+        path.join(
+          projectRoot,
+          'docs',
+          'openspec',
+          'changes',
+          'archive',
+          'not-archived',
+          '.comet.yaml',
+        ),
+        'utf8',
+      ),
+    ).resolves.toContain('archived: false');
+    await expect(
+      fs.stat(
+        path.join(
+          projectRoot,
+          'docs',
+          'openspec',
+          'changes',
+          'archive',
+          'running-run',
+          '.comet',
+          'run-state.json',
+        ),
+      ),
+    ).resolves.toBeDefined();
   });
 
   it('refuses a non-empty docs target without merging roots', async () => {
@@ -587,32 +677,6 @@ describe('Classic root move', () => {
     ).resolves.toBe('# Demo\n');
   });
 
-  it('reports archived, run, checkpoint, and recovery blockers before apply', async () => {
-    await writeArchivedState('not-archived', { archived: false });
-    await writeArchivedState('running-run', { runStatus: 'running' });
-    await writeArchivedState('missing-checkpoint', { runStatus: 'completed' });
-    await writeArchivedState('pending-recovery', {
-      runStatus: 'waiting',
-      pending: 'classic-archive:recover',
-      checkpoint: true,
-    });
-
-    const plan = await planClassicRootMove(projectRoot);
-
-    expect(plan.blockers).toEqual(
-      expect.arrayContaining([
-        'archived change not-archived has archived: false',
-        'archived change running-run has incomplete Run status: running',
-        'archived change missing-checkpoint has no completed checkpoint',
-        'archived change pending-recovery has pending Classic recovery',
-      ]),
-    );
-    expect(plan.readyToApply).toBe(false);
-    await expect(applyPlannedRootMove()).rejects.toThrow(
-      /archived change not-archived has archived: false/u,
-    );
-  });
-
   it.each([
     {
       label: 'docs-target',
@@ -620,16 +684,6 @@ describe('Classic root move', () => {
       prepare: async () => {
         await fs.mkdir(path.join(projectRoot, 'docs', 'openspec'), { recursive: true });
       },
-    },
-    {
-      label: 'active-changes',
-      target: () => path.join(projectRoot, 'openspec', 'changes'),
-      prepare: async () => undefined,
-    },
-    {
-      label: 'archive-root',
-      target: () => path.join(projectRoot, 'openspec', 'changes', 'archive'),
-      prepare: async () => undefined,
     },
   ])(
     'does not enumerate an external directory replacing $label after inspection',
@@ -671,43 +725,6 @@ describe('Classic root move', () => {
       }
     },
   );
-
-  it('does not read archived pending-action content through a replacement junction', async () => {
-    const changeDir = await writeArchivedState('pending-link');
-    const pending = path.join(changeDir, '.comet', 'pending-action.json');
-    await fs.writeFile(pending, 'null\n');
-    const outside = await externalDirectory();
-    const originalComet = path.join(outside, 'original-archive-comet');
-    const externalComet = path.join(outside, 'external-archive-comet');
-    await fs.mkdir(externalComet);
-    await fs.writeFile(path.join(externalComet, 'pending-action.json'), '{"external":"secret"}\n');
-    await fs.writeFile(path.join(externalComet, 'marker.txt'), 'external marker\n');
-
-    await expect(
-      planClassicRootMove(projectRoot, {
-        testHooks: {
-          beforeArchivedPendingRead: async (change) => {
-            if (change !== 'pending-link') return;
-            await fs.rename(path.join(changeDir, '.comet'), originalComet);
-            await directoryLink(externalComet, path.join(changeDir, '.comet'));
-          },
-        },
-      }),
-    ).rejects.toThrow(/changed|symbolic link|junction/iu);
-
-    await expect(fs.readFile(path.join(externalComet, 'marker.txt'), 'utf8')).resolves.toBe(
-      'external marker\n',
-    );
-  });
-
-  it('rejects archived pending-action content above its bounded read budget', async () => {
-    const changeDir = await writeArchivedState('oversized-pending');
-    const pending = path.join(changeDir, '.comet', 'pending-action.json');
-    await fs.writeFile(pending, '{}');
-    await fs.truncate(pending, 1024 * 1024 + 1);
-
-    await expect(planClassicRootMove(projectRoot)).rejects.toThrow(/exceeds 1048576 bytes/iu);
-  });
 
   it('rejects a legacy source root that is a directory link outside the project', async () => {
     const outside = await externalDirectory();

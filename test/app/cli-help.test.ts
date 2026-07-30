@@ -29,7 +29,7 @@ describe('CLI help text', () => {
     expect(help.status, help.stderr).toBe(0);
     expect(help.stdout).toContain(tagline);
     expect(packageJson.description).toBe(tagline);
-    expect(packageJson.version).toBe('0.4.0-beta.11');
+    expect(packageJson.version).toBe('0.4.0-beta.12');
   });
 
   it('marks bundle as the advanced backend and skill Engine runs as advanced', () => {
@@ -96,7 +96,8 @@ describe('CLI help text', () => {
     expect(help.stdout).toContain('openspec -- <openspec-args...>');
     expect(help.stdout).toContain('root show');
     expect(help.stdout).toContain('root move docs --dry-run');
-    expect(help.stdout).toContain('root move docs --apply --plan <id>');
+    expect(help.stdout).toContain('root move docs --apply');
+    expect(help.stdout).not.toContain('--plan <id>');
   });
 
   it('keeps Native behind one isolated root command', () => {

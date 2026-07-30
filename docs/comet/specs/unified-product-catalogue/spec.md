@@ -82,22 +82,24 @@ Classic 提供：
 
 ```text
 comet classic root move docs --dry-run
-comet classic root move docs --apply --plan <id>
+comet classic root move docs --apply
 ```
 
 `--dry-run` 是只读操作，输出：
 
 - source、target 与 staging 的项目相对身份；
 - 文件数、总字节、逐文件集合摘要与内容 hash；
-- 当前配置 hash、计划中的配置变化与 plan identity；
-- 冲突、阻塞 change、pending/recovery 状态；
+- 当前配置 hash、计划中的配置变化与内部迁移身份；
+- 冲突与 pending/recovery 状态；冲突和阻塞原因各自逐行输出；
 - 不会重写的历史 evidence / pointer 清单；
 - apply 的前置条件和允许的恢复策略。
 
-首版 apply 只接受满足全部条件的 legacy 项目：
+`--dry-run` 明确说明不会修改文件，并提示用户运行 `--apply`。`--apply` 本身即为迁移授权；
+Runtime 在内部生成计划身份、取得独占锁并在锁内重新预检，不接受用户传入的
+`--plan <id>`。迁移命令按项目配置的 `classic.language` 输出中文或英文。
 
-- 没有 active Classic change 或 unmanaged OpenSpec change；
-- 没有 pending action、未完成 archive 或 Classic recovery；
+Apply 迁移完整的 legacy `openspec/` 树，包括 active、unmanaged、尚未完成归档或带有恢复状态的 change。迁移只要求：
+
 - docs 目标不存在或为空且由本次事务拥有；
 - 源树只有受支持的普通文件与目录，不含 symlink、junction 或其他特殊对象；
 - 源、目标、staging 和 `.comet/config.yaml` 均在项目边界内且身份稳定；
@@ -109,7 +111,7 @@ Apply 使用 staging、内容校验和有界 journal。Journal 中的 source、t
 
 迁移中断时，普通写命令失败关闭。只读 doctor 报告 transaction id、阶段、source、target、staging 和允许的 `continue | rollback` 策略；显式 doctor repair 必须执行调用方选定且当前阶段允许的策略，不默认替用户选择。无法证明树身份、hash、配置或 journal 一致时保留所有文件并停止。
 
-迁移不把 `.comet/current-change.json` 改成路径；selection 继续只保存 `workflow + change`。首版不提供 active change override。
+迁移不把 `.comet/current-change.json` 改成路径；selection 继续只保存 `workflow + change`，因此 active change 在配置切换后自然解析到新根目录。
 
 ## Doctor 与卸载
 

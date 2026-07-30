@@ -380,7 +380,9 @@ function Dashboard({ snapshot, visible, selected, selectedId, tab, onTab, onSele
       />
       <SummaryCards snapshot={snapshot} />
       <SectionHead title="变更工作区" hint="查看文件产物与项目进度" />
-      {isEmpty ? (
+      {snapshot.classicError ? (
+        <ClassicErrorState error={snapshot.classicError} />
+      ) : isEmpty ? (
         <EmptyState />
       ) : (
         <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
@@ -1380,6 +1382,18 @@ function Pill({ tone = 'neutral', children }) {
     >
       {children}
     </span>
+  );
+}
+
+function ClassicErrorState({ error }) {
+  return (
+    <div role="alert" className="rounded-lg border border-danger/30 bg-danger-soft p-6 shadow-card">
+      <h3 className="font-semibold text-danger">Classic 数据读取失败</h3>
+      <p className="mt-2 break-words text-sm text-fg-2">{error.message}</p>
+      <p className="mt-3 text-sm text-muted">
+        请检查 .comet/config.yaml 与 Classic 产物目录，然后刷新 Dashboard。
+      </p>
+    </div>
   );
 }
 

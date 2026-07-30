@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0-beta.12] - 2026-07-30
+
+### Changed
+
+- **Classic root migration**: `comet classic root move docs --dry-run` now reports the current state without exposing a plan ID, prints each conflict or blocker on its own line, and `--apply` migrates the complete `openspec/` tree—including active and incompletely archived changes—without requiring a plan ID. Migration output and errors follow `classic.language`, while projects already using `docs/openspec/` receive a clear no-op result.
+
+### Fixed
+
+- **Classic Dashboard discovery**: Dashboard now discovers the repository root when launched from a nested directory, reads Classic changes from the configured legacy or docs layout through the built CLI, and shows collection errors instead of presenting them as an empty workspace.
+
 ## What's Changed [0.4.0-beta.11] - 2026-07-29
 
 ### Changed
