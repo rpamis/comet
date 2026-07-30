@@ -24,6 +24,7 @@ async function bundledRuntime(entry) {
     format: 'esm',
     target: ['node20'],
     packages: 'bundle',
+    preserveSymlinks: true,
     sourcemap: false,
     legalComments: 'none',
     charset: 'utf8',

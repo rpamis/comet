@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
-import base64
 import hashlib
 import json
-import subprocess
 import sys
 from pathlib import Path
 
