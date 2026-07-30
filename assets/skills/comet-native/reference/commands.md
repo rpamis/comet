@@ -4,32 +4,81 @@ Read this file only when you need options not listed by the main Skill, receipts
 
 ## Project and change
 
+Determine the current intent first; do not execute this section from top to bottom. Use read-only commands to establish facts, and run a write command only when its stated condition is met. After any write command, immediately reread `status <change-name>` and use the returned phase and continuation to decide what comes next.
+
+### Enable Native for the first time
+
 ```text
 comet native init [--root <artifact-root>] [--language en|zh-CN]
+```
+
+Use this only when the project has not enabled Native yet or when Native directories and language configuration need to be completed. It creates the required directories and writes `.comet/config.yaml`. Existing configuration keeps its current artifact root but may update the language. `init` does not migrate an existing artifact root; the command fails when an explicit `--root` conflicts with existing configuration.
+
+Afterward, run `root show` to confirm the effective location. Do not use `init` as a resume command when a change already exists.
+
+### Inspect or migrate the artifact root
+
+```text
 comet native root show
 comet native root move <artifact-root>
+```
 
-comet native new <change-name> [--language en|zh-CN]
-comet native list [--cursor <token>]
-comet native show <change-name>
+`artifact-root` is project-relative.
+
+- `root show` is read-only. It returns the project root, configured artifact root, effective Native directory, language, and any unfinished migration.
+- `root move` is a transactional write operation. Run it only when the user explicitly wants to migrate the entire Native artifact root; it moves Native data and updates configuration. Do not simulate migration by editing configuration directly.
+
+An unfinished migration blocks other Native writes. Run read-only `doctor` first, then follow its report and use `doctor --repair` to recover.
+
+### Discover and read changes (read-only)
+
+```text
 comet native status [--cursor <token>]
+comet native list [--cursor <token>]
 comet native status <change-name> [--details [--acceptance-cursor <token>]]
+comet native show <change-name>
+```
+
+Both `status` and `list` without a change name return paginated candidates; the entry flow prefers `status`. When multiple reasonable candidates remain, show the candidates and their phases to the user and ask them to choose. Do not guess.
+
+- `status <change-name>` returns the phase, revision, check summary, next command, and continuation. Add `--details` when findings, checkpoint details, or acceptance items are needed.
+- `show` returns state, the brief, and proposed specs. Use it only after identifying the target change to read requirements and specifications; it does not replace the phase and continuation check.
+- When `findingsTruncated` is true, handle the returned findings and read details again.
+- When `acceptancePage.nextCursor` is non-null, continue with `--acceptance-cursor`.
+- When a change collection has a non-null `nextCursor`, continue with `--cursor`.
+
+These commands do not modify selection, phase, or change content.
+
+### Resume an existing change
+
+```text
 comet native select <change-name>
+```
+
+Run this only after the target change is unique or the user has explicitly selected it. `select` updates only the current Native selection and does not change the phase. A successful result returns that change's continuation.
+
+After selecting, reread `status <change-name>`, confirm the phase, and then load the reference for that phase. Do not treat `select` as a phase-transition command.
+
+### Create a new change
+
+```text
+comet native new <change-name> [--language en|zh-CN]
+```
+
+Run `new` only after confirming that no matching active change exists. When configuration is absent, it creates the default Native configuration and `docs/comet/`; it then creates a Shape change, makes it the current selection, and returns a continuation.
+
+Immediately run `show <change-name>` and `status <change-name>`, then enter Shape clarification and shared-understanding confirmation. Do not create a new change to bypass a blocker, conflict, or recovery problem in an existing change.
+
+### Correct the specification history
+
+```text
 comet native spec remove <change-name> <capability>
 comet native spec rebase <change-name> --summary <text>
 ```
 
-`artifact-root` is project-relative. `new` creates default configuration and `<project>/docs/comet/` when configuration is absent. Use `root move` to migrate an existing root; do not edit configuration directly.
+Neither command is an ordinary file-editing command. `spec remove` records a specification operation that removes a capability; use it only when the target behavior truly requires that capability to be removed. `spec rebase` handles concurrent canonical specification changes only: reread the canonical specification, rewrite the complete target specification, and use the summary to record why the rebase was needed.
 
-`status` and `show` are read-only. `new` and `select` establish the current Native selection. Ask the user when multiple candidates cannot be resolved uniquely.
-
-`status <change-name> --details` returns detailed findings and an acceptance page:
-
-- when `findingsTruncated` is true, handle the returned findings and read details again;
-- when `acceptancePage.nextCursor` is non-null, continue with `--acceptance-cursor`;
-- when a change collection has a non-null `nextCursor`, continue with `--cursor`.
-
-When concurrent canonical changes cause a conflict, reread and rewrite the complete target specification before running `spec rebase`. Do not edit operations or hashes manually.
+Both `spec remove` and `spec rebase` modify the change's specification history and return a new continuation. Immediately reread `status <change-name>` afterward. Do not edit operations, base hashes, or Runtime state manually.
 
 ## Checkpoints and checks
 

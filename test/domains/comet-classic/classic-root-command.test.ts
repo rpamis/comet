@@ -118,6 +118,7 @@ describe('Classic root show', () => {
     const applied = await runClassicCli(['root', 'move', 'docs', '--apply']);
     expect(applied.exitCode).toBe(0);
     expect(applied.stdout).toContain('Classic 根目录迁移完成');
+    expect(applied.stdout.trimEnd()).toMatch(/结果：迁移已完成。$/u);
     await expect(fs.stat(path.join(projectRoot, 'docs', 'openspec'))).resolves.toBeDefined();
   });
 

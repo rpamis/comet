@@ -273,6 +273,63 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('explains project and change commands as a bilingual task-oriented runbook', async () => {
+    const commands = await read('zh', 'reference/commands.md');
+
+    for (const heading of [
+      '### 首次启用 Native',
+      '### 查看或迁移 artifact root',
+      '### 发现并读取 change（只读）',
+      '### 恢复已有 change',
+      '### 创建新 change',
+      '### 修正规格轨迹',
+    ]) {
+      expect(commands).toContain(heading);
+    }
+
+    expect(commands).toContain('不要按本节顺序逐条执行');
+    expect(commands).toContain('`init` 不迁移已有 artifact root');
+    expect(commands).toContain('`root move` 是事务性写操作');
+    expect(commands).toContain('无 change 名称的 `status` 与 `list` 都返回分页候选');
+    expect(commands).toContain('`show` 返回 state、brief 和 proposed specs');
+    expect(commands).toContain('`select` 只更新当前 Native selection，不改变 phase');
+    expect(commands).toContain('只有确认没有对应 active change 时才运行 `new`');
+    expect(commands).toContain(
+      '`spec remove` 和 `spec rebase` 都会修改 change 的规格轨迹并返回新的 continuation',
+    );
+    expect(commands).toContain('执行写命令后立即重读 `status <change-name>`');
+
+    const englishCommands = await read('en', 'reference/commands.md');
+    for (const heading of [
+      '### Enable Native for the first time',
+      '### Inspect or migrate the artifact root',
+      '### Discover and read changes (read-only)',
+      '### Resume an existing change',
+      '### Create a new change',
+      '### Correct the specification history',
+    ]) {
+      expect(englishCommands).toContain(heading);
+    }
+
+    expect(englishCommands).toContain('do not execute this section from top to bottom');
+    expect(englishCommands).toContain('`init` does not migrate an existing artifact root');
+    expect(englishCommands).toContain('`root move` is a transactional write operation');
+    expect(englishCommands).toContain(
+      'Both `status` and `list` without a change name return paginated candidates',
+    );
+    expect(englishCommands).toContain('`show` returns state, the brief, and proposed specs');
+    expect(englishCommands).toContain(
+      '`select` updates only the current Native selection and does not change the phase',
+    );
+    expect(englishCommands).toContain(
+      'Run `new` only after confirming that no matching active change exists',
+    );
+    expect(englishCommands).toContain(
+      "Both `spec remove` and `spec rebase` modify the change's specification history and return a new continuation",
+    );
+    expect(englishCommands).toContain('After any write command, immediately reread');
+  });
+
   it('keeps external approval fail-closed without teaching private-key handling', async () => {
     const zhSkill = await read('zh', 'SKILL.md');
     const enSkill = await read('en', 'SKILL.md');

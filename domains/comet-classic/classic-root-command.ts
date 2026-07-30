@@ -99,7 +99,7 @@ export function formatClassicRootMoveReport(
             ? '说明：仅查看现状，未修改任何文件。'
             : 'Note: Inspection only; no files were changed.',
         ]
-      : [zh ? '结果：迁移已完成。' : 'Result: Migration completed.']),
+      : []),
     `${zh ? '源目录' : 'source'}: ${plan.source}`,
     `${zh ? '目标目录' : 'target'}: ${plan.target}`,
     `${zh ? '暂存目录' : 'staging'}: ${plan.staging}`,
@@ -137,6 +137,8 @@ export function formatClassicRootMoveReport(
           ? '下一步：请先解决上述冲突或阻塞项。'
           : 'Next: resolve the conflicts or blockers above before applying.',
     );
+  } else {
+    lines.push(zh ? '结果：迁移已完成。' : 'Result: Migration completed.');
   }
   return `${lines.join('\n')}\n`;
 }

@@ -6,11 +6,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Classic root migration**: `comet classic root move docs --dry-run` now reports the current state without exposing a plan ID, prints each conflict or blocker on its own line, and `--apply` migrates the complete `openspec/` tree—including active and incompletely archived changes—without requiring a plan ID. Migration output and errors follow `classic.language`, while projects already using `docs/openspec/` receive a clear no-op result.
+- **Classic root migration**: `comet classic root move docs --dry-run` now reports the current state without exposing a plan ID, prints each conflict or blocker on its own line, and `--apply` migrates the complete `openspec/` tree—including active and incompletely archived changes—without requiring a plan ID. Migration output and errors follow `classic.language`, projects already using `docs/openspec/` receive a clear no-op result, and completed migrations keep the final result at the end of the detailed report.
+- **Native workflow guidance**: Native now identifies the current change and phase before loading a phase-specific reference, always performs Shape classification, silent-assumption checks, and shared-understanding confirmation before implementation, and explains project and change commands as a task-oriented runbook instead of an undifferentiated command list.
 
 ### Fixed
 
 - **Classic Dashboard discovery**: Dashboard now discovers the repository root when launched from a nested directory, reads Classic changes from the configured legacy or docs layout through the built CLI, and shows collection errors instead of presenting them as an empty workspace.
+- **Explicit Comet Skill routing**: Once a host loads `/comet`, the root Skill now treats the entry as selected, immediately resolves the project-configured workflow, loads exactly the returned Native or Classic entry Skill, and passes the original request through instead of re-evaluating task relevance or selecting a workflow by task size.
 
 ## What's Changed [0.4.0-beta.11] - 2026-07-29
 

@@ -7,15 +7,6 @@ description: 当用户明确调用 /comet-native、要求启动或恢复 Native 
 
 Native 保存需求、完整目标规格、状态和证据。你负责理解、实现和验证；Runtime 负责状态、边界和恢复。
 
-## 按需加载
-
-先只使用本文件。遇到对应任务时再读取一份 reference：
-
-- Shape 中存在尚未确定的用户可见行为时，读取[澄清参考](reference/clarification.md)。
-- 需要高级参数、receipt、partial scope 或外部角色交接命令时，读取[命令参考](reference/commands.md)。
-- 需要编辑 brief、规格或 verification 时，读取[产物参考](reference/artifacts.md)。
-- 出现中断、失效证据、repair stop、冲突、锁或迁移问题时，读取[恢复参考](reference/recovery.md)。
-
 ## 核心规则
 
 从 `.comet/config.yaml` 读取：
@@ -36,7 +27,6 @@ Native 主流程不依赖任何外部 Skill。
 2. 对目标运行 `comet native show <change-name>`；Verify、Archive 或失败后的 Build 再运行 `status <change-name> --details`。
 3. 需要更多 acceptance 时，按 `acceptancePage.nextCursor` 分页；findings 被截断时，先处理已返回项，再重新读取。
 4. 确认目标后运行 `comet native select <change-name>`。
-5. 只读取当前 phase 需要的正式产物、实现、测试和项目规则。
 
 存在多个合理候选时让用户选择。只有确认没有对应 active change 时才创建：
 
@@ -47,11 +37,20 @@ comet native new <change-name> \
 
 只使用配置指定的 Native artifact root。
 
+## 按需加载
+
+确认当前 change 和 phase 后，再按需读取一份对应 reference：
+
+- 进入 Shape 时，必须先读取并执行[澄清参考](reference/clarification.md)。不得以“需求看起来明确”为由跳过；完成共享理解确认前，不得修改项目实现或推进到 Build。
+- 需要高级参数、receipt、partial scope 或外部角色交接命令时，读取[命令参考](reference/commands.md)。
+- 需要编辑 brief、规格或 verification 时，读取[产物参考](reference/artifacts.md)。
+- 出现中断、失效证据、repair stop、冲突、锁或迁移问题时，读取[恢复参考](reference/recovery.md)。
+
 ## Shape
 
 先调查能从仓库、工具和运行环境查明的事实。只有不同选择会实质改变用户可见结果，并且无法从已有要求可靠确定时，才询问用户；实现方式由你决定。
 
-存在未决行为时，按 `clarification_mode` 读取并执行澄清参考。每次用户回答后，立即更新同一个 change 的 Decisions、brief 和完整目标规格。未解决项继续以 `[blocking]` 保存；存在阻塞项时不修改项目实现，也不推进阶段。
+按 `clarification_mode` 执行澄清参考。即使初步判断没有未决行为，也必须完成其中的信息分类和静默假设检查。每次用户回答后，立即更新同一个 change 的 Decisions、brief 和完整目标规格。未解决项继续以 `[blocking]` 保存；存在阻塞项时不修改项目实现，也不推进阶段。
 
 所有用户决定处理完后，重新检查是否仍有静默假设，并向用户提供目标、范围、关键决定、验收标准和非目标的共享理解摘要。只有用户明确确认后，才移除最终阻塞项并推进：
 

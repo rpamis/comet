@@ -4,32 +4,81 @@
 
 ## 项目与 change
 
+先判断当前意图；不要按本节顺序逐条执行。只读命令用于确认事实，写命令只在对应条件满足时执行。执行写命令后立即重读 `status <change-name>`，按返回的 phase 和 continuation 决定下一步。
+
+### 首次启用 Native
+
 ```text
 comet native init [--root <artifact-root>] [--language en|zh-CN]
+```
+
+只在项目尚未启用 Native，或需要补齐 Native 目录与语言配置时使用。它会创建所需目录并写入 `.comet/config.yaml`；已有配置会保留当前 artifact root，但可更新语言。`init` 不迁移已有 artifact root；显式 `--root` 与现有配置冲突时命令会失败。
+
+完成后运行 `root show` 确认实际位置。不要在已经存在 change 时把 `init` 当作恢复命令。
+
+### 查看或迁移 artifact root
+
+```text
 comet native root show
 comet native root move <artifact-root>
+```
 
-comet native new <change-name> [--language en|zh-CN]
-comet native list [--cursor <token>]
-comet native show <change-name>
+`artifact-root` 是项目内相对路径。
+
+- `root show` 是只读命令，返回项目根、配置的 artifact root、实际 Native 目录、语言和未完成迁移。
+- `root move` 是事务性写操作，只在用户明确要迁移整个 Native artifact root 时执行；它会移动 Native 数据并更新配置。不要直接编辑配置模拟迁移。
+
+迁移未完成时，其他 Native 写操作会被阻塞。先运行只读 `doctor`，再按报告使用 `doctor --repair` 恢复。
+
+### 发现并读取 change（只读）
+
+```text
 comet native status [--cursor <token>]
+comet native list [--cursor <token>]
 comet native status <change-name> [--details [--acceptance-cursor <token>]]
+comet native show <change-name>
+```
+
+无 change 名称的 `status` 与 `list` 都返回分页候选；入口流程优先使用 `status`。存在多个合理候选时，把候选及 phase 展示给用户选择，不要猜测。
+
+- `status <change-name>` 返回 phase、revision、检查摘要、下一条命令和 continuation；需要 findings、checkpoint 细节或 acceptance 时加 `--details`。
+- `show` 返回 state、brief 和 proposed specs；只在已经确定目标 change 后使用它读取需求与规格，不用它代替 phase/continuation 检查。
+- `findingsTruncated` 为 true 时，先处理已返回项，再重新读取。
+- `acceptancePage.nextCursor` 非空时，用 `--acceptance-cursor` 继续读取。
+- change 集合的 `nextCursor` 非空时，用 `--cursor` 继续读取。
+
+这些命令都不修改 selection、phase 或 change 内容。
+
+### 恢复已有 change
+
+```text
 comet native select <change-name>
+```
+
+只在目标 change 已唯一确定或由用户明确选择后执行。`select` 只更新当前 Native selection，不改变 phase；成功结果会返回该 change 的 continuation。
+
+选择后重新读取 `status <change-name>`，确认 phase，再加载该 phase 对应的 reference。不要把 `select` 当作阶段推进命令。
+
+### 创建新 change
+
+```text
+comet native new <change-name> [--language en|zh-CN]
+```
+
+只有确认没有对应 active change 时才运行 `new`。配置缺失时，它会创建默认 Native 配置与 `docs/comet/`；随后创建一个 Shape change、把它设为当前 selection，并返回 continuation。
+
+创建后立即运行 `show <change-name>` 与 `status <change-name>`，然后进入 Shape 澄清与共享理解确认。不要创建新 change 来绕过旧 change 的阻塞、冲突或恢复问题。
+
+### 修正规格轨迹
+
+```text
 comet native spec remove <change-name> <capability>
 comet native spec rebase <change-name> --summary <text>
 ```
 
-`artifact-root` 是项目内相对路径。`new` 在配置缺失时创建默认配置和 `<project>/docs/comet/`。已有配置需要迁移根目录时使用 `root move`，不要直接改配置。
+这两条都不是普通文件编辑命令。`spec remove` 把 capability 记录为待移除的规格操作；只在目标行为确实要求移除该 capability 时使用。`spec rebase` 只处理 canonical 规格发生并发变化的情况：先重读 canonical 规格并改写完整目标规格，再用摘要记录 rebase 原因。
 
-`status` 和 `show` 是只读命令。`new` 和 `select` 会建立当前 Native selection。多个候选无法唯一判断时让用户选择。
-
-`status <change-name> --details` 返回详细 findings 和 acceptance 页：
-
-- `findingsTruncated` 为 true 时，先处理已返回项，再重新读取；
-- `acceptancePage.nextCursor` 非空时，用 `--acceptance-cursor` 继续读取；
-- change 集合的 `nextCursor` 非空时，用 `--cursor` 继续读取。
-
-canonical 规格发生并发变化时，先重读并改写完整目标规格，再运行 `spec rebase`。不要手改 operation 或 hash。
+`spec remove` 和 `spec rebase` 都会修改 change 的规格轨迹并返回新的 continuation。执行后立即重读 `status <change-name>`；不要手改 operation、base hash 或 Runtime 状态。
 
 ## Checkpoint 与检查
 

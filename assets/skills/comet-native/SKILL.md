@@ -7,15 +7,6 @@ description: Use when the user explicitly invokes /comet-native, asks to start o
 
 Native stores requirements, complete target specifications, state, and evidence. You understand, implement, and verify; the Runtime owns state, boundaries, and recovery.
 
-## Progressive loading
-
-Start with this file only. Read one reference when the corresponding task appears:
-
-- If Shape contains unresolved user-visible behavior, read the [clarification reference](reference/clarification.md).
-- If you need advanced options, receipts, partial scope, or an external-role handoff command, read the [command reference](reference/commands.md).
-- If you need to edit the brief, specifications, or verification report, read the [artifact reference](reference/artifacts.md).
-- If interruption, stale evidence, a repair stop, conflict, lock, or migration occurs, read the [recovery reference](reference/recovery.md).
-
 ## Core rules
 
 Read these values from `.comet/config.yaml`:
@@ -36,7 +27,6 @@ Do not receive signing private keys or impersonate an external approval role. Wh
 2. Run `comet native show <change-name>` for the target. In Verify, Archive, or Build after a failure, also run `status <change-name> --details`.
 3. When more acceptance items are needed, follow `acceptancePage.nextCursor`. If findings are truncated, handle the returned findings and then read details again.
 4. After confirming the target, run `comet native select <change-name>`.
-5. Read only the formal artifacts, implementation, tests, and project rules needed by the current phase.
 
 If multiple reasonable candidates remain, ask the user to select one. Create a change only after confirming that no matching active change exists:
 
@@ -47,11 +37,20 @@ comet native new <change-name> \
 
 Use only the Native artifact root selected by project configuration.
 
+## On-demand loading
+
+After confirming the current change and phase, read one corresponding reference on demand:
+
+- When entering Shape, you must first read and execute the [clarification reference](reference/clarification.md). Do not skip it because “the requirements look clear.” Do not modify project implementation or advance to Build until shared understanding is confirmed.
+- If you need advanced options, receipts, partial scope, or an external-role handoff command, read the [command reference](reference/commands.md).
+- If you need to edit the brief, specifications, or verification report, read the [artifact reference](reference/artifacts.md).
+- If interruption, stale evidence, a repair stop, conflict, lock, or migration occurs, read the [recovery reference](reference/recovery.md).
+
 ## Shape
 
 First investigate facts available from the repository, tools, and runtime environment. Ask the user only when different choices would materially change user-visible results and the existing requirements do not resolve the choice reliably. You own implementation choices.
 
-When behavior is unresolved, read the clarification reference and follow `clarification_mode`. After every user answer, immediately update Decisions, the brief, and the complete target specifications in the same change. Keep unresolved items `[blocking]`; do not modify project implementation or advance while a blocker remains.
+Follow the clarification reference according to `clarification_mode`. Even when the initial assessment finds no unresolved behavior, complete its information classification and silent-assumption check. After every user answer, immediately update Decisions, the brief, and the complete target specifications in the same change. Keep unresolved items `[blocking]`; do not modify project implementation or advance while a blocker remains.
 
 After all user decisions are resolved, check again for silent assumptions. Give the user a shared-understanding summary covering the goal, scope, key decisions, acceptance criteria, and non-goals. Only after explicit confirmation may you remove the final blocker and advance:
 

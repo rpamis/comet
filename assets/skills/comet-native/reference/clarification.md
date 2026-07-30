@@ -1,6 +1,6 @@
 # Native Clarification Reference
 
-Read this file only when Shape contains unresolved user-visible behavior.
+You must read this file after entering Shape. Do not modify project implementation or advance to Build until problem classification, the silent-assumption check, and shared-understanding confirmation are complete.
 
 ## Whether to ask
 
