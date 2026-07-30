@@ -380,8 +380,6 @@ export interface NativeAdvanceEvidence {
   verificationReport?: string;
   verificationReceipt?: string;
   verificationReceiptRefs?: string[];
-  verificationWaiverRefs?: string[];
-  independentReviewReceiptRef?: string;
   repairFailureCategories?: string[];
   repairFailedCheckIds?: string[];
   repairOverrideSignature?: string;

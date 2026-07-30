@@ -14,6 +14,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Classic Dashboard discovery**: Dashboard now discovers the repository root when launched from a nested directory, reads Classic changes from the configured legacy or docs layout through the built CLI, and shows collection errors instead of presenting them as an empty workspace.
 - **Explicit Comet Skill routing**: Once a host loads `/comet`, the root Skill now treats the entry as selected, immediately resolves the project-configured workflow, loads exactly the returned Native or Classic entry Skill, and passes the original request through instead of re-evaluating task relevance or selecting a workflow by task size.
 
+### Removed
+
+- **Native cryptographic review**: Removed controller trust, signing identities, implementation attestations, independent-review and waiver receipts, and their CLI and Eval handoff paths. Native verification now depends only on complete, current acceptance and required-check evidence bound to the active revision, contract, scope, snapshot, and artifacts.
+
 ## What's Changed [0.4.0-beta.11] - 2026-07-29
 
 ### Changed

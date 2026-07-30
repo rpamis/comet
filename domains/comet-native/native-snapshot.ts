@@ -13,7 +13,6 @@ import { sha256Text } from './native-hash.js';
 import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import { readNativeProtectedTextFile } from './native-protected-file.js';
-import { NATIVE_REVIEW_TRUST_POLICY_REF } from './native-review-contract.js';
 import { nativeSensitiveRelativePathReason } from './native-sensitive-paths.js';
 import type {
   NativeContentSnapshotManifest,
@@ -2526,39 +2525,6 @@ export async function createNativeContentSnapshot(
     );
   };
 
-  const captureForcedProtectedRefs = async (): Promise<void> => {
-    for (const relative of [NATIVE_REVIEW_TRUST_POLICY_REF]) {
-      if (capturedEntryValidations.has(relative)) continue;
-      const target = path.resolve(projectRoot, ...relative.split('/'));
-      let stat: import('fs').Stats;
-      try {
-        stat = await fs.lstat(target);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
-        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
-        omit({
-          path: relative,
-          size: null,
-          type: 'file',
-          reason: isChangedDuringReadError(error) ? 'changed-during-read' : 'unreadable',
-        });
-        continue;
-      }
-      if (stat.isSymbolicLink()) {
-        await captureSymbolicLink(target, relative, stat);
-      } else if (stat.isFile()) {
-        await captureFile(target, relative, stat);
-      } else {
-        omit({
-          path: relative,
-          size: null,
-          type: stat.isDirectory() ? 'directory' : 'other',
-          reason: 'changed-during-read',
-        });
-      }
-    }
-  };
-
   const revalidateCapturedEntries = async (): Promise<void> => {
     for (const [relative, validation] of [...capturedEntryValidations]) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
@@ -2720,7 +2686,6 @@ export async function createNativeContentSnapshot(
     }
   };
 
-  await captureForcedProtectedRefs();
   const gitSelection = await nativeGitSnapshotSelection(
     execution,
     projectRoot,

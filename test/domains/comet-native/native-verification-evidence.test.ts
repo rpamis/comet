@@ -5,6 +5,7 @@ import {
   buildNativePartialAllowance,
   buildNativeVerificationEvidenceEnvelope,
   parseNativeAcceptanceEvidenceTrace,
+  parseNativeVerificationEvidenceEnvelope,
 } from '../../../domains/comet-native/native-verification-evidence.js';
 import { buildNativeContractSnapshot } from '../../../domains/comet-native/native-contract.js';
 import { canonicalHash } from '../../../domains/comet-native/native-canonical-hash.js';
@@ -16,7 +17,6 @@ const contract = buildNativeContractSnapshot({
   specs: [],
 });
 const requiredReceiptRef = `runtime/evidence/receipts/${'b'.repeat(64)}.json`;
-const reviewReceiptRef = `runtime/evidence/receipts/${'c'.repeat(64)}.json`;
 
 function evidenceForAll() {
   return contract.acceptance.map((criterion) => ({
@@ -224,10 +224,18 @@ describe('Native partial allowance and verification envelope', () => {
       reportHash: 'd'.repeat(64),
       acceptanceTrace: trace,
       requiredReceiptRefs: [requiredReceiptRef],
-      independentReviewReceiptRef: reviewReceiptRef,
       now: new Date('2026-07-17T00:00:00.000Z'),
     });
     expect(complete).toMatchObject({ freshness: 'complete', partialAllowanceRef: null });
+    expect(() => parseNativeVerificationEvidenceEnvelope({ ...complete, waiverRefs: [] })).toThrow(
+      'unknown field',
+    );
+    expect(() =>
+      parseNativeVerificationEvidenceEnvelope({
+        ...complete,
+        independentReviewReceiptRef: null,
+      }),
+    ).toThrow('unknown field');
 
     const partialBundle = scopeBundle(false);
     const partialScope = partialBundle.scope;
@@ -246,7 +254,6 @@ describe('Native partial allowance and verification envelope', () => {
         reportHash: 'd'.repeat(64),
         acceptanceTrace: trace,
         requiredReceiptRefs: [requiredReceiptRef],
-        independentReviewReceiptRef: reviewReceiptRef,
       }),
     ).toThrow('requires a confirmed allowance');
 
@@ -274,7 +281,6 @@ describe('Native partial allowance and verification envelope', () => {
       reportHash: 'd'.repeat(64),
       acceptanceTrace: trace,
       requiredReceiptRefs: [requiredReceiptRef],
-      independentReviewReceiptRef: reviewReceiptRef,
       partialAllowance: {
         ref: `runtime/evidence/allowances/${allowance.allowanceHash}.json`,
         allowance,
@@ -317,7 +323,6 @@ describe('Native partial allowance and verification envelope', () => {
         reportHash: 'd'.repeat(64),
         acceptanceTrace: trace,
         requiredReceiptRefs: [requiredReceiptRef],
-        independentReviewReceiptRef: reviewReceiptRef,
       }),
     ).toThrow('does not match the verification contract');
   });

@@ -124,18 +124,11 @@ comet native evidence format [--entries <path>]
     "status": "failed",
     "evidence_refs": [],
     "skipped_reason": "实际失败或未完成原因"
-  },
-  {
-    "acceptance_id": "acceptance-<sha256>",
-    "status": "waived",
-    "evidence_refs": [],
-    "waiver_ref": "runtime/evidence/waivers/<sha256>.json"
   }
 ]
 ```
 
 - `passed` 引用当前有效的 typed receipt。
 - `failed` 说明真实失败或跳过原因。
-- `waived` 引用外部 signer 返回的 waiver。
 
 不要手工排版机器块，不要复用旧 change 的 evidence ref，也不要把失败、跳过或阻塞结果写成通过。

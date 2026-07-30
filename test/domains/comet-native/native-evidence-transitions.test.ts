@@ -526,7 +526,10 @@ describe('Native evidence-bound phase transitions', () => {
           }),
         },
       }),
-    ).rejects.toThrow('signed acceptance-applicability review receipt');
+    ).resolves.toMatchObject({
+      change: { phase: 'archive', verification_result: 'pass' },
+      next: 'auto',
+    });
   });
 
   it('redacts credential-shaped transition and partial-allowance text before hashing or persistence', async () => {

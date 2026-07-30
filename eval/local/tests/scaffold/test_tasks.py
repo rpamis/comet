@@ -231,14 +231,7 @@ def test_native_task_uses_its_own_skill_contract():
     assert prompt.startswith("You are working on a Python project")
     assert "Begin by invoking the `/comet-native` Skill" in prompt
     assert "/comet` Skill/slash command" not in prompt
-    assert "/workspace/_eval_trusted_oracles/native-review-fixture.json" in prompt
-    assert "Do not run `trust keygen`" in prompt
-    assert (
-        get_tasks_dir()
-        / "comet-native-workflow"
-        / "environment"
-        / ".include-trusted-native-review-fixture"
-    ).read_text(encoding="utf-8").strip() == "sentence-counting"
+    assert "current typed acceptance and required-check receipts" in prompt
 
 
 def test_native_clarification_task_requires_one_decision_and_confirmed_resume():

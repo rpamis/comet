@@ -57,7 +57,6 @@ describe('Native runtime release asset', () => {
       'show',
       'status',
       'select',
-      'trust',
       'receipt',
       'next',
       'archive',
@@ -70,9 +69,12 @@ describe('Native runtime release asset', () => {
     expect(source).toContain('.comet/config.yaml');
     expect(source).toContain('parseCometHookRequest');
     expect(source).toContain('Hook write target could not be determined');
-    expect(source).toContain('comet.native.controller-trust-store.v1');
+    expect(source).not.toContain('comet.native.controller-trust-store.v1');
     expect(source).not.toContain('comet.native.creation-authorization.v1');
-    expect(source).toContain('comet.native.review-trust-policy.v2');
+    expect(source).not.toContain('comet.native.review-trust-policy.v2');
+    expect(source).not.toContain('implementation-attestation');
+    expect(source).not.toContain('independent-review');
+    expect(source).not.toContain('waiver-receipt');
     expect(source).not.toContain('trust authorize');
     expect(source).toContain('new <change-name> [--language en|zh-CN]');
     execFileSync(process.execPath, [builder, '--check'], { stdio: 'pipe' });
@@ -90,8 +92,10 @@ describe('Native runtime release asset', () => {
 
     expect(english).toContain('comet native new <change-name> [--language en|zh-CN]');
     expect(chinese).toContain('comet native new <change-name> [--language en|zh-CN]');
-    expect(english).toContain('`new` creates default configuration and `<project>/docs/comet/`');
-    expect(chinese).toContain('`new` 在配置缺失时创建默认配置和 `<project>/docs/comet/`');
+    expect(english).toContain('When configuration is absent');
+    expect(english).toContain('`docs/comet/`');
+    expect(chinese).toContain('配置缺失时');
+    expect(chinese).toContain('`docs/comet/`');
   });
 
   it('detects a stale generated runtime', async () => {

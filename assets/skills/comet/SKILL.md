@@ -24,8 +24,8 @@ Once the host loads this Skill, treat the `/comet` entry as selected. Immediatel
    If the CLI starts but exits nonzero, configuration parsing fails, output is not JSON, or a required field is invalid, do not retry through the bundled runtime. Stop and report the original error without falling back or guessing.
 3. Parse the JSON. Only accept `schema: comet.workflow-resolution.v1` and a `skill` value listed below.
 4. Select exactly one entry based only on the returned `skill`. Immediately use the Skill tool to load that entry, and load no other entry:
-   - `comet-native` → **Execute immediately:** Use the Skill tool to load the `comet-native` skill. Do not skip this step.
-   - `comet-classic` → **Execute immediately:** Use the Skill tool to load the `comet-classic` skill. Do not skip this step.
+    - `/comet-native` → **Execute immediately:** Use the Skill tool to load the `comet-native` skill. Do not skip this step.
+    - `/comet-classic` → **Execute immediately:** Use the Skill tool to load the `comet-classic` skill. Do not skip this step.
 
    After the skill is loaded, pass the user's original request unchanged to the loaded entry Skill as its user input.
 

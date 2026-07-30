@@ -83,8 +83,6 @@ function evidenceInput(
     reportHash: 'c'.repeat(64),
     acceptanceTrace,
     requiredReceiptRefs: [`runtime/evidence/receipts/${'b'.repeat(64)}.json`],
-    independentReviewReceiptRef:
-      result === 'pass' ? `runtime/evidence/receipts/${'c'.repeat(64)}.json` : null,
     now: NOW,
   });
   return { envelope, implementationScope, maxVerifyFailures: 5 };
@@ -129,7 +127,6 @@ function unchangedEvidenceInput(
     reportHash: 'c'.repeat(64),
     acceptanceTrace,
     requiredReceiptRefs: [`runtime/evidence/receipts/${'b'.repeat(64)}.json`],
-    independentReviewReceiptRef: null,
     now: NOW,
   });
   return { envelope, implementationScope, maxVerifyFailures: 5 };

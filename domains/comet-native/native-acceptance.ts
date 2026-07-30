@@ -8,15 +8,8 @@ import type {
 
 const ACCEPTANCE_HASH_TAG = 'comet.native.acceptance.v1';
 const ACCEPTANCE_ID_PATTERN = /^acceptance-[a-f0-9]{64}$/u;
-const EVIDENCE_ENTRY_KEYS = new Set([
-  'acceptance_id',
-  'status',
-  'evidence_refs',
-  'skipped_reason',
-  'waiver_ref',
-]);
+const EVIDENCE_ENTRY_KEYS = new Set(['acceptance_id', 'status', 'evidence_refs', 'skipped_reason']);
 const TYPED_RECEIPT_REF_PATTERN = /^runtime\/evidence\/receipts\/[a-f0-9]{64}\.json$/u;
-const WAIVER_RECEIPT_REF_PATTERN = /^runtime\/evidence\/waivers\/[a-f0-9]{64}\.json$/u;
 const ACCEPTANCE_HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const ACCEPTANCE_CURSOR_PATTERN =
   /^native-acceptance-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
@@ -57,10 +50,9 @@ export interface NativeAcceptanceCriterion {
 
 export interface NativeAcceptanceEvidenceEntry {
   acceptance_id: string;
-  status: 'passed' | 'failed' | 'waived';
+  status: 'passed' | 'failed';
   evidence_refs: string[];
   skipped_reason?: string;
-  waiver_ref?: string;
 }
 
 function truncateUtf8(value: string, maxBytes: number): { value: string; truncated: boolean } {
@@ -638,11 +630,6 @@ function evidenceRecord(value: unknown, index: number): Record<string, unknown> 
   const record = value as Record<string, unknown>;
   const unknown = Object.keys(record).filter((key) => !EVIDENCE_ENTRY_KEYS.has(key));
   if (unknown.length > 0) {
-    if (unknown.includes('waiver')) {
-      throw new Error(
-        `Acceptance evidence entry ${index} must reference a content-addressed waiver receipt`,
-      );
-    }
     throw new Error(
       `Acceptance evidence entry ${index} has unknown field(s): ${unknown.join(', ')}`,
     );
@@ -678,7 +665,7 @@ function validateEvidenceEntries(value: unknown): NativeAcceptanceEvidenceEntry[
       throw new Error(`Acceptance evidence ${acceptanceId} has a duplicate evidence ref`);
     }
     const status = record.status;
-    if (status !== 'passed' && status !== 'failed' && status !== 'waived') {
+    if (status !== 'passed' && status !== 'failed') {
       throw new Error(`Acceptance evidence ${acceptanceId} status is invalid`);
     }
 
@@ -691,38 +678,15 @@ function validateEvidenceEntries(value: unknown): NativeAcceptanceEvidenceEntry[
       }
       skippedReason = record.skipped_reason.trim();
     }
-    let waiverRef: string | undefined;
-    if (Object.prototype.hasOwnProperty.call(record, 'waiver_ref')) {
-      if (
-        typeof record.waiver_ref !== 'string' ||
-        !WAIVER_RECEIPT_REF_PATTERN.test(record.waiver_ref)
-      ) {
-        throw new Error(
-          `Acceptance evidence ${acceptanceId} waiver_ref must identify a content-addressed waiver receipt`,
-        );
-      }
-      waiverRef = record.waiver_ref;
-    }
     if (status === 'passed' && evidenceRefs.length === 0) {
       throw new Error(`Acceptance evidence ${acceptanceId} passed status requires evidence_refs`);
     }
-    if (
-      status === 'failed' &&
-      (evidenceRefs.length > 0 || skippedReason === undefined || waiverRef !== undefined)
-    ) {
+    if (status === 'failed' && (evidenceRefs.length > 0 || skippedReason === undefined)) {
       throw new Error(
         `Acceptance evidence ${acceptanceId} failed status requires a skipped_reason and no evidence`,
       );
     }
-    if (
-      status === 'waived' &&
-      (evidenceRefs.length > 0 || waiverRef === undefined || skippedReason !== undefined)
-    ) {
-      throw new Error(
-        `Acceptance evidence ${acceptanceId} waived status requires a waiver receipt and no evidence`,
-      );
-    }
-    if (status === 'passed' && (skippedReason !== undefined || waiverRef !== undefined)) {
+    if (status === 'passed' && skippedReason !== undefined) {
       throw new Error(`Acceptance evidence ${acceptanceId} passed status has invalid fields`);
     }
     return {
@@ -730,7 +694,6 @@ function validateEvidenceEntries(value: unknown): NativeAcceptanceEvidenceEntry[
       status,
       evidence_refs: evidenceRefs,
       ...(skippedReason === undefined ? {} : { skipped_reason: skippedReason }),
-      ...(waiverRef === undefined ? {} : { waiver_ref: waiverRef }),
     };
   });
 }

@@ -1,6 +1,5 @@
 """Validate the self-contained Comet Native workflow task inside Docker."""
 
-import base64
 import hashlib
 import json
 import os
@@ -238,69 +237,6 @@ def _read_typed_receipt(archived: Path, reference: str):
     return receipt
 
 
-def _validate_identity(identity, label: str):
-    if not isinstance(identity, dict):
-        raise ValueError(f"{label} identity is missing")
-    if (
-        identity.get("schema") != "comet.native.review-identity.v1"
-        or identity.get("algorithm") != "ed25519"
-        or not HASH.fullmatch(identity.get("keyId", ""))
-    ):
-        raise ValueError(f"{label} identity is invalid")
-    try:
-        public_key = base64.b64decode(identity.get("publicKey", ""), validate=True)
-    except Exception as error:
-        raise ValueError(f"{label} public key is invalid") from error
-    if hashlib.sha256(public_key).hexdigest() != identity["keyId"]:
-        raise ValueError(f"{label} public key does not match its key id")
-
-
-def _validate_signature(signature, identity, payload_hash: str, label: str):
-    _validate_identity(identity, label)
-    if not isinstance(signature, dict):
-        raise ValueError(f"{label} signature is missing")
-    if (
-        signature.get("schema") != "comet.native.review-signature.v1"
-        or signature.get("algorithm") != "ed25519"
-        or signature.get("keyId") != identity["keyId"]
-        or signature.get("payloadHash") != payload_hash
-    ):
-        raise ValueError(f"{label} signature binding is invalid")
-    try:
-        raw_signature = base64.b64decode(signature.get("signature", ""), validate=True)
-    except Exception as error:
-        raise ValueError(f"{label} signature is invalid") from error
-    if len(raw_signature) != 64:
-        raise ValueError(f"{label} signature length is invalid")
-    node = shutil.which("node")
-    if node is None:
-        raise FileNotFoundError("Node.js is unavailable for Ed25519 verification")
-    verifier = (
-        "const {createPublicKey,verify}=require('node:crypto');"
-        "const key=createPublicKey({key:Buffer.from(process.argv[1],'base64'),"
-        "format:'der',type:'spki'});"
-        "const message=Buffer.concat([Buffer.from('comet.native.review-payload.v1\\0'),"
-        "Buffer.from(process.argv[2],'hex')]);"
-        "process.exit(verify(null,message,key,Buffer.from(process.argv[3],'base64'))?0:1);"
-    )
-    verified = subprocess.run(
-        [
-            node,
-            "-e",
-            verifier,
-            identity["publicKey"],
-            payload_hash,
-            signature["signature"],
-        ],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=False,
-    )
-    if verified.returncode != 0:
-        raise ValueError(f"{label} Ed25519 signature verification failed")
-
-
 def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
     evidence_match = VERIFICATION_REF.fullmatch(evidence_ref)
     if evidence_match is None:
@@ -318,8 +254,10 @@ def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
         )
         != evidence.get("envelopeHash")
         or evidence.get("result") != "pass"
+        or "independentReviewReceiptRef" in evidence
+        or "waiverRefs" in evidence
     ):
-        raise ValueError("Archive does not contain passing v2 verification evidence")
+        raise ValueError("Archive does not contain current passing verification evidence")
 
     trace = evidence.get("acceptanceTrace")
     entries = trace.get("entries") if isinstance(trace, dict) else None
@@ -334,23 +272,25 @@ def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
         or _content_hash(trace, "traceHash", "comet.native.acceptance-trace.v2")
         != trace.get("traceHash")
     ):
-        raise ValueError("Passing verification has an incomplete v2 acceptance matrix")
+        raise ValueError("Passing verification has an incomplete acceptance matrix")
     raw_acceptance_ids = [entry.get("acceptanceId") for entry in entries]
-    if any(not isinstance(value, str) for value in raw_acceptance_ids):
+    if (
+        any(not isinstance(value, str) for value in raw_acceptance_ids)
+        or len(set(raw_acceptance_ids)) != len(raw_acceptance_ids)
+    ):
         raise ValueError("Acceptance matrix ids are invalid or duplicated")
     acceptance_ids = sorted(raw_acceptance_ids)
-    if len(set(acceptance_ids)) != len(acceptance_ids):
-        raise ValueError("Acceptance matrix ids are invalid or duplicated")
 
     acceptance_receipt_refs = set()
+    all_receipts = []
     for entry in entries:
         references = entry.get("evidenceRefs")
         if (
-            entry.get("status") != "passed"
+            set(entry) != {"acceptanceId", "status", "evidenceRefs", "skippedReason"}
+            or entry.get("status") != "passed"
             or not isinstance(references, list)
             or not references
             or entry.get("skippedReason") is not None
-            or entry.get("waiverRef") is not None
         ):
             raise ValueError(f"Acceptance matrix entry is not a direct pass: {entry!r}")
         for reference in references:
@@ -363,138 +303,24 @@ def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
             ):
                 raise ValueError(f"Acceptance receipt does not cover {entry['acceptanceId']}")
             acceptance_receipt_refs.add(reference)
+            all_receipts.append(receipt)
 
     required_refs = evidence.get("requiredReceiptRefs")
     if not isinstance(required_refs, list) or not required_refs:
-        raise ValueError("Passing v2 verification has no required check receipt")
-    all_receipts = []
+        raise ValueError("Passing verification has no required check receipt")
     for reference in required_refs:
         receipt = _read_typed_receipt(archived, reference)
-        if receipt.get("role") != "required-check" or receipt.get("status") != "passed":
+        if (
+            receipt.get("kind") != "static-inspection"
+            or receipt.get("role") != "required-check"
+            or receipt.get("status") != "passed"
+        ):
             raise ValueError(f"Required check receipt is not passed: {reference}")
         all_receipts.append(receipt)
 
-    review_ref = evidence.get("independentReviewReceiptRef")
-    review = _read_typed_receipt(archived, review_ref)
-    review_evidence = review.get("evidence", {})
-    checked = review_evidence.get("checked", {})
-    matrix = [
-        {
-            "acceptance_id": entry["acceptanceId"],
-            "status": entry["status"],
-            "evidence_refs": entry["evidenceRefs"],
-            **(
-                {}
-                if entry.get("skippedReason") is None
-                else {"skipped_reason": entry["skippedReason"]}
-            ),
-            **(
-                {}
-                if entry.get("waiverRef") is None
-                else {"waiver_ref": entry["waiverRef"]}
-            ),
-        }
-        for entry in entries
-    ]
-    graph = review_evidence.get("evidenceGraph", {})
-    graph_content = (
-        {key: value for key, value in graph.items() if key != "graphHash"}
-        if isinstance(graph, dict)
-        else {}
-    )
-    expected_reviewed_refs = acceptance_receipt_refs | set(required_refs)
-    expected_reviewed_refs.update(
-        reference
-        for reference in (
-            checked.get("unifiedIo"),
-            checked.get("adversarialPaths"),
-            checked.get("generatedAssets"),
-            checked.get("lifecycleEval"),
-        )
-        if isinstance(reference, str)
-    )
-    if (
-        review.get("kind") != "independent-review"
-        or review.get("role") != "acceptance-evidence"
-        or review.get("status") != "passed"
-        or sorted(review.get("acceptanceIds", [])) != acceptance_ids
-        or checked.get("acceptanceApplicability") is not True
-        or review_evidence.get("matrixHash")
-        != _canonical_hash("comet.native.review-acceptance-matrix.v1", matrix)
-        or graph.get("schema") != "comet.native.review-evidence-graph.v1"
-        or graph.get("graphHash")
-        != _canonical_hash("comet.native.review-evidence-graph.v1", graph_content)
-        or set(graph.get("reviewedReceiptRefs", [])) != expected_reviewed_refs
-        or graph.get("reviewedWaiverRefs") != []
-        or any(
-            finding.get("status") == "open" and finding.get("severity") in {"P0", "P1"}
-            for finding in review_evidence.get("findings", [])
-        )
-    ):
-        raise ValueError("Signed acceptance-applicability review is incomplete")
-    unsigned_review_evidence = {
-        key: value for key, value in review_evidence.items() if key != "attestation"
-    }
-    review_payload_hash = _canonical_hash(
-        "comet.native.independent-review-attestation.v1",
-        {
-            "bindings": review["bindings"],
-            "status": review["status"],
-            "acceptanceIds": sorted(review["acceptanceIds"]),
-            "issuedAt": review["issuedAt"],
-            "evidence": unsigned_review_evidence,
-        },
-    )
-    _validate_signature(
-        review_evidence.get("attestation"),
-        review_evidence.get("reviewerIdentity"),
-        review_payload_hash,
-        "Reviewer",
-    )
-
-    implementation_ref = review_evidence.get("implementationReceiptRef")
-    implementation = _read_typed_receipt(archived, implementation_ref)
-    implementation_evidence = implementation.get("evidence", {})
-    if (
-        implementation.get("kind") != "implementation-attestation"
-        or implementation.get("role") != "acceptance-evidence"
-        or implementation.get("status") != "passed"
-        or sorted(implementation.get("acceptanceIds", [])) != acceptance_ids
-        or implementation_evidence.get("implementationIdentity", {}).get("keyId")
-        != review_evidence.get("implementationKeyId")
-    ):
-        raise ValueError("Review does not bind a complete implementation attestation")
-    unsigned_implementation_evidence = {
-        key: value
-        for key, value in implementation_evidence.items()
-        if key != "attestation"
-    }
-    implementation_payload_hash = _canonical_hash(
-        "comet.native.implementation-attestation.v1",
-        {
-            "bindings": implementation["bindings"],
-            "status": implementation["status"],
-            "acceptanceIds": sorted(implementation["acceptanceIds"]),
-            "issuedAt": implementation["issuedAt"],
-            "evidence": unsigned_implementation_evidence,
-        },
-    )
-    _validate_signature(
-        implementation_evidence.get("attestation"),
-        implementation_evidence.get("implementationIdentity"),
-        implementation_payload_hash,
-        "Implementation",
-    )
-
     receipt_refs = evidence.get("receiptRefs")
-    expected_receipt_refs = acceptance_receipt_refs | {review_ref}
-    if not isinstance(receipt_refs, list) or set(receipt_refs) != expected_receipt_refs:
-        raise ValueError("Envelope receiptRefs do not exactly match matrix and review receipts")
-
-    all_receipts.extend(
-        [_read_typed_receipt(archived, reference) for reference in acceptance_receipt_refs]
-    )
-    all_receipts.extend([review, implementation])
+    if not isinstance(receipt_refs, list) or set(receipt_refs) != acceptance_receipt_refs:
+        raise ValueError("Envelope receiptRefs do not exactly match acceptance receipts")
     bindings = all_receipts[0].get("bindings")
     if any(receipt.get("bindings") != bindings for receipt in all_receipts[1:]):
         raise ValueError("Verification receipts do not share exact current bindings")
@@ -505,42 +331,6 @@ def _validate_v2_verification(archived: Path, state: dict, evidence_ref: str):
         or bindings.get("scopeHash") != evidence.get("implementationScopeHash")
     ):
         raise ValueError("Verification receipt bindings do not match the evidence envelope")
-
-    policy_file = WORKSPACE / ".comet" / "native-review-trust.json"
-    if not policy_file.is_file():
-        raise ValueError("Pre-trusted review policy is missing")
-    policy = json.loads(policy_file.read_text(encoding="utf-8"))
-    reviewer_key = review_evidence["reviewerIdentity"]["keyId"]
-    trusted_reviewers = {
-        identity.get("keyId") for identity in policy.get("trustedReviewers", [])
-    }
-    policy_content = {
-        key: value
-        for key, value in policy.items()
-        if key not in {"policyHash", "controllerSignature"}
-    }
-    all_role_keys = [
-        policy.get("controllerKeyId"),
-        policy.get("implementationKeyId"),
-        *trusted_reviewers,
-        *{
-            identity.get("keyId")
-            for identity in policy.get("trustedWaiverSigners", [])
-            if isinstance(identity, dict)
-        },
-    ]
-    if (
-        policy.get("schema") != "comet.native.review-trust-policy.v2"
-        or policy.get("policyHash")
-        != _canonical_hash("comet.native.review-trust-policy.v2", policy_content)
-        or policy.get("policyHash") != review_evidence.get("reviewPolicyHash")
-        or policy.get("policyHash") != implementation_evidence.get("reviewPolicyHash")
-        or policy.get("implementationKeyId") != review_evidence.get("implementationKeyId")
-        or reviewer_key not in trusted_reviewers
-        or any(not isinstance(key, str) or not HASH.fullmatch(key) for key in all_role_keys)
-        or len(set(all_role_keys)) != len(all_role_keys)
-    ):
-        raise ValueError("Signed receipts do not match the pre-trusted review policy")
     _run_trusted_archive_oracle(archived, state, acceptance_ids)
 
 
@@ -649,7 +439,7 @@ def check_isolation():
         present.append("openspec")
     present.extend(
         f".comet/{name}"
-        for name in sorted(hidden_entries - {"config.yaml", "native-review-trust.json"})
+        for name in sorted(hidden_entries - {"config.yaml"})
     )
     if present:
         return failed("native_isolation", f"Forbidden workflow artifacts exist: {present}")

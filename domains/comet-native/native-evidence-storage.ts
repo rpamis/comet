@@ -26,9 +26,7 @@ import {
 } from './native-verification-evidence.js';
 import {
   parseNativeVerificationReceipt,
-  parseNativeWaiverReceipt,
   type NativeVerificationReceipt,
-  type NativeWaiverReceipt,
 } from './native-verification-receipt.js';
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
@@ -42,8 +40,7 @@ export type NativeEvidenceKind =
   | 'allowances'
   | 'verifications'
   | 'reports'
-  | 'receipts'
-  | 'waivers';
+  | 'receipts';
 
 export interface NativeEvidenceReadHooks {
   afterParentChainCaptured?: () => void | Promise<void>;
@@ -283,7 +280,7 @@ export async function readNativeVerificationReportSnapshot(
 
 function parseEvidenceRef(ref: string, expectedKind: NativeEvidenceKind): string {
   const match =
-    /^runtime\/evidence\/(snapshots|scopes|allowances|verifications|reports|receipts|waivers)\/([a-f0-9]{64})\.json$/u.exec(
+    /^runtime\/evidence\/(snapshots|scopes|allowances|verifications|reports|receipts)\/([a-f0-9]{64})\.json$/u.exec(
       ref,
     );
   if (!match || match[1] !== expectedKind) {
@@ -555,40 +552,6 @@ export async function readNativeVerificationReceipt(
     throw new Error('Native verification receipt ref/hash/change mismatch');
   }
   return receipt;
-}
-
-export async function writeNativeWaiverReceipt(options: {
-  paths: NativeProjectPaths;
-  name: string;
-  waiver: NativeWaiverReceipt;
-}): Promise<string> {
-  const waiver = parseNativeWaiverReceipt(options.waiver);
-  if (waiver.bindings.change !== options.name) {
-    throw new Error('Native waiver receipt change mismatch');
-  }
-  return writeEvidenceDocument({
-    paths: options.paths,
-    name: options.name,
-    kind: 'waivers',
-    hash: waiver.waiverHash,
-    value: waiver,
-  });
-}
-
-export async function readNativeWaiverReceipt(
-  paths: NativeProjectPaths,
-  name: string,
-  ref: string,
-  hooks?: NativeEvidenceReadHooks,
-): Promise<NativeWaiverReceipt> {
-  const hash = parseEvidenceRef(ref, 'waivers');
-  const waiver = parseNativeWaiverReceipt(
-    await readEvidenceDocument({ paths, name, kind: 'waivers', hash, hooks }),
-  );
-  if (waiver.bindings.change !== name || waiver.waiverHash !== hash) {
-    throw new Error('Native waiver receipt ref/hash/change mismatch');
-  }
-  return waiver;
 }
 
 export async function writeNativeVerificationEvidence(options: {

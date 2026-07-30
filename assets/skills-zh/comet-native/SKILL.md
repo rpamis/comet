@@ -19,8 +19,6 @@ Native 保存需求、完整目标规格、状态和证据。你负责理解、�
 
 Native 主流程不依赖任何外部 Skill。
 
-不要接收签名私钥，也不要代替外部审批角色。缺少外部动作时，按 Runtime continuation 等待并转交所需命令。
-
 ## 开始或恢复
 
 1. 运行 `comet native status`，确认当前 change 和 phase。
@@ -92,9 +90,9 @@ Loop 只在 `done`、`await-user`、`blocked` 或调用方明确要求停止时�
 
 根据 acceptance、完整目标规格和改动风险运行真实验证。用实际结果完成 `verification.md` 和验收证据；未运行或失败的检查不能写成通过。
 
-使用 Runtime 返回的 acceptance ID 和 receipt。需要生成证据块、记录 automated/manual receipt、申请 waiver 或交接独立审核时，读取产物与命令参考。当前 Agent 不执行外部签名。
+使用 Runtime 返回的 acceptance ID 和 receipt。需要生成证据块或记录 automated/manual receipt 时，读取产物与命令参考。
 
-只有 Runtime 接受完整且新鲜的验收矩阵、required checks 和独立审核时才能提交 `pass`。相关实现、规格、报告或证据改变后重新验证。
+只有 Runtime 接受完整且新鲜的验收矩阵和 required checks 时才能提交 `pass`。相关实现、规格、报告或证据改变后重新验证。
 
 `fail` 会回到 Build。先根据 Runtime 返回的 failed/missing acceptance 和 failed check 修复，再重新验证；不要把再次调用 `next` 当作修复。达到 Runtime 的重复缺口停止条件或 `native.max_verify_failures` 预算时，停止并等待用户决定。
 

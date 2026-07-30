@@ -19,8 +19,6 @@ Config, selection, change state, and formal artifacts on disk take precedence ov
 
 The Native main workflow does not depend on any external Skill.
 
-Do not receive signing private keys or impersonate an external approval role. When an external action is missing, follow the Runtime continuation, wait, and hand off the required command.
-
 ## Start or resume
 
 1. Run `comet native status` to identify the current change and phase.
@@ -92,9 +90,9 @@ The loop ends only at `done`, `await-user`, `blocked`, or an explicit caller sto
 
 Run real validation based on the acceptance items, complete target specifications, and change risk. Record actual results in `verification.md` and the acceptance evidence. A check that did not run or failed cannot be reported as passed.
 
-Use acceptance IDs and receipts returned by the Runtime. Read the artifact and command references when you need to generate the evidence block, record an automated or manual receipt, request a waiver, or hand off independent review. The current Agent does not perform external signing.
+Use acceptance IDs and receipts returned by the Runtime. Read the artifact and command references when you need to generate the evidence block or record an automated or manual receipt.
 
-Submit `pass` only when the Runtime accepts the complete, fresh acceptance matrix, required checks, and independent review. Reverify after relevant implementation, specification, report, or evidence changes.
+Submit `pass` only when the Runtime accepts the complete, fresh acceptance matrix and required checks. Reverify after relevant implementation, specification, report, or evidence changes.
 
 `fail` returns to Build. Fix the failed or missing acceptance items and failed checks reported by the Runtime before verifying again; another `next` call is not itself a repair. When the Runtime reaches its repeated-gap stop condition or the `native.max_verify_failures` budget, stop and wait for a user decision.
 

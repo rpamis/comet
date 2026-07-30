@@ -31,4 +31,4 @@ comet classic root show
 - 新 Classic 项目默认使用 `docs/openspec/`。
 - 缺少 `classic.artifact_layout` 时默认使用 `docs/openspec/`；`comet update` 检测到已有根目录 `openspec/` 产物时会显式补为 `legacy`，不会移动产物。
 - 普通 init/update 不移动旧产物。运行 `comet classic root move docs --dry-run` 只查看现状；用户确认后运行 `comet classic root move docs --apply` 直接迁移。迁移身份与锁内复检由 Runtime 内部管理。
-- 迁移会原样移动完整的 `openspec/` 树，包括 active、unmanaged 和尚未完成归档的 change；change 状态本身不阻塞根目录迁移。
+- 迁移会原样移动完整的旧布局树，包括 active、unmanaged 和尚未完成归档的 change；change 状态本身不阻塞根目录迁移。

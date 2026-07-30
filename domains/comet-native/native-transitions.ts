@@ -81,8 +81,6 @@ function hasEvidenceRetreatExtras(evidence: NativeAdvanceEvidence): boolean {
     evidence.verificationReport !== undefined ||
     evidence.verificationReceipt !== undefined ||
     evidence.verificationReceiptRefs !== undefined ||
-    evidence.verificationWaiverRefs !== undefined ||
-    evidence.independentReviewReceiptRef !== undefined ||
     evidence.repairFailureCategories !== undefined ||
     evidence.repairFailedCheckIds !== undefined ||
     evidence.repairOverrideSignature !== undefined ||
@@ -620,8 +618,6 @@ async function advanceNativeChangeLocked(
           reportRef: options.evidence.verificationReport!,
           receiptRef: verificationReceipt,
           receiptRefs: options.evidence.verificationReceiptRefs,
-          waiverRefs: options.evidence.verificationWaiverRefs,
-          independentReviewReceiptRef: options.evidence.independentReviewReceiptRef,
           now: options.now,
         })
       : null;

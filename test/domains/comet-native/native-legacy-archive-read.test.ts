@@ -17,7 +17,7 @@ const fixture = path.resolve('docs/comet/archive/2026-07-21-classic-config-block
 const envelopeRef =
   'runtime/evidence/verifications/3938bdbdfb79695122d3148cdeddb123e45756ab6287388e6d19b22c16cf2660.json';
 
-describe('Native legacy v1 archive read compatibility', () => {
+describe('Native legacy v1 archive handling', () => {
   let root: string;
   let paths: NativeProjectPaths;
 
@@ -35,17 +35,13 @@ describe('Native legacy v1 archive read compatibility', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('validates the historical canonical v1 shape before projecting read-only status', async () => {
+  it('rejects removed historical evidence fields in the current parser', async () => {
     const raw = JSON.parse(
       await fs.readFile(path.join(fixture, ...envelopeRef.split('/')), 'utf8'),
     ) as unknown;
-    const parsed = parseNativeVerificationEvidenceEnvelope(raw);
-
-    expect(parsed).toMatchObject({
-      schema: 'comet.native.verification-evidence.v1',
-      envelopeHash: '3938bdbdfb79695122d3148cdeddb123e45756ab6287388e6d19b22c16cf2660',
-    });
-    expect(parsed.acceptanceTrace.entries.every((entry) => entry.status === 'passed')).toBe(true);
+    expect(() => parseNativeVerificationEvidenceEnvelope(raw)).toThrow(
+      'Native verification evidence has unknown field(s): receiptRef',
+    );
   });
 
   it('keeps the historical archive visible through the production archived-change reader', async () => {

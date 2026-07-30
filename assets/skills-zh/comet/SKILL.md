@@ -24,8 +24,8 @@ description: "当用户调用 /comet，或存在需要恢复的 active Comet cha
    CLI 已启动但返回非零、配置解析失败、输出不是 JSON 或字段无效，都不得使用 bundled runtime 重试；停止并原样说明错误，不要回退或猜测。
 3. 解析 JSON。只接受 `schema: comet.workflow-resolution.v1`，且 `skill` 必须是下列两个值之一。
 4. 只按返回的 `skill` 选择下列一个入口。必须立即使用 Skill 工具加载且只加载该入口：
-   - `comet-native` → **立即执行：** 使用 Skill 工具加载 `comet-native` 技能。禁止跳过此步骤。
-   - `comet-classic` → **立即执行：** 使用 Skill 工具加载 `comet-classic` 技能。禁止跳过此步骤。
+    - `/comet-native` → **立即执行：** 使用 Skill 工具加载 `comet-native` 技能。禁止跳过此步骤。
+    - `/comet-classic` → **立即执行：** 使用 Skill 工具加载 `comet-classic` 技能。禁止跳过此步骤。
 
    技能加载后，把用户原始请求完整交给已加载的入口 Skill，作为该入口的用户输入。
 

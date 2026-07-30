@@ -123,46 +123,6 @@ comet native receipt manual <change-name> \
 
 只为真实执行的命令或人工观察生成 receipt。失败、跳过、阻塞或超时结果不能作为 pass。
 
-## 外部审核交接
-
-高风险 change 的 pass 可能要求 implementation attestation、independent review 或 waiver。当前 Agent 可以准备和最终导入交接产物，但不得执行外部角色的 approve/sign，也不得接收其私钥。
-
-Implementation 交接：
-
-```text
-comet native receipt implement <change-name> prepare \
-  --identity <implementation-identity> \
-  --output <preparation.json>
-
-comet native receipt implement <change-name> finalize \
-  --preparation <preparation.json> \
-  --attestation <owner-provided-attestation.json> \
-  --confirmed
-```
-
-Independent review 交接：
-
-```text
-comet native receipt review <change-name> prepare \
-  --implementation-receipt <ref> \
-  --report <verification.md> \
-  --required-receipt <ref> \
-  --identity <reviewer-identity> \
-  [--unified-io-receipt <ref> \
-   --adversarial-paths-receipt <ref> \
-   --generated-assets-receipt <ref> \
-   --lifecycle-eval-receipt <ref>] \
-  --output <preparation.json>
-
-comet native receipt review <change-name> finalize \
-  --preparation <preparation.json> \
-  --approval <reviewer-provided-approval.json> \
-  --attestation <reviewer-provided-attestation.json> \
-  --confirmed
-```
-
-外部角色根据 preparation 完成审批或签名，并只把公开产物返回当前 Agent。Runtime 要求 waiver 时，也由外部 waiver signer 执行 continuation 指定的命令；当前 Agent 只提交返回的 waiver ref。
-
 ## 阶段推进
 
 ```text
@@ -175,8 +135,6 @@ comet native next <change-name> --summary <text> \
   [--report <change-relative-path>] \
   [--receipt <required-receipt-ref>] \
   [--evidence-receipt <acceptance-receipt-ref>]... \
-  [--waiver <waiver-ref>]... \
-  [--independent-review-receipt <review-receipt-ref>] \
   [--failure-category <token>]... \
   [--failed-check <token>]... \
   [--override-repair <sha256> --override-summary <text>]

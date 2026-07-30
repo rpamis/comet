@@ -209,7 +209,7 @@ describe('Comet Native Skills', () => {
       expect(artifacts).toContain('comet native evidence format');
       expect(artifacts).toContain('"status": "passed"');
       expect(artifacts).toContain('"status": "failed"');
-      expect(artifacts).toContain('"status": "waived"');
+      expect(artifacts).not.toContain('"status": "waived"');
 
       for (const implementationDetail of [
         'native-controller-trust.json',
@@ -245,8 +245,6 @@ describe('Comet Native Skills', () => {
         'evidence format',
         'receipt manual',
         'receipt automated',
-        'receipt implement',
-        'receipt review',
         'next',
         'archive',
         'doctor',
@@ -255,8 +253,12 @@ describe('Comet Native Skills', () => {
       }
       expect(commands).not.toContain('--creation-authorization');
       expect(commands).toContain('--allow-partial-scope <sha256>');
-      expect(commands).toContain('--independent-review-receipt <review-receipt-ref>');
       expect(commands).toContain('--expect-preflight <sha256> [--confirmed]');
+      expect(commands).not.toContain('receipt implement');
+      expect(commands).not.toContain('receipt review');
+      expect(commands).not.toContain('receipt waive');
+      expect(commands).not.toContain('--independent-review-receipt');
+      expect(commands).not.toContain('--waiver');
 
       for (const provisioningDetail of [
         'trust keygen',
@@ -330,18 +332,15 @@ describe('Comet Native Skills', () => {
     expect(englishCommands).toContain('After any write command, immediately reread');
   });
 
-  it('keeps external approval fail-closed without teaching private-key handling', async () => {
+  it('removes the external cryptographic review workflow from both languages', async () => {
     const zhSkill = await read('zh', 'SKILL.md');
     const enSkill = await read('en', 'SKILL.md');
     const zhCommands = await read('zh', 'reference/commands.md');
     const enCommands = await read('en', 'reference/commands.md');
 
-    expect(zhSkill).toContain('不要接收签名私钥');
-    expect(zhSkill).toContain('不要代替外部审批角色');
-    expect(enSkill).toContain('Do not receive signing private keys');
-    expect(enSkill).toContain('impersonate an external approval role');
-    expect(zhCommands).toContain('不得执行外部角色的 approve/sign');
-    expect(enCommands).toContain("must not perform an external role's approve or sign action");
+    for (const content of [zhSkill, enSkill, zhCommands, enCommands]) {
+      expect(content).not.toMatch(/waiver|independent.review|attestation|签名私钥|独立审核/iu);
+    }
   });
 
   it('uses recovery as an actionable runbook rather than a Runtime design document', async () => {

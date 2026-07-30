@@ -487,7 +487,6 @@ describe('Native evidence retention', () => {
         acceptanceTrace: trace,
         partialAllowance: { ref: allowanceRef, allowance },
         requiredReceiptRefs: [requiredReceiptRef],
-        independentReviewReceiptRef: null,
         now: new Date('2026-07-01T00:00:00.000Z'),
       });
       await writeNativeVerificationReportSnapshot({

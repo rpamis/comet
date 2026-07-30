@@ -124,18 +124,11 @@ Place the command output unchanged under `# Acceptance evidence`. The basic inpu
     "status": "failed",
     "evidence_refs": [],
     "skipped_reason": "actual failure or incomplete reason"
-  },
-  {
-    "acceptance_id": "acceptance-<sha256>",
-    "status": "waived",
-    "evidence_refs": [],
-    "waiver_ref": "runtime/evidence/waivers/<sha256>.json"
   }
 ]
 ```
 
 - `passed` references a currently valid typed receipt.
 - `failed` states the actual failure or skipped reason.
-- `waived` references the waiver returned by an external signer.
 
 Do not hand-format the machine block, reuse an evidence ref from another change, or report failed, skipped, or blocked results as passed.

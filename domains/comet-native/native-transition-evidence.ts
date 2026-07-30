@@ -16,11 +16,6 @@ export function nativeAdvanceEvidenceHash(evidence: NativeAdvanceEvidence): stri
         evidence.verificationReceiptRefs === undefined
           ? null
           : [...evidence.verificationReceiptRefs].sort(),
-      verificationWaiverRefs:
-        evidence.verificationWaiverRefs === undefined
-          ? null
-          : [...evidence.verificationWaiverRefs].sort(),
-      independentReviewReceiptRef: evidence.independentReviewReceiptRef ?? null,
       allowPartialScopeHash: evidence.allowPartialScopeHash ?? null,
       partialReason: evidence.partialReason ?? null,
       repairFailureCategories: [...(evidence.repairFailureCategories ?? [])].sort(),

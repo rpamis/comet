@@ -137,7 +137,6 @@ describe('Native evidence storage', () => {
       reportHash: createHash('sha256').update('Verification passed.').digest('hex'),
       acceptanceTrace: trace,
       requiredReceiptRefs: [`runtime/evidence/receipts/${'b'.repeat(64)}.json`],
-      independentReviewReceiptRef: `runtime/evidence/receipts/${'c'.repeat(64)}.json`,
       partialAllowance: { ref: allowanceRef, allowance },
       now: new Date('2026-07-17T00:00:00.000Z'),
     });

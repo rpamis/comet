@@ -123,46 +123,6 @@ comet native receipt manual <change-name> \
 
 Create receipts only for commands or manual observations that actually occurred. Failed, skipped, blocked, or timed-out results cannot support pass.
 
-## External review handoff
-
-A high-risk change may require an implementation attestation, independent review, or waiver before it can pass. The current Agent may prepare and finalize handoff artifacts, but must not perform an external role's approve or sign action or receive its private key.
-
-Implementation handoff:
-
-```text
-comet native receipt implement <change-name> prepare \
-  --identity <implementation-identity> \
-  --output <preparation.json>
-
-comet native receipt implement <change-name> finalize \
-  --preparation <preparation.json> \
-  --attestation <owner-provided-attestation.json> \
-  --confirmed
-```
-
-Independent-review handoff:
-
-```text
-comet native receipt review <change-name> prepare \
-  --implementation-receipt <ref> \
-  --report <verification.md> \
-  --required-receipt <ref> \
-  --identity <reviewer-identity> \
-  [--unified-io-receipt <ref> \
-   --adversarial-paths-receipt <ref> \
-   --generated-assets-receipt <ref> \
-   --lifecycle-eval-receipt <ref>] \
-  --output <preparation.json>
-
-comet native receipt review <change-name> finalize \
-  --preparation <preparation.json> \
-  --approval <reviewer-provided-approval.json> \
-  --attestation <reviewer-provided-attestation.json> \
-  --confirmed
-```
-
-The external role completes approval or signing from the preparation and returns only public artifacts. When the Runtime requires a waiver, an external waiver signer also executes the command supplied by the continuation; the current Agent submits only the returned waiver ref.
-
 ## Phase progression
 
 ```text
@@ -175,8 +135,6 @@ comet native next <change-name> --summary <text> \
   [--report <change-relative-path>] \
   [--receipt <required-receipt-ref>] \
   [--evidence-receipt <acceptance-receipt-ref>]... \
-  [--waiver <waiver-ref>]... \
-  [--independent-review-receipt <review-receipt-ref>] \
   [--failure-category <token>]... \
   [--failed-check <token>]... \
   [--override-repair <sha256> --override-summary <text>]
